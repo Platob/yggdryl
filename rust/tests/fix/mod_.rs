@@ -145,6 +145,16 @@ mod internal {
         yggdryl::fix_crate_fields()
             .unwrap()
             .iter()
+            // A derived column is a FIX field's own statement under another
+            // name, which no registry holds.
+            .filter(|field| {
+                !field
+                    .as_fix()
+                    .tag()
+                    .ok()
+                    .flatten()
+                    .is_some_and(yggdryl::is_derived_tag)
+            })
             .filter(|field| {
                 if groups {
                     matches!(field.dtype(), DataType::Map(_) | DataType::SortedMap(_))
@@ -3142,7 +3152,11 @@ mod internal {
         assert_eq!(held.by_tag(38).unwrap(), decimal("300"));
         // And what the message states is what the trait reads off them.
         assert_eq!(held.get_price(), yggdryl::Decimal::parse("82.5").ok());
-        assert_eq!(held.get_quantity(), yggdryl::Decimal::parse("300").ok());
+        // `OrderQty(38)` is what the order asked for; the quantity is what it
+        // has left open, which a report stating no `LeavesQty(151)`, no state
+        // and no fill does not say.
+        assert_eq!(held.get_ordqty(), yggdryl::Decimal::parse("300").ok());
+        assert_eq!(held.get_quantity(), None);
         // `Quantity(53)` is the newer spelling and its own slot: a line that
         // said `53=` holds it there, and `OrderQty` stays empty.
         assert!(held.get_by_tag(53).is_none());
@@ -3158,9 +3172,11 @@ mod internal {
         );
         // The last trade is its own fact beside them, under FIX's own tag.
         assert_eq!(held.get_lastpx(), yggdryl::Decimal::parse("82.5").ok());
-        // How long it stands, as the message spelled it: what `1` names is the
-        // dictionary's to say.
-        assert_eq!(held.get_tif().map(yggdryl::TimeInForce::as_str), Some("1"));
+        // How long it stands: `TimeInForce(59)`'s `1` is good till canceled.
+        assert_eq!(
+            held.get_timeinforce().map(|held| held.as_str()),
+            Some("GTC")
+        );
 
         // What the market said about trading it, read off the status it stated:
         // `ReadyToTrade` trades.
@@ -3655,7 +3671,10 @@ mod internal {
                 "FIX:directions",
                 r#"{"directions":[{"code":"S","patterns":["^TX"]}]}"#,
             ),
-            ("FIX:idmap", r#"{"idmap":[{"map":"altids","key":"SIDE"}]}"#),
+            (
+                "FIX:idmap",
+                r#"{"idmap":[{"map":"identifiers","key":"side"}]}"#,
+            ),
         ] {
             let mut wrapper = DataType::utf8().nullable_field("Side");
             wrapper.set_metadata([(property, wrapped)]).unwrap();
@@ -3732,8 +3751,8 @@ mod internal {
         assert!(cleared.get_codeset("sidecodeset").is_none());
         assert_eq!(
             cleared.codesets().count(),
-            2,
-            "the crate's MsgCat and state sets remain"
+            3,
+            "the crate's market data type, MsgCat and state sets remain"
         );
     }
 
@@ -4189,10 +4208,10 @@ mod internal {
                 set.name()
             );
         }
-        // The crate adds MsgCat's 26 categories and the 61 states to the 735
-        // published sets.
-        assert_eq!(sets, 737, "code sets held");
-        assert_eq!(codes, 7_816, "code records");
+        // The crate adds MsgCat's 26 categories, the 61 states and the 118
+        // market data types to the 735 published sets.
+        assert_eq!(sets, 738, "code sets held");
+        assert_eq!(codes, 7_934, "code records");
     }
 
     #[test]
@@ -4289,33 +4308,42 @@ mod internal {
         assert_eq!(levels, 5, "the record holds what the wire nested");
         assert_eq!((held.tag(), held.value()), (523, Some("x")));
 
-        // Fully projected fields are absent from the residual record.
+        // Fully projected fields are absent from the residual record; the
+        // party group the fixed row projects no column for is held in it, and
+        // the party it names is the row's `partyids`.
         let full = yggdryl::fix_schema(&registry, "row").unwrap();
         let row = deep.into_row(&full).unwrap();
         let columns = row.as_sequence().expect("a row");
-        assert!(
-            columns[full.index_of("parties").expect("the projected group")]
-                .as_sequence()
-                .is_some()
+        assert_eq!(
+            yggdryl::Identifiers::from_scalar(
+                &columns[full.index_of("partyids").expect("the partyids column")]
+            )
+            .expect("the partyids")
+            .to_string(),
+            "[base:executingfirm=BUYSIDE]"
         );
         assert_eq!(
             columns[full.index_of("symbol").expect("the projected symbol")].as_str(),
             Some("AAPL")
         );
+        let held = residual(&row, &full);
         assert!(
-            residual(&row, &full)
-                .iter()
-                .all(|(key, _)| !key.starts_with("453:") && !key.starts_with("55:")),
+            held.iter().all(|(key, _)| !key.starts_with("55:")),
             "fully projected fields are absent from the residual record"
         );
+        assert!(
+            held.iter().any(|(key, _)| key == "453:parties"),
+            "the party group is held whole: {held:?}"
+        );
 
-        // A projection without the typed group and symbol carries both in the
-        // residual record: the symbol as its text, the group as the JSON of its
-        // occurrences, every level keyed `tag:name`, whole at any depth.
+        // A projection without the typed symbol and the partyids carries the
+        // symbol in the residual record as its text and the group as the JSON
+        // of its occurrences, every level keyed `tag:name`, whole at any
+        // depth.
         let schema = StructType::from_fields(
             full.fields()
                 .iter()
-                .filter(|field| !matches!(field.name(), "parties" | "symbol"))
+                .filter(|field| !matches!(field.name(), "partyids" | "symbol"))
                 .cloned(),
         )
         .map(DataType::from)
@@ -4480,7 +4508,7 @@ mod internal {
             .unwrap()
             .unwrap();
         assert_eq!(
-            yggdryl::graph::Market::get_securityids(&held).get("ISIN"),
+            yggdryl::graph::Market::get_securityids(&held).get(&yggdryl::IdType::Isin),
             Some("US0378331005")
         );
         assert_eq!(
@@ -4515,7 +4543,7 @@ mod capture {
     /// A bridge row, keyed by name rather than by tag, with a group packed in.
     const NAMED: &str = "recv |MSGTYPE=D|SYMBOL=TTF|SIDE=1|ORDERQTY=1200|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=BUYSIDE\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=1|";
     /// A FIXML row, whose fields are attributes.
-    const FIXML: &str = r#"<FIXML><Order ClOrdID="ORDER-2" Side="1" OrdQty="50"/></FIXML>"#;
+    const FIXML: &str = r#"<FIXML><Order ClOrdID="ORDER-2" Side="1" Qty="50"/></FIXML>"#;
     /// A Jolokia read of a session interface: a JSON document rather than pairs,
     /// and a body the codec does not read - one `unknown` message, no entries.
     const PLUGIN: &str = concat!(

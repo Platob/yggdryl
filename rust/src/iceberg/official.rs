@@ -79,13 +79,12 @@ fn bridged_spelling(name: &str) -> Result<Option<&'static str>> {
         .starts_with("fixed")
         .then(|| name.trim_start_matches("fixed[").trim_end_matches(']'))
         .and_then(|width| width.parse::<u64>().ok())
+        && PLACEHOLDER_WIDTHS.contains(&width)
     {
-        if PLACEHOLDER_WIDTHS.contains(&width) {
-            return Err(invalid(format_smolstr!(
-                "expected a fixed width of at most {}, got {name:?}",
-                u32::MAX
-            )));
-        }
+        return Err(invalid(format_smolstr!(
+            "expected a fixed width of at most {}, got {name:?}",
+            u32::MAX
+        )));
     }
     Ok(None)
 }

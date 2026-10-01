@@ -170,13 +170,14 @@ nav:
       - FIGI: types/codes/figi.md
       - RIC: types/codes/ric.md
       - Forex: types/codes/forex.md
-      - Time in force: types/codes/timeinforce.md
       - Unit: types/codes/unit.md
     - Enums:
       - types/enum/index.md
       - State: types/enum/state.md
       - MarketDataKind: types/enum/marketdatakind.md
+      - MarketDataType: types/enum/marketdatatype.md
       - Side: types/enum/side.md
+      - TimeInForce: types/enum/timeinforce.md
     - Nested:
       - types/nested/index.md
       - Struct: types/nested/struct.md
@@ -225,6 +226,7 @@ nav:
     - Event: graph/event.md
     - Market: graph/market.md
     - Operation: graph/operation.md
+    - Identifier: graph/identifier.md
     - Order: graph/order.md
     - Quote: graph/quote.md
     - Execution: graph/execution.md
@@ -233,6 +235,7 @@ nav:
     - Market data: graph/market-data.md
     - Candle: graph/candle.md
     - Book display: graph/serve.md
+    - Row schemas: graph/schemas.md
   - FIX:
     - fix/index.md
     - Explorer: fix/explorer.md

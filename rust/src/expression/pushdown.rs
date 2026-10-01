@@ -467,10 +467,12 @@ fn settle(
     };
     // A column that is null everywhere answers unknown for every comparison,
     // and unknown is not true, so no row matches.
-    if let (Some(nulls), Some(rows)) = (column.nulls, bounds.row_count()) {
-        if nulls == rows && rows > 0 && !comparison.is_two_valued() {
-            return Certainty::Never;
-        }
+    if let (Some(nulls), Some(rows)) = (column.nulls, bounds.row_count())
+        && nulls == rows
+        && rows > 0
+        && !comparison.is_two_valued()
+    {
+        return Certainty::Never;
     }
     let answer = compare_range(node, column, comparison, literal);
     // The extremes describe the non-null rows only. A null row is distinct
@@ -546,37 +548,33 @@ fn compare_range(
         Comparison::Lt | Comparison::LtEq => {
             // Nothing is below the minimum, so a bound at or under it is empty.
             let strict = matches!(comparison, Comparison::Lt);
-            if let Some(minimum) = &column.minimum {
-                if let Some(ordering) = order(dtype, literal, minimum) {
-                    if ordering.is_lt() || (strict && ordering.is_eq()) {
-                        return Certainty::Never;
-                    }
-                }
+            if let Some(minimum) = &column.minimum
+                && let Some(ordering) = order(dtype, literal, minimum)
+                && (ordering.is_lt() || (strict && ordering.is_eq()))
+            {
+                return Certainty::Never;
             }
-            if let Some(maximum) = &column.maximum {
-                if let Some(ordering) = order(dtype, maximum, literal) {
-                    if ordering.is_lt() || (!strict && ordering.is_eq()) {
-                        return Certainty::Always;
-                    }
-                }
+            if let Some(maximum) = &column.maximum
+                && let Some(ordering) = order(dtype, maximum, literal)
+                && (ordering.is_lt() || (!strict && ordering.is_eq()))
+            {
+                return Certainty::Always;
             }
             Certainty::Unknown
         }
         Comparison::Gt | Comparison::GtEq => {
             let strict = matches!(comparison, Comparison::Gt);
-            if let Some(maximum) = &column.maximum {
-                if let Some(ordering) = order(dtype, literal, maximum) {
-                    if ordering.is_gt() || (strict && ordering.is_eq()) {
-                        return Certainty::Never;
-                    }
-                }
+            if let Some(maximum) = &column.maximum
+                && let Some(ordering) = order(dtype, literal, maximum)
+                && (ordering.is_gt() || (strict && ordering.is_eq()))
+            {
+                return Certainty::Never;
             }
-            if let Some(minimum) = &column.minimum {
-                if let Some(ordering) = order(dtype, minimum, literal) {
-                    if ordering.is_gt() || (!strict && ordering.is_eq()) {
-                        return Certainty::Always;
-                    }
-                }
+            if let Some(minimum) = &column.minimum
+                && let Some(ordering) = order(dtype, minimum, literal)
+                && (ordering.is_gt() || (!strict && ordering.is_eq()))
+            {
+                return Certainty::Always;
             }
             Certainty::Unknown
         }
@@ -630,10 +628,10 @@ fn prefix_prune(node: &Node, prefix: &str, schema: &Field, bounds: &Bounds) -> C
     // encoding, so only the lower side prunes.
     let dtype = node.field.dtype();
     let literal = Scalar::from(prefix);
-    if let Some(maximum) = &column.maximum {
-        if order(dtype, maximum, &literal).is_some_and(std::cmp::Ordering::is_lt) {
-            return Certainty::Never;
-        }
+    if let Some(maximum) = &column.maximum
+        && order(dtype, maximum, &literal).is_some_and(std::cmp::Ordering::is_lt)
+    {
+        return Certainty::Never;
     }
     Certainty::Unknown
 }

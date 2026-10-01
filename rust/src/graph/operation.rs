@@ -298,13 +298,14 @@ impl<K: OperationKind> Element for OperationElement<K> {
     /// an order and as a quote are two entries.
     fn finalize(&mut self) {
         self.data.fill_market();
+        self.data.fill_parents();
         self.data.sync_cross();
         let mut digest = self.data.digest_operation();
         {
             let mut staged = Staged::new(&mut digest);
             staged.feed(
                 "marketdatakind",
-                &K::KIND.marketdatakind().code().to_le_bytes(),
+                &i32::from(K::KIND.marketdatakind().code()).to_le_bytes(),
             );
         }
         let hashcode = digest.as_u64();
@@ -333,215 +334,271 @@ impl<K: OperationKind> Market for OperationElement<K> {
     fn get_price(&self) -> Option<Decimal> {
         self.data.get_price()
     }
-    fn set_price(&mut self, price: Option<Decimal>) {
-        self.data.set_price(price);
+    fn set_price(&mut self, price: Option<Decimal>, overwrite: bool) {
+        self.data.set_price(price, overwrite);
+    }
+
+    fn get_stoppx(&self) -> Option<Decimal> {
+        self.data.get_stoppx()
+    }
+
+    fn set_stoppx(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.data.set_stoppx(value, overwrite);
     }
     fn get_currency(&self) -> &crate::Ccy {
         self.data.get_currency()
     }
-    fn set_currency(&mut self, currency: crate::Ccy) {
-        self.data.set_currency(currency);
+    fn set_currency(&mut self, currency: crate::Ccy, overwrite: bool) {
+        self.data.set_currency(currency, overwrite);
     }
     fn get_quantity(&self) -> Option<Decimal> {
         self.data.get_quantity()
     }
-    fn set_quantity(&mut self, quantity: Option<Decimal>) {
-        self.data.set_quantity(quantity);
+    fn set_quantity(&mut self, quantity: Option<Decimal>, overwrite: bool) {
+        self.data.set_quantity(quantity, overwrite);
+    }
+
+    fn get_displayqty(&self) -> Option<Decimal> {
+        self.data.get_displayqty()
+    }
+
+    fn set_displayqty(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.data.set_displayqty(value, overwrite);
+    }
+
+    fn get_hiddenqty(&self) -> Option<Decimal> {
+        self.data.get_hiddenqty()
+    }
+
+    fn set_hiddenqty(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.data.set_hiddenqty(value, overwrite);
     }
     fn get_unit(&self) -> &crate::Unit {
         self.data.get_unit()
     }
-    fn set_unit(&mut self, unit: crate::Unit) {
-        self.data.set_unit(unit);
+    fn set_unit(&mut self, unit: crate::Unit, overwrite: bool) {
+        self.data.set_unit(unit, overwrite);
     }
     fn get_side(&self) -> crate::Side {
         self.data.get_side()
     }
-    fn set_side(&mut self, side: crate::Side) {
-        self.data.set_side(side);
+    fn set_side(&mut self, side: crate::Side, overwrite: bool) {
+        self.data.set_side(side, overwrite);
     }
     fn marketdatakind(&self) -> crate::MarketDataKind {
         self.data.marketdatakind()
     }
-    fn get_securityids(&self) -> &crate::securityid::SecurityIds {
+    fn get_marketdatatype(&self) -> crate::MarketDataType {
+        self.data.get_marketdatatype()
+    }
+    fn set_marketdatatype(&mut self, mdtype: crate::MarketDataType, overwrite: bool) {
+        self.data.set_marketdatatype(mdtype, overwrite);
+    }
+    fn get_securityids(&self) -> &crate::Identifiers {
         self.data.get_securityids()
     }
-    fn set_securityids(&mut self, ids: crate::securityid::SecurityIds) -> crate::Result<()> {
-        self.data.set_securityids(ids)
+    fn set_securityids(&mut self, ids: crate::Identifiers, overwrite: bool) -> crate::Result<()> {
+        self.data.set_securityids(ids, overwrite)
     }
-    fn insert_securityid(&mut self, id: crate::securityid::SecurityId) -> crate::Result<bool> {
+    fn insert_securityid(&mut self, id: crate::Identifier) -> crate::Result<bool> {
         self.data.insert_securityid(id)
     }
-    fn remove_securityid(&mut self, key: &crate::securityid::SecType) -> crate::Result<bool> {
-        self.data.remove_securityid(key)
+    fn remove_securityid(
+        &mut self,
+        src: &crate::IdSource,
+        kind: &crate::IdType,
+    ) -> crate::Result<bool> {
+        self.data.remove_securityid(src, kind)
     }
-    fn derive_securityid(&mut self, id: crate::securityid::SecurityId) -> bool {
-        self.data.derive_securityid(id)
+    fn derive_securityid(&mut self, kind: &crate::IdType, code: &str) -> bool {
+        self.data.derive_securityid(kind, code)
     }
     fn get_cficode(&self) -> Option<&crate::Cfi> {
         self.data.get_cficode()
     }
-    fn set_cficode(&mut self, code: Option<crate::Cfi>) {
-        self.data.set_cficode(code);
+    fn set_cficode(&mut self, code: Option<crate::Cfi>, overwrite: bool) {
+        self.data.set_cficode(code, overwrite);
     }
     fn get_miccode(&self) -> Option<&crate::Mic> {
         self.data.get_miccode()
     }
-    fn set_miccode(&mut self, code: Option<crate::Mic>) {
-        self.data.set_miccode(code);
+    fn set_miccode(&mut self, code: Option<crate::Mic>, overwrite: bool) {
+        self.data.set_miccode(code, overwrite);
     }
     fn get_execunix(&self) -> Option<i64> {
         self.data.get_execunix()
     }
-    fn set_execunix(&mut self, unix: Option<i64>) {
-        self.data.set_execunix(unix);
+    fn set_execunix(&mut self, unix: Option<i64>, overwrite: bool) {
+        self.data.set_execunix(unix, overwrite);
     }
     fn get_lastpx(&self) -> Option<Decimal> {
         self.data.get_lastpx()
     }
-    fn set_lastpx(&mut self, px: Option<Decimal>) {
-        self.data.set_lastpx(px);
+    fn set_lastpx(&mut self, px: Option<Decimal>, overwrite: bool) {
+        self.data.set_lastpx(px, overwrite);
     }
     fn get_lastqty(&self) -> Option<Decimal> {
         self.data.get_lastqty()
     }
-    fn set_lastqty(&mut self, qty: Option<Decimal>) {
-        self.data.set_lastqty(qty);
+    fn set_lastqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.data.set_lastqty(qty, overwrite);
     }
     fn get_avgpx(&self) -> Option<Decimal> {
         self.data.get_avgpx()
     }
-    fn set_avgpx(&mut self, px: Option<Decimal>) {
-        self.data.set_avgpx(px);
+    fn set_avgpx(&mut self, px: Option<Decimal>, overwrite: bool) {
+        self.data.set_avgpx(px, overwrite);
     }
     fn get_cumqty(&self) -> Option<Decimal> {
         self.data.get_cumqty()
     }
-    fn set_cumqty(&mut self, qty: Option<Decimal>) {
-        self.data.set_cumqty(qty);
+    fn set_cumqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.data.set_cumqty(qty, overwrite);
     }
     fn get_leavesqty(&self) -> Option<Decimal> {
         self.data.get_leavesqty()
     }
-    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
-        self.data.set_leavesqty(qty);
+    fn set_leavesqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.data.set_leavesqty(qty, overwrite);
+    }
+
+    fn get_cxlqty(&self) -> Option<Decimal> {
+        self.data.get_cxlqty()
+    }
+
+    fn set_cxlqty(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.data.set_cxlqty(value, overwrite);
     }
     fn get_prevpx(&self) -> Option<Decimal> {
         self.data.get_prevpx()
     }
-    fn set_prevpx(&mut self, px: Option<Decimal>) {
-        self.data.set_prevpx(px);
+    fn set_prevpx(&mut self, px: Option<Decimal>, overwrite: bool) {
+        self.data.set_prevpx(px, overwrite);
     }
     fn get_prevqty(&self) -> Option<Decimal> {
         self.data.get_prevqty()
     }
-    fn set_prevqty(&mut self, qty: Option<Decimal>) {
-        self.data.set_prevqty(qty);
+    fn set_prevqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.data.set_prevqty(qty, overwrite);
     }
     fn get_spotrate(&self) -> Option<Decimal> {
         self.data.get_spotrate()
     }
-    fn set_spotrate(&mut self, rate: Option<Decimal>) {
-        self.data.set_spotrate(rate);
+    fn set_spotrate(&mut self, rate: Option<Decimal>, overwrite: bool) {
+        self.data.set_spotrate(rate, overwrite);
     }
     fn get_forwardpoints(&self) -> Option<Decimal> {
         self.data.get_forwardpoints()
     }
-    fn set_forwardpoints(&mut self, points: Option<Decimal>) {
-        self.data.set_forwardpoints(points);
+    fn set_forwardpoints(&mut self, points: Option<Decimal>, overwrite: bool) {
+        self.data.set_forwardpoints(points, overwrite);
     }
     fn get_ticker(&self) -> Option<&str> {
         self.data.get_ticker()
     }
-    fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>) {
-        self.data.set_ticker(ticker);
+    fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>, overwrite: bool) {
+        self.data.set_ticker(ticker, overwrite);
     }
     fn get_metadata(&self) -> &super::market::Metadata {
         self.data.get_metadata()
     }
-    fn set_metadata(&mut self, metadata: Option<super::market::Metadata>) {
-        self.data.set_metadata(metadata);
+    fn set_metadata(&mut self, metadata: Option<super::market::Metadata>, overwrite: bool) {
+        self.data.set_metadata(metadata, overwrite);
     }
     fn get_fxrates(&self) -> &super::market::FxRates {
         self.data.get_fxrates()
     }
-    fn set_fxrates(&mut self, rates: super::market::FxRates) {
-        self.data.set_fxrates(rates);
+    fn set_fxrates(&mut self, rates: super::market::FxRates, overwrite: bool) {
+        self.data.set_fxrates(rates, overwrite);
     }
     fn get_bidpx(&self) -> Option<crate::Decimal> {
         self.data.get_bidpx()
     }
-    fn set_bidpx(&mut self, px: Option<crate::Decimal>) {
-        self.data.set_bidpx(px);
+    fn set_bidpx(&mut self, px: Option<crate::Decimal>, overwrite: bool) {
+        self.data.set_bidpx(px, overwrite);
     }
     fn get_bidqty(&self) -> Option<crate::Decimal> {
         self.data.get_bidqty()
     }
-    fn set_bidqty(&mut self, qty: Option<crate::Decimal>) {
-        self.data.set_bidqty(qty);
+    fn set_bidqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        self.data.set_bidqty(qty, overwrite);
     }
     fn get_bidccy(&self) -> Option<&crate::Ccy> {
         self.data.get_bidccy()
     }
-    fn set_bidccy(&mut self, ccy: Option<crate::Ccy>) {
-        self.data.set_bidccy(ccy);
+    fn set_bidccy(&mut self, ccy: Option<crate::Ccy>, overwrite: bool) {
+        self.data.set_bidccy(ccy, overwrite);
     }
     fn get_askpx(&self) -> Option<crate::Decimal> {
         self.data.get_askpx()
     }
-    fn set_askpx(&mut self, px: Option<crate::Decimal>) {
-        self.data.set_askpx(px);
+    fn set_askpx(&mut self, px: Option<crate::Decimal>, overwrite: bool) {
+        self.data.set_askpx(px, overwrite);
     }
     fn get_askqty(&self) -> Option<crate::Decimal> {
         self.data.get_askqty()
     }
-    fn set_askqty(&mut self, qty: Option<crate::Decimal>) {
-        self.data.set_askqty(qty);
+    fn set_askqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        self.data.set_askqty(qty, overwrite);
     }
     fn get_askccy(&self) -> Option<&crate::Ccy> {
         self.data.get_askccy()
     }
-    fn set_askccy(&mut self, ccy: Option<crate::Ccy>) {
-        self.data.set_askccy(ccy);
+    fn set_askccy(&mut self, ccy: Option<crate::Ccy>, overwrite: bool) {
+        self.data.set_askccy(ccy, overwrite);
     }
 }
 
 impl<K: OperationKind> Operation for OperationElement<K> {
-    fn get_tif(&self) -> Option<&crate::TimeInForce> {
-        self.data.get_tif()
+    fn get_ordqty(&self) -> Option<Decimal> {
+        self.data.get_ordqty()
     }
-    fn set_tif(&mut self, tif: Option<crate::TimeInForce>) {
-        self.data.set_tif(tif);
+    fn set_ordqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.data.set_ordqty(qty, overwrite);
+    }
+    fn get_timeinforce(&self) -> Option<&crate::TimeInForce> {
+        self.data.get_timeinforce()
+    }
+    fn set_timeinforce(&mut self, tif: Option<crate::TimeInForce>, overwrite: bool) {
+        self.data.set_timeinforce(tif, overwrite);
     }
     fn get_tradable(&self) -> Option<bool> {
         self.data.get_tradable()
     }
-    fn set_tradable(&mut self, tradable: Option<bool>) {
-        self.data.set_tradable(tradable);
+    fn set_tradable(&mut self, tradable: Option<bool>, overwrite: bool) {
+        self.data.set_tradable(tradable, overwrite);
     }
-    fn get_altids(&self) -> &crate::idmap::IdMap {
-        self.data.get_altids()
+    fn get_identifiers(&self) -> &crate::Identifiers {
+        self.data.get_identifiers()
     }
-    fn set_altids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
-        self.data.set_altids(ids)
+    fn set_identifiers(&mut self, ids: crate::Identifiers, overwrite: bool) -> crate::Result<()> {
+        self.data.set_identifiers(ids, overwrite)
     }
-    fn insert_altid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
-        self.data.insert_altid(key, value)
+    fn insert_identifier(&mut self, id: crate::Identifier) -> crate::Result<bool> {
+        self.data.insert_identifier(id)
     }
-    fn remove_altid(&mut self, key: &str) -> crate::Result<bool> {
-        self.data.remove_altid(key)
+    fn remove_identifier(
+        &mut self,
+        src: &crate::IdSource,
+        kind: &crate::IdType,
+    ) -> crate::Result<bool> {
+        self.data.remove_identifier(src, kind)
     }
-    fn get_accountids(&self) -> &crate::idmap::IdMap {
-        self.data.get_accountids()
+    fn get_partyids(&self) -> &crate::Identifiers {
+        self.data.get_partyids()
     }
-    fn set_accountids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
-        self.data.set_accountids(ids)
+    fn set_partyids(&mut self, parties: crate::Identifiers, overwrite: bool) -> crate::Result<()> {
+        self.data.set_partyids(parties, overwrite)
     }
-    fn insert_accountid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
-        self.data.insert_accountid(key, value)
+    fn insert_partyid(&mut self, party: crate::Identifier) -> crate::Result<bool> {
+        self.data.insert_partyid(party)
     }
-    fn remove_accountid(&mut self, key: &str) -> crate::Result<bool> {
-        self.data.remove_accountid(key)
+    fn remove_partyid(
+        &mut self,
+        src: &crate::IdSource,
+        kind: &crate::IdType,
+    ) -> crate::Result<bool> {
+        self.data.remove_partyid(src, kind)
     }
 }
 
@@ -727,13 +784,14 @@ impl<K: OperationKind> Element for OperationEvent<K> {
     /// The rest of the book control is walk-time and feeds nothing.
     fn finalize(&mut self) {
         self.data.fill_market();
+        self.data.fill_parents();
         self.data.sync_cross();
         let mut digest = self.data.digest_operation_event();
         {
             let mut staged = Staged::new(&mut digest);
             staged.feed(
                 "marketdatakind",
-                &K::KIND.marketdatakind().code().to_le_bytes(),
+                &i32::from(K::KIND.marketdatakind().code()).to_le_bytes(),
             );
             if let Some(book) = &self.book {
                 book.feed(&mut staged);
@@ -834,215 +892,271 @@ impl<K: OperationKind> Market for OperationEvent<K> {
     fn get_price(&self) -> Option<Decimal> {
         self.data.get_price()
     }
-    fn set_price(&mut self, price: Option<Decimal>) {
-        self.data.set_price(price);
+    fn set_price(&mut self, price: Option<Decimal>, overwrite: bool) {
+        self.data.set_price(price, overwrite);
+    }
+
+    fn get_stoppx(&self) -> Option<Decimal> {
+        self.data.get_stoppx()
+    }
+
+    fn set_stoppx(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.data.set_stoppx(value, overwrite);
     }
     fn get_currency(&self) -> &crate::Ccy {
         self.data.get_currency()
     }
-    fn set_currency(&mut self, currency: crate::Ccy) {
-        self.data.set_currency(currency);
+    fn set_currency(&mut self, currency: crate::Ccy, overwrite: bool) {
+        self.data.set_currency(currency, overwrite);
     }
     fn get_quantity(&self) -> Option<Decimal> {
         self.data.get_quantity()
     }
-    fn set_quantity(&mut self, quantity: Option<Decimal>) {
-        self.data.set_quantity(quantity);
+    fn set_quantity(&mut self, quantity: Option<Decimal>, overwrite: bool) {
+        self.data.set_quantity(quantity, overwrite);
+    }
+
+    fn get_displayqty(&self) -> Option<Decimal> {
+        self.data.get_displayqty()
+    }
+
+    fn set_displayqty(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.data.set_displayqty(value, overwrite);
+    }
+
+    fn get_hiddenqty(&self) -> Option<Decimal> {
+        self.data.get_hiddenqty()
+    }
+
+    fn set_hiddenqty(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.data.set_hiddenqty(value, overwrite);
     }
     fn get_unit(&self) -> &crate::Unit {
         self.data.get_unit()
     }
-    fn set_unit(&mut self, unit: crate::Unit) {
-        self.data.set_unit(unit);
+    fn set_unit(&mut self, unit: crate::Unit, overwrite: bool) {
+        self.data.set_unit(unit, overwrite);
     }
     fn get_side(&self) -> crate::Side {
         self.data.get_side()
     }
-    fn set_side(&mut self, side: crate::Side) {
-        self.data.set_side(side);
+    fn set_side(&mut self, side: crate::Side, overwrite: bool) {
+        self.data.set_side(side, overwrite);
     }
     fn marketdatakind(&self) -> crate::MarketDataKind {
         self.data.marketdatakind()
     }
-    fn get_securityids(&self) -> &crate::securityid::SecurityIds {
+    fn get_marketdatatype(&self) -> crate::MarketDataType {
+        self.data.get_marketdatatype()
+    }
+    fn set_marketdatatype(&mut self, mdtype: crate::MarketDataType, overwrite: bool) {
+        self.data.set_marketdatatype(mdtype, overwrite);
+    }
+    fn get_securityids(&self) -> &crate::Identifiers {
         self.data.get_securityids()
     }
-    fn set_securityids(&mut self, ids: crate::securityid::SecurityIds) -> crate::Result<()> {
-        self.data.set_securityids(ids)
+    fn set_securityids(&mut self, ids: crate::Identifiers, overwrite: bool) -> crate::Result<()> {
+        self.data.set_securityids(ids, overwrite)
     }
-    fn insert_securityid(&mut self, id: crate::securityid::SecurityId) -> crate::Result<bool> {
+    fn insert_securityid(&mut self, id: crate::Identifier) -> crate::Result<bool> {
         self.data.insert_securityid(id)
     }
-    fn remove_securityid(&mut self, key: &crate::securityid::SecType) -> crate::Result<bool> {
-        self.data.remove_securityid(key)
+    fn remove_securityid(
+        &mut self,
+        src: &crate::IdSource,
+        kind: &crate::IdType,
+    ) -> crate::Result<bool> {
+        self.data.remove_securityid(src, kind)
     }
-    fn derive_securityid(&mut self, id: crate::securityid::SecurityId) -> bool {
-        self.data.derive_securityid(id)
+    fn derive_securityid(&mut self, kind: &crate::IdType, code: &str) -> bool {
+        self.data.derive_securityid(kind, code)
     }
     fn get_cficode(&self) -> Option<&crate::Cfi> {
         self.data.get_cficode()
     }
-    fn set_cficode(&mut self, code: Option<crate::Cfi>) {
-        self.data.set_cficode(code);
+    fn set_cficode(&mut self, code: Option<crate::Cfi>, overwrite: bool) {
+        self.data.set_cficode(code, overwrite);
     }
     fn get_miccode(&self) -> Option<&crate::Mic> {
         self.data.get_miccode()
     }
-    fn set_miccode(&mut self, code: Option<crate::Mic>) {
-        self.data.set_miccode(code);
+    fn set_miccode(&mut self, code: Option<crate::Mic>, overwrite: bool) {
+        self.data.set_miccode(code, overwrite);
     }
     fn get_execunix(&self) -> Option<i64> {
         self.data.get_execunix()
     }
-    fn set_execunix(&mut self, unix: Option<i64>) {
-        self.data.set_execunix(unix);
+    fn set_execunix(&mut self, unix: Option<i64>, overwrite: bool) {
+        self.data.set_execunix(unix, overwrite);
     }
     fn get_lastpx(&self) -> Option<Decimal> {
         self.data.get_lastpx()
     }
-    fn set_lastpx(&mut self, px: Option<Decimal>) {
-        self.data.set_lastpx(px);
+    fn set_lastpx(&mut self, px: Option<Decimal>, overwrite: bool) {
+        self.data.set_lastpx(px, overwrite);
     }
     fn get_lastqty(&self) -> Option<Decimal> {
         self.data.get_lastqty()
     }
-    fn set_lastqty(&mut self, qty: Option<Decimal>) {
-        self.data.set_lastqty(qty);
+    fn set_lastqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.data.set_lastqty(qty, overwrite);
     }
     fn get_avgpx(&self) -> Option<Decimal> {
         self.data.get_avgpx()
     }
-    fn set_avgpx(&mut self, px: Option<Decimal>) {
-        self.data.set_avgpx(px);
+    fn set_avgpx(&mut self, px: Option<Decimal>, overwrite: bool) {
+        self.data.set_avgpx(px, overwrite);
     }
     fn get_cumqty(&self) -> Option<Decimal> {
         self.data.get_cumqty()
     }
-    fn set_cumqty(&mut self, qty: Option<Decimal>) {
-        self.data.set_cumqty(qty);
+    fn set_cumqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.data.set_cumqty(qty, overwrite);
     }
     fn get_leavesqty(&self) -> Option<Decimal> {
         self.data.get_leavesqty()
     }
-    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
-        self.data.set_leavesqty(qty);
+    fn set_leavesqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.data.set_leavesqty(qty, overwrite);
+    }
+
+    fn get_cxlqty(&self) -> Option<Decimal> {
+        self.data.get_cxlqty()
+    }
+
+    fn set_cxlqty(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.data.set_cxlqty(value, overwrite);
     }
     fn get_prevpx(&self) -> Option<Decimal> {
         self.data.get_prevpx()
     }
-    fn set_prevpx(&mut self, px: Option<Decimal>) {
-        self.data.set_prevpx(px);
+    fn set_prevpx(&mut self, px: Option<Decimal>, overwrite: bool) {
+        self.data.set_prevpx(px, overwrite);
     }
     fn get_prevqty(&self) -> Option<Decimal> {
         self.data.get_prevqty()
     }
-    fn set_prevqty(&mut self, qty: Option<Decimal>) {
-        self.data.set_prevqty(qty);
+    fn set_prevqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.data.set_prevqty(qty, overwrite);
     }
     fn get_spotrate(&self) -> Option<Decimal> {
         self.data.get_spotrate()
     }
-    fn set_spotrate(&mut self, rate: Option<Decimal>) {
-        self.data.set_spotrate(rate);
+    fn set_spotrate(&mut self, rate: Option<Decimal>, overwrite: bool) {
+        self.data.set_spotrate(rate, overwrite);
     }
     fn get_forwardpoints(&self) -> Option<Decimal> {
         self.data.get_forwardpoints()
     }
-    fn set_forwardpoints(&mut self, points: Option<Decimal>) {
-        self.data.set_forwardpoints(points);
+    fn set_forwardpoints(&mut self, points: Option<Decimal>, overwrite: bool) {
+        self.data.set_forwardpoints(points, overwrite);
     }
     fn get_ticker(&self) -> Option<&str> {
         self.data.get_ticker()
     }
-    fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>) {
-        self.data.set_ticker(ticker);
+    fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>, overwrite: bool) {
+        self.data.set_ticker(ticker, overwrite);
     }
     fn get_metadata(&self) -> &super::market::Metadata {
         self.data.get_metadata()
     }
-    fn set_metadata(&mut self, metadata: Option<super::market::Metadata>) {
-        self.data.set_metadata(metadata);
+    fn set_metadata(&mut self, metadata: Option<super::market::Metadata>, overwrite: bool) {
+        self.data.set_metadata(metadata, overwrite);
     }
     fn get_fxrates(&self) -> &super::market::FxRates {
         self.data.get_fxrates()
     }
-    fn set_fxrates(&mut self, rates: super::market::FxRates) {
-        self.data.set_fxrates(rates);
+    fn set_fxrates(&mut self, rates: super::market::FxRates, overwrite: bool) {
+        self.data.set_fxrates(rates, overwrite);
     }
     fn get_bidpx(&self) -> Option<crate::Decimal> {
         self.data.get_bidpx()
     }
-    fn set_bidpx(&mut self, px: Option<crate::Decimal>) {
-        self.data.set_bidpx(px);
+    fn set_bidpx(&mut self, px: Option<crate::Decimal>, overwrite: bool) {
+        self.data.set_bidpx(px, overwrite);
     }
     fn get_bidqty(&self) -> Option<crate::Decimal> {
         self.data.get_bidqty()
     }
-    fn set_bidqty(&mut self, qty: Option<crate::Decimal>) {
-        self.data.set_bidqty(qty);
+    fn set_bidqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        self.data.set_bidqty(qty, overwrite);
     }
     fn get_bidccy(&self) -> Option<&crate::Ccy> {
         self.data.get_bidccy()
     }
-    fn set_bidccy(&mut self, ccy: Option<crate::Ccy>) {
-        self.data.set_bidccy(ccy);
+    fn set_bidccy(&mut self, ccy: Option<crate::Ccy>, overwrite: bool) {
+        self.data.set_bidccy(ccy, overwrite);
     }
     fn get_askpx(&self) -> Option<crate::Decimal> {
         self.data.get_askpx()
     }
-    fn set_askpx(&mut self, px: Option<crate::Decimal>) {
-        self.data.set_askpx(px);
+    fn set_askpx(&mut self, px: Option<crate::Decimal>, overwrite: bool) {
+        self.data.set_askpx(px, overwrite);
     }
     fn get_askqty(&self) -> Option<crate::Decimal> {
         self.data.get_askqty()
     }
-    fn set_askqty(&mut self, qty: Option<crate::Decimal>) {
-        self.data.set_askqty(qty);
+    fn set_askqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        self.data.set_askqty(qty, overwrite);
     }
     fn get_askccy(&self) -> Option<&crate::Ccy> {
         self.data.get_askccy()
     }
-    fn set_askccy(&mut self, ccy: Option<crate::Ccy>) {
-        self.data.set_askccy(ccy);
+    fn set_askccy(&mut self, ccy: Option<crate::Ccy>, overwrite: bool) {
+        self.data.set_askccy(ccy, overwrite);
     }
 }
 
 impl<K: OperationKind> Operation for OperationEvent<K> {
-    fn get_tif(&self) -> Option<&crate::TimeInForce> {
-        self.data.get_tif()
+    fn get_ordqty(&self) -> Option<Decimal> {
+        self.data.get_ordqty()
     }
-    fn set_tif(&mut self, tif: Option<crate::TimeInForce>) {
-        self.data.set_tif(tif);
+    fn set_ordqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.data.set_ordqty(qty, overwrite);
+    }
+    fn get_timeinforce(&self) -> Option<&crate::TimeInForce> {
+        self.data.get_timeinforce()
+    }
+    fn set_timeinforce(&mut self, tif: Option<crate::TimeInForce>, overwrite: bool) {
+        self.data.set_timeinforce(tif, overwrite);
     }
     fn get_tradable(&self) -> Option<bool> {
         self.data.get_tradable()
     }
-    fn set_tradable(&mut self, tradable: Option<bool>) {
-        self.data.set_tradable(tradable);
+    fn set_tradable(&mut self, tradable: Option<bool>, overwrite: bool) {
+        self.data.set_tradable(tradable, overwrite);
     }
-    fn get_altids(&self) -> &crate::idmap::IdMap {
-        self.data.get_altids()
+    fn get_identifiers(&self) -> &crate::Identifiers {
+        self.data.get_identifiers()
     }
-    fn set_altids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
-        self.data.set_altids(ids)
+    fn set_identifiers(&mut self, ids: crate::Identifiers, overwrite: bool) -> crate::Result<()> {
+        self.data.set_identifiers(ids, overwrite)
     }
-    fn insert_altid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
-        self.data.insert_altid(key, value)
+    fn insert_identifier(&mut self, id: crate::Identifier) -> crate::Result<bool> {
+        self.data.insert_identifier(id)
     }
-    fn remove_altid(&mut self, key: &str) -> crate::Result<bool> {
-        self.data.remove_altid(key)
+    fn remove_identifier(
+        &mut self,
+        src: &crate::IdSource,
+        kind: &crate::IdType,
+    ) -> crate::Result<bool> {
+        self.data.remove_identifier(src, kind)
     }
-    fn get_accountids(&self) -> &crate::idmap::IdMap {
-        self.data.get_accountids()
+    fn get_partyids(&self) -> &crate::Identifiers {
+        self.data.get_partyids()
     }
-    fn set_accountids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
-        self.data.set_accountids(ids)
+    fn set_partyids(&mut self, parties: crate::Identifiers, overwrite: bool) -> crate::Result<()> {
+        self.data.set_partyids(parties, overwrite)
     }
-    fn insert_accountid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
-        self.data.insert_accountid(key, value)
+    fn insert_partyid(&mut self, party: crate::Identifier) -> crate::Result<bool> {
+        self.data.insert_partyid(party)
     }
-    fn remove_accountid(&mut self, key: &str) -> crate::Result<bool> {
-        self.data.remove_accountid(key)
+    fn remove_partyid(
+        &mut self,
+        src: &crate::IdSource,
+        kind: &crate::IdType,
+    ) -> crate::Result<bool> {
+        self.data.remove_partyid(src, kind)
     }
 }
 

@@ -29,7 +29,7 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 use yggdryl::SerieValue as _;
 use yggdryl::graph::{
-    BookEvent, BookIterator, BookRef, CandleIterator, CandleOptions, Element, Event, EventColumn,
+    BookEvent, BookIterator, BookRef, CandleIterator, CandleOptions, Element, ElementColumn, Event,
     ExecutionEvent, Market, MarketData, MdUpdateAction, Operation, OrderEvent, QuoteEvent,
     TradeEvent,
 };
@@ -38,9 +38,9 @@ use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lin
 use yggdryl::xmla::Rowset;
 use yggdryl::{
     ArrowCastOptions, ArrowCastPlan, Charset, ChunkedSerie, DataType, DataTypeId, Decimal, Field,
-    FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec, FixId, FixMsg, FixRegistry, Int64,
-    MediaType, MimeType, PythonKind, PythonMetadata, Scalar, Serie, Side, State, TimeUnit,
-    Timezone, Value, Variant, Version,
+    FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec, FixId, FixMsg, FixRegistry, IdSource,
+    IdType, Identifier, Int64, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, Serie,
+    Side, State, TimeUnit, Timezone, Value, Variant, Version,
 };
 use yggdryl::{
     Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructType, UncheckedFieldScalar, Uuid,
@@ -424,7 +424,7 @@ fn market_following_allocates_nothing_for_an_inherited_ticker() {
     let next = OrderEvent::at(2);
     let (baseline, _) = counted(|| next.with_previous(&previous).unwrap());
 
-    previous.set_ticker(Some(SmolStr::new("AAPL")));
+    previous.set_ticker(Some(SmolStr::new("AAPL")), true);
     previous.finalize();
     let next = OrderEvent::at(2);
     let (inherited, next) = counted(|| next.with_previous(&previous).unwrap());
@@ -435,7 +435,7 @@ fn market_following_allocates_nothing_for_an_inherited_ticker() {
     assert_eq!(inherited, baseline, "an inherited inline ticker is a copy");
 
     let mut next = OrderEvent::at(2);
-    next.set_ticker(Some(SmolStr::new("MSFT")));
+    next.set_ticker(Some(SmolStr::new("MSFT")), true);
     let (stated, next) = counted(|| next.with_previous(&previous).unwrap());
     assert_eq!(next.get_ticker(), Some("MSFT"));
     assert_eq!(stated, baseline, "a stated ticker needs no clone");
@@ -849,7 +849,8 @@ fn direct_fix_operation_conversion_needs_no_intermediate_allocation() {
     let codec = FixCodec::new(Arc::new(fix_registry(0)));
     for wire in [b"35=D|55=AAPL|".as_slice(), b"35=S|55=AAPL|"] {
         let message = codec.parse_line(wire).unwrap().next().unwrap().unwrap();
-        let (allocations, operation) = counted(|| MarketData::try_from(message).unwrap());
+        let (allocations, operation) =
+            counted(|| yggdryl::FixMsg::into_market_leaf(message).unwrap());
         assert_eq!(operation.get_ticker(), Some("AAPL"));
         assert_eq!(
             allocations, 0,
@@ -889,7 +890,7 @@ fn a_leaf_moves_into_and_out_of_market_data_without_allocating() {
 fn allocation_trade_parts(executions: usize) -> (OrderEvent, Vec<ExecutionEvent>) {
     let mut root = OrderEvent::at(1);
     root.set_crosscode("ALLOC-TRADE".to_owned());
-    root.set_ticker(Some(SmolStr::new("ALLOC")));
+    root.set_ticker(Some(SmolStr::new("ALLOC")), true);
     root.set_state(State::read("Filled").expect("the shipped filled state"));
     root.finalize();
     let executions = (0..executions)
@@ -897,8 +898,11 @@ fn allocation_trade_parts(executions: usize) -> (OrderEvent, Vec<ExecutionEvent>
         .map(|index| {
             let mut event = ExecutionEvent::at(1);
             event.set_crosscode(format!("ALLOC-EXEC-{index:04}"));
-            event.set_ticker(Some(SmolStr::new("ALLOC")));
-            event.set_side(Side::read(if index % 2 == 0 { "Buy" } else { "Sell" }).unwrap());
+            event.set_ticker(Some(SmolStr::new("ALLOC")), true);
+            event.set_side(
+                Side::read(if index % 2 == 0 { "Buy" } else { "Sell" }).unwrap(),
+                true,
+            );
             event.set_state(State::read("Filled").expect("the shipped filled state"));
             event.finalize();
             event
@@ -934,11 +938,16 @@ fn allocation_candle_books(count: usize, exec: impl Fn(usize) -> String) -> Vec<
             let unix = i64::try_from(index).expect("a small corpus") + 1;
             let mut fill = ExecutionEvent::at(unix);
             fill.set_crosscode(format!("ALLOC-FILL-{index:04}"));
-            fill.set_ticker(Some(SmolStr::new("ALLOC")));
-            fill.set_side(Side::read("Buy").expect("the shipped buy side"));
-            fill.set_lastqty(Some(Decimal::from_int(5)));
+            fill.set_ticker(Some(SmolStr::new("ALLOC")), true);
+            fill.set_side(Side::read("Buy").expect("the shipped buy side"), true);
+            fill.set_lastqty(Some(Decimal::from_int(5)), true);
             fill.set_state(State::read("Filled").expect("the shipped filled state"));
-            assert!(fill.insert_altid("EXECID", &exec(index)).unwrap());
+            assert!(
+                fill.insert_identifier(
+                    Identifier::new(IdSource::Fix, IdType::ExecId, &exec(index)).unwrap()
+                )
+                .unwrap()
+            );
             fill.finalize();
             let mut book = BookEvent::new(unix, "ALLOC");
             book.add_operations([MarketData::from(fill)])
@@ -995,10 +1004,10 @@ fn allocation_book_operation(
 ) -> MarketData {
     let mut event = QuoteEvent::at(unix);
     event.set_crosscode(code.into());
-    event.set_ticker(Some(SmolStr::new("ALLOC")));
-    event.set_side(Side::read("Buy").expect("the shipped buy side"));
-    event.set_price(Some(Decimal::from_int(100)));
-    event.set_quantity(Some(Decimal::from_int(quantity)));
+    event.set_ticker(Some(SmolStr::new("ALLOC")), true);
+    event.set_side(Side::read("Buy").expect("the shipped buy side"), true);
+    event.set_price(Some(Decimal::from_int(100)), true);
+    event.set_quantity(Some(Decimal::from_int(quantity)), true);
     event.set_state(State::read(state).expect("a shipped state"));
     event.finalize();
     event.into()
@@ -1075,10 +1084,10 @@ fn allocation_book_levels(levels: usize) -> BookEvent {
         };
         let mut event = QuoteEvent::at(1);
         event.set_crosscode(format!("{name}-{level}-{slot}"));
-        event.set_ticker(Some(SmolStr::new("ALLOC")));
-        event.set_side(Side::read(side).expect("a shipped side"));
-        event.set_price(Some(Decimal::from_int(price)));
-        event.set_quantity(Some(Decimal::from_int(1 + offset)));
+        event.set_ticker(Some(SmolStr::new("ALLOC")), true);
+        event.set_side(Side::read(side).expect("a shipped side"), true);
+        event.set_price(Some(Decimal::from_int(price)), true);
+        event.set_quantity(Some(Decimal::from_int(1 + offset)), true);
         event.set_state(State::read("New").expect("the shipped new state"));
         event.finalize();
         MarketData::from(event)
@@ -1163,26 +1172,40 @@ fn allocation_market_order(index: usize) -> MarketData {
     let mut order = OrderEvent::at(unix);
     order.set_crosscode(format!("ALLOC-ORDER-{index:06}"));
     order.set_seqnum(1 + u64::try_from(index).expect("a small corpus"));
-    order.set_price(Some(Decimal::from_int(100)));
-    order.set_quantity(Some(Decimal::from_int(10)));
-    order.set_side(Side::read("Buy").expect("the shipped buy side"));
-    order.set_ticker(Some(SmolStr::new("ALLOC")));
+    order.set_price(Some(Decimal::from_int(100)), true);
+    order.set_quantity(Some(Decimal::from_int(10)), true);
+    order.set_side(Side::read("Buy").expect("the shipped buy side"), true);
+    order.set_ticker(Some(SmolStr::new("ALLOC")), true);
     order.set_state(State::read("New").expect("the shipped new state"));
     order.set_srcuuids(vec![Uuid::from_v8(7)]);
     order
-        .insert_altid("ORDERID", &format!("ORDER-{index:06}"))
+        .insert_identifier(
+            Identifier::new(IdSource::Fix, IdType::OrderId, &format!("ORDER-{index:06}")).unwrap(),
+        )
         .expect("an identifier");
     order
-        .insert_altid("MDENTRYID", &format!("ENTRY-{index:06}"))
+        .insert_identifier(
+            Identifier::new(
+                IdSource::Fix,
+                IdType::MdEntryId,
+                &format!("ENTRY-{index:06}"),
+            )
+            .unwrap(),
+        )
         .expect("an identifier");
     order
-        .insert_altid("CLORDID", &format!("CL-{index:06}"))
+        .insert_identifier(
+            Identifier::new(IdSource::Fix, IdType::ClOrdId, &format!("CL-{index:06}")).unwrap(),
+        )
         .expect("an identifier");
-    order.set_metadata(Some(
-        [(SmolStr::new("venue"), SmolStr::new("XNAS"))]
-            .into_iter()
-            .collect(),
-    ));
+    order.set_metadata(
+        Some(
+            [(SmolStr::new("venue"), SmolStr::new("XNAS"))]
+                .into_iter()
+                .collect(),
+        ),
+        true,
+    );
     order.set_book(Some(BookRef {
         action: Some(MdUpdateAction::New),
         scope: Some(SmolStr::new("Symbol=ALLOC")),
@@ -1242,11 +1265,7 @@ fn allocation_market_order_with_rates(index: usize) -> MarketData {
     };
     order
         .insert_securityid(
-            yggdryl::securityid::SecurityId::new(
-                yggdryl::securityid::SecType::read("ISIN").expect("the ISIN key"),
-                "US0378331005",
-            )
-            .expect("an ISIN"),
+            Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").expect("an ISIN"),
         )
         .expect("a plain holder");
     order.set_fxrates(
@@ -1259,6 +1278,7 @@ fn allocation_market_order_with_rates(index: usize) -> MarketData {
                 )
             })
             .collect(),
+        true,
     );
     order.finalize();
     MarketData::from(order)
@@ -2872,7 +2892,9 @@ fn a_view_plan_is_compiled_once_per_stream() {
     use yggdryl::graph::MarketView;
 
     let batch = view_corpus();
-    let isin: FieldPath = "securityids['ISIN'] as isin".parse().expect("a lift");
+    let isin: FieldPath = "securityids['base:isin'].value as isin"
+        .parse()
+        .expect("a lift");
     for (view, lifts) in [
         (MarketView::Orders, vec![isin]),
         (MarketView::Trades, Vec::new()),
@@ -3094,7 +3116,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 52] = [
+    let seeds: [(DataTypeId, Scalar); 53] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -3148,7 +3170,8 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("NEW")),
         (DataTypeId::MarketDataKind, Scalar::from("ORDR")),
-        (DataTypeId::TimeInForce, Scalar::from("0")),
+        (DataTypeId::TimeInForce, Scalar::from("DAY")),
+        (DataTypeId::MarketDataType, Scalar::from("ORDLIMIT")),
         (DataTypeId::Unit, Scalar::from("Shares")),
         (
             DataTypeId::Uuid,
@@ -3832,7 +3855,12 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// It rose by one at every width when that table of names came to be held
 /// in the `Arc` a clone of the message shares it through, rather than built
 /// again on the clone's first miss: 28 to 29, 29 to 30 and 30 to 31.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 29), (16, 30), (64, 31)];
+///
+/// It rose by one at sixty-four alone, 31 to 32, when the displayed quantity
+/// became a market fact: that line's tags run from 1100 to 1162 and so state
+/// `DisplayQty(1138)`, which the market facts hold in the one boxed record
+/// of rarely stated quantities they allocate on the first such fact.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 29), (16, 30), (64, 32)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -4043,9 +4071,10 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// are in all three, as they are in [`FIX_LINE_COSTS`].
 ///
 /// It moved with [`FIX_LINE_COSTS`], by the same four: 31 to 27 at four
-/// pairs, 32 to 28 at sixteen and 33 to 29 at sixty-four; and last by the
-/// same one: 28, 29 and 30.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 28), (16, 29), (64, 30)];
+/// pairs, 32 to 28 at sixteen and 33 to 29 at sixty-four; then by the
+/// same one: 28, 29 and 30; and last by its displayed quantity at
+/// sixty-four alone: 31.
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 28), (16, 29), (64, 31)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
@@ -4284,9 +4313,7 @@ fn located_lines_render_and_project_one_shared_crosscode() {
         let (allocations, projected) = counted(|| {
             let mut projected = 0;
             for line in &held {
-                let fact = line
-                    .event_fact(EventColumn::CrossCode)
-                    .expect("a crosscode reading");
+                let fact = line.element_fact(ElementColumn::CrossCode);
                 match fact.as_ref().and_then(Scalar::as_string) {
                     Some(code) => {
                         black_box(code);
@@ -4312,10 +4339,7 @@ fn located_lines_render_and_project_one_shared_crosscode() {
         );
         free("projecting a warmed located-line crosscode", || {
             for line in &held {
-                black_box(
-                    line.event_fact(EventColumn::CrossCode)
-                        .expect("a crosscode reading"),
-                );
+                black_box(line.element_fact(ElementColumn::CrossCode));
             }
         });
 
@@ -4833,28 +4857,115 @@ struct StageCosts {
 /// literal and grew once for the sixteen-byte identifier, so the bridge
 /// row's parse fell to 640 and the frame's to 232.
 ///
+/// The row gained twenty-five columns when every generated schema came to
+/// open with the element, event, market and operation facts - the market
+/// data type, the stop price, the displayed, hidden and cancelled
+/// quantities, the ordered quantity and the rest - 133 columns to 158: each
+/// landing rose by about eleven a column (1381 to 1663, 1362 to 1642, 1398
+/// to 1682), what a nullable leaf column costs a one-row landing, and each
+/// batch by forty-five (190 to 235). The parse and the row moved with the
+/// facts a message now settles and states: the type its typing field reads
+/// as, the quantities its state implies and the boxed record of rarely
+/// stated quantities, against a time in force held as a one-byte member
+/// rather than text - the bridge row's parse 640 to 629 and its row 77 to
+/// 82, a frame's 232 to 239 and 57 to 60, the packed frame's 1143 to 1148
+/// and 243 to 246.
+///
+/// The bridge row's parse fell to 623 when the instrument key a bridge's
+/// `*INSTRUMENTID` names came to be read into its three typed parts - inline
+/// codes - where it copied each part into a `String` at each of the three
+/// facts that read it, less what a ticker of an identifier's own shape
+/// derives; a frame's parse rose to 241 and its walk to 8 with the RIC its
+/// ticker is, derived and carried along its chain.
+///
+/// The identifier maps became one sorted vector of identifiers each -
+/// `secaltids`, `altids`, `parties` - typed, sourced and valued apart.
+/// Each parse fell where an entry held its key and its value packed in one
+/// buffer past `SmolStr`'s inline width (24 for the bridge row's alternate
+/// identifiers and 6 for its accounts), a type and a source being static
+/// words and most values inline; it rose by one per settle for a set of one
+/// or two identifiers, which takes its one backing where two inline slots
+/// held it, and by the parties now kept apart under their role and source:
+/// the bridge row's two parties sourced by a description the code set does
+/// not resolve - typed by that spelling - stand beside the proprietary ones
+/// of their role, where a map keyed by role kept the first. The bridge
+/// row's parse is 602, a frame's 237, the packed frame's 1150. The row moved by what `SecurityID(48)`,
+/// `SecurityIDSource(22)` and `Parties(453)` cost once they left its
+/// columns for `fixentries` - a group's JSON allocating by contract, about
+/// seventy for the bridge row's eight parties and thirty-five for a frame's
+/// three - and by one record per identifier where a map held two texts
+/// (twenty-six for the bridge row, eleven for a frame): `into_row` 82 to
+/// 175, 60 to 106, 246 to 273. With four columns fewer and the identifier
+/// sets laid out as a list of five-text records rather than maps, each
+/// landing fell by about seventy-three (1590, 1571, 1608) and each batch by
+/// seventeen (218). A walk no longer copies the instrument's identifiers to
+/// learn and fill them, which took each walk to 7. The sets then became
+/// `securityids`, `identifiers` and `partyids`, each identifier a `src`,
+/// `type` and `value` of lower-case words - the members of two enums where
+/// they are named, an inline word where they are not - and moved none of
+/// these counts.
+///
+/// An identifier then lost its `parent` and `orig`, each set came to be laid
+/// out as a map from the key `src:type` to the identifier, and the stored
+/// cross code took its `{kind}:{side}:{base}` prefix. Each batch rose by six
+/// to 224: an identifier column is a map node and its entries struct (four)
+/// over the key text (one) and the identifier struct (two) of three texts
+/// (three), ten arrays where a list node (one) over a struct (two) of five
+/// texts (five) was eight. A frame's parse rose to 241 by the six times its
+/// two messages spell the stored code - as it is set, then as the side and
+/// the category it is stored under land - each one allocation at its exact
+/// length, less the two the sided code cost before; the packed frame's to
+/// 1153 by its three spellings. A frame's row rose to 109 by its three keys
+/// past `SmolStr`'s inline width, one allocation each, the map's entries
+/// costing a set what the list did; the packed frame's to 279 by its five
+/// such keys and the party `client:clientid` its unmapped `client.clientid`
+/// entry now states. The bridge row's nine crate fields went (65051 to
+/// 65060), taking 34 off its parse: the restatement of those fields (27),
+/// the entries its digest rendered for them (6), two typed translations and
+/// two where its identifiers are read from the unmapped entries rather than
+/// built from those fields, less the three a key resolved through a field
+/// path costs; it gained four for its six spellings of the stored code over
+/// the two before and nine for the parents filled at each of its three
+/// settles - the set copied, the fills gathered, one insert grown. Its row
+/// lost the `SecAltIDGrp(454)` entry the two instrument keys among those
+/// fields made and their own nine entries, Username(553)'s taking one back
+/// (34), and gained five identifier rows - nine read from unmapped entries
+/// for the four those fields held - and six keys past the inline width: 175
+/// to 152. An alias stating another
+/// value than the field it lost to came to be kept in the message's
+/// metadata beside an anomaly, and the bridge row's `OMSDealerAccount`,
+/// `ULTraderClOrdID`, `MarketOrderID` and `OMSDealerOrderID` do: fourteen
+/// to its parse - each anomaly's reason formatted and copied into its
+/// string (eight), the alias that had agreed before both lost (one), the
+/// anomaly list past eight (one), and the metadata past eleven keys, two
+/// more B-tree nodes where the parse builds it and two where the split
+/// execution clones it - so the parse stands at 595. `ParentClOrdID` came to
+/// reach `OrigClOrdID(41)` as its other spelling, so the bridge row lands
+/// that column's sixteen bytes where it landed a validity bitmap and its
+/// buffer: 1589.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 640,
-            into_row: 77,
-            landing: 1381,
-            batch: 190,
+            parse: 595,
+            into_row: 152,
+            landing: 1589,
+            batch: 224,
             digest: 24,
-            lifecycle: 8,
+            lifecycle: 7,
         },
     ),
     (
         "frame_pipe",
         72,
         StageCosts {
-            parse: 232,
-            into_row: 57,
-            landing: 1362,
-            batch: 190,
+            parse: 241,
+            into_row: 109,
+            landing: 1571,
+            batch: 224,
             digest: 24,
             lifecycle: 7,
         },
@@ -4863,10 +4974,10 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1143,
-            into_row: 243,
-            landing: 1398,
-            batch: 190,
+            parse: 1153,
+            into_row: 279,
+            landing: 1608,
+            batch: 224,
             digest: 16,
             lifecycle: 7,
         },
@@ -5101,86 +5212,132 @@ fn a_forex_pair_and_an_fx_symbol_read_without_allocating() {
 }
 
 #[test]
-fn idmap_reads_and_inline_inserts_allocate_nothing() {
-    use yggdryl::IdMap;
-    assert_eq!(std::mem::size_of::<IdMap>(), 56);
-    let mut ids = IdMap::new();
-    ids.insert("ACCOUNT", "ACC-1").unwrap();
-    ids.insert("user", "U-1").unwrap();
-    free("an IdMap read of a held key", || {
-        assert_eq!(ids.get(black_box("account")), Some("ACC-1"));
+fn identifier_reads_and_inline_inserts_allocate_nothing() {
+    use yggdryl::Identifiers;
+    // A source, a type and a value, 24 bytes each: 72, where the retired
+    // `parent` and `orig` were two more 24-byte strings at 120.
+    assert_eq!(std::mem::size_of::<Identifier>(), 72);
+    assert_eq!(std::mem::size_of::<Identifiers>(), IDENTIFIERS_SIZE);
+    let mut ids = Identifiers::new();
+    ids.insert(Identifier::new(IdSource::Base, IdType::Account, "ACC-1").unwrap());
+    let venue: IdSource = "venue".parse().unwrap();
+    ids.insert(Identifier::new(venue.clone(), IdType::UserId, "U-1").unwrap());
+    free("an Identifiers read of a held type", || {
+        assert_eq!(ids.get(black_box(&IdType::Account)), Some("ACC-1"));
     });
-    free("an IdMap read of an absent key", || {
-        assert_eq!(ids.get(black_box("desk")), None);
-    });
-    free("an IdMap read of a key no door accepts", || {
-        assert_eq!(ids.get(black_box("caf\u{e9}")), None);
-    });
-    free("an IdMap first_of", || {
+    free("an Identifiers read of a held type and source", || {
         assert_eq!(
-            ids.first_of(black_box(&["desk", "user"])),
-            Some(("USER", "U-1"))
+            ids.get_from(black_box(&venue), black_box(&IdType::UserId)),
+            Some("U-1")
         );
     });
-    // A 12-byte key and a 10-byte value are one 23-byte entry, the widest
-    // SmolStr holds inline, into the second inline slot of the map.
-    free("an inline IdMap insert", || {
-        let mut ids = IdMap::new();
-        assert!(ids.insert("ZONE", "Z").unwrap());
+    free("an Identifiers read of an absent type", || {
+        assert_eq!(ids.get(black_box(&IdType::DeskId)), None);
+    });
+    // A word is folded on the stack: a member is static text and any other
+    // word within SmolStr's inline width is held inline, so reading a
+    // spelling into its type costs nothing either.
+    free("an IdType read of a member through an alias", || {
+        assert_eq!(
+            black_box("ISIN_Number").parse::<IdType>().unwrap(),
+            IdType::Isin
+        );
+    });
+    free("an IdType read of a short word no member names", || {
         assert!(
-            ids.insert(black_box("accountident"), black_box("ABCDEFGHIJ"))
+            !black_box("House Code")
+                .parse::<IdType>()
                 .unwrap()
+                .is_known()
+        );
+    });
+    free("an IdSource read of a member", || {
+        assert_eq!(
+            black_box("PROPRIETARY").parse::<IdSource>().unwrap(),
+            IdSource::Proprietary
+        );
+    });
+    // A codified type and source are static text and a 23-byte value is the
+    // widest SmolStr holds inline: two identifiers cost the set its one
+    // backing and nothing each.
+    costs("two identifiers into a new set", 1, || {
+        let mut ids = Identifiers::new();
+        assert!(ids.insert(Identifier::new(IdSource::Fix, IdType::OrderId, "Z").unwrap()));
+        assert!(
+            ids.insert(
+                Identifier::new(
+                    black_box(IdSource::Bic),
+                    black_box(IdType::ExecutingTrader),
+                    black_box("ABCDEFGHIJKLMNOPQRSTUVW")
+                )
+                .unwrap()
+            )
         );
         assert_eq!(ids.len(), 2);
         black_box(&ids);
     });
 }
 
+/// The size of [`yggdryl::Identifiers`]: one vector, its pointer, length and
+/// capacity.
+const IDENTIFIERS_SIZE: usize = 24;
+
 #[test]
-fn securityid_construction_is_inline_for_every_checked_code() {
-    use yggdryl::{SecType, SecurityId, SecurityIds};
-    assert_eq!(std::mem::size_of::<SecurityId>(), 24);
-    for (key, code) in [
-        ("ISIN", "US0378331005"),
-        ("CUSIP", "037833100"),
-        ("SEDOL", "0263494"),
-        ("FIGI", "BBG000B9XRY4"),
-        ("WKN", "716460"),
-        ("VALOR", "3886335"),
-        ("BLOOMBERG", "AAPL US Equity"),
+fn security_identifier_construction_is_inline_for_every_checked_code() {
+    for (kind, code) in [
+        (IdType::Isin, "US0378331005"),
+        (IdType::Cusip, "037833100"),
+        (IdType::Sedol, "0263494"),
+        (IdType::Figi, "BBG000B9XRY4"),
+        (IdType::Wkn, "716460"),
+        (IdType::Valor, "3886335"),
+        (IdType::Bloomberg, "AAPL US Equity"),
     ] {
-        let sectype = SecType::read(key).unwrap();
-        free(&format!("constructing {key}:{code}"), || {
-            let id = SecurityId::new(black_box(sectype.clone()), black_box(code)).unwrap();
-            assert!(id.is_inline());
-            assert_eq!(id.sectype().as_str(), key);
-            black_box(id.code());
+        free(&format!("constructing {kind}:{code}"), || {
+            let id = Identifier::new(
+                black_box(IdSource::Base),
+                black_box(kind.clone()),
+                black_box(code),
+            )
+            .unwrap();
+            assert_eq!(id.kind(), &kind);
+            black_box(id.value());
         });
     }
-    let bloomberg = SecType::read("A").unwrap();
     let widest = "B".repeat(32);
     costs("constructing a 32-byte Bloomberg identifier", 1, || {
-        let id = SecurityId::new(bloomberg.clone(), black_box(widest.as_str())).unwrap();
-        assert!(!id.is_inline());
-        black_box(id);
+        black_box(
+            Identifier::new(
+                IdSource::Base,
+                IdType::Bloomberg,
+                black_box(widest.as_str()),
+            )
+            .unwrap(),
+        );
     });
     assert!(
-        SecurityId::new(bloomberg.clone(), &"B".repeat(33)).is_err(),
+        Identifier::new(IdSource::Base, IdType::Bloomberg, &"B".repeat(33)).is_err(),
         "33 bytes are refused"
     );
-    let heap = SecurityId::new(bloomberg, &widest).unwrap();
+    let heap = Identifier::new(IdSource::Base, IdType::Bloomberg, &widest).unwrap();
     free("cloning a heap Bloomberg identifier", || {
         black_box(heap.clone());
     });
 
-    let mut ids = SecurityIds::default();
-    ids.insert(SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap());
-    ids.insert(heap.clone());
-    free("a SecurityIds read through every spelling", || {
-        assert_eq!(ids.get(black_box("4")), Some("US0378331005"));
-        assert_eq!(ids.get(black_box("isin")), Some("US0378331005"));
-        assert_eq!(ids.get(black_box("bbgsymb")), Some(widest.as_str()));
-        assert_eq!(ids.get(black_box("sedol")), None);
+    let ids: yggdryl::Identifiers = [
+        Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").unwrap(),
+        heap.clone(),
+    ]
+    .into_iter()
+    .collect();
+    free("an Identifiers read through every folded spelling", || {
+        let read = |spelling: &str| spelling.parse::<IdType>().unwrap();
+        assert_eq!(ids.get(&read(black_box("isin"))), Some("US0378331005"));
+        assert_eq!(
+            ids.get(&read(black_box("Bloomberg"))),
+            Some(widest.as_str())
+        );
+        assert_eq!(ids.get(&read(black_box("sedol"))), None);
     });
 }
 
@@ -5703,4 +5860,15 @@ fn excel_record_doors_cost_per_row_and_nothing_per_cell() {
         "reading 576 more rows cost {} allocations",
         large.1 - small.1
     );
+}
+
+#[test]
+fn a_spelling_read_by_its_words_reads_again_without_allocating() {
+    // The first read cuts the spelling into words and keeps the member it
+    // named; every later read of that spelling is one lookup.
+    for spelling in ["order fill", "part-filled", "partial fill order"] {
+        free(&format!("reading {spelling:?} again"), || {
+            black_box(yggdryl::State::from_spelling(black_box(spelling)));
+        });
+    }
 }

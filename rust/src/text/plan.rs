@@ -5,7 +5,8 @@
 //! decided here, once, before a byte is read. The per-row path then reads
 //! each planned column off the line's own reading of it, which resolves on
 //! the first ask and once: a batch asks every row for every column of the
-//! plan, the fifteen event columns it opens with included, and a projection
+//! plan, the six element and nine event columns it opens with included, and
+//! a projection
 //! reads fewer of them afterwards; a line handed on as a line resolves only
 //! what is asked of it.
 //!
@@ -16,7 +17,7 @@ use std::collections::BTreeMap;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::graph::EventColumn;
+use crate::graph::{ElementColumn, EventColumn};
 use crate::{DataType, Error, Field, Result, StructType};
 
 use super::options::{MIMETYPE_COLUMN, TextOptions};
@@ -24,7 +25,9 @@ use super::options::{MIMETYPE_COLUMN, TextOptions};
 /// What fills one emitted column.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum TextSource {
-    /// One of the fifteen columns the line is stated in as an event.
+    /// One of the six columns the line is stated in as an element.
+    Element(ElementColumn),
+    /// One of the nine columns the line adds as an event.
     Event(EventColumn),
     /// What the line was classified as.
     BodyType,
@@ -76,19 +79,32 @@ impl TextPlan {
     /// were.
     pub(crate) fn compile(options: &TextOptions) -> Result<Self> {
         options.require_retained_body()?;
-        let mut columns =
-            Vec::with_capacity(EventColumn::ALL.len() + 3 + options.capture_names().len());
-        // The event the line is, in the fifteen columns every graph event
-        // is stated in - the same a FIX row opens with - so a message's
-        // `srcuuids` joins the line's `curruuid` here, and a line read back
-        // keeps the identity a message named.
+        let mut columns = Vec::with_capacity(
+            ElementColumn::ALL.len() + EventColumn::ALL.len() + 3 + options.capture_names().len(),
+        );
+        // The element and the event the line is, in the columns every graph
+        // event is stated in and every generated schema opens with - a FIX
+        // row and a `marketdata` row too - so a message's `srcuuids` joins
+        // the line's `curruuid` here, and a line read back keeps the
+        // identity a message named.
+        for column in ElementColumn::ALL {
+            push_named(
+                &mut columns,
+                TextSource::Element(column),
+                SmolStr::new_static(column.name()),
+                Some(column.display()),
+                column.datatype(),
+                column.nullable(),
+                Some(column.description()),
+            );
+        }
         for column in EventColumn::ALL {
             push_named(
                 &mut columns,
                 TextSource::Event(column),
                 SmolStr::new_static(column.name()),
                 Some(column.display()),
-                column.datatype()?,
+                column.datatype(),
                 column.nullable(),
                 Some(column.description()),
             );
@@ -168,9 +184,9 @@ impl TextPlan {
                     .clone()
                     .named_field(column.name.clone(), column.nullable);
                 // The spelling a catalog shows, beside what the column
-                // holds: the fifteen event columns carry the display their
-                // own enum states, so a line's row and a message's row name
-                // one fact one way.
+                // holds: the element and event columns carry the display
+                // their own enums state, so a line's row and a message's row
+                // name one fact one way.
                 if let Some(display) = column.display {
                     field.set_display(display)?;
                 }

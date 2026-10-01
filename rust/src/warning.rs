@@ -79,7 +79,7 @@ fn is_tenfold(mut count: u64) -> bool {
     if count < 10 {
         return false;
     }
-    while count % 10 == 0 {
+    while count.is_multiple_of(10) {
         count /= 10;
     }
     count == 1

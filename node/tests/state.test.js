@@ -1,7 +1,7 @@
 'use strict'
 
 // `node/src/state.rs`: `State`, the lifecycle-sorted enum a `state` column
-// stores as the `int32` code of its member.
+// stores as the `uint16` code of its member.
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
@@ -30,4 +30,16 @@ test('a state column stores the code and reads back the member name', () => {
   }
   assert.throws(() => new DataType('state').scalar('not a state'))
   assert.equal(Field.from('state: state').dtype.id, 'state')
+})
+
+test('a spelling reads by the words it is made of', () => {
+  for (const [spelling, state] of [
+    ['order fill', 'FILLED'],
+    ['Part-Filled', 'PARTIALLY_FILLED'],
+    ['partial fill order', 'PARTIALLY_FILLED'],
+    ['pending cxl', 'PENDING_CANCEL'],
+  ]) {
+    assert.equal(new DataType('state').scalar(spelling).asJs(), state, spelling)
+  }
+  assert.throws(() => new DataType('state').scalar('partially frobnicated'), /partially frobnicated/)
 })

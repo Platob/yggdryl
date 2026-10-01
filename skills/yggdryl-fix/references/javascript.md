@@ -166,15 +166,16 @@ const message = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|52=20260102-10:15
 
 assert.deepEqual([message.header().beginstring, message.header().msgtype], ['FIX.4.4', 'D'])
 // The category its type files under, and the option strike it identifies.
-assert.deepEqual([message.msgcat, message.strikepx], ['ORDR', '105'])
+assert.deepEqual([message.msgcat, message.strikeprice], ['ORDR', '105'])
 // A coded value reads as its name; the wire keeps its code.
 assert.equal(message.byTag(54).asJs(), 'BUYS')
 assert.equal(message.side, 'BUYS')
 assert.equal(message.quantity, '100')
 assert.equal(message.byName('symbol').asJs(), 'AAPL')
 // The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
-assert.equal(message.crosscode, 'BUYS:A1')
-assert.deepEqual(message.altids, { CLORDID: 'A1' })
+assert.equal(message.crosscode, '10:1:A1')
+// The names it goes by are identifiers: a source, a type and a value.
+assert.equal(message.identifiers.toString(), '[fix:clordid=A1]')
 // Instants are bigint nanoseconds since the epoch, UTC.
 assert.equal(message.currunix, 1_767_348_930_000_000_000n)
 // The entries are the content row as a tree of { tag, name, value, entries }.
@@ -201,7 +202,7 @@ const registry = fix.FixRegistry.fromFields([msgtype, clordid, symbol])
 const root = fields.struct('NewOrderSingle', [msgtype, clordid, symbol], { nullable: false })
 const message = new fix.FixMsg(root, { MsgType: 'D', ClOrdID: 'A1', Symbol: 'AAPL' }, registry)
 assert.equal(message.header().msgtype, 'D')
-assert.equal(message.crosscode, 'A1')
+assert.equal(message.crosscode, '10:0:A1')
 
 const before = message.currhashcode
 message.set('Symbol', 'MSFT')
@@ -242,7 +243,7 @@ assert.ok(again.digest().equals(message.digest()))
 
 `parseTextArrowReader` takes a `BatchReader` with a payload column (`body` by
 default) and answers a `BatchReader` of FIX rows, one per message, the
-capture's own columns leading; parsing is pooled across `threads`.
+capture's own columns following the shared ones; parsing is pooled across `threads`.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -263,8 +264,11 @@ const capture = new arrow.Table({
 
 const codec = new fix.FixCodec(registry, { threads: 4, batchRowSize: 10_000 })
 const read = codec.parseTextArrowReader(BatchReader.from(capture))
-// The schema is decided before a row is read: the capture leads, `fixentries` closes.
-assert.equal(read.field.fieldAt(0).name, 'url')
+// The schema is decided before a row is read: the shared columns lead, the capture follows them, `fixentries` closes.
+const columns = Array.from({ length: read.field.fieldLen }, (_, index) => read.field.fieldAt(index).name)
+assert.equal(columns[0], 'curruuid')
+const at = columns.indexOf('url')
+assert.deepEqual(columns.slice(at - 1, at + 3), ['partyids', 'url', 'rownum', 'body'])
 assert.equal(read.field.fieldAt(read.field.fieldLen - 1).name, 'fixentries')
 
 const held = read.intoTable()
@@ -404,7 +408,7 @@ assert.equal(ack.prevuuid, order.curruuid)
 assert.equal(fill.prevuuid, ack.curruuid)
 assert.ok([ack, fill].every((held) => held.crossuuid === order.crossuuid))
 // The reports stated no side: they joined the buy alive under A1 and O1.
-assert.ok([ack, fill].every((held) => held.side === 'BUYS' && held.crosscode === 'BUYS:A1'))
+assert.ok([ack, fill].every((held) => held.side === 'BUYS' && held.crosscode === '10:1:A1'))
 assert.deepEqual([fill.msgcat, fill.state], ['ORDR', 'FILLED'])
 // Every walked message states when its chain began.
 assert.ok([ack, fill].every((held) => held.creaunix === order.currunix))
@@ -417,6 +421,41 @@ const chained = codec.lifecycleArrowReader(rows).intoTable()
 // Two chains: the order's, and its fill's execution.
 assert.equal(chained.numRows, 4)
 assert.equal(new Set([...chained.getChild('crossuuid')].map(String)).size, 2)
+```
+
+## Follow a replace chain's parents
+
+A message that states an identifier again under another value is a step in
+its chain: `lifecycle` keeps the value before it as the type's parent
+(`orderid` leaves `parentorderid` and the chain's first as `origorderid`,
+`clordid` leaves `origclordid`), and joins a replace to its order by that
+parent too. `registry.parentsOf('orderid')` lists them, nearest first, from
+the `FIX:parents` a field states.
+
+```javascript
+const assert = require('node:assert/strict')
+const path = require('node:path')
+const { fix } = require('yggdryl')
+
+const KINDS = ['orderid', 'parentorderid', 'origorderid', 'clordid', 'origclordid']
+const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config/fix')))
+const lines = [
+  '8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|38=10|44=100|52=20260921-10:00:00|10=0|',
+  '8=FIX.4.4|35=8|11=C1|37=O1|150=0|39=0|55=AAPL|52=20260921-10:00:01|10=0|',
+  '8=FIX.4.4|35=G|11=C2|41=C1|37=O2|55=AAPL|54=1|38=10|44=101|52=20260921-10:00:02|10=0|',
+  '8=FIX.4.4|35=G|11=C3|41=C2|37=O3|55=AAPL|54=1|38=10|44=102|52=20260921-10:00:03|10=0|',
+].map((line) => Buffer.from(line))
+const chained = [...reader.lifecycle([...reader.parseLines(lines)])]
+
+// What a message holds under each type, '-' where it holds none.
+const held = (message) => KINDS.map((kind) => message.identifiers.getFrom('fix', kind) ?? '-')
+assert.deepEqual(held(chained[0]), ['-', '-', '-', 'C1', '-'])
+assert.deepEqual(held(chained[1]), ['O1', '-', '-', 'C1', '-'])
+// Each replace names the value before it and the chain's first.
+assert.deepEqual(held(chained[2]), ['O2', 'O1', 'O1', 'C2', 'C1'])
+assert.deepEqual(held(chained[3]), ['O3', 'O2', 'O1', 'C3', 'C2'])
+// One chain: the replaces joined the order by the parent they state.
+assert.ok(chained.every((message) => message.crossuuid === chained[0].crossuuid))
 ```
 
 ## Split fills, two-sided quotes and batches at the parse
@@ -446,12 +485,12 @@ assert.deepEqual([report.msgcat, report.state], ['ORDR', 'PARTIALLY_FILLED'])
 assert.deepEqual([execution.msgcat, execution.state], ['EXEC', 'FILLED'])
 assert.ok(execution.srcuuids.includes(report.curruuid))
 // An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
-assert.deepEqual([report.crosscode, execution.crosscode], ['BUYS:O-9', 'BUYS:E-1'])
+assert.deepEqual([report.crosscode, execution.crosscode], ['10:1:O-9', '8:1:E-1'])
 
 const stated = '8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|'
 const [quote, bid, ask] = codec.parseLine(Buffer.from(stated))
 assert.deepEqual([quote.side, bid.side, ask.side], ['UNKN', 'BUYS', 'SELL'])
-assert.deepEqual([bid.crosscode, ask.crosscode], ['BUYS:Q1', 'SELL:Q1'])
+assert.deepEqual([bid.crosscode, ask.crosscode], ['14:1:Q1', '14:2:Q1'])
 // Each side prices at its own level and keeps the pair its source stated.
 assert.deepEqual([bid.price, ask.price, ask.bidpx, bid.bidccy], ['99', '101', '99', 'USD'])
 ```

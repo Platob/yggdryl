@@ -174,10 +174,9 @@ pub enum DataTypeId {
     Mic = 0x73,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
     Cfi = 0x74,
-    // 0x75 was `side` while a side was a code; it is an enum leaf now, at
-    // 0xc3, and a retired number is never reused.
-    /// How long an order stands.
-    TimeInForce = 0x77,
+    // 0x75 was `side` while a side was a code, and 0x77 `timeinforce`; each
+    // is an enum leaf now, at 0xc3 and 0xc5, and a retired number is never
+    // reused.
     /// ISO 6166: a securities identification number, twelve ASCII bytes.
     Isin = 0x78,
     /// CUSIP: a North American securities identifier, nine ASCII bytes.
@@ -233,18 +232,24 @@ pub enum DataTypeId {
     Geography = 0xb2,
     // Enum: 0xc0..0xcf
     /// What state one thing is in: a lifecycle-sorted enum, stored as the
-    /// `int32` code of its member.
+    /// `uint16` code of its member.
     State = 0xc1,
     /// What kind of market data an element is: FIX's MsgCat code set, stored
-    /// as the `int32` code of its member.
+    /// as the `uint8` code of its member.
     MarketDataKind = 0xc2,
-    /// FIX's side of a trade, stored as the `int32` code of its member.
+    /// FIX's side of a trade, stored as the `uint8` code of its member.
     Side = 0xc3,
+    /// What type of its kind a market element is - an order, quote, trade
+    /// or book entry type - stored as the `uint16` code of its member.
+    MarketDataType = 0xc4,
+    /// How long an order stands: FIX's `TimeInForce(59)` code set, stored
+    /// as the `uint8` code of its member.
+    TimeInForce = 0xc5,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 90] = [
+    pub const ALL: [Self; 91] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -308,7 +313,6 @@ impl DataTypeId {
         Self::Ccy,
         Self::Mic,
         Self::Cfi,
-        Self::TimeInForce,
         Self::Isin,
         Self::Cusip,
         Self::Sedol,
@@ -335,6 +339,8 @@ impl DataTypeId {
         Self::State,
         Self::MarketDataKind,
         Self::Side,
+        Self::MarketDataType,
+        Self::TimeInForce,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -395,6 +401,7 @@ impl DataTypeId {
             Self::Side => "side",
             Self::State => "state",
             Self::MarketDataKind => "marketdatakind",
+            Self::MarketDataType => "marketdatatype",
             Self::TimeInForce => "timeinforce",
             Self::Unit => "unit",
             Self::Uuid => "uuid",
@@ -509,6 +516,95 @@ impl DataTypeId {
             Self::Interval => Some(T::Interval),
             _ => None,
         }
+    }
+
+    /// The Arrow extension name a datatype of this identifier rides under:
+    /// the one owner of which datatype states itself to Arrow by a name, and
+    /// `None` for one Arrow states alone - plain UTF-8 in its three layouts,
+    /// the four byte layouts and a fixed width, every number, temporal and
+    /// nested shape.
+    ///
+    /// ```
+    /// use yggdryl::DataTypeId;
+    ///
+    /// assert_eq!(DataTypeId::Ccy.arrow_extension_name(), Some("yggdryl.ccy"));
+    /// assert_eq!(DataTypeId::Uuid.arrow_extension_name(), Some("arrow.uuid"));
+    /// assert_eq!(DataTypeId::FixedAsciiString.arrow_extension_name(), Some("yggdryl.string"));
+    /// assert_eq!(DataTypeId::Utf8String.arrow_extension_name(), None);
+    /// ```
+    pub const fn arrow_extension_name(self) -> Option<&'static str> {
+        Some(match self {
+            Self::Uuid => crate::UUID_EXTENSION_NAME,
+            Self::Variant => crate::VARIANT_EXTENSION_NAME,
+            Self::Geometry | Self::Geography => crate::GEOARROW_WKB_EXTENSION_NAME,
+            // A maximum and the second view width are what Arrow cannot
+            // state about bytes; the other four layouts are its own.
+            Self::SizedBinary | Self::LargeBinaryView => crate::BYTES_EXTENSION_NAME,
+            // Plain UTF-8 is Arrow's own; every other leaf states a charset,
+            // a bound or the second view width.
+            Self::LargeUtf8StringView
+            | Self::FixedUtf8String
+            | Self::SizedUtf8String
+            | Self::AsciiString
+            | Self::LargeAsciiString
+            | Self::AsciiStringView
+            | Self::LargeAsciiStringView
+            | Self::FixedAsciiString
+            | Self::SizedAsciiString
+            | Self::Cp1252String
+            | Self::LargeCp1252String
+            | Self::Cp1252StringView
+            | Self::LargeCp1252StringView
+            | Self::FixedCp1252String
+            | Self::SizedCp1252String => crate::STRING_EXTENSION_NAME,
+            Self::Decimal => crate::DECIMAL_EXTENSION_NAME,
+            Self::BigDecimal => crate::BIGDECIMAL_EXTENSION_NAME,
+            Self::Version => crate::VERSION_EXTENSION_NAME,
+            Self::Url => crate::URL_EXTENSION_NAME,
+            Self::Urn => crate::URN_EXTENSION_NAME,
+            Self::Timezone => crate::TIMEZONE_EXTENSION_NAME,
+            Self::MimeType => crate::MIMETYPE_EXTENSION_NAME,
+            Self::MediaType => crate::MEDIATYPE_EXTENSION_NAME,
+            Self::State => crate::STATE_EXTENSION_NAME,
+            Self::MarketDataKind => crate::MARKETDATAKIND_EXTENSION_NAME,
+            Self::MarketDataType => crate::MARKETDATATYPE_EXTENSION_NAME,
+            Self::Side => crate::SIDE_EXTENSION_NAME,
+            Self::TimeInForce => crate::TIMEINFORCE_EXTENSION_NAME,
+            Self::Country => crate::COUNTRY_EXTENSION_NAME,
+            Self::Ccy => crate::CCY_EXTENSION_NAME,
+            Self::Mic => crate::MIC_EXTENSION_NAME,
+            Self::Cfi => crate::CFI_EXTENSION_NAME,
+            Self::Isin => crate::ISIN_EXTENSION_NAME,
+            Self::Cusip => crate::CUSIP_EXTENSION_NAME,
+            Self::Sedol => crate::SEDOL_EXTENSION_NAME,
+            Self::Figi => crate::FIGI_EXTENSION_NAME,
+            Self::Ric => crate::RIC_EXTENSION_NAME,
+            Self::Bbg => crate::BBG_EXTENSION_NAME,
+            Self::Unit => crate::UNIT_EXTENSION_NAME,
+            Self::Forex => crate::FOREX_EXTENSION_NAME,
+            _ => return None,
+        })
+    }
+
+    /// Every distinct Arrow extension name [`Self::arrow_extension_name`]
+    /// answers, in the order of [`Self::ALL`]: what a binding registers its
+    /// runtime's extension types from.
+    ///
+    /// ```
+    /// use yggdryl::DataTypeId;
+    ///
+    /// let names: Vec<&str> = DataTypeId::arrow_extension_names().collect();
+    /// assert!(names.contains(&"yggdryl.state"));
+    /// assert_eq!(names.iter().filter(|name| **name == "yggdryl.string").count(), 1);
+    /// ```
+    pub fn arrow_extension_names() -> impl Iterator<Item = &'static str> {
+        // One name's identifiers are neighbours in `ALL` once the ones naming
+        // none are passed, so a repeat is always the name just answered.
+        let mut last = None;
+        Self::ALL
+            .into_iter()
+            .filter_map(Self::arrow_extension_name)
+            .filter(move |name| last.replace(*name) != Some(*name))
     }
 
     /// The name of the temporal family this identifier is a leaf of -
@@ -673,7 +769,7 @@ impl DataTypeId {
     ///
     /// The number each standard fixes: two for a country, four for a market
     /// identifier, six for a classification, seven for a SEDOL or a currency
-    /// pair, eight for a time in force, nine for a CUSIP, twelve for an ISIN,
+    /// pair, nine for a CUSIP, twelve for an ISIN,
     /// and thirty-two for a Bloomberg identifier - the one whose width is
     /// only a bound, because a ticker, a market and a yellow key have no
     /// fixed length between them - and for a unit and a RIC, which take the
@@ -692,7 +788,6 @@ impl DataTypeId {
             Self::Cfi => Some(crate::CFI_WIDTH),
             Self::Sedol => Some(crate::SEDOL_WIDTH),
             Self::Forex => Some(crate::FOREX_WIDTH),
-            Self::TimeInForce => Some(crate::TIMEINFORCE_WIDTH),
             Self::Cusip => Some(crate::CUSIP_WIDTH),
             Self::Isin => Some(crate::ISIN_WIDTH),
             Self::Figi => Some(crate::FIGI_WIDTH),

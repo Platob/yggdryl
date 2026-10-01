@@ -16,6 +16,8 @@ from yggdryl import (
     ForexField,
     MarketDataKind,
     MarketDataKindField,
+    MarketDataType,
+    MarketDataTypeField,
     MediaTypeField,
     MimeTypeField,
     ProtocolField,
@@ -25,6 +27,8 @@ from yggdryl import (
     Side,
     SideField,
     StructField,
+    TimeInForce,
+    TimeInForceField,
     TimezoneField,
     UrlField,
     UrnField,
@@ -86,6 +90,11 @@ side: SideField = yggdryl.side("side", nullable=False)
 side_member: Side = Side.BUYS
 category: MarketDataKindField = yggdryl.marketdatakind("marketdatakind")
 category_member: MarketDataKind | None = MarketDataKind.from_spelling("ORDR")
+typed: MarketDataTypeField = yggdryl.marketdatatype("marketdatatype")
+typed_member: MarketDataType | None = MarketDataType.from_fix(40, "2")
+typed_tags: tuple[int, ...] = MarketDataType.fix_tags_of("AE", MarketDataKind.TRAD)
+standing: TimeInForceField = yggdryl.timeinforce("timeinforce")
+standing_member: TimeInForce = TimeInForce.from_fix("1")
 version: VersionField = yggdryl.version("version", nullable=False)
 version_default_scalar: Scalar = version.default_scalar()
 location: UrlField = yggdryl.url("url")
@@ -120,6 +129,12 @@ assert name_dtype == DataType("urn")
 assert pair.dtype == DataType("forex") and side.dtype == DataType("side")
 assert category.dtype == DataType("marketdatakind")
 assert side_member.is_bid() and category_member is MarketDataKind.ORDR
+assert typed.dtype == DataType("marketdatatype")
+assert typed_member is MarketDataType.ORDLIMIT
+assert MarketDataType.ORDLIMIT.fix_code == (40, "2")
+assert typed_tags == (856, 828, 40)
+assert standing.dtype == DataType("timeinforce")
+assert standing_member is TimeInForce.GTC
 assert canonical_text_dtypes == (
     DataType("timezone"),
     DataType("mimetype"),

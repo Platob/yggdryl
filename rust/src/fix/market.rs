@@ -8,19 +8,20 @@ use smallvec::SmallVec;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::identity::{BOOK_ENTRY_TAGS, BOOK_ROOT_TAGS, TRADE_SIDE_TAGS};
-use super::msg::{AccountsAt, Carried, Expanded, Unmapped, party_roles};
+use super::msg::{AccountsAt, Carried, Expanded, PartyCodes, Unmapped};
 use super::{FixCodec, FixEntry, FixKey, FixMsg};
 use crate::arrow::BatchReader;
 use crate::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use crate::graph::facts::OperationEventFacts;
-use crate::graph::market::unsided_crosscode;
+use crate::graph::market::base_crosscode;
 use crate::graph::{
     BookIterator, BookRef, Element, Event, ExecutionKind, Market, MarketData, MdUpdateAction,
     Operation, OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent,
 };
 use crate::warning::warned;
 use crate::{
-    DataType, Decimal, Error, IdMap, MarketDataKind, Result, Scalar, Side, State, TimeUnit,
+    DataType, Decimal, Error, IdSource, IdType, Identifier, Identifiers, MarketDataKind, Result,
+    Scalar, Side, State, TimeUnit,
 };
 
 const MD_ENTRIES: i32 = 268;
@@ -162,7 +163,7 @@ struct BookEntry {
     facts: Facts,
     /// The accounts the entry's own parties name, which lead the message's
     /// on its leaf.
-    accounts: IdMap,
+    accounts: Identifiers,
     position: usize,
     date_days: Option<i64>,
     time_nanos: Option<i64>,
@@ -235,21 +236,22 @@ impl FixMsg {
     /// one message are one leaf. [`FixCodec::with_market_metadata`] turns it
     /// off for the codec's own doors; this door always carries it.
     ///
-    /// What the leaf's identifier maps hold is no metadata: a party its
-    /// `accountids` hold under its role - a book entry's own parties
+    /// What the leaf's identifier sets hold is no metadata: a party its
+    /// `partyids` hold under its role - a book entry's own parties
     /// leading the message's, as a trade side's do - the `Account(1)` held
-    /// as `ACCOUNT`, and a regulatory trade identifier its `altids` hold.
-    /// A second party of one role, or a value no map takes, stays. A scalar
-    /// whose key ends with one of the identifiers the message's type
-    /// declares under `FIX:identifiers` - its letters and digits alone,
-    /// whatever the case: an execution report's `marketorderid` or
-    /// `RefOrderID(1080)` ending with its `orderid`, a bridge's
-    /// `firm.x.parentorderid` - is lifted into the leaf's `altids` under
-    /// its own key where the leaf holds that key free or with the same
-    /// value, and otherwise stays; an occurrence's own member ends with one
-    /// its component declares. An empty snapshot's control holds
-    /// neither map, and keeps all of it. Nothing is lifted where the
-    /// metadata is off.
+    /// as `account`, and a regulatory trade identifier its `identifiers`
+    /// hold. A second party of one role, or a value no set takes, stays. A
+    /// scalar whose key names an identifier - one the message's type
+    /// declares under `FIX:identifiers` at its end, `RefOrderID(1080)`'s
+    /// `reforderid`, or, for a key no dictionary field is, one of the
+    /// crate's identifier names, read as [`Identifier::from_key`] reads a
+    /// key: a bridge's `firm.x.ParentOrderID` is `firm.x:parentorderid` -
+    /// is lifted into the set its type belongs to (`securityids`,
+    /// `partyids` or `identifiers`) where that set holds its key free or
+    /// with the same value, and otherwise stays; an occurrence's own member
+    /// is read against what its component declares. An empty snapshot's
+    /// control holds no set, and keeps all of it. Nothing is lifted where
+    /// the metadata is off.
     pub fn market_data(&self) -> Result<Vec<MarketData>> {
         Ok(operations(self, self.event().clone()))
     }
@@ -664,11 +666,10 @@ fn holds_operations(entries: &[BookEntry]) -> bool {
 }
 
 /// States what a leaf carries on its facts before the leaf is finalized,
-/// where there is any: its metadata, less each scalar its alternate
-/// identifiers hold once it is lifted - into a key the leaf does not hold
-/// yet, or one holding the same value - where `lift` asks. What they do not
-/// hold, a value no map takes or a key holding another, stays in the
-/// metadata.
+/// where there is any: its metadata, less each scalar its identifier sets
+/// hold once it is lifted - into a key the set does not hold yet, or one
+/// holding the same value - where `lift` asks. What they do not hold, a
+/// key holding another value, stays in the metadata.
 fn carry(facts: &mut OperationEventFacts, carried: Option<Carried>, lift: bool) {
     let Some(Carried {
         mut metadata,
@@ -677,17 +678,38 @@ fn carry(facts: &mut OperationEventFacts, carried: Option<Carried>, lift: bool) 
     else {
         return;
     };
-    for (key, value) in lifted {
-        let held = lift
-            && match facts.get_altids().get(&key) {
-                Some(held) => held == value.trim(),
-                None => facts.insert_altid(&key, &value).unwrap_or(false),
-            };
-        if !held {
+    for (key, value, id) in lifted {
+        if !(lift && lift_identifier(facts, id)) {
             metadata.entry(key).or_insert(value);
         }
     }
-    facts.set_metadata(Some(metadata));
+    facts.set_metadata(Some(metadata), true);
+}
+
+/// Lifts one identifier a key named into the set its type belongs to - a
+/// security type the `securityids`, a party the `partyids`, any other the
+/// `identifiers` - where that set holds its key free or with the same
+/// value, saying whether it holds it now.
+fn lift_identifier(facts: &mut OperationEventFacts, id: Identifier) -> bool {
+    let kind = id.kind();
+    let set = if kind.is_security() {
+        facts.get_securityids()
+    } else if kind.is_party() {
+        facts.get_partyids()
+    } else {
+        facts.get_identifiers()
+    };
+    if let Some(held) = set.get_from(id.src(), kind) {
+        return held == id.value();
+    }
+    let inserted = if kind.is_security() {
+        facts.insert_securityid(id)
+    } else if kind.is_party() {
+        facts.insert_partyid(id)
+    } else {
+        facts.insert_identifier(id)
+    };
+    inserted.unwrap_or(false)
 }
 
 fn effective_unix(input: &MarketData) -> i64 {
@@ -696,10 +718,17 @@ fn effective_unix(input: &MarketData) -> i64 {
     })
 }
 
-impl TryFrom<FixMsg> for MarketData {
-    type Error = Error;
-
-    fn try_from(message: FixMsg) -> Result<Self> {
+impl FixMsg {
+    /// Moves this message into the one market data leaf it is: a direct
+    /// order, quote or execution, or a book message stating one entry.
+    /// [`MarketData::from`] holds the message whole instead.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming `MsgType(35)`, or `NoMDEntries(268)` for a
+    /// book message, where the message is not exactly one leaf.
+    pub fn into_market_leaf(self) -> Result<MarketData> {
+        let message = self;
         let path = if message.msgcat() == MarketDataKind::Book {
             "$.NoMDEntries(268)"
         } else {
@@ -1011,7 +1040,10 @@ fn batch_entry(
         );
         return Vec::new();
     }
-    entry.record(super::MSGCAT_TAG_NAME.0, &Scalar::MarketDataKind(kind));
+    entry.record(
+        super::MARKETDATAKIND_TAG_NAME.0,
+        &Scalar::MarketDataKind(kind),
+    );
     entry.set_crosscode(crosscode);
     entry.set_srcuuids(provenance(batch));
     entry.settle();
@@ -1126,7 +1158,10 @@ impl FixMsg {
                 } else {
                     MarketDataKind::Order
                 };
-                self.record(super::MSGCAT_TAG_NAME.0, &Scalar::MarketDataKind(report));
+                self.record(
+                    super::MARKETDATAKIND_TAG_NAME.0,
+                    &Scalar::MarketDataKind(report),
+                );
                 self.settle();
             }
             let base = self
@@ -1137,7 +1172,7 @@ impl FixMsg {
                 .unwrap_or_else(|| {
                     format!(
                         "{}|Execution={:016x}",
-                        unsided_crosscode(self.get_crosscode()),
+                        base_crosscode(self.get_crosscode()),
                         self.get_currhashcode()
                     )
                 });
@@ -1152,7 +1187,7 @@ impl FixMsg {
 /// the category `EXEC`, `FILLED`, and `source` named as its provenance.
 fn executed(source: &FixMsg, mut derived: FixMsg, base: String) -> FixMsg {
     derived.record(
-        super::MSGCAT_TAG_NAME.0,
+        super::MARKETDATAKIND_TAG_NAME.0,
         &Scalar::MarketDataKind(MarketDataKind::Execution),
     );
     derived.record(super::STATE_TAG_NAME.0, &Scalar::State(State::Filled));
@@ -1486,7 +1521,7 @@ fn book_entries(message: &FixMsg) -> Vec<BookEntry> {
     });
     let empty_snapshot = || BookEntry {
         facts: root.clone(),
-        accounts: IdMap::new(),
+        accounts: Identifiers::new(),
         position: 0,
         date_days: root_date,
         time_nanos: root_time,
@@ -1523,7 +1558,7 @@ fn book_entries(message: &FixMsg) -> Vec<BookEntry> {
         }
     };
 
-    let roles = party_roles(message.registry());
+    let roles = PartyCodes::new(message.registry());
     let typed = typed_group(message, values, occurrences.len())
         .map_err(|reason| {
             warned!(
@@ -1613,9 +1648,9 @@ fn book_entries(message: &FixMsg) -> Vec<BookEntry> {
             "MDEntryForwardPoints",
             &at,
         );
-        let mut accounts = IdMap::new();
+        let mut accounts = Identifiers::new();
         if let Some(typed) = typed.as_ref() {
-            typed.accounts.read(roles, members, &mut accounts, None);
+            typed.accounts.read(roles, members, &mut accounts);
         }
         answer.push(BookEntry {
             facts,
@@ -1658,11 +1693,11 @@ fn member_path(message: &FixMsg, fields: &[crate::Field], tag: i32) -> Option<Ve
         {
             return Some(vec![index]);
         }
-        if matches!(field.dtype(), DataType::Struct(_)) {
-            if let Some(mut nested) = member_path(message, field.fields(), tag) {
-                nested.insert(0, index);
-                return Some(nested);
-            }
+        if matches!(field.dtype(), DataType::Struct(_))
+            && let Some(mut nested) = member_path(message, field.fields(), tag)
+        {
+            nested.insert(0, index);
+            return Some(nested);
         }
     }
     None
@@ -1746,7 +1781,7 @@ fn build_book_operation(
             .as_deref()
             .map(SmolStr::new)
             .or_else(|| event.get_ticker().map(SmolStr::new));
-        event.set_ticker(ticker);
+        event.set_ticker(ticker, true);
         let mut crosscode = scope.clone();
         push_scope(&mut crosscode, "BookSnapshot", "empty");
         event.set_crosscode(crosscode);
@@ -1855,7 +1890,7 @@ fn build_book_operation(
     if let Some(instant) = entry_unix(entry, unix, &at) {
         if msgtype == "W" {
             if matches!(kind, Direct::Execution) {
-                event.set_execunix(Some(instant));
+                event.set_execunix(Some(instant), true);
             } else {
                 event.set_creaunix(Some(instant));
             }
@@ -1863,7 +1898,7 @@ fn build_book_operation(
             event.set_currunix(instant);
         }
         if msgtype != "W" && matches!(kind, Direct::Execution) {
-            event.set_execunix(Some(instant));
+            event.set_execunix(Some(instant), true);
         }
     }
     let scope = book_scope(&entry.facts, &event);
@@ -1892,11 +1927,11 @@ fn build_book_operation(
 
     // The entry's MDEntryPx(270), MDEntrySpotRate(1026) and
     // MDEntryForwardPoints(1027), each as stated.
-    event.set_price(price);
-    event.set_quantity(entry.size);
-    event.set_spotrate(entry.spotrate);
-    event.set_forwardpoints(entry.forwardpoints);
-    event.set_side(side);
+    event.set_price(price, true);
+    event.set_quantity(entry.size, true);
+    event.set_spotrate(entry.spotrate, true);
+    event.set_forwardpoints(entry.forwardpoints, true);
+    event.set_side(side, true);
     event.set_state(state);
     let ticker = entry
         .facts
@@ -1904,7 +1939,7 @@ fn build_book_operation(
         .as_deref()
         .map(SmolStr::new)
         .or_else(|| event.get_ticker().map(SmolStr::new));
-    event.set_ticker(ticker);
+    event.set_ticker(ticker, true);
     event.set_crosscode(crosscode);
 
     // The entry's own and referenced identifiers and the order it names are
@@ -1913,14 +1948,16 @@ fn build_book_operation(
     for (key, value) in [
         (ENTRY_ID, entry.facts.entry_id.as_deref()),
         (ENTRY_REF_ID, entry.facts.entry_ref_id.as_deref()),
-        ("ORDERID", entry.facts.order_id.as_deref()),
+        (IdType::OrderId, entry.facts.order_id.as_deref()),
     ] {
         if let Some(value) = value {
-            let _ = event.remove_altid(key);
-            if let Err(error) = event.insert_altid(key, value) {
+            let _ = event.remove_identifier(&IdSource::Fix, &key);
+            if let Err(error) = Identifier::new(IdSource::Fix, key.clone(), value)
+                .and_then(|id| event.insert_identifier(id))
+            {
                 warned!(
                     "FIX book entry identifier not kept: the operation's identifiers refuse it",
-                    key,
+                    key.as_str(),
                     "{} states {key} {value:?}: {error}",
                     place()
                 );
@@ -1949,8 +1986,8 @@ fn build_book_operation(
     // The entry's own parties lead the message's, as a trade side's do.
     if !entry.accounts.is_empty() {
         let mut accounts = entry.accounts.clone();
-        accounts.merge(event.get_accountids());
-        let _ = event.set_accountids(accounts);
+        accounts.merge(event.get_partyids());
+        let _ = event.set_partyids(accounts, true);
     }
     carry(&mut event, carried, true);
     Some(operation(kind, event, Some(book)))
@@ -2008,8 +2045,8 @@ fn book_scope<E: Market + ?Sized>(facts: &Facts, event: &E) -> String {
         .symbol
         .as_deref()
         .or_else(|| event.get_ticker())
-        .or_else(|| ids.get("ISIN"))
-        .or_else(|| ids.get("FOREX"))
+        .or_else(|| ids.get(&IdType::Isin))
+        .or_else(|| ids.get(&IdType::Forex))
     {
         Some(symbol) => symbol,
         None => {

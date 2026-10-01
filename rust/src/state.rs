@@ -1,4 +1,4 @@
-//! What state one thing is in: a lifecycle-sorted enum, stored as an `int32`.
+//! What state one thing is in: a lifecycle-sorted enum, stored as a `uint16`.
 
 use std::sync::LazyLock;
 
@@ -22,7 +22,7 @@ enum_leaf! {
     ///
     /// # The code is the rank
     ///
-    /// A state is stored as the `int32` code of its member, and the
+    /// A state is stored as the `uint16` code of its member, and the
     /// hundreds of the code are its rank, so the stored integers sort
     /// from the first state to the terminal ones in every format the
     /// column crosses - a Parquet row group's min and max, an Iceberg
@@ -72,7 +72,7 @@ enum_leaf! {
     /// assert!(State::Rejected.is_failed());
     /// ```
     #[non_exhaustive]
-    pub enum State: i32, kind = "state", extension = STATE_EXTENSION_NAME {
+    pub enum State: u16, kind = "state", extension = STATE_EXTENSION_NAME, aliases = state_aliases {
         #[default]
         Unknown = 0 as "UNKNOWN": "Stated, but not a state anything reached; every other state is further along than it.",
         Pending = 1000 as "PENDING": "Asked for, with nothing more said.",
@@ -241,6 +241,23 @@ impl State {
     /// **not** fold, because `A` and `a` are different codes in FIX and a
     /// folded lookup would answer the wrong state for one of them. A stored
     /// code is an integer, never text: `State::from_code` reads it.
+    ///
+    /// A spelling none of them names reads by its words: `Part-Filled`,
+    /// `partial fill`, `ORDER FILLED` and `partfilled` are the words of
+    /// `PARTIALLY_FILLED` or `FILLED` once each is read as the word it
+    /// abbreviates or inflects (`cxl`, `rej`, `pend`) and the words that say
+    /// nothing (`order`, `status`, `fully`) are dropped. Words two states
+    /// share name neither, a word no name uses names nothing, and a spelling
+    /// read this way is kept, so a column repeating it reads it once.
+    ///
+    /// ```
+    /// use yggdryl::State;
+    ///
+    /// assert_eq!(State::from_spelling("order fill"), Some(State::Filled));
+    /// assert_eq!(State::from_spelling("Part-Filled"), Some(State::PartiallyFilled));
+    /// assert_eq!(State::from_spelling("pending cxl"), Some(State::PendingCancel));
+    /// assert_eq!(State::from_spelling("partially frobnicated"), None);
+    /// ```
     #[must_use]
     pub fn from_spelling(spelling: &str) -> Option<Self> {
         if let Some(held) = Self::from_name(spelling) {
@@ -260,6 +277,7 @@ impl State {
             .chain(STATE_NAMES.iter().copied())
             .find(|(name, _)| *name == folded.as_str())
             .map(|(_, state)| state)
+            .or_else(|| Self::from_pattern(spelling))
     }
 
     /// The state one FIX status field's code names, or `None` where the tag
@@ -526,7 +544,13 @@ static STATE_NAMES: &[(&str, State)] = &[
     ("triggeredoractivatedbysystem", State::Triggered),
 ];
 
-/// The Arrow extension name of a thing's state, over `int32` storage.
+/// The names a state goes by beside its stored one, which its spelling
+/// patterns read the words of.
+fn state_aliases() -> Vec<(&'static str, State)> {
+    STATE_NAMES.to_vec()
+}
+
+/// The Arrow extension name of a thing's state, over `uint16` storage.
 pub(crate) const STATE_EXTENSION_NAME: &str = "yggdryl.state";
 
 // /// A field declared as a thing's state.

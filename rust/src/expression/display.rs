@@ -423,10 +423,10 @@ pub(super) fn write_literal(formatter: &mut fmt::Formatter<'_>, held: &Literal) 
     let value = held.value();
     // Text is the one bare spelling that is not a word: it prints as the
     // quoted literal the grammar reads back as `utf8`.
-    if *dtype == DataType::utf8() {
-        if let Some(text) = value.as_str() {
-            return write_text_literal(formatter, text);
-        }
+    if *dtype == DataType::utf8()
+        && let Some(text) = value.as_str()
+    {
+        return write_text_literal(formatter, text);
     }
     if let Some(bare) = bare_literal(dtype, value) {
         return formatter.write_str(&bare);

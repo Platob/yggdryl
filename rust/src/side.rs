@@ -1,4 +1,4 @@
-//! FIX's side of a trade: an enum stored as the `int32` code of its member.
+//! FIX's side of a trade: an enum stored as the `uint8` code of its member.
 
 use crate::code::folded_spelling;
 use crate::enums::enum_leaf;
@@ -7,7 +7,7 @@ use crate::typed::define_field_types;
 enum_leaf! {
     /// FIX's `Side(54)`: which side of the market a trade took.
     ///
-    /// One byte in memory, an `int32` code in a column. `Unknown` is zero and
+    /// One byte in memory and in a column, as a `uint8` code. `Unknown` is zero and
     /// the seventeen sides the code set names follow in FIX's own order,
     /// `1`..=`9` then `A`..=`H`, so a code is the position of its wire
     /// character. What [`Self::as_str`] answers and every text format writes
@@ -27,7 +27,7 @@ enum_leaf! {
     /// assert_eq!(Side::SShort.description(), "Sell short.");
     /// assert_eq!(Side::Unknown.merge_with(Side::Sell), Side::Sell);
     /// ```
-    pub enum Side: u8, kind = "side", extension = SIDE_EXTENSION_NAME {
+    pub enum Side: u8, kind = "side", extension = SIDE_EXTENSION_NAME, aliases = side_aliases {
         #[default]
         Unknown = 0 as "UNKN": "A side stated as none, which a merge takes the other side over.",
         Buy = 1 as "BUYS": "Buy.",
@@ -178,7 +178,14 @@ impl Side {
             .iter()
             .find(|(name, _)| *name == folded.as_str())
             .map(|(_, side)| *side)
+            .or_else(|| Self::from_pattern(spelling))
     }
+}
+
+/// The names a side goes by beside its code, which its spelling patterns
+/// read the words of.
+fn side_aliases() -> Vec<(&'static str, Side)> {
+    SIDE_NAMES.to_vec()
 }
 
 /// FIX's `Side(54)` wire codes, unfolded, and the side each names.
@@ -250,7 +257,7 @@ static SIDE_NAMES: &[(&str, Side)] = &[
     ("unknown", Side::Unknown),
 ];
 
-/// The Arrow extension name of FIX's side of a trade, over `int32` storage.
+/// The Arrow extension name of FIX's side of a trade, over `uint8` storage.
 pub(crate) const SIDE_EXTENSION_NAME: &str = "yggdryl.side";
 
 // /// A side-typed field: FIX's side of a trade.

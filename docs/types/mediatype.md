@@ -279,12 +279,12 @@ cell on the way in.
     from yggdryl import Field, Serie
 
     for field, extension in (
-        (yggdryl.mimetype("held"), b"yggdryl.mimetype"),
-        (yggdryl.mediatype("held"), b"yggdryl.mediatype"),
+        (yggdryl.mimetype("held"), "yggdryl.mimetype"),
+        (yggdryl.mediatype("held"), "yggdryl.mediatype"),
     ):
         arrow = field.into_arrow()
-        assert arrow.type == pa.string()
-        assert arrow.metadata[b"ARROW:extension:name"] == extension
+        assert arrow.type.storage_type == pa.string()
+        assert arrow.type.extension_name == extension
         assert Field.from_arrow(arrow) == field
 
     # A cast into the column canonicalizes every cell on the way in.

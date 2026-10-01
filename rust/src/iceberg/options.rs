@@ -394,13 +394,13 @@ impl IcebergOptions {
     /// Returns a typed error naming the key when the folder is not local;
     /// the value is unchanged.
     pub fn set_write_staging(&mut self, staging: WriteStaging) -> Result<()> {
-        if let Some(url) = staging.folder() {
-            if !url.is_local() {
-                return Err(Error::InvalidMetadataValue {
-                    key: SmolStr::new_static(Self::WRITE_STAGING_KEY),
-                    reason: format_smolstr!("expected off or a local folder, got {url}"),
-                });
-            }
+        if let Some(url) = staging.folder()
+            && !url.is_local()
+        {
+            return Err(Error::InvalidMetadataValue {
+                key: SmolStr::new_static(Self::WRITE_STAGING_KEY),
+                reason: format_smolstr!("expected off or a local folder, got {url}"),
+            });
         }
         self.write_staging = Some(staging);
         Ok(())

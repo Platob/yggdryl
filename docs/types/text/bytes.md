@@ -332,11 +332,10 @@ storage it does not describe imports as that storage.
     assert yggdryl.fixed_size_binary("digest", 16).into_arrow().type == pa.binary(16)
 
     capped = Field("blob", "binary(16)").into_arrow()
-    assert capped.type == pa.binary()
-    assert capped.metadata == {
-        b"ARROW:extension:name": b"yggdryl.bytes",
-        b"ARROW:extension:metadata": b'{"layout":"sized_binary","max":16}',
-    }
+    assert capped.type.storage_type == pa.binary()
+    assert capped.type.extension_name == "yggdryl.bytes"
+    assert capped.type.document == b'{"layout":"sized_binary","max":16}'
+    assert not capped.metadata
     assert Field.from_arrow(capped) == Field("blob", "binary(16)")
     ```
 

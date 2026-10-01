@@ -296,16 +296,16 @@ fn data_end(
     let stated = stated
         .and_then(|value| std::str::from_utf8(value).ok())
         .and_then(|text| text.parse::<usize>().ok());
-    if let Some(span) = stated.and_then(|length| opens.checked_add(length)) {
-        if cut_at(entry, &entries[after..], span) {
-            let next = entries[after..]
-                .iter()
-                .find(|held| held.key_bytes().start() as usize >= span);
-            match next {
-                None => return Some(span),
-                Some(held) if tag_keyed(held) && !held.key().is_empty() => return Some(span),
-                _ => {}
-            }
+    if let Some(span) = stated.and_then(|length| opens.checked_add(length))
+        && cut_at(entry, &entries[after..], span)
+    {
+        let next = entries[after..]
+            .iter()
+            .find(|held| held.key_bytes().start() as usize >= span);
+        match next {
+            None => return Some(span),
+            Some(held) if tag_keyed(held) && !held.key().is_empty() => return Some(span),
+            _ => {}
         }
     }
     if !xml {
@@ -433,17 +433,19 @@ impl CaptureRole {
     /// A capture named for the capture's own column - `sourceurl` - is
     /// silent: what a reader says about a line is not something the message
     /// it holds says, so it fills no field here and is stated on the row by
-    /// whoever read it. A capture named for one of the fifteen event columns
-    /// is silent too: it is the line's own fact - the place, the state, the
-    /// instant the line reads off it - and the line states its identity as
-    /// the message's source, which is all a line says about a message; the
-    /// batch door reads a carrier's event columns the same way.
+    /// whoever read it. A capture named for one of the element or event
+    /// columns is silent too: it is the line's own fact - the place, the
+    /// state, the instant the line reads off it - and the line states its
+    /// identity as the message's source, which is all a line says about a
+    /// message; the batch door reads a carrier's columns the same way.
     fn of(name: &str, codec: &FixCodec) -> Self {
         let is = |known: &str| crate::folds_equal(known, name);
         if is(BEGINSTRING_COLUMN) {
             return Self::Version;
         }
-        if crate::graph::EventColumn::of_name(name).is_some() {
+        if crate::graph::ElementColumn::of_name(name).is_some()
+            || crate::graph::EventColumn::of_name(name).is_some()
+        {
             return Self::Silent;
         }
         match codec.fill_target(name) {
@@ -1073,7 +1075,7 @@ impl FixCodec {
     /// maps' sources and what a leaf's identifier maps hold - its parties,
     /// its `Account(1)`, its regulatory trade identifiers - as
     /// [`FixMsg::market_data`] states them, a scalar whose key ends with one
-    /// of its message's `FIX:identifiers` lifted into the leaf's `altids`. The map and the
+    /// of its message's `FIX:identifiers` lifted into the leaf's `identifiers`. The map and the
     /// lifted identifiers are part of what a leaf's identity digests, so
     /// turning it off answers other identities for any message stating such
     /// a field, lifts nothing - and changes nothing for a message stating
@@ -2917,17 +2919,17 @@ impl FixCodec {
     /// of its own to lend, and a caller reading an undated row gets the
     /// crate's stated default rather than a guess dressed as a fact.
     fn infer_version(&self, pairs: &[FixPair]) -> Option<Version> {
-        if let Some(value) = value_of(pairs, b"1128") {
-            if let Some(version) = appl_ver_id(&String::from_utf8_lossy(value)) {
-                return Some(version);
-            }
+        if let Some(value) = value_of(pairs, b"1128")
+            && let Some(version) = appl_ver_id(&String::from_utf8_lossy(value))
+        {
+            return Some(version);
         }
         if let Some(value) = value_of(pairs, b"8") {
             let text = String::from_utf8_lossy(value);
-            if let Some(rest) = text.strip_prefix("FIX.") {
-                if let Ok(version) = rest.parse::<Version>() {
-                    return Some(version);
-                }
+            if let Some(rest) = text.strip_prefix("FIX.")
+                && let Ok(version) = rest.parse::<Version>()
+            {
+                return Some(version);
             }
         }
         None
@@ -3175,17 +3177,17 @@ fn frame_arrivals<'entry, T>(
         let mut held = arrival(entry);
         if let Some(tag) = data_tag(held.key()) {
             let xml = tag == XML_DATA_TAG;
-            if let Some(end) = data_end(entry, arrived.last().map(&stated), entries, at, xml) {
-                if let Some(widened) = entry.key_bytes().page().and_then(|page| {
+            if let Some(end) = data_end(entry, arrived.last().map(&stated), entries, at, xml)
+                && let Some(widened) = entry.key_bytes().page().and_then(|page| {
                     TextBytes::from_page(page, entry.key_bytes().end() as usize + 1, end).ok()
-                }) {
-                    held.value = Cow::Owned(widened);
-                    while entries
-                        .get(at)
-                        .is_some_and(|swallowed| (swallowed.key_bytes().start() as usize) < end)
-                    {
-                        at += 1;
-                    }
+                })
+            {
+                held.value = Cow::Owned(widened);
+                while entries
+                    .get(at)
+                    .is_some_and(|swallowed| (swallowed.key_bytes().start() as usize) < end)
+                {
+                    at += 1;
                 }
             }
             // `XmlData` is the field a bridge writes a whole message into,

@@ -244,6 +244,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Side
             | DataType::State
             | DataType::MarketDataKind
+            | DataType::MarketDataType
             | DataType::TimeInForce
             | DataType::Unit
             | DataType::Forex
@@ -362,7 +363,6 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::TimeInForce
         | D::Unit
         | D::Forex => scalar(DefaultPlan::String, false),
         held @ crate::enum_dtypes!() => scalar(DefaultPlan::Enum(held.id()), false),

@@ -1,6 +1,6 @@
 # Unit
 
-The unit a quantity is stated in: FIX `UnitOfMeasure(996)`, held as the text it is - `Shares`, `Bbl`, `MWh` - under its own identity, the way [`timeinforce`](timeinforce.md) holds a wire value rather than a name for it.
+The unit a quantity is stated in: FIX `UnitOfMeasure(996)`, held as the text it is - `Shares`, `Bbl`, `MWh` - under its own identity: a venue's unit is held as stated, never read against a list.
 
 ## Contract
 
@@ -127,7 +127,7 @@ The value is the text under the unit identity, and the width is the whole rule.
     shares = DataType("unit").scalar("Shares")
     assert shares.as_py() == "Shares"
     assert shares.kind == "unit"
-    assert DataType("unit").scalar("Day") != DataType("timeinforce").scalar("Day")
+    assert DataType("unit").scalar("Day") != DataType("ric").scalar("Day")
 
     with pytest.raises(ValueError, match="32 bytes"):
         DataType("unit").scalar("X" * 33)
@@ -171,8 +171,8 @@ The value is the text under the unit identity, and the width is the whole rule.
 
     unit = Field("unit", "unit")
     arrow_field = unit.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.unit"
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.unit"
     assert Field.from_arrow(arrow_field) == unit
     ```
 
@@ -193,7 +193,7 @@ The value is the text under the unit identity, and the width is the whole rule.
 - `at most 32 bytes` is the refusal, whatever the source: a scalar, a cast row, or `ascii_packed`.
 - Nothing gates the value: this code declares no vocabulary, so a unit no standard names is held as it stands.
 - The default value is the empty unit, `Unit::none()`, answered as a `unit` scalar ([Cast](../cast.md#empty-text)).
-- A `unit` and a [`timeinforce`](timeinforce.md) of the same bytes are two values: the identity leads, then the text.
+- A `unit` and a [`ric`](ric.md) of the same bytes are two values: the identity leads, then the text; a [`timeinforce`](../enum/timeinforce.md) is an enum member, another value again.
 - [`merge_with`](index.md#the-code-family-value) keeps this unit unless it is none, in which case the other stands.
 
 ## Commands

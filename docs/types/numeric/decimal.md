@@ -631,8 +631,8 @@ A `decimal` column is `Decimal128(38, 18)` under the `yggdryl.decimal` extension
 
     px = Field("px", "decimal", nullable=False)
     arrow = px.into_arrow()
-    assert arrow.type == pa.decimal128(38, 18)
-    assert arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.decimal"
+    assert arrow.type.storage_type == pa.decimal128(38, 18)
+    assert arrow.type.extension_name == "yggdryl.decimal"
     assert Field.from_arrow(arrow) == px
 
     # Bare storage is the width.
@@ -823,8 +823,8 @@ A `bigdecimal` column is `Decimal256(76, 18)` under `yggdryl.bigdecimal`, bare `
 
     notional = Field("notional", "bigdecimal", nullable=False)
     arrow = notional.into_arrow()
-    assert arrow.type == pa.decimal256(76, 18)
-    assert arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.bigdecimal"
+    assert arrow.type.storage_type == pa.decimal256(76, 18)
+    assert arrow.type.extension_name == "yggdryl.bigdecimal"
     assert Field.from_arrow(arrow) == notional
     ```
 

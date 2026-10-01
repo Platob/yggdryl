@@ -133,13 +133,13 @@ pub(crate) fn parse_document(body: &[u8], source: &str) -> Result<Credentials> {
             .filter(|value| !value.is_empty())
             .map(str::to_owned)
     };
-    if let Some(version) = document.get("Version") {
-        if version.as_i64() != Some(1) {
-            return Err(Error::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("expected Version 1 from {source}, got {version}"),
-            )));
-        }
+    if let Some(version) = document.get("Version")
+        && version.as_i64() != Some(1)
+    {
+        return Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("expected Version 1 from {source}, got {version}"),
+        )));
     }
     let (Some(access_key_id), Some(secret_access_key)) =
         (text("AccessKeyId"), text("SecretAccessKey"))

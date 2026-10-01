@@ -1,47 +1,50 @@
-//! The four columns every operation on the market is stated in, beside the
-//! market's twenty-eight.
+//! The five columns every operation on the market is stated in, beside the
+//! market's thirty-four.
 //!
 //! One column per fact [`Operation`] adds, under one name and one
-//! datatype each: how long it stands, whether it can trade, its alternate
-//! identifiers and the accounts it names, each as a sorted
-//! `map<utf8, utf8>`.
+//! datatype each: what it ordered, how long it stands, whether it can
+//! trade, and its alternate identifiers and the parties it names, each a
+//! serie of [`Identifier`](crate::Identifier) rows.
 
 use super::Operation;
-use super::market_column::tif_of;
-use crate::idmap::IdMap;
+use crate::Identifiers;
 use crate::{DataType, Field, Result, Scalar};
 
 /// One column of the facts every operation on the market answers beside the
 /// market's.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum OperationColumn {
+    /// The quantity the operation ordered.
+    OrdQty,
     /// How long the operation stands.
     TimeInForce,
     /// Whether the instrument can trade.
     Tradable,
-    /// The operation's own identifiers, source key to identifier.
-    AltIds,
-    /// The accounts the operation names, role key to account.
-    AccountIds,
+    /// The operation's own identifiers, each with its lineage.
+    Identifiers,
+    /// The parties the operation names: accounts, traders, firms, users.
+    PartyIds,
 }
 
 impl OperationColumn {
     /// Every operation column in canonical row order.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
+        Self::OrdQty,
         Self::TimeInForce,
         Self::Tradable,
-        Self::AltIds,
-        Self::AccountIds,
+        Self::Identifiers,
+        Self::PartyIds,
     ];
 
     /// The column's name: the fact's, as the traits spell it.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::TimeInForce => "tif",
+            Self::OrdQty => "ordqty",
+            Self::TimeInForce => "timeinforce",
             Self::Tradable => "tradable",
-            Self::AltIds => "altids",
-            Self::AccountIds => "accountids",
+            Self::Identifiers => "identifiers",
+            Self::PartyIds => "partyids",
         }
     }
 
@@ -49,10 +52,11 @@ impl OperationColumn {
     #[must_use]
     pub const fn display(self) -> &'static str {
         match self {
+            Self::OrdQty => "Order Quantity",
             Self::TimeInForce => "Time In Force",
             Self::Tradable => "Tradable",
-            Self::AltIds => "Alternate IDs",
-            Self::AccountIds => "Account IDs",
+            Self::Identifiers => "Identifiers",
+            Self::PartyIds => "Party IDs",
         }
     }
 
@@ -60,9 +64,11 @@ impl OperationColumn {
     #[must_use]
     pub fn datatype(self) -> DataType {
         match self {
+            Self::OrdQty => DataType::Decimal,
             Self::TimeInForce => DataType::TimeInForce,
             Self::Tradable => DataType::Boolean,
-            Self::AltIds | Self::AccountIds => IdMap::dtype(),
+            Self::Identifiers => Identifiers::dtype("identifier"),
+            Self::PartyIds => Identifiers::dtype("partyid"),
         }
     }
 
@@ -105,10 +111,11 @@ impl OperationColumn {
     /// it states none.
     pub fn fact<E: Operation + ?Sized>(self, operation: &E) -> Option<Scalar> {
         match self {
-            Self::TimeInForce => operation.get_tif().cloned().map(Scalar::from),
+            Self::OrdQty => operation.get_ordqty().map(Scalar::from),
+            Self::TimeInForce => operation.get_timeinforce().cloned().map(Scalar::from),
             Self::Tradable => operation.get_tradable().map(Scalar::from),
-            Self::AltIds => map_fact(operation.get_altids()),
-            Self::AccountIds => map_fact(operation.get_accountids()),
+            Self::Identifiers => ids_fact(operation.get_identifiers()),
+            Self::PartyIds => ids_fact(operation.get_partyids()),
         }
     }
 
@@ -116,29 +123,33 @@ impl OperationColumn {
     /// fact, and an incompatible value is ignored.
     pub fn record<E: Operation + ?Sized>(self, operation: &mut E, value: &Scalar) {
         match self {
-            Self::TimeInForce => operation.set_tif(tif_of(value)),
-            Self::Tradable => operation.set_tradable(value.as_bool()),
-            Self::AltIds => {
-                if let Some(ids) = map_of(value) {
-                    let _ = operation.set_altids(ids);
+            Self::OrdQty => operation.set_ordqty(crate::Decimal::from_scalar(value), true),
+            Self::TimeInForce => operation.set_timeinforce(
+                <crate::TimeInForce as crate::EnumValue>::from_scalar_value(value),
+                true,
+            ),
+            Self::Tradable => operation.set_tradable(value.as_bool(), true),
+            Self::Identifiers => {
+                if let Some(ids) = ids_of(value) {
+                    let _ = operation.set_identifiers(ids, true);
                 }
             }
-            Self::AccountIds => {
-                if let Some(ids) = map_of(value) {
-                    let _ = operation.set_accountids(ids);
+            Self::PartyIds => {
+                if let Some(ids) = ids_of(value) {
+                    let _ = operation.set_partyids(ids, true);
                 }
             }
         }
     }
 }
 
-fn map_fact(map: &IdMap) -> Option<Scalar> {
-    (!map.is_empty()).then(|| map.to_scalar())
+fn ids_fact(map: &Identifiers) -> Option<Scalar> {
+    (!map.is_empty()).then(|| map.into_scalar())
 }
 
-fn map_of(value: &Scalar) -> Option<IdMap> {
+fn ids_of(value: &Scalar) -> Option<Identifiers> {
     match value {
-        Scalar::Null => Some(IdMap::new()),
-        other => IdMap::from_scalar(other).ok(),
+        Scalar::Null => Some(Identifiers::new()),
+        other => Identifiers::from_scalar(other).ok(),
     }
 }

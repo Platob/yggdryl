@@ -192,7 +192,7 @@ A Rust struct row is positional; Python and JavaScript key it by name. Asked for
 ## Edges
 
 - Python or JavaScript `Field` with no nullability argument -> nullable, so its default is null.
-- Python registered `ExtensionType` -> rehydrates, never its storage type.
+- Python registered `ExtensionType` -> rehydrates, never its storage type: a caller's own, pyarrow's `arrow.uuid`, and the `yggdryl.*` types `import yggdryl` registers ([extension types](../types/datatype.md#extension-types)), whose defaults are the datatype's own.
 - JavaScript `int64` -> `BigInt` (`0n`).
 - `from_default` with zero rows -> the empty column of the field.
 - `into_arrow_scalar` on anything but one row -> refused, naming the count.

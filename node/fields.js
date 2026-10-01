@@ -248,15 +248,16 @@ function createFields(DataType, Field, native) {
     sedol: simple('sedol'),
     bbg: simple('bbg'),
     figi: simple('figi'),
-    timeinforce: simple('timeinforce'),
     unit: simple('unit'),
     ric: simple('ric'),
     forex: simple('forex'),
-    // Each enum is a datatype of its own, storing the `int32` code of its
-    // member and crossing JavaScript as the member's stored name.
+    // Each enum is a datatype of its own, storing the unsigned integer code
+    // of its member and crossing JavaScript as the member's stored name.
     state: simple('state'),
     marketdatakind: simple('marketdatakind'),
+    marketdatatype: simple('marketdatatype'),
     side: simple('side'),
+    timeinforce: simple('timeinforce'),
 
     serie: serie('serie'),
     serieView: serie('serie_view'),

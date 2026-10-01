@@ -4,18 +4,14 @@
 //! holder answers on its own is pinned through `yggdryl::internals`.
 
 use yggdryl::graph::{Element, Market, Order, OrderEvent, Quote};
-use yggdryl::securityid::{SecType, SecurityId};
+use yggdryl::{IdSource, IdType, Identifier, Identifiers};
 
-/// One security identifier under `key`, validated by its source.
-fn id(key: &str, code: &str) -> SecurityId {
-    SecurityId::new(SecType::read(key).unwrap(), code).unwrap()
+/// One security identifier of `kind` from `base`, validated by its type.
+fn id(kind: IdType, code: &str) -> Identifier {
+    Identifier::new(IdSource::Base, kind, code).unwrap()
 }
 
-fn isin() -> SecType {
-    SecType::read("ISIN").unwrap()
-}
-
-/// Every identifier an element holds, as `KEY:code`, in source order.
+/// Every identifier an element holds, as `src:type=code`, in key order.
 fn ids(element: &impl Market) -> Vec<String> {
     element
         .get_securityids()
@@ -43,29 +39,71 @@ fn an_undated_leaf_digests_its_kind_behind_its_holder() {
 #[test]
 fn replacing_the_isin_takes_back_what_the_old_one_implied() {
     let mut order = OrderEvent::at(1);
-    order.insert_securityid(id("ISIN", "US0378331005")).unwrap();
+    order
+        .insert_securityid(id(IdType::Isin, "US0378331005"))
+        .unwrap();
     order.finalize();
-    assert_eq!(ids(&order), ["CUSIP:037833100", "ISIN:US0378331005"]);
+    assert_eq!(
+        ids(&order),
+        ["base:isin=US0378331005", "derived:cusip=037833100"]
+    );
 
-    assert!(order.remove_securityid(&isin()).unwrap());
+    assert!(
+        order
+            .remove_securityid(&IdSource::Base, &IdType::Isin)
+            .unwrap()
+    );
     assert!(ids(&order).is_empty());
-    order.insert_securityid(id("ISIN", "GB0002634946")).unwrap();
+    order
+        .insert_securityid(id(IdType::Isin, "GB0002634946"))
+        .unwrap();
     order.finalize();
-    assert_eq!(ids(&order), ["ISIN:GB0002634946", "SEDOL:0263494"]);
+    assert_eq!(
+        ids(&order),
+        ["base:isin=GB0002634946", "derived:sedol=0263494"]
+    );
 
-    // Replacing the whole set states every identifier in it.
+    // Replacing the whole set holds each identifier under the source it
+    // carries: what it carries as derived stays derived, so the ISIN still
+    // takes it back, and what it carries as stated outlives the ISIN.
     let mut replaced = OrderEvent::at(1);
     replaced
-        .insert_securityid(id("ISIN", "US0378331005"))
+        .insert_securityid(id(IdType::Isin, "US0378331005"))
         .unwrap();
     replaced.finalize();
     replaced
-        .set_securityids(order.get_securityids().clone())
+        .set_securityids(order.get_securityids().clone(), true)
         .unwrap();
     replaced.finalize();
-    assert_eq!(ids(&replaced), ["ISIN:GB0002634946", "SEDOL:0263494"]);
-    assert!(replaced.remove_securityid(&isin()).unwrap());
-    assert_eq!(ids(&replaced), ["SEDOL:0263494"]);
+    assert_eq!(
+        ids(&replaced),
+        ["base:isin=GB0002634946", "derived:sedol=0263494"]
+    );
+    assert!(
+        replaced
+            .remove_securityid(&IdSource::Base, &IdType::Isin)
+            .unwrap()
+    );
+    assert!(ids(&replaced).is_empty());
+
+    let stated: Identifiers = [
+        id(IdType::Isin, "GB0002634946"),
+        id(IdType::Sedol, "0263494"),
+    ]
+    .into_iter()
+    .collect();
+    replaced.set_securityids(stated, true).unwrap();
+    replaced.finalize();
+    assert_eq!(
+        ids(&replaced),
+        ["base:isin=GB0002634946", "base:sedol=0263494"]
+    );
+    assert!(
+        replaced
+            .remove_securityid(&IdSource::Base, &IdType::Isin)
+            .unwrap()
+    );
+    assert_eq!(ids(&replaced), ["base:sedol=0263494"]);
 }
 
 /// A stated identifier replaces one the element only derived, and nothing
@@ -74,40 +112,68 @@ fn replacing_the_isin_takes_back_what_the_old_one_implied() {
 #[test]
 fn a_stated_identifier_replaces_a_derived_one_and_outlives_the_isin() {
     let mut order = Order::new();
-    order.insert_securityid(id("ISIN", "US0378331005")).unwrap();
+    order
+        .insert_securityid(id(IdType::Isin, "US0378331005"))
+        .unwrap();
     order.finalize();
-    assert!(order.insert_securityid(id("CUSIP", "594918104")).unwrap());
+    assert!(
+        order
+            .insert_securityid(id(IdType::Cusip, "594918104"))
+            .unwrap()
+    );
     order.finalize();
-    assert_eq!(order.get_securityids().get("CUSIP"), Some("594918104"));
-    assert!(!order.insert_securityid(id("CUSIP", "037833100")).unwrap());
-    assert!(!order.derive_securityid(id("CUSIP", "037833100")));
+    assert_eq!(
+        order.get_securityids().get(&IdType::Cusip),
+        Some("594918104")
+    );
+    assert!(
+        !order
+            .insert_securityid(id(IdType::Cusip, "037833100"))
+            .unwrap()
+    );
+    assert!(!order.derive_securityid(&IdType::Cusip, "037833100"));
 
-    assert!(order.remove_securityid(&isin()).unwrap());
-    assert_eq!(ids(&order), ["CUSIP:594918104"]);
+    assert!(
+        order
+            .remove_securityid(&IdSource::Base, &IdType::Isin)
+            .unwrap()
+    );
+    assert_eq!(ids(&order), ["base:cusip=594918104"]);
 }
 
-/// A RIC is kept as it is written, case and all, under FIX's source `5`; one
-/// a lifecycle learned is derived like any other source, so a stated RIC
-/// replaces it and the ISIN it was learned under takes it back.
+/// A RIC is kept as it is written, case and all, under the type FIX's source
+/// `5` reads as; one a lifecycle learned is derived like any other source, so
+/// a stated RIC replaces it and the ISIN it was learned under takes it back.
 #[test]
 fn a_ric_is_held_as_written_and_derived_like_any_source() {
     let mut quote = Quote::new();
-    assert!(quote.insert_securityid(id("RIC", "ESc1")).unwrap());
+    assert!(quote.insert_securityid(id(IdType::Ric, "ESc1")).unwrap());
     quote.finalize();
-    assert_eq!(quote.get_securityids().get("5"), Some("ESc1"));
-    assert!(SecurityId::new(SecType::read("RIC").unwrap(), "ESc 1").is_err());
+    assert_eq!(quote.get_securityids().get(&IdType::Ric), Some("ESc1"));
+    assert_eq!(IdType::from_security_source("5").unwrap(), IdType::Ric);
+    assert!(Identifier::new(IdSource::Base, IdType::Ric, "ESc 1").is_err());
 
     let mut order = Order::new();
-    order.insert_securityid(id("ISIN", "GB0002634946")).unwrap();
-    assert!(order.derive_securityid(id("RIC", "BAES.L")));
+    order
+        .insert_securityid(id(IdType::Isin, "GB0002634946"))
+        .unwrap();
+    assert!(order.derive_securityid(&IdType::Ric, "BAES.L"));
     order.finalize();
     assert_eq!(
         ids(&order),
-        ["ISIN:GB0002634946", "RIC:BAES.L", "SEDOL:0263494"]
+        [
+            "base:isin=GB0002634946",
+            "derived:ric=BAES.L",
+            "derived:sedol=0263494"
+        ]
     );
-    assert!(order.insert_securityid(id("RIC", "BAES.L")).unwrap());
-    assert!(order.remove_securityid(&isin()).unwrap());
-    assert_eq!(ids(&order), ["RIC:BAES.L"]);
+    assert!(order.insert_securityid(id(IdType::Ric, "BAES.L")).unwrap());
+    assert!(
+        order
+            .remove_securityid(&IdSource::Base, &IdType::Isin)
+            .unwrap()
+    );
+    assert_eq!(ids(&order), ["base:ric=BAES.L"]);
 }
 
 #[cfg(feature = "internals")]
@@ -155,11 +221,22 @@ mod internal {
     /// `Option<i64>` of sixteen moved from the dated holder into the market
     /// facts, so those grew to 688 and the undated operation holder to
     /// 688 + 136 = 824, padded to 832, while the dated holders kept 832 and
-    /// 976 - the same facts, one of them held one level down. A moved number
-    /// is a design answer, never a number to re-pin from a whole run.
+    /// 976 - the same facts, one of them held one level down. They moved
+    /// again when the time in force became an enum: a one-byte member where
+    /// a twenty-four-byte optional code stood, so the operation's own facts
+    /// fell from 136 bytes to 128 and the two operation holders are
+    /// 688 + 128 = 816 and 832 + 128 = 960. They moved again when the
+    /// identifiers became `Identifiers`, one sorted vector of 24 bytes each.
+    /// Each market holder gave up a 56-byte `SecurityIds` and its eight-byte
+    /// derived mask - the source is the identifier's own now - for one set,
+    /// 64 - 24 = 40 fewer, 32 after padding to sixteen, so 656 and 800; the
+    /// operation's own facts gave up two 56-byte `IdMap`s for two sets,
+    /// exactly 2 * (56 - 24) = 64 fewer, from 128 to 64, so the two
+    /// operation holders are 656 + 64 = 720 and 800 + 64 = 864. A moved
+    /// number is a design answer, never a number to re-pin from a whole run.
     #[test]
     fn the_holders_are_the_sizes_the_build_reported_when_first_pinned() {
-        assert_eq!(graph_facts::sizes(), [688, 832, 832, 976]);
+        assert_eq!(graph_facts::sizes(), [656, 800, 720, 864]);
     }
 
     /// An undated holder's identity is RFC 9562 UUIDv8 over the code it

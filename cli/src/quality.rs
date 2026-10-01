@@ -120,15 +120,15 @@ pub fn check(registry: &FixRegistry) -> Report {
 
             // The set a field names has to be one the dictionary holds, or
             // every value of that field resolves to nothing.
-            if let Some(set) = view.codeset() {
-                if registry.get_codeset(set).is_none() {
-                    report.findings.push(Finding {
-                        level: Level::Fail,
-                        check: "codes",
-                        subject: named.clone(),
-                        detail: format!("reads by {set:?}, which this dictionary does not hold"),
-                    });
-                }
+            if let Some(set) = view.codeset()
+                && registry.get_codeset(set).is_none()
+            {
+                report.findings.push(Finding {
+                    level: Level::Fail,
+                    check: "codes",
+                    subject: named.clone(),
+                    detail: format!("reads by {set:?}, which this dictionary does not hold"),
+                });
             }
             // Only a group is read item by item; a field whose value is a
             // serie of scalars - the crate's own `srcuuids` - is not one.

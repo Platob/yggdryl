@@ -589,6 +589,13 @@ pub struct FixRegistry {
     /// Every field's `FIX:idmap`, read once on the first settle and
     /// forgotten with the memo.
     idmap_sources: OnceLock<Vec<(i32, super::FixIdSource)>>,
+    /// Every field's `FIX:parents`, under the identifier type the field
+    /// states, read once and forgotten with the memo.
+    parents: OnceLock<Vec<(crate::IdType, Box<[crate::IdType]>)>>,
+    /// Every field's `FIX:marketdatatype` pairs, read once.
+    marketdatatypes: OnceLock<Vec<(i32, SmolStr, crate::MarketDataType)>>,
+    /// Every wire value a field maps to a time in force, read once.
+    timeinforces: OnceLock<Vec<(i32, SmolStr, crate::TimeInForce)>>,
     /// The fields a fold renamed since the catalog last resolved - a field
     /// named by nothing but its tag that learnt what a source calls it - by
     /// the identity they held, so the members reading them under it are
@@ -660,6 +667,9 @@ impl FixRegistry {
             forex: super::forex::FxMemo::new(),
             lifted_names: OnceLock::new(),
             idmap_sources: OnceLock::new(),
+            parents: OnceLock::new(),
+            marketdatatypes: OnceLock::new(),
+            timeinforces: OnceLock::new(),
         };
         if let Some(document) = super::crated::msgcat_codeset() {
             registry.codesets.insert(
@@ -673,9 +683,25 @@ impl FixRegistry {
                 document,
             );
         }
+        if let Some(document) = super::crated::marketdatatype_codeset() {
+            registry.codesets.insert(
+                SmolStr::new_static(super::crated::MARKETDATATYPE_CODESET_NAME),
+                document,
+            );
+        }
         match super::fix_crate_fields() {
             Ok(fields) => {
-                for field in fields {
+                // A derived column is the fixed row's, never a field a
+                // message states, so no registry files it.
+                let registered = fields.iter().filter(|field| {
+                    !field
+                        .as_fix()
+                        .tag()
+                        .ok()
+                        .flatten()
+                        .is_some_and(super::crated::is_derived_tag)
+                });
+                for field in registered {
                     let category = super::catalog::definition_category(field)
                         .unwrap_or(crate::FixCategory::Fields);
                     if let Err(error) = registry.insert_definition(category, field.clone()) {
@@ -899,15 +925,14 @@ impl FixRegistry {
     pub fn get_field_by_path(&self, path: &FieldPath) -> Option<&Field> {
         let (head, rest) = path.segments().split_first()?;
         let head = segment_name(head)?;
-        if rest.is_empty() {
-            if let Some(field) = self
+        if rest.is_empty()
+            && let Some(field) = self
                 .get_message_field_by_name(head)
                 // A canonical Map suppresses scalar aliases, but still
                 // shares the named-root ambiguity check with components.
                 .filter(|field| !matches!(field.dtype(), crate::DataType::Map(_) | crate::DataType::SortedMap(_)))
-            {
-                return Some(field);
-            }
+        {
+            return Some(field);
         }
         let mut roots = [crate::FixCategory::Components, crate::FixCategory::Groups]
             .into_iter()
@@ -998,11 +1023,21 @@ impl FixRegistry {
         if self.position_of_identity(&field)?.is_some() {
             let mut staged = self.clone();
             let prior = staged.insert_resolved(field, References::Refresh)?;
+            if staged.state_parents() {
+                staged.refresh_references()?;
+            }
             staged.validate_catalog()?;
             *self = staged;
             return Ok(prior);
         }
-        self.insert_resolved(field, References::Refresh)
+        let (_, id) = canonical_identity(&field)?;
+        let prior = self.insert_resolved(field, References::Refresh)?;
+        if let Some(at) = self.canonical_position_by_id(id)
+            && self.state_parents_around(at)
+        {
+            self.refresh_references()?;
+        }
+        Ok(prior)
     }
 
     fn insert_resolved(
@@ -1043,6 +1078,9 @@ impl FixRegistry {
         }
         let mut staged = self.clone();
         staged.update_resolved(field, References::Refresh)?;
+        if staged.state_parents() {
+            staged.refresh_references()?;
+        }
         staged.validate_catalog()?;
         *self = staged;
         Ok(())
@@ -1341,6 +1379,7 @@ impl FixRegistry {
         }
         let mut staged = self.clone();
         let added = staged.fold_scalar(field)?.unwrap_or(false);
+        staged.state_parents();
         staged.refresh_references()?;
         staged.validate_catalog()?;
         *self = staged;
@@ -1395,6 +1434,7 @@ impl FixRegistry {
     {
         let mut staged = self.clone();
         let counts = staged.fold(fields)?;
+        staged.state_parents();
         staged.refresh_references()?;
         staged.validate_catalog()?;
         *self = staged;
@@ -1530,6 +1570,7 @@ impl FixRegistry {
     fn fold_registry(&mut self, other: &Self) -> Result<FixMerge> {
         let mut documents = self.documents()?;
         let merge = self.fold_source(other, &mut documents)?;
+        self.state_parents();
         self.settle(documents)?;
         Ok(merge)
     }
@@ -1779,6 +1820,7 @@ impl FixRegistry {
             merge.absorb(folded.located(handle));
         }
         // One resolution for every file, whatever the count.
+        staged.state_parents();
         staged.settle(documents)?;
         *self = staged;
         log::debug!(
@@ -1892,10 +1934,32 @@ impl FixRegistry {
             return Ok(Route::Beside);
         }
         // A held name under another tag is the same field spelled with
-        // another number.
-        Ok(self
-            .position_by_name(field.name())
-            .map_or(Route::New, Route::Named))
+        // another number - save the other spelling a parent field was only
+        // inferred to answer to, which a field of that name and of another
+        // identifier type replaces ([`Self::reconcile_parents`]).
+        Ok(match self.position_by_name(field.name()) {
+            Some(holder) if self.is_inferred_spelling(holder, field) => Route::New,
+            Some(holder) => Route::Named(holder),
+            None => Route::New,
+        })
+    }
+
+    /// Whether `field`'s name reaches the field at `holder` only as the
+    /// other spelling of the holder's parent type, while naming another
+    /// identifier type: `ParentOrderID` reaching `OrigOrderID`, never
+    /// `ParentClOrdID` reaching `OrigClOrdID`, one type spelled two ways.
+    fn is_inferred_spelling(&self, holder: usize, field: &Field) -> bool {
+        if self.canonical_position_by_name(field.name()).is_some() {
+            return false;
+        }
+        let Some(held) = self.fields.get(holder).and_then(identifier_type) else {
+            return false;
+        };
+        let Some(arriving) = identifier_type(field) else {
+            return false;
+        };
+        arriving != held
+            && other_spelling(&held).is_some_and(|spelling| spelling == arriving.as_str())
     }
 
     /// Folds `field` where [`Self::route`] landed it: `None` when it was this
@@ -1960,6 +2024,9 @@ impl FixRegistry {
         self.unindex(position, position);
         self.lifted_names.take();
         self.idmap_sources.take();
+        self.parents.take();
+        self.marketdatatypes.take();
+        self.timeinforces.take();
         // The field departing may be the last, which `index` never touches
         // again: the memo forgets what it answered for it here.
         self.memo.clear();
@@ -1972,17 +2039,15 @@ impl FixRegistry {
         // The tag the departed field answered passes to the next field
         // holding it canonically, if any does - the earliest arrival among
         // them, which then moves to the front of its tag in the order.
-        if let Some((tag, _)) = departed {
-            if !self.tags.contains_key(&tag) {
-                if let Some(next) = self
-                    .identities
-                    .iter()
-                    .position(|held| held.is_some_and(|(held, _)| held == tag))
-                {
-                    self.tags.insert(tag, next);
-                    self.reorder();
-                }
-            }
+        if let Some((tag, _)) = departed
+            && !self.tags.contains_key(&tag)
+            && let Some(next) = self
+                .identities
+                .iter()
+                .position(|held| held.is_some_and(|(held, _)| held == tag))
+        {
+            self.tags.insert(tag, next);
+            self.reorder();
         }
         Some(removed)
     }
@@ -2177,12 +2242,11 @@ impl FixRegistry {
             return self.facts.get(at).copied().flatten();
         }
         let storage = field.as_metadata().storage_address();
-        if let Some(position) = self.by_metadata.get(&storage).copied() {
-            if let Some(held) = self.fields.get(position) {
-                if held.as_metadata().shares_storage_with(field.as_metadata()) {
-                    return self.facts.get(position).copied().flatten();
-                }
-            }
+        if let Some(position) = self.by_metadata.get(&storage).copied()
+            && let Some(held) = self.fields.get(position)
+            && held.as_metadata().shares_storage_with(field.as_metadata())
+        {
+            return self.facts.get(position).copied().flatten();
         }
         self.catalog.facts_of(field)
     }
@@ -2261,6 +2325,9 @@ impl FixRegistry {
         // them is forgotten here too.
         self.lifted_names.take();
         self.idmap_sources.take();
+        self.parents.take();
+        self.marketdatatypes.take();
+        self.timeinforces.take();
         self.memo.clear();
         let Some(field) = self.fields.get(position) else {
             return;
@@ -2396,6 +2463,9 @@ impl FixRegistry {
     pub(super) fn forget_answers(&mut self) {
         self.lifted_names.take();
         self.idmap_sources.take();
+        self.parents.take();
+        self.marketdatatypes.take();
+        self.timeinforces.take();
         self.memo.clear();
     }
 
@@ -2407,14 +2477,14 @@ impl FixRegistry {
     /// The identifier-map sources the dictionary states, field by field in
     /// iteration order: each the tag of the field whose value names a
     /// message and the [`FIX:idmap`](crate::FixField::idmap) entry saying in
-    /// which map and under which key. A message rebuilds its `altids`
+    /// which map and under which key. A message rebuilds its `identifiers`
     /// from these at every settle, and an operation that follows another
     /// carries the keys whose entry follows. Compiled once and forgotten by every change to the
     /// fields.
     ///
     /// ```
-    /// use yggdryl::FixRegistry;
     /// use yggdryl::fix::FixIdMapKind;
+    /// use yggdryl::{FixRegistry, IdType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let registry = FixRegistry::from_handle(&yggdryl::local::LocalFolder::new(
@@ -2423,9 +2493,9 @@ impl FixRegistry {
     /// let (tag, order) = registry
     ///     .idmap_sources()
     ///     .iter()
-    ///     .find(|(_, source)| source.key() == "ORDERID")
+    ///     .find(|(_, source)| source.key() == &IdType::OrderId)
     ///     .expect("OrderID names the order");
-    /// assert_eq!((*tag, order.map(), order.follows()), (37, FixIdMapKind::Alts, true));
+    /// assert_eq!((*tag, order.map(), order.follows()), (37, FixIdMapKind::Identifiers, true));
     /// # Ok(())
     /// # }
     /// ```
@@ -2444,6 +2514,381 @@ impl FixRegistry {
                 })
                 .collect()
         })
+    }
+
+    /// Every parents list this dictionary's fields state under
+    /// `FIX:parents`, each under the identifier type its field states - the
+    /// field's identifier-map key, else its own name - read once and
+    /// forgotten by every change to the fields.
+    ///
+    /// A dictionary states what its own field names imply: wherever fields
+    /// arrive - a store loading, a field inserted, updated or added, a
+    /// dictionary or a `CBlock` merged - a field named as another's parent
+    /// (`parent` or `orig` before that field's name, as
+    /// [`IdType::parent_of`](crate::IdType::parent_of) reads it) is listed
+    /// among that field's `FIX:parents`, a `parent` type before an `orig`
+    /// one, beside what the field already states; a field that is its
+    /// base's only parent also answers to its other spelling - `OrigClOrdID`
+    /// to `parentclordid` - until a field of that name arrives. So `OrigClOrdID(41)` makes
+    /// `ClOrdID(11)`'s parents `origclordid`, `OrigTradeID(1126)`
+    /// `TradeID(1003)`'s `origtradeid`, and an identifier no field is a
+    /// parent of keeps the parents its name has
+    /// ([`IdType::parents`](crate::IdType::parents)).
+    ///
+    /// ```
+    /// use yggdryl::{FixRegistry, IdType};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let registry = FixRegistry::from_handle(&yggdryl::local::LocalFolder::new(
+    ///     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix"),
+    /// )?)?;
+    /// let clordid = registry.parent_sources().iter().find(|(base, _)| *base == IdType::ClOrdId);
+    /// assert_eq!(clordid.map(|(_, parents)| parents.as_ref()), Some([IdType::OrigClOrdId].as_slice()));
+    /// let parents = |base: IdType| -> Vec<String> {
+    ///     registry.parents_of(&base).iter().map(ToString::to_string).collect()
+    /// };
+    /// assert_eq!(parents(IdType::TradeId), ["origtradeid"], "OrigTradeID(1126)");
+    /// assert_eq!(parents(IdType::OrderId), ["parentorderid", "origorderid"], "no field: the name's");
+    ///
+    /// // Fields arriving name their parents to the fields already held.
+    /// let field = |name: &str, tag: i32| -> yggdryl::Result<yggdryl::Field> {
+    ///     let mut field = yggdryl::DataType::utf8().nullable_field(name);
+    ///     field.as_fix_mut().set_tag(tag)?;
+    ///     Ok(field)
+    /// };
+    /// let mut venue = FixRegistry::from_fields([field("OrderID", 37)?, field("OrigOrderID", 9001)?])?;
+    /// let stated = |venue: &FixRegistry| -> yggdryl::Result<Vec<String>> {
+    ///     Ok(venue.field_by_tag(37)?.as_fix().parents().map(str::to_owned).collect())
+    /// };
+    /// let tag_of = |venue: &FixRegistry, name: &str| -> yggdryl::Result<Option<i32>> {
+    ///     venue.field_by_name(name)?.as_fix().tag()
+    /// };
+    /// assert_eq!(stated(&venue)?, ["origorderid"]);
+    /// // The one parent answers to both spellings...
+    /// assert_eq!(tag_of(&venue, "ParentOrderID")?, Some(9001));
+    /// // ...until a field of the other spelling arrives: two parents now.
+    /// venue.add_field(field("ParentOrderID", 9002)?)?;
+    /// assert_eq!(stated(&venue)?, ["parentorderid", "origorderid"]);
+    /// assert_eq!(tag_of(&venue, "ParentOrderID")?, Some(9002));
+    /// assert!(venue.field_by_tag(9001)?.as_fix().names().next().is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn parent_sources(&self) -> &[(crate::IdType, Box<[crate::IdType]>)] {
+        self.parents.get_or_init(|| {
+            self.iter()
+                .filter_map(|field| {
+                    let parents: Box<[crate::IdType]> = field
+                        .as_fix()
+                        .parents()
+                        .filter_map(|word| word.parse().ok())
+                        .collect();
+                    if parents.is_empty() {
+                        return None;
+                    }
+                    Some((identifier_type(field)?, parents))
+                })
+                .collect()
+        })
+    }
+
+    /// The parent types of `base`, nearest first: the list a field stating
+    /// that identifier type states under `FIX:parents`, else the ones its
+    /// name has ([`IdType::parents`](crate::IdType::parents)).
+    #[must_use]
+    pub fn parents_of(&self, base: &crate::IdType) -> Cow<'_, [crate::IdType]> {
+        match self.parent_sources().iter().find(|(held, _)| held == base) {
+            Some((_, parents)) => Cow::Borrowed(parents),
+            None => base.parents(),
+        }
+    }
+
+    /// The base `kind` is a parent of and its place among the base's
+    /// [`Self::parents_of`]: a list this dictionary states first, then the
+    /// name's reading ([`IdType::parent_of`](crate::IdType::parent_of)) for
+    /// a base that states none.
+    #[must_use]
+    pub fn parent_of(&self, kind: &crate::IdType) -> Option<(crate::IdType, usize)> {
+        let sources = self.parent_sources();
+        sources
+            .iter()
+            .find_map(|(base, parents)| {
+                let at = parents.iter().position(|held| held == kind)?;
+                Some((base.clone(), at))
+            })
+            .or_else(|| {
+                kind.parent_of()
+                    .filter(|(base, _)| !sources.iter().any(|(held, _)| held == base))
+            })
+    }
+
+    /// States, on every field this dictionary holds a parent of by name,
+    /// that parent among its `FIX:parents` ([`Self::parent_sources`]), and
+    /// keeps each such parent's other spelling in step: what a dictionary
+    /// that took fields in from elsewhere runs once before its definitions
+    /// resolve. Whether any field moved.
+    pub(super) fn state_parents(&mut self) -> bool {
+        let mut bases: Vec<usize> = (0..self.fields.len())
+            .filter(|at| is_parent_named(&self.fields[*at]))
+            .filter_map(|at| self.parent_link(at).map(|(base, ..)| base))
+            .collect();
+        bases.sort_unstable();
+        bases.dedup();
+        let mut moved = false;
+        for base in bases {
+            moved |= self.reconcile_parents(base);
+        }
+        if moved {
+            self.forget_answers();
+        }
+        moved
+    }
+
+    /// [`Self::state_parents`] around the one field at `position`: the base
+    /// it is a parent of, and the field itself as a base, so inserting
+    /// fields one at a time costs a few lookups each rather than a walk of
+    /// the dictionary.
+    fn state_parents_around(&mut self, position: usize) -> bool {
+        let mut moved = false;
+        if let Some((base, ..)) = self.parent_link(position) {
+            moved |= self.reconcile_parents(base);
+        }
+        moved |= self.reconcile_parents(position);
+        if moved {
+            self.forget_answers();
+        }
+        moved
+    }
+
+    /// Brings the field at `base_at` and its parent fields in step: each
+    /// field its name has as a parent ([`IdType::parents`](crate::IdType::parents))
+    /// is listed among its `FIX:parents`; a parent field that is the base's
+    /// only one also answers to its other spelling - an `orig` field to
+    /// `parent`, a `parent` field to `orig`, since with one parent the two
+    /// name one field - where no field holds that spelling; and where the
+    /// base has two parent fields, neither keeps the other's name as an
+    /// alias. Whether anything moved.
+    fn reconcile_parents(&mut self, base_at: usize) -> bool {
+        let Some(base) = self.fields.get(base_at).and_then(identifier_type) else {
+            return false;
+        };
+        let held: Vec<(usize, usize, crate::IdType)> = base
+            .parents()
+            .iter()
+            .filter_map(|parent| {
+                let at = self.position_of_type(parent)?;
+                let (linked, rank, kind) = self.parent_link(at)?;
+                (linked == base_at).then_some((at, rank, kind))
+            })
+            .collect();
+        let mut moved = false;
+        for (_, rank, kind) in &held {
+            moved |= self.state_parent(base_at, *rank, kind.clone());
+        }
+        match held.as_slice() {
+            [(at, _, kind)] => moved |= self.state_other_spelling(*at, kind),
+            _ => {
+                for (at, _, kind) in &held {
+                    moved |= self.retire_other_spelling(*at, kind);
+                }
+            }
+        }
+        moved
+    }
+
+    /// Names the parent field at `at` by the other spelling of its type,
+    /// where no field holds that spelling as a name or an alias.
+    fn state_other_spelling(&mut self, at: usize, kind: &crate::IdType) -> bool {
+        let Some(spelling) = other_spelling(kind) else {
+            return false;
+        };
+        if self.position_by_name(&spelling).is_some() {
+            return false;
+        }
+        let mut names: Vec<String> = self.fields[at]
+            .as_fix()
+            .names()
+            .map(str::to_owned)
+            .collect();
+        names.push(spelling.to_string());
+        if self.fields[at].as_fix_mut().set_names(&names).is_err() {
+            return false;
+        }
+        self.aliases.insert(name_digest(&spelling, ALIAS_SEED), at);
+        true
+    }
+
+    /// Takes the other spelling of its type off the parent field at `at`,
+    /// where it holds it as an alias.
+    fn retire_other_spelling(&mut self, at: usize, kind: &crate::IdType) -> bool {
+        let Some(spelling) = other_spelling(kind) else {
+            return false;
+        };
+        let names: Vec<String> = self.fields[at]
+            .as_fix()
+            .names()
+            .map(str::to_owned)
+            .collect();
+        if !names
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(&spelling))
+        {
+            return false;
+        }
+        let kept: Vec<&String> = names
+            .iter()
+            .filter(|name| !name.eq_ignore_ascii_case(&spelling))
+            .collect();
+        if self.fields[at].as_fix_mut().set_names(kept).is_err() {
+            return false;
+        }
+        let digest = name_digest(&spelling, ALIAS_SEED);
+        if self.aliases.get(&digest) == Some(&at) {
+            self.aliases.remove(&digest);
+        }
+        true
+    }
+
+    /// The field one field is a parent of by name, the place the parent
+    /// takes among that field's parents, and the parent's type:
+    /// `OrigClOrdID` is `ClOrdID`'s first.
+    fn parent_link(&self, position: usize) -> Option<(usize, usize, crate::IdType)> {
+        let kind = identifier_type(self.fields.get(position)?)?;
+        let (base, rank) = kind.parent_of()?;
+        let at = self.position_of_type(&base)?;
+        (at != position).then_some((at, rank, kind))
+    }
+
+    /// The field named as `kind` is spelled that states it as its
+    /// identifier type.
+    fn position_of_type(&self, kind: &crate::IdType) -> Option<usize> {
+        self.position_by_name(kind.as_str())
+            .filter(|at| identifier_type(&self.fields[*at]).as_ref() == Some(kind))
+    }
+
+    /// Lists `kind` among the parents of the field at `at`, where the
+    /// field does not list it yet, in the place its `rank` gives it among
+    /// the ones the names say - a `parent` type before an `orig` one;
+    /// whether it moved.
+    fn state_parent(&mut self, at: usize, rank: usize, kind: crate::IdType) -> bool {
+        let mut parents: Vec<crate::IdType> = self.fields[at]
+            .as_fix()
+            .parents()
+            .filter_map(|word| word.parse().ok())
+            .collect();
+        if parents.contains(&kind) {
+            return false;
+        }
+        let slot = parents
+            .iter()
+            .position(|held| held.parent_of().map_or(usize::MAX, |(_, held)| held) > rank)
+            .unwrap_or(parents.len());
+        parents.insert(slot, kind);
+        self.fields[at]
+            .as_fix_mut()
+            .set_parents(parents.iter().map(crate::IdType::as_str))
+            .is_ok()
+    }
+
+    /// Every wire value a field of this dictionary maps to a market data
+    /// type through its `FIX:marketdatatype`, as the field's tag, the value
+    /// and the member, read once.
+    #[must_use]
+    pub fn marketdatatype_sources(&self) -> &[(i32, SmolStr, crate::MarketDataType)] {
+        self.marketdatatypes.get_or_init(|| {
+            self.iter()
+                .filter_map(|field| Some((field.as_fix().tag().ok()??, field)))
+                .flat_map(|(tag, field)| {
+                    field
+                        .as_fix()
+                        .marketdatatypes()
+                        .map(move |(wire, member)| (tag, SmolStr::new(wire), member))
+                })
+                .collect()
+        })
+    }
+
+    /// The market data type one wire value of the field under `tag` types an
+    /// element as: the member this dictionary's `FIX:marketdatatype` maps it
+    /// to, else the crate's own reading of `OrdType(40)`, `QuoteType(537)`,
+    /// `TrdType(828)` and `MDEntryType(269)`
+    /// ([`MarketDataType::from_fix`](crate::MarketDataType::from_fix));
+    /// `None` for a field that types nothing.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, FixRegistry, MarketDataType};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut ordtype = DataType::utf8().nullable_field("ordtype");
+    /// ordtype.as_fix_mut().set_tag(40)?;
+    /// ordtype
+    ///     .as_fix_mut()
+    ///     .set_marketdatatypes(&[("Z", MarketDataType::OrdPegged)])?;
+    /// let registry = FixRegistry::from_fields([ordtype])?;
+    /// assert_eq!(registry.marketdatatype_of(40, "Z"), Some(MarketDataType::OrdPegged));
+    /// assert_eq!(registry.marketdatatype_of(40, "2"), Some(MarketDataType::OrdLimit));
+    /// assert_eq!(registry.marketdatatype_of(54, "1"), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn marketdatatype_of(&self, tag: i32, wire: &str) -> Option<crate::MarketDataType> {
+        self.marketdatatype_sources()
+            .iter()
+            .find(|(held, value, _)| *held == tag && value == wire)
+            .map(|(_, _, member)| *member)
+            .or_else(|| crate::MarketDataType::from_fix(tag, wire))
+    }
+
+    /// Every wire value a field of this dictionary maps to a time in force
+    /// through its `FIX:timeinforce`, as the field's tag, the value and the
+    /// member, read once.
+    #[must_use]
+    pub fn timeinforce_sources(&self) -> &[(i32, SmolStr, crate::TimeInForce)] {
+        self.timeinforces.get_or_init(|| {
+            self.iter()
+                .filter_map(|field| Some((field.as_fix().tag().ok()??, field)))
+                .flat_map(|(tag, field)| {
+                    field
+                        .as_fix()
+                        .timeinforces()
+                        .map(move |(wire, member)| (tag, SmolStr::new(wire), member))
+                })
+                .collect()
+        })
+    }
+
+    /// The time in force one wire value of the field under `tag` stands
+    /// for: the member this dictionary's `FIX:timeinforce` maps it to, else
+    /// the crate's own reading of `TimeInForce(59)`
+    /// ([`TimeInForce::from_fix`](crate::TimeInForce::from_fix)), a value
+    /// it names no member for being `OTHER`; `None` for a field that states
+    /// none.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, FixRegistry, TimeInForce};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut tif = DataType::utf8().nullable_field("timeinforce");
+    /// tif.as_fix_mut().set_tag(59)?;
+    /// tif.as_fix_mut()
+    ///     .set_timeinforces(&[("G", TimeInForce::GoodTillCancel)])?;
+    /// let registry = FixRegistry::from_fields([tif])?;
+    /// assert_eq!(registry.timeinforce_of(59, "G"), Some(TimeInForce::GoodTillCancel));
+    /// assert_eq!(registry.timeinforce_of(59, "3"), Some(TimeInForce::ImmediateOrCancel));
+    /// assert_eq!(registry.timeinforce_of(59, "Q"), Some(TimeInForce::Other));
+    /// assert_eq!(registry.timeinforce_of(54, "1"), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn timeinforce_of(&self, tag: i32, wire: &str) -> Option<crate::TimeInForce> {
+        self.timeinforce_sources()
+            .iter()
+            .find(|(held, value, _)| *held == tag && value == wire)
+            .map(|(_, _, member)| *member)
+            .or_else(|| (tag == 59).then(|| crate::TimeInForce::from_fix(wire)))
     }
 
     /// The names a message digests its lifted facts under, read once.
@@ -2492,6 +2937,9 @@ impl Clone for FixRegistry {
             forex: super::forex::FxMemo::new(),
             lifted_names: OnceLock::new(),
             idmap_sources: OnceLock::new(),
+            parents: OnceLock::new(),
+            marketdatatypes: OnceLock::new(),
+            timeinforces: OnceLock::new(),
             renamed: self.renamed.clone(),
         }
     }
@@ -2632,4 +3080,39 @@ pub mod internals {
     pub fn force_id_index(registry: &mut FixRegistry, id: FixId, at: usize) {
         registry.ids.insert(id, at);
     }
+}
+
+/// The identifier type a field states: its identifier-map key, else its own
+/// name folded - what its `FIX:parents` lists the parents of, and what a
+/// parent field's name is read against.
+fn identifier_type(field: &Field) -> Option<crate::IdType> {
+    field
+        .as_fix()
+        .idmap()
+        .filter_map(Result::ok)
+        .find(|source| source.role().is_none())
+        .map(|source| source.key().clone())
+        .or_else(|| field.name().parse().ok())
+}
+
+/// Whether a field's name opens as a parent's does - `parent` or `orig`,
+/// whatever the case - which is all a walk of the dictionary reads before
+/// it folds the name.
+fn is_parent_named(field: &Field) -> bool {
+    let name = field.name().as_bytes();
+    ["parent", "orig"].iter().any(|prefix| {
+        name.get(..prefix.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(prefix.as_bytes()))
+    })
+}
+
+/// A parent type's other spelling: `parent{type}` for `orig{type}` and
+/// back, `parentclordid` and `origclordid` alike.
+fn other_spelling(kind: &crate::IdType) -> Option<SmolStr> {
+    let word = kind.as_str();
+    let (prefix, rest) = ["parent", "orig"]
+        .iter()
+        .find_map(|prefix| Some((*prefix, word.strip_prefix(prefix)?)))?;
+    let other = if prefix == "parent" { "orig" } else { "parent" };
+    Some(format_smolstr!("{other}{rest}"))
 }

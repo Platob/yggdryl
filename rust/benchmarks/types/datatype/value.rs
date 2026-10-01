@@ -9,8 +9,7 @@ use yggdryl::{
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     {
         use yggdryl::graph::{Market, Order};
-        use yggdryl::securityid::{SecType, SecurityId};
-        use yggdryl::{Cfi, Figi, Forex, FxSymbol, Isin, Ric};
+        use yggdryl::{Cfi, Figi, Forex, FxSymbol, IdSource, IdType, Identifier, Isin, Ric};
         let mut codes = criterion.benchmark_group("instrument_codes");
         codes.bench_function("isin", |bench| {
             bench.iter(|| Isin::new(black_box("us0378331005")).unwrap());
@@ -37,7 +36,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         codes.bench_function("cfi_merge", |bench| {
             bench.iter(|| Cfi::merged(black_box("ESXXXX"), black_box("ESVUFR")));
         });
-        let isin = SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap();
+        let isin = Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").unwrap();
         codes.bench_function("market_identifier_setter", |bench| {
             bench.iter(|| {
                 let mut element = Order::new();

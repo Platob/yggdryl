@@ -133,6 +133,7 @@ impl JsDataType {
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "marketdatakind" => CoreDataType::MarketDataKind,
+            "marketdatatype" => CoreDataType::MarketDataType,
             "timeinforce" => CoreDataType::TimeInForce,
             "unit" => CoreDataType::Unit,
             "ric" => CoreDataType::Ric,

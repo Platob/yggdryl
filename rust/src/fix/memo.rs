@@ -159,10 +159,11 @@ const MIRRORED_MEMOS: usize = 8;
 /// The table `id` mirrors into, the oldest memo forgotten where this
 /// thread mirrors too many.
 fn table_of<V>(tables: &mut FixMap<u64, V>, id: u64, fresh: impl FnOnce() -> V) -> &mut V {
-    if !tables.contains_key(&id) && tables.len() >= MIRRORED_MEMOS {
-        if let Some(oldest) = tables.keys().min().copied() {
-            tables.remove(&oldest);
-        }
+    if !tables.contains_key(&id)
+        && tables.len() >= MIRRORED_MEMOS
+        && let Some(oldest) = tables.keys().min().copied()
+    {
+        tables.remove(&oldest);
     }
     tables.entry(id).or_insert_with(fresh)
 }

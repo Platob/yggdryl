@@ -382,7 +382,6 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::TimeInForce
         | D::Unit
         | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
         // An enum member is the code of its leaf, which every engine reads.
@@ -536,7 +535,6 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::TimeInForce
         | D::Unit
         | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
         // An enum member is the code of its leaf, which every engine reads.
@@ -665,7 +663,6 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::TimeInForce
         | D::Unit
         | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
         // An enum member is the code of its leaf, which every engine reads.
@@ -796,7 +793,6 @@ incompatible(
         | D::Bbg
         | D::Ric
         | D::Figi
-        | D::TimeInForce
         | D::Unit
         | D::Forex => Ok((D::utf8(), *dtype != D::Utf8String)),
         // An enum member is the code of its leaf, which every engine reads.
@@ -885,12 +881,12 @@ fn field_with_dtype(
 /// Reports whether a field still carries a *foreign* Arrow extension label.
 ///
 /// The extensions this workspace owns never reach here: the canonical
-/// `arrow.parquet.variant`,
-/// `geoarrow.wkb`, `yggdryl.string`, `arrow.uuid`, and each registered code's
-/// own `yggdryl.{country,ccy,mic,cfi}` import as the first-class
-/// `variant`, `geometry`, `geography`, string, `uuid` and code datatypes
-/// with their `ARROW:extension:*` keys stripped, so a field carrying these
-/// keys names an extension the workspace does not model.
+/// `arrow.parquet.variant` and `arrow.uuid`, `geoarrow.wkb`, and every
+/// `yggdryl.*` name - the string and bytes documents, the fixed decimals,
+/// the version, URL, URN, timezone, MIME and media types, the enum leaves
+/// and each registered code - import as their first-class datatypes with
+/// their `ARROW:extension:*` keys stripped, so a field carrying these keys
+/// names an extension the workspace does not model.
 /// Rewriting its storage would silently relabel that foreign type, so the
 /// walker rejects the rewrite instead.
 fn has_extension_storage(field: &Field) -> bool {

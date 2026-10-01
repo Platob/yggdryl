@@ -20,7 +20,7 @@ import statistics
 import timeit
 from collections.abc import Callable
 
-from yggdryl import DataType, Side, graph
+from yggdryl import DataType, Identifier, Side, graph
 from yggdryl.fix import FixCodec, FixRegistry
 
 FOLD_OPERATION_COUNT = 512
@@ -36,7 +36,7 @@ def _order_event(clock: int = CLOCK, **facts: object) -> graph.OrderEvent:
         "price": decimal.Decimal("100.25"),
         "currency": "USD",
         "quantity": 10,
-        "securityids": {"ISIN": "US0378331005"},
+        "securityids": [Identifier("base", "isin", "US0378331005")],
         "fxrates": {"EUR": decimal.Decimal("1.1")},
     }
     base.update(facts)
@@ -100,8 +100,8 @@ def _order_event_read_fxrates() -> object:
     return ORDER_EVENT.fxrates
 
 
-def _order_event_read_altids() -> object:
-    return ORDER_EVENT.altids
+def _order_event_read_identifiers() -> object:
+    return ORDER_EVENT.identifiers
 
 
 def _order_at() -> graph.OrderEvent:
@@ -163,7 +163,7 @@ def _book_imbalance() -> object:
 
 
 def _view_plan() -> object:
-    return graph.MarketData.plan("orders", ["securityids['ISIN'] as isin"])
+    return graph.MarketData.plan("orders", ["securityids['base:isin'].value as isin"])
 
 
 def _view_apply() -> int:
@@ -200,7 +200,7 @@ def main() -> None:
         _measure("order event read side", _order_event_read_side, args.iterations)
         _measure("order event read isincode", _order_event_read_isincode, args.iterations)
         _measure("order event read fxrates", _order_event_read_fxrates, args.iterations)
-        _measure("order event read altids map", _order_event_read_altids, args.iterations)
+        _measure("order event read identifiers set", _order_event_read_identifiers, args.iterations)
         _measure("order at", _order_at, args.iterations)
         _measure("order event into element", _order_event_into_element, args.iterations)
         _measure("market data wrap", _market_data_wrap, args.iterations)

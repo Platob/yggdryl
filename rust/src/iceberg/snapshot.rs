@@ -271,10 +271,10 @@ impl Snapshot {
         if let Some(parent) = self.parent_snapshot_id {
             entries.push((Scalar::from("parent-snapshot-id"), Scalar::from(parent)));
         }
-        if version >= super::FormatVersion::V2 {
-            if let Some(sequence) = self.sequence_number {
-                entries.push((Scalar::from("sequence-number"), Scalar::from(sequence)));
-            }
+        if version >= super::FormatVersion::V2
+            && let Some(sequence) = self.sequence_number
+        {
+            entries.push((Scalar::from("sequence-number"), Scalar::from(sequence)));
         }
         entries.push((
             Scalar::from("timestamp-ms"),

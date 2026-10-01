@@ -2040,3 +2040,189 @@ mod word_aliases {
         assert_eq!(tag_of(&registry, "AskPrice"), None);
     }
 }
+
+/// The parents of an identifier type, nearest first, and the base a parent
+/// type belongs to: the list a field states under `FIX:parents`, else the one
+/// the names say - `orderid`'s are `parentorderid` then `origorderid`.
+mod parents {
+    use yggdryl::{DataType, Field, FixRegistry, IdType};
+
+    fn word(text: &str) -> IdType {
+        text.parse().expect("a type")
+    }
+
+    fn tagged(name: &str, tag: i32) -> Field {
+        let mut field = DataType::utf8().nullable_field(name);
+        field.as_fix_mut().set_tag(tag).unwrap();
+        field
+    }
+
+    #[test]
+    fn the_committed_dictionary_states_a_client_orders_previous_identifier_as_its_parent() {
+        let registry = crate::committed_registry();
+        let clordid = registry.field_by_tag(11).expect("ClOrdID(11)");
+        assert_eq!(
+            clordid.as_fix().parents().collect::<Vec<_>>(),
+            ["origclordid"]
+        );
+        let stated = registry
+            .parent_sources()
+            .iter()
+            .find(|(base, _)| *base == IdType::ClOrdId)
+            .expect("the list ClOrdID(11) states");
+        assert_eq!(stated.1.as_ref(), [IdType::OrigClOrdId]);
+        assert_eq!(
+            registry.parents_of(&IdType::ClOrdId).as_ref(),
+            [IdType::OrigClOrdId]
+        );
+        assert_eq!(
+            registry.parent_of(&IdType::OrigClOrdId),
+            Some((IdType::ClOrdId, 0))
+        );
+        assert_eq!(registry.parent_of(&IdType::ClOrdId), None);
+    }
+
+    #[test]
+    fn every_list_the_dictionary_states_reads_back_through_parent_of() {
+        let registry = crate::committed_registry();
+        let sources = registry.parent_sources();
+        assert!(!sources.is_empty());
+        for (base, listed) in sources {
+            assert_eq!(
+                registry.parents_of(base).as_ref(),
+                listed.as_ref(),
+                "{base}"
+            );
+            for (at, parent) in listed.iter().enumerate() {
+                assert_eq!(
+                    registry.parent_of(parent),
+                    Some((base.clone(), at)),
+                    "{parent}"
+                );
+                // A parent has none: parentage never nests.
+                assert!(registry.parents_of(parent).is_empty(), "{parent}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_base_stating_no_list_has_the_one_its_name_says() {
+        let registry = crate::committed_registry();
+        assert_eq!(
+            registry.parents_of(&IdType::OrderId).as_ref(),
+            [word("parentorderid"), word("origorderid")]
+        );
+        assert_eq!(
+            registry.parent_of(&word("parentorderid")),
+            Some((IdType::OrderId, 0))
+        );
+        assert_eq!(
+            registry.parent_of(&word("origorderid")),
+            Some((IdType::OrderId, 1))
+        );
+        // `parentclordid` is the other spelling of `clordid`'s one parent,
+        // the dictionary's `origclordid`; and a word spelled `origin` or
+        // `original` before an identifier names no parent at all.
+        assert_eq!(word("parentclordid"), IdType::OrigClOrdId);
+        assert_eq!(
+            registry.parent_of(&word("parentclordid")),
+            Some((IdType::ClOrdId, 0))
+        );
+        assert_eq!(registry.parent_of(&word("originorderid")), None);
+        assert_eq!(registry.parent_of(&word("originalorderid")), None);
+        assert_eq!(registry.parent_of(&word("account")), None);
+    }
+
+    #[test]
+    fn a_registry_states_its_own_list_and_it_wins_over_the_name() {
+        let mut order = tagged("OrderID", 37);
+        order
+            .as_fix_mut()
+            .set_parents(["parentorderid", "grandparentorderid", "origorderid"])
+            .unwrap();
+        let registry = FixRegistry::from_fields([order]).unwrap();
+        assert_eq!(
+            registry.parents_of(&IdType::OrderId).as_ref(),
+            [
+                word("parentorderid"),
+                word("grandparentorderid"),
+                word("origorderid")
+            ]
+        );
+        assert_eq!(
+            registry.parent_of(&word("parentorderid")),
+            Some((IdType::OrderId, 0))
+        );
+        assert_eq!(
+            registry.parent_of(&word("grandparentorderid")),
+            Some((IdType::OrderId, 1))
+        );
+        // The list places `origorderid` third where its name says second.
+        assert_eq!(
+            registry.parent_of(&word("origorderid")),
+            Some((IdType::OrderId, 2))
+        );
+        // Another base still follows its name.
+        assert_eq!(
+            registry.parents_of(&IdType::TradeId).as_ref(),
+            [word("parenttradeid"), word("origtradeid")]
+        );
+        assert_eq!(
+            registry.parent_of(&word("origtradeid")),
+            Some((IdType::TradeId, 1))
+        );
+    }
+
+    #[test]
+    fn a_base_stating_a_list_refuses_the_parents_the_name_would_have_added() {
+        let mut order = tagged("OrderID", 37);
+        order.as_fix_mut().set_parents(["parentorderid"]).unwrap();
+        let registry = FixRegistry::from_fields([order]).unwrap();
+        assert_eq!(
+            registry.parent_of(&word("parentorderid")),
+            Some((IdType::OrderId, 0))
+        );
+        assert_eq!(
+            registry.parent_of(&word("origorderid")),
+            None,
+            "the stated list is the whole list"
+        );
+    }
+
+    #[test]
+    fn a_field_added_by_a_parents_name_needs_no_metadata() {
+        let registry =
+            FixRegistry::from_fields([tagged("OrderID", 37), tagged("ParentOrderID", 9001)])
+                .unwrap();
+        assert_eq!(
+            registry.parent_of(&word("parentorderid")),
+            Some((IdType::OrderId, 0))
+        );
+        assert_eq!(
+            registry.parents_of(&IdType::OrderId).first(),
+            Some(&word("parentorderid"))
+        );
+    }
+
+    #[test]
+    fn adding_a_field_forgets_what_the_lists_were_read_from() {
+        let mut registry = FixRegistry::from_fields([tagged("OrderID", 37)]).unwrap();
+        // Read once: `tradeid` states no list yet, so its name's answers.
+        assert_eq!(
+            registry.parents_of(&IdType::TradeId).as_ref(),
+            [word("parenttradeid"), word("origtradeid")]
+        );
+        let mut trade = tagged("TradeID", 1003);
+        trade.as_fix_mut().set_parents(["parenttradeid"]).unwrap();
+        assert!(registry.add_field(trade).unwrap());
+        assert_eq!(
+            registry.parents_of(&IdType::TradeId).as_ref(),
+            [word("parenttradeid")]
+        );
+        assert_eq!(
+            registry.parent_of(&word("origtradeid")),
+            None,
+            "the newly stated list is the whole list"
+        );
+    }
+}

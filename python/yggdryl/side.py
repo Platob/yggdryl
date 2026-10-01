@@ -1,4 +1,4 @@
-"""FIX's side of a trade: an enum stored as the ``int32`` code of its member.
+"""FIX's side of a trade: an enum stored as the ``uint8`` code of its member.
 
 ``Side`` is the core's enum member for member - its four-letter code as its
 name, ``BUYS``, ``SSHT``, and the integer code a ``side`` column stores - built

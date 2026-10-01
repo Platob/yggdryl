@@ -35,9 +35,9 @@ use std::sync::Arc;
 
 use arrow_array::builder::{ArrayBuilder, StringBuilder};
 use arrow_array::{
-    ArrayRef, BooleanArray, Decimal128Array, FixedSizeBinaryArray, Int32Array, ListArray, MapArray,
+    ArrayRef, BooleanArray, Decimal128Array, FixedSizeBinaryArray, ListArray, MapArray,
     RecordBatch, RecordBatchOptions, StringArray, StructArray, TimestampNanosecondArray,
-    UInt64Array,
+    UInt8Array, UInt16Array, UInt64Array,
 };
 use arrow_buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow_schema::{ArrowError, DataType as ArrowType, FieldRef, Fields, SchemaRef};
@@ -45,28 +45,26 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::facts::{MarketEventFacts, OperationEventFacts};
 use super::{
-    BookEvent, BookRef, Element, Event, EventColumn, ExecutionEvent, ExecutionKind, Market,
-    MarketColumn, MarketData, MarketKind, Operation, OperationColumn, OperationElement,
+    BookEvent, BookRef, Element, ElementColumn, Event, EventColumn, ExecutionEvent, ExecutionKind,
+    Market, MarketColumn, MarketData, MarketKind, Operation, OperationColumn, OperationElement,
     OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent, TradeEvent,
 };
 use super::{FxRates, Metadata};
 use crate::arrow::BatchReader;
-use crate::idmap::IdMap;
 use crate::path::{Path, Segment};
-use crate::securityid::{SecType, SecurityId, SecurityIds};
 use crate::serie::{
-    BooleanSerie, DateTimeNanosecondSerie, Decimal128Serie, FixedBytesSerie, Int32Serie, MapSerie,
-    SerieSerie, UInt64Serie, Utf8StringSerie,
+    BooleanSerie, DateTimeNanosecondSerie, Decimal128Serie, FixedBytesSerie, MapSerie, SerieSerie,
+    UInt8Serie, UInt16Serie, UInt64Serie, Utf8StringSerie,
 };
 use crate::{
     ArrowCastOptions, Ccy, Cfi, CodeValue, DataType, Decimal, Error, Field, Limit, MarketDataKind,
     Mic, Result, Serie, SerieReader, Side, State, StructType, TimeInForce, Unit, Uuid,
 };
+use crate::{IdSource, IdType, Identifier, Identifiers};
 
 // The column names the graph module shares: the root and its nested columns,
 // which a view names to exclude them and a book names its entries by.
 pub(super) const ROOT: &str = "marketdata";
-pub(super) const MARKETDATAKIND: &str = "marketdatakind";
 const OPERATION_ROW: &str = "operationevent";
 const BOOKSCOPE: &str = "bookscope";
 pub(super) const ALIVE: &str = "alive";
@@ -85,10 +83,11 @@ const UUID_WIDTH: i32 = 16;
 impl MarketData {
     /// The canonical Arrow row field every leaf is written in.
     ///
-    /// The required struct `marketdata`: `marketdatakind` (the
-    /// [`MarketDataKind`] the leaf stands under), then [`EventColumn::ALL`] -
-    /// every one nullable, since an undated leaf states no clock -
-    /// [`MarketColumn::ALL`], [`OperationColumn::ALL`], the `bookscope` a
+    /// The required struct `marketdata`: [`ElementColumn::ALL`] and
+    /// [`EventColumn::ALL`] - every one nullable, since an undated leaf
+    /// states no clock - then [`MarketColumn::ALL`], which opens with the
+    /// `marketdatakind` (the [`MarketDataKind`] the leaf stands under) and
+    /// its `marketdatatype`, [`OperationColumn::ALL`], the `bookscope` a
     /// market-data entry states, then the nullable nested columns: `alive`
     /// and `deltas` (a book's operation rows), `executions` (a trade's or
     /// a book's), and `bidlimits` and `asklimits` (a book's price levels).
@@ -99,10 +98,12 @@ impl MarketData {
     /// # fn main() -> yggdryl::Result<()> {
     /// let field = MarketData::field()?;
     /// assert_eq!(field.name(), "marketdata");
-    /// assert_eq!(field.fields()[0].name(), "marketdatakind");
-    /// assert_eq!(field.fields()[1].name(), "currunix");
-    /// assert!(field.fields()[1].is_nullable());
-    /// assert_eq!(field.field_len(), 1 + 15 + 28 + 4 + 1 + 5);
+    /// assert_eq!(field.fields()[0].name(), "curruuid");
+    /// assert_eq!(field.fields()[6].name(), "currunix");
+    /// assert!(field.fields()[6].is_nullable());
+    /// assert_eq!(field.fields()[15].name(), "marketdatakind");
+    /// assert!(!field.fields()[15].is_nullable());
+    /// assert_eq!(field.field_len(), 6 + 9 + 34 + 5 + 1 + 5);
     /// # Ok(())
     /// # }
     /// ```
@@ -115,7 +116,10 @@ impl MarketData {
     }
 
     /// Streams values into bounded Arrow record batches under
-    /// [`Self::field`], every leaf laid out column by column.
+    /// [`Self::field`], every leaf laid out column by column, and a FIX
+    /// message as the leaves it splits into
+    /// ([`FixMsg::into_market_data`](crate::FixMsg::into_market_data)) -
+    /// one row each, so every row reads back as the leaf it is.
     ///
     /// The source is not pulled until the returned reader is pulled. A `None`
     /// row size uses the crate default and zero normalizes to one; a stated
@@ -142,6 +146,7 @@ impl MarketData {
         let shape = Shape::new(&root_columns(), schema.fields())?;
         Ok(Box::new(Writer {
             source: elements.into_iter(),
+            split: std::collections::VecDeque::new(),
             shape,
             schema,
             batch_row_size: batch_row_size
@@ -165,7 +170,7 @@ impl MarketData {
     /// `TRAD` or `BOOK` row, a dated `BOOK` row in a batch with no `alive`
     /// column, or a fact the leaf requires - a trade's `executions` - is
     /// refused at the first row that needs it. A stated
-    /// `isincode` fills an absent `ISIN` security identifier and must be
+    /// `isincode` fills an absent `isin` security identifier and must be
     /// the one `securityids` states. Every identity a row states must be the one its rebuilt
     /// leaf derives, and an identity column that stands must state one - a
     /// null `curruuid`, `crossuuid`, `currhashcode` or `crosshashcode` is
@@ -224,7 +229,7 @@ impl MarketData {
 /// One column of a row this module writes: a fact, or a nested one.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Column {
-    MarketDataKind,
+    Element(ElementColumn),
     Event(EventColumn),
     Market(MarketColumn),
     Operation(OperationColumn),
@@ -251,7 +256,7 @@ enum Role {
 impl Column {
     const fn name(self) -> &'static str {
         match self {
-            Self::MarketDataKind => MARKETDATAKIND,
+            Self::Element(column) => column.name(),
             Self::Event(column) => column.name(),
             Self::Market(column) => column.name(),
             Self::Operation(column) => column.name(),
@@ -274,12 +279,7 @@ impl Column {
     /// The column's field in the struct `role` names.
     fn field(self, role: Role) -> Result<Field> {
         let field = match self {
-            Self::MarketDataKind => {
-                let mut field =
-                    Field::new(MARKETDATAKIND, DataType::MarketDataKind, role != Role::Root);
-                field.set_display("Market Data Kind")?;
-                field
-            }
+            Self::Element(column) => column.field()?,
             Self::Event(column) => column.field()?,
             Self::Market(column) => column.field()?,
             Self::Operation(column) => column.field()?,
@@ -295,11 +295,13 @@ impl Column {
                 DataType::serie(Limit::field()).nullable_field(self.name())
             }
         };
-        // A root states only what its leaf does, so every clock and nested
-        // column may be null there; a nested row's own columns keep the
-        // nullability its fact has.
+        // A root states only what its leaf does, so every identity, clock
+        // and nested column may be null there; a nested row's own columns
+        // keep the nullability its fact has.
         Ok(match (role, self) {
-            (Role::Read, _) | (Role::Root, Self::Event(_)) => field.with_nullable(true),
+            (Role::Read, _) | (Role::Root, Self::Element(_) | Self::Event(_)) => {
+                field.with_nullable(true)
+            }
             _ => field,
         })
     }
@@ -307,7 +309,12 @@ impl Column {
     /// The storage a landed column of this fact holds.
     const fn storage(self) -> Storage {
         match self {
-            Self::MarketDataKind => Storage::MarketDataKind,
+            Self::Element(column) => match column {
+                ElementColumn::CurrUuid | ElementColumn::CrossUuid => Storage::Uuid,
+                ElementColumn::CrossCode => Storage::Text,
+                ElementColumn::CurrHashCode | ElementColumn::CrossHashCode => Storage::UInt64,
+                ElementColumn::SrcUuids => Storage::Uuids,
+            },
             Self::Event(column) => match column {
                 EventColumn::CurrUnix
                 | EventColumn::CreaUnix
@@ -315,40 +322,51 @@ impl Column {
                 | EventColumn::ExprUnix
                 | EventColumn::PrevUnix
                 | EventColumn::SnapUnix => Storage::Clock,
-                EventColumn::CurrUuid | EventColumn::CrossUuid | EventColumn::PrevUuid => {
-                    Storage::Uuid
-                }
-                EventColumn::CrossCode => Storage::Text,
-                EventColumn::CurrHashCode | EventColumn::CrossHashCode | EventColumn::SeqNum => {
-                    Storage::UInt64
-                }
-                EventColumn::SrcUuids => Storage::Uuids,
+                EventColumn::PrevUuid => Storage::Uuid,
+                EventColumn::SeqNum => Storage::UInt64,
                 EventColumn::State => Storage::State,
             },
-            Self::Market(column) => {
-                if is_decimal(column) {
-                    Storage::Decimal
-                } else {
-                    match column {
-                        MarketColumn::Ticker => Storage::Text,
-                        MarketColumn::ExecUnix => Storage::Clock,
-                        MarketColumn::SecurityIds | MarketColumn::Metadata => Storage::Pairs,
-                        MarketColumn::Currency | MarketColumn::BidCcy | MarketColumn::AskCcy => {
-                            Storage::Code(Code::Ccy)
-                        }
-                        MarketColumn::Unit => Storage::Code(Code::Unit),
-                        MarketColumn::Side => Storage::Side,
-                        MarketColumn::IsinCode => Storage::Code(Code::Isin),
-                        MarketColumn::CfiCode => Storage::Code(Code::Cfi),
-                        MarketColumn::FxRates => Storage::Rates,
-                        _ => Storage::Code(Code::Mic),
-                    }
+            Self::Market(column) => match column {
+                MarketColumn::MarketDataKind => Storage::MarketDataKind,
+                MarketColumn::MarketDataType => Storage::MarketDataType,
+                MarketColumn::Price
+                | MarketColumn::StopPx
+                | MarketColumn::Quantity
+                | MarketColumn::DisplayQty
+                | MarketColumn::HiddenQty
+                | MarketColumn::CxlQty
+                | MarketColumn::LastPx
+                | MarketColumn::LastQty
+                | MarketColumn::AvgPx
+                | MarketColumn::CumQty
+                | MarketColumn::LeavesQty
+                | MarketColumn::PrevPx
+                | MarketColumn::PrevQty
+                | MarketColumn::SpotRate
+                | MarketColumn::ForwardPoints
+                | MarketColumn::BidPx
+                | MarketColumn::BidQty
+                | MarketColumn::AskPx
+                | MarketColumn::AskQty => Storage::Decimal,
+                MarketColumn::Ticker => Storage::Text,
+                MarketColumn::ExecUnix => Storage::Clock,
+                MarketColumn::SecurityIds => Storage::Ids,
+                MarketColumn::Metadata => Storage::Pairs,
+                MarketColumn::Currency | MarketColumn::BidCcy | MarketColumn::AskCcy => {
+                    Storage::Code(Code::Ccy)
                 }
-            }
+                MarketColumn::Unit => Storage::Code(Code::Unit),
+                MarketColumn::Side => Storage::Side,
+                MarketColumn::IsinCode => Storage::Code(Code::Isin),
+                MarketColumn::CfiCode => Storage::Code(Code::Cfi),
+                MarketColumn::MicCode => Storage::Code(Code::Mic),
+                MarketColumn::FxRates => Storage::Rates,
+            },
             Self::Operation(column) => match column {
                 OperationColumn::Tradable => Storage::Boolean,
-                OperationColumn::TimeInForce => Storage::Code(Code::TimeInForce),
-                OperationColumn::AltIds | OperationColumn::AccountIds => Storage::Pairs,
+                OperationColumn::OrdQty => Storage::Decimal,
+                OperationColumn::TimeInForce => Storage::TimeInForce,
+                OperationColumn::Identifiers | OperationColumn::PartyIds => Storage::Ids,
             },
             Self::BookScope => Storage::Text,
             Self::Alive | Self::Deltas | Self::Executions => Storage::Nested,
@@ -370,9 +388,12 @@ fn root_columns() -> Vec<Column> {
     columns
 }
 
-/// Every column of an operation row, in canonical order.
+/// Every column of an operation row, in canonical order: the element's,
+/// the event's, the market's and the operation's facts, then the scope.
 fn operation_columns() -> Vec<Column> {
-    std::iter::once(Column::MarketDataKind)
+    ElementColumn::ALL
+        .map(Column::Element)
+        .into_iter()
         .chain(EventColumn::ALL.map(Column::Event))
         .chain(MarketColumn::ALL.map(Column::Market))
         .chain(OperationColumn::ALL.map(Column::Operation))
@@ -402,7 +423,11 @@ const fn is_decimal(column: MarketColumn) -> bool {
     matches!(
         column,
         MarketColumn::Price
+            | MarketColumn::StopPx
             | MarketColumn::Quantity
+            | MarketColumn::DisplayQty
+            | MarketColumn::HiddenQty
+            | MarketColumn::CxlQty
             | MarketColumn::LastPx
             | MarketColumn::LastQty
             | MarketColumn::AvgPx
@@ -423,7 +448,11 @@ const fn is_decimal(column: MarketColumn) -> bool {
 fn market_decimal<E: Market + ?Sized>(column: MarketColumn, market: &E) -> Option<Decimal> {
     match column {
         MarketColumn::Price => market.get_price(),
+        MarketColumn::StopPx => market.get_stoppx(),
         MarketColumn::Quantity => market.get_quantity(),
+        MarketColumn::DisplayQty => market.get_displayqty(),
+        MarketColumn::HiddenQty => market.get_hiddenqty(),
+        MarketColumn::CxlQty => market.get_cxlqty(),
         MarketColumn::LastPx => market.get_lastpx(),
         MarketColumn::LastQty => market.get_lastqty(),
         MarketColumn::AvgPx => market.get_avgpx(),
@@ -448,21 +477,25 @@ fn set_market_decimal<E: Market + ?Sized>(
     value: Option<Decimal>,
 ) {
     match column {
-        MarketColumn::Price => market.set_price(value),
-        MarketColumn::Quantity => market.set_quantity(value),
-        MarketColumn::LastPx => market.set_lastpx(value),
-        MarketColumn::LastQty => market.set_lastqty(value),
-        MarketColumn::AvgPx => market.set_avgpx(value),
-        MarketColumn::CumQty => market.set_cumqty(value),
-        MarketColumn::LeavesQty => market.set_leavesqty(value),
-        MarketColumn::PrevPx => market.set_prevpx(value),
-        MarketColumn::PrevQty => market.set_prevqty(value),
-        MarketColumn::SpotRate => market.set_spotrate(value),
-        MarketColumn::ForwardPoints => market.set_forwardpoints(value),
-        MarketColumn::BidPx => market.set_bidpx(value),
-        MarketColumn::BidQty => market.set_bidqty(value),
-        MarketColumn::AskPx => market.set_askpx(value),
-        MarketColumn::AskQty => market.set_askqty(value),
+        MarketColumn::Price => market.set_price(value, true),
+        MarketColumn::StopPx => market.set_stoppx(value, true),
+        MarketColumn::Quantity => market.set_quantity(value, true),
+        MarketColumn::DisplayQty => market.set_displayqty(value, true),
+        MarketColumn::HiddenQty => market.set_hiddenqty(value, true),
+        MarketColumn::CxlQty => market.set_cxlqty(value, true),
+        MarketColumn::LastPx => market.set_lastpx(value, true),
+        MarketColumn::LastQty => market.set_lastqty(value, true),
+        MarketColumn::AvgPx => market.set_avgpx(value, true),
+        MarketColumn::CumQty => market.set_cumqty(value, true),
+        MarketColumn::LeavesQty => market.set_leavesqty(value, true),
+        MarketColumn::PrevPx => market.set_prevpx(value, true),
+        MarketColumn::PrevQty => market.set_prevqty(value, true),
+        MarketColumn::SpotRate => market.set_spotrate(value, true),
+        MarketColumn::ForwardPoints => market.set_forwardpoints(value, true),
+        MarketColumn::BidPx => market.set_bidpx(value, true),
+        MarketColumn::BidQty => market.set_bidqty(value, true),
+        MarketColumn::AskPx => market.set_askpx(value, true),
+        MarketColumn::AskQty => market.set_askqty(value, true),
         _ => {}
     }
 }
@@ -475,7 +508,9 @@ fn set_market_decimal<E: Market + ?Sized>(
 /// answers, and the nested rows it holds.
 #[derive(Clone, Copy)]
 struct Row<'a> {
-    kind: MarketKind,
+    /// The category the row states: the leaf's, or the one a FIX message's
+    /// dictionary files it under.
+    marketdatakind: crate::MarketDataKind,
     element: &'a dyn Element,
     event: Option<&'a dyn Event>,
     market: &'a dyn Market,
@@ -508,6 +543,12 @@ impl<'a> Row<'a> {
                 control: Some(control.book()),
                 ..Self::dated(kind, control)
             },
+            // A message is written as the leaves it splits into, at the
+            // writer's intake; held whole, it states its own category.
+            MarketData::Fix(message) => Self {
+                marketdatakind: message.msgcat(),
+                ..Self::operation(kind, message.as_ref(), None)
+            },
         }
     }
 
@@ -522,7 +563,7 @@ impl<'a> Row<'a> {
         operation: Option<&'a dyn Operation>,
     ) -> Self {
         Self {
-            kind,
+            marketdatakind: kind.marketdatakind(),
             element,
             event: None,
             market,
@@ -589,8 +630,8 @@ impl<'a> Row<'a> {
 
     fn uuid(&self, column: Column) -> Option<Uuid> {
         match column {
-            Column::Event(EventColumn::CurrUuid) => Some(self.element.get_curruuid()),
-            Column::Event(EventColumn::CrossUuid) => Some(self.element.get_crossuuid()),
+            Column::Element(ElementColumn::CurrUuid) => Some(self.element.get_curruuid()),
+            Column::Element(ElementColumn::CrossUuid) => Some(self.element.get_crossuuid()),
             Column::Event(EventColumn::PrevUuid) => self.event?.get_prevuuid(),
             _ => None,
         }
@@ -600,7 +641,7 @@ impl<'a> Row<'a> {
     fn uuids(&self, column: Column) -> Option<&'a [Uuid]> {
         let element: &'a dyn Element = self.element;
         match column {
-            Column::Event(EventColumn::SrcUuids) => {
+            Column::Element(ElementColumn::SrcUuids) => {
                 Some(element.get_srcuuids()).filter(|uuids| !uuids.is_empty())
             }
             _ => None,
@@ -609,8 +650,8 @@ impl<'a> Row<'a> {
 
     fn u64(&self, column: Column) -> Option<u64> {
         match column {
-            Column::Event(EventColumn::CurrHashCode) => Some(self.element.get_currhashcode()),
-            Column::Event(EventColumn::CrossHashCode) => Some(self.element.get_crosshashcode()),
+            Column::Element(ElementColumn::CurrHashCode) => Some(self.element.get_currhashcode()),
+            Column::Element(ElementColumn::CrossHashCode) => Some(self.element.get_crosshashcode()),
             Column::Event(EventColumn::SeqNum) => {
                 Some(self.event?.get_seqnum()).filter(|seqnum| *seqnum != 0)
             }
@@ -618,11 +659,25 @@ impl<'a> Row<'a> {
         }
     }
 
-    fn i32(&self, column: Column) -> Option<i32> {
+    /// The code of a one-byte enum column: the kind and the side.
+    fn code8(&self, column: Column) -> Option<u8> {
         match column {
-            Column::MarketDataKind => Some(self.kind.marketdatakind().code()),
-            Column::Event(EventColumn::State) => Some(self.event?.get_state().code()),
+            Column::Market(MarketColumn::MarketDataKind) => Some(self.marketdatakind.code()),
             Column::Market(MarketColumn::Side) => Some(self.market.get_side().code()),
+            Column::Operation(OperationColumn::TimeInForce) => {
+                self.operation?.get_timeinforce().map(|held| held.code())
+            }
+            _ => None,
+        }
+    }
+
+    /// The code of a two-byte enum column: the state and the type.
+    fn code16(&self, column: Column) -> Option<u16> {
+        match column {
+            Column::Event(EventColumn::State) => Some(self.event?.get_state().code()),
+            Column::Market(MarketColumn::MarketDataType) => {
+                Some(self.market.get_marketdatatype().code())
+            }
             _ => None,
         }
     }
@@ -637,6 +692,7 @@ impl<'a> Row<'a> {
     fn decimal(&self, column: Column) -> Option<Decimal> {
         match column {
             Column::Market(column) => market_decimal(column, self.market),
+            Column::Operation(OperationColumn::OrdQty) => self.operation?.get_ordqty(),
             _ => None,
         }
     }
@@ -647,7 +703,7 @@ impl<'a> Row<'a> {
         let element: &'a dyn Element = self.element;
         let market: &'a dyn Market = self.market;
         match column {
-            Column::Event(EventColumn::CrossCode) => {
+            Column::Element(ElementColumn::CrossCode) => {
                 Some(element.get_crosscode()).filter(|code| !code.is_empty())
             }
             Column::Market(MarketColumn::Currency) => Some(market.get_currency().as_str()),
@@ -658,10 +714,6 @@ impl<'a> Row<'a> {
             Column::Market(MarketColumn::CfiCode) => market.get_cficode().map(Cfi::as_str),
             Column::Market(MarketColumn::MicCode) => market.get_miccode().map(Mic::as_str),
             Column::Market(MarketColumn::Ticker) => market.get_ticker(),
-            Column::Operation(OperationColumn::TimeInForce) => {
-                let operation: &'a dyn Operation = self.operation?;
-                operation.get_tif().map(TimeInForce::as_str)
-            }
             Column::BookScope => self.control?.scope.as_deref(),
             _ => None,
         }
@@ -675,13 +727,6 @@ impl<'a> Row<'a> {
             values.append_value(value);
         };
         match column {
-            Column::Market(MarketColumn::SecurityIds) => {
-                let ids = self.market.get_securityids();
-                for id in ids.iter() {
-                    push(id.key_str(), id.code());
-                }
-                !ids.is_empty()
-            }
             Column::Market(MarketColumn::Metadata) => {
                 let metadata = self.market.get_metadata();
                 for (key, value) in metadata {
@@ -689,22 +734,23 @@ impl<'a> Row<'a> {
                 }
                 !metadata.is_empty()
             }
-            Column::Operation(column @ (OperationColumn::AltIds | OperationColumn::AccountIds)) => {
-                let Some(operation) = self.operation else {
-                    return false;
-                };
-                let ids = if column == OperationColumn::AltIds {
-                    operation.get_altids()
-                } else {
-                    operation.get_accountids()
-                };
-                for (key, value) in ids.iter() {
-                    push(key, value);
-                }
-                !ids.is_empty()
-            }
             _ => false,
         }
+    }
+
+    /// The identifiers a row states under an identifier column, none where
+    /// it states none.
+    fn ids(&self, column: Column) -> Option<&'a Identifiers> {
+        let ids = match column {
+            Column::Market(MarketColumn::SecurityIds) => {
+                let market: &'a dyn Market = self.market;
+                market.get_securityids()
+            }
+            Column::Operation(OperationColumn::Identifiers) => self.operation?.get_identifiers(),
+            Column::Operation(OperationColumn::PartyIds) => self.operation?.get_partyids(),
+            _ => return None,
+        };
+        (!ids.is_empty()).then_some(ids)
     }
 
     /// The price levels a book row states for the side `column` names,
@@ -865,10 +911,15 @@ impl Slot {
                     .map(|row| row.u64(column))
                     .collect::<UInt64Array>(),
             ),
-            Storage::State | Storage::Side | Storage::MarketDataKind => Arc::new(
+            Storage::Side | Storage::MarketDataKind | Storage::TimeInForce => Arc::new(
                 rows.iter()
-                    .map(|row| row.i32(column))
-                    .collect::<Int32Array>(),
+                    .map(|row| row.code8(column))
+                    .collect::<UInt8Array>(),
+            ),
+            Storage::State | Storage::MarketDataType => Arc::new(
+                rows.iter()
+                    .map(|row| row.code16(column))
+                    .collect::<UInt16Array>(),
             ),
             Storage::Boolean => Arc::new(
                 rows.iter()
@@ -900,6 +951,51 @@ impl Slot {
                 let entries_array = StructArray::try_new(
                     children.clone(),
                     vec![Arc::new(keys.finish()), Arc::new(values.finish())],
+                    None,
+                )?;
+                Arc::new(MapArray::try_new(
+                    Arc::clone(entries),
+                    OffsetBuffer::new(ScalarBuffer::from(offsets)),
+                    entries_array,
+                    validity(&valid),
+                    sorted,
+                )?)
+            }
+            Storage::Ids => {
+                // A sorted map from each identifier's key `src:type` to its
+                // row, written in the order the set holds them, which is
+                // the key's.
+                let (entries, children, sorted) = map_parts(column, datatype, Storage::Ids)?;
+                let ArrowType::Struct(item) = children[1].data_type() else {
+                    return Err(unlanded(column, Storage::Ids));
+                };
+                let mut keys = StringBuilder::new();
+                let mut cells: [StringBuilder; 3] = std::array::from_fn(|_| StringBuilder::new());
+                let mut offsets = Vec::with_capacity(rows.len() + 1);
+                offsets.push(0_i32);
+                let mut valid = Vec::with_capacity(rows.len());
+                for row in rows {
+                    let ids = row.ids(column);
+                    for id in ids.into_iter().flatten() {
+                        keys.append_value(id.key());
+                        cells[0].append_value(id.src());
+                        cells[1].append_value(id.kind());
+                        cells[2].append_value(id.value());
+                    }
+                    valid.push(ids.is_some());
+                    offsets.push(offset(keys.len())?);
+                }
+                let items = StructArray::try_new(
+                    item.clone(),
+                    cells
+                        .iter_mut()
+                        .map(|cell| Arc::new(cell.finish()) as ArrayRef)
+                        .collect(),
+                    None,
+                )?;
+                let entries_array = StructArray::try_new(
+                    children.clone(),
+                    vec![Arc::new(keys.finish()), Arc::new(items)],
                     None,
                 )?;
                 Arc::new(MapArray::try_new(
@@ -1074,6 +1170,10 @@ fn list(item: &FieldRef, offsets: Vec<i32>, values: ArrayRef, valid: &[bool]) ->
 /// The bounded batch reader over a stream of values.
 struct Writer<I> {
     source: I,
+    /// The leaves a FIX message pulled from the source split into, written
+    /// in order before the source is pulled again: a message's row is each
+    /// leaf it reports, so every row reads back as what it is.
+    split: std::collections::VecDeque<MarketData>,
     shape: Shape,
     schema: SchemaRef,
     batch_row_size: usize,
@@ -1107,15 +1207,27 @@ where
             {
                 break;
             }
-            let Some(item) = self.source.next() else {
-                self.done = true;
-                break;
+            let item = match self.split.pop_front() {
+                Some(leaf) => Ok(leaf),
+                None => {
+                    let Some(item) = self.source.next() else {
+                        self.done = true;
+                        break;
+                    };
+                    match item.into() {
+                        Ok(MarketData::Fix(message)) => match message.into_market_data() {
+                            Ok(leaves) => {
+                                self.split.extend(leaves);
+                                continue;
+                            }
+                            Err(error) => Err(error),
+                        },
+                        other => other,
+                    }
+                }
             };
             let ordinal = self.ordinal;
-            match item
-                .into()
-                .and_then(|value| checked(&value, ordinal).map(|()| value))
-            {
+            match item.and_then(|value| checked(&value, ordinal).map(|()| value)) {
                 Ok(value) => {
                     self.ordinal += 1;
                     charged += charge(&value);
@@ -1176,6 +1288,9 @@ fn checked(value: &MarketData, ordinal: u64) -> Result<()> {
         MarketData::TradeEvent(trade) => validate_trade_for_write(trade, &here),
         MarketData::BookEvent(book) => validate_book_for_write(book, &here),
         MarketData::SnapshotEvent(control) => validate_control_for_write(control, &here),
+        // A message settles its own identity as it is built and written;
+        // the row states what it answers.
+        MarketData::Fix(_) => Ok(()),
     }
 }
 
@@ -1252,7 +1367,7 @@ fn validate_book_for_write(book: &BookEvent, path: &Path<'_>) -> Result<()> {
                 }
                 other => {
                     return Err(invalid(
-                        at(&item, MARKETDATAKIND),
+                        at(&item, MarketColumn::MarketDataKind.name()),
                         format_smolstr!(
                             "expected order_event or quote_event on a book, got {}",
                             other.kind().as_str()
@@ -1457,20 +1572,26 @@ enum Storage {
     Uuid,
     Uuids,
     UInt64,
-    /// A state: the `int32` code of its member.
+    /// A state: the `uint16` code of its member.
     State,
-    /// A side: the `int32` code of its member.
+    /// A side: the `uint8` code of its member.
     Side,
-    /// A market data category: the `int32` code of its member.
+    /// A market data category: the `uint8` code of its member.
     MarketDataKind,
+    /// A market data type: the `uint16` code of its member.
+    MarketDataType,
+    /// A time in force: the `uint8` code of its member.
+    TimeInForce,
     Boolean,
     Decimal,
     Text,
     /// A registered code: the text its storage holds, built into the
     /// code's value by the code's own constructor.
     Code(Code),
-    /// A `map<utf8, utf8>`: identifiers, securities, metadata.
+    /// A `map<utf8, utf8>`: metadata.
     Pairs,
+    /// A `serie<identifier>`: securities, alternate identifiers, parties.
+    Ids,
     /// A `map<ccy, decimal>`: the FX rates, target to the rate to divide by.
     Rates,
     /// A `serie<limit>`: a book side's price levels.
@@ -1487,7 +1608,6 @@ enum Code {
     Isin,
     Cfi,
     Mic,
-    TimeInForce,
 }
 
 impl Code {
@@ -1498,8 +1618,7 @@ impl Code {
             | (Self::Unit, Serie::Unit(held))
             | (Self::Isin, Serie::Isin(held))
             | (Self::Cfi, Serie::Cfi(held))
-            | (Self::Mic, Serie::Mic(held))
-            | (Self::TimeInForce, Serie::TimeInForce(held)) => Some(held),
+            | (Self::Mic, Serie::Mic(held)) => Some(held),
             _ => None,
         }
     }
@@ -1514,16 +1633,28 @@ enum Leaf {
     Boolean(Arc<BooleanSerie>),
     Decimal(Arc<Decimal128Serie>),
     /// A state's member codes, each proven where the column landed.
-    State(Arc<Int32Serie>),
+    State(Arc<UInt16Serie>),
     /// A side's member codes, each proven where the column landed.
-    Side(Arc<Int32Serie>),
+    Side(Arc<UInt8Serie>),
     /// A market data category's member codes, each proven where the column
     /// landed.
-    MarketDataKind(Arc<Int32Serie>),
+    MarketDataKind(Arc<UInt8Serie>),
+    /// A market data type's member codes, each proven where the column
+    /// landed.
+    MarketDataType(Arc<UInt16Serie>),
+    /// A time in force's member codes, each proven where the column landed.
+    TimeInForce(Arc<UInt8Serie>),
     Text(Arc<Utf8StringSerie>),
     /// A code's text storage.
     Code(Arc<Utf8StringSerie>),
     Pairs(Arc<MapSerie>, Arc<Utf8StringSerie>, Arc<Utf8StringSerie>),
+    /// An identifier map, its text keys and its rows' three text
+    /// children: source, type and value.
+    Ids(
+        Arc<MapSerie>,
+        Arc<Utf8StringSerie>,
+        Box<[Arc<Utf8StringSerie>; 3]>,
+    ),
     /// The rates map, its currency keys and its decimal rates.
     Rates(Arc<MapSerie>, Arc<Utf8StringSerie>, Arc<Decimal128Serie>),
 }
@@ -1541,8 +1672,12 @@ impl Leaf {
             (Storage::UInt64, Serie::UInt64(held)) => Self::UInt64(Arc::clone(held)),
             (Storage::State, Serie::State(held)) => Self::State(Arc::clone(held)),
             (Storage::Side, Serie::Side(held)) => Self::Side(Arc::clone(held)),
+            (Storage::TimeInForce, Serie::TimeInForce(held)) => Self::TimeInForce(Arc::clone(held)),
             (Storage::MarketDataKind, Serie::MarketDataKind(held)) => {
                 Self::MarketDataKind(Arc::clone(held))
+            }
+            (Storage::MarketDataType, Serie::MarketDataType(held)) => {
+                Self::MarketDataType(Arc::clone(held))
             }
             (Storage::Boolean, Serie::Boolean(held)) => Self::Boolean(Arc::clone(held)),
             (Storage::Decimal, Serie::Decimal128(held)) => Self::Decimal(Arc::clone(held)),
@@ -1556,6 +1691,23 @@ impl Leaf {
                     (Serie::Utf8String(keys), Serie::Utf8String(values)) => {
                         Self::Pairs(Arc::clone(map), Arc::clone(keys), Arc::clone(values))
                     }
+                    _ => return Err(unlanded(column, storage)),
+                }
+            }
+            (Storage::Ids, Serie::SortedMap(map) | Serie::Map(map)) => {
+                match (map.keys(), map.values().children()) {
+                    (
+                        Serie::Utf8String(keys),
+                        [
+                            Serie::Utf8String(src),
+                            Serie::Utf8String(kind),
+                            Serie::Utf8String(value),
+                        ],
+                    ) => Self::Ids(
+                        Arc::clone(map),
+                        Arc::clone(keys),
+                        Box::new([Arc::clone(src), Arc::clone(kind), Arc::clone(value)]),
+                    ),
                     _ => return Err(unlanded(column, storage)),
                 }
             }
@@ -1624,6 +1776,24 @@ impl Leaf {
         }
     }
 
+    /// The time in force one cell states; `None` for a null.
+    fn timeinforce(&self, row: usize) -> Option<TimeInForce> {
+        match self {
+            Self::TimeInForce(held) => held.value(row).and_then(TimeInForce::from_code),
+            _ => None,
+        }
+    }
+
+    /// The market data type one cell states; `None` for a null.
+    fn marketdatatype(&self, row: usize) -> Option<crate::MarketDataType> {
+        match self {
+            Self::MarketDataType(held) => {
+                held.value(row).and_then(crate::MarketDataType::from_code)
+            }
+            _ => None,
+        }
+    }
+
     /// The market data category one cell states; `None` for a null.
     fn marketdatakind(&self, row: usize) -> Option<MarketDataKind> {
         match self {
@@ -1677,6 +1847,36 @@ impl Leaf {
                 .map(|range| range.filter_map(|at| Some((keys.value(at)?, values.value(at)?)))),
             _ => None,
         }
+    }
+
+    /// The identifiers one identifier cell states; `None` for a null. An
+    /// identifier its type refuses, or a key that is not the `src:type` of
+    /// the row it keys, is refused naming the column.
+    fn ids(&self, row: usize, path: &Path<'_>, name: &str) -> Result<Option<Identifiers>> {
+        let Self::Ids(map, keys, cells) = self else {
+            return Ok(None);
+        };
+        let Some(range) = map.range(row) else {
+            return Ok(None);
+        };
+        let located = |error: Error| invalid(at(path, name), format_smolstr!("{error}"));
+        let mut ids = Identifiers::new();
+        for item in range {
+            let text = |cell: usize| cells[cell].value(item).unwrap_or_default();
+            let id = text(0)
+                .parse()
+                .and_then(|src| Identifier::new(src, text(1).parse()?, text(2)))
+                .map_err(located)?;
+            let key = keys.value(item).unwrap_or_default();
+            if id.key() != key {
+                return Err(invalid(
+                    at(path, name),
+                    format_smolstr!("expected the key {}, got {key:?}", id.key()),
+                ));
+            }
+            ids.insert(id);
+        }
+        Ok(Some(ids))
     }
 
     /// The rates one map cell states; `None` for a null. A key no
@@ -1785,7 +1985,7 @@ impl Layouts {
 /// One landed struct - a batch's root or a list's items - its columns
 /// narrowed once to their leaves.
 struct Landed {
-    marketdatakind: Option<Leaf>,
+    element: [Option<Leaf>; ElementColumn::ALL.len()],
     event: [Option<Leaf>; EventColumn::ALL.len()],
     market: [Option<Leaf>; MarketColumn::ALL.len()],
     operation: [Option<Leaf>; OperationColumn::ALL.len()],
@@ -1817,7 +2017,7 @@ struct Limits {
 impl Landed {
     fn new(children: &[Serie], layout: &[(Column, usize)], layouts: &Layouts) -> Result<Self> {
         let mut landed = Self {
-            marketdatakind: None,
+            element: std::array::from_fn(|_| None),
             event: std::array::from_fn(|_| None),
             market: std::array::from_fn(|_| None),
             operation: std::array::from_fn(|_| None),
@@ -1831,7 +2031,10 @@ impl Landed {
         for (column, at) in layout {
             let serie = &children[*at];
             match column {
-                Column::MarketDataKind => landed.marketdatakind = Some(Leaf::of(*column, serie)?),
+                Column::Element(held) => {
+                    landed.element[position(&ElementColumn::ALL, held)] =
+                        Some(Leaf::of(*column, serie)?);
+                }
                 Column::Event(held) => {
                     landed.event[position(&EventColumn::ALL, held)] =
                         Some(Leaf::of(*column, serie)?);
@@ -1861,8 +2064,8 @@ impl Landed {
     /// dated where it states `currunix`, and a dated book a book or a
     /// snapshot control by whether it states its `alive` entries.
     fn value(&self, row: usize, path: &Path<'_>) -> Result<MarketData> {
-        let dated = self.event[0]
-            .as_ref()
+        let dated = self
+            .event_leaf(EventColumn::CurrUnix)
             .and_then(|leaf| leaf.clock(row))
             .is_some();
         match (self.category(row, path)?, dated) {
@@ -1885,17 +2088,17 @@ impl Landed {
                 .operation_event::<ExecutionKind>(row, path)
                 .map(MarketData::from),
             (MarketDataKind::Trade, false) => Err(invalid(
-                at(path, MARKETDATAKIND),
+                at(path, MarketColumn::MarketDataKind.name()),
                 "expected a dated TRAD row, got currunix null",
             )),
             (MarketDataKind::Trade, true) => self.trade(row, path).map(MarketData::from),
             (MarketDataKind::Book, false) => Err(invalid(
-                at(path, MARKETDATAKIND),
+                at(path, MarketColumn::MarketDataKind.name()),
                 "expected a dated BOOK row, got currunix null",
             )),
             (MarketDataKind::Book, true) => self.dated_book(row, path),
             (other, _) => Err(invalid(
-                at(path, MARKETDATAKIND),
+                at(path, MarketColumn::MarketDataKind.name()),
                 format_smolstr!("expected {KINDS}, got {}", other.as_str()),
             )),
         }
@@ -1905,16 +2108,30 @@ impl Landed {
     fn category(&self, row: usize, path: &Path<'_>) -> Result<MarketDataKind> {
         self.category_of(row).ok_or_else(|| {
             invalid(
-                at(path, MARKETDATAKIND),
+                at(path, MarketColumn::MarketDataKind.name()),
                 format_smolstr!("expected {KINDS}, got null"),
             )
         })
     }
 
     fn category_of(&self, row: usize) -> Option<MarketDataKind> {
-        self.marketdatakind
-            .as_ref()
+        self.market_leaf(MarketColumn::MarketDataKind)
             .and_then(|leaf| leaf.marketdatakind(row))
+    }
+
+    /// The landed leaf of one element column, where the struct holds it.
+    fn element_leaf(&self, column: ElementColumn) -> Option<&Leaf> {
+        self.element[position(&ElementColumn::ALL, &column)].as_ref()
+    }
+
+    /// The landed leaf of one event column, where the struct holds it.
+    fn event_leaf(&self, column: EventColumn) -> Option<&Leaf> {
+        self.event[position(&EventColumn::ALL, &column)].as_ref()
+    }
+
+    /// The landed leaf of one market column, where the struct holds it.
+    fn market_leaf(&self, column: MarketColumn) -> Option<&Leaf> {
+        self.market[position(&MarketColumn::ALL, &column)].as_ref()
     }
 
     /// A dated `BOOK` row: a book where it states its `alive` entries -
@@ -1951,8 +2168,7 @@ impl Landed {
 
     /// The instant a dated leaf requires.
     fn currunix(&self, row: usize, path: &Path<'_>) -> Result<i64> {
-        self.event[0]
-            .as_ref()
+        self.event_leaf(EventColumn::CurrUnix)
             .and_then(|leaf| leaf.clock(row))
             .ok_or_else(|| {
                 invalid(
@@ -1971,6 +2187,7 @@ impl Landed {
         let mut claims = IdentityClaims::default();
         self.read_element(row, &mut element, &mut claims);
         self.read_market(row, &mut element, path)?;
+        self.read_crosscode(row, &mut element);
         self.read_operation(row, &mut element, path)?;
         element.finalize();
         claims.validate(&element, path)?;
@@ -2004,6 +2221,7 @@ impl Landed {
         target.set_currunix(self.currunix(row, path)?);
         self.read_event(row, target, &mut claims);
         self.read_market(row, target, path)?;
+        self.read_crosscode(row, target);
         self.read_operation(row, target, path)?;
         Ok(claims)
     }
@@ -2023,6 +2241,7 @@ impl Landed {
 
     fn trade(&self, row: usize, path: &Path<'_>) -> Result<TradeEvent> {
         let mut data = OperationEventFacts::default();
+        data.set_marketdatakind(crate::MarketDataKind::Trade);
         let claims = self.read_operation_event(row, &mut data, path)?;
         let Some(executions) = self.executions(row, path)? else {
             return Err(invalid(
@@ -2044,10 +2263,12 @@ impl Landed {
         path: &Path<'_>,
     ) -> Result<(SnapshotEvent, IdentityClaims)> {
         let mut event = MarketEventFacts::default();
+        event.set_marketdatakind(crate::MarketDataKind::Book);
         let mut claims = IdentityClaims::default();
         event.set_currunix(self.currunix(row, path)?);
         self.read_event(row, &mut event, &mut claims);
         self.read_market(row, &mut event, path)?;
+        self.read_crosscode(row, &mut event);
         let control = SnapshotEvent::from_control(event, self.control(row).unwrap_or_default());
         Ok((control, claims))
     }
@@ -2069,10 +2290,12 @@ impl Landed {
 
     fn book(&self, row: usize, path: &Path<'_>) -> Result<BookEvent> {
         let mut event = MarketEventFacts::default();
+        event.set_marketdatakind(crate::MarketDataKind::Book);
         let mut claims = IdentityClaims::default();
         event.set_currunix(self.currunix(row, path)?);
         self.read_event(row, &mut event, &mut claims);
         self.read_market(row, &mut event, path)?;
+        self.read_crosscode(row, &mut event);
         let alive = Self::entries(self.alive.as_ref(), ALIVE, row, path)?;
         let deltas = Self::entries(self.deltas.as_ref(), DELTAS, row, path)?;
         let executions = self.executions(row, path)?.unwrap_or_default();
@@ -2132,7 +2355,7 @@ impl Landed {
                         .operation_event::<QuoteKind>(at, &item)
                         .map(MarketData::from),
                     other => Err(invalid(
-                        self::at(&item, MARKETDATAKIND),
+                        self::at(&item, MarketColumn::MarketDataKind.name()),
                         format_smolstr!("expected ORDR or QUOT on a book, got {}", other.as_str()),
                     )),
                 }
@@ -2156,13 +2379,13 @@ impl Landed {
                 let item = here.child(Segment::Index(index));
                 // A nested execution states its category or leaves it to
                 // the list it stands in.
-                if let Some(kind) = list.items.category_of(at) {
-                    if kind != MarketDataKind::Execution {
-                        return Err(invalid(
-                            self::at(&item, MARKETDATAKIND),
-                            format_smolstr!("expected EXEC, got {}", kind.as_str()),
-                        ));
-                    }
+                if let Some(kind) = list.items.category_of(at)
+                    && kind != MarketDataKind::Execution
+                {
+                    return Err(invalid(
+                        self::at(&item, MarketColumn::MarketDataKind.name()),
+                        format_smolstr!("expected EXEC, got {}", kind.as_str()),
+                    ));
                 }
                 list.items.operation_event::<ExecutionKind>(at, &item)
             })
@@ -2187,51 +2410,65 @@ impl Landed {
         target: &mut E,
         claims: &mut IdentityClaims,
     ) {
-        for (column, leaf) in EventColumn::ALL.into_iter().zip(&self.event) {
+        for (column, leaf) in ElementColumn::ALL.into_iter().zip(&self.element) {
             let Some(leaf) = leaf else {
                 continue;
             };
             match column {
-                EventColumn::CurrUuid => {
+                ElementColumn::CurrUuid => {
                     let uuid = leaf.uuid(row);
                     if let Some(uuid) = uuid {
                         target.set_curruuid(uuid);
                     }
                     claims.curruuid = Claim::of(uuid);
                 }
-                EventColumn::CrossUuid => {
+                ElementColumn::CrossUuid => {
                     let uuid = leaf.uuid(row);
                     if let Some(uuid) = uuid {
                         target.set_crossuuid(uuid);
                     }
                     claims.crossuuid = Claim::of(uuid);
                 }
-                EventColumn::CrossCode => {
-                    if let Some(code) = leaf.text(row).filter(|code| !code.is_empty()) {
-                        target.set_crosscode(code.to_owned());
-                    }
-                }
-                EventColumn::CurrHashCode => {
+                // Read last, by `read_crosscode`, once its prefix's facts
+                // stand.
+                ElementColumn::CrossCode => {}
+                ElementColumn::CurrHashCode => {
                     let code = leaf.u64(row);
                     if let Some(code) = code {
                         target.set_currhashcode(code);
                     }
                     claims.currhashcode = Claim::of(code);
                 }
-                EventColumn::CrossHashCode => {
+                ElementColumn::CrossHashCode => {
                     let code = leaf.u64(row);
                     if let Some(code) = code {
                         target.set_crosshashcode(code);
                     }
                     claims.crosshashcode = Claim::of(code);
                 }
-                EventColumn::SrcUuids => {
+                ElementColumn::SrcUuids => {
                     if let Some(uuids) = leaf.uuids(row) {
                         target.set_srcuuids(uuids.collect());
                     }
                 }
-                _ => {}
             }
+        }
+    }
+
+    /// The cross code a row states onto `target`, once the facts its stored
+    /// prefix spells - the category the holder stamped and the side the
+    /// row states - stand, so a canonical code is held as read rather than
+    /// spelled again under each fact as it lands.
+    fn read_crosscode<E: Element + ?Sized>(&self, row: usize, target: &mut E) {
+        let leaf = ElementColumn::ALL
+            .iter()
+            .position(|column| *column == ElementColumn::CrossCode)
+            .and_then(|at| self.element.get(at)?.as_ref());
+        if let Some(code) = leaf
+            .and_then(|leaf| leaf.text(row))
+            .filter(|code| !code.is_empty())
+        {
+            target.set_crosscode(code.to_owned());
         }
     }
 
@@ -2261,7 +2498,8 @@ impl Landed {
                         target.set_state(state);
                     }
                 }
-                _ => {}
+                // The instant is the caller's to read first.
+                EventColumn::CurrUnix => {}
             }
         }
     }
@@ -2279,22 +2517,15 @@ impl Landed {
             if is_decimal(column) {
                 set_market_decimal(column, target, leaf.decimal(row));
             } else if column == MarketColumn::Ticker {
-                target.set_ticker(leaf.text(row).map(SmolStr::new));
+                target.set_ticker(leaf.text(row).map(SmolStr::new), true);
             } else if column == MarketColumn::ExecUnix {
-                target.set_execunix(leaf.clock(row));
+                target.set_execunix(leaf.clock(row), true);
             } else if column == MarketColumn::SecurityIds {
-                let Some(pairs) = leaf.pairs(row) else {
+                let Some(ids) = leaf.ids(row, path, column.name())? else {
                     continue;
                 };
                 let located = |error: Error| prefix_invalid(error, &path.field(column.name()));
-                let mut ids = SecurityIds::default();
-                for (key, code) in pairs {
-                    ids.insert(
-                        SecurityId::new(SecType::read(key).map_err(located)?, code)
-                            .map_err(located)?,
-                    );
-                }
-                target.set_securityids(ids).map_err(located)?;
+                target.set_securityids(ids, true).map_err(located)?;
             } else if column == MarketColumn::IsinCode {
                 // A projection of `securityids`, read after it: it fills an
                 // absent ISIN and must agree with a stated one.
@@ -2306,7 +2537,7 @@ impl Landed {
                         return Err(invalid(
                             at(path, column.name()),
                             format_smolstr!(
-                                "expected the securityids ISIN {held:?}, got {stated:?}"
+                                "expected the securityids isin {held:?}, got {stated:?}"
                             ),
                         ));
                     }
@@ -2315,15 +2546,14 @@ impl Landed {
                         let located = |error: Error| {
                             invalid(at(path, column.name()), format_smolstr!("{error}"))
                         };
-                        let id = SecType::read("ISIN")
-                            .and_then(|key| SecurityId::new(key, stated))
+                        let id = Identifier::new(IdSource::Base, IdType::Isin, stated)
                             .map_err(located)?;
                         target.insert_securityid(id).map_err(located)?;
                     }
                 }
             } else if column == MarketColumn::FxRates {
                 if let Some(rates) = leaf.rates(row, path, column.name())? {
-                    target.set_fxrates(rates);
+                    target.set_fxrates(rates, true);
                 }
             } else if column == MarketColumn::Metadata {
                 if let Some(pairs) = leaf.pairs(row) {
@@ -2333,44 +2563,49 @@ impl Landed {
                     for (key, value) in pairs {
                         metadata.insert(SmolStr::new(key), SmolStr::new(value));
                     }
-                    target.set_metadata(Some(metadata));
+                    target.set_metadata(Some(metadata), true);
                 }
             } else {
                 let name = column.name();
                 match column {
                     MarketColumn::Currency => {
                         if let Some(held) = leaf.code(row, path, name, |text| Ccy::new(text))? {
-                            target.set_currency(held);
+                            target.set_currency(held, true);
                         }
                     }
                     MarketColumn::BidCcy => {
                         if let Some(held) = leaf.code(row, path, name, |text| Ccy::new(text))? {
-                            target.set_bidccy(Some(held));
+                            target.set_bidccy(Some(held), true);
                         }
                     }
                     MarketColumn::AskCcy => {
                         if let Some(held) = leaf.code(row, path, name, |text| Ccy::new(text))? {
-                            target.set_askccy(Some(held));
+                            target.set_askccy(Some(held), true);
                         }
                     }
                     MarketColumn::Unit => {
                         if let Some(held) = leaf.code(row, path, name, |text| Unit::new(text))? {
-                            target.set_unit(held);
+                            target.set_unit(held, true);
                         }
                     }
                     MarketColumn::Side => {
                         if let Some(held) = leaf.side(row) {
-                            target.set_side(held);
+                            target.set_side(held, true);
+                        }
+                    }
+                    MarketColumn::MarketDataType => {
+                        if let Some(held) = leaf.marketdatatype(row) {
+                            target.set_marketdatatype(held, true);
                         }
                     }
                     MarketColumn::CfiCode => {
                         if let Some(held) = leaf.code(row, path, name, |text| Cfi::new(text))? {
-                            target.set_cficode(Some(held));
+                            target.set_cficode(Some(held), true);
                         }
                     }
                     MarketColumn::MicCode => {
                         if let Some(held) = leaf.code(row, path, name, |text| Mic::new(text))? {
-                            target.set_miccode(Some(held));
+                            target.set_miccode(Some(held), true);
                         }
                     }
                     _ => {}
@@ -2391,27 +2626,23 @@ impl Landed {
                 continue;
             };
             match column {
-                OperationColumn::Tradable => target.set_tradable(leaf.boolean(row)),
-                OperationColumn::AltIds | OperationColumn::AccountIds => {
-                    let Some(pairs) = leaf.pairs(row) else {
+                OperationColumn::Tradable => target.set_tradable(leaf.boolean(row), true),
+                OperationColumn::Identifiers | OperationColumn::PartyIds => {
+                    let Some(ids) = leaf.ids(row, path, column.name())? else {
                         continue;
                     };
                     let located = |error: Error| prefix_invalid(error, &path.field(column.name()));
-                    let mut ids = IdMap::new();
-                    for (key, value) in pairs {
-                        ids.insert(key, value).map_err(located)?;
-                    }
-                    if column == OperationColumn::AltIds {
-                        target.set_altids(ids).map_err(located)?;
+                    if column == OperationColumn::Identifiers {
+                        target.set_identifiers(ids, true).map_err(located)?;
                     } else {
-                        target.set_accountids(ids).map_err(located)?;
+                        target.set_partyids(ids, true).map_err(located)?;
                     }
                 }
+                OperationColumn::OrdQty => target.set_ordqty(leaf.decimal(row), true),
                 OperationColumn::TimeInForce => {
-                    let held =
-                        leaf.code(row, path, column.name(), |text| TimeInForce::new(text))?;
+                    let held = leaf.timeinforce(row);
                     if held.is_some() {
-                        target.set_tif(held);
+                        target.set_timeinforce(held, true);
                     }
                 }
             }
@@ -2427,29 +2658,30 @@ impl Landed {
         canonical: &E,
         path: &Path<'_>,
     ) -> Result<()> {
-        if let Some(leaf) = &self.event[9] {
-            if let Some(code) = leaf
+        if let Some(leaf) = self.element_leaf(ElementColumn::CrossCode)
+            && let Some(code) = leaf
                 .text(row)
                 .filter(|code| *code != canonical.get_crosscode())
-            {
-                return Err(differs(
-                    path,
-                    EventColumn::CrossCode.name(),
-                    &canonical.get_crosscode(),
-                    &code,
-                ));
-            }
+        {
+            return Err(differs(
+                path,
+                ElementColumn::CrossCode.name(),
+                &canonical.get_crosscode(),
+                &code,
+            ));
         }
-        if let Some(uuids) = self.event[14].as_ref().and_then(|leaf| leaf.uuids(row)) {
-            if !uuids.eq(canonical.get_srcuuids().iter().copied()) {
-                return Err(invalid(
-                    at(path, EventColumn::SrcUuids.name()),
-                    format_smolstr!(
-                        "expected the value derived from the row {:?}",
-                        canonical.get_srcuuids()
-                    ),
-                ));
-            }
+        if let Some(uuids) = self
+            .element_leaf(ElementColumn::SrcUuids)
+            .and_then(|leaf| leaf.uuids(row))
+            && !uuids.eq(canonical.get_srcuuids().iter().copied())
+        {
+            return Err(invalid(
+                at(path, ElementColumn::SrcUuids.name()),
+                format_smolstr!(
+                    "expected the value derived from the row {:?}",
+                    canonical.get_srcuuids()
+                ),
+            ));
         }
         Ok(())
     }
@@ -2506,7 +2738,6 @@ impl Landed {
                     }
                     _ => {}
                 },
-                _ => {}
             }
         }
         Ok(())
@@ -2555,16 +2786,7 @@ impl Landed {
                     _ => {}
                 }
             } else if column == MarketColumn::SecurityIds {
-                let derived = canonical.get_securityids();
-                check_pairs(
-                    leaf,
-                    row,
-                    derived.len(),
-                    |key| derived.get(key),
-                    path,
-                    column.name(),
-                    derived,
-                )?;
+                check_ids(leaf, row, canonical.get_securityids(), path, column.name())?;
             } else if column == MarketColumn::IsinCode {
                 match leaf.text(row) {
                     Some(stated) if Some(stated) != canonical.get_isincode() => {
@@ -2615,6 +2837,17 @@ impl Landed {
                         }
                         _ => {}
                     },
+                    MarketColumn::MarketDataType => match leaf.marketdatatype(row) {
+                        Some(stated) if stated != canonical.get_marketdatatype() => {
+                            return Err(differs(
+                                path,
+                                name,
+                                &canonical.get_marketdatatype(),
+                                &stated,
+                            ));
+                        }
+                        _ => {}
+                    },
                     MarketColumn::CfiCode => check_code(
                         leaf,
                         row,
@@ -2660,38 +2893,93 @@ impl Landed {
                     }
                     _ => {}
                 },
-                OperationColumn::AltIds | OperationColumn::AccountIds => {
-                    let derived = if column == OperationColumn::AltIds {
-                        canonical.get_altids()
+                OperationColumn::Identifiers | OperationColumn::PartyIds => {
+                    let derived = if column == OperationColumn::Identifiers {
+                        canonical.get_identifiers()
                     } else {
-                        canonical.get_accountids()
+                        canonical.get_partyids()
                     };
-                    check_pairs(
-                        leaf,
-                        row,
-                        derived.len(),
-                        |key| derived.get(key),
-                        path,
-                        column.name(),
-                        derived,
-                    )?;
+                    check_ids(leaf, row, derived, path, column.name())?;
                 }
-                OperationColumn::TimeInForce => check_code(
-                    leaf,
-                    row,
-                    canonical.get_tif(),
-                    |text| TimeInForce::new(text),
-                    path,
-                    column.name(),
-                )?,
+                OperationColumn::OrdQty => match leaf.decimal(row) {
+                    Some(stated) if Some(stated) != canonical.get_ordqty() => {
+                        return Err(differs(
+                            path,
+                            column.name(),
+                            &canonical.get_ordqty(),
+                            &stated,
+                        ));
+                    }
+                    _ => {}
+                },
+                OperationColumn::TimeInForce => match leaf.timeinforce(row) {
+                    Some(stated) if Some(&stated) != canonical.get_timeinforce() => {
+                        return Err(differs(
+                            path,
+                            column.name(),
+                            &canonical.get_timeinforce(),
+                            &stated,
+                        ));
+                    }
+                    _ => {}
+                },
             }
         }
         Ok(())
     }
 }
 
-/// A stated map must hold exactly the entries its canonical leaf holds,
-/// each looked up by its own key rather than rebuilt.
+/// A stated identifier cell must name the identifiers its canonical leaf
+/// holds - each key, source, type and value - each stated entry looked up
+/// in place and matched once, so the check builds nothing.
+fn check_ids(
+    leaf: &Leaf,
+    row: usize,
+    held: &Identifiers,
+    path: &Path<'_>,
+    name: &str,
+) -> Result<()> {
+    let Leaf::Ids(map, keys, cells) = leaf else {
+        return Ok(());
+    };
+    let Some(range) = map.range(row) else {
+        return Ok(());
+    };
+    // One bit per held identifier, inline up to sixty-four of them.
+    let mut matched: smallvec::SmallVec<[u64; 1]> = smallvec::smallvec![0; held.len().div_ceil(64)];
+    let mut stated = 0_usize;
+    for item in range {
+        let text = |cell: usize| cells[cell].value(item).unwrap_or_default();
+        let (src, kind, value) = (text(0), text(1), text(2));
+        let key = keys.value(item).unwrap_or_default();
+        let found = held.iter().position(|id| {
+            id.src().is_spelled(src)
+                && id.kind().is_spelled(kind)
+                && key.split_once(':') == Some((id.src().as_str(), id.kind().as_str()))
+                && id.value() == value.trim()
+        });
+        let Some(at) = found.filter(|at| matched[at / 64] & (1 << (at % 64)) == 0) else {
+            return Err(differs(
+                path,
+                name,
+                held,
+                &format_args!("{src}:{kind}={value}"),
+            ));
+        };
+        matched[at / 64] |= 1 << (at % 64);
+        stated += 1;
+    }
+    if stated != held.len() {
+        return Err(differs(
+            path,
+            name,
+            held,
+            &format_args!("{stated} identifiers"),
+        ));
+    }
+    Ok(())
+}
+
 fn check_pairs<'a>(
     leaf: &Leaf,
     row: usize,
@@ -2872,21 +3160,21 @@ impl Iterator for Rows {
             return None;
         }
         loop {
-            if let Some((landed, len)) = &self.landed {
-                if self.row < *len {
-                    let row = self.row;
-                    self.row += 1;
-                    let ordinal = self.ordinal;
-                    self.ordinal += 1;
-                    let root = Path::root();
-                    let here = root.child(Segment::Index(ordinal as usize));
-                    let result = landed.value(row, &here);
-                    if result.is_err() {
-                        self.done = true;
-                        self.landed = None;
-                    }
-                    return Some(result);
+            if let Some((landed, len)) = &self.landed
+                && self.row < *len
+            {
+                let row = self.row;
+                self.row += 1;
+                let ordinal = self.ordinal;
+                self.ordinal += 1;
+                let root = Path::root();
+                let here = root.child(Segment::Index(ordinal as usize));
+                let result = landed.value(row, &here);
+                if result.is_err() {
+                    self.done = true;
+                    self.landed = None;
                 }
+                return Some(result);
             }
             self.landed = None;
             self.row = 0;

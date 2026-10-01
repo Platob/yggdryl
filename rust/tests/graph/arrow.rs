@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use arrow_array::{
-    Array, ArrayRef, BooleanArray, Decimal128Array, Int32Array, Int64Array, ListArray, MapArray,
-    RecordBatch, RecordBatchReader as _, StringArray, StructArray, UInt64Array, new_null_array,
+    Array, ArrayRef, BooleanArray, Decimal128Array, Int64Array, ListArray, MapArray, RecordBatch,
+    RecordBatchReader as _, StringArray, StructArray, UInt64Array, new_null_array,
 };
 use arrow_buffer::{OffsetBuffer, ScalarBuffer};
 use arrow_schema::{Fields, Schema};
@@ -14,13 +14,14 @@ use smol_str::SmolStr;
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::graph::book::ENTRY_ID;
 use yggdryl::graph::{
-    BookEvent, BookRef, Element, Event, EventColumn, Execution, ExecutionEvent, FxRates, Market,
-    MarketColumn, MarketData, MarketKind, MdUpdateAction, Operation, OperationColumn,
-    OperationEvent, OperationKind, Order, OrderEvent, Quote, QuoteEvent, SnapshotEvent, TradeEvent,
+    BookEvent, BookRef, Element, ElementColumn, Event, EventColumn, Execution, ExecutionEvent,
+    FxRates, Market, MarketColumn, MarketData, MarketKind, MdUpdateAction, Operation,
+    OperationColumn, OperationEvent, OperationKind, Order, OrderEvent, Quote, QuoteEvent,
+    SnapshotEvent, TradeEvent,
 };
-use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::{
-    ArrowCastOptions, Ccy, Decimal, Field, Limit, MarketDataKind, Scalar, Serie, Side, State, Unit,
+    ArrowCastOptions, Ccy, Decimal, Field, IdSource, IdType, Identifier, Limit, MarketDataKind,
+    Scalar, Serie, Side, State, Unit,
 };
 
 /// One operation as a market-data message states it, finalized.
@@ -34,18 +35,22 @@ fn operation<K: OperationKind>(
     operation.set_crosscode(code.to_owned());
     operation.set_seqnum(u64::try_from(unix).unwrap());
     operation.set_creaunix(Some(unix - 3));
-    operation.set_execunix(Some(unix - 2));
+    operation.set_execunix(Some(unix - 2), true);
     operation.set_recdunix(Some(unix - 1));
-    operation.set_price(Some(Decimal::from_int(100 + unix)));
-    operation.set_quantity(Some(Decimal::from_int(10 + unix)));
-    operation.set_currency(Ccy::new("USD").unwrap());
-    operation.set_unit(Unit::new("share").unwrap());
-    operation.set_side(Side::read(side).unwrap());
-    operation.set_ticker(Some(SmolStr::new("ACME")));
+    operation.set_price(Some(Decimal::from_int(100 + unix)), true);
+    operation.set_quantity(Some(Decimal::from_int(10 + unix)), true);
+    operation.set_currency(Ccy::new("USD").unwrap(), true);
+    operation.set_unit(Unit::new("share").unwrap(), true);
+    operation.set_side(Side::read(side).unwrap(), true);
+    operation.set_ticker(Some(SmolStr::new("ACME")), true);
     operation.set_state(State::read(state).unwrap());
-    operation.insert_altid(ENTRY_ID, code).unwrap();
     operation
-        .insert_altid("ORDERID", &format!("ORDER-{code}"))
+        .insert_identifier(Identifier::new(IdSource::Fix, ENTRY_ID, code).unwrap())
+        .unwrap();
+    operation
+        .insert_identifier(
+            Identifier::new(IdSource::Fix, IdType::OrderId, &format!("ORDER-{code}")).unwrap(),
+        )
         .unwrap();
     operation.finalize();
     operation
@@ -79,7 +84,7 @@ fn entry(unix: i64, code: &str, action: MdUpdateAction) -> QuoteEvent {
 fn trade(unix: i64, code: &str) -> TradeEvent {
     let mut root = OrderEvent::at(unix);
     root.set_crosscode(code.to_owned());
-    root.set_ticker(Some(SmolStr::new("ACME")));
+    root.set_ticker(Some(SmolStr::new("ACME")), true);
     root.set_state(State::read("Filled").unwrap());
     root.finalize();
     TradeEvent::from_parts(
@@ -95,7 +100,7 @@ fn trade(unix: i64, code: &str) -> TradeEvent {
 fn snapshot(unix: i64, code: &str) -> SnapshotEvent {
     let mut event = OrderEvent::at(unix);
     event.set_crosscode(code.to_owned());
-    event.set_ticker(Some(SmolStr::new("ACME")));
+    event.set_ticker(Some(SmolStr::new("ACME")), true);
     event.finalize();
     SnapshotEvent::snapshot(&event, Some(SmolStr::new("Symbol=ACME")))
 }
@@ -188,8 +193,8 @@ fn with_column(batch: &RecordBatch, name: &str, column: ArrayRef) -> RecordBatch
 /// `quantity`.
 fn resting(unix: i64, code: &str, side: &str, price: Option<i64>, quantity: i64) -> MarketData {
     let mut entry: OrderEvent = operation(unix, code, side, "New");
-    entry.set_price(price.map(Decimal::from_int));
-    entry.set_quantity(Some(Decimal::from_int(quantity)));
+    entry.set_price(price.map(Decimal::from_int), true);
+    entry.set_quantity(Some(Decimal::from_int(quantity)), true);
     entry.finalize();
     MarketData::from(entry)
 }
@@ -310,45 +315,70 @@ fn replace_struct_child(array: &StructArray, name: &str, child: ArrayRef) -> Str
 }
 
 #[test]
-fn the_field_is_the_kind_then_every_fact_then_the_nested_columns() {
+fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
     let field = MarketData::field().unwrap();
     let names: Vec<&str> = field.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 1 + 15 + 28 + 4 + 1 + 5);
-    assert_eq!(names.len(), 54);
-    assert_eq!(names[0], "marketdatakind");
+    assert_eq!(names.len(), 6 + 9 + 34 + 5 + 1 + 5);
+    // The element's facts, the event's, the market's and the operation's,
+    // in the order their traits state them: the columns every generated
+    // schema opens with.
+    let shared: Vec<&str> = ElementColumn::ALL
+        .map(ElementColumn::name)
+        .into_iter()
+        .chain(EventColumn::ALL.map(EventColumn::name))
+        .chain(MarketColumn::ALL.map(MarketColumn::name))
+        .chain(OperationColumn::ALL.map(OperationColumn::name))
+        .collect();
+    assert_eq!(names[..54], shared[..]);
+    assert_eq!(shared.len(), 6 + 9 + 34 + 5);
+    assert_eq!(names[0], "curruuid");
+    assert_eq!(names[6], "currunix");
+    assert!(
+        field.fields()[..15].iter().all(Field::is_nullable),
+        "an undated leaf states no clock, and a root states only its leaf's identity"
+    );
+    // The category opens the market's facts, and is never absent.
+    assert_eq!(names[15], "marketdatakind");
     assert_eq!(
-        field.fields()[0].dtype(),
+        field.fields()[15].dtype(),
         &yggdryl::DataType::MarketDataKind
     );
-    assert!(!field.fields()[0].is_nullable());
-    assert_eq!(names[1], "currunix");
-    assert!(
-        field.fields()[1..16].iter().all(Field::is_nullable),
-        "an undated leaf states no clock"
-    );
-    assert_eq!(names[16], "price");
-    assert_eq!(names[20..23], ["side", "securityids", "isincode"]);
-    // When an element last executed is a market fact, stated among the
-    // market columns rather than the event's.
-    assert_eq!(names[24..27], ["miccode", "execunix", "lastpx"]);
+    assert!(!field.fields()[15].is_nullable());
+    // The type of its kind follows, stated as none where it is none.
+    assert_eq!(names[16], "marketdatatype");
     assert_eq!(
-        names[34..44],
+        field.fields()[16].dtype(),
+        &yggdryl::DataType::MarketDataType
+    );
+    assert!(!field.fields()[16].is_nullable());
+    assert_eq!(
+        names[17..24],
         [
-            "forwardpoints",
-            "bidpx",
-            "bidqty",
-            "bidccy",
-            "askpx",
-            "askqty",
-            "askccy",
-            "fxrates",
-            "ticker",
-            "metadata"
+            "price",
+            "stoppx",
+            "currency",
+            "quantity",
+            "displayqty",
+            "hiddenqty",
+            "unit"
         ]
     );
-    assert_eq!(names[44..48], ["tif", "tradable", "altids", "accountids"]);
+    // When an element last executed is a market fact, stated among the
+    // market columns rather than the event's.
+    assert_eq!(names[28..32], ["miccode", "execunix", "lastpx", "lastqty"]);
+    assert_eq!(names[34..37], ["leavesqty", "cxlqty", "prevpx"]);
+    assert_eq!(
+        names[49..54],
+        [
+            "ordqty",
+            "timeinforce",
+            "tradable",
+            "identifiers",
+            "partyids"
+        ]
+    );
     // The one book control a row states; the rest is walk-time.
-    assert_eq!(names[48], "bookscope");
+    assert_eq!(names[54], "bookscope");
     for gone in [
         "mdupdateaction",
         "mdentrypositionno",
@@ -367,18 +397,18 @@ fn the_field_is_the_kind_then_every_fact_then_the_nested_columns() {
     ] {
         assert!(!names.contains(&gone), "{gone}");
     }
-    assert!(field.fields()[48..].iter().all(Field::is_nullable));
+    assert!(field.fields()[54..].iter().all(Field::is_nullable));
     assert_eq!(
-        names[49..],
+        names[55..],
         ["alive", "deltas", "executions", "bidlimits", "asklimits"]
     );
     // An operation row, the item of every operation list: nothing nested.
-    let item = field.fields()[49].dtype().serie_item().unwrap().clone();
+    let item = field.fields()[55].dtype().serie_item().unwrap().clone();
     let item: Vec<&str> = item.fields().iter().map(Field::name).collect();
-    assert_eq!(item.len(), 1 + 15 + 28 + 4 + 1);
-    assert_eq!(item, names[..49]);
+    assert_eq!(item.len(), 6 + 9 + 34 + 5 + 1);
+    assert_eq!(item, names[..55]);
     // A book's two sides are its price levels, one limit each.
-    for side in &field.fields()[52..] {
+    for side in &field.fields()[58..] {
         assert_eq!(side.dtype(), &yggdryl::DataType::serie(Limit::field()));
     }
 }
@@ -408,9 +438,10 @@ fn every_leaf_round_trips_in_bounded_batches() {
         [5, 5, 1]
     );
     let kinds = batches[0]
-        .column(0)
+        .column_by_name("marketdatakind")
+        .unwrap()
         .as_any()
-        .downcast_ref::<Int32Array>()
+        .downcast_ref::<arrow_array::UInt8Array>()
         .unwrap();
     assert_eq!(kinds.value(0), MarketDataKind::Order.code());
     assert_eq!(kinds.value(1), MarketDataKind::Quotation.code());
@@ -449,7 +480,7 @@ fn every_leaf_round_trips_in_bounded_batches() {
     let entry = actual[4].as_quote_event().unwrap();
     assert_eq!(entry.action(), None, "an action is walk-time");
     assert_eq!(entry.scope(), "Symbol=ACME");
-    assert_eq!(entry.get_altids().get(ENTRY_ID), Some("Q-6"));
+    assert_eq!(entry.get_identifiers().get(&ENTRY_ID), Some("Q-6"));
     assert_eq!(actual[6].as_trade_event().unwrap().executions().len(), 2);
     let book = actual[7].as_book_event().unwrap();
     assert_eq!(book.alive().count(), 2);
@@ -501,9 +532,16 @@ fn a_lifecycle_shaped_batch_reads_into_operation_events() {
         MarketData::from(execution(2, "E-2", "Sell")),
         MarketData::from(order(3, "O-3")),
     ];
-    let facts: Vec<(Field, Vec<Scalar>)> = EventColumn::ALL
+    let facts: Vec<(Field, Vec<Scalar>)> = ElementColumn::ALL
         .into_iter()
         .map(|column| {
+            let cells = expected
+                .iter()
+                .map(|value| column.fact(value).unwrap_or(Scalar::Null))
+                .collect();
+            (column.field().unwrap(), cells)
+        })
+        .chain(EventColumn::ALL.into_iter().map(|column| {
             let cells = expected
                 .iter()
                 .map(|value| match value {
@@ -514,7 +552,7 @@ fn a_lifecycle_shaped_batch_reads_into_operation_events() {
                 .map(|cell| cell.unwrap_or(Scalar::Null))
                 .collect();
             (column.field().unwrap(), cells)
-        })
+        }))
         .chain(MarketColumn::ALL.into_iter().map(|column| {
             let cells = expected
                 .iter()
@@ -553,6 +591,16 @@ fn a_lifecycle_shaped_batch_reads_into_operation_events() {
             columns.push(Arc::new(Int64Array::from(vec![1, 2, 3])));
             continue;
         }
+        if field.name() == "marketdatakind" {
+            // A category written as its names, in any case: cast to members.
+            fields.push(arrow_schema::Field::new(
+                "MarketDataKind",
+                arrow_schema::DataType::Utf8,
+                true,
+            ));
+            columns.push(Arc::new(StringArray::from(vec!["ORDR", "EXEC", "ordr"])));
+            continue;
+        }
         let array = Serie::from_scalars(field.clone(), cells)
             .unwrap()
             .require_arrow_array()
@@ -560,12 +608,6 @@ fn a_lifecycle_shaped_batch_reads_into_operation_events() {
         fields.push(field.into_arrow_field().unwrap());
         columns.push(array);
     }
-    fields.push(arrow_schema::Field::new(
-        "MarketDataKind",
-        arrow_schema::DataType::Utf8,
-        true,
-    ));
-    columns.push(Arc::new(StringArray::from(vec!["ORDR", "EXEC", "ordr"])));
     let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap();
     let actual = read(batch_reader(batch.schema(), [batch])).unwrap();
     assert_eq!(actual, expected);
@@ -575,7 +617,9 @@ fn a_lifecycle_shaped_batch_reads_into_operation_events() {
 fn a_batch_with_no_kind_is_refused_at_its_first_row() {
     let batch = written(vec![MarketData::from(order(1, "O-1"))]);
     let schema = batch.schema();
-    let kept: Vec<usize> = (1..schema.fields().len()).collect();
+    let kept: Vec<usize> = (0..schema.fields().len())
+        .filter(|at| schema.field(*at).name() != "marketdatakind")
+        .collect();
     let batch = batch.project(&kept).unwrap();
     let error = refusal(batch);
     assert!(error.contains("$[0].marketdatakind"), "{error}");
@@ -591,7 +635,9 @@ fn an_unknown_or_null_kind_is_named_then_the_stream_fuses() {
     let error = refusal(with_column(
         &batch,
         "marketdatakind",
-        Arc::new(Int32Array::from(vec![MarketDataKind::Account.code()])),
+        Arc::new(arrow_array::UInt8Array::from(vec![
+            MarketDataKind::Account.code(),
+        ])),
     ));
     assert!(error.contains("$[0].marketdatakind"), "{error}");
     assert!(
@@ -608,7 +654,7 @@ fn an_unknown_or_null_kind_is_named_then_the_stream_fuses() {
         .collect();
     fields[at] = fields[at].clone().with_nullable(true);
     let mut columns = batch.columns().to_vec();
-    columns[at] = new_null_array(&arrow_schema::DataType::Int32, 1);
+    columns[at] = new_null_array(&arrow_schema::DataType::UInt8, 1);
     let nulled = RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap();
     let error = refusal(nulled);
     assert!(error.contains("$[0].marketdatakind"), "{error}");
@@ -773,19 +819,21 @@ fn a_trade_requires_its_executions() {
     let error = refusal(with_column(
         &batch,
         "marketdatakind",
-        Arc::new(Int32Array::from(vec![MarketDataKind::Trade.code()])),
+        Arc::new(arrow_array::UInt8Array::from(vec![
+            MarketDataKind::Trade.code(),
+        ])),
     ));
     assert!(error.contains("$[0].executions"), "{error}");
 }
 
-/// `isincode` is the `ISIN` of `securityids`, projected: written from it,
+/// `isincode` is the `isin` of `securityids`, projected: written from it,
 /// filling an absent one on the way back, and refused where the two
 /// disagree.
 #[test]
 fn isincode_projects_the_securityids_isin() {
     let mut listed = order(1, "O-1");
     listed
-        .insert_securityid(SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap())
+        .insert_securityid(Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").unwrap())
         .unwrap();
     listed.finalize();
     assert_eq!(listed.get_isincode(), Some("US0378331005"));
@@ -813,7 +861,10 @@ fn isincode_projects_the_securityids_isin() {
     let alone = batch.project(&kept).unwrap();
     let actual = read(batch_reader(alone.schema(), [alone])).unwrap();
     assert_eq!(actual, [expected]);
-    assert_eq!(actual[0].get_securityids().get("CUSIP"), Some("037833100"));
+    assert_eq!(
+        actual[0].get_securityids().get(&IdType::Cusip),
+        Some("037833100")
+    );
 
     // A second ISIN beside the one `securityids` states is refused there.
     let error = refusal(with_column(
@@ -823,7 +874,241 @@ fn isincode_projects_the_securityids_isin() {
     ));
     assert!(error.contains("$[0].isincode"), "{error}");
     assert!(
-        error.contains(r#"expected the securityids ISIN "US0378331005", got "GB0002634946""#),
+        error.contains(r#"expected the securityids isin "US0378331005", got "GB0002634946""#),
+        "{error}"
+    );
+}
+
+/// The flat keys of an identifier map column, one list per row, `None`
+/// for a null cell.
+fn map_keys(batch: &RecordBatch, name: &str) -> Vec<Option<Vec<String>>> {
+    let map = column_of(batch, name);
+    let map = map.as_any().downcast_ref::<MapArray>().unwrap();
+    let keys = map
+        .entries()
+        .column_by_name("key")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap()
+        .clone();
+    (0..map.len())
+        .map(|row| {
+            (!map.is_null(row)).then(|| {
+                let offsets = map.value_offsets();
+                (offsets[row]..offsets[row + 1])
+                    .map(|at| keys.value(usize::try_from(at).unwrap()).to_owned())
+                    .collect()
+            })
+        })
+        .collect()
+}
+
+/// The `src:type=value` of every identifier row an identifier map column
+/// holds, flat, read through the item struct's three cells.
+fn map_rows(batch: &RecordBatch, name: &str) -> Vec<String> {
+    let map = column_of(batch, name);
+    let map = map.as_any().downcast_ref::<MapArray>().unwrap();
+    let item = map.entries().column(1);
+    let item = item.as_any().downcast_ref::<StructArray>().unwrap();
+    let cell = |child: &str| {
+        item.column_by_name(child)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap()
+            .clone()
+    };
+    let (src, kind, value) = (cell("src"), cell("type"), cell("value"));
+    (0..item.len())
+        .map(|at| format!("{}:{}={}", src.value(at), kind.value(at), value.value(at)))
+        .collect()
+}
+
+/// `batch` with the identifier map `name` stating `keys` - one flat list over
+/// every row - in place of the keys it was written with, everything else
+/// as it was.
+fn with_map_keys(batch: &RecordBatch, name: &str, keys: Vec<&str>) -> RecordBatch {
+    let held = column_of(batch, name);
+    let map = held.as_any().downcast_ref::<MapArray>().unwrap();
+    let arrow_schema::DataType::Map(entries, sorted) = held.data_type() else {
+        panic!("expected a map, got {}", held.data_type());
+    };
+    let replaced = MapArray::try_new(
+        Arc::clone(entries),
+        map.offsets().clone(),
+        replace_struct_child(map.entries(), "key", Arc::new(StringArray::from(keys))),
+        map.nulls().cloned(),
+        *sorted,
+    )
+    .unwrap();
+    with_column(batch, name, Arc::new(replaced))
+}
+
+/// The three identifier columns - `securityids`, `identifiers`, `partyids` -
+/// are sorted maps from the key `src:type` to the identifier row, written
+/// in the order the set holds them, null where a row states none, and read
+/// back as the sets they were.
+#[test]
+fn the_three_identifier_columns_are_sorted_maps_keyed_by_source_and_type() {
+    let venue: IdSource = "venue".parse().unwrap();
+    let mut stated = order(1, "O-1");
+    for id in [
+        Identifier::new(IdSource::Fix, IdType::ClOrdId, "C-1").unwrap(),
+        Identifier::new(venue.clone(), IdType::OrderId, "V-1").unwrap(),
+    ] {
+        stated.insert_identifier(id).unwrap();
+    }
+    for id in [
+        Identifier::new(IdSource::Fix, IdType::Account, "ACC-1").unwrap(),
+        Identifier::new(IdSource::Base, IdType::Account, "ACC-0").unwrap(),
+    ] {
+        stated.insert_partyid(id).unwrap();
+    }
+    for id in [
+        Identifier::new(IdSource::Base, IdType::Ric, "AAPL.O").unwrap(),
+        Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").unwrap(),
+    ] {
+        stated.insert_securityid(id).unwrap();
+    }
+    stated.finalize();
+    let bare = order(2, "O-2");
+    let expected = vec![MarketData::from(stated), MarketData::from(bare)];
+    let batch = written(expected.clone());
+
+    for name in ["securityids", "identifiers", "partyids"] {
+        assert!(
+            matches!(
+                column_of(&batch, name).data_type(),
+                arrow_schema::DataType::Map(_, true)
+            ),
+            "{name} is a sorted map"
+        );
+    }
+    let keys = |name: &str| map_keys(&batch, name);
+    assert_eq!(
+        keys("identifiers"),
+        [
+            Some(
+                [
+                    "fix:clordid",
+                    "fix:mdentryid",
+                    "fix:orderid",
+                    "venue:orderid"
+                ]
+                .map(str::to_owned)
+                .to_vec()
+            ),
+            Some(["fix:mdentryid", "fix:orderid"].map(str::to_owned).to_vec())
+        ],
+        "each row's keys in key order"
+    );
+    assert_eq!(
+        map_rows(&batch, "identifiers")[..4],
+        [
+            "fix:clordid=C-1",
+            "fix:mdentryid=O-1",
+            "fix:orderid=ORDER-O-1",
+            "venue:orderid=V-1"
+        ],
+        "each key beside the row it names"
+    );
+    assert_eq!(
+        keys("partyids"),
+        [
+            Some(["base:account", "fix:account"].map(str::to_owned).to_vec()),
+            None
+        ],
+        "a row stating no party is a null cell"
+    );
+    assert_eq!(
+        map_rows(&batch, "partyids"),
+        ["base:account=ACC-0", "fix:account=ACC-1"]
+    );
+    // The ISIN implies the national number it carries, derived and keyed by
+    // the source that derived it.
+    assert_eq!(
+        keys("securityids"),
+        [
+            Some(
+                ["base:isin", "base:ric", "derived:cusip"]
+                    .map(str::to_owned)
+                    .to_vec()
+            ),
+            None
+        ]
+    );
+    assert_eq!(
+        map_rows(&batch, "securityids"),
+        [
+            "base:isin=US0378331005",
+            "base:ric=AAPL.O",
+            "derived:cusip=037833100"
+        ]
+    );
+    assert_eq!(column_of(&batch, "partyids").null_count(), 1);
+    assert_eq!(column_of(&batch, "securityids").null_count(), 1);
+    assert_eq!(
+        read(batch_reader(batch.schema(), [batch.clone()])).unwrap(),
+        expected
+    );
+}
+
+/// A key that is not the `src:type` of the row it keys has no one reading:
+/// the landing refuses it on its row, naming the column, in each of the
+/// three identifier maps.
+#[test]
+fn an_identifier_key_that_disagrees_with_its_row_is_refused_naming_the_column() {
+    let mut stated = order(1, "O-1");
+    stated
+        .insert_identifier(Identifier::new(IdSource::Fix, IdType::ClOrdId, "C-1").unwrap())
+        .unwrap();
+    stated
+        .insert_partyid(Identifier::new(IdSource::Fix, IdType::Account, "ACC-1").unwrap())
+        .unwrap();
+    stated
+        .insert_securityid(Identifier::new(IdSource::Base, IdType::Ric, "AAPL.O").unwrap())
+        .unwrap();
+    stated.finalize();
+    let batch = written(vec![MarketData::from(stated)]);
+    assert_eq!(
+        read(batch_reader(batch.schema(), [batch.clone()]))
+            .unwrap()
+            .len(),
+        1,
+        "the batch as written reads"
+    );
+    for (name, keys, expected, got) in [
+        ("securityids", vec!["base:cusip"], "base:ric", "base:cusip"),
+        ("partyids", vec!["fix:userid"], "fix:account", "fix:userid"),
+        (
+            "identifiers",
+            vec!["fix:clordid", "fix:mdentryid", "fix:orderidx"],
+            "fix:orderid",
+            "fix:orderidx",
+        ),
+    ] {
+        let error = refusal(with_map_keys(&batch, name, keys));
+        assert!(error.contains(&format!("$[0].{name}")), "{name}: {error}");
+        assert!(
+            error.contains(&format!("expected the key {expected}, got \"{got}\"")),
+            "{name}: {error}"
+        );
+    }
+    // Keys out of the order a sorted map declares are refused before any
+    // identifier is read.
+    let error = refusal(with_map_keys(
+        &batch,
+        "identifiers",
+        vec!["fix:orderid", "fix:mdentryid", "fix:clordid"],
+    ));
+    assert!(error.contains("$[0]"), "{error}");
+    assert!(error.contains("sorted keys"), "{error}");
+    // A key that is no `src:type` at all is refused the same way.
+    let error = refusal(with_map_keys(&batch, "securityids", vec!["ric"]));
+    assert!(error.contains("$[0].securityids"), "{error}");
+    assert!(
+        error.contains("expected the key base:ric, got \"ric\""),
         "{error}"
     );
 }
@@ -837,7 +1122,7 @@ fn fxrates_round_trip_and_are_null_where_none_is_stated() {
         .map(|(target, rate)| (Ccy::new(target).unwrap(), rate.parse().unwrap()))
         .collect();
     let mut quoted = order(1, "O-1");
-    quoted.set_fxrates(rates.clone());
+    quoted.set_fxrates(rates.clone(), true);
     quoted.finalize();
     assert_eq!(
         quoted
@@ -870,6 +1155,7 @@ fn fxrates_round_trip_and_are_null_where_none_is_stated() {
             .into_iter()
             .map(|(target, rate)| (Ccy::new(target).unwrap(), rate.parse().unwrap()))
             .collect(),
+        true,
     );
     other.finalize();
     let differing = written(vec![
@@ -1015,11 +1301,11 @@ fn a_null_cell_states_nothing() {
 fn an_operation_stating_no_price_or_quantity_round_trips_as_null() {
     let mut unstated = ExecutionEvent::at(5);
     unstated.set_crosscode("E-5".to_owned());
-    unstated.set_ticker(Some(SmolStr::new("ACME")));
-    unstated.set_side(Side::read("Buy").unwrap());
+    unstated.set_ticker(Some(SmolStr::new("ACME")), true);
+    unstated.set_side(Side::read("Buy").unwrap(), true);
     unstated.set_state(State::read("Filled").unwrap());
-    unstated.set_lastpx(Some(Decimal::from_int(105)));
-    unstated.set_lastqty(Some(Decimal::from_int(15)));
+    unstated.set_lastpx(Some(Decimal::from_int(105)), true);
+    unstated.set_lastqty(Some(Decimal::from_int(15)), true);
     unstated.finalize();
     assert_eq!(
         (unstated.get_price(), unstated.get_quantity()),
@@ -1114,7 +1400,7 @@ fn encoding_yields_a_completed_prefix_before_a_located_identity_error() {
 #[test]
 fn book_encoding_refuses_a_stale_summary_at_the_source_row() {
     let mut invalid = book(10);
-    invalid.set_price(Some(Decimal::from_int(999)));
+    invalid.set_price(Some(Decimal::from_int(999)), true);
     let mut encoded = MarketData::arrow_reader([MarketData::from(invalid)], Some(1), None).unwrap();
     let error = encoded.next().unwrap().unwrap_err().to_string();
     assert!(error.contains("$[0].price"), "{error}");
@@ -1296,7 +1582,7 @@ fn a_book_limit_states_whether_its_level_trades() {
         let MarketData::OrderEvent(mut entry) = resting(10, code, "Buy", Some(price), 1) else {
             unreachable!("an order rests as an order");
         };
-        entry.set_tradable(Some(tradable));
+        entry.set_tradable(Some(tradable), true);
         entry.finalize();
         MarketData::from(entry)
     };
@@ -1371,7 +1657,7 @@ fn a_batch_stating_no_limits_columns_still_reads() {
         .filter(|at| !schema.field(*at).name().ends_with("limits"))
         .collect();
     let batch = batch.project(&kept).unwrap();
-    assert_eq!(batch.schema().fields().len(), 1 + 15 + 28 + 4 + 1 + 3);
+    assert_eq!(batch.schema().fields().len(), 6 + 9 + 34 + 5 + 1 + 3);
     assert_eq!(
         read(batch_reader(batch.schema(), [batch])).unwrap(),
         expected
@@ -1389,10 +1675,10 @@ fn metadata_round_trips_and_a_stated_entry_that_differs_is_refused() {
     };
     let carrying = |value: &str| {
         let mut order = order(1, "O-1");
-        order.set_metadata(metadata(value));
+        order.set_metadata(metadata(value), true);
         order.finalize();
         let mut book = deep_book(3);
-        book.set_metadata(metadata(value));
+        book.set_metadata(metadata(value), true);
         book.finalize();
         vec![MarketData::from(order), MarketData::from(book)]
     };
@@ -1446,4 +1732,68 @@ fn metadata_round_trips_and_a_stated_entry_that_differs_is_refused() {
     let error = refusal(with_column(&batch, "metadata", Arc::new(twice)));
     assert!(error.contains("$[0]"), "{error}");
     assert!(error.contains("duplicate key"), "{error}");
+}
+
+/// Every fact a setter fills - the side's quote, the iceberg's hidden part,
+/// the order's quantities against its state, the third of an FX triple, a
+/// single fill's average - is a column the row states, and the row read
+/// back is the element whatever order its columns land in.
+#[test]
+fn every_filled_fact_is_a_column_and_reads_back() {
+    use yggdryl::graph::Operation;
+
+    let mut working = OrderEvent::at(20);
+    working.set_crosscode("F-1".to_owned());
+    working.set_state(State::read("PartiallyFilled").unwrap());
+    working.set_currency(Ccy::new("USD").unwrap(), true);
+    working.set_side(Side::read("Buy").unwrap(), true);
+    working.set_price(Some(Decimal::from_int(101)), true);
+    working.set_ordqty(Some(Decimal::from_int(100)), true);
+    working.set_cumqty(Some(Decimal::from_int(40)), true);
+    working.set_displayqty(Some(Decimal::from_int(10)), true);
+    working.set_lastpx(Some(Decimal::from_int(3)), true);
+    working.set_forwardpoints(Some(Decimal::from_int(1)), true);
+    working.set_lastqty(Some(Decimal::from_int(40)), true);
+    working.finalize();
+
+    let mut canceled = OrderEvent::at(21);
+    canceled.set_crosscode("F-2".to_owned());
+    canceled.set_ordqty(Some(Decimal::from_int(10)), true);
+    canceled.set_cumqty(Some(Decimal::from_int(4)), true);
+    canceled.set_state(State::read("Canceled").unwrap());
+    canceled.finalize();
+
+    let expected = vec![MarketData::from(working), MarketData::from(canceled)];
+    let batch = written(expected.clone());
+    let decimal = |name: &str, row: usize| {
+        let column = batch.column_by_name(name).expect(name);
+        let serie =
+            Serie::from_arrow_array(None, Arc::clone(column), ArrowCastOptions::new()).unwrap();
+        Decimal::from_scalar(&serie.scalar(row).unwrap())
+    };
+    let int = |value: i64| Some(Decimal::from_int(value));
+    assert_eq!(decimal("leavesqty", 0), int(60), "ordered less traded");
+    assert_eq!(decimal("quantity", 0), int(60), "what is left open");
+    assert_eq!(decimal("bidpx", 0), int(101), "a buyer's bid");
+    assert_eq!(decimal("bidqty", 0), int(60));
+    assert_eq!(
+        decimal("hiddenqty", 0),
+        int(50),
+        "the quantity past the peak"
+    );
+    assert_eq!(decimal("spotrate", 0), int(2), "last less the points");
+    assert_eq!(decimal("avgpx", 0), int(3), "one fill is its own average");
+    assert_eq!(decimal("ordqty", 1), int(10));
+    assert_eq!(
+        decimal("leavesqty", 1),
+        int(0),
+        "nothing left once canceled"
+    );
+    assert_eq!(decimal("cxlqty", 1), int(6), "the rest canceled");
+
+    // Read back, the rows are the elements, fills and all.
+    assert_eq!(
+        read(batch_reader(batch.schema(), [batch])).unwrap(),
+        expected
+    );
 }

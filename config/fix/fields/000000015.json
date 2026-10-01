@@ -1162,6 +1162,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:names": [
+        "origallocid"
+      ],
       "FIX:tag": "1593",
       "description": "Contains the IndividualAllocId (tag 467) value of the allocation that is being offset as a result of a new allocation. This would be an optional field that would only be populated in the case of an allocation of an allocation (as well as any subsequent allocations). This wouldn’t be populated for an initial allocation since an allocation id is not supplied on default (initial) allocations.",
       "display": "ParentAllocID"

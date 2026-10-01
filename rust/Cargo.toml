@@ -186,10 +186,7 @@ criterion = { version = "0.7", default-features = false, features = ["cargo_benc
 # the release that shares the reqwest and tokio versions the workspace
 # already locks, so the baseline adds no second HTTP stack.
 # The streams `object_store` answers with are consumed through its own
-# ecosystem's combinators; nothing here reaches a public signature. Held at
-# 0.13.1: 0.13.2 declares this workspace's own MSRV and then uses let-chains,
-# which need 1.88, so it would raise the floor for everyone through a
-# dev-dependency that only a benchmark reads.
+# ecosystem's combinators; nothing here reaches a public signature.
 futures = "0.3"
 # The parser warnings a best-effort CBlock read emits are only readable
 # through a logger, and the tests that pin one install their own.

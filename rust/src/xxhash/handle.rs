@@ -219,10 +219,10 @@ impl<H: IOBase> IOBase for Hashed<H> {
         // of no bytes instead of naming the kind.
         crate::iobase::reject_container(&self.handle, "digest")?;
         let mut running = self.state();
-        if let Some(digester) = &running.digester {
-            if running.covered == self.handle.size() {
-                return Ok(digester.as_digest());
-            }
+        if let Some(digester) = &running.digester
+            && running.covered == self.handle.size()
+        {
+            return Ok(digester.as_digest());
         }
         let mut digester = self.fresh();
         let covered = super::stream::feed_handle(&self.handle, &mut digester)?;

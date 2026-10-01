@@ -5,7 +5,7 @@ use std::iter::FusedIterator;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use napi::bindgen_prelude::{ClassInstance, Either, Either9, Env, Function, Result, Unknown};
+use napi::bindgen_prelude::{ClassInstance, Either, Either10, Env, Function, Result, Unknown};
 use napi_derive::napi;
 use yggdryl::FieldPath;
 use yggdryl::graph::{MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView};
@@ -20,6 +20,7 @@ use super::trade::JsTradeEvent;
 use super::{AnyMarketData, market_data_from, market_data_of};
 use crate::expression::JsPlan;
 use crate::field::JsField;
+use crate::fix::JsFixMsg;
 use crate::iomedia::JsBatchReader;
 use crate::text::line::{JsFieldPath, path_from_input};
 use crate::{Pulled, exact_u64, javascript_failure, napi_error};
@@ -29,7 +30,7 @@ use crate::{Pulled, exact_u64, javascript_failure, napi_error};
 const ROOT_NAME: &str = "marketdata";
 
 /// The leaf a value holds, as the class of its variant.
-type Leaf = Either9<
+type Leaf = Either10<
     JsOrder,
     JsQuote,
     JsExecution,
@@ -39,6 +40,7 @@ type Leaf = Either9<
     JsTradeEvent,
     JsBookEvent,
     JsSnapshotEvent,
+    JsFixMsg,
 >;
 
 /// The leaf object `data` holds, as the class of its variant.
@@ -53,6 +55,7 @@ fn leaf_object(data: CoreMarketData) -> Leaf {
         CoreMarketData::TradeEvent(leaf) => Leaf::G(JsTradeEvent::from_core(leaf)),
         CoreMarketData::BookEvent(leaf) => Leaf::H(JsBookEvent::from_core(*leaf)),
         CoreMarketData::SnapshotEvent(leaf) => Leaf::I(JsSnapshotEvent::from_core(leaf)),
+        CoreMarketData::Fix(message) => Leaf::J(JsFixMsg::from_core(*message)),
     }
 }
 
@@ -116,7 +119,8 @@ fn batch_sizes(
 }
 
 /// One value over every market leaf - an order, a quote or an execution,
-/// undated or dated, a trade, a book or a snapshot control -
+/// undated or dated, a trade, a book, a snapshot control or a FIX message
+/// held whole -
 /// answering the element and market facts its leaf answers. Immutable:
 /// every verb answers a new value.
 #[napi(js_name = "MarketData")]
@@ -134,10 +138,11 @@ impl JsMarketData {
 
 #[napi]
 impl JsMarketData {
-    /// Wrap any market leaf, through the core's own `From`.
+    /// Wrap any market leaf, or a `FixMsg` held whole, through the core's
+    /// own `From`.
     #[napi(
         constructor,
-        ts_args_type = "leaf: MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent"
+        ts_args_type = "leaf: MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent | FixMsg"
     )]
     pub fn new(leaf: Unknown<'_>) -> Result<Self> {
         market_data_from(leaf).map(Self::from_core)
@@ -158,7 +163,7 @@ impl JsMarketData {
     /// The market data category of this value's leaf, as the
     /// `marketdatakind` member's stored name: an order `ORDR`, a quote
     /// `QUOT`, an execution `EXEC`, a trade `TRAD`, a book or a snapshot
-    /// `BOOK`.
+    /// `BOOK`, a FIX message its own `msgcat`.
     #[napi(getter)]
     pub fn marketdatakind(&self) -> &'static str {
         self.inner.marketdatakind().as_str()
@@ -252,9 +257,15 @@ impl JsMarketData {
             .map(JsSnapshotEvent::from_core)
     }
 
+    /// The FIX message this value holds whole, else `null`.
+    #[napi]
+    pub fn as_fix(&self) -> Option<JsFixMsg> {
+        self.inner.as_fix().cloned().map(JsFixMsg::from_core)
+    }
+
     /// The leaf this value holds, as its own class.
     #[napi(
-        ts_return_type = "Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent"
+        ts_return_type = "Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent | FixMsg"
     )]
     pub fn into_leaf(&self) -> Leaf {
         leaf_object(self.inner.clone())
@@ -280,10 +291,13 @@ impl JsMarketData {
 
     /// The plan one named view is over a `marketdata` stream - `orders`,
     /// `quotes`, `executions`, `trades`, `books`, or the
-    /// `lifecycle` of the chain `crosscode` names, the one view that takes
+    /// `lifecycle` of the chain `crosscode` names - the stored cross code,
+    /// `10:1:ORD-1`, the exact code of the chain - the one view that takes
     /// one - read ignoring ASCII case, with each lift, a `FieldPath` read
-    /// once, appended as a projection after the view's own columns. Built
-    /// structurally; its text reads back as the same plan.
+    /// once (`identifiers['fix:clordid'].value as clordid`: an identifier
+    /// column is a map keyed `src:type`), appended as a projection after the
+    /// view's own columns. Built structurally; its text reads back as the
+    /// same plan.
     #[napi(
         ts_args_type = "view: string, lifts?: Array<string | FieldPath> | null, crosscode?: string | null"
     )]

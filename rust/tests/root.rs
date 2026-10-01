@@ -67,6 +67,8 @@ mod duration;
 mod edge_algorithm;
 #[path = "root/enumeration.rs"]
 mod enumeration;
+#[path = "root/enums.rs"]
+mod enums;
 #[path = "root/error.rs"]
 mod error;
 #[path = "root/field.rs"]
@@ -83,8 +85,12 @@ mod geospatial;
 mod gzip;
 #[path = "root/hostname.rs"]
 mod hostname;
-#[path = "root/idmap.rs"]
-mod idmap;
+#[path = "root/identifier.rs"]
+mod identifier;
+#[path = "root/idsource.rs"]
+mod idsource;
+#[path = "root/idtype.rs"]
+mod idtype;
 #[path = "root/int256.rs"]
 mod int256;
 #[path = "root/integer.rs"]
@@ -113,6 +119,8 @@ mod listing;
 mod mapping;
 #[path = "root/marketdatakind.rs"]
 mod marketdatakind;
+#[path = "root/marketdatatype.rs"]
+mod marketdatatype;
 #[path = "root/media_type.rs"]
 mod media_type;
 #[path = "root/merge.rs"]

@@ -1,5 +1,5 @@
 //! What kind of market data an element is: FIX's MsgCat code set as a
-//! lifecycle enum, stored as an `int32`.
+//! lifecycle enum, stored as a `uint8`.
 
 use crate::code::folded_spelling;
 use crate::enums::enum_leaf;
@@ -42,7 +42,7 @@ enum_leaf! {
     /// assert_eq!(MarketDataKind::from_spelling("10"), None);
     /// ```
     #[non_exhaustive]
-    pub enum MarketDataKind: i32, kind = "marketdatakind", extension = MARKETDATAKIND_EXTENSION_NAME {
+    pub enum MarketDataKind: u8, kind = "marketdatakind", extension = MARKETDATAKIND_EXTENSION_NAME, aliases = marketdatakind_aliases {
         #[default]
         Unknown = 0 as "UNKN": "No published category: a message type the dictionary does not file.",
         Account = 1 as "ACCT": "Account reporting.",
@@ -87,10 +87,14 @@ impl MarketDataKind {
             return Some(held);
         }
         let folded = folded_spelling(spelling);
-        Self::ALL.iter().copied().find(|held| {
-            held.as_str().eq_ignore_ascii_case(folded.as_str())
-                || held.word().eq_ignore_ascii_case(folded.as_str())
-        })
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|held| {
+                held.as_str().eq_ignore_ascii_case(folded.as_str())
+                    || held.word().eq_ignore_ascii_case(folded.as_str())
+            })
+            .or_else(|| Self::from_pattern(spelling))
     }
 
     /// The member's own word, folded: what [`Self::from_spelling`] reads
@@ -128,11 +132,11 @@ impl MarketDataKind {
 
     /// Whether an element of this kind is sided: an order, a quote or an
     /// execution, which takes one side of the market, so its cross code is
-    /// stored under that side - `BUYS:ORD-1` - and the two sides of one
-    /// identifier are two chains. The one owner of that rule: every other
-    /// kind - a trade, a book, a batch, a category the standard files no
-    /// operation under - keeps its cross code as given whatever side it
-    /// states ([`Market::sided_crosscode`](crate::graph::Market::sided_crosscode)).
+    /// stored under that side's code - `10:1:ORD-1` - and the two sides of
+    /// one identifier are two chains. The one owner of that rule: every
+    /// other kind - a trade, a book, a batch, a category the standard files
+    /// no operation under - stores its cross code under side `0` whatever
+    /// side it states ([`Market::stored_crosscode`](crate::graph::Market::stored_crosscode)).
     ///
     /// ```
     /// use yggdryl::MarketDataKind;
@@ -191,7 +195,16 @@ impl MarketDataKind {
     }
 }
 
-/// The Arrow extension name of a market data element's kind, over `int32`
+/// Each member's own word, which its spelling patterns read beside the
+/// four-letter code.
+fn marketdatakind_aliases() -> Vec<(&'static str, MarketDataKind)> {
+    MarketDataKind::ALL
+        .iter()
+        .map(|member| (member.word(), *member))
+        .collect()
+}
+
+/// The Arrow extension name of a market data element's kind, over `uint8`
 /// storage.
 pub(crate) const MARKETDATAKIND_EXTENSION_NAME: &str = "yggdryl.marketdatakind";
 

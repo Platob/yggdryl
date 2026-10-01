@@ -1,780 +1,16 @@
-//! Security identifiers: which source names an instrument, the code it gives
-//! it, the sorted set a market states, and the associations one ordered
-//! lifecycle learns between them.
+//! Security identifiers: the national number an ISIN embeds, the shape a
+//! symbol reads as, and the associations one ordered lifecycle learns
+//! between an instrument's identifiers.
 
-use std::borrow::Cow;
-use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::fmt;
-use std::hash::Hasher;
 use std::mem::{align_of, size_of};
-use std::ops::Deref;
-use std::sync::LazyLock;
 
 use smallvec::SmallVec;
-use smol_str::{SmolStr, format_smolstr};
+use smol_str::SmolStr;
 
-use crate::bbg::BBG_WIDTH;
-use crate::code::{folded_spelling, is_null_like};
 use crate::graph::{Element, Market};
-use crate::idmap::{
-    IdMap, entry_refusal, located_at, merge_sorted, sorted_map_scalar, text_entries,
-};
-use crate::{Cfi, Cusip, DataType, Error, Figi, Forex, Isin, Result, Ric, Scalar, Sedol};
-
-/// The most bytes a source key may be once upper-cased.
-const KEY_WIDTH: usize = 32;
-
-/// The tag byte that opens an unknown key's buffer: the length byte and the
-/// key follow it. Known keys take `0x01..=0x7E`, so every byte stays ASCII.
-const UNKNOWN_TAG: u8 = 0x7F;
-
-// ---------------------------------------------------------------------------
-// SecType: the source that names an instrument.
-// ---------------------------------------------------------------------------
-
-/// The source a security identifier comes from: `ISIN`, `CUSIP`, `BLOOMBERG`
-/// or any other upper-cased ASCII key of at most 32 bytes.
-///
-/// The thirty-three sources FIX's `SecurityIDSource(22)` code set names are
-/// [`Self::KNOWN`], reached by their one-character code, their key in any
-/// case or the code set's name folded; any other spelling is kept as the
-/// upper-cased key it states. `TICKER` is never a source: a ticker is the
-/// name a person knows an instrument by, and lives on `set_ticker`.
-///
-/// One key is the crate's own: `FOREX`, the currency pair a foreign exchange
-/// instrument is - a [`Forex`] - which FIX gives no source code. It is read
-/// by `forex`, `forexcode`, `ccypair` and `currencypair` too, and packs as
-/// any key FIX does not know.
-///
-/// ```
-/// use yggdryl::SecType;
-///
-/// assert_eq!(SecType::read("4").unwrap().as_str(), "ISIN");
-/// assert_eq!(SecType::read("isin_number").unwrap().as_str(), "ISIN");
-/// assert_eq!(SecType::read("bbgsymb").unwrap().fix_source(), Some('A'));
-/// assert!(!SecType::read("house").unwrap().is_known());
-/// assert!(SecType::read("ticker").is_err());
-/// ```
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct SecType(SmolStr);
-
-/// The code set's names, folded, and the key each names.
-static NAMES: &[(&str, &str)] = &[
-    ("bbgsymb", "BLOOMBERG"),
-    ("belgian", "BELGIAN"),
-    ("bloombergsymbol", "BLOOMBERG"),
-    ("cftccommoditycode", "CFTC"),
-    ("clearinghouse", "CLEARINGHOUSE"),
-    ("common", "COMMON"),
-    ("consolidatedtapeassociation", "CTA"),
-    ("cusip", "CUSIP"),
-    ("digitaltokenidentifier", "DTI"),
-    ("dutch", "DUTCH"),
-    ("exchangesymbol", "EXCHSYMB"),
-    ("fidessainstrumentmnemonic", "FIM"),
-    ("figi", "FIGI"),
-    ("financialinstrumentglobalidentifier", "FIGI"),
-    ("indexname", "INDEX"),
-    ("isdacommodityreferenceprice", "ISDACOMMODITY"),
-    ("isdafpmlspecification", "FPMLSPEC"),
-    ("isdafpmlurl", "FPMLURL"),
-    ("isin", "ISIN"),
-    ("isinnumber", "ISIN"),
-    ("isocountrycode", "ISOCTRY"),
-    ("isocurrencycode", "ISOCCY"),
-    ("legalentityidentifier", "LEI"),
-    ("lei", "LEI"),
-    ("letterofcredit", "LOC"),
-    ("marketplaceassignedidentifier", "MKTASSIGNED"),
-    ("markitredentityclip", "REDENTITY"),
-    ("markitredpairclip", "REDPAIR"),
-    ("optionpricereportingauthority", "OPRA"),
-    ("quik", "QUIK"),
-    ("ric", "RIC"),
-    ("riccode", "RIC"),
-    ("sedol", "SEDOL"),
-    ("sicovam", "SICOVAM"),
-    ("synthetic", "SYNTHETIC"),
-    ("uniformsymbol", "UMTF"),
-    ("valoren", "VALOR"),
-    ("wertpapier", "WKN"),
-];
-
-/// The keys the crate names beside FIX's, each with its folded spellings:
-/// sources FIX gives no code, which a key alone would otherwise leave as a
-/// stranger's upper-cased text.
-static CRATE: [(&str, &[&str]); 1] =
-    [("FOREX", &["forex", "forexcode", "ccypair", "currencypair"])];
-
-/// Every folded spelling that names a source this crate knows - each key of
-/// [`SecType::KNOWN`] in lower case, every name in [`NAMES`] and every
-/// spelling of a [`CRATE`] key - sorted, beside the key it names. Built once
-/// from those, so a field name is resolved by one binary search per
-/// spelling it tries.
-static FOLDED_ALIASES: LazyLock<Vec<(SmolStr, &'static str)>> = LazyLock::new(|| {
-    let mut aliases: Vec<(SmolStr, &'static str)> = SecType::KNOWN
-        .iter()
-        .map(|(key, _)| (SmolStr::new(key.to_ascii_lowercase()), *key))
-        .chain(
-            NAMES
-                .iter()
-                .map(|(name, key)| (SmolStr::new_static(name), *key)),
-        )
-        .chain(CRATE.iter().flat_map(|(key, spellings)| {
-            spellings
-                .iter()
-                .map(|spelling| (SmolStr::new_static(spelling), *key))
-        }))
-        .collect();
-    aliases.sort_unstable();
-    aliases.dedup_by(|later, earlier| later.0 == earlier.0);
-    aliases
-});
-
-/// The field-name prefixes that name another instrument's identifier or a
-/// name a person uses, never this instrument's source.
-const REFUSED_FIELD_PREFIXES: [&str; 5] = ["leg", "underlying", "contra", "related", "benchmark"];
-
-/// The field names that are a ticker, never a source.
-const REFUSED_FIELD_NAMES: [&str; 3] = ["ticker", "symbol", "symbolticker"];
-
-/// The refusal one spelling of a source earns, located on the text.
-fn source_refusal(text: &str, actual: impl fmt::Display) -> Error {
-    Error::InvalidRecord {
-        path: SmolStr::new(text),
-        reason: crate::text::expected_got(
-            format_args!("a security identifier source of 1 to {KEY_WIDTH} ASCII bytes"),
-            actual,
-        ),
-    }
-}
-
-/// The byte class a key or a code is held to: printable ASCII.
-fn ascii_refusal(text: &str) -> Option<SmolStr> {
-    text.bytes().enumerate().find_map(|(position, byte)| {
-        if !byte.is_ascii() {
-            Some(format_smolstr!(
-                "a non-ASCII byte 0x{byte:02X} at {position}"
-            ))
-        } else if byte.is_ascii_control() {
-            Some(format_smolstr!("a control byte 0x{byte:02X} at {position}"))
-        } else {
-            None
-        }
-    })
-}
-
-impl SecType {
-    /// The sources FIX's `SecurityIDSource(22)` code set names, each with its
-    /// one-character code, in the code set's order.
-    pub const KNOWN: [(&'static str, char); 33] = [
-        ("CUSIP", '1'),
-        ("SEDOL", '2'),
-        ("QUIK", '3'),
-        ("ISIN", '4'),
-        ("RIC", '5'),
-        ("ISOCCY", '6'),
-        ("ISOCTRY", '7'),
-        ("EXCHSYMB", '8'),
-        ("CTA", '9'),
-        ("BLOOMBERG", 'A'),
-        ("WKN", 'B'),
-        ("DUTCH", 'C'),
-        ("VALOR", 'D'),
-        ("SICOVAM", 'E'),
-        ("BELGIAN", 'F'),
-        ("COMMON", 'G'),
-        ("CLEARINGHOUSE", 'H'),
-        ("FPMLSPEC", 'I'),
-        ("OPRA", 'J'),
-        ("FPMLURL", 'K'),
-        ("LOC", 'L'),
-        ("MKTASSIGNED", 'M'),
-        ("REDENTITY", 'N'),
-        ("REDPAIR", 'P'),
-        ("CFTC", 'Q'),
-        ("ISDACOMMODITY", 'R'),
-        ("FIGI", 'S'),
-        ("LEI", 'T'),
-        ("SYNTHETIC", 'U'),
-        ("FIM", 'V'),
-        ("INDEX", 'W'),
-        ("UMTF", 'X'),
-        ("DTI", 'Y'),
-    ];
-
-    /// The known source at `index` in [`Self::KNOWN`]; nothing allocates.
-    fn known(index: usize) -> Self {
-        Self(SmolStr::new_static(Self::KNOWN[index].0))
-    }
-
-    /// Where `key`, already upper-cased, stands in [`Self::KNOWN`].
-    fn known_index(key: &str) -> Option<usize> {
-        Self::KNOWN.iter().position(|(known, _)| *known == key)
-    }
-
-    /// The known source `alias` names: a key in any case, or a folded name.
-    fn from_alias(alias: &str) -> Option<Self> {
-        if let Some(index) = Self::known_index_ignoring_case(alias) {
-            return Some(Self::known(index));
-        }
-        Self::from_folded(&folded_spelling(alias))
-    }
-
-    /// The known source a spelling already folded names: a key, which folds
-    /// to itself in lower case, or a code-set name - one search of the one
-    /// table both fold into.
-    fn from_folded(folded: &str) -> Option<Self> {
-        FOLDED_ALIASES
-            .binary_search_by(|(alias, _)| alias.as_str().cmp(folded))
-            .ok()
-            .map(|position| Self(SmolStr::new_static(FOLDED_ALIASES[position].1)))
-    }
-
-    /// Where a key in any case stands in [`Self::KNOWN`].
-    fn known_index_ignoring_case(key: &str) -> Option<usize> {
-        Self::KNOWN
-            .iter()
-            .position(|(known, _)| known.eq_ignore_ascii_case(key))
-    }
-
-    /// The source one spelling names: a one-character code as FIX writes it
-    /// (`4`, `A`, not folded), a known key in any case, the code set's name
-    /// folded, or any other ASCII text of 1 to 32 bytes kept upper-cased.
-    ///
-    /// # Errors
-    ///
-    /// Empty, non-ASCII or over-wide text, and `TICKER` in any case, which
-    /// belongs on `set_ticker`; each located on the text.
-    pub fn read(text: &str) -> Result<Self> {
-        let trimmed = text.trim_matches(|c: char| c.is_ascii_whitespace());
-        let mut chars = trimmed.chars();
-        if let (Some(code), None) = (chars.next(), chars.next()) {
-            if let Some(known) = Self::from_fix_source(code) {
-                return Ok(known);
-            }
-        }
-        if let Some(known) = Self::from_alias(trimmed) {
-            return Ok(known);
-        }
-        if trimmed.is_empty() {
-            return Err(source_refusal(text, "\"\""));
-        }
-        if let Some(reason) = ascii_refusal(trimmed) {
-            return Err(source_refusal(text, reason));
-        }
-        if trimmed.len() > KEY_WIDTH {
-            return Err(source_refusal(
-                text,
-                format_args!("{} bytes", trimmed.len()),
-            ));
-        }
-        if trimmed.eq_ignore_ascii_case("ticker") {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new(text),
-                reason: SmolStr::new_static(
-                    "a ticker is the name a person knows an instrument by, not a security \
-                     identifier source: state it through set_ticker",
-                ),
-            });
-        }
-        let mut buffer = [0_u8; KEY_WIDTH];
-        for (target, byte) in buffer.iter_mut().zip(trimmed.bytes()) {
-            *target = byte.to_ascii_uppercase();
-        }
-        Ok(Self(SmolStr::new(
-            std::str::from_utf8(&buffer[..trimmed.len()]).expect("validated ASCII"),
-        )))
-    }
-
-    /// The source a field is named for, or `None` where the name is not one
-    /// instrument's own identifier.
-    ///
-    /// A leading `#` is dropped and the name folds as every name here folds.
-    /// The whole name as a known key or a code-set name names the source;
-    /// otherwise `[security] + alias + [code | id | number]`, where the alias
-    /// is one, does. `ticker`, `symbol` and `symbolticker` name no source,
-    /// and neither does a field of another instrument - `leg*`,
-    /// `underlying*`, `contra*`, `related*`, `benchmark*`.
-    #[must_use]
-    pub fn from_field_name(name: &str) -> Option<Self> {
-        let name = name.strip_prefix('#').unwrap_or(name);
-        // An ASCII name folds into a buffer on the stack; any other takes
-        // the one fold every name here takes.
-        let mut buffer = [0_u8; 64];
-        let spilled;
-        let folded = if name.is_ascii() && name.len() <= buffer.len() {
-            let mut length = 0;
-            for byte in name
-                .bytes()
-                .filter(|byte| !matches!(byte, b'_' | b'-' | b' '))
-            {
-                buffer[length] = byte.to_ascii_lowercase();
-                length += 1;
-            }
-            std::str::from_utf8(&buffer[..length]).expect("folded ASCII")
-        } else {
-            spilled = folded_spelling(name);
-            spilled.as_str()
-        };
-        // Folded once: every spelling tried below is a part of this one.
-        if let Some(known) = Self::from_folded(folded) {
-            return Some(known);
-        }
-        if REFUSED_FIELD_NAMES.contains(&folded)
-            || REFUSED_FIELD_PREFIXES
-                .iter()
-                .any(|prefix| folded.starts_with(prefix))
-        {
-            return None;
-        }
-        let alias = folded.strip_prefix("security").unwrap_or(folded);
-        if alias.is_empty() {
-            return None;
-        }
-        if alias != folded {
-            if let Some(known) = Self::from_folded(alias) {
-                return Some(known);
-            }
-        }
-        ["code", "id", "number"]
-            .iter()
-            .find_map(|suffix| alias.strip_suffix(suffix))
-            .filter(|stem| !stem.is_empty())
-            .and_then(Self::from_folded)
-    }
-
-    /// The FIX `SecurityIDSource(22)` code of a known source.
-    #[must_use]
-    pub fn fix_source(&self) -> Option<char> {
-        Self::known_index(self.as_str()).map(|index| Self::KNOWN[index].1)
-    }
-
-    /// The known source one FIX `SecurityIDSource(22)` code names.
-    #[must_use]
-    pub fn from_fix_source(code: char) -> Option<Self> {
-        Self::KNOWN
-            .iter()
-            .position(|(_, known)| *known == code)
-            .map(Self::known)
-    }
-
-    /// The upper-cased key.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-
-    /// Whether the source is one of [`Self::KNOWN`].
-    #[must_use]
-    pub fn is_known(&self) -> bool {
-        Self::known_index(self.as_str()).is_some()
-    }
-
-    /// The most bytes a code of this source may be: the fixed width of a
-    /// checked code, `BBG_WIDTH` for a Bloomberg identifier, 32 for
-    /// every other source.
-    #[must_use]
-    pub fn max_code_width(&self) -> usize {
-        match self.as_str() {
-            "ISIN" | "FIGI" => 12,
-            "CUSIP" | "VALOR" => 9,
-            "SEDOL" | "FOREX" => 7,
-            "WKN" => 6,
-            "ISOCCY" => 3,
-            "ISOCTRY" => 2,
-            _ => BBG_WIDTH,
-        }
-    }
-
-    /// Whether codes of this source fold to upper case.
-    fn folds_case(&self) -> bool {
-        matches!(self.as_str(), "ISIN" | "CUSIP" | "SEDOL" | "FIGI" | "WKN")
-    }
-
-    /// `code` as this source stores it, once it is a code of this source.
-    ///
-    /// An ISIN, a CUSIP, a SEDOL and a FIGI must close on their check digit;
-    /// a RIC is one token of printable ASCII, its case kept; a WKN is six of
-    /// `[0-9A-HJ-NP-Z]`, a Valor number one to nine digits without a leading
-    /// zero; a Bloomberg identifier keeps its case and its inner spaces;
-    /// a `FOREX` code is a currency pair in any spelling [`Forex::new`]
-    /// reads; every other source takes printable ASCII within
-    /// [`Self::max_code_width`]. No source takes an empty or null-like code.
-    /// The code is answered borrowed, as it was given, except a pair, which
-    /// is answered as the one canonical spelling it lands as - `eurusd` is
-    /// `EUR/USD`.
-    ///
-    /// # Errors
-    ///
-    /// The checked code's own refusal, or one located on the source naming
-    /// the rule the code broke.
-    pub fn canonical_code<'a>(&self, code: &'a str) -> Result<Cow<'a, str>> {
-        let refusal = |actual: &dyn fmt::Display| Error::InvalidRecord {
-            path: self.0.clone(),
-            reason: crate::text::expected_got(format_args!("a {} code", self.as_str()), actual),
-        };
-        if is_null_like(code) {
-            return Err(refusal(&format_args!("{code:?}, which states nothing")));
-        }
-        let borrowed = Cow::Borrowed(code);
-        match self.as_str() {
-            "ISIN" => Isin::new(code).map(|_| borrowed),
-            "CUSIP" => Cusip::new(code).map(|_| borrowed),
-            "SEDOL" => Sedol::new(code).map(|_| borrowed),
-            "FIGI" => Figi::new(code).map(|_| borrowed),
-            "RIC" => Ric::new(code).map(|_| borrowed),
-            "FOREX" => Forex::new(code).map(|pair| match pair.as_str() == code {
-                true => borrowed,
-                false => Cow::Owned(pair.as_str().to_owned()),
-            }),
-            "WKN" => {
-                if code.len() == 6
-                    && code
-                        .bytes()
-                        .all(|byte| matches!(byte.to_ascii_uppercase(), b'0'..=b'9' | b'A'..=b'H' | b'J'..=b'N' | b'P'..=b'Z'))
-                {
-                    Ok(borrowed)
-                } else {
-                    Err(refusal(&format_args!(
-                        "{code:?}, not six of [0-9A-HJ-NP-Z]"
-                    )))
-                }
-            }
-            "VALOR" => {
-                if (1..=9).contains(&code.len())
-                    && code.bytes().all(|byte| byte.is_ascii_digit())
-                    && !code.starts_with('0')
-                {
-                    Ok(borrowed)
-                } else {
-                    Err(refusal(&format_args!(
-                        "{code:?}, not one to nine digits without a leading zero"
-                    )))
-                }
-            }
-            _ => {
-                if let Some(reason) = ascii_refusal(code) {
-                    return Err(refusal(&reason));
-                }
-                let width = self.max_code_width();
-                if code.len() > width {
-                    return Err(refusal(&format_args!(
-                        "{} bytes, over the {width} the source allows",
-                        code.len()
-                    )));
-                }
-                Ok(borrowed)
-            }
-        }
-    }
-}
-
-impl fmt::Display for SecType {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SecurityId: one source and the code it gives an instrument.
-// ---------------------------------------------------------------------------
-
-/// One instrument identifier: the source it comes from and the code it gives.
-///
-/// One buffer holds both: a known source is one tag byte, its index in
-/// [`SecType::KNOWN`] plus one, and an unknown source is `0x7F`, one length
-/// byte and the key; the code follows. Every byte is ASCII, so the buffer is
-/// text, inline up to 23 bytes: every checked code and a terminal-length
-/// Bloomberg identifier cost no allocation. The code is validated by its
-/// source on construction and, where the source folds case, held upper-cased.
-///
-/// ```
-/// use yggdryl::{SecType, SecurityId};
-///
-/// let apple = SecurityId::new(SecType::read("isin").unwrap(), "us0378331005").unwrap();
-/// assert_eq!(apple.to_string(), "ISIN:US0378331005");
-/// assert_eq!(apple.code(), "US0378331005");
-/// assert!(apple.is_inline());
-/// assert!(SecurityId::new(SecType::read("isin").unwrap(), "US0378331006").is_err());
-/// ```
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct SecurityId(SmolStr);
-
-impl SecurityId {
-    /// An identifier of `key`, its `code` validated by the source.
-    ///
-    /// # Errors
-    ///
-    /// What [`SecType::canonical_code`] refuses.
-    pub fn new(key: SecType, code: &str) -> Result<Self> {
-        let code = code.trim_matches(|c: char| c.is_ascii_whitespace());
-        let code = key.canonical_code(code)?;
-        let mut buffer = [0_u8; 2 + KEY_WIDTH + BBG_WIDTH];
-        let head = match SecType::known_index(key.as_str()) {
-            Some(index) => {
-                buffer[0] = 1 + index as u8;
-                1
-            }
-            None => {
-                let text = key.as_str();
-                buffer[0] = UNKNOWN_TAG;
-                buffer[1] = text.len() as u8;
-                buffer[2..2 + text.len()].copy_from_slice(text.as_bytes());
-                2 + text.len()
-            }
-        };
-        for (target, byte) in buffer[head..].iter_mut().zip(code.bytes()) {
-            *target = if key.folds_case() {
-                byte.to_ascii_uppercase()
-            } else {
-                byte
-            };
-        }
-        Ok(Self(SmolStr::new(
-            std::str::from_utf8(&buffer[..head + code.len()]).expect("ASCII"),
-        )))
-    }
-
-    /// The known index the tag names, or the width of an unknown key.
-    fn split(&self) -> (Option<usize>, usize) {
-        let bytes = self.0.as_bytes();
-        if bytes[0] == UNKNOWN_TAG {
-            (None, 2 + usize::from(bytes[1]))
-        } else {
-            (Some(usize::from(bytes[0]) - 1), 1)
-        }
-    }
-
-    /// The key, borrowed from the table or the buffer; nothing allocates.
-    pub(crate) fn key_str(&self) -> &str {
-        match self.split() {
-            (Some(index), _) => SecType::KNOWN[index].0,
-            (None, head) => &self.0[2..head],
-        }
-    }
-
-    /// The source: a known one from the table, no allocation.
-    #[must_use]
-    pub fn sectype(&self) -> SecType {
-        match self.split() {
-            (Some(index), _) => SecType::known(index),
-            (None, head) => SecType(SmolStr::new(&self.0[2..head])),
-        }
-    }
-
-    /// The code.
-    #[must_use]
-    pub fn code(&self) -> &str {
-        &self.0[self.split().1..]
-    }
-
-    /// Whether the buffer sits inline rather than on the heap.
-    #[must_use]
-    pub fn is_inline(&self) -> bool {
-        !self.0.is_heap_allocated()
-    }
-}
-
-impl fmt::Display for SecurityId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}:{}", self.key_str(), self.code())
-    }
-}
-
-impl Ord for SecurityId {
-    fn cmp(&self, other: &Self) -> Ordering {
-        (self.key_str(), self.code()).cmp(&(other.key_str(), other.code()))
-    }
-}
-
-impl PartialOrd for SecurityId {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SecurityIds: the identifiers a market states, one code per source.
-// ---------------------------------------------------------------------------
-
-/// The identifiers an instrument is stated under, one code per source,
-/// sorted by source.
-///
-/// Two inline slots hold the ISIN and the one other code a market usually
-/// states; a third spills to the heap. A source is looked up through
-/// [`SecType::read`], so `get("4")`, `get("isin")` and `get("ISINNumber")`
-/// are one question. Its Arrow shape is [`IdMap`]'s: a sorted map of
-/// required text keys to required text values.
-///
-/// ```
-/// use yggdryl::{SecType, SecurityId, SecurityIds};
-///
-/// let mut ids = SecurityIds::default();
-/// let isin = SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap();
-/// assert!(ids.insert(isin));
-/// assert_eq!(ids.get("4"), Some("US0378331005"));
-/// assert_eq!(ids.len(), 1);
-/// ```
-#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
-pub struct SecurityIds(SmallVec<[SecurityId; 2]>);
-
-impl SecurityIds {
-    /// Where `key` stands, or where it would.
-    fn position(&self, key: &str) -> std::result::Result<usize, usize> {
-        self.0.binary_search_by(|held| held.key_str().cmp(key))
-    }
-
-    /// The code under `key`, read as [`SecType::read`] reads a source.
-    #[must_use]
-    pub fn get(&self, key: &str) -> Option<&str> {
-        self.get_id(key).map(SecurityId::code)
-    }
-
-    /// The identifier under `key`, read as [`SecType::read`] reads a source.
-    #[must_use]
-    pub fn get_id(&self, key: &str) -> Option<&SecurityId> {
-        let key = SecType::read(key).ok()?;
-        let position = self.position(key.as_str()).ok()?;
-        Some(&self.0[position])
-    }
-
-    /// Whether a code is held under `key`.
-    #[must_use]
-    pub fn contains_key(&self, key: &str) -> bool {
-        self.get_id(key).is_some()
-    }
-
-    /// Fill `id`'s source: `true` when the set gained it, `false` when the
-    /// source was held already.
-    pub fn insert(&mut self, id: SecurityId) -> bool {
-        match self.position(id.key_str()) {
-            Ok(_) => false,
-            Err(position) => {
-                self.0.insert(position, id);
-                true
-            }
-        }
-    }
-
-    /// Set `id`'s source to `id`, replacing what it held: `true` when the
-    /// set changed.
-    pub fn set(&mut self, id: SecurityId) -> bool {
-        match self.position(id.key_str()) {
-            Ok(position) if self.0[position] == id => false,
-            Ok(position) => {
-                self.0[position] = id;
-                true
-            }
-            Err(position) => {
-                self.0.insert(position, id);
-                true
-            }
-        }
-    }
-
-    /// Remove `key`'s identifier, answering it.
-    pub fn remove(&mut self, key: &SecType) -> Option<SecurityId> {
-        let position = self.position(key.as_str()).ok()?;
-        Some(self.0.remove(position))
-    }
-
-    /// Take every source of `other` this set lacks, this set's identifier
-    /// standing where both hold a source; whether anything was added.
-    pub fn merge(&mut self, other: &Self) -> bool {
-        merge_sorted(&mut self.0, &other.0, SecurityId::key_str)
-    }
-
-    /// Every identifier, in source order.
-    pub fn iter(&self) -> std::slice::Iter<'_, SecurityId> {
-        self.0.iter()
-    }
-
-    /// How many sources the set holds.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Whether the set holds no source.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Feed every identifier in source order: the key's length, the key, the
-    /// code's length and the code, lengths as `u32` little-endian.
-    #[expect(
-        dead_code,
-        reason = "fed under its label by the graph digest once the market traits carry the set"
-    )]
-    pub(crate) fn digest_into(&self, hasher: &mut impl Hasher) {
-        for id in &self.0 {
-            let (key, code) = (id.key_str(), id.code());
-            hasher.write(&(key.len() as u32).to_le_bytes());
-            hasher.write(key.as_bytes());
-            hasher.write(&(code.len() as u32).to_le_bytes());
-            hasher.write(code.as_bytes());
-        }
-    }
-
-    /// The Arrow datatype the set lays out: [`IdMap::dtype`].
-    #[must_use]
-    pub fn dtype() -> DataType {
-        IdMap::dtype()
-    }
-
-    /// The set as a sorted-map scalar of source keys to codes.
-    #[must_use]
-    pub fn to_scalar(&self) -> Scalar {
-        sorted_map_scalar(self.0.iter().map(|id| (id.key_str(), id.code())))
-    }
-
-    /// Read a set back from the scalar [`Self::to_scalar`] answers.
-    ///
-    /// # Errors
-    ///
-    /// Anything but a mapping, a null or non-text key or value, a source
-    /// that repeats or stands out of order, and a code its source refuses,
-    /// each located on the entry.
-    pub fn from_scalar(scalar: &Scalar) -> Result<Self> {
-        let mut ids = Self::default();
-        for (index, key, code) in text_entries(scalar)? {
-            let key = SecType::read(key).map_err(|error| located_at(index, "key", error))?;
-            match ids.0.last().map(|held| held.key_str().cmp(key.as_str())) {
-                Some(Ordering::Equal) => {
-                    return Err(entry_refusal(index, "key", "a source held once already"));
-                }
-                Some(Ordering::Greater) => {
-                    return Err(entry_refusal(index, "key", "a source out of order"));
-                }
-                Some(Ordering::Less) | None => {}
-            }
-            ids.0.push(
-                SecurityId::new(key, code).map_err(|error| located_at(index, "value", error))?,
-            );
-        }
-        Ok(ids)
-    }
-}
-
-impl Deref for SecurityIds {
-    type Target = [SecurityId];
-
-    fn deref(&self) -> &[SecurityId] {
-        &self.0
-    }
-}
-
-impl<'ids> IntoIterator for &'ids SecurityIds {
-    type Item = &'ids SecurityId;
-    type IntoIter = std::slice::Iter<'ids, SecurityId>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
-}
+use crate::identifier::IDENTIFIER_VALUE_WIDTH;
+use crate::{Cfi, Cusip, Figi, IdSource, IdType, Identifier, Identifiers, Isin, Ric, Sedol};
 
 // ---------------------------------------------------------------------------
 // embedded: the national number an ISIN carries.
@@ -796,25 +32,192 @@ impl<'ids> IntoIterator for &'ids SecurityIds {
 ///
 /// let apple = Isin::new("US0378331005").unwrap();
 /// let cusip = embedded(&apple).next().unwrap();
-/// assert_eq!(cusip.to_string(), "CUSIP:037833100");
+/// assert_eq!(cusip.to_string(), "derived:cusip=037833100");
 /// assert!(embedded(&Isin::new("XS0203470157").unwrap()).next().is_none());
 /// ```
-pub fn embedded(isin: &Isin) -> impl Iterator<Item = SecurityId> {
+pub fn embedded(isin: &Isin) -> impl Iterator<Item = Identifier> {
     let text = isin.as_str();
     let found = if !Isin::is_canonical(text) {
         None
     } else {
-        let (key, code) = match &text[..2] {
-            "US" | "CA" => ("CUSIP", &text[2..11]),
-            "GB" | "IE" | "GG" | "JE" | "IM" if &text[2..4] == "00" => ("SEDOL", &text[4..11]),
-            "DE" if &text[2..5] == "000" => ("WKN", &text[5..11]),
-            "CH" | "LI" => ("VALOR", text[2..11].trim_start_matches('0')),
-            _ => ("", ""),
+        let (kind, code) = match &text[..2] {
+            "US" | "CA" => (Some(IdType::Cusip), &text[2..11]),
+            "GB" | "IE" | "GG" | "JE" | "IM" if &text[2..4] == "00" => {
+                (Some(IdType::Sedol), &text[4..11])
+            }
+            "DE" if &text[2..5] == "000" => (Some(IdType::Wkn), &text[5..11]),
+            "CH" | "LI" => (Some(IdType::Valor), text[2..11].trim_start_matches('0')),
+            _ => (None, ""),
         };
-        SecType::known_index(key)
-            .and_then(|index| SecurityId::new(SecType::known(index), code).ok())
+        kind.and_then(|kind| Identifier::new(IdSource::Derived, kind, code).ok())
     };
     found.into_iter()
+}
+
+// ---------------------------------------------------------------------------
+// SymbolCode: what a symbol's own shape says it is.
+// ---------------------------------------------------------------------------
+
+/// What a symbol is, read off its shape: a ticker a venue gives is often an
+/// identifier a standard gives, and its length alone says which one to try
+/// before any check runs.
+///
+/// | length | shape | reads as |
+/// | --- | --- | --- |
+/// | 21 to 26 | `{ISIN}_{MIC}_{CCY}` | [`Self::Instrument`], each part its own type's |
+/// | 12 | `BBG` then nine | [`Self::Figi`] |
+/// | 12 | any other | [`Self::Isin`] |
+/// | 9 | | [`Self::Cusip`] |
+/// | 7 | | [`Self::Sedol`] |
+/// | 6 | upper-case letters, a detailed classification | [`Self::Cfi`] |
+/// | any | a dot between a code and a venue - `AAPL.OQ` | [`Self::Ric`] |
+/// | any | a Bloomberg yellow key last - `AAPL US Equity` | [`Self::Bloomberg`] |
+///
+/// Every candidate closes on its own type's check - an ISIN's, a FIGI's, a
+/// CUSIP's and a SEDOL's check digit, a CFI's grammar past its category
+/// and group - so a symbol that is
+/// only the length of one reads as nothing, and a symbol reading as nothing
+/// is a ticker and nothing more. A currency pair is the FIX layer's
+/// [`FxSymbol`](crate::FxSymbol) reading, which knows its tenors.
+///
+/// ```
+/// use yggdryl::securityid::SymbolCode;
+///
+/// assert!(matches!(SymbolCode::from_symbol("US0378331005"), Some(SymbolCode::Isin(_))));
+/// assert!(matches!(SymbolCode::from_symbol("BBG000BLNQ16"), Some(SymbolCode::Figi(_))));
+/// assert!(matches!(
+///     SymbolCode::from_symbol("CH0012214059_XSWX_CHF"),
+///     Some(SymbolCode::Instrument { .. })
+/// ));
+/// assert!(matches!(
+///     SymbolCode::from_symbol("CH0012214059_XSWX_USDT"),
+///     Some(SymbolCode::Instrument { .. })
+/// ));
+/// assert!(matches!(SymbolCode::from_symbol("ESVUFR"), Some(SymbolCode::Cfi(_))));
+/// assert!(matches!(SymbolCode::from_symbol("AAPL.OQ"), Some(SymbolCode::Ric(_))));
+/// assert!(matches!(SymbolCode::from_symbol("HOLN SW Equity"), Some(SymbolCode::Bloomberg(_))));
+/// assert_eq!(SymbolCode::from_symbol("AAPL"), None);
+/// assert_eq!(SymbolCode::from_symbol("US0378331006"), None);
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SymbolCode {
+    /// An instrument key: its ISIN, the MIC it trades on and the currency
+    /// it trades in, `_` between them - twelve and four characters and a
+    /// currency of three to eight, ISO 4217's or a digital-asset ticker -
+    /// each part read by its own type and `None` where that type refuses
+    /// it, so one bad part leaves the others answering.
+    Instrument {
+        /// The instrument.
+        isin: Option<Isin>,
+        /// Where it trades: an ISO 10383 MIC, or the Reuters mnemonic FIX
+        /// 4.2 spelled one in.
+        mic: Option<crate::Mic>,
+        /// What it trades in.
+        ccy: Option<crate::Ccy>,
+    },
+    /// An ISIN.
+    Isin(Isin),
+    /// A FIGI.
+    Figi(Figi),
+    /// A CUSIP.
+    Cusip(Cusip),
+    /// A SEDOL.
+    Sedol(Sedol),
+    /// A CFI code.
+    Cfi(Cfi),
+    /// A Reuters instrument code.
+    Ric(Ric),
+    /// A Bloomberg identifier ending in its yellow key.
+    Bloomberg(crate::Bbg),
+}
+
+/// The fewest bytes an instrument key's currency is: ISO 4217's three.
+const INSTRUMENT_CURRENCY: usize = 3;
+
+/// The shortest and longest instrument key: an ISIN, a MIC and a currency
+/// of three up to a currency's bound, `_` between them.
+const INSTRUMENT_SHORTEST: usize = 12 + 1 + 4 + 1 + INSTRUMENT_CURRENCY;
+const INSTRUMENT_LONGEST: usize = 12 + 1 + 4 + 1 + crate::CCY_WIDTH;
+
+/// The Bloomberg yellow keys a terminal identifier ends with.
+const YELLOW_KEYS: [&str; 9] = [
+    "Equity", "Comdty", "Curncy", "Index", "Govt", "Corp", "Mtge", "Muni", "Pfd",
+];
+
+impl SymbolCode {
+    /// What `symbol` is, by its length first and its type's check second,
+    /// or `None` where it is no identifier this crate checks.
+    #[must_use]
+    pub fn from_symbol(symbol: &str) -> Option<Self> {
+        let text = symbol.trim();
+        let bytes = text.as_bytes();
+        let upper = |part: &[u8]| part.iter().all(u8::is_ascii_uppercase);
+        let alphanumeric = |part: &[u8]| part.iter().all(u8::is_ascii_alphanumeric);
+        let found = match bytes.len() {
+            INSTRUMENT_SHORTEST..=INSTRUMENT_LONGEST if bytes[12] == b'_' && bytes[17] == b'_' => {
+                Self::instrument(text)
+            }
+            12 if text.starts_with("BBG") => Figi::new(text).ok().map(Self::Figi),
+            12 if alphanumeric(bytes) => Isin::new(text)
+                .ok()
+                .filter(|isin| Isin::is_canonical(isin.as_str()))
+                .map(Self::Isin),
+            9 if alphanumeric(bytes) => Cusip::new(text).ok().map(Self::Cusip),
+            7 if alphanumeric(bytes) => Sedol::new(text).ok().map(Self::Sedol),
+            6 if upper(bytes) && Cfi::is_detailed(text) => Cfi::new(text).ok().map(Self::Cfi),
+            _ => None,
+        };
+        found.or_else(|| {
+            let yellow = text.contains(' ')
+                && text.rsplit(' ').next().is_some_and(|key| {
+                    YELLOW_KEYS
+                        .iter()
+                        .any(|yellow| yellow.eq_ignore_ascii_case(key))
+                });
+            if yellow {
+                return crate::Bbg::new(text).ok().map(Self::Bloomberg);
+            }
+            let (code, venue) = text.split_once('.')?;
+            (!code.is_empty()
+                && !venue.is_empty()
+                && !venue.contains('.')
+                && alphanumeric(venue.as_bytes())
+                && !text.contains(' '))
+            .then(|| Ric::new(text).ok().map(Self::Ric))
+            .flatten()
+        })
+    }
+
+    /// The instrument key `{ISIN}_{MIC}_{CCY}` spells - twelve and four
+    /// ASCII letters and digits and a currency of three to eight, `_USDT`
+    /// as well as `_CHF`, `_` between them -
+    /// each part read by its own type, or `None` where the text is not that
+    /// shape or no part reads.
+    #[must_use]
+    pub fn instrument(text: &str) -> Option<Self> {
+        let mut parts = text.split('_');
+        let (isin, mic, ccy) = (parts.next()?, parts.next()?, parts.next()?);
+        let shaped = |part: &str, widths: std::ops::RangeInclusive<usize>| {
+            widths.contains(&part.len()) && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        };
+        if parts.next().is_some()
+            || !shaped(isin, 12..=12)
+            || !shaped(mic, 4..=4)
+            || !shaped(ccy, INSTRUMENT_CURRENCY..=crate::CCY_WIDTH)
+        {
+            return None;
+        }
+        let isin = Isin::new(isin)
+            .ok()
+            .filter(|held| Isin::is_canonical(held.as_str()));
+        let mic = crate::Mic::from_market(mic);
+        let ccy = crate::Ccy::new(ccy).ok();
+        (isin.is_some() || mic.is_some() || ccy.is_some()).then_some(Self::Instrument {
+            isin,
+            mic,
+            ccy,
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -827,20 +230,23 @@ pub fn embedded(isin: &Isin) -> impl Iterator<Item = SecurityId> {
 const MAX_REGISTRY_BYTES: usize = 32 * 1024 * 1024;
 const ENTRY_CHARGE: usize = 2048;
 const HASH_CONTROL_BYTES: usize = 1;
-const MAX_BLOOMBERG_HEAP_ALLOWANCE: usize =
-    BBG_WIDTH + 2 * size_of::<usize>() + 2 * align_of::<usize>();
+/// The heap one retained value may take: the widest value any identifier
+/// type admits, behind its `Arc` counters and allocator rounding. A learned
+/// key is a type the crate names, a static word with no heap of its own.
+const MAX_VALUE_HEAP_ALLOWANCE: usize =
+    IDENTIFIER_VALUE_WIDTH + 2 * size_of::<usize>() + 2 * align_of::<usize>();
 
 /// The most sources one instrument's associations are learned under.
 const MAX_KEYS_PER_INSTRUMENT: usize = 8;
 
 // Four buckets per entry cover the supported standard HashMap's load slack
 // plus old and new tables during growth. Each learned key is charged its
-// slot and, once, the widest retained code's heap payload, Arc counters and
+// slot and, once, the widest retained value's heap payload, Arc counters and
 // allocator rounding.
 const _: () = assert!(
     ENTRY_CHARGE
-        >= 4 * (size_of::<(SecurityId, Learned)>() + HASH_CONTROL_BYTES)
-            + MAX_KEYS_PER_INSTRUMENT * (size_of::<Slot>() + MAX_BLOOMBERG_HEAP_ALLOWANCE)
+        >= 4 * (size_of::<(SmolStr, Learned)>() + HASH_CONTROL_BYTES)
+            + MAX_KEYS_PER_INSTRUMENT * (size_of::<Slot>() + MAX_VALUE_HEAP_ALLOWANCE)
 );
 const _: () = assert!(MAX_REGISTRY_BYTES / ENTRY_CHARGE == 16_384);
 
@@ -855,22 +261,25 @@ enum Association<T> {
     Ambiguous,
 }
 
-impl<T: Clone + PartialEq> Association<T> {
-    /// Learn `value`: a first sighting is known, a second different one
-    /// makes the association ambiguous for good.
-    fn observe(&mut self, value: &T) {
-        *self = match self {
-            Self::Missing => Self::Known(value.clone()),
-            Self::Known(known) if known == value => return,
-            Self::Known(_) | Self::Ambiguous => Self::Ambiguous,
-        };
-    }
-
+impl<T> Association<T> {
     fn known(&self) -> Option<&T> {
         match self {
             Self::Known(value) => Some(value),
             Self::Missing | Self::Ambiguous => None,
         }
+    }
+}
+
+impl Association<SmolStr> {
+    /// Learn `value`: a first sighting is known, a second different one
+    /// makes the association ambiguous for good. The value is built only
+    /// where it is first learned, so seeing a known one again costs nothing.
+    fn observe(&mut self, value: &str) {
+        *self = match self {
+            Self::Missing => Self::Known(SmolStr::new(value)),
+            Self::Known(known) if known == value => return,
+            Self::Known(_) | Self::Ambiguous => Self::Ambiguous,
+        };
     }
 }
 
@@ -906,8 +315,8 @@ impl Association<Cfi> {
     }
 }
 
-/// One source's association for one instrument.
-type Slot = (SecType, Association<SecurityId>);
+/// One type's association for one instrument.
+type Slot = (IdType, Association<SmolStr>);
 
 #[derive(Default)]
 struct Learned {
@@ -918,16 +327,20 @@ struct Learned {
 /// The associations one ordered lifecycle learns between an instrument's
 /// ISIN, its other identifiers and its classification, never by a codec.
 pub(crate) struct SecurityIdRegistry {
-    by_isin: HashMap<SecurityId, Learned>,
+    by_isin: HashMap<SmolStr, Learned>,
     reserved_bytes: usize,
     byte_budget: usize,
-    /// Sources whose code names one listing of an instrument - its ISIN
-    /// with a market and a currency - rather than the instrument the ISIN
+    /// Types whose value names one listing of an instrument - its ISIN with
+    /// a market and a currency - rather than the instrument the ISIN
     /// numbers. One ISIN has as many listings as markets, so what one
-    /// message states under such a source is no association to fill onto
+    /// message states under such a type is no association to fill onto
     /// another, and none is learned.
-    listings: SmallVec<[SecType; 2]>,
+    listings: SmallVec<[IdType; 2]>,
 }
+
+/// The types a registry fills for one instrument, each with the code it is
+/// known by, borrowed from the registry: four held inline.
+type Fills<'learned> = SmallVec<[(&'learned IdType, &'learned str); 4]>;
 
 impl Default for SecurityIdRegistry {
     fn default() -> Self {
@@ -942,8 +355,8 @@ impl Default for SecurityIdRegistry {
 
 impl SecurityIdRegistry {
     /// A registry that never learns an association under one of
-    /// `listings`, the sources naming a listing rather than an instrument.
-    pub(crate) fn with_listings(listings: impl IntoIterator<Item = SecType>) -> Self {
+    /// `listings`, the types naming a listing rather than an instrument.
+    pub(crate) fn with_listings(listings: impl IntoIterator<Item = IdType>) -> Self {
         Self {
             listings: listings.into_iter().collect(),
             ..Self::default()
@@ -953,7 +366,7 @@ impl SecurityIdRegistry {
     /// The retained slot for `isin`, registering it only after a checked
     /// reservation. A rejected registration does not clone the key or ask
     /// the map to reserve.
-    fn learned_for(&mut self, isin: &SecurityId) -> Option<&mut Learned> {
+    fn learned_for(&mut self, isin: &str) -> Option<&mut Learned> {
         if self.by_isin.contains_key(isin) {
             return self.by_isin.get_mut(isin);
         }
@@ -964,112 +377,107 @@ impl SecurityIdRegistry {
         if reserved_bytes > self.byte_budget {
             return None;
         }
-        self.by_isin.insert(isin.clone(), Learned::default());
+        self.by_isin.insert(SmolStr::new(isin), Learned::default());
         self.reserved_bytes = reserved_bytes;
         self.by_isin.get_mut(isin)
     }
 
     /// Learn what `ids` and `cfi` state about the instrument `ids` names by
-    /// its ISIN: one association per stated source but a listing's, at most
-    /// `MAX_KEYS_PER_INSTRUMENT` of them, and the classification where it
-    /// is detailed. Nothing without an ISIN.
-    pub(crate) fn learn(&mut self, ids: &SecurityIds, cfi: Option<&Cfi>) {
-        let Some(isin) = ids.get_id("ISIN") else {
+    /// its ISIN: one association per stated type the crate names but a
+    /// listing's and the ISIN's own, at most `MAX_KEYS_PER_INSTRUMENT` of
+    /// them, and the classification where it is detailed. Nothing without an
+    /// ISIN; nothing the crate derived, which is no statement; nothing under
+    /// a word the crate does not name - a private source's code, `100` - whose
+    /// spelling is heap the entry charge does not count.
+    pub(crate) fn learn(&mut self, ids: &Identifiers, cfi: Option<&Cfi>) {
+        let Some(isin) = ids.get(&IdType::Isin) else {
             return;
         };
-        let learnable: SmallVec<[&SecurityId; 8]> = ids
+        let isin = SmolStr::new(isin);
+        let learnable: SmallVec<[&Identifier; 8]> = ids
             .iter()
             .filter(|id| {
-                id.key_str() != "ISIN"
-                    && !self
-                        .listings
-                        .iter()
-                        .any(|listing| listing.as_str() == id.key_str())
+                id.kind() != &IdType::Isin
+                    && id.kind().is_known()
+                    && id.src() != &IdSource::Derived
+                    && !self.listings.contains(id.kind())
             })
             .collect();
-        let Some(learned) = self.learned_for(isin) else {
+        let Some(learned) = self.learned_for(&isin) else {
             return;
         };
         learned.cfi.classify(cfi);
         for id in learnable {
-            let position = learned
-                .keys
-                .iter()
-                .position(|(key, _)| key.as_str() == id.key_str());
+            let position = learned.keys.iter().position(|(key, _)| key == id.kind());
             let slot = match position {
                 Some(position) => &mut learned.keys[position],
                 None if learned.keys.len() < MAX_KEYS_PER_INSTRUMENT => {
-                    learned.keys.push((id.sectype(), Association::Missing));
+                    learned.keys.push((id.kind().clone(), Association::Missing));
                     learned.keys.last_mut().expect("just pushed")
                 }
                 None => continue,
             };
-            slot.1.observe(id);
+            slot.1.observe(id.value());
         }
     }
 
-    /// Fill what `ids` and `cfi` leave unstated about the instrument `ids`
-    /// names by its ISIN, from what was learned: only absent sources, and a
-    /// classification only where the learned one refines the stated one.
-    /// Whether anything was filled.
-    pub(crate) fn fill(&self, ids: &mut SecurityIds, cfi: &mut Option<Cfi>) -> bool {
-        let Some(learned) = ids.get_id("ISIN").and_then(|isin| self.by_isin.get(isin)) else {
-            return false;
+    /// What `ids` and `cfi` leave unstated about the instrument `ids`
+    /// names by its ISIN, from what was learned: each absent type with the
+    /// code it is known by, borrowed, and the classification where the
+    /// learned one refines the stated one. Planned off the borrowed set,
+    /// so filling costs nothing where there is nothing to fill.
+    fn fills<'learned>(
+        &'learned self,
+        ids: &Identifiers,
+        cfi: Option<&Cfi>,
+    ) -> (Fills<'learned>, Option<Cfi>) {
+        let mut derived = SmallVec::new();
+        let Some(learned) = ids
+            .get(&IdType::Isin)
+            .and_then(|isin| self.by_isin.get(isin))
+        else {
+            return (derived, None);
         };
-        let mut changed = false;
-        if let Some(known) = learned.cfi.known() {
-            let replacement = match cfi.as_ref() {
-                None => Some(known.clone()),
-                Some(stated) if stated != known => {
-                    Cfi::merged(stated.as_str(), known.as_str())
-                        .filter(|merged| {
-                            // Unknown positions can fill; a stated classification
-                            // attribute is never overwritten by a learned default.
-                            stated
-                                .as_str()
-                                .bytes()
-                                .zip(merged.bytes())
-                                .all(|(old, new)| old == b'X' || old == new)
-                                && merged.as_str() != stated.as_str()
-                        })
-                        .and_then(|merged| Cfi::new(merged).ok())
-                }
-                Some(_) => None,
-            };
-            if let Some(code) = replacement {
-                *cfi = Some(code);
-                changed = true;
+        let classified = learned.cfi.known().and_then(|known| match cfi {
+            None => Some(known.clone()),
+            Some(stated) if stated != known => Cfi::merged(stated.as_str(), known.as_str())
+                .filter(|merged| {
+                    // Unknown positions can fill; a stated classification
+                    // attribute is never overwritten by a learned default.
+                    stated
+                        .as_str()
+                        .bytes()
+                        .zip(merged.bytes())
+                        .all(|(old, new)| old == b'X' || old == new)
+                        && merged.as_str() != stated.as_str()
+                })
+                .and_then(|merged| Cfi::new(merged).ok()),
+            Some(_) => None,
+        });
+        for (kind, association) in &learned.keys {
+            if let Some(known) = association.known().filter(|_| !ids.contains_kind(kind)) {
+                derived.push((kind, known.as_str()));
             }
         }
-        for (_, association) in &learned.keys {
-            if let Some(known) = association.known() {
-                changed |= ids.insert(known.clone());
-            }
-        }
-        changed
+        (derived, classified)
     }
 }
 
 /// Learn what `event` states about its instrument - its security identifiers
-/// and its CFI - then fill what it left unstated: each absent key the
+/// and its CFI - then fill what it left unstated: each absent type the
 /// registry knows for the ISIN is derived onto the event, never stated, and
-/// the element is finalized where anything moved.
+/// the element is finalized where anything moved. The event's set is read
+/// where it lies, never copied.
 pub(crate) fn enrich<E: Market + Element>(registry: &mut SecurityIdRegistry, event: &mut E) {
-    let mut ids = event.get_securityids().clone();
-    let mut cfi = event.get_cficode().cloned();
-    registry.learn(&ids, cfi.as_ref());
-    if !registry.fill(&mut ids, &mut cfi) {
-        return;
-    }
+    registry.learn(event.get_securityids(), event.get_cficode());
+    let (derived, classified) = registry.fills(event.get_securityids(), event.get_cficode());
     let mut changed = false;
-    if cfi.as_ref() != event.get_cficode() {
-        event.set_cficode(cfi);
+    if let Some(code) = classified {
+        event.set_cficode(Some(code), true);
         changed = true;
     }
-    for id in ids.iter() {
-        if !event.get_securityids().contains_key(id.sectype().as_str()) {
-            changed |= event.derive_securityid(id.clone());
-        }
+    for (kind, known) in derived {
+        changed |= event.derive_securityid(kind, known);
     }
     if changed {
         event.finalize();
@@ -1090,7 +498,7 @@ pub mod internals {
     use std::collections::HashMap;
 
     use crate::graph::{Element, Market};
-    use crate::{Cfi, SecurityIds};
+    use crate::{Cfi, Identifiers};
 
     /// The instrument associations one ordered lifecycle learns.
     #[derive(Default)]
@@ -1124,13 +532,26 @@ pub mod internals {
         }
 
         /// Learn what `ids` and `cfi` state.
-        pub fn learn(&mut self, ids: &SecurityIds, cfi: Option<&Cfi>) {
+        pub fn learn(&mut self, ids: &Identifiers, cfi: Option<&Cfi>) {
             self.0.learn(ids, cfi);
         }
 
-        /// Fill what `ids` and `cfi` leave unstated; whether anything was.
-        pub fn fill(&self, ids: &mut SecurityIds, cfi: &mut Option<Cfi>) -> bool {
-            self.0.fill(ids, cfi)
+        /// Fill what `ids` and `cfi` leave unstated, each absent type as a
+        /// derived identifier; whether anything was.
+        pub fn fill(&self, ids: &mut Identifiers, cfi: &mut Option<Cfi>) -> bool {
+            let (derived, classified) = self.0.fills(ids, cfi.as_ref());
+            let mut changed = classified.is_some();
+            if classified.is_some() {
+                *cfi = classified;
+            }
+            for (kind, known) in derived {
+                if let Ok(id) =
+                    crate::Identifier::new(crate::IdSource::Derived, kind.clone(), known)
+                {
+                    changed |= ids.insert(id);
+                }
+            }
+            changed
         }
 
         /// How many instruments the registry holds.

@@ -299,9 +299,8 @@ and resource-path views in both languages.
 
 ## Build and test
 
-Default and schema-only core builds support Rust 1.85. The optional `iceberg`
-feature and both bindings require Rust 1.94 because they include official
-Iceberg 0.10.1. Root Cargo commands select only the core; CI checks its default
+The workspace builds on Rust 1.94 and newer, every feature and both bindings
+included. Root Cargo commands select only the core; CI checks its default
 surface and the all-feature workspace separately.
 
 ```console

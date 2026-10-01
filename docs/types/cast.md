@@ -931,7 +931,7 @@ here is a whole day.
     # The column claims to be a URL; the landing still reads what it holds.
     root = Field("row", "struct<u: url not null>", nullable=False)
     labelled = pa.record_batch([pa.array(["not a url"])], schema=root.into_arrow_schema())
-    assert labelled.schema.field("u").metadata[b"ARROW:extension:name"] == b"yggdryl.url"
+    assert labelled.schema.field("u").type.extension_name == "yggdryl.url"
     for claimed in (root, None):
         try:
             Serie.from_arrow_batch(labelled, claimed)

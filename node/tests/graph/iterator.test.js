@@ -42,9 +42,12 @@ test('an execution and every other leaf walk through', () => {
   assert.ok(walked[2].asBookEvent().equals(book))
   assert.ok(walked[3].asOrder().equals(new graph.Order({ crosscode: 'O-1' })))
   // A chain matches within one market data kind: the execution shares the
-  // order's cross code but is a chain of its own, following nothing.
+  // order's base but is a chain of its own, following nothing. The stored
+  // cross codes differ (`8:1:O-1`, `10:1:O-1`), so the cross identities do.
   const fill = walked[1].asExecutionEvent()
-  assert.equal(fill.crossuuid, first.crossuuid)
+  assert.equal(fill.crosscode, '8:1:O-1')
+  assert.notEqual(fill.crossuuid, first.crossuuid)
+  assert.equal(fill.crossuuid, execution.crossuuid)
   assert.equal(fill.prevuuid, null)
   assert.equal(fill.creaunix, CLOCK + 1_000_000n)
   assert.equal(fill.seqnum, 0)
@@ -61,14 +64,18 @@ test('alive and the snapshot grid', () => {
   const walk = new graph.EventIterator([order(CLOCK, 'NEW', { exprunix: CLOCK + 10n })], true, 5)
   assert.equal(walk.snapshotNs, 5n)
   const walked = [...walk].map((data) => data.asOrderEvent())
-  assert.deepEqual(walked.map((event) => event.snapunix), [null, CLOCK, CLOCK + 5n, null])
+  // Each view is dated at its tick and keeps the instant the order was stated at.
+  assert.deepEqual(
+    walked.map((event) => [event.currunix, event.snapunix]),
+    [[CLOCK, null], [CLOCK, CLOCK], [CLOCK + 5n, CLOCK], [CLOCK + 10n, null]],
+  )
   assert.equal(walked.at(-1).state, 'EXPIRED')
   assert.deepEqual(walk.alive(), [])
   const live = new graph.EventIterator([order(CLOCK)])
   assert.equal(live.snapshotNs, null)
   assert.equal([...live].length, 1)
-  // A sided element's cross code carries its side (A17).
-  assert.deepEqual(live.alive().map((data) => data.crosscode), ['BUYS:O-1'])
+  // The stored cross code is the kind, the side, then the base.
+  assert.deepEqual(live.alive().map((data) => data.crosscode), ['10:1:O-1'])
   assert.ok(live.alive().every((data) => data instanceof graph.MarketData))
 })
 
@@ -76,13 +83,15 @@ test('a snapshot view is the live event as of its tick', () => {
   // A 5 ms grid: two ticks a millisecond apart derive two identities.
   const source = order(CLOCK, 'NEW', { exprunix: CLOCK + 10_000_000n })
   const walked = [...new graph.EventIterator([source], true, 5_000_000n)].map((data) => data.asOrderEvent())
-  assert.deepEqual(walked.map((event) => event.snapunix), [null, CLOCK, CLOCK + 5_000_000n, null])
+  assert.deepEqual(walked.map((event) => event.snapunix), [null, CLOCK, CLOCK, null])
   const [live] = walked
   const views = walked.filter((event) => event.snapunix !== null)
+  assert.deepEqual(views.map((view) => view.currunix), [CLOCK, CLOCK + 5_000_000n])
   for (const view of views) {
-    // Dated at its tick, so it has the identity that tick derives ...
-    assert.equal(view.currunix, view.snapunix)
-    assert.equal(view.curruuid === live.curruuid, view.snapunix === live.currunix)
+    // Dated at its tick, so it has the identity that tick derives, and
+    // keeping the instant the live event was stated at ...
+    assert.equal(view.snapunix, live.currunix)
+    assert.equal(view.curruuid === live.curruuid, view.currunix === live.currunix)
     // ... while its content, its place and its cross element are the live event's.
     assert.equal(view.currhashcode, live.currhashcode)
     assert.equal(view.seqnum, live.seqnum)
@@ -107,7 +116,7 @@ test('a JavaScript failure is thrown as itself', () => {
   assert.throws(() => new graph.EventIterator(items(), false), { name: 'RangeError' })
   assert.throws(() => [...new graph.EventIterator([1])], {
     name: 'TypeError',
-    message: 'expected MarketData or a market leaf, got number',
+    message: 'expected MarketData, a market leaf or a FixMsg, got number',
   })
   assert.throws(() => new graph.EventIterator(5), /items must be an iterable/)
   assert.throws(() => graph.EventIterator([]), /cannot be invoked without 'new'/)

@@ -10,7 +10,7 @@
 | `is_execution` | always true, whatever the state; the [walk](event.md#lifecycle-walk) fills an absent [`execunix`](market.md#contract) with the event's instant, and following keeps the later execution clock |
 | A chain of its own | the walk joins an execution to no chain by a name or a base code: it follows only under its own cross code, and a chain matches within one market data kind, so a fill never restates, follows or ends its order under a shared code |
 | What traded | `lastpx`, `lastqty`, `avgpx`, `cumqty`, `leavesqty`; never `price` or `quantity`, which are what an element states ([Market](market.md#contract)) |
-| From FIX | an execution report, an order's or a quote's report and each side of a trade that report a fill split off an execution message at the parse: `EXEC`, state `FILLED`, an identity of its own, chained under its `ExecID(17)` as given, else `TradeID=<TradeID(1003)>`, else `<report code>|Execution=<digest>`, on its side (`BUYS:E-1`), its source's identity among its sources; the report keeps its own state (`PARTIALLY_FILLED`) and is its order's report (`ORDR`, `QUOT` where it names a `QuoteID`); an `ExecutionEvent` read off a FIX message reads `FILLED` unless a book message deleted it ([FIX](../fix/message.md#market-data)) |
+| From FIX | an execution report, an order's or a quote's report and each side of a trade that report a fill split off an execution message at the parse: `EXEC`, state `FILLED`, an identity of its own, chained under its `ExecID(17)` as given, else `TradeID=<TradeID(1003)>`, else `<report code>|Execution=<digest>`, on its side (`8:1:E-1`), its source's identity among its sources; the report keeps its own state (`PARTIALLY_FILLED`) and is its order's report (`ORDR`, `QUOT` where it names a `QuoteID`); an `ExecutionEvent` read off a FIX message reads `FILLED` unless a book message deleted it ([FIX](../fix/message.md#market-data)) |
 | Following an order | a leaf's own `with_previous` follows its own kind only; through [`MarketData`](market-data.md#marketdata) an execution follows the order it fills and keeps its kind, taking what [an operation follows](operation.md#following-and-merging) |
 | In a trade | a [`TradeEvent`](trade.md) is made of executions at the trade's instant, each on the side it states - `UNKN` included, a fill nobody said the side of |
 | In a book | a [book](book.md#books) lists an execution at its instant and never changes resting depth by it |
@@ -23,31 +23,32 @@ The fill of an Apple order a quarter second after it was placed.
 
     ```rust
     use yggdryl::graph::{Element, Event, ExecutionEvent, Market, MarketData, Operation, OrderEvent};
-    use yggdryl::{Ccy, Decimal, Side, State};
+    use yggdryl::{Ccy, Decimal, IdSource, IdType, Identifier, Side, State};
 
     const T: i64 = 1_700_000_000_000_000_000;
     let mut order = OrderEvent::at(T);
     order.set_crosscode("O-1001".to_owned());
-    order.set_side(Side::Buy);
-    order.set_price(Some("189.50".parse()?));
-    order.set_quantity(Some(Decimal::from_int(100)));
-    order.set_currency(Ccy::new("USD")?);
-    order.insert_altid("ORDERID", "O-1001")?;
+    order.set_side(Side::Buy, true);
+    order.set_price(Some("189.50".parse()?), true);
+    order.set_quantity(Some(Decimal::from_int(100)), true);
+    order.set_currency(Ccy::new("USD")?, true);
+    order.insert_identifier(Identifier::new(IdSource::Fix, IdType::OrderId, "O-1001")?)?;
     order.finalize();
 
     let mut fill = ExecutionEvent::at(T + 250_000_000);
     fill.set_crosscode("O-1001".to_owned());
-    fill.set_side(Side::Buy);
+    fill.set_side(Side::Buy, true);
     fill.set_state(State::Filled);
-    fill.set_lastpx(Some("189.50".parse()?));
-    fill.set_lastqty(Some(Decimal::from_int(100)));
-    fill.set_cumqty(Some(Decimal::from_int(100)));
-    fill.set_leavesqty(Some(Decimal::from_int(0)));
-    fill.insert_altid("EXECID", "X-1")?;
+    fill.set_lastpx(Some("189.50".parse()?), true);
+    fill.set_lastqty(Some(Decimal::from_int(100)), true);
+    fill.set_cumqty(Some(Decimal::from_int(100)), true);
+    fill.set_leavesqty(Some(Decimal::from_int(0)), true);
+    fill.insert_identifier(Identifier::new(IdSource::Fix, IdType::ExecId, "X-1")?)?;
     fill.finalize();
     assert!(fill.is_execution());
-    // What traded is never a price the execution states.
-    assert_eq!((fill.get_price(), fill.get_quantity()), (None, None));
+    // What traded is never a price the execution states, and its quantity is
+    // what is still open: its `leavesqty`.
+    assert_eq!((fill.get_price(), fill.get_quantity()), (None, Some(Decimal::from_int(0))));
 
     // It follows the order it fills, and stays an execution.
     let followed = MarketData::from(fill)
@@ -55,12 +56,11 @@ The fill of an Apple order a quarter second after it was placed.
         .expect("a fill follows its order");
     let fill = followed.as_execution_event().expect("still an execution");
     assert_eq!((fill.get_prevuuid(), fill.get_seqnum()), (Some(order.get_curruuid()), 0));
-    assert_eq!(fill.get_crosscode(), "BUYS:O-1001");
+    assert_eq!(fill.get_crosscode(), "8:1:O-1001");
     assert_eq!(fill.get_execunix(), Some(T + 250_000_000));
     assert_eq!(fill.get_prevpx(), Some("189.50".parse()?));
     assert_eq!(fill.get_currency().as_str(), "USD");
-    assert_eq!(fill.get_altids().get("ORDERID"), Some("O-1001"));
-    assert_eq!(fill.get_altids().get("EXECID"), Some("X-1"));
+    assert_eq!(fill.get_identifiers().to_string(), "[fix:execid=X-1, fix:orderid=O-1001]");
     assert_eq!(fill.get_state(), &State::Filled);
     ```
 
@@ -69,7 +69,7 @@ The fill of an Apple order a quarter second after it was placed.
     ```python
     from decimal import Decimal
 
-    from yggdryl import State, graph
+    from yggdryl import Identifier, State, graph
 
     T = 1_700_000_000_000_000_000
     order = graph.OrderEvent(
@@ -79,7 +79,7 @@ The fill of an Apple order a quarter second after it was placed.
         price=Decimal("189.50"),
         quantity=100,
         currency="USD",
-        altids={"ORDERID": "O-1001"},
+        identifiers=[Identifier("fix", "orderid", "O-1001")],
     )
     fill = graph.ExecutionEvent(
         T + 250_000_000,
@@ -90,11 +90,13 @@ The fill of an Apple order a quarter second after it was placed.
         lastqty=100,
         cumqty=100,
         leavesqty=0,
-        altids={"EXECID": "X-1"},
+        identifiers=[Identifier("fix", "execid", "X-1")],
     )
     assert fill.is_execution
-    # What traded is never a price the execution states.
-    assert (fill.price, fill.quantity) == (None, None)
+    # What traded is never a price the execution states, and its quantity is
+    # what is still open: its `leavesqty`.
+    assert fill.price is None
+    assert fill.quantity is not None and fill.quantity.as_py() == 0
 
     # It follows the order it fills, and stays an execution.
     followed = graph.MarketData(fill).with_previous(graph.MarketData(order))
@@ -102,11 +104,11 @@ The fill of an Apple order a quarter second after it was placed.
     fill = followed.as_execution_event()
     assert fill is not None
     assert (fill.prevuuid, fill.seqnum) == (order.curruuid, 0)
-    assert fill.crosscode == "BUYS:O-1001"
+    assert fill.crosscode == "8:1:O-1001"
     assert fill.execunix == T + 250_000_000
     assert fill.prevpx is not None and fill.prevpx.as_py() == Decimal("189.50")
     assert fill.currency.as_py() == "USD"
-    assert fill.altids == {"EXECID": "X-1", "ORDERID": "O-1001"}
+    assert str(fill.identifiers) == "[fix:execid=X-1, fix:orderid=O-1001]"
     assert fill.state is State.FILLED
     ```
 
@@ -114,11 +116,16 @@ The fill of an Apple order a quarter second after it was placed.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { graph } = require('yggdryl')
+    const { Identifier, graph } = require('yggdryl')
 
     const T = 1_700_000_000_000_000_000n
     const order = new graph.OrderEvent(T, {
-      crosscode: 'O-1001', side: 'BUYS', price: '189.50', quantity: 100, currency: 'USD', altids: { ORDERID: 'O-1001' },
+      crosscode: 'O-1001',
+      side: 'BUYS',
+      price: '189.50',
+      quantity: 100,
+      currency: 'USD',
+      identifiers: [new Identifier('fix', 'orderid', 'O-1001')],
     })
     let fill = new graph.ExecutionEvent(T + 250_000_000n, {
       crosscode: 'O-1001',
@@ -128,12 +135,13 @@ The fill of an Apple order a quarter second after it was placed.
       lastqty: 100,
       cumqty: 100,
       leavesqty: 0,
-      altids: { EXECID: 'X-1' },
+      identifiers: [new Identifier('fix', 'execid', 'X-1')],
     })
     assert.equal(fill.isExecution, true)
-    // What traded is never a price the execution states.
+    // What traded is never a price the execution states, and its quantity is
+    // what is still open: its `leavesqty`.
     assert.equal(fill.price, null)
-    assert.equal(fill.quantity, null)
+    assert.equal(fill.quantity, '0')
 
     // It follows the order it fills, and stays an execution.
     const followed = new graph.MarketData(fill).withPrevious(new graph.MarketData(order))
@@ -141,10 +149,10 @@ The fill of an Apple order a quarter second after it was placed.
     fill = followed.asExecutionEvent()
     assert.equal(fill.prevuuid, order.curruuid)
     assert.equal(fill.seqnum, 0)
-    assert.equal(fill.crosscode, 'BUYS:O-1001')
+    assert.equal(fill.crosscode, '8:1:O-1001')
     assert.equal(fill.execunix, T + 250_000_000n)
     assert.equal(fill.prevpx, '189.5')
     assert.equal(fill.currency, 'USD')
-    assert.deepEqual(fill.altids, { EXECID: 'X-1', ORDERID: 'O-1001' })
+    assert.equal(fill.identifiers.toString(), '[fix:execid=X-1, fix:orderid=O-1001]')
     assert.equal(fill.state, 'FILLED')
     ```

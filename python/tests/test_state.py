@@ -75,7 +75,21 @@ def test_the_datatype_stores_the_code_and_reads_back_the_member() -> None:
     assert pickle.loads(pickle.dumps(Scalar.from_(State.FILLED))).as_py() is State.FILLED
 
 
-def test_an_arrow_column_is_int32_under_its_extension() -> None:
+def test_an_arrow_column_is_uint16_under_its_extension() -> None:
     arrow = Field("state", "state").into_arrow()
-    assert arrow.type == pa.int32()
-    assert arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.state"
+    assert arrow.type.storage_type == pa.uint16()
+    assert arrow.type.extension_name == "yggdryl.state"
+
+
+def test_a_spelling_reads_by_the_words_it_is_made_of() -> None:
+    for spelling, state in [
+        ("order fill", State.FILLED),
+        ("Part-Filled", State.PARTIALLY_FILLED),
+        ("partial fill order", State.PARTIALLY_FILLED),
+        ("pending cxl", State.PENDING_CANCEL),
+    ]:
+        assert State.from_spelling(spelling) is state, spelling
+        assert DataType("state").scalar(spelling).as_py() is state, spelling
+    assert State.from_spelling("partially frobnicated") is None
+    with pytest.raises(ValueError, match="partially frobnicated"):
+        DataType("state").scalar("partially frobnicated")

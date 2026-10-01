@@ -14,7 +14,7 @@ One string datatype in eighteen real leaves: six shapes in each of the three cha
 | Kinds | `DataTypeKind::Text`, ids `0x51`-`0x62`: one `DataTypeId` per leaf, laid out by family |
 | Bindings | `Str` is Rust only; Python and JavaScript read a value as a [`Scalar`](../scalar.md) and the declaration as the frozen `StringParameters` |
 
-The thirteen [registered codes](../codes/index.md) are not strings: a currency is
+The twelve [registered codes](../codes/index.md) are not strings: a currency is
 an identity over ISO 4217's codes and the digital-asset tickers past them that stores as the text it is, so it is
 `DataType::Ccy`, kind `Code`, answers `code_width`, and never
 `string_parameters`.
@@ -431,30 +431,25 @@ name, and it imports as its storage. A code rides its own extension name
     # US-ASCII is UTF-8, so it rides the text layout; the leaf rides the document.
     note = yggdryl.ascii("note", nullable=False)
     arrow = note.into_arrow()
-    assert arrow.type == pa.string()
-    assert arrow.metadata == {
-        b"ARROW:extension:name": b"yggdryl.string",
-        b"ARROW:extension:metadata": b'{"layout":"ascii","charset":"us-ascii"}',
-    }
+    assert arrow.type.storage_type == pa.string()
+    assert arrow.type.extension_name == "yggdryl.string"
+    assert arrow.type.document == b'{"layout":"ascii","charset":"us-ascii"}'
+    assert not arrow.metadata
     assert Field.from_arrow(arrow) == note
 
     # A fixed width is Arrow's fixed binary, whatever the charset.
     ccy = yggdryl.fixed_ascii("ccy", 4, nullable=False)
     arrow = ccy.into_arrow()
-    assert arrow.type == pa.binary(4)
-    assert arrow.metadata[b"ARROW:extension:metadata"] == (
-        b'{"layout":"fixed_ascii","charset":"us-ascii","fixed":4}'
-    )
+    assert arrow.type.storage_type == pa.binary(4)
+    assert arrow.type.document == b'{"layout":"fixed_ascii","charset":"us-ascii","fixed":4}'
     assert Field.from_arrow(arrow) == ccy
     assert Field.from_arrow(pa.field("ccy", pa.binary(4))) == Field("ccy", "fixed_binary(4)")
 
     # A windows-1252 leaf rides binary storage, because its bytes are not UTF-8.
     latin = yggdryl.sized_cp1252("name", 32)
     arrow = latin.into_arrow()
-    assert arrow.type == pa.binary()
-    assert arrow.metadata[b"ARROW:extension:metadata"] == (
-        b'{"layout":"sized_cp1252","charset":"windows-1252","max":32}'
-    )
+    assert arrow.type.storage_type == pa.binary()
+    assert arrow.type.document == b'{"layout":"sized_cp1252","charset":"windows-1252","max":32}'
     assert Field.from_arrow(arrow) == latin
     ```
 
@@ -650,7 +645,9 @@ trims.
 
     # A cast into the width pads.
     padded = Serie.from_arrow_array(pa.array(["USD", "EU"]), ccy)
-    assert padded.into_arrow_array().to_pylist() == [b"USD\x00", b"EU\x00\x00"]
+    assert padded.into_arrow_array().storage.to_pylist() == [b"USD\x00", b"EU\x00\x00"]
+    # The extension array reads its values as the column does, trimmed.
+    assert padded.into_arrow_array().to_pylist() == ["USD", "EU"]
 
     # A stored column carrying the document reads back under `utf8` trimmed.
     stored = padded.into_arrow_batch()
@@ -660,7 +657,7 @@ trims.
 
     # Under `safe` a failing cell is null; strict names the row and the column.
     long = pa.array(["USD", "EURO!"])
-    assert Serie.from_arrow_array(long, ccy).into_arrow_array().to_pylist() == [b"USD\x00", None]
+    assert Serie.from_arrow_array(long, ccy).into_arrow_array().to_pylist() == ["USD", None]
     with pytest.raises(ValueError, match="row 1: expected at most 4 bytes of us-ascii, got 5"):
         Serie.from_arrow_array(long, ccy, safe=False)
     ```
@@ -849,7 +846,7 @@ language.
     assert.equal(currencies.get('USD'), 'USD')
     ```
 
-The packing itself, the thirteen registered codes and the generated enums each
+The packing itself, the twelve registered codes and the generated enums each
 language builds are on [Codes](../codes/index.md).
 
 ## Regex captures

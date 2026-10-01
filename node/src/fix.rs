@@ -51,7 +51,6 @@ use yggdryl::{
     FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar,
     TimeUnit, Timezone,
 };
-use yggdryl::{IdMap, SecurityIds};
 
 use crate::field::JsField;
 use crate::graph::{JsMarketData, JsMarketDataRowIterator};
@@ -235,14 +234,34 @@ pub struct FixCodeSetView {
 /// The members are owned on the way across - a JavaScript value outlives the
 /// dictionary it was read from - and the stored escapes are decoded there,
 /// which is what `FixCode::from` does.
+/// The parents one identifier type is given: a base and its parent types,
+/// nearest first.
+#[napi(object, object_from_js = false)]
+pub struct FixParentSource {
+    /// The identifier type the parents belong to: the field's `FIX:idmap`
+    /// key, else its folded name.
+    pub base: String,
+    /// The parent types, nearest first.
+    pub parents: Vec<String>,
+}
+
+/// Where one identifier type stands among the parents of a base.
+#[napi(object, object_from_js = false)]
+pub struct FixParentPlace {
+    /// The identifier type this one is a parent of.
+    pub base: String,
+    /// Its place among the base's parents, `0` the nearest.
+    pub at: u32,
+}
+
 /// One field that names a message by an identifier, and the key it states.
 #[napi(object, object_from_js = false)]
 pub struct FixIdMapSource {
     /// The field's tag.
     pub tag: i32,
-    /// The map it lands in: `altids`, the one identifier map.
+    /// The map it lands in: `identifiers`, the one identifier map.
     pub map: String,
-    /// The upper-case key it lands under.
+    /// The lower-case identifier type it lands under.
     pub key: String,
     /// Whether an operation that follows another carries it.
     pub follow: bool,
@@ -754,7 +773,7 @@ impl JsFixRegistry {
 
     /// Every field that names a message by an identifier, one entry per key
     /// its `FIX:idmap` states, in tag order. A message rebuilds its
-    /// `altids` from these, and an operation that follows another carries
+    /// `identifiers` from these, and an operation that follows another carries
     /// the keys whose entry follows.
     #[napi]
     pub fn idmap_sources(&self) -> Vec<FixIdMapSource> {
@@ -764,11 +783,82 @@ impl JsFixRegistry {
             .map(|(tag, source)| FixIdMapSource {
                 tag: *tag,
                 map: source.map().as_str().to_owned(),
-                key: source.key().to_owned(),
+                key: source.key().to_string(),
                 follow: source.follows(),
                 role: source.role().map(ToOwned::to_owned),
             })
             .collect()
+    }
+
+    /// Every parents list this dictionary's fields state under
+    /// `FIX:parents`, one `{ base, parents }` per field, in field order: the
+    /// base is the field's `FIX:idmap` key, else its folded name.
+    #[napi]
+    pub fn parent_sources(&self) -> Vec<FixParentSource> {
+        self.inner
+            .parent_sources()
+            .iter()
+            .map(|(base, parents)| FixParentSource {
+                base: base.as_str().to_owned(),
+                parents: parents
+                    .iter()
+                    .map(|kind| kind.as_str().to_owned())
+                    .collect(),
+            })
+            .collect()
+    }
+
+    /// The parent types of the identifier type `base`, nearest first: the
+    /// list a field stating it names under `FIX:parents`, else the ones its
+    /// name has - `orderid` is `["parentorderid", "origorderid"]`, `clordid`
+    /// `["origclordid"]`; a parent type has none.
+    #[napi]
+    pub fn parents_of(&self, base: String) -> Result<Vec<String>> {
+        let base: yggdryl::IdType = base.parse().map_err(napi_error)?;
+        Ok(self
+            .inner
+            .parents_of(&base)
+            .iter()
+            .map(|kind| kind.as_str().to_owned())
+            .collect())
+    }
+
+    /// The base the identifier type `kind` is a parent of and its place
+    /// among the base's parents - `{ base: "clordid", at: 0 }` for
+    /// `origclordid`, `{ base: "orderid", at: 1 }` for `origorderid` - or
+    /// `null` for a type that is no one's parent.
+    #[napi]
+    pub fn parent_of(&self, kind: String) -> Result<Option<FixParentPlace>> {
+        let kind: yggdryl::IdType = kind.parse().map_err(napi_error)?;
+        Ok(self
+            .inner
+            .parent_of(&kind)
+            .map(|(base, at)| FixParentPlace {
+                base: base.as_str().to_owned(),
+                at: u32::try_from(at).unwrap_or(u32::MAX),
+            }))
+    }
+
+    /// The market data type one wire value of the FIX field `tag` types an
+    /// element as, as the member's stored name: this dictionary's own
+    /// `FIX:marketdatatype` first, then the crate's table; `null` for a
+    /// field that types nothing.
+    #[napi]
+    pub fn marketdatatype_of(&self, tag: i32, wire: String) -> Option<String> {
+        self.inner
+            .marketdatatype_of(tag, &wire)
+            .map(|member| member.as_str().to_owned())
+    }
+
+    /// The time in force one wire value of the FIX field `tag` stands for,
+    /// as the member's stored name: this dictionary's own `FIX:timeinforce`
+    /// first, then `TimeInForce(59)`'s own values, a value neither names
+    /// being `OTHER`; `null` for a field that states no time in force.
+    #[napi]
+    pub fn timeinforce_of(&self, tag: i32, wire: String) -> Option<String> {
+        self.inner
+            .timeinforce_of(tag, &wire)
+            .map(|member| member.as_str().to_owned())
     }
 
     /// The symbolic name one wire value stands for in the set `name`.
@@ -1049,21 +1139,6 @@ fn entry_view(entry: &FixEntry) -> FixEntryView {
     }
 }
 
-/// The security identifiers a market element states, source to code, in
-/// the core's key order.
-fn securityids_view(ids: &SecurityIds) -> BTreeMap<String, String> {
-    ids.iter()
-        .map(|id| (id.sectype().as_str().to_owned(), id.code().to_owned()))
-        .collect()
-}
-
-/// One identifier map, key to value, in the core's folded key order.
-fn idmap_view(map: &IdMap) -> BTreeMap<String, String> {
-    map.iter()
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
-        .collect()
-}
-
 /// The metadata a market element carries, key to value, sorted.
 fn metadata_view(metadata: &Metadata) -> BTreeMap<String, String> {
     metadata
@@ -1180,17 +1255,17 @@ pub struct FixCaptureView {
     /// The session event the message was delivered as - `MsgType`,
     /// `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
     /// `8:e7256476:9effef3e6a:1094` - where all four are stated; also
-    /// `byTag(65021)`.
+    /// `byTag(65043)`.
     #[napi(ts_type = "string | null")]
     pub msgsesseventid: Either<String, Null>,
     /// The plugin the message came into a bridge through, as the bridge's
     /// log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-    /// (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65018)`.
+    /// (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65040)`.
     #[napi(ts_type = "string | null")]
     pub msgoriginator: Either<String, Null>,
     /// The conversation a bridge filed the message under - a
     /// `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
-    /// of its log line; also `byTag(65022)`.
+    /// of its log line; also `byTag(65044)`.
     #[napi(ts_type = "string | null")]
     pub conversationid: Either<String, Null>,
 }
@@ -1222,8 +1297,9 @@ fn capture_view(capture: &FixCapture) -> FixCaptureView {
 /// by its facts and its row, against the registry it was resolved against.
 ///
 /// Every message carries its identity settled: the cross code, the first
-/// stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
-/// over it, the `currhashcode` over everything the message says but the
+/// stated of tags 37, 11, 41, 117, 131 and 262 stored as
+/// `{kind}:{side}:{base}`, the `crosshashcode` over that stored code, the
+/// `currhashcode` over everything the message says but the
 /// standard header and trailer, the `curruuid` ordered by millisecond and
 /// sequence with a content payload seeded by the cross hash, and the
 /// `crossuuid` over the cross hash - or
@@ -1338,7 +1414,9 @@ impl JsFixMsg {
     /// `NoMDEntries(268)` occurrence, or one scoped snapshot control for an
     /// empty `W` - each a `MarketData` carrying, in its `metadata`, what the
     /// message states that no typed column reads and no identifier map of the
-    /// leaf holds, the identifiers among it lifted into the leaf's `altids`.
+    /// leaf holds, the identifiers among it lifted into the set their type
+    /// belongs to - `securityids`, `partyids` or `identifiers` - where that
+    /// set holds the key free or with the same value.
     #[napi]
     pub fn market_data(&self) -> Result<Vec<JsMarketData>> {
         self.inner
@@ -1389,11 +1467,11 @@ impl JsFixMsg {
         self.inner.msgcat().as_str()
     }
 
-    /// The option strike price the message identifies, `StrikePrice(202)`,
-    /// as decimal text, or `null`.
+    /// The option strike price the message identifies - `StrikePrice(202)`
+    /// read off the dictionary field - as decimal text, or `null`.
     #[napi(getter)]
-    pub fn strikepx(&self) -> Option<String> {
-        self.inner.strikepx().map(|held| held.to_string())
+    pub fn strikeprice(&self) -> Option<String> {
+        self.inner.strikeprice().map(|held| held.to_string())
     }
 
     /// This message's own `UUIDv7` identity, ordered by millisecond and
@@ -1411,7 +1489,10 @@ impl JsFixMsg {
         self.inner.get_crossuuid().to_string()
     }
 
-    /// The code the chain is named by, or empty.
+    /// The code the chain is named by, stored as `{kind}:{side}:{base}` - the
+    /// `MarketDataKind` code, the `Side` code of a sided kind (`0` for any
+    /// other) and the identifier the message names, so a buy order `O-1` is
+    /// `10:1:O-1` - or empty where it names none.
     #[napi(getter)]
     pub fn crosscode(&self) -> String {
         self.inner.get_crosscode().to_owned()
@@ -1423,7 +1504,7 @@ impl JsFixMsg {
         BigInt::from(self.inner.get_currhashcode())
     }
 
-    /// The XXH3-64 of the cross code, `0n` where there is none.
+    /// The XXH3-64 of the stored cross code, `0n` where there is none.
     #[napi(getter)]
     pub fn crosshashcode(&self) -> BigInt {
         BigInt::from(self.inner.get_crosshashcode())
@@ -1518,13 +1599,15 @@ impl JsFixMsg {
             .collect()
     }
 
-    /// The security identifiers the instrument goes by, source to code, in
-    /// the core's key order: `ISIN`, `CUSIP`, `SEDOL`, `BLOOMBERG`, `FIGI`
-    /// and any other source `SecurityIDSource(22)` or the `SecurityAltID`
-    /// group names; empty where the message states none.
-    #[napi(getter, ts_return_type = "Record<string, string>")]
-    pub fn securityids(&self) -> BTreeMap<String, String> {
-        securityids_view(self.inner.get_securityids())
+    /// The security identifiers the instrument goes by, each a source, a
+    /// type and a code - `base:isin`, `derived:cusip`, `base:sedol`,
+    /// `base:figi` and any other source `SecurityIDSource(22)`, the
+    /// `SecurityAltID` group or an unmapped entry whose key names a security
+    /// type names - a map keyed `src:type`, in key order; empty where the
+    /// message states none.
+    #[napi(getter, ts_return_type = "Identifiers")]
+    pub fn securityids(&self) -> crate::identifier::JsIdentifiers {
+        crate::identifier::JsIdentifiers::from_core(self.inner.get_securityids())
     }
 
     /// The instrument's ISIN, borrowed from `securityids`, or `null`.
@@ -1588,22 +1671,24 @@ impl JsFixMsg {
         self.inner.get_askccy().map(|held| held.as_str().to_owned())
     }
 
-    /// The names the operation goes by, key to value, upper-cased and in key
-    /// order: `ORDERID`, `CLORDID`,
-    /// `ORIGCLORDID`, `EXECID`, `QUOTEID`, `QUOTEREQID`, `MDREQID`,
-    /// `TRADEID` and the rest the message states.
-    #[napi(getter, ts_return_type = "Record<string, string>")]
-    pub fn altids(&self) -> BTreeMap<String, String> {
-        idmap_view(self.inner.get_altids())
+    /// The names the operation goes by, each typed by the field that
+    /// stated it - `orderid`, `clordid`, `execid`, `quoteid`, `tradeid` and
+    /// the rest the message states - from `fix` or the source an unmapped
+    /// entry's key names (`OMS_ClOrdID` is `oms:clordid`), with the parents
+    /// a chain gave them (`origclordid`, `parentorderid`, `origorderid`); a
+    /// map keyed `src:type`, in key order.
+    #[napi(getter, ts_return_type = "Identifiers")]
+    pub fn identifiers(&self) -> crate::identifier::JsIdentifiers {
+        crate::identifier::JsIdentifiers::from_core(self.inner.get_identifiers())
     }
 
-    /// The accounts and parties the message names - each `Parties`
-    /// occurrence's `PartyID` under its `PartyRole`'s name, such as
-    /// `EXECUTINGTRADER` or `CUSTOMERACCOUNT`, and its `Account(1)` under
-    /// `ACCOUNT` - key to value, in key order.
-    #[napi(getter, ts_return_type = "Record<string, string>")]
-    pub fn accountids(&self) -> BTreeMap<String, String> {
-        idmap_view(self.inner.get_accountids())
+    /// The parties the message names - each `Parties` occurrence's
+    /// `PartyID` typed by its `PartyRole`'s name, such as `executingtrader`,
+    /// from its `PartyIDSource`'s, and its `Account(1)` typed `account` - a
+    /// map keyed `src:type`, in key order.
+    #[napi(getter, ts_return_type = "Identifiers")]
+    pub fn partyids(&self) -> crate::identifier::JsIdentifiers {
+        crate::identifier::JsIdentifiers::from_core(self.inner.get_partyids())
     }
 
     /// The price stated, as decimal text, or `null` where none is. Never a
@@ -1620,11 +1705,42 @@ impl JsFixMsg {
         self.inner.get_quantity().map(|held| held.to_string())
     }
 
+    /// The stop price the message states, `StopPx(99)`, as decimal text, or `null` where none is.
+    #[napi(getter)]
+    pub fn stoppx(&self) -> Option<String> {
+        self.inner.get_stoppx().map(|held| held.to_string())
+    }
+
+    /// The part of the quantity shown, `DisplayQty(1138)` else `MaxFloor(111)`, as decimal text, or `null` where none is.
+    #[napi(getter)]
+    pub fn displayqty(&self) -> Option<String> {
+        self.inner.get_displayqty().map(|held| held.to_string())
+    }
+
+    /// The part of the quantity kept back: the quantity past the part shown, as decimal text, or `null` where none is.
+    #[napi(getter)]
+    pub fn hiddenqty(&self) -> Option<String> {
+        self.inner.get_hiddenqty().map(|held| held.to_string())
+    }
+
+    /// How much was canceled, `CxlQty(84)`, as decimal text, or `null` where none is.
+    #[napi(getter)]
+    pub fn cxlqty(&self) -> Option<String> {
+        self.inner.get_cxlqty().map(|held| held.to_string())
+    }
+
     /// The unit the quantity is counted in, `UnitOfMeasure(996)`; empty
     /// where none is stated.
     #[napi(getter)]
     pub fn unit(&self) -> String {
         self.inner.get_unit().as_str().to_owned()
+    }
+
+    /// The type of its kind the message is, as the `marketdatatype` member's
+    /// stored name: `UNKN` where none.
+    #[napi(getter)]
+    pub fn marketdatatype(&self) -> String {
+        self.inner.get_marketdatatype().as_str().to_owned()
     }
 
     /// The side, as the `side` member's four-letter code: the one stated, else
@@ -1766,12 +1882,21 @@ impl JsFixMsg {
         self.inner.get_forwardpoints().map(|held| held.to_string())
     }
 
-    /// How long the message stands, `TimeInForce(59)`, as the code it
-    /// stores - `0` for a day order, a venue's own `GTX` as stated - or
-    /// `null`. What the code names is the dictionary's to say.
+    /// How long the message stands, `TimeInForce(59)`, as the `timeinforce`
+    /// member's stored name - `DAY`, `GTC`, a venue's own value `OTHER` -
+    /// or `null` where none is stated.
     #[napi(getter)]
-    pub fn tif(&self) -> Option<String> {
-        self.inner.get_tif().map(|held| held.as_str().to_owned())
+    pub fn timeinforce(&self) -> Option<String> {
+        self.inner
+            .get_timeinforce()
+            .map(|held| held.as_str().to_owned())
+    }
+
+    /// The quantity the order asked for, as decimal text, or `null` where
+    /// none is stated.
+    #[napi(getter)]
+    pub fn ordqty(&self) -> Option<String> {
+        self.inner.get_ordqty().map(|held| held.to_string())
     }
 
     /// Whether the instrument could be traded when the message was sent, or
@@ -1931,7 +2056,7 @@ impl JsFixMsg {
     ///
     /// A key reaching no field and no child, or a value the field refuses,
     /// throws the core's refusal and leaves the message as it was. So does a
-    /// key reaching the capture's own column - `sourceurl` (65031), by tag
+    /// key reaching the capture's own column - `sourceurl` (65049), by tag
     /// or by name: a message holds no fact for it, and a row child would put
     /// it on the wire.
     #[napi(ts_args_type = "key: number | string, value: unknown")]
@@ -2294,8 +2419,9 @@ impl JsFixCodec {
     /// unstated, and `null`, zero or a negative window remembering none;
     /// `marketMetadata` is whether a market operation carries its message's
     /// unmapped fields - its parties, `Account(1)` and regulatory trade
-    /// identifiers stay its `accountids` and `altids` - and lifts the
-    /// identifiers among them into its `altids`, on when unstated.
+    /// identifiers stay its `partyids` and `identifiers` - and lifts the
+    /// identifiers among them into the set their type belongs to, on when
+    /// unstated.
     #[napi(constructor)]
     pub fn new(
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -2560,7 +2686,7 @@ impl JsFixCodec {
     /// Whether a market operation this codec builds carries, in its
     /// metadata, what its message states that no typed column reads and no
     /// identifier map of the leaf holds, and lifts the identifiers among
-    /// them into its `altids`.
+    /// them into the set their type belongs to.
     #[napi(getter)]
     pub fn market_metadata(&self) -> bool {
         self.inner.market_metadata()
@@ -3097,8 +3223,8 @@ pub struct FixCodecOptions<'env> {
     /// Whether a market operation this codec builds carries, in its
     /// metadata, what its message states that no typed column reads and no
     /// identifier map of the leaf holds, lifting the identifiers among them
-    /// into its `altids` - part of the leaf's identity; the core's `true`
-    /// when unstated.
+    /// into the set their type belongs to - part of the leaf's identity; the
+    /// core's `true` when unstated.
     pub market_metadata: Option<bool>,
 }
 
@@ -3199,10 +3325,14 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// `msgsessionid` - and the `msgsesseventid` the session and the context
 /// join to with the message type and sequence; the capture's own column,
 /// `sourceurl`, which whoever read the line states on the row and no message
-/// holds; the `msgcat` the message type files under; and the instrument,
-/// order and bridge facts a message names - each a fact no FIX dictionary
-/// publishes, at the datatype its graph column names, numbered contiguously
-/// from `65001`.
+/// holds; the `msgcat` the message type files under; the normalized
+/// instrument codes (`isincode`, `bloombergcode`, `figicode`, `forexcode`,
+/// `miccode`) and the market and operation facts a message names - each a
+/// fact no FIX dictionary publishes, at the datatype its graph column names,
+/// numbered contiguously from `65001` through `fixmsg` (`65050`). The strike
+/// price is the dictionary's `StrikePrice(202)`, no crate field, and a
+/// bridge's own identifier keys are no crate field either: they arrive as
+/// unmapped entries and are read for the identifier name they end with.
 ///
 /// `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
 /// `crossuuid` are non-null; `state` is written on every row a message

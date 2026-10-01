@@ -11,8 +11,8 @@ use crate::budget::{
 use crate::string::is_text_storage;
 use crate::{
     BBG_WIDTH, Bytes, BytesType, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH,
-    FOREX_WIDTH, ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, Str, StringType, TIMEINFORCE_WIDTH,
-    UNIT_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
+    FOREX_WIDTH, ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, Str, StringType, UNIT_WIDTH,
+    ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
 use arrow_array::builder::{BinaryBuilder, LargeStringBuilder, StringBuilder, StringViewBuilder};
@@ -163,11 +163,18 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
         DataType::Ric => code_array::<RIC_WIDTH>(dtype, values)?,
         DataType::Figi => code_array::<FIGI_WIDTH>(dtype, values)?,
         // An enum member is the code its own leaf stores.
-        crate::enum_dtypes!() => primitive!(Int32Type, |value: &Scalar| match value.enum_code() {
-            Some(code) if value.id() == dtype.id() => Ok(code),
+        crate::enum8_dtypes!() => primitive!(UInt8Type, |value: &Scalar| match value.enum_code() {
+            Some(code) if value.id() == dtype.id() => {
+                u8::try_from(code).map_err(|_| invalid_value_kind(dtype.name(), value))
+            }
             _ => Err(invalid_value_kind(dtype.name(), value)),
         }),
-        DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
+        crate::enum16_dtypes!() => {
+            primitive!(UInt16Type, |value: &Scalar| match value.enum_code() {
+                Some(code) if value.id() == dtype.id() => Ok(code),
+                _ => Err(invalid_value_kind(dtype.name(), value)),
+            })
+        }
         DataType::Unit => code_array::<UNIT_WIDTH>(dtype, values)?,
         DataType::Forex => code_array::<FOREX_WIDTH>(dtype, values)?,
         DataType::Uuid => uuid_array(values)?,
@@ -394,8 +401,8 @@ pub(crate) fn read_native<N: Into<Scalar>>(_: &DataType, value: N) -> Result<Sca
 
 /// An enum slot: the code of one member of the field's leaf, refused where
 /// it names none.
-pub(crate) fn read_enum(dtype: &DataType, code: i32) -> Result<Scalar> {
-    Ok(crate::enums::read_enum_code(dtype.id(), i64::from(code))?)
+pub(crate) fn read_enum(dtype: &DataType, code: impl Into<i64>) -> Result<Scalar> {
+    Ok(crate::enums::read_enum_code(dtype.id(), code.into())?)
 }
 
 pub(crate) fn read_decimal32(dtype: &DataType, value: i32) -> Result<Scalar> {
@@ -553,7 +560,6 @@ read_code!(
     read_bbg => Bbg,
     read_ric => Ric,
     read_figi => Figi,
-    read_time_in_force => TimeInForce,
     read_unit => Unit,
     read_forex => Forex,
 );
@@ -663,7 +669,6 @@ pub(crate) fn text_reading(dtype: &DataType) -> Result<RunReading<str>> {
         DataType::Bbg => read_bbg,
         DataType::Ric => read_ric,
         DataType::Figi => read_figi,
-        DataType::TimeInForce => read_time_in_force,
         DataType::Unit => read_unit,
         DataType::Forex => read_forex,
         DataType::Version => read_version,
@@ -765,7 +770,8 @@ pub(crate) fn value_from_array(
         DataType::Int8 => cell!(Int8Array, read_native),
         DataType::Int16 => cell!(Int16Array, read_native),
         DataType::Int32 => cell!(Int32Array, read_native),
-        crate::enum_dtypes!() => cell!(Int32Array, read_enum),
+        crate::enum8_dtypes!() => cell!(UInt8Array, read_enum),
+        crate::enum16_dtypes!() => cell!(UInt16Array, read_enum),
         DataType::Int64 => cell!(Int64Array, read_native),
         DataType::UInt8 => cell!(UInt8Array, read_native),
         DataType::UInt16 => cell!(UInt16Array, read_native),
@@ -837,7 +843,6 @@ pub(crate) fn value_from_array(
         | DataType::Bbg
         | DataType::Ric
         | DataType::Figi
-        | DataType::TimeInForce
         | DataType::Unit
         | DataType::Forex => cell!(StringArray, text_reading(dtype)?),
         DataType::Serie(child) => {

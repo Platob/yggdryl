@@ -1,7 +1,7 @@
 'use strict'
 
 // `node/src/side.rs`: `Side`, FIX's Side(54) as the enum a `side` column
-// stores as the `int32` code of its member.
+// stores as the `uint8` code of its member.
 
 const test = require('node:test')
 const assert = require('node:assert/strict')

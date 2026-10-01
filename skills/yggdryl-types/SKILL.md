@@ -47,14 +47,16 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | raw metadata | `insert_metadata(k, v)?`, `get_metadata(k)` | `field.metadata[k] = v` | `field.set(k, v)`, `field.get(k)` |
 | reserved properties | `set_parquet_field_id(17)`, `set_comment(..)?` | `set_parquet_field_id(17)`, `set_comment(..)` | `setParquetFieldId(17)`, `setComment(..)` |
 | one protocol's keys | `as_iceberg_mut().insert("doc", ..)?` | `field.iceberg["doc"] = ..` | `field.iceberg.set('doc', ..)` |
-| a registered enum (`side`, `marketdatakind`, `state`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object) |
+| a registered enum (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()`, `TimeInForce::from_fix("0")` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")`, `TimeInForce.from_fix("0")` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object), `timeInForceFromFix('0')` |
+| a free enum spelling (`order fill`, `Part-Filled`, `pending cxl`) | `State::from_spelling("order fill")` - read by its words once the exact vocabularies miss, cached | `State.from_spelling("order fill")`, `DataType("state").scalar(...)` | `new DataType('state').scalar('order fill')` |
 | an enumerated column (`FIELD:enum`) | `StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?` + `Field::new("side", DataType::fixed_ascii(4)?, false).try_with_string_enum(&side)?`; `string_enum()?`; `StringEnum::from_logical_name("ccy")?` | `StringEnum("Side", {"BUY": "B", "SELL": "S"})` + `field.set_string_enum(side)`; `field.string_enum`; `StringEnum.from_logical_name("ccy")`; `yggdryl.enums.Ccy` / `Country` bases | `new StringEnum('Side', { BUY: 'B', SELL: 'S' })` + `field.setStringEnum(side)`; `field.stringEnum`; `StringEnum.fromLogicalName('ccy')` |
 | compare, diff | `equals(&o, true)`, `show_diffs(&o, true, false)` | `equals(o, with_metadata=False)`, `show_diffs(o)` | `equals(o, false)`, `showDiffs(o)` |
 | merge two schemas | `a.merge_with(&b, true)?` | `a.merge_with(b)` | `a.mergeWith(b)` |
 | stable value hash | `stable_hash()` | `stable_hash()` | `stableHash()` (a `bigint`) |
 | schema as a document | `into_json()?` / `Field::from_json`, YAML, TOML | `into_json()` / `from_json`, `into_dict`, YAML, TOML | `toJSON()` / `Field.fromJSON` (JSON only) |
 | one value as bytes | `into_value_bytes()`, `Scalar::decode_value_bytes(&b)?` | `into_value_bytes()`, `Scalar.from_value_bytes(b)`, `pickle` | `intoValueBytes()`, `Scalar.fromValueBytes(b)` |
-| Arrow schema in and out | `Field::from_arrow_field(&f)?`, `into_arrow_field()?` | `Field.from_arrow(f)`, `Field.from_arrow_schema(s, name=)`, `into_arrow()`, `into_arrow_schema()` | schemas cross with batches (`yggdryl-arrow`): `Serie.fromArrowBatch(batch).field`; `Field.fromArrow(f)` crosses an Arrow JS field through a real IPC round trip, keeping `nullable: false` and its extension; `DataType.fromArrow(t)` takes only a bare type, which never carries either in any language - import the **field** instead to keep them |
+| Arrow schema in and out | `Field::from_arrow_field(&f)?`, `into_arrow_field()?` | `Field.from_arrow(f)`, `Field.from_arrow_schema(s, name=)`, `into_arrow()`, `into_arrow_schema()` | schemas cross with batches (`yggdryl-arrow`): `Serie.fromArrowBatch(batch).field`; `Field.fromArrow(f)` and `field.intoArrow()` cross an Arrow JS field through a real IPC round trip, keeping `nullable: false` and its extension; `DataType.fromArrow(t)` takes only a bare type, which carries neither in Arrow JS - import the **field** instead to keep them |
+| Arrow extension type of a datatype | `DataTypeId::Ccy.arrow_extension_name()`, `DataTypeId::arrow_extension_names()`; `arrow_field.try_extension_type::<CcyType>()?`, `.with_extension_type(CcyType)` (every marker, `StringType`, `BytesType`) | registered on `import yggdryl`: `DataType("ccy").into_arrow()` is a `yggdryl.extension.YggdrylType`, `.datatype` reads it back; `DataType.ARROW_EXTENSION_NAMES` | metadata only: `field.intoArrow().metadata.get('ARROW:extension:name')` |
 | canonical default | `default_value()?` | `default_scalar()` | `defaultJSValue()` |
 | engine compatibility | `into_scheme_compat(&Scheme::SPARK)?` | `into_scheme_compat("spark")` | `intoSchemeCompat('spark')` |
 
@@ -181,8 +183,10 @@ string and byte leaves, the legacy `list` words - is in
   is accepted on the `StringEnum("Side", ...)` field above. Check membership
   yourself (`side.get_member(v)` / `getMember(v)` answers the member name or
   none) when non-members must fail.
-- `side`, `marketdatakind` and `state` are not text: each is an `int32`
-  column of member codes (kind `enum`), which a value reads as the member -
+- `side`, `marketdatakind`, `marketdatatype`, `state` and `timeinforce` are
+  not text: each is a `uint8` (`side`, `marketdatakind`, `timeinforce`) or
+  `uint16` (`state`, `marketdatatype`) column of member codes (kind `enum`),
+  any integer column casting in and a code naming no member refused, which a value reads as the member -
   Python's `IntEnum` (`Side.BUYS`), JavaScript's name (`'BUYS'`), Rust's variant
   (`Side::Buy`). Text reads through the vocabulary (`"1"` is FIX's `BUYS`); a
   `marketdatakind` code is an integer, never the text `"10"`.
@@ -193,9 +197,18 @@ string and byte leaves, the legacy `list` words - is in
   `FxSymbol::from_symbol`, Rust-only.
 - JavaScript `asJs()` on a decimal (and on values with no JS spelling) answers
   the `Scalar` itself: read `unscaled`/`scale`, or `toString()`.
-- `DataType.from_arrow(extension_type)` loses the extension name (a bare Arrow
+- Rust `DataType::from_arrow_datatype` loses the extension name (an arrow-rs
   datatype carries no metadata): import the **field** to keep `ccy`, `uuid`,
-  `decimal`, `version` identity.
+  `decimal`, `version` identity. Python's `DataType.from_arrow` and
+  `DataType(...)` read the C schema's root as a field and keep it, and every
+  `yggdryl.*` name is a registered pyarrow extension type once `yggdryl` is
+  imported - so pyarrow sees `extension<yggdryl.ccy>` where it used to see a
+  string with field metadata, and a `yggdryl.ccy` type over `large_string`
+  reads as plain `large_utf8` (the name is a foreign field's there).
+  pyarrow kernels (`pc.equal`, `pc.unique`) refuse an extension column: run
+  them on `.storage`. On pyarrow before 21 a view leaf (`ascii_view`,
+  `large_utf8_view`) nested below a column's top level is refused by name -
+  that pyarrow exports it without its buffers.
 - JavaScript `DataType.fromArrow`/`Field.fromArrow` take an Arrow JS type or
   field (crossed as IPC, so `c: Utf8` not-null under `yggdryl.ccy` reads back
   as a required `ccy`), a native value, or text; any other object is a

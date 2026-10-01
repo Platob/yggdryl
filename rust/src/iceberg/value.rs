@@ -107,9 +107,9 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
     let datum = match dtype {
         DataType::Boolean => OfficialDatum::bool(value.as_bool()?),
         DataType::Int32 => OfficialDatum::int(i32::try_from(count(value)?).ok()?),
-        held if held.is_enum() => {
-            OfficialDatum::int(value.enum_code().filter(|_| value.id() == held.id())?)
-        }
+        held if held.is_enum() => OfficialDatum::int(i32::from(
+            value.enum_code().filter(|_| value.id() == held.id())?,
+        )),
         DataType::Date32 => OfficialDatum::date(i32::try_from(count(value)?).ok()?),
         DataType::Int64 => OfficialDatum::long(count(value)?),
         #[allow(clippy::cast_possible_truncation)]

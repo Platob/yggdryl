@@ -1,144 +1,57 @@
 # Operation
 
-`Operation: Market` adds four facts: how long the operation stands, whether it can trade, the names it goes by and the accounts it names.
+`Operation: Market` adds five facts: the quantity it ordered, how long the operation stands, whether it can trade, the identifiers it goes by and the party ids it names.
 
 ## Contract
 
 | Key | Rule |
 | --- | --- |
 | Owner | trait `yggdryl::graph::Operation`, in `graph::market`; Rust-only - operation [leaves](index.md#leaves) answer it in Python/JavaScript |
-| `tif`, `tradable` | `get_`/`set_` each: `tif` how long it stands ([`TimeInForce::from_spelling("day")`](../types/codes/timeinforce.md) stores code `0`); `tradable` (`Option<bool>`) whether the instrument can trade where a status says, `None` if the market said nothing either way |
-| `altids` | the [alternate identifiers](#alternate-identifiers) |
-| `accountids` | the [account identifiers](#account-identifiers) |
+| `ordqty` | `get_ordqty`/`set_ordqty`: the quantity the operation ordered, FIX's `OrderQty(38)`, never the quantity the element is about ([`get_quantity`](market.md#contract)); it, `get_cumqty`, `get_leavesqty` and `get_cxlqty` fill one another by the state the operation reached - fresh, all of it left; working, any two of ordered, traded and left give the third; filled, nothing left and all of it traded; canceled, done for the day or expired, nothing left and the untraded rest canceled ([Market](market.md#setting-fill-or-overwrite)) |
+| `timeinforce`, `tradable` | `get_`/`set_` each: `timeinforce` how long it stands, an `Option<TimeInForce>` [enum member](../types/enum/timeinforce.md) - `set_timeinforce(TimeInForce::from_spelling("day"), true)` stores `DAY`, code `1`; Python answers the `yggdryl.TimeInForce` member and JavaScript its name, and either takes a member, its code, a name, FIX's name or the wire value; `tradable` (`Option<bool>`) whether the instrument can trade where a status says, `None` if the market said nothing either way |
+| `identifiers` | the operation's own [identifiers](#identifiers), an [`Identifiers`](identifier.md) map keyed `src:type` |
+| `partyids` | the [party ids](#party-identifiers), an [`Identifiers`](identifier.md) map keyed `src:type` |
 | Category | an operation states none of its own: its leaf's [`marketdatakind`](market-data.md#marketdata) - `ORDR`, `QUOT`, `EXEC` - is its category |
-| `is_followed_altid(key)` | provided: whether an operation that follows another carries the identifier under `key` where it states none - every key but `MDENTRYREFID`, unless the holder's own dictionary says otherwise (a FIX message reads its registry's [`FIX:idmap` follow flags](../fix/registry.md#a-field-names-a-message-by-its-identifiers)) |
-| `digest_operation` | provided (`Self: Element`): continues [`digest_market`](market.md#contract) with the time in force, whether it trades, and the alternate and account identifiers (key order) |
+| `is_followed_identifier(id)` | provided: whether an operation that follows another carries `id`, one of the chain's identifiers, where it states none of its source and type - every type but `mdentryrefid`, unless the holder's own dictionary says otherwise (a FIX message reads its registry's [`FIX:idmap` follow flags](../fix/registry.md#a-field-names-a-message-by-its-identifiers)) |
+| `parents_of(base)`, `parent_of(kind)` | provided: the parent types of one of the operation's identifier types, nearest first, and the base a parent type belongs to with its place among the base's parents - [`IdType::parents` and `parent_of`](identifier.md#parentage) unless the holder's own dictionary says otherwise (a FIX message reads its registry's [`FIX:parents`](../fix/registry.md#parents-of-an-identifier)) |
+| `digest_operation` | provided (`Self: Element`): continues [`digest_market`](market.md#contract) with the quantity ordered, the time in force, whether it trades, and the identifiers and the party ids (each fed as source, type and value under the labels `identifiers` and `partyids`, in key order, the parents among them) |
 | `merging_operation` | where `Self: Element`, no clocks: `self` leads |
 | Provided on events | where `Self: Event`: `digest_operation_event`, `following_operation`, `merging_operation_event` ([below](#following-and-merging)) |
 
-## Alternate identifiers
+## Order quantity
 
-`altids` is an [`IdMap`](../fix/message.md#the-identifier-maps): the names the operation goes by - `ORDERID`, `CLORDID`, `EXECID`, `MDENTRYID`, ... - under upper-cased ASCII keys, key-ordered, each value trimmed.
-
-| Verb | Rule |
-| --- | --- |
-| `set_altids(IdMap)` | replaces the map whole; `IdMap::new()` unsays it |
-| `insert_altid(key, value)` | fills only an absent key (folded to upper case); `false` for a held one, and a null-like value (`null`, `none`, `n/a`, empty) adds nothing |
-| `remove_altid(key)` | removes one key; returns whether one was held |
-| A view | a [FIX message](../fix/message.md#the-identifier-maps) writes through, refusing unknown keys; a plain holder always answers `Ok` |
-| In a walk | a name a live element goes by is how an element arriving under no live identity finds its chain, on its own side and within its own market data kind ([walk](event.md#lifecycle-walk)); a book resolves `MDENTRYID`/`MDENTRYREFID` the [same way](book.md#entries) |
-
-## Account identifiers
-
-`accountids` is an [`IdMap`](../fix/message.md#the-identifier-maps) too: the accounts and parties the operation names, one identifier per party role - `CUSTOMERACCOUNT`, `EXECUTINGTRADER`, `CLIENTID` - under upper-cased ASCII keys, key-ordered, each value trimmed.
-
-| Verb | Rule |
-| --- | --- |
-| `set_accountids(IdMap)` | replaces the map whole; `IdMap::new()` unsays it |
-| `insert_accountid(key, value)` | fills only an absent role (folded to upper case); `false` for a held one, and a null-like value adds nothing |
-| `remove_accountid(key)` | removes one role; returns whether one was held |
-| A view | a [FIX message](../fix/message.md#accounts-and-regulatory-trade-identifiers)'s accounts are its parties, each `PartyID` under its role's name, and its `Account(1)`, under `ACCOUNT`: they are read-only there - a change is refused by name, a no-op answers `Ok` - and a plain holder always answers `Ok` |
-| Column | `accountids`: a sorted `map<utf8, utf8>`, nullable - null or empty states none ([Market data](market-data.md#columns)) |
-
-## Following and merging
-
-| Reading | Rule |
-| --- | --- |
-| `following_operation` | [`following_market`](market.md#following-and-merging), then time in force/tradability if unstated, the accounts, and every alternate identifier of the chain it lacks but `MDENTRYREFID` - its own values stand; a holder's own dictionary may flag fewer |
-| The side | this operation's where it states one, the chain's where it states `UNKN` - in following and in restating - and with it the chain's [cross code](market.md#sides-and-cross-codes), under that side for an order, a quote or an execution |
-| Accounts | a role this statement names none for is the chain's, every role - the accounts an operation is booked to stay with its chain; a FIX message's accounts are its fields' (its parties and `Account(1)`), so it takes none |
-| Restating | a market operation event's [`restating`](event.md#restating) also takes the time in force, tradability, followed alternate identifiers and the accounts, as following does |
-| `merging_operation_event` | [`merging_market_event`](market.md#following-and-merging), then the time in force (the better), tradability (the reference's if stated), the alternate identifiers and the accounts (each a union, reference-led) |
-| Result | each answers nothing where the fold changes nothing, and finalizes where it did |
-
-## Example
-
-A replacement order following the one it replaces, then an acknowledgment that states no identifier.
+`ordqty` is what the operation ordered and `quantity` what it is about: stating the one never states the other. Working, what is left is what was ordered less what traded, so the one fact a message leaves out is filled from the two it states, and `quantity` - where nothing states it - is what is left to work. The whole rule, state by state, is [Market](market.md#setting-fill-or-overwrite)'s.
 
 === "Rust"
 
     ```rust
-    use yggdryl::graph::{Element, Market, Operation, OrderEvent};
-    use yggdryl::{Side, TimeInForce};
+    use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
+    use yggdryl::{Decimal, State};
 
-    const T: i64 = 1_700_000_000_000_000_000;
-    let mut placed = OrderEvent::at(T);
-    placed.set_crosscode("O-1001".to_owned());
-    placed.set_side(Side::Buy);
-    placed.insert_altid("clordid", "C-1")?;
-    placed.insert_altid("ORDERID", "O-1001")?;
-    placed.insert_altid("MDENTRYREFID", "R-1")?;
-    placed.insert_accountid("clientid", "ACC-1")?;
-    placed.set_tif(TimeInForce::from_spelling("day"));
-    placed.set_tradable(Some(true));
-    placed.finalize();
-    // Keys fold to upper case, and an insert fills an absent key only.
-    assert_eq!(placed.get_altids().get("CLORDID"), Some("C-1"));
-    assert_eq!(placed.get_accountids().get("CLIENTID"), Some("ACC-1"));
-    assert!(!placed.insert_altid("orderid", "O-9999")?);
-    assert!(!placed.insert_altid("SECONDARYORDERID", "n/a")?, "a null-like value adds nothing");
-    assert_eq!(placed.get_tif().map(TimeInForce::as_str), Some("0"));
-
-    // The replacement states its own client and execution ids.
-    let mut replacing = OrderEvent::at(T + 1_000_000_000);
-    replacing.set_crosscode("O-1001".to_owned());
-    replacing.insert_altid("CLORDID", "C-2")?;
-    replacing.insert_altid("EXECID", "X-2")?;
-    replacing.finalize();
-    let replaced = replacing.with_previous(&placed).expect("a later event follows");
-    assert_eq!(replaced.get_tif(), placed.get_tif());
-    assert_eq!(replaced.get_tradable(), Some(true));
-    // Its own words stand and the chain's order id is taken - never the entry reference.
-    assert_eq!(replaced.get_altids().get("CLORDID"), Some("C-2"));
-    assert_eq!(replaced.get_altids().get("EXECID"), Some("X-2"));
-    assert_eq!(replaced.get_altids().get("ORDERID"), Some("O-1001"));
-    assert_eq!(replaced.get_altids().get("MDENTRYREFID"), None);
-    assert_eq!(replaced.get_accountids().get("CLIENTID"), Some("ACC-1"), "the chain's account");
-    // Stating no side, it stands on the chain's, under the chain's code.
-    assert_eq!((replaced.get_side(), replaced.get_crosscode()), (Side::Buy, "BUYS:O-1001"));
-
-    // A statement naming no identifier takes the chain's client id as well.
-    let mut ack = OrderEvent::at(T + 2_000_000_000);
-    ack.set_crosscode("O-1001".to_owned());
-    ack.finalize();
-    let ack = ack.with_previous(&replaced).expect("a later event follows");
-    assert_eq!(ack.get_altids(), replaced.get_altids());
+    let mut order = OrderEvent::at(1_700_000_000_000_000_000);
+    order.set_crosscode("O-1001".to_owned());
+    order.set_state(State::PartiallyFilled);
+    order.set_ordqty(Some(Decimal::from_int(100)), true);
+    order.set_cumqty(Some(Decimal::from_int(40)), true);
+    order.finalize();
+    assert_eq!(order.get_leavesqty(), Some(Decimal::from_int(60)));
+    assert_eq!(order.get_quantity(), Some(Decimal::from_int(60)));
+    assert_eq!(order.get_ordqty(), Some(Decimal::from_int(100)));
     ```
 
 === "Python"
 
     ```python
-    from yggdryl import Side, graph
+    from decimal import Decimal
 
-    T = 1_700_000_000_000_000_000
-    placed = graph.OrderEvent(
-        T,
-        crosscode="O-1001",
-        side="BUYS",
-        altids={"CLORDID": "C-1", "MDENTRYREFID": "R-1", "orderid": "O-1001"},
-        accountids={"clientid": "ACC-1"},
-        tif="0",
-        tradable=True,
+    from yggdryl import graph
+
+    order = graph.OrderEvent(
+        1_700_000_000_000_000_000, crosscode="O-1001", state="PARTIALLY_FILLED", ordqty="100", cumqty="40"
     )
-    # Keys fold to upper case.
-    assert placed.altids == {"CLORDID": "C-1", "MDENTRYREFID": "R-1", "ORDERID": "O-1001"}
-    assert placed.accountids == {"CLIENTID": "ACC-1"}
-
-    # The replacement states its own client and execution ids.
-    replaced = graph.OrderEvent(
-        T + 1_000_000_000, crosscode="O-1001", altids={"CLORDID": "C-2", "EXECID": "X-2"}
-    ).with_previous(placed)
-    assert replaced is not None
-    assert (replaced.tif, replaced.tradable) == ("0", True)
-    # Its own words stand and the chain's order id is taken - never the entry reference.
-    assert replaced.altids == {"CLORDID": "C-2", "EXECID": "X-2", "ORDERID": "O-1001"}
-    assert replaced.accountids == {"CLIENTID": "ACC-1"}, "the chain's account"
-    # Stating no side, it stands on the chain's, under the chain's code.
-    assert (replaced.side, replaced.crosscode) == (Side.BUYS, "BUYS:O-1001")
-
-    # A statement naming no identifier takes the chain's client id as well.
-    ack = graph.OrderEvent(T + 2_000_000_000, crosscode="O-1001").with_previous(replaced)
-    assert ack is not None and ack.altids == replaced.altids
+    assert order.leavesqty.as_py() == Decimal(60)
+    assert order.quantity.as_py() == Decimal(60)
+    assert order.ordqty.as_py() == Decimal(100)
     ```
 
 === "JavaScript"
@@ -147,40 +60,208 @@ A replacement order following the one it replaces, then an acknowledgment that s
     const assert = require('node:assert/strict')
     const { graph } = require('yggdryl')
 
+    const order = new graph.OrderEvent(1_700_000_000_000_000_000n, {
+      crosscode: 'O-1001',
+      state: 'PARTIALLY_FILLED',
+      ordqty: '100',
+      cumqty: '40',
+    })
+    assert.equal(order.leavesqty, '60')
+    assert.equal(order.quantity, '60')
+    assert.equal(order.ordqty, '100')
+    ```
+
+## Identifiers
+
+`identifiers` is an [`Identifiers`](identifier.md) map: the names the operation goes by - `orderid`, `clordid`, `execid`, `mdentryid`, ... - one identifier per key `src:type`, each from the source that gave it (`fix` for a FIX field), with the [parents](identifier.md#parentage) a chain gave it: a replacement's `clordid` names the one it replaced as its `origclordid`, and an `orderid` that changed names the value before it as `parentorderid` and its chain's first as `origorderid`.
+
+| Verb | Rule |
+| --- | --- |
+| `get_identifiers` | the map, in key order; `get(&IdType::ClOrdId)` the value a source stated, `get_from(&IdSource::Fix, &IdType::OrderId)` one source's |
+| `set_identifiers(ids, overwrite)` | with `overwrite`, replaces the map whole, `Identifiers::new()` unsaying it; without, fills the keys it lacks |
+| `insert_identifier(id)` | fills an absent key only; `false` for a held one - another source of one type is another identifier |
+| `remove_identifier(src, kind)` | removes one; returns whether one was held |
+| A FIX message | its sets are logical facts read off its fields, the wire kept as sent: a caller's write is the message's word, held as stated - no field moves and no settle restates it ([FIX](../fix/message.md#the-identifier-maps)); a plain holder always answers `Ok` |
+| In a walk | a name a live element goes by - and a parent identifier's value, under its base - is how an element arriving under no live identity finds its chain, on its own side and within its own market data kind ([walk](event.md#lifecycle-walk)); a book resolves `mdentryid`/`mdentryrefid` the [same way](book.md#entries) |
+
+## Party identifiers
+
+`partyids` is an [`Identifiers`](identifier.md) map too: the accounts, traders, firms and users the operation names, each a role - the type - from the source that issued it: `proprietary:executingtrader=T-1`, `proprietary:customeraccount=ACC-9`, `base:account=ACCT-7`.
+
+| Verb | Rule |
+| --- | --- |
+| `get_partyids` | the map; `get(&IdType::ExecutingTrader)`, `get_from(&IdSource::Base, &IdType::Account)` |
+| `set_partyids(partyids, overwrite)` | with `overwrite`, replaces the map whole; without, fills the keys it lacks |
+| `insert_partyid(partyid)` | fills an absent key only; `false` for a held one |
+| `remove_partyid(src, kind)` | removes one; returns whether one was held |
+| A FIX message | each `Parties(453)` or `RootParties(1116)` occurrence typed by its role's name from its source's name, `Account(1)` an `account` from its `AcctIDSource(660)`'s - the [naming rule](identifier.md#where-identifiers-come-from); the groups and `Account(1)` stay on the wire as sent, and a caller's write is the message's word |
+| Column | `partyids`: a sorted `map<utf8, partyid>` keyed `src:type`, null where empty ([Market data](market-data.md#columns)); the five operation columns - `ordqty`, `timeinforce`, `tradable`, `identifiers`, `partyids` - close every generated row's shared columns ([Row schemas](schemas.md#the-marketdata-row)) |
+
+## Following and merging
+
+| Reading | Rule |
+| --- | --- |
+| `following_operation` | [`following_market`](market.md#following-and-merging), then time in force/tradability if unstated, the party ids, and every identifier of the chain it lacks but `mdentryrefid`, each carried as it is; each base identifier it states takes the [parents](identifier.md#parentage) its chain gave it - its own values stand; a holder's own dictionary may flag fewer |
+| The side | this operation's where it states one, the chain's where it states `UNKN` - in following and in restating - and with it the chain's [cross code](market.md#sides-and-cross-codes), restated under that side for an order, a quote or an execution |
+| Party ids | a source and role this statement names none for is the chain's, every role - the parties an operation is booked to stay with its chain |
+| Restating | a market operation event's [`restating`](event.md#restating) also takes the time in force, tradability, followed identifiers and the party ids, as following does |
+| `merging_operation_event` | [`merging_market_event`](market.md#following-and-merging), then the time in force (the better), tradability (the reference's if stated), the identifiers and the party ids (each a union by source and type, reference-led) |
+| Result | each answers nothing where the fold changes nothing, and finalizes where it did |
+
+## Example
+
+A replacement order following the one it replaces, then an acknowledgment that states no identifier. The replacement's `clordid` names the one it replaced as its `origclordid`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::graph::{Element, Market, Operation, OrderEvent};
+    use yggdryl::{IdSource, IdType, Identifier, Side, TimeInForce};
+
+    const T: i64 = 1_700_000_000_000_000_000;
+    let fix = |kind: IdType, value: &str| Identifier::new(IdSource::Fix, kind, value);
+    let mut placed = OrderEvent::at(T);
+    placed.set_crosscode("O-1001".to_owned());
+    placed.set_side(Side::Buy, true);
+    placed.insert_identifier(fix(IdType::ClOrdId, "C-1")?)?;
+    placed.insert_identifier(fix(IdType::OrderId, "O-1001")?)?;
+    placed.insert_identifier(fix(IdType::MdEntryRefId, "R-1")?)?;
+    placed.insert_partyid(Identifier::new(IdSource::Proprietary, IdType::ClientId, "ACC-1")?)?;
+    placed.set_timeinforce(TimeInForce::from_spelling("day"), true);
+    placed.set_tradable(Some(true), true);
+    placed.finalize();
+    // An insert fills an absent source and type only.
+    assert_eq!(placed.get_identifiers().get(&IdType::ClOrdId), Some("C-1"));
+    assert_eq!(placed.get_partyids().to_string(), "[proprietary:clientid=ACC-1]");
+    assert!(!placed.insert_identifier(fix(IdType::OrderId, "O-9999")?)?);
+    assert!(Identifier::new(IdSource::Fix, IdType::SecondaryOrderId, "n/a").is_err(), "a null-like value is no identifier");
+    assert_eq!(placed.get_timeinforce(), Some(&TimeInForce::Day));
+    assert_eq!(placed.get_timeinforce().map(|tif| tif.as_str()), Some("DAY"));
+
+    // The replacement states its own client and execution ids.
+    let mut replacing = OrderEvent::at(T + 1_000_000_000);
+    replacing.set_crosscode("O-1001".to_owned());
+    replacing.insert_identifier(fix(IdType::ClOrdId, "C-2")?)?;
+    replacing.insert_identifier(fix(IdType::ExecId, "X-2")?)?;
+    replacing.finalize();
+    let replaced = replacing.with_previous(&placed).expect("a later event follows");
+    assert_eq!(replaced.get_timeinforce(), placed.get_timeinforce());
+    assert_eq!(replaced.get_tradable(), Some(true));
+    // Its own identifiers stand and the chain's order id is taken - never the
+    // entry reference - and its client order id names the one it replaced as
+    // its parent.
+    let identifiers: Vec<String> = replaced.get_identifiers().iter().map(ToString::to_string).collect();
+    assert_eq!(identifiers, ["fix:clordid=C-2", "fix:execid=X-2", "fix:orderid=O-1001", "fix:origclordid=C-1"]);
+    assert_eq!(replaced.get_identifiers().get_from(&IdSource::Fix, &IdType::OrigClOrdId), Some("C-1"));
+    assert_eq!(replaced.get_partyids(), placed.get_partyids(), "the chain's party");
+    // Stating no side, it stands on the chain's, under the chain's code.
+    assert_eq!((replaced.get_side(), replaced.get_crosscode()), (Side::Buy, "10:1:O-1001"));
+
+    // A statement naming no identifier takes the chain's.
+    let mut ack = OrderEvent::at(T + 2_000_000_000);
+    ack.set_crosscode("O-1001".to_owned());
+    ack.finalize();
+    let ack = ack.with_previous(&replaced).expect("a later event follows");
+    assert_eq!(ack.get_identifiers(), replaced.get_identifiers());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Identifier, Side, TimeInForce, graph
+
+    T = 1_700_000_000_000_000_000
+    placed = graph.OrderEvent(
+        T,
+        crosscode="O-1001",
+        side="BUYS",
+        identifiers=[
+            Identifier("fix", "clordid", "C-1"),
+            Identifier("fix", "mdentryrefid", "R-1"),
+            Identifier("fix", "orderid", "O-1001"),
+        ],
+        partyids=[Identifier("proprietary", "clientid", "ACC-1")],
+        timeinforce="day",
+        tradable=True,
+    )
+    # Sources and types are lower-case words.
+    assert [str(id) for id in placed.identifiers] == ["fix:clordid=C-1", "fix:mdentryrefid=R-1", "fix:orderid=O-1001"]
+    assert str(placed.partyids) == "[proprietary:clientid=ACC-1]"
+
+    # The replacement states its own client and execution ids.
+    replaced = graph.OrderEvent(
+        T + 1_000_000_000,
+        crosscode="O-1001",
+        identifiers=[Identifier("fix", "clordid", "C-2"), Identifier("fix", "execid", "X-2")],
+    ).with_previous(placed)
+    assert replaced is not None
+    assert (replaced.timeinforce, replaced.tradable) == (TimeInForce.DAY, True)
+    # Its own identifiers stand and the chain's order id is taken - never the
+    # entry reference - and its client order id names the one it replaced as
+    # its parent.
+    assert [str(id) for id in replaced.identifiers] == [
+        "fix:clordid=C-2", "fix:execid=X-2", "fix:orderid=O-1001", "fix:origclordid=C-1",
+    ]
+    assert replaced.identifiers.get_from("fix", "origclordid") == "C-1"
+    assert replaced.partyids == placed.partyids, "the chain's party"
+    # Stating no side, it stands on the chain's, under the chain's code.
+    assert (replaced.side, replaced.crosscode) == (Side.BUYS, "10:1:O-1001")
+
+    # A statement naming no identifier takes the chain's.
+    ack = graph.OrderEvent(T + 2_000_000_000, crosscode="O-1001").with_previous(replaced)
+    assert ack is not None and ack.identifiers == replaced.identifiers
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Identifier, graph } = require('yggdryl')
+
     const T = 1_700_000_000_000_000_000n
     const placed = new graph.OrderEvent(T, {
       crosscode: 'O-1001',
       side: 'BUYS',
-      altids: { CLORDID: 'C-1', MDENTRYREFID: 'R-1', orderid: 'O-1001' },
-      accountids: { clientid: 'ACC-1' },
-      tif: '0',
+      identifiers: [
+        new Identifier('fix', 'clordid', 'C-1'),
+        new Identifier('fix', 'mdentryrefid', 'R-1'),
+        new Identifier('fix', 'orderid', 'O-1001'),
+      ],
+      partyids: [new Identifier('proprietary', 'clientid', 'ACC-1')],
+      timeinforce: 'day',
       tradable: true,
     })
-    // Keys fold to upper case.
-    assert.deepEqual(placed.altids, { CLORDID: 'C-1', MDENTRYREFID: 'R-1', ORDERID: 'O-1001' })
-    assert.deepEqual(placed.accountids, { CLIENTID: 'ACC-1' })
+    // Sources and types are lower-case words.
+    assert.equal(placed.identifiers.toString(), '[fix:clordid=C-1, fix:mdentryrefid=R-1, fix:orderid=O-1001]')
+    assert.equal(placed.partyids.toString(), '[proprietary:clientid=ACC-1]')
 
     // The replacement states its own client and execution ids.
     const replaced = new graph.OrderEvent(T + 1_000_000_000n, {
       crosscode: 'O-1001',
-      altids: { CLORDID: 'C-2', EXECID: 'X-2' },
+      identifiers: [new Identifier('fix', 'clordid', 'C-2'), new Identifier('fix', 'execid', 'X-2')],
     }).withPrevious(placed)
-    assert.equal(replaced.tif, '0')
+    assert.equal(replaced.timeinforce, 'DAY')
     assert.equal(replaced.tradable, true)
-    // Its own words stand and the chain's order id is taken - never the entry reference.
-    assert.deepEqual(replaced.altids, { CLORDID: 'C-2', EXECID: 'X-2', ORDERID: 'O-1001' })
-    assert.deepEqual(replaced.accountids, { CLIENTID: 'ACC-1' })
+    // Its own identifiers stand and the chain's order id is taken - never the
+    // entry reference - and its client order id names the one it replaced as
+    // its parent.
+    assert.equal(
+      replaced.identifiers.toString(),
+      '[fix:clordid=C-2, fix:execid=X-2, fix:orderid=O-1001, fix:origclordid=C-1]',
+    )
+    assert.equal(replaced.identifiers.getFrom('fix', 'origclordid'), 'C-1')
+    assert.ok(replaced.partyids.equals(placed.partyids), "the chain's party")
     // Stating no side, it stands on the chain's, under the chain's code.
     assert.equal(replaced.side, 'BUYS')
-    assert.equal(replaced.crosscode, 'BUYS:O-1001')
+    assert.equal(replaced.crosscode, '10:1:O-1001')
 
-    // A statement naming no identifier takes the chain's client id as well.
+    // A statement naming no identifier takes the chain's.
     const ack = new graph.OrderEvent(T + 2_000_000_000n, { crosscode: 'O-1001' }).withPrevious(replaced)
-    assert.deepEqual(ack.altids, replaced.altids)
+    assert.ok(ack.identifiers.equals(replaced.identifiers))
     ```
 
 ## Edges
 
 - `tradable` is what a status said: `None` states nothing, and a [book level](book.md#limits) reads an entry stating nothing as one that trades.
-- A key or value that is empty, not ASCII, or too wide - a key past 32 bytes once upper-cased, a value past 64 once trimmed - is refused by `IdMap`, located on the key: `insert_altid` and `insert_accountid` answer the error, and a binding refuses the fact by name.
-- `MDENTRYREFID` is the one identifier a follower never takes: a book entry's [reference to its predecessor](book.md#entries) names one step, not the chain. A FIX message follows an identifier through the field that states it, so only where its dictionary flags one.
+- A type or source that is no word, or a value that is empty, null-like, past 64 bytes once trimmed or one its type refuses, is refused by [`Identifier::new`](identifier.md#contract) before any verb sees it, and a binding refuses the fact by name.
+- `mdentryrefid` is the one identifier type a follower never takes: a book entry's [reference to its predecessor](book.md#entries) names one step, not the chain. A FIX message follows only the types its dictionary's `FIX:idmap` entries flag.

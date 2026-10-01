@@ -12,7 +12,14 @@ use yggdryl::graph::{
     MdUpdateAction, Operation, OperationEvent, OperationKind, Order, OrderEvent, OrderKind, Quote,
     QuoteEvent, QuoteKind,
 };
-use yggdryl::{Ccy, Cfi, Decimal, Side, State, TimeInForce, Unit, Uuid};
+use yggdryl::{
+    Ccy, Cfi, Decimal, IdSource, IdType, Identifier, Side, State, TimeInForce, Unit, Uuid,
+};
+
+/// One identifier of a plain holder: a value of `kind` from `fix`.
+fn identifier(kind: IdType, value: &str) -> Identifier {
+    Identifier::new(IdSource::Fix, kind, value).unwrap()
+}
 
 /// One filled order as a foreign caller would state it, finalized.
 fn full<K: OperationKind>() -> OperationEvent<K> {
@@ -20,22 +27,22 @@ fn full<K: OperationKind>() -> OperationEvent<K> {
     data.set_crosscode("O-100".to_owned());
     data.set_srcuuids(vec![Uuid::from_v8(7)]);
     data.set_state(State::from_spelling("Filled").expect("a shipped state"));
-    data.set_price(Some(Decimal::from_int(82)));
-    data.set_currency(Ccy::new("USD").expect("a currency"));
-    data.set_quantity(Some(Decimal::from_int(10)));
-    data.set_unit(Unit::new("lot").expect("a unit"));
-    data.set_side(Side::read("Buy").expect("a side"));
-    data.set_lastpx(Some(Decimal::from_int(81)));
-    data.set_lastqty(Some(Decimal::from_int(2)));
-    data.set_tif(TimeInForce::from_spelling("GoodTillCancel"));
-    data.set_tradable(Some(true));
-    data.set_ticker(Some(SmolStr::new("BRN")));
-    data.set_avgpx(Some(Decimal::from_int(80)));
-    data.set_cumqty(Some(Decimal::from_int(4)));
-    data.set_leavesqty(Some(Decimal::from_int(6)));
-    data.set_prevpx(Some(Decimal::from_int(79)));
-    data.set_prevqty(Some(Decimal::from_int(12)));
-    data.insert_altid("ORDERID", "O-100")
+    data.set_price(Some(Decimal::from_int(82)), true);
+    data.set_currency(Ccy::new("USD").expect("a currency"), true);
+    data.set_quantity(Some(Decimal::from_int(10)), true);
+    data.set_unit(Unit::new("lot").expect("a unit"), true);
+    data.set_side(Side::read("Buy").expect("a side"), true);
+    data.set_lastpx(Some(Decimal::from_int(81)), true);
+    data.set_lastqty(Some(Decimal::from_int(2)), true);
+    data.set_timeinforce(TimeInForce::from_spelling("GoodTillCancel"), true);
+    data.set_tradable(Some(true), true);
+    data.set_ticker(Some(SmolStr::new("BRN")), true);
+    data.set_avgpx(Some(Decimal::from_int(80)), true);
+    data.set_cumqty(Some(Decimal::from_int(4)), true);
+    data.set_leavesqty(Some(Decimal::from_int(6)), true);
+    data.set_prevpx(Some(Decimal::from_int(79)), true);
+    data.set_prevqty(Some(Decimal::from_int(12)), true);
+    data.insert_identifier(identifier(IdType::OrderId, "O-100"))
         .expect("an operation takes every key");
     data.finalize();
     data
@@ -95,7 +102,7 @@ fn an_operation_of_another_kind_copies_every_fact_and_no_book_control() {
     assert_eq!(operation.get_price(), source.get_price());
     assert_eq!(operation.get_lastpx(), source.get_lastpx());
     assert_eq!(operation.get_lastqty(), source.get_lastqty());
-    assert_eq!(operation.get_tif(), source.get_tif());
+    assert_eq!(operation.get_timeinforce(), source.get_timeinforce());
     assert_eq!(operation.get_tradable(), source.get_tradable());
     assert_eq!(operation.get_ticker(), source.get_ticker());
     assert_eq!(operation.get_avgpx(), source.get_avgpx());
@@ -104,7 +111,7 @@ fn an_operation_of_another_kind_copies_every_fact_and_no_book_control() {
     assert_eq!(operation.get_prevpx(), source.get_prevpx());
     assert_eq!(operation.get_prevqty(), source.get_prevqty());
     assert_eq!(operation.get_unit(), source.get_unit());
-    assert_eq!(operation.get_altids(), source.get_altids());
+    assert_eq!(operation.get_identifiers(), source.get_identifiers());
     assert_eq!(
         operation.get_curruuid(),
         source.get_curruuid(),
@@ -127,9 +134,9 @@ fn an_element_is_the_operation_undated_and_dates_again_at_an_instant() {
     assert_eq!(element.get_price(), operation.get_price());
     assert_eq!(element.get_quantity(), operation.get_quantity());
     assert_eq!(element.get_ticker(), Some("BRN"));
-    assert_eq!(element.get_tif(), operation.get_tif());
-    assert_eq!(element.get_altids(), operation.get_altids());
-    assert_eq!(element.get_crosscode(), "BUYS:O-100");
+    assert_eq!(element.get_timeinforce(), operation.get_timeinforce());
+    assert_eq!(element.get_identifiers(), operation.get_identifiers());
+    assert_eq!(element.get_crosscode(), "10:1:O-100");
     // The element keeps the identity the operation derived - its kind is in
     // it - until it is finalized as an element.
     assert_eq!(element.get_curruuid(), operation.get_curruuid());
@@ -179,14 +186,19 @@ fn an_element_is_the_operation_undated_and_dates_again_at_an_instant() {
 fn the_same_facts_as_two_kinds_are_two_elements() {
     let mut order = Order::new();
     order.set_crosscode("O-100".to_owned());
-    order.set_price(Some(Decimal::from_int(82)));
+    order.set_price(Some(Decimal::from_int(82)), true);
     order.finalize();
     let mut quote = Quote::new();
     quote.set_crosscode("O-100".to_owned());
-    quote.set_price(Some(Decimal::from_int(82)));
+    quote.set_price(Some(Decimal::from_int(82)), true);
     quote.finalize();
     assert_ne!(order.get_curruuid(), quote.get_curruuid());
-    assert_eq!(order.get_crossuuid(), quote.get_crossuuid());
+    // Each category stores the code under its own prefix, so the two are
+    // two cross elements too.
+    assert_eq!(order.get_crosscode(), "10:0:O-100");
+    assert_eq!(quote.get_crosscode(), "14:0:O-100");
+    assert_ne!(order.get_crossuuid(), quote.get_crossuuid());
+    assert_ne!(order.get_crosshashcode(), quote.get_crosshashcode());
     // An element states no order: it is never after another.
     assert!(!order.is_after(&order.clone()));
 }
@@ -301,12 +313,12 @@ fn every_update_action_lists_itself_once_in_declaration_order_and_round_trips() 
 fn an_operation_follows_and_merges_and_keeps_its_kind() {
     let mut first = OrderEvent::at(1_000_000);
     first.set_crosscode("O-100".to_owned());
-    first.set_price(Some(Decimal::from_int(80)));
+    first.set_price(Some(Decimal::from_int(80)), true);
     first.finalize();
 
     let mut second = OrderEvent::at(2_000_000);
     second.set_crosscode("O-100".to_owned());
-    second.set_price(Some(Decimal::from_int(81)));
+    second.set_price(Some(Decimal::from_int(81)), true);
     second.finalize();
     let second = second
         .with_previous(&first)
@@ -335,13 +347,17 @@ fn an_operation_follows_and_merges_and_keeps_its_kind() {
 fn an_element_follows_and_merges_through_its_facts() {
     let mut first = Order::new();
     first.set_crosscode("O-100".to_owned());
-    first.set_price(Some(Decimal::from_int(80)));
+    first.set_price(Some(Decimal::from_int(80)), true);
     first.finalize();
     let mut next = Order::new();
     next.set_crosscode("O-999".to_owned());
     next.finalize();
     let next = next.with_previous(&first).expect("an element follows");
-    assert_eq!(next.get_crosscode(), "O-100", "it adopts the cross code");
+    assert_eq!(
+        next.get_crosscode(),
+        "10:0:O-100",
+        "it adopts the cross code, stored under its category and side"
+    );
     assert!(!next.is_after(&first) && !first.is_before(&next));
 
     let mut restated = first.clone();
@@ -361,20 +377,23 @@ fn merging_an_undated_element_lets_this_statement_lead() {
     // the two with this one first.
     let mut this = Order::new();
     this.set_crosscode("T-1".to_owned());
-    this.set_price(Some(Decimal::parse("82.5").expect("a decimal")));
-    this.set_quantity(Some(Decimal::from_int(1_000)));
-    this.set_cficode(Some(Cfi::new("ESXXXR").expect("a CFI")));
+    this.set_price(Some(Decimal::parse("82.5").expect("a decimal")), true);
+    this.set_quantity(Some(Decimal::from_int(1_000)), true);
+    this.set_cficode(Some(Cfi::new("ESXXXR").expect("a CFI")), true);
     this.finalize();
     let mut other = this.clone();
-    other.set_price(Some(Decimal::from_int(83)));
-    other.set_unit(Unit::new("bbl").expect("a unit"));
-    other.set_currency(Ccy::new("USD").expect("a currency"));
-    other.set_side(Side::read("1").expect("a side"));
-    other.set_cficode(Some(Cfi::new("ESVUFR").expect("a CFI")));
-    other.set_metadata(Some(BTreeMap::from([(
-        SmolStr::new("Feed"),
-        SmolStr::new("OTHER"),
-    )])));
+    other.set_price(Some(Decimal::from_int(83)), true);
+    other.set_unit(Unit::new("bbl").expect("a unit"), true);
+    other.set_currency(Ccy::new("USD").expect("a currency"), true);
+    other.set_side(Side::read("1").expect("a side"), true);
+    other.set_cficode(Some(Cfi::new("ESVUFR").expect("a CFI")), true);
+    other.set_metadata(
+        Some(BTreeMap::from([(
+            SmolStr::new("Feed"),
+            SmolStr::new("OTHER"),
+        )])),
+        true,
+    );
     let merged = this.clone().merge_with(&other).expect("the same element");
     assert_eq!(
         merged.get_price(),
@@ -454,10 +473,18 @@ fn a_boxed_book_control_is_one_pointer() {
 /// moved by sixteen when the execution clock left the event for the
 /// market, one `Option<i64>` of sixteen in the market facts every holder
 /// carries, to 832; the dated one held the clock already and stays 992.
+/// Both moved down by sixteen when the time in force became a one-byte
+/// enum where a twenty-four-byte string code stood, to 816 and 976. Both
+/// moved down by 96 when the identifiers became `Identifiers`, one 24-byte
+/// sorted vector each: the market facts swapped a 56-byte `SecurityIds` and
+/// its eight-byte derived mask for one set, 32 fewer after padding, and the
+/// operation facts two 56-byte `IdMap`s for two sets, exactly 64 fewer, so
+/// the undated holder is 656 + 64 = 720 and the dated one 864 + the boxed
+/// control's sixteen = 880.
 #[test]
 fn the_operation_leaves_are_the_sizes_of_the_facts_they_hold() {
     use std::mem::size_of;
-    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (832, 992));
+    assert_eq!((size_of::<Order>(), size_of::<OrderEvent>()), (720, 880));
     assert_eq!(size_of::<Quote>(), size_of::<Order>());
     assert_eq!(size_of::<ExecutionEvent>(), size_of::<OrderEvent>());
 }
@@ -469,9 +496,9 @@ fn the_operation_leaves_are_the_sizes_of_the_facts_they_hold() {
 fn an_execution_stating_only_its_last_price_never_states_a_price() {
     let mut fill = ExecutionEvent::at(1_000);
     fill.set_crosscode("O-1".to_owned());
-    fill.set_side(Side::read("Buy").expect("a side"));
-    fill.set_lastpx(Some(Decimal::from_int(81)));
-    fill.set_lastqty(Some(Decimal::from_int(2)));
+    fill.set_side(Side::read("Buy").expect("a side"), true);
+    fill.set_lastpx(Some(Decimal::from_int(81)), true);
+    fill.set_lastqty(Some(Decimal::from_int(2)), true);
     fill.finalize();
     fill.finalize();
     assert_eq!(fill.get_price(), None);
@@ -494,9 +521,9 @@ fn an_execution_stating_only_its_last_price_never_states_a_price() {
 
     let mut priced = ExecutionEvent::at(500);
     priced.set_crosscode("O-1".to_owned());
-    priced.set_side(Side::read("Buy").expect("a side"));
-    priced.set_price(Some(Decimal::from_int(80)));
-    priced.set_lastpx(Some(Decimal::from_int(80)));
+    priced.set_side(Side::read("Buy").expect("a side"), true);
+    priced.set_price(Some(Decimal::from_int(80)), true);
+    priced.set_lastpx(Some(Decimal::from_int(80)), true);
     priced.finalize();
     let followed = fill
         .with_previous(&priced)

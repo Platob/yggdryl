@@ -41,10 +41,10 @@ use arrow_array::{RecordBatch, RecordBatchReader};
 use arrow_schema::{ArrowError, SchemaRef};
 use smol_str::{SmolStr, format_smolstr};
 
-use super::arrow::{ALIVE, ASKLIMITS, BIDLIMITS, DELTAS, EXECUTIONS, MARKETDATAKIND};
+use super::arrow::{ALIVE, ASKLIMITS, BIDLIMITS, DELTAS, EXECUTIONS};
 use super::{
-    BookEvent, Candle, CandleIterator, CandleOptions, Element, Event, EventColumn, ExecutionEvent,
-    Market, MarketColumn, MarketData, Ohlc,
+    BookEvent, Candle, CandleIterator, CandleOptions, Element, ElementColumn, Event, EventColumn,
+    ExecutionEvent, Market, MarketColumn, MarketData, Ohlc,
 };
 use crate::arrow::BatchReader;
 use crate::expression::{Filter, Plan, Projection, Selector, Term};
@@ -380,10 +380,10 @@ impl BookQuery {
 /// let quote = |unix: i64, side: Side, price: i64| -> MarketData {
 ///     let mut quote = QuoteEvent::at(unix);
 ///     quote.set_crosscode(format!("Q-{unix}-{}", side.as_str()));
-///     quote.set_ticker(Some("ACME".into()));
-///     quote.set_side(side);
-///     quote.set_price(Some(Decimal::from_int(price)));
-///     quote.set_quantity(Some(Decimal::from_int(10)));
+///     quote.set_ticker(Some("ACME".into()), true);
+///     quote.set_side(side, true);
+///     quote.set_price(Some(Decimal::from_int(price)), true);
+///     quote.set_quantity(Some(Decimal::from_int(10)), true);
 ///     quote.set_state(State::New);
 ///     quote.finalize();
 ///     MarketData::from(quote)
@@ -743,7 +743,7 @@ impl BookService {
     /// The span of each ticker's books in `table`, by ticker.
     fn spans(table: &BookTable) -> Result<BTreeMap<SmolStr, Span>> {
         let ticker = MarketColumn::Ticker.name();
-        let crosscode = EventColumn::CrossCode.name();
+        let crosscode = ElementColumn::CrossCode.name();
         let currunix = EventColumn::CurrUnix.name();
         let reader = Self::projected(
             table,
@@ -1304,9 +1304,9 @@ fn unshaped(expected: &'static str) -> Error {
 /// identity - Iceberg stores a member as its `int` code and states no
 /// extension - and a name beside a bare integer compares as text and matches
 /// nothing, where the member meets an enum column and a bare code alike as
-/// the `int32` it is.
+/// the `uint8` it is.
 fn category() -> Term {
-    Term::column(MARKETDATAKIND).eq(Term::literal(MarketDataKind::Book))
+    Term::column(MarketColumn::MarketDataKind.name()).eq(Term::literal(MarketDataKind::Book))
 }
 
 /// `ticker = '<ticker>'`.

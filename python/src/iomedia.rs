@@ -115,7 +115,7 @@ pub(crate) fn batch_reader_from_value(value: &Bound<'_, PyAny>) -> PyResult<Batc
         return Ok(reader);
     }
     if value.hasattr(intern!(value.py(), "__arrow_c_stream__"))? {
-        let reader = ArrowArrayStreamReader::from_pyarrow_bound(value)
+        let reader = ArrowArrayStreamReader::from_pyarrow_bound(&pyarrow::exportable(value)?)
             .map_err(|error| non_record_stream(value, error))?;
         return Ok(Box::new(Validated(reader)));
     }
@@ -967,7 +967,7 @@ impl Rows {
             }
             None => from_pylist.call1((chunk,))?,
         };
-        let batch = RecordBatch::from_pyarrow_bound(&built)?;
+        let batch = RecordBatch::from_pyarrow_bound(&pyarrow::exportable(&built)?)?;
         validate_batch(&batch).map_err(value_error)?;
         // The first batch is what names the columns; every later one is
         // built against it, so an inference that saw only nulls in one

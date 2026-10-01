@@ -1528,7 +1528,6 @@ mod types {
             (DataType::Mic, "XPAR"),
             (DataType::Cfi, "ESVUFR"),
             (DataType::Isin, "US0378331005"),
-            (DataType::TimeInForce, "GTC"),
             // A pair's bound is the canonical spelling the column holds.
             (DataType::Forex, "eurusd"),
         ] {
@@ -1554,7 +1553,7 @@ mod types {
     #[test]
     fn an_enum_bound_is_the_int_its_column_stores() {
         use yggdryl::internals::iceberg_value::{is_portable, single_to_value, single_value};
-        use yggdryl::{MarketDataKind, Scalar, Side, State};
+        use yggdryl::{MarketDataKind, Scalar, Side, State, TimeInForce};
 
         // An enum column stores its member's code, so its bounds are Iceberg
         // ints a planner compares in code order - a state's in lifecycle
@@ -1592,6 +1591,11 @@ mod types {
             ),
             (DataType::Side, Scalar::Side(Side::Buy), 1),
             (DataType::Side, Scalar::Side(Side::SellUnd), 17),
+            (
+                DataType::TimeInForce,
+                Scalar::TimeInForce(TimeInForce::GoodTillCancel),
+                2,
+            ),
         ];
         for (dtype, exact, code) in members {
             assert!(is_portable(&dtype), "{dtype}");
@@ -1600,7 +1604,8 @@ mod types {
                 PrimitiveType::Int
             );
             let bytes = single_value(&exact, &dtype).expect("an enum member encodes a bound");
-            assert_eq!(bytes, code.to_le_bytes(), "{exact:?}");
+            // Whatever width the column stores, an Iceberg int is four bytes.
+            assert_eq!(bytes, i32::from(code).to_le_bytes(), "{exact:?}");
             assert_eq!(single_to_value(&bytes, &dtype), Some(exact), "{dtype}");
         }
         // The code of no member reads as no bound rather than as a member.

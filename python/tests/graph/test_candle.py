@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from yggdryl import Timezone, graph
+from yggdryl import Identifier, Timezone, graph
 
 D = decimal.Decimal
 SECOND = 1_000_000_000
@@ -226,7 +226,7 @@ class TestCandleIterator:
         assert walk.options == graph.CandleOptions("1m")
         (candle,) = list(walk)
         assert (candle.crosscode, candle.ticker, candle.start, candle.end) == (
-            "ACME",
+            "3:0:ACME",
             "ACME",
             0,
             MINUTE,
@@ -257,7 +257,7 @@ class TestCandleIterator:
 
     def test_the_volume_counts_each_trade_once_at_what_it_traded(self) -> None:
         def fill(
-            unix: int, code: str, side: str, lastqty: int | None, **altids: str
+            unix: int, code: str, side: str, lastqty: int | None, **identifiers: str
         ) -> graph.ExecutionEvent:
             # The order's quantity; what the fill traded is its last quantity.
             return graph.ExecutionEvent(
@@ -269,34 +269,34 @@ class TestCandleIterator:
                 quantity=600,
                 lastqty=lastqty,
                 state="FILLED",
-                altids=altids,
+                identifiers=[Identifier("fix", kind, value) for kind, value in identifiers.items()],
             )
 
-        # A fill delivered twice under one `EXECID`, the two sides of a trade
-        # under one `TRADEID`, and a fill stating no last quantity, which adds
+        # A fill delivered twice under one `execid`, the two sides of a trade
+        # under one `tradeid`, and a fill stating no last quantity, which adds
         # nothing whatever its order's quantity: six executions, three trades.
         (candle,) = candles(
             [
-                fill(10 * SECOND, "X-1", "BUY", 21, EXECID="X-1"),
-                fill(10 * SECOND, "X-2", "BUY", 57, EXECID="X-2"),
-                fill(11 * SECOND, "X-2", "BUY", 57, EXECID="X-2"),
-                fill(20 * SECOND, "S-1", "BUY", 100, EXECID="S-1", TRADEID="T-1"),
-                fill(20 * SECOND, "S-2", "SELL", 100, EXECID="S-2", TRADEID="T-1"),
+                fill(10 * SECOND, "X-1", "BUY", 21, execid="X-1"),
+                fill(10 * SECOND, "X-2", "BUY", 57, execid="X-2"),
+                fill(11 * SECOND, "X-2", "BUY", 57, execid="X-2"),
+                fill(20 * SECOND, "S-1", "BUY", 100, execid="S-1", tradeid="T-1"),
+                fill(20 * SECOND, "S-2", "SELL", 100, execid="S-2", tradeid="T-1"),
                 fill(30 * SECOND, "X-3", "SELL", None),
             ],
             "1m",
         )
         assert (candle.books, candle.executions, candle.volume.as_py()) == (4, 6, D(178))
 
-        # A trade report's two sides named by its `TRADEREPORTID` alone, and a
-        # fill naming its `EXECID` and the trade's `TRADEID` delivered again
-        # naming the `EXECID` alone: two trades.
+        # A trade report's two sides named by its `tradereportid` alone, and a
+        # fill naming its `execid` and the trade's `tradeid` delivered again
+        # naming the `execid` alone: two trades.
         (candle,) = candles(
             [
-                fill(10 * SECOND, "SX-B", "BUY", 100, EXECID="SX-B", TRADEREPORTID="TR-1"),
-                fill(10 * SECOND, "SX-S", "SELL", 100, EXECID="SX-S", TRADEREPORTID="TR-1"),
-                fill(20 * SECOND, "E-1", "BUY", 57, EXECID="E-1", TRADEID="T-1"),
-                fill(21 * SECOND, "E-1", "BUY", 57, EXECID="E-1"),
+                fill(10 * SECOND, "SX-B", "BUY", 100, execid="SX-B", tradereportid="TR-1"),
+                fill(10 * SECOND, "SX-S", "SELL", 100, execid="SX-S", tradereportid="TR-1"),
+                fill(20 * SECOND, "E-1", "BUY", 57, execid="E-1", tradeid="T-1"),
+                fill(21 * SECOND, "E-1", "BUY", 57, execid="E-1"),
             ],
             "1m",
         )
@@ -305,8 +305,8 @@ class TestCandleIterator:
         # Delivered again in the next minute, a fill adds nothing there.
         first, second = candles(
             [
-                fill(10 * SECOND, "X-1", "BUY", 21, EXECID="X-1"),
-                fill(70 * SECOND, "X-1", "BUY", 21, EXECID="X-1"),
+                fill(10 * SECOND, "X-1", "BUY", 21, execid="X-1"),
+                fill(70 * SECOND, "X-1", "BUY", 21, execid="X-1"),
             ],
             "1m",
         )
@@ -371,10 +371,10 @@ class TestCandleIterator:
             "1m",
         )
         assert [(candle.crosscode, candle.start, candle.books) for candle in found] == [
-            ("AAPL", 0, 1),
-            ("IBM", 0, 2),
-            ("AAPL", MINUTE, 1),
-            ("IBM", MINUTE, 1),
+            ("3:0:AAPL", 0, 1),
+            ("3:0:IBM", 0, 2),
+            ("3:0:AAPL", MINUTE, 1),
+            ("3:0:IBM", MINUTE, 1),
         ]
         assert reading(found[1].bid) == ohlc("100", "101", "100", "101")
         assert found[1].ticker == "IBM"
@@ -556,7 +556,7 @@ class TestCandle:
         native = candle.as_py()
         assert sorted(native) == sorted(NAMES)
         assert (native["crosscode"], native["ticker"], native["books"], native["executions"]) == (
-            "ACME",
+            "3:0:ACME",
             "ACME",
             4,
             3,

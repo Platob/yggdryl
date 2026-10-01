@@ -219,6 +219,6 @@ and release extension results.
 - Use `std::hint::black_box`, separate setup from the timed routine, and keep
   cold and cached cases distinct. A benchmark that mixes cache population with
   cache hits cannot justify either path.
-- Re-run unit tests and the benchmark compile check on the declared Rust 1.85
+- Re-run unit tests and the benchmark compile check on the declared Rust 1.94
   MSRV. Benchmark-only dependencies stay under `[dev-dependencies]`; production
   and extension dependency graphs must not include Criterion.

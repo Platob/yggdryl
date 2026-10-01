@@ -17,11 +17,10 @@ use super::registry::FixMap;
 use super::{FixId, FixIdMapKind, FixKey, FixRegistry};
 use crate::graph::facts::OperationEventFacts;
 use crate::graph::{Element, Event, FxRates, Market, Metadata, Operation};
-use crate::idmap::IdMap;
-use crate::securityid::{SecType, SecurityId, SecurityIds};
 use crate::xxhash;
 use crate::{
-    Ccy, Cfi, Decimal, Forex, MarketDataKind, Mic, Side, State, StructType, TimeInForce, Unit, Uuid,
+    Ccy, Cfi, Decimal, Forex, IdSource, IdType, Identifier, Identifiers, MarketDataKind, Mic, Side,
+    State, StructType, TimeInForce, Unit, Uuid,
 };
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie};
 
@@ -30,29 +29,173 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Ser
 /// restated as.
 const NANOS_PER_DAY: i64 = 86_400 * 1_000_000_000;
 
-/// The row stated the state the message reached: the derivation leaves it.
-const ROW_STATED_STATE: u16 = 1;
-
-/// The row stated when the message expires: the derivation leaves it.
-const ROW_STATED_EXPIRY: u16 = 1 << 1;
-
 /// The row stated this normalized market code, rather than a raw FIX pair
-/// from which market derivation could replace it.
-const ROW_STATED_ISIN: u16 = 1 << 2;
-const ROW_STATED_BLOOMBERG: u16 = 1 << 5;
-const ROW_STATED_MIC: u16 = 1 << 6;
-const ROW_STATED_FIGI: u16 = 1 << 7;
-const ROW_STATED_EXECUTION: u16 = 1 << 8;
-const ROW_STATED_RECORDING: u16 = 1 << 9;
-const ROW_STATED_MSGCAT: u16 = 1 << 10;
+/// from which the stated identifiers could replace it.
+const ROW_STATED_ISIN: u64 = 1 << 2;
+const ROW_STATED_BLOOMBERG: u64 = 1 << 5;
+const ROW_STATED_FIGI: u64 = 1 << 7;
+/// The row or a caller stated when the message executed, so a settle of the
+/// clock alone leaves it.
+const ROW_STATED_EXECUTION: u64 = 1 << 8;
+const ROW_STATED_RECORDING: u64 = 1 << 9;
 /// The row stated the currency pair, so detection off `Symbol(55)` leaves
 /// it: set by a row's `forexcode` cell, a `record` of it and a stated
 /// `FOREX` identifier, never by detection.
-const ROW_STATED_FOREX: u16 = 1 << 11;
-/// The row stated the strike, so `StrikePrice(202)` does not replace it.
-const ROW_STATED_STRIKE: u16 = 1 << 12;
+const ROW_STATED_FOREX: u64 = 1 << 11;
 
-/// FIX's own `StrikePrice(202)`: what the crate's `strikepx` column reads.
+/// The market facts a message states off its FIX fields, one bit each: what
+/// a message fills as it is built, what a write reaches ([`facts_of_tag`])
+/// and a settle states again ([`FixMsg::state_market`]).
+mod fact {
+    pub(super) const SECURITYIDS: u32 = 1;
+    pub(super) const STATE: u32 = 1 << 1;
+    pub(super) const KIND: u32 = 1 << 2;
+    pub(super) const MDTYPE: u32 = 1 << 3;
+    pub(super) const EXPIRY: u32 = 1 << 4;
+    pub(super) const EXECUTION: u32 = 1 << 5;
+    pub(super) const TIF: u32 = 1 << 6;
+    pub(super) const TICKER: u32 = 1 << 7;
+    pub(super) const CFI: u32 = 1 << 8;
+    pub(super) const MIC: u32 = 1 << 9;
+    pub(super) const TRADABLE: u32 = 1 << 10;
+    pub(super) const UNIT: u32 = 1 << 11;
+    pub(super) const BIDASK: u32 = 1 << 12;
+    pub(super) const PRICE: u32 = 1 << 13;
+    pub(super) const STOPPX: u32 = 1 << 14;
+    pub(super) const QUANTITY: u32 = 1 << 15;
+    pub(super) const DISPLAYQTY: u32 = 1 << 16;
+    pub(super) const HIDDENQTY: u32 = 1 << 17;
+    pub(super) const CXLQTY: u32 = 1 << 18;
+    pub(super) const PREVPX: u32 = 1 << 19;
+    pub(super) const FILLS: u32 = 1 << 20;
+    pub(super) const LASTPX: u32 = 1 << 21;
+    pub(super) const CURRENCY: u32 = 1 << 22;
+    pub(super) const SIDE: u32 = 1 << 23;
+    pub(super) const ORDQTY: u32 = 1 << 24;
+    pub(super) const IDENTIFIERS: u32 = 1 << 25;
+    pub(super) const PARTYIDS: u32 = 1 << 26;
+    /// Every fact.
+    pub(super) const ALL: u32 = (1 << 27) - 1;
+    /// An order's quantities - what it ordered, what traded, what is left,
+    /// what was canceled - which fill one another against its state and are
+    /// stated again together.
+    pub(super) const ORDERED: u32 = ORDQTY | FILLS | CXLQTY;
+    /// The facts that fill one another through their setters - a side's
+    /// bid or ask off the price and quantity and back, their currency, the
+    /// hidden part of an iceberg - which are stated again together.
+    pub(super) const QUOTED: u32 =
+        BIDASK | PRICE | QUANTITY | SIDE | CURRENCY | DISPLAYQTY | HIDDENQTY;
+    /// The facts stated again from scratch: every one but those read with a
+    /// rule of their own - the identifiers, the state, the category, the
+    /// expiry and the execution clock.
+    pub(super) const CLEARED: u32 =
+        ALL & !(SECURITYIDS | STATE | KIND | EXPIRY | EXECUTION | IDENTIFIERS | PARTYIDS);
+    /// What the message's status reaches: the state, the category read
+    /// against it, the execution it dates, and what the category decides -
+    /// the type and a sided quote's FX parts.
+    pub(super) const STATUS: u32 = STATE | KIND | EXECUTION | MDTYPE | LASTPX | ORDERED;
+    /// What a field no tag maps reaches: the facts a bridge's own spelling
+    /// can state - an identifier source, a detailed classification, a quote
+    /// side's currency, an event timestamp - and what the instrument key an
+    /// identifier names fills.
+    pub(super) const NAMED: u32 = SECURITYIDS | CFI | MIC | CURRENCY | BIDASK | EXECUTION;
+}
+
+/// The facts a write of `tag` reaches: the ones [`FixMsg::state_market`]
+/// reads the tag for, and the ones those fill in turn. A tag no fact reads -
+/// an order identifier, a free text - reaches none, so what a lifecycle
+/// walk set on the message stands through it.
+fn facts_of_tag(registry: &FixRegistry, tag: i32) -> u32 {
+    match tag {
+        44 => fact::PRICE | fact::BIDASK,
+        99 => fact::STOPPX,
+        38 => fact::ORDERED | fact::QUANTITY,
+        53 => fact::QUANTITY | fact::HIDDENQTY | fact::BIDASK,
+        1138 | 111 => fact::DISPLAYQTY | fact::HIDDENQTY,
+        84 => fact::ORDERED,
+        996 => fact::UNIT,
+        54 => fact::SIDE | fact::BIDASK | fact::PRICE | fact::QUANTITY | fact::LASTPX,
+        59 => fact::TIF,
+        55 => fact::TICKER,
+        326 | 340 | 965 => fact::TRADABLE,
+        126 | 62 | 432 | 541 => fact::EXPIRY,
+        140 => fact::PREVPX,
+        BIDPX_TAG | OFFERPX_TAG | BIDSIZE_TAG | OFFERSIZE_TAG => {
+            fact::BIDASK | fact::PRICE | fact::QUANTITY
+        }
+        31 | 194 | 195 | 188 | 189 | 190 | 191 => fact::LASTPX | fact::FILLS,
+        32 | 6 | 14 | 151 => fact::ORDERED,
+        15 | 120 => fact::CURRENCY | fact::BIDASK,
+        30 | 100 | 207 => fact::MIC,
+        461 | 201 => fact::CFI,
+        22 | 48 | 454 | 455 | 456 => fact::SECURITYIDS | fact::MIC | fact::CURRENCY,
+        2749 | 60 | 768 | 769 | 770 | 1750..=1770 => fact::EXECUTION,
+        35 | 117 => fact::STATUS,
+        tag if State::FIX_STATUS_TAGS.contains(&tag) || tag == 150 => fact::STATUS,
+        tag if crate::MARKETDATATYPE_FIX_TAGS.contains(&tag)
+            || registry
+                .marketdatatype_sources()
+                .iter()
+                .any(|(held, _, _)| *held == tag) =>
+        {
+            fact::MDTYPE
+        }
+        tag if registry
+            .timeinforce_sources()
+            .iter()
+            .any(|(held, _, _)| *held == tag) =>
+        {
+            fact::TIF
+        }
+        _ => 0,
+    }
+}
+
+/// The fact a crate column states outright, which a row or a caller
+/// recording it states as its own word: a pending restatement of it is
+/// dropped, and a null hands it back to the fields.
+fn fact_of_crate_tag(tag: i32) -> u32 {
+    use super::crated as c;
+    match tag {
+        t if t == c::STATE_TAG_NAME.0 => fact::STATE,
+        t if t == c::MARKETDATAKIND_TAG_NAME.0 => fact::KIND,
+        t if t == c::MARKETDATATYPE_TAG_NAME.0 => fact::MDTYPE,
+        t if t == c::EXPRUNIX_TAG_NAME.0 => fact::EXPIRY,
+        t if t == c::EXECUNIX_TAG_NAME.0 => fact::EXECUTION,
+        t if t == c::MICCODE_TAG_NAME.0 => fact::MIC,
+        t if t == c::HIDDENQTY_TAG_NAME.0 => fact::HIDDENQTY,
+        t if t == c::UNIT_TAG_NAME.0 => fact::UNIT,
+        t if t == c::SECURITYIDS_TAG_NAME.0 => fact::SECURITYIDS,
+        t if t == c::IDENTIFIERS_TAG_NAME.0 => fact::IDENTIFIERS,
+        t if t == c::PARTYIDS_TAG_NAME.0 => fact::PARTYIDS,
+        t if t == c::PREVPX_TAG_NAME.0 => fact::PREVPX,
+        t if t == c::TICKER_TAG_NAME.0 => fact::TICKER,
+        t if t == c::ORDQTY_TAG_NAME.0 => fact::ORDQTY,
+        t if t == c::TRADABLE_TAG_NAME.0 => fact::TRADABLE,
+        t if t == c::SPOTRATE_TAG_NAME.0 || t == c::FORWARDPOINTS_TAG_NAME.0 => fact::LASTPX,
+        t if [
+            c::BIDQTY_TAG_NAME.0,
+            c::BIDCCY_TAG_NAME.0,
+            c::ASKPX_TAG_NAME.0,
+            c::ASKQTY_TAG_NAME.0,
+            c::ASKCCY_TAG_NAME.0,
+        ]
+        .contains(&t) =>
+        {
+            fact::BIDASK
+        }
+        _ => 0,
+    }
+}
+
+/// One field's text, trimmed; `None` where it is null or empty.
+fn stated_text(value: Option<Scalar>) -> Option<SmolStr> {
+    value
+        .and_then(|held| held.as_str().map(str::trim).map(SmolStr::new))
+        .filter(|held| !held.is_empty())
+}
+
+/// FIX's own `StrikePrice(202)`: what [`FixMsg::strikeprice`] reads.
 const STRIKEPRICE_TAG: i32 = 202;
 
 /// The group an identifier map reads its role sources out of, and the two
@@ -66,17 +209,22 @@ const PARTYID: &str = "partyid";
 /// parties and regulatory trade identifiers - an execution a trade's parse
 /// split off holds its one side here.
 const SIDES: i32 = 552;
-/// `PartyRole(452)`, whose code set names every role an account is keyed by.
+/// `PartyRole(452)`, whose code set names every role a party is typed by.
 const PARTY_ROLE: i32 = 452;
+/// `PartyIDSource(447)`, whose code set names the source of a party.
+const PARTY_ID_SOURCE: i32 = 447;
 /// The groups naming a message's parties - `NoPartyIDs(453)` and
 /// `NoRootPartyIDs(1116)` - each with the tags of its occurrence's
-/// identifier and role.
-const PARTY_GROUPS: [(i32, i32, i32); 2] = [(453, 448, PARTY_ROLE), (1116, 1117, 1119)];
+/// identifier, role and source.
+const PARTY_GROUPS: [(i32, i32, i32, i32); 2] = [
+    (453, 448, PARTY_ROLE, PARTY_ID_SOURCE),
+    (1116, 1117, 1119, 1118),
+];
 /// `Account(1)`: the account an order is booked to, one of a message's
-/// accounts under [`ACCOUNT_KEY`].
+/// parties typed [`IdType::Account`].
 const ACCOUNT: i32 = 1;
-/// The `accountids` key `Account(1)` goes under.
-const ACCOUNT_KEY: &str = "ACCOUNT";
+/// `AcctIDSource(660)`: the source of `Account(1)`.
+const ACCOUNT_SOURCE: i32 = 660;
 /// The groups naming a message's regulatory trade identifiers -
 /// `NoRegulatoryTradeIDs(1907)` and a side's `NoSideRegulatoryTradeIDs(1971)`
 /// - each with the tags of its occurrence's identifier and type.
@@ -86,8 +234,8 @@ const REGULATORY_GROUPS: [(i32, i32, i32); 2] = [(1907, 1903, 1906), (1971, 1972
 type Occurrence<const N: usize> = [Option<SmolStr>; N];
 
 /// One party group of a level: its value, beside where its occurrence
-/// states the identifier and the role.
-type PartyGroup<'level> = Option<(&'level Scalar, [Option<usize>; 2])>;
+/// states the identifier, the role and the source.
+type PartyGroup<'level> = Option<(&'level Scalar, [Option<usize>; 3])>;
 
 /// Every occurrence of the typed group `value`, each read at the member
 /// `positions` of its item as the text it spells: a member the item does
@@ -122,170 +270,212 @@ fn child_by_tag(
     })
 }
 
-/// Reads the accounts one level of a message states into `into`: each
-/// party of its `Parties(453)` and `RootParties(1116)` groups - each the
-/// group's value beside where its occurrence states the identifier and the
-/// role - under its role's key, then its `Account(1)` under
-/// [`ACCOUNT_KEY`]. The first value of a key stands - a second party of a
-/// role is ordinary, two contra firms - and a value no map holds is kept
-/// in `dropped` as an anomaly where one is asked for.
-fn read_accounts(
-    roles: Option<super::FixCodeSet<'_>>,
-    groups: [PartyGroup<'_>; 2],
-    account: Option<&Scalar>,
-    into: &mut IdMap,
-    mut dropped: Option<&mut Vec<super::FixAnomaly>>,
-) {
-    for (value, positions) in groups.into_iter().flatten() {
-        let mut occurrences = SmallVec::<[Occurrence<2>; 8]>::new();
-        read_occurrences(value, positions, &mut occurrences);
-        for [value, role] in occurrences {
-            if let Some(value) = value {
-                let key = account_key(roles, role.as_deref());
-                admit_account(into, &key, &value, PARTIES, dropped.as_deref_mut());
-            }
+/// The code sets a party is typed and sourced by: `PartyRole(452)`'s,
+/// `PartyIDSource(447)`'s and `AcctIDSource(660)`'s, each where the
+/// dictionary states one.
+#[derive(Clone, Copy)]
+pub(super) struct PartyCodes<'registry> {
+    roles: Option<super::FixCodeSet<'registry>>,
+    sources: Option<super::FixCodeSet<'registry>>,
+    accounts: Option<super::FixCodeSet<'registry>>,
+}
+
+impl<'registry> PartyCodes<'registry> {
+    /// The party code sets `registry` states.
+    pub(super) fn new(registry: &'registry FixRegistry) -> Self {
+        let of = |tag: i32| {
+            registry
+                .get_field_by_tag(tag)
+                .and_then(|field| registry.codeset_of(field))
+        };
+        Self {
+            roles: of(PARTY_ROLE),
+            sources: of(PARTY_ID_SOURCE),
+            accounts: of(ACCOUNT_SOURCE),
         }
     }
-    if let Some(account) = account.and_then(scalar_text) {
-        admit_account(into, ACCOUNT_KEY, &account, "account", dropped);
+
+    /// The party one occurrence states: its `PartyID` typed by its role's
+    /// name - `ExecutingTrader` is `executingtrader` - and sourced by its
+    /// source's, each read through [`code_word`]; [`IdType::Party`] for no
+    /// role and [`IdSource::Base`] for no source.
+    pub(super) fn party(
+        &self,
+        value: &str,
+        role: Option<&str>,
+        source: Option<&str>,
+    ) -> Option<Identifier> {
+        let kind = match code_word(self.roles, role, "partyrole") {
+            Some(word) => word.parse().ok()?,
+            None => IdType::Party,
+        };
+        let src = match code_word(self.sources, source, "partyidsource") {
+            Some(word) => word.parse().ok()?,
+            None => IdSource::Base,
+        };
+        Identifier::new(src, kind, value).ok()
+    }
+
+    /// The party `Account(1)` states: an [`IdType::Account`] sourced by its
+    /// `AcctIDSource(660)`'s name, read through [`code_word`], where stated.
+    fn account(&self, value: &str, source: Option<&str>) -> Option<Identifier> {
+        let src = match code_word(self.accounts, source, "acctidsource") {
+            Some(word) => word.parse().ok()?,
+            None => IdSource::Base,
+        };
+        Identifier::new(src, IdType::Account, value).ok()
     }
 }
 
-/// Where the occurrence of a party group states its identifier and its
-/// role, found by tag in the group's `field`.
+/// The word a party's role or source `text` is in its code set `codes`: the
+/// name of the code it is - stated by its wire value, the hot path, or by
+/// any spelling the set resolves - else its own spelling where the set
+/// resolves none, `generallyacceptedmarketparticipantidentifier` as
+/// itself; a bare wire code the set names nothing for - digits, or one
+/// character - is `{prefix}{code}`, `partyrole99`, so it never reads as a
+/// word of its own. None where the answer is no identifier word.
+fn code_word<'registry, 'text>(
+    codes: Option<super::FixCodeSet<'registry>>,
+    text: Option<&'text str>,
+    prefix: &str,
+) -> Option<Cow<'text, str>>
+where
+    'registry: 'text,
+{
+    let text = text?.trim();
+    let (code, name) = match codes {
+        Some(codes) => match codes.code_name(text) {
+            Some(name) => (text, Some(name)),
+            None => codes
+                .code_value(text)
+                .map_or((text, None), |wire| (wire, codes.code_name(wire))),
+        },
+        None => (text, None),
+    };
+    if let Some(name) = name.filter(|name| crate::identifier::is_word(name)) {
+        return Some(Cow::Borrowed(name));
+    }
+    let bare = code.len() == 1 || code.bytes().all(|byte| byte.is_ascii_digit());
+    if !bare {
+        return crate::identifier::is_word(code).then_some(Cow::Borrowed(code));
+    }
+    // Measured before it is spelled: a spelling no word is costs nothing.
+    crate::identifier::folded_len(code)
+        .is_some_and(|len| len > 0 && prefix.len() + len <= crate::identifier::IDENTIFIER_KEY_WIDTH)
+        .then(|| Cow::Owned(format!("{prefix}{code}")))
+}
+
+/// Reads the parties one level of a message states into `into`: each
+/// party of its `Parties(453)` and `RootParties(1116)` groups, then its
+/// `Account(1)`. The first value of a role and source stands; a second
+/// party of one is ordinary - two contra firms - and stays where the wire
+/// states it, an anomaly of nothing.
+fn read_parties(
+    codes: PartyCodes<'_>,
+    groups: [PartyGroup<'_>; 2],
+    account: [Option<&Scalar>; 2],
+    into: &mut Identifiers,
+) {
+    for (value, positions) in groups.into_iter().flatten() {
+        let mut occurrences = SmallVec::<[Occurrence<3>; 8]>::new();
+        read_occurrences(value, positions, &mut occurrences);
+        for [value, role, source] in occurrences {
+            if let Some(party) =
+                value.and_then(|value| codes.party(&value, role.as_deref(), source.as_deref()))
+            {
+                into.insert(party);
+            }
+        }
+    }
+    if let Some(party) = account[0]
+        .and_then(scalar_text)
+        .and_then(|value| codes.account(&value, account[1].and_then(scalar_text).as_deref()))
+    {
+        into.insert(party);
+    }
+}
+
+/// Where the occurrence of a party group states its identifier, its role
+/// and its source, found by tag in the group's `field`.
 fn party_positions(
     registry: &FixRegistry,
     field: &Field,
     counter: i32,
-) -> Option<[Option<usize>; 2]> {
-    let (_, id, role) = PARTY_GROUPS.iter().find(|(held, ..)| *held == counter)?;
+) -> Option<[Option<usize>; 3]> {
+    let (_, id, role, source) = PARTY_GROUPS.iter().find(|(held, ..)| *held == counter)?;
     let serie = field.dtype().as_serie_type()?;
     let fields = serie.item().fields();
-    Some([*id, *role].map(|tag| child_by_tag(registry, fields, false, tag)))
+    Some([*id, *role, *source].map(|tag| child_by_tag(registry, fields, false, tag)))
 }
 
 /// Where one level of a message - a trade side, a book entry - states its
-/// accounts, planned once from its fields and read off each occurrence's
-/// cells: each party group and, inside it, the identifier and the role,
-/// and the `Account(1)`.
+/// parties, planned once from its fields and read off each occurrence's
+/// cells: each party group and, inside it, the identifier, the role and the
+/// source, and the `Account(1)` with its source.
 pub(super) struct AccountsAt {
-    parties: [Option<(usize, [Option<usize>; 2])>; 2],
-    account: Option<usize>,
+    parties: [Option<(usize, [Option<usize>; 3])>; 2],
+    account: [Option<usize>; 2],
 }
 
 impl AccountsAt {
-    /// Where `fields` state their accounts.
+    /// Where `fields` state their parties.
     pub(super) fn new(registry: &FixRegistry, fields: &[Field]) -> Self {
         Self {
             parties: PARTY_GROUPS.map(|(counter, ..)| {
                 let at = child_by_tag(registry, fields, true, counter)?;
                 Some((at, party_positions(registry, fields.get(at)?, counter)?))
             }),
-            account: child_by_tag(registry, fields, false, ACCOUNT),
+            account: [ACCOUNT, ACCOUNT_SOURCE]
+                .map(|tag| child_by_tag(registry, fields, false, tag)),
         }
     }
 
-    /// Whether the level states no account at all.
+    /// Whether the level states no party at all.
     fn is_empty(&self) -> bool {
-        self.parties.iter().all(Option::is_none) && self.account.is_none()
+        self.parties.iter().all(Option::is_none) && self.account[0].is_none()
     }
 
-    /// Reads the accounts one occurrence's `cells` state into `into`, as
-    /// [`read_accounts`] does.
-    pub(super) fn read(
-        &self,
-        roles: Option<super::FixCodeSet<'_>>,
-        cells: &[Scalar],
-        into: &mut IdMap,
-        dropped: Option<&mut Vec<super::FixAnomaly>>,
-    ) {
+    /// Reads the parties one occurrence's `cells` state into `into`, as
+    /// [`read_parties`] does.
+    pub(super) fn read(&self, codes: PartyCodes<'_>, cells: &[Scalar], into: &mut Identifiers) {
         if self.is_empty() {
             return;
         }
         let groups = self
             .parties
             .map(|group| group.and_then(|(at, positions)| Some((cells.get(at)?, positions))));
-        let account = self.account.and_then(|at| cells.get(at));
-        read_accounts(roles, groups, account, into, dropped);
+        let account = self.account.map(|at| at.and_then(|at| cells.get(at)));
+        read_parties(codes, groups, account, into);
     }
 }
 
-/// States `value` under `key` in `accounts` unless the key is held already
-/// or the value states nothing; a value no map holds is kept in `dropped`
-/// as an anomaly of `field` where one is asked for.
-fn admit_account(
-    accounts: &mut IdMap,
-    key: &str,
-    value: &str,
-    field: &str,
-    dropped: Option<&mut Vec<super::FixAnomaly>>,
-) {
-    if crate::code::is_null_like(value) || accounts.contains_key(key) {
-        return;
-    }
-    if let Err(error) = accounts.insert(key, value) {
-        if let Some(dropped) = dropped {
-            dropped.push(super::FixAnomaly::new(
-                field,
-                format!("states {key}:{value}, which no identifier map holds: {error}"),
-            ));
-        }
-    }
-}
-
-/// The code set `PartyRole(452)` draws from, whose names key the accounts.
-pub(super) fn party_roles(registry: &FixRegistry) -> Option<super::FixCodeSet<'_>> {
-    registry
-        .get_field_by_tag(PARTY_ROLE)
-        .and_then(|field| registry.codeset_of(field))
-}
-
-/// The `accountids` key a party of one `PartyRole(452)` code goes under: the
-/// role's name, as the dictionary's code set spells it - `ExecutingTrader`
-/// keys `EXECUTINGTRADER` - else `PARTYROLE{code}` for a role the set names
-/// none for or a name longer than a key holds, and `PARTY` for a party
-/// stating no role.
-fn account_key<'registry>(
-    roles: Option<super::FixCodeSet<'registry>>,
-    role: Option<&str>,
-) -> Cow<'registry, str> {
-    let Some(role) = role else {
-        return Cow::Borrowed("PARTY");
-    };
-    // The map folds a key as it stores it, so the name is lent as spelled.
-    match roles.and_then(|roles| roles.code_name(role)) {
-        Some(name) if name.len() <= ACCOUNT_KEY_WIDTH && name.is_ascii() => Cow::Borrowed(name),
-        _ => Cow::Owned(format!("PARTYROLE{role}")),
-    }
-}
-
-/// The most bytes an [`IdMap`] key holds.
-const ACCOUNT_KEY_WIDTH: usize = 32;
-
-/// The `altids` key a regulatory trade identifier of one
-/// `RegulatoryTradeIDType(1906)` goes under: `REGTRADEID` for the current
-/// one or where no type is stated, the previous, block, related and
-/// cleared-block ones prefixed, a trading venue's transaction identifier
-/// `TVTIC` and a report's tracking number `REPORTTRACKINGNUMBER`.
-fn regulatory_key(kind: Option<&str>) -> Cow<'static, str> {
-    Cow::Borrowed(match kind.unwrap_or("0") {
-        "0" => "REGTRADEID",
-        "1" => "PREVREGTRADEID",
-        "2" => "BLOCKREGTRADEID",
-        "3" => "RELATEDREGTRADEID",
-        "4" => "CLEAREDREGTRADEID",
-        "5" => "TVTIC",
-        "6" => "REPORTTRACKINGNUMBER",
-        other => return Cow::Owned(format!("REGTRADEID{other}")),
+/// The type a regulatory trade identifier of one
+/// `RegulatoryTradeIDType(1906)` goes under in `identifiers`: `regtradeid`
+/// for the current one or where no type is stated, the previous, block,
+/// related and cleared-block ones prefixed, a trading venue's transaction
+/// identifier `tvtic` and a report's tracking number
+/// `reporttrackingnumber`; any other type `regtradeid{type}`, where that is
+/// a word.
+fn regulatory_kind(kind: Option<&str>) -> crate::Result<IdType> {
+    Ok(match kind.unwrap_or("0") {
+        "0" => IdType::RegTradeId,
+        "1" => IdType::PrevRegTradeId,
+        "2" => IdType::BlockRegTradeId,
+        "3" => IdType::RelatedRegTradeId,
+        "4" => IdType::ClearedRegTradeId,
+        "5" => IdType::Tvtic,
+        "6" => IdType::ReportTrackingNumber,
+        other => return format!("regtradeid{other}").parse(),
     })
 }
 
-/// States `value` under `key` in `map`: the first value a key is stated with
-/// fills it, and a later different one - or one the map cannot hold -
-/// states nothing and is kept as an anomaly of `field`.
+/// States `value` as an identifier of `kind` from `src` in `ids`: the first
+/// value one is stated with fills it, and a later different one - or one no
+/// identifier holds - states nothing and is kept as an anomaly of `field`.
 fn admit_identifier(
-    map: &mut IdMap,
-    key: &str,
+    ids: &mut Identifiers,
+    src: IdSource,
+    kind: crate::Result<IdType>,
     value: &str,
     field: &str,
     dropped: &mut Vec<super::FixAnomaly>,
@@ -293,19 +483,28 @@ fn admit_identifier(
     if crate::code::is_null_like(value) {
         return;
     }
-    match map.get(key) {
-        Some(held) if held != value => dropped.push(super::FixAnomaly::new(
+    let id = match kind.and_then(|kind| Identifier::new(src, kind, value)) {
+        Ok(id) => id,
+        Err(error) => {
+            dropped.push(super::FixAnomaly::new(
+                field,
+                format!("states {value:?}, which no identifier holds: {error}"),
+            ));
+            return;
+        }
+    };
+    match ids.get_from(id.src(), id.kind()) {
+        Some(held) if held != id.value() => dropped.push(super::FixAnomaly::new(
             field,
-            format!("states {key}:{value} where {key}:{held} is already stated"),
+            format!(
+                "states {id} where {}:{}={held} is already stated",
+                id.src(),
+                id.kind()
+            ),
         )),
         Some(_) => {}
         None => {
-            if let Err(error) = map.insert(key, value) {
-                dropped.push(super::FixAnomaly::new(
-                    field,
-                    format!("states {key}:{value}, which no identifier map holds: {error}"),
-                ));
-            }
+            ids.insert(id);
         }
     }
 }
@@ -330,30 +529,20 @@ const OFFERPX_TAG: i32 = 133;
 const BIDSIZE_TAG: i32 = 134;
 const OFFERSIZE_TAG: i32 = 135;
 
-/// The row-owned facts whose non-null value must survive market derivation.
-fn row_stated_bit(tag: i32) -> Option<u16> {
-    if tag == super::STATE_TAG_NAME.0 {
-        Some(ROW_STATED_STATE)
-    } else if tag == super::EXPRUNIX_TAG_NAME.0 {
-        Some(ROW_STATED_EXPIRY)
-    } else if tag == super::ISINCODE_TAG_NAME.0 {
+/// The row-owned facts whose non-null value must survive the fields.
+fn row_stated_bit(tag: i32) -> Option<u64> {
+    if tag == super::ISINCODE_TAG_NAME.0 {
         Some(ROW_STATED_ISIN)
     } else if tag == super::BLOOMBERGCODE_TAG_NAME.0 {
         Some(ROW_STATED_BLOOMBERG)
-    } else if tag == super::MICCODE_TAG_NAME.0 {
-        Some(ROW_STATED_MIC)
     } else if tag == super::FIGICODE_TAG_NAME.0 {
         Some(ROW_STATED_FIGI)
     } else if tag == super::EXECUNIX_TAG_NAME.0 {
         Some(ROW_STATED_EXECUTION)
     } else if tag == super::RECDUNIX_TAG_NAME.0 {
         Some(ROW_STATED_RECORDING)
-    } else if tag == super::MSGCAT_TAG_NAME.0 {
-        Some(ROW_STATED_MSGCAT)
     } else if tag == super::FOREXCODE_TAG_NAME.0 {
         Some(ROW_STATED_FOREX)
-    } else if tag == super::STRIKEPX_TAG_NAME.0 {
-        Some(ROW_STATED_STRIKE)
     } else {
         None
     }
@@ -396,17 +585,21 @@ fn derived_msgcat(
     }
 }
 
+/// The identity tags a row's reading records last, in this order: the
+/// cross code once the category it is stored under stands, then the hash
+/// and the elements it derives, which a row stating them states over the
+/// derived ones.
+const SETTLED_LAST: [i32; 4] = [
+    super::CROSSCODE_TAG_NAME.0,
+    super::CROSSHASHCODE_TAG_NAME.0,
+    super::CROSSUUID_TAG_NAME.0,
+    super::CURRUUID_TAG_NAME.0,
+];
+
 /// The category one `msgcat` cell states: the member, its code or any
 /// spelling of it; `None` for a null or a value naming none.
 fn msgcat_of(value: &Scalar) -> Option<MarketDataKind> {
-    match value {
-        Scalar::MarketDataKind(held) => Some(*held),
-        other => other
-            .as_i128()
-            .and_then(|code| i32::try_from(code).ok())
-            .and_then(MarketDataKind::from_code)
-            .or_else(|| other.as_str().and_then(MarketDataKind::from_spelling)),
-    }
+    <MarketDataKind as crate::EnumValue>::from_scalar_value(value)
 }
 
 /// A FIX message: a market event with a FIX body around it.
@@ -505,9 +698,6 @@ pub struct FixMsg {
     /// dictionary's `FIX:msgcat`, or the one the row it was read from stated
     /// - which decides whether its cross code carries its side.
     event: Box<OperationEventFacts>,
-    /// The option strike price the message identifies - `StrikePrice(202)`
-    /// as the decimal leaf - or the one the row it was read from stated.
-    strikepx: Option<Decimal>,
     /// The standard header, typed.
     header: Box<FixHeader>,
     /// What the line said about the capture it was written for, typed: a
@@ -518,18 +708,18 @@ pub struct FixMsg {
     /// quantities and the identifiers, each exactly as the message stated
     /// it. What the event *derives* from them is the event's.
     lifted: Box<FixLifted>,
-    /// Whether a caller or a lifecycle walk wrote a market fact through the
-    /// traits, which stops the derivation from answering over it.
-    ///
-    /// A derived fact is recomputed from the FIX fields on every settle,
-    /// because a write can change what they say; a *forced* one is somebody
-    /// else's answer - the state a walk folded forward, the price it says
-    /// this message moved from - and re-deriving would throw it away.
-    forced: bool,
-    /// The lifecycle and normalized market facts the row stated. Derivation
-    /// leaves them as the row's word, so reconstruction keeps an explicit
-    /// value rather than replacing it from a raw FIX field.
-    row_stated: u16,
+    /// The market facts a write reached and the next settle states again
+    /// off the fields, overwriting: one [`fact`] bit each.
+    stale: u32,
+    /// The market facts the row stated under a crate column, or a caller -
+    /// a lifecycle walk - set through the graph traits: their word, which
+    /// no write restates until a null recorded hands the fact back to the
+    /// fields.
+    stated: u32,
+    /// The normalized market facts the row stated. The fields leave them as
+    /// the row's word, so reconstruction keeps an explicit value rather than
+    /// replacing it from a raw FIX field.
+    row_stated: u64,
     /// `Text(58)`, where the message carries one.
     text: Option<SmolStr>,
     /// What a bridge stated under its own namespaces - `TECH.CLIENTID`,
@@ -569,8 +759,9 @@ pub struct FixMsg {
     /// The security identifiers the message implies rather than states: the
     /// national code an ISIN carries, what a lifecycle's registry learned. The
     /// derived overlay - never on the wire, never in the arrival record - kept
-    /// across settles and filling only a key the stated set leaves absent.
-    derived: SecurityIds,
+    /// across settles and filling only a type the stated set leaves absent,
+    /// each under the [`DERIVED`] source.
+    derived: Identifiers,
     /// Which cells [FX detection](super::forex) wrote, one bit per cell:
     /// a later detection may rewrite or take back those and no other. A
     /// row read back, and a write of the cell, make it the row's word.
@@ -947,8 +1138,9 @@ impl FixMsg {
             official_time_delay_ns,
             false,
         )?;
+        // What arrived leads what the fields' reading recorded.
         message.arrival_anomalies = anomalies.len();
-        message.anomalies = anomalies;
+        message.anomalies.splice(0..0, anomalies);
         Ok(message)
     }
 
@@ -974,9 +1166,9 @@ impl FixMsg {
         )?;
         message.sync_session_event_identifier();
         if retains_identity {
-            message.derive_market();
             message.rebuild_idmaps();
             message.event.fill_market();
+            message.fill_parents();
         } else {
             message.settle();
         }
@@ -1019,9 +1211,14 @@ impl FixMsg {
         let mut stated_sending = false;
         let mut stated_unix = false;
         let mut stated_creation = false;
-        let mut row_stated = 0_u16;
+        // Whether the row has a place for the recording at all: a row that
+        // does states it, a null included, and one that does not leaves it
+        // to the sender's clock.
+        let mut carries_recording = false;
+        let mut row_stated = 0_u64;
+        let mut stated = 0_u32;
         let mut msgcat = None;
-        let mut strikepx = None;
+        let mut settled_last = [None; SETTLED_LAST.len()];
         // A typed tag is lifted out of the row onto its holder, and a holder
         // keeps one fact per tag - so a row stating one tag twice is left
         // where it stands rather than collapsed into one slot. Two children
@@ -1030,6 +1227,7 @@ impl FixMsg {
         for ((child, column), value) in field.fields().iter().zip(plan.iter()).zip(held) {
             match column.tag {
                 Some(tag) if identity::is_typed_tag(tag) && !column.shared => {
+                    carries_recording |= tag == super::RECDUNIX_TAG_NAME.0;
                     if value.is_null() {
                         continue;
                     }
@@ -1037,10 +1235,10 @@ impl FixMsg {
                         text = value.as_str().map(SmolStr::new);
                     } else if tag == super::METADATA_TAG_NAME.0 {
                         metadata = metadata_of(value);
-                    } else if tag == super::MSGCAT_TAG_NAME.0 {
+                    } else if tag == super::MARKETDATAKIND_TAG_NAME.0 {
                         msgcat = msgcat_of(value);
-                    } else if tag == super::STRIKEPX_TAG_NAME.0 {
-                        strikepx = Decimal::from_scalar(value);
+                    } else if let Some(at) = SETTLED_LAST.iter().position(|last| *last == tag) {
+                        settled_last[at] = Some(value);
                     } else {
                         identity::record(
                             &mut event,
@@ -1051,6 +1249,7 @@ impl FixMsg {
                             value,
                         );
                     }
+                    stated |= fact_of_crate_tag(tag);
                     stated_sending |= tag == 52;
                     stated_unix |= tag == super::CURRUNIX_TAG_NAME.0;
                     stated_creation |= tag == super::CREAUNIX_TAG_NAME.0;
@@ -1060,10 +1259,14 @@ impl FixMsg {
                 }
                 // A key spelled under a namespace - `TECH.CLIENTID` - is a
                 // bridge's own statement and goes to the metadata, under
-                // the key as the bridge spelled it, folded.
-                None if child.name().contains('.') => {
-                    if let Some(held) = value.as_str().filter(|held| !held.is_empty()) {
-                        metadata.insert(SmolStr::new(child.name()), SmolStr::new(held));
+                // the key as the bridge spelled it, folded; so does an alias
+                // that lost to the field it names while stating another
+                // value, which no field holds and the wire never re-emits.
+                None if child.name().contains('.')
+                    || child.get_metadata(super::field::ALIAS_OF).is_some() =>
+                {
+                    if let Some(held) = spelled(value).filter(|held| !held.is_empty()) {
+                        metadata.insert(SmolStr::new(child.name()), held);
                     }
                 }
                 // The capture's own column, whoever built the root: the
@@ -1105,26 +1308,26 @@ impl FixMsg {
                 header.set_sendingtime(unix);
             }
         }
-        if msgcat.is_none() {
-            // A value naming no category states none, and derivation
-            // answers.
-            row_stated &= !ROW_STATED_MSGCAT;
+        // The category the row stated; one it states none of - or names
+        // none by - the fields state below, against the state they reach.
+        match msgcat {
+            Some(msgcat) => event.set_marketdatakind(msgcat),
+            None => stated &= !fact::KIND,
         }
-        event.set_marketdatakind(
-            // As filed until the settle below derives it against the state.
-            msgcat.unwrap_or_else(|| {
-                derived_msgcat(
-                    &registry,
-                    header.msgtype(),
-                    lifted.quoteid().is_some(),
-                    true,
-                )
-            }),
-        );
-        if strikepx.is_none() {
-            // A value that is no decimal states none, and derivation
-            // answers.
-            row_stated &= !ROW_STATED_STRIKE;
+        // The cross code is stored under the category, so it is recorded once
+        // that stands; the hash and the elements the row states after it, so
+        // what the row states stands over what the code derives.
+        for (tag, value) in SETTLED_LAST.into_iter().zip(settled_last) {
+            if let Some(value) = value {
+                identity::record(
+                    &mut event,
+                    &mut header,
+                    &mut capture,
+                    &mut lifted,
+                    tag,
+                    value,
+                );
+            }
         }
         // The members are the planned root's children less the lifted
         // ones, named once as that root named them.
@@ -1142,11 +1345,11 @@ impl FixMsg {
         let mut message = Self {
             registry,
             event,
-            strikepx,
             header,
             capture,
             lifted,
-            forced: false,
+            stale: 0,
+            stated,
             row_stated,
             text,
             metadata,
@@ -1157,7 +1360,7 @@ impl FixMsg {
             value: Scalar::from_sequence(values),
             entries: OnceLock::new(),
             carried: Vec::new(),
-            derived: SecurityIds::default(),
+            derived: Identifiers::new(),
             detected_fx: 0,
             anomalies: Vec::new(),
             arrival_anomalies: 0,
@@ -1179,6 +1382,12 @@ impl FixMsg {
         if !stated_creation {
             message.event.set_creaunix(Some(message.get_currunix()));
         }
+        if !carries_recording {
+            message.record_at_sending();
+        }
+        // What the message implies about its market, read off the FIX
+        // fields it stated; what the row stated stands as its word.
+        message.state_market(fact::ALL);
         if settle {
             message.settle();
         }
@@ -1281,6 +1490,9 @@ impl FixMsg {
     /// settled: the pass that restates settles once, after everything it
     /// writes.
     pub(super) fn replace_content(&mut self, field: Field, values: Vec<Scalar>) -> Result<()> {
+        // Another statement of the whole content: every fact is stated
+        // again off it at the settle that follows.
+        self.stale |= fact::ALL;
         let plan = super::schema::column_plan_of(&field, &self.registry)?;
         let mut content = Vec::with_capacity(field.fields().len());
         let mut kept = Vec::with_capacity(values.len());
@@ -1296,7 +1508,9 @@ impl FixMsg {
                 // content can make a fact of the message: read past, as
                 // every other door reads it past.
                 Some(tag) if identity::is_capture_tag(tag) => false,
-                None if child.name().contains('.') => {
+                None if child.name().contains('.')
+                    || child.get_metadata(super::field::ALIAS_OF).is_some() =>
+                {
                     if let Some(held) = value.as_str().filter(|held| !held.is_empty()) {
                         self.metadata
                             .insert(SmolStr::new(child.name()), SmolStr::new(held));
@@ -1348,43 +1562,24 @@ impl FixMsg {
             return true;
         }
         if tag == super::METADATA_TAG_NAME.0 {
+            // A key no dictionary maps may name a security identifier, which
+            // the next settle reads again.
             self.metadata = metadata_of(value);
+            self.stale |= fact::SECURITYIDS;
             return true;
         }
-        if tag == super::MSGCAT_TAG_NAME.0 {
-            // A null, or a value naming no category, hands it back to
-            // derivation.
+        if tag == super::MARKETDATAKIND_TAG_NAME.0 {
+            // A null, or a value naming no category, hands it back to the
+            // fields, which the next settle reads it off again.
             match msgcat_of(value) {
                 Some(msgcat) => {
                     self.event.set_marketdatakind(msgcat);
-                    self.row_stated |= ROW_STATED_MSGCAT;
+                    self.stated |= fact::KIND;
+                    self.stale &= !fact::KIND;
                 }
                 None => {
-                    let reports = self
-                        .explicit_execution_type()
-                        .unwrap_or_else(|| self.event.get_state().is_execution());
-                    self.event.set_marketdatakind(derived_msgcat(
-                        &self.registry,
-                        self.header.msgtype(),
-                        self.lifted.quoteid().is_some(),
-                        reports,
-                    ));
-                    self.row_stated &= !ROW_STATED_MSGCAT;
-                }
-            }
-            return true;
-        }
-        if tag == super::STRIKEPX_TAG_NAME.0 {
-            // A null, or a value that is no decimal, hands it back to
-            // derivation.
-            match Decimal::from_scalar(value) {
-                Some(strikepx) => {
-                    self.strikepx = Some(strikepx);
-                    self.row_stated |= ROW_STATED_STRIKE;
-                }
-                None => {
-                    self.strikepx = self.stated_strikepx();
-                    self.row_stated &= !ROW_STATED_STRIKE;
+                    self.stated &= !fact::KIND;
+                    self.stale |= fact::KIND;
                 }
             }
             return true;
@@ -1403,6 +1598,21 @@ impl FixMsg {
                     self.row_stated &= !bit;
                 } else {
                     self.row_stated |= bit;
+                }
+            }
+            // A crate column recorded is its fact's word, which no pending
+            // restatement replaces; a null hands the fact back to the
+            // fields. A FIX field recorded - a lifted price - is a write of
+            // what its facts read.
+            match fact_of_crate_tag(tag) {
+                0 => self.stale |= facts_of_tag(&self.registry, tag),
+                fact if value.is_null() => {
+                    self.stated &= !fact;
+                    self.stale |= fact;
+                }
+                fact => {
+                    self.stated |= fact;
+                    self.stale &= !fact;
                 }
             }
         }
@@ -1432,11 +1642,8 @@ impl FixMsg {
             )
             .ok();
         }
-        if tag == super::MSGCAT_TAG_NAME.0 {
+        if tag == super::MARKETDATAKIND_TAG_NAME.0 {
             return Some(Scalar::MarketDataKind(self.msgcat()));
-        }
-        if tag == super::STRIKEPX_TAG_NAME.0 {
-            return self.strikepx.map(Scalar::from);
         }
         let fact = Typed {
             event: &self.event,
@@ -1496,7 +1703,6 @@ impl FixMsg {
     /// `sync_session_event_identifier` states their joined values as the
     /// capture's `msgsesseventid` without making it content.
     pub(super) fn settle(&mut self) {
-        self.anomalies.truncate(self.arrival_anomalies);
         self.sync_session_event_identifier();
         if self.event.get_crosscode().is_empty() {
             let code = identity::CROSS_TAGS.iter().find_map(|tag| {
@@ -1508,11 +1714,14 @@ impl FixMsg {
                 self.event.set_crosscode(code);
             }
         }
-        // What the message implies about its market, read off the FIX
-        // fields it stated, before the code it answers to covers either.
-        self.derive_market();
+        // What a write reached, stated again off the FIX fields it moved -
+        // overwriting - before the code the message answers to covers
+        // either.
+        let stale = std::mem::take(&mut self.stale);
+        self.state_market(stale);
         self.rebuild_idmaps();
         self.event.fill_market();
+        self.fill_parents();
         self.event.sync_cross();
         let currhashcode = self.currhashcode();
         self.event.finalized(currhashcode);
@@ -1659,16 +1868,16 @@ impl FixMsg {
                 (mine, theirs)
             };
             let kept = earlier.or(later).map(SmolStr::new);
-            if let (Some(earlier), Some(later)) = (earlier, later) {
-                if earlier != later {
-                    let anomaly = super::FixAnomaly::new(
-                        name,
-                        format!("states {later} where an earlier observation states {earlier}"),
-                    );
-                    if !self.anomalies[..self.arrival_anomalies].contains(&anomaly) {
-                        self.anomalies.insert(self.arrival_anomalies, anomaly);
-                        self.arrival_anomalies += 1;
-                    }
+            if let (Some(earlier), Some(later)) = (earlier, later)
+                && earlier != later
+            {
+                let anomaly = super::FixAnomaly::new(
+                    name,
+                    format!("states {later} where an earlier observation states {earlier}"),
+                );
+                if !self.anomalies[..self.arrival_anomalies].contains(&anomaly) {
+                    self.anomalies.insert(self.arrival_anomalies, anomaly);
+                    self.arrival_anomalies += 1;
                 }
             }
             self.capture.set_provenance(tag, kept.as_deref());
@@ -1760,19 +1969,22 @@ impl FixMsg {
             })
     }
 
-    /// What the message implies about its market, read off the FIX fields
-    /// it states and filled onto the event.
+    /// States the market facts `facts` names off the FIX fields, each
+    /// through its [`Market`] setter with `overwrite`: the fields' reading
+    /// replaces what the message held, a fact they no longer state cleared -
+    /// except a fact the row or a caller stated under a crate column
+    /// ([`FixMsg::record`]), which is their word: the fields only fill it.
     ///
-    /// Every market fact is FIX's own, and a message states the ones it
-    /// states: `Price(44)`, `OrderQty(38)` or `Quantity(53)`, the fill and
-    /// the progress, the side and the currency, the ISIN, Bloomberg and FIGI
-    /// identifiers under their sources, the market, the unit and the state.
-    /// CUSIP and SEDOL stay in `SecurityID` or
-    /// `secaltids` unless a semantic row or setter states their normalized
-    /// columns. This reads each lifted fact and hands it to the trait, which
-    /// is where the ladder that decides what the message is *about* lives -
-    /// [`Market::fill_market`], called straight after through the
-    /// FIX-specific guard below.
+    /// A message states every fact as it is built; a write marks the facts
+    /// its tags feed ([`facts_of_tag`]) and the next settle states them
+    /// again - so a write moves exactly what it reaches, and what a
+    /// lifecycle walk set on the message stands until a field it was read
+    /// from is written. What a setter implies past its own fact - the bid of
+    /// a buyer's price, the part an iceberg hides, the third of an FX
+    /// triple - it fills itself ([`Market`]), so the facts that fill one
+    /// another are cleared and stated again together ([`fact::QUOTED`]),
+    /// each overwriting what an earlier one filled, and the side last: a
+    /// value the wire states always stands over a fill.
     ///
     /// The execution clock is the one the message's own fields state, and a
     /// raw observation reporting an execution - [`Event::is_execution`] as
@@ -1782,59 +1994,390 @@ impl FixMsg {
     /// keeps the execution its chain reached: that is the walk's to state,
     /// and its state may be one it inherited rather than one it reported.
     ///
-    /// What a lifecycle walk forced - the state it reached, what a price
-    /// moved from, the instrument the chain is about - survives being
-    /// settled again, and so do the state and the expiry a row stated: a
-    /// chained message read back keeps what the walk folded forward rather
-    /// than what its own fields say. And nothing filled here reaches the
-    /// wire, the arrival record or the code the message digests to: those
-    /// read what the message *stated*, and a derived fact is not a
-    /// statement.
-    fn derive_market(&mut self) {
-        if self.forced {
-            return;
-        }
-        let row_stated = self.row_stated;
-        if row_stated & ROW_STATED_STRIKE == 0 {
-            self.strikepx = self.stated_strikepx();
-        }
-        let text = |value: Option<Scalar>| {
-            value
-                .and_then(|held| held.as_str().map(str::trim).map(SmolStr::new))
-                .filter(|held| !held.is_empty())
+    /// Nothing stated here reaches the wire, the arrival record or the code
+    /// the message digests to: those read what the message *stated*, and a
+    /// derived fact is not a statement.
+    fn state_market(&mut self, facts: u32) {
+        // The facts that fill one another move together.
+        // The quantity is what an order still has open, so the quoting and
+        // the order's quantities are one group.
+        let group = fact::QUOTED | fact::ORDERED;
+        let facts = if facts & group != 0 {
+            facts | group
+        } else {
+            facts
         };
-        let by_tag = |tag: i32| self.get_by_tag(tag).filter(|held| !held.is_null());
-        // A value stated but unreadable is the fact's default, beside a
-        // warning naming the field; an absent one is the default silently.
-        let number = |tag: i32| {
-            by_tag(tag).and_then(|held| {
-                let read = Decimal::from_scalar(&held);
-                if read.is_none() {
-                    self.unread(
-                        "FIX price or quantity defaulted to none: the stated value is no exact decimal",
-                        tag,
-                        &held,
-                    );
-                }
-                read
-            })
-        };
-        let word = |tag: i32| text(by_tag(tag));
-
+        let reached = |fact: u32| facts & fact != 0;
+        // What the row or a caller stated under a crate column is its word:
+        // the fields fill it where it is empty and never overwrite it.
+        let stated = self.stated;
+        let over = |fact: u32| stated & fact == 0;
+        self.clear_market(facts & fact::CLEARED & !stated);
+        if reached(fact::SECURITYIDS) {
+            // The identifiers the fields state already rank a crated view the
+            // row stated after the wire's, so they replace what the row
+            // recorded - unless the row stated the whole set.
+            self.state_securityids(over(fact::SECURITYIDS));
+        }
+        if reached(fact::STATE) {
+            let state = State::FIX_STATUS_TAGS
+                .into_iter()
+                .find_map(|tag| {
+                    self.stated_word(tag)
+                        .and_then(|held| State::from_fix_status(tag, &held))
+                })
+                .or_else(|| State::from_fix_msgtype(self.header.msgtype()))
+                .unwrap_or_else(State::unknown);
+            if over(fact::STATE) || *self.event.get_state() == State::unknown() {
+                self.event.set_state(state);
+            }
+        }
+        if reached(fact::KIND) {
+            // The category it files under, a report of no fill its order's or
+            // its quote's report, read against the state it reached.
+            let reports = self
+                .explicit_execution_type()
+                .unwrap_or_else(|| self.event.get_state().is_execution());
+            let kind = derived_msgcat(
+                &self.registry,
+                self.header.msgtype(),
+                self.lifted.quoteid().is_some(),
+                reports,
+            );
+            if over(fact::KIND) || self.event.marketdatakind() == MarketDataKind::Unknown {
+                self.event.set_marketdatakind(kind);
+            }
+        }
+        if reached(fact::MDTYPE) {
+            let mdtype = self.stated_marketdatatype().unwrap_or_default();
+            self.event.set_marketdatatype(mdtype, over(fact::MDTYPE));
+        }
+        if reached(fact::EXPIRY) {
+            let exprunix = [126, 62, 432, 541].into_iter().find_map(|tag| {
+                self.stated_by_tag(tag)
+                    .and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond))
+            });
+            if over(fact::EXPIRY) || self.event.get_exprunix().is_none() {
+                self.event.set_exprunix(exprunix);
+            }
+        }
+        if reached(fact::EXECUTION) {
+            let execunix = self.execution_or_placed(self.stated_execution_instant());
+            self.event.set_execunix(execunix, over(fact::EXECUTION));
+        }
+        if reached(fact::TIF) {
+            let tif = self.stated_timeinforce();
+            self.event.set_timeinforce(tif, over(fact::TIF));
+        }
+        if reached(fact::TICKER) {
+            let ticker = self
+                .stated_word(55)
+                .filter(|held| held != "[N/A]" && held != "[N/A");
+            self.event.set_ticker(ticker, over(fact::TICKER));
+        }
+        if reached(fact::CFI) {
+            // The detailed classification the chain reaches, or none: a
+            // coarse stated code is not a classification the market keeps.
+            let cficode = self.classification().and_then(|held| Cfi::new(&held).ok());
+            if cficode.is_none()
+                && let Some(held) = self.stated_word(461).filter(|held| Cfi::new(held).is_err())
+            {
+                self.unread(
+                    "FIX classification defaulted to none: the stated CFI code does not read",
+                    461,
+                    &held,
+                );
+            }
+            debug_assert!(
+                cficode
+                    .as_ref()
+                    .is_none_or(|held| Cfi::is_detailed(held.as_str())),
+                "the classification chain answers a detailed code or none"
+            );
+            self.event.set_cficode(cficode, over(fact::CFI));
+        }
+        if reached(fact::MIC) {
+            let miccode = self.stated_miccode();
+            self.event.set_miccode(miccode, over(fact::MIC));
+        }
+        if reached(fact::TRADABLE) {
+            let tradable = self.stated_tradable();
+            self.event.set_tradable(tradable, over(fact::TRADABLE));
+        }
+        if reached(fact::UNIT) {
+            let unit = self.stated_word(996).and_then(|held| {
+                Unit::new(&held)
+                    .inspect_err(|_| {
+                        self.unread(
+                            "FIX unit defaulted to none: the stated unit of measure does not read",
+                            996,
+                            &held,
+                        );
+                    })
+                    .ok()
+            });
+            self.event
+                .set_unit(unit.unwrap_or_else(Unit::none), over(fact::UNIT));
+        }
+        // The bid and the ask the message states, each in the currency a
+        // field of its own names: the message's currency fills one that
+        // names none, as the setters fill it.
+        if reached(fact::BIDASK) {
+            let (bidccy, askccy) = (
+                self.stated_quote_ccy(&BID_CURRENCY),
+                self.stated_quote_ccy(&ASK_CURRENCY),
+            );
+            let (bidpx, bidqty) = (
+                self.stated_number(BIDPX_TAG),
+                self.stated_number(BIDSIZE_TAG),
+            );
+            let (askpx, askqty) = (
+                self.stated_number(OFFERPX_TAG),
+                self.stated_number(OFFERSIZE_TAG),
+            );
+            let overwrite = over(fact::BIDASK);
+            let event = &mut *self.event;
+            event.set_bidccy(bidccy, overwrite);
+            event.set_askccy(askccy, overwrite);
+            event.set_bidpx(bidpx, overwrite);
+            event.set_bidqty(bidqty, overwrite);
+            event.set_askpx(askpx, overwrite);
+            event.set_askqty(askqty, overwrite);
+        }
         // The numbers, each from its own lifted slot.
-        let (price, orderqty, quantity) = (
-            self.lifted.price(),
-            self.lifted.orderqty(),
-            self.lifted.quantity(),
-        );
-        let (lastpx, lastqty) = (self.lifted.lastpx(), self.lifted.lastqty());
-        let (avgpx, cumqty, leavesqty) = (
-            self.lifted.avgpx(),
-            self.lifted.cumqty(),
-            self.lifted.leavesqty(),
-        );
-        // The side, the currency and the unit the quantity is counted in.
-        let side = word(54).and_then(|held| {
+        if reached(fact::PRICE) {
+            let price = self.lifted.price();
+            self.event.set_price(price, over(fact::PRICE));
+        }
+        if reached(fact::STOPPX) {
+            let stoppx = self.stated_number(99);
+            self.event.set_stoppx(stoppx, over(fact::STOPPX));
+        }
+        if reached(fact::QUANTITY) {
+            // `Quantity(53)`; what an order still has open fills it from
+            // `LeavesQty(151)` ([`Market`]), never what it ordered.
+            let quantity = self.lifted.quantity();
+            self.event.set_quantity(quantity, over(fact::QUANTITY));
+        }
+        if reached(fact::DISPLAYQTY) {
+            // The peak it shows: `DisplayQty(1138)`, else the older
+            // `MaxFloor(111)`.
+            let displayqty = self.stated_number(1138).or_else(|| self.stated_number(111));
+            self.event
+                .set_displayqty(displayqty, over(fact::DISPLAYQTY));
+        }
+        if reached(fact::HIDDENQTY) {
+            // What an iceberg keeps back: the quantity past the peak it
+            // shows, where it shows less than all of it.
+            let hiddenqty = self
+                .event
+                .get_quantity()
+                .zip(self.event.get_displayqty())
+                .and_then(|(total, shown)| total.checked_sub(shown))
+                .filter(|held| held.is_positive());
+            self.event.set_hiddenqty(hiddenqty, over(fact::HIDDENQTY));
+        }
+        if reached(fact::CXLQTY) {
+            let cxlqty = self.stated_number(84);
+            self.event.set_cxlqty(cxlqty, over(fact::CXLQTY));
+        }
+        if reached(fact::PREVPX) {
+            let prevpx = self.stated_number(140);
+            self.event.set_prevpx(prevpx, over(fact::PREVPX));
+        }
+        if reached(fact::FILLS) {
+            let overwrite = over(fact::FILLS);
+            let event = &mut *self.event;
+            event.set_lastqty(self.lifted.lastqty(), overwrite);
+            event.set_avgpx(self.lifted.avgpx(), overwrite);
+            event.set_cumqty(self.lifted.cumqty(), overwrite);
+            event.set_leavesqty(self.lifted.leavesqty(), overwrite);
+        }
+        if reached(fact::ORDQTY) {
+            let ordqty = self.lifted.orderqty();
+            self.event.set_ordqty(ordqty, over(fact::ORDQTY));
+        }
+        if reached(fact::LASTPX) {
+            // The FX parts of the last price, each from its own lifted slot:
+            // `LastSpotRate(194)` and `LastForwardPoints(195)`, the parts of
+            // `LastPx(31)` - never of `Price(44)` - so one tag triple is one
+            // statement, completed where two of its three are stated. A
+            // sided quote states its side's where it states none of its own.
+            let (mut lastpx, mut spotrate, mut forwardpoints) = (
+                self.lifted.lastpx(),
+                self.lifted.lastspotrate(),
+                self.lifted.lastforwardpoints(),
+            );
+            fx_triple(&mut lastpx, &mut spotrate, &mut forwardpoints);
+            if self.event.marketdatakind() == MarketDataKind::Quotation {
+                match self.stated_side() {
+                    Some(side) if side.is_bid() => {
+                        spotrate = spotrate.or_else(|| self.lifted.bidspotrate());
+                        forwardpoints = forwardpoints.or_else(|| self.lifted.bidforwardpoints());
+                    }
+                    Some(side) if side.is_ask() => {
+                        spotrate = spotrate.or_else(|| self.lifted.offerspotrate());
+                        forwardpoints = forwardpoints.or_else(|| self.lifted.offerforwardpoints());
+                    }
+                    _ => {}
+                }
+            }
+            let overwrite = over(fact::LASTPX);
+            let event = &mut *self.event;
+            event.set_lastpx(lastpx, overwrite);
+            event.set_spotrate(spotrate, overwrite);
+            event.set_forwardpoints(forwardpoints, overwrite);
+        }
+        if reached(fact::CURRENCY) {
+            let currency = self.stated_currency();
+            self.event
+                .set_currency(currency.unwrap_or_else(Ccy::none), over(fact::CURRENCY));
+        }
+        // The side last: what it quotes follows every value stated above.
+        if reached(fact::SIDE) {
+            let side = self.stated_side().unwrap_or(Side::Unknown);
+            self.event.set_side(side, over(fact::SIDE));
+        }
+        // And what the order's quantities imply of one another, once every
+        // one of them is stated: a none a field stated overwrote no fill.
+        if reached(fact::ORDERED | fact::STATE) {
+            self.event.settle_orders();
+        }
+    }
+
+    /// Clears the facts `facts` names, each through its setter, overwriting
+    /// with none: what [`Self::state_market`] states again from scratch, so
+    /// a fill an earlier value made runs again off the new one.
+    fn clear_market(&mut self, facts: u32) {
+        let reached = |fact: u32| facts & fact != 0;
+        let event = &mut *self.event;
+        if reached(fact::MDTYPE) {
+            event.set_marketdatatype(crate::MarketDataType::Unknown, true);
+        }
+        if reached(fact::TIF) {
+            event.set_timeinforce(None, true);
+        }
+        if reached(fact::TICKER) {
+            event.set_ticker(None, true);
+        }
+        if reached(fact::CFI) {
+            event.set_cficode(None, true);
+        }
+        if reached(fact::MIC) {
+            event.set_miccode(None, true);
+        }
+        if reached(fact::TRADABLE) {
+            event.set_tradable(None, true);
+        }
+        if reached(fact::UNIT) {
+            event.set_unit(Unit::none(), true);
+        }
+        if reached(fact::SIDE) {
+            event.set_side(Side::Unknown, true);
+        }
+        if reached(fact::CURRENCY) {
+            event.set_currency(Ccy::none(), true);
+        }
+        if reached(fact::BIDASK) {
+            event.set_bidpx(None, true);
+            event.set_bidqty(None, true);
+            event.set_bidccy(None, true);
+            event.set_askpx(None, true);
+            event.set_askqty(None, true);
+            event.set_askccy(None, true);
+        }
+        if reached(fact::PRICE) {
+            event.set_price(None, true);
+        }
+        if reached(fact::STOPPX) {
+            event.set_stoppx(None, true);
+        }
+        if reached(fact::QUANTITY) {
+            event.set_quantity(None, true);
+        }
+        if reached(fact::DISPLAYQTY) {
+            event.set_displayqty(None, true);
+        }
+        if reached(fact::HIDDENQTY) {
+            event.set_hiddenqty(None, true);
+        }
+        if reached(fact::CXLQTY) {
+            event.set_cxlqty(None, true);
+        }
+        if reached(fact::PREVPX) {
+            event.set_prevpx(None, true);
+        }
+        if reached(fact::ORDQTY) {
+            event.set_ordqty(None, true);
+        }
+        if reached(fact::FILLS) {
+            event.set_lastqty(None, true);
+            event.set_avgpx(None, true);
+            event.set_cumqty(None, true);
+            event.set_leavesqty(None, true);
+        }
+        if reached(fact::LASTPX) {
+            event.set_lastpx(None, true);
+            event.set_spotrate(None, true);
+            event.set_forwardpoints(None, true);
+        }
+    }
+
+    /// The security identifiers the message states, and the instrument a
+    /// bridge's own key names filling what the fields left open, stated on
+    /// the event with the derived overlay beside them.
+    fn state_securityids(&mut self, overwrite: bool) {
+        let (mut securityids, dropped) = self.stated_securityids(self.row_stated);
+        // The instrument a bridge's own key names fills only what the fields
+        // left open, and is never written back: a part its type refuses is
+        // skipped.
+        let keyed = instrument_key(&securityids)
+            .and_then(|named| Some((named.isin?, named.src)))
+            .filter(|_| !securityids.contains_kind(&IdType::Isin))
+            .and_then(|(isin, src)| Identifier::new(src, IdType::Isin, isin.as_str()).ok());
+        if let Some(isin) = keyed {
+            securityids.insert(isin);
+        }
+        let _ = self.event.set_securityids(securityids, overwrite);
+        // The derived overlay goes back as derived, so a stated identifier
+        // still answers before it and removing the ISIN still takes it back.
+        for id in self.derived.iter() {
+            self.event.derive_securityid(id.kind(), id.value());
+        }
+        // What this reading dropped replaces what the last one did.
+        self.anomalies.truncate(self.arrival_anomalies);
+        self.anomalies.extend(dropped);
+    }
+
+    /// One field's value, where it states one that is not null.
+    fn stated_by_tag(&self, tag: i32) -> Option<Scalar> {
+        self.get_by_tag(tag).filter(|held| !held.is_null())
+    }
+
+    /// One field's text, trimmed; `None` where it is null or empty.
+    fn stated_word(&self, tag: i32) -> Option<SmolStr> {
+        stated_text(self.stated_by_tag(tag))
+    }
+
+    /// One field's exact decimal. A value stated but unreadable is none,
+    /// beside a warning naming the field; an absent one is none silently.
+    fn stated_number(&self, tag: i32) -> Option<Decimal> {
+        self.stated_by_tag(tag).and_then(|held| {
+            let read = Decimal::from_scalar(&held);
+            if read.is_none() {
+                self.unread(
+                    "FIX price or quantity defaulted to none: the stated value is no exact decimal",
+                    tag,
+                    &held,
+                );
+            }
+            read
+        })
+    }
+
+    /// The side `Side(54)` states, where it states one that reads.
+    fn stated_side(&self) -> Option<Side> {
+        self.stated_word(54).and_then(|held| {
             Side::read(&held)
                 .inspect_err(|_| {
                     self.unread(
@@ -1844,122 +2387,57 @@ impl FixMsg {
                     );
                 })
                 .ok()
-        });
-        let ccy = |tag: i32| {
-            word(tag)
-                .and_then(|held| {
-                    Ccy::new(&held)
-                        .inspect_err(|_| {
-                            self.unread(
-                                "FIX currency defaulted to none: the stated currency is no currency code (US-ASCII, at most eight bytes)",
-                                tag,
-                                &held,
-                            );
-                        })
-                        .ok()
-                })
-                .filter(|held| held.as_str() != Ccy::none().as_str())
-        };
-        let currency = ccy(15).or_else(|| ccy(120));
-        let unit = word(996).and_then(|held| {
-            Unit::new(&held)
-                .inspect_err(|_| {
-                    self.unread(
-                        "FIX unit defaulted to none: the stated unit of measure does not read",
-                        996,
-                        &held,
-                    );
-                })
-                .ok()
-        });
-        let tif = word(identity::TIMEINFORCE_TAG).and_then(|held| {
-            let read = TimeInForce::from_spelling(&held);
-            if read.is_none() {
-                self.unread(
-                    "FIX time in force defaulted to none: the stated one does not read",
-                    identity::TIMEINFORCE_TAG,
-                    &held,
-                );
-            }
-            read
-        });
-        // The instrument: what it is classified as, what it is called, and
-        // its identifiers under the sources that name them.
-        // The detailed classification the chain reaches, or none: a coarse
-        // stated code is not a classification the market keeps.
-        let cficode = self.classification().and_then(|held| Cfi::new(&held).ok());
-        if cficode.is_none() {
-            if let Some(held) = word(461).filter(|held| Cfi::new(held).is_err()) {
-                self.unread(
-                    "FIX classification defaulted to none: the stated CFI code does not read",
-                    461,
-                    &held,
-                );
-            }
-        }
-        debug_assert!(
-            cficode
-                .as_ref()
-                .is_none_or(|held| Cfi::is_detailed(held.as_str())),
-            "the classification chain answers a detailed code or none"
-        );
-        let symbolticker = word(55).filter(|held| held != "[N/A]" && held != "[N/A");
-        // The security identifiers the message states, each source filling
-        // only the keys the ones before it left absent.
-        let (mut securityids, dropped) = self.stated_securityids(row_stated);
-        // The instrument a bridge's own key names fills only what the fields
-        // left open, and is never written back: a part its type refuses is
-        // skipped.
-        let named = instrument_key(&securityids);
-        if let Some(named) = &named {
-            if securityids.get("ISIN").is_none() {
-                if let Ok(isin) =
-                    SecType::read("ISIN").and_then(|key| SecurityId::new(key, &named.isin))
-                {
-                    securityids.insert(isin);
-                }
-            }
-        }
-        let named_currency = || named.as_ref().and_then(|named| Ccy::new(&named.ccy).ok());
-        let currency = currency.or_else(named_currency);
-        // The bid and the ask the message states, each in the currency a
-        // field of its own names, else the message's - and a currency only
-        // where the side states something.
-        let named_ccy = |names: &[&str]| {
-            names.iter().find_map(|name| {
-                let held = self
-                    .get_by_name(name)
-                    .or_else(|| self.named_value(name))
-                    .filter(|held| !held.is_null());
-                text(held)
-                    .and_then(|held| Ccy::new(&held).ok())
-                    .filter(|held| held.as_str() != Ccy::none().as_str())
+        })
+    }
+
+    /// The currency one field states, where it names a currency code other
+    /// than none: ISO 4217's or a digital-asset ticker.
+    fn stated_ccy(&self, tag: i32) -> Option<Ccy> {
+        self.stated_word(tag)
+            .and_then(|held| {
+                Ccy::new(&held)
+                    .inspect_err(|_| {
+                        self.unread(
+                            "FIX currency defaulted to none: the stated currency is no currency code (US-ASCII, at most eight bytes)",
+                            tag,
+                            &held,
+                        );
+                    })
+                    .ok()
             })
-        };
-        let (bidpx, bidqty) = (number(BIDPX_TAG), number(BIDSIZE_TAG));
-        let (askpx, askqty) = (number(OFFERPX_TAG), number(OFFERSIZE_TAG));
-        let bidccy = named_ccy(&BID_CURRENCY).or_else(|| {
-            (bidpx.is_some() || bidqty.is_some())
-                .then(|| currency.clone())
-                .flatten()
-        });
-        let askccy = named_ccy(&ASK_CURRENCY).or_else(|| {
-            (askpx.is_some() || askqty.is_some())
-                .then(|| currency.clone())
-                .flatten()
-        });
-        // The currency pair the message is about - stated, or detected off
-        // its symbol into the derived overlay.
-        let pair = securityids
-            .get("FOREX")
-            .or_else(|| self.derived.get("FOREX"))
-            .and_then(|code| Forex::new(code).ok());
-        // The market it last traded on, was routed to, the one the
-        // instrument key names, else the one it is listed on - each an ISO
-        // 10383 MIC or the Reuters mnemonic FIX 4.2 spelled it in, a code
-        // neither reading resolves naming none and passed over for the next.
+            .filter(|held| held.as_str() != Ccy::none().as_str())
+    }
+
+    /// The currency the message is priced in: `Currency(15)`, else
+    /// `SettlCurrency(120)`, else the one the instrument a bridge's own key
+    /// names.
+    fn stated_currency(&self) -> Option<Ccy> {
+        self.stated_ccy(15)
+            .or_else(|| self.stated_ccy(120))
+            .or_else(|| instrument_key(self.event.get_securityids()).and_then(|named| named.ccy))
+    }
+
+    /// The currency one of `names` states for a quote side, where one does.
+    fn stated_quote_ccy(&self, names: &[&str]) -> Option<Ccy> {
+        names.iter().find_map(|name| {
+            let held = self
+                .get_by_name(name)
+                .or_else(|| self.named_value(name))
+                .filter(|held| !held.is_null());
+            stated_text(held)
+                .and_then(|held| Ccy::new(&held).ok())
+                .filter(|held| held.as_str() != Ccy::none().as_str())
+        })
+    }
+
+    /// The market it last traded on, was routed to, the one the instrument
+    /// key names, else the one it is listed on - each an ISO 10383 MIC or
+    /// the Reuters mnemonic FIX 4.2 spelled it in, a code neither reading
+    /// resolves naming none and passed over for the next - and ISO 10383's
+    /// none for a currency pair, which trades on no one market.
+    fn stated_miccode(&self) -> Option<Mic> {
         let market = |tag: i32| {
-            word(tag).and_then(|held| {
+            self.stated_word(tag).and_then(|held| {
                 let read = Mic::from_market(&held);
                 if read.is_none() {
                     self.unread(
@@ -1971,19 +2449,28 @@ impl FixMsg {
                 read
             })
         };
-        let miccode = market(30)
+        let named = instrument_key(self.event.get_securityids());
+        market(30)
             .or_else(|| market(100))
-            .or_else(|| named.as_ref().and_then(|named| Mic::from_market(&named.mic)))
+            .or_else(|| named.as_ref().and_then(|named| named.mic.clone()))
             .or_else(|| market(207))
-            // A currency pair trades on no one market: ISO 10383's none,
-            // which a merge takes a real market over.
-            .or_else(|| pair.is_some().then(Mic::none));
-        // Whether it could trade, from whichever status says so, in the
-        // codes FIX's own enumerations state. A status that is about
-        // something else - a code neither list names - says nothing either
-        // way, so the next status answers instead.
+            .or_else(|| {
+                self.event
+                    .get_securityids()
+                    .get(&IdType::Forex)
+                    .or_else(|| self.derived.get(&IdType::Forex))
+                    .and_then(|code| Forex::new(code).ok())
+                    .map(|_| Mic::none())
+            })
+    }
+
+    /// Whether it could trade, from whichever status says so, in the codes
+    /// FIX's own enumerations state. A status that is about something else -
+    /// a code neither list names - says nothing either way, so the next
+    /// status answers instead.
+    fn stated_tradable(&self) -> Option<bool> {
         let status = |tag: i32, open: &[i64], shut: &[i64]| {
-            let held = by_tag(tag)?.as_i64()?;
+            let held = self.stated_by_tag(tag)?.as_i64()?;
             if open.contains(&held) {
                 Some(true)
             } else if shut.contains(&held) {
@@ -1992,128 +2479,58 @@ impl FixMsg {
                 None
             }
         };
-        let tradable = status(326, &[3, 17], &[1, 2, 4, 18, 19, 21])
+        status(326, &[3, 17], &[1, 2, 4, 18, 19, 21])
             .or_else(|| status(340, &[2], &[1, 3, 4, 5, 7]))
-            .or_else(|| match word(965)?.as_str() {
+            .or_else(|| match self.stated_word(965)?.as_str() {
                 "1" | "3" => Some(true),
                 "2" | "4" | "5" | "6" | "9" | "11" => Some(false),
                 _ => None,
-            });
-        // The state it reached - the first status field that states one,
-        // else what the message asks for by being the message it is - and
-        // when it stops being good.
-        let state = State::FIX_STATUS_TAGS
-            .into_iter()
-            .find_map(|tag| word(tag).and_then(|held| State::from_fix_status(tag, &held)))
-            .or_else(|| State::from_fix_msgtype(self.header.msgtype()));
-        // The category it files under, a report of no fill its order's or
-        // its quote's report, read against the state it reached.
-        let msgcat = if row_stated & ROW_STATED_MSGCAT == 0 {
-            let reports = self.explicit_execution_type().unwrap_or_else(|| {
-                if row_stated & ROW_STATED_STATE == 0 {
-                    state.is_some_and(State::is_execution)
-                } else {
-                    self.event.get_state().is_execution()
-                }
-            });
-            derived_msgcat(
-                &self.registry,
-                self.header.msgtype(),
-                self.lifted.quoteid().is_some(),
-                reports,
-            )
-        } else {
-            self.msgcat()
-        };
-        let exprunix = [126, 62, 432, 541].into_iter().find_map(|tag| {
-            by_tag(tag).and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond))
-        });
-        let execunix = self.stated_execution_instant();
-        // What a price moved from.
-        let prevpx = number(140);
-        // The FX parts of the last price, each from its own lifted slot:
-        // `LastSpotRate(194)` and `LastForwardPoints(195)`, the parts of
-        // `LastPx(31)` - never of `Price(44)` - so one tag triple is one
-        // statement, completed where two of its three are stated.
-        let (mut lastpx, mut spotrate, mut forwardpoints) = (
-            lastpx,
-            self.lifted.lastspotrate(),
-            self.lifted.lastforwardpoints(),
-        );
-        fx_triple(&mut lastpx, &mut spotrate, &mut forwardpoints);
-        // A sided quote states its side's bid or offer: its price, quantity
-        // and FX parts are that side's where it states none of its own.
-        let quoted = (msgcat == MarketDataKind::Quotation)
-            .then(|| side.filter(|side| side.is_bid() || side.is_ask()))
-            .flatten();
-        let (price, quantity, spotrate, forwardpoints) = match quoted {
-            Some(side) if side.is_bid() => (
-                price.or(bidpx),
-                quantity.or(bidqty),
-                spotrate.or_else(|| self.lifted.bidspotrate()),
-                forwardpoints.or_else(|| self.lifted.bidforwardpoints()),
-            ),
-            Some(_) => (
-                price.or(askpx),
-                quantity.or(askqty),
-                spotrate.or_else(|| self.lifted.offerspotrate()),
-                forwardpoints.or_else(|| self.lifted.offerforwardpoints()),
-            ),
-            None => (price, quantity, spotrate, forwardpoints),
-        };
+            })
+    }
 
-        let event = &mut *self.event;
-        // Assigned rather than filled: a write can change what the FIX
-        // fields say, and a fact that no longer derives must stop being
-        // answered. What a walk forced is kept by the early return above.
-        event.set_price(price);
-        event.set_quantity(orderqty.or(quantity));
-        event.set_bidpx(bidpx);
-        event.set_bidqty(bidqty);
-        event.set_bidccy(bidccy);
-        event.set_askpx(askpx);
-        event.set_askqty(askqty);
-        event.set_askccy(askccy);
-        event.set_lastpx(lastpx);
-        event.set_lastqty(lastqty);
-        event.set_avgpx(avgpx);
-        event.set_cumqty(cumqty);
-        event.set_leavesqty(leavesqty);
-        event.set_prevpx(prevpx);
-        event.set_spotrate(spotrate);
-        event.set_forwardpoints(forwardpoints);
-        if row_stated & ROW_STATED_EXPIRY == 0 {
-            event.set_exprunix(exprunix);
-        }
-        event.set_tradable(tradable);
-        if row_stated & ROW_STATED_MSGCAT == 0 {
-            event.set_marketdatakind(msgcat);
-        }
-        event.set_side(side.unwrap_or(Side::Unknown));
-        event.set_currency(currency.unwrap_or_else(Ccy::none));
-        event.set_unit(unit.unwrap_or_else(Unit::none));
-        event.set_tif(tif);
-        event.set_ticker(symbolticker);
-        event.set_cficode(cficode);
-        let _ = event.set_securityids(securityids);
-        // The derived overlay goes back as derived, so a stated identifier
-        // still replaces it and removing the ISIN still takes it back.
-        for id in self.derived.iter() {
-            event.derive_securityid(id.clone());
-        }
-        if row_stated & ROW_STATED_MIC == 0 {
-            event.set_miccode(miccode);
-        }
-        // What the stated identifiers dropped, recorded once the readings
-        // above no longer borrow the message.
-        self.anomalies.extend(dropped);
-        if row_stated & ROW_STATED_STATE == 0 {
-            event.set_state(state.unwrap_or_else(State::unknown));
-        }
-        if row_stated & ROW_STATED_EXECUTION == 0 {
-            let execunix = self.execution_or_placed(execunix);
-            self.event.set_execunix(execunix);
-        }
+    /// The type of its kind the message is: the first field its kind names
+    /// that states a value - then any other field the registry maps - read
+    /// through the registry ([`FixRegistry::marketdatatype_of`]).
+    /// How long the message stands: `TimeInForce(59)` read through the
+    /// dictionary's `FIX:timeinforce`, a value it maps to no member being
+    /// `OTHER`, else the first other field the dictionary maps a stated
+    /// value of.
+    fn stated_timeinforce(&self) -> Option<TimeInForce> {
+        let read = |tag: i32| {
+            self.stated_by_tag(tag)
+                .as_ref()
+                .and_then(scalar_text)
+                .and_then(|held| self.registry.timeinforce_of(tag, held.trim()))
+        };
+        read(identity::TIMEINFORCE_TAG).or_else(|| {
+            self.registry
+                .timeinforce_sources()
+                .iter()
+                .map(|(tag, _, _)| *tag)
+                .filter(|tag| *tag != identity::TIMEINFORCE_TAG)
+                .find_map(read)
+        })
+    }
+
+    fn stated_marketdatatype(&self) -> Option<crate::MarketDataType> {
+        // A typing field may be an `int` - `QuoteType(537)`, `TrdType(828)`
+        // - so its value is read as the wire spells it.
+        let read = |tag: i32| {
+            self.stated_by_tag(tag)
+                .as_ref()
+                .and_then(scalar_text)
+                .and_then(|held| self.registry.marketdatatype_of(tag, held.trim()))
+        };
+        let tags =
+            crate::MarketDataType::fix_tags_of(self.header.msgtype(), self.event.marketdatakind());
+        tags.iter().copied().find_map(read).or_else(|| {
+            self.registry
+                .marketdatatype_sources()
+                .iter()
+                .map(|(tag, _, _)| *tag)
+                .filter(|tag| !tags.contains(tag))
+                .find_map(read)
+        })
     }
 
     /// Warns that `stated`, the value `tag` states, does not read as the
@@ -2180,64 +2597,52 @@ impl FixMsg {
     /// What a settle moves when the clock alone moved: the execution instant
     /// of a report nothing else dates, which is its own instant, and the
     /// identity the instant derives. Everything else a settle reads - the
-    /// fields, the row's word, what a walk forced - stood still, so the
-    /// market, the maps and the code it would derive again are the ones the
-    /// message holds.
+    /// fields, the row's word, what a walk set - stood still, so the market,
+    /// the maps and the code it would derive again are the ones the message
+    /// holds.
     pub(super) fn settle_clock(&mut self) {
-        if !self.forced && self.row_stated & ROW_STATED_EXECUTION == 0 {
-            let execunix = self.execution_or_placed(self.stated_execution_instant());
-            self.event.set_execunix(execunix);
+        if self.row_stated & ROW_STATED_EXECUTION == 0 {
+            self.state_market(fact::EXECUTION);
         }
         let code = self.event.get_currhashcode();
         self.event.finalized(code);
     }
 
-    /// The instrument's identifier under one of `sources`, read as the code
-    /// it claims to be: the primary `SecurityID(48)` where
-    /// `SecurityIDSource(22)` names one of them, else the `SecurityAltID`
-    /// whose own source does.
-    ///
-    /// Each candidate is validated on its own, so a primary the standard's
-    /// check digit does not close falls through to the alternate rather
-    /// than answering for it - which is what a number one digit off is: not
-    /// that security.
     /// The security identifiers the message states, in rank order: the
     /// primary `SecurityID(48)` under its `SecurityIDSource(22)`, then each
-    /// `secaltids` occurrence, each source read through [`SecType::read`],
+    /// `secaltids` occurrence, each source read through
+    /// [`IdType::from_security_source`] - a source it cannot read an
+    /// anomaly, the field kept on the wire -
     /// then the crated `isincode`, `bloombergcode`, `figicode` and
     /// `forexcode` views the row stated (`row_stated`), then each unmapped
     /// field whose name names a source. Each code is validated and the first stated code under a
     /// key kept.
-    fn stated_securityids(&self, row_stated: u16) -> (SecurityIds, Vec<super::FixAnomaly>) {
-        let mut ids = SecurityIds::default();
+    fn stated_securityids(&self, row_stated: u64) -> (Identifiers, Vec<super::FixAnomaly>) {
+        let mut ids = Identifiers::new();
         let mut anomalies = Vec::new();
-        // Fill only: the same code twice under one key is one entry, and a
-        // later different code under a filled key is dropped with an
-        // anomaly, staying on the wire as it arrived.
-        let mut insert = |field: &str, key: SecType, code: &str| match SecurityId::new(key, code) {
-            Ok(id) => {
-                let key = id.sectype();
-                match ids.get(key.as_str()) {
-                    Some(held) if held != id.code() => anomalies.push(super::FixAnomaly::new(
-                        field,
-                        format!(
-                            "states {key}:{} where {key}:{held} is already stated",
-                            id.code()
-                        ),
-                    )),
-                    Some(_) => {}
-                    None => {
-                        ids.insert(id);
-                    }
+        // Fill only: the same code twice under one type and source is one
+        // entry, and a later different one is dropped with an anomaly,
+        // staying on the wire as it arrived.
+        let mut insert = |field: &str, made: crate::Result<Identifier>| match made {
+            Ok(id) => match ids.get_from(id.src(), id.kind()) {
+                Some(held) if held != id.value() => anomalies.push(super::FixAnomaly::new(
+                    field,
+                    format!(
+                        "states {id} where {}:{}={held} is already stated",
+                        id.src(),
+                        id.kind()
+                    ),
+                )),
+                Some(_) => {}
+                None => {
+                    ids.insert(id);
                 }
-            }
+            },
             Err(error) => anomalies.push(super::FixAnomaly::new(field, error.to_string())),
         };
         let mut state = |field: &str, source: Option<SmolStr>, code: Option<SmolStr>| {
             if let (Some(source), Some(code)) = (source, code) {
-                if let Ok(key) = SecType::read(&source) {
-                    insert(field, key, &code);
-                }
+                insert(field, security_identifier(&source, IdSource::Fix, &code));
             }
         };
         state(
@@ -2252,70 +2657,84 @@ impl FixMsg {
         // A crated column's row-stated entry is the crate's own statement,
         // ranked after the wire's and before a name a bridge happened to
         // spell.
-        for (bit, key, name) in [
-            (ROW_STATED_ISIN, "ISIN", super::ISINCODE_TAG_NAME.1),
+        for (bit, kind, name) in [
+            (ROW_STATED_ISIN, IdType::Isin, super::ISINCODE_TAG_NAME.1),
             (
                 ROW_STATED_BLOOMBERG,
-                "BLOOMBERG",
+                IdType::Bloomberg,
                 super::BLOOMBERGCODE_TAG_NAME.1,
             ),
-            (ROW_STATED_FIGI, "FIGI", super::FIGICODE_TAG_NAME.1),
-            (ROW_STATED_FOREX, "FOREX", super::FOREXCODE_TAG_NAME.1),
+            (ROW_STATED_FIGI, IdType::Figi, super::FIGICODE_TAG_NAME.1),
+            (ROW_STATED_FOREX, IdType::Forex, super::FOREXCODE_TAG_NAME.1),
         ] {
-            if row_stated & bit != 0 {
-                if let Some(id) = self.event.get_securityids().get_id(key) {
-                    insert(name, id.sectype(), id.code());
-                }
+            if row_stated & bit != 0
+                && let Some(id) = self.event.get_securityids().get_identifier(&kind)
+            {
+                insert(name, Ok(id.clone()));
             }
         }
-        // A top-level field no dictionary names, whose name names an
-        // identifier source - `#ISINCODE`, `cusip_code` - states an entry
-        // after the wire's own: trimmed, validated, never a grouped member,
-        // and left on the wire as it arrived. An empty or null-like value
-        // states nothing.
-        // Which children a tag maps is marked once, in a word per 64
-        // children held inline, so neither a set nor a scan of the tag index
-        // is paid per child, and a name is folded only for a child that
-        // states a value no tag maps.
-        if let Some(cells) = self.value.as_sequence() {
-            let mut mapped: SmallVec<[u64; 4]> = SmallVec::from_elem(0, cells.len().div_ceil(64));
-            for (_, at) in &self.tags {
-                if let Some(word) = mapped.get_mut(at / 64) {
-                    *word |= 1 << (at % 64);
-                }
+        // An entry no dictionary maps whose key names a security
+        // identifier - `#ISINCODE`, `cusip_code`, a bridge's
+        // `OMS_InstrumentID` - states one after the wire's own: trimmed,
+        // validated, never a grouped member, and left on the wire as it
+        // arrived. A value its type refuses is an anomaly here, whichever
+        // set its key names.
+        let declared = self.declared_identifiers();
+        self.for_each_unmapped(|key, text| {
+            if let Some(made) = inferred_identifier(key, text, declared, false)
+                .filter(|made| made.as_ref().ok().is_none_or(|id| id.kind().is_security()))
+            {
+                insert(key, made);
             }
-            for (at, (child, cell)) in self.field.fields().iter().zip(cells).enumerate() {
-                if mapped[at / 64] & (1 << (at % 64)) != 0
-                    || cell.is_null()
-                    || child.name().contains('.')
-                {
-                    continue;
-                }
-                let Some(key) = SecType::from_field_name(child.name()) else {
-                    continue;
-                };
-                let Some(text) = scalar_text(cell)
-                    .map(|held| held.trim().to_owned())
-                    .filter(|held| !held.is_empty() && !is_null_like(held))
-                else {
-                    continue;
-                };
-                insert(child.name(), key, &text);
-            }
-        }
-        // A crate field naming an instrument states it through the
-        // occurrence its rule folds it into; a value its source cannot hold -
-        // past the width, not a code - folded nothing and is kept as an
-        // anomaly.
-        for (tag, name, source) in super::crated::instrument_sources() {
-            let Some(text) = self.get_by_tag(tag).as_ref().and_then(scalar_text) else {
-                continue;
-            };
-            if let Err(error) = SecType::read(source).and_then(|key| SecurityId::new(key, &text)) {
-                anomalies.push(super::FixAnomaly::new(name, error.to_string()));
-            }
-        }
+        });
         (ids, anomalies)
+    }
+
+    /// The identifier names this message's type declares under
+    /// `FIX:identifiers`, comma-separated.
+    fn declared_identifiers(&self) -> Option<&str> {
+        self.registry
+            .get_msgtype(self.header.msgtype())
+            .and_then(|definition| declared_identifiers(definition.as_field()))
+    }
+
+    /// Each entry this message states that no dictionary maps, as its key
+    /// and its text: every `metadata` key, then every top-level scalar child
+    /// no tag maps that states a value. Which children a tag maps is marked
+    /// once, in a word per 64 children held inline, so neither a set nor a
+    /// scan of the tag index is paid per child.
+    fn for_each_unmapped(&self, mut visit: impl FnMut(&str, &str)) {
+        for (key, value) in &self.metadata {
+            visit(key, value);
+        }
+        let Some(cells) = self.value.as_sequence() else {
+            return;
+        };
+        let mut mapped: SmallVec<[u64; 4]> = SmallVec::from_elem(0, cells.len().div_ceil(64));
+        for (_, at) in &self.tags {
+            if let Some(word) = mapped.get_mut(at / 64) {
+                *word |= 1 << (at % 64);
+            }
+        }
+        for (at, (child, cell)) in self.field.fields().iter().zip(cells).enumerate() {
+            if mapped[at / 64] & (1 << (at % 64)) != 0
+                || cell.is_null()
+                || child.dtype().is_nested()
+            {
+                continue;
+            }
+            // A text cell is visited where it lies; only a number is
+            // spelled, inline.
+            match cell.as_str().map(str::trim) {
+                Some("") => {}
+                Some(text) => visit(child.name(), text),
+                None => {
+                    if let Some(text) = scalar_text(cell) {
+                        visit(child.name(), &text);
+                    }
+                }
+            }
+        }
     }
 
     /// The stated members of each occurrence of a root repeating group, in
@@ -2355,18 +2774,17 @@ impl FixMsg {
         };
         let mut held = SmallVec::new();
         self.for_each_side(|fields, cells| {
-            if let Some(inner) = child_by_tag(registry, fields, true, counter) {
-                if let (Some(group), Some(value)) = (fields.get(inner), cells.get(inner)) {
-                    if let Some(members) = positions(group) {
-                        read_occurrences(value, members, &mut held);
-                    }
-                }
-            }
-        });
-        if let Some((group, value)) = self.root_group(counter) {
-            if let Some(members) = positions(group) {
+            if let Some(inner) = child_by_tag(registry, fields, true, counter)
+                && let (Some(group), Some(value)) = (fields.get(inner), cells.get(inner))
+                && let Some(members) = positions(group)
+            {
                 read_occurrences(value, members, &mut held);
             }
+        });
+        if let Some((group, value)) = self.root_group(counter)
+            && let Some(members) = positions(group)
+        {
+            read_occurrences(value, members, &mut held);
         }
         held
     }
@@ -2409,7 +2827,7 @@ impl FixMsg {
     /// different one is kept as an anomaly; a second party of a role is
     /// ordinary and states nothing.
     fn rebuild_idmaps(&mut self) {
-        let mut altids = IdMap::new();
+        let mut identifiers = Identifiers::new();
         let mut dropped = Vec::new();
         let registry = Arc::clone(&self.registry);
         for (tag, source) in registry.idmap_sources() {
@@ -2421,7 +2839,14 @@ impl FixMsg {
             match source.role() {
                 None => {
                     if let Some(value) = self.get_by_tag(*tag).as_ref().and_then(scalar_text) {
-                        admit_identifier(&mut altids, source.key(), &value, field, &mut dropped);
+                        admit_identifier(
+                            &mut identifiers,
+                            IdSource::Fix,
+                            Ok(source.key().clone()),
+                            &value,
+                            field,
+                            &mut dropped,
+                        );
                     }
                 }
                 Some(role) => {
@@ -2429,8 +2854,9 @@ impl FixMsg {
                         if let Some(value) = partyid.filter(|_| partyrole.as_deref() == Some(role))
                         {
                             admit_identifier(
-                                &mut altids,
-                                source.key(),
+                                &mut identifiers,
+                                IdSource::Fix,
+                                Ok(source.key().clone()),
                                 &value,
                                 field,
                                 &mut dropped,
@@ -2443,10 +2869,10 @@ impl FixMsg {
         for (counter, id, kind) in REGULATORY_GROUPS {
             for [value, kind] in self.tagged_occurrences(counter, [id, kind]) {
                 if let Some(value) = value {
-                    let key = regulatory_key(kind.as_deref());
                     admit_identifier(
-                        &mut altids,
-                        &key,
+                        &mut identifiers,
+                        IdSource::Fix,
+                        regulatory_kind(kind.as_deref()),
                         &value,
                         "regulatorytradeids",
                         &mut dropped,
@@ -2454,29 +2880,62 @@ impl FixMsg {
                 }
             }
         }
-        // A side's accounts first - the more specific statement, which an
+        // A side's parties first - the more specific statement, which an
         // execution a trade split off is about - then the message's.
-        let mut accountids = IdMap::new();
-        let roles = party_roles(&registry);
+        let mut partyids = Identifiers::new();
+        let codes = PartyCodes::new(&registry);
         self.for_each_side(|fields, cells| {
-            AccountsAt::new(&registry, fields).read(
-                roles,
-                cells,
-                &mut accountids,
-                Some(&mut dropped),
-            );
+            AccountsAt::new(&registry, fields).read(codes, cells, &mut partyids);
         });
         let groups = PARTY_GROUPS.map(|(counter, ..)| {
             let (field, value) = self.root_group(counter)?;
             Some((value, party_positions(&registry, field, counter)?))
         });
-        let account = self
-            .unique_index_of_tag(ACCOUNT)
-            .and_then(|at| self.value.as_sequence()?.get(at));
-        read_accounts(roles, groups, account, &mut accountids, Some(&mut dropped));
+        let account = [ACCOUNT, ACCOUNT_SOURCE].map(|tag| {
+            self.unique_index_of_tag(tag)
+                .and_then(|at| self.value.as_sequence()?.get(at))
+        });
+        read_parties(codes, groups, account, &mut partyids);
+        // An entry no dictionary maps whose key names an operation's or a
+        // party's identifier - a bridge's `firm.x.ParentOrderID`,
+        // `OMS_UserID` - states one after the fields' own; a value its type
+        // refuses stays on the wire, unread.
+        let declared = self.declared_identifiers();
+        self.for_each_unmapped(|key, text| {
+            let Some(Ok(id)) = inferred_identifier(key, text, declared, false) else {
+                return;
+            };
+            if id.kind().is_party() {
+                partyids.insert(id);
+            } else if !id.kind().is_security() {
+                identifiers.insert(id);
+            }
+        });
         self.anomalies.extend(dropped);
-        let _ = self.event.set_altids(altids);
-        let _ = self.event.set_accountids(accountids);
+        // What a caller or a row stated is its word, which no settle
+        // restates: each value it holds stands, lineage included, and an
+        // identifier the fields state that it lacks - a content merge's
+        // `ClOrdID(11)` - fills it.
+        // The held set is copied only where the fields name one it lacks.
+        let lacks = |held: &Identifiers, stated: &Identifiers| {
+            stated
+                .iter()
+                .any(|id| held.get_from(id.src(), id.kind()).is_none())
+        };
+        if self.stated & fact::IDENTIFIERS == 0 {
+            let _ = self.event.set_identifiers(identifiers, true);
+        } else if lacks(self.event.get_identifiers(), &identifiers) {
+            let mut held = self.event.get_identifiers().clone();
+            held.merge(&identifiers);
+            let _ = self.event.set_identifiers(held, true);
+        }
+        if self.stated & fact::PARTYIDS == 0 {
+            let _ = self.event.set_partyids(partyids, true);
+        } else if lacks(self.event.get_partyids(), &partyids) {
+            let mut held = self.event.get_partyids().clone();
+            held.merge(&partyids);
+            let _ = self.event.set_partyids(held, true);
+        }
     }
 
     /// What this message states that no typed column of its leaves reads,
@@ -2506,13 +2965,14 @@ impl FixMsg {
     /// hold under its type, and the `Account(1)` its accounts hold. What a
     /// map does not hold stays: a second party of one role, a value no map
     /// takes. An empty snapshot's control holds no map, so nothing is
-    /// held for it. A scalar whose key ends with one of the identifiers the
-    /// message's type declares under `FIX:identifiers` - its letters and
-    /// digits alone, whatever the case: an execution report's
-    /// `marketorderid`, `reforderid` or a bridge's `firm.x.parentorderid`,
-    /// each ending with its `orderid` - is set aside, for the leaf to lift
-    /// into its alternate identifiers; an occurrence's member ends with one
-    /// its component declares.
+    /// held for it. A scalar whose key names an identifier - one the
+    /// message's type declares under `FIX:identifiers` at its end, an
+    /// execution report's `RefOrderID(1080)`, or, for a key no dictionary
+    /// field is, one of the crate's identifier names, a bridge's
+    /// `firm.x.ParentOrderID` - is set aside, for the leaf to lift into the
+    /// identifier set its type belongs to under the source the rest of its
+    /// key names; an occurrence's member is read against what its
+    /// component declares.
     ///
     /// Where `expanded` names a group the message becomes one leaf per
     /// occurrence of, that group is no child of the message's own: each
@@ -2522,17 +2982,17 @@ impl FixMsg {
     /// account leading the message's. A child's tag and a group's member
     /// plan are each resolved once per walk, never per occurrence.
     pub(super) fn unmapped(&self, expanded: Option<&Expanded>, held: bool) -> Unmapped {
-        let nothing = IdMap::new();
+        let nothing = Identifiers::new();
         let holds = Holds {
             registry: &self.registry,
-            roles: party_roles(&self.registry),
-            accounts: if held {
-                self.event.get_accountids()
+            codes: PartyCodes::new(&self.registry),
+            partyids: if held {
+                self.event.get_partyids()
             } else {
                 &nothing
             },
-            altids: if held {
-                self.event.get_altids()
+            identifiers: if held {
+                self.event.get_identifiers()
             } else {
                 &nothing
             },
@@ -2548,7 +3008,7 @@ impl FixMsg {
             .and_then(|definition| declared_identifiers(definition.as_field()));
         for (key, value) in &self.metadata {
             let (message, lifted) = (&mut unmapped.message, &mut unmapped.lifted);
-            holds.land(key, value.clone(), identifiers, message, lifted);
+            holds.land(key, value.clone(), identifiers, false, message, lifted);
         }
         let fields = self.field.fields();
         let Some(cells) = self.value.as_sequence() else {
@@ -2621,18 +3081,13 @@ impl FixMsg {
             if tag.is_some_and(read) || counter.is_some_and(read) || named.contains(&at) {
                 continue;
             }
-            if tag.is_none()
-                && !child.name().contains('.')
-                && SecType::from_field_name(child.name()).is_some()
-            {
-                continue;
-            }
             if !nested {
-                if let Some(text) = spelled(cell) {
-                    if *tag != Some(ACCOUNT) || !holds.holds_account(None, &text) {
-                        let (message, lifted) = (&mut unmapped.message, &mut unmapped.lifted);
-                        holds.land(child.name(), text, identifiers, message, lifted);
-                    }
+                if let Some(text) = spelled(cell)
+                    && (*tag != Some(ACCOUNT) || !holds.holds_account(None, &text))
+                {
+                    let (message, lifted) = (&mut unmapped.message, &mut unmapped.lifted);
+                    let tagged = tag.is_some();
+                    holds.land(child.name(), text, identifiers, tagged, message, lifted);
                 }
                 continue;
             }
@@ -2689,8 +3144,8 @@ impl FixMsg {
             .map(|occurrence| {
                 let mut own = (Metadata::new(), Lifted::new());
                 if let Some(cells) = occurrence.as_sequence() {
-                    let mut accounts = IdMap::new();
-                    accounts_at.read(holds.roles, cells, &mut accounts, None);
+                    let mut accounts = Identifiers::new();
+                    accounts_at.read(holds.codes, cells, &mut accounts);
                     let level = Level {
                         holds,
                         own: &accounts,
@@ -2701,70 +3156,6 @@ impl FixMsg {
                 own
             })
             .collect()
-    }
-
-    /// Writes one security identifier where FIX states it: `SecurityID(48)`
-    /// in place when `SecurityIDSource(22)` names the key, else the
-    /// `secaltids` occurrence under the key's source code; `None` removes
-    /// it. A key the message did not state before goes to `secaltids`,
-    /// never to the primary.
-    ///
-    /// A key FIX gives no source code but the crate gives a column - the
-    /// `FOREX` pair, whose `forexcode` cell is a view of the identifiers -
-    /// is stated by that column alone: its row-stated bit is set or cleared
-    /// and no `secaltids` occurrence is written. Every other sourceless key
-    /// is spelled `456=<key>`.
-    fn sync_security_id(&mut self, key: &SecType, value: Option<&str>) -> Result<()> {
-        if key.fix_source().is_none() {
-            if let Some(bit) = row_stated_securityid_bit(key.as_str()) {
-                if value.is_some() {
-                    self.row_stated |= bit;
-                } else {
-                    self.row_stated &= !bit;
-                }
-                return Ok(());
-            }
-        }
-        let source = key
-            .fix_source()
-            .map_or_else(|| key.as_str().to_owned(), |code| code.to_string());
-        let primary_names = self
-            .get_by_tag(22)
-            .as_ref()
-            .and_then(scalar_text)
-            .and_then(|text| SecType::read(&text).ok())
-            .is_some_and(|held| &held == key);
-        if primary_names {
-            match value {
-                Some(value) => self.set_unsettled(48, Scalar::from(value))?,
-                None => {
-                    self.set_unsettled(48, Scalar::Null)?;
-                    self.set_unsettled(22, Scalar::Null)?;
-                }
-            }
-            super::latest::sync_group_occurrence(self, "secaltids", 456, &source, 455, None)
-        } else {
-            super::latest::sync_group_occurrence(self, "secaltids", 456, &source, 455, value)
-        }
-    }
-
-    /// The top-level field one identifier-map key is stated by, or a
-    /// located refusal where the dictionary names none: a party role's key
-    /// is its group's to state, and no field writes it.
-    fn idmap_source(&self, kind: FixIdMapKind, key: &str) -> Result<i32> {
-        self.registry
-            .idmap_sources()
-            .iter()
-            .find(|(_, source)| {
-                source.role().is_none()
-                    && source.map() == kind
-                    && source.key().eq_ignore_ascii_case(key)
-            })
-            .map(|(tag, _)| *tag)
-            .ok_or_else(|| Error::InvalidRecord {
-                path: format_smolstr!("$.{}.{key}", kind.as_str()),
-                reason: SmolStr::new_static("no FIX field states this key; it cannot be written"),
-            })
     }
 
     /// The code the message digests to: the event's own facts - its parents, its state and its
@@ -2812,7 +3203,7 @@ impl FixMsg {
             cells.push((names.msgtype.clone(), Scalar::from(self.header.msgtype())));
         }
         for (key, value) in &self.metadata {
-            cells.push((key.clone(), Scalar::from(value.as_str())));
+            cells.push((key.clone(), Scalar::from(value.clone())));
         }
         // The fields the message lifted out of its row, under the names the
         // row's children are digested by.
@@ -2844,6 +3235,17 @@ impl FixMsg {
         // message says, and they are what this feeds.
         feed_entries(&mut state, self.entries());
         state.as_u64()
+    }
+
+    /// Records the message as recorded when it was sent, where its carrier
+    /// stated no recording and the message states its `SendingTime(52)`:
+    /// the one recording the message itself states is its sender's. Read
+    /// once, where the message is built from a row with no `recdunix`
+    /// column - a row that has one states its own, a null included.
+    fn record_at_sending(&mut self) {
+        if self.event.get_recdunix().is_none() && self.header.stated_sendingtime() {
+            self.event.set_recdunix(Some(self.header.sendingtime()));
+        }
     }
 
     /// The message dated by the transaction it states, where the parse
@@ -2934,15 +3336,10 @@ impl FixMsg {
     }
 
     /// The option strike price the message identifies: `StrikePrice(202)`
-    /// as the decimal leaf, `None` where it states none; a row stating one
-    /// is the row's word.
+    /// as the decimal leaf, `None` where it states none or states no
+    /// decimal.
     #[must_use]
-    pub const fn strikepx(&self) -> Option<Decimal> {
-        self.strikepx
-    }
-
-    /// `StrikePrice(202)` as the message states it, as the decimal leaf.
-    fn stated_strikepx(&self) -> Option<Decimal> {
+    pub fn strikeprice(&self) -> Option<Decimal> {
         self.get_by_tag(STRIKEPRICE_TAG)
             .filter(|held| !held.is_null())
             .as_ref()
@@ -3139,10 +3536,16 @@ impl FixMsg {
     /// one value twice writes its replacement once, and a caller who states
     /// the replacement keeps it. Every write settles the identity again.
     ///
+    /// The written value reaches every sibling of its tag too: another
+    /// child carrying the tag takes it, and a metadata key composing into
+    /// it - `ULLINK.OFFERPRICE` for `OfferPx(133)` - or an alias that lost
+    /// to it is stated again with it, so no statement the message keeps
+    /// says another value. No sibling is created.
+    ///
     /// ```
     /// use std::sync::Arc;
     ///
-    /// use yggdryl::graph::Market;
+    /// use yggdryl::graph::{Market, Operation};
     /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -3170,11 +3573,11 @@ impl FixMsg {
     /// assert_eq!(msg.by_tag(55)?, Scalar::from("MSFT"));
     ///
     /// // `Price(44)` and `OrderQty(38)` are lifted too, and what the
-    /// // message is *about* is read off them.
+    /// // message is *about* is read off them: its price, and what it ordered.
     /// msg.set(44, Scalar::from("82.5"))?;
     /// msg.set(38, Scalar::from(100_i64))?;
     /// assert_eq!(msg.get_price().map(|px| px.to_string()).as_deref(), Some("82.5"));
-    /// assert_eq!(msg.get_quantity().map(|qty| qty.to_string()).as_deref(), Some("100"));
+    /// assert_eq!(msg.get_ordqty().map(|qty| qty.to_string()).as_deref(), Some("100"));
     /// assert_eq!(msg.as_field().fields().len(), 1);
     ///
     /// // A tag no dictionary explains is kept under its decimal spelling.
@@ -3342,12 +3745,16 @@ impl FixMsg {
         let redetects = (self.detected_fx != 0 || self.derives_pair())
             && tags.iter().any(|tag| super::forex::READS.contains(tag));
         self.land_unsettled(typed, writes)?;
+        // A restatement or a detection rewrites fields no write named, so
+        // every fact is stated again.
         if restates {
             super::latest::restate(self)?;
+            self.stale |= fact::ALL;
         }
         if redetects {
             let registry = Arc::clone(&self.registry);
             self.derive_forex(registry.forex_memo())?;
+            self.stale |= fact::ALL;
         }
         self.settle();
         Ok(())
@@ -3365,13 +3772,124 @@ impl FixMsg {
                 }
             }
         }
+        // What each write reaches is stated again at the next settle: a
+        // field no tag maps reaches what a bridge's own spelling can state.
+        for write in &writes {
+            self.stale |= match write.field.as_fix().tag() {
+                Ok(Some(tag)) => facts_of_tag(&self.registry, tag),
+                _ => fact::NAMED,
+            };
+        }
+        // Only a value something else states too is kept for replication:
+        // a write lands on the child its tag already has, so no write makes
+        // a sibling, and a tag nothing else states is never copied.
+        let mut written: SmallVec<[(i32, Scalar); 4]> = writes
+            .iter()
+            .filter_map(|write| Some((write.field.as_fix().tag().ok()??, &write.value)))
+            .filter(|(tag, _)| self.has_siblings(*tag))
+            .map(|(tag, value)| (tag, value.clone()))
+            .collect();
         if !writes.is_empty() {
             self.write_all(writes)?;
         }
         for (tag, value) in typed {
             self.record(tag, &value);
+            if self.has_siblings(tag) {
+                written.push((tag, value));
+            }
         }
-        Ok(())
+        self.replicate(&written)
+    }
+
+    /// Whether anything besides its own child states `tag`: another child
+    /// carrying it, or a metadata key composing into it or lost to it.
+    fn has_siblings(&self, tag: i32) -> bool {
+        !self.siblings_of(tag).is_empty()
+            || self
+                .metadata
+                .keys()
+                .any(|key| super::build::metadata_tag(&self.registry, key) == Some(tag))
+    }
+
+    /// Writes each written value into the siblings of its tag: every other
+    /// child carrying the tag, and each metadata key that composes into it
+    /// or lost to it as an alias, so no statement of a fact the message
+    /// holds says another value; a null clears the metadata keys. Nothing
+    /// new is created, and a message with no siblings pays one scan of its
+    /// tag index.
+    fn replicate(&mut self, written: &[(i32, Scalar)]) -> Result<()> {
+        if written.is_empty() {
+            return Ok(());
+        }
+        if !self.metadata.is_empty() {
+            let registry = Arc::clone(&self.registry);
+            self.metadata.retain(|key, held| {
+                let Some((tag, value)) = super::build::metadata_tag(&registry, key)
+                    .and_then(|tag| written.iter().find(|(written, _)| *written == tag))
+                else {
+                    return true;
+                };
+                // Spelled as the wire spells the field.
+                let text = match registry.get_field_by_tag(*tag) {
+                    Some(field) => super::entry::wire_text_under(&registry, field, value),
+                    None => super::entry::wire_text(value),
+                };
+                match text.filter(|text| !text.is_empty()) {
+                    Some(text) => {
+                        *held = text;
+                        true
+                    }
+                    None => false,
+                }
+            });
+        }
+        let mut writes = Vec::new();
+        for (tag, value) in written {
+            for at in self.siblings_of(*tag) {
+                let Some(sibling) = self.field.fields().get(at) else {
+                    continue;
+                };
+                let value = if value.is_null() {
+                    Scalar::Null
+                } else if let Ok(typed) = sibling.scalar(value.clone()) {
+                    typed
+                } else if let Some(text) =
+                    spelled(value).filter(|_| sibling.dtype().string_parameters().is_some())
+                {
+                    Scalar::from(text.as_str())
+                } else {
+                    continue;
+                };
+                let mut field = sibling.clone();
+                if value.is_null() {
+                    field.set_nullable(true);
+                }
+                writes.push(Write {
+                    at: Some(at),
+                    field,
+                    value,
+                });
+            }
+        }
+        if writes.is_empty() {
+            return Ok(());
+        }
+        self.write_all(writes)
+    }
+
+    /// The positions of the row children carrying `tag`, where more than
+    /// one does; none otherwise.
+    fn siblings_of(&self, tag: i32) -> SmallVec<[usize; 2]> {
+        let first = self.tags.partition_point(|(held, _)| *held < tag);
+        let same = self.tags[first..]
+            .iter()
+            .take_while(|(held, _)| *held == tag)
+            .map(|(_, at)| *at)
+            .collect::<SmallVec<[usize; 2]>>();
+        if same.len() < 2 {
+            return SmallVec::new();
+        }
+        same
     }
 
     /// One value resolved and typed for the child its key reaches, exactly
@@ -3392,10 +3910,10 @@ impl FixMsg {
         if let Some(tag) = tag.filter(|tag| identity::is_capture_tag(*tag)) {
             return Err(refused_capture(field.name(), tag));
         }
-        if let FixKey::Tag(tag) = *key {
-            if identity::is_capture_tag(tag) {
-                return Err(refused_capture(field.name(), tag));
-            }
+        if let FixKey::Tag(tag) = *key
+            && identity::is_capture_tag(tag)
+        {
+            return Err(refused_capture(field.name(), tag));
         }
         if let Some(tag) = tag.filter(|tag| identity::is_typed_tag(*tag)) {
             let value = if value.is_null() {
@@ -3411,12 +3929,11 @@ impl FixMsg {
         // field to type it through - the one above was invented for the
         // spelling - so the value crosses as it was written and the holder
         // types it.
-        if tag.is_none() {
-            if let FixKey::Tag(tag) = *key {
-                if identity::is_typed_tag(tag) {
-                    return Ok(Staged::Typed(tag, value));
-                }
-            }
+        if tag.is_none()
+            && let FixKey::Tag(tag) = *key
+            && identity::is_typed_tag(tag)
+        {
+            return Ok(Staged::Typed(tag, value));
         }
         let value = if value.is_null() {
             field.set_nullable(true);
@@ -3441,7 +3958,9 @@ impl FixMsg {
     ///
     /// A key reaching a typed fact clears it on its holder; one reaching a
     /// row child removes the child, and the children after it move up, so
-    /// the tag and group indexes are reread. A key that reaches nothing
+    /// the tag and group indexes are reread. Its siblings go with it: the
+    /// other children carrying its tag and the metadata keys that compose
+    /// into it or lost to it as an alias. A key that reaches nothing
     /// answers `None` and changes nothing.
     ///
     /// ```
@@ -3479,6 +3998,7 @@ impl FixMsg {
             let held = self.typed_fact(tag);
             if held.is_some() {
                 self.record(tag, &Scalar::Null);
+                self.replicate(&[(tag, Scalar::Null)])?;
                 self.settle();
             }
             return Ok(held);
@@ -3497,8 +4017,31 @@ impl FixMsg {
         if at >= members.len() || at >= values.len() {
             return Ok(None);
         }
-        members.remove(at);
-        let removed = values.remove(at);
+        let tag = members[at].as_fix().tag().ok().flatten();
+        self.stale |= tag.map_or(fact::NAMED, |tag| facts_of_tag(&self.registry, tag));
+        // The children sharing the tag go with it, highest first so each
+        // position still names its child.
+        let mut gone = tag.map(|tag| self.siblings_of(tag)).unwrap_or_default();
+        if !gone.contains(&at) {
+            gone.push(at);
+        }
+        gone.sort_unstable_by(|left, right| right.cmp(left));
+        let mut removed = Scalar::Null;
+        for position in gone {
+            if position >= members.len() || position >= values.len() {
+                continue;
+            }
+            members.remove(position);
+            let value = values.remove(position);
+            if position == at {
+                removed = value;
+            }
+        }
+        if let Some(tag) = tag.filter(|_| !self.metadata.is_empty()) {
+            let registry = Arc::clone(&self.registry);
+            self.metadata
+                .retain(|key, _| super::build::metadata_tag(&registry, key) != Some(tag));
+        }
         let dtype = DataType::from(StructType::from_fields(members)?);
         let field = self.rerooted(dtype);
         let plan = super::schema::column_plan_of(&field, &self.registry)?;
@@ -3619,14 +4162,13 @@ impl FixMsg {
         for change in indexed {
             if change.renamed {
                 named = None;
-            } else if change.appended {
-                if let (Some(named), Some(child)) =
+            } else if change.appended
+                && let (Some(named), Some(child)) =
                     (named.as_mut(), self.field.fields().get(change.index))
-                {
-                    Arc::make_mut(named)
-                        .entry(SmolStr::new(child.name()))
-                        .or_insert(change.index);
-                }
+            {
+                Arc::make_mut(named)
+                    .entry(SmolStr::new(child.name()))
+                    .or_insert(change.index);
             }
             change.apply(&mut self.tags, Some(&mut self.groups));
         }
@@ -3713,10 +4255,10 @@ impl FixMsg {
     /// that field's name reaches.
     pub fn get_by_id(&self, id: FixId) -> Option<Scalar> {
         let known = self.registry.get_field_by_id(id)?;
-        if let Some((tag, _)) = self.registry.identity_of(known) {
-            if identity::is_typed_tag(tag) {
-                return self.typed_fact(tag);
-            }
+        if let Some((tag, _)) = self.registry.identity_of(known)
+            && identity::is_typed_tag(tag)
+        {
+            return self.typed_fact(tag);
         }
         self.value
             .get(self.field.index_of(known.name())?)
@@ -3852,12 +4394,11 @@ impl FixMsg {
     /// typed fact answers from its holder - and an exact root-child match is
     /// the fallback when the registry does not know it.
     pub fn get_by_name(&self, name: &str) -> Option<Scalar> {
-        if let Some(known) = self.known_by_name(name) {
-            if let Some((tag, _)) = self.registry.identity_of(known) {
-                if identity::is_typed_tag(tag) {
-                    return self.typed_fact(tag);
-                }
-            }
+        if let Some(known) = self.known_by_name(name)
+            && let Some((tag, _)) = self.registry.identity_of(known)
+            && identity::is_typed_tag(tag)
+        {
+            return self.typed_fact(tag);
         }
         self.value
             .get(self.child_index(&self.field, name)?)
@@ -4087,40 +4628,64 @@ fn fx_triple(
     *slot = filled;
 }
 
-/// The three parts an instrument key names.
+/// The three parts an instrument key names, each read by its own type and
+/// absent where that type refuses it, beside the source that named it.
 struct InstrumentKey {
-    isin: String,
-    mic: String,
-    ccy: String,
+    isin: Option<crate::Isin>,
+    mic: Option<Mic>,
+    ccy: Option<Ccy>,
+    src: IdSource,
 }
 
-/// The first `{ISIN}_{MIC}_{CCY}` a security identifier under a key ending
-/// `INSTRUMENTID` spells after its last `;` - `dbi;CH0012214059_XSWX_CHF` -
-/// shaped twelve and four ASCII alphanumerics and a currency of one up to
-/// [`crate::CCY_WIDTH`] ASCII alphanumerics - `_USDT` as well as `_CHF` -
-/// each part unchecked
-/// until its own type reads it.
-fn instrument_key(ids: &SecurityIds) -> Option<InstrumentKey> {
-    ids.iter().find_map(|id| {
-        if !id.sectype().as_str().ends_with("INSTRUMENTID") {
-            return None;
+/// The first `{ISIN}_{MIC}_{CCY}` an `INSTRUMENTID` security identifier
+/// spells after its last `;` - `dbi;CH0012214059_XSWX_CHF` - read by
+/// [`SymbolCode::instrument`](crate::securityid::SymbolCode::instrument),
+/// the one reading of that shape a symbol is read by too.
+fn instrument_key(ids: &Identifiers) -> Option<InstrumentKey> {
+    ids.of_kind(&IdType::InstrumentId).find_map(|id| {
+        match crate::securityid::SymbolCode::instrument(id.value().rsplit(';').next()?)? {
+            crate::securityid::SymbolCode::Instrument { isin, mic, ccy } => Some(InstrumentKey {
+                isin,
+                mic,
+                ccy,
+                src: id.src().clone(),
+            }),
+            _ => None,
         }
-        let tail = id.code().rsplit(';').next()?;
-        let mut parts = tail.split('_');
-        let (isin, mic, ccy) = (parts.next()?, parts.next()?, parts.next()?);
-        let shaped = |part: &str, widths: std::ops::RangeInclusive<usize>| {
-            widths.contains(&part.len()) && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
-        };
-        (parts.next().is_none()
-            && shaped(isin, 12..=12)
-            && shaped(mic, 4..=4)
-            && shaped(ccy, 1..=crate::CCY_WIDTH))
-        .then(|| InstrumentKey {
-            isin: isin.to_owned(),
-            mic: mic.to_owned(),
-            ccy: ccy.to_owned(),
-        })
     })
+}
+
+/// The suffix a source spelling a venue's own instrument key ends with,
+/// whatever namespace leads it.
+const INSTRUMENT_ID: &str = "instrumentid";
+
+/// The security identifier a stated `source` and `code` make, from `src`:
+/// a source spelled `{NAMESPACE}INSTRUMENTID` - `ULLINKINSTRUMENTID` - is an
+/// [`IdType::InstrumentId`] from that namespace, and every other source is
+/// the type [`IdType::from_security_source`] reads it as.
+pub(super) fn security_identifier(
+    source: &str,
+    src: IdSource,
+    code: &str,
+) -> crate::Result<Identifier> {
+    match instrument_namespace(source) {
+        Some(namespace) => Identifier::new(namespace.parse()?, IdType::InstrumentId, code),
+        None => Identifier::new(src, IdType::from_security_source(source)?, code),
+    }
+}
+
+/// The namespace a source spelled `{NAMESPACE}INSTRUMENTID` names, matched
+/// in place ignoring case: the namespace is folded where the identifier is
+/// built, so no upper-cased copy of the source is made.
+fn instrument_namespace(source: &str) -> Option<&str> {
+    let source = source.trim();
+    source
+        .len()
+        .checked_sub(INSTRUMENT_ID.len())
+        .filter(|at| *at > 0)
+        .and_then(|at| Some((source.get(..at)?, source.get(at..)?)))
+        .filter(|(_, suffix)| suffix.eq_ignore_ascii_case(INSTRUMENT_ID))
+        .map(|(namespace, _)| namespace)
 }
 
 /// Feeds one level of the entry tree to a digest in canonical name order.
@@ -4317,10 +4882,10 @@ pub(super) struct Unmapped {
     pub(super) occurrences: Vec<(Metadata, Lifted)>,
 }
 
-/// The scalars a leaf's metadata sets aside for its alternate
-/// identifiers, each under its key as stated: those whose key ends with the
-/// name of one of the message's identifiers.
-pub(super) type Lifted = Vec<(SmolStr, SmolStr)>;
+/// The scalars a leaf's metadata sets aside for its identifier sets, each
+/// under its key as stated beside the identifier its key and its value
+/// name ([`Holds::land`]).
+pub(super) type Lifted = Vec<(SmolStr, SmolStr, Identifier)>;
 
 /// What one leaf carries out of its message: its metadata, and the scalars
 /// it lifts into its alternate identifiers - the occurrence's before the
@@ -4362,31 +4927,32 @@ impl Unmapped {
 /// hold - a second party of a role, a value no map takes - stays.
 struct Holds<'a> {
     registry: &'a FixRegistry,
-    roles: Option<super::FixCodeSet<'a>>,
-    accounts: &'a IdMap,
-    altids: &'a IdMap,
+    codes: PartyCodes<'a>,
+    partyids: &'a Identifiers,
+    identifiers: &'a Identifiers,
 }
 
 impl Holds<'_> {
-    /// The account `key` names: an occurrence's `own` first, then the
-    /// message's.
-    fn account<'held>(&'held self, own: Option<&'held IdMap>, key: &str) -> Option<&'held str> {
-        own.and_then(|own| own.get(key))
-            .or_else(|| self.accounts.get(key))
+    /// Whether a party of `kind` with `value` is held: an occurrence's
+    /// `own` first, then the message's.
+    fn holds_party(&self, own: Option<&Identifiers>, kind: &IdType, value: &str) -> bool {
+        own.into_iter()
+            .chain(std::iter::once(self.partyids))
+            .any(|ids| ids.of_kind(kind).any(|held| held.value() == value))
     }
 
     /// Whether the account the leaf holds is `value`.
-    fn holds_account(&self, own: Option<&IdMap>, value: &str) -> bool {
-        self.account(own, ACCOUNT_KEY) == Some(value.trim())
+    fn holds_account(&self, own: Option<&Identifiers>, value: &str) -> bool {
+        self.holds_party(own, &IdType::Account, value.trim())
     }
 
     /// Whether one occurrence of the party or regulatory group `counter`
     /// counts - its `cells`, read at the identifier's and the role's or
-    /// type's `positions` - is held by the leaf's maps.
+    /// type's `positions` - is held by the leaf's identifiers.
     fn holds_occurrence(
         &self,
         counter: i32,
-        own: Option<&IdMap>,
+        own: Option<&Identifiers>,
         positions: [Option<usize>; 2],
         cells: &[Scalar],
     ) -> bool {
@@ -4396,14 +4962,17 @@ impl Holds<'_> {
         };
         let other = other.as_deref();
         if PARTY_GROUPS.iter().any(|(held, ..)| *held == counter) {
-            return self.account(own, &account_key(self.roles, other)) == Some(id.as_str())
+            return self
+                .codes
+                .party(&id, other, None)
+                .is_some_and(|party| self.holds_party(own, party.kind(), party.value()))
                 || self.registry.idmap_sources().iter().any(|(_, source)| {
                     source.role().is_some()
                         && source.role() == other
-                        && self.altids.get(source.key()) == Some(id.as_str())
+                        && self.identifiers.get(source.key()) == Some(id.as_str())
                 });
         }
-        self.altids.get(&regulatory_key(other)) == Some(id.as_str())
+        regulatory_kind(other).is_ok_and(|kind| self.identifiers.get(&kind) == Some(id.as_str()))
     }
 
     /// `planned`'s value as the JSON text a leaf's metadata holds, less the
@@ -4413,18 +4982,19 @@ impl Holds<'_> {
         &self,
         walk: &Walk<'walk>,
         planned: &Planned<'walk>,
-        own: Option<&IdMap>,
+        own: Option<&Identifiers>,
         value: &Scalar,
     ) -> Option<SmolStr> {
         let positions = planned.held.get_or_init(|| {
             let counter = planned.counter?;
             let (_, id, other) = PARTY_GROUPS
                 .iter()
-                .chain(&REGULATORY_GROUPS)
+                .map(|(held, id, role, _)| (*held, *id, *role))
+                .chain(REGULATORY_GROUPS)
                 .find(|(held, ..)| *held == counter)?;
             let serie = planned.field.dtype().as_serie_type()?;
             let fields = serie.item().fields();
-            Some([*id, *other].map(|tag| child_by_tag(self.registry, fields, false, tag)))
+            Some([id, other].map(|tag| child_by_tag(self.registry, fields, false, tag)))
         });
         let held = planned.counter.zip(*positions);
         let rendered = match held {
@@ -4439,44 +5009,55 @@ impl Holds<'_> {
     }
 
     /// Lands one scalar under `key`: set aside to be lifted where the key
-    /// ends with one of the `identifiers` its level declares - the
+    /// names an identifier its value is - read as [`Identifier::from_key`]
+    /// reads a key, against the `identifiers` its level declares (the
     /// `FIX:identifiers` of the message's type, or of an occurrence's
-    /// component: an execution report's `marketorderid` ends with its
-    /// `orderid` - else in `metadata`.
+    /// component) and, where no dictionary field is `tagged` by it, the
+    /// crate's identifier names too: an execution report's
+    /// `RefOrderID(1080)` is the `reforderid` it declares, a bridge's
+    /// `firm.x.ParentOrderID` `firm.x:parentorderid` - else in `metadata`.
     fn land(
         &self,
         key: &str,
         text: SmolStr,
         identifiers: Option<&str>,
+        tagged: bool,
         metadata: &mut Metadata,
         lifted: &mut Lifted,
     ) {
-        let identifier = identifiers.is_some_and(|names| {
-            names
-                .split(',')
-                .any(|name| !name.is_empty() && ends_with_name(key, name))
-        });
-        if identifier {
-            lifted.push((SmolStr::new(key), text));
-        } else {
-            metadata.insert(SmolStr::new(key), text);
+        match inferred_identifier(key, &text, identifiers, tagged).and_then(Result::ok) {
+            Some(id) => lifted.push((SmolStr::new(key), text, id)),
+            None => {
+                metadata.insert(SmolStr::new(key), text);
+            }
         }
     }
 }
 
-/// Whether `key`, its letters and digits alone, ends with `name`, an
-/// identifier's, whatever the case: `market_order_id` and `#orderid` end
-/// with `orderid`. Nothing allocates.
-fn ends_with_name(key: &str, name: &str) -> bool {
-    let mut folded = key.bytes().rev().filter(u8::is_ascii_alphanumeric);
-    name.bytes()
-        .rev()
-        .filter(u8::is_ascii_alphanumeric)
-        .all(|expected| {
-            folded
-                .next()
-                .is_some_and(|held| held.eq_ignore_ascii_case(&expected))
-        })
+/// The identifier one unmapped scalar names, as [`Holds::land`] reads it:
+/// `None` where its key names none or its value states nothing, the type's
+/// refusal where the type refuses it.
+fn inferred_identifier(
+    key: &str,
+    value: &str,
+    declared: Option<&str>,
+    tagged: bool,
+) -> Option<crate::Result<Identifier>> {
+    let value = value.trim();
+    if value.is_empty() || is_null_like(value) {
+        return None;
+    }
+    let names = declared
+        .into_iter()
+        .flat_map(|names| names.split(','))
+        .chain(
+            (!tagged)
+                .then(IdType::identifier_names)
+                .into_iter()
+                .flatten(),
+        );
+    let (src, kind) = Identifier::key_parts(key, names)?;
+    Some(Identifier::new(src, kind, value))
 }
 
 /// The `FIX:identifiers` a component - a message's definition, an
@@ -4705,7 +5286,15 @@ fn land_members<'a>(
                 continue;
             };
             if member.tag != Some(ACCOUNT) || !holds.holds_account(Some(own), &text) {
-                holds.land(member.field.name(), text, identifiers, metadata, lifted);
+                let tagged = member.tag.is_some();
+                holds.land(
+                    member.field.name(),
+                    text,
+                    identifiers,
+                    tagged,
+                    metadata,
+                    lifted,
+                );
             }
             continue;
         }
@@ -4719,7 +5308,7 @@ fn land_members<'a>(
 /// occurrence states itself, and the identifiers its component declares.
 struct Level<'a> {
     holds: &'a Holds<'a>,
-    own: &'a IdMap,
+    own: &'a Identifiers,
     identifiers: Option<&'a str>,
 }
 
@@ -4785,19 +5374,19 @@ fn named_index(parent: &Field, name: &str) -> Option<usize> {
 
 /// Forgets the entry a child at `at` held in a sorted position index.
 fn retire(index: &mut Vec<(i32, usize)>, key: Option<i32>, at: usize) {
-    if let Some(key) = key {
-        if let Ok(position) = index.binary_search(&(key, at)) {
-            index.remove(position);
-        }
+    if let Some(key) = key
+        && let Ok(position) = index.binary_search(&(key, at))
+    {
+        index.remove(position);
     }
 }
 
 /// Records the entry the child at `at` carries in a sorted position index.
 fn admit(index: &mut Vec<(i32, usize)>, key: Option<i32>, at: usize) {
-    if let Some(key) = key {
-        if let Err(position) = index.binary_search(&(key, at)) {
-            index.insert(position, (key, at));
-        }
+    if let Some(key) = key
+        && let Err(position) = index.binary_search(&(key, at))
+    {
+        index.insert(position, (key, at));
     }
 }
 
@@ -4822,11 +5411,11 @@ impl Clone for FixMsg {
         Self {
             registry: Arc::clone(&self.registry),
             event: self.event.clone(),
-            strikepx: self.strikepx,
             header: self.header.clone(),
             capture: self.capture.clone(),
             lifted: self.lifted.clone(),
-            forced: self.forced,
+            stale: self.stale,
+            stated: self.stated,
             row_stated: self.row_stated,
             text: self.text.clone(),
             metadata: self.metadata.clone(),
@@ -4864,7 +5453,6 @@ impl PartialEq for FixMsg {
     /// hold the same fields.
     fn eq(&self, other: &Self) -> bool {
         self.event == other.event
-            && self.strikepx == other.strikepx
             && self.header == other.header
             && self.capture == other.capture
             && self.text == other.text
@@ -4997,7 +5585,7 @@ impl Event for FixMsg {
     }
 
     fn set_state(&mut self, state: State) {
-        self.forced = true;
+        self.stated |= fact::STATE;
         self.event.set_state(state);
     }
 
@@ -5035,7 +5623,7 @@ impl Event for FixMsg {
     }
 
     fn set_exprunix(&mut self, unix: Option<i64>) {
-        self.forced = true;
+        self.stated |= fact::EXPIRY;
         self.event.set_exprunix(unix);
     }
 
@@ -5069,45 +5657,72 @@ impl Market for FixMsg {
         self.event.get_price()
     }
 
-    fn set_price(&mut self, px: Option<Decimal>) {
-        self.forced = true;
-        self.event.set_price(px);
+    fn set_price(&mut self, px: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::PRICE;
+        self.event.set_price(px, overwrite);
+    }
+
+    fn get_stoppx(&self) -> Option<Decimal> {
+        self.event.get_stoppx()
+    }
+
+    fn set_stoppx(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::STOPPX;
+        self.event.set_stoppx(value, overwrite);
     }
 
     fn get_currency(&self) -> &Ccy {
         self.event.get_currency()
     }
 
-    fn set_currency(&mut self, currency: Ccy) {
-        self.forced = true;
-        self.event.set_currency(currency);
+    fn set_currency(&mut self, currency: Ccy, overwrite: bool) {
+        self.stated |= fact::CURRENCY;
+        self.event.set_currency(currency, overwrite);
     }
 
     fn get_quantity(&self) -> Option<Decimal> {
         self.event.get_quantity()
     }
 
-    fn set_quantity(&mut self, qty: Option<Decimal>) {
-        self.forced = true;
-        self.event.set_quantity(qty);
+    fn set_quantity(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::QUANTITY;
+        self.event.set_quantity(qty, overwrite);
+    }
+
+    fn get_displayqty(&self) -> Option<Decimal> {
+        self.event.get_displayqty()
+    }
+
+    fn set_displayqty(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::DISPLAYQTY;
+        self.event.set_displayqty(value, overwrite);
+    }
+
+    fn get_hiddenqty(&self) -> Option<Decimal> {
+        self.event.get_hiddenqty()
+    }
+
+    fn set_hiddenqty(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::HIDDENQTY;
+        self.event.set_hiddenqty(value, overwrite);
     }
 
     fn get_unit(&self) -> &Unit {
         self.event.get_unit()
     }
 
-    fn set_unit(&mut self, unit: Unit) {
-        self.forced = true;
-        self.event.set_unit(unit);
+    fn set_unit(&mut self, unit: Unit, overwrite: bool) {
+        self.stated |= fact::UNIT;
+        self.event.set_unit(unit, overwrite);
     }
 
     fn get_side(&self) -> Side {
         self.event.get_side()
     }
 
-    fn set_side(&mut self, side: Side) {
-        self.forced = true;
-        self.event.set_side(side);
+    fn set_side(&mut self, side: Side, overwrite: bool) {
+        self.stated |= fact::SIDE;
+        self.event.set_side(side, overwrite);
     }
 
     /// The message's `msgcat`: an order's, a quote's or an execution's
@@ -5117,73 +5732,62 @@ impl Market for FixMsg {
         self.event.marketdatakind()
     }
 
-    fn get_securityids(&self) -> &SecurityIds {
+    fn get_marketdatatype(&self) -> crate::MarketDataType {
+        self.event.get_marketdatatype()
+    }
+
+    fn set_marketdatatype(&mut self, mdtype: crate::MarketDataType, overwrite: bool) {
+        self.stated |= fact::MDTYPE;
+        self.event.set_marketdatatype(mdtype, overwrite);
+    }
+
+    fn get_securityids(&self) -> &Identifiers {
         self.event.get_securityids()
     }
 
-    fn set_securityids(&mut self, ids: SecurityIds) -> Result<()> {
-        self.derived = SecurityIds::default();
-        let held: Vec<SecurityId> = self.event.get_securityids().iter().cloned().collect();
-        for id in &held {
-            if ids.get(id.sectype().as_str()) != Some(id.code()) {
-                self.sync_security_id(&id.sectype(), None)?;
-            }
+    /// The caller's word: the identifiers become the message's, which no
+    /// settle restates from the fields, and the wire stays as the source
+    /// sent it. Under `overwrite` the derived overlay goes too.
+    fn set_securityids(&mut self, ids: Identifiers, overwrite: bool) -> Result<()> {
+        self.stated |= fact::SECURITYIDS;
+        if overwrite {
+            self.derived = Identifiers::new();
         }
-        for id in ids.iter() {
-            if self.event.get_securityids().get(id.sectype().as_str()) != Some(id.code()) {
-                self.sync_security_id(&id.sectype(), Some(id.code()))?;
-            }
-        }
-        self.forced = true;
-        self.row_stated_securityids(&ids);
-        self.event.set_securityids(ids)
+        self.event.set_securityids(ids, overwrite)
     }
 
-    fn insert_securityid(&mut self, id: SecurityId) -> Result<bool> {
-        let key = id.sectype();
-        // A stated identifier replaces a derived one under its key - one the
-        // ISIN implies or the overlay carries; a stated one already held is
-        // not replaced.
-        self.derived.remove(&key);
-        if !self.event.is_derived_securityid(&key)
-            && self.event.get_securityids().contains_key(key.as_str())
-        {
-            return Ok(false);
+    fn insert_securityid(&mut self, id: Identifier) -> Result<bool> {
+        if id.src() == &IdSource::Derived {
+            return Ok(self.derive_securityid(id.kind(), id.value()));
         }
-        self.sync_security_id(&key, Some(id.code()))?;
-        self.forced = true;
-        if let Some(bit) = row_stated_securityid_bit(key.as_str()) {
-            self.row_stated |= bit;
-        }
+        // A stated identifier answers before a derived one of its type.
+        self.derived.remove_kind(id.kind());
+        self.stated |= fact::SECURITYIDS;
         self.event.insert_securityid(id)
     }
 
-    fn remove_securityid(&mut self, key: &SecType) -> Result<bool> {
-        self.derived.remove(key);
-        if key.as_str() == "ISIN" {
+    fn remove_securityid(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
+        self.derived.remove(src, kind);
+        if kind == &IdType::Isin {
             // Every derived identifier hangs on the ISIN but the pair, which
             // hangs on the symbol.
-            let pair = self.derived.get_id("FOREX").cloned();
-            self.derived = SecurityIds::default();
+            let pair = self.derived.get_identifier(&IdType::Forex).cloned();
+            self.derived = Identifiers::new();
             if let Some(pair) = pair {
                 self.derived.insert(pair);
             }
         }
-        if !self.event.get_securityids().contains_key(key.as_str()) {
-            return Ok(false);
-        }
-        self.sync_security_id(key, None)?;
-        self.forced = true;
-        if let Some(bit) = row_stated_securityid_bit(key.as_str()) {
-            self.row_stated &= !bit;
-        }
-        self.event.remove_securityid(key)
+        self.stated |= fact::SECURITYIDS;
+        self.event.remove_securityid(src, kind)
     }
 
-    fn derive_securityid(&mut self, id: SecurityId) -> bool {
-        let added = self.event.derive_securityid(id.clone());
-        if added {
-            self.derived.insert(id);
+    fn derive_securityid(&mut self, kind: &IdType, code: &str) -> bool {
+        let added = self.event.derive_securityid(kind, code);
+        if let Some(id) = added
+            .then(|| self.event.get_securityids().get_identifier(kind))
+            .flatten()
+        {
+            self.derived.insert(id.clone());
         }
         added
     }
@@ -5192,317 +5796,323 @@ impl Market for FixMsg {
         self.event.get_cficode()
     }
 
-    fn set_cficode(&mut self, cficode: Option<Cfi>) {
-        self.forced = true;
-        self.event.set_cficode(cficode);
+    fn set_cficode(&mut self, cficode: Option<Cfi>, overwrite: bool) {
+        self.stated |= fact::CFI;
+        self.event.set_cficode(cficode, overwrite);
     }
 
     fn get_miccode(&self) -> Option<&Mic> {
         self.event.get_miccode()
     }
 
-    fn set_miccode(&mut self, miccode: Option<Mic>) {
-        self.forced = true;
-        if miccode.is_some() {
-            self.row_stated |= ROW_STATED_MIC;
-        } else {
-            self.row_stated &= !ROW_STATED_MIC;
-        }
-        self.event.set_miccode(miccode);
+    fn set_miccode(&mut self, miccode: Option<Mic>, overwrite: bool) {
+        self.stated |= fact::MIC;
+        self.event.set_miccode(miccode, overwrite);
     }
 
     fn get_execunix(&self) -> Option<i64> {
         self.event.get_execunix()
     }
 
-    fn set_execunix(&mut self, unix: Option<i64>) {
-        if unix.is_some() {
+    /// An execution clock set here is the caller's word, which a settle of
+    /// the clock alone leaves standing.
+    fn set_execunix(&mut self, unix: Option<i64>, overwrite: bool) {
+        self.stated |= fact::EXECUTION;
+        self.event.set_execunix(unix, overwrite);
+        if self.event.get_execunix().is_some() {
             self.row_stated |= ROW_STATED_EXECUTION;
         } else {
             self.row_stated &= !ROW_STATED_EXECUTION;
         }
-        self.event.set_execunix(unix);
     }
 
     fn get_lastpx(&self) -> Option<Decimal> {
         self.event.get_lastpx()
     }
 
-    fn set_lastpx(&mut self, px: Option<Decimal>) {
-        self.forced = true;
-        self.event.set_lastpx(px);
+    fn set_lastpx(&mut self, px: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::LASTPX;
+        self.event.set_lastpx(px, overwrite);
     }
 
     fn get_lastqty(&self) -> Option<Decimal> {
         self.event.get_lastqty()
     }
 
-    fn set_lastqty(&mut self, qty: Option<Decimal>) {
-        self.forced = true;
-        self.event.set_lastqty(qty);
+    fn set_lastqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::FILLS;
+        self.event.set_lastqty(qty, overwrite);
     }
 
     fn get_avgpx(&self) -> Option<Decimal> {
         self.event.get_avgpx()
     }
 
-    fn set_avgpx(&mut self, px: Option<Decimal>) {
-        self.forced = true;
-        self.event.set_avgpx(px);
+    fn set_avgpx(&mut self, px: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::FILLS;
+        self.event.set_avgpx(px, overwrite);
     }
 
     fn get_cumqty(&self) -> Option<Decimal> {
         self.event.get_cumqty()
     }
 
-    fn set_cumqty(&mut self, qty: Option<Decimal>) {
-        self.forced = true;
-        self.event.set_cumqty(qty);
+    fn set_cumqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::FILLS;
+        self.event.set_cumqty(qty, overwrite);
     }
 
     fn get_leavesqty(&self) -> Option<Decimal> {
         self.event.get_leavesqty()
     }
 
-    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
-        self.forced = true;
-        self.event.set_leavesqty(qty);
+    fn set_leavesqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::FILLS;
+        self.event.set_leavesqty(qty, overwrite);
+    }
+
+    fn get_cxlqty(&self) -> Option<Decimal> {
+        self.event.get_cxlqty()
+    }
+
+    fn set_cxlqty(&mut self, value: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::CXLQTY;
+        self.event.set_cxlqty(value, overwrite);
     }
 
     fn get_prevpx(&self) -> Option<Decimal> {
         self.event.get_prevpx()
     }
 
-    fn set_prevpx(&mut self, px: Option<Decimal>) {
-        self.forced = true;
-        self.event.set_prevpx(px);
+    fn set_prevpx(&mut self, px: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::PREVPX;
+        self.event.set_prevpx(px, overwrite);
     }
 
     fn get_prevqty(&self) -> Option<Decimal> {
         self.event.get_prevqty()
     }
 
-    fn set_prevqty(&mut self, qty: Option<Decimal>) {
-        self.forced = true;
-        self.event.set_prevqty(qty);
+    fn set_prevqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.event.set_prevqty(qty, overwrite);
     }
 
     fn get_spotrate(&self) -> Option<Decimal> {
         self.event.get_spotrate()
     }
 
-    fn set_spotrate(&mut self, rate: Option<Decimal>) {
-        self.forced = true;
-        self.event.set_spotrate(rate);
+    fn set_spotrate(&mut self, rate: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::LASTPX;
+        self.event.set_spotrate(rate, overwrite);
     }
 
     fn get_forwardpoints(&self) -> Option<Decimal> {
         self.event.get_forwardpoints()
     }
 
-    fn set_forwardpoints(&mut self, points: Option<Decimal>) {
-        self.forced = true;
-        self.event.set_forwardpoints(points);
+    fn set_forwardpoints(&mut self, points: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::LASTPX;
+        self.event.set_forwardpoints(points, overwrite);
     }
 
     fn get_ticker(&self) -> Option<&str> {
         self.event.get_ticker()
     }
 
-    fn set_ticker(&mut self, ticker: Option<SmolStr>) {
-        self.forced = true;
-        self.event.set_ticker(ticker);
+    fn set_ticker(&mut self, ticker: Option<SmolStr>, overwrite: bool) {
+        self.stated |= fact::TICKER;
+        self.event.set_ticker(ticker, overwrite);
     }
 
     fn get_metadata(&self) -> &Metadata {
         &self.metadata
     }
 
-    fn set_metadata(&mut self, metadata: Option<Metadata>) {
-        self.metadata = metadata.unwrap_or_default();
+    fn set_metadata(&mut self, metadata: Option<Metadata>, overwrite: bool) {
+        match (metadata, overwrite) {
+            (metadata, true) => self.metadata = metadata.unwrap_or_default(),
+            (Some(stated), false) => {
+                for (key, value) in stated {
+                    self.metadata.entry(key).or_insert(value);
+                }
+            }
+            (None, false) => {}
+        }
     }
 
     fn get_fxrates(&self) -> &FxRates {
         self.event.get_fxrates()
     }
 
-    fn set_fxrates(&mut self, rates: FxRates) {
-        self.forced = true;
-        self.event.set_fxrates(rates);
+    fn set_fxrates(&mut self, rates: FxRates, overwrite: bool) {
+        self.event.set_fxrates(rates, overwrite);
     }
 
     fn get_bidpx(&self) -> Option<crate::Decimal> {
         self.event.get_bidpx()
     }
 
-    fn set_bidpx(&mut self, px: Option<crate::Decimal>) {
-        self.forced = true;
-        self.event.set_bidpx(px);
+    fn set_bidpx(&mut self, px: Option<crate::Decimal>, overwrite: bool) {
+        self.stated |= fact::BIDASK;
+        self.event.set_bidpx(px, overwrite);
     }
 
     fn get_bidqty(&self) -> Option<crate::Decimal> {
         self.event.get_bidqty()
     }
 
-    fn set_bidqty(&mut self, qty: Option<crate::Decimal>) {
-        self.forced = true;
-        self.event.set_bidqty(qty);
+    fn set_bidqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        self.stated |= fact::BIDASK;
+        self.event.set_bidqty(qty, overwrite);
     }
 
     fn get_bidccy(&self) -> Option<&crate::Ccy> {
         self.event.get_bidccy()
     }
 
-    fn set_bidccy(&mut self, ccy: Option<crate::Ccy>) {
-        self.forced = true;
-        self.event.set_bidccy(ccy);
+    fn set_bidccy(&mut self, ccy: Option<crate::Ccy>, overwrite: bool) {
+        self.stated |= fact::BIDASK;
+        self.event.set_bidccy(ccy, overwrite);
     }
 
     fn get_askpx(&self) -> Option<crate::Decimal> {
         self.event.get_askpx()
     }
 
-    fn set_askpx(&mut self, px: Option<crate::Decimal>) {
-        self.forced = true;
-        self.event.set_askpx(px);
+    fn set_askpx(&mut self, px: Option<crate::Decimal>, overwrite: bool) {
+        self.stated |= fact::BIDASK;
+        self.event.set_askpx(px, overwrite);
     }
 
     fn get_askqty(&self) -> Option<crate::Decimal> {
         self.event.get_askqty()
     }
 
-    fn set_askqty(&mut self, qty: Option<crate::Decimal>) {
-        self.forced = true;
-        self.event.set_askqty(qty);
+    fn set_askqty(&mut self, qty: Option<crate::Decimal>, overwrite: bool) {
+        self.stated |= fact::BIDASK;
+        self.event.set_askqty(qty, overwrite);
     }
 
     fn get_askccy(&self) -> Option<&crate::Ccy> {
         self.event.get_askccy()
     }
 
-    fn set_askccy(&mut self, ccy: Option<crate::Ccy>) {
-        self.forced = true;
-        self.event.set_askccy(ccy);
+    fn set_askccy(&mut self, ccy: Option<crate::Ccy>, overwrite: bool) {
+        self.stated |= fact::BIDASK;
+        self.event.set_askccy(ccy, overwrite);
     }
 }
 
 impl Operation for FixMsg {
-    fn get_tif(&self) -> Option<&TimeInForce> {
-        self.event.get_tif()
+    fn get_ordqty(&self) -> Option<Decimal> {
+        self.event.get_ordqty()
     }
 
-    fn set_tif(&mut self, tif: Option<TimeInForce>) {
-        self.forced = true;
-        self.event.set_tif(tif);
+    fn set_ordqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
+        self.stated |= fact::ORDQTY;
+        self.event.set_ordqty(qty, overwrite);
+    }
+
+    fn get_timeinforce(&self) -> Option<&TimeInForce> {
+        self.event.get_timeinforce()
+    }
+
+    fn set_timeinforce(&mut self, tif: Option<TimeInForce>, overwrite: bool) {
+        self.stated |= fact::TIF;
+        self.event.set_timeinforce(tif, overwrite);
     }
 
     fn get_tradable(&self) -> Option<bool> {
         self.event.get_tradable()
     }
 
-    fn set_tradable(&mut self, tradable: Option<bool>) {
-        self.forced = true;
-        self.event.set_tradable(tradable);
+    fn set_tradable(&mut self, tradable: Option<bool>, overwrite: bool) {
+        self.stated |= fact::TRADABLE;
+        self.event.set_tradable(tradable, overwrite);
     }
 
-    fn get_altids(&self) -> &IdMap {
-        self.event.get_altids()
+    fn get_identifiers(&self) -> &Identifiers {
+        self.event.get_identifiers()
     }
 
-    fn set_altids(&mut self, ids: IdMap) -> Result<()> {
-        self.write_idmap(FixIdMapKind::Alts, &ids)?;
-        self.event.set_altids(ids)
+    /// The caller's word: the identifiers become the message's, which no
+    /// settle restates from the fields, and the wire stays as the source
+    /// sent it.
+    fn set_identifiers(&mut self, ids: Identifiers, overwrite: bool) -> Result<()> {
+        self.stated |= fact::IDENTIFIERS;
+        self.event.set_identifiers(ids, overwrite)
     }
 
-    fn insert_altid(&mut self, key: &str, value: &str) -> Result<bool> {
-        if self.event.get_altids().contains_key(key) {
-            return Ok(false);
-        }
-        let tag = self.idmap_source(FixIdMapKind::Alts, key)?;
-        self.set_unsettled(tag, Scalar::from(value))?;
-        self.event.insert_altid(key, value)
+    fn insert_identifier(&mut self, id: Identifier) -> Result<bool> {
+        self.stated |= fact::IDENTIFIERS;
+        self.event.insert_identifier(id)
     }
 
-    fn remove_altid(&mut self, key: &str) -> Result<bool> {
-        if !self.event.get_altids().contains_key(key) {
-            return Ok(false);
-        }
-        let tag = self.idmap_source(FixIdMapKind::Alts, key)?;
-        self.set_unsettled(tag, Scalar::Null)?;
-        self.event.remove_altid(key)
+    fn remove_identifier(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
+        self.stated |= fact::IDENTIFIERS;
+        self.event.remove_identifier(src, kind)
     }
 
-    fn get_accountids(&self) -> &IdMap {
-        self.event.get_accountids()
+    fn get_partyids(&self) -> &Identifiers {
+        self.event.get_partyids()
     }
 
-    /// A message's accounts are its parties and its `Account(1)`, rebuilt at
-    /// every settle: the map it already states is kept, and any other is
-    /// refused, since no one field states a role - write the `Parties(453)`
-    /// occurrence or the `Account(1)` instead.
-    fn set_accountids(&mut self, ids: IdMap) -> Result<()> {
-        if &ids == self.event.get_accountids() {
-            return Ok(());
-        }
-        Err(accounts_are_parties(&ids.to_string()))
+    /// The caller's word, as [`Operation::set_identifiers`] is.
+    fn set_partyids(&mut self, partyids: Identifiers, overwrite: bool) -> Result<()> {
+        self.stated |= fact::PARTYIDS;
+        self.event.set_partyids(partyids, overwrite)
     }
 
-    fn insert_accountid(&mut self, key: &str, value: &str) -> Result<bool> {
-        if self.event.get_accountids().contains_key(key) {
-            return Ok(false);
-        }
-        Err(accounts_are_parties(&format!("{key}:{value}")))
+    fn insert_partyid(&mut self, partyid: Identifier) -> Result<bool> {
+        self.stated |= fact::PARTYIDS;
+        self.event.insert_partyid(partyid)
     }
 
-    fn remove_accountid(&mut self, key: &str) -> Result<bool> {
-        if !self.event.get_accountids().contains_key(key) {
-            return Ok(false);
-        }
-        Err(accounts_are_parties(key))
+    fn remove_partyid(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
+        self.stated |= fact::PARTYIDS;
+        self.event.remove_partyid(src, kind)
     }
 
-    /// The registry's own answer: an `altids` key whose `FIX:idmap` entry
-    /// follows.
-    fn is_followed_altid(&self, key: &str) -> bool {
+    /// The registry's own answer: the `FIX:parents` its fields state, else
+    /// the names' ([`FixRegistry::parents_of`]).
+    fn parents_of(&self, base: &IdType) -> std::borrow::Cow<'_, [IdType]> {
+        self.registry.parents_of(base)
+    }
+
+    /// The registry's own answer ([`FixRegistry::parent_of`]).
+    fn parent_of(&self, kind: &IdType) -> Option<(IdType, usize)> {
+        self.registry.parent_of(kind)
+    }
+
+    /// The registry's own answer: an identifier whose type's `FIX:idmap`
+    /// entry follows.
+    fn is_followed_identifier(&self, id: &Identifier) -> bool {
         self.registry.idmap_sources().iter().any(|(_, source)| {
-            source.follows() && source.map() == FixIdMapKind::Alts && source.key() == key
+            source.follows()
+                && source.map() == FixIdMapKind::Identifiers
+                && source.key() == id.kind()
         })
     }
 }
 
-/// The refusal of a direct write to a message's accounts, which are its
-/// parties and its `Account(1)`.
-fn accounts_are_parties(written: &str) -> Error {
-    identity::refused(
-        "accountids",
-        "the accounts a message's Parties(453) and Account(1) state",
-        written,
-    )
-}
-
 impl FixMsg {
-    /// Writes every entry of `ids` to its source field and removes the
-    /// entries the message holds that `ids` does not.
-    fn write_idmap(&mut self, kind: FixIdMapKind, ids: &IdMap) -> Result<()> {
-        let held = match kind {
-            FixIdMapKind::Alts => self.event.get_altids().clone(),
-        };
-        // A key no top-level field states - a party role's - is rebuilt from
-        // its group at the next settle and has nothing to null here.
-        for (key, _) in held.iter() {
-            if !ids.contains_key(key) {
-                if let Ok(tag) = self.idmap_source(kind, key) {
-                    self.set_unsettled(tag, Scalar::Null)?;
-                }
-            }
+    /// Each base a parent identifier names and the message does not state,
+    /// filled from its nearest parent by the registry's lists once it
+    /// settles, after every enrichment ([`Identifiers::fill_parents`]).
+    fn fill_parents(&mut self) {
+        let parent_of = |kind: &IdType| self.registry.parent_of(kind);
+        let held = self.event.get_identifiers();
+        // A message stating every base its parents name - most of them -
+        // copies no set to learn so.
+        if !held.iter().any(|id| {
+            parent_of(id.kind()).is_some_and(|(base, _)| held.get_from(id.src(), &base).is_none())
+        }) {
+            return;
         }
-        for (key, value) in ids.iter() {
-            if held.get(key) != Some(value) {
-                let tag = self.idmap_source(kind, key)?;
-                self.set_unsettled(tag, Scalar::from(value))?;
-            }
+        let mut identifiers = held.clone();
+        if identifiers.fill_parents(parent_of) {
+            let _ = self.event.set_identifiers(identifiers, true);
         }
-        Ok(())
     }
 
     /// Whether the row stated the currency pair, which FX detection leaves.
@@ -5522,67 +6132,36 @@ impl FixMsg {
 
     /// Whether the derived overlay holds a currency pair.
     pub(super) fn derives_pair(&self) -> bool {
-        self.derived.contains_key("FOREX")
+        self.derived.contains_kind(&IdType::Forex)
     }
 
     /// Whether the derived overlay holds exactly the pair `code`.
     pub(super) fn derives_pair_of(&self, code: &str) -> bool {
-        self.derived.get("FOREX") == Some(code)
+        self.derived.get(&IdType::Forex) == Some(code)
     }
 
     /// Replaces the derived currency pair, or takes it back: in the overlay,
     /// which every settle re-applies, and on the event, where a pair the
     /// overlay derived stands until then.
-    pub(super) fn set_derived_pair(&mut self, pair: Option<SecurityId>) {
-        let Ok(key) = SecType::read("FOREX") else {
-            return;
-        };
-        self.derived.remove(&key);
-        if self.event.is_derived_securityid(&key) {
-            let _ = self.event.remove_securityid(&key);
-        }
+    pub(super) fn set_derived_pair(&mut self, pair: Option<&str>) {
+        // What a pair implies - the identifiers, and no one market - is
+        // stated again at the next settle.
+        self.stale |= fact::SECURITYIDS | fact::MIC;
+        self.derived.remove_kind(&IdType::Forex);
+        let _ = self
+            .event
+            .remove_securityid(&IdSource::Derived, &IdType::Forex);
         if let Some(pair) = pair {
-            self.event.derive_securityid(pair.clone());
-            self.derived.insert(pair);
-        }
-    }
-
-    /// Sets the row-stated bit of every crated identifier column `ids`
-    /// states and clears the bit of every one it does not.
-    fn row_stated_securityids(&mut self, ids: &SecurityIds) {
-        for (key, bit) in [
-            ("ISIN", ROW_STATED_ISIN),
-            ("BLOOMBERG", ROW_STATED_BLOOMBERG),
-            ("FIGI", ROW_STATED_FIGI),
-            ("FOREX", ROW_STATED_FOREX),
-        ] {
-            if ids.contains_key(key) {
-                self.row_stated |= bit;
-            } else {
-                self.row_stated &= !bit;
-            }
+            self.derive_securityid(&IdType::Forex, pair);
         }
     }
 }
 
 /// Whether `text` is one of the spellings a wire uses for no value at all.
 fn is_null_like(text: &str) -> bool {
-    matches!(
-        text.to_ascii_uppercase().as_str(),
-        "NULL" | "NONE" | "N/A" | "[N/A]" | "NA" | "-"
-    )
-}
-
-/// The row-stated bit of the crated column a security-identifier key
-/// stands for, where one does.
-const fn row_stated_securityid_bit(key: &str) -> Option<u16> {
-    match key.as_bytes() {
-        b"ISIN" => Some(ROW_STATED_ISIN),
-        b"BLOOMBERG" => Some(ROW_STATED_BLOOMBERG),
-        b"FIGI" => Some(ROW_STATED_FIGI),
-        b"FOREX" => Some(ROW_STATED_FOREX),
-        _ => None,
-    }
+    ["NULL", "NONE", "N/A", "[N/A]", "NA", "-"]
+        .iter()
+        .any(|null| text.eq_ignore_ascii_case(null))
 }
 
 /// A cell's text: a string as it is, a code as its spelling, an integer as

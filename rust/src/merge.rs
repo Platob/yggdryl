@@ -594,18 +594,18 @@ fn rebuild_binary(
     left: &DataType,
     right: &DataType,
 ) -> Result<DataType> {
-    if let (Some(left_width), Some(right_width)) = (fixed_width(left), fixed_width(right)) {
-        if left_width == right_width {
-            if how == Widening::Down {
-                // The side that is not the bytes is the one constraining them.
-                return Ok(match left.bytes_parameters() {
-                    Some(_) => right.clone(),
-                    None => left.clone(),
-                });
-            }
-            if let Ok(width) = u32::try_from(left_width) {
-                return DataType::fixed_binary(width);
-            }
+    if let (Some(left_width), Some(right_width)) = (fixed_width(left), fixed_width(right))
+        && left_width == right_width
+    {
+        if how == Widening::Down {
+            // The side that is not the bytes is the one constraining them.
+            return Ok(match left.bytes_parameters() {
+                Some(_) => right.clone(),
+                None => left.clone(),
+            });
+        }
+        if let Ok(width) = u32::try_from(left_width) {
+            return DataType::fixed_binary(width);
         }
     }
     Ok(DataType::from(match parameters.is_fixed() {

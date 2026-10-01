@@ -629,18 +629,18 @@ impl<'input> Parser<'input> {
                 projection = projection.with_metadata(metadata);
                 continue;
             }
-            if projection.dtype().is_none() {
-                if let Some(dtype) = self.declared_dtype()? {
-                    projection = projection.with_dtype(dtype);
-                    if self.eat_word("null") {
-                        projection = projection.with_nullable(true);
-                    } else if self.at_word("not") {
-                        self.cursor += 1;
-                        self.expect_word("null")?;
-                        projection = projection.with_nullable(false);
-                    }
-                    continue;
+            if projection.dtype().is_none()
+                && let Some(dtype) = self.declared_dtype()?
+            {
+                projection = projection.with_dtype(dtype);
+                if self.eat_word("null") {
+                    projection = projection.with_nullable(true);
+                } else if self.at_word("not") {
+                    self.cursor += 1;
+                    self.expect_word("null")?;
+                    projection = projection.with_nullable(false);
                 }
+                continue;
             }
             return Ok(projection);
         }
@@ -1471,10 +1471,10 @@ impl<'input> Parser<'input> {
                 ),
             ));
         }
-        if matches!(self.peek_at(1), Some(Token::Text(_) | Token::Word(_))) {
-            if let Some(literal) = self.typed_literal(position)? {
-                return Ok(literal);
-            }
+        if matches!(self.peek_at(1), Some(Token::Text(_) | Token::Word(_)))
+            && let Some(literal) = self.typed_literal(position)?
+        {
+            return Ok(literal);
         }
         self.cursor += 1;
         Ok(Term::column(word))
@@ -1853,12 +1853,12 @@ fn decimal_from_text(text: &str, scale: i8) -> Option<i128> {
 
 /// Read lowercase or uppercase hex into bytes.
 fn bytes_from_hex(text: &str) -> Option<Vec<u8>> {
-    if text.len() % 2 != 0 {
+    if !text.len().is_multiple_of(2) {
         return None;
     }
     let bytes = text.as_bytes();
     let mut decoded = Vec::with_capacity(text.len() / 2);
-    for pair in bytes.chunks_exact(2) {
+    for pair in bytes.as_chunks::<2>().0 {
         let high = char::from(pair[0]).to_digit(16)?;
         let low = char::from(pair[1]).to_digit(16)?;
         decoded.push(u8::try_from(high * 16 + low).ok()?);

@@ -42,10 +42,10 @@ fn quote(
 ) -> MarketData {
     let mut quote = QuoteEvent::at(unix);
     quote.set_crosscode(code.to_owned());
-    quote.set_ticker(Some(SmolStr::new(ticker)));
-    quote.set_side(side);
-    quote.set_price(Some(price.parse().unwrap()));
-    quote.set_quantity(Some(Decimal::from_int(quantity)));
+    quote.set_ticker(Some(SmolStr::new(ticker)), true);
+    quote.set_side(side, true);
+    quote.set_price(Some(price.parse().unwrap()), true);
+    quote.set_quantity(Some(Decimal::from_int(quantity)), true);
     quote.set_state(State::New);
     quote.finalize();
     MarketData::from(quote)
@@ -56,13 +56,13 @@ fn quote(
 fn execution(unix: i64, ticker: &str, code: &str, side: Side, quantity: i64) -> MarketData {
     let mut order = OrderEvent::at(unix);
     order.set_crosscode(code.to_owned());
-    order.set_ticker(Some(SmolStr::new(ticker)));
-    order.set_side(side);
-    order.set_price(Some("101".parse().unwrap()));
-    order.set_quantity(Some(Decimal::from_int(quantity)));
+    order.set_ticker(Some(SmolStr::new(ticker)), true);
+    order.set_side(side, true);
+    order.set_price(Some("101".parse().unwrap()), true);
+    order.set_quantity(Some(Decimal::from_int(quantity)), true);
     order.set_state(State::read("Filled").unwrap());
     let mut fill = ExecutionEvent::from(&order);
-    fill.set_lastqty(Some(Decimal::from_int(quantity)));
+    fill.set_lastqty(Some(Decimal::from_int(quantity)), true);
     let mut execution = MarketData::from(fill);
     execution.finalize();
     execution
@@ -353,10 +353,10 @@ fn the_events_field_is_the_flat_marketdata_row_behind_its_stamp() {
     assert_eq!(field.name(), "event");
     assert!(!field.is_nullable());
     let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
-    assert_eq!(&names[..3], ["bookunix", "role", "marketdatakind"]);
-    // The stamp, the kind, the fifteen event, twenty-eight market and four
+    assert_eq!(&names[..3], ["bookunix", "role", "curruuid"]);
+    // The stamp, the six element, nine event, thirty-four market and five
     // operation columns, then `bookscope`.
-    assert_eq!(names.len(), 2 + 1 + 15 + 28 + 4 + 1);
+    assert_eq!(names.len(), 2 + 6 + 9 + 34 + 5 + 1);
     assert!(
         !names
             .iter()
@@ -952,7 +952,11 @@ fn tickers_span_the_books_of_each_ticker() {
     assert_eq!(tickers.len(), 2);
     let acme = &tickers[0];
     assert_eq!(text(acme, "ticker"), "ACME");
-    assert_eq!(text(acme, "crosscode"), "ACME");
+    assert_eq!(
+        text(acme, "crosscode"),
+        "3:0:ACME",
+        "the book's stored code"
+    );
     assert_eq!(text(acme, "from"), "2026-01-05T10:00:05.000000000Z");
     assert_eq!(
         text(acme, "to"),
@@ -1183,7 +1187,11 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
     ));
     assert_eq!(text(&book, "currunix"), "2026-01-05T10:01:10.000000000Z");
     assert_eq!(text(&book, "ticker"), "ACME");
-    assert_eq!(text(&book, "crosscode"), "ACME");
+    assert_eq!(
+        text(&book, "crosscode"),
+        "3:0:ACME",
+        "the book's stored code"
+    );
     assert_eq!(text(&book, "bestbid"), "100.5");
     assert_eq!(text(&book, "bestask"), "101");
     assert_eq!(text(&book, "bidqty"), "4");
@@ -1306,7 +1314,7 @@ fn events_list_every_entry_delta_and_execution_of_the_books_in_range() {
         .collect();
     assert!(names.contains("curruuid") && names.contains("prevuuid") && names.contains("state"));
     assert!(!names.contains("alive") && !names.contains("bidlimits"));
-    assert_eq!(names.len(), 51);
+    assert_eq!(names.len(), 57);
     // A UUID is its canonical text.
     assert_eq!(text(&rows[0], "curruuid").len(), 36);
 
@@ -1424,7 +1432,7 @@ fn the_audit_downloads_as_csv_in_each_coding_and_reads_back() {
             .unwrap()
             .to_owned();
         assert!(
-            header.starts_with("bookunix,role,marketdatakind,currunix,"),
+            header.starts_with("bookunix,role,curruuid,crossuuid,"),
             "{suffix}: {header}"
         );
 
@@ -1443,8 +1451,8 @@ fn the_audit_downloads_as_csv_in_each_coding_and_reads_back() {
         assert_eq!(rows, expected, "{suffix}");
         let field = readback.read_arrow_field(&options).unwrap();
         let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
-        assert_eq!(&names[..3], ["bookunix", "role", "marketdatakind"]);
-        assert_eq!(names.len(), 51);
+        assert_eq!(&names[..3], ["bookunix", "role", "curruuid"]);
+        assert_eq!(names.len(), 57);
     }
 
     let mut bids = range().to_vec();

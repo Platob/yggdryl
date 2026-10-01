@@ -39,8 +39,8 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, SerieReader, State,
-    StructType, Timezone, Url, fix_schema,
+    ArrowCastOptions, DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, IdSource,
+    Identifier, SerieReader, State, StructType, Timezone, Url, fix_schema,
 };
 
 use super::seed;
@@ -428,8 +428,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
     assert!(
         messages
             .iter()
-            .any(|message| !message.get_altids().is_empty()),
-        "the parse fills the alternate identifiers"
+            .any(|message| !message.get_identifiers().is_empty()),
+        "the parse fills the identifiers"
     );
     let walked = codec
         .lifecycle(messages.clone())
@@ -669,9 +669,11 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         let mut operation = quote_of(&operations[0]);
         let identity = format!("DENSE-{index}");
         operation.set_crosscode(identity.clone());
-        let _ = operation.remove_altid(ENTRY_ID);
+        let _ = operation.remove_identifier(&IdSource::Fix, &ENTRY_ID);
         operation
-            .insert_altid(ENTRY_ID, &identity)
+            .insert_identifier(
+                Identifier::new(IdSource::Fix, ENTRY_ID, &identity).expect("an identifier"),
+            )
             .expect("a plain holder takes every key");
         let mut book = operation.book().cloned().unwrap_or_default();
         book.action = Some(MdUpdateAction::New);
@@ -703,14 +705,16 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
     group.bench_function("direct_fix_to_single_operation", |bencher| {
         bencher.iter_batched(
             || direct.clone(),
-            |message| MarketData::try_from(black_box(message)).expect("one order operation"),
+            |message| {
+                yggdryl::FixMsg::into_market_leaf(black_box(message)).expect("one order operation")
+            },
             BatchSize::SmallInput,
         );
     });
     let previous = OrderEvent::from(&direct);
     let mut next = previous.clone();
     next.set_currunix(previous.get_currunix() + 1);
-    next.set_ticker(None);
+    next.set_ticker(None, true);
     next.finalize();
     group.bench_function("market_event_with_previous", |bencher| {
         bencher.iter_batched(

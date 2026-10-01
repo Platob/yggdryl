@@ -1623,10 +1623,10 @@ impl Projection {
         if let Some(text) = value.as_str() {
             return text.parse();
         }
-        if let Some([term, alias]) = value.sequence_rows().as_deref() {
-            if let Some(alias) = alias.as_str() {
-                return Ok(Self::aliased(Term::from_scalar(term)?, alias));
-            }
+        if let Some([term, alias]) = value.sequence_rows().as_deref()
+            && let Some(alias) = alias.as_str()
+        {
+            return Ok(Self::aliased(Term::from_scalar(term)?, alias));
         }
         Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),

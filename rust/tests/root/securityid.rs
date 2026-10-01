@@ -1,618 +1,63 @@
-//! `rust/src/securityid.rs`: the source that names an instrument, the code it
-//! gives it, the sorted set a market states, and the national number an ISIN
-//! embeds. The registry a lifecycle learns with is a lifecycle's own -
-//! nothing above it names one - so what it learns, refuses and costs is
-//! reached through `yggdryl::internals` in [`internal`].
-
-use std::borrow::Cow;
-use std::path::PathBuf;
+//! `rust/src/securityid.rs`: the national number an ISIN embeds as a derived
+//! security [`Identifier`], and the shape a symbol reads as. The type of name
+//! a security identifier is - its `SecurityIDSource(22)` code, its field
+//! names, the rule its value follows - is `rust/tests/root/idtype.rs`'s. The
+//! registry a lifecycle learns with is a lifecycle's own - nothing above it
+//! names one - so what it learns, refuses and costs is reached through
+//! `yggdryl::internals` in [`internal`].
 
 use yggdryl::securityid::embedded;
-use yggdryl::{Error, Isin, Scalar, SecType, SecurityId, SecurityIds};
+use yggdryl::{IdSource, IdType, Identifier, Identifiers, Isin};
 
-fn located<T>(result: yggdryl::Result<T>) -> (String, String) {
-    match result.err().expect("a refusal") {
-        Error::InvalidRecord { path, reason } => (path.to_string(), reason.to_string()),
-        other => panic!("expected a located refusal, got {other}"),
-    }
+/// One security identifier of `key` - a type's name or its FIX source code -
+/// from `base`, validated by its type.
+fn id(key: &str, code: &str) -> Identifier {
+    Identifier::new(
+        IdSource::Base,
+        IdType::from_security_source(key).unwrap(),
+        code,
+    )
+    .unwrap()
 }
 
-fn id(key: &str, code: &str) -> SecurityId {
-    SecurityId::new(SecType::read(key).unwrap(), code).unwrap()
-}
-
+/// A set of security identifiers holds one value per source and type,
+/// sorted, and answers a type however its spelling folds.
 #[test]
-fn a_sectype_reads_codes_keys_and_names_and_keeps_any_other_key() {
-    assert_eq!(SecType::read("4").unwrap().as_str(), "ISIN");
-    assert_eq!(SecType::read("A").unwrap().as_str(), "BLOOMBERG");
-    assert_eq!(SecType::read("isin").unwrap().as_str(), "ISIN");
-    assert_eq!(SecType::read(" Isin ").unwrap().as_str(), "ISIN");
-    assert_eq!(SecType::read("ISINNumber").unwrap().as_str(), "ISIN");
-    assert_eq!(SecType::read("isin_number").unwrap().as_str(), "ISIN");
-    assert_eq!(SecType::read("RIC Code").unwrap().as_str(), "RIC");
-    assert_eq!(SecType::read("bbgsymb").unwrap().as_str(), "BLOOMBERG");
-    assert_eq!(
-        SecType::read("BloombergSymbol").unwrap().as_str(),
-        "BLOOMBERG"
-    );
-    assert_eq!(
-        SecType::read("FinancialInstrumentGlobalIdentifier")
-            .unwrap()
-            .as_str(),
-        "FIGI"
-    );
-    assert_eq!(SecType::read("Wertpapier").unwrap().as_str(), "WKN");
-    assert_eq!(SecType::read("Valoren").unwrap().as_str(), "VALOR");
-
-    let house = SecType::read("house-key").unwrap();
-    assert_eq!(house.as_str(), "HOUSE-KEY");
-    assert!(!house.is_known());
-    assert_eq!(house.fix_source(), None);
-    assert_eq!(house.max_code_width(), 32);
-    assert!(
-        SecType::read("a").unwrap().as_str() == "A" && !SecType::read("a").unwrap().is_known(),
-        "a wire code does not fold: a lower-case letter is an unknown key"
-    );
-    assert_eq!(SecType::read("Z").unwrap().as_str(), "Z");
-
-    for (key, code) in SecType::KNOWN {
-        let read = SecType::read(key).unwrap();
-        assert!(read.is_known());
-        assert_eq!(read.fix_source(), Some(code));
-        assert_eq!(SecType::from_fix_source(code), Some(read.clone()));
-        assert_eq!(SecType::read(&code.to_string()).unwrap(), read);
-        assert_eq!(SecType::read(&key.to_ascii_lowercase()).unwrap(), read);
-    }
-    assert_eq!(SecType::from_fix_source('Z'), None);
-    assert_eq!(SecType::from_fix_source('a'), None);
-
-    let (path, reason) = located(SecType::read("ticker"));
-    assert_eq!(path, "ticker");
-    assert!(reason.contains("set_ticker"), "{reason}");
-    assert!(SecType::read("TICKER").is_err());
-    let (path, reason) = located(SecType::read(""));
-    assert_eq!(path, "");
-    assert_eq!(
-        reason,
-        "expected a security identifier source of 1 to 32 ASCII bytes, got \"\""
-    );
-    let (path, reason) = located(SecType::read("caf\u{e9}"));
-    assert_eq!(path, "caf\u{e9}");
-    assert!(reason.contains("a non-ASCII byte 0xC3 at 3"), "{reason}");
-    let wide = "k".repeat(33);
-    let (path, reason) = located(SecType::read(&wide));
-    assert_eq!(path, wide);
-    assert!(reason.ends_with("got 33 bytes"), "{reason}");
-    assert_eq!(
-        SecType::read(&"k".repeat(32)).unwrap().as_str(),
-        "K".repeat(32)
-    );
-    assert!(SecType::read("tab\tkey").is_err());
-
-    assert!(SecType::read("CUSIP").unwrap() < SecType::read("ISIN").unwrap());
-    assert_eq!(SecType::read("isin").unwrap().to_string(), "ISIN");
-}
-
-#[test]
-fn the_known_table_agrees_with_the_code_set_exactly() {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../config/fix/codesets/securityidsourcecodeset.json");
-    let document = yggdryl::from_json_scalar(std::fs::read(path).unwrap()).unwrap();
-    assert_eq!(
-        document.get_key_str("name").and_then(Scalar::as_str),
-        Some("securityidsourcecodeset")
-    );
-    let codes = document.get_key_str("codes").unwrap();
-    assert_eq!(codes.len(), SecType::KNOWN.len());
-    let mut keys = Vec::new();
-    for index in 0..codes.len() {
-        let code = codes.get(index).unwrap();
-        let value = code.get_key_str("value").and_then(Scalar::as_str).unwrap();
-        let name = code.get_key_str("name").and_then(Scalar::as_str).unwrap();
-        let mut chars = value.chars();
-        let (Some(code), None) = (chars.next(), chars.next()) else {
-            panic!("a one-character code, got {value:?}");
-        };
-        let key = SecType::from_fix_source(code)
-            .unwrap_or_else(|| panic!("code {code} names a known source"));
-        assert_eq!(key.fix_source(), Some(code), "one code per key");
-        assert_eq!(
-            SecType::KNOWN[index],
-            (key.as_str(), code),
-            "the code set's order"
-        );
-        assert_eq!(SecType::read(name).unwrap(), key, "{name} reads to {key}");
-        assert_eq!(SecType::read(value).unwrap(), key, "{value} reads to {key}");
-        keys.push(key);
-    }
-    let mut unique = keys.clone();
-    unique.sort();
-    unique.dedup();
-    assert_eq!(unique.len(), keys.len(), "one key per code");
-}
-
-#[test]
-fn a_field_name_names_one_instruments_own_identifier_source() {
-    let source = |name: &str| SecType::from_field_name(name).map(|key| key.as_str().to_owned());
-    assert_eq!(source("isincode").as_deref(), Some("ISIN"));
-    assert_eq!(source("#isincode").as_deref(), Some("ISIN"));
-    assert_eq!(source("ISIN_Code").as_deref(), Some("ISIN"));
-    assert_eq!(source("isin").as_deref(), Some("ISIN"));
-    assert_eq!(source("ISINNumber").as_deref(), Some("ISIN"));
-    assert_eq!(source("isin_number").as_deref(), Some("ISIN"));
-    assert_eq!(source("security isin").as_deref(), Some("ISIN"));
-    assert_eq!(source("SecurityISINCode").as_deref(), Some("ISIN"));
-    assert_eq!(source("cusipcode").as_deref(), Some("CUSIP"));
-    assert_eq!(source("sedol_code").as_deref(), Some("SEDOL"));
-    assert_eq!(source("bloombergcode").as_deref(), Some("BLOOMBERG"));
-    assert_eq!(source("bloomberg_symbol").as_deref(), Some("BLOOMBERG"));
-    assert_eq!(source("bbgsymb").as_deref(), Some("BLOOMBERG"));
-    assert_eq!(source("figicode").as_deref(), Some("FIGI"));
-    assert_eq!(source("figi_id").as_deref(), Some("FIGI"));
-    assert_eq!(source("ric").as_deref(), Some("RIC"));
-    assert_eq!(source("RICCode").as_deref(), Some("RIC"));
-    assert_eq!(source("wkn").as_deref(), Some("WKN"));
-    assert_eq!(source("wertpapier").as_deref(), Some("WKN"));
-    assert_eq!(source("valor").as_deref(), Some("VALOR"));
-    assert_eq!(source("lei").as_deref(), Some("LEI"));
-    assert_eq!(source("LegalEntityIdentifier").as_deref(), Some("LEI"));
-    assert_eq!(source("exchange_symbol").as_deref(), Some("EXCHSYMB"));
-    assert_eq!(source("cusip_number").as_deref(), Some("CUSIP"));
-
-    for refused in [
-        "ticker",
-        "symbol",
-        "symbolticker",
-        "Symbol_Ticker",
-        "#symbol",
-        "legsecurityid",
-        "leg_isin",
-        "underlyingisin",
-        "UnderlyingSecurityID",
-        "contracusip",
-        "relatedsedol",
-        "benchmark_isin",
-        "securityid",
-        "security",
-        "code",
-        "id",
-        "",
-        "#",
-        "price",
-        "housekey",
-        "isincodes",
-    ] {
-        assert_eq!(source(refused), None, "{refused:?} names no source");
-    }
-}
-
-#[test]
-fn each_source_holds_its_code_to_its_own_rule() {
-    let width = |key: &str| SecType::read(key).unwrap().max_code_width();
-    assert_eq!(width("ISIN"), 12);
-    assert_eq!(width("CUSIP"), 9);
-    assert_eq!(width("SEDOL"), 7);
-    assert_eq!(width("FIGI"), 12);
-    assert_eq!(width("WKN"), 6);
-    assert_eq!(width("VALOR"), 9);
-    assert_eq!(width("ISOCCY"), 3);
-    assert_eq!(width("ISOCTRY"), 2);
-    assert_eq!(width("BLOOMBERG"), 32);
-    assert_eq!(width("RIC"), 32);
-    assert_eq!(width("HOUSE"), 32);
-
-    let accepts = |key: &str, code: &str| SecType::read(key).unwrap().canonical_code(code).is_ok();
-    assert!(accepts("ISIN", "US0378331005"));
-    assert!(accepts("ISIN", "us0378331005"));
-    assert!(
-        !accepts("ISIN", "US0378331006"),
-        "the check digit must close"
-    );
-    assert!(accepts("CUSIP", "037833100"));
-    assert!(!accepts("CUSIP", "037833101"));
-    assert!(accepts("SEDOL", "0263494"));
-    assert!(!accepts("SEDOL", "0263495"));
-    assert!(accepts("FIGI", "BBG000B9XRY4"));
-    assert!(!accepts("FIGI", "BBG000B9XRY5"));
-    assert!(accepts("WKN", "716460"));
-    assert!(accepts("WKN", "BASF11"));
-    assert!(accepts("WKN", "basf11"));
-    assert!(!accepts("WKN", "BASI11"), "no I");
-    assert!(!accepts("WKN", "BASO11"), "no O");
-    assert!(!accepts("WKN", "71646"));
-    assert!(!accepts("WKN", "7164600"));
-    assert!(accepts("VALOR", "3886335"));
-    assert!(accepts("VALOR", "1"));
-    assert!(accepts("VALOR", "123456789"));
-    assert!(!accepts("VALOR", "0"));
-    assert!(!accepts("VALOR", "03886335"), "no leading zero");
-    assert!(!accepts("VALOR", "1234567890"));
-    assert!(!accepts("VALOR", "38A6335"));
-    assert!(accepts("BLOOMBERG", "AAPL US Equity"));
-    assert!(accepts("BLOOMBERG", &"B".repeat(32)));
-    assert!(!accepts("BLOOMBERG", &"B".repeat(33)));
-    assert!(!accepts("BLOOMBERG", "AAPL\u{a0}US"));
-    for null in ["", "null", "NULL", "none", "n/a", "[N/A]"] {
-        assert!(!accepts("BLOOMBERG", null), "{null:?}");
-        assert!(!accepts("HOUSE", null), "{null:?}");
-        assert!(!accepts("ISIN", null), "{null:?}");
-    }
-    assert!(accepts("ISOCCY", "USD"));
-    assert!(!accepts("ISOCCY", "USDX"));
-    assert!(accepts("ISOCTRY", "US"));
-    assert!(!accepts("ISOCTRY", "USA"));
-    assert!(accepts("RIC", "AAPL.OQ"));
-    assert!(accepts("HOUSE", &"h".repeat(32)));
-    assert!(!accepts("HOUSE", &"h".repeat(33)));
-    assert!(!accepts("HOUSE", "tab\tcode"));
-
-    let (path, reason) = located(SecType::read("WKN").unwrap().canonical_code("BASI11"));
-    assert_eq!(path, "WKN");
-    assert_eq!(
-        reason,
-        "expected a WKN code, got \"BASI11\", not six of [0-9A-HJ-NP-Z]"
-    );
-    let (path, reason) = located(SecType::read("BLOOMBERG").unwrap().canonical_code("n/a"));
-    assert_eq!(path, "BLOOMBERG");
-    assert_eq!(
-        reason,
-        "expected a BLOOMBERG code, got \"n/a\", which states nothing"
-    );
-    assert!(matches!(
-        SecType::read("ISIN")
-            .unwrap()
-            .canonical_code("US0378331006"),
-        Err(Error::InvalidDataType { kind: "isin", .. })
-    ));
-}
-
-#[test]
-fn forex_is_the_crates_own_key_and_its_code_lands_as_the_canonical_pair() {
-    // FIX gives a currency pair no source code, so the key is the crate's:
-    // one spelling stored, several read, and it packs as a key FIX does not
-    // know.
-    for spelling in [
-        "FOREX",
-        "forex",
-        " Forex ",
-        "forexcode",
-        "ccypair",
-        "CcyPair",
-        "currency_pair",
-    ] {
-        assert_eq!(
-            SecType::read(spelling).unwrap().as_str(),
-            "FOREX",
-            "{spelling:?}"
-        );
-    }
-    for name in [
-        "#FOREXCODE",
-        "ForexCode",
-        "#forex",
-        "CurrencyPair",
-        "SecurityForexID",
-    ] {
-        assert_eq!(
-            SecType::from_field_name(name).map(|key| key.as_str().to_owned()),
-            Some("FOREX".to_owned()),
-            "{name:?}"
-        );
-    }
-    // What FIX names stays FIX's thirty-three, and a currency is not a pair.
-    assert_eq!(SecType::KNOWN.len(), 33);
-    assert_eq!(SecType::read("ISOCCY").unwrap().as_str(), "ISOCCY");
-    assert_eq!(SecType::from_field_name("Currency"), None);
-
-    let forex = SecType::read("forex").unwrap();
-    assert!(!forex.is_known());
-    assert_eq!(forex.fix_source(), None);
-    assert_eq!(forex.max_code_width(), 7);
-
-    // Every accepted spelling lands as the one stored pair; the canonical
-    // spelling is borrowed, as every other source's code is.
-    assert!(matches!(
-        forex.canonical_code("EUR/USD").unwrap(),
-        Cow::Borrowed("EUR/USD")
-    ));
-    for spelling in ["eurusd", "EUR-USD", "eur.usd", "EUR_USD"] {
-        assert_eq!(
-            forex.canonical_code(spelling).unwrap(),
-            "EUR/USD",
-            "{spelling}"
-        );
-    }
-    let pair = SecurityId::new(forex.clone(), "eurusd").unwrap();
-    assert_eq!(pair.code(), "EUR/USD");
-    assert_eq!(pair.sectype().as_str(), "FOREX");
-    assert_eq!(pair.to_string(), "FOREX:EUR/USD");
-    assert!(pair.is_inline());
-    assert_eq!(pair, id("ccypair", " EUR/USD "));
-
-    // A symbol, a pair of one currency, a stranger and a null-like code are
-    // refused by the pair's own rule or the null one.
-    for code in ["EUR/EUR", "EUR/USD 1M", "ABC/USD", "EUR USD"] {
-        let refused = forex.canonical_code(code).unwrap_err();
-        assert!(
-            matches!(refused, Error::InvalidDataType { kind: "forex", .. }),
-            "{code}: {refused}"
-        );
-    }
-    let (path, reason) = located(forex.canonical_code("n/a"));
-    assert_eq!(path, "FOREX");
-    assert_eq!(
-        reason,
-        "expected a FOREX code, got \"n/a\", which states nothing"
-    );
-
-    // Every other source borrows the code it validates.
-    assert!(matches!(
-        SecType::read("ISIN")
-            .unwrap()
-            .canonical_code("us0378331005")
-            .unwrap(),
-        Cow::Borrowed("us0378331005")
-    ));
-    assert!(matches!(
-        SecType::read("HOUSE")
-            .unwrap()
-            .canonical_code("h-1")
-            .unwrap(),
-        Cow::Borrowed("h-1")
-    ));
-}
-
-#[test]
-fn a_ric_source_holds_its_code_to_the_ric_rule() {
-    // FIX's SecurityIDSource 5 is a Refinitiv Identification Code, and its
-    // code is validated as one: a token of printable ASCII, its case kept.
-    let ric = SecType::read("RIC").unwrap();
-    assert_eq!(ric.fix_source(), Some('5'));
-    for code in ["AAPL.OQ", "VOD.L", ".SPX", "0#.FTSE", "EUR=", "ESc1"] {
-        assert!(ric.canonical_code(code).is_ok(), "{code}");
-    }
-    assert_eq!(id("ric", "ESc1").code(), "ESc1", "a RIC does not fold");
-    assert_eq!(id("5", "AAPL.OQ").to_string(), "RIC:AAPL.OQ");
-
-    // An inner space splits the token, which a generic source would hold.
-    let refused = ric.canonical_code("AAPL OQ").unwrap_err();
-    assert!(
-        matches!(refused, Error::InvalidDataType { kind: "ric", .. }),
-        "{refused}"
-    );
-    assert!(refused.to_string().contains("got 0x20 at 4"), "{refused}");
-    assert!(
-        SecType::read("HOUSE")
-            .unwrap()
-            .canonical_code("AAPL OQ")
-            .is_ok()
-    );
-    assert!(ric.canonical_code("IBM\t.N").is_err());
-    assert!(ric.canonical_code(&"R".repeat(33)).is_err());
-    let (path, reason) = located(ric.canonical_code("n/a"));
-    assert_eq!(path, "RIC");
-    assert_eq!(
-        reason,
-        "expected a RIC code, got \"n/a\", which states nothing"
-    );
-}
-
-#[test]
-fn a_security_id_holds_source_and_code_in_one_inline_buffer() {
-    assert_eq!(std::mem::size_of::<SecurityId>(), 24);
-    let apple = id("isin", " us0378331005 ");
-    assert_eq!(apple.to_string(), "ISIN:US0378331005");
-    assert_eq!(apple.sectype().as_str(), "ISIN");
-    assert_eq!(apple.code(), "US0378331005");
-    assert!(apple.is_inline());
-    assert_eq!(apple, id("4", "US0378331005"));
-    assert_eq!(apple.clone(), apple);
-
-    let bloomberg = id("A", "aapl us Equity");
-    assert_eq!(
-        bloomberg.code(),
-        "aapl us Equity",
-        "case and inner spaces kept"
-    );
-    assert_eq!(bloomberg.to_string(), "BLOOMBERG:aapl us Equity");
-    let long = id("bloomberg", &"B".repeat(32));
-    assert!(!long.is_inline());
-    assert_eq!(long.code().len(), 32);
-    assert_eq!(long.clone(), long);
-    assert!(SecurityId::new(SecType::read("bloomberg").unwrap(), &"B".repeat(33)).is_err());
-
-    let house = id("house-key", "hk-1");
-    assert_eq!(house.to_string(), "HOUSE-KEY:hk-1");
-    assert_eq!(house.sectype(), SecType::read("HOUSE-KEY").unwrap());
-    assert_eq!(house.code(), "hk-1");
-    assert!(house.is_inline());
-    let widest = id(&"k".repeat(32), &"c".repeat(32));
-    assert_eq!(widest.sectype().as_str(), "K".repeat(32));
-    assert_eq!(widest.code(), "c".repeat(32));
-    assert!(!widest.is_inline());
-
-    let wkn = id("wkn", "basf11");
-    assert_eq!(
-        wkn.code(),
-        "BASF11",
-        "a case-folding source's code is upper-cased"
-    );
-    assert_eq!(id("figi", "bbg000b9xry4").code(), "BBG000B9XRY4");
-    assert_eq!(id("cusip", "037833100").to_string(), "CUSIP:037833100");
-    assert_eq!(id("sedol", "b4bnmy3").to_string(), "SEDOL:B4BNMY3");
-    assert_eq!(id("valor", "3886335").to_string(), "VALOR:3886335");
-
-    let mut ids = [
+fn security_identifiers_are_held_per_source_and_type_in_key_order() {
+    let ids: Identifiers = [
         id("isin", "US0378331005"),
         id("cusip", "037833100"),
         id("house", "b"),
-        id("house", "a"),
         id("bloomberg", "AAPL US Equity"),
-        id("isin", "DE0007164600"),
-    ];
-    ids.sort();
+    ]
+    .into_iter()
+    .collect();
     assert_eq!(
         ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
         [
-            "BLOOMBERG:AAPL US Equity",
-            "CUSIP:037833100",
-            "HOUSE:a",
-            "HOUSE:b",
-            "ISIN:DE0007164600",
-            "ISIN:US0378331005",
-        ],
-        "ordered by source then code, never by the tag"
-    );
-    assert_eq!(
-        id("isin", "US0378331005").partial_cmp(&id("isin", "US0378331005")),
-        Some(std::cmp::Ordering::Equal)
-    );
-    assert_ne!(id("house", "a"), id("houses", "a"));
-}
-
-#[test]
-fn security_ids_fill_set_remove_merge_and_answer_every_spelling_of_a_source() {
-    let mut ids = SecurityIds::default();
-    assert!(ids.is_empty());
-    assert_eq!(ids.len(), 0);
-    assert!(ids.insert(id("cusip", "037833100")));
-    assert!(ids.insert(id("isin", "US0378331005")));
-    assert!(!ids.insert(id("isin", "DE0007164600")), "fill only");
-    assert_eq!(ids.get("isin"), Some("US0378331005"));
-    assert_eq!(ids.get("4"), ids.get("isin"));
-    assert_eq!(ids.get("ISINNumber"), ids.get("isin"));
-    assert_eq!(ids.get("1"), Some("037833100"));
-    assert_eq!(ids.get_id("cusip"), Some(&id("cusip", "037833100")));
-    assert!(ids.contains_key("Cusip"));
-    assert!(!ids.contains_key("sedol"));
-    assert!(!ids.contains_key("ticker"), "a ticker is never a source");
-    assert_eq!(ids.get("caf\u{e9}"), None);
-    assert_eq!(ids.len(), 2);
-    assert_eq!(
-        ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        ["CUSIP:037833100", "ISIN:US0378331005"]
-    );
-    assert_eq!(&ids[..], ids.iter().as_slice(), "Deref to the sorted slice");
-    assert_eq!(ids.first().map(|id| id.code()), Some("037833100"));
-
-    assert!(
-        ids.set(id("isin", "DE0007164600")),
-        "a replacement changes the set"
-    );
-    assert!(
-        !ids.set(id("isin", "DE0007164600")),
-        "the same identifier does not"
-    );
-    assert!(
-        ids.set(id("bloomberg", "BAS GY Equity")),
-        "set fills an absent source"
-    );
-    assert_eq!(
-        ids.iter()
-            .map(|id| id.sectype().as_str().to_owned())
-            .collect::<Vec<_>>(),
-        ["BLOOMBERG", "CUSIP", "ISIN"]
-    );
-    assert_eq!(
-        ids.remove(&SecType::read("cusip").unwrap()),
-        Some(id("cusip", "037833100"))
-    );
-    assert_eq!(ids.remove(&SecType::read("cusip").unwrap()), None);
-    assert_eq!(ids.len(), 2);
-
-    let mut theirs = SecurityIds::default();
-    theirs.insert(id("isin", "US0378331005"));
-    theirs.insert(id("wkn", "BASF11"));
-    theirs.insert(id("aa", "1"));
-    assert!(ids.merge(&theirs));
-    assert_eq!(
-        ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        [
-            "AA:1",
-            "BLOOMBERG:BAS GY Equity",
-            "ISIN:DE0007164600",
-            "WKN:BASF11"
-        ],
-        "this side wins"
-    );
-    assert!(!ids.merge(&theirs));
-    assert!(!ids.merge(&SecurityIds::default()));
-    let mut empty = SecurityIds::default();
-    assert!(empty.merge(&theirs));
-    assert_eq!(empty, theirs);
-    assert_eq!(ids.clone(), ids);
-    let mut by_reference = 0;
-    for _ in &ids {
-        by_reference += 1;
-    }
-    assert_eq!(by_reference, 4);
-    assert_eq!(std::mem::size_of::<SecurityIds>(), 56);
-}
-
-#[test]
-fn security_ids_round_trip_through_arrow_and_refuse_a_map_they_cannot_hold() {
-    assert_eq!(SecurityIds::dtype(), yggdryl::IdMap::dtype());
-    let mut ids = SecurityIds::default();
-    ids.insert(id("isin", "US0378331005"));
-    ids.insert(id("bloomberg", "AAPL US Equity"));
-    ids.insert(id("house", "hk-1"));
-    let scalar = ids.to_scalar();
-    assert_eq!(scalar.kind(), "sorted_map");
-    assert_eq!(
-        scalar
-            .as_mapping()
-            .unwrap()
-            .iter()
-            .map(|(key, value)| (key.as_str().unwrap(), value.as_str().unwrap()))
-            .collect::<Vec<_>>(),
-        [
-            ("BLOOMBERG", "AAPL US Equity"),
-            ("HOUSE", "hk-1"),
-            ("ISIN", "US0378331005")
+            "base:bloomberg=AAPL US Equity",
+            "base:cusip=037833100",
+            "base:house=b",
+            "base:isin=US0378331005",
         ]
     );
-    assert_eq!(SecurityIds::from_scalar(&scalar).unwrap(), ids);
+    assert_eq!(ids.get(&"Isin".parse().unwrap()), Some("US0378331005"));
     assert_eq!(
-        SecurityIds::from_scalar(&SecurityIds::default().to_scalar()).unwrap(),
-        SecurityIds::default()
+        ids.get(&"ISIN_Number".parse().unwrap()),
+        Some("US0378331005")
     );
-
-    let mapping = |entries: &[(&str, &str)]| match Scalar::from_mapping(
-        entries
-            .iter()
-            .map(|(key, value)| (Scalar::from(*key), Scalar::from(*value))),
-    )
-    .unwrap()
-    {
-        Scalar::Map(entries) => Scalar::SortedMap(entries),
-        other => other,
-    };
-    let refused = |scalar: Scalar| located(SecurityIds::from_scalar(&scalar));
-    assert_eq!(refused(Scalar::from("ISIN")).0, "$");
+    assert_eq!(ids.get(&IdType::Sedol), None);
     assert_eq!(
-        refused(mapping(&[("ISIN", "US0378331005"), ("4", "US0378331005")])).0,
-        "$[1].key",
-        "one source under two spellings"
+        ids.get(&"4".parse().unwrap()),
+        None,
+        "a code is no word to look up"
     );
-    assert_eq!(
-        refused(mapping(&[("ISIN", "US0378331005"), ("CUSIP", "037833100")])).0,
-        "$[1].key",
-        "out of order"
-    );
-    let unchecked = refused(mapping(&[("ISIN", "US0378331006")]));
-    assert_eq!(unchecked.0, "$[0].value");
-    assert!(unchecked.1.contains("check digit"), "{}", unchecked.1);
-    let ticker = refused(mapping(&[("ticker", "AAPL")]));
-    assert_eq!(ticker.0, "$[0].key");
-    assert!(ticker.1.contains("set_ticker"), "{}", ticker.1);
-    let wkn = located(SecurityIds::from_scalar(&mapping(&[("WKN", "BASI11")])));
-    assert_eq!(wkn.0, "$[0].value");
-    assert!(wkn.1.contains("[0-9A-HJ-NP-Z]"), "{}", wkn.1);
-    let null = match Scalar::from_mapping([(Scalar::from("ISIN"), Scalar::Null)]).unwrap() {
-        Scalar::Map(entries) => Scalar::SortedMap(entries),
-        other => other,
-    };
-    assert_eq!(refused(null).0, "$[0].value");
+    // A source's own value of a type is another identifier from the same
+    // instrument, held beside the one `base` stated.
+    let mut both = ids.clone();
+    assert!(both.insert(Identifier::new(IdSource::Derived, IdType::Cusip, "037833100").unwrap()));
+    assert_eq!(both.get(&IdType::Cusip), Some("037833100"));
+    assert_eq!(both.of_kind(&IdType::Cusip).count(), 2);
 }
 
 fn isin(body: &str) -> Isin {
@@ -627,15 +72,15 @@ fn embedded_names_the_national_number_a_canonical_isin_carries() {
             .map(|id| id.to_string())
             .collect::<Vec<_>>()
     };
-    assert_eq!(found("US0378331005"), ["CUSIP:037833100"]);
-    assert_eq!(found("CA1125851040"), ["CUSIP:112585104"]);
-    assert_eq!(found("GB0002634946"), ["SEDOL:0263494"]);
-    assert_eq!(found("IE00B4BNMY34"), ["SEDOL:B4BNMY3"]);
-    assert_eq!(found("JE00B4T3BW64"), ["SEDOL:B4T3BW6"]);
-    assert_eq!(found("DE0007164600"), ["WKN:716460"]);
-    assert_eq!(found("DE000BASF111"), ["WKN:BASF11"]);
-    assert_eq!(found("CH0038863350"), ["VALOR:3886335"]);
-    assert_eq!(found("LI0010737216"), ["VALOR:1073721"]);
+    assert_eq!(found("US0378331005"), ["derived:cusip=037833100"]);
+    assert_eq!(found("CA1125851040"), ["derived:cusip=112585104"]);
+    assert_eq!(found("GB0002634946"), ["derived:sedol=0263494"]);
+    assert_eq!(found("IE00B4BNMY34"), ["derived:sedol=B4BNMY3"]);
+    assert_eq!(found("JE00B4T3BW64"), ["derived:sedol=B4T3BW6"]);
+    assert_eq!(found("DE0007164600"), ["derived:wkn=716460"]);
+    assert_eq!(found("DE000BASF111"), ["derived:wkn=BASF11"]);
+    assert_eq!(found("CH0038863350"), ["derived:valor=3886335"]);
+    assert_eq!(found("LI0010737216"), ["derived:valor=1073721"]);
     assert!(found("XS0203470157").is_empty());
     assert!(found("FR0000120271").is_empty());
 
@@ -663,7 +108,7 @@ mod internal {
     use yggdryl::internals::securityid::{
         ENTRY_CHARGE, MAX_KEYS_PER_INSTRUMENT, SecurityIdRegistry,
     };
-    use yggdryl::{Cfi, Isin, SecurityIds};
+    use yggdryl::{Cfi, IdType, Identifiers, Isin};
 
     use super::id;
 
@@ -687,6 +132,24 @@ mod internal {
         event
     }
 
+    /// The `index`th of ten security types the crate names that check no
+    /// code, each one the registry learns, in the order their keys sort.
+    fn house(index: usize) -> IdType {
+        [
+            IdType::Belgian,
+            IdType::ClearingHouse,
+            IdType::Common,
+            IdType::Cta,
+            IdType::Dutch,
+            IdType::ExchSymb,
+            IdType::FpmlSpec,
+            IdType::Opra,
+            IdType::Quik,
+            IdType::Sicovam,
+        ][index]
+            .clone()
+    }
+
     fn stated(event: &mut OrderEvent, key: &str, code: &str) {
         event
             .insert_securityid(id(key, code))
@@ -694,14 +157,14 @@ mod internal {
     }
 
     fn code<'event>(event: &'event OrderEvent, key: &str) -> Option<&'event str> {
-        event.get_securityids().get(key)
+        event.get_securityids().get(&key.parse().unwrap())
     }
 
     #[test]
     fn learned_codes_are_local_validated_and_ambiguous_defaults_are_silent() {
         let mut codes = SecurityIdRegistry::default();
         let mut first = apple();
-        first.set_cficode(Some(Cfi::new("ESXXXX").unwrap()));
+        first.set_cficode(Some(Cfi::new("ESXXXX").unwrap()), true);
         stated(&mut first, "bloomberg", "AAPL US Equity");
         codes.enrich(&mut first);
         let mut next = apple();
@@ -713,7 +176,7 @@ mod internal {
         assert_eq!(code(&next, "bloomberg"), code(&first, "bloomberg"));
 
         let mut precise = apple();
-        precise.set_cficode(Some(Cfi::new("ESVUFR").unwrap()));
+        precise.set_cficode(Some(Cfi::new("ESVUFR").unwrap()), true);
         stated(&mut precise, "sedol", "2046251");
         codes.enrich(&mut precise);
         let mut later = apple();
@@ -728,7 +191,7 @@ mod internal {
             "earlier snapshots stay unchanged"
         );
         let mut coarse = apple();
-        coarse.set_cficode(Some(Cfi::new("ESXXXX").unwrap()));
+        coarse.set_cficode(Some(Cfi::new("ESXXXX").unwrap()), true);
         codes.enrich(&mut coarse);
         assert_eq!(coarse.get_cficode(), precise.get_cficode());
 
@@ -761,7 +224,7 @@ mod internal {
         codes.enrich(&mut unnamed);
         assert_eq!(codes.instruments(), 0, "nothing is learned without an ISIN");
         let mut observed = apple();
-        observed.set_cficode(Some(Cfi::new("XXXXXX").unwrap()));
+        observed.set_cficode(Some(Cfi::new("XXXXXX").unwrap()), true);
         codes.enrich(&mut observed);
         let mut later = apple();
         codes.enrich(&mut later);
@@ -769,7 +232,7 @@ mod internal {
         assert!(code(&later, "sedol").is_none());
         assert!(code(&later, "bloomberg").is_none());
         assert_eq!(
-            later.get_securityids().get("cusip"),
+            later.get_securityids().get(&IdType::Cusip),
             Some("037833100"),
             "the CUSIP a US ISIN embeds is the element's own, not a learned one"
         );
@@ -810,7 +273,7 @@ mod internal {
         );
 
         let mut learned_at_cap = apple();
-        learned_at_cap.set_cficode(Some(Cfi::new("ESVUFR").unwrap()));
+        learned_at_cap.set_cficode(Some(Cfi::new("ESVUFR").unwrap()), true);
         codes.enrich(&mut learned_at_cap);
         let mut later = apple();
         codes.enrich(&mut later);
@@ -829,19 +292,38 @@ mod internal {
     }
 
     #[test]
+    fn the_registry_learns_no_word_of_a_venue_s_own() {
+        // A private source's code and a letter FIX names nothing are words
+        // whose spelling the entry charge does not count: the message that
+        // states one holds it, and no other message is filled with it.
+        let mut registry = SecurityIdRegistry::default();
+        let mut stated = Identifiers::new();
+        stated.insert(id("isin", "US0378331005"));
+        stated.insert(id("100", "HOUSE-1"));
+        stated.insert(id("Z", "VENUE-7"));
+        registry.learn(&stated, None);
+        assert_eq!(registry.instruments(), 1);
+        let mut asked = Identifiers::new();
+        asked.insert(id("isin", "US0378331005"));
+        let mut cfi = None;
+        assert!(!registry.fill(&mut asked, &mut cfi));
+        assert_eq!(asked.len(), 1);
+    }
+
+    #[test]
     fn the_registry_learns_one_association_per_stated_source_up_to_the_cap() {
         assert_eq!(MAX_KEYS_PER_INSTRUMENT, 8);
         let mut registry = SecurityIdRegistry::default();
-        let mut stated = SecurityIds::default();
+        let mut stated = Identifiers::new();
         stated.insert(id("isin", "US0378331005"));
         for index in 0..10 {
-            stated.insert(id(&format!("HOUSE{index}"), &format!("h{index}")));
+            stated.insert(id(house(index).as_str(), &format!("h{index}")));
         }
         assert_eq!(stated.len(), 11);
         registry.learn(&stated, None);
         assert_eq!(registry.instruments(), 1);
 
-        let mut asked = SecurityIds::default();
+        let mut asked = Identifiers::new();
         asked.insert(id("isin", "US0378331005"));
         let mut cfi = None;
         assert!(registry.fill(&mut asked, &mut cfi));
@@ -850,27 +332,27 @@ mod internal {
             1 + 8,
             "eight sources learned, the rest dropped"
         );
-        assert!(asked.contains_key("HOUSE0"));
-        assert!(asked.contains_key("HOUSE7"));
-        assert!(!asked.contains_key("HOUSE8"));
+        assert!(asked.contains_kind(&house(0)));
+        assert!(asked.contains_kind(&house(7)));
+        assert!(!asked.contains_kind(&house(8)));
         assert!(cfi.is_none());
         assert!(!registry.fill(&mut asked, &mut cfi), "nothing left to fill");
 
-        let mut conflicting = SecurityIds::default();
+        let mut conflicting = Identifiers::new();
         conflicting.insert(id("isin", "US0378331005"));
-        conflicting.insert(id("HOUSE0", "other"));
+        conflicting.insert(id(house(0).as_str(), "other"));
         registry.learn(&conflicting, Some(&Cfi::new("ESVUFR").unwrap()));
-        let mut again = SecurityIds::default();
+        let mut again = Identifiers::new();
         again.insert(id("isin", "US0378331005"));
-        again.insert(id("HOUSE1", "mine"));
+        again.insert(id(house(1).as_str(), "mine"));
         let mut cfi = Some(Cfi::new("ESXXXX").unwrap());
         assert!(registry.fill(&mut again, &mut cfi));
-        assert!(!again.contains_key("HOUSE0"), "two codes seen: ambiguous");
-        assert_eq!(again.get("HOUSE1"), Some("mine"), "a stated source stands");
-        assert_eq!(again.get("HOUSE2"), Some("h2"));
+        assert!(!again.contains_kind(&house(0)), "two codes seen: ambiguous");
+        assert_eq!(again.get(&house(1)), Some("mine"), "a stated source stands");
+        assert_eq!(again.get(&house(2)), Some("h2"));
         assert_eq!(cfi.as_ref().map(Cfi::as_str), Some("ESVUFR"));
 
-        let mut without_isin = SecurityIds::default();
+        let mut without_isin = Identifiers::new();
         without_isin.insert(id("cusip", "037833100"));
         registry.learn(&without_isin, None);
         assert!(!registry.fill(&mut without_isin, &mut None));
@@ -880,4 +362,73 @@ mod internal {
             "nothing is learned without an ISIN"
         );
     }
+}
+
+/// A symbol reads as the identifier its shape is, by its length first and
+/// its type's check second; a symbol only the length of one is nothing.
+#[test]
+fn a_symbol_reads_as_the_identifier_its_shape_is() {
+    use yggdryl::securityid::SymbolCode;
+
+    for (symbol, expected) in [
+        ("US0378331005", "isin"),
+        (" US0378331005 ", "isin"),
+        ("BBG000BLNQ16", "figi"),
+        ("037833100", "cusip"),
+        ("B0YBKJ7", "sedol"),
+        ("ESVUFR", "cfi"),
+        ("CH0012214059_XSWX_CHF", "instrument"),
+        ("CH0012214059_XSWX_USDT", "instrument"),
+        ("CH0012214059_XSWX_BABYDOGE", "instrument"),
+        ("AAPL.OQ", "ric"),
+        ("HOLN SW Equity", "bloomberg"),
+    ] {
+        let kind = match SymbolCode::from_symbol(symbol) {
+            Some(SymbolCode::Isin(_)) => "isin",
+            Some(SymbolCode::Figi(_)) => "figi",
+            Some(SymbolCode::Cusip(_)) => "cusip",
+            Some(SymbolCode::Sedol(_)) => "sedol",
+            Some(SymbolCode::Cfi(_)) => "cfi",
+            Some(SymbolCode::Instrument { .. }) => "instrument",
+            Some(SymbolCode::Ric(_)) => "ric",
+            Some(SymbolCode::Bloomberg(_)) => "bloomberg",
+            None => "none",
+        };
+        assert_eq!(kind, expected, "{symbol}");
+    }
+    for symbol in [
+        "AAPL",
+        "US0378331006",
+        "037833101",
+        "GOOGLE",
+        "CH0012214059_XSWX_CH",
+        "CH0012214059_XSWX_BABYDOGES",
+        "HOLN SW",
+        "EURUSD",
+        "",
+    ] {
+        assert_eq!(SymbolCode::from_symbol(symbol), None, "{symbol:?}");
+    }
+    let Some(SymbolCode::Instrument { isin, mic, ccy }) =
+        SymbolCode::from_symbol("CH0012214059_XSWX_CHF")
+    else {
+        panic!("an instrument key");
+    };
+    assert_eq!(
+        (
+            isin.as_ref().map(yggdryl::Isin::as_str),
+            mic.as_ref().map(yggdryl::Mic::as_str),
+            ccy.as_ref().map(yggdryl::Ccy::as_str)
+        ),
+        (Some("CH0012214059"), Some("XSWX"), Some("CHF"))
+    );
+    // A part its type refuses is none, and the others still answer.
+    assert!(matches!(
+        SymbolCode::from_symbol("CH0012214058_XSWX_CHF"),
+        Some(SymbolCode::Instrument {
+            isin: None,
+            mic: Some(_),
+            ccy: Some(_)
+        })
+    ));
 }

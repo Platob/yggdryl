@@ -82,27 +82,16 @@ jobs:
       - name: Check optimized benchmark configuration
         run: cargo check --locked -p yggdryl --profile bench --benches ${{ matrix.flags }}
 
-  core-msrv:
-    name: Core Rust 1.85
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install core MSRV
-        run: rustup toolchain install 1.85.0 --profile minimal
-      - name: Check core at its declared MSRV
-        run: |
-          cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets
-          cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --lib
-          cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --features s3 --lib
-
   iceberg-msrv:
     name: Iceberg Rust 1.94
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Install Iceberg MSRV
+      # The workspace's one declared MSRV: the core, its tests and the
+      # official Iceberg boundary all build at it.
+      - name: Install the declared MSRV
         run: rustup toolchain install 1.94.0 --profile minimal
-      - name: Check the official Iceberg boundary at its declared MSRV
+      - name: Check the core and the official Iceberg boundary at the declared MSRV
         run: cargo +1.94.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets --features iceberg
 
   pyiceberg-interop:

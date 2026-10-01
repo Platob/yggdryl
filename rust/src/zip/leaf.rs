@@ -210,10 +210,10 @@ impl ZipLeaf {
         if let Some(codec) = self.codec {
             return Ok(codec);
         }
-        if let Some(entry) = self.get_entry()? {
-            if let Ok(codec) = entry.codec() {
-                return Ok(codec);
-            }
+        if let Some(entry) = self.get_entry()?
+            && let Ok(codec) = entry.codec()
+        {
+            return Ok(codec);
         }
         // A representation that is already compressed is stored as it is:
         // recoding a `.csv.gz` member costs time and grows it, and an archive

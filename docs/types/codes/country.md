@@ -1,6 +1,6 @@
 # Country
 
-ISO 3166-1 alpha-2, the two-letter country code: the narrowest of the thirteen, and the one a securities identifier opens with.
+ISO 3166-1 alpha-2, the two-letter country code: the narrowest of the twelve, and the one a securities identifier opens with.
 
 ## Contract
 
@@ -168,8 +168,8 @@ The value is the two letters, under the country's identity.
 
     iso = Field("iso", "country")
     arrow_field = iso.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.country"
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.country"
     assert Field.from_arrow(arrow_field) == iso
     ```
 
@@ -187,7 +187,7 @@ The value is the two letters, under the country's identity.
 
 ## Two bytes is the whole width
 
-The width is the narrowest of the thirteen, and every path reads it from the datatype: a third byte is refused at the value door, and `ascii_packed` pads into two bytes rather than three.
+The width is the narrowest of the twelve, and every path reads it from the datatype: a third byte is refused at the value door, and `ascii_packed` pads into two bytes rather than three.
 
 === "Rust"
 
@@ -276,7 +276,7 @@ The width is the narrowest of the thirteen, and every path reads it from the dat
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes string::listings
     ```
 
 === "Python"

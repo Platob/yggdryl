@@ -10,7 +10,7 @@ use yggdryl::MarketDataKind;
 /// The Python enum is built from this once at import, so the binding lists
 /// no member of its own.
 #[pyfunction]
-pub(crate) fn marketdatakind_members() -> Vec<(&'static str, i32, &'static str)> {
+pub(crate) fn marketdatakind_members() -> Vec<(&'static str, u8, &'static str)> {
     MarketDataKind::ALL
         .iter()
         .map(|kind| (kind.as_str(), kind.code(), kind.description()))
@@ -20,6 +20,6 @@ pub(crate) fn marketdatakind_members() -> Vec<(&'static str, i32, &'static str)>
 /// The code of the kind one spelling names - the four-letter code in any
 /// case, or the member's own word folded - or `None` where none does.
 #[pyfunction]
-pub(crate) fn marketdatakind_from_spelling(spelling: &str) -> Option<i32> {
+pub(crate) fn marketdatakind_from_spelling(spelling: &str) -> Option<u8> {
     MarketDataKind::from_spelling(spelling).map(MarketDataKind::code)
 }

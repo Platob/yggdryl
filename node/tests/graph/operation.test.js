@@ -5,7 +5,11 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { graph } = require('yggdryl')
+const { Identifier, Identifiers, graph } = require('yggdryl')
+
+/** The identifiers of a set by type, each value under its type. */
+const kinds = (ids) => Object.fromEntries(ids.toArray().map((id) => [id.type, id.value]))
+
 
 const CLOCK = 1_700_000_000_000_000_000n
 
@@ -21,8 +25,8 @@ function orderEvent(facts = {}) {
     currency: 'USD',
     quantity: 5,
     ticker: 'ACME',
-    tif: '0',
-    altids: { ORDERID: 'O-100' },
+    timeinforce: '0',
+    identifiers: new Identifiers([new Identifier('fix', 'orderid', 'O-100')]),
     ...facts,
   })
 }
@@ -31,8 +35,8 @@ test('an order event reads every fact back typed', () => {
   const event = orderEvent()
   assert.match(event.curruuid, /^[0-9a-f-]{36}$/)
   assert.match(event.crossuuid, /^[0-9a-f-]{36}$/)
-  // A sided element's cross code carries its side (A17).
-  assert.equal(event.crosscode, 'BUYS:O-100')
+  // The stored cross code is the kind, the side, then the base.
+  assert.equal(event.crosscode, '10:1:O-100')
   assert.equal(typeof event.currhashcode, 'bigint')
   assert.equal(typeof event.crosshashcode, 'bigint')
   assert.deepEqual(event.srcuuids, [])
@@ -51,22 +55,28 @@ test('an order event reads every fact back typed', () => {
   assert.equal(event.quantity, '5')
   assert.equal(event.unit, '')
   assert.equal(event.side, 'BUYS')
-  assert.deepEqual(event.securityids, {})
+  assert.equal(event.securityids.length, 0)
   assert.equal(event.isincode, null)
   assert.equal(event.cficode, null)
   assert.equal(event.miccode, null)
   for (const name of ['lastpx', 'lastqty', 'avgpx', 'cumqty', 'leavesqty', 'prevpx', 'prevqty',
-    'spotrate', 'forwardpoints', 'bidpx', 'bidqty', 'bidccy', 'askpx', 'askqty', 'askccy']) {
+    'spotrate', 'forwardpoints', 'askpx', 'askqty', 'askccy']) {
     assert.equal(event[name], null, name)
   }
+  // A buying order's price and quantity are its side's bid facts.
+  assert.equal(event.bidpx, '101')
+  assert.equal(event.bidqty, '5')
+  assert.equal(event.marketdatatype, 'UNKN')
   assert.equal(event.ticker, 'ACME')
   assert.deepEqual(event.metadata, {})
   assert.deepEqual(event.fxrates, {})
-  assert.equal(event.tif, '0')
+  // `'0'` is the `TimeInForce(59)` wire value of a day order, one spelling
+  // of the member.
+  assert.equal(event.timeinforce, 'DAY')
   assert.equal(event.tradable, null)
-  assert.deepEqual(event.altids, { ORDERID: 'O-100' })
-  // The accounts an operation names, by role: none stated here.
-  assert.deepEqual(event.accountids, {})
+  assert.deepEqual(kinds(event.identifiers), { orderid: 'O-100' })
+  // The party ids an operation names, by role: none stated here.
+  assert.equal(event.partyids.length, 0)
   assert.equal(event.kind, 'order')
   assert.equal(event.marketdatakind, 'ORDR')
   // A1/A7: the retired facts answer nothing.
@@ -95,7 +105,7 @@ test('the bid and ask facts and the rates read back as plain values', () => {
 
 test('an undated element states no clock, state or chain', () => {
   const element = new graph.Order({ crosscode: 'O-1', price: '10', side: 'SELL', curruuid: undefined })
-  assert.equal(element.crosscode, 'SELL:O-1')
+  assert.equal(element.crosscode, '10:2:O-1')
   assert.equal(element.kind, 'order')
   assert.equal(element.side, 'SELL')
   for (const name of ['currunix', 'state', 'seqnum', 'prevuuid']) {
@@ -119,7 +129,7 @@ test('a derived identity is refused by name', () => {
     )
   }
   // The two element facts `finalize` keeps are stated.
-  assert.equal(new graph.Order({ crosscode: 'O-1', srcuuids: [] }).crosscode, 'O-1')
+  assert.equal(new graph.Order({ crosscode: 'O-1', srcuuids: [] }).crosscode, '10:0:O-1')
 })
 
 test('currunix is stated once, as the first argument', () => {
@@ -149,7 +159,7 @@ test('at dates an element and intoElement undates it', () => {
   const event = element.at(CLOCK)
   assert.ok(event instanceof graph.QuoteEvent)
   assert.equal(event.currunix, CLOCK)
-  assert.equal(event.crosscode, 'SELL:Q-1')
+  assert.equal(event.crosscode, '14:2:Q-1')
   assert.equal(event.price, element.price)
   const back = event.intoElement()
   assert.ok(back instanceof graph.Quote)
@@ -221,7 +231,7 @@ for (const [name, build] of [
   ['QuoteEvent with a book', () => new graph.QuoteEvent(CLOCK, { book: new graph.BookRef({ scope: 'S' }) })],
   ['Order', () => new graph.Order({ crosscode: 'O', metadata: { k: 'v' } })],
   ['Quote', () => new graph.Quote()],
-  ['Execution', () => new graph.Execution({ securityids: { ISIN: 'US0378331005' } })],
+  ['Execution', () => new graph.Execution({ securityids: [new Identifier('base', 'isin', 'US0378331005')] })],
 ]) {
   test(`${name}: equals, stableHash, toString, clone and toJSON round trip`, () => {
     const leaf = build()

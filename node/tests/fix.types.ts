@@ -7,6 +7,7 @@ import {
   Url,
   fix,
   type FixMsg,
+  type Identifiers,
   type FixCodec,
   type FixCaptureView,
   type FixDirection,
@@ -76,7 +77,14 @@ const registryHash: bigint = loaded.stableHash()
 const copy: FixRegistry = loaded.clone()
 const rendered: string = loaded.toString()
 const document: unknown = loaded.toJSON()
+// The parents of an identifier type: a field's `FIX:parents` first, else its name's.
+const parentSources: Array<{ base: string; parents: string[] }> = seeded.parentSources()
+const orderParents: string[] = seeded.parentsOf('orderid')
+const origPlace: { base: string; at: number } | null = seeded.parentOf('origorderid')
 
+void parentSources
+void orderParents
+void origPlace
 void size
 void byId
 void requiredById
@@ -172,10 +180,11 @@ const state: string = message.state
 const seqnum: number = message.seqnum
 const prevuuid: string | null = message.prevuuid
 const srcuuids: string[] = message.srcuuids
-const messageSecurityIds: Record<string, string> = message.securityids
+const messageSecurityIds: Identifiers = message.securityids
 const messageIsin: string | null = message.isincode
 const messageFxRates: Record<string, string> = message.fxrates
-const messageAltIds: Record<string, string> = message.altids
+const messageIdentifiers: Identifiers = message.identifiers
+const messagePartyIds: Identifiers = message.partyids
 const price: string | null = message.price
 const quantity: string | null = message.quantity
 const unit: string = message.unit
@@ -187,7 +196,9 @@ const forwardpoints: string | null = message.forwardpoints
 const bidpx: string | null = message.bidpx
 const askccy: string | null = message.askccy
 const messageCategory: string = message.msgcat
-const strikepx: string | null = message.strikepx
+const strikeprice: string | null = message.strikeprice
+// @ts-expect-error the strike price is the dictionary's StrikePrice(202), no crate field
+message.strikepx
 // The instants the message states, as the leaf does.
 const messageCreated: bigint | null = message.creaunix
 const messageExecuted: bigint | null = message.execunix
@@ -213,17 +224,18 @@ const eventCumQty: string | null = event.cumqty
 const eventLeavesQty: string | null = event.leavesqty
 const eventPrevPx: string | null = event.prevpx
 const eventPrevQty: string | null = event.prevqty
-const eventTif: string | null = event.tif
+const eventTif: string | null = event.timeinforce
 const eventTradable: boolean | null = event.tradable
 const eventTicker: string | null = event.ticker
 const eventUnit: string = event.unit
-const eventSecurityIds: Record<string, string> = event.securityids
+const eventSecurityIds: Identifiers = event.securityids
 const eventSpotRate: string | null = event.spotrate
 const eventForwardPoints: string | null = event.forwardpoints
 const eventMetadata: Record<string, string> = event.metadata
 const eventIsin: string | null = event.isincode
 const eventFxRates: Record<string, string> = event.fxrates
-const eventAltIds: Record<string, string> = event.altids
+const eventIdentifiers: Identifiers = event.identifiers
+const eventPartyIds: Identifiers = event.partyids
 const eventBidPrice: string | null = event.bidpx
 const eventBidQuantity: string | null = event.bidqty
 const eventAskPrice: string | null = event.askpx
@@ -264,7 +276,8 @@ void eventSources
 void messageSecurityIds
 void messageIsin
 void messageFxRates
-void messageAltIds
+void messageIdentifiers
+void messagePartyIds
 void price
 void quantity
 void unit
@@ -276,7 +289,7 @@ void forwardpoints
 void bidpx
 void askccy
 void messageCategory
-void strikepx
+void strikeprice
 void eventCurrunix
 void eventCreated
 void eventExecuted
@@ -311,7 +324,8 @@ void eventForwardPoints
 void eventMetadata
 void eventIsin
 void eventFxRates
-void eventAltIds
+void eventIdentifiers
+void eventPartyIds
 void eventBidPrice
 void eventBidQuantity
 void eventAskPrice
@@ -398,6 +412,9 @@ const tags: number[] = field.fix.tags
 field.fix.tags = [1088]
 const names: string[] = field.fix.names
 field.fix.names = ['Ticker']
+const parents: string[] = field.fix.parents
+field.fix.parents = ['ParentOrderID', 'origorderid']
+field.fix.parents = []
 const identifiers: string[] = field.fix.identifiers
 field.fix.identifiers = ['11', 'OrderIdentifier']
 field.fix.identifiers = []
@@ -419,6 +436,7 @@ void identity
 void tag
 void tags
 void names
+void parents
 void identifiers
 void description
 void nulls
@@ -434,6 +452,10 @@ field.fix.branches = [55]
 field.fix.id = 5001
 // @ts-expect-error aliases are strings
 field.fix.names = [55]
+// @ts-expect-error parents are identifier types, spelled as strings
+field.fix.parents = [55]
+// @ts-expect-error parents are an array of spellings, never one spelling
+field.fix.parents = 'origorderid'
 // @ts-expect-error identifiers are an array of spellings, never one spelling
 field.fix.identifiers = '11'
 // @ts-expect-error decimal tags are spelled as strings

@@ -4,6 +4,72 @@
     "type": "struct",
     "fields": [
       {
+        "name": "curruuid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "FIX:field": "curruuid",
+          "FIX:tag": "65001"
+        }
+      },
+      {
+        "name": "crossuuid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "FIX:field": "crossuuid",
+          "FIX:tag": "65002"
+        }
+      },
+      {
+        "name": "crosscode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "crosscode",
+          "FIX:tag": "65003"
+        }
+      },
+      {
+        "name": "currhashcode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "FIX:field": "currhashcode",
+          "FIX:tag": "65004"
+        }
+      },
+      {
+        "name": "crosshashcode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "FIX:field": "crosshashcode",
+          "FIX:tag": "65005"
+        }
+      },
+      {
+        "name": "srcuuids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "srcuuids",
+          "FIX:tag": "65006"
+        }
+      },
+      {
         "name": "currunix",
         "dtype": {
           "type": "null"
@@ -11,29 +77,7 @@
         "nullable": false,
         "metadata": {
           "FIX:field": "currunix",
-          "FIX:tag": "65001"
-        }
-      },
-      {
-        "name": "execunix",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "execunix",
-          "FIX:tag": "65002"
-        }
-      },
-      {
-        "name": "recdunix",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "recdunix",
-          "FIX:tag": "65003"
+          "FIX:tag": "65007"
         }
       },
       {
@@ -44,29 +88,18 @@
         "nullable": false,
         "metadata": {
           "FIX:field": "creaunix",
-          "FIX:tag": "65004"
+          "FIX:tag": "65008"
         }
       },
       {
-        "name": "prevunix",
+        "name": "recdunix",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:field": "prevunix",
-          "FIX:tag": "65005"
-        }
-      },
-      {
-        "name": "snapunix",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "snapunix",
-          "FIX:tag": "65006"
+          "FIX:field": "recdunix",
+          "FIX:tag": "65009"
         }
       },
       {
@@ -77,7 +110,712 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "exprunix",
-          "FIX:tag": "65007"
+          "FIX:tag": "65010"
+        }
+      },
+      {
+        "name": "prevunix",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "prevunix",
+          "FIX:tag": "65011"
+        }
+      },
+      {
+        "name": "snapunix",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "snapunix",
+          "FIX:tag": "65012"
+        }
+      },
+      {
+        "name": "prevuuid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "prevuuid",
+          "FIX:tag": "65013"
+        }
+      },
+      {
+        "name": "seqnum",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "seqnum",
+          "FIX:tag": "65014"
+        }
+      },
+      {
+        "name": "state",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "state",
+          "FIX:tag": "65015"
+        }
+      },
+      {
+        "name": "marketdatakind",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "marketdatakind",
+          "FIX:tag": "65016"
+        }
+      },
+      {
+        "name": "marketdatatype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "marketdatatype",
+          "FIX:tag": "65017"
+        }
+      },
+      {
+        "name": "price",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "price",
+          "FIX:tag": "44"
+        }
+      },
+      {
+        "name": "stoppx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "stoppx",
+          "FIX:tag": "99"
+        }
+      },
+      {
+        "name": "currency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "currency",
+          "FIX:tag": "15"
+        }
+      },
+      {
+        "name": "quantity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "quantity",
+          "FIX:tag": "53"
+        }
+      },
+      {
+        "name": "displayqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "displayqty",
+          "FIX:tag": "1138"
+        }
+      },
+      {
+        "name": "hiddenqty",
+        "dtype": {
+          "type": "decimal"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65018",
+          "FIX:transient": "false",
+          "description": "The part of the quantity an iceberg keeps from the market: the quantity past DisplayQty, else past MaxFloor, where it shows less than all of it. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Hidden Quantity"
+        }
+      },
+      {
+        "name": "unit",
+        "dtype": {
+          "type": "unit"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65019",
+          "FIX:transient": "false",
+          "description": "The unit the quantity is counted in: UnitOfMeasure, the empty unit where none is stated. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Unit"
+        }
+      },
+      {
+        "name": "side",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "side",
+          "FIX:tag": "54"
+        }
+      },
+      {
+        "name": "securityids",
+        "dtype": {
+          "type": "map",
+          "entries": {
+            "name": "entries",
+            "dtype": {
+              "type": "struct",
+              "fields": [
+                {
+                  "name": "key",
+                  "dtype": {
+                    "type": "string"
+                  },
+                  "nullable": false,
+                  "metadata": {}
+                },
+                {
+                  "name": "securityid",
+                  "dtype": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "name": "src",
+                        "dtype": {
+                          "type": "string"
+                        },
+                        "nullable": false,
+                        "metadata": {}
+                      },
+                      {
+                        "name": "type",
+                        "dtype": {
+                          "type": "string"
+                        },
+                        "nullable": false,
+                        "metadata": {}
+                      },
+                      {
+                        "name": "value",
+                        "dtype": {
+                          "type": "string"
+                        },
+                        "nullable": false,
+                        "metadata": {}
+                      }
+                    ]
+                  },
+                  "nullable": false,
+                  "metadata": {}
+                }
+              ]
+            },
+            "nullable": false,
+            "metadata": {}
+          },
+          "keys_sorted": true
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65020",
+          "FIX:transient": "false",
+          "description": "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Security IDs"
+        }
+      },
+      {
+        "name": "isincode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "isincode",
+          "FIX:tag": "65021"
+        }
+      },
+      {
+        "name": "cficode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "cficode",
+          "FIX:tag": "461"
+        }
+      },
+      {
+        "name": "miccode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "miccode",
+          "FIX:tag": "65022"
+        }
+      },
+      {
+        "name": "execunix",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "execunix",
+          "FIX:tag": "65023"
+        }
+      },
+      {
+        "name": "lastpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "lastpx",
+          "FIX:tag": "31"
+        }
+      },
+      {
+        "name": "lastqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "lastqty",
+          "FIX:tag": "32"
+        }
+      },
+      {
+        "name": "avgpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "avgpx",
+          "FIX:tag": "6"
+        }
+      },
+      {
+        "name": "cumqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "cumqty",
+          "FIX:tag": "14"
+        }
+      },
+      {
+        "name": "leavesqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "leavesqty",
+          "FIX:tag": "151"
+        }
+      },
+      {
+        "name": "cxlqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "cxlqty",
+          "FIX:tag": "84"
+        }
+      },
+      {
+        "name": "prevpx",
+        "dtype": {
+          "type": "decimal"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65024",
+          "FIX:transient": "false",
+          "description": "The price the step before the message settled on: PrevClosePx, the one its lifecycle moved from once followed. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Previous Price"
+        }
+      },
+      {
+        "name": "prevqty",
+        "dtype": {
+          "type": "decimal"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65025",
+          "FIX:transient": "false",
+          "description": "The quantity the step before the message settled on, which only a lifecycle states. Derived; a row stating one is the row's word.",
+          "display": "Previous Quantity"
+        }
+      },
+      {
+        "name": "spotrate",
+        "dtype": {
+          "type": "decimal"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65026",
+          "FIX:transient": "false",
+          "description": "The spot part of an FX forward price: LastSpotRate, or a sided quote's BidSpotRate or OfferSpotRate. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Spot Rate"
+        }
+      },
+      {
+        "name": "forwardpoints",
+        "dtype": {
+          "type": "decimal"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65027",
+          "FIX:transient": "false",
+          "description": "The forward points of an FX forward price: LastForwardPoints, or a sided quote's BidForwardPoints or OfferForwardPoints. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Forward Points"
+        }
+      },
+      {
+        "name": "bidpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "bidpx",
+          "FIX:tag": "132"
+        }
+      },
+      {
+        "name": "bidqty",
+        "dtype": {
+          "type": "decimal"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65028",
+          "FIX:transient": "false",
+          "description": "The quantity bid: BidSize. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Bid Quantity"
+        }
+      },
+      {
+        "name": "bidccy",
+        "dtype": {
+          "type": "ccy"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65029",
+          "FIX:transient": "false",
+          "description": "The currency the bid is stated in: a bridge's bid currency, else the message's own where it states a bid. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Bid Currency"
+        }
+      },
+      {
+        "name": "askpx",
+        "dtype": {
+          "type": "decimal"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65030",
+          "FIX:transient": "false",
+          "description": "The ask price: OfferPx. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Ask Price"
+        }
+      },
+      {
+        "name": "askqty",
+        "dtype": {
+          "type": "decimal"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65031",
+          "FIX:transient": "false",
+          "description": "The quantity offered: OfferSize. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Ask Quantity"
+        }
+      },
+      {
+        "name": "askccy",
+        "dtype": {
+          "type": "ccy"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65032",
+          "FIX:transient": "false",
+          "description": "The currency the ask is stated in: a bridge's ask currency, else the message's own where it states an ask. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Ask Currency"
+        }
+      },
+      {
+        "name": "fxrates",
+        "dtype": {
+          "type": "map",
+          "entries": {
+            "name": "entries",
+            "dtype": {
+              "type": "struct",
+              "fields": [
+                {
+                  "name": "key",
+                  "dtype": {
+                    "type": "ccy"
+                  },
+                  "nullable": false,
+                  "metadata": {}
+                },
+                {
+                  "name": "value",
+                  "dtype": {
+                    "type": "decimal"
+                  },
+                  "nullable": false,
+                  "metadata": {}
+                }
+              ]
+            },
+            "nullable": false,
+            "metadata": {}
+          },
+          "keys_sorted": true
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65033",
+          "FIX:transient": "false",
+          "description": "The FX rates the message states, target currency to the rate an amount is divided by, which no FIX field fills. Derived; a row stating one is the row's word.",
+          "display": "FX Rates"
+        }
+      },
+      {
+        "name": "ticker",
+        "dtype": {
+          "type": "string"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65034",
+          "FIX:transient": "false",
+          "description": "The ticker the instrument goes by: Symbol, trimmed. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Ticker"
+        }
+      },
+      {
+        "name": "metadata",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:group": "metadata"
+        }
+      },
+      {
+        "name": "ordqty",
+        "dtype": {
+          "type": "decimal"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65036",
+          "FIX:transient": "false",
+          "description": "The quantity the operation ordered: OrderQty; working, CumQty plus LeavesQty where it states none. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Order Quantity"
+        }
+      },
+      {
+        "name": "timeinforce",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "timeinforce",
+          "FIX:tag": "59"
+        }
+      },
+      {
+        "name": "tradable",
+        "dtype": {
+          "type": "boolean"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65037",
+          "FIX:transient": "false",
+          "description": "Whether the instrument can trade: SecurityTradingStatus, else TradingSessionStatus or SecurityStatus. Derived from the message's fields; a row stating one is the row's word.",
+          "display": "Tradable"
+        }
+      },
+      {
+        "name": "identifiers",
+        "dtype": {
+          "type": "map",
+          "entries": {
+            "name": "entries",
+            "dtype": {
+              "type": "struct",
+              "fields": [
+                {
+                  "name": "key",
+                  "dtype": {
+                    "type": "string"
+                  },
+                  "nullable": false,
+                  "metadata": {}
+                },
+                {
+                  "name": "identifier",
+                  "dtype": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "name": "src",
+                        "dtype": {
+                          "type": "string"
+                        },
+                        "nullable": false,
+                        "metadata": {}
+                      },
+                      {
+                        "name": "type",
+                        "dtype": {
+                          "type": "string"
+                        },
+                        "nullable": false,
+                        "metadata": {}
+                      },
+                      {
+                        "name": "value",
+                        "dtype": {
+                          "type": "string"
+                        },
+                        "nullable": false,
+                        "metadata": {}
+                      }
+                    ]
+                  },
+                  "nullable": false,
+                  "metadata": {}
+                }
+              ]
+            },
+            "nullable": false,
+            "metadata": {}
+          },
+          "keys_sorted": true
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65038",
+          "FIX:transient": "false",
+          "description": "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap and the parties that name one. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
+          "display": "Identifiers"
+        }
+      },
+      {
+        "name": "partyids",
+        "dtype": {
+          "type": "map",
+          "entries": {
+            "name": "entries",
+            "dtype": {
+              "type": "struct",
+              "fields": [
+                {
+                  "name": "key",
+                  "dtype": {
+                    "type": "string"
+                  },
+                  "nullable": false,
+                  "metadata": {}
+                },
+                {
+                  "name": "partyid",
+                  "dtype": {
+                    "type": "struct",
+                    "fields": [
+                      {
+                        "name": "src",
+                        "dtype": {
+                          "type": "string"
+                        },
+                        "nullable": false,
+                        "metadata": {}
+                      },
+                      {
+                        "name": "type",
+                        "dtype": {
+                          "type": "string"
+                        },
+                        "nullable": false,
+                        "metadata": {}
+                      },
+                      {
+                        "name": "value",
+                        "dtype": {
+                          "type": "string"
+                        },
+                        "nullable": false,
+                        "metadata": {}
+                      }
+                    ]
+                  },
+                  "nullable": false,
+                  "metadata": {}
+                }
+              ]
+            },
+            "nullable": false,
+            "metadata": {}
+          },
+          "keys_sorted": true
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:tag": "65039",
+          "FIX:transient": "false",
+          "description": "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, and Account under AcctIDSource. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
+          "display": "Party IDs"
         }
       },
       {
@@ -169,94 +907,6 @@
         }
       },
       {
-        "name": "curruuid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "curruuid",
-          "FIX:tag": "65008"
-        }
-      },
-      {
-        "name": "crossuuid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "crossuuid",
-          "FIX:tag": "65009"
-        }
-      },
-      {
-        "name": "crosscode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "crosscode",
-          "FIX:tag": "65010"
-        }
-      },
-      {
-        "name": "currhashcode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "currhashcode",
-          "FIX:tag": "65011"
-        }
-      },
-      {
-        "name": "crosshashcode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "crosshashcode",
-          "FIX:tag": "65012"
-        }
-      },
-      {
-        "name": "prevuuid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "prevuuid",
-          "FIX:tag": "65013"
-        }
-      },
-      {
-        "name": "seqnum",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "seqnum",
-          "FIX:tag": "65014"
-        }
-      },
-      {
-        "name": "srcuuids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "srcuuids",
-          "FIX:tag": "65015"
-        }
-      },
-      {
         "name": "beginstring",
         "dtype": {
           "type": "null"
@@ -276,17 +926,6 @@
         "metadata": {
           "FIX:field": "msgtype",
           "FIX:tag": "35"
-        }
-      },
-      {
-        "name": "msgcat",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "msgcat",
-          "FIX:tag": "65016"
         }
       },
       {
@@ -352,7 +991,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgpluginid",
-          "FIX:tag": "65017"
+          "FIX:tag": "65040"
         }
       },
       {
@@ -363,7 +1002,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgoriginator",
-          "FIX:tag": "65018"
+          "FIX:tag": "65041"
         }
       },
       {
@@ -374,7 +1013,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgctxid",
-          "FIX:tag": "65019"
+          "FIX:tag": "65042"
         }
       },
       {
@@ -385,7 +1024,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgsessionid",
-          "FIX:tag": "65020"
+          "FIX:tag": "65043"
         }
       },
       {
@@ -396,7 +1035,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "msgsesseventid",
-          "FIX:tag": "65021"
+          "FIX:tag": "65044"
         }
       },
       {
@@ -407,7 +1046,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "conversationid",
-          "FIX:tag": "65022"
+          "FIX:tag": "65045"
         }
       },
       {
@@ -422,39 +1061,6 @@
         }
       },
       {
-        "name": "securityid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "securityid",
-          "FIX:tag": "48"
-        }
-      },
-      {
-        "name": "securityidsource",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "securityidsource",
-          "FIX:tag": "22"
-        }
-      },
-      {
-        "name": "isincode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "isincode",
-          "FIX:tag": "65023"
-        }
-      },
-      {
         "name": "forexcode",
         "dtype": {
           "type": "null"
@@ -462,7 +1068,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "forexcode",
-          "FIX:tag": "65024"
+          "FIX:tag": "65046"
         }
       },
       {
@@ -473,7 +1079,7 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "bloombergcode",
-          "FIX:tag": "65025"
+          "FIX:tag": "65047"
         }
       },
       {
@@ -484,29 +1090,18 @@
         "nullable": true,
         "metadata": {
           "FIX:field": "figicode",
-          "FIX:tag": "65026"
+          "FIX:tag": "65048"
         }
       },
       {
-        "name": "miccode",
+        "name": "strikeprice",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:field": "miccode",
-          "FIX:tag": "65027"
-        }
-      },
-      {
-        "name": "strikepx",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "strikepx",
-          "FIX:tag": "65028"
+          "FIX:field": "strikeprice",
+          "FIX:tag": "202"
         }
       },
       {
@@ -562,17 +1157,6 @@
         "metadata": {
           "FIX:field": "lastmkt",
           "FIX:tag": "30"
-        }
-      },
-      {
-        "name": "cficode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "cficode",
-          "FIX:tag": "461"
         }
       },
       {
@@ -763,25 +1347,25 @@
         }
       },
       {
-        "name": "side",
+        "name": "orderqty",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:field": "side",
-          "FIX:tag": "54"
+          "FIX:field": "orderqty",
+          "FIX:tag": "38"
         }
       },
       {
-        "name": "price",
+        "name": "maxfloor",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:field": "price",
-          "FIX:tag": "44"
+          "FIX:field": "maxfloor",
+          "FIX:tag": "111"
         }
       },
       {
@@ -796,83 +1380,6 @@
         }
       },
       {
-        "name": "lastpx",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "lastpx",
-          "FIX:tag": "31"
-        }
-      },
-      {
-        "name": "avgpx",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "avgpx",
-          "FIX:tag": "6"
-        }
-      },
-      {
-        "name": "orderqty",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "orderqty",
-          "FIX:tag": "38"
-        }
-      },
-      {
-        "name": "quantity",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "quantity",
-          "FIX:tag": "53"
-        }
-      },
-      {
-        "name": "lastqty",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "lastqty",
-          "FIX:tag": "32"
-        }
-      },
-      {
-        "name": "cumqty",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "cumqty",
-          "FIX:tag": "14"
-        }
-      },
-      {
-        "name": "leavesqty",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "leavesqty",
-          "FIX:tag": "151"
-        }
-      },
-      {
         "name": "unitofmeasure",
         "dtype": {
           "type": "null"
@@ -881,17 +1388,6 @@
         "metadata": {
           "FIX:field": "unitofmeasure",
           "FIX:tag": "996"
-        }
-      },
-      {
-        "name": "currency",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "currency",
-          "FIX:tag": "15"
         }
       },
       {
@@ -928,36 +1424,25 @@
         }
       },
       {
-        "name": "timeinforce",
+        "name": "quotetype",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:field": "timeinforce",
-          "FIX:tag": "59"
+          "FIX:field": "quotetype",
+          "FIX:tag": "537"
         }
       },
       {
-        "name": "bidpx",
+        "name": "trdtype",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:field": "bidpx",
-          "FIX:tag": "132"
-        }
-      },
-      {
-        "name": "bidsize",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "bidsize",
-          "FIX:tag": "134"
+          "FIX:field": "trdtype",
+          "FIX:tag": "828"
         }
       },
       {
@@ -969,6 +1454,17 @@
         "metadata": {
           "FIX:field": "offerpx",
           "FIX:tag": "133"
+        }
+      },
+      {
+        "name": "bidsize",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "bidsize",
+          "FIX:tag": "134"
         }
       },
       {
@@ -1046,17 +1542,6 @@
         "metadata": {
           "FIX:field": "offerforwardpoints",
           "FIX:tag": "191"
-        }
-      },
-      {
-        "name": "state",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "state",
-          "FIX:tag": "65029"
         }
       },
       {
@@ -1145,48 +1630,6 @@
         "metadata": {
           "FIX:field": "text",
           "FIX:tag": "58"
-        }
-      },
-      {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
-        "name": "parties",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "nosecurityaltid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosecurityaltid",
-          "FIX:tag": "454"
-        }
-      },
-      {
-        "name": "secaltids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:group": "secaltids"
         }
       },
       {
@@ -1441,16 +1884,6 @@
         }
       },
       {
-        "name": "metadata",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:group": "metadata"
-        }
-      },
-      {
         "name": "fixentries",
         "dtype": {
           "type": "map",
@@ -1492,8 +1925,8 @@
   },
   "nullable": false,
   "metadata": {
-    "FIX:tag": "65042",
+    "FIX:tag": "65050",
     "description": "The fixed row every message answers as: the crate's own columns, the standard header, the fields a financial consumer reads, the groups persisted whole, the trailer, and the arrival record that closes it.",
-    "display": "FixMsg"
+    "display": "FIX Message"
   }
 }

@@ -1664,7 +1664,7 @@ struct JsEncoder<'env> {
     map_entries: Function<'env, (), Unknown<'env>>,
     map_is_map: Function<'env, Object<'env>, bool>,
     map_prototype: Object<'env>,
-    native_wrapper_prototypes: [Object<'env>; 8],
+    native_wrapper_prototypes: [Object<'env>; 10],
     regexp_constructor: Function<'env, (), Unknown<'env>>,
     regexp_flags_getter: Function<'env, Object<'env>, String>,
     regexp_is_regexp: Function<'env, Object<'env>, bool>,
@@ -1989,10 +1989,19 @@ impl<'env> JsEncoder<'env> {
                 "cross-realm RegExp values are not serialized implicitly; copy into the current realm RegExp",
             ));
         }
+        self.encode_native_wrapper(&value, object)
+    }
 
+    /// Encode an instance of one of the addon's own classes, or answer
+    /// `None` for any other object.
+    fn encode_native_wrapper(
+        &mut self,
+        value: &Unknown<'env>,
+        object: &Object<'env>,
+    ) -> Result<Option<Scalar>> {
         macro_rules! native_wrapper {
             ($wrapper:ty, $name:literal, $prototype_index:literal, $encode:expr) => {
-                if <$wrapper>::instance_of(&self.env, &value)? {
+                if <$wrapper>::instance_of(&self.env, value)? {
                     if !self.has_exact_prototype(
                         object,
                         self.native_wrapper_prototypes[$prototype_index],
@@ -2031,6 +2040,21 @@ impl<'env> JsEncoder<'env> {
         native_wrapper!(JsVersion, "Version", 7, |inner: &yggdryl::Version| {
             Scalar::from(inner.clone())
         });
+        // An identifier crosses as its three-text row and a map of them as
+        // the sorted map from each key `src:type` to its row, the shapes an
+        // identifier column holds.
+        native_wrapper!(
+            crate::identifier::JsIdentifier,
+            "Identifier",
+            8,
+            |inner: &yggdryl::Identifier| inner.clone().into_scalar()
+        );
+        native_wrapper!(
+            crate::identifier::JsIdentifiers,
+            "Identifiers",
+            9,
+            yggdryl::Identifiers::into_scalar
+        );
         Ok(None)
     }
 
@@ -2195,10 +2219,10 @@ fn constructor_prototype<'env>(global: &JsGlobal<'env>, name: &str) -> Result<Ob
     constructor.get_named_property("prototype")
 }
 
-fn wrapper_prototypes<'env>(values: &Array<'env>) -> Result<[Object<'env>; 8]> {
-    if values.len() != 8 {
+fn wrapper_prototypes<'env>(values: &Array<'env>) -> Result<[Object<'env>; 10]> {
+    if values.len() != 10 {
         return Err(napi_error(
-            "native wrapper prototype table must contain exactly eight entries",
+            "native wrapper prototype table must contain exactly ten entries",
         ));
     }
     Ok([
@@ -2210,6 +2234,8 @@ fn wrapper_prototypes<'env>(values: &Array<'env>) -> Result<[Object<'env>; 8]> {
         required_array_object(values, 5, "Urn")?,
         required_array_object(values, 6, "Arn")?,
         required_array_object(values, 7, "Version")?,
+        required_array_object(values, 8, "Identifier")?,
+        required_array_object(values, 9, "Identifiers")?,
     ])
 }
 

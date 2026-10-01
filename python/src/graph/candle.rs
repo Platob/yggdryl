@@ -65,7 +65,7 @@ fn reading_dict(py: Python<'_>, reading: Option<Ohlc>) -> PyResult<Option<Bound<
 
 #[pymethods]
 impl PyCandle {
-    /// The book's cross code.
+    /// The book's stored cross code, such as `3:0:ACME`.
     #[getter]
     fn crosscode(&self) -> &str {
         self.inner.crosscode.as_str()

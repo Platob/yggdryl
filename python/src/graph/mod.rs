@@ -26,11 +26,9 @@ use pyo3::types::PyDict;
 
 use yggdryl::Uuid as CoreUuid;
 use yggdryl::graph::{
-    Event, EventColumn, FxRates, MarketColumn, MarketKind, Operation, OperationColumn,
-    OperationEvent, OperationKind as CoreOperationKind,
+    ElementColumn, Event, EventColumn, FxRates, MarketColumn, MarketKind, Operation,
+    OperationColumn, OperationEvent, OperationKind as CoreOperationKind,
 };
-use yggdryl::idmap::IdMap as CoreIdMap;
-use yggdryl::securityid::SecurityIds as CoreSecurityIds;
 use yggdryl::{Decimal, Scalar};
 
 use crate::scalar::{PyScalar, from_py};
@@ -70,7 +68,11 @@ macro_rules! element_getters {
             }
 
             /// The cross code: the identifier every statement of one element
-            /// shares, empty where it names none.
+            /// shares, stored as `{kind}:{side}:{base}` - the
+            /// `MarketDataKind` code, the `Side` code of a sided kind (`0`
+            /// for any other) and the identifier itself, so a buy order
+            /// `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
+            /// it names none.
             #[getter]
             fn crosscode(&self) -> &str {
                 ::yggdryl::graph::Element::get_crosscode(&self.inner)
@@ -197,6 +199,30 @@ macro_rules! market_getters {
                 ::yggdryl::graph::Market::get_quantity(&self.inner).map($crate::graph::decimal_scalar)
             }
 
+            /// The stop price the order triggers at, as a decimal; `None` where none.
+            #[getter]
+            fn stoppx(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_stoppx(&self.inner).map($crate::graph::decimal_scalar)
+            }
+
+            /// The part of the quantity shown to the market - an iceberg's peak, as a decimal; `None` where none.
+            #[getter]
+            fn displayqty(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_displayqty(&self.inner).map($crate::graph::decimal_scalar)
+            }
+
+            /// The part of the quantity kept from the market - an iceberg's reserve, as a decimal; `None` where none.
+            #[getter]
+            fn hiddenqty(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_hiddenqty(&self.inner).map($crate::graph::decimal_scalar)
+            }
+
+            /// How much was canceled, as a decimal; `None` where none.
+            #[getter]
+            fn cxlqty(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Market::get_cxlqty(&self.inner).map($crate::graph::decimal_scalar)
+            }
+
             /// The unit the quantity is counted in, as spelled; empty where
             /// none.
             #[getter]
@@ -211,14 +237,22 @@ macro_rules! market_getters {
                 $crate::graph::member(py, ::yggdryl::graph::Market::get_side(&self.inner))
             }
 
-            /// The instrument's identifiers, one code under each source -
-            /// `ISIN`, `CUSIP`, `FIGI` - in source order.
+            /// The type of its kind this is, as the `MarketDataType` member;
+            /// `MarketDataType.UNKN` where none is stated, never `None`.
             #[getter]
-            fn securityids(&self) -> ::std::collections::BTreeMap<String, String> {
-                $crate::graph::securityids_dict(::yggdryl::graph::Market::get_securityids(&self.inner))
+            fn marketdatatype(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::pyo3::Py<::pyo3::PyAny>> {
+                $crate::graph::member(py, ::yggdryl::graph::Market::get_marketdatatype(&self.inner))
             }
 
-            /// The ISIN the instrument is stated under - the `ISIN` entry of
+            /// The instrument's identifiers, each a source, a type and a code
+            /// - `isin`, `cusip`, `figi` - a map keyed `src:type`, in key
+            /// order.
+            #[getter]
+            fn securityids(&self) -> $crate::identifier::PyIdentifiers {
+                $crate::identifier::PyIdentifiers::from_core(::yggdryl::graph::Market::get_securityids(&self.inner))
+            }
+
+            /// The ISIN the instrument is stated under - the `isin` entry of
             /// `securityids` - as text; `None` where none.
             #[getter]
             fn isincode(&self) -> Option<&str> {
@@ -370,11 +404,19 @@ macro_rules! market_getters {
 macro_rules! operation_getters {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
-            /// How long this stands, as the stored code; `None` where
-            /// unstated.
+            /// The quantity ordered, as a decimal; `None` where none.
             #[getter]
-            fn tif(&self) -> Option<&str> {
-                ::yggdryl::graph::Operation::get_tif(&self.inner).map(::yggdryl::TimeInForce::as_str)
+            fn ordqty(&self) -> Option<$crate::scalar::PyScalar> {
+                ::yggdryl::graph::Operation::get_ordqty(&self.inner).map($crate::graph::decimal_scalar)
+            }
+
+            /// How long this stands, as the `TimeInForce` member; `None`
+            /// where unstated.
+            #[getter]
+            fn timeinforce(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::std::option::Option<::pyo3::Py<::pyo3::PyAny>>> {
+                ::yggdryl::graph::Operation::get_timeinforce(&self.inner)
+                    .map(|held| $crate::graph::member(py, *held))
+                    .transpose()
             }
 
             /// Whether the instrument trades, or `None` where the market said
@@ -384,36 +426,39 @@ macro_rules! operation_getters {
                 ::yggdryl::graph::Operation::get_tradable(&self.inner)
             }
 
-            /// The names the operation goes by, in key order.
+            /// The names the operation goes by - its order, client order and
+            /// execution ids with the parents a chain gave them - a map keyed
+            /// `src:type`, in key order.
             #[getter]
-            fn altids(&self) -> ::std::collections::BTreeMap<String, String> {
-                $crate::graph::idmap_dict(::yggdryl::graph::Operation::get_altids(&self.inner))
+            fn identifiers(&self) -> $crate::identifier::PyIdentifiers {
+                $crate::identifier::PyIdentifiers::from_core(::yggdryl::graph::Operation::get_identifiers(&self.inner))
             }
 
-            /// The accounts and parties the operation names, party role to
-            /// identifier - `CUSTOMERACCOUNT`, `EXECUTINGTRADER` - in key
-            /// order.
+            /// The parties the operation names, each typed by its role -
+            /// `customeraccount`, `executingtrader` - from its source, a map
+            /// keyed `src:type`.
             #[getter]
-            fn accountids(&self) -> ::std::collections::BTreeMap<String, String> {
-                $crate::graph::idmap_dict(::yggdryl::graph::Operation::get_accountids(&self.inner))
+            fn partyids(&self) -> $crate::identifier::PyIdentifiers {
+                $crate::identifier::PyIdentifiers::from_core(::yggdryl::graph::Operation::get_partyids(&self.inner))
             }
         });
     };
 }
 
 /// The market data kind of a leaf: the `MarketDataKind` member its
-/// [`LeafKind::market_kind`] files it under.
+/// [`LeafKind::marketdatakind`] files it under.
 macro_rules! kind_getters {
     ($class:ident, $name:literal; [$($rest:ident),*]; { $($body:tt)* }) => {
         graph_methods!($class, $name; [$($rest),*]; { $($body)*
             /// The kind of market data this is, as the `MarketDataKind`
             /// member its leaf is filed under: `ORDR`, `QUOT`, `EXEC`,
-            /// `TRAD` or `BOOK`.
+            /// `TRAD` or `BOOK` - and, for a FIX message held whole, the
+            /// category its dictionary files it under.
             #[getter]
             fn marketdatakind(&self, py: ::pyo3::Python<'_>) -> ::pyo3::PyResult<::pyo3::Py<::pyo3::PyAny>> {
                 $crate::graph::member(
                     py,
-                    $crate::graph::LeafKind::market_kind(&self.inner).marketdatakind(),
+                    $crate::graph::LeafKind::marketdatakind(&self.inner),
                 )
             }
         });
@@ -431,8 +476,8 @@ macro_rules! common_verbs {
             /// This value stated as the one after `previous`, or `None` where
             /// it cannot follow it or following changes nothing. It takes
             /// every `metadata` key of its chain it lacks and, where it names
-            /// identifiers, every `altids` key but `MDENTRYREFID` and every
-            /// `accountids` role, its own values standing.
+            /// identifiers, every `identifiers` type but `mdentryrefid` and every
+            /// party id, its own values standing.
             fn with_previous(&self, previous: &Self) -> Option<Self> {
                 ::yggdryl::graph::Element::with_previous(self.inner.clone(), &previous.inner)
                     .map(Self::from_core)
@@ -497,15 +542,24 @@ macro_rules! common_verbs {
                 py: ::pyo3::Python<'py>,
             ) -> ::pyo3::PyResult<(
                 ::pyo3::Bound<'py, ::pyo3::PyAny>,
-                (::pyo3::Bound<'py, ::pyo3::types::PyBytes>,),
+                ::pyo3::Bound<'py, ::pyo3::types::PyTuple>,
             )> {
                 use ::pyo3::types::PyAnyMethods as _;
+                // A FIX message held whole pickles as itself: its row would
+                // split into the leaves it reports.
+                if let Some(message) = $crate::graph::LeafKind::held_fix(&self.inner) {
+                    let whole = ::pyo3::Py::new(py, $crate::fix::PyFixMsg::from_inner(message.clone()))?;
+                    return Ok((
+                        py.get_type::<Self>().into_any(),
+                        ::pyo3::types::PyTuple::new(py, [whole])?,
+                    ));
+                }
                 let stream = $crate::graph::market_data::into_ipc(
                     ::yggdryl::graph::MarketData::from(self.inner.clone()),
                 )?;
                 Ok((
                     py.get_type::<Self>().getattr("_from_pickle")?,
-                    (::pyo3::types::PyBytes::new(py, &stream),),
+                    ::pyo3::types::PyTuple::new(py, [::pyo3::types::PyBytes::new(py, &stream)])?,
                 ))
             }
         });
@@ -579,6 +633,17 @@ where
 pub(crate) trait LeafKind {
     /// The leaf kind this value is.
     fn market_kind(&self) -> MarketKind;
+
+    /// The `MarketDataKind` this value is filed under.
+    fn marketdatakind(&self) -> yggdryl::MarketDataKind {
+        self.market_kind().marketdatakind()
+    }
+
+    /// The FIX message this value holds whole, where it is one: what its
+    /// pickle carries instead of the rows the message splits into.
+    fn held_fix(&self) -> Option<&yggdryl::FixMsg> {
+        None
+    }
 }
 
 impl<K: CoreOperationKind> LeafKind for yggdryl::graph::OperationElement<K> {
@@ -615,6 +680,14 @@ impl LeafKind for yggdryl::graph::MarketData {
     fn market_kind(&self) -> MarketKind {
         self.kind()
     }
+
+    fn marketdatakind(&self) -> yggdryl::MarketDataKind {
+        yggdryl::graph::MarketData::marketdatakind(self)
+    }
+
+    fn held_fix(&self) -> Option<&yggdryl::FixMsg> {
+        self.as_fix()
+    }
 }
 
 /// A native code - a currency, an identifier - as the code `Scalar` its
@@ -632,28 +705,12 @@ pub(crate) fn decimal_scalar(held: Decimal) -> PyScalar {
     PyScalar::from_inner(Scalar::from(held))
 }
 
-/// An identifier map - the names an operation goes by - as the `dict`
-/// Python reads, each value under the key that stated it, in key order.
-pub(crate) fn idmap_dict(ids: &CoreIdMap) -> BTreeMap<String, String> {
-    ids.iter()
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
-        .collect()
-}
-
 /// The rates an element states, each decimal `Scalar` under its target
 /// currency's code, in currency order.
 pub(crate) fn fxrates_dict(rates: &FxRates) -> BTreeMap<String, PyScalar> {
     rates
         .iter()
         .map(|(target, rate)| (target.as_str().to_owned(), decimal_scalar(*rate)))
-        .collect()
-}
-
-/// The identifiers an instrument is stated under, one code under each
-/// source - `ISIN`, `CUSIP`, `FIGI` - in source order.
-pub(crate) fn securityids_dict(ids: &CoreSecurityIds) -> BTreeMap<String, String> {
-    ids.iter()
-        .map(|id| (id.sectype().as_str().to_owned(), id.code().to_owned()))
         .collect()
 }
 
@@ -675,66 +732,65 @@ pub(crate) fn ellipsis() -> Py<PyAny> {
     Python::attach(|py| py.Ellipsis())
 }
 
-/// The event columns an undated element states: the facts
-/// [`yggdryl::graph::Element`] answers that `finalize` keeps, and no clock,
-/// state or chain.
-const ELEMENT_COLUMNS: [EventColumn; 2] = [EventColumn::CrossCode, EventColumn::SrcUuids];
-
-/// The identity columns `finalize` derives from the stated facts, so no
-/// caller states one: a value given would be overwritten, never kept.
-const DERIVED_COLUMNS: [EventColumn; 4] = [
-    EventColumn::CurrUuid,
-    EventColumn::CrossUuid,
-    EventColumn::CurrHashCode,
-    EventColumn::CrossHashCode,
-];
-
 /// One named fact, resolved to the column that states it.
 #[derive(Clone, Copy)]
 enum Fact {
+    Element(ElementColumn),
     Event(EventColumn),
     Market(MarketColumn),
     Operation(OperationColumn),
 }
 
 impl Fact {
-    /// The column `name` is - folded, as the column enums read it - or a
-    /// `ValueError` naming the unknown fact.
+    /// The column `name` is - folded, as the column enums read it - or an
+    /// error naming the unknown fact.
     fn of_name(owner: &str, name: &str) -> PyResult<Self> {
-        EventColumn::of_name(name)
-            .map(Self::Event)
+        ElementColumn::of_name(name)
+            .map(Self::Element)
+            .or_else(|| EventColumn::of_name(name).map(Self::Event))
             .or_else(|| MarketColumn::of_name(name).map(Self::Market))
             .or_else(|| OperationColumn::of_name(name).map(Self::Operation))
             .ok_or_else(|| PyValueError::new_err(format!("{owner} states no fact {name:?}")))
     }
 
-    /// The refusal of a fact the leaf does not take from a caller: a
-    /// derived identity, which `finalize` computes; `currunix` on an event,
-    /// stated once as the constructor's first argument; and on an undated
-    /// element every clock, state and chain fact.
+    /// Whether the column is one of the three identifier maps, which a
+    /// sequence of `Identifier` objects states as the map
+    /// `Identifiers::from_scalar` reads it into.
+    const fn is_identifier_map(self) -> bool {
+        matches!(
+            self,
+            Self::Market(MarketColumn::SecurityIds)
+                | Self::Operation(OperationColumn::Identifiers | OperationColumn::PartyIds)
+        )
+    }
+
+    /// The refusal of a fact the leaf does not take from a caller: an
+    /// identity, which `finalize` derives; the category, which the leaf is;
+    /// `currunix` on an event, stated once as the constructor's first
+    /// argument; and on an undated element every event fact.
     fn refuse_unstated(
         self,
         owner: &str,
         name: &str,
         undated: bool,
     ) -> std::result::Result<(), String> {
-        let Self::Event(column) = self else {
-            return Ok(());
-        };
-        if DERIVED_COLUMNS.contains(&column) {
-            Err(format!(
+        match self {
+            Self::Market(MarketColumn::MarketDataKind) => Err(format!(
+                "{owner} states no fact {name:?}: the category is the leaf's own"
+            )),
+            Self::Element(ElementColumn::CrossCode | ElementColumn::SrcUuids)
+            | Self::Operation(_)
+            | Self::Market(_) => Ok(()),
+            Self::Element(_) => Err(format!(
                 "{owner} states no fact {name:?}: an identity is derived, never stated"
-            ))
-        } else if undated && !ELEMENT_COLUMNS.contains(&column) {
-            Err(format!(
+            )),
+            Self::Event(_) if undated => Err(format!(
                 "{owner} states no fact {name:?}: an undated element has no clock, state or chain"
-            ))
-        } else if column == EventColumn::CurrUnix {
-            Err(format!(
+            )),
+            Self::Event(EventColumn::CurrUnix) => Err(format!(
                 "{owner} states currunix once, as its first argument"
-            ))
-        } else {
-            Ok(())
+            )),
+            Self::Event(_) => Ok(()),
         }
     }
 
@@ -742,6 +798,7 @@ impl Fact {
     /// crosses unchecked - and stated through the column's own `record`.
     fn state<E: Event + Operation>(self, leaf: &mut E, value: &Scalar) -> PyResult<()> {
         let field = match self {
+            Self::Element(column) => column.field(),
             Self::Event(column) => column.field(),
             Self::Market(column) => column.field(),
             Self::Operation(column) => column.field(),
@@ -753,6 +810,7 @@ impl Fact {
             field.scalar(value.clone()).map_err(value_error)?
         };
         match self {
+            Self::Element(column) => column.record(leaf, &checked),
             Self::Event(column) => column.record(leaf, &checked),
             Self::Market(column) => column.record(leaf, &checked),
             Self::Operation(column) => column.record(leaf, &checked),
@@ -786,6 +844,10 @@ pub(crate) fn stated_operation<K: CoreOperationKind>(
             .map_err(PyValueError::new_err)?;
         let scalar = if value.is_none() {
             Scalar::Null
+        } else if fact.is_identifier_map() {
+            ::yggdryl::Identifiers::from_scalar(&from_py(&value)?)
+                .map_err(value_error)?
+                .into_scalar()
         } else {
             from_py(&value)?
         };
@@ -814,9 +876,9 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<candle::PyCandleOptions>()?;
     module.add_class::<candle::PyCandleIterator>()?;
     module.add_function(wrap_pyfunction!(candle::candles, module)?)?;
-    // The alternate-identifier keys a market-data entry's own identifiers
-    // are held under.
-    module.add("ENTRY_ID", yggdryl::graph::book::ENTRY_ID)?;
-    module.add("ENTRY_REF_ID", yggdryl::graph::book::ENTRY_REF_ID)?;
+    // The identifier types a market-data entry's own identifiers are held
+    // under.
+    module.add("ENTRY_ID", yggdryl::graph::book::ENTRY_ID.as_str())?;
+    module.add("ENTRY_REF_ID", yggdryl::graph::book::ENTRY_REF_ID.as_str())?;
     Ok(())
 }

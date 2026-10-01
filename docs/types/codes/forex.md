@@ -176,8 +176,8 @@ The value is the canonical pair, however a feed spelled it, so a column holds on
 
     pair = Field("pair", "forex")
     arrow_field = pair.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.forex"
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.forex"
     assert Field.from_arrow(arrow_field) == pair
 
     # Safe: every spelling lands as the pair, and a cell naming none is null.
@@ -240,46 +240,49 @@ for symbol in ["EUR=", "EUR1M=", "EUR/USD XYZ", "EURUSD 1Q", "AAPL"] {
 }
 ```
 
-## The `FOREX` security identifier { #the-forex-security-identifier }
+## The `forex` security identifier { #the-forex-security-identifier }
 
-FIX gives a currency pair no `SecurityIDSource(22)` code, so the key is the crate's own: `FOREX`, read by `forex`, `forexcode`, `ccypair` and `currencypair` too, its code validated by `Forex::new` and stored as the canonical pair. It is one more [security identifier](../../graph/market.md#security-identifiers) of a market element. In a FIX capture the `forexcode` crate column is a view of that key: a pair a row states is stated, and one detected off `Symbol(55)` is derived, so a stated identifier replaces it.
+FIX gives a currency pair no `SecurityIDSource(22)` code, so the identifier type is the crate's own: `forex`, read by `forexcode`, `ccypair` and `currencypair` too, its code validated by `Forex::new` and stored as the canonical pair. It is one more [security identifier](../../graph/market.md#security-identifiers) of a market element, an [`Identifier`](../../graph/identifier.md) of its `securityids`. In a FIX capture the `forexcode` crate column is a view of that type: a pair a row states is stated, and one detected off `Symbol(55)` is derived, from `derived`, so a stated identifier replaces it.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{SecType, SecurityId};
+    use yggdryl::{IdSource, IdType, Identifier};
 
-    let key = SecType::read("ccypair")?;
-    assert_eq!(key.as_str(), "FOREX");
-    assert_eq!(key.fix_source(), None);
+    let key = "ccypair".parse::<IdType>()?;
+    assert_eq!(key, IdType::Forex);
+    assert_eq!(key.as_str(), "forex");
+    assert_eq!(key.fix_security_source(), None);
 
-    let pair = SecurityId::new(key, "eurusd")?;
-    assert_eq!(pair.code(), "EUR/USD");
-    assert_eq!(pair.to_string(), "FOREX:EUR/USD");
+    let pair = Identifier::new(IdSource::Base, IdType::Forex, "eurusd")?;
+    assert_eq!(pair.value(), "EUR/USD");
+    assert_eq!(pair.to_string(), "base:forex=EUR/USD");
     ```
 
 === "Python"
 
     ```python
-    from yggdryl import graph
+    from yggdryl import Identifier, graph
 
     order = graph.OrderEvent(
-        1_700_000_000_000_000_000, crosscode="FX-1", securityids={"FOREX": "eurusd"}
+        1_700_000_000_000_000_000,
+        crosscode="FX-1",
+        securityids=[Identifier("base", "forex", "eurusd")],
     )
-    assert order.securityids == {"FOREX": "EUR/USD"}
+    assert str(order.securityids) == "[base:forex=EUR/USD]"
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { graph } = require('yggdryl')
+    const { Identifier, graph } = require('yggdryl')
 
     const order = new graph.OrderEvent(1_700_000_000_000_000_000n, {
       crosscode: 'FX-1',
-      securityids: { FOREX: 'eurusd' },
+      securityids: [new Identifier('base', 'forex', 'eurusd')],
     })
-    assert.deepEqual(order.securityids, { FOREX: 'EUR/USD' })
+    assert.equal(order.securityids.toString(), '[base:forex=EUR/USD]')
     ```
 
 ## The empty text names no pair

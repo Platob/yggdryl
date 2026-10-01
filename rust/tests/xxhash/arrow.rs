@@ -361,6 +361,14 @@ mod columns {
                 Scalar::from_sequence([Scalar::from("ORDR"), Scalar::from("TRAD"), Scalar::Null]),
             ),
             (
+                Field::new("marketdatatype", DataType::MarketDataType, true),
+                Scalar::from_sequence([
+                    Scalar::from("ORDLIMIT"),
+                    Scalar::from("TRDBLOCK"),
+                    Scalar::Null,
+                ]),
+            ),
+            (
                 Field::new("timeinforce", DataType::TimeInForce, true),
                 Scalar::from_sequence([Scalar::from("0"), Scalar::from("6"), Scalar::Null]),
             ),

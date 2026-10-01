@@ -35,7 +35,7 @@ and the ids its dictionary follows, and learns instrument associations.
 Nothing chains unasked.
 
 The dictionary is data, not code: the committed FIX Latest dictionary
-(fields, 181 messages, 737 code sets, every tag FIX 4.0 to 5.0 SP2 declared) is
+(fields, 181 messages, 738 code sets, every tag FIX 4.0 to 5.0 SP2 declared) is
 the `config/fix` folder of the yggdryl repository, generated and committed,
 ~14 MB, **not shipped** in the crate, wheel or npm package. Load it by path, or
 point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
@@ -63,7 +63,11 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | decode text-reader lines | `codec.parse_text_lines(lines)` | `codec.parse_text_lines(lines)` | `codec.parseTextLines(lines)` |
 | a capture's batches to FIX rows | `codec.parse_text_arrow_reader(reader)?` | `codec.parse_text_arrow_reader(reader)` | `codec.parseTextArrowReader(reader)` |
 | read a fact | `msg.by_tag(55)?`, `by_name`, `by_path`, `header()`, `get_side()` | `msg.by_tag(55)`, `by_path(...)`, `header()`, `msg.side` | `msg.byTag(55)`, `byPath(...)`, `header()`, `msg.side` |
-| the category, the strike | `msg.msgcat()`, `msg.strikepx()` | `msg.msgcat`, `msg.strikepx` | `msg.msgcat`, `msg.strikepx` |
+| the category, the strike | `msg.msgcat()`, `msg.strikeprice()` | `msg.msgcat`, `msg.strikeprice` | `msg.msgcat`, `msg.strikeprice` |
+| the type, how long it stands | `msg.get_marketdatatype()`, `msg.get_timeinforce()` (`Operation`) | `msg.marketdatatype`, `msg.timeinforce` (the `IntEnum` members) | `msg.marketdatatype`, `msg.timeinforce` (the member names) |
+| the parents of an identifier | `registry.parents_of(&IdType::ClOrdId)`, `parent_of(&kind)`, `parent_sources()`; `field.as_fix_mut().set_parents(..)?` | `registry.parents_of("clordid")`, `parent_of("origclordid")`, `field.fix.parents` | `registry.parentsOf('clordid')`, `parentOf('origclordid')`, `field.fix.parents` |
+| a venue's own values onto members | `field.as_fix_mut().set_marketdatatypes(..)?`, `set_timeinforces(&[("D", TimeInForce::Day)])?`; `registry.marketdatatype_of(tag, wire)`, `timeinforce_of(tag, wire)` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [("D", "DAY")]`; `registry.marketdatatype_of`, `timeinforce_of` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [{ wire: 'D', timeinforce: 'DAY' }]`; `registry.marketdatatypeOf`, `timeinforceOf` |
+| a message as one market data value | `MarketData::from(msg)` (held whole, kind `fix`), `msg.into_market_leaf()?` (the one leaf it is) | `graph.MarketData(msg)` | `new graph.MarketData(msg)` |
 | compose a message | `FixMsg::with_registry(Arc, root, value)?` | `FixMsg(root, value, registry)` | `new fix.FixMsg(root, value, registry)` |
 | write or clear a fact | `msg.set(key, scalar)?`, `msg.remove(key)?` | `msg.set(key, value)`, `msg.remove(key)` | `msg.set(key, value)`, `msg.remove(key)` |
 | encode to the wire | `msg.into_text('\x01')?`, `msg.into_bytes(SOH)` | `msg.into_text()`, `msg.into_bytes()` | `msg.intoText()`, `msg.intoBytes()` |
@@ -133,8 +137,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    `fix_column_of(&schema, 35)` in Rust. Columns are the dictionary's folded
    names; the tag stays on each column's `FIX:tag`. Two captures under one
    dictionary share one schema exactly.
-9. A capture's own columns (`url`, `rownum`, `loglevel`...) lead the
-   row; a column named after a FIX field fills that field where the frame
+9. A capture's own columns (`url`, `rownum`, `loglevel`...) follow the
+   element, event, market and operation columns every row opens with; a column named after a FIX field fills that field where the frame
    stated none; `beginstring` and `msgdirection` columns are per-row
    parameters. An `mtime` capture dates the line - its messages' `recdunix`
    and the sending clock of any stating no `SendingTime(52)` - read under the
@@ -196,6 +200,23 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 
 ## Pitfalls
 
+- An alias stating another value than its field is **not** a second child: it
+  is an anomaly kept in `msg.metadata` (never on the wire), and one stating
+  the same value leaves nothing. Bridge spellings the dictionary names are
+  FIX fields (`OMSDEALERACCOUNT` is `Account(1)`, `ULTRADERCLORDID`
+  `ClOrdID(11)`, `EXCHANGECLIENTORDERID` `SecondaryClOrdID(526)`, `OMSUSERID`
+  `Username(553)`, `PARENTCLORDID` `OrigClOrdID(41)`). `msg.set(tag, v)` also
+  restates every sibling - an alias kept in the metadata, a composed
+  `NAMESPACE.FIELD` key, another child on the tag - and `remove` clears them.
+- `SecurityIDSource(22)`/`SecurityAltIDSource(456)` read every code
+  (`1`-`9`, `A`-`N`, `P`-`Y`, case-sensitive) or name, its remarks passed
+  over (`ISIN number`, `ISDA/FpML Product URL (URL in SecurityID)`), and so do
+  the derivations (`22=isin` opens `CountryOfIssue(470)` as `22=4` does); a
+  source no member names is kept as stated - a private `100` is the type
+  `100`, `Z` is `z` - while `ticker`, an order's or a party's identifier
+  (`ClOrdID`, `Exchange`) and a spelling no word holds (`House/Key`) are
+  anomalies, left on the wire; an `isoccy` or `isoctry` value must be a code
+  ISO names, else it is an anomaly.
 - A bare integer is always a **tag**: `registry.field(55)`, `msg.get(55)`. A
   field identity (`FixId`, the signed XXH32 of tag + folded name) is only
   reached through `field_by_id` / `get_by_id` (`FixKey::Id` in Rust).
@@ -228,30 +249,49 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   44...), the market facts (`side`, `price`...) and the crate's own columns are
   typed, but every other key is unmapped - it lands in `metadata` under its raw
   spelling: no code names, no groups, no `fixentries`.
-- An order's, a quote's or an execution's `crosscode` carries its side
-  (`BUYS:A1`) - `msgcat` `ORDR`, `QUOT` or `EXEC`; every other message keeps
-  its code as spelled, whatever side it states. A derived execution is chained
-  under its `ExecID(17)` as given (`BUYS:E-1`), else
+- A message's `crosscode` is stored `{kind}:{side}:{base}` - `msgcat` code, side
+  code, then the code as the message names it: an order `A1` buying is
+  `10:1:A1`, a quote `14:1:Q1` / `14:2:Q1` for its bid and ask, an execution
+  `8:1:E-1`. Only an order, a quote or an execution states its side there;
+  every other message stores side `0`, whatever side it states. A derived
+  execution is chained under its `ExecID(17)` as given (`8:1:E-1`), else
   `TradeID=<TradeID(1003)>`. Count messages after the parse, not lines: one
   filling report is two messages.
-- A message's parties and its `Account(1)` are its `accountids` - each
-  `PartyID(448)` under its `PartyRole(452)`'s upper-cased name
-  (`EXECUTINGTRADER`, `CUSTOMERACCOUNT`), `PARTY` where no role is stated, the
-  first party of a role standing, and the account under `ACCOUNT` - and
-  read-only: write the `Parties` occurrence or `Account(1)`, not the map.
-  Regulatory trade ids (`NoRegulatoryTradeIDs(1907)`) are `altids` under
-  `REGTRADEID`, `TVTIC`, ...
+- A message's identifiers are logical `Identifiers` maps keyed `src:type`, read
+  off its fields, the wire kept as sent, each identifier `src:type=value` in
+  lower-case words: `securityids` (`SecurityID(48)` under its
+  `SecurityIDSource(22)`'s type and each `SecAltIDGrp(454)` occurrence, from
+  `fix`; an ISIN's embedded codes and a symbol's FX pair from `derived`),
+  `identifiers` (each `FIX:idmap` field a type from `fix`; regulatory trade ids
+  under `regtradeid`, `tvtic`, ...) and `partyids` - each `PartyID(448)` typed by its
+  `PartyRole(452)` code's name folded (`executingtrader`; an unnamed code
+  `partyrole{code}`, none `party`) from its `PartyIDSource(447)` code's name
+  (`D` `proprietary`, `C` `generalidentifier`, none `base`), the first of a
+  source and role standing, and `Account(1)` an `account` from its
+  `AcctIDSource(660)`. An entry no dictionary resolves - a bridge's
+  `FIRM.X.PARENTORDERID=`, `OMS_InstrumentID=` - names the identifier it ends
+  with and the source before it (`firm.x:parentorderid`, `base:instrumentid`).
+  A field states `FIX:parents`, the types holding the parents of its identifier
+  nearest first (`ClOrdID(11)` has `["origclordid"]`); a follower and every
+  settle fill a base from its nearest stated parent (`orderid` from
+  `parentorderid`, else `origorderid`); a follower whose `orderid` changed keeps
+  the previous value as `parentorderid` and the chain's first as `origorderid`. A caller's
+  `insert_*`/`set_*` is the message's word and writes no field: to change the
+  wire, write the field. `SecurityID(48)`, `SecurityIDSource(22)`,
+  `Parties(453)` and `SecAltIDGrp(454)` are no columns of the fixed row (152
+  columns): `fixentries` keeps them as sent (`453:parties`, the group's own name).
 - A graph leaf (`market_data`) carries in its `metadata` what its message
   states that no typed column reads and none of the leaf's identifier maps
   holds: a party, the account and a regulatory id its maps hold are left out (a
-  second party of one role stays, in `parties`). A scalar whose key ends with
+  second party of one role and source stays, in `parties`). A scalar whose key ends with
   an identifier its message's type declares (`marketorderid`, `RefOrderID(1080)`,
   a bridge's `venue.x.parentorderid` on an execution report) is lifted into the
-  leaf's `altids`, so a leaf's `altids` can hold more than its message's.
+  leaf's `identifiers` as the identifier its key names (`market:orderid`,
+  `venue.x:parentorderid`), so a leaf's `identifiers` can hold more than its message's.
   `with_market_metadata(false)` / `market_metadata=False` /
   `marketMetadata: false` turns both off and moves the leaf's identity.
 - A `Symbol(55)` naming one currency pair - `EUR/USD`, `EURUSD`, `EUR-USD 1M`,
-  a RIC's `EURUSD=` - states the derived `FOREX` security identifier `EUR/USD`
+  a RIC's `EURUSD=` - states the derived security identifier `derived:forex=EUR/USD`
   (the `forexcode` column); a pair a row states is stated, never re-derived.
 - A row header that stops matching silently changes lifecycle results: the
   line keeps its body but is dated by its file's modification time and

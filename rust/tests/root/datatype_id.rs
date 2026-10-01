@@ -82,7 +82,7 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 90);
+    assert_eq!(DataTypeId::ALL.len(), 91);
     for id in [
         DataTypeId::Utf8String,
         DataTypeId::FixedUtf8String,
@@ -262,7 +262,6 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::Ccy, 0x72),
         (DataTypeId::Mic, 0x73),
         (DataTypeId::Cfi, 0x74),
-        (DataTypeId::TimeInForce, 0x77),
         (DataTypeId::Isin, 0x78),
         (DataTypeId::Cusip, 0x79),
         (DataTypeId::Sedol, 0x7a),
@@ -289,6 +288,8 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::State, 0xc1),
         (DataTypeId::MarketDataKind, 0xc2),
         (DataTypeId::Side, 0xc3),
+        (DataTypeId::MarketDataType, 0xc4),
+        (DataTypeId::TimeInForce, 0xc5),
     ];
     assert_eq!(pinned.len(), DataTypeId::ALL.len());
     for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {
@@ -488,7 +489,6 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
                 DataTypeId::Ccy,
                 DataTypeId::Mic,
                 DataTypeId::Cfi,
-                DataTypeId::TimeInForce,
                 DataTypeId::Isin,
                 DataTypeId::Cusip,
                 DataTypeId::Sedol,
@@ -527,6 +527,8 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
                 DataTypeId::State,
                 DataTypeId::MarketDataKind,
                 DataTypeId::Side,
+                DataTypeId::MarketDataType,
+                DataTypeId::TimeInForce,
             ],
         ),
     ];

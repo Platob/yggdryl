@@ -722,20 +722,20 @@ mod text {
     /// out of it contains the same fifteen under the same names and
     /// datatypes.
     const EVENT_COLUMNS: [&str; 15] = [
+        "curruuid",
+        "crossuuid",
+        "crosscode",
+        "currhashcode",
+        "crosshashcode",
+        "srcuuids",
         "currunix",
         "creaunix",
         "recdunix",
         "exprunix",
         "prevunix",
         "snapunix",
-        "curruuid",
-        "crossuuid",
-        "crosscode",
-        "currhashcode",
-        "crosshashcode",
         "prevuuid",
         "seqnum",
-        "srcuuids",
         "state",
     ];
 
@@ -1622,7 +1622,7 @@ mod text {
             assert_eq!(
                 cell("state")
                     .as_any()
-                    .downcast_ref::<arrow_array::Int32Array>()
+                    .downcast_ref::<arrow_array::UInt16Array>()
                     .expect("a state")
                     .value(0),
                 lines[0].get_state().code()
@@ -1738,9 +1738,9 @@ fn a_batch_read_proves_each_row_as_it_takes_it() {
     use arrow_array::cast::AsArray as _;
     use yggdryl::text::{TextBytes, TextLine, TextOptions, from_arrow_reader, into_arrow_batch};
 
-    // An `int32` the layout holds and the datatype refuses: the code of no
+    // A `uint16` the layout holds and the datatype refuses: the code of no
     // state.
-    const NO_STATE: i32 = 7;
+    const NO_STATE: u16 = 7;
     let options = TextOptions::new();
     let lines = (0..3).map(|index| {
         TextLine::from_bytes(
@@ -1752,14 +1752,14 @@ fn a_batch_read_proves_each_row_as_it_takes_it() {
     });
     let batch = into_arrow_batch(lines, &options).unwrap();
     let at = batch.schema().index_of("state").expect("a state column");
-    let mut states: Vec<Option<i32>> = batch
+    let mut states: Vec<Option<u16>> = batch
         .column(at)
-        .as_primitive::<arrow_array::types::Int32Type>()
+        .as_primitive::<arrow_array::types::UInt16Type>()
         .iter()
         .collect();
     states[1] = Some(NO_STATE);
     let mut columns = batch.columns().to_vec();
-    columns[at] = std::sync::Arc::new(arrow_array::Int32Array::from(states));
+    columns[at] = std::sync::Arc::new(arrow_array::UInt16Array::from(states));
     let forged = arrow_array::RecordBatch::try_new(batch.schema(), columns).unwrap();
 
     // A line is read one row at a time, so nothing refuses the batch before

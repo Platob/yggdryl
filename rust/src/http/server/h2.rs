@@ -313,10 +313,10 @@ fn refuse(
     if let Some(exchange) = exchange.as_mut() {
         traced_head(exchange, &response, HttpVersion::Http2);
     }
-    if let Ok(mut send) = respond.send_response(response, body.is_none()) {
-        if let Some(super::AnswerBody::Bytes(body)) = body {
-            traced_body(exchange, body.as_bytes());
-            let _ = send.send_data(Bytes::copy_from_slice(body.as_bytes()), true);
-        }
+    if let Ok(mut send) = respond.send_response(response, body.is_none())
+        && let Some(super::AnswerBody::Bytes(body)) = body
+    {
+        traced_body(exchange, body.as_bytes());
+        let _ = send.send_data(Bytes::copy_from_slice(body.as_bytes()), true);
     }
 }

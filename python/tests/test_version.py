@@ -276,13 +276,14 @@ def test_scalar_fields_and_annotations_preserve_native_version_identity():
 def test_arrow_keeps_string_storage_and_declared_field_restores_version():
     field = yggdryl.version("release", nullable=False)
     arrow_field = field.into_arrow()
-    assert arrow_field.type == pa.string()
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.version"
     assert Field.from_arrow(arrow_field) == field
     array = Serie.from_arrow_array(
         pa.array(["005.00.00300", "5.0", "255.255.65535", "65535.65535.65535", "1.0rc1"]),
         field,
     ).into_arrow_array()
-    assert array.to_pylist() == [
+    assert array.storage.to_pylist() == [
         "5.0.300",
         "5",
         "255.255.65535",
@@ -290,7 +291,8 @@ def test_arrow_keeps_string_storage_and_declared_field_restores_version():
         "1.0.rc1",
     ]
     scalar = Scalar.from_(Version(5, 0, 300))
-    assert scalar.into_arrow_scalar(field).as_py() == "5.0.300"
+    assert scalar.into_arrow_scalar(field).as_py() == Version(5, 0, 300)
+    assert scalar.into_arrow_scalar(field).value.as_py() == "5.0.300"
     batch = pa.record_batch([array], schema=pa.schema([arrow_field]))
     native = Serie.from_(batch)
     assert native.child("release").as_py() == [
@@ -303,13 +305,13 @@ def test_arrow_keeps_string_storage_and_declared_field_restores_version():
 
 
 def test_the_datatype_identifiers_are_laid_out_by_family():
-    # Ninety, laid out by family: every identifier sits in its
+    # Ninety-one, laid out by family: every identifier sits in its
     # family's range and the list states them in that order, so `url` and
     # `urn` follow `version` in the text family, `sized_utf8` follows
     # `fixed_utf8`, and the geospatial pair closes the list. An identifier is
     # a wire contract laid out by family, so a leaf added later lands beside
     # its family and nothing ever moves.
-    assert len(enums.DATA_TYPE_IDS) == 90
+    assert len(enums.DATA_TYPE_IDS) == 91
     assert "figi" in enums.DATA_TYPE_IDS
     ids = list(enums.DATA_TYPE_IDS)
     # The code family's newest identifiers follow the last one before them.
@@ -318,8 +320,17 @@ def test_the_datatype_identifiers_are_laid_out_by_family():
     assert ids.index("url") == ids.index("version") + 1
     assert ids.index("urn") == ids.index("url") + 1
     assert ids.index("sized_utf8") == ids.index("fixed_utf8") + 1
-    # The enum family closes the list after the geospatial pair.
-    assert ids[-5:] == ["geometry", "geography", "state", "marketdatakind", "side"]
+    # The enum family closes the list after the geospatial pair, and
+    # `timeinforce`, an enum since it left the code family, lands last in it.
+    assert ids[-7:] == [
+        "geometry",
+        "geography",
+        "state",
+        "marketdatakind",
+        "side",
+        "marketdatatype",
+        "timeinforce",
+    ]
     assert ids[:2] == ["null", "boolean"]
 
 

@@ -436,9 +436,7 @@ impl PyField {
         value: &Bound<'py, PyAny>,
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let scalar = if crate::datatype::needs_core_value_rules(self.inner.dtype())
-            || crate::datatype::is_parsed_text(self.inner.dtype())
-        {
+        let scalar = if crate::datatype::takes_core_value_rules(self.inner.dtype()) {
             core_arrow_scalar(py, value, self.inner.dtype(), safe)?
         } else {
             // Project the complete Field so registered extension metadata can
@@ -2597,6 +2595,33 @@ impl PyProtocolField {
             .map_err(value_error)
     }
 
+    /// The identifier types holding the parents of the identifier this field
+    /// states, nearest first: `FIX:parents`, as `["origclordid"]` on
+    /// `ClOrdID(11)`.
+    ///
+    /// Assigning folds each spelling as an identifier type folds, and an
+    /// empty iterable removes the property; a spelling no identifier type
+    /// folds from or a type listed twice is the core's `ValueError` and
+    /// leaves the field unchanged.
+    #[getter]
+    fn parents(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("parents")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_fix().parents().map(str::to_owned).collect())
+    }
+
+    #[setter]
+    fn set_parents(&self, parents: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("parents")?;
+        let parsed = crate::enums::strings_from_iterable(parents, "parents")?;
+        let mut field = self.borrow_field_mut(parents.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_parents(parsed)
+            .map_err(value_error)
+    }
+
     /// The component's direct scalar identifiers, in member order.
     ///
     /// Names, aliases and decimal tags resolve through the core setter;
@@ -2736,14 +2761,15 @@ impl PyProtocolField {
 
     /// The identifier-map keys this field's value states, one record per
     /// key: `{"map", "key", "follow", "role"}` - the map it lands in
-    /// (`altids`), the upper-case key, whether an
+    /// (`identifiers`), the lower-case key, whether an
     /// operation that follows another carries it, and on `PartyID(448)` the
     /// `PartyRole(452)` code of the occurrence stating it, else `None`.
     ///
     /// Assigning records - `follow` and `role` optional - replaces them, and
-    /// an empty iterable removes the property; a key that is not one to 32
-    /// upper-case letters or digits, a follow flag off `altids`, or one key
-    /// twice is a `ValueError` that leaves the field unchanged.
+    /// an empty iterable removes the property; a key is read as the
+    /// identifier type word it folds to, and a `role` that is not a code of
+    /// letters and digits, or one key twice, is a `ValueError` that leaves
+    /// the field unchanged.
     #[getter]
     fn idmap<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         self.require_fix("idmap")?;
@@ -2753,7 +2779,7 @@ impl PyProtocolField {
             let source = source.map_err(value_error)?;
             let record = PyDict::new(py);
             record.set_item("map", source.map().as_str())?;
-            record.set_item("key", source.key())?;
+            record.set_item("key", source.key().as_str())?;
             record.set_item("follow", source.follows())?;
             record.set_item("role", source.role())?;
             records.push(record);
@@ -2772,7 +2798,11 @@ impl PyProtocolField {
                 .extract::<String>()?
                 .parse::<yggdryl::FixIdMapKind>()
                 .map_err(value_error)?;
-            let key = item.get_item("key")?.extract::<String>()?;
+            let key = item
+                .get_item("key")?
+                .extract::<String>()?
+                .parse::<yggdryl::IdType>()
+                .map_err(value_error)?;
             let optional = |name: &str| -> PyResult<Option<Bound<'_, PyAny>>> {
                 match item.get_item(name) {
                     Ok(value) if !value.is_none() => Ok(Some(value)),
@@ -2800,6 +2830,94 @@ impl PyProtocolField {
             .inner
             .as_fix_mut()
             .set_idmap(&held)
+            .map_err(value_error)
+    }
+
+    /// The market data type each wire value of this field stands for, as
+    /// `(wire, MarketDataType)` pairs in stated order.
+    ///
+    /// Assigning pairs - the member a `MarketDataType`, its code or a
+    /// spelling - replaces them, and an empty iterable removes the property;
+    /// a wire value that is empty, holds a `=` or is stated twice is a
+    /// `ValueError` that leaves the field unchanged.
+    #[getter]
+    fn marketdatatypes(&self, py: Python<'_>) -> PyResult<Vec<(String, Py<PyAny>)>> {
+        self.require_fix("marketdatatypes")?;
+        let field = self.borrow_field(py)?;
+        field
+            .inner
+            .as_fix()
+            .marketdatatypes()
+            .map(|(wire, held)| Ok((wire.to_owned(), crate::graph::member(py, held)?)))
+            .collect()
+    }
+
+    #[setter]
+    fn set_marketdatatypes(&self, types: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("marketdatatypes")?;
+        let mut held = Vec::new();
+        for item in types.try_iter()? {
+            let (wire, given) = item?.extract::<(String, Bound<'_, PyAny>)>()?;
+            let member = match given.extract::<u16>() {
+                Ok(code) => yggdryl::MarketDataType::from_code(code),
+                Err(_) => yggdryl::MarketDataType::from_spelling(&given.extract::<String>()?),
+            }
+            .ok_or_else(|| value_error(format!("{given} names no MarketDataType")))?;
+            held.push((wire, member));
+        }
+        let borrowed: Vec<(&str, yggdryl::MarketDataType)> = held
+            .iter()
+            .map(|(wire, member)| (wire.as_str(), *member))
+            .collect();
+        let mut field = self.borrow_field_mut(types.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_marketdatatypes(&borrowed)
+            .map_err(value_error)
+    }
+
+    /// The time in force each wire value of this field stands for, as
+    /// `(wire, TimeInForce)` pairs in stated order.
+    ///
+    /// Assigning pairs - the member a `TimeInForce`, its code or a
+    /// spelling - replaces them, and an empty iterable removes the property;
+    /// a wire value that is empty, holds a `=` or is stated twice is a
+    /// `ValueError` that leaves the field unchanged.
+    #[getter]
+    fn timeinforces(&self, py: Python<'_>) -> PyResult<Vec<(String, Py<PyAny>)>> {
+        self.require_fix("timeinforces")?;
+        let field = self.borrow_field(py)?;
+        field
+            .inner
+            .as_fix()
+            .timeinforces()
+            .map(|(wire, held)| Ok((wire.to_owned(), crate::graph::member(py, held)?)))
+            .collect()
+    }
+
+    #[setter]
+    fn set_timeinforces(&self, types: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("timeinforces")?;
+        let mut held = Vec::new();
+        for item in types.try_iter()? {
+            let (wire, given) = item?.extract::<(String, Bound<'_, PyAny>)>()?;
+            let member = match given.extract::<u8>() {
+                Ok(code) => yggdryl::TimeInForce::from_code(code),
+                Err(_) => yggdryl::TimeInForce::from_spelling(&given.extract::<String>()?),
+            }
+            .ok_or_else(|| value_error(format!("{given} names no TimeInForce")))?;
+            held.push((wire, member));
+        }
+        let borrowed: Vec<(&str, yggdryl::TimeInForce)> = held
+            .iter()
+            .map(|(wire, member)| (wire.as_str(), *member))
+            .collect();
+        let mut field = self.borrow_field_mut(types.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_timeinforces(&borrowed)
             .map_err(value_error)
     }
 

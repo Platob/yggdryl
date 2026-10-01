@@ -10,6 +10,8 @@ mod candle;
 mod column;
 #[path = "graph/element.rs"]
 mod element;
+#[path = "graph/element_column.rs"]
+mod element_column;
 #[path = "graph/facts.rs"]
 mod facts;
 #[path = "graph/iterator.rs"]

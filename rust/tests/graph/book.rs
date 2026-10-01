@@ -11,14 +11,23 @@ use yggdryl::graph::{
     BookEvent, BookIterator, BookRef, Element, Event, ExecutionEvent, Market, MarketData,
     MarketKind, MdUpdateAction, Operation, OrderEvent, QuoteEvent, SnapshotEvent, TradeEvent,
 };
-use yggdryl::idmap::IdMap;
-use yggdryl::{Ccy, Decimal, Limit, Side, State, Unit, Uuid};
+use yggdryl::{
+    Ccy, Decimal, IdSource, IdType, Identifier, Identifiers, Limit, Side, State, Unit, Uuid,
+};
 
-/// The alternate-identifier key an order's `OrderID(37)` is held under.
-const ORDER_ID: &str = "ORDERID";
+/// The identifier type an order's `OrderID(37)` is held under.
+const ORDER_ID: IdType = IdType::OrderId;
+
+/// The source the fixtures state their identifiers from.
+const SOURCE: IdSource = IdSource::Fix;
+
+/// One identifier of a plain holder: a value of `kind` from `fix`.
+fn identifier(kind: &IdType, value: &str) -> Identifier {
+    Identifier::new(SOURCE, kind.clone(), value).unwrap()
+}
 
 /// One synthetic operation of `kind` - `order`, `quote` or `execution` -
-/// going by `identity` as its cross code and its `MDENTRYID`, finalized.
+/// going by `identity` as its cross code and its `mdentryid`, finalized.
 #[allow(clippy::too_many_arguments)]
 fn operation(
     kind: &str,
@@ -32,17 +41,18 @@ fn operation(
 ) -> MarketData {
     let mut data = OrderEvent::at(unix);
     data.set_crosscode(identity.to_owned());
-    data.set_ticker(Some(SmolStr::new(symbol)));
-    data.set_side(Side::read(side).unwrap());
-    data.set_price(Some(price.parse().unwrap()));
-    data.set_quantity(Some(Decimal::from_int(quantity)));
-    data.set_currency(Ccy::new("USD").unwrap());
-    data.set_unit(Unit::new("share").unwrap());
+    data.set_ticker(Some(SmolStr::new(symbol)), true);
+    data.set_side(Side::read(side).unwrap(), true);
+    data.set_price(Some(price.parse().unwrap()), true);
+    data.set_quantity(Some(Decimal::from_int(quantity)), true);
+    data.set_currency(Ccy::new("USD").unwrap(), true);
+    data.set_unit(Unit::new("share").unwrap(), true);
     data.set_state(State::read(state).unwrap());
     // Every fixture entry can trade, so a side's best is its first priced
     // level; a test of an untradable level states it.
-    data.set_tradable(Some(true));
-    data.insert_altid(ENTRY_ID, identity).unwrap();
+    data.set_tradable(Some(true), true);
+    data.insert_identifier(identifier(&ENTRY_ID, identity))
+        .unwrap();
     let mut operation = match kind {
         "order" => MarketData::from(data),
         "quote" => MarketData::from(QuoteEvent::from(&data)),
@@ -95,9 +105,9 @@ fn executions<const N: usize>(values: [MarketData; N]) -> Vec<ExecutionEvent> {
         .collect()
 }
 
-/// The alternate identifiers the dated operation `value` holds goes by.
-fn altids(value: &MarketData) -> &IdMap {
-    op(value).get_altids()
+/// The identifiers the dated operation `value` holds goes by.
+fn identifiers_of(value: &MarketData) -> &Identifiers {
+    op(value).get_identifiers()
 }
 
 /// `operation` carrying the book-control facts `book` states, finalized
@@ -108,21 +118,21 @@ fn with_book(mut operation: MarketData, book: BookRef) -> MarketData {
     operation
 }
 
-/// `operation` going by `altids` too, each replacing the key where it held
-/// one already, finalized again around them.
-fn with_altids(operation: MarketData, altids: &[(&str, &str)]) -> MarketData {
+/// `operation` going by `identifiers` too, each replacing the value its type
+/// held already, finalized again around them.
+fn with_identifiers(operation: MarketData, identifiers: &[(IdType, &str)]) -> MarketData {
     edited(operation, |held| {
-        for (key, value) in altids {
-            held.remove_altid(key).unwrap();
-            held.insert_altid(key, value).unwrap();
+        for (kind, value) in identifiers {
+            held.remove_identifier(&SOURCE, kind).unwrap();
+            held.insert_identifier(identifier(kind, value)).unwrap();
         }
     })
 }
 
-/// `operation` without its `MDENTRYID`: an anonymous entry.
+/// `operation` without its `mdentryid`: an anonymous entry.
 fn anonymous(operation: MarketData) -> MarketData {
     edited(operation, |held| {
-        held.remove_altid(ENTRY_ID).unwrap();
+        held.remove_identifier(&SOURCE, &ENTRY_ID).unwrap();
     })
 }
 
@@ -158,8 +168,8 @@ fn decimal(text: &str) -> Decimal {
 /// `operation` stating no price - a market order - and a last executed
 /// price it carries left out of the price.
 fn unpriced(mut operation: MarketData) -> MarketData {
-    operation.set_price(None);
-    operation.set_lastpx(Some(decimal("100")));
+    operation.set_price(None, true);
+    operation.set_lastpx(Some(decimal("100")), true);
     operation.finalize();
     assert_eq!(operation.get_price(), None);
     operation
@@ -167,7 +177,7 @@ fn unpriced(mut operation: MarketData) -> MarketData {
 
 /// `operation` stating `quantity`, finalized again around it.
 fn sized(mut operation: MarketData, quantity: Decimal) -> MarketData {
-    operation.set_quantity(Some(quantity));
+    operation.set_quantity(Some(quantity), true);
     operation.finalize();
     operation
 }
@@ -190,7 +200,7 @@ fn deltas(book: &BookEvent, bid: bool) -> Vec<&MarketData> {
 /// The `curruuid` of the live entry going by `code` on its side.
 fn live_uuid(book: &BookEvent, code: &str) -> Uuid {
     book.alive()
-        .find(|entry| entry.get_crosscode() == entry.sided_crosscode(code))
+        .find(|entry| entry.get_crosscode() == entry.stored_crosscode(code))
         .unwrap_or_else(|| panic!("{code} is live"))
         .get_curruuid()
 }
@@ -257,7 +267,7 @@ fn side_of(side: &str, levels: &[(&str, Option<&str>, i64)]) -> BookEvent {
 fn reset_event(unix: i64, identity: &str) -> OrderEvent {
     let mut reset = OrderEvent::at(unix);
     reset.set_crosscode(identity.to_owned());
-    reset.set_ticker(Some(SmolStr::new("IBM")));
+    reset.set_ticker(Some(SmolStr::new("IBM")), true);
     reset.set_state(State::read("New").unwrap());
     reset.finalize();
     reset
@@ -281,9 +291,9 @@ fn fact(operation: &(impl Operation + ?Sized)) -> Facts {
         operation.get_price(),
         operation.get_quantity(),
         operation
-            .get_altids()
+            .get_identifiers()
             .iter()
-            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .map(|id| (id.kind().as_str().to_owned(), id.value().to_owned()))
             .collect(),
     )
 }
@@ -352,7 +362,7 @@ fn an_unpriced_entry_lands_last_as_one_limit() {
                 .into_iter()
                 .map(Element::get_crosscode)
                 .collect::<Vec<_>>(),
-            ["O-2", "O-1", "M-1"].map(|code| format!("{}:{code}", side.as_str()))
+            ["O-2", "O-1", "M-1"].map(|code| format!("10:{}:{code}", side.code()))
         );
         // The other side states no level.
         let other = if bid { Side::Sell } else { Side::Buy };
@@ -366,11 +376,11 @@ fn an_unpriced_entry_lands_last_as_one_limit() {
     );
     assert_eq!(
         alive(&book, true).last().unwrap().get_crosscode(),
-        "BUYS:B-M"
+        "10:1:B-M"
     );
     assert_eq!(
         alive(&book, false).last().unwrap().get_crosscode(),
-        "SELL:A-M"
+        "10:2:A-M"
     );
     assert_eq!(book.bbo_midpoint(), Some(decimal("101")));
     assert_eq!(book.limits(Side::Buy).last().unwrap().price, None);
@@ -380,7 +390,7 @@ fn an_unpriced_entry_lands_last_as_one_limit() {
 fn a_book_level_trades_unless_every_entry_there_states_it_cannot() {
     let stating = |code: &str, price: Option<&str>, tradable: Option<bool>| {
         edited(resting("Buy", code, price, 1), |held| {
-            held.set_tradable(tradable);
+            held.set_tradable(tradable, true);
         })
     };
     let mut book = BookEvent::new(1, "IBM");
@@ -419,7 +429,7 @@ fn a_book_level_trades_unless_every_entry_there_states_it_cannot() {
 fn the_best_price_is_the_best_tradable_level() {
     let stating = |side: &str, code: &str, price: &str, quantity: i64, tradable: Option<bool>| {
         edited(resting(side, code, Some(price), quantity), |held| {
-            held.set_tradable(tradable);
+            held.set_tradable(tradable, true);
         })
     };
     let mut book = BookEvent::new(1, "IBM");
@@ -648,7 +658,7 @@ fn a_delete_from_reaches_an_unpriced_entry_after_every_priced_level() {
             .into_iter()
             .map(Element::get_crosscode)
             .collect::<Vec<_>>(),
-        ["BUYS:P-1", "BUYS:P-2"]
+        ["10:1:P-1", "10:1:P-2"]
     );
     assert!(book.limits(Side::Buy).all(|limit| limit.price.is_some()));
 }
@@ -704,7 +714,7 @@ fn full_snapshot_replaces_only_its_scope_atomically() {
         .into_iter()
         .map(|operation| operation.get_crosscode())
         .collect();
-    assert_eq!(identities, ["BUYS:B-2", "BUYS:B-X"]);
+    assert_eq!(identities, ["14:1:B-2", "14:1:B-X"]);
 
     let mut update = BookEvent::new(2, "IBM");
     update.add_operations([replacement]).unwrap();
@@ -714,7 +724,7 @@ fn full_snapshot_replaces_only_its_scope_atomically() {
             .into_iter()
             .map(Element::get_crosscode)
             .collect::<Vec<_>>(),
-        ["BUYS:B-2", "BUYS:B-X"]
+        ["14:1:B-2", "14:1:B-X"]
     );
 }
 
@@ -869,7 +879,7 @@ fn a_snapshot_is_the_same_book_with_every_living_order_and_nothing_else() {
             .into_iter()
             .map(|held| held.get_crosscode().to_owned())
             .collect::<Vec<_>>(),
-        ["BUYS:O-1"],
+        ["10:1:O-1"],
         "every living order, and no dead one"
     );
     assert!(
@@ -997,7 +1007,7 @@ fn partial_updates_require_a_predecessor_or_complete_values_and_refs_precede_des
     .unwrap();
     let before = book.clone();
     let collision = with_book(
-        with_altids(
+        with_identifiers(
             operation("order", "IBM", "Y", 2, "Buy", "101", 4, "Replaced"),
             &[(ENTRY_REF_ID, "X")],
         ),
@@ -1009,11 +1019,11 @@ fn partial_updates_require_a_predecessor_or_complete_values_and_refs_precede_des
         },
     );
     let error = book.add_operations([collision]).unwrap_err().to_string();
-    assert!(error.contains("MDENTRYID"), "{error}");
+    assert!(error.contains("mdentryid"), "{error}");
     assert_eq!(book, before);
 
     let unresolved = with_book(
-        with_altids(
+        with_identifiers(
             operation("order", "IBM", "Z", 2, "Buy", "102", 5, "Replaced"),
             &[(ENTRY_REF_ID, "ABSENT")],
         ),
@@ -1025,7 +1035,7 @@ fn partial_updates_require_a_predecessor_or_complete_values_and_refs_precede_des
         },
     );
     let error = book.add_operations([unresolved]).unwrap_err().to_string();
-    assert!(error.contains("MDENTRYREFID"), "{error}");
+    assert!(error.contains("mdentryrefid"), "{error}");
     assert_eq!(book, before);
 }
 
@@ -1033,7 +1043,7 @@ fn partial_updates_require_a_predecessor_or_complete_values_and_refs_precede_des
 fn partial_market_updates_continue_orders_without_restating_order_id() {
     let mut book = BookEvent::new(1, "IBM");
     book.add_operations([with_book(
-        with_altids(
+        with_identifiers(
             operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
             &[(ORDER_ID, "ORDER-1")],
         ),
@@ -1054,7 +1064,7 @@ fn partial_market_updates_continue_orders_without_restating_order_id() {
 
     let live = alive(&book, true).into_iter().next().unwrap();
     assert_eq!(live.kind(), MarketKind::OrderEvent);
-    assert_eq!(altids(live).get(ORDER_ID), Some("ORDER-1"));
+    assert_eq!(identifiers_of(live).get(&ORDER_ID), Some("ORDER-1"));
     assert_eq!(live.get_price(), previous.get_price());
     assert_eq!(live.get_quantity(), Some(Decimal::from_int(3)));
     assert_eq!(op(live).get_prevuuid(), Some(previous.get_curruuid()));
@@ -1078,7 +1088,7 @@ fn referenced_market_update_refuses_an_occupied_destination_on_the_other_side() 
     let before = book.clone();
     let error = book
         .add_operations([with_book(
-            with_altids(
+            with_identifiers(
                 operation("quote", "IBM", "Y", 2, "Buy", "99", 4, "Replaced"),
                 &[(ENTRY_REF_ID, "X")],
             ),
@@ -1091,7 +1101,7 @@ fn referenced_market_update_refuses_an_occupied_destination_on_the_other_side() 
         )])
         .expect_err("a reference cannot replace a different live destination on either side");
     assert!(
-        matches!(&error, yggdryl::Error::InvalidRecord { path, .. } if path == "$.operation.altids.MDENTRYID"),
+        matches!(&error, yggdryl::Error::InvalidRecord { path, .. } if path == "$.operation.identifiers.mdentryid"),
         "{error}"
     );
     assert_eq!(book, before);
@@ -1101,7 +1111,7 @@ fn referenced_market_update_refuses_an_occupied_destination_on_the_other_side() 
 fn partial_market_updates_move_between_sides_with_their_predecessor() {
     let mut book = BookEvent::new(1, "IBM");
     book.add_operations([with_book(
-        with_altids(
+        with_identifiers(
             operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
             &[(ORDER_ID, "ORDER-1")],
         ),
@@ -1111,7 +1121,7 @@ fn partial_market_updates_move_between_sides_with_their_predecessor() {
     let previous = alive(&book, true).into_iter().next().unwrap().clone();
 
     book.add_operations([with_book(
-        with_altids(
+        with_identifiers(
             operation("quote", "IBM", "O-2", 2, "Sell", "0", 3, "Replaced"),
             &[(ENTRY_REF_ID, "O-1")],
         ),
@@ -1132,7 +1142,7 @@ fn partial_market_updates_move_between_sides_with_their_predecessor() {
     assert_eq!(live.get_prevqty(), previous.get_quantity());
     // A later instant keeps its own place.
     assert_eq!(op(live).get_seqnum(), 0);
-    assert_eq!(altids(live).get(ENTRY_ID), Some("O-2"));
+    assert_eq!(identifiers_of(live).get(&ENTRY_ID), Some("O-2"));
     let previous = live.clone();
 
     book.add_operations([with_book(
@@ -1157,7 +1167,7 @@ fn partial_market_updates_move_between_sides_with_their_predecessor() {
 #[test]
 fn renamed_market_entry_expires_using_its_current_identity() {
     let mut initial = with_book(
-        with_altids(
+        with_identifiers(
             operation("order", "IBM", "X", 1, "Buy", "100", 2, "New"),
             &[(ORDER_ID, "ORDER-1")],
         ),
@@ -1166,7 +1176,7 @@ fn renamed_market_entry_expires_using_its_current_identity() {
     op_mut(&mut initial).set_exprunix(Some(4));
     initial.finalize();
     let renamed = with_book(
-        with_altids(
+        with_identifiers(
             operation("quote", "IBM", "Y", 2, "Sell", "101", 3, "Replaced"),
             &[(ENTRY_REF_ID, "X")],
         ),
@@ -1183,14 +1193,14 @@ fn renamed_market_entry_expires_using_its_current_identity() {
         .expect("expiry deletes the current entry after its reference has been resolved");
     assert_eq!(books.len(), 3);
     let previous = alive(&books[1], false).into_iter().next().unwrap();
-    assert_eq!(altids(previous).get(ENTRY_ID), Some("Y"));
+    assert_eq!(identifiers_of(previous).get(&ENTRY_ID), Some("Y"));
     assert!(alive(&books[2], true).is_empty());
     assert!(alive(&books[2], false).is_empty());
     assert_eq!(books[2].get_currunix(), 4);
     let expired = &deltas(&books[2], false)[0];
     assert_eq!(expired.kind(), MarketKind::OrderEvent);
     assert_eq!(op(expired).get_prevuuid(), Some(previous.get_curruuid()));
-    assert_eq!(altids(expired).get(ENTRY_ID), Some("Y"));
+    assert_eq!(identifiers_of(expired).get(&ENTRY_ID), Some("Y"));
     assert!(!op(expired).get_state().is_live());
 }
 
@@ -1204,7 +1214,7 @@ fn partial_market_updates_promote_quotes_when_the_order_id_becomes_known() {
     .unwrap();
     let previous = alive(&book, true).into_iter().next().unwrap().clone();
     book.add_operations([with_book(
-        with_altids(
+        with_identifiers(
             operation("order", "IBM", "Q-1", 2, "Buy", "0", 3, "Replaced"),
             &[(ORDER_ID, "ORDER-1")],
         ),
@@ -1218,7 +1228,7 @@ fn partial_market_updates_promote_quotes_when_the_order_id_becomes_known() {
     let live = alive(&book, true).into_iter().next().unwrap();
     assert_eq!(live.kind(), MarketKind::OrderEvent);
     assert_eq!(live.get_price(), previous.get_price());
-    assert_eq!(altids(live).get(ORDER_ID), Some("ORDER-1"));
+    assert_eq!(identifiers_of(live).get(&ORDER_ID), Some("ORDER-1"));
     assert_eq!(op(live).get_prevuuid(), Some(previous.get_curruuid()));
     // A later instant keeps its own place.
     assert_eq!(op(live).get_seqnum(), 0);
@@ -1228,7 +1238,7 @@ fn partial_market_updates_promote_quotes_when_the_order_id_becomes_known() {
 fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor() {
     let mut book = BookEvent::new(1, "IBM");
     book.add_operations([with_book(
-        with_altids(
+        with_identifiers(
             operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
             &[(ORDER_ID, "ORDER-1")],
         ),
@@ -1238,7 +1248,7 @@ fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor
     let before = book.clone();
     let error = book
         .add_operations([with_book(
-            with_altids(
+            with_identifiers(
                 operation("order", "IBM", "O-1", 2, "Sell", "101", 3, "Replaced"),
                 &[(ORDER_ID, "ORDER-2")],
             ),
@@ -1251,7 +1261,7 @@ fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor
         )])
         .expect_err("a continuation cannot replace a known order identity");
     assert!(
-        matches!(&error, yggdryl::Error::InvalidRecord { path, .. } if path == "$.operation.altids.ORDERID"),
+        matches!(&error, yggdryl::Error::InvalidRecord { path, .. } if path == "$.operation.identifiers.orderid"),
         "{error}"
     );
     assert_eq!(book, before);
@@ -1261,15 +1271,15 @@ fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor
 fn executions_are_reported_beside_depth_and_propagate_the_latest_execution_clock() {
     let mut first = ExecutionEvent::at(10);
     first.set_crosscode("E-1".to_owned());
-    first.set_ticker(Some(SmolStr::new("IBM")));
-    first.set_price(Some(decimal("100")));
-    first.set_quantity(Some(Decimal::from_int(2)));
+    first.set_ticker(Some(SmolStr::new("IBM")), true);
+    first.set_price(Some(decimal("100")), true);
+    first.set_quantity(Some(Decimal::from_int(2)), true);
     first.set_state(State::read("Filled").unwrap());
-    first.set_execunix(Some(7));
+    first.set_execunix(Some(7), true);
     first.finalize();
     let mut second = first.clone();
     second.set_crosscode("E-2".to_owned());
-    second.set_execunix(Some(9));
+    second.set_execunix(Some(9), true);
     second.finalize();
 
     let mut book = BookEvent::new(10, "IBM");
@@ -1287,7 +1297,7 @@ fn a_trade_flattens_its_sorted_executions_without_entering_depth() {
     let sell = operation("execution", "IBM", "E-SELL", 10, "Sell", "101", 3, "Filled");
     let mut event = ExecutionEvent::at(10);
     event.set_crosscode("T-1".to_owned());
-    event.set_ticker(Some(SmolStr::new("IBM")));
+    event.set_ticker(Some(SmolStr::new("IBM")), true);
     event.set_state(State::read("Filled").unwrap());
     event.finalize();
     let trade = TradeEvent::from_parts(&event, executions([sell, buy])).unwrap();
@@ -1297,7 +1307,7 @@ fn a_trade_flattens_its_sorted_executions_without_entering_depth() {
             .iter()
             .map(Element::get_crosscode)
             .collect::<Vec<_>>(),
-        ["BUYS:E-BUY", "SELL:E-SELL"]
+        ["8:1:E-BUY", "8:2:E-SELL"]
     );
     let mut expected = trade.executions().to_vec();
     expected.sort_by_key(Element::get_curruuid);
@@ -1322,7 +1332,7 @@ fn expiry_precedes_an_equal_time_source_and_executions_do_not_enter_live_expiry(
     live.finalize();
     let mut execution = ExecutionEvent::at(1);
     execution.set_crosscode("E-1".to_owned());
-    execution.set_ticker(Some(SmolStr::new("IBM")));
+    execution.set_ticker(Some(SmolStr::new("IBM")), true);
     execution.set_state(State::read("Filled").unwrap());
     execution.set_exprunix(Some(2));
     execution.finalize();
@@ -1398,7 +1408,7 @@ fn expiring_one_snapshot_entry_keeps_the_rest_of_its_partition() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUYS:STANDING"
+        "14:1:STANDING"
     );
 }
 
@@ -1430,7 +1440,7 @@ fn a_failed_mixed_snapshot_group_commits_none_of_its_raw_updates() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUYS:INITIAL"
+        "14:1:INITIAL"
     );
 }
 
@@ -1443,8 +1453,8 @@ fn a_snapshot_view_purges_live_entries_absent_from_that_view() {
         scoped("OTHER"),
     );
     let mut snapshot = first.clone();
-    snapshot.set_price(Some(decimal("101")));
-    snapshot.set_quantity(Some(Decimal::from_int(5)));
+    snapshot.set_price(Some(decimal("101")), true);
+    snapshot.set_quantity(Some(Decimal::from_int(5)), true);
     snapshot.finalize();
     op_mut(&mut snapshot).set_snapunix(Some(2));
     let snapshot_only = snapshot.clone();
@@ -1459,10 +1469,10 @@ fn a_snapshot_view_purges_live_entries_absent_from_that_view() {
     assert_eq!(alive(&books[1], true).len(), 2);
     let mut live = alive(&books[1], true).into_iter();
     let first = live.next().unwrap();
-    assert_eq!(first.get_crosscode(), "BUYS:O-1");
+    assert_eq!(first.get_crosscode(), "10:1:O-1");
     assert_eq!(first.get_price(), Some(decimal("101")));
     assert_eq!(first.get_quantity(), Some(Decimal::from_int(5)));
-    assert_eq!(live.next().unwrap().get_crosscode(), "BUYS:O-OTHER");
+    assert_eq!(live.next().unwrap().get_crosscode(), "10:1:O-OTHER");
 
     let only = BookIterator::new([snapshot_only].into_iter(), 0)
         .unwrap()
@@ -1481,7 +1491,7 @@ fn a_snapshot_view_purges_live_entries_absent_from_that_view() {
 fn snapshotted_execution_is_reported_without_replacing_live_depth() {
     let live = operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New");
     let mut execution = operation("execution", "IBM", "E-1", 2, "Unknown", "101", 1, "Trade");
-    op_mut(&mut execution).set_execunix(Some(2));
+    op_mut(&mut execution).set_execunix(Some(2), true);
     op_mut(&mut execution).set_snapunix(Some(3));
     execution.finalize();
 
@@ -1501,14 +1511,14 @@ fn snapshotted_execution_is_reported_without_replacing_live_depth() {
 #[test]
 fn snapshotted_trade_rebases_every_child_and_preserves_execution_time() {
     let mut buy = operation("execution", "IBM", "E-BUY", 2, "Buy", "101", 4, "Trade");
-    op_mut(&mut buy).set_execunix(Some(1));
+    op_mut(&mut buy).set_execunix(Some(1), true);
     buy.finalize();
     let mut sell = operation("execution", "IBM", "E-SELL", 2, "Sell", "101", 4, "Trade");
-    op_mut(&mut sell).set_execunix(Some(2));
+    op_mut(&mut sell).set_execunix(Some(2), true);
     sell.finalize();
     let mut root = ExecutionEvent::at(2);
     root.set_crosscode("T-1".to_owned());
-    root.set_ticker(Some(SmolStr::new("IBM")));
+    root.set_ticker(Some(SmolStr::new("IBM")), true);
     root.set_snapunix(Some(3));
     root.set_state(State::read("Trade").unwrap());
     root.finalize();
@@ -1569,7 +1579,7 @@ fn future_snapshot_components_are_refused_instead_of_backdated() {
 
     let mut reset = ExecutionEvent::at(3);
     reset.set_crosscode("RESET-FUTURE".to_owned());
-    reset.set_ticker(Some(SmolStr::new("IBM")));
+    reset.set_ticker(Some(SmolStr::new("IBM")), true);
     reset.set_snapunix(Some(2));
     reset.finalize();
     let control = SnapshotEvent::snapshot(&reset, Some(SmolStr::new("PRIMARY")));
@@ -1611,7 +1621,7 @@ fn an_explicit_empty_snapshot_replaces_only_its_partition() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUYS:PRIMARY"
+        "14:1:PRIMARY"
     );
 }
 
@@ -1624,18 +1634,18 @@ fn merging_books_uses_the_latest_recording_as_reference_and_keeps_earliest_clock
         )])
         .unwrap();
         book.set_recdunix(Some(recdunix));
-        book.set_metadata(Some(BTreeMap::from([(
-            SmolStr::new("Feed"),
-            SmolStr::new(feed),
-        )])));
+        book.set_metadata(
+            Some(BTreeMap::from([(SmolStr::new("Feed"), SmolStr::new(feed))])),
+            true,
+        );
         book.finalize();
         book
     };
     let mut older = book("B-1", "Buy", "100", 20, "OLDER");
-    older.set_execunix(Some(7));
+    older.set_execunix(Some(7), true);
     older.finalize();
     let mut latest = book("A-1", "Sell", "102", 30, "LATEST");
-    latest.set_execunix(Some(9));
+    latest.set_execunix(Some(9), true);
     latest.finalize();
 
     let left = older.clone().merge_with(&latest).unwrap();
@@ -1770,7 +1780,7 @@ fn range_deletes_are_positive_in_range_and_scope_local() {
         .into_iter()
         .map(Element::get_crosscode)
         .collect::<Vec<_>>();
-    assert_eq!(remaining, ["BUYS:O-1", "BUYS:P-2"]);
+    assert_eq!(remaining, ["14:1:O-1", "14:1:P-2"]);
 
     let before = book.clone();
     let invalid = with_book(
@@ -1832,7 +1842,7 @@ fn an_anonymous_new_entry_refuses_to_replace_an_occupied_position() {
 fn advancing_time_clears_previous_deltas_and_executions_and_rejects_regression() {
     let mut execution = ExecutionEvent::at(1);
     execution.set_crosscode("E-1".to_owned());
-    execution.set_ticker(Some(SmolStr::new("IBM")));
+    execution.set_ticker(Some(SmolStr::new("IBM")), true);
     execution.set_state(State::read("Filled").unwrap());
     execution.finalize();
     let mut book = BookEvent::new(1, "IBM");
@@ -2002,7 +2012,7 @@ fn an_empty_snapshot_reference_does_not_refill_replaced_scope_on_merge() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUYS:B-X"
+        "14:1:B-X"
     );
 
     let merged = older.merge_with(&latest).unwrap();
@@ -2013,7 +2023,7 @@ fn an_empty_snapshot_reference_does_not_refill_replaced_scope_on_merge() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUYS:B-X"
+        "14:1:B-X"
     );
     assert!(alive(&merged, false).is_empty());
 }
@@ -2023,12 +2033,12 @@ fn decimal_means_do_not_overflow_representable_results() {
     let bid = Decimal::from_units(Decimal::MAX.units() - 2).unwrap();
     let ask = Decimal::MAX;
     let mut bid_operation = operation("quote", "IBM", "B", 1, "Buy", "0", 1, "New");
-    bid_operation.set_price(Some(bid));
-    bid_operation.set_quantity(Some(Decimal::MAX));
+    bid_operation.set_price(Some(bid), true);
+    bid_operation.set_quantity(Some(Decimal::MAX), true);
     bid_operation.finalize();
     let mut ask_operation = operation("quote", "IBM", "A", 1, "Sell", "0", 1, "New");
-    ask_operation.set_price(Some(ask));
-    ask_operation.set_quantity(Some(Decimal::MAX));
+    ask_operation.set_price(Some(ask), true);
+    ask_operation.set_quantity(Some(Decimal::MAX), true);
     ask_operation.finalize();
     let mut book = BookEvent::new(1, "IBM");
     book.add_operations([bid_operation, ask_operation]).unwrap();
@@ -2045,7 +2055,7 @@ fn decimal_means_do_not_overflow_representable_results() {
 #[test]
 fn an_unsided_quote_leaves_its_group_and_every_later_book_standing() {
     let mut invalid = operation("quote", "IBM", "BAD", 1, "Buy", "99", 1, "New");
-    invalid.set_side(Side::Unknown);
+    invalid.set_side(Side::Unknown, true);
     invalid.finalize();
     let results = BookIterator::new(
         [
@@ -2070,7 +2080,7 @@ fn an_unsided_quote_leaves_its_group_and_every_later_book_standing() {
             .next()
             .unwrap()
             .get_crosscode(),
-        "BUYS:LATER"
+        "14:1:LATER"
     );
 }
 
@@ -2087,7 +2097,7 @@ fn one_by_one_and_grouped_operations_build_the_same_depth_deltas_and_executions(
                 operation("order", "IBM", "O-1", 5, "Buy", "100", 2, "New"),
                 scoped("PRIMARY"),
             ),
-            with_altids(
+            with_identifiers(
                 operation("quote", "IBM", "Q-1", 5, "Buy", "101", 3, "New"),
                 &[(ORDER_ID, "ORDER-Q1")],
             ),
@@ -2153,9 +2163,9 @@ fn one_by_one_and_grouped_operations_build_the_same_depth_deltas_and_executions(
 /// classification given, finalized.
 fn unticked(identity: &str, unix: i64, mic: Option<&str>, cfi: Option<&str>) -> MarketData {
     let mut input = operation("quote", "X", identity, unix, "Buy", "100", 1, "New");
-    input.set_ticker(None);
-    input.set_miccode(mic.map(|code| yggdryl::Mic::new(code).unwrap()));
-    input.set_cficode(cfi.map(|code| yggdryl::Cfi::new(code).unwrap()));
+    input.set_ticker(None, true);
+    input.set_miccode(mic.map(|code| yggdryl::Mic::new(code).unwrap()), true);
+    input.set_cficode(cfi.map(|code| yggdryl::Cfi::new(code).unwrap()), true);
     input.finalize();
     input
 }
@@ -2184,9 +2194,9 @@ fn a_tickerless_input_is_booked_under_its_market_and_classification() {
     assert_eq!(
         keys,
         [
-            ("ACME", Some("ACME")),
-            ("XPAR:ESVUFR", None),
-            ("XXXX:XXXXXX", None),
+            ("3:0:ACME", Some("ACME")),
+            ("3:0:XPAR:ESVUFR", None),
+            ("3:0:XXXX:XXXXXX", None),
         ]
     );
     assert!(books.iter().all(|book| alive(book, true).len() == 1));
@@ -2243,7 +2253,7 @@ fn a_ticker_spelling_a_category_shares_its_book_in_either_order() {
     assert!(
         books
             .iter()
-            .all(|book| book.get_crosscode() == "XPAR:ESVUFR")
+            .all(|book| book.get_crosscode() == "3:0:XPAR:ESVUFR")
     );
     assert!(
         books
@@ -2261,7 +2271,7 @@ fn a_ticker_spelling_a_category_shares_its_book_in_either_order() {
     assert!(
         books
             .iter()
-            .all(|book| book.get_crosscode() == "XPAR:ESVUFR")
+            .all(|book| book.get_crosscode() == "3:0:XPAR:ESVUFR")
     );
     assert!(books.iter().all(|book| book.get_ticker().is_none()));
     assert_eq!(alive(&books[1], true).len(), 2);
@@ -2287,9 +2297,9 @@ fn a_categorized_entry_expires_in_its_own_book() {
     assert_eq!(
         keyed,
         [
-            (1, "XPAR:ESVUFR", 1),
-            (3, "XPAR:ESVUFR", 0),
-            (5, "XXXX:XXXXXX", 1),
+            (1, "3:0:XPAR:ESVUFR", 1),
+            (3, "3:0:XPAR:ESVUFR", 0),
+            (5, "3:0:XXXX:XXXXXX", 1),
         ]
     );
     assert!(books[1].get_ticker().is_none());

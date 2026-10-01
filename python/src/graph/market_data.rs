@@ -23,6 +23,7 @@ use super::operation::{
 use super::trade::PyTradeEvent;
 use crate::expression::PyPlan;
 use crate::field::PyField;
+use crate::fix::PyFixMsg;
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
 use crate::text::line::core_path_from_value;
 use crate::{Failed, Pulled, python_failure, value_error};
@@ -86,8 +87,13 @@ pub(crate) fn market_data_of(item: &Bound<'_, PyAny>) -> PyResult<CoreMarketData
         PyBookEvent,
         PySnapshotEvent
     );
+    // A FIX message is held whole: the writers and the book split it into
+    // the leaves it reports.
+    if let Ok(message) = item.extract::<PyRef<'_, PyFixMsg>>() {
+        return Ok(CoreMarketData::from(message.as_inner().clone()));
+    }
     Err(PyTypeError::new_err(format!(
-        "expected MarketData or a market leaf, got {}",
+        "expected MarketData, a market leaf or a FixMsg, got {}",
         item.get_type().name()?
     )))
 }
@@ -118,6 +124,7 @@ pub(crate) fn leaf_object(py: Python<'_>, data: CoreMarketData) -> PyResult<Py<P
         CoreMarketData::SnapshotEvent(leaf) => {
             Py::new(py, PySnapshotEvent::from_core(leaf))?.into_any()
         }
+        CoreMarketData::Fix(message) => Py::new(py, PyFixMsg::from_inner(*message))?.into_any(),
     })
 }
 
@@ -234,6 +241,12 @@ graph_methods!(PyMarketData, "MarketData"; [
         self.inner.book().cloned().map(PyBookRef::from_core)
     }
 
+    /// The FIX message this value holds whole, where it holds one; else
+    /// `None`.
+    fn as_fix(&self) -> Option<PyFixMsg> {
+        self.inner.as_fix().cloned().map(PyFixMsg::from_inner)
+    }
+
     /// The leaf this value holds, as its own class.
     #[allow(clippy::wrong_self_convention)] // The core's `TryFrom`, over `&self`: frozen, never moved.
     fn into_leaf(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
@@ -281,9 +294,11 @@ graph_methods!(PyMarketData, "MarketData"; [
     /// The plan one named view is over a `marketdata` stream - `view` one
     /// of `enums.MARKET_VIEWS`, read ignoring ASCII case - with each of
     /// `lifts`, a `FieldPath` or its text such as
-    /// `"securityids['ISIN'] as isin"`, appended after the view's own
-    /// columns; `None` is no lifts. `crosscode` is the chain the `lifecycle`
-    /// view follows: that view needs one and every other view refuses one.
+    /// `"identifiers['fix:clordid'].value as clordid"` (an identifier column
+    /// is a map keyed `src:type`), appended after the view's own columns;
+    /// `None` is no lifts. `crosscode` is the stored cross code
+    /// (`"10:1:ORD-1"`, the exact code of the chain) the `lifecycle` view
+    /// follows: that view needs one and every other view refuses one.
     #[staticmethod]
     #[pyo3(
         signature = (view, lifts = None, *, crosscode = None),

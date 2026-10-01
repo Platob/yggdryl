@@ -8,9 +8,9 @@
 | --- | --- |
 | Types | `Quote = OperationElement<QuoteKind>`, `QuoteEvent = OperationEvent<QuoteKind>`: the [operation leaf contract](order.md#contract), filed under `QUOT` |
 | Side | a quote rests on the side it states; the two prices a two-sided quote states are its [bid and ask](market.md#bid-and-ask) facts, which name no side and fill no price |
-| From FIX | a quote message stating a bid and an offer and no side of its own is split at the parse into two sided quotes: `BUYS` with the bid's price, quantity and FX parts, `SELL` with the offer's, each keeping both bid and ask facts and naming the source's identity among its sources, each chained on its side (`BUYS:Q1`, `SELL:Q1`); a book reads each sided quote once and never the two-sided source; a one-sided quote stays one message; a quote batch - a mass quote, a bid list (`QUOB`) - is first split into one quote per entry, each then split the same way ([FIX](../fix/message.md#a-parse-splits-what-a-message-reports)) |
+| From FIX | a quote message stating a bid and an offer and no side of its own is split at the parse into two sided quotes: `BUYS` with the bid's price, quantity and FX parts, `SELL` with the offer's, each keeping both bid and ask facts and naming the source's identity among its sources, each chained on its side (`14:1:Q1`, `14:2:Q1`); a book reads each sided quote once and never the two-sided source; a one-sided quote stays one message; a quote batch - a mass quote, a bid list (`QUOB`) - is first split into one quote per entry, each then split the same way ([FIX](../fix/message.md#a-parse-splits-what-a-message-reports)) |
 | Following | the chain gives its side only to a quote stating `UNKN` ([Operation](operation.md#following-and-merging)) |
-| Book entry | a dated quote with a [book control](order.md#book-control) is an entry of a [book](book.md#entries); a change or overlay stating `ORDERID` promotes it to an order |
+| Book entry | a dated quote with a [book control](order.md#book-control) is an entry of a [book](book.md#entries); a change or overlay stating `orderid` promotes it to an order |
 | Execution | `is_execution()` is always false; only an [execution](execution.md) is one - a quote's report of a fill splits one off |
 
 ## Example
@@ -28,23 +28,23 @@ A two-sided Apple quote, then one offer as a market-data entry on a book.
     // Two prices and no side: the bid and the ask are facts of the quote.
     let mut quote = QuoteEvent::at(T);
     quote.set_crosscode("Q-7".to_owned());
-    quote.set_ticker(Some("AAPL".into()));
-    quote.set_bidpx(Some("189.48".parse()?));
-    quote.set_bidqty(Some(Decimal::from_int(300)));
-    quote.set_askpx(Some("189.52".parse()?));
-    quote.set_askqty(Some(Decimal::from_int(100)));
+    quote.set_ticker(Some("AAPL".into()), true);
+    quote.set_bidpx(Some("189.48".parse()?), true);
+    quote.set_bidqty(Some(Decimal::from_int(300)), true);
+    quote.set_askpx(Some("189.52".parse()?), true);
+    quote.set_askqty(Some(Decimal::from_int(100)), true);
     quote.finalize();
     assert_eq!((quote.get_side(), quote.get_price()), (Side::Unknown, None));
-    assert_eq!(quote.get_crosscode(), "Q-7");
+    assert_eq!(quote.get_crosscode(), "14:0:Q-7", "a quote, no side stated");
     assert!(!quote.is_execution());
 
     // One offer as a market-data entry: a sided quote a book rests.
     let mut entry = QuoteEvent::at(T);
     entry.set_crosscode("MD-1".to_owned());
-    entry.set_ticker(Some("AAPL".into()));
-    entry.set_side(Side::Sell);
-    entry.set_price(Some("189.52".parse()?));
-    entry.set_quantity(Some(Decimal::from_int(100)));
+    entry.set_ticker(Some("AAPL".into()), true);
+    entry.set_side(Side::Sell, true);
+    entry.set_price(Some("189.52".parse()?), true);
+    entry.set_quantity(Some(Decimal::from_int(100)), true);
     entry.set_book(Some(BookRef {
         action: Some(MdUpdateAction::New),
         scope: Some("AAPL.XNAS".into()),
@@ -52,7 +52,7 @@ A two-sided Apple quote, then one offer as a market-data entry on a book.
         ..BookRef::default()
     }));
     entry.finalize();
-    assert_eq!((entry.get_crosscode(), entry.scope()), ("SELL:MD-1", "AAPL.XNAS"));
+    assert_eq!((entry.get_crosscode(), entry.scope()), ("14:2:MD-1", "AAPL.XNAS"));
 
     let mut book = BookEvent::new(T, "AAPL");
     book.add_operations([MarketData::from(entry)])?;
@@ -98,7 +98,7 @@ A two-sided Apple quote, then one offer as a market-data entry on a book.
         price=Decimal("189.52"),
         quantity=100,
     )
-    assert (entry.crosscode, entry.scope) == ("SELL:MD-1", "AAPL.XNAS")
+    assert (entry.crosscode, entry.scope) == ("14:2:MD-1", "AAPL.XNAS")
 
     book = graph.BookEvent(T, "AAPL").with_operations([entry])
     best = book.best_price(Side.SELL)
@@ -140,7 +140,7 @@ A two-sided Apple quote, then one offer as a market-data entry on a book.
       price: '189.52',
       quantity: 100,
     })
-    assert.equal(entry.crosscode, 'SELL:MD-1')
+    assert.equal(entry.crosscode, '14:2:MD-1')
     assert.equal(entry.scope, 'AAPL.XNAS')
 
     const book = new graph.BookEvent(T, 'AAPL').withOperations([entry])

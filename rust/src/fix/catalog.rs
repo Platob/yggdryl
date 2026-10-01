@@ -793,25 +793,25 @@ impl FixRegistry {
         if category == FixCategory::Fields {
             return self.insert(field);
         }
-        if category == FixCategory::Groups {
-            if let Some(name) = field.as_fix().component().map(str::to_owned) {
-                let component = self.definition(FixCategory::Components, &name)?;
-                if let Some(item) = occurrence_of(&field) {
-                    // Against the canonical shape: the stored component holds
-                    // no derived tag on its own occurrences, and an item a
-                    // caller cloned out of the catalog still does.
-                    let stated = canonical_occurrences(item.clone(), true)?;
-                    if stated.dtype() != component.dtype() {
-                        return Err(invalid(
-                            &field,
-                            format_args!("component {name:?} datatype {}", component.dtype()),
-                        ));
-                    }
-                    let mut item = item.clone();
-                    item.as_fix_mut().set_component(&name)?;
-                    let dtype = group_dtype(&field, item)?;
-                    field.set_dtype(dtype)?;
+        if category == FixCategory::Groups
+            && let Some(name) = field.as_fix().component().map(str::to_owned)
+        {
+            let component = self.definition(FixCategory::Components, &name)?;
+            if let Some(item) = occurrence_of(&field) {
+                // Against the canonical shape: the stored component holds
+                // no derived tag on its own occurrences, and an item a
+                // caller cloned out of the catalog still does.
+                let stated = canonical_occurrences(item.clone(), true)?;
+                if stated.dtype() != component.dtype() {
+                    return Err(invalid(
+                        &field,
+                        format_args!("component {name:?} datatype {}", component.dtype()),
+                    ));
                 }
+                let mut item = item.clone();
+                item.as_fix_mut().set_component(&name)?;
+                let dtype = group_dtype(&field, item)?;
+                field.set_dtype(dtype)?;
             }
         }
         // After the group's item takes its component marker, and before this
@@ -1576,6 +1576,7 @@ impl FixRegistry {
         // The alternate names are read infallibly everywhere else, so this is
         // where a text the read would walk as nothing is refused.
         field.as_fix().validate_names()?;
+        field.as_fix().validate_parents()?;
         // So is an identifier-map document; a role names a `Parties`
         // occurrence, whose `PartyID(448)` is the one member it reads.
         for source in field.as_fix().idmap() {
@@ -1708,20 +1709,18 @@ impl FixRegistry {
                     return Err(invalid(counter, "an int32 repeating-group counter"));
                 }
             }
-            if let Some(component) = field.as_fix().component() {
-                if let Some(item) = occurrence_of(field) {
-                    if !item
-                        .as_fix()
-                        .component()
-                        .is_some_and(|name| folds_equal(name, component))
-                    {
-                        return Err(Error::conflict(
-                            "the group's component reference on its item",
-                            "a different or absent item reference",
-                            field.name(),
-                        ));
-                    }
-                }
+            if let Some(component) = field.as_fix().component()
+                && let Some(item) = occurrence_of(field)
+                && !item
+                    .as_fix()
+                    .component()
+                    .is_some_and(|name| folds_equal(name, component))
+            {
+                return Err(Error::conflict(
+                    "the group's component reference on its item",
+                    "a different or absent item reference",
+                    field.name(),
+                ));
             }
         }
         self.validate_references(field, 0)
@@ -1837,15 +1836,14 @@ impl FixRegistry {
                 .as_fix()
                 .tag()?
                 .ok_or_else(|| Error::absent(super::field::TAG_KEY, name))?;
-            // Nested rather than a let-chain: the core builds at 1.85.
-            if let Some(held) = derived.insert(tag, name) {
-                if held != name {
-                    return Err(Error::conflict(
-                        "one FIX definition per derived tag",
-                        "two definitions on one tag",
-                        format_args!("{held:?} and {name:?} both hold {tag}"),
-                    ));
-                }
+            if let Some(held) = derived.insert(tag, name)
+                && held != name
+            {
+                return Err(Error::conflict(
+                    "one FIX definition per derived tag",
+                    "two definitions on one tag",
+                    format_args!("{held:?} and {name:?} both hold {tag}"),
+                ));
             }
         }
         Ok(())
@@ -1972,25 +1970,24 @@ impl FixRegistry {
                 document.dtype(),
                 DataType::Serie(_) | DataType::LargeSerie(_)
             )
+            && let Some(counter) = document.as_fix().counter()?
         {
-            if let Some(counter) = document.as_fix().counter()? {
-                let held = self.get_field_by_tag(counter);
-                if held.is_none_or(|field| field.dtype() != &DataType::Int32) {
-                    let error = Error::InvalidRecord {
-                        path: document.name().into(),
-                        reason: crate::text::expected_got(
-                            "an int32 repeating-group counter this dictionary holds",
-                            format_args!(
-                                "tag {counter} as {}",
-                                held.map_or_else(
-                                    || SmolStr::new("nothing"),
-                                    |field| format_smolstr!("{}", field.dtype())
-                                )
-                            ),
+            let held = self.get_field_by_tag(counter);
+            if held.is_none_or(|field| field.dtype() != &DataType::Int32) {
+                let error = Error::InvalidRecord {
+                    path: document.name().into(),
+                    reason: crate::text::expected_got(
+                        "an int32 repeating-group counter this dictionary holds",
+                        format_args!(
+                            "tag {counter} as {}",
+                            held.map_or_else(
+                                || SmolStr::new("nothing"),
+                                |field| format_smolstr!("{}", field.dtype())
+                            )
                         ),
-                    };
-                    return Ok(Err((document, error)));
-                }
+                    ),
+                };
+                return Ok(Err((document, error)));
             }
         }
         let Some((_, stored)) = documents.get(category, document.name()) else {

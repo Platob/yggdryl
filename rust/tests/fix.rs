@@ -192,12 +192,21 @@ fn run_isolated(test_name: &str, marker: &str) -> bool {
     true
 }
 
-/// Crate-owned scalar definitions inherited by every dictionary.
+/// Crate-owned scalar definitions inherited by every dictionary: every one
+/// but the columns the fixed row derives, which no registry holds.
 fn crated_fields() -> usize {
     yggdryl::fix_crate_fields()
         .expect("the crate's own fields")
         .iter()
         .filter(|field| category_of(field) == yggdryl::FixCategory::Fields)
+        .filter(|field| {
+            !field
+                .as_fix()
+                .tag()
+                .ok()
+                .flatten()
+                .is_some_and(yggdryl::is_derived_tag)
+        })
         .count()
 }
 
@@ -406,6 +415,8 @@ mod document;
 mod enrich;
 #[path = "fix/entry.rs"]
 mod entry;
+#[path = "fix/field.rs"]
+mod field;
 #[path = "fix/forex.rs"]
 mod forex;
 #[path = "fix/global.rs"]

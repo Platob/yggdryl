@@ -764,7 +764,7 @@ fn integer_widths_preserve_width_with_logical_comparison() {
 fn the_codes_sort_by_which_code_then_by_text() {
     use std::hash::{Hash, Hasher};
 
-    use yggdryl::{Bbg, Ccy, Cfi, Country, Cusip, Figi, Isin, Mic, Ric, Sedol, TimeInForce};
+    use yggdryl::{Bbg, Ccy, Cfi, Country, Cusip, Figi, Isin, Mic, Ric, Sedol};
 
     fn hash_of(value: &Scalar) -> u64 {
         let mut hasher = std::hash::DefaultHasher::new();
@@ -780,7 +780,6 @@ fn the_codes_sort_by_which_code_then_by_text() {
         Scalar::Ccy(Ccy::new("EUR").unwrap()),
         Scalar::Mic(Mic::new("XPAR").unwrap()),
         Scalar::Cfi(Cfi::new("ESVUFR").unwrap()),
-        Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
         Scalar::Isin(Isin::new("US0378331005").unwrap()),
         Scalar::Cusip(Cusip::new("037833100").unwrap()),
         Scalar::Sedol(Sedol::new("2046251").unwrap()),
@@ -1551,9 +1550,9 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     // A code carries its identity: two values whose text agrees are two
     // values, and neither is the string spelling the same bytes.
     let side = Scalar::Side(yggdryl::Side::new("BUYS").unwrap());
-    let time_in_force = Scalar::TimeInForce(yggdryl::TimeInForce::new("BUYS").unwrap());
-    assert_ne!(side, time_in_force);
-    assert_eq!(side.as_str(), time_in_force.as_str());
+    let unit = Scalar::Unit(yggdryl::Unit::new("BUYS").unwrap());
+    assert_ne!(side, unit);
+    assert_eq!(side.as_str(), unit.as_str());
     assert_ne!(side, Scalar::from("BUYS"));
     assert_ne!(side, Scalar::from(1_i32));
 

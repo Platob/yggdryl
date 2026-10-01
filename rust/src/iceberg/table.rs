@@ -3387,10 +3387,10 @@ fn stored_slots(field: &Field) -> Result<Field> {
     }
     let mut dtype = field.dtype().clone();
     for index in 0..field.dtype().field_len() {
-        if let Some(child) = field.dtype().get_field_at(index) {
-            if holds_unknown(child) {
-                dtype.set_field_at(index, stored_slots(child)?)?;
-            }
+        if let Some(child) = field.dtype().get_field_at(index)
+            && holds_unknown(child)
+        {
+            dtype.set_field_at(index, stored_slots(child)?)?;
         }
     }
     stored.set_dtype(dtype)?;

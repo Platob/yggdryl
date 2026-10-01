@@ -134,8 +134,8 @@ impl Listener {
                     return;
                 };
                 inner.connections.fetch_add(1, Ordering::Relaxed);
-                // `try_update` is this method's name from Rust 1.99; the 1.85
-                // floor has only `fetch_update`.
+                // `fetch_update` is the spelling the declared MSRV, Rust
+                // 1.94, knows; its rename `try_update` came later.
                 #[allow(deprecated)]
                 let admitted = inner
                     .live

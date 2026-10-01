@@ -354,7 +354,9 @@ def test_the_uuid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
     text = "01912d68-783e-7c9a-b1f2-0123456789ab"
     packed = 0x01912D68783E7C9AB1F20123456789AB
     field = Field("id", uuid_type, nullable=False)
-    assert field.arrow_scalar(text) == pa.scalar(
+    # pyarrow's own `arrow.uuid` scalar over the sixteen bytes.
+    assert field.arrow_scalar(text).type == pa.uuid()
+    assert field.arrow_scalar(text).value == pa.scalar(
         packed.to_bytes(16, "big"), pa.binary(16)
     )
     assert field.arrow_scalar(text.upper()) == field.arrow_scalar(text)
@@ -396,22 +398,24 @@ def test_version_is_numeric_with_an_arrow_string_projection() -> None:
     assert dtype.fixed_byte_width is None
     assert dtype.string_parameters is None
     assert field.default_scalar().as_py() == Version(0)
-    assert field.arrow_scalar("5.0.01") == pa.scalar("5.0.1")
+    # The registered `yggdryl.version` scalar over its canonical text.
+    assert field.arrow_scalar("5.0.01").type.extension_name == "yggdryl.version"
+    assert field.arrow_scalar("5.0.01").value == pa.scalar("5.0.1")
     assert Serie.from_arrow_array(
         pa.array(["5.0.01", "5.0.10"]), field
-    ).into_arrow_array().to_pylist() == [
+    ).into_arrow_array().storage.to_pylist() == [
         "5.0.1",
         "5.0.10",
     ]
 
     arrow = field.into_arrow()
-    assert arrow.type == pa.string()
+    assert arrow.type.storage_type == pa.string()
     assert Field.from_arrow(arrow) == field
     # A tail stating no number is the patch as written rather than a failure,
     # so the projection refuses on the major it cannot read, not on the tail.
     assert Serie.from_arrow_array(
         pa.array(["5.0+"]), field
-    ).into_arrow_array().to_pylist() == ["5.0+"]
+    ).into_arrow_array().storage.to_pylist() == ["5.0+"]
     with pytest.raises(ValueError, match="version"):
         Serie.from_arrow_array(pa.array(["FIX.5.0"]), field).into_arrow_array()
 
@@ -437,10 +441,10 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
         "https://example.com/a%2Fb",
         "file:///lake/part.txt",
     ]
-    assert field.arrow_scalar("HTTPS://example.com/a%2fb") == pa.scalar(
+    assert field.arrow_scalar("HTTPS://example.com/a%2fb").value == pa.scalar(
         "https://example.com/a%2Fb"
     )
-    assert field.arrow_scalar("/lake/part.txt") == pa.scalar("file:///lake/part.txt")
+    assert field.arrow_scalar("/lake/part.txt").value == pa.scalar("file:///lake/part.txt")
 
     # Nothing relative is a location, so none of them read as one.
     for relative in ("./rel", "example.com/x"):
@@ -463,11 +467,10 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
     # Storage is Utf8 under the `yggdryl.url` extension name, so a projection
     # round-trips through Arrow without losing which datatype it is.
     arrow = field.into_arrow()
-    assert arrow.type == pa.string()
-    assert arrow.metadata == {
-        b"ARROW:extension:name": b"yggdryl.url",
-        b"ARROW:extension:metadata": b"",
-    }
+    assert arrow.type.storage_type == pa.string()
+    assert arrow.type.extension_name == "yggdryl.url"
+    assert arrow.type.document == b""
+    assert not arrow.metadata
     assert Field.from_arrow(arrow) == field
 
     # A column of locations is nullable by default, because a handle that is
@@ -503,7 +506,7 @@ def test_urn_is_a_validated_canonical_name_over_utf8_text() -> None:
         "urn:isbn:0451450523",
         "urn:example:a%20b",
     ]
-    assert field.arrow_scalar("URN:ISBN:0451450523") == pa.scalar("urn:isbn:0451450523")
+    assert field.arrow_scalar("URN:ISBN:0451450523").value == pa.scalar("urn:isbn:0451450523")
     for location in ("https://example.com/a", "/lake/part.txt"):
         with pytest.raises(ValueError, match="does not read as urn"):
             Serie.from_arrow_array(pa.array([location]), field).into_arrow_array()
@@ -524,8 +527,8 @@ def test_urn_is_a_validated_canonical_name_over_utf8_text() -> None:
 
     # Storage is Utf8 under the `yggdryl.urn` extension name, so a projection
     # comes back a urn column rather than text or a url column.
-    assert field.into_arrow().type == pa.utf8()
-    assert field.into_arrow().metadata[b"ARROW:extension:name"] == b"yggdryl.urn"
+    assert field.into_arrow().type.storage_type == pa.utf8()
+    assert field.into_arrow().type.extension_name == "yggdryl.urn"
     assert Field.from_arrow(field.into_arrow()) == field
     assert Field.from_arrow(field.into_arrow()).dtype == dtype
 
@@ -893,11 +896,10 @@ def test_a_registered_code_carries_its_identity_across_arrow() -> None:
 
     # A code stores as the text it is; the extension name is what carries the
     # identity, so pyarrow sees a string column a reader can already use.
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata == {
-        b"ARROW:extension:name": b"yggdryl.ccy",
-        b"ARROW:extension:metadata": b"",
-    }
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.ccy"
+    assert arrow_field.type.document == b""
+    assert not arrow_field.metadata
     assert Field.from_arrow(arrow_field) == ccy
     retired = pa.field(
         "ccy",
@@ -913,10 +915,10 @@ def test_a_registered_code_carries_its_identity_across_arrow() -> None:
     # under no name at all is plain text.
     bounded = Field("ccy", DataType("ascii(3)"))
     assert Field.from_arrow(bounded.into_arrow()) == bounded
-    assert bounded.into_arrow().type == pa.string()
+    assert bounded.into_arrow().type.storage_type == pa.string()
     assert Field.from_arrow(pa.field("ccy", pa.string())) == Field("ccy", "utf8")
 
-    assert ccy.arrow_scalar("USD") == pa.scalar("USD", pa.string())
+    assert ccy.arrow_scalar("USD").value == pa.scalar("USD", pa.string())
     assert Serie.from_arrow_array(
         pa.array(["USD", "EU"]), ccy
     ).into_arrow_array().to_pylist() == ["USD", "EU"]
@@ -964,15 +966,14 @@ def test_a_ric_is_one_printable_token_that_keeps_its_case() -> None:
     # One text under two identities is two values, each crossing Arrow
     # under its own extension name.
     assert ric.scalar("IBM") != DataType("bbg").scalar("IBM")
-    assert Field("id", "bbg").into_arrow().metadata[b"ARROW:extension:name"] == b"yggdryl.bbg"
+    assert Field("id", "bbg").into_arrow().type.extension_name == "yggdryl.bbg"
 
     field = Field("instrument", "ric")
     arrow_field = field.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata == {
-        b"ARROW:extension:name": b"yggdryl.ric",
-        b"ARROW:extension:metadata": b"",
-    }
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.ric"
+    assert arrow_field.type.document == b""
+    assert not arrow_field.metadata
     assert Field.from_arrow(arrow_field) == field
     # A cell the code refuses is null under the safe cast, and so is an
     # empty cell, since a RIC has no neutral member to fill it with.
@@ -990,33 +991,35 @@ def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> No
     # Arrow has no fixed-width string, so the fixed layout rides
     # `FixedSizeBinary` and the declaration rides the `yggdryl.string`
     # document beside it.
-    assert ascii32.into_arrow() == pa.binary(4)
+    assert ascii32.into_arrow().storage_type == pa.binary(4)
     arrow_field = ccy.into_arrow()
-    assert arrow_field.type == pa.binary(4)
-    assert arrow_field.metadata == {
-        b"ARROW:extension:name": b"yggdryl.string",
-        b"ARROW:extension:metadata": (
+    assert arrow_field.type.storage_type == pa.binary(4)
+    assert arrow_field.type.extension_name == "yggdryl.string"
+    assert arrow_field.type.document == (
             b'{"layout":"fixed_ascii","charset":"us-ascii","fixed":4}'
-        ),
-    }
+        )
+    assert not arrow_field.metadata
     assert Field.from_arrow(arrow_field) == ccy
     assert Field.from_arrow(pa.field("ccy", pa.binary(4))) == Field(
         "ccy", "fixed_size_binary(4)"
     )
 
-    assert ascii32.arrow_scalar("USD") == pa.scalar(b"USD\x00", pa.binary(4))
-    assert ascii32.arrow_scalar(b"USD\x00") == pa.scalar(b"USD\x00", pa.binary(4))
-    assert ascii32.arrow_scalar(None) == pa.scalar(None, pa.binary(4))
-    assert ccy.arrow_scalar("EUR") == pa.scalar(b"EUR\x00", pa.binary(4))
+    assert ascii32.arrow_scalar("USD").value == pa.scalar(b"USD\x00", pa.binary(4))
+    assert ascii32.arrow_scalar(b"USD\x00").value == pa.scalar(b"USD\x00", pa.binary(4))
+    assert not ascii32.arrow_scalar(None).is_valid
+    assert ascii32.arrow_scalar("USD").as_py() == "USD"
+    assert ccy.arrow_scalar("EUR").value == pa.scalar(b"EUR\x00", pa.binary(4))
     assert ascii32.default_scalar().as_py() == ""
     assert ascii32.default_pyhint() is str
     assert Serie.from_default(
         Field("value", ascii32, nullable=False)
-    ).into_arrow_scalar() == pa.scalar(b"\x00" * 4, pa.binary(4))
+    ).into_arrow_scalar().value == pa.scalar(b"\x00" * 4, pa.binary(4))
 
     padded = Serie.from_arrow_array(pa.array(["USD", None]), ccy).into_arrow_array()
-    assert padded.type == pa.binary(4)
-    assert padded.to_pylist() == [b"USD\x00", None]
+    assert padded.type.storage_type == pa.binary(4)
+    assert padded.storage.to_pylist() == [b"USD\x00", None]
+    # The registered type reads each cell as the core does, trimmed.
+    assert padded.to_pylist() == ["USD", None]
     # A required column refuses a null by path rather than writing its default.
     with pytest.raises(ValueError, match=r"required Arrow field \$\.value holds 1 null values"):
         Serie.from_arrow_array(pa.array(["USD", None]), Field("value", ascii32, nullable=False))
@@ -1041,9 +1044,9 @@ def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> No
         ccy.arrow_scalar("\u20ac")
     # A string is a string: a number or a boolean spells itself, exactly as
     # it does into `utf8`, and the width then judges the spelling.
-    assert ascii32.arrow_scalar(3) == pa.scalar(b"3\x00\x00\x00", pa.binary(4))
-    assert ascii32.arrow_scalar(True) == pa.scalar(b"true", pa.binary(4))
-    assert ccy.arrow_scalar(1.5) == pa.scalar(b"1.5\x00", pa.binary(4))
+    assert ascii32.arrow_scalar(3).value == pa.scalar(b"3\x00\x00\x00", pa.binary(4))
+    assert ascii32.arrow_scalar(True).value == pa.scalar(b"true", pa.binary(4))
+    assert ccy.arrow_scalar(1.5).value == pa.scalar(b"1.5\x00", pa.binary(4))
     with pytest.raises(ValueError, match="at most 4 bytes"):
         ccy.arrow_scalar(12345)
 
@@ -1055,23 +1058,22 @@ def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None
     # ASCII bytes are UTF-8, so US-ASCII rides Arrow's own string layout;
     # what Arrow cannot say - the charset - rides the `yggdryl.string`
     # document. Plain UTF-8 crosses bare.
-    assert note.into_arrow() == pa.string()
+    assert note.into_arrow().storage_type == pa.string()
     arrow_field = field.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata == {
-        b"ARROW:extension:name": b"yggdryl.string",
-        b"ARROW:extension:metadata": b'{"layout":"ascii","charset":"us-ascii"}',
-    }
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.string"
+    assert arrow_field.type.document == b'{"layout":"ascii","charset":"us-ascii"}'
+    assert not arrow_field.metadata
     assert Field.from_arrow(arrow_field) == field
     assert Field.from_arrow(pa.field("note", pa.string())) == Field("note", "utf8")
     assert Field("text", "utf8").into_arrow().metadata is None
 
-    assert note.arrow_scalar("free text") == pa.scalar("free text", pa.string())
+    assert note.arrow_scalar("free text").value == pa.scalar("free text", pa.string())
     assert note.default_scalar().as_py() == ""
     assert note.default_pyhint() is str
     assert Serie.from_default(
         Field("value", note, nullable=False)
-    ).into_arrow_scalar() == pa.scalar("", pa.string())
+    ).into_arrow_scalar().value == pa.scalar("", pa.string())
 
     stored = Serie.from_arrow_array(
         pa.array(["a", "much longer note", None]), field
@@ -1099,10 +1101,8 @@ def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None
     # A maximum is checked where a value enters, and the value keeps it:
     # the cell is a `sized_ascii(4)` value.
     bounded = Field("code", DataType("ascii(4)"))
-    assert bounded.into_arrow().metadata == {
-        b"ARROW:extension:name": b"yggdryl.string",
-        b"ARROW:extension:metadata": b'{"layout":"sized_ascii","charset":"us-ascii","max":4}',
-    }
+    assert bounded.into_arrow().type.extension_name == "yggdryl.string"
+    assert bounded.into_arrow().type.document == b'{"layout":"sized_ascii","charset":"us-ascii","max":4}'
     assert Field.from_arrow(bounded.into_arrow()) == bounded
     assert bounded.scalar("USD").dtype == DataType("sized_ascii(4)")
     assert bounded.scalar("USD").kind == "sized_ascii"
@@ -1117,15 +1117,14 @@ def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None
     # The windows-1252 leaves ride binary storage, because their bytes are
     # not UTF-8; the document says which leaf and which charset.
     latin = Field("name", DataType.string(charset="windows-1252"))
-    assert latin.into_arrow().type == pa.binary()
-    assert latin.into_arrow().metadata == {
-        b"ARROW:extension:name": b"yggdryl.string",
-        b"ARROW:extension:metadata": b'{"layout":"cp1252","charset":"windows-1252"}',
-    }
+    assert latin.into_arrow().type.storage_type == pa.binary()
+    assert latin.into_arrow().type.extension_name == "yggdryl.string"
+    assert latin.into_arrow().type.document == b'{"layout":"cp1252","charset":"windows-1252"}'
+    assert not latin.into_arrow().metadata
     assert Field.from_arrow(latin.into_arrow()) == latin
     assert Serie.from_arrow_array(
         pa.array(["caf\u00e9"]), latin
-    ).into_arrow_array().to_pylist() == [b"caf\xe9"]
+    ).into_arrow_array().storage.to_pylist() == [b"caf\xe9"]
     assert latin.scalar(b"caf\xe9").as_py() == "caf\u00e9"
 
 
@@ -1505,6 +1504,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "side": yggdryl.side("value"),
         "state": yggdryl.state("value"),
         "marketdatakind": yggdryl.marketdatakind("value"),
+        "marketdatatype": yggdryl.marketdatatype("value"),
         "forex": yggdryl.forex("value"),
         "timeinforce": yggdryl.timeinforce("value"),
         "unit": yggdryl.unit("value"),

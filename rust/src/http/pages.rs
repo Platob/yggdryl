@@ -211,10 +211,10 @@ impl Pages {
         let rows = match &body {
             Some(body) => {
                 let path = Pagination::records_path(body, self.records.as_ref());
-                if let Some(path) = &path {
-                    if self.records.is_none() {
-                        self.records = Some(path.clone());
-                    }
+                if let Some(path) = &path
+                    && self.records.is_none()
+                {
+                    self.records = Some(path.clone());
                 }
                 path.and_then(|path| rows_at(body, &path))
                     .map_or(1, |rows| rows.len())
@@ -277,10 +277,10 @@ impl Iterator for Pages {
         };
         self.yielded += 1;
         self.visited.insert(request.url().stable_hash());
-        if page.is_ok() {
-            if let Err(error) = self.advance(&page, &request) {
-                return Some(Err(error));
-            }
+        if page.is_ok()
+            && let Err(error) = self.advance(&page, &request)
+        {
+            return Some(Err(error));
         }
         Some(Ok(page))
     }

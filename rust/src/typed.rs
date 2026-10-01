@@ -989,15 +989,10 @@ macro_rules! define_field_types {
     ($(#[$meta:meta])* $marker:ident, $variant:ident $(,)?) => {
         $(#[$meta])*
         #[doc = concat!(
-            "The parameter-free datatype of a [`DataType::",
+            "The parameter-free datatype of a [`crate::DataType::",
             stringify!($variant),
-            "`](crate::DataType::",
-            stringify!($variant),
-            ") field."
+            "`] field."
         )]
-        // The target is what resolves the link from a module that does not
-        // import `DataType`; from one that does, rustdoc calls it redundant.
-        #[allow(rustdoc::redundant_explicit_links)]
         #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $marker;
 

@@ -1,4 +1,4 @@
-"""What state one thing is in: a lifecycle-sorted enum, stored as an ``int32``.
+"""What state one thing is in: a lifecycle-sorted enum, stored as an ``uint16``.
 
 ``State`` is the core's enum member for member - its stored name, and the code
 a ``state`` column stores - built once at import from the native table, so

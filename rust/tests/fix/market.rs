@@ -9,8 +9,8 @@ use yggdryl::graph::{
     Operation,
 };
 use yggdryl::{
-    DataType, Decimal, Error, Field, FixCode, FixMsg, FixRegistry, MarketDataKind, Scalar, Side,
-    State, StructType,
+    DataType, Decimal, Error, Field, FixCode, FixMsg, FixRegistry, IdSource, IdType, Identifier,
+    MarketDataKind, Scalar, Side, State, StructType,
 };
 
 fn message(line: &[u8]) -> FixMsg {
@@ -128,7 +128,7 @@ fn names_its_source(split: &FixMsg, source: &FixMsg) -> bool {
 
 #[test]
 fn direct_market_categories_move_into_their_operation_kind_and_arrow_round_trip() {
-    let cases: &[(&[u8], i32, MarketKind)] = &[
+    let cases: &[(&[u8], u8, MarketKind)] = &[
         (
             b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=5|10=0|",
             10,
@@ -152,7 +152,7 @@ fn direct_market_categories_move_into_their_operation_kind_and_arrow_round_trip(
         let source = message(line);
         assert_eq!(source.msgcat().code(), *operation_id);
         assert_eq!(
-            source.get_by_tag(yggdryl::MSGCAT_TAG_NAME.0),
+            source.get_by_tag(yggdryl::MARKETDATAKIND_TAG_NAME.0),
             Some(Scalar::MarketDataKind(source.msgcat()))
         );
         let operations = source.into_market_data().expect("a market category");
@@ -196,9 +196,10 @@ fn an_order_execution_splits_off_one_filled_execution_message() {
     assert!(names_its_source(execution, report));
     assert_ne!(execution.get_curruuid(), report.get_curruuid());
     assert_ne!(execution.get_crossuuid(), report.get_crossuuid());
-    // Its chain is its own, keyed by the fill, and stored under its side.
-    assert_eq!(execution.get_crosscode(), "BUYS:E-1");
-    assert_eq!(report.get_crosscode(), "BUYS:O-9");
+    // Its chain is its own, keyed by the fill, and stored under its kind
+    // and its side.
+    assert_eq!(execution.get_crosscode(), "8:1:E-1");
+    assert_eq!(report.get_crosscode(), "10:1:O-9");
     assert_eq!(text(execution.get_lastqty()).as_deref(), Some("40"));
     assert_eq!(text(execution.get_lastpx()).as_deref(), Some("10.5"));
 
@@ -256,14 +257,31 @@ fn a_trade_splits_off_one_sided_execution_message_per_side() {
     assert_eq!(text(buy.get_lastpx()).as_deref(), Some("101.25"));
     assert_eq!((buy.get_price(), buy.get_quantity()), (None, None));
     // The side's identifiers are the execution's.
-    assert_eq!(buy.get_altids().get("EXECID"), Some("BUY-EXEC"));
-    assert_eq!(sell.get_altids().get("EXECID"), Some("SELL-EXEC"));
-    assert_eq!(buy.get_altids().get("ORDERID"), Some("BUY-ORDER"));
-    assert_eq!(sell.get_altids().get("CLORDID"), Some("SELL-CLIENT"));
+    assert_eq!(buy.get_identifiers().get(&IdType::ExecId), Some("BUY-EXEC"));
+    assert_eq!(
+        sell.get_identifiers().get(&IdType::ExecId),
+        Some("SELL-EXEC")
+    );
+    assert_eq!(
+        buy.get_identifiers().get(&IdType::OrderId),
+        Some("BUY-ORDER")
+    );
+    assert_eq!(
+        sell.get_identifiers().get(&IdType::ClOrdId),
+        Some("SELL-CLIENT")
+    );
     assert_ne!(buy.get_curruuid(), sell.get_curruuid());
     assert_ne!(buy.get_crossuuid(), sell.get_crossuuid());
-    assert!(buy.get_crosscode().starts_with("BUYS:"));
-    assert!(sell.get_crosscode().starts_with("SELL:"));
+    assert!(
+        buy.get_crosscode().starts_with("8:1:"),
+        "{}",
+        buy.get_crosscode()
+    );
+    assert!(
+        sell.get_crosscode().starts_with("8:2:"),
+        "{}",
+        sell.get_crosscode()
+    );
 
     let leaves: Vec<ExecutionEvent> = [buy, sell]
         .into_iter()
@@ -300,7 +318,7 @@ fn an_order_list_splits_into_one_sided_order_per_entry() {
     assert_eq!((buy.get_side(), sell.get_side()), (Side::Buy, Side::Sell));
     assert_eq!(
         (buy.get_crosscode(), sell.get_crosscode()),
-        ("BUYS:C1", "SELL:C2")
+        ("10:1:C1", "10:2:C2")
     );
     assert_eq!(text(buy.get_price()).as_deref(), Some("100.5"));
     assert_eq!(text(sell.get_quantity()).as_deref(), Some("7"));
@@ -335,11 +353,11 @@ fn a_mass_quote_splits_into_sided_quotes_per_entry() {
     };
     assert_eq!(batch.msgcat(), MarketDataKind::QuoteBatch);
     assert_eq!(quote.msgcat(), MarketDataKind::Quotation);
-    assert_eq!(quote.get_crosscode(), "QuoteSetID=S1|QuoteEntryID=E1");
+    assert_eq!(quote.get_crosscode(), "14:0:QuoteSetID=S1|QuoteEntryID=E1");
     assert_eq!(text(quote.get_bidpx()).as_deref(), Some("100"));
     assert_eq!(text(quote.get_askqty()).as_deref(), Some("6"));
-    assert_eq!(bid.get_crosscode(), "BUYS:QuoteSetID=S1|QuoteEntryID=E1");
-    assert_eq!(offer.get_crosscode(), "SELL:QuoteSetID=S1|QuoteEntryID=E1");
+    assert_eq!(bid.get_crosscode(), "14:1:QuoteSetID=S1|QuoteEntryID=E1");
+    assert_eq!(offer.get_crosscode(), "14:2:QuoteSetID=S1|QuoteEntryID=E1");
     assert_eq!(text(bid.get_price()).as_deref(), Some("100"));
     assert_eq!(text(offer.get_price()).as_deref(), Some("101"));
 }
@@ -362,7 +380,7 @@ fn a_mass_cancel_report_splits_into_the_orders_it_names() {
     );
     assert_eq!(
         (first.get_crosscode(), second.get_crosscode()),
-        ("O1", "O2")
+        ("10:0:O1", "10:0:O2")
     );
 }
 
@@ -389,10 +407,10 @@ fn a_trade_side_stating_no_side_splits_off_an_unknown_sided_execution() {
         assert_eq!(*execution.get_state(), State::Filled);
         assert!(names_its_source(execution, trade));
         assert_eq!(text(execution.get_lastqty()).as_deref(), Some("4"));
-        // An unsided execution's cross code carries no side.
+        // An unsided execution's cross code states side `0`.
         assert_eq!(
             execution.get_crosscode(),
-            format!("7:ORDER-1|1427:{}:{stable}", stable.len())
+            format!("8:0:7:ORDER-1|1427:{}:{stable}", stable.len())
         );
         let leaf = execution_of(execution.clone());
         assert_eq!(leaf.get_side(), Side::Unknown);
@@ -584,8 +602,8 @@ fn a_two_sided_quote_splits_into_two_sided_quotes_and_two_book_quotes() {
     assert_eq!(text(bid.get_forwardpoints()).as_deref(), Some("0.5"));
     assert_eq!(text(ask.get_price()).as_deref(), Some("101"));
     assert_eq!(text(ask.get_quantity()).as_deref(), Some("8"));
-    assert_eq!(bid.get_crosscode(), "BUYS:Q1");
-    assert_eq!(ask.get_crosscode(), "SELL:Q1");
+    assert_eq!(bid.get_crosscode(), "14:1:Q1");
+    assert_eq!(ask.get_crosscode(), "14:2:Q1");
 
     let books = books_of(codec.book_arrow_reader(messages, 0).unwrap());
     let quotes: Vec<&MarketData> = books
@@ -619,7 +637,7 @@ fn a_quote_stating_one_side_and_no_side_splits_into_that_sided_quote() {
     assert!(names_its_source(bid, quote));
     assert_eq!(text(bid.get_price()).as_deref(), Some("99"));
     assert_eq!(text(bid.get_quantity()).as_deref(), Some("7"));
-    assert_eq!(bid.get_crosscode(), "BUYS:Q2");
+    assert_eq!(bid.get_crosscode(), "14:1:Q2");
 
     let books = books_of(codec.book_arrow_reader(messages, 0).unwrap());
     let book = books.last().expect("a book");
@@ -685,12 +703,17 @@ fn a_quote_states_its_bid_and_ask_in_their_currencies() {
     assert_eq!(plain.get_askccy().map(yggdryl::Ccy::as_str), Some("USD"));
     assert_eq!((plain.get_bidpx(), plain.get_bidccy()), (None, None));
 
-    // An order's own price is no bid.
+    // A buyer's own price and quantity are its bid, in its currency.
     let order = message(b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=5|15=USD|10=0|");
     assert_eq!(
         (order.get_bidpx(), order.get_bidqty(), order.get_bidccy()),
-        (None, None, None)
+        (
+            Some(yggdryl::Decimal::from_int(100)),
+            Some(yggdryl::Decimal::from_int(5)),
+            Some(&yggdryl::Ccy::new("USD").unwrap())
+        )
     );
+    assert_eq!(order.get_askpx(), None, "a buyer states no ask");
 }
 
 #[test]
@@ -723,12 +746,12 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
     assert_ne!(stated.get_curruuid(), execution_uuid);
     let explicit_hash = stated.get_currhashcode();
     stated
-        .set(yggdryl::MSGCAT_TAG_NAME.0, Scalar::from(14_i32))
+        .set(yggdryl::MARKETDATAKIND_TAG_NAME.0, Scalar::from(14_i32))
         .unwrap();
     assert_eq!(stated.msgcat(), MarketDataKind::Quotation);
     assert_ne!(stated.get_currhashcode(), explicit_hash);
     assert_eq!(
-        stated.remove(yggdryl::MSGCAT_TAG_NAME.0).unwrap(),
+        stated.remove(yggdryl::MARKETDATAKIND_TAG_NAME.0).unwrap(),
         Some(Scalar::MarketDataKind(MarketDataKind::Quotation))
     );
     assert_eq!(stated.msgcat(), MarketDataKind::Quotation);
@@ -737,7 +760,7 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
 #[test]
 fn msgcat_registry_values_are_stable_int32_operation_ids() {
     let registry = committed_registry();
-    let field = registry.field(yggdryl::MSGCAT_TAG_NAME.0).unwrap();
+    let field = registry.field(yggdryl::MARKETDATAKIND_TAG_NAME.0).unwrap();
     assert_eq!(field.dtype(), &DataType::MarketDataKind);
     let codes = registry.codeset_of(field).expect("the MsgCat vocabulary");
     for (name, value) in [
@@ -941,7 +964,7 @@ fn codec_book_admission_skips_noncontributing_records_between_market_events() {
     assert!(empty.next().is_none());
     for source in ignored {
         assert!(
-            MarketData::try_from(source.clone()).is_err(),
+            yggdryl::FixMsg::into_market_leaf(source.clone()).is_err(),
             "none is exactly one leaf"
         );
         let mut lazy = yggdryl::fix::FixMarketIterator::new([source].into_iter());
@@ -1094,8 +1117,11 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         let operation = operation_of(version);
         assert_eq!(book.get_ticker(), Some("AAPL"));
         assert_eq!(operation.get_ticker(), Some("AAPL"));
-        assert_eq!(operation.get_altids().get(ENTRY_ID), Some("B1"));
-        assert_eq!(operation.get_altids().get("ORDERID"), Some("O1"));
+        assert_eq!(operation.get_identifiers().get(&ENTRY_ID), Some("B1"));
+        assert_eq!(
+            operation.get_identifiers().get(&IdType::OrderId),
+            Some("O1")
+        );
         // Each version stands alone at its own, later instant (one second
         // apart), so following the one before it leaves its place alone.
         assert_eq!(operation.get_seqnum(), 0);
@@ -1168,8 +1194,8 @@ fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     assert!(!deleted.get_state().is_live());
     assert!(deleted.get_side().is_bid());
     assert_eq!(deleted.get_ticker(), Some("AAPL"));
-    assert_eq!(deleted.get_altids().get(ENTRY_ID), Some("B1"));
-    assert_eq!(deleted.get_altids().get("ORDERID"), Some("O1"));
+    assert_eq!(deleted.get_identifiers().get(&ENTRY_ID), Some("B1"));
+    assert_eq!(deleted.get_identifiers().get(&IdType::OrderId), Some("O1"));
     assert_eq!(deleted.get_prevuuid(), Some(previous.get_curruuid()));
     assert_eq!(deleted.get_prevunix(), Some(previous.get_currunix()));
     // The delete arrives a second after the order, a later instant of its
@@ -1239,9 +1265,12 @@ fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
     assert_eq!(text(operations[0].get_price()).as_deref(), Some("100"));
     assert_eq!(text(operations[1].get_quantity()).as_deref(), Some("12"));
     assert_eq!(operations[0].get_ticker(), Some("AAPL"));
-    assert_eq!(operations[1].get_altids().get("ORDERID"), Some("O1"));
     assert_eq!(
-        operations[1].get_altids().get("MDREQID"),
+        operations[1].get_identifiers().get(&IdType::OrderId),
+        Some("O1")
+    );
+    assert_eq!(
+        operations[1].get_identifiers().get(&IdType::MdReqId),
         Some("REQ-1"),
         "the request the message answers names every entry"
     );
@@ -1295,30 +1324,39 @@ fn lifted_request_id_keeps_full_snapshot_partitions_distinct() {
 }
 
 #[test]
-fn an_operation_names_its_entry_beside_the_message_identifiers_and_refuses_a_key_without_a_source()
-{
+fn an_operation_names_its_entry_beside_the_message_identifiers() {
     let mut source = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=1|269=0|278=B1|271=11|10=0|");
-    // A message's alternate identifiers are views of its fields: a key the
-    // dictionary has a source field for is written there, one it has not is
-    // a located refusal, never a private slot.
-    let error = source.insert_altid("foreign", "kept").unwrap_err();
+    // A message's identifiers are its facts: a statement fills a
+    // type and source it holds none of, whatever the dictionary maps, and
+    // the wire stays as the source sent it.
+    let id = |src: IdSource, kind: &str, value: &str| {
+        Identifier::new(src, kind.parse().expect("a type"), value).expect("an identifier")
+    };
     assert!(
-        matches!(&error, Error::InvalidRecord { path, .. } if path.contains("foreign")),
-        "{error}"
+        source
+            .insert_identifier(id(IdSource::Base, "foreign", "kept"))
+            .unwrap()
     );
-    assert!(source.insert_altid("MDREQID", "REQ-9").unwrap());
+    assert!(
+        source
+            .insert_identifier(id(IdSource::Fix, "mdreqid", "REQ-9"))
+            .unwrap()
+    );
+    assert_eq!(source.get_by_tag(262), None, "no identifier is written");
+
+    let input = yggdryl::FixMsg::into_market_leaf(source).unwrap();
+    let operation = operation_of(&input);
+    let identifiers = operation.get_identifiers();
+    assert_eq!(identifiers.get(&ENTRY_ID), Some("B1"));
+    assert_eq!(identifiers.get(&ENTRY_REF_ID), None);
     assert_eq!(
-        source.get_by_tag(262).as_ref().and_then(Scalar::as_str),
+        identifiers.get_from(&IdSource::Fix, &IdType::MdReqId),
         Some("REQ-9")
     );
-
-    let input = MarketData::try_from(source).unwrap();
-    let operation = operation_of(&input);
-    let altids = operation.get_altids();
-    assert_eq!(altids.get(ENTRY_ID), Some("B1"));
-    assert_eq!(altids.get(ENTRY_REF_ID), None);
-    assert_eq!(altids.get("MDREQID"), Some("REQ-9"));
-    assert_eq!(altids.get("foreign"), None);
+    assert_eq!(
+        identifiers.get_from(&IdSource::Base, &"foreign".parse::<IdType>().unwrap()),
+        Some("kept")
+    );
     let book = input.book().expect("an entry states its control");
     assert_eq!(book.action, Some(MdUpdateAction::Change));
     assert_eq!(
@@ -1326,7 +1364,8 @@ fn an_operation_names_its_entry_beside_the_message_identifiers_and_refuses_a_key
         Some("11".to_owned())
     );
     assert_eq!(book.entry_px, None, "the entry restated no price");
-    assert!(scope_of(&input).contains("MDReqID=REQ-9"));
+    // The scope is the wire's: the request the message names on it.
+    assert!(!scope_of(&input).contains("REQ-9"), "{}", scope_of(&input));
 }
 
 #[test]
@@ -1348,15 +1387,18 @@ fn incremental_actions_keep_the_wire_action_and_terminal_delete_state() {
     assert!(operations[1].get_state().is_live());
     assert!(!operations[2].get_state().is_live());
     assert_eq!(operations[2].get_crosscode(), operations[0].get_crosscode());
-    assert_eq!(operations[0].get_altids().get(ENTRY_ID), Some("B1"));
-    assert_eq!(operations[2].get_altids().get(ENTRY_ID), None);
-    assert_eq!(operations[2].get_altids().get(ENTRY_REF_ID), Some("B1"));
+    assert_eq!(operations[0].get_identifiers().get(&ENTRY_ID), Some("B1"));
+    assert_eq!(operations[2].get_identifiers().get(&ENTRY_ID), None);
+    assert_eq!(
+        operations[2].get_identifiers().get(&ENTRY_REF_ID),
+        Some("B1")
+    );
     assert_eq!(inputs[1].book().and_then(|book| book.position), Some(1));
 }
 
 #[test]
 fn fallback_identity_is_scoped_typed_and_stable_across_price_changes() {
-    let input = MarketData::try_from(message(
+    let input = yggdryl::FixMsg::into_market_leaf(message(
         b"8=FIX.4.4|35=X|1301=XNAS|1300=NASDAQ|268=1|279=0|269=1|55=AAPL|1023=2|290=3|270=101.25|271=4|10=0|",
     ))
     .expect("one operation");
@@ -1391,7 +1433,7 @@ fn unsupported_market_shapes_answer_no_leaf() {
 
 #[test]
 fn singular_conversion_refuses_a_multi_entry_book_message() {
-    let error = MarketData::try_from(message(
+    let error = yggdryl::FixMsg::into_market_leaf(message(
         b"8=FIX.4.4|35=W|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=101|271=11|10=0|",
     ))
     .expect_err("two entries are not one operation");
@@ -1418,7 +1460,7 @@ fn market_entry_clock_dates_each_operation_and_precisely_dates_an_execution() {
         Some(1_789_896_600_223_456_789)
     );
 
-    let snapshot = MarketData::try_from(message(
+    let snapshot = yggdryl::FixMsg::into_market_leaf(message(
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|278=B1|270=100|271=10|272=20260920|273=09:30:00.123456789|10=0|",
     ))
     .expect("one full-snapshot entry");
@@ -1442,7 +1484,10 @@ fn borrowed_and_owned_book_expansion_share_stable_effective_time_order() {
         assert_eq!(
             operations
                 .iter()
-                .map(|input| operation_of(input).get_altids().get(ENTRY_ID).unwrap())
+                .map(|input| operation_of(input)
+                    .get_identifiers()
+                    .get(&ENTRY_ID)
+                    .unwrap())
                 .collect::<Vec<_>>(),
             expected
         );
@@ -1558,7 +1603,7 @@ fn an_empty_full_refresh_states_no_operation_and_round_trips_through_arrow() {
     let batch = encoded.next().unwrap().unwrap();
     assert!(encoded.next().is_none());
     assert_eq!(
-        batch.column_by_name("tif").unwrap().null_count(),
+        batch.column_by_name("timeinforce").unwrap().null_count(),
         1,
         "the row states no operation fact"
     );
@@ -1572,7 +1617,7 @@ fn an_empty_full_refresh_states_no_operation_and_round_trips_through_arrow() {
 
 #[test]
 fn book_scope_escapes_external_delimiters_injectively() {
-    let input = MarketData::try_from(message(
+    let input = yggdryl::FixMsg::into_market_leaf(message(
         b"8=FIX.4.4|35=W|55=A=B%X|268=1|269=0|278=B1|270=100|271=1|10=0|",
     ))
     .unwrap();
@@ -1647,7 +1692,10 @@ fn a_typed_price_outside_decimal18_excludes_a_resting_entry_and_nulls_an_update(
     );
     assert_eq!(operation_of(&change).get_price(), None);
     assert_eq!(change.book().and_then(|book| book.entry_px), None);
-    assert_eq!(operation_of(&change).get_altids().get(ENTRY_ID), Some("B1"));
+    assert_eq!(
+        operation_of(&change).get_identifiers().get(&ENTRY_ID),
+        Some("B1")
+    );
 }
 
 /// A snapshot whose entries group the row holds as a column - what a row
@@ -1817,7 +1865,7 @@ fn ticker_less_instruments_sharing_an_entry_id_stay_apart_where_either_states_an
                 assert_eq!(leaf.get_ticker(), None);
                 assert_eq!(
                     leaf.get_crosscode(),
-                    format!("BUYS:{}|MDEntryID=E1", scope_of(leaf))
+                    format!("14:1:{}|MDEntryID=E1", scope_of(leaf))
                 );
                 scope_of(leaf).to_owned()
             })
@@ -1830,9 +1878,10 @@ fn ticker_less_instruments_sharing_an_entry_id_stay_apart_where_either_states_an
                 .expect("a book reader"),
         );
         let last = books.last().expect("a last book").clone();
-        // One categorized book: no ticker, keyed by market and class.
+        // One categorized book: no ticker, keyed by market and class, its
+        // code stored under the book kind and no side.
         assert_eq!(last.get_ticker(), None);
-        assert_eq!(last.get_crosscode(), "XPAR:ESVUFR");
+        assert_eq!(last.get_crosscode(), "3:0:XPAR:ESVUFR");
         alive(&last, true)
             .into_iter()
             .map(|level| text(level.get_price()).expect("a priced level"))
@@ -2005,7 +2054,7 @@ fn a_refused_intake_is_passed_over_and_a_source_failure_ends_the_capture_after_i
             .iter()
             .map(|leaf| leaf.get_crosscode())
             .collect::<Vec<_>>(),
-        ["SELL:C2", "BUYS:C1"],
+        ["10:2:C2", "10:1:C1"],
         "sorted by instant"
     );
     let reader = codec
@@ -2024,7 +2073,7 @@ fn a_refused_intake_is_passed_over_and_a_source_failure_ends_the_capture_after_i
             .expect("the prefix")
             .unwrap()
             .get_crosscode(),
-        "BUYS:C1"
+        "10:1:C1"
     );
     let error = operations
         .next()
@@ -2222,9 +2271,10 @@ fn keys(value: &MarketData) -> Vec<String> {
         .collect()
 }
 
-/// An order stating four fields no typed column reads - `OrdType(40)`,
-/// `ExecInst(18)`, `HandlInst(21)` and `DisplayQty(111)`, FIX 4.4's
-/// `MaxFloor` - beside the header, the trailer and the typed facts.
+/// An order stating two fields no typed column reads - `ExecInst(18)` and
+/// `HandlInst(21)` - beside the header, the trailer and the typed facts,
+/// `OrdType(40)` and FIX 4.4's `MaxFloor(111)` among them: how it is priced,
+/// and the peak an iceberg shows.
 const UNMAPPED_ORDER: &[u8] = b"8=FIX.4.4|9=120|35=D|49=BUYER|56=VENUE|34=12|52=20260921-10:00:00|11=C1|1=ACC1|55=AAPL|54=1|44=100.5|38=5|40=2|18=G|21=1|111=3|60=20260921-10:00:00|10=123|";
 
 #[test]
@@ -2235,16 +2285,15 @@ fn a_leaf_carries_every_unmapped_field_and_no_typed_one() {
     let [leaf] = leaves.as_slice() else {
         panic!("one order")
     };
+    // How it is priced and what it shows are facts of the order, and
+    // what it keeps back is the quantity past the peak.
+    assert_eq!(leaf.get_marketdatatype(), yggdryl::MarketDataType::OrdLimit);
+    assert_eq!(leaf.get_displayqty(), Some(yggdryl::Decimal::from_int(3)));
+    assert_eq!(leaf.get_hiddenqty(), Some(yggdryl::Decimal::from_int(2)));
     assert_eq!(
         metadata(leaf),
-        [
-            // A quantity spells its decimal at the scale it is stored at.
-            ("displayqty", "3.000000000000000000"),
-            ("execinst", "G"),
-            ("handlinst", "1"),
-            ("ordtype", "2"),
-        ]
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        [("execinst", "G"), ("handlinst", "1"),]
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
     );
     for typed in [
         // The account is the leaf's `ACCOUNT`.
@@ -2270,11 +2319,11 @@ fn a_leaf_carries_every_unmapped_field_and_no_typed_one() {
     let order = operation_of(leaf);
     assert_eq!(order.get_ticker(), Some("AAPL"));
     assert_eq!(text(order.get_price()).as_deref(), Some("100.5"));
-    assert_eq!(order.get_accountids().get("ACCOUNT"), Some("ACC1"));
+    assert_eq!(order.get_partyids().get(&IdType::Account), Some("ACC1"));
 }
 
 #[test]
-fn the_parties_a_leaf_holds_leave_its_metadata_and_a_second_of_a_role_stays() {
+fn the_partyids_a_leaf_holds_leave_its_metadata_and_a_second_of_a_role_stays() {
     let leaves = message(
         b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|453=3|448=TRADER1|447=D|452=11|448=ACC9|447=D|452=24|448=TRADER2|447=D|452=11|10=0|",
     )
@@ -2283,13 +2332,14 @@ fn the_parties_a_leaf_holds_leave_its_metadata_and_a_second_of_a_role_stays() {
     let [leaf] = leaves.as_slice() else {
         panic!("one order")
     };
-    // Each party is an account under its role's name; the second trader of
-    // one role is no account the leaf holds, so its occurrence alone stays,
-    // one key under the group's name holding the JSON array of what it kept.
+    // Each party is typed by its role's name from its source's; the second
+    // trader of one role is no party the leaf holds, so its occurrence alone
+    // stays, one key under the group's name holding the JSON array of what
+    // it kept.
     let order = operation_of(leaf);
     assert_eq!(
-        order.get_accountids().to_string(),
-        "{CUSTOMERACCOUNT=ACC9, ORDERORIGINATIONTRADER=TRADER1}"
+        order.get_partyids().to_string(),
+        "[proprietary:customeraccount=ACC9, proprietary:orderoriginationtrader=TRADER1]"
     );
     assert_eq!(
         metadata(leaf),
@@ -2299,12 +2349,17 @@ fn the_parties_a_leaf_holds_leave_its_metadata_and_a_second_of_a_role_stays() {
         )]
         .map(|(key, value)| (key.to_owned(), value.to_owned()))
     );
-    assert!(order.get_altids().get("CUSTOMERACCOUNT").is_none());
+    assert!(
+        order
+            .get_identifiers()
+            .get(&IdType::CustomerAccount)
+            .is_none()
+    );
     assert!(!keys(leaf).iter().any(|key| key == "nopartyids"));
 }
 
 #[test]
-fn a_scalar_ending_with_one_of_its_messages_identifiers_is_lifted_into_the_leafs_altids() {
+fn a_scalar_ending_with_one_of_its_messages_identifiers_is_lifted_into_the_leafs_identifiers() {
     let long = "R".repeat(70);
     let line = format!(
         "8=FIX.4.4|35=8|52=20260921-10:00:00|17=E1|11=C1|37=O-1|150=F|39=2|55=AAPL|54=1|\
@@ -2317,24 +2372,38 @@ fn a_scalar_ending_with_one_of_its_messages_identifiers_is_lifted_into_the_leafs
     for leaf in &leaves {
         let report = operation_of(leaf);
         // An execution report declares `orderid`, `clordid`, `reforderid`
-        // and `secondaryclordid` among its identifiers: a dictionary field,
-        // a losing alias of `OrderID(37)` and a bridge's namespaced key each
-        // go under their own name, beside the sources.
-        for (key, value) in [
-            ("CLORDID", "C1"),
-            ("ORDERID", "O-1"),
-            ("REFORDERID", "R-1"),
-            ("SECONDARYCLORDID", "S-1"),
-            ("MARKETORDERID", "M-1"),
-            ("VENUE.X.PARENTORDERID", "V-1"),
+        // and `secondaryclordid` among its identifiers: a dictionary field -
+        // `SecondaryClOrdID(526)` one of the secondary identifiers the
+        // dictionary maps - a losing alias of `OrderID(37)` and a bridge's
+        // namespaced key each go under their own type, beside the sources -
+        // a key from the source the rest of its name spells, a dot inside
+        // kept, however long; a parent states the base it is a parent of
+        // under its own source.
+        for (src, kind, value) in [
+            ("fix", "clordid", "C1"),
+            ("fix", "orderid", "O-1"),
+            ("base", "reforderid", "R-1"),
+            ("fix", "secondaryclordid", "S-1"),
+            ("market", "orderid", "M-1"),
+            ("venue.x", "parentorderid", "V-1"),
+            ("venue.x", "orderid", "V-1"),
+            ("namespace.of.more.than.thirty.two.bytes", "orderid", "N-1"),
         ] {
-            assert_eq!(report.get_altids().get(key), Some(value), "{key}");
+            assert_eq!(
+                report.get_identifiers().get_from(
+                    &src.parse::<IdSource>().unwrap(),
+                    &kind.parse::<IdType>().unwrap()
+                ),
+                Some(value),
+                "{src}:{kind}: {}",
+                report.get_identifiers()
+            );
         }
-        // What no map takes - a key past thirty-two bytes, a value past
-        // sixty-four - stays where it was stated.
+        // What no map takes - a value past sixty-four bytes - stays where it
+        // was stated.
         let kept = keys(leaf);
         assert!(
-            kept.iter().any(|key| key.ends_with("two.bytes.orderid")),
+            !kept.iter().any(|key| key.ends_with("two.bytes.orderid")),
             "{kept:?}"
         );
         assert!(kept.contains(&"refclordid".to_owned()), "{kept:?}");
@@ -2346,17 +2415,22 @@ fn a_scalar_ending_with_one_of_its_messages_identifiers_is_lifted_into_the_leafs
         ] {
             assert!(!kept.iter().any(|key| key == lifted), "{lifted}: {kept:?}");
         }
-        assert!(kept.contains(&"ordtype".to_owned()), "{kept:?}");
+        // How an order is priced is a typed fact of its own.
+        assert!(!kept.contains(&"ordtype".to_owned()), "{kept:?}");
     }
 }
 
 #[test]
 fn a_key_ending_with_no_identifier_its_message_declares_stays() {
-    // A new order declares no `orderid`: a bridge's order identifier on
-    // one is no identifier of the order's, and stays.
+    // A dictionary field is lifted only where its message type declares it:
+    // a new order declares no `listid`, so `ListID(66)` on one is no
+    // identifier of the order's, and stays; `RefOrderID(1080)` is one a new
+    // order declares. A key no dictionary tags is lifted by the crate's own
+    // names whatever the message, a new order included - and leaves the
+    // metadata with it.
     let leaves = message(
         b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|40=2|\
-          1080=R-1|VENUE.X.PARENTORDERID=V-1|10=0|",
+          1080=R-1|66=LIST|VENUE.X.PARENTORDERID=V-1|10=0|",
     )
     .into_market_data()
     .expect("an order");
@@ -2364,11 +2438,97 @@ fn a_key_ending_with_no_identifier_its_message_declares_stays() {
         panic!("one order")
     };
     let order = operation_of(leaf);
-    // `RefOrderID(1080)` is one a new order declares.
-    assert_eq!(order.get_altids().get("REFORDERID"), Some("R-1"));
-    assert_eq!(order.get_altids().get("VENUE.X.PARENTORDERID"), None);
+    assert_eq!(
+        order
+            .get_identifiers()
+            .get(&"reforderid".parse::<IdType>().unwrap()),
+        Some("R-1")
+    );
+    assert_eq!(
+        order
+            .get_identifiers()
+            .get(&"listid".parse::<IdType>().unwrap()),
+        None
+    );
     assert!(
-        keys(leaf).contains(&"venue.x.parentorderid".to_owned()),
+        keys(leaf).contains(&"listid".to_owned()),
+        "{:?}",
+        keys(leaf)
+    );
+    assert_eq!(
+        order.get_identifiers().get_from(
+            &"venue.x".parse::<IdSource>().unwrap(),
+            &"parentorderid".parse::<IdType>().unwrap()
+        ),
+        Some("V-1")
+    );
+    assert!(
+        !keys(leaf).iter().any(|key| key.contains("parentorderid")),
+        "{:?}",
+        keys(leaf)
+    );
+
+    // The execution report declares `listid`: the same field is lifted.
+    let leaves = message(
+        b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E1|11=C1|37=O-1|150=F|39=2|55=AAPL|54=1|\
+          38=5|31=10|32=5|66=LIST|10=0|",
+    )
+    .into_market_data()
+    .expect("a fill");
+    let report = operation_of(&leaves[0]);
+    assert_eq!(
+        report
+            .get_identifiers()
+            .get(&"listid".parse::<IdType>().unwrap()),
+        Some("LIST")
+    );
+    assert!(!keys(&leaves[0]).contains(&"listid".to_owned()));
+}
+
+/// A key naming an identifier is lifted into its set when the set holds its
+/// key free or holds the same value there; where the set holds another value
+/// under that key, the key stays in the leaf's metadata as it arrived.
+#[test]
+fn a_key_whose_set_holds_another_value_under_its_key_stays_in_the_leafs_metadata() {
+    // Two spellings of one key, `omsdealer:orderid`: the namespaced one is
+    // read first, and the one that states another value is the one that stays.
+    let leaves = message(
+        b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E1|37=O1|150=F|39=2|54=1|55=AAPL|31=10|32=1|\
+          OMSDEALERORDERID=B|OMSDEALER.ORDERID=A|10=0|",
+    )
+    .into_market_data()
+    .expect("a fill");
+    let leaf = &leaves[0];
+    assert_eq!(
+        operation_of(leaf)
+            .get_identifiers()
+            .get_from(&"omsdealer".parse::<IdSource>().unwrap(), &IdType::OrderId),
+        Some("A")
+    );
+    assert_eq!(
+        metadata(leaf)
+            .into_iter()
+            .filter(|(key, _)| key.contains("orderid"))
+            .collect::<Vec<_>>(),
+        [("omsdealerorderid".to_owned(), "B".to_owned())]
+    );
+
+    // The same value under both spellings is one statement: both lifted.
+    let leaves = message(
+        b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E1|37=O1|150=F|39=2|54=1|55=AAPL|31=10|32=1|\
+          OMSDEALERORDERID=A|OMSDEALER.ORDERID=A|10=0|",
+    )
+    .into_market_data()
+    .expect("a fill");
+    let leaf = &leaves[0];
+    assert_eq!(
+        operation_of(leaf)
+            .get_identifiers()
+            .get_from(&"omsdealer".parse::<IdSource>().unwrap(), &IdType::OrderId),
+        Some("A")
+    );
+    assert!(
+        !keys(leaf).iter().any(|key| key.contains("orderid")),
         "{:?}",
         keys(leaf)
     );
@@ -2389,11 +2549,11 @@ fn a_book_entrys_parties_are_its_leafs_accounts_leading_the_messages() {
     // The bid's own firm leads the message's; the ask states none of its
     // own and holds the message's.
     assert_eq!(
-        operation_of(bid).get_accountids().get("EXECUTINGFIRM"),
+        operation_of(bid).get_partyids().get(&IdType::ExecutingFirm),
         Some("MM1")
     );
     assert_eq!(
-        operation_of(ask).get_accountids().get("EXECUTINGFIRM"),
+        operation_of(ask).get_partyids().get(&IdType::ExecutingFirm),
         Some("ROOT")
     );
     assert!(
@@ -2435,7 +2595,10 @@ fn a_regulatory_trade_identifier_the_leaf_holds_leaves_its_metadata() {
     .expect("a report and its fill");
     for leaf in &leaves {
         let operation = operation_of(leaf);
-        assert_eq!(operation.get_altids().get("REGTRADEID"), Some("UTI-1"));
+        assert_eq!(
+            operation.get_identifiers().get(&IdType::RegTradeId),
+            Some("UTI-1")
+        );
         // The second identifier of one type is none the leaf holds, and
         // alone stays.
         let kept = metadata(leaf);
@@ -2513,7 +2676,7 @@ fn a_book_roots_field_no_entry_inherits_rides_every_leaf() {
         // What the entries inherit is read, and none of it is repeated.
         assert!(!keys(leaf).iter().any(|key| key == "mdbooktype"), "{entry}");
         // The entry's code, stored under the side it takes.
-        assert_eq!(event_of(leaf).get_crosscode(), leaf.sided_crosscode(&code));
+        assert_eq!(event_of(leaf).get_crosscode(), leaf.stored_crosscode(&code));
     }
 }
 
@@ -2555,7 +2718,7 @@ fn a_trade_side_keeps_its_own_members_bare_and_the_order_independence_pins_hold(
     };
     // Each side's execution carries the trade's own - `TradeReportID(571)`,
     // an identifier a trade capture report declares, is lifted into its
-    // alternate identifiers, and `TradeReportTransType(487)`, which says the
+    // identifiers, and `TradeReportTransType(487)`, which says the
     // report executed, is no metadata - and its own side's members, bare,
     // never its sibling's. `OrderCapacity(528)` sits in the side's
     // `TradeReportOrderDetail` component, so it lands in that component's
@@ -2569,7 +2732,10 @@ fn a_trade_side_keeps_its_own_members_bare_and_the_order_independence_pins_hold(
         owned(&[("tradereportorderdetail", r#"{"ordercapacity":"P"}"#)])
     );
     for side in [buy, sell] {
-        assert_eq!(side.get_altids().get("TRADEREPORTID"), Some("T1"));
+        assert_eq!(
+            side.get_identifiers().get(&IdType::TradeReportId),
+            Some("T1")
+        );
     }
 }
 
@@ -2632,12 +2798,12 @@ fn book_arrow_reader_honours_the_switch() {
     };
     let filled = live(fixed_codec(committed_registry()));
     let bare = live(fixed_codec(committed_registry()).with_market_metadata(false));
-    assert_eq!(filled.get_metadata().len(), 4);
+    assert_eq!(filled.get_metadata().len(), 2);
     assert!(bare.get_metadata().is_empty());
     // The account is no metadata: both hold it.
     for leaf in [&filled, &bare] {
         assert_eq!(
-            operation_of(leaf).get_accountids().get("ACCOUNT"),
+            operation_of(leaf).get_partyids().get(&IdType::Account),
             Some("ACC1")
         );
     }
@@ -2653,8 +2819,8 @@ fn a_lifecycle_merge_keeps_the_union_with_the_reference_leading() {
     let capture = messages(
         &codec,
         &[
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65020=SESSION|65019=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
-            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65020=SESSION|65019=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:00|65043=SESSION|65042=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=1|18=G|10=0|",
+            b"8=FIX.4.4|35=D|34=7|52=20260921-10:00:01|65043=SESSION|65042=CONTEXT|11=C1|55=AAPL|54=1|44=100|38=5|21=2|111=3|10=0|",
         ],
     );
     let walked = codec
@@ -2668,12 +2834,8 @@ fn a_lifecycle_merge_keeps_the_union_with_the_reference_leading() {
     };
     assert_eq!(
         metadata(leaf),
-        [
-            ("displayqty", "3.000000000000000000"),
-            ("execinst", "G"),
-            ("handlinst", "2"),
-        ]
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        [("execinst", "G"), ("handlinst", "2")]
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
     );
 }
 
@@ -2685,22 +2847,32 @@ fn leaf_metadata_round_trips_through_arrow() {
         &[
             UNMAPPED_ORDER,
             b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|1180=MDP|268=1|279=0|269=0|278=B1|270=100|271=10|83=7|10=0|",
-            b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|54=1|38=5|40=2|1080=R-1|453=1|448=TRADER1|447=D|452=11|10=0|",
+            b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|54=1|38=5|40=2|18=G|1080=R-1|453=1|448=TRADER1|447=D|452=11|10=0|",
         ],
     );
     let expected = drained(codec.market_data(capture.clone())).expect("the leaves");
     assert!(expected.iter().all(|leaf| !leaf.get_metadata().is_empty()));
     // The third order's party is its account and its `RefOrderID(1080)` an
-    // alternate identifier, lifted out of its metadata.
+    // identifier, lifted out of its metadata.
     let third = operation_of(&expected[2]);
     assert_eq!(
-        third.get_accountids().get("ORDERORIGINATIONTRADER"),
+        third.get_partyids().get(&IdType::OrderOriginationTrader),
         Some("TRADER1")
     );
-    assert_eq!(third.get_altids().get("REFORDERID"), Some("R-1"));
+    assert_eq!(
+        third
+            .get_identifiers()
+            .get(&"reforderid".parse::<IdType>().unwrap()),
+        Some("R-1")
+    );
+    assert_eq!(
+        expected[2].get_marketdatatype(),
+        yggdryl::MarketDataType::OrdLimit,
+        "how it is priced is typed"
+    );
     assert_eq!(
         metadata(&expected[2]),
-        [("ordtype".to_owned(), "2".to_owned())]
+        [("execinst".to_owned(), "G".to_owned())]
     );
     let actual = drained(
         MarketData::from_arrow_reader(codec.market_arrow_reader(capture).expect("a reader"))
@@ -2712,8 +2884,8 @@ fn leaf_metadata_round_trips_through_arrow() {
         assert_eq!(read.get_metadata(), stated.get_metadata(), "{index}");
         assert_eq!(read.get_curruuid(), stated.get_curruuid(), "{index}");
         let (read, stated) = (operation_of(read), operation_of(stated));
-        assert_eq!(read.get_accountids(), stated.get_accountids(), "{index}");
-        assert_eq!(read.get_altids(), stated.get_altids(), "{index}");
+        assert_eq!(read.get_partyids(), stated.get_partyids(), "{index}");
+        assert_eq!(read.get_identifiers(), stated.get_identifiers(), "{index}");
     }
     // The orders state no book control, and read back whole; the entry's
     // walk-time control is no row fact.

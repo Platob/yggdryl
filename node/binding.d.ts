@@ -15,6 +15,8 @@ export {
   Field,
   FieldPath,
   Filter,
+  Identifier,
+  Identifiers,
   IOBase,
   IOCursor,
   Listing,
@@ -409,6 +411,7 @@ export type DataTypeId =
   | 'side'
   | 'state'
   | 'marketdatakind'
+  | 'marketdatatype'
   | 'timeinforce'
   | 'unit'
   | 'ric'
@@ -523,7 +526,8 @@ interface DataTypeKindById {
   side: 'enum'
   state: 'enum'
   marketdatakind: 'enum'
-  timeinforce: 'code'
+  marketdatatype: 'enum'
+  timeinforce: 'enum'
   unit: 'code'
   ric: 'code'
   forex: 'code'
@@ -1333,16 +1337,18 @@ export type SedolField = FieldOf<'sedol', string>
 export type BbgField = FieldOf<'bbg', string>
 /** FIGI, the twelve-character Financial Instrument Global Identifier closed by its check digit. */
 export type FigiField = FieldOf<'figi', string>
-/** FIX Side(54), an enum stored as the `int32` code of its member and crossing as the member's name. */
+/** FIX Side(54), an enum stored as the `uint8` code of its member and crossing as the member's name. */
 export type SideField = FieldOf<'side', SideName>
-/** An order state ranked from the first to the terminal ones, stored as the `int32` code of its member. */
+/** An order state ranked from the first to the terminal ones, stored as the `uint16` code of its member. */
 export type StateField = FieldOf<'state', string>
-/** FIX's MsgCat code set, an enum stored as the `int32` code of its member and crossing as the member's name. */
+/** FIX's MsgCat code set, an enum stored as the `uint8` code of its member and crossing as the member's name. */
 export type MarketDataKindField = FieldOf<'marketdatakind', MarketDataKindName>
+/** The type of its kind a market element is, an enum stored as the `uint16` code of its member and crossing as the member's name. */
+export type MarketDataTypeField = FieldOf<'marketdatatype', MarketDataTypeName>
 /** A currency pair, `CCY/CCY`, stored as its text. */
 export type ForexField = FieldOf<'forex', string>
-/** FIX TimeInForce(59), the spelled instruction, held to eight bytes. */
-export type TimeInForceField = FieldOf<'timeinforce', string>
+/** FIX TimeInForce(59), how long an order stands, an enum stored as the `uint8` code of its member and crossing as the member's name. */
+export type TimeInForceField = FieldOf<'timeinforce', TimeInForceName>
 /** The unit a quantity is counted in, FIX UnitOfMeasure(996), ASCII held to thirty-two bytes. */
 export type UnitField = FieldOf<'unit', string>
 /** A Refinitiv Identification Code - a ticker and an exchange code - printable ASCII bounded at thirty-two bytes. */
@@ -1648,6 +1654,7 @@ export interface FieldsNamespace {
   side(name: string, options?: FieldOptions): SideField
   state(name: string, options?: FieldOptions): StateField
   marketdatakind(name: string, options?: FieldOptions): MarketDataKindField
+  marketdatatype(name: string, options?: FieldOptions): MarketDataTypeField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
   unit(name: string, options?: FieldOptions): UnitField
   ric(name: string, options?: FieldOptions): RicField
@@ -2289,13 +2296,17 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'marketdatakind', MarketDataKindName, N, O>
+  marketdatatype<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'marketdatatype', MarketDataTypeName, N, O>
   timeinforce<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
   >(
     name: N,
     options?: O,
-  ): NamedField<'timeinforce', string, N, O>
+  ): NamedField<'timeinforce', TimeInForceName, N, O>
   unit<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -3034,7 +3045,7 @@ export declare const yaml: StructuredCodec<TemplateCodecOptions>
  */
 /**
  * What state one thing is in: the core's lifecycle-sorted enum, each
- * member's name under the `int32` code a `state` column stores. The codes
+ * member's name under the `uint16` code a `state` column stores. The codes
  * sort from the first state to the terminal ones; a code's hundreds are its
  * rank.
  */
@@ -3107,7 +3118,7 @@ export type StateName = keyof typeof State
 
 /**
  * What kind of market data an element is: FIX's MsgCat code set, each
- * member's four-letter name under the `int32` code a `marketdatakind`
+ * member's four-letter name under the `uint8` code a `marketdatakind`
  * column stores - an order `ORDR`, a quote `QUOT`, an execution `EXEC`, a
  * trade `TRAD`, a book `BOOK`, the batches `ORDB`, `QUOB`, `EXEB` and
  * `TRDB`, and `UNKN` for a type the dictionary files under none.
@@ -3145,8 +3156,199 @@ export declare const MarketDataKind: Readonly<{
 export type MarketDataKindName = keyof typeof MarketDataKind
 
 /**
+ * The type of its kind a market element is, each member's name under the
+ * `uint16` code a `marketdatatype` column stores: the order types `ORD*`
+ * (101-199), the quote types `QUO*` (200-299), the trade types `TRD*`
+ * (300-399), the book entry types `BOOK*` (400-499), the trade report types
+ * `TRPT*` (500-599), the quote request types `QRQ*` (600-699), the mass
+ * cancel scopes `MCX*` (700-799) and the market data request types `MDR*`
+ * (800-899), each set closed by its catch-all, and `UNKN` at zero for an
+ * element that states none.
+ */
+export declare const MarketDataType: Readonly<{
+  UNKN: 0
+  ORDMKT: 101
+  ORDLIMIT: 102
+  ORDSTOP: 103
+  ORDSTOPLIMIT: 104
+  ORDMOC: 105
+  ORDWOW: 106
+  ORDLOB: 107
+  ORDLWOW: 108
+  ORDBASIS: 109
+  ORDONCLOSE: 110
+  ORDLOC: 111
+  ORDFXMKT: 112
+  ORDPREVQUOTED: 113
+  ORDPREVINDIC: 114
+  ORDFXLIMIT: 115
+  ORDFXSWAP: 116
+  ORDFXPREVQUOTED: 117
+  ORDFUNARI: 118
+  ORDMIT: 119
+  ORDMKTLIMIT: 120
+  ORDPREVFUND: 121
+  ORDNEXTFUND: 122
+  ORDPEGGED: 123
+  ORDCOUNTER: 124
+  ORDSTOPBO: 125
+  ORDSTOPLIMITBO: 126
+  ORDMKTBAND: 127
+  ORDOTHER: 199
+  QUOINDIC: 200
+  QUOTRAD: 201
+  QUORESTR: 202
+  QUOCOUNTER: 203
+  QUOINIT: 204
+  QUOOTHER: 299
+  TRDREG: 300
+  TRDBLOCK: 301
+  TRDEFP: 302
+  TRDTRANSFER: 303
+  TRDLATE: 304
+  TRDT: 305
+  TRDWAP: 306
+  TRDBUNCHED: 307
+  TRDLATEBUNCHED: 308
+  TRDPRIORREF: 309
+  TRDAFTERHOURS: 310
+  TRDEFR: 311
+  TRDEFS: 312
+  TRDTAS: 315
+  TRDAON: 316
+  TRDERROR: 324
+  TRDLARGE: 338
+  TRDEXERCISE: 345
+  TRDPORTFOLIO: 350
+  TRDVWAP: 351
+  TRDOTC: 354
+  TRDOPENING: 356
+  TRDNETTED: 357
+  TRDDARK: 362
+  TRDTECHNICAL: 363
+  TRDBENCHMARK: 364
+  TRDPACKAGE: 365
+  TRDROLL: 366
+  TRDCLOSING: 367
+  TRDOTHER: 399
+  BOOKBID: 400
+  BOOKOFFER: 401
+  BOOKTRADE: 402
+  BOOKINDEX: 403
+  BOOKOPEN: 404
+  BOOKCLOSE: 405
+  BOOKSETTLE: 406
+  BOOKHIGH: 407
+  BOOKLOW: 408
+  BOOKVWAP: 409
+  BOOKIMBALANCE: 410
+  BOOKVOLUME: 411
+  BOOKOI: 412
+  BOOKMID: 417
+  BOOKEMPTY: 418
+  BOOKOTHER: 499
+  TRPTSUBMIT: 500
+  TRPTALLEGED: 501
+  TRPTACCEPT: 502
+  TRPTDECLINE: 503
+  TRPTADDENDUM: 504
+  TRPTNOWAS: 505
+  TRPTCANCEL: 506
+  TRPTBREAK: 507
+  TRPTDEFAULTED: 508
+  TRPTINVALIDCMTA: 509
+  TRPTPENDED: 510
+  TRPTALLEGEDNEW: 511
+  TRPTALLEGEDADD: 512
+  TRPTALLEGEDNOWAS: 513
+  TRPTALLEGEDCANCEL: 514
+  TRPTALLEGEDBREAK: 515
+  TRPTOTHER: 599
+  QRQMANUAL: 601
+  QRQAUTO: 602
+  QRQOTHER: 699
+  MCXSECURITY: 701
+  MCXUNDERLYING: 702
+  MCXPRODUCT: 703
+  MCXCFI: 704
+  MCXSECTYPE: 705
+  MCXSESSION: 706
+  MCXALL: 707
+  MCXMARKET: 708
+  MCXSEGMENT: 709
+  MCXGROUP: 710
+  MCXISSUER: 711
+  MCXUNDISSUER: 712
+  MCXOTHER: 799
+  MDRSNAPSHOT: 800
+  MDRSUBSCRIBE: 801
+  MDRUNSUBSCRIBE: 802
+  MDROTHER: 899
+}>
+
+/** The stored name of one market data type. */
+export type MarketDataTypeName = keyof typeof MarketDataType
+
+/**
+ * The member one FIX field's wire value types an element as - `OrdType(40)`,
+ * `QuoteType(537)`, `TrdType(828)`, `MDEntryType(269)`,
+ * `TradeReportType(856)`, `QuoteRequestType(303)`,
+ * `MassCancelRequestType(530)` or `SubscriptionRequestType(263)` - with the field's
+ * catch-all for a value no member names, or `null` for a field that types
+ * nothing.
+ */
+export declare function marketDataTypeFromFix(tag: number, wire: string): MarketDataTypeName | null
+
+/**
+ * The FIX field and wire value the member stands for, or `null` for `UNKN`
+ * and a catch-all; throws on a name that is no member.
+ */
+export declare function marketDataTypeFixCode(
+  name: MarketDataTypeName,
+): { tag: number; wire: string } | null
+
+/**
+ * FIX's `TimeInForce(59)`: how long an order stands, each member's stored
+ * name under the `uint8` code a `timeinforce` column stores - `UNKN` at zero
+ * for none stated, the FIX values in wire order, and `OTHER` for a venue's
+ * own value no member names.
+ */
+export declare const TimeInForce: Readonly<{
+  UNKN: 0
+  DAY: 1
+  GTC: 2
+  OPG: 3
+  IOC: 4
+  FOK: 5
+  GTX: 6
+  GTD: 7
+  ATC: 8
+  GTHX: 9
+  ATX: 10
+  GFT: 11
+  GFA: 12
+  GFM: 13
+  OTHER: 99
+}>
+
+/** The stored name of one time in force. */
+export type TimeInForceName = keyof typeof TimeInForce
+
+/**
+ * The member one `TimeInForce(59)` wire value stands for; a value no member
+ * names - a venue's own - is `OTHER`.
+ */
+export declare function timeInForceFromFix(wire: string): TimeInForceName
+
+/**
+ * The `TimeInForce(59)` wire value the member stands for, or `null` for
+ * `UNKN` and `OTHER`; throws on a name that is no member.
+ */
+export declare function timeInForceFixCode(name: TimeInForceName): string | null
+
+/**
  * FIX's `Side(54)`: which side of the market a trade took, each member's
- * four-letter code under the `int32` code a `side` column stores - `UNKN` at
+ * four-letter code under the `uint8` code a `side` column stores - `UNKN` at
  * zero, then the seventeen sides in FIX's own order, so a code is the
  * position of its one-character wire code.
  */
@@ -3213,20 +3415,31 @@ export declare const enums: {
   readonly marketViews: readonly string[]
   /** Every `BookRef.action` spelling. */
   readonly mdUpdateActions: readonly string[]
-  /** The fifteen event column names, in schema order. */
+  /**
+   * The six element column names every generated schema opens with, in
+   * schema order: `curruuid`, `crossuuid`, `crosscode`, `currhashcode`,
+   * `crosshashcode`, `srcuuids`.
+   */
+  readonly elementColumns: readonly string[]
+  /**
+   * The nine event column names that follow them, in schema order:
+   * `currunix`, `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`,
+   * `prevuuid`, `seqnum`, `state`.
+   */
   readonly eventColumns: readonly string[]
   /**
-   * The twenty-eight market column names, in schema order: `price`,
-   * `currency`, `quantity`, `unit`, `side`, `securityids`, `isincode`,
+   * The thirty-four market column names, in schema order:
+   * `marketdatakind`, `marketdatatype`, `price`, `stoppx`, `currency`, `quantity`,
+   * `displayqty`, `hiddenqty`, `unit`, `side`, `securityids`, `isincode`,
    * `cficode`, `miccode`, `execunix`, `lastpx`, `lastqty`, `avgpx`,
-   * `cumqty`, `leavesqty`, `prevpx`, `prevqty`, `spotrate`, `forwardpoints`,
-   * `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`, `askccy`, `fxrates`,
-   * `ticker`, `metadata`.
+   * `cumqty`, `leavesqty`, `cxlqty`, `prevpx`, `prevqty`, `spotrate`,
+   * `forwardpoints`, `bidpx`, `bidqty`, `bidccy`, `askpx`, `askqty`,
+   * `askccy`, `fxrates`, `ticker`, `metadata`.
    */
   readonly marketColumns: readonly string[]
   /**
-   * The four operation column names, in schema order: `tif`, `tradable`,
-   * `altids`, `accountids`.
+   * The five operation column names, in schema order: `ordqty`,
+   * `timeinforce`, `tradable`, `identifiers`, `partyids`.
    */
   readonly operationColumns: readonly string[]
 }
@@ -3465,6 +3678,14 @@ declare module './index' {
      * with the field in front.
      */
     scalar(value: unknown, options?: CodecOptions): Scalar
+    /**
+     * This field as an Apache Arrow JS Field, read from a one-field IPC
+     * schema: its nullability, metadata and children, and - Arrow JS having
+     * no extension types - the extension name and document of a datatype
+     * Arrow cannot state alone as its `ARROW:extension:*` metadata, which
+     * `Field.fromArrow` reads back as that datatype.
+     */
+    intoArrow(): ArrowField
   }
   namespace Field {
     /**
@@ -4667,9 +4888,9 @@ export interface Graph {
    * `CandleOptions` of both.
    */
   candles(books: Iterable<BookEvent | MarketData>, options: CandleOptionsInput, timezone?: TimezoneInput): Candle[]
-  /** The alternate-identifier key an entry's own `MDEntryID(278)` is held under. */
+  /** The identifier type an entry's own `MDEntryID(278)` is held under. */
   readonly ENTRY_ID: string
-  /** The alternate-identifier key an entry's `MDEntryRefID(280)` is held under. */
+  /** The identifier type an entry's `MDEntryRefID(280)` is held under. */
   readonly ENTRY_REF_ID: string
 }
 

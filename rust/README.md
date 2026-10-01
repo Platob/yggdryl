@@ -53,9 +53,7 @@ cargo check -p yggdryl --profile bench --benches --all-features
 Development and test profiles retain line-table backtraces but omit full debug
 symbols. Use `--profile debugging` when a debugger needs full symbols.
 
-Default and schema-only core builds support Rust 1.85. The optional `iceberg`
-feature and both bindings require Rust 1.94 because they include official
-Iceberg 0.10.1.
+The crate builds on Rust 1.94 and newer, every feature included.
 
 Arrow scalars, arrays, RecordBatch, and IPC live in the core `yggdryl::arrow`
 module and are enabled by default. A schema-only consumer may disable the

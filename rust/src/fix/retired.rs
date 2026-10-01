@@ -15,11 +15,7 @@
 //!
 //! This table is every replacement rule there is. A registry states none of
 //! its own: it holds the fields the rules read and write, and a registry
-//! lacking a target's field fills nothing there. The crate's own bridge
-//! fields that name an instrument - `OmsInstrumentId(65040)` and
-//! `UllinkInstrumentId(65041)` - stand here beside the specification's
-//! retirements, because they are restated the same way: into one
-//! `secaltids` occurrence under their own source.
+//! lacking a target's field fills nothing there.
 //!
 //! # Order
 //!
@@ -53,10 +49,6 @@ pub enum When {
     /// One of the value's codes is this one: a `MultipleCharValue` source,
     /// several codes in one text, matched by token.
     Contains(&'static str),
-    /// The value is no longer, in characters, than a code of this
-    /// identifier source may be: a value the source cannot hold stays where
-    /// it arrived.
-    FitsSource(&'static str),
 }
 
 /// One target a rule fills.
@@ -1515,48 +1507,6 @@ pub static RULES: &[(i32, &[Rule])] = &[
                 fills: &[Fill::Constant {
                     tag: 1390,
                     text: "0",
-                }],
-            },
-        ],
-    ),
-    (
-        super::crated::OMSINSTRUMENTID_TAG_NAME.0,
-        &[
-            // OmsInstrumentId names an instrument under the OMSINSTRUMENTID source
-            Rule {
-                when: When::FitsSource(super::crated::OMSINSTRUMENTID_SOURCE),
-                msgtypes: &[],
-                within: None,
-                fills: &[Fill::Occurrence {
-                    group: "secaltids",
-                    members: &[
-                        Fill::Source { tag: 455 },
-                        Fill::Constant {
-                            tag: 456,
-                            text: super::crated::OMSINSTRUMENTID_SOURCE,
-                        },
-                    ],
-                }],
-            },
-        ],
-    ),
-    (
-        super::crated::ULLINKINSTRUMENTID_TAG_NAME.0,
-        &[
-            // UllinkInstrumentId names an instrument under the ULLINKINSTRUMENTID source
-            Rule {
-                when: When::FitsSource(super::crated::ULLINKINSTRUMENTID_SOURCE),
-                msgtypes: &[],
-                within: None,
-                fills: &[Fill::Occurrence {
-                    group: "secaltids",
-                    members: &[
-                        Fill::Source { tag: 455 },
-                        Fill::Constant {
-                            tag: 456,
-                            text: super::crated::ULLINKINSTRUMENTID_SOURCE,
-                        },
-                    ],
                 }],
             },
         ],

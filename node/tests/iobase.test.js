@@ -24,10 +24,10 @@ const {
 } = require('yggdryl')
 
 const EVENT_COLUMNS = [
+  'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode', 'srcuuids',
   'currunix', 'creaunix', 'recdunix',
   'exprunix', 'prevunix', 'snapunix',
-  'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
-  'prevuuid', 'seqnum', 'srcuuids', 'state',
+  'prevuuid', 'seqnum', 'state',
 ]
 
 // A small Hive-partitioned lake with one private staging area, so listing,

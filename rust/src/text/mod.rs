@@ -671,10 +671,9 @@ fn infer_utf8_decision(input: &str, limits: Limits) -> Inferred {
     if input
         .trim_start_matches([' ', '\t', '\r', '\n', '\u{FEFF}'])
         .starts_with('<')
+        && let Ok(value) = crate::xml::from_utf8_with_limits(input, limits)
     {
-        if let Ok(value) = crate::xml::from_utf8_with_limits(input, limits) {
-            return Inferred::Decoded(Format::Xml, value);
-        }
+        return Inferred::Decoded(Format::Xml, value);
     }
     if is_empty_or_comment_only(input.as_bytes()) {
         return Inferred::Yaml;
@@ -867,6 +866,7 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::Side(_)
             | Scalar::State(_)
             | Scalar::MarketDataKind(_)
+            | Scalar::MarketDataType(_)
             | Scalar::TimeInForce(_)
             | Scalar::Isin(_)
             | Scalar::Cusip(_)

@@ -185,14 +185,14 @@ let message = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=A1|5
 assert_eq!((message.header().beginstring(), message.header().msgtype()), ("FIX.4.4", "D"));
 // The category its type files under, and the option strike it identifies.
 assert_eq!(message.msgcat(), MarketDataKind::Order);
-assert_eq!(message.strikepx(), Some(Decimal::from_int(105)));
+assert_eq!(message.strikeprice(), Some(Decimal::from_int(105)));
 // A coded value reads as its name; the wire keeps its code.
 assert_eq!(message.by_tag(54)?.as_str(), Some("BUYS"));
 assert_eq!(message.get_side().as_str(), "BUYS");
 assert_eq!(message.get_quantity(), Some(Decimal::from_int(100)));
 assert_eq!(message.by_name("symbol")?, Scalar::from("AAPL"));
 // The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
-assert_eq!(message.get_crosscode(), "BUYS:A1");
+assert_eq!(message.get_crosscode(), "10:1:A1");
 // Instants are i64 nanoseconds since the epoch, UTC.
 assert_eq!(message.get_currunix(), 1_767_348_930_000_000_000);
 // The entries are the content row as a tree; the lifted 11, 38 and 44 are not in it.
@@ -228,7 +228,7 @@ let value = Scalar::from_struct([
 ])?;
 let mut message = FixMsg::with_registry(Arc::clone(&registry), root, value)?;
 assert_eq!(message.header().msgtype(), "D");
-assert_eq!(message.get_crosscode(), "A1");
+assert_eq!(message.get_crosscode(), "10:0:A1");
 
 let before = message.get_currhashcode();
 message.set("Symbol", Scalar::from("MSFT"))?;
@@ -270,7 +270,7 @@ assert_eq!(again.digest(), message.digest());
 
 `parse_text_arrow_reader` takes the batches a text reader answers (a payload
 column, `body` by default) and answers FIX rows, one per message, the capture's
-own columns leading; parsing is pooled across `threads`.
+own columns following the shared ones; parsing is pooled across `threads`.
 
 ```rust
 use std::sync::Arc;
@@ -298,9 +298,12 @@ let read = FixCodec::new(registry)
     .with_threads(4)
     .with_batch_row_size(10_000)
     .parse_text_arrow_reader(source)?;
-// The schema is decided before a row is read: the capture leads, `fixentries` closes.
+// The schema is decided before a row is read: the shared columns lead, the capture follows them, `fixentries` closes.
 let schema = read.schema();
-assert_eq!(schema.field(0).name(), "url");
+assert_eq!(schema.field(0).name(), "curruuid");
+let at = schema.index_of("url")?;
+assert_eq!(schema.field(at - 1).name(), "partyids");
+assert_eq!(schema.field(at + 2).name(), "body");
 assert_eq!(schema.fields().last().map(|field| field.name().as_str()), Some("fixentries"));
 // One row per message: the sentence carried none.
 let rows: usize = read.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
@@ -344,7 +347,7 @@ let batches = FixCodec::new(Arc::clone(&registry))
     .collect::<Result<Vec<_>, _>>()?;
 let batch = &batches[0];
 assert_eq!(batch.num_rows(), 2, "the heartbeat is refused by default");
-assert!(batch.schema().index_of("level").is_ok(), "an unnamed capture leads the row");
+assert!(batch.schema().index_of("level").is_ok(), "an unnamed capture is a column of the row");
 // The line's clock became each message's instant; no SendingTime was invented.
 assert_eq!(batch.column_by_name("currunix").expect("currunix").null_count(), 0);
 assert_eq!(batch.column_by_name("sendingtime").expect("sendingtime").null_count(), 2);
@@ -446,7 +449,7 @@ assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
 assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
 assert!([&ack, &fill].iter().all(|held| held.get_crossuuid() == order.get_crossuuid()));
 // The reports stated no side: they joined the buy alive under A1 and O1.
-assert!([&ack, &fill].iter().all(|held| held.get_side() == Side::Buy && held.get_crosscode() == "BUYS:A1"));
+assert!([&ack, &fill].iter().all(|held| held.get_side() == Side::Buy && held.get_crosscode() == "10:1:A1"));
 assert_eq!((fill.msgcat(), *fill.get_state()), (MarketDataKind::Order, State::Filled));
 // Every walked message states when its chain began.
 assert!([&ack, &fill].iter().all(|held| held.get_creaunix() == Some(order.get_currunix())));
@@ -458,6 +461,49 @@ let schema = fix_schema(&registry, "fix")?;
 let rows = codec.arrow_reader(schema, codec.parse_lines(lines))?;
 let chained: usize = codec.lifecycle_arrow_reader(rows)?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
 assert_eq!(chained, 4);
+```
+
+## Follow a replace chain's parents
+
+A message that states an identifier again under another value is a step in
+its chain: `lifecycle` keeps the value before it as the type's parent
+(`orderid` leaves `parentorderid` and the chain's first as `origorderid`,
+`clordid` leaves `origclordid`), and joins a replace to its order by that
+parent too. `registry.parents_of(&base)` lists them, nearest first, from the
+`FIX:parents` a field states.
+
+```rust
+use std::sync::Arc;
+
+use yggdryl::graph::{Element, Operation};
+use yggdryl::local::LocalFolder;
+use yggdryl::{FixCodec, FixMsg, FixRegistry, IdSource, IdType};
+
+let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
+let lines: [&[u8]; 4] = [
+    b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|38=10|44=100|52=20260921-10:00:00|10=0|",
+    b"8=FIX.4.4|35=8|11=C1|37=O1|150=0|39=0|55=AAPL|52=20260921-10:00:01|10=0|",
+    b"8=FIX.4.4|35=G|11=C2|41=C1|37=O2|55=AAPL|54=1|38=10|44=101|52=20260921-10:00:02|10=0|",
+    b"8=FIX.4.4|35=G|11=C3|41=C2|37=O3|55=AAPL|54=1|38=10|44=102|52=20260921-10:00:03|10=0|",
+];
+let parsed: Vec<FixMsg> = reader.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
+let chained: Vec<FixMsg> = reader.lifecycle(parsed).collect::<yggdryl::Result<_>>()?;
+
+// What each message holds under each type, `-` where it holds none.
+let held = |message: &FixMsg| -> [String; 5] {
+    ["orderid", "parentorderid", "origorderid", "clordid", "origclordid"].map(|kind| {
+        let kind: IdType = kind.parse().expect("a type");
+        message.get_identifiers().get_from(&IdSource::Fix, &kind).unwrap_or("-").to_owned()
+    })
+};
+assert_eq!(held(&chained[0]), ["-", "-", "-", "C1", "-"]);
+assert_eq!(held(&chained[1]), ["O1", "-", "-", "C1", "-"]);
+// Each replace names the value before it and the chain's first.
+assert_eq!(held(&chained[2]), ["O2", "O1", "O1", "C2", "C1"]);
+assert_eq!(held(&chained[3]), ["O3", "O2", "O1", "C3", "C2"]);
+// One chain: the replaces joined the order by the parent they state.
+assert!(chained.iter().all(|message| message.get_crossuuid() == chained[0].get_crossuuid()));
 ```
 
 ## Split fills, two-sided quotes and batches at the parse
@@ -490,12 +536,12 @@ assert_eq!((report.msgcat(), *report.get_state()), (MarketDataKind::Order, State
 assert_eq!((execution.msgcat(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
 assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
 // An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
-assert_eq!((report.get_crosscode(), execution.get_crosscode()), ("BUYS:O-9", "BUYS:E-1"));
+assert_eq!((report.get_crosscode(), execution.get_crosscode()), ("10:1:O-9", "8:1:E-1"));
 
 let quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|";
 let [quote, bid, ask]: [FixMsg; 3] = codec.parse_line(quote)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("three");
 assert_eq!((quote.get_side(), bid.get_side(), ask.get_side()), (Side::Unknown, Side::Buy, Side::Sell));
-assert_eq!((bid.get_crosscode(), ask.get_crosscode()), ("BUYS:Q1", "SELL:Q1"));
+assert_eq!((bid.get_crosscode(), ask.get_crosscode()), ("14:1:Q1", "14:2:Q1"));
 // Each side prices at its own level and keeps the pair its source stated.
 assert_eq!((bid.get_price(), ask.get_price()), (Some("99".parse()?), Some("101".parse()?)));
 assert_eq!((ask.get_bidpx(), ask.get_askqty()), (Some("99".parse()?), Some("8".parse()?)));

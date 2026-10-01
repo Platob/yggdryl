@@ -234,11 +234,10 @@ The retired `yggdryl.currency` name is refused, including over dictionary storag
 
     ccy = Field("ccy", "ccy")
     arrow_field = ccy.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata == {
-        b"ARROW:extension:name": b"yggdryl.ccy",
-        b"ARROW:extension:metadata": b"",
-    }
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.ccy"
+    assert arrow_field.type.document == b""
+    assert not arrow_field.metadata
     assert Field.from_arrow(arrow_field) == ccy
 
     # The same text under the string family's name is a bounded string, and
@@ -344,7 +343,7 @@ Python declares a vocabulary over the width as well: `yggdryl.enums.CCY` is the 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ccy:: cfi::coded code::datatypes string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ccy:: cfi::coded code::datatypes string::listings
     ```
 
 === "Python"

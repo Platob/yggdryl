@@ -35,6 +35,7 @@ LEVELS: Mapping[str, int]
 MARKET_KINDS: tuple[str, ...]
 MARKET_VIEWS: tuple[str, ...]
 MD_UPDATE_ACTIONS: tuple[str, ...]
+ELEMENT_COLUMNS: tuple[str, ...]
 EVENT_COLUMNS: tuple[str, ...]
 MARKET_COLUMNS: tuple[str, ...]
 OPERATION_COLUMNS: tuple[str, ...]
@@ -57,6 +58,7 @@ __all__ = [
     "DATA_TYPE_IDS",
     "DATA_TYPE_KINDS",
     "DIGEST_ALGORITHMS",
+    "ELEMENT_COLUMNS",
     "EVENT_COLUMNS",
     "IO_KINDS",
     "LEVELS",

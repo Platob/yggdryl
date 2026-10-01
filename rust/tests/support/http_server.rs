@@ -573,18 +573,18 @@ impl Script {
     /// The answer that pre-empts the method's own: the Basic challenge, a
     /// failing status, a fixed status, a redirect.
     fn refusal(&mut self, request: &Request) -> Result<Option<Response>> {
-        if let Some(expected) = &self.basic {
-            if request.headers().get("authorization") != Some(expected.as_str()) {
-                return Response::new(Status::UNAUTHORIZED)
-                    .with_header("WWW-Authenticate", &format!("Basic realm=\"{REALM}\""))
-                    .map(Some);
-            }
+        if let Some(expected) = &self.basic
+            && request.headers().get("authorization") != Some(expected.as_str())
+        {
+            return Response::new(Status::UNAUTHORIZED)
+                .with_header("WWW-Authenticate", &format!("Basic realm=\"{REALM}\""))
+                .map(Some);
         }
-        if let Some((status, retry_after, times)) = &mut self.failing_status {
-            if *times > 0 {
-                *times -= 1;
-                return status_response(*status, retry_after.as_deref()).map(Some);
-            }
+        if let Some((status, retry_after, times)) = &mut self.failing_status
+            && *times > 0
+        {
+            *times -= 1;
+            return status_response(*status, retry_after.as_deref()).map(Some);
         }
         if let Some((status, retry_after)) = &self.status {
             return status_response(*status, retry_after.as_deref()).map(Some);

@@ -140,29 +140,41 @@ fn an_alias_fills_its_field_only_where_the_canonical_spelling_states_nothing() {
     assert_eq!(latest.by_tag(76).unwrap(), Scalar::from("BRKR"));
 
     // The canonical key states a value: it keeps the column the tag names
-    // alone, and the alias is a child of its own spelling - whether or not
-    // the two agree, because the rule reads which spelling arrived and
-    // never what it holds.
-    for alias in ["TWO", "ONE"] {
-        let latest = built(
-            undated_registry(),
-            &[("execbroker", "ONE"), ("ExecutingBroker", alias)],
-        );
-        assert_eq!(names(&latest), ["execbroker", "executingbroker"], "{alias}");
-        assert_eq!(latest.by_tag(76).unwrap(), Scalar::from("ONE"), "{alias}");
-        let at = latest
-            .as_field()
-            .index_of("executingbroker")
-            .expect("the alias child");
-        assert_eq!(
-            latest.as_field().fields()[at].get_metadata("FIX:alias"),
-            Some("execbroker")
-        );
-        assert_eq!(
-            latest.as_value().as_sequence().expect("a row")[at],
-            Scalar::from(alias)
-        );
-    }
+    // alone. An alias stating the same value is that column and leaves
+    // nothing; one stating another is an anomaly kept in the metadata,
+    // never a child the wire would carry.
+    let agreeing = built(
+        undated_registry(),
+        &[("execbroker", "ONE"), ("ExecutingBroker", "ONE")],
+    );
+    assert_eq!(names(&agreeing), ["execbroker"]);
+    assert_eq!(agreeing.by_tag(76).unwrap(), Scalar::from("ONE"));
+    assert!(agreeing.metadata().is_empty(), "{:?}", agreeing.metadata());
+    assert!(
+        agreeing.anomalies().is_empty(),
+        "{:?}",
+        agreeing.anomalies()
+    );
+
+    let disagreeing = built(
+        undated_registry(),
+        &[("execbroker", "ONE"), ("ExecutingBroker", "TWO")],
+    );
+    assert_eq!(names(&disagreeing), ["execbroker"]);
+    assert_eq!(disagreeing.by_tag(76).unwrap(), Scalar::from("ONE"));
+    assert_eq!(
+        disagreeing
+            .metadata()
+            .get("executingbroker")
+            .map(|held| held.as_str()),
+        Some("TWO")
+    );
+    let anomalies: Vec<&str> = disagreeing
+        .anomalies()
+        .iter()
+        .map(|held| held.field())
+        .collect();
+    assert_eq!(anomalies, ["executingbroker"]);
 }
 
 #[test]
@@ -707,57 +719,4 @@ fn a_value_written_into_a_message_is_restated_as_a_read_one_is() {
         ]
     );
     assert_eq!(integer(&party, 453), Some(1));
-}
-
-/// A group the row holds as a column is still a group: an identifier setter
-/// adds its occurrence beside the one the column states and the counter
-/// follows.
-#[test]
-fn an_identifier_setter_syncs_a_group_held_as_a_column() {
-    use yggdryl::graph::Market;
-    use yggdryl::securityid::{SecType, SecurityId};
-
-    let registry = super::committed_registry();
-    let parsed = super::fixed_codec(Arc::clone(&registry))
-        .sole_line(b"8=FIX.4.4|35=D|11=A1|454=1|455=AAPL.O|456=5|10=0|")
-        .expect("an order with one unrelated alternate identifier");
-    let root = parsed.as_field().clone();
-    let at = root.index_of("secaltids").expect("the group's column");
-    let row = super::with_column_at(parsed.as_value(), at, &super::item_of(&root.fields()[at]));
-    let mut message = FixMsg::with_registry(Arc::clone(&registry), root, row).expect("a message");
-    assert!(super::holds_column(&message, "secaltids"));
-
-    message
-        .insert_securityid(SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap())
-        .unwrap();
-    let group = message
-        .by_name("secaltids")
-        .expect("the alternate identifiers");
-    let alternates = group
-        .sequence_rows()
-        .expect("the occurrences")
-        .iter()
-        .map(|occurrence| {
-            let values = occurrence.as_sequence().expect("an occurrence");
-            (
-                values[0].as_str().expect("an identifier").to_owned(),
-                values[1].as_str().expect("a source").to_owned(),
-            )
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        alternates,
-        [
-            ("AAPL.O".to_owned(), "5".to_owned()),
-            ("US0378331005".to_owned(), "4".to_owned()),
-        ]
-    );
-    assert_eq!(
-        message
-            .entries()
-            .iter()
-            .find(|entry| entry.tag() == 454)
-            .and_then(yggdryl::FixEntry::value),
-        Some("2")
-    );
 }

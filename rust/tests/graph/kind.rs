@@ -17,6 +17,7 @@ fn every_kind_spells_itself_once_in_declaration_order_and_reads_back_ignoring_ca
             "trade_event",
             "book_event",
             "snapshot_event",
+            "fix",
         ]
     );
     for (stored, kind) in MarketKind::ALL.into_iter().enumerate() {
@@ -54,6 +55,7 @@ fn the_six_dated_kinds_are_the_events() {
             MarketKind::TradeEvent,
             MarketKind::BookEvent,
             MarketKind::SnapshotEvent,
+            MarketKind::Fix,
         ]
     );
 }
@@ -75,6 +77,8 @@ fn every_kind_stands_under_its_marketdatakind() {
             MarketDataKind::Trade,
             MarketDataKind::Book,
             MarketDataKind::Book,
+            // A FIX message states its own, its dictionary's `msgcat`.
+            MarketDataKind::Unknown,
         ]
     );
 }

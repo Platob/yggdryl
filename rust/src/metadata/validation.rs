@@ -303,12 +303,11 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
                     return Ok((key, parse_content_length(&value)?.to_string()));
                 }
             }
-            if let Some((prefix, name)) = key.split_once(':') {
-                if Scheme::from_str(prefix)
+            if let Some((prefix, name)) = key.split_once(':')
+                && Scheme::from_str(prefix)
                     .is_ok_and(|scheme| protocol_metadata_prefix(&scheme) == prefix)
-                {
-                    validate_property_part(&key, "property name", name)?;
-                }
+            {
+                validate_property_part(&key, "property name", name)?;
             }
             value
         }

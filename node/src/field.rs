@@ -45,11 +45,11 @@ pub struct FixDirection {
 /// One identifier-map key a FIX field's value states.
 #[napi(object)]
 pub struct FixIdSource {
-    /// The map it lands in: `altids`, the one identifier map.
+    /// The map it lands in: `identifiers`, the one identifier map.
     pub map: String,
-    /// The upper-case key it lands under.
+    /// The lower-case identifier type it lands under.
     pub key: String,
-    /// Whether an operation that follows another carries it; `altids` only.
+    /// Whether an operation that follows another carries it; `identifiers` only.
     pub follow: Option<bool>,
     /// On `PartyID(448)`, the `PartyRole(452)` code of the occurrence stating it.
     pub role: Option<String>,
@@ -59,11 +59,30 @@ impl FixIdSource {
     pub(crate) fn from_core(source: &yggdryl::FixIdSource) -> Self {
         Self {
             map: source.map().as_str().to_owned(),
-            key: source.key().to_owned(),
+            key: source.key().to_string(),
             follow: Some(source.follows()),
             role: source.role().map(ToOwned::to_owned),
         }
     }
+}
+
+/// One wire value of a FIX field and the market data type it types an element as.
+#[napi(object)]
+pub struct FixMarketDataType {
+    /// The wire value, as the message carries it.
+    pub wire: String,
+    /// The `marketdatatype` member's stored name.
+    pub marketdatatype: String,
+}
+
+/// One `{ wire, timeinforce }` pair of a FIX field's `timeinforces`: the
+/// time in force one wire value stands for.
+#[napi(object)]
+pub struct FixTimeInForce {
+    /// The wire value, as the message carries it.
+    pub wire: String,
+    /// The `timeinforce` member's stored name.
+    pub timeinforce: String,
 }
 
 /// Metadata as `[{key, value}]` entries or one plain object.
@@ -172,6 +191,23 @@ impl JsField {
     #[napi(js_name = "_emptyArrowReaderNative", skip_typescript)]
     pub fn empty_arrow_reader(&self) -> Result<crate::iomedia::JsBatchReader> {
         let schema = self.inner.clone().into_arrow_schema().map_err(napi_error)?;
+        let reader = yggdryl::arrow::batch_reader(schema, []);
+        Ok(crate::iomedia::JsBatchReader::from_core(
+            reader,
+            self.inner.name(),
+        ))
+    }
+
+    /// Build an empty native reader whose schema is this Field alone, its
+    /// metadata - an extension name and document included - stated.
+    ///
+    /// `Field.intoArrow` captures and removes this private bridge and reads
+    /// the reader's IPC stream into an Apache Arrow JS `Field`, the mirror of
+    /// how `Field.fromArrow` reads one.
+    #[napi(js_name = "_intoArrowReaderNative", skip_typescript)]
+    pub fn into_arrow_reader_native(&self) -> Result<crate::iomedia::JsBatchReader> {
+        let field = self.inner.clone().into_arrow_field().map_err(napi_error)?;
+        let schema = std::sync::Arc::new(arrow_schema::Schema::new(vec![field]));
         let reader = yggdryl::arrow::batch_reader(schema, []);
         Ok(crate::iomedia::JsBatchReader::from_core(
             reader,
@@ -2055,6 +2091,36 @@ impl JsProtocolField {
             .map_err(napi_error)
     }
 
+    /// The identifier types holding the parents of the identifier this field
+    /// states, nearest first: `FIX:parents`, as `["origclordid"]` on
+    /// `ClOrdID(11)`.
+    ///
+    /// An absent property is an empty array.
+    #[napi(getter)]
+    pub fn parents(&self, env: Env) -> Result<Vec<String>> {
+        self.require_fix(env, "parents")?;
+        Ok(self
+            .field
+            .inner
+            .as_fix()
+            .parents()
+            .map(ToOwned::to_owned)
+            .collect())
+    }
+
+    /// Record the parent types, each folded as an identifier type folds; an
+    /// empty array removes the property, and a spelling no identifier type
+    /// folds from or a type listed twice throws leaving the field unchanged.
+    #[napi(setter)]
+    pub fn set_parents(&mut self, env: Env, values: Vec<String>) -> Result<()> {
+        self.require_fix(env, "parents")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_parents(values)
+            .map_err(napi_error)
+    }
+
     /// The component's direct scalar identifier names, in member order.
     ///
     /// An absent property is an empty array.
@@ -2160,8 +2226,8 @@ impl JsProtocolField {
     }
 
     /// Record the keys; an empty array removes the property, and a key that
-    /// is not one to 32 upper-case letters or digits, a follow flag off
-    /// `altids`, or one key twice throws leaving the field unchanged.
+    /// is not one to 64 upper-case letters or digits, a follow flag off
+    /// `identifiers`, or one key twice throws leaving the field unchanged.
     #[napi(setter)]
     pub fn set_idmap(&mut self, env: Env, values: Vec<FixIdSource>) -> Result<()> {
         self.require_fix(env, "idmap")?;
@@ -2171,8 +2237,9 @@ impl JsProtocolField {
                 .map
                 .parse::<yggdryl::FixIdMapKind>()
                 .map_err(napi_error)?;
-            let mut source = yggdryl::FixIdSource::new(map, value.key)
-                .with_follow(value.follow.unwrap_or(false));
+            let key = value.key.parse::<yggdryl::IdType>().map_err(napi_error)?;
+            let mut source =
+                yggdryl::FixIdSource::new(map, key).with_follow(value.follow.unwrap_or(false));
             if let Some(role) = value.role {
                 source = source.with_role(role);
             }
@@ -2182,6 +2249,87 @@ impl JsProtocolField {
             .inner
             .as_fix_mut()
             .set_idmap(&sources)
+            .map_err(napi_error)
+    }
+
+    /// The market data types this field's values type an element as, one
+    /// `{ wire, marketdatatype }` per wire value; an absent property is an
+    /// empty array.
+    #[napi(getter)]
+    pub fn marketdatatypes(&self, env: Env) -> Result<Vec<FixMarketDataType>> {
+        self.require_fix(env, "marketdatatypes")?;
+        Ok(self
+            .field
+            .inner
+            .as_fix()
+            .marketdatatypes()
+            .map(|(wire, member)| FixMarketDataType {
+                wire: wire.to_owned(),
+                marketdatatype: member.as_str().to_owned(),
+            })
+            .collect())
+    }
+
+    /// Record the types; an empty array removes the property, and a name
+    /// that is no member, or a wire value the property cannot hold, throws
+    /// leaving the field unchanged.
+    #[napi(setter)]
+    pub fn set_marketdatatypes(&mut self, env: Env, values: Vec<FixMarketDataType>) -> Result<()> {
+        self.require_fix(env, "marketdatatypes")?;
+        let mut types = Vec::with_capacity(values.len());
+        for value in &values {
+            let member =
+                yggdryl::MarketDataType::from_spelling(&value.marketdatatype).ok_or_else(|| {
+                    napi_error(format!(
+                        "{:?} is no marketdatatype member",
+                        value.marketdatatype
+                    ))
+                })?;
+            types.push((value.wire.as_str(), member));
+        }
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_marketdatatypes(&types)
+            .map_err(napi_error)
+    }
+
+    /// The times in force this field's values stand for, one
+    /// `{ wire, timeinforce }` per wire value; an absent property is an
+    /// empty array.
+    #[napi(getter)]
+    pub fn timeinforces(&self, env: Env) -> Result<Vec<FixTimeInForce>> {
+        self.require_fix(env, "timeinforces")?;
+        Ok(self
+            .field
+            .inner
+            .as_fix()
+            .timeinforces()
+            .map(|(wire, member)| FixTimeInForce {
+                wire: wire.to_owned(),
+                timeinforce: member.as_str().to_owned(),
+            })
+            .collect())
+    }
+
+    /// Record the times in force; an empty array removes the property, and
+    /// a spelling that names no member, or a wire value the property cannot
+    /// hold, throws leaving the field unchanged.
+    #[napi(setter)]
+    pub fn set_timeinforces(&mut self, env: Env, values: Vec<FixTimeInForce>) -> Result<()> {
+        self.require_fix(env, "timeinforces")?;
+        let mut members = Vec::with_capacity(values.len());
+        for value in &values {
+            let member =
+                yggdryl::TimeInForce::from_spelling(&value.timeinforce).ok_or_else(|| {
+                    napi_error(format!("{:?} is no timeinforce member", value.timeinforce))
+                })?;
+            members.push((value.wire.as_str(), member));
+        }
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_timeinforces(&members)
             .map_err(napi_error)
     }
 

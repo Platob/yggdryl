@@ -8,8 +8,8 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | --- | --- |
 | Owns | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `book_arrow_reader`, `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `write_arrow_reader`, `FixCodec::DEFAULT_BATCH_BYTE_SIZE`, `DEFAULT_PAYLOAD_COLUMN`, `SOH` |
 | Returns | `BatchReader`, the one type every encoding in the crate returns; Python gets a `pyarrow.RecordBatchReader`, JavaScript a `BatchReader` |
-| Schema | answered before the first row is read, from the source's schema and the [dictionary](registry.md) alone, never from the data; `lifecycle_arrow_reader` answers the schema it read, `arrow_reader` the one it was given, `book_arrow_reader` the graph's lifted [`MarketData::field()`](../graph/market-data.md#arrow), one row per book, its `marketdatakind` `BOOK`, and `market_arrow_reader` and `market_data_arrow_reader` the same field, one row per operation. `fix_schema(&registry, "fix")` answers the [fixed row](capture.md#the-columns-are-the-folded-names): 133 columns over 128 tags |
-| Order | the source's own columns lead the row, the [fixed columns](capture.md#the-columns-are-the-folded-names) follow |
+| Schema | answered before the first row is read, from the source's schema and the [dictionary](registry.md) alone, never from the data; `lifecycle_arrow_reader` answers the schema it read, `arrow_reader` the one it was given, `book_arrow_reader` the graph's lifted [`MarketData::field()`](../graph/market-data.md#arrow), one row per book, its `marketdatakind` `BOOK`, and `market_arrow_reader` and `market_data_arrow_reader` the same field, one row per operation. `fix_schema(&registry, "fix")` answers the [fixed row](capture.md#the-columns-are-the-folded-names): 152 columns |
+| Order | the element, event, market and operation columns every generated schema opens with lead the row, the source's own columns follow them, and the rest of the [fixed columns](capture.md#the-columns-are-the-folded-names) close it |
 | Clash | a carried column whose folded name a FIX column takes is dropped in front and lands in that column, never renamed and never duplicated |
 | Rows | one row per message, never one per line: a line carrying two frames is two rows, a message the parse [split another off](message.md#a-parse-splits-what-a-message-reports) is followed by its row, a JSON document is one row holding an `unknown` message with no entries, a payload that would not parse is one row holding an empty message, and a line carrying no message at all is no row - [what a line carries](decode.md) is the codec's rule; a row's carried source columns repeat over every message it answers |
 | Batches | closed by estimated landed bytes against the codec's `batch_byte_size`, `DEFAULT_BATCH_BYTE_SIZE` (128 MiB), or by rows against `batch_row_size`, `DEFAULT_BATCH_ROW_SIZE` (32,768), whichever it reaches first, unless pinned: several small input batches accumulate into one, one larger than the target splits by rows in proportion, and a batch always holds at least one row |
@@ -24,7 +24,7 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 
 ## Use
 
-One column of frames in, batches out, the capture's own columns still in front of them.
+One column of frames in, batches out, the capture's own columns carried right after the shared columns every row opens with.
 
 === "Rust"
 
@@ -57,15 +57,19 @@ One column of frames in, batches out, the capture's own columns still in front o
         .with_threads(4)
         .parse_text_arrow_reader(source)?;
 
-    // The schema is answered before a row is read: the capture leads it, the
-    // tags follow, and the arrival record closes it.
+    // The schema is answered before a row is read: the shared element, event,
+    // market and operation columns lead it, the capture follows them, the
+    // tags follow it, and the arrival record closes it.
     let columns: Vec<String> = read
         .schema()
         .fields()
         .iter()
         .map(|held| held.name().clone())
         .collect();
-    assert_eq!(&columns[..3], ["url", "rownum", "body"]);
+    assert_eq!(columns[0], "curruuid");
+    let at = columns.iter().position(|name| name == "url").expect("the capture's url");
+    assert_eq!(columns[at - 1], "partyids");
+    assert_eq!(&columns[at..at + 3], ["url", "rownum", "body"]);
     assert_eq!(columns.last().map(String::as_str), Some("fixentries"));
 
     let rows: usize = read.map(|batch| batch.expect("a batch").num_rows()).sum();
@@ -110,11 +114,15 @@ One column of frames in, batches out, the capture's own columns still in front o
     codec = FixCodec(registry, threads=4)
     read = codec.parse_text_arrow_reader(capture.to_reader())
 
-    # The schema is answered before a row is read: the capture leads it, less
-    # the column named after a FIX column, the fixed columns follow, and the
+    # The schema is answered before a row is read: the shared element, event,
+    # market and operation columns lead it, the capture follows them, less the
+    # column named after a FIX column, the message's columns follow, and the
     # arrival record closes it.
     columns = [field.name for field in read.schema]
-    assert columns[:5] == ["url", "rownum", "timestamp", "bridgesessionid", "body"]
+    assert columns[0] == "curruuid"
+    at = columns.index("url")
+    assert columns[at - 1] == "partyids"
+    assert columns[at : at + 5] == ["url", "rownum", "timestamp", "bridgesessionid", "body"]
     assert columns[-1] == "fixentries"
 
     held = read.read_all()
@@ -154,11 +162,15 @@ One column of frames in, batches out, the capture's own columns still in front o
 
     const read = new fix.FixCodec(registry, { threads: 4 }).parseTextArrowReader(BatchReader.from(capture))
 
-    // The schema is answered before a row is read: the capture leads it, the
-    // tags follow, and the arrival record closes it.
-    assert.equal(read.field.fieldAt(0).name, 'url')
-    assert.equal(read.field.fieldAt(2).name, 'body')
-    assert.equal(read.field.fieldAt(read.field.fieldLen - 1).name, 'fixentries')
+    // The schema is answered before a row is read: the shared element, event,
+    // market and operation columns lead it, the capture follows them, the
+    // tags follow it, and the arrival record closes it.
+    const columns = Array.from({ length: read.field.fieldLen }, (_, index) => read.field.fieldAt(index).name)
+    assert.equal(columns[0], 'curruuid')
+    const at = columns.indexOf('url')
+    assert.equal(columns[at - 1], 'partyids')
+    assert.deepEqual(columns.slice(at, at + 3), ['url', 'rownum', 'body'])
+    assert.equal(columns[columns.length - 1], 'fixentries')
 
     const held = read.intoTable()
     assert.equal(held.numRows, 1, 'one ordinary frame per input row')
@@ -299,9 +311,9 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64) -> Result<Bat
     assert.equal(codec.marketDataArrowReader(fixed).intoTable().numRows, 4)
     ```
 
-## The source's columns lead the row
+## The source's columns follow the shared ones
 
-Where a line was read from is what a monitor orders and joins on, so the source's own columns lead the row and the fixed columns follow, exactly as they do for a [capture read line by line](capture.md#a-captures-own-columns-lead-the-row). Each emitted message receives the source row's carried values. A line carrying two frames therefore repeats the same URL, row number and timestamp. Which source columns survive a FIX column's claim on a name is decided once from the schema.
+Where a line was read from is what a monitor orders and joins on, so the source's own columns stand right after the element, event, market and operation columns every generated schema opens with, and the message's own columns follow, exactly as they do for a [capture read line by line](capture.md#a-captures-own-columns-follow-the-shared-ones). Each emitted message receives the source row's carried values. A line carrying two frames therefore repeats the same URL, row number and timestamp. Which source columns survive a FIX column's claim on a name is decided once from the schema.
 
 ## A pin is on the codec, a stage is a call
 
@@ -320,7 +332,7 @@ What holds for a whole run is pinned on the codec once, and each pin is the per-
 | `include_msgtypes` | `with_include_msgtypes` | empty, which reads every type the refusals leave | the types read, naming any clearing the default refusals |
 | `capture_names` | `with_capture_names` | none | what a run's row-header captures are called, in the order a line answers them, so [`parse_text_line`](capture.md#a-reader-is-the-whole-parse-surface) reads a capture by position rather than by name |
 | `default_sending_time` | `try_with_default_sending_time` | none, one UTC-now read per undated message | the [`SendingTime(52)`](capture.md#every-message-is-dated) a message stating none is dated by where neither a row cell nor the `currunix` of the line it was read out of states one; an exact nanosecond UTC instant, else refused; pin it for a reproducible read |
-| `market_metadata` | `with_market_metadata` | on | whether a leaf the codec builds - `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `book_arrow_reader` - carries in its metadata what its message states that no typed column reads and no identifier map of the leaf holds, and lifts into its `altids` the keys ending with an identifier its message declares, by [the one rule](message.md#what-a-leafs-metadata-holds); the map and what it lifts feed the leaf's identity, so turning it off - no metadata, nothing lifted - moves every leaf whose message states such a field, and `FixMsg::market_data` always carries it |
+| `market_metadata` | `with_market_metadata` | on | whether a leaf the codec builds - `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `book_arrow_reader` - carries in its metadata what its message states that no typed column reads and no identifier map of the leaf holds, and lifts into its `identifiers` the keys ending with an identifier its message declares, by [the one rule](message.md#what-a-leafs-metadata-holds); the map and what it lifts feed the leaf's identity, so turning it off - no metadata, nothing lifted - moves every leaf whose message states such a field, and `FixMsg::market_data` always carries it |
 | `official_time_delay_ms` | `with_official_time_delay_ms` | `DEFAULT_OFFICIAL_TIME_DELAY_MS`, one second | how far from `SendingTime(52)` an [official clock](capture.md#the-official-clock-dates-the-message) may stand and still date the message: the `TransactTime(60)` the message states, else the `TrdRegTimestamp(769)` its `TrdRegTimestampType(770)` says is about the event or a hop, nearest the sending clock; the sending clock dates the message where none stands that near, and a nonpositive delay admits only a clock equal to it |
 | `dedup_window_ms` | `with_dedup_window_ms` | `DEFAULT_DEDUP_WINDOW_MS`, one minute | how long, in milliseconds of event time, [`lifecycle`](lifecycle.md#an-identity-is-yielded-once) remembers an identity it yielded so it yields that identity once; a grid view is exempt, and a nonpositive window remembers none |
 
@@ -440,17 +452,17 @@ A fill is named the way a key is: a column whose folded name resolves in the reg
 | --- | --- | --- |
 | `mtime` | `datetime64(ns, UTC)`, under the text options' `timezone` | no column: consumed into the line's `currunix`, which is its messages' `recdunix` and the sending clock of any that states no `SendingTime(52)`; a point or a comma opens the fraction - three digits, or the grouped microseconds `.524_315` - and a clock may state none |
 | `msgthreadid` | int64 | the capture's own column, leading the row |
-| `msgsessionid` | utf8, nullable | the session instance the bridge handled the line on; fills `msgsessionid` (65020) rather than leading the row, and never over a reading the message stated. Not the counterparty session a bridge row spells `SESSIONID` for: two connections to one counterparty are two instances |
-| `msgctxid` | utf8, nullable | fills `msgctxid` (65019) |
+| `msgsessionid` | utf8, nullable | the session instance the bridge handled the line on; fills `msgsessionid` (65043) rather than leading the row, and never over a reading the message stated. Not the counterparty session a bridge row spells `SESSIONID` for: two connections to one counterparty are two instances |
+| `msgctxid` | utf8, nullable | fills `msgctxid` (65042) |
 | `msgseqnum` | int64, nullable | fills `MsgSeqNum(34)` where the frame did not carry it |
-| `msgpluginid` | utf8 | fills `msgpluginid` (65017), the plugin that logged the line, and selects nothing |
+| `msgpluginid` | utf8 | fills `msgpluginid` (65040), the plugin that logged the line, and selects nothing |
 | `loglevel` | utf8 | the capture's own column |
 
 The session instance, the context and the sequence number are optional as a whole, so a line carrying only its thread still frames and leaves them null rather than failing the row.
 
 Editing a row header changes how many events a walk answers, which is worth saying plainly because nothing about it looks like a lifecycle change. A line the expression does not match yields no captures at all rather than failing the row: it keeps its body, is dated by its object's modification time rather than a clock of its own, and reaches the walk with no session instance, no message context and no sequence. Those three with the message type are what build `msgsesseventid`, and that is the key two observations of one session event are [merged](lifecycle.md#a-twin-is-not-a-successor) on - so a line the header misses is a line the walk cannot fold, and one unchanged capture read under a narrower header answers *more* events, not fewer. Every message still parses and `currhashcode` still agrees, because the capture's session context is provenance and is excluded from the content code by name; the missed lines' `currunix` and `curruuid` move, because their object's modification time dates them instead of their own clock. `ULBRIDGE_ROWHEADER`'s own clock reads both fractions the bridge writes, three digits and the grouped microseconds it spells `23:59:46.524_315`, behind a point or a comma, and a clock stating none; it admitted only three digits until 0.1.10, and so could not read the last fifteen lines of the capture shipped beside it. Assert the count of lines a header matched beside the count of messages parsed; the two diverge silently otherwise.
 
-A capture that names a field fills it, so the registry's one namespace is what lands it and nothing translates in between; a capture that names none - `msgthreadid` and `loglevel` here - is the capture's own column and fills nothing. The clock is `mtime`, which is [consumed into `currunix`](../media/index.md#plain-text) rather than carried beside it and is read at `datetime64(ns, UTC)` whatever its own syntax suggests, so every line the header matches is dated by the clock written in front of it rather than by its file's modification time - and a line's `currunix` is its messages' `recdunix` and the sending clock of any that states no `SendingTime(52)`. Until 0.1.17 the clock was captured as `timestamp`, which dated nothing, so every line of a read took its file's one modification time. The bridge writes these in camel case - `msgCtxId`, `seqNum` - and they used to be captured that way, with a table mapping `seqnum` onto tag 34; naming the captures for the fields retires that table. The session instance, context and plugin are [capture facts](message.md#typed-tags), held by `FixCapture` rather than the content row. A complete nonempty message type, session instance and context with a present message sequence join to `msgsesseventid` (65021), a fourth capture fact and a column of the fixed row of its own: the four values joined by `:` as stated, `<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>`, with the sequence in its canonical `u64` spelling. Thus message type `8`, session `e7256476`, context `9effef3e6a` and sequence `1094` spell `8:e7256476:9effef3e6a:1094`, and any absent or empty text part leaves it null. It is capture provenance and is excluded from the FIX content UUID. A cross code instead comes from an explicit nonempty value or the message's ordered FIX identifiers, as [the lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) defines. Where the line was read from is not among them at all - that is [the capture's own column](message.md#a-row-is-a-message-again), which a message carries and never states, because the same message read from a second copy of one day's log is the same message.
+A capture that names a field fills it, so the registry's one namespace is what lands it and nothing translates in between; a capture that names none - `msgthreadid` and `loglevel` here - is the capture's own column and fills nothing. The clock is `mtime`, which is [consumed into `currunix`](../media/index.md#plain-text) rather than carried beside it and is read at `datetime64(ns, UTC)` whatever its own syntax suggests, so every line the header matches is dated by the clock written in front of it rather than by its file's modification time - and a line's `currunix` is its messages' `recdunix` and the sending clock of any that states no `SendingTime(52)`. Until 0.1.17 the clock was captured as `timestamp`, which dated nothing, so every line of a read took its file's one modification time. The bridge writes these in camel case - `msgCtxId`, `seqNum` - and they used to be captured that way, with a table mapping `seqnum` onto tag 34; naming the captures for the fields retires that table. The session instance, context and plugin are [capture facts](message.md#typed-tags), held by `FixCapture` rather than the content row. A complete nonempty message type, session instance and context with a present message sequence join to `msgsesseventid` (65044), a fourth capture fact and a column of the fixed row of its own: the four values joined by `:` as stated, `<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>`, with the sequence in its canonical `u64` spelling. Thus message type `8`, session `e7256476`, context `9effef3e6a` and sequence `1094` spell `8:e7256476:9effef3e6a:1094`, and any absent or empty text part leaves it null. It is capture provenance and is excluded from the FIX content UUID. A cross code instead comes from an explicit nonempty value or the message's ordered FIX identifiers, as [the lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) defines. Where the line was read from is not among them at all - that is [the capture's own column](message.md#a-row-is-a-message-again), which a message carries and never states, because the same message read from a second copy of one day's log is the same message.
 
 The plugin is a fill and nothing more: it lands in the crate's own `msgpluginid` column by name, like any capture named after a field, and selects no dictionary and no version - the registry is one namespace, and which dictionaries a field belongs to is the field's own `FIX:branches`, which no read consults.
 
@@ -501,9 +513,9 @@ A source row is read for every message it carries, so a capture answers one row 
     let mut count = 0;
     for batch in reader {
         let values = Serie::from_arrow_batch(None, &batch?, ArrowCastOptions::new())?;
-        // Each row keeps the source row's own columns in front.
-        let rownum = values.child_at(0).expect("the capture's first column");
-        let text = values.child_at(1).expect("the capture's second column");
+        // Each row keeps the source row's own columns, read by name.
+        let rownum = values.child("rownum").expect("the capture's row number");
+        let text = values.child("body").expect("the capture's body");
         for row in 0..values.len() {
             assert_eq!(rownum.scalar(row)?, Scalar::from(7_i64));
             assert_eq!(text.scalar(row)?, Scalar::from(body));
@@ -594,7 +606,7 @@ A source row is read for every message it carries, so a capture answers one row 
     assert_eq!(codec.write_arrow_reader(codec.arrow_reader(schema, again)?, &mut written)?, 2);
     assert_eq!(
         String::from_utf8(written)?,
-        "8=FIX.4.4|35=D|11=ORDER-1|9999=x|55=AAPL|54=1|59=0|10=0|\n8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|381=637.5|59=0|10=0|\n",
+        "8=FIX.4.4|35=D|11=ORDER-1|9999=x|54=1|59=0|55=AAPL|10=0|\n8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|381=637.5|59=0|10=0|\n",
     );
     ```
 
@@ -626,7 +638,7 @@ A source row is read for every message it carries, so a capture answers one row 
     sink = io.BytesIO()
     assert codec.write_arrow_reader(codec.arrow_reader(schema, again), sink) == 2
     assert sink.getvalue().decode().splitlines() == [
-        "8=FIX.4.4|35=D|11=ORDER-1|9999=x|55=AAPL|54=1|59=0|10=0|",
+        "8=FIX.4.4|35=D|11=ORDER-1|9999=x|54=1|59=0|55=AAPL|10=0|",
         "8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|381=637.5|59=0|10=0|",
     ]
     ```
@@ -660,7 +672,7 @@ A source row is read for every message it carries, so a capture answers one row 
     const chunks = []
     assert.equal(codec.writeArrowReader(codec.arrowReader(schema, again), { write: (chunk) => chunks.push(Buffer.from(chunk)) }), 2)
     assert.deepEqual(Buffer.concat(chunks).toString().split('\n').slice(0, 2), [
-      '8=FIX.4.4|35=D|11=ORDER-1|9999=x|55=AAPL|54=1|59=0|10=0|',
+      '8=FIX.4.4|35=D|11=ORDER-1|9999=x|54=1|59=0|55=AAPL|10=0|',
       '8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|381=637.5|59=0|10=0|',
     ])
     ```

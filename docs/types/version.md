@@ -273,13 +273,13 @@ a round trip. A cast into the column canonicalizes every cell on the way in, so
 
     release = yggdryl.version("release", nullable=False)
     arrow = release.into_arrow()
-    assert arrow.type == pa.string()
-    assert arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.version"
+    assert arrow.type.storage_type == pa.string()
+    assert arrow.type.extension_name == "yggdryl.version"
     assert Field.from_arrow(arrow) == release
 
     # The cast canonicalizes every cell on the way in.
     stored = Serie.from_arrow_array(pa.array(["005.000.001", "5.0SP2", "1.0rc1"]), release)
-    assert stored.into_arrow_array().to_pylist() == ["5.0.1", "5.0.2", "1.0.rc1"]
+    assert stored.into_arrow_array().storage.to_pylist() == ["5.0.1", "5.0.2", "1.0.rc1"]
     ```
 
 === "JavaScript"

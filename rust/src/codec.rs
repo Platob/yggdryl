@@ -66,7 +66,7 @@ impl Level {
     pub(crate) const fn zstd(self) -> i32 {
         match self.0 {
             0 => 1,
-            // Round up without `div_ceil`, which is not const on the 1.85 baseline.
+            // Round up without `div_ceil`, which no signed integer has stable.
             level => (level as i32 * 19 + 8) / 9,
         }
     }

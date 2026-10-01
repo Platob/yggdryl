@@ -433,9 +433,6 @@ test('a registered code is its own datatype over its standard width', () => {
     ['figi', 12],
     // A currency pair, `CCY/CCY`.
     ['forex', 7],
-    // The lifecycle codes are held to the width their spellings need; a
-    // side is an enum now, stored as its member's code.
-    ['timeinforce', 8],
   ]) {
     const dtype = new DataType(name)
     assert.equal(dtype.id, name)

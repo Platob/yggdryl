@@ -28,8 +28,11 @@
 //! Namespaced bridge voices resolve to one field: conflicting voices fill
 //! nothing. A row carrying `FIRM.ORIG.OFFERPX=10` and
 //! `ULLINK.OFFERPRICE=11` disagrees, so composition leaves the canonical field
-//! unfilled and the arrival record keeps both pairs. Agreeing voices fill
-//! once. Direct duplicate flat FIX pairs retain their repeated values.
+//! unfilled and the message's metadata keeps both voices. Agreeing voices fill
+//! once. A flat alias stating what its field already holds is that field; one
+//! stating another value is kept in the metadata beside an anomaly, so the
+//! wire carries the dictionary's own fields alone. A write to the field
+//! states every voice composed into it again.
 
 /// The word pairs, FIX's own spelling first.
 const TWINS: [(&str, &str); 4] = [

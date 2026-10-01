@@ -92,13 +92,19 @@ MARKET_KINDS: tuple[str, ...] = tuple(_LISTING["market_kinds"])
 #: beside ``"snapshot"``.
 MD_UPDATE_ACTIONS: tuple[str, ...] = tuple(_LISTING["md_update_actions"])
 
-#: The fifteen columns every graph event is stated in, in schema order.
+#: The six columns every generated schema opens with - what every graph
+#: element states - in schema order.
+ELEMENT_COLUMNS: tuple[str, ...] = tuple(_LISTING["element_columns"])
+
+#: The nine columns an event adds after its element's, in schema order.
 EVENT_COLUMNS: tuple[str, ...] = tuple(_LISTING["event_columns"])
 
-#: The twenty-eight columns a market element states, in schema order.
+#: The thirty-four columns a market element states after its event's, in
+#: schema order.
 MARKET_COLUMNS: tuple[str, ...] = tuple(_LISTING["market_columns"])
 
-#: The four columns a market operation states, in schema order.
+#: The five columns a market operation states after its market's, in schema
+#: order.
 OPERATION_COLUMNS: tuple[str, ...] = tuple(_LISTING["operation_columns"])
 
 #: Every named reading of a ``marketdata`` stream ``graph.MarketData.plan``
@@ -124,6 +130,7 @@ __all__ = [
     "DATA_TYPE_IDS",
     "DATA_TYPE_KINDS",
     "DIGEST_ALGORITHMS",
+    "ELEMENT_COLUMNS",
     "EVENT_COLUMNS",
     "IO_KINDS",
     "LEVELS",

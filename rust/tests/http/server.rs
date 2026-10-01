@@ -148,10 +148,10 @@ fn trace_folder(label: &str) -> (PathBuf, Holder) {
 fn wait_for(path: &Path, ready: impl Fn(&[u8]) -> bool) -> Vec<u8> {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        if let Ok(bytes) = std::fs::read(path) {
-            if ready(&bytes) {
-                return bytes;
-            }
+        if let Ok(bytes) = std::fs::read(path)
+            && ready(&bytes)
+        {
+            return bytes;
         }
         assert!(
             Instant::now() < deadline,

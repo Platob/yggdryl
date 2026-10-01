@@ -85,7 +85,7 @@ impl JsCandle {
             .map_err(napi_error)
     }
 
-    /// The book's cross code.
+    /// The book's stored cross code, such as `3:0:ACME`.
     #[napi(getter)]
     pub fn crosscode(&self) -> String {
         self.inner.crosscode.to_string()

@@ -165,8 +165,8 @@ The value is the canonical spelling: upper case, closed by its check digit.
 
     sid = Field("sid", "sedol")
     arrow_field = sid.into_arrow()
-    assert arrow_field.type == pa.string()
-    assert arrow_field.metadata[b"ARROW:extension:name"] == b"yggdryl.sedol"
+    assert arrow_field.type.storage_type == pa.string()
+    assert arrow_field.type.extension_name == "yggdryl.sedol"
     assert Field.from_arrow(arrow_field) == sid
     ```
 
@@ -256,7 +256,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 - No default value: the empty text names no security, so an empty text cell entering the column is null ([Cast](../cast.md#empty-text)).
 - No vocabulary: `StringEnum::from_logical_name("sedol")` answers an enum of no members, and no Python code class declares it.
 - Nothing partial about an identifier, so [`merge_with`](index.md#the-code-family-value) keeps this one.
-- No crate column: in a [FIX capture](index.md#fix-message-definitions) a SEDOL is one security identifier under key `SEDOL` - `SecurityID(48)` under source `2`, or a `secaltids` occurrence - read as `get_securityids().get("SEDOL")`, and derived from a GB, IE, GG, JE or IM ISIN where the message states none.
+- No crate column: in a [FIX capture](index.md#fix-message-definitions) a SEDOL is one [security identifier](../../graph/identifier.md) of type `sedol` - `SecurityID(48)` under source `2`, or a `SecAltIDGrp(454)` occurrence, each from `fix` - read as `get_securityids().get(&IdType::Sedol)`, and derived from a GB, IE, GG, JE or IM ISIN where the message states none, from `derived`.
 
 ## Commands
 

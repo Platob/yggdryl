@@ -335,34 +335,34 @@ impl Parser<'_> {
             _ => Timezone::NAIVE,
         };
 
-        if !self.peek_postfix_serie() {
-            if let Some(close) = self.consume_opening() {
-                if self.peek_symbol() != Some(close) {
-                    if let Some(precision) = self.peek_integer() {
-                        let precision_start = self.current_position();
-                        self.index += 1;
-                        unit = precision_to_unit(precision, precision_start)?;
-                    } else if self.peek_word_is("none") || self.peek_word_is("some") {
-                        timezone = self.parse_datetime64_zone(&mut stated)?;
-                    } else {
-                        let (parsed, unit_start) =
-                            self.parse_time_unit_span(Some(close), "datetime64 unit")?;
-                        unit = parsed;
-                        if !unit.is_arrow_time() {
-                            return Err(self.error_at(
-                                unit_start,
-                                "datetime64 requires a temporal resolution unit",
-                            ));
-                        }
-                    }
-
-                    if self.consume_separator() {
-                        self.consume_label("timezone");
-                        timezone = self.parse_datetime64_zone(&mut stated)?;
+        if !self.peek_postfix_serie()
+            && let Some(close) = self.consume_opening()
+        {
+            if self.peek_symbol() != Some(close) {
+                if let Some(precision) = self.peek_integer() {
+                    let precision_start = self.current_position();
+                    self.index += 1;
+                    unit = precision_to_unit(precision, precision_start)?;
+                } else if self.peek_word_is("none") || self.peek_word_is("some") {
+                    timezone = self.parse_datetime64_zone(&mut stated)?;
+                } else {
+                    let (parsed, unit_start) =
+                        self.parse_time_unit_span(Some(close), "datetime64 unit")?;
+                    unit = parsed;
+                    if !unit.is_arrow_time() {
+                        return Err(self.error_at(
+                            unit_start,
+                            "datetime64 requires a temporal resolution unit",
+                        ));
                     }
                 }
-                self.expect_symbol(close)?;
+
+                if self.consume_separator() {
+                    self.consume_label("timezone");
+                    timezone = self.parse_datetime64_zone(&mut stated)?;
+                }
             }
+            self.expect_symbol(close)?;
         }
 
         let suffix = self.current_position();

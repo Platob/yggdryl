@@ -134,6 +134,7 @@ impl DataType {
         ("side", DataType::Side),
         ("state", DataType::State),
         ("marketdatakind", DataType::MarketDataKind),
+        ("marketdatatype", DataType::MarketDataType),
         ("timeinforce", DataType::TimeInForce),
         // The unit a quantity is stated in: FIX's `UnitOfMeasure(996)`.
         ("unit", DataType::Unit),

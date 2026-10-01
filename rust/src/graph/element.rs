@@ -44,7 +44,7 @@ use crate::{State, Uuid};
 /// own identity where none is, [`Self::cross_uuid`], so every element stands
 /// in exactly one chain. The names an operation goes by elsewhere - an
 /// order's `ClOrdID` and `OrderID`, a trade's `ExecID` - are the
-/// operation's own facts, [`Operation::get_altids`](super::Operation::get_altids),
+/// operation's own facts, [`Operation::get_identifiers`](super::Operation::get_identifiers),
 /// not the node's.
 /// Every fact is read and written through the trait, so a store or a walk
 /// that only knows an element as `dyn Element` can still place it; every
@@ -743,7 +743,11 @@ pub(crate) fn feed_event_facts<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// placed them, and the place reaches the identity through
 /// [`Event::time_uuid`] alone.
 fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
-    feed(state, "state", &this.get_state().code().to_le_bytes());
+    feed(
+        state,
+        "state",
+        &i32::from(this.get_state().code()).to_le_bytes(),
+    );
     if let Some(previous) = this.get_prevuuid() {
         feed(state, "prevuuid", &previous.into_bytes());
     }

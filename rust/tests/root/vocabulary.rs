@@ -189,6 +189,7 @@ mod logical {
             ("side", DataType::Side),
             ("state", DataType::State),
             ("marketdatakind", DataType::MarketDataKind),
+            ("marketdatatype", DataType::MarketDataType),
             ("timeinforce", DataType::TimeInForce),
             ("unit", DataType::Unit),
             ("forex", DataType::Forex),

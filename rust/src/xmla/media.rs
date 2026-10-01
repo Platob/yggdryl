@@ -321,10 +321,10 @@ impl<H: IOBase> IOMedia for Xmla<H> {
         if let Some(field) = self.options.field() {
             return Ok(field.field_len());
         }
-        if self.opened {
-            if let Some(cached) = self.cached_schema.get() {
-                return Ok(cached.field_len());
-            }
+        if self.opened
+            && let Some(cached) = self.cached_schema.get()
+        {
+            return Ok(cached.field_len());
         }
         // Past the session's cache, which only a leaf ever fills.
         if self.handle.is_container() {
@@ -360,10 +360,10 @@ impl<H: IOBase> IOMedia for Xmla<H> {
         if let Some(field) = options.field() {
             return Ok(field.clone());
         }
-        if self.opened {
-            if let Some(cached) = self.cached_schema.get() {
-                return Ok(cached.clone().with_name(options.name()));
-            }
+        if self.opened
+            && let Some(cached) = self.cached_schema.get()
+        {
+            return Ok(cached.clone().with_name(options.name()));
         }
         if self.handle.is_container() {
             return crate::iomedia::container_field(&self.handle, &options.clone().into());

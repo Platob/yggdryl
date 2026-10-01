@@ -145,7 +145,7 @@ fn quote_field(mode: UnionMode) -> Field {
 
 /// One union row: the member's type id and its payload.
 fn quote(index: usize) -> Scalar {
-    if index % 2 == 0 {
+    if index.is_multiple_of(2) {
         Scalar::from_sequence([
             Scalar::from(0_i64),
             Scalar::from(i64::try_from(index).expect("a row count fits i64")),
