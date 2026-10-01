@@ -8,26 +8,29 @@
 //!
 //! Apache Iceberg validates the standard transform/source pairs and computes
 //! a bucket or a truncation. Every time transform - the specification's
-//! `year`, `month`, `day` and `hour`, and this crate's own `minute`, `qhour`,
-//! `hhour`, `week` and `quarter` - is computed here through the one
-//! [`EpochPeriod`] the expression grammar's `years(x)` through `minutes(x)`
-//! read, so a partition value and a filter cannot disagree about a period.
-//! Yggdryl keeps its Arrow 59 arrays at the I/O boundary and passes one typed
-//! scalar at a time through that implementation while grouping rows for its
-//! own data-file writer.
+//! `year`, `month`, `day` and `hour`, and this crate's own `minutes[n]`,
+//! `week` and `quarter` - is computed here through the one [`EpochPeriod`] the
+//! expression grammar's `years(x)` through `minutes(x, n)` read, so a
+//! partition value and a filter cannot disagree about a period. Yggdryl keeps
+//! its Arrow 59 arrays at the I/O boundary and passes one typed scalar at a
+//! time through that implementation while grouping rows for its own
+//! data-file writer.
 //!
-//! The five transforms of this crate's own have no spelling in the official
-//! model, which refuses a name it does not know. They cross it as a bucket
-//! whose count no table can state - `bucket[2147483649]` through
-//! `bucket[2147483653]`, above the `i32::MAX` [`Transform::result_type`]
-//! refuses - because a bucket is accepted on every date and timestamp source,
-//! answers the same `int32` a period does, and each count is its own
-//! transform to the official duplicate check. [`Transform::into_official`]
-//! and [`Transform::from_official`] are the two halves, and every document
-//! handed to the official model is rewritten through them in `official.rs`.
+//! The transforms of this crate's own have no spelling in the official model,
+//! which refuses a name it does not know. They cross it as a bucket whose
+//! count no table can state - above the `i32::MAX` [`Transform::result_type`]
+//! refuses: `minutes[n]` as `bucket[2147483648 + n]`, `quarter` as
+//! `bucket[4294967294]` and `week` as `bucket[4294967295]` - because a bucket
+//! is accepted on every date and timestamp source, answers the same `int32` a
+//! period does, and each count is its own transform to the official duplicate
+//! check. [`Transform::into_official`] and [`Transform::from_official`] are
+//! the two halves, and every document handed to the official model is
+//! rewritten through them in `official.rs`, so a document on disk always
+//! spells `minutes[n]`.
 
 use std::collections::HashSet;
 use std::fmt;
+use std::num::NonZeroU32;
 use std::str::FromStr;
 
 use iceberg_official::spec::{
@@ -37,8 +40,8 @@ use iceberg_official::spec::{
 use iceberg_official::transform::{BoxedTransformFunction, create_transform_function};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::expression::Function;
 use crate::expression::eval::{EpochPeriod, epoch_value};
+use crate::expression::{Function, Literal, Term};
 use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 /// The identifier Iceberg assigns to the first partition field of a table.
@@ -55,11 +58,12 @@ pub(super) const SPEC_ID: &str = "spec-id";
 
 /// How a source column value becomes a partition value.
 ///
-/// The specification's transforms and five of this crate's own, each
-/// spelled by its name - `qhour` for a quarter hour - with the plural the
-/// Spark DDL writes read as an alias; a reader that does not know the five
-/// reads them as `unknown` and prunes nothing by them, which is what the
-/// specification says of an unknown transform.
+/// The specification's transforms and three of this crate's own -
+/// `minutes[n]`, `week` and `quarter` - each spelled by its name, a parameter
+/// in brackets as `bucket[n]` writes one, with the plural the Spark DDL
+/// writes read as an alias of a parameter-free one; a reader that does not
+/// know this crate's own reads them as `unknown` and prunes nothing by them,
+/// which is what the specification says of an unknown transform.
 ///
 /// ```
 /// use yggdryl::iceberg::Transform;
@@ -67,8 +71,10 @@ pub(super) const SPEC_ID: &str = "spec-id";
 /// # fn main() -> yggdryl::Result<()> {
 /// assert_eq!(Transform::from_str("bucket[16]")?, Transform::Bucket(16));
 /// assert_eq!(Transform::Bucket(16).to_string(), "bucket[16]");
-/// assert_eq!(Transform::from_str("qhours")?, Transform::QuarterHour);
-/// assert_eq!(Transform::QuarterHour.to_string(), "qhour");
+/// assert_eq!(Transform::from_str("minutes[15]")?, Transform::Minutes(15));
+/// assert_eq!(Transform::Minutes(15).to_string(), "minutes[15]");
+/// assert!(Transform::from_str("minutes[0]").is_err());
+/// assert!(Transform::from_str("minutes").is_err());
 ///
 /// // Invertibility is distinct from write support: bucket values are
 /// // computed by Apache Iceberg even though they cannot restore the source.
@@ -94,12 +100,11 @@ pub enum Transform {
     Day,
     /// Hours since 1970-01-01T00, from a timestamp.
     Hour,
-    /// Minutes since 1970-01-01T00:00, from a timestamp; `minute`.
-    Minute,
-    /// Quarter hours since the epoch, from a timestamp; `qhour`.
-    QuarterHour,
-    /// Half hours since the epoch, from a timestamp; `hhour`.
-    HalfHour,
+    /// Periods of `n` minutes since 1970-01-01T00:00, from a timestamp;
+    /// `minutes[n]` - `minutes[1]` the minute, `minutes[15]` the quarter
+    /// hour, `minutes[60]` the hour - with `n` from 1 to 2147483645, the most
+    /// the official model can carry ([`Self::result_type`] refuses another).
+    Minutes(u32),
     /// Monday-start weeks since Monday 1969-12-29, from a date or
     /// timestamp; `week`.
     Week,
@@ -127,17 +132,22 @@ impl Transform {
         matches!(self, Self::Identity | Self::Void)
     }
 
-    /// The grammar function spelling this transform, for the nine that one
-    /// spells: `years(x)` for `year` through `minutes(x)` for `minute`.
+    /// The grammar function spelling this transform, for the seven that one
+    /// spells: `years(x)` for `year` through `minutes(x, n)` for
+    /// `minutes[n]`.
     ///
-    /// `Identity`, `Bucket`, `Truncate`, `Void` and `Unknown` have none.
+    /// This is the parameter-free half of the mapping: `minutes[n]` answers
+    /// [`Function::Minutes`] whatever its `n`, which [`Self::into_term`]
+    /// writes. `Identity`, `Bucket`, `Truncate`, `Void` and `Unknown` have
+    /// none.
     ///
     /// ```
     /// use yggdryl::expression::Function;
     /// use yggdryl::iceberg::Transform;
     ///
-    /// assert_eq!(Transform::QuarterHour.function(), Some(Function::QuarterHours));
+    /// assert_eq!(Transform::Minutes(15).function(), Some(Function::Minutes));
     /// assert_eq!(Transform::from_function(&Function::Weeks), Some(Transform::Week));
+    /// assert_eq!(Transform::from_function(&Function::Minutes), None);
     /// assert_eq!(Transform::Bucket(4).function(), None);
     /// assert_eq!(Transform::from_function(&Function::Year), None);
     /// ```
@@ -147,9 +157,7 @@ impl Transform {
             Self::Month => Function::Months,
             Self::Day => Function::Days,
             Self::Hour => Function::Hours,
-            Self::Minute => Function::Minutes,
-            Self::QuarterHour => Function::QuarterHours,
-            Self::HalfHour => Function::HalfHours,
+            Self::Minutes(_) => Function::Minutes,
             Self::Week => Function::Weeks,
             Self::Quarter => Function::Quarters,
             Self::Identity | Self::Bucket(_) | Self::Truncate(_) | Self::Void | Self::Unknown => {
@@ -158,33 +166,101 @@ impl Transform {
         })
     }
 
-    /// The transform a grammar function spells, the inverse of
-    /// [`Self::function`]: the nine epoch functions and no other.
+    /// The transform a grammar function spells by its name alone, the
+    /// inverse of [`Self::function`] for the six parameter-free epoch
+    /// functions. [`Function::Minutes`] names no transform without its `n`,
+    /// which [`Self::from_term`] reads off the call.
     pub const fn from_function(function: &Function) -> Option<Self> {
         Some(match function {
             Function::Years => Self::Year,
             Function::Months => Self::Month,
             Function::Days => Self::Day,
             Function::Hours => Self::Hour,
-            Function::Minutes => Self::Minute,
-            Function::QuarterHours => Self::QuarterHour,
-            Function::HalfHours => Self::HalfHour,
             Function::Weeks => Self::Week,
             Function::Quarters => Self::Quarter,
             _ => return None,
         })
     }
 
-    /// The period a time transform floors its source to, for the nine.
+    /// The transform a grammar call spells: `years(ts)` is `year` and
+    /// `minutes(ts, 15)` is `minutes[15]`.
+    ///
+    /// This and [`Self::into_term`] are the one rule between a call and a
+    /// transform - which argument carries `n` is the expression grammar's
+    /// own reading of `minutes(x, n)` - so a partition declaration and a scan
+    /// read a call alike. The source, the call's first argument, is the
+    /// caller's to read. `None` for a term that is not a call of one of the
+    /// seven epoch functions with the arguments it takes, or a `minutes`
+    /// call whose step is not a literal whole number from 1 to `u32::MAX`; a
+    /// step past what a table can carry reads as the transform
+    /// [`Self::result_type`] then refuses by name.
+    ///
+    /// ```
+    /// use yggdryl::Term;
+    /// use yggdryl::iceberg::Transform;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let quarter_hour: Term = "minutes(ts, 15)".parse()?;
+    /// assert_eq!(Transform::from_term(&quarter_hour), Some(Transform::Minutes(15)));
+    /// assert_eq!(Transform::from_term(&"weeks(ts)".parse()?), Some(Transform::Week));
+    /// assert_eq!(Transform::from_term(&"minutes(ts, 0)".parse()?), None);
+    /// assert_eq!(Transform::from_term(&"year(ts)".parse()?), None);
+    ///
+    /// let spelled = Transform::Minutes(15).into_term(Term::column("ts"));
+    /// assert_eq!(spelled, Some(quarter_hour));
+    /// assert_eq!(
+    ///     Transform::Week.into_term(Term::column("ts")).map(|term| term.to_string()),
+    ///     Some("weeks(ts)".to_owned())
+    /// );
+    /// assert_eq!(Transform::Bucket(16).into_term(Term::column("ts")), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn from_term(term: &Term) -> Option<Self> {
+        let Term::Function(function, arguments) = term else {
+            return None;
+        };
+        let (least, most) = function.arity();
+        if arguments.len() < least || arguments.len() > most {
+            return None;
+        }
+        let constants = arguments
+            .iter()
+            .map(|argument| argument.as_literal().map(Literal::value));
+        match function.epoch_period(constants).ok()?? {
+            EpochPeriod::Minutes(step) => Some(Self::Minutes(step.get())),
+            _ => Self::from_function(function),
+        }
+    }
+
+    /// The grammar call spelling this transform over `source`, the inverse
+    /// of [`Self::from_term`]: `minutes[n]` writes its `n` as the second
+    /// argument, so `minutes[15]` of `ts` is `minutes(ts, 15)`.
+    ///
+    /// `None` for a transform no call spells - `Identity`, `Bucket`,
+    /// `Truncate`, `Void`, `Unknown` - and for `minutes[0]`, which has no
+    /// period.
+    pub fn into_term(self, source: Term) -> Option<Term> {
+        let function = self.function()?;
+        Some(match self {
+            Self::Minutes(0) => return None,
+            Self::Minutes(step) => Term::call(function, [source, Term::literal(i64::from(step))]),
+            _ => Term::call(function, [source]),
+        })
+    }
+
+    /// The period a time transform floors its source to, for the seven;
+    /// `None` for every other, and for a `minutes[0]` built by hand.
     pub(super) const fn epoch_period(self) -> Option<EpochPeriod> {
         Some(match self {
             Self::Year => EpochPeriod::Year,
             Self::Month => EpochPeriod::Month,
             Self::Day => EpochPeriod::Day,
             Self::Hour => EpochPeriod::Hour,
-            Self::Minute => EpochPeriod::Minute,
-            Self::QuarterHour => EpochPeriod::QuarterHour,
-            Self::HalfHour => EpochPeriod::HalfHour,
+            Self::Minutes(step) => match NonZeroU32::new(step) {
+                Some(step) => EpochPeriod::Minutes(step),
+                None => return None,
+            },
             Self::Week => EpochPeriod::Week,
             Self::Quarter => EpochPeriod::Quarter,
             Self::Identity | Self::Bucket(_) | Self::Truncate(_) | Self::Void | Self::Unknown => {
@@ -193,21 +269,22 @@ impl Transform {
         })
     }
 
-    /// Whether this is one of the five transforms the official model has no
+    /// Whether this is one of the transforms the official model has no
     /// spelling for, which cross it as a reserved bucket count.
     pub(super) const fn is_bridged(self) -> bool {
-        matches!(
-            self,
-            Self::Minute | Self::QuarterHour | Self::HalfHour | Self::Week | Self::Quarter
-        )
+        matches!(self, Self::Minutes(_) | Self::Week | Self::Quarter)
     }
 
     /// The official transform this one crosses the Apache model as.
     ///
-    /// The standard transforms are themselves; the five of this crate's own
-    /// are each a bucket of a reserved count (see the module documentation).
-    pub(super) const fn into_official(self) -> OfficialTransform {
-        match self {
+    /// The standard transforms are themselves; this crate's own are each a
+    /// bucket of a reserved count (see the module documentation).
+    ///
+    /// # Errors
+    ///
+    /// Refuses a `minutes[n]` whose `n` the reserved counts cannot carry.
+    pub(super) fn into_official(self) -> Result<OfficialTransform> {
+        Ok(match self {
             Self::Identity => OfficialTransform::Identity,
             Self::Bucket(count) => OfficialTransform::Bucket(count),
             Self::Truncate(width) => OfficialTransform::Truncate(width),
@@ -215,14 +292,15 @@ impl Transform {
             Self::Month => OfficialTransform::Month,
             Self::Day => OfficialTransform::Day,
             Self::Hour => OfficialTransform::Hour,
-            Self::Minute => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + 1),
-            Self::QuarterHour => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + 2),
-            Self::HalfHour => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + 3),
-            Self::Week => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + 4),
-            Self::Quarter => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + 5),
+            Self::Minutes(step) => {
+                self.validate_parameter()?;
+                OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + step)
+            }
+            Self::Week => OfficialTransform::Bucket(WEEK_BUCKET),
+            Self::Quarter => OfficialTransform::Bucket(QUARTER_BUCKET),
             Self::Void => OfficialTransform::Void,
             Self::Unknown => OfficialTransform::Unknown,
-        }
+        })
     }
 
     /// The transform an official one spells, the inverse of
@@ -231,13 +309,13 @@ impl Transform {
     pub(super) const fn from_official(transform: OfficialTransform) -> Self {
         match transform {
             OfficialTransform::Identity => Self::Identity,
-            OfficialTransform::Bucket(count) if count == BRIDGE_BUCKET_BASE + 1 => Self::Minute,
-            OfficialTransform::Bucket(count) if count == BRIDGE_BUCKET_BASE + 2 => {
-                Self::QuarterHour
+            OfficialTransform::Bucket(WEEK_BUCKET) => Self::Week,
+            OfficialTransform::Bucket(QUARTER_BUCKET) => Self::Quarter,
+            OfficialTransform::Bucket(count)
+                if count > BRIDGE_BUCKET_BASE && count - BRIDGE_BUCKET_BASE <= MAX_MINUTES =>
+            {
+                Self::Minutes(count - BRIDGE_BUCKET_BASE)
             }
-            OfficialTransform::Bucket(count) if count == BRIDGE_BUCKET_BASE + 3 => Self::HalfHour,
-            OfficialTransform::Bucket(count) if count == BRIDGE_BUCKET_BASE + 4 => Self::Week,
-            OfficialTransform::Bucket(count) if count == BRIDGE_BUCKET_BASE + 5 => Self::Quarter,
             OfficialTransform::Bucket(count) => Self::Bucket(count),
             OfficialTransform::Truncate(width) => Self::Truncate(width),
             OfficialTransform::Year => Self::Year,
@@ -286,7 +364,7 @@ impl Transform {
             return Ok(DataType::Int32);
         }
 
-        let transform = self.into_official();
+        let transform = self.into_official()?;
         let input = OfficialType::Primitive(official_primitive_type(source)?);
         transform.result_type(&input).map_err(Error::from_iceberg)?;
 
@@ -294,13 +372,9 @@ impl Transform {
             Self::Identity | Self::Truncate(_) => source.clone(),
             Self::Day => DataType::date32(),
             Self::Bucket(_) | Self::Year | Self::Month | Self::Hour => DataType::Int32,
-            Self::Minute
-            | Self::QuarterHour
-            | Self::HalfHour
-            | Self::Week
-            | Self::Quarter
-            | Self::Void
-            | Self::Unknown => unreachable!("returned above"),
+            Self::Minutes(_) | Self::Week | Self::Quarter | Self::Void | Self::Unknown => {
+                unreachable!("returned above")
+            }
         })
     }
 
@@ -317,6 +391,11 @@ impl Transform {
             Self::Truncate(0) => Err(invalid(SmolStr::new_static(
                 "expected a positive truncate width, got truncate[0]",
             ))),
+            Self::Minutes(step) if step == 0 || step > MAX_MINUTES => {
+                Err(invalid(format_smolstr!(
+                    "expected minutes[n] with n from 1 to {MAX_MINUTES}, got minutes[{step}]"
+                )))
+            }
             _ => Ok(()),
         }
     }
@@ -333,9 +412,6 @@ impl FromStr for Transform {
             "month" | "months" => return Ok(Self::Month),
             "day" | "days" => return Ok(Self::Day),
             "hour" | "hours" => return Ok(Self::Hour),
-            "minute" | "minutes" => return Ok(Self::Minute),
-            "qhour" | "qhours" | "quarter_hour" => return Ok(Self::QuarterHour),
-            "hhour" | "hhours" | "half_hour" => return Ok(Self::HalfHour),
             "week" | "weeks" => return Ok(Self::Week),
             "quarter" | "quarters" => return Ok(Self::Quarter),
             "void" => return Ok(Self::Void),
@@ -348,12 +424,25 @@ impl FromStr for Transform {
         if let Some(rest) = trimmed.strip_prefix("truncate") {
             return Ok(Self::Truncate(bracketed(rest, "truncate")?));
         }
+        if let Some(rest) = trimmed.strip_prefix("minutes") {
+            let step = bracketed(rest, "minutes")?;
+            if step == 0 || step > MAX_MINUTES {
+                return Err(Error::Parse {
+                    target: "iceberg transform",
+                    position: 0,
+                    reason: format_smolstr!(
+                        "expected minutes[n] with n from 1 to {MAX_MINUTES}, got {trimmed:?}"
+                    ),
+                });
+            }
+            return Ok(Self::Minutes(step));
+        }
         Err(Error::Parse {
             target: "iceberg transform",
             position: 0,
             reason: format_smolstr!(
                 "expected an Iceberg transform (identity, bucket[n], truncate[w], year, month, \
-                 day, hour, minute, qhour, hhour, week, quarter, void, unknown), got {trimmed:?}"
+                 day, hour, minutes[n], week, quarter, void, unknown), got {trimmed:?}"
             ),
         })
     }
@@ -369,9 +458,7 @@ impl fmt::Display for Transform {
             Self::Month => formatter.write_str("month"),
             Self::Day => formatter.write_str("day"),
             Self::Hour => formatter.write_str("hour"),
-            Self::Minute => formatter.write_str("minute"),
-            Self::QuarterHour => formatter.write_str("qhour"),
-            Self::HalfHour => formatter.write_str("hhour"),
+            Self::Minutes(step) => write!(formatter, "minutes[{step}]"),
             Self::Week => formatter.write_str("week"),
             Self::Quarter => formatter.write_str("quarter"),
             Self::Void => formatter.write_str("void"),
@@ -380,12 +467,22 @@ impl fmt::Display for Transform {
     }
 }
 
-/// The bucket count above which the official model carries the five
-/// transforms it has no spelling for: `i32::MAX + 1`, so the count after it
-/// stands for `minute`, then `qhour`, `hhour`, `week` and `quarter`. A real
-/// bucket count is at most `i32::MAX` ([`Transform::result_type`] refuses a
-/// larger one), so no table can state a reserved one.
-const BRIDGE_BUCKET_BASE: u32 = 1 << 31;
+/// The bucket count above which the official model carries the transforms
+/// it has no spelling for: `i32::MAX + 1`, so `minutes[n]` is the count
+/// `n` after it. A real bucket count is at most `i32::MAX`
+/// ([`Transform::result_type`] refuses a larger one), so no table can state
+/// a reserved one.
+const BRIDGE_BUCKET_BASE: u32 = i32::MAX as u32 + 1;
+
+/// The reserved bucket count `week` crosses the official model as.
+const WEEK_BUCKET: u32 = u32::MAX;
+
+/// The reserved bucket count `quarter` crosses the official model as.
+const QUARTER_BUCKET: u32 = u32::MAX - 1;
+
+/// The largest `n` of `minutes[n]`: the most minutes whose reserved count
+/// stays below the two calendar ones, 2147483645.
+const MAX_MINUTES: u32 = QUARTER_BUCKET - 1 - BRIDGE_BUCKET_BASE;
 
 /// Read `[n]` or `(n)` after a transform keyword.
 fn bracketed(rest: &str, keyword: &str) -> Result<u32> {
@@ -721,7 +818,7 @@ impl PartitionSpec {
             // every time transform floors its count here.
             let function = match field.transform {
                 transform @ (Transform::Bucket(_) | Transform::Truncate(_)) => Some(
-                    create_transform_function(&transform.into_official())
+                    create_transform_function(&transform.into_official()?)
                         .map_err(Error::from_iceberg)?,
                 ),
                 _ => None,
@@ -969,12 +1066,13 @@ impl PartitionTransform {
     /// row, which is only the same partition when equal keys can never compute
     /// two values. The source column itself has that property for every
     /// transform. A timestamp under a time transform has a coarser one - the
-    /// period itself for a fixed-length one (`minute`, `qhour`, `hhour`,
-    /// `hour`, `day`), the UTC day for the calendar ones (`week`, `month`,
-    /// `quarter`, `year`), which are not aligned to the epoch - because every
-    /// instant of one day computes one week, month, quarter and year, so a
-    /// column of distinct instants still keys a handful of groups. `void`
-    /// computes null whatever the row holds, so it keys nothing.
+    /// period itself for a fixed-length one (`minutes[n]` floors to `60 * n`
+    /// seconds, `hour`, `day`), the UTC day for the calendar ones (`week`,
+    /// `month`, `quarter`, `year`), which are not aligned to the epoch -
+    /// because every instant of one day computes one week, month, quarter
+    /// and year, so a column of distinct instants still keys a handful of
+    /// groups. `void` computes null whatever the row holds, so it keys
+    /// nothing.
     ///
     /// # Errors
     ///
@@ -1001,8 +1099,14 @@ impl PartitionTransform {
             }
             _ => return Ok(Some(std::sync::Arc::clone(source))),
         };
-        let step = crate::temporal::per_second(crate::TimeUnit::from_arrow_time(unit)).unwrap_or(1)
-            * seconds;
+        // A period past `i64` in the source's unit - a great many minutes
+        // counted in nanoseconds - keys by the instant itself.
+        let Some(step) = crate::temporal::per_second(crate::TimeUnit::from_arrow_time(unit))
+            .unwrap_or(1)
+            .checked_mul(seconds)
+        else {
+            return Ok(Some(std::sync::Arc::clone(source)));
+        };
         // A timestamp is its count, read straight off its values buffer;
         // flooring keeps an instant before the epoch in its own period.
         macro_rules! floored {

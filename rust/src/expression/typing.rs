@@ -776,12 +776,21 @@ fn function_field(
         | Function::Weeks
         | Function::Days
         | Function::Hours
-        | Function::HalfHours
-        | Function::QuarterHours
         | Function::Minutes => {
+            // A step is a literal, read once here: `minutes(ts, 0)` or a
+            // step a column holds is refused before any row is read.
             let period = function
-                .epoch_period()
-                .expect("the nine epoch functions were just matched");
+                .epoch_period(
+                    arguments
+                        .iter()
+                        .map(|argument| argument.as_literal().map(super::Literal::value)),
+                )?
+                .ok_or_else(|| {
+                    typing_error(format_smolstr!(
+                        "expected {} to floor to a period",
+                        function.as_str()
+                    ))
+                })?;
             // A date has no clock, so a sub-day period over one is refused
             // here rather than answered null for every row.
             let accepted = match temporal_parts(unwrap_dictionary(&first)) {

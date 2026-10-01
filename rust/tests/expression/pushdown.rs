@@ -460,21 +460,27 @@ mod epoch_functions {
     fn a_predicate_on_a_period_prunes_by_the_arguments_range() {
         // The half hour spans quarter hours 0 and 1 of the day, which are
         // 1_893_408 and 1_893_409 since the epoch.
-        assert_eq!(certainty("qhours(t) = 1893409"), None);
-        assert_eq!(certainty("qhours(t) = 1893410"), Some(false));
-        assert_eq!(certainty("qhours(t) < 1893408"), Some(false));
-        assert_eq!(certainty("qhours(t) >= 1893408"), Some(true));
-        assert_eq!(certainty("qhours(t) in (1893410, 1893411)"), Some(false));
+        assert_eq!(certainty("minutes(t, 15) = 1893409"), None);
+        assert_eq!(certainty("minutes(t, 15) = 1893410"), Some(false));
+        assert_eq!(certainty("minutes(t, 15) < 1893408"), Some(false));
+        assert_eq!(certainty("minutes(t, 15) >= 1893408"), Some(true));
         assert_eq!(
-            certainty("qhours(t) between 1893408 and 1893409"),
+            certainty("minutes(t, 15) in (1893410, 1893411)"),
+            Some(false)
+        );
+        assert_eq!(
+            certainty("minutes(t, 15) between 1893408 and 1893409"),
             Some(true)
         );
         // Every instant is in 2024, and in the one half hour.
         assert_eq!(certainty("years(t) = 54"), Some(true));
         assert_eq!(certainty("years(t) <> 54"), Some(false));
-        assert_eq!(certainty("hhours(t) = 946704"), Some(true));
+        assert_eq!(certainty("minutes(t, 30) = 946704"), Some(true));
         assert_eq!(certainty("days(t) = '2024-01-01'"), Some(true));
-        assert_eq!(certainty("qhours(t) is null"), Some(false));
+        assert_eq!(certainty("minutes(t, 15) is null"), Some(false));
+        // The minute is the step 1: thirty of them, from 28_401_120.
+        assert_eq!(certainty("minutes(t, 1) >= 28401120"), Some(true));
+        assert_eq!(certainty("minutes(t, 1) > 28401149"), Some(false));
         // A date column whose rows hold null, spanning weeks 2818 and 2819:
         // the week is settled, the nullness decides "every row".
         assert_eq!(certainty("weeks(d) = 2818"), None);

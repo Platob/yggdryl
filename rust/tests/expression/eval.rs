@@ -676,7 +676,7 @@ mod fixed_leaves {
     }
 }
 
-/// The nine epoch functions floor a date and an instant to the period it
+/// The seven epoch functions floor a date and an instant to the period it
 /// falls in, before the epoch included, and both tiers agree about it.
 mod epoch_functions {
     use yggdryl::{
@@ -785,9 +785,11 @@ mod epoch_functions {
             ("weeks(t)", Scalar::from(2498)),
             ("days(t)", Scalar::date32(17_486)),
             ("hours(t)", Scalar::from(419_686)),
-            ("hhours(t)", Scalar::from(839_373)),
-            ("qhours(t)", Scalar::from(1_678_746)),
-            ("minutes(t)", Scalar::from(25_181_191)),
+            ("minutes(t, 30)", Scalar::from(839_373)),
+            ("minutes(t, 15)", Scalar::from(1_678_746)),
+            ("minutes(t, 1)", Scalar::from(25_181_191)),
+            ("minutes(t, 60)", Scalar::from(419_686)),
+            ("minutes(t, 1440)", Scalar::from(17_486)),
         ] {
             assert_eq!(answer(text, None, Some(at)), expected, "{text}");
         }
@@ -800,40 +802,62 @@ mod epoch_functions {
             ("weeks(t)", Scalar::from(0)),
             ("days(t)", Scalar::date32(-1)),
             ("hours(t)", Scalar::from(-1)),
-            ("hhours(t)", Scalar::from(-1)),
-            ("qhours(t)", Scalar::from(-1)),
-            ("minutes(t)", Scalar::from(-1)),
+            ("minutes(t, 30)", Scalar::from(-1)),
+            ("minutes(t, 15)", Scalar::from(-1)),
+            ("minutes(t, 1)", Scalar::from(-1)),
         ] {
             assert_eq!(answer(text, None, Some(-1)), expected, "{text}");
         }
-        assert_eq!(
-            answer("qhours(t)", None, Some(899_999_999)),
-            Scalar::from(0)
-        );
-        assert_eq!(
-            answer("qhours(t)", None, Some(900_000_000)),
-            Scalar::from(1)
-        );
-        assert_eq!(
-            answer("hhours(t)", None, Some(1_799_999_999)),
-            Scalar::from(0)
-        );
-        assert_eq!(
-            answer("hhours(t)", None, Some(1_800_000_000)),
-            Scalar::from(1)
-        );
-        assert_eq!(
-            answer("minutes(t)", None, Some(59_999_999)),
-            Scalar::from(0)
-        );
-        assert_eq!(
-            answer("minutes(t)", None, Some(60_000_000)),
-            Scalar::from(1)
-        );
-        assert_eq!(
-            answer("hours(t)", None, Some(3_600_000_000)),
-            Scalar::from(1)
-        );
-        assert_eq!(answer("qhours(t)", None, None), Scalar::Null);
+        for (text, micros, expected) in [
+            ("minutes(t, 15)", 899_999_999, 0),
+            ("minutes(t, 15)", 900_000_000, 1),
+            ("minutes(t, 30)", 1_799_999_999, 0),
+            ("minutes(t, 30)", 1_800_000_000, 1),
+            ("minutes(t, 1)", 59_999_999, 0),
+            ("minutes(t, 1)", 60_000_000, 1),
+            ("hours(t)", 3_600_000_000, 1),
+            ("minutes(t, 15)", -900_000_000, -1),
+            ("minutes(t, 15)", -900_000_001, -2),
+        ] {
+            assert_eq!(
+                answer(text, None, Some(micros)),
+                Scalar::from(expected),
+                "{text} of {micros}"
+            );
+        }
+        assert_eq!(answer("minutes(t, 15)", None, None), Scalar::Null);
+    }
+
+    #[test]
+    fn sixty_minutes_are_the_hour_and_the_widest_step_floors_exactly() {
+        for micros in [
+            1_510_871_468_000_000_i64,
+            0,
+            -1,
+            3_599_999_999,
+            3_600_000_000,
+            -3_600_000_001,
+        ] {
+            assert_eq!(
+                answer("minutes(t, 60)", None, Some(micros)),
+                answer("hours(t)", None, Some(micros)),
+                "{micros}"
+            );
+        }
+        // The widest step there is - 257_698_037_700 seconds - still floors
+        // exactly: its first period starts on its own length.
+        let widest = format!("minutes(t, {})", u32::MAX);
+        for (micros, expected) in [
+            (257_698_037_700_000_000_i64, 1),
+            (257_698_037_699_999_999, 0),
+            (-1, -1),
+            (-257_698_037_700_000_001, -2),
+        ] {
+            assert_eq!(
+                answer(&widest, None, Some(micros)),
+                Scalar::from(expected),
+                "{micros}"
+            );
+        }
     }
 }

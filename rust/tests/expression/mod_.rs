@@ -51,7 +51,7 @@ mod grammar {
     fn unnest_is_one_of_the_closed_functions_under_its_duckdb_name() {
         use yggdryl::expression::Function;
 
-        assert_eq!(Function::ALL.len(), 29);
+        assert_eq!(Function::ALL.len(), 27);
         assert_eq!(Function::ALL.last(), Some(&Function::Unnest));
         assert_eq!(Function::Unnest.as_str(), "unnest");
         for spelling in ["unnest", "UNNEST", "explode"] {
@@ -66,27 +66,26 @@ mod grammar {
     }
 }
 
-/// The nine epoch functions: one plural spelling each, as Spark's Iceberg
-/// DDL writes them, beside the four calendar parts they are not.
+/// The seven epoch functions: one plural spelling each, as Spark's Iceberg
+/// DDL writes them, beside the four calendar parts they are not. `minutes`
+/// alone takes a second argument, the step it always states.
 mod epoch_functions {
     use yggdryl::Term;
     use yggdryl::expression::Function;
 
-    const NINE: [(Function, &str); 9] = [
+    const SEVEN: [(Function, &str); 7] = [
         (Function::Years, "years"),
         (Function::Quarters, "quarters"),
         (Function::Months, "months"),
         (Function::Weeks, "weeks"),
         (Function::Days, "days"),
         (Function::Hours, "hours"),
-        (Function::HalfHours, "hhours"),
-        (Function::QuarterHours, "qhours"),
         (Function::Minutes, "minutes"),
     ];
 
     #[test]
-    fn each_epoch_function_has_one_canonical_name_and_its_aliases() {
-        for (function, name) in NINE {
+    fn each_epoch_function_has_one_canonical_name() {
+        for (function, name) in SEVEN {
             assert_eq!(function.as_str(), name);
             assert_eq!(Function::from_name(name), Some(function.clone()), "{name}");
             assert_eq!(
@@ -94,17 +93,27 @@ mod epoch_functions {
                 Some(function.clone()),
                 "{name}"
             );
-            assert_eq!(function.arity(), (1, 1));
+            let arity = if function == Function::Minutes {
+                (2, 2)
+            } else {
+                (1, 1)
+            };
+            assert_eq!(function.arity(), arity, "{name}");
             assert!(function.is_epoch(), "{name}");
             assert!(!function.is_calendar(), "{name}");
             assert!(Function::ALL.contains(&function), "{name}");
             assert!(Function::vocabulary().contains(name), "{name}");
         }
-        assert_eq!(
-            Function::from_name("quarter_hours"),
-            Some(Function::QuarterHours)
-        );
-        assert_eq!(Function::from_name("half_hours"), Some(Function::HalfHours));
+        // The fixed sub-hour spellings are gone: a step is `minutes(x, n)`.
+        for retired in ["qhours", "hhours", "quarter_hours", "half_hours", "minute"] {
+            assert_eq!(Function::from_name(retired), None, "{retired}");
+            assert!(
+                !Function::vocabulary()
+                    .split(", ")
+                    .any(|name| name == retired),
+                "{retired}"
+            );
+        }
         for calendar in [
             Function::Year,
             Function::Month,
@@ -118,8 +127,12 @@ mod epoch_functions {
 
     #[test]
     fn an_epoch_call_parses_prints_and_serializes_under_its_name() {
-        for (_, name) in NINE {
-            let text = format!("{name}(ts) = 1");
+        for (function, name) in SEVEN {
+            let text = if function == Function::Minutes {
+                format!("{name}(ts, 15) = 1")
+            } else {
+                format!("{name}(ts) = 1")
+            };
             let term: Term = text.parse().unwrap();
             assert_eq!(term.to_string(), text);
             let document = term.clone().into_json().unwrap();
@@ -127,15 +140,18 @@ mod epoch_functions {
             assert!(encoded.contains(&format!("\"{name}\"")), "{encoded}");
             assert_eq!(Term::from_json(&document).unwrap(), term, "{name}");
         }
-        // The two spellings that are not the variant's own name still read
-        // back under the canonical one.
-        assert_eq!(
-            "QUARTER_HOURS(ts)".parse::<Term>().unwrap().to_string(),
-            "qhours(ts)"
-        );
-        assert_eq!(
-            "half_hours(ts)".parse::<Term>().unwrap().to_string(),
-            "hhours(ts)"
-        );
+        // `minutes` always states its step, and states one step.
+        for text in [
+            "minutes(ts)",
+            "minutes(ts, 15, 2)",
+            "qhours(ts)",
+            "hhours(ts)",
+        ] {
+            let error = text.parse::<Term>().unwrap_err().to_string();
+            assert!(
+                error.contains(&text[..text.find('(').unwrap()]),
+                "{text}: {error}"
+            );
+        }
     }
 }

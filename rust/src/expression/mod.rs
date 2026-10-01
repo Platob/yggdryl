@@ -367,7 +367,7 @@ pub enum Function {
     Hour,
     /// `years(x)` - whole years since 1970, the Iceberg `year` transform.
     ///
-    /// The four calendar parts above read a field off a date; the nine epoch
+    /// The four calendar parts above read a field off a date; the seven epoch
     /// functions from here to [`Self::Minutes`] count the whole periods from
     /// the Unix epoch to it, floored, so an instant before 1970 lands in its
     /// own period (`years('1969-12-31')` is `-1`). They are spelled in the
@@ -387,13 +387,35 @@ pub enum Function {
     /// `hours(x)` - hours since the epoch, from an instant; the `hour`
     /// transform.
     Hours,
-    /// `hhours(x)` - half hours since the epoch; the `hhour` transform.
-    #[serde(rename = "hhours")]
-    HalfHours,
-    /// `qhours(x)` - quarter hours since the epoch; the `qhour` transform.
-    #[serde(rename = "qhours")]
-    QuarterHours,
-    /// `minutes(x)` - minutes since the epoch; the `minute` transform.
+    /// `minutes(x, n)` - periods of `n` minutes since the epoch, from an
+    /// instant; the `minutes[n]` transform.
+    ///
+    /// `n` is a whole-number literal from 1 to `u32::MAX`, always written:
+    /// `minutes(ts, 1)` is the minute, `minutes(ts, 15)` the quarter hour
+    /// `minutes[15]` and `minutes(ts, 60)` the hour `hours(ts)` answers.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Field, Selector, StructType, TimeUnit, Timezone};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let schema: Field = StructType::from_fields([DataType::DateTime64 {
+    ///     unit: TimeUnit::Second,
+    ///     timezone: Timezone::UTC,
+    /// }
+    /// .required_field("ts")])
+    /// .map(DataType::from)?
+    /// .required_field("row");
+    /// let selector: Selector = "minutes(ts, 15) as q, minutes(ts, 1) as m".parse()?;
+    /// let typed = selector.apply_field(&schema)?;
+    /// assert_eq!(typed.fields()[0].dtype(), &DataType::Int32);
+    /// assert_eq!(selector.to_string(), "minutes(ts, 15) as q, minutes(ts, 1) as m");
+    /// // The step is always written, and a positive whole number.
+    /// assert!("minutes(ts)".parse::<Selector>().is_err());
+    /// let zero: Selector = "minutes(ts, 0)".parse()?;
+    /// assert!(zero.apply_field(&schema).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
     Minutes,
     /// `truncate(value, unit_or_width)` - a temporal floored to a unit, or a
     /// number floored to a multiple.
@@ -433,7 +455,7 @@ pub enum Function {
 
 impl Function {
     /// Every function this grammar knows, in canonical spelling.
-    pub const ALL: [Self; 29] = [
+    pub const ALL: [Self; 27] = [
         Self::Lower,
         Self::Upper,
         Self::Length,
@@ -453,8 +475,6 @@ impl Function {
         Self::Weeks,
         Self::Days,
         Self::Hours,
-        Self::HalfHours,
-        Self::QuarterHours,
         Self::Minutes,
         Self::Truncate,
         Self::Coalesce,
@@ -489,8 +509,6 @@ impl Function {
             Self::Weeks => "weeks",
             Self::Days => "days",
             Self::Hours => "hours",
-            Self::HalfHours => "hhours",
-            Self::QuarterHours => "qhours",
             Self::Minutes => "minutes",
             Self::Truncate => "truncate",
             Self::Coalesce => "coalesce",
@@ -530,8 +548,6 @@ impl Function {
             "weeks" => Self::Weeks,
             "days" => Self::Days,
             "hours" => Self::Hours,
-            "hhours" | "half_hours" => Self::HalfHours,
-            "qhours" | "quarter_hours" => Self::QuarterHours,
             "minutes" => Self::Minutes,
             "truncate" | "trunc" | "date_trunc" => Self::Truncate,
             "coalesce" => Self::Coalesce,
@@ -561,7 +577,8 @@ impl Function {
             | Self::Contains
             | Self::Truncate
             | Self::IfNull
-            | Self::Get => (2, 2),
+            | Self::Get
+            | Self::Minutes => (2, 2),
             _ => (1, 1),
         }
     }
@@ -574,28 +591,59 @@ impl Function {
 
     /// Return whether this function counts whole periods since the epoch.
     ///
-    /// These are the nine of [`Self::Years`] through [`Self::Minutes`]: each
+    /// These are the seven of [`Self::Years`] through [`Self::Minutes`]: each
     /// floors a temporal to a period and is monotone over it, which is what
     /// lets a range on the argument prune through the function.
     #[must_use]
-    pub fn is_epoch(&self) -> bool {
-        self.epoch_period().is_some()
+    pub const fn is_epoch(&self) -> bool {
+        matches!(
+            self,
+            Self::Years
+                | Self::Quarters
+                | Self::Months
+                | Self::Weeks
+                | Self::Days
+                | Self::Hours
+                | Self::Minutes
+        )
     }
 
-    /// The period an epoch function floors to, for the nine that do.
-    pub(crate) const fn epoch_period(&self) -> Option<eval::EpochPeriod> {
-        Some(match self {
+    /// The period an epoch call floors to, for the seven that do.
+    ///
+    /// `constants` is the call's arguments as the constant each one holds -
+    /// `None` for an argument that is not one - and this is the one rule
+    /// that knows where a step is written: `minutes(x, n)` carries its `n`
+    /// as the second argument, a literal. Every other epoch function takes
+    /// its argument alone.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a `minutes` call whose step is missing, or is not a literal
+    /// whole number from 1 to `u32::MAX`.
+    pub(crate) fn epoch_period<'value>(
+        &self,
+        mut constants: impl Iterator<Item = Option<&'value crate::Scalar>>,
+    ) -> Result<Option<eval::EpochPeriod>> {
+        Ok(Some(match self {
             Self::Years => eval::EpochPeriod::Year,
             Self::Quarters => eval::EpochPeriod::Quarter,
             Self::Months => eval::EpochPeriod::Month,
             Self::Weeks => eval::EpochPeriod::Week,
             Self::Days => eval::EpochPeriod::Day,
             Self::Hours => eval::EpochPeriod::Hour,
-            Self::HalfHours => eval::EpochPeriod::HalfHour,
-            Self::QuarterHours => eval::EpochPeriod::QuarterHour,
-            Self::Minutes => eval::EpochPeriod::Minute,
-            _ => return None,
-        })
+            Self::Minutes => match constants.nth(1) {
+                Some(Some(step)) => eval::EpochPeriod::minutes(step)?,
+                Some(None) | None => {
+                    return Err(Error::InvalidRecord {
+                        path: SmolStr::new_static("$"),
+                        reason: SmolStr::new_static(
+                            "expected the step n of minutes(x, n) to be a literal whole number",
+                        ),
+                    });
+                }
+            },
+            _ => return Ok(None),
+        }))
     }
 
     /// Every function name this grammar accepts, for an error message.

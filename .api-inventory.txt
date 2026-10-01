@@ -346,11 +346,12 @@ pub const RECURSION_LIMIT: usize = 32
   pub const fn is_safe(self) -> bool
   pub const fn as_str(self) -> &'static str
   pub enum Function
-  pub const ALL: [Self; 20] = [ Self::Lower, Self::Upper, Self::Length, Self::Substring, Self::Trim, Self::StartsWith, Self::EndsWith, Self::Contains, Self::Concat, Self::Year, Self::Month, Self::Day, Self::Hour, Self::Truncate, Self::Coalesce, Self::IfNull, Self::Size, Self::Get, Self::Slice, Self::Unnest ]  (`Unnest` - `unnest(serie)`, alias `explode` - is the one select-list form that multiplies rows: the whole term of a projection, at most once per select, and refused anywhere a value is read)
+  pub const ALL: [Self; 27] = [ Self::Lower, Self::Upper, Self::Length, Self::Substring, Self::Trim, Self::StartsWith, Self::EndsWith, Self::Contains, Self::Concat, Self::Year, Self::Month, Self::Day, Self::Hour, Self::Years, Self::Quarters, Self::Months, Self::Weeks, Self::Days, Self::Hours, Self::Minutes, Self::Truncate, Self::Coalesce, Self::IfNull, Self::Size, Self::Get, Self::Slice, Self::Unnest ]  (`Unnest` - `unnest(serie)`, alias `explode` - is the one select-list form that multiplies rows: the whole term of a projection, at most once per select, and refused anywhere a value is read)
   pub fn as_str(&self) -> &str
   pub fn from_name(name: &str) -> Option<Self>
   pub fn arity(&self) -> (usize, usize)
   pub fn is_calendar(&self) -> bool
+  pub const fn is_epoch(&self) -> bool  (the seven epoch periods, `years(x)` through `minutes(x, n)`; `minutes` alone takes two arguments, its step `n` a whole-number literal)
   pub fn vocabulary() -> String
   pub enum Expression
   pub fn select(selector: impl IntoSelector) -> Result<Self>
@@ -2997,9 +2998,13 @@ pub enum WriteStaging
 
 ### yggdryl::iceberg::partition  [rust/src/iceberg/partition.rs]
 pub const FIRST_PARTITION_ID: i32 = 1000;
-  pub enum Transform
+  pub enum Transform  (`Minutes(u32)` is `minutes[n]`, beside `Week` and `Quarter`: this crate's own, crossing the official model as reserved bucket counts)
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn is_invertible(self) -> bool
+  pub const fn function(self) -> Option<Function>
+  pub const fn from_function(function: &Function) -> Option<Self>
+  pub fn from_term(term: &Term) -> Option<Self>
+  pub fn into_term(self, source: Term) -> Option<Term>
   pub fn result_type(self, source: &DataType) -> Result<DataType>
   pub struct PartitionField
   pub fn identity(source_id: i32, field_id: i32, name: impl Into<SmolStr>) -> Self

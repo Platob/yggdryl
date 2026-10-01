@@ -185,7 +185,7 @@ pub(super) fn identity_column<'schema>(
 /// statistic, but one a predicate on the source column prunes by through
 /// the one rule every column statistic prunes by, with no second reading
 /// of the predicate onto the partition value. `year` through `hour` and
-/// `minute`, `qhour`, `hhour`, `week` and `quarter` all answer.
+/// `minutes[n]`, `week` and `quarter` all answer.
 pub(super) fn period_column<'schema>(
     spec: &PartitionSpec,
     position: usize,

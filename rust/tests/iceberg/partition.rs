@@ -342,20 +342,20 @@ mod iceberg {
     }
 }
 
-/// The time transforms: the specification's four and this crate's own five,
-/// each one name, its aliases, its source types and the grammar function
-/// that spells it.
+/// The time transforms: the specification's four and this crate's own
+/// three, `minutes[n]`, `week` and `quarter`, each one name, its source types
+/// and the grammar call that spells it.
 mod time_transforms {
+    use yggdryl::Term;
     use yggdryl::expression::Function;
     use yggdryl::iceberg::{PartitionField, PartitionSpec, Transform};
     use yggdryl::{DataType, TimeUnit, Timezone};
 
-    const FIVE: [(Transform, &str, &[&str]); 5] = [
-        (Transform::Minute, "minute", &["minutes"]),
-        (Transform::QuarterHour, "qhour", &["qhours", "quarter_hour"]),
-        (Transform::HalfHour, "hhour", &["hhours", "half_hour"]),
-        (Transform::Week, "week", &["weeks"]),
-        (Transform::Quarter, "quarter", &["quarters"]),
+    const OWN: [(Transform, &str); 4] = [
+        (Transform::Minutes(15), "minutes[15]"),
+        (Transform::Minutes(30), "minutes[30]"),
+        (Transform::Week, "week"),
+        (Transform::Quarter, "quarter"),
     ];
 
     fn timestamp() -> DataType {
@@ -366,15 +366,19 @@ mod time_transforms {
     }
 
     #[test]
-    fn each_spells_one_name_and_reads_its_aliases() {
-        for (transform, name, aliases) in FIVE {
+    fn each_spells_one_name() {
+        for (transform, name) in OWN {
             assert_eq!(transform.to_string(), name);
             assert_eq!(Transform::from_str(name).unwrap(), transform);
-            for alias in aliases {
-                assert_eq!(Transform::from_str(alias).unwrap(), transform, "{alias}");
-            }
             assert!(!transform.is_invertible(), "{name}");
         }
+        assert_eq!(Transform::Minutes(1).to_string(), "minutes[1]");
+        assert_eq!(
+            Transform::from_str(" minutes[1] ").unwrap(),
+            Transform::Minutes(1)
+        );
+        assert_eq!(Transform::from_str("weeks").unwrap(), Transform::Week);
+        assert_eq!(Transform::from_str("quarters").unwrap(), Transform::Quarter);
         // Spark's DDL spells the standard four in the plural too.
         for (plural, transform) in [
             ("years", Transform::Year),
@@ -386,14 +390,60 @@ mod time_transforms {
             assert_ne!(transform.to_string(), plural, "the singular is written");
         }
         let error = Transform::from_str("fortnight").unwrap_err().to_string();
-        for name in ["minute", "qhour", "hhour", "week", "quarter"] {
+        for name in ["minutes[n]", "week", "quarter"] {
             assert!(error.contains(name), "{error}");
         }
     }
 
     #[test]
+    fn a_minutes_step_is_bracketed_positive_and_bounded() {
+        // The one spelling is the bracketed one: no bare word, no other name.
+        for spelling in [
+            "minutes[0]",
+            "minutes",
+            "minutes[x]",
+            "minutes[15",
+            "minutes[2147483646]",
+            "minute",
+            "min15",
+            "qhour",
+            "hhour",
+        ] {
+            let error = Transform::from_str(spelling).unwrap_err().to_string();
+            assert!(error.contains("minutes"), "{spelling}: {error}");
+        }
+        for (spelling, named) in [
+            ("minutes[0]", "minutes[0]"),
+            ("minutes[15", "minutes[15"),
+            ("minutes[x]", "x"),
+        ] {
+            let error = Transform::from_str(spelling).unwrap_err().to_string();
+            assert!(error.contains(named), "{spelling}: {error}");
+        }
+        // The most minutes the official model can carry reads; a step past
+        // it, or none, built by hand is refused by its spelling.
+        assert_eq!(
+            Transform::from_str("minutes[2147483645]").unwrap(),
+            Transform::Minutes(2_147_483_645)
+        );
+        assert_eq!(
+            Transform::Minutes(2_147_483_645)
+                .result_type(&timestamp())
+                .unwrap(),
+            DataType::Int32
+        );
+        for step in [0, 2_147_483_646, u32::MAX] {
+            let error = Transform::Minutes(step)
+                .result_type(&timestamp())
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(&format!("minutes[{step}]")), "{error}");
+        }
+    }
+
+    #[test]
     fn result_types_are_int32_over_what_each_accepts() {
-        for (transform, name, _) in FIVE {
+        for (transform, name) in OWN {
             assert_eq!(
                 transform.result_type(&timestamp()).unwrap(),
                 DataType::Int32,
@@ -406,11 +456,7 @@ mod time_transforms {
                 DataType::Int32
             );
         }
-        for transform in [
-            Transform::Minute,
-            Transform::QuarterHour,
-            Transform::HalfHour,
-        ] {
+        for transform in [Transform::Minutes(15), Transform::Minutes(30)] {
             let error = transform
                 .result_type(&DataType::date32())
                 .unwrap_err()
@@ -419,7 +465,7 @@ mod time_transforms {
             assert!(error.contains(&transform.to_string()), "{error}");
             assert!(error.contains("date32"), "{error}");
         }
-        for (transform, name, _) in FIVE {
+        for (transform, name) in OWN {
             let error = transform
                 .result_type(&DataType::Int64)
                 .unwrap_err()
@@ -435,15 +481,12 @@ mod time_transforms {
     }
 
     #[test]
-    fn the_nine_time_transforms_are_the_nine_epoch_functions() {
+    fn the_seven_time_transforms_are_the_seven_epoch_functions() {
         for (transform, function) in [
             (Transform::Year, Function::Years),
             (Transform::Month, Function::Months),
             (Transform::Day, Function::Days),
             (Transform::Hour, Function::Hours),
-            (Transform::Minute, Function::Minutes),
-            (Transform::QuarterHour, Function::QuarterHours),
-            (Transform::HalfHour, Function::HalfHours),
             (Transform::Week, Function::Weeks),
             (Transform::Quarter, Function::Quarters),
         ] {
@@ -454,6 +497,11 @@ mod time_transforms {
                 "{function}"
             );
         }
+        // `minutes` names its transform only with the step a call states.
+        for step in [1, 15, 30] {
+            assert_eq!(Transform::Minutes(step).function(), Some(Function::Minutes));
+        }
+        assert_eq!(Transform::from_function(&Function::Minutes), None);
         for transform in [
             Transform::Identity,
             Transform::Bucket(4),
@@ -478,16 +526,64 @@ mod time_transforms {
     }
 
     #[test]
-    fn a_spec_of_the_five_is_writable_and_round_trips_its_document() {
+    fn a_call_and_a_transform_are_one_rule_both_ways() {
+        let source = Term::column("ts");
+        for (text, transform) in [
+            ("years(ts)", Transform::Year),
+            ("quarters(ts)", Transform::Quarter),
+            ("months(ts)", Transform::Month),
+            ("weeks(ts)", Transform::Week),
+            ("days(ts)", Transform::Day),
+            ("hours(ts)", Transform::Hour),
+            ("minutes(ts, 1)", Transform::Minutes(1)),
+            ("minutes(ts, 15)", Transform::Minutes(15)),
+            ("minutes(ts, 30)", Transform::Minutes(30)),
+        ] {
+            let term: Term = text.parse().unwrap();
+            assert_eq!(Transform::from_term(&term), Some(transform), "{text}");
+            let spelled = transform.into_term(source.clone()).unwrap();
+            assert_eq!(spelled, term, "{text}");
+            assert_eq!(spelled.to_string(), text);
+        }
+        // A call with no step, a step that is not a positive whole literal,
+        // the wrong arguments, and anything that is not an epoch call read
+        // as no transform.
+        let minutes = |arguments: Vec<Term>| Term::call(Function::Minutes, arguments);
+        for term in [
+            minutes(vec![Term::column("ts")]),
+            minutes(vec![Term::column("ts"), Term::literal(0_i64)]),
+            minutes(vec![Term::column("ts"), Term::literal("x")]),
+            minutes(vec![Term::column("ts"), Term::column("n")]),
+            minutes(vec![Term::column("ts"), Term::literal(-15_i64)]),
+            Term::call(Function::Years, [Term::column("ts"), Term::literal(2_i64)]),
+            "year(ts)".parse().unwrap(),
+            "ts".parse().unwrap(),
+        ] {
+            assert_eq!(Transform::from_term(&term), None, "{term}");
+        }
+        for transform in [
+            Transform::Identity,
+            Transform::Bucket(16),
+            Transform::Truncate(4),
+            Transform::Void,
+            Transform::Unknown,
+            Transform::Minutes(0),
+        ] {
+            assert_eq!(transform.into_term(source.clone()), None, "{transform}");
+        }
+    }
+
+    #[test]
+    fn a_spec_of_the_crates_own_is_writable_and_round_trips_its_document() {
         let spec = PartitionSpec {
             spec_id: 3,
-            fields: FIVE
+            fields: OWN
                 .iter()
                 .enumerate()
-                .map(|(offset, (transform, name, _))| PartitionField {
+                .map(|(offset, (transform, _))| PartitionField {
                     source_id: 1,
                     field_id: 1000 + i32::try_from(offset).unwrap(),
-                    name: format!("ts_{name}").into(),
+                    name: format!("ts_{offset}").into(),
                     transform: *transform,
                 })
                 .collect(),
@@ -495,7 +591,7 @@ mod time_transforms {
         spec.require_writable().unwrap();
         let document = spec.clone().into_json().unwrap();
         let text = yggdryl::json::into_utf8(&document).unwrap();
-        for (_, name, _) in FIVE {
+        for (_, name) in OWN {
             assert!(text.contains(&format!("\"{name}\"")), "{text}");
         }
         assert_eq!(PartitionSpec::from_json(&document).unwrap(), spec);
@@ -522,7 +618,9 @@ mod internal {
             fields: vec![PartitionField {
                 source_id: 1,
                 field_id: 1000,
-                name: format!("at_{transform}").into(),
+                // The field's name, never the transform's spelling, names
+                // the directory: `at_minutes`, not `at_minutes[15]`.
+                name: format!("at_{}", transform.to_string().split('[').next().unwrap()).into(),
                 transform,
             }],
         };
@@ -569,15 +667,18 @@ mod internal {
         // 2017-11-16T22:31:08, the instant Apache Iceberg's own fixtures use.
         let at = 1_510_871_468_000_000_i64;
         for (transform, count, expected) in [
-            (Transform::Minute, 59_999_999, Scalar::from(0)),
-            (Transform::Minute, 60_000_000, Scalar::from(1)),
-            (Transform::Minute, -1, Scalar::from(-1)),
-            (Transform::QuarterHour, 899_999_999, Scalar::from(0)),
-            (Transform::QuarterHour, 900_000_000, Scalar::from(1)),
-            (Transform::QuarterHour, -1, Scalar::from(-1)),
-            (Transform::HalfHour, 1_799_999_999, Scalar::from(0)),
-            (Transform::HalfHour, 1_800_000_000, Scalar::from(1)),
-            (Transform::HalfHour, -1, Scalar::from(-1)),
+            (Transform::Minutes(1), 59_999_999, Scalar::from(0)),
+            (Transform::Minutes(1), 60_000_000, Scalar::from(1)),
+            (Transform::Minutes(1), -1, Scalar::from(-1)),
+            (Transform::Minutes(1), at, Scalar::from(25_181_191)),
+            (Transform::Minutes(15), 899_999_999, Scalar::from(0)),
+            (Transform::Minutes(15), 900_000_000, Scalar::from(1)),
+            (Transform::Minutes(15), -1, Scalar::from(-1)),
+            (Transform::Minutes(15), at, Scalar::from(1_678_746)),
+            (Transform::Minutes(30), 1_799_999_999, Scalar::from(0)),
+            (Transform::Minutes(30), 1_800_000_000, Scalar::from(1)),
+            (Transform::Minutes(30), -1, Scalar::from(-1)),
+            (Transform::Minutes(30), at, Scalar::from(839_373)),
             (Transform::Week, at, Scalar::from(2498)),
             (Transform::Week, -1, Scalar::from(0)),
             (Transform::Quarter, at, Scalar::from(191)),
@@ -606,19 +707,66 @@ mod internal {
     }
 
     #[test]
+    fn sixty_minutes_are_the_hour() {
+        let timestamp = DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::NAIVE,
+        };
+        let (_, minutes) = plan(Transform::Minutes(60), timestamp.clone());
+        let (_, hour) = plan(Transform::Hour, timestamp);
+        for count in [
+            1_510_871_468_000_000_i64,
+            0,
+            -1,
+            3_599_999_999,
+            3_600_000_000,
+            -3_600_000_001,
+        ] {
+            assert_eq!(
+                minutes.partition_value(micros(count)).unwrap(),
+                hour.partition_value(micros(count)).unwrap(),
+                "{count}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_step_past_i64_in_nanoseconds_still_floors() {
+        // The most minutes a table carries, counted in nanoseconds, is a
+        // period no `i64` count reaches: every instant is in the period of
+        // the epoch or the one before it.
+        let (_, plan) = plan(
+            Transform::Minutes(2_147_483_645),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::NAIVE,
+            },
+        );
+        let nanos =
+            |count: i64| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap();
+        for (count, expected) in [(i64::MAX, 0), (0, 0), (-1, -1), (i64::MIN, -1)] {
+            assert_eq!(
+                plan.partition_value(nanos(count)).unwrap(),
+                Scalar::from(expected),
+                "{count}"
+            );
+        }
+    }
+
+    #[test]
     fn a_partition_path_renders_the_period_number() {
         let (spec, plan) = plan(
-            Transform::QuarterHour,
+            Transform::Minutes(15),
             DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: Timezone::NAIVE,
             },
         );
         let value = plan.partition_value(micros(1_510_871_468_000_000)).unwrap();
-        assert_eq!(spec.partition_path(&[value]).unwrap(), "at_qhour=1678746");
+        assert_eq!(spec.partition_path(&[value]).unwrap(), "at_minutes=1678746");
         assert_eq!(
             spec.partition_path(&[Scalar::Null]).unwrap(),
-            "at_qhour=null"
+            "at_minutes=null"
         );
     }
 }

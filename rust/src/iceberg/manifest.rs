@@ -792,7 +792,7 @@ fn fixed_uuid_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
 ///
 /// Only the header's `schema` and `partition-spec` texts change - the
 /// placeholder goes in where `unknown` or `variant` was, the reserved bucket
-/// where `qhour` was - and a manifest with neither is answered `None`
+/// where `minutes[15]` was - and a manifest with neither is answered `None`
 /// without being re-encoded.
 fn bridged_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
     let source = crate::holder::Buffer::from(bytes);

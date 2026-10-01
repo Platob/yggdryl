@@ -437,19 +437,19 @@ fn oriented<'node>(
 
 /// The statistics of the column a node reads, when it reads exactly one.
 ///
-/// An epoch function over a column - `qhours(ts)`, `years(day)` - reads one
-/// column too, and it is monotone over it: every instant of a range floors
-/// into the range of its ends' periods, and a null floors to null. So its
-/// statistics are the column's mapped through the function, and a predicate
-/// on the function prunes by the same rules as one on the column.
+/// An epoch function over a column - `minutes(ts, 15)`, `years(day)` - reads
+/// one column too, and it is monotone over it: every instant of a range
+/// floors into the range of its ends' periods, and a null floors to null. So
+/// its statistics are the column's mapped through the function, and a
+/// predicate on the function prunes by the same rules as one on the column.
 fn column_bounds<'bounds>(
     node: &Node,
     schema: &Field,
     bounds: &'bounds Bounds,
 ) -> Option<Cow<'bounds, ColumnBounds>> {
     if let Kind::Function(function, arguments) = &node.kind
-        && let Some(period) = function.epoch_period()
-        && let [argument] = arguments.as_slice()
+        && let Ok(Some(period)) = function.epoch_period(arguments.iter().map(Node::as_literal))
+        && let Some(argument) = arguments.first()
     {
         let column = column_bounds(argument, schema, bounds)?;
         let mapped = |held: &Option<Scalar>| {

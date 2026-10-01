@@ -2451,7 +2451,7 @@ fn official_partition_spec(spec: &PartitionSpec) -> Result<OfficialUnboundPartit
             .add_partition_field(
                 field.source_id,
                 &field.name,
-                field.transform.into_official(),
+                field.transform.into_official()?,
             )
             .map_err(Error::from_iceberg)?;
     }

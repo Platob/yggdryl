@@ -380,7 +380,7 @@ mod internal {
             schema
         }
 
-        /// `qhour(ts)` then `week(day)`.
+        /// `minutes[15]` of `ts` then `week` of `day`.
         fn spec() -> PartitionSpec {
             PartitionSpec {
                 spec_id: 0,
@@ -388,8 +388,8 @@ mod internal {
                     PartitionField {
                         source_id: 1,
                         field_id: 1000,
-                        name: "ts_qhour".into(),
-                        transform: Transform::QuarterHour,
+                        name: "ts_minutes".into(),
+                        transform: Transform::Minutes(15),
                     },
                     PartitionField {
                         source_id: 2,
@@ -401,12 +401,16 @@ mod internal {
             }
         }
 
-        fn residual(filter: &str, qhour: Option<i32>, week: Option<i32>) -> Option<Vec<usize>> {
+        fn residual(
+            filter: &str,
+            quarter_hour: Option<i32>,
+            week: Option<i32>,
+        ) -> Option<Vec<usize>> {
             let schema = schema();
             let file = DataFile {
                 record_count: 4,
                 partition: vec![
-                    qhour.map_or(Scalar::Null, Scalar::from),
+                    quarter_hour.map_or(Scalar::Null, Scalar::from),
                     week.map_or(Scalar::Null, Scalar::from),
                 ],
                 ..DataFile::default()

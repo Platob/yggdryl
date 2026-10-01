@@ -141,7 +141,9 @@ The closed function set, and its one door: a user-defined function is registered
 
 ## Calendar parts and epoch periods
 
-Two families read a temporal, and they answer different questions. The four *calendar parts* - `year(x)`, `month(x)`, `day(x)`, `hour(x)` - read a field off the date: 2024, 1 through 12, 1 through 31, 0 through 23. The nine *epoch periods* - `years(x)`, `quarters(x)`, `months(x)`, `weeks(x)`, `days(x)`, `hours(x)`, `hhours(x)`, `qhours(x)`, `minutes(x)` - count the whole periods from the Unix epoch to the value, floored, so an instant before 1970 is in a negative period rather than the one after it: `years('1969-12-31')` is `-1`. They are spelled in the plural as Spark's Iceberg DDL spells them, each is one [Iceberg partition transform](../media/index.md#iceberg) (`qhours(ts)` is the `qhour` transform of `ts`), and each is monotone over its argument, so a range on `x` prunes a filter on `years(x)` by the same statistics.
+Two families read a temporal, and they answer different questions. The four *calendar parts* - `year(x)`, `month(x)`, `day(x)`, `hour(x)` - read a field off the date: 2024, 1 through 12, 1 through 31, 0 through 23. The seven *epoch periods* - `years(x)`, `quarters(x)`, `months(x)`, `weeks(x)`, `days(x)`, `hours(x)`, `minutes(x, n)` - count the whole periods from the Unix epoch to the value, floored, so an instant before 1970 is in a negative period rather than the one after it: `years('1969-12-31')` is `-1`. They are spelled in the plural as Spark's Iceberg DDL spells them, each is one [Iceberg partition transform](../media/index.md#iceberg) (`minutes(ts, 15)` is the `minutes[15]` transform of `ts`), and each is monotone over its argument, so a range on `x` prunes a filter on `years(x)` by the same statistics.
+
+`minutes(x, n)` always states its step `n`, a whole-number literal from 1 to 4294967295 - `minutes(ts, 1)` the minute, `minutes(ts, 15)` the quarter hour, `minutes(ts, 30)` the half hour, `minutes(ts, 60)` the hour `hours(ts)` answers. A missing step, `minutes(ts, 0)`, `minutes(ts, 'x')` and a step a column holds are refused where the call is typed; a parameter supplied as a whole number is a literal there.
 
 | Function | Argument | Answers |
 | --- | --- | --- |
@@ -151,9 +153,7 @@ Two families read a temporal, and they answer different questions. The four *cal
 | `weeks(x)` | date or timestamp | `int32` weeks since Monday 1969-12-29; every week starts on a Monday as an ISO 8601 week does |
 | `days(x)` | date or timestamp | `date32`, the UTC day |
 | `hours(x)` | timestamp | `int32` hours since the epoch |
-| `hhours(x)` (`half_hours`) | timestamp | `int32` half hours since the epoch |
-| `qhours(x)` (`quarter_hours`) | timestamp | `int32` quarter hours since the epoch |
-| `minutes(x)` | timestamp | `int32` minutes since the epoch |
+| `minutes(x, n)` | timestamp, and a whole-number literal `n` | `int32` periods of `n` minutes since the epoch |
 
 A date has no clock, so a sub-day period over one is refused where it is typed; a null answers null. A calendar unit is not a fixed length, so `truncate(x, 'month')` stays refused and `months(x)` is how a month is read.
 
@@ -171,7 +171,7 @@ A date has no clock, so a sub-day period over one is refused where it is typed; 
         .required_field("ts")])?),
         false,
     );
-    let selector: Selector = "year(ts) as calendar, years(ts) as y, weeks(ts) as w, qhours(ts) as q, days(ts) as d".parse()?;
+    let selector: Selector = "year(ts) as calendar, years(ts) as y, weeks(ts) as w, minutes(ts, 15) as q, days(ts) as d".parse()?;
     let published = selector.apply_field(&root)?;
     assert_eq!(published.fields()[1].dtype(), &DataType::Int32);
     assert_eq!(published.fields()[4].dtype(), &DataType::date32());
@@ -186,6 +186,12 @@ A date has no clock, so a sub-day period over one is refused where it is typed; 
     assert_eq!(cells[3], Scalar::from(1_678_746));
     assert_eq!(cells[4], Scalar::date32(17_486));
 
+    // The half hour is the step 30, and the step is always written.
+    let half_hours: Selector = "minutes(ts, 30) as h".parse()?;
+    let cells = half_hours.apply_scalar(&root, &row)?;
+    assert_eq!(cells.as_sequence().expect("a row")[0], Scalar::from(839_373));
+    assert!("minutes(ts)".parse::<Selector>().is_err());
+
     // Before the epoch, a period is negative: the last day of 1969 is year -1.
     let before = Scalar::from_sequence([Scalar::datetime64(-1, TimeUnit::Microsecond, Timezone::NAIVE)?]);
     let cells = selector.apply_scalar(&root, &before)?;
@@ -198,8 +204,8 @@ A date has no clock, so a sub-day period over one is refused where it is typed; 
     from yggdryl import DataType, Field, Selector
 
     root = Field("rows", "struct<ts:timestamp(us)>", False)
-    selector = Selector("year(ts) as calendar, years(ts) as y, qhours(ts) as q, days(ts) as d")
-    assert str(selector) == "year(ts) as calendar, years(ts) as y, qhours(ts) as q, days(ts) as d"
+    selector = Selector("year(ts) as calendar, years(ts) as y, minutes(ts, 15) as q, days(ts) as d")
+    assert str(selector) == "year(ts) as calendar, years(ts) as y, minutes(ts, 15) as q, days(ts) as d"
     assert selector.names == ["calendar", "y", "q", "d"]
 
     published = selector.apply_field(root)
@@ -215,8 +221,8 @@ A date has no clock, so a sub-day period over one is refused where it is typed; 
     const { Field, Selector } = require('yggdryl')
 
     const root = new Field('rows', 'struct<ts:timestamp(us)>', false)
-    const selector = new Selector('year(ts) as calendar, years(ts) as y, qhours(ts) as q, days(ts) as d')
-    assert.equal(selector.toString(), 'year(ts) as calendar, years(ts) as y, qhours(ts) as q, days(ts) as d')
+    const selector = new Selector('year(ts) as calendar, years(ts) as y, minutes(ts, 15) as q, days(ts) as d')
+    assert.equal(selector.toString(), 'year(ts) as calendar, years(ts) as y, minutes(ts, 15) as q, days(ts) as d')
     assert.deepEqual(selector.names, ['calendar', 'y', 'q', 'd'])
 
     const published = selector.applyField(root)

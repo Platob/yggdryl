@@ -8957,8 +8957,9 @@ mod staging_transaction {
 }
 
 /// A table partitioned by one of this crate's own transforms: written by
-/// quarter hour, read back through the metadata and the manifests a reopened
-/// table reads, and pruned by the periods its files and manifests name.
+/// `minutes[15]` and `minutes[30]`, read back through the metadata and the
+/// manifests a reopened table reads, and pruned by the periods its files and
+/// manifests name.
 mod time_partitions {
     use std::sync::Arc;
 
@@ -9007,26 +9008,67 @@ mod time_partitions {
         reader.map(|batch| batch.unwrap().num_rows()).sum()
     }
 
-    #[test]
-    fn a_table_partitioned_by_quarter_hour_writes_one_file_per_period_and_reads_back() {
-        let path = root("quarter-hour-partitions");
-        let schema = schema();
+    /// A table at `path` partitioned by `minutes[step]` of `ts`, in a field
+    /// named `ts_minutes`.
+    fn minutes_table(path: &std::path::Path, schema: &Field, step: u32) -> Table<LocalFolder> {
         let spec = PartitionSpec {
             spec_id: 0,
             fields: vec![PartitionField {
                 source_id: 2,
                 field_id: 1000,
-                name: "ts_qhour".into(),
-                transform: Transform::QuarterHour,
+                name: "ts_minutes".into(),
+                transform: Transform::Minutes(step),
             }],
         };
-        let mut table = Table::create(
-            LocalFolder::new(&path).unwrap(),
+        Table::create(
+            LocalFolder::new(path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
             spec,
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    /// Every metadata document the table wrote, as the text on disk.
+    fn metadata_documents(path: &std::path::Path) -> Vec<String> {
+        let documents: Vec<String> = std::fs::read_dir(path.join("metadata"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|file| file.to_string_lossy().ends_with(".metadata.json"))
+            .map(|file| std::fs::read_to_string(file).unwrap())
+            .collect();
+        assert!(!documents.is_empty(), "the table wrote its metadata");
+        documents
+    }
+
+    /// The on-disk files of a reopened table: partition tuple, row count,
+    /// path, sorted.
+    fn data_files(
+        table: &Table<LocalFolder>,
+        transform: Transform,
+    ) -> Vec<(Vec<Scalar>, i64, String)> {
+        let mut files: Vec<(Vec<Scalar>, i64, String)> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, spec)| {
+                assert_eq!(spec.fields[0].transform, transform);
+                (
+                    file.partition,
+                    file.record_count,
+                    file.file_path.to_string(),
+                )
+            })
+            .collect();
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn a_table_partitioned_by_minutes_15_writes_one_file_per_period_and_reads_back() {
+        let path = root("minutes-15-partitions");
+        let schema = schema();
+        let mut table = minutes_table(&path, &schema, 15);
 
         // Five instants over three quarter hours of 1970-01-01: 00:00,
         // 00:14:59, 00:15, 00:30 and 00:44:59.
@@ -9041,21 +9083,15 @@ mod time_partitions {
             .commit_append(yggdryl::arrow::batch_reader(second.schema(), [second]))
             .unwrap();
 
+        // The document on disk spells the transform as the crate does; the
+        // reserved bucket the official model reads it as never lands there.
+        for text in metadata_documents(&path) {
+            assert!(text.contains("\"minutes[15]\""), "{text}");
+            assert!(!text.contains("\"bucket[21474"), "{text}");
+        }
+
         let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        let mut files: Vec<(Vec<Scalar>, i64, String)> = reopened
-            .data_files()
-            .unwrap()
-            .into_iter()
-            .map(|(file, spec)| {
-                assert_eq!(spec.fields[0].transform, Transform::QuarterHour);
-                (
-                    file.partition,
-                    file.record_count,
-                    file.file_path.to_string(),
-                )
-            })
-            .collect();
-        files.sort();
+        let files = data_files(&reopened, Transform::Minutes(15));
         assert_eq!(files.len(), 4, "one data file per quarter hour: {files:?}");
         for ((partition, count, file_path), (expected, expected_count)) in
             files.iter().zip([(0, 2), (1, 1), (2, 2), (4, 1)])
@@ -9063,7 +9099,7 @@ mod time_partitions {
             assert_eq!(partition, &vec![Scalar::from(expected)]);
             assert_eq!(*count, expected_count, "{file_path}");
             assert!(
-                file_path.contains(&format!("ts_qhour={expected}/")),
+                file_path.contains(&format!("ts_minutes={expected}/")),
                 "{file_path}"
             );
         }
@@ -9116,6 +9152,49 @@ mod time_partitions {
             ),
             1
         );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_table_partitioned_by_minutes_30_writes_one_file_per_half_hour() {
+        let path = root("minutes-30-partitions");
+        let schema = schema();
+        let mut table = minutes_table(&path, &schema, 30);
+        // 00:00, 00:14:59 and 00:15 are the first half hour, 00:30 and
+        // 00:44:59 the second, 01:00 the third.
+        let rows_in = batch(
+            &schema,
+            &[1, 2, 3, 4, 5, 6],
+            &[0, 899, 900, 1800, 2699, 3600],
+        );
+        table
+            .commit_append(yggdryl::arrow::batch_reader(rows_in.schema(), [rows_in]))
+            .unwrap();
+        for text in metadata_documents(&path) {
+            assert!(text.contains("\"minutes[30]\""), "{text}");
+            assert!(!text.contains("\"bucket[21474"), "{text}");
+        }
+
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let files = data_files(&reopened, Transform::Minutes(30));
+        assert_eq!(files.len(), 3, "one data file per half hour: {files:?}");
+        for ((partition, count, file_path), (expected, expected_count)) in
+            files.iter().zip([(0, 3), (1, 2), (2, 1)])
+        {
+            assert_eq!(partition, &vec![Scalar::from(expected)]);
+            assert_eq!(*count, expected_count, "{file_path}");
+            assert!(
+                file_path.contains(&format!("ts_minutes={expected}/")),
+                "{file_path}"
+            );
+        }
+        let early = reopened
+            .plan_matching("ts < '1970-01-01T00:30:00'")
+            .unwrap();
+        assert_eq!(early.tasks.len(), 1);
+        assert_eq!(early.files_skipped(), 2);
+        assert_eq!(early.record_count().unwrap(), 3);
+        assert_eq!(rows(reopened.scan(None).unwrap()), 6);
         let _ = std::fs::remove_dir_all(&path);
     }
 }

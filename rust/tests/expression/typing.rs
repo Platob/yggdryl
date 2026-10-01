@@ -313,11 +313,11 @@ mod fixed_leaves {
     }
 }
 
-/// The nine epoch functions type by the period they floor to: a date takes
+/// The seven epoch functions type by the period they floor to: a date takes
 /// a period of a day or longer, a timestamp every period, and nothing else
-/// takes one.
+/// takes one; `minutes(x, n)` takes its step as a positive whole literal.
 mod epoch_functions {
-    use yggdryl::{DataType, Field, Selector, StructType, TimeUnit, Timezone};
+    use yggdryl::{DataType, Field, Scalar, Selector, StructType, Term, TimeUnit, Timezone};
 
     fn schema() -> Field {
         StructType::from_fields([
@@ -352,9 +352,10 @@ mod epoch_functions {
             "months(t)",
             "weeks(t)",
             "hours(t)",
-            "hhours(t)",
-            "qhours(t)",
-            "minutes(t)",
+            "minutes(t, 1)",
+            "minutes(t, 15)",
+            "minutes(t, 30)",
+            "minutes(t, 4294967295)",
         ] {
             let field = typed(text).unwrap();
             assert_eq!(field.dtype(), &DataType::Int32, "{text}");
@@ -370,12 +371,11 @@ mod epoch_functions {
     fn a_sub_day_period_over_a_date_and_any_period_over_text_are_refused() {
         for (text, expected) in [
             ("hours(d)", "a timestamp"),
-            ("hhours(d)", "a timestamp"),
-            ("qhours(d)", "a timestamp"),
-            ("minutes(d)", "a timestamp"),
+            ("minutes(d, 15)", "a timestamp"),
+            ("minutes(d, 30)", "a timestamp"),
             ("years(s)", "a date or a timestamp"),
             ("days(s)", "a date or a timestamp"),
-            ("qhours(s)", "a timestamp"),
+            ("minutes(s, 15)", "a timestamp"),
         ] {
             let error = typed(text).unwrap_err().to_string();
             assert!(error.contains(expected), "{text}: {error}");
@@ -384,8 +384,35 @@ mod epoch_functions {
                 "{text}: {error}"
             );
         }
-        for text in ["years()", "years(d, t)"] {
+        for text in ["years()", "years(d, t)", "minutes(t)", "minutes(t, 15, 1)"] {
             assert!(typed(text).is_err(), "{text}");
         }
+    }
+
+    #[test]
+    fn a_minutes_step_is_a_positive_whole_literal() {
+        for (text, named) in [
+            ("minutes(t, 0)", "got 0"),
+            ("minutes(t, 'x')", "got 'x'"),
+            ("minutes(t, -15)", "got -15"),
+            ("minutes(t, 4294967296)", "got 4294967296"),
+            ("minutes(t, 1.5)", "got 1.5"),
+            ("minutes(t, null)", "got null"),
+            ("minutes(t, d)", "a literal"),
+        ] {
+            let error = typed(text).unwrap_err().to_string();
+            assert!(error.contains("minutes(x, n)"), "{text}: {error}");
+            assert!(error.contains(named), "{text}: {error}");
+        }
+        // A parameter is a literal once it is supplied.
+        let term: Term = "minutes(t, :step)".parse().unwrap();
+        let bound = term
+            .bind_with(&schema(), &[("step", Scalar::from(15_i64))])
+            .unwrap();
+        assert_eq!(bound.field().dtype(), &DataType::Int32);
+        assert!(
+            term.bind_with(&schema(), &[("step", Scalar::from(0_i64))])
+                .is_err()
+        );
     }
 }

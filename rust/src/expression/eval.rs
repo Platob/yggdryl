@@ -24,6 +24,7 @@
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::num::NonZeroU32;
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -707,14 +708,10 @@ fn call(
         | Function::Weeks
         | Function::Days
         | Function::Hours
-        | Function::HalfHours
-        | Function::QuarterHours
-        | Function::Minutes => epoch_value(
-            function
-                .epoch_period()
-                .expect("the nine epoch functions were just matched"),
-            first,
-        ),
+        | Function::Minutes => match function.epoch_period(values.iter().map(Some))? {
+            Some(period) => epoch_value(period, first),
+            None => Scalar::Null,
+        },
         Function::Truncate => truncate(first, values.get(1).unwrap_or(&Scalar::Null), dtype)?,
         Function::Coalesce | Function::IfNull => values
             .iter()
@@ -843,13 +840,14 @@ fn calendar_part(value: &Scalar, function: &Function) -> Scalar {
 /// One period a temporal floors to, counted from the Unix epoch.
 ///
 /// This is the one place the epoch-relative floor rules live: the grammar's
-/// `years(x)` through `qhours(x)` and the Iceberg partition transforms
-/// `year` through `qhour` both read it, so a filter and a partition value
+/// `years(x)` through `minutes(x, n)` and the Iceberg partition transforms
+/// `year` through `minutes[n]` both read it, so a filter and a partition value
 /// cannot disagree about which period an instant falls in. Every rule floors
 /// (`div_euclid`), so an instant before the epoch lands in its own period
 /// rather than the one after it. A week starts on a Monday as an ISO 8601
 /// week does, counted from Monday 1969-12-29, the Monday on or before the
-/// epoch; a quarter is counted from 1970-Q1.
+/// epoch; a quarter is counted from 1970-Q1; `n` minutes are counted from
+/// the epoch itself, so `Minutes(60)` is the hour.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum EpochPeriod {
     /// Years since 1970.
@@ -864,15 +862,40 @@ pub(crate) enum EpochPeriod {
     Day,
     /// Hours since 1970-01-01T00:00.
     Hour,
-    /// Half hours since the epoch.
-    HalfHour,
-    /// Quarter hours since the epoch.
-    QuarterHour,
-    /// Minutes since the epoch.
-    Minute,
+    /// Periods of `n` minutes since the epoch; never zero, so a floor by
+    /// one never divides by zero.
+    Minutes(NonZeroU32),
 }
 
 impl EpochPeriod {
+    /// The `n`-minute period a `minutes(x, n)` step states.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a step that is not a whole number from 1 to `u32::MAX`, naming
+    /// the step it was given.
+    pub(crate) fn minutes(step: &Scalar) -> Result<Self> {
+        step.as_i128()
+            .and_then(|step| u32::try_from(step).ok())
+            .and_then(NonZeroU32::new)
+            .map(Self::Minutes)
+            .ok_or_else(|| {
+                // The step as the grammar spells it, so `'x'` reads as text.
+                let spelled = Literal::infer(step.clone()).map_or_else(
+                    |_| SmolStr::new(step.kind()),
+                    |literal| format_smolstr!("{literal}"),
+                );
+                Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!(
+                        "expected the step n of minutes(x, n) to be a whole number from 1 to {}, \
+                         got {spelled}",
+                        u32::MAX
+                    ),
+                }
+            })
+    }
+
     /// The fixed length of this period in seconds, when it has one.
     ///
     /// A calendar period - a year, a quarter, a month - has none, and a week
@@ -881,19 +904,14 @@ impl EpochPeriod {
         match self {
             Self::Day => Some(86_400),
             Self::Hour => Some(3_600),
-            Self::HalfHour => Some(1_800),
-            Self::QuarterHour => Some(900),
-            Self::Minute => Some(60),
+            Self::Minutes(step) => Some(60 * step.get() as i64),
             Self::Year | Self::Quarter | Self::Month | Self::Week => None,
         }
     }
 
     /// Whether a date, which has no clock, floors to this period.
     pub(crate) const fn takes_date(self) -> bool {
-        !matches!(
-            self,
-            Self::Hour | Self::HalfHour | Self::QuarterHour | Self::Minute
-        )
+        !matches!(self, Self::Hour | Self::Minutes(_))
     }
 
     /// The period a day number falls in.
@@ -916,10 +934,8 @@ impl EpochPeriod {
             }
             Self::Week => (days + 3).div_euclid(7),
             Self::Day => days,
-            Self::Hour => days * 24,
-            Self::HalfHour => days * 48,
-            Self::QuarterHour => days * 96,
-            Self::Minute => days * 1_440,
+            Self::Hour => days.saturating_mul(24),
+            Self::Minutes(step) => days.saturating_mul(1_440).div_euclid(step.get() as i64),
         }
     }
 
@@ -929,7 +945,12 @@ impl EpochPeriod {
     pub(crate) fn of_count(self, count: i64, unit: TimeUnit) -> Option<i64> {
         let per_second = crate::temporal::per_second(unit)?;
         Some(match self.seconds() {
-            Some(seconds) => count.div_euclid(per_second * seconds),
+            // Many minutes in a fine unit can pass `i64`, so the floor is
+            // taken wide; the period it answers is never wider than the count.
+            Some(seconds) => i64::try_from(
+                i128::from(count).div_euclid(i128::from(per_second) * i128::from(seconds)),
+            )
+            .ok()?,
             None => self.of_days(count.div_euclid(per_second * 86_400)),
         })
     }
@@ -956,7 +977,7 @@ impl EpochPeriod {
             ),
             Self::Week => period.checked_mul(7)?.checked_sub(3),
             Self::Day => Some(period),
-            Self::Hour | Self::HalfHour | Self::QuarterHour | Self::Minute => None,
+            Self::Hour | Self::Minutes(_) => None,
         }
     }
 

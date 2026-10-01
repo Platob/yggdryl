@@ -9,11 +9,11 @@
 //! travels as a private manifest-list path ([`V1SnapshotManifests`]), the
 //! v3 column types `unknown` and `variant` - which its `PrimitiveType` has
 //! no variant for - travel as a placeholder width of their own
-//! ([`UNKNOWN_PLACEHOLDER`], [`VARIANT_PLACEHOLDER`]), and the five
-//! partition transforms of this crate's own - `minute`, `qhour`, `hhour`,
-//! `week`, `quarter`, which its `Transform` refuses by name - travel as the
-//! reserved bucket counts [`Transform::into_official`] spells, in every
-//! partition spec and sort order ([`bridge_transforms`]). All three are
+//! ([`UNKNOWN_PLACEHOLDER`], [`VARIANT_PLACEHOLDER`]), and the partition
+//! transforms of this crate's own - `minutes[n]`, `week` and `quarter`, which
+//! its `Transform` refuses by name - travel as the reserved bucket counts
+//! [`Transform::into_official`] spells, `minutes[15]` as `bucket[2147483663]`, in
+//! every partition spec and sort order ([`bridge_transforms`]). All three are
 //! restored on the way back by their spelling alone, so the crate's own
 //! serde is what spells the names and the official model still validates
 //! everything else: a column's identifier, its name, its requiredness, its
@@ -146,16 +146,17 @@ pub(super) fn table_metadata_document(
 }
 
 /// The official spelling of one transform name, when the official model has
-/// none of its own for it: the five crate transforms as reserved buckets.
+/// none of its own for it: the crate's own transforms as reserved buckets.
 fn bridge_transform_name(name: &str) -> Option<SmolStr> {
     let transform = Transform::from_str(name).ok()?;
-    transform
-        .is_bridged()
-        .then(|| SmolStr::new(transform.into_official().to_string()))
+    if !transform.is_bridged() {
+        return None;
+    }
+    Some(SmolStr::new(transform.into_official().ok()?.to_string()))
 }
 
 /// The crate spelling of one transform name the official model wrote, when
-/// it is a reserved bucket carrying one of the five.
+/// it is a reserved bucket carrying one of the crate's own.
 fn restore_transform_name(name: &str) -> Option<SmolStr> {
     let transform = Transform::from_official(name.parse::<OfficialTransform>().ok()?);
     transform
@@ -181,7 +182,8 @@ pub(super) fn restore_transforms(document: &Scalar) -> Result<Scalar> {
 ///
 /// A manifest carries its spec in its Avro header as the v1 bare field array
 /// or a spec object, and the official manifest reader parses it; this is
-/// what that reader is handed instead of a document spelling one of the five.
+/// what that reader is handed instead of a document spelling one of the
+/// crate's own transforms.
 /// `None` says the document already reads as it is.
 pub(super) fn bridged_partition_spec(document: &Scalar) -> Result<Option<Scalar>> {
     if document.as_serie().is_some() {

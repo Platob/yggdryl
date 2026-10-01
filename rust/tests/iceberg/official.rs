@@ -155,18 +155,18 @@ fn field(name: &str, field_id: i32, transform: Transform) -> PartitionField {
     }
 }
 
-/// The five transforms the official model has no spelling for cross it as
+/// The transforms the official model has no spelling for cross it as
 /// reserved bucket counts and come back as themselves: in the document a
 /// table writes, in a spec or a sort order the official builder adds, and
-/// from a document spelling an alias. Two of them on one source column is
-/// the case a one-name placeholder would have refused as a redundant
-/// partition.
+/// from a document spelling an alias. Two of them on one source column - and
+/// two steps of `minutes[n]` on one - is the case a one-name placeholder
+/// would have refused as a redundant partition.
 #[test]
 fn the_crates_own_transforms_cross_the_official_model_and_come_back() -> yggdryl::Result<()> {
     let spec = PartitionSpec {
         spec_id: 0,
         fields: vec![
-            field("ts_qhour", 1000, Transform::QuarterHour),
+            field("ts_minutes", 1000, Transform::Minutes(15)),
             field("ts_week", 1001, Transform::Week),
         ],
     };
@@ -178,7 +178,7 @@ fn the_crates_own_transforms_cross_the_official_model_and_come_back() -> yggdryl
     )?;
     let document = metadata.clone().into_json()?;
     let text = yggdryl::json::into_utf8(&document)?;
-    assert!(text.contains("\"qhour\""), "{text}");
+    assert!(text.contains("\"minutes[15]\""), "{text}");
     assert!(text.contains("\"week\""), "{text}");
     assert!(!text.contains("bucket"), "{text}");
 
@@ -190,14 +190,14 @@ fn the_crates_own_transforms_cross_the_official_model_and_come_back() -> yggdryl
             .iter()
             .map(|field| field.transform)
             .collect::<Vec<_>>(),
-        vec![Transform::QuarterHour, Transform::Week]
+        vec![Transform::Minutes(15), Transform::Week]
     );
 
     let added = metadata.add_spec(PartitionSpec {
         spec_id: 1,
         fields: vec![
-            field("ts_minute", 1002, Transform::Minute),
-            field("ts_hhour", 1003, Transform::HalfHour),
+            field("ts_minute", 1002, Transform::Minutes(1)),
+            field("ts_half_hour", 1003, Transform::Minutes(30)),
             field("ts_quarter", 1004, Transform::Quarter),
         ],
     })?;
@@ -209,37 +209,63 @@ fn the_crates_own_transforms_cross_the_official_model_and_come_back() -> yggdryl
             .iter()
             .map(|field| field.transform)
             .collect::<Vec<_>>(),
-        vec![Transform::Minute, Transform::HalfHour, Transform::Quarter]
+        vec![
+            Transform::Minutes(1),
+            Transform::Minutes(30),
+            Transform::Quarter
+        ]
     );
     let order_id = metadata.add_sort_order(SortOrder {
         order_id: 1,
-        fields: vec![SortField {
-            source_id: 2,
-            transform: Transform::Quarter,
-            direction: SmolStr::new_static("asc"),
-            null_order: SmolStr::new_static("nulls-first"),
-        }],
+        fields: vec![
+            SortField {
+                source_id: 2,
+                transform: Transform::Minutes(15),
+                direction: SmolStr::new_static("asc"),
+                null_order: SmolStr::new_static("nulls-first"),
+            },
+            SortField {
+                source_id: 2,
+                transform: Transform::Quarter,
+                direction: SmolStr::new_static("asc"),
+                null_order: SmolStr::new_static("nulls-first"),
+            },
+        ],
     })?;
     let order = metadata
         .sort_orders()
         .iter()
         .find(|order| order.order_id == order_id)
         .expect("the added order");
-    assert_eq!(order.fields[0].transform, Transform::Quarter);
+    assert_eq!(
+        order
+            .fields
+            .iter()
+            .map(|field| field.transform)
+            .collect::<Vec<_>>(),
+        vec![Transform::Minutes(15), Transform::Quarter]
+    );
     let text = yggdryl::json::into_utf8(&metadata.clone().into_json()?)?;
     assert!(!text.contains("bucket"), "{text}");
-    for name in ["minute", "hhour", "quarter"] {
+    for name in ["minutes[1]", "minutes[15]", "minutes[30]", "quarter"] {
         assert!(text.contains(&format!("\"{name}\"")), "{text}");
     }
 
     // A document spelling an alias reads, and writes back canonically.
-    let aliased = text.replace("\"qhour\"", "\"quarter_hour\"");
+    let aliased = text.replace("\"week\"", "\"weeks\"");
     let read = TableMetadata::from_json(&yggdryl::json::from_utf8(&aliased)?)?;
-    assert_eq!(
-        read.default_spec()?.fields[0].transform,
-        Transform::QuarterHour
-    );
-    assert!(yggdryl::json::into_utf8(&read.into_json()?)?.contains("\"qhour\""));
+    assert_eq!(read.default_spec()?.fields[1].transform, Transform::Week);
+    assert!(yggdryl::json::into_utf8(&read.into_json()?)?.contains("\"week\""));
+
+    // A step the reserved counts cannot carry, or none, is refused by its
+    // spelling rather than read as a bucket.
+    for refused in ["minutes[0]", "minutes[2147483646]", "minutes"] {
+        let spelled = text.replace("\"minutes[15]\"", &format!("\"{refused}\""));
+        assert!(
+            TableMetadata::from_json(&yggdryl::json::from_utf8(&spelled)?).is_err(),
+            "{refused}"
+        );
+    }
     Ok(())
 }
 
