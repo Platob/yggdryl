@@ -220,7 +220,7 @@ def test_a_value_holding_an_extension_below_its_top_crosses_through_the_core() -
     assert scalar.as_py() == ["EUR", "USD"]
     # The core's value rules hold at any depth.
     with pytest.raises(ValueError):
-        items.arrow_scalar(["EURO"])
+        items.arrow_scalar(["TOOLONGCCY"])
     row = Field("x", DataType.from_fields([Field("ccy", "ccy"), Field("side", "side")]))
     assert row.arrow_scalar({"ccy": "EUR", "side": "BUYS"})["ccy"].as_py() == "EUR"
     # A pyarrow scalar of such a type reads back as the value it holds.

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::parser::Parser;
+use crate::parser::{Parser, TokenKind};
 use crate::value::GeospatialValue;
 use crate::{DataType, EdgeAlgorithm, Error, Result, Scalar, Value};
 
@@ -344,6 +344,14 @@ impl DataType {
 // ------------------------------------------------------------------------
 
 impl Parser<'_> {
+    /// Parse the optional `(crs)` / `(crs, algorithm)` parameters.
+    ///
+    /// Bare `geometry` and `geography` fill the defaults, so the parameters
+    /// appear exactly when they say something. A CRS is quoted, or bare as
+    /// Iceberg writes it (`geometry(srid:4326)`). A geometry given an edge
+    /// algorithm is refused by name at the algorithm's own position -
+    /// straight planar lines need none - and an unknown algorithm reports the
+    /// accepted vocabulary.
     pub(crate) fn parse_geospatial(&mut self, geography: bool) -> Result<DataType> {
         let build = |crs: Option<&str>, algorithm: Option<EdgeAlgorithm>| {
             if geography {
@@ -360,7 +368,7 @@ impl Parser<'_> {
             return build(None, None).map_err(|error| self.error_here(format_smolstr!("{error}")));
         }
         let crs_position = self.current_position();
-        let crs = self.parse_text("a coordinate reference system")?;
+        let crs = self.parse_crs()?;
         let mut algorithm = None;
         if self.consume_separator() {
             let algorithm_position = self.current_position();
@@ -381,6 +389,45 @@ impl Parser<'_> {
         self.expect_symbol(close)?;
         build(Some(&crs), algorithm)
             .map_err(|error| self.error_at(crs_position, format_smolstr!("{error}")))
+    }
+
+    /// Read a coordinate reference system: quoted, or bare the way Iceberg's
+    /// Java implementation writes one - `OGC:CRS84`, `srid:4326`,
+    /// `projjson:name` - as the words, numbers and colons it runs over with
+    /// no space between them, taken as written.
+    fn parse_crs(&mut self) -> Result<SmolStr> {
+        let label = "a coordinate reference system";
+        let Some(first) = self.tokens.get(self.index) else {
+            return Err(self.error_here(format_smolstr!("expected {label}")));
+        };
+        if !matches!(first.kind, TokenKind::Word(_) | TokenKind::Integer(_)) {
+            return self.parse_text(label);
+        }
+        let (start, mut end) = (first.start, first.end);
+        self.index += 1;
+        while let Some(token) = self.tokens.get(self.index) {
+            if token.start != end
+                || !matches!(
+                    token.kind,
+                    TokenKind::Word(_) | TokenKind::Integer(_) | TokenKind::Symbol(':')
+                )
+            {
+                break;
+            }
+            end = token.end;
+            self.index += 1;
+        }
+        let crs = &self.source[start..end];
+        if crs.ends_with(':') {
+            return Err(self.error_at(
+                start,
+                format_smolstr!(
+                    "expected {label} after the colon, got {crs:?}; quote a name the grammar \
+                     cannot read bare"
+                ),
+            ));
+        }
+        Ok(SmolStr::new(crs))
     }
 }
 

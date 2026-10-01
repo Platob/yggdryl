@@ -2,19 +2,26 @@
 //!
 //! Iceberg names a small, closed set of primitive types in its table metadata
 //! JSON. Each one has exactly one physical [`DataType`] here, and the mapping
-//! is total in that direction: every Iceberg type reads back as a datatype
-//! without loss. The other direction is not total - datatypes such as
-//! `int8`, `interval`, or `union` have no Iceberg spelling - so writing
-//! reports what cannot be represented rather than silently widening it.
+//! is total in that direction: every Iceberg type reads as a datatype. It is
+//! not one to one - `unknown` and `variant` both read as
+//! [`DataType::Variant`], below. The other direction is not total -
+//! datatypes such as `int8`, `interval`, or `union` have no Iceberg spelling -
+//! so writing reports what cannot be represented rather than silently
+//! widening it.
 //!
-//! Two v3 spellings are not the same thing and are not mapped alike. An
-//! `unknown` column is the absence of a type: every value is null, nothing is
-//! stored in a data file, and it is [`DataType::Null`]. A `variant` column is
-//! semi-structured data - each value carries its own type in the Parquet
-//! Variant binary encoding - and it is [`DataType::Variant`], the
-//! `metadata`/`value` binary pair the Arrow extension lays out. The spec
-//! keeps `variant` outside its primitive list; it is spelled here because it
-//! is a bare type name in a schema document and every other bare name is one.
+//! Both v3 spellings read as [`DataType::Variant`], the `metadata`/`value`
+//! binary pair the Arrow extension lays out. A `variant` column is
+//! semi-structured data, each value carrying its own type in the Parquet
+//! Variant binary encoding. An `unknown` column is the absence of a type:
+//! every value is null, nothing is stored in a data file, and it may be
+//! promoted to any type - so it reads as the type that holds whatever it
+//! becomes, and the schema says it is `unknown` through its field's
+//! `IcebergField::is_unknown` declaration rather than through a datatype of
+//! its own. [`PrimitiveType::from_dtype`] therefore answers `variant` for the
+//! variant datatype; a [`DataType::Null`] column is the one datatype it
+//! spells `unknown`. The spec keeps `variant` outside its
+//! primitive list; it is spelled here because it is a bare type name in a
+//! schema document and every other bare name is one.
 
 use std::fmt;
 use std::str::FromStr;
@@ -69,7 +76,8 @@ pub enum PrimitiveType {
     TimestampNs,
     /// Nanoseconds since the Unix epoch, in UTC. Added in v3.
     TimestamptzNs,
-    /// A column whose type is not yet known, always null. Added in v3.
+    /// A column whose type is not yet known, always null; it reads as a
+    /// variant the schema declares `unknown`. Added in v3.
     Unknown,
     /// Semi-structured data in the Parquet Variant encoding. Added in v3.
     Variant,
@@ -127,12 +135,11 @@ impl PrimitiveType {
                 unit: TimeUnit::Nanosecond,
                 timezone: crate::Timezone::UTC,
             },
-            // An unknown column always reads as null, which is exactly Arrow's
-            // null datatype rather than a placeholder of some other width.
-            Self::Unknown => DataType::Null,
             // A variant value carries its own type, so the column's datatype
-            // has no parameters: it is the metadata/value pair itself.
-            Self::Variant => DataType::Variant,
+            // has no parameters: it is the metadata/value pair itself. An
+            // unknown column holds nothing yet and may become any type, so it
+            // is the type that holds any value.
+            Self::Unknown | Self::Variant => DataType::Variant,
             Self::String => DataType::utf8(),
             // A UUID is a 16-byte fixed value on the wire, and the core has a
             // datatype that is exactly that, so the spelling survives without
@@ -205,6 +212,9 @@ impl PrimitiveType {
                     Self::TimestamptzNs
                 }
             }
+            // A column of nulls is the absence of a type, which is what
+            // `unknown` states; a variant column spells `unknown` only where
+            // its field declares it, which a datatype cannot.
             DataType::Null => Self::Unknown,
             DataType::Variant => Self::Variant,
             // Iceberg's string is UTF-8, so a string whose bytes ride text

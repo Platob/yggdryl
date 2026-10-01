@@ -164,9 +164,10 @@ const ENCODE = {
   ccy: [
     ['typical', 'USD'],
     ['ISO 4217', 'EUR'],
+    ['crypto ticker', 'USDT'],
     ['empty', ''],
-    ['exactly the width', 'GBP'],
-    ['one byte too long', 'USDT'],
+    ['exactly the width', 'BABYDOGE'],
+    ['one byte too long', 'BABYDOGES'],
     ['non-ASCII', 'USÉ'],
     ['lower case', 'usd'],
   ],
@@ -247,9 +248,11 @@ const DECODE = {
     ['all NUL', [0x00, 0x00]],
   ],
   ccy: [
-    ['exactly the width', [0x55, 0x53, 0x44]],
-    ['padded', [0x55, 0x53, 0x00]],
-    ['all NUL', [0x00, 0x00, 0x00]],
+    // "BABYDOGE" fills every one of the eight bytes a currency may hold.
+    ['exactly the width', [0x42, 0x41, 0x42, 0x59, 0x44, 0x4f, 0x47, 0x45]],
+    // "USD" and five bytes of padding.
+    ['padded', [0x55, 0x53, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00]],
+    ['all NUL', [0, 0, 0, 0, 0, 0, 0, 0]],
   ],
   mic: [
     ['exactly the width', [0x58, 0x4e, 0x41, 0x53]],

@@ -1321,7 +1321,7 @@ export type FixedCp1252Field = FieldOf<'fixed_cp1252', string>
 export type SizedCp1252Field = FieldOf<'sized_cp1252', string>
 /** ISO 3166-1 alpha-2, the two-letter country code, stored as its text. */
 export type CountryField = FieldOf<'country', string>
-/** ISO 4217, the three-letter currency code, stored as its text. */
+/** The currency code: ISO 4217's three letters, or a digital-asset ticker of at most eight bytes, stored as its text. */
 export type CcyField = FieldOf<'ccy', string>
 /** ISO 10383, the four-character market identifier code. */
 export type MicField = FieldOf<'mic', string>

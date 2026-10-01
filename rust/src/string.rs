@@ -507,8 +507,8 @@ pub(crate) mod casts {
     /// rather than rebuilt; a fixed binary is trimmed of the padding its slot
     /// wrote, and anything else first renders as Utf8 through Arrow's kernel.
     /// What the constant width buys is the inner loop: the length check is
-    /// fixed-size, so a currency column ingests three bytes a row with no width
-    /// to read.
+    /// fixed-size, so a currency column ingests at most eight bytes a row with
+    /// no width to read.
     pub(crate) fn ingest_code_array<const WIDTH: usize>(
         array: &ArrayRef,
         safe: bool,
@@ -1071,7 +1071,8 @@ impl DataType {
     /// The leaf a string datatype is, `None` for every other.
     ///
     /// The registered codes are deliberately not here. A currency is an
-    /// identity over ISO 4217 the way a URL is one over RFC 3986 - both store
+    /// identity over ISO 4217 and the tickers past it the way a URL is one
+    /// over RFC 3986 - both store
     /// as text, and neither is a string with a charset - so a code answers
     /// [`DataType::code_width`] and [`DataType::is_code`] instead, and its
     /// Arrow extension name is what keeps a column of one from importing as
@@ -1155,7 +1156,7 @@ impl DataType {
     /// assert_eq!(DataType::utf8().fixed_byte_width(), None);
     /// assert_eq!(DataType::sized_utf8(4)?.fixed_byte_width(), None);
     /// assert_eq!(DataType::Ccy.fixed_byte_width(), None);
-    /// assert_eq!(DataType::Ccy.code_width(), Some(3));
+    /// assert_eq!(DataType::Ccy.code_width(), Some(8));
     /// # Ok(())
     /// # }
     /// ```

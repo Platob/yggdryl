@@ -15,7 +15,8 @@ use crate::{Ccy, DataType, Result, Scalar, StringEnum, Value};
 ///
 /// The base currency, a solidus and the quote currency - `EUR/USD`: how many
 /// units of the quote one unit of the base buys. Both legs are ISO 4217
-/// codes the crate lists ([`StringEnum::CURRENCIES`]), the legs differ, and
+/// codes the crate lists ([`StringEnum::CURRENCIES`]) - a digital-asset
+/// ticker is a [`Ccy`] but no leg, so `BTC/USDT` is no pair - the legs differ, and
 /// neither is `XXX` (no currency) or `XTS` (the testing code): a pair of
 /// those names no instrument. The precious metals - `XAU`, `XAG`, `XPT`,
 /// `XPD` - are currencies to ISO 4217 and legs to this code, and

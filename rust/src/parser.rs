@@ -1,4 +1,4 @@
-//! Canonical display and recursive Arrow, SQL, Hive, and Spark parsing.
+//! Canonical display and recursive Arrow, SQL, Hive, Spark, and Iceberg parsing.
 
 use std::fmt;
 use std::fmt::Write as _;
@@ -819,7 +819,7 @@ impl DataType {
     /// Maximum nesting accepted by the recursive string parser.
     pub const PARSE_RECURSION_LIMIT: usize = 64;
 
-    /// Parses a canonical, Arrow-like, SQL, Hive, or Spark datatype.
+    /// Parses a canonical, Arrow-like, SQL, Hive, Spark, or Iceberg datatype.
     ///
     /// This is the stable entry point used by language bindings. It is also
     /// available through the standard [`FromStr`] implementation.
@@ -1139,6 +1139,11 @@ impl<'a> Parser<'a> {
 
         let value = match keyword.as_str() {
             "null" | "void" => DataType::Null,
+            // Iceberg v3's `unknown` reads as `PrimitiveType::into_dtype` maps
+            // it: the variant that holds whatever the column is promoted to.
+            // A datatype cannot say the column is still `unknown`; the
+            // Iceberg schema a table reads states that on the field.
+            "unknown" => DataType::Variant,
             "boolean" | "bool" => DataType::Boolean,
             "int8" | "tinyint" | "byte" => DataType::Int8,
             "int16" | "smallint" | "short" => DataType::Int16,
@@ -1154,11 +1159,34 @@ impl<'a> Parser<'a> {
                 self.consume_word("precision");
                 DataType::Float64
             }
+            // Iceberg, PostgreSQL and DuckDB write `timestamptz` as one word,
+            // and the fold cannot tell it from Snowflake's `TIMESTAMP_TZ` - an
+            // offset kept beside every value, which no column zone states - so
+            // a separator inside the word is refused rather than read as the
+            // other one.
+            "timestamptz" | "timestamptzns"
+                if !word
+                    .trim_start_matches(['_', '-'])
+                    .get(..11)
+                    .is_some_and(|head| head.eq_ignore_ascii_case("timestamptz")) =>
+            {
+                return Err(self.error_at(
+                    token.start,
+                    format_smolstr!(
+                        "expected timestamptz, one UTC instant per value, got {word:?}: \
+                         Snowflake's TIMESTAMP_TZ keeps an offset beside every value, which \
+                         no column zone states"
+                    ),
+                ));
+            }
             "datetime64"
             | "timestamp"
             | "timestampntz"
             | "timestampltz"
-            | "timestampwithtimezone" => self.parse_datetime64(&keyword, depth)?,
+            | "timestampwithtimezone"
+            | "timestamptz"
+            | "timestampns"
+            | "timestamptzns" => self.parse_datetime64(&keyword, depth)?,
             "date" | "date32" => DataType::date32(),
             "date64" | "datemillisecond" => DataType::date64(),
             "time" => self.parse_sql_time(depth)?,
@@ -1314,18 +1342,34 @@ impl<'a> Parser<'a> {
         depth: usize,
     ) -> Result<DataType> {
         let mut nesting = depth;
-        while self.peek_symbol() == Some('[')
-            && self
-                .tokens
-                .get(self.index + 1)
-                .is_some_and(|token| token.kind == TokenKind::Symbol(']'))
-        {
+        while self.peek_postfix_serie() {
             self.check_depth(nesting + 1)?;
             self.index += 2;
             value = DataType::serie(Field::new("item", value, true));
             nesting += 1;
         }
         Ok(value)
+    }
+
+    /// Whether the next two tokens are the `[]` that makes a serie of the
+    /// type before them, rather than a parameter list.
+    pub(crate) fn peek_postfix_serie(&self) -> bool {
+        self.peek_symbol() == Some('[')
+            && self
+                .tokens
+                .get(self.index + 1)
+                .is_some_and(|token| token.kind == TokenKind::Symbol(']'))
+    }
+
+    /// Whether the next word opens the explicit `field(...)` or `field{...}`
+    /// form. `field` followed by anything else is a name - a column called
+    /// `field`, which `struct<field: int>` spells.
+    pub(crate) fn peek_explicit_field(&self) -> bool {
+        self.peek_word_is("field")
+            && matches!(
+                self.tokens.get(self.index + 1).map(|token| &token.kind),
+                Some(TokenKind::Symbol('(' | '[' | '<' | '{'))
+            )
     }
 
     pub(crate) fn parse_field_or_type(
@@ -1335,32 +1379,104 @@ impl<'a> Parser<'a> {
         depth: usize,
     ) -> Result<Field> {
         self.check_depth(depth)?;
-        if self.peek_word_is("field") {
+        if self.peek_explicit_field() {
             return self.parse_explicit_field(depth, Some(default_name));
         }
         if self.looks_like_named_field() {
             return self.parse_named_field(depth);
         }
         let dtype = self.parse_type(depth)?;
-        let nullable = self.parse_nullability(default_nullable)?;
+        let nullable = self.parse_nullability()?.unwrap_or(default_nullable);
         Ok(Field::new(default_name, dtype, nullable))
     }
 
     pub(crate) fn parse_named_field(&mut self, depth: usize) -> Result<Field> {
         self.check_depth(depth)?;
-        if self.peek_word_is("field") {
+        if self.peek_explicit_field() {
             return self.parse_explicit_field(depth, None);
         }
         let name = self.parse_text("field name")?;
-        if !self.consume_symbol(':')
-            && !self.consume_symbol('=')
-            && (self.peek_symbol().is_some_and(is_closing_or_separator) || self.is_done())
+        let separated = self.consume_symbol(':') || self.consume_symbol('=');
+        if !separated && (self.peek_symbol().is_some_and(is_closing_or_separator) || self.is_done())
         {
             return Err(self.error_here("expected a datatype after the field name"));
         }
+        // Iceberg's own rendering of a member - Java's `NestedField.toString`
+        // and pyiceberg's `str` - states the nullability before the type:
+        // `a: optional int`. Only after a separator, so SQL's unseparated
+        // `row(required int)` keeps `required` as the name.
+        let prefix_position = self.current_position();
+        let prefix = match separated && self.peek_nullability_prefix() {
+            true => Some(self.peek_word_is("optional")),
+            false => None,
+        };
+        if prefix.is_some() {
+            self.index += 1;
+        }
         let dtype = self.parse_type(depth)?;
-        let nullable = self.parse_nullability(true)?;
+        let suffix_position = self.current_position();
+        let nullable = match (prefix, self.parse_nullability()?) {
+            (Some(before), Some(after)) if before != after => {
+                return Err(self.error_at(
+                    suffix_position,
+                    format_smolstr!(
+                        "expected a nullability that agrees with the {} stated at byte \
+                         {prefix_position}, got {}",
+                        nullability_word(before),
+                        nullability_word(after)
+                    ),
+                ));
+            }
+            (before, after) => before.or(after).unwrap_or(true),
+        };
         Ok(Field::new(name, dtype, nullable))
+    }
+
+    /// Whether the next word is Iceberg's `optional` or `required` standing
+    /// before a type, rather than a type or a name of its own.
+    fn peek_nullability_prefix(&self) -> bool {
+        (self.peek_word_is("optional") || self.peek_word_is("required"))
+            && self
+                .tokens
+                .get(self.index + 1)
+                .is_some_and(|token| match &token.kind {
+                    TokenKind::Symbol(symbol) => {
+                        *symbol != ':' && *symbol != '=' && !is_closing_or_separator(*symbol)
+                    }
+                    _ => true,
+                })
+    }
+
+    /// The field id Iceberg's struct rendering leads a member with:
+    /// `1: a: optional int`. Four tokens - an integer, a colon, a name, a
+    /// colon - that no other member spelling starts with, so `struct<1: int>`
+    /// is still a field named `1`.
+    fn parse_struct_field_id(&mut self) -> Result<Option<i32>> {
+        let kind = |offset: usize| {
+            self.tokens
+                .get(self.index + offset)
+                .map(|token| &token.kind)
+        };
+        let leads = matches!(kind(0), Some(TokenKind::Integer(_)))
+            && matches!(kind(1), Some(TokenKind::Symbol(':')))
+            && matches!(
+                kind(2),
+                Some(TokenKind::Word(_) | TokenKind::Quoted(_) | TokenKind::Integer(_))
+            )
+            && matches!(kind(3), Some(TokenKind::Symbol(':')));
+        if !leads {
+            return Ok(None);
+        }
+        let position = self.current_position();
+        let id = self.parse_integer("field id")?;
+        self.expect_symbol(':')?;
+        match i32::try_from(id) {
+            Ok(id) if id >= 0 => Ok(Some(id)),
+            _ => Err(self.error_at(
+                position,
+                format_smolstr!("expected a field id from 0 to {}, got {id}", i32::MAX),
+            )),
+        }
     }
 
     pub(crate) fn parse_explicit_field(
@@ -1539,27 +1655,28 @@ impl<'a> Parser<'a> {
         Ok(values)
     }
 
-    pub(crate) fn parse_nullability(&mut self, default: bool) -> Result<bool> {
+    /// The nullability written after a member's type, `None` when none is.
+    pub(crate) fn parse_nullability(&mut self) -> Result<Option<bool>> {
         if self.consume_symbol('?') {
-            return Ok(true);
+            return Ok(Some(true));
         }
         if self.consume_symbol('!') {
-            return Ok(false);
+            return Ok(Some(false));
         }
         if self.consume_word("not") {
             self.expect_word("null")?;
-            return Ok(false);
+            return Ok(Some(false));
         }
         if self.consume_word("required") {
-            return Ok(false);
+            return Ok(Some(false));
         }
         if self.consume_word("null") || self.consume_word("nullable") {
             if self.consume_symbol('=') {
-                return self.parse_bool("field nullability");
+                return self.parse_bool("field nullability").map(Some);
             }
-            return Ok(true);
+            return Ok(Some(true));
         }
-        Ok(default)
+        Ok(None)
     }
 
     pub(crate) fn parse_bool(&mut self, label: &str) -> Result<bool> {
@@ -1855,26 +1972,24 @@ fn tokenize(source: &str) -> Result<Vec<Token>> {
             .is_some_and(|next| next.is_ascii_digit());
         if character.is_ascii_digit() || ((character == '-' || character == '+') && next_is_digit) {
             let start = position;
-            position += character.len_utf8();
-            while position < source.len() {
-                let next = source[position..]
-                    .chars()
-                    .next()
-                    .ok_or_else(|| parse_error(source, position, "invalid UTF-8 boundary"))?;
-                if !next.is_ascii_digit() {
-                    break;
-                }
-                position += next.len_utf8();
+            let mut end = position + character.len_utf8();
+            while source[end..].starts_with(|next: char| next.is_ascii_digit()) {
+                end += 1;
             }
-            let value = source[start..position].parse::<i64>().map_err(|_| {
-                parse_error(source, start, "integer parameter is outside the i64 range")
-            })?;
-            tokens.push(Token {
-                kind: TokenKind::Integer(value),
-                start,
-                end: position,
-            });
-            continue;
+            // Digits a word character carries on from are a word - a name
+            // such as Iceberg's unquoted `24h_volume` - and read as one below.
+            if !source[end..].starts_with(is_word_character) {
+                let value = source[start..end].parse::<i64>().map_err(|_| {
+                    parse_error(source, start, "integer parameter is outside the i64 range")
+                })?;
+                tokens.push(Token {
+                    kind: TokenKind::Integer(value),
+                    start,
+                    end,
+                });
+                position = end;
+                continue;
+            }
         }
 
         let start = position;
@@ -1883,7 +1998,7 @@ fn tokenize(source: &str) -> Result<Vec<Token>> {
                 .chars()
                 .next()
                 .ok_or_else(|| parse_error(source, position, "invalid UTF-8 boundary"))?;
-            if next.is_whitespace() || is_symbol(next) || matches!(next, '\'' | '"' | '`') {
+            if !is_word_character(next) {
                 break;
             }
             position += next.len_utf8();
@@ -1987,6 +2102,12 @@ fn parse_error(source: &str, position: usize, reason: impl Into<SmolStr>) -> Err
     }
 }
 
+/// Whether a character continues a word: anything but whitespace, a symbol
+/// or a quote.
+fn is_word_character(character: char) -> bool {
+    !character.is_whitespace() && !is_symbol(character) && !matches!(character, '\'' | '"' | '`')
+}
+
 fn is_symbol(character: char) -> bool {
     matches!(
         character,
@@ -2001,6 +2122,14 @@ fn matching_close(open: char) -> Option<char> {
         '[' => Some(']'),
         '{' => Some('}'),
         _ => None,
+    }
+}
+
+/// The word Iceberg spells a nullability with.
+const fn nullability_word(nullable: bool) -> &'static str {
+    match nullable {
+        true => "optional",
+        false => "required",
     }
 }
 
@@ -2122,7 +2251,14 @@ impl Parser<'_> {
         let body_close = collection_close.unwrap_or(close);
         let mut fields = Vec::new();
         while self.peek_symbol() != Some(body_close) {
-            fields.push(self.parse_named_field(depth)?);
+            // An Iceberg member's id is its Parquet field id, the key the
+            // Iceberg schema reader stores it under.
+            let field_id = self.parse_struct_field_id()?;
+            let mut field = self.parse_named_field(depth)?;
+            if let Some(id) = field_id {
+                field.set_parquet_field_id(id);
+            }
+            fields.push(field);
             if self.peek_symbol() == Some(body_close) {
                 break;
             }
@@ -2153,7 +2289,7 @@ impl Parser<'_> {
             .consume_opening()
             .ok_or_else(|| self.error_here("expected map parameters"))?;
 
-        if self.peek_word_is("field") {
+        if self.peek_explicit_field() {
             let entries = self.parse_explicit_field(depth, Some("entries"))?;
             let mut keys_sorted = false;
             if self.consume_separator() {
@@ -2189,13 +2325,6 @@ impl Parser<'_> {
         DataType::run_end_encoded(run_ends, values)
     }
 
-    /// Parse the optional `('crs')` / `('crs', 'algorithm')` parameters.
-    ///
-    /// Bare `geometry` and `geography` fill the defaults, so the parameters
-    /// appear exactly when they say something. A geometry given an edge
-    /// algorithm is refused by name at the algorithm's own position -
-    /// straight planar lines need none - and an unknown algorithm reports the
-    /// accepted vocabulary.
     pub(crate) fn parse_union(&mut self, keyword: &str, depth: usize) -> Result<DataType> {
         let is_variant = keyword == "variant";
         let close = self

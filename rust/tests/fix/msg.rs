@@ -2024,8 +2024,20 @@ mod market_ladder {
         assert_eq!(held.get_currency().as_str(), "CHF");
         assert_eq!(held.get_miccode().map(|held| held.as_str()), Some("XSWX"));
 
-        // A value not shaped twelve, four and three names nothing.
+        // The currency part is a currency of up to eight bytes, a
+        // digital-asset ticker as well as ISO 4217's three letters.
+        let held = parsed(&format!(
+            "{HEAD}OMSINSTRUMENTID=dbi;CH0012214059_XSWX_USDT|10=0|"
+        ));
+        assert_eq!(
+            held.get_securityids().get(&IdType::Isin),
+            Some("CH0012214059")
+        );
+        assert_eq!(held.get_currency().as_str(), "USDT");
+
+        // A value not shaped twelve, four and three to eight names nothing.
         for code in [
+            "dbi;CH0012214059_XSWX_TOOLONGCCY",
             "dbi;CH001221405_XSWX_CHF",
             "dbi;CH0012214059_XSWX",
             "dbi;CH0012214059_XSWX_CHF_X",

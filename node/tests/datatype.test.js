@@ -399,8 +399,9 @@ test('every byte column is one datatype: a layout and a bound', () => {
 })
 
 test('a registered code is its own datatype over its standard width', () => {
-  // Not a name over a width: `ccy` is text with an identity held to
-  // three bytes, and `fixed_ascii(3)` is three bytes without one.
+  // Not a name over a width: `ccy` is text with an identity held to eight
+  // bytes - ISO 4217's three letters or a digital-asset ticker - and
+  // `fixed_ascii(8)` is eight bytes without one.
   const ccy = new DataType('ccy')
 
   assert.equal(ccy.id, 'ccy')
@@ -408,10 +409,11 @@ test('a registered code is its own datatype over its standard width', () => {
   assert.equal(ccy.toString(), 'ccy')
   // The width bounds a value; a code stores as its text, so it names no
   // fixed layout.
-  assert.equal(ccy.codeWidth, 3)
+  assert.equal(ccy.codeWidth, 8)
   assert.equal(ccy.fixedByteWidth, null)
   assert.equal(ccy.stringParameters, null)
   assert.ok(!ccy.equals(DataType.fixedAscii(3)))
+  assert.ok(!ccy.equals(DataType.fixedAscii(8)))
   assert.ok(DataType.from('ccy').equals(ccy))
   assert.ok(DataType.from(' CCY ').equals(ccy))
   assert.throws(() => new DataType('currency'))
@@ -419,7 +421,7 @@ test('a registered code is its own datatype over its standard width', () => {
 
   for (const [name, width] of [
     ['country', 2],
-    ['ccy', 3],
+    ['ccy', 8],
     ['mic', 4],
     // Six bytes, which is a width no ASCII variant has.
     ['cfi', 6],
@@ -443,8 +445,21 @@ test('a registered code is its own datatype over its standard width', () => {
   // The packed integer pads the value to the code's own width, exactly as a
   // fixed US-ASCII string of it does. The padding is the packing's; the
   // column stores the text alone.
-  assert.equal(ccy.asciiPacked('USD'), DataType.fixedAscii(3).asciiPacked('USD'))
-  assert.equal(ccy.asciiValue(0x555344n), 'USD')
+  assert.equal(ccy.asciiPacked('USD'), DataType.fixedAscii(8).asciiPacked('USD'))
+  assert.equal(ccy.asciiPacked('USD'), 0x5553440000000000n)
+  assert.equal(ccy.asciiPacked('USD'), 6148332683081547776n)
+  assert.equal(ccy.asciiPacked('EUR'), 4995989521590910976n)
+  assert.equal(ccy.asciiPacked('JPY'), 5354877813478391808n)
+  assert.equal(ccy.asciiValue(0x5553440000000000n), 'USD')
+  // Three bytes' worth of integer leads with NUL in the eight-byte slot, so
+  // it is no currency's storage.
+  assert.throws(() => ccy.asciiValue(0x555344n), /at most 8 bytes/)
+  // A digital-asset ticker is a currency too, up to the eight-byte bound;
+  // nine bytes are none.
+  for (const ticker of ['USDT', '1INCH', 'BABYDOGE']) {
+    assert.equal(ccy.scalar(ticker).asJs(), ticker)
+  }
+  assert.throws(() => ccy.scalar('TOOLONGCCY'), /at most 8 bytes/)
   assert.throws(() => new DataType('country').asciiPacked('USD'), /at most 2 bytes/)
   // The unit is held to thirty-two bytes, wider than any packing, so it is
   // a code with no packed integer.
@@ -691,6 +706,46 @@ test('a serie layout still reads the list spelling it had', () => {
     assert.notEqual(oldText, dtype.toString())
     assert.ok(DataType.fromString(oldText).equals(dtype), oldText)
   }
+})
+
+// Each Iceberg type string and the datatype its existing spelling names.
+const ICEBERG_SPELLINGS = [
+  ['timestamptz', 'datetime64(us,"UTC")'],
+  ['timestamp_ns', 'datetime64(ns)'],
+  ['timestamptz_ns', 'datetime64(ns,"UTC")'],
+  ['fixed[16]', 'fixed_binary(16)'],
+  ['fixed(16)', 'fixed_binary(16)'],
+  ['unknown', 'variant'],
+  ['decimal(9, 2)', 'decimal32(9,2)'],
+  ['list<fixed[16]>', 'serie<fixed_binary(16)>'],
+  ['map<string, fixed[16]>', 'map<utf8, fixed_binary(16)>'],
+  ['geometry(srid:4326)', "geometry('srid:4326')"],
+  ['geography(OGC:CRS84, spherical)', 'geography'],
+]
+
+test('an Iceberg type string reads as the datatype it names', () => {
+  // Iceberg's schema documents and its reference implementations' renderings
+  // parse straight through the core grammar, nested at any depth.
+  for (const [iceberg, canonical] of ICEBERG_SPELLINGS) {
+    assert.ok(DataType.from(iceberg).equals(DataType.from(canonical)), iceberg)
+    assert.ok(DataType.fromString(iceberg).equals(DataType.from(canonical)), iceberg)
+    assert.ok(new Field('values', iceberg).equals(new Field('values', canonical)), iceberg)
+  }
+
+  // Java's `toString` and pyiceberg's `str`: `<id>: <name>: optional|required <type>`.
+  const row = DataType.from('struct<1: a: optional timestamptz, 2: b: required fixed[16]>')
+  assert.equal(row.field('a').nullable, true)
+  assert.equal(row.field('b').nullable, false)
+  assert.equal(row.field('a').parquetFieldId, 1)
+  assert.equal(row.field('b').parquetFieldId, 2)
+  assert.ok(DataType.from(row.toString()).equals(row))
+
+  assert.throws(() => DataType.from('timestamp_tz'), /Snowflake's TIMESTAMP_TZ/)
+  assert.throws(
+    () => DataType.from('timestamptz without time zone'),
+    /expected a zone, as stated at byte 0, got none/,
+  )
+  assert.throws(() => DataType.from('timestamp_ns(3)'), /which state their unit/)
 })
 
 test('the internal serie factory reads either spelling of a layout', () => {

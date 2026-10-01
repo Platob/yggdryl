@@ -378,6 +378,8 @@ fn a_symbol_reads_as_the_identifier_its_shape_is() {
         ("B0YBKJ7", "sedol"),
         ("ESVUFR", "cfi"),
         ("CH0012214059_XSWX_CHF", "instrument"),
+        ("CH0012214059_XSWX_USDT", "instrument"),
+        ("CH0012214059_XSWX_BABYDOGE", "instrument"),
         ("AAPL.OQ", "ric"),
         ("HOLN SW Equity", "bloomberg"),
     ] {
@@ -400,6 +402,7 @@ fn a_symbol_reads_as_the_identifier_its_shape_is() {
         "037833101",
         "GOOGLE",
         "CH0012214059_XSWX_CH",
+        "CH0012214059_XSWX_BABYDOGES",
         "HOLN SW",
         "EURUSD",
         "",

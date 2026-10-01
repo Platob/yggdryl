@@ -181,7 +181,7 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// assert_eq!(DataType::Ccy.code_width(), Some(3));
+    /// assert_eq!(DataType::Ccy.code_width(), Some(8));
     /// assert_eq!(DataType::Ccy.fixed_byte_width(), None);
     /// assert_eq!(DataType::fixed_ascii(3)?.code_width(), None);
     /// # Ok(())
@@ -326,7 +326,7 @@ mod arrow {
     ///
     /// A code is the ASCII text it is, so it rides Arrow's own text layout and
     /// the `yggdryl.{country,ccy,mic,...}` name beside it carries the
-    /// identity: three bytes under `yggdryl.ccy` read back a currency.
+    /// identity: the same text under `yggdryl.ccy` reads back a currency.
     ///
     /// # Errors
     ///

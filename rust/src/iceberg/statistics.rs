@@ -228,7 +228,7 @@ fn leaf_columns(schema: &Field) -> Result<Vec<(String, i32, DataType)>> {
                 field.name()
             ))
         })?;
-        if field.dtype().as_fields().is_some() || field.dtype() == &DataType::Null {
+        if field.dtype().as_fields().is_some() || field.as_iceberg().is_unknown() {
             continue;
         }
         columns.push((field.name().to_owned(), id, field.dtype().clone()));

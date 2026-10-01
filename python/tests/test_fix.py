@@ -637,6 +637,27 @@ def test_market_metadata_carries_what_no_typed_column_reads(seed_batch: FixRegis
     assert live.metadata == {}
 
 
+def test_a_digital_asset_ticker_is_a_currency_no_iso_source_states(seed_batch: FixRegistry) -> None:
+    """``ccy`` holds up to eight bytes; ``CurrencyCodeSource`` is stated only for an ISO 4217 code."""
+    codec = _fixed_batch(seed_batch)
+
+    def metadata(currency: bytes) -> dict[str, str]:
+        line = (
+            b"8=FIX.4.4|35=D|52=20240102-10:15:30|11=A1|55=AAPL|22=4|48=US0378331005|54=1|15="
+            + currency
+            + b"|38=100|44=10.5|60=20240102-10:15:31|10=0|"
+        )
+        message = codec.parse_fix_line(line)
+        assert message.currency.as_py() == currency.decode()
+        [leaf] = codec.market_data([message])
+        return dict(leaf.metadata)
+
+    assert metadata(b"USD")["currencycodesource"] == "6"
+    # A ticker is a currency, up to the eight-byte bound, and ISO 4217 lists none.
+    for ticker in (b"USDT", b"1INCH", b"BABYDOGE"):
+        assert "currencycodesource" not in metadata(ticker)
+
+
 def test_a_parse_places_each_message_among_the_messages_of_its_instant(seed_batch: FixRegistry) -> None:
     """A run of one instant counts its messages from zero in order; the next instant restarts."""
     order = b"8=FIX.4.4|35=D|52=20260102-10:15:30.000|11=A1|55=AAPL|54=1|38=100|10=0|"

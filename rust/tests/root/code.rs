@@ -31,7 +31,7 @@ mod datatypes {
     /// The codes, each with its width and one value its standard names.
     const CODED: [(&str, DataType, usize, &str); 11] = [
         ("country", DataType::Country, 2, "US"),
-        ("ccy", DataType::Ccy, 3, "USD"),
+        ("ccy", DataType::Ccy, 8, "USDT"),
         ("mic", DataType::Mic, 4, "XPAR"),
         ("cfi", DataType::Cfi, 6, "ESVUFR"),
         ("isin", DataType::Isin, 12, "US0378331005"),
@@ -610,7 +610,7 @@ mod datatypes {
         assert_eq!(value.value().id(), DataTypeId::Ccy);
 
         // The leaf is the datatype's, so a width of the same size is not a code.
-        let plain = Field::new("ccy", DataType::fixed_ascii(3).unwrap(), false);
+        let plain = Field::new("ccy", DataType::fixed_ascii(8).unwrap(), false);
         assert!(CcyField::try_from_field(plain).is_err());
         assert!(FieldScalar::new(&venue_field, "XPARIS").is_err());
 

@@ -1456,8 +1456,12 @@ mod types {
             PrimitiveType::Time.into_dtype().unwrap(),
             DataType::time(TimeUnit::Microsecond).unwrap()
         );
-        // A v3 unknown column has no width at all, which Arrow spells as null.
-        assert_eq!(PrimitiveType::Unknown.into_dtype().unwrap(), DataType::Null);
+        // A v3 unknown column holds nothing yet and may become any type, so
+        // it reads as the variant that holds whatever it becomes.
+        assert_eq!(
+            PrimitiveType::Unknown.into_dtype().unwrap(),
+            DataType::Variant
+        );
     }
 
     #[test]
@@ -8323,8 +8327,9 @@ mod isolation {
     }
 
     #[test]
-    fn unknown_is_null_in_both_directions_and_only_a_v3_table_carries_it() {
-        // Schema document -> field: `unknown` is DataType::Null and optional.
+    fn unknown_is_a_declared_variant_in_both_directions_and_only_a_v3_table_carries_it() {
+        // Schema document -> field: `unknown` is a variant its field declares
+        // `unknown`, optional, at every depth.
         let document: Scalar = yggdryl::json::from_utf8(
             r#"{"type":"struct","schema-id":0,"fields":[
                 {"id":1,"name":"id","required":true,"type":"long"},
@@ -8334,8 +8339,12 @@ mod isolation {
         )
         .unwrap();
         let schema = schema_from_json("row", &document).unwrap();
-        assert_eq!(schema.fields()[1].dtype(), &DataType::Null);
+        assert_eq!(schema.fields()[1].dtype(), &DataType::Variant);
+        assert!(schema.fields()[1].as_iceberg().is_unknown());
         assert!(schema.fields()[1].is_nullable());
+        let element = schema.fields()[2].get_field_at(0).unwrap();
+        assert_eq!(element.dtype(), &DataType::Variant);
+        assert!(element.as_iceberg().is_unknown());
         // Field -> document: the same spelling, the placeholder never shows.
         let written = schema_into_json(&schema).unwrap();
         assert_eq!(written, document);
@@ -8394,12 +8403,24 @@ mod isolation {
             .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
-        // The column reads back as nulls, typed as the schema says...
+        // The null column it was written as reads back as nulls, typed as
+        // the schema says - the variant...
         let mut reader = table.scan(None).unwrap();
         assert_eq!(
             reader.schema().field(1).data_type(),
-            &arrow_schema::DataType::Null
+            table
+                .schema()
+                .unwrap()
+                .clone()
+                .into_arrow_schema()
+                .unwrap()
+                .field(1)
+                .data_type()
         );
+        assert!(matches!(
+            reader.schema().field(1).data_type(),
+            arrow_schema::DataType::Struct(_)
+        ));
         let read = reader.next().unwrap().unwrap();
         assert_eq!(read.num_rows(), 2);
         assert_eq!(read.column(1).logical_null_count(), 2);
@@ -8418,7 +8439,12 @@ mod isolation {
         let reopened = Table::open(LocalFolder::new(&v3).unwrap()).unwrap();
         assert_eq!(
             reopened.schema().unwrap().fields()[1].dtype(),
-            &DataType::Null
+            &DataType::Variant
+        );
+        assert!(
+            reopened.schema().unwrap().fields()[1]
+                .as_iceberg()
+                .is_unknown()
         );
         reopened.metadata().validate().unwrap();
         let text =
@@ -8448,6 +8474,119 @@ mod isolation {
             table.schema().unwrap().fields()[1].dtype(),
             &DataType::Int64
         );
+        let _ = std::fs::remove_dir_all(&v3);
+    }
+
+    #[test]
+    fn a_nested_unknown_slot_stores_the_null_column_and_promotes_over_old_files() {
+        let document: Scalar = yggdryl::json::from_utf8(
+            r#"{"type":"struct","schema-id":0,"fields":[
+                {"id":1,"name":"id","required":true,"type":"long"},
+                {"id":2,"name":"s","required":false,"type":{"type":"struct","fields":[
+                    {"id":3,"name":"a","required":false,"type":"long"},
+                    {"id":4,"name":"later","required":false,"type":"unknown"}
+                ]}},
+                {"id":5,"name":"tags","required":false,"type":{"type":"list","element-id":6,"element":"unknown","element-required":false}}
+            ]}"#,
+        )
+        .unwrap();
+        let schema = schema_from_json("row", &document).unwrap();
+        let v3 = root("isolation-nested-unknown");
+        let mut table = Table::create(
+            LocalFolder::new(&v3).unwrap(),
+            FormatVersion::V3,
+            schema.clone(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let rows = |text: &str| {
+            let rows: Scalar = yggdryl::json::from_utf8(text).unwrap();
+            yggdryl::Serie::from_scalars(
+                schema.clone(),
+                rows.iter().map(std::borrow::Cow::into_owned),
+            )
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap()
+        };
+        let nulls = rows(
+            r#"[{"id":1,"s":{"a":5,"later":null},"tags":[null,null]},
+                {"id":2,"s":null,"tags":null}]"#,
+        );
+        table
+            .commit_append(yggdryl::arrow::batch_reader(nulls.schema(), [nulls]))
+            .unwrap();
+
+        // The data file keeps each slot its parent's layout has, as Arrow's
+        // null column - never a variant group.
+        let (file, _) = table.data_files().unwrap().remove(0);
+        let handle = child_at(&table, &file.file_path).unwrap();
+        let stored =
+            yggdryl::parquet::read_field(&handle, &yggdryl::parquet::ParquetOptions::new())
+                .unwrap();
+        assert_eq!(
+            stored
+                .get_field("s")
+                .unwrap()
+                .get_field("later")
+                .unwrap()
+                .dtype(),
+            &DataType::Null
+        );
+        assert_eq!(
+            stored
+                .get_field("tags")
+                .unwrap()
+                .get_field_at(0)
+                .unwrap()
+                .dtype(),
+            &DataType::Null
+        );
+        let read: usize = table
+            .scan(None)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(read, 2);
+
+        // A value in a nested slot is refused by its path.
+        for (text, path) in [
+            (r#"[{"id":3,"s":{"a":1,"later":7},"tags":null}]"#, "s.later"),
+            (
+                r#"[{"id":3,"s":null,"tags":[null,"seven"]}]"#,
+                "tags.element",
+            ),
+        ] {
+            let batch = rows(text);
+            let message = table
+                .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                message.contains(path) && message.contains("unknown"),
+                "{message}"
+            );
+        }
+
+        // Promoted, the slot reads the old file's nulls as its new type.
+        let mut update = yggdryl::iceberg::SchemaUpdate::from_metadata(table.metadata()).unwrap();
+        update.update_type("s.later", DataType::Int64);
+        table.update_schema(&update).unwrap();
+        let mut promoted = 0;
+        for batch in table.scan(None).unwrap() {
+            let batch = batch.unwrap();
+            let s = batch
+                .column_by_name("s")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::StructArray>()
+                .unwrap();
+            let later = s.column_by_name("later").unwrap();
+            assert_eq!(later.data_type(), &arrow_schema::DataType::Int64);
+            assert_eq!(later.logical_null_count(), batch.num_rows());
+            promoted += batch.num_rows();
+        }
+        assert_eq!(promoted, 2);
         let _ = std::fs::remove_dir_all(&v3);
     }
 
@@ -8499,9 +8638,9 @@ mod isolation {
             PrimitiveType::from_dtype(&DataType::Variant).unwrap(),
             PrimitiveType::Variant
         );
-        // Not the same thing as unknown: one is a type-per-value, the other
-        // the absence of a type.
-        assert_ne!(
+        // `unknown` reads as the same datatype: the absence of a type is told
+        // apart by its field's declaration, not by a datatype of its own.
+        assert_eq!(
             PrimitiveType::Variant.into_dtype().unwrap(),
             PrimitiveType::Unknown.into_dtype().unwrap()
         );

@@ -279,45 +279,72 @@ impl DataType {
 // ------------------------------------------------------------------------
 
 impl Parser<'_> {
-    /// Parse the parameters after `datetime64`, `timestamp` and SQL's
-    /// zoned and unzoned timestamp keywords.
+    /// Parse what follows a timestamp keyword: `datetime64`, `timestamp`,
+    /// SQL's and Spark's zoned and unzoned keywords, and Iceberg's
+    /// `timestamptz`, `timestamp_ns` and `timestamptz_ns`.
+    ///
+    /// The keyword decides the defaults, and some decide more than a
+    /// default. `timestamp_ns` and `timestamptz_ns` state their unit, so no
+    /// parameter list follows them. `timestamp_ltz`,
+    /// `timestamp_with_time_zone` and `timestamptz` state a zone - UTC unless
+    /// a parameter names another - and `timestamp_ntz` states none. Every
+    /// later statement - a zone parameter, a trailing `with time zone` or
+    /// `without time zone` - is held to the ones before it, and one saying
+    /// the opposite is refused rather than read over them. `with time zone`
+    /// after a named zone agrees with it and keeps it.
     ///
     /// The list is positional: a precision or a unit first, then a zone
-    /// written bare, as `Some(zone)` or as `None`; SQL's trailing `with time
-    /// zone` and `without time zone` decide the zone after the list. The
-    /// keyword decides the default zone, so `timestampltz` is UTC before
-    /// any parameter is read.
+    /// written bare, as `Some(zone)` or as `None`. `[]` after the keyword is
+    /// the serie of it, never an empty list.
     ///
     /// # Errors
     ///
     /// Returns [`crate::Error::Parse`] for a precision past nine, a unit
-    /// that is not a clock resolution, a zone no name spells, or a list that
-    /// does not close.
+    /// that is not a clock resolution, a zone no name spells, a zone
+    /// statement an earlier one contradicts, a parameter list after a
+    /// keyword that states its unit, or a list that does not close.
     pub(crate) fn parse_datetime64(&mut self, keyword: &str, depth: usize) -> Result<DataType> {
         self.check_depth(depth)?;
+        if let "timestampns" | "timestamptzns" = keyword {
+            if self.peek_opening().is_some() && !self.peek_postfix_serie() {
+                return Err(self.error_here(
+                    "expected no parameter after timestamp_ns or timestamptz_ns, which state \
+                     their unit; a precision belongs on timestamp(p) or timestamptz(p)",
+                ));
+            }
+            let timezone = match keyword == "timestamptzns" {
+                true => Timezone::UTC,
+                false => Timezone::NAIVE,
+            };
+            return DataType::datetime64(TimeUnit::Nanosecond, timezone);
+        }
+        // Whether a zone was stated so far, and where: the keyword first.
+        let keyword_start = self
+            .index
+            .checked_sub(1)
+            .and_then(|index| self.tokens.get(index))
+            .map_or(0, |token| token.start);
+        let mut stated = match keyword {
+            "timestampltz" | "timestampwithtimezone" | "timestamptz" => Some((true, keyword_start)),
+            "timestampntz" => Some((false, keyword_start)),
+            _ => None,
+        };
         let mut unit = TimeUnit::Microsecond;
-        let mut timezone = if keyword == "timestampltz" || keyword == "timestampwithtimezone" {
-            Timezone::UTC
-        } else {
-            Timezone::NAIVE
+        let mut timezone = match stated {
+            Some((true, _)) => Timezone::UTC,
+            _ => Timezone::NAIVE,
         };
 
-        if let Some(close) = self.consume_opening() {
+        if !self.peek_postfix_serie()
+            && let Some(close) = self.consume_opening()
+        {
             if self.peek_symbol() != Some(close) {
                 if let Some(precision) = self.peek_integer() {
                     let precision_start = self.current_position();
                     self.index += 1;
                     unit = precision_to_unit(precision, precision_start)?;
-                } else if self.peek_word_is("none") {
-                    self.index += 1;
-                    timezone = Timezone::NAIVE;
-                } else if self.peek_word_is("some") {
-                    self.index += 1;
-                    let inner_close = self
-                        .consume_opening()
-                        .ok_or_else(|| self.error_here("expected Some(timezone)"))?;
-                    timezone = self.parse_timezone()?;
-                    self.expect_symbol(inner_close)?;
+                } else if self.peek_word_is("none") || self.peek_word_is("some") {
+                    timezone = self.parse_datetime64_zone(&mut stated)?;
                 } else {
                     let (parsed, unit_start) =
                         self.parse_time_unit_span(Some(close), "datetime64 unit")?;
@@ -332,35 +359,70 @@ impl Parser<'_> {
 
                 if self.consume_separator() {
                     self.consume_label("timezone");
-                    if self.peek_word_is("none") {
-                        self.index += 1;
-                        timezone = Timezone::NAIVE;
-                    } else if self.peek_word_is("some") {
-                        self.index += 1;
-                        let inner_close = self
-                            .consume_opening()
-                            .ok_or_else(|| self.error_here("expected Some(timezone)"))?;
-                        timezone = self.parse_timezone()?;
-                        self.expect_symbol(inner_close)?;
-                    } else {
-                        timezone = self.parse_timezone()?;
-                    }
+                    timezone = self.parse_datetime64_zone(&mut stated)?;
                 }
             }
             self.expect_symbol(close)?;
         }
 
+        let suffix = self.current_position();
         if self.consume_word("with") {
             self.expect_word("time")?;
             self.expect_word("zone")?;
-            timezone = Timezone::UTC;
+            self.check_datetime64_zone(stated, true, suffix)?;
+            // The suffix says there is a zone; a parameter naming one said which.
+            if timezone.is_naive() {
+                timezone = Timezone::UTC;
+            }
         } else if self.consume_word("without") {
             self.expect_word("time")?;
             self.expect_word("zone")?;
+            self.check_datetime64_zone(stated, false, suffix)?;
             timezone = Timezone::NAIVE;
         }
 
         DataType::datetime64(unit, timezone)
+    }
+
+    /// Read one zone parameter - bare, `Some(zone)` or `None` - hold it to
+    /// what was stated before it, and record it as the latest statement.
+    fn parse_datetime64_zone(&mut self, stated: &mut Option<(bool, usize)>) -> Result<Timezone> {
+        let position = self.current_position();
+        let timezone = if self.consume_word("none") {
+            Timezone::NAIVE
+        } else if self.consume_word("some") {
+            let inner_close = self
+                .consume_opening()
+                .ok_or_else(|| self.error_here("expected Some(timezone)"))?;
+            let timezone = self.parse_timezone()?;
+            self.expect_symbol(inner_close)?;
+            timezone
+        } else {
+            self.parse_timezone()?
+        };
+        self.check_datetime64_zone(*stated, !timezone.is_naive(), position)?;
+        *stated = Some((!timezone.is_naive(), position));
+        Ok(timezone)
+    }
+
+    /// Refuse a zone statement that says the opposite of an earlier one.
+    fn check_datetime64_zone(
+        &self,
+        stated: Option<(bool, usize)>,
+        zoned: bool,
+        position: usize,
+    ) -> Result<()> {
+        match stated {
+            Some((true, at)) if !zoned => Err(self.error_at(
+                position,
+                format_smolstr!("expected a zone, as stated at byte {at}, got none"),
+            )),
+            Some((false, at)) if zoned => Err(self.error_at(
+                position,
+                format_smolstr!("expected no zone, as stated at byte {at}, got one"),
+            )),
+            _ => Ok(()),
+        }
     }
 }
 

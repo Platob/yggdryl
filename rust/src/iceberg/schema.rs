@@ -14,7 +14,8 @@
 //! depth-first from a starting id; a field that already carries an id keeps it.
 //!
 //! Everything a field cannot hold structurally - the schema identifier, a
-//! column's documentation, the v3 default values - is kept as Iceberg protocol
+//! column's documentation, the v3 default values, an `unknown` column read as
+//! the `variant` it can become - is kept as Iceberg protocol
 //! properties, so re-emitting a document reproduces it rather than quietly
 //! dropping what the field model has no slot for. Those properties are reached
 //! through [`Field::as_iceberg`] and [`Field::as_iceberg_mut`], which own the
@@ -39,6 +40,13 @@ pub(super) const WRITE_DEFAULT: &str = "write-default";
 
 /// The Iceberg property listing the identifier field ids of a schema root.
 pub(super) const IDENTIFIER: &str = "identifier-field-ids";
+
+/// The Iceberg property holding the type a column's datatype cannot state,
+/// mirroring the field object's own `type` key.
+pub(super) const TYPE: &str = "type";
+
+/// The one value [`TYPE`] holds: the column is `unknown`, read as `variant`.
+pub(super) const UNKNOWN: &str = "unknown";
 
 /// Read an Iceberg schema object into a non-null struct root field.
 ///
@@ -95,9 +103,13 @@ pub fn schema_from_json(name: &str, schema: &Scalar) -> Result<Field> {
 /// # Errors
 ///
 /// Returns an error when the field is not a non-null struct root, when a
-/// column has no field id, when a datatype has no Iceberg spelling, or when
-/// a required column is `unknown` - the spec makes an `unknown` column
-/// optional, because every value it holds is null.
+/// column has no field id, when a datatype has no Iceberg spelling, when a
+/// column states an `ICEBERG:type` other than `unknown` or states `unknown`
+/// on a column that is not a variant, or when an `unknown` column - a variant
+/// declaring it through
+/// [`IcebergFieldMut::set_unknown`](crate::IcebergFieldMut::set_unknown), or a
+/// null column - is required: the spec makes one optional, because every
+/// value it holds is null.
 pub fn schema_into_json(root: &Field) -> Result<Scalar> {
     root.validate_struct_root()?;
 
@@ -238,8 +250,13 @@ fn field_from_json(entry: &Scalar) -> Result<Field> {
 fn typed_field_from_json(name: &str, type_json: &Scalar, nullable: bool) -> Result<Field> {
     if let Some(primitive) = type_json.as_str() {
         let parsed = PrimitiveType::from_str(primitive)?;
-        let dtype = parsed.into_dtype()?;
-        return Ok(Field::new(name, dtype, nullable));
+        let mut field = Field::new(name, parsed.into_dtype()?, nullable);
+        // `unknown` reads as the variant it can become; the declaration is
+        // what keeps the column `unknown` to the table.
+        if parsed == PrimitiveType::Unknown {
+            field.as_iceberg_mut().set_unknown(true)?;
+        }
+        return Ok(field);
     }
 
     if type_json.as_struct().is_none() && type_json.as_mapping().is_none() {
@@ -312,13 +329,6 @@ fn fields_to_json(root: &Field) -> Result<Vec<Scalar>> {
                 field.name()
             ))
         })?;
-        if field.dtype() == &DataType::Null && !field.is_nullable() {
-            return Err(invalid(format_smolstr!(
-                "expected the unknown column {:?} to be optional (an unknown column is always \
-                 null), got a required column",
-                field.name()
-            )));
-        }
         let mut object = vec![
             (Scalar::from("id"), json_integer(i64::from(id))),
             (Scalar::from("name"), Scalar::from(field.name())),
@@ -351,6 +361,9 @@ fn fields_to_json(root: &Field) -> Result<Vec<Scalar>> {
 
 /// Render one field's datatype as an Iceberg type.
 fn type_to_json(field: &Field) -> Result<Scalar> {
+    if spells_unknown(field)? {
+        return Ok(Scalar::from(UNKNOWN));
+    }
     match field.dtype() {
         DataType::Struct(_) => Scalar::from_struct([
             ("type", Scalar::from("struct")),
@@ -418,6 +431,40 @@ fn type_to_json(field: &Field) -> Result<Scalar> {
         }
         other => Ok(Scalar::from(PrimitiveType::from_dtype(other)?.to_string())),
     }
+}
+
+/// Whether one typed slot is spelled `unknown`: a variant declaring it, or a
+/// null column - the spelling a caller may state it in.
+///
+/// # Errors
+///
+/// Returns an error naming the column when the declaration cannot be
+/// honoured - an `ICEBERG:type` other than `unknown`, or `unknown` declared
+/// on a column that is not a variant - and when an `unknown` slot is
+/// required: the spec makes one optional, because every value it holds is
+/// null.
+fn spells_unknown(field: &Field) -> Result<bool> {
+    let unknown = match field.as_iceberg().get(TYPE) {
+        None => field.dtype() == &DataType::Null,
+        Some(UNKNOWN) if field.dtype() == &DataType::Variant => true,
+        Some(declared) => {
+            return Err(invalid(format_smolstr!(
+                "expected {:?} to be {UNKNOWN:?} on a variant column, got {declared:?} on the {} \
+                 column {:?}",
+                field.as_iceberg().key(TYPE),
+                field.dtype(),
+                field.name()
+            )));
+        }
+    };
+    if unknown && !field.is_nullable() {
+        return Err(invalid(format_smolstr!(
+            "expected the unknown column {:?} to be optional (an unknown column is always null), \
+             got a required column",
+            field.name()
+        )));
+    }
+    Ok(unknown)
 }
 
 /// Narrow an identifier read from JSON.

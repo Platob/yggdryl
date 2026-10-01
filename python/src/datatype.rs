@@ -1599,7 +1599,8 @@ impl PyDataType {
     /// Whether this is a string, in any layout and charset.
     ///
     /// The ten registered codes are not strings: a currency is an identity
-    /// over ISO 4217 that stores as text, and answers ``is_code`` instead.
+    /// over ISO 4217 codes and digital-asset tickers that stores as text, and
+    /// answers ``is_code`` instead.
     #[getter]
     fn is_string(&self) -> bool {
         self.inner.is_string()
@@ -1676,10 +1677,11 @@ impl PyDataType {
     /// The most bytes a registered code's value may be, ``None`` for every
     /// other datatype.
     ///
-    /// The number its standard fixes - three for a currency, six for a CFI
-    /// classification - and a maximum rather than a layout: a code stores as
-    /// the text it is, so ``fixed_byte_width`` answers ``None`` and this
-    /// answers the bound its values are held to.
+    /// The number its standard fixes - eight for a currency, ISO 4217's three
+    /// letters or a digital-asset ticker, six for a CFI classification - and a
+    /// maximum rather than a layout: a code stores as the text it is, so
+    /// ``fixed_byte_width`` answers ``None`` and this answers the bound its
+    /// values are held to.
     #[getter]
     fn code_width(&self) -> Option<usize> {
         self.inner.code_width()

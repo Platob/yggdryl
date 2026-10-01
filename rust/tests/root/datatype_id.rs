@@ -603,7 +603,7 @@ fn fixed_widths_match_their_layout() {
 
 #[test]
 fn a_code_width_is_a_bound_and_never_a_layout() {
-    assert_eq!(DataTypeId::Ccy.code_width(), Some(3));
+    assert_eq!(DataTypeId::Ccy.code_width(), Some(8));
     assert_eq!(DataTypeId::Cfi.code_width(), Some(6));
     assert_eq!(DataTypeId::Ric.code_width(), Some(32));
     assert_eq!(DataTypeId::Ccy.fixed_byte_width(), None);

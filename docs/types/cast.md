@@ -157,7 +157,7 @@ shared rather than rebuilt. `u64::MAX` reads as `-1`, and back.
 It is a preference, not a mode. A pair that is *not* the same bytes - two different widths, or
 text and a number - takes the ordinary conversion, and a datatype whose values follow a rule
 (a [fixed string](text/string.md), a [registered code](codes/index.md), a [UUID](uuid.md), a [version](version.md))
-keeps that rule: four arbitrary bytes are not a currency merely because a currency is four bytes.
+keeps that rule: eight arbitrary bytes are not a currency merely because a currency may be eight bytes.
 
 Absence is unaffected: the reading says what the bytes mean, and the target field's nullability
 still says whether a value may be absent ([Required columns](#required-columns)).

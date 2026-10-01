@@ -167,7 +167,8 @@ pub enum DataTypeId {
     // Code: 0x70..0x7f
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country = 0x71,
-    /// ISO 4217: a currency code, three ASCII bytes.
+    /// A currency code: ISO 4217's three letters or a digital-asset ticker,
+    /// at most eight ASCII bytes.
     Ccy = 0x72,
     /// ISO 10383: a market identifier code, four ASCII bytes.
     Mic = 0x73,
@@ -766,29 +767,33 @@ impl DataTypeId {
 
     /// Return the most bytes one registered code's value may be.
     ///
-    /// The number each standard fixes: two for a country, three for a
-    /// currency, four for a market identifier, six for a
-    /// classification, seven for a SEDOL or a currency pair, eight for a
-    /// time in force, nine
-    /// for a CUSIP, twelve for an ISIN, and thirty-two for
-    /// a Bloomberg identifier - the one whose width is only a bound, because
-    /// a ticker, a market and a yellow key have no fixed length between
-    /// them - and for a unit, which takes the same bound. It is a
-    /// maximum, not a layout - a code stores as the text it is - and it is
-    /// what the value rule holds a cell to and what
-    /// [`crate::DataType::ascii_packed`] pads into.
+    /// The number each standard fixes: two for a country, four for a market
+    /// identifier, six for a classification, seven for a SEDOL or a currency
+    /// pair, nine for a CUSIP, twelve for an ISIN,
+    /// and thirty-two for a Bloomberg identifier - the one whose width is
+    /// only a bound, because a ticker, a market and a yellow key have no
+    /// fixed length between them - and for a unit and a RIC, which take the
+    /// same bound. A currency is a bound too: eight, ISO 4217's three letters
+    /// or a digital-asset ticker past them. It is a maximum, not a layout - a
+    /// code stores as the text it is - and it is what the value rule holds a
+    /// cell to and what [`crate::DataType::ascii_packed`] pads into. Each
+    /// number is its code file's own constant, read here.
     ///
     /// Every other variant returns `None`.
     pub const fn code_width(self) -> Option<usize> {
         match self {
-            Self::Country => Some(2),
-            Self::Ccy => Some(3),
-            Self::Mic => Some(4),
-            Self::Cfi => Some(6),
-            Self::Sedol | Self::Forex => Some(7),
-            Self::Cusip => Some(9),
-            Self::Isin | Self::Figi => Some(12),
-            Self::Bbg | Self::Unit | Self::Ric => Some(32),
+            Self::Country => Some(crate::COUNTRY_WIDTH),
+            Self::Ccy => Some(crate::CCY_WIDTH),
+            Self::Mic => Some(crate::MIC_WIDTH),
+            Self::Cfi => Some(crate::CFI_WIDTH),
+            Self::Sedol => Some(crate::SEDOL_WIDTH),
+            Self::Forex => Some(crate::FOREX_WIDTH),
+            Self::Cusip => Some(crate::CUSIP_WIDTH),
+            Self::Isin => Some(crate::ISIN_WIDTH),
+            Self::Figi => Some(crate::FIGI_WIDTH),
+            Self::Bbg => Some(crate::BBG_WIDTH),
+            Self::Unit => Some(crate::UNIT_WIDTH),
+            Self::Ric => Some(crate::RIC_WIDTH),
             _ => None,
         }
     }

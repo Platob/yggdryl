@@ -7,7 +7,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 | | |
 | --- | --- |
 | Owns | 89 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the twelve [codes](codes/index.md), the five [enums](enum/index.md) |
-| Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
+| Parses | Arrow, SQL, Hive, Spark, Iceberg, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
 | Identity | `id()`, `kind()`: 90 ids, 13 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
@@ -176,7 +176,7 @@ The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifie
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
-| `Ccy` | String | `ccy` | ISO 4217 alpha-3, at most 3 bytes |
+| `Ccy` | String | `ccy` | ISO 4217 alpha-3 or a digital-asset ticker, at most 8 bytes |
 | `Country` | String | `country` | ISO 3166-1 alpha-2, at most 2 bytes |
 | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, at most 4 bytes |
 | `cfi` | - | `cfi` | ISO 10962, at most 6 bytes |

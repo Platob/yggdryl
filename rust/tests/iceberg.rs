@@ -18,6 +18,9 @@ mod catalog;
 #[cfg(all(feature = "iceberg", feature = "internals"))]
 #[path = "iceberg/evolve.rs"]
 mod evolve;
+#[cfg(feature = "iceberg")]
+#[path = "iceberg/field.rs"]
+mod field;
 #[cfg(all(feature = "iceberg", feature = "internals"))]
 #[path = "iceberg/manifest.rs"]
 mod manifest;

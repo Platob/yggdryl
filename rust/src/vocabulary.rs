@@ -25,7 +25,7 @@
 //!
 //! | FIX | base | resolves to | why |
 //! | --- | --- | --- | --- |
-//! | `Currency` (dictionary source) | String | `ccy` | ISO 4217 alpha-3, its own three bytes |
+//! | `Currency` (dictionary source) | String | `ccy` | ISO 4217 alpha-3 or a digital-asset ticker, at most eight bytes |
 //! | `Country` | String | `country` | ISO 3166-1 alpha-2, its own two bytes |
 //! | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
 //! | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |

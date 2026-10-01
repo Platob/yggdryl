@@ -1,20 +1,20 @@
 # Ccy
 
-ISO 4217's three-letter currency code, and `XXX`, the currency that states none.
+The currency code: ISO 4217's three letters or a digital-asset ticker of up to eight bytes - `USDT`, `DOGE`, `BABYDOGE` - and `XXX`, the currency that states none.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
 | Owns | `ccy`, `CcyType`/`CcyField`, the `Ccy` value and `Scalar::Ccy` |
-| Validates | US-ASCII, no NUL, at most three bytes; the ISO listing is a declared vocabulary, never a gate |
+| Validates | US-ASCII, no NUL, at most eight bytes - ISO 4217's three letters or a digital-asset ticker, trailing NUL padding trimmed, case kept (`stETH` stays `stETH`); the ISO listing is a declared vocabulary, never a gate |
 | Lazy | Nothing |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
-| Refuses | A fourth byte or a byte past `0x7F`, naming the width: `at most 3 bytes` |
+| Refuses | A ninth byte or a byte past `0x7F`, naming the width: `at most 8 bytes` |
 
 ## DataType
 
-`ccy` is the one spelling, `DataType::ccy()` the constructor, `DataTypeId::Ccy` the id. The width bounds a value rather than laying one out, so `fixed_byte_width` is none and `fixed_ascii(3)` is a different datatype.
+`ccy` is the one spelling, `DataType::ccy()` the constructor, `DataTypeId::Ccy` the id. The width bounds a value rather than laying one out, so `fixed_byte_width` is none and `fixed_ascii(8)` is a different datatype.
 
 === "Rust"
 
@@ -26,9 +26,9 @@ ISO 4217's three-letter currency code, and `XXX`, the currency that states none.
     assert_eq!(DataType::Ccy.to_string(), "ccy");
     assert_eq!(DataType::Ccy.kind(), DataTypeKind::Code);
     assert_eq!(DataType::Ccy.code_name(), Some("ccy"));
-    assert_eq!(DataType::Ccy.code_width(), Some(3));
+    assert_eq!(DataType::Ccy.code_width(), Some(8));
     assert_eq!(DataType::Ccy.fixed_byte_width(), None);
-    assert_ne!(DataType::Ccy, DataType::fixed_ascii(3)?);
+    assert_ne!(DataType::Ccy, DataType::fixed_ascii(8)?);
     ```
 
 === "Python"
@@ -39,7 +39,7 @@ ISO 4217's three-letter currency code, and `XXX`, the currency that states none.
     currency = DataType("ccy")
     assert currency.id == "ccy"
     assert currency.kind == "code"
-    assert currency.code_width == 3
+    assert currency.code_width == 8
     assert currency.fixed_byte_width is None
     # The logical name folds, and the datatype it names is this one.
     assert DataType.from_logical_name("Ccy") == currency
@@ -55,7 +55,7 @@ ISO 4217's three-letter currency code, and `XXX`, the currency that states none.
     const currency = new DataType('ccy')
     assert.equal(currency.id, 'ccy')
     assert.equal(currency.kind, 'code')
-    assert.equal(currency.codeWidth, 3)
+    assert.equal(currency.codeWidth, 8)
     assert.equal(currency.fixedByteWidth, null)
     assert.ok(DataType.from(' CCY ').equals(currency))
     ```
@@ -76,7 +76,7 @@ ISO 4217's three-letter currency code, and `XXX`, the currency that states none.
     assert_eq!(ccy.to_field(), Field::new("ccy", DataType::Ccy, false));
 
     // The leaf is the datatype's: a width of the same size is not a code.
-    let plain = Field::new("ccy", DataType::fixed_ascii(3)?, false);
+    let plain = Field::new("ccy", DataType::fixed_ascii(8)?, false);
     assert!(CcyField::try_from_field(plain).is_err());
     ```
 
@@ -123,9 +123,9 @@ The value is the text, under the currency's identity. `Ccy::new` is the Rust doo
 
     // A code and the text that spells it are two values.
     assert_ne!(usd, Scalar::from("USD"));
-    // The fourth byte is refused, naming the width.
-    let refused = Ccy::new("USDX").unwrap_err().to_string();
-    assert!(refused.contains("at most 3 bytes"), "{refused}");
+    // A ninth byte is refused, naming the width.
+    let refused = Ccy::new("TOOLONGCCY").unwrap_err().to_string();
+    assert!(refused.contains("at most 8 bytes"), "{refused}");
     ```
 
 === "Python"
@@ -140,8 +140,8 @@ The value is the text, under the currency's identity. `Ccy::new` is the Rust doo
     assert usd.kind == "ccy"
     assert usd != DataType("utf8").scalar("USD")
 
-    with pytest.raises(ValueError, match="at most 3 bytes"):
-        DataType("ccy").scalar("USDX")
+    with pytest.raises(ValueError, match="at most 8 bytes"):
+        DataType("ccy").scalar("TOOLONGCCY")
     ```
 
 === "JavaScript"
@@ -153,7 +153,57 @@ The value is the text, under the currency's identity. `Ccy::new` is the Rust doo
     const usd = new DataType('ccy').scalar('USD')
     assert.equal(usd.asJs(), 'USD')
     assert.equal(usd.kind, 'ccy')
-    assert.throws(() => new DataType('ccy').scalar('USDX'), /at most 3 bytes/)
+    assert.throws(() => new DataType('ccy').scalar('TOOLONGCCY'), /at most 8 bytes/)
+    ```
+
+## Digital-asset tickers
+
+A currency is ISO 4217's three letters or a digital-asset ticker, so the width is eight bytes: `USDT`, `DOGE`, `1INCH` and `BABYDOGE` are currencies. The rule is the one `USD` meets - US-ASCII, no NUL, trailing NUL padding trimmed - with no case folded and no listing consulted, so `stETH` is stored as written. A ninth byte is refused naming the width. A ticker is a `ccy` but no leg of a [`forex`](forex.md) pair, whose two legs stay ISO 4217's.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{Ccy, DataType};
+
+    let ccy = DataType::ccy();
+    assert_eq!(ccy.scalar("USDT")?.as_str(), Some("USDT"));
+    assert_eq!(ccy.scalar("stETH")?.as_str(), Some("stETH"));
+    // Eight bytes fill the width.
+    assert_eq!(Ccy::new("BABYDOGE")?.as_str(), "BABYDOGE");
+    // A ninth is refused, naming the width.
+    assert!(ccy.scalar("BABYDOGES").is_err());
+    let refused = Ccy::new("BABYDOGES").unwrap_err().to_string();
+    assert!(refused.contains("at most 8 bytes"), "{refused}");
+    ```
+
+=== "Python"
+
+    ```python
+    import pytest
+
+    from yggdryl import DataType
+
+    ccy = DataType("ccy")
+    assert ccy.scalar("USDT").as_py() == "USDT"
+    assert ccy.scalar("stETH").as_py() == "stETH"
+    # Eight bytes fill the width; a ninth is refused, naming it.
+    assert ccy.scalar("BABYDOGE").as_py() == "BABYDOGE"
+    with pytest.raises(ValueError, match="at most 8 bytes"):
+        ccy.scalar("BABYDOGES")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType } = require('yggdryl')
+
+    const ccy = new DataType('ccy')
+    assert.equal(ccy.scalar('USDT').asJs(), 'USDT')
+    assert.equal(ccy.scalar('stETH').asJs(), 'stETH')
+    // Eight bytes fill the width; a ninth is refused, naming it.
+    assert.equal(ccy.scalar('BABYDOGE').asJs(), 'BABYDOGE')
+    assert.throws(() => ccy.scalar('BABYDOGES'), /at most 8 bytes/)
     ```
 
 ## Arrow storage
@@ -192,7 +242,7 @@ The retired `yggdryl.currency` name is refused, including over dictionary storag
 
     # The same text under the string family's name is a bounded string, and
     # under no name at all is plain text.
-    bounded = Field("ccy", DataType("ascii(3)"))
+    bounded = Field("ccy", DataType("ascii(8)"))
     assert Field.from_arrow(bounded.into_arrow()) == bounded
     assert Field.from_arrow(pa.field("ccy", pa.string())) == Field("ccy", "utf8")
     ```
@@ -226,7 +276,7 @@ assert_eq!(Ccy::new("USD")?.merge_with(&Ccy::new("EUR")?).as_str(), "USD");
 
 ## The ISO 4217 listing
 
-The listing ships with the package as `StringEnum::CURRENCIES`, reached by the logical name `ccy`. It is a declared vocabulary, never a gate: a column typed `ccy` holds any three-byte ASCII value, and the enum is what a field *declares* its values are drawn from ([packed integers](index.md#packed-integers-and-the-declared-vocabulary)).
+The listing ships with the package as `StringEnum::CURRENCIES`, reached by the logical name `ccy`. It is a declared vocabulary, never a gate: a column typed `ccy` holds any ASCII value of at most eight bytes, a digital-asset ticker the listing never names included, and the enum is what a field *declares* its values are drawn from ([packed integers](index.md#packed-integers-and-the-declared-vocabulary)).
 
 === "Rust"
 
@@ -259,14 +309,15 @@ The listing ships with the package as `StringEnum::CURRENCIES`, reached by the l
     assert.equal(currencies.get('USD'), 'USD')
     ```
 
-Python declares a vocabulary over the width as well: `yggdryl.enums.CCY` is the shipped vocabulary over the `yggdryl.enums.Ccy` base, its members their own storage bytes read big-endian, and a caller subclasses `Ccy` for a vocabulary of its own.
+Python declares a vocabulary over the width as well: `yggdryl.enums.CCY` is the shipped ISO 4217 vocabulary over the `yggdryl.enums.Ccy` base, its members their value padded to the eight bytes a currency may hold and read big-endian, and a caller subclasses `Ccy` for a vocabulary of its own.
 
 === "Python"
 
     ```python
     from yggdryl.enums import CCY, Ccy
 
-    assert int(CCY.USD) == 0x555344
+    assert int(CCY.USD) == 0x5553_4400_0000_0000
+    assert int(CCY.EUR) == 0x4555_5200_0000_0000
     assert str(CCY.USD) == "USD"
 
     # A vocabulary of the caller's own is the same base, so the same integers.
@@ -280,10 +331,11 @@ Python declares a vocabulary over the width as well: `yggdryl.enums.CCY` is the 
 
 ## Edges
 
-- `at most 3 bytes` is the refusal, whatever the source: a scalar, a cast row, or `ascii_packed`.
-- `ascii_packed("USD")` is the same integer a `fixed_ascii(3)` packs, `0x555344`; the padding belongs to the packing, never to the column.
+- `at most 8 bytes` is the refusal, whatever the source: a scalar, a cast row, or `ascii_packed`.
+- `ascii_packed("USD")` pads to the eight bytes a currency may hold and reads them big-endian, `0x5553_4400_0000_0000` - the integer a `fixed_ascii(8)` packs, never a `fixed_ascii(3)`'s `0x555344`; the padding belongs to the packing, never to the column. `ascii_value(0x555344)` under `ccy` is refused, a NUL leading the eight-byte slot.
+- Nothing is case folded and no listing is consulted: `stETH` stays `stETH`, and `XXX` is the one value a merge takes the other side over.
 - The default value is the empty text, answered as a `ccy` scalar, and an empty text cell entering the column reads as it ([Cast](../cast.md#empty-text)).
-- `ccy` beside [`country`](country.md) merges to `sized_ascii(3)` widening and `sized_ascii(2)` narrowing - the bounded text both fit, never one code holding the other's values.
+- `ccy` beside [`country`](country.md) merges to `sized_ascii(8)` widening and `sized_ascii(2)` narrowing - the bounded text both fit, never one code holding the other's values. Narrowing (`upscale=false`) beside `fixed_ascii(8)`, `ascii` or `utf8` keeps `ccy`, and beside text of three bytes keeps that text, which is narrower than a currency may be.
 - A value no ISO listing names is stored: the listing is a vocabulary, never a gate; the [Side](../enum/side.md) and [State](../enum/state.md) enums are what refuse a spelling that names nothing.
 
 ## Commands
@@ -291,7 +343,7 @@ Python declares a vocabulary over the width as well: `yggdryl.enums.CCY` is the 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes string::listings
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- ccy:: cfi::coded code::datatypes string::listings
     ```
 
 === "Python"

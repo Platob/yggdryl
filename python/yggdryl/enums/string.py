@@ -254,7 +254,7 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
                 "rather than a value"
             )
         # Read off the datatype, not the width alone: `ccy` and
-        # `fixed_ascii(3)` are three bytes each and are not the same base.
+        # `fixed_ascii(8)` pack to the same integers and are not the same base.
         base = _base_for(field.dtype)
         if base is None:
             raise ValueError(
@@ -316,7 +316,7 @@ class Country(AsciiCode):
 
 
 class Ccy(AsciiCode):
-    """A vocabulary of ISO 4217 currency codes, over `ccy`."""
+    """A vocabulary of currency codes - ISO 4217's or a digital-asset ticker - over `ccy`."""
 
     @classmethod
     def dtype(cls) -> DataType:

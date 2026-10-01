@@ -1053,7 +1053,7 @@ What each rule reads, in words:
 | `TotalTradeQty(2367)` | `LastQty(32)` x `TradingUnitPeriodMultiplier(2353)` | a trade covering several trading unit periods trades its quantity once in each of them |
 | `TotalGrossTradeAmt(2369)` | `LastPx(31)` x `TotalTradeQty(2367)` | the whole trade's worth, as `GrossTradeAmt` is the fill's |
 | `OrigSendingTime(122)` | `SendingTime(52)`, where `PossDupFlag(43)` is `Y` | the session layer's own definition: a possible duplicate carries the clock of the send it repeats |
-| `CurrencyCodeSource(2897)` | `Currency(15)` stated | ISO 4217, `6` - the only source FIX's own `Currency` field is written in |
+| `CurrencyCodeSource(2897)` | `Currency(15)` stating a code ISO 4217 lists | ISO 4217, `6` - the only source FIX's own `Currency` field is written in; a digital-asset ticker such as `USDT` is a currency no ISO 4217 listing names, and gets none |
 
 A report is `MsgType` `8` or `9`. No caller supplies an order: the rules keep each answer visible to the ones after them and continue until one writes nothing, so a `SecurityID`'s validation states the source it was issued under, an ISIN found only among the alternate identifiers becomes the `SecurityID` whose validation states the source in turn, the country is read after either, and a status read off an execution type decides what is left. The fixpoint reaches what one evaluation round could not: a forward price derived from spot and points is the price the worth and the average read, a quantity ordered off what was canceled is the one the remainder reads, and a trade over several periods multiplies and prices through the quantity it derived.
 

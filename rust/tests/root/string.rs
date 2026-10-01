@@ -250,8 +250,14 @@ mod codes {
     fn a_code_packs_at_the_width_its_standard_fixes() {
         // The packing pads; the column does not. Both codes and fixed ASCII
         // widths answer, and nothing else does.
-        assert_eq!(DataType::Ccy.ascii_packed(b"USD").unwrap(), 0x0055_5344);
-        assert_eq!(DataType::Ccy.ascii_value(0x0055_5344).unwrap(), "USD");
+        assert_eq!(
+            DataType::Ccy.ascii_packed(b"USD").unwrap(),
+            0x5553_4400_0000_0000
+        );
+        assert_eq!(
+            DataType::Ccy.ascii_value(0x5553_4400_0000_0000).unwrap(),
+            "USD"
+        );
         assert_eq!(DataType::Country.ascii_packed(b"FR").unwrap(), 0x4652);
         assert_eq!(
             DataType::fixed_ascii(4)
@@ -260,7 +266,11 @@ mod codes {
                 .unwrap(),
             0x5553_4400
         );
-        assert!(DataType::Ccy.ascii_packed(b"EURO").is_err());
+        assert_eq!(
+            DataType::Ccy.ascii_packed(b"USDT").unwrap(),
+            0x5553_4454_0000_0000
+        );
+        assert!(DataType::Ccy.ascii_packed(b"TOOLONGCCY").is_err());
         assert!(DataType::utf8().ascii_packed(b"USD").is_err());
     }
 
@@ -2230,11 +2240,17 @@ mod widths {
     fn a_code_packs_and_merges_by_the_ascii_rules() {
         // The packed integer is the value's own storage bytes, exactly as it
         // is for a width: the code is a datatype, not a second encoding.
-        assert_eq!(DataType::Ccy.ascii_packed(b"USD").unwrap(), 0x0055_5344);
-        assert_eq!(DataType::Ccy.ascii_value(0x0055_5344).unwrap(), "USD");
         assert_eq!(
             DataType::Ccy.ascii_packed(b"USD").unwrap(),
-            DataType::fixed_ascii(3)
+            0x5553_4400_0000_0000
+        );
+        assert_eq!(
+            DataType::Ccy.ascii_value(0x5553_4400_0000_0000).unwrap(),
+            "USD"
+        );
+        assert_eq!(
+            DataType::Ccy.ascii_packed(b"USD").unwrap(),
+            DataType::fixed_ascii(8)
                 .unwrap()
                 .ascii_packed(b"USD")
                 .unwrap()
@@ -2269,11 +2285,11 @@ mod widths {
             DataType::Ccy
                 .merge_with(&DataType::fixed_ascii(3).unwrap(), true)
                 .unwrap(),
-            DataType::from_str("ascii(3)").unwrap()
+            DataType::from_str("ascii(8)").unwrap()
         );
         assert_eq!(
             DataType::Ccy.merge_with(&DataType::Country, true).unwrap(),
-            DataType::from_str("ascii(3)").unwrap()
+            DataType::from_str("ascii(8)").unwrap()
         );
         assert_eq!(
             DataType::Ccy.merge_with(&DataType::utf8(), true).unwrap(),

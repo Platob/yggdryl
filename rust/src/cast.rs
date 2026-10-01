@@ -1804,8 +1804,10 @@ impl ArrayCastPlan {
                 }
             },
             (DataType::Variant, source) => {
-                if crate::is_variant_storage(source) {
-                    // The identity: the same binary, holding the encoding.
+                // The identity, the same binaries holding the encoding; or a
+                // column of nulls, which is absent in every type and holds no
+                // value to encode.
+                if crate::is_variant_storage(source) || source == &ArrowDataType::Null {
                     ArrayCastKind::Kernel
                 } else {
                     return Err(Error::Unsupported {

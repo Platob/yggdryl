@@ -1641,6 +1641,9 @@ fn an_iceberg_read_costs_only_what_it_hands_back() {
     free("partition_source_id", || {
         let _ = black_box(field.as_iceberg().partition_source_id());
     });
+    free("is_unknown", || {
+        let _ = black_box(field.as_iceberg().is_unknown());
+    });
 
     // The identifier list costs the vector it returns, which grows by
     // doubling rather than once per identifier. The counts last moved down

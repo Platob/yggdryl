@@ -79,6 +79,36 @@ The parenthesis is the whole of the difference between the two spellings: bare
     assert.equal(DataType.fromString('variant(only:int64)').id, 'union')
     ```
 
+Iceberg's v3 `unknown` reads as `variant` as well: the datatype that holds whatever the column is promoted to. A datatype carries no metadata, so a type string cannot declare a column `unknown`; that declaration is the field property `ICEBERG:type = unknown` ([One pair, four media](#one-pair-four-media)). `null` and `void` still read as [`null`](numeric/boolean.md).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::DataType;
+
+    assert_eq!(DataType::from_str("unknown")?, DataType::Variant);
+    assert_eq!(DataType::from_str("unknown")?.to_string(), "variant");
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType
+
+    assert DataType("unknown") == DataType("variant")
+    assert str(DataType("unknown")) == "variant"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType } = require('yggdryl')
+
+    assert.ok(DataType.fromString('unknown').equals(DataType.variant()))
+    assert.equal(DataType.from('unknown').toString(), 'variant')
+    ```
+
 ## Field
 
 `VariantField` is the marker, and the bindings have one factory each. The
@@ -385,7 +415,7 @@ A variant column is the same two binaries wherever it lands, because every forma
 | [Arrow](../arrow/index.md) | a struct of `metadata` and `value` under `arrow.parquet.variant` |
 | [Parquet](../media/index.md#parquet) | `optional group name (VARIANT(1)) { required binary metadata; required binary value; }` - the two children carrying no field id, which is what Iceberg requires; a file another writer produced imports as a variant from that annotation alone |
 | [Avro](../media/index.md#avro) | a record of `metadata` and `value`, both `bytes`, read by name and carrying no field ids, annotated `"logicalType": "variant"`; a reader that does not know the annotation reads the record, as the specification requires |
-| [Iceberg](../media/index.md#iceberg) | the v3 `variant` type: written as the Parquet group above, and never given bounds - a variant's ordering is not defined |
+| [Iceberg](../media/index.md#iceberg) | the v3 `variant` and `unknown` types, both refused by a v1 or v2 table. `variant` is written as the Parquet group above and never given bounds - a variant's ordering is not defined. `unknown` reads as a variant declared `ICEBERG:type = unknown` and back as a variant column of nulls: a top-level one is kept out of the data files, and one inside a struct, a list or a map stores Arrow's null column in its slot |
 
 The encoding happens once at the value boundary, and the media layers move the bytes. Avro reads the two fields by name in either wire order; reader-schema resolution interprets the result as a `Variant` when the reader declares that annotation. Parquet restores the annotation inside structs, lists and maps as well as at the root.
 
@@ -400,6 +430,7 @@ The encoding happens once at the value boundary, and the media layers move the b
 - A decimal past thirty-eight digits, or a `uint128` past `i128::MAX` -> refused, naming the digits the standard holds.
 - A timestamp in seconds or milliseconds -> exact in microseconds, which is the precision the standard states.
 - A nanosecond timestamp -> its own two primitive types, zoned and not.
+- An Iceberg `unknown` column -> a variant column of nulls declared `ICEBERG:type = unknown` (`IcebergField::is_unknown`, `IcebergFieldMut::set_unknown`, Rust-only; the bindings reach the property through the generic `ICEBERG` protocol view). A table write refuses a value in it, naming the column and the value, an absent cell and an encoded variant null both counting as no value; `SchemaUpdate::update_type` promotes it to any type and clears the declaration; a type string cannot declare it.
 
 ## Commands
 

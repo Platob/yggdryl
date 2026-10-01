@@ -2,7 +2,8 @@
 //!
 //! An Iceberg schema states more about a column than a [`Field`](crate::Field)
 //! has structural slots for - the schema identifier, a doc string, the v3
-//! defaults, a declared type the physical one cannot distinguish - and a
+//! defaults, an `unknown` column the `variant` it reads as cannot
+//! distinguish - and a
 //! partition tuple states how each of its values was derived. All of it rides
 //! as `ICEBERG:` properties, so these two impls are the one place that
 //! vocabulary is spelled, parsed and rendered.
@@ -31,8 +32,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::Transform;
 use super::partition::{SOURCE_ID, SPEC_ID, TRANSFORM};
-use super::schema::{DOC, IDENTIFIER, INITIAL_DEFAULT, SCHEMA_ID, WRITE_DEFAULT};
-use crate::{Error, IcebergField, IcebergFieldMut, Result, Scalar};
+use super::schema::{DOC, IDENTIFIER, INITIAL_DEFAULT, SCHEMA_ID, TYPE, UNKNOWN, WRITE_DEFAULT};
+use crate::{DataType, Error, IcebergField, IcebergFieldMut, Result, Scalar};
 
 impl<'field> IcebergField<'field> {
     /// Parses the identifier of the schema this root is.
@@ -78,6 +79,30 @@ impl<'field> IcebergField<'field> {
     /// Returns this column's Iceberg documentation string.
     pub fn doc(&self) -> Option<&'field str> {
         self.get(DOC)
+    }
+
+    /// Whether the schema declares this column Iceberg's `unknown`.
+    ///
+    /// An `unknown` column reads as [`DataType::Variant`], the type that holds
+    /// whatever it is later promoted to, and the declaration is what keeps it
+    /// `unknown` to the table: always null, never stored in a data file, and
+    /// promotable to any type.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut later = DataType::Variant.nullable_field("later");
+    /// assert!(!later.as_iceberg().is_unknown());
+    ///
+    /// later.as_iceberg_mut().set_unknown(true)?;
+    /// assert!(later.as_iceberg().is_unknown());
+    /// assert_eq!(later.get_metadata("ICEBERG:type"), Some("unknown"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn is_unknown(&self) -> bool {
+        self.get(TYPE) == Some(UNKNOWN)
     }
 
     /// Decodes the v3 `initial-default` this column carries.
@@ -180,6 +205,31 @@ impl IcebergFieldMut<'_> {
     /// [`Self::set_schema_id`] carries the rule.
     pub fn set_doc(&mut self, doc: impl Into<String>) -> Result<()> {
         self.store(DOC, doc)
+    }
+
+    /// Declares this column Iceberg's `unknown`, or clears the declaration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the key and the datatype when `unknown` is
+    /// declared on a column that is not a `variant`, leaving the field
+    /// unchanged; clearing never fails.
+    pub fn set_unknown(&mut self, unknown: bool) -> Result<()> {
+        if !unknown {
+            self.remove(TYPE);
+            return Ok(());
+        }
+        if self.dtype() != &DataType::Variant {
+            return Err(Error::InvalidMetadataValue {
+                key: SmolStr::new(self.key(TYPE)),
+                reason: format_smolstr!(
+                    "expected {UNKNOWN:?} on a variant column, got {} column {:?}",
+                    self.dtype(),
+                    self.name()
+                ),
+            });
+        }
+        self.store(TYPE, UNKNOWN)
     }
 
     /// Records a v3 `initial-default` as encoded JSON.

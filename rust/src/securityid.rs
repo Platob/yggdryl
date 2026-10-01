@@ -64,7 +64,7 @@ pub fn embedded(isin: &Isin) -> impl Iterator<Item = Identifier> {
 ///
 /// | length | shape | reads as |
 /// | --- | --- | --- |
-/// | 21 | `{ISIN}_{MIC}_{CCY}` | [`Self::Instrument`], each part its own type's |
+/// | 21 to 26 | `{ISIN}_{MIC}_{CCY}` | [`Self::Instrument`], each part its own type's |
 /// | 12 | `BBG` then nine | [`Self::Figi`] |
 /// | 12 | any other | [`Self::Isin`] |
 /// | 9 | | [`Self::Cusip`] |
@@ -89,6 +89,10 @@ pub fn embedded(isin: &Isin) -> impl Iterator<Item = Identifier> {
 ///     SymbolCode::from_symbol("CH0012214059_XSWX_CHF"),
 ///     Some(SymbolCode::Instrument { .. })
 /// ));
+/// assert!(matches!(
+///     SymbolCode::from_symbol("CH0012214059_XSWX_USDT"),
+///     Some(SymbolCode::Instrument { .. })
+/// ));
 /// assert!(matches!(SymbolCode::from_symbol("ESVUFR"), Some(SymbolCode::Cfi(_))));
 /// assert!(matches!(SymbolCode::from_symbol("AAPL.OQ"), Some(SymbolCode::Ric(_))));
 /// assert!(matches!(SymbolCode::from_symbol("HOLN SW Equity"), Some(SymbolCode::Bloomberg(_))));
@@ -98,7 +102,8 @@ pub fn embedded(isin: &Isin) -> impl Iterator<Item = Identifier> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SymbolCode {
     /// An instrument key: its ISIN, the MIC it trades on and the currency
-    /// it trades in, `_` between them - twelve, four and three characters,
+    /// it trades in, `_` between them - twelve and four characters and a
+    /// currency of three to eight, ISO 4217's or a digital-asset ticker -
     /// each part read by its own type and `None` where that type refuses
     /// it, so one bad part leaves the others answering.
     Instrument {
@@ -126,6 +131,14 @@ pub enum SymbolCode {
     Bloomberg(crate::Bbg),
 }
 
+/// The fewest bytes an instrument key's currency is: ISO 4217's three.
+const INSTRUMENT_CURRENCY: usize = 3;
+
+/// The shortest and longest instrument key: an ISIN, a MIC and a currency
+/// of three up to a currency's bound, `_` between them.
+const INSTRUMENT_SHORTEST: usize = 12 + 1 + 4 + 1 + INSTRUMENT_CURRENCY;
+const INSTRUMENT_LONGEST: usize = 12 + 1 + 4 + 1 + crate::CCY_WIDTH;
+
 /// The Bloomberg yellow keys a terminal identifier ends with.
 const YELLOW_KEYS: [&str; 9] = [
     "Equity", "Comdty", "Curncy", "Index", "Govt", "Corp", "Mtge", "Muni", "Pfd",
@@ -141,7 +154,9 @@ impl SymbolCode {
         let upper = |part: &[u8]| part.iter().all(u8::is_ascii_uppercase);
         let alphanumeric = |part: &[u8]| part.iter().all(u8::is_ascii_alphanumeric);
         let found = match bytes.len() {
-            21 if bytes[12] == b'_' && bytes[17] == b'_' => Self::instrument(text),
+            INSTRUMENT_SHORTEST..=INSTRUMENT_LONGEST if bytes[12] == b'_' && bytes[17] == b'_' => {
+                Self::instrument(text)
+            }
             12 if text.starts_with("BBG") => Figi::new(text).ok().map(Self::Figi),
             12 if alphanumeric(bytes) => Isin::new(text)
                 .ok()
@@ -173,18 +188,23 @@ impl SymbolCode {
         })
     }
 
-    /// The instrument key `{ISIN}_{MIC}_{CCY}` spells - twelve, four and
-    /// three ASCII letters and digits, `_` between them - each part read by
-    /// its own type, or `None` where the text is not that shape or no part
-    /// reads.
+    /// The instrument key `{ISIN}_{MIC}_{CCY}` spells - twelve and four
+    /// ASCII letters and digits and a currency of three to eight, `_USDT`
+    /// as well as `_CHF`, `_` between them -
+    /// each part read by its own type, or `None` where the text is not that
+    /// shape or no part reads.
     #[must_use]
     pub fn instrument(text: &str) -> Option<Self> {
         let mut parts = text.split('_');
         let (isin, mic, ccy) = (parts.next()?, parts.next()?, parts.next()?);
-        let shaped = |part: &str, width: usize| {
-            part.len() == width && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        let shaped = |part: &str, widths: std::ops::RangeInclusive<usize>| {
+            widths.contains(&part.len()) && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
         };
-        if parts.next().is_some() || !shaped(isin, 12) || !shaped(mic, 4) || !shaped(ccy, 3) {
+        if parts.next().is_some()
+            || !shaped(isin, 12..=12)
+            || !shaped(mic, 4..=4)
+            || !shaped(ccy, INSTRUMENT_CURRENCY..=crate::CCY_WIDTH)
+        {
             return None;
         }
         let isin = Isin::new(isin)

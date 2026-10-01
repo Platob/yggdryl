@@ -34,7 +34,7 @@ padded, so a fixed value is exactly its width.
 | 64-bit offsets | `large_binary` | none | - |
 | view | `binary_view` | none | - |
 | view, 64-bit offsets | `large_binary_view` | none | - |
-| fixed width | `fixed_binary(n)` | the exact width, required | `fixed_size_binary(n)` |
+| fixed width | `fixed_binary(n)` | the exact width, required | `fixed_size_binary(n)`, Iceberg's `fixed[n]`, `fixed(n)` |
 | bounded | `sized_binary(n)` | the maximum, required | `binary(n)`, `varbinary(n)`, `varbinary_bounded(n)` |
 
 === "Rust"
@@ -52,6 +52,7 @@ padded, so a fixed value is exactly its width.
 
     // A fixed width is a width; the four unbounded leaves refuse a number.
     assert_eq!(DataType::fixed_binary(16)?.fixed_byte_width(), Some(16));
+    assert_eq!(DataType::from_str("fixed[16]")?, DataType::fixed_binary(16)?);
     assert_eq!(DataType::binary().fixed_byte_width(), None);
     assert!(DataType::from_str("large_binary(16)").is_err());
 
@@ -85,6 +86,7 @@ padded, so a fixed value is exactly its width.
 
     # A fixed width is a width; the four unbounded leaves refuse a number.
     assert DataType.fixed_size_binary(16).fixed_byte_width == 16
+    assert DataType("fixed[16]") == DataType.fixed_size_binary(16)
     assert DataType.binary().fixed_byte_width is None
     with pytest.raises(ValueError):
         DataType("large_binary(16)")
@@ -112,6 +114,7 @@ padded, so a fixed value is exactly its width.
 
     // A fixed width is a width; the four unbounded leaves refuse a number.
     assert.equal(DataType.fixedSizeBinary(16).fixedByteWidth, 16)
+    assert.ok(DataType.from('fixed[16]').equals(DataType.fixedSizeBinary(16)))
     assert.equal(DataType.binary().fixedByteWidth, null)
     assert.throws(() => DataType.from('large_binary(16)'))
 
@@ -485,7 +488,7 @@ number). A scalar crosses as `{"type":"bytes","value":...}`.
 
 ## Edges
 
-- `fixed_binary`, `sized_binary` with no number -> refused; the number is what makes the leaf. A bound of `0` -> refused, `at least one byte, got 0`.
+- `fixed_binary`, `sized_binary`, `fixed` with no number -> refused; the number is what makes the leaf. A bound of `0` -> refused, `at least one byte, got 0`.
 - `binary(16)` -> `sized_binary(16)` written short; `large_binary(16)` -> refused, a large or view leaf holds no maximum.
 - Bytes are never padded: a `fixed_binary(n)` value is exactly `n` bytes, and a shorter or longer one is refused.
 - A value carries the leaf of its column, a maximum included: `Scalar::dtype()` of a cell read out of `sized_binary(16)` is `sized_binary(16)`, and it still equals the plain `binary` value of the same payload.

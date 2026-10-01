@@ -211,7 +211,7 @@ pub enum Scalar {
     SizedCp1252String(Str, u32),
     /// ISO 3166-1 alpha-2 country code.
     Country(Country),
-    /// ISO 4217 currency code.
+    /// Currency code: ISO 4217's or a digital-asset ticker.
     Ccy(Ccy),
     /// ISO 10383 market identifier code.
     Mic(Mic),

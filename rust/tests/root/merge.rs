@@ -399,7 +399,7 @@ mod lattice {
         // The code is the tighter type, so narrowing answers it in either
         // position and widening answers the shape that holds both.
         for other in [
-            DataType::fixed_ascii(3).unwrap(),
+            DataType::fixed_ascii(8).unwrap(),
             DataType::ascii(),
             DataType::utf8(),
             DataType::large_utf8(),
@@ -414,10 +414,11 @@ mod lattice {
         );
 
         // A side narrower than the code still outranks it: narrowing is the
-        // tightest type that names both, not the most specific one.
+        // tightest type that names both, not the most specific one - and a
+        // currency's eight bytes are wider than ISO 4217's three.
         assert_eq!(
-            down(&DataType::Ccy, &DataType::fixed_ascii(2).unwrap()),
-            DataType::fixed_ascii(2).unwrap()
+            down(&DataType::Ccy, &DataType::fixed_ascii(3).unwrap()),
+            DataType::fixed_ascii(3).unwrap()
         );
 
         // Two different codes are the pair neither direction answers with a
@@ -429,7 +430,7 @@ mod lattice {
         );
         assert_eq!(
             up(&DataType::Ccy, &DataType::Country),
-            DataType::from_str("ascii(3)").unwrap()
+            DataType::from_str("ascii(8)").unwrap()
         );
 
         // A number's rendering does not fit a code, so absorbing one is still

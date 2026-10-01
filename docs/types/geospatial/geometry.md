@@ -21,8 +21,10 @@ reference system, and nothing else. `None` fills `OGC:CRS84`
 ([the family's default](index.md#the-coordinate-reference-system)), which
 displays as nothing, so `geometry` round-trips as itself and a parameter appears
 exactly when it says something. The grammar takes `geometry`, `geometry()` and
-`geometry('crs')`, in either quote; there is no logical name in front of it and
-no second parameter, because an edge algorithm is [the geography's](geography.md).
+`geometry('crs')`, in either quote, and the bare `geometry(srid:4326)` Iceberg
+writes - words, numbers and colons with no space between them, taken as
+written; there is no logical name in front of it and no second parameter,
+because an edge algorithm is [the geography's](geography.md).
 
 === "Rust"
 
@@ -43,6 +45,8 @@ no second parameter, because an edge algorithm is [the geography's](geography.md
     let projected = DataType::geometry(Some("EPSG:3857"))?;
     assert_eq!(projected.to_string(), "geometry(\"EPSG:3857\")");
     assert_eq!(DataType::from_str("geometry('EPSG:3857')")?, projected);
+    assert_eq!(DataType::from_str("geometry(EPSG:3857)")?, projected);
+    assert_eq!(DataType::from_str("geometry(OGC:CRS84)")?, geometry);
 
     // A geometry has no edge algorithm, and an empty CRS names nothing.
     assert!(DataType::from_str("geometry('OGC:CRS84', 'vincenty')").is_err());
@@ -70,6 +74,7 @@ no second parameter, because an edge algorithm is [the geography's](geography.md
     projected = DataType.geometry("EPSG:3857")
     assert str(projected) == 'geometry("EPSG:3857")'
     assert DataType(str(projected)) == projected
+    assert DataType("geometry(EPSG:3857)") == projected
     assert not projected.has_default_crs
 
     # A geometry has no edge algorithm, and an empty CRS names nothing.
@@ -97,6 +102,7 @@ no second parameter, because an edge algorithm is [the geography's](geography.md
     const projected = DataType.geometry('EPSG:3857')
     assert.equal(projected.toString(), 'geometry("EPSG:3857")')
     assert.ok(DataType.fromString("geometry('EPSG:3857')").equals(projected))
+    assert.ok(DataType.fromString('geometry(EPSG:3857)').equals(projected))
 
     // A geometry has no edge algorithm, and an empty CRS names nothing.
     assert.throws(

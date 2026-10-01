@@ -15,7 +15,8 @@ column below), so compare `DataType` values, never the text you wrote.
 | Round trip | `str(t)` / `t.toString()` / `to_string()` re-parses to the same value; `repr` in Python is `DataType.from_str("...")` |
 | Nesting limit | 64 levels (`DataType::PARSE_RECURSION_LIMIT`), in parsing, defaults and compatibility walks alike |
 | Errors | refusal names the byte position and what was expected: `invalid datatype expression at byte 5: ...` |
-| Child nullability | `struct<a:int32 not null>`, `array<int64 not null>`; a child stated without it is nullable |
+| Child nullability | `struct<a:int32 not null>`, `array<int64 not null>`, or Iceberg's prefix `struct<a: required int>`; a child stated without it is nullable, and a prefix and a suffix that disagree are refused |
+| Iceberg struct members | `struct<1: a: optional timestamptz>` (Java `toString`, pyiceberg `str`): the leading number is the member's `PARQUET:field_id`; a member's ` (doc)` suffix is refused - strip it before parsing |
 | Quoted child names | `struct<"a.b":int32>` or ``struct<`a.b`:int32>`` - one child named `a.b` |
 | Field text | `price decimal(18, 6) NOT NULL`, `id: int64`, `id int64 not null`, or the canonical `field("id",int64,nullable=false,metadata={})`; a bare field is nullable |
 | Logical names | the FIX vocabulary resolves to an ordinary datatype and displays as it (`Price` -> `float64`); never a variant of its own. `DataType.logical_names()` / `DataType.logicalNames()` lists them |
@@ -64,7 +65,9 @@ may not exceed the precision (`decimal(2,3)` is refused).
 | `time32(s)`, `time32(ms)` | `time(s)`, `time(ms)`, `time(0)`, `time(3)` |
 | `time64(us)`, `time64(ns)` | `time`, `time(us)`, `time(6)`, `time(9)`; `time(p)` picks the unit from the precision |
 | `datetime64(us)` | `datetime64`, `timestamp`, `timestamp_ntz`, `timestamp(6)`, `timestamp without time zone`, `datetime64(us, None)` - a naive wall clock |
-| `datetime64(us,"UTC")` | `datetime64(us, UTC)`, `timestamp_ltz`, `timestamp with time zone`, `datetime64(us, Some(UTC))` |
+| `datetime64(us,"UTC")` | `datetime64(us, UTC)`, `timestamptz`, `timestamp_ltz`, `timestamp with time zone`, `datetime64(us, Some(UTC))` |
+| `datetime64(ns)` | `timestamp_ns`, `timestamp(9)` |
+| `datetime64(ns,"UTC")` | `timestamptz_ns`, `timestamptz(9)` |
 | `datetime64(ns,"Europe/Paris")` | `datetime64(9, Europe/Paris)`; any zone spelling `Timezone` canonicalizes (`Asia/Calcutta` -> `Asia/Kolkata`) |
 | `duration32(unit)`, `duration64(unit)` | Arrow's `Duration(ns)` reads as `duration64(ns)`; bare `duration` and `duration(ms)` are **refused** (no width) |
 | `interval(month_day_nano)` | `interval` |
@@ -72,7 +75,10 @@ may not exceed the precision (`decimal(2,3)` is refused).
 | `interval(year_month)` | SQL `interval year`, `interval(years)` |
 | `timezone` | `tz`, `timezone_name` - a column of zones, not a temporal |
 
-Not spellings: `datetime`, `timestamp_tz`. Units: `s`/`second(s)`,
+Not spellings: `datetime`, and `timestamp_tz`, refused by name - Snowflake's
+`TIMESTAMP_TZ` keeps an offset per value, which no column zone states. A
+keyword that states a fact refuses a parameter saying otherwise:
+`timestamp_ns(3)`, `timestamptz without time zone`, `timestamp_ntz(us, UTC)`. Units: `s`/`second(s)`,
 `ms`/`milli(s)`/`millisecond(s)`, `us`/`µs`/`micro(s)`/`microsecond(s)`,
 `ns`/`nano(s)`/`nanosecond(s)`, and the interval layouts `year_month`,
 `day_time`, `month_day_nano`. `d`/`day(s)` is a value unit only
@@ -123,7 +129,7 @@ holds it.
 | `large_binary` | - | none |
 | `binary_view` | - | none |
 | `large_binary_view` | - | none |
-| `fixed_binary(n)` | `fixed_size_binary(n)` | exact width, never padded |
+| `fixed_binary(n)` | `fixed_size_binary(n)`, `fixed[n]`, `fixed(n)` | exact width, never padded |
 | `sized_binary(n)` | `binary(n)`, `varbinary(n)`, `varbinary_bounded(n)` | maximum |
 
 The same number rule holds: `large_binary(16)` is refused.
@@ -132,7 +138,7 @@ The same number rule holds: `large_binary(16)` is refused.
 
 | Canonical | Also parsed as | Note |
 | --- | --- | --- |
-| `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `forex`, `unit` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | twelve registered codes, kind `code`; widths 3, 2, 4, 6, 12, 9, 7, 32, 12, 32, 7, 32 |
+| `ccy`, `country`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `bbg`, `figi`, `ric`, `forex`, `unit` | FIX `Ccy`, `Country`, `Exchange` (= `mic`) | twelve registered codes, kind `code`; widths 8, 2, 4, 6, 12, 9, 7, 32, 12, 32, 7, 32 - a `ccy` is ISO 4217's three letters or a digital-asset ticker |
 | `forex` | - | the currency pair `CCY/CCY` under `yggdryl.forex`; a value reads `EURUSD`, `EUR-USD`, `EUR.USD`, `EUR_USD` in any case, never a pair of one currency, `XXX` or `XTS` |
 | `side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce` | - | kind `enum`: each stored as the code of its member - `uint8` for `side`, `marketdatakind`, `timeinforce`, `uint16` for `state`, `marketdatatype` - under `yggdryl.<name>`; a value reads the member's name, its integer code and the vocabulary's other spellings (`side`: FIX's wire code `1`; `marketdatakind`: the MsgCat word `order`) |
 | `uuid` | - | 16 bytes under `arrow.uuid` |
@@ -140,8 +146,8 @@ The same number rule holds: `large_binary(16)` is refused.
 | `mimetype` | `mime` | one `type/subtype` |
 | `mediatype` | `content_type` | MIME type + charset + content codings |
 | `url`, `urn` | - | locations and names (see `yggdryl-uri`) |
-| `geometry`, `geography` | `geometry("EPSG:3857")`, `geography("OGC:CRS84","vincenty")` | WKB payload; the default CRS `OGC:CRS84` and edges `spherical` display as nothing |
-| `variant` | - | the Parquet Variant datatype; **not** a union |
+| `geometry`, `geography` | `geometry("EPSG:3857")`, `geography("OGC:CRS84","vincenty")`, Iceberg's bare `geometry(srid:4326)`, `geography(OGC:CRS84, vincenty)` | WKB payload; the default CRS `OGC:CRS84` and edges `spherical` display as nothing |
+| `variant` | Iceberg's `unknown` | the Parquet Variant datatype; **not** a union. A type string cannot declare an Iceberg column `unknown`: the table's field carries `ICEBERG:type = unknown` |
 
 Not spellings: `json`, `jsonb`.
 
@@ -154,7 +160,7 @@ Not spellings: `json`, `jsonb`.
 | `serie_view(...)` | `arrayview<T>`, `list_view<T>` |
 | `large_serie_view(...)` | `largearrayview<T>`, `large_list_view<T>` |
 | `fixed_size_serie(...,n)` | `fixed_size_serie(T,n)`, `fixedarray<T,n>`, `fixed_size_list<T,n>`, `fixed_size_list(T,n)` |
-| `struct(field(...),...)` | `struct<a:T,b:U>`, `STRUCT<a: INT, b: STRING>`, `row(a T, b U)` |
+| `struct(field(...),...)` | `struct<a:T,b:U>`, `STRUCT<a: INT, b: STRING>`, `row(a T, b U)`, Iceberg's `struct<1: a: optional T, 2: b: required U>` |
 | `map(field("entries",...),keys_sorted=false)` | `map<K,V>`, `MAP<K, V>`; sorted keys: `map<K,V,keys_sorted=true>` (there is no `sorted_map<...>` spelling) |
 | `union(dense,0=field(...),...)` | `variant(a:T,b:U)` (dense, ids from 0), `dense_union(a:T)`, `sparse_union(a:T)`, `union(sparse,0=a:T)` |
 | `dictionary(K,V)` | `dict<K,V>`, `dictionary<K,V>`; `K` one of the eight integers |

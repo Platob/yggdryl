@@ -104,13 +104,13 @@ fn a_code_column_refuses_an_unregistered_value_at_push_and_keeps_what_it_had() {
     );
 
     let refusal = column
-        .push(Scalar::from("NOPE"))
-        .expect_err("not a registered currency");
+        .push(Scalar::from("TOOLONGCCY"))
+        .expect_err("past a currency's eight bytes");
     assert!(
         refusal.to_string().contains("ccy"),
         "the refusal names the column: {refusal}"
     );
-    assert!(column.set(0, Scalar::from("NOPE")).is_err());
+    assert!(column.set(0, Scalar::from("TOOLONGCCY")).is_err());
     assert_eq!(column.len(), 2);
 
     // A registered one lands as the three characters the code rides on.

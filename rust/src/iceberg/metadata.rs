@@ -537,8 +537,7 @@ impl TableMetadata {
         G: FnOnce(&OfficialTableMetadataBuildResult) -> Result<T>,
     {
         let document = self.clone().into_json_document()?;
-        let (metadata, mut v1_manifests, v3_types) =
-            super::official::parse_table_metadata(&document)?;
+        let (metadata, mut v1_manifests) = super::official::parse_table_metadata(&document)?;
         for (snapshot_id, manifests) in additional_v1_manifests.into_entries() {
             v1_manifests.insert(snapshot_id, manifests);
         }
@@ -546,8 +545,7 @@ impl TableMetadata {
             update(metadata.into_builder(current_file_location)).map_err(Error::from_iceberg)?;
         let built = builder.build().map_err(Error::from_iceberg)?;
         let extracted = extract(&built)?;
-        let document =
-            super::official::table_metadata_document(&built.metadata, &v1_manifests, &v3_types)?;
+        let document = super::official::table_metadata_document(&built.metadata, &v1_manifests)?;
         let mut replacement = Self::from_normalized_json(&document)?;
         // Apache Iceberg schemas do not carry Yggdryl's inert root protocol
         // properties. Preserve them across metadata-builder updates while the
@@ -2500,6 +2498,11 @@ fn validate_schema_evolution(
     last_id: i32,
     version: FormatVersion,
 ) -> Result<()> {
+    // A schema added to a v1 or v2 table is held to the version as the
+    // table's first one is, so evolution cannot bring a v3 type in.
+    if version < FormatVersion::V3 {
+        require_v3_types_absent(candidate, version)?;
+    }
     let mut current_parents = HashMap::new();
     collect_field_parents(current, None, &mut current_parents)?;
     let mut candidate_parents = HashMap::new();
@@ -2566,7 +2569,7 @@ fn validate_schema_evolution(
         let was_unknown = version >= FormatVersion::V3
             && current_field
                 .field_by_parquet_field_id(id)
-                .is_some_and(|field| field.dtype() == &DataType::Null);
+                .is_some_and(|field| field.as_iceberg().is_unknown());
         if !was_unknown && !official_type_can_promote(&old.field_type, &new.field_type) {
             return Err(invalid(format_smolstr!(
                 "expected an Iceberg-legal promotion for field id {id}, got {} to {}",
@@ -2911,9 +2914,11 @@ fn require_v3_types_absent(node: &Field, version: FormatVersion) -> Result<()> {
         let Some(child) = node.dtype().get_field(index) else {
             continue;
         };
+        // A null column is the spelling a caller may state `unknown` in.
         let spelled = match child.dtype() {
-            DataType::Null => Some("unknown"),
+            DataType::Variant if child.as_iceberg().is_unknown() => Some("unknown"),
             DataType::Variant => Some("variant"),
+            DataType::Null => Some("unknown"),
             _ => None,
         };
         if let Some(spelled) = spelled {

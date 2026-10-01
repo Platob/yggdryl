@@ -71,3 +71,57 @@ fn v1_direct_manifests_read_the_same_as_a_column() -> yggdryl::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn a_schema_document_keeps_its_v3_columns_whatever_id_it_states() -> yggdryl::Result<()> {
+    // The official model has no spelling for either v3 type, and each crosses
+    // it as a placeholder its spelling alone restores: no schema id is
+    // remembered, so an absent one reads back as a stated one does.
+    for id in ["", r#""schema-id":0,"#, r#""schema-id":7,"#] {
+        let document = yggdryl::json::from_utf8(&format!(
+            r#"{{"type":"struct",{id}"fields":[
+                {{"id":1,"name":"later","required":false,"type":"unknown"}},
+                {{"id":2,"name":"payload","required":false,"type":"variant"}},
+                {{"id":3,"name":"tags","required":false,"type":{{"type":"list","element-id":4,"element":"unknown","element-required":false}}}},
+                {{"id":5,"name":"bytes","required":false,"type":"binary"}}
+            ]}}"#
+        ))?;
+        let schema = yggdryl::iceberg::schema_from_json("row", &document)?;
+        let fields = schema.fields();
+        assert_eq!(fields[0].dtype(), &DataType::Variant, "{id}");
+        assert!(fields[0].as_iceberg().is_unknown(), "{id}");
+        assert_eq!(fields[1].dtype(), &DataType::Variant, "{id}");
+        assert!(!fields[1].as_iceberg().is_unknown(), "{id}");
+        let element = fields[2].get_field_at(0).expect("a list has its element");
+        assert_eq!(element.dtype(), &DataType::Variant, "{id}");
+        assert!(element.as_iceberg().is_unknown(), "{id}");
+        assert_eq!(fields[3].dtype(), &DataType::binary(), "{id}");
+        let written = yggdryl::json::into_utf8(&yggdryl::iceberg::schema_into_json(&schema)?)?;
+        assert!(!written.contains("fixed"), "{written}");
+    }
+    Ok(())
+}
+
+#[test]
+fn a_document_spelling_a_placeholder_width_is_refused_rather_than_read_as_a_v3_type() {
+    // A width no document this crate reads can state is what each v3 type
+    // crosses the official model as; one spelled in a document would come
+    // back as `unknown` or `variant`, so it is refused by name instead.
+    for width in [
+        "18446744073709551615",
+        "18446744073709551614",
+        "018446744073709551615",
+    ] {
+        let document = yggdryl::json::from_utf8(&format!(
+            r#"{{"type":"struct","schema-id":0,"fields":[
+                {{"id":1,"name":"wide","required":false,"type":"fixed[{width}]"}}
+            ]}}"#
+        ))
+        .unwrap();
+        let message = yggdryl::iceberg::schema_from_json("row", &document)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains(width), "{width}: {message}");
+        assert!(message.contains("4294967295"), "{width}: {message}");
+    }
+}

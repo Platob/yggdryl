@@ -11,8 +11,8 @@ other four stand alone and refuse one. :func:`string` takes the whole
 declaration: a charset-free layout, the charset, and the number.
 
 The ten registered codes are not strings: a currency is an identity over
-ISO 4217 that stores as the text it is, so its factory lives in
-:mod:`yggdryl.codes`.
+ISO 4217 codes and digital-asset tickers that stores as the text it is, so its
+factory lives in :mod:`yggdryl.codes`.
 """
 
 from __future__ import annotations

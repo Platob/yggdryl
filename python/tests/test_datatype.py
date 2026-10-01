@@ -742,10 +742,11 @@ def test_every_byte_column_is_one_datatype_with_a_layout_and_a_bound() -> None:
 
 
 def test_a_registered_code_is_its_own_datatype() -> None:
-    # ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, ISO 10962 six
-    # and ISO 6166 twelve: each is a datatype of its own holding its values to
-    # exactly that, not a name over a width. The five are the registrations
-    # whose name answers a type of its own.
+    # ISO 3166-1 is two letters, ISO 10383 four, ISO 10962 six and ISO 6166
+    # twelve, and a currency is ISO 4217's three letters or a digital-asset
+    # ticker of at most eight bytes: each is a datatype of its own holding its
+    # values to exactly that, not a name over a width. The five are the
+    # registrations whose name answers a type of its own.
     ccy = DataType.from_logical_name("Ccy")
     assert ccy == DataType("ccy")
     assert DataType.logical_names()["ccy"] == ccy
@@ -756,12 +757,13 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     assert str(ccy) == "ccy"
     # The width bounds a value; a code stores as the text it is, so it names
     # no fixed layout.
-    assert ccy.code_width == 3
+    assert ccy.code_width == 8
     assert ccy.fixed_byte_width is None
     assert ccy.string_parameters is None
     assert ccy.charset is None
     assert not ccy.is_string
     assert ccy != DataType.fixed_ascii(3)
+    assert ccy != DataType.fixed_ascii(8)
     assert DataType(" CCY ") == ccy
     assert eval(repr(ccy), {"DataType": DataType}) == ccy
     with pytest.raises(ValueError):
@@ -771,7 +773,7 @@ def test_a_registered_code_is_its_own_datatype() -> None:
 
     for name, width in [
         ("country", 2),
-        ("ccy", 3),
+        ("ccy", 8),
         ("mic", 4),
         ("cfi", 6),
         ("isin", 12),
@@ -787,8 +789,21 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     # The packed integer is the value's bytes padded to the code's own width,
     # exactly as for a fixed US-ASCII string of it. The padding is the
     # packing's; the column stores the text alone.
-    assert ccy.ascii_packed("USD") == DataType.fixed_ascii(3).ascii_packed("USD")
-    assert ccy.ascii_value(0x555344) == "USD"
+    assert ccy.ascii_packed("USD") == DataType.fixed_ascii(8).ascii_packed("USD")
+    assert ccy.ascii_packed("USD") == 0x5553_4400_0000_0000 == 6148332683081547776
+    assert ccy.ascii_packed("EUR") == 0x4555_5200_0000_0000 == 4995989521590910976
+    assert ccy.ascii_packed("JPY") == 0x4A50_5900_0000_0000 == 5354877813478391808
+    assert ccy.ascii_value(0x5553_4400_0000_0000) == "USD"
+    # Three bytes' worth of integer leads with NUL in the eight-byte slot, so
+    # it is no currency's storage.
+    with pytest.raises(ValueError, match="at most 8 bytes"):
+        ccy.ascii_value(0x555344)
+    # A digital-asset ticker is a currency up to the eight-byte bound, its
+    # case kept; nine bytes are none.
+    for ticker in ("USDT", "1INCH", "stETH", "BABYDOGE"):
+        assert ccy.scalar(ticker).as_py() == ticker
+    with pytest.raises(ValueError, match="at most 8 bytes"):
+        ccy.scalar("TOOLONGCCY")
     with pytest.raises(ValueError, match="at most 2 bytes"):
         DataType("country").ascii_packed("USD")
     figi = DataType("figi")
@@ -907,11 +922,17 @@ def test_a_registered_code_carries_its_identity_across_arrow() -> None:
     assert Serie.from_arrow_array(
         pa.array(["USD", "EU"]), ccy
     ).into_arrow_array().to_pylist() == ["USD", "EU"]
+    # A digital-asset ticker is a currency too, up to the eight-byte bound.
+    assert Serie.from_arrow_array(
+        pa.array(["USDT", "1INCH", "BABYDOGE"]), ccy
+    ).into_arrow_array().to_pylist() == ["USDT", "1INCH", "BABYDOGE"]
     # A cell the code refuses is null under the default safe cast and an
     # error naming the row when strict, exactly as a string cell is.
-    assert Serie.from_arrow_array(pa.array(["EURO"]), ccy).into_arrow_array().to_pylist() == [None]
-    with pytest.raises(ValueError, match="at most 3 bytes"):
-        Serie.from_arrow_array(pa.array(["EURO"]), ccy, safe=False).into_arrow_array()
+    assert Serie.from_arrow_array(
+        pa.array(["TOOLONGCCY"]), ccy
+    ).into_arrow_array().to_pylist() == [None]
+    with pytest.raises(ValueError, match="at most 8 bytes"):
+        Serie.from_arrow_array(pa.array(["TOOLONGCCY"]), ccy, safe=False).into_arrow_array()
 
 
 def test_a_ric_is_one_printable_token_that_keeps_its_case() -> None:
@@ -1617,6 +1638,56 @@ def test_a_serie_layout_still_reads_the_list_spelling_it_had(
     length = 3 if layout == "fixed_size_serie" else None
     assert DataType._serie(legacy.split("<")[0], item, length) == dtype
     assert DataType._serie(layout, item, length) == dtype
+
+
+@pytest.mark.parametrize(
+    ("iceberg", "canonical"),
+    [
+        ("timestamptz", 'datetime64(us,"UTC")'),
+        ("timestamp_ns", "datetime64(ns)"),
+        ("timestamptz_ns", 'datetime64(ns,"UTC")'),
+        ("fixed[16]", "fixed_binary(16)"),
+        ("fixed(16)", "fixed_binary(16)"),
+        ("unknown", "variant"),
+        ("decimal(9, 2)", "decimal32(9,2)"),
+        ("list<fixed[16]>", "serie<fixed_binary(16)>"),
+        ("map<string, fixed[16]>", "map<utf8, fixed_binary(16)>"),
+        ("geometry(srid:4326)", "geometry('srid:4326')"),
+        ("geography(OGC:CRS84, spherical)", "geography"),
+    ],
+)
+def test_an_iceberg_type_string_reads_as_the_datatype_it_names(
+    iceberg: str, canonical: str
+) -> None:
+    # Iceberg's schema documents and its reference implementations' renderings
+    # parse straight through the core grammar, nested at any depth.
+    assert DataType.from_str(iceberg) == DataType(canonical)
+    assert DataType(iceberg) == DataType(canonical)
+    assert Field("values", iceberg) == Field("values", canonical)
+
+
+def test_the_iceberg_struct_rendering_reads_field_ids_and_nullability() -> None:
+    assert DataType.from_str("timestamptz") == DataType.from_str('datetime64(us, "UTC")')
+    assert DataType.from_str("fixed[16]") == DataType.from_str("fixed_size_binary(16)")
+    assert DataType.from_str("list<fixed[16]>") == DataType.from_str(
+        "list<fixed_size_binary(16)>"
+    )
+    nested = DataType.from_str("struct<a: timestamptz, b: fixed[16]>")
+    assert [field.name for field in nested] == ["a", "b"]
+
+    # Java's `toString` and pyiceberg's `str`: `<id>: <name>: optional|required <type>`.
+    row = DataType.from_str("struct<1: a: optional timestamptz, 2: b: required fixed[16]>")
+    assert [field.name for field in row] == ["a", "b"]
+    assert [field.nullable for field in row] == [True, False]
+    assert [field.parquet_field_id for field in row] == [1, 2]
+    assert DataType.from_str(str(row)) == row
+
+    with pytest.raises(ValueError, match="Snowflake's TIMESTAMP_TZ"):
+        DataType.from_str("timestamp_tz")
+    with pytest.raises(ValueError, match="expected a zone, as stated at byte 0, got none"):
+        DataType.from_str("timestamptz without time zone")
+    with pytest.raises(ValueError, match="which state their unit"):
+        DataType.from_str("timestamp_ns(3)")
 
 
 def test_the_serie_factories_are_the_package_names_for_the_five_layouts() -> None:

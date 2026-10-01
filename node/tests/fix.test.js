@@ -3763,6 +3763,25 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
     assert.deepEqual(row.metadata, {})
   })
 
+  test('a digital-asset ticker is a currency no ISO source states', () => {
+    const codec = reading(seed())
+    const metadata = (currency) => {
+      const line = Buffer.from(
+        `8=FIX.4.4|35=D|52=20240102-10:15:30|11=A1|55=AAPL|22=4|48=US0378331005|54=1|15=${currency}|38=100|44=10.5|60=20240102-10:15:31|10=0|`,
+      )
+      const message = codec.parseFixLine(line)
+      assert.equal(message.currency, currency)
+      const [leaf] = [...codec.marketData([message])]
+      return leaf.metadata
+    }
+    // CurrencyCodeSource(2897) is `6`, ISO 4217, only for a code ISO 4217
+    // lists; `ccy` holds a ticker up to eight bytes and no source names it.
+    assert.equal(metadata('USD').currencycodesource, '6')
+    for (const ticker of ['USDT', '1INCH', 'BABYDOGE']) {
+      assert.equal('currencycodesource' in metadata(ticker), false, ticker)
+    }
+  })
+
   test('a failure behind the capture surfaces where each market door ends', () => {
     const codec = reading(seed())
     const { snapshot, update } = bookCapture(codec)

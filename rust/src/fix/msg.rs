@@ -2390,15 +2390,15 @@ impl FixMsg {
         })
     }
 
-    /// The currency one field states, where it names an ISO 4217 code other
-    /// than none.
+    /// The currency one field states, where it names a currency code other
+    /// than none: ISO 4217's or a digital-asset ticker.
     fn stated_ccy(&self, tag: i32) -> Option<Ccy> {
         self.stated_word(tag)
             .and_then(|held| {
                 Ccy::new(&held)
                     .inspect_err(|_| {
                         self.unread(
-                            "FIX currency defaulted to none: the stated currency is no ISO 4217 code",
+                            "FIX currency defaulted to none: the stated currency is no currency code (US-ASCII, at most eight bytes)",
                             tag,
                             &held,
                         );

@@ -237,7 +237,7 @@ pub enum DataTypeId
   pub const fn is_binary(self) -> bool
   pub const fn is_string(self) -> bool  (the eighteen string leaves)
   pub const fn fixed_byte_width(self) -> Option<usize>  (the numbers, a UUID; a code answers code_width instead)
-  pub const fn code_width(self) -> Option<usize>  (the twelve registered codes; the most bytes one value may be: cusip 9, sedol and forex 7, bbg, ric and unit 32)
+  pub const fn code_width(self) -> Option<usize>  (the twelve registered codes; the most bytes one value may be: ccy 8, cusip 9, sedol and forex 7, bbg, ric and unit 32)
 
 ### yggdryl::root::datatype_kind  [rust/src/datatype_kind.rs]
 pub enum DataTypeKind
@@ -2845,6 +2845,7 @@ impl<'field> IcebergField<'field>
   pub fn schema_id(&self) -> Result<Option<i32>>
   pub fn identifier_field_ids(&self) -> Result<Vec<i32>>
   pub fn doc(&self) -> Option<&'field str>
+  pub fn is_unknown(&self) -> bool  (the column is Iceberg's `unknown`, read as a variant)
   pub fn initial_default(&self) -> Result<Option<Scalar>>
   pub fn write_default(&self) -> Result<Option<Scalar>>
   pub fn spec_id(&self) -> Result<Option<i32>>
@@ -2854,6 +2855,7 @@ impl<'field> IcebergField<'field>
   pub fn set_schema_id(&mut self, id: i32) -> Result<()>
   pub fn set_identifier_field_ids(&mut self, ids: &[i32]) -> Result<()>
   pub fn set_doc(&mut self, doc: impl Into<String>) -> Result<()>
+  pub fn set_unknown(&mut self, unknown: bool) -> Result<()>
   pub fn set_initial_default(&mut self, value: &Scalar) -> Result<()>
   pub fn set_write_default(&mut self, value: &Scalar) -> Result<()>
   pub fn set_spec_id(&mut self, id: i32) -> Result<()>
@@ -4681,7 +4683,7 @@ pub enum BytesType  (#[non_exhaustive]; Copy; Default = Binary; Binary, LargeBin
   pub fn extension_json(self) -> String  // {"layout":"sized_binary","max":16}
   pub fn from_extension_json(value: &str) -> Result<Self>  (fixed only on the fixed leaf; a max makes the leaf sized whichever unbounded shape was named)
   pub fn from_str(value: &str) -> Result<Self>  (from_spelling over the folded text)
-  pub fn from_spelling(word: &str) -> Option<Self>  (every alias, folded: binary, bytes, blob, bytea, varbinary, fixedbinary, fixedsizebinary, sizedbinary, ...)
+  pub fn from_spelling(word: &str) -> Option<Self>  (every alias, folded: binary, bytes, blob, bytea, varbinary, fixedbinary, fixedsizebinary, fixed, sizedbinary, ...)
   pub fn scalar(self, payload: impl Into<Bytes>) -> Result<Scalar>  (the value door: a fixed leaf needs len == width exactly, a sized one at most its maximum; answers the leaf's own Scalar variant, the number kept)
 impl From<BytesType> for DataType  (the leaf's own variant, unchecked; DataType::bytes validates)
 impl TryFrom<&DataType> for BytesType
@@ -6057,7 +6059,7 @@ impl Scalar
   pub type CountryField = FieldOf<CountryType>;
 
 ### yggdryl::ccy  [rust/src/ccy.rs]
-  pub struct Ccy(SmolStr)  (one validated code; `CcyType` marks its field, `CcyField` is `FieldOf<CcyType>`)
+  pub struct Ccy(SmolStr)  (one validated code: ISO 4217's three letters or a digital-asset ticker, US-ASCII, at most eight bytes, case kept, no listing consulted; `CcyType` marks its field, `CcyField` is `FieldOf<CcyType>`)
   pub fn none() -> Self
   pub const fn ccy() -> Self
   pub type CcyField = FieldOf<CcyType>;
@@ -6494,7 +6496,7 @@ pub struct CfiGroup  (a group letter and its name, under one category)
   pub const fn identifier(&self) -> DataTypeId
   pub const fn datatype(&self) -> DataType
 impl DataType
-  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("ccy", DataType::Ccy, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("cusip", DataType::Cusip, 9), ("sedol", DataType::Sedol, 7), ("bbg", DataType::Bbg, 32), ("figi", DataType::Figi, 12), ("unit", DataType::Unit, 32), ("ric", DataType::Ric, 32), ("forex", DataType::Forex, 7)];  (the newest code last)
+  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("ccy", DataType::Ccy, 8), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("cusip", DataType::Cusip, 9), ("sedol", DataType::Sedol, 7), ("bbg", DataType::Bbg, 32), ("figi", DataType::Figi, 12), ("unit", DataType::Unit, 32), ("ric", DataType::Ric, 32), ("forex", DataType::Forex, 7)];  (the newest code last)
   pub const fn country() -> Self
   pub const fn ccy() -> Self
   pub const fn mic() -> Self

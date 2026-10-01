@@ -568,7 +568,7 @@ class TypedCcy(Ccy):
 ascii_declared_code: int = int(TypedCcy.USD)
 ascii_declared_value: str = TypedCcy.USD.into_str()
 ascii_parsed: TypedCcy = TypedCcy.from_str("JPY")
-ascii_by_code: TypedCcy = TypedCcy.from_code(0x55534400)
+ascii_by_code: TypedCcy = TypedCcy.from_code(0x5553_4400_0000_0000)
 ascii_declared_dtype: DataType = TypedCcy.dtype()
 ascii_declared_enum: StringEnum = TypedCcy.as_enum()
 ascii_declared_field: Field = TypedCcy.into_field("ccy", nullable=False)

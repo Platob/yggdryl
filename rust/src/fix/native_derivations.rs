@@ -34,7 +34,7 @@
 //! | `LastMultipliedQty(2368)` | `LastQty * ContractMultiplier` at scale nine |
 //! | `TotalGrossTradeAmt(2369)` | `LastPx * TotalTradeQty` at scale nine |
 //! | `TotalTradeMultipliedQty(2370)` | `TotalTradeQty * ContractMultiplier` at scale nine |
-//! | `CurrencyCodeSource(2897)` | `6`, ISO 4217, wherever `Currency` is stated |
+//! | `CurrencyCodeSource(2897)` | `6`, ISO 4217, wherever `Currency` states a code ISO 4217 lists |
 //!
 //! A report is `MsgType` `8` or `9`. Arithmetic that overflows and an input
 //! the message does not state are silence, never a guess; a value the
@@ -257,7 +257,7 @@ fn derive_once(row: &mut NativeRow<'_>) {
     fill!(2368, scaled_product(row, 32, 231, 9));
     fill!(2369, scaled_product(row, 31, 2367, 9));
     fill!(2370, scaled_product(row, 2367, 231, 9));
-    fill!(2897, row.get(15).map(|_| Scalar::from("6")));
+    fill!(2897, currency_code_source(row));
 }
 
 const REPORTS: &[&str] = &["8", "9"];
@@ -579,6 +579,13 @@ fn cfi_code(row: &NativeRow<'_>) -> Option<Scalar> {
         return None;
     };
     Some(Scalar::from(cfi))
+}
+
+/// `6`, ISO 4217, for a `Currency(15)` that ISO 4217 lists; a digital-asset
+/// ticker is a currency no ISO source states, and states none.
+fn currency_code_source(row: &NativeRow<'_>) -> Option<Scalar> {
+    row.with_text(15, |ccy| StringEnum::CURRENCIES.binary_search(&ccy).is_ok())?
+        .then(|| Scalar::from("6"))
 }
 
 fn country_of_issue(row: &NativeRow<'_>) -> Option<Scalar> {
