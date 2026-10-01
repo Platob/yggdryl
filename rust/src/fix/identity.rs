@@ -378,7 +378,7 @@ pub(super) const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
 /// instrument keys a rule folds into `securityids` included - is the
 /// [envelope's](super::digest), and an identifier map's sources are the
 /// registry's. A group listed here, by its counter, is read whole.
-pub(super) const MARKET_TAGS: [i32; 46] = [
+pub(super) const MARKET_TAGS: [i32; 45] = [
     54,              // Side: side
     132,             // BidPx: bidpx, and a bid quote's price
     133,             // OfferPx: askpx, and an ask quote's price
@@ -413,7 +413,6 @@ pub(super) const MARKET_TAGS: [i32; 46] = [
     126,             // ExpireTime: exprunix
     62,              // ValidUntilTime: exprunix
     432,             // ExpireDate: exprunix
-    541,             // MaturityDate: exprunix
     2749,            // ExecutionTimestamp: execunix
     60,              // TransactTime: execunix, and currunix within the delay
     768,             // NoTrdRegTimestamps, a clock group: currunix, execunix

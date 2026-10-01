@@ -382,6 +382,83 @@ fn a_chain_with_no_cross_code_is_one_cross_element() {
 }
 
 #[test]
+fn a_chain_with_no_cross_code_keeps_one_cross_element_through_an_update_an_expiry_a_twin_and_a_stated_code()
+ {
+    use yggdryl::Side;
+
+    let event = |ms: i64, code: Option<&str>, state: State, expiry: Option<i64>| {
+        let mut event = OrderEvent::at(at(ms));
+        if let Some(code) = code {
+            event.set_crosscode(code.to_owned());
+        }
+        event.set_side(Side::Buy, true);
+        event.set_state(state);
+        event.set_exprunix(expiry);
+        event
+            .insert_identifier(identifier(&CL_ORD_ID, "C-7"))
+            .unwrap();
+        event.finalize();
+        event
+    };
+
+    // A NEW over the live NEW walks UPDATED.
+    let walked: Vec<OrderEvent> = EventIterator::new(
+        vec![
+            event(10, None, State::New, None),
+            event(20, None, State::New, None),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[0].get_crossuuid(), walked[0].get_curruuid());
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(*walked[1].get_state(), State::Updated);
+    assert_eq!(
+        walked[1].get_crossuuid(),
+        walked[0].get_crossuuid(),
+        "the update"
+    );
+
+    // The expiry the walk emits at the deadline.
+    let walked: Vec<OrderEvent> =
+        EventIterator::new(vec![event(10, None, State::New, Some(at(30)))], true).collect();
+    assert_eq!(walked.len(), 2);
+    assert_eq!(*walked[1].get_state(), State::Expired);
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(
+        walked[1].get_crossuuid(),
+        walked[0].get_crossuuid(),
+        "the expiry"
+    );
+
+    // A twin of a follower, restating it.
+    let fill = event(20, None, State::PartiallyFilled, None);
+    let walked: Vec<OrderEvent> = EventIterator::new(
+        vec![event(10, None, State::New, None), fill.clone(), fill],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_crossuuid(), walked[0].get_crossuuid());
+    assert_eq!(walked[2], walked[1], "the twin");
+
+    // A follower joining by the name, stating a code of its own.
+    let walked: Vec<OrderEvent> = EventIterator::new(
+        vec![
+            event(10, None, State::New, None),
+            event(20, Some("O-9"), State::PartiallyFilled, None),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(
+        walked[1].get_crossuuid(),
+        walked[0].get_crossuuid(),
+        "the stated code"
+    );
+}
+
+#[test]
 fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     // One message a capture logged at two hops: the same instant, the same
     // content, arriving under the identity the live element arrived under.
@@ -475,6 +552,34 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
             (0, Some(20)),
         ]
     );
+}
+
+#[test]
+fn a_statement_logged_again_after_its_chain_moved_on_at_its_instant_restates_it() {
+    // An acknowledgement, the fill that moved its chain on at the same
+    // instant, then the acknowledgement logged again: a statement of the
+    // acknowledgement, not a step after the fill.
+    let mut ack = named("O-100", 20, &EXEC_ID, "E-1");
+    ack.set_state(State::New);
+    ack.finalize();
+    let mut fill = named("O-100", 20, &EXEC_ID, "E-2");
+    fill.set_state(State::PartiallyFilled);
+    fill.finalize();
+    let arrived = vec![
+        incarnation("O-100", 10),
+        ack.clone(),
+        fill,
+        ack,
+        incarnation("O-100", 30),
+    ];
+    let walked: Vec<OrderEvent> = EventIterator::new(arrived, true).collect();
+    let [_, ack, fill, again, next] = walked.as_slice() else {
+        panic!("five statements, not {}", walked.len())
+    };
+    assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(again, ack, "the acknowledgement's own identity and place");
+    // The chain stays where the fill moved it.
+    assert_eq!(next.get_prevuuid(), Some(fill.get_curruuid()));
 }
 
 #[test]

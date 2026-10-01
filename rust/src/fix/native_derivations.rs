@@ -12,11 +12,11 @@
 //! | `AvgPx(6)` | `LastPx`, on a report whose `CumQty` equals a positive `LastQty` |
 //! | `CumQty(14)` | `OrderQty - LeavesQty` on a report, never negative |
 //! | `Currency(15)` / `SettlCurrency(120)` | each other, except on a currency product (`Product` 4) |
-//! | `SecurityIDSource(22)` | `4`, `1` or `2` where `SecurityID` closes as an ISIN, a CUSIP or a SEDOL |
+//! | `SecurityIDSource(22)` | `S` where `SecurityID` is twelve bytes behind `BBG` a FIGI closes, else `4`, `1` or `2` where it closes as an ISIN, a CUSIP or a SEDOL |
 //! | `LastPx(31)`, `BidPx(132)`, `OfferPx(133)` | spot rate plus forward points |
 //! | `OrderQty(38)` | `CumQty + CxlQty` on a canceled report, else `CumQty + LeavesQty`, else `CumQty + CxlQty` |
 //! | `OrdStatus(39)` | the `ExecType` both spell alike, or a trade's filled or partial status |
-//! | `SecurityID(48)` | the first ISIN `secaltids` states |
+//! | `SecurityID(48)` | the first ISIN `secaltids` states, where `SecurityIDSource` states no source or an ISIN's |
 //! | `Symbol(55)` | `SecurityID` under source `8` or `A`, else the `secaltids` identifier under `8` |
 //! | `TimeInForce(59)` | `0`, a day order, on a `D`, `G` or `8` message |
 //! | `SettlCurrAmt(119)` | `GrossTradeAmt * SettlCurrFxRate` at scale nine |
@@ -44,7 +44,7 @@
 use smol_str::format_smolstr;
 
 use crate::warning::warned;
-use crate::{Cusip, DataType, Decimal, IdType, Isin, Scalar, Sedol, StringEnum};
+use crate::{Cusip, DataType, Decimal, Figi, IdType, Isin, Scalar, Sedol, StringEnum};
 
 use super::msg::FixMsg;
 
@@ -236,7 +236,7 @@ fn derive_once(row: &mut NativeRow<'_>) {
     fill!(31, add(row, 194, 195));
     fill!(38, order_quantity(row));
     fill!(39, order_status(row));
-    fill!(48, alternate_isin(row).map(Scalar::from));
+    fill!(48, security_id(row));
     fill!(55, symbol(row));
     fill!(59, time_in_force(row));
     fill!(119, scaled_product(row, 381, 155, 9));
@@ -297,6 +297,11 @@ fn cumulative_quantity(row: &NativeRow<'_>) -> Option<Scalar> {
 fn security_id_source(row: &NativeRow<'_>) -> Option<Scalar> {
     let identifier = row.get(48)?;
     let text = identifier.as_str()?;
+    // A FIGI may close ISO 6166's digit too: twelve bytes behind `BBG` are
+    // a FIGI or nothing, as a symbol's shape reads them.
+    if text.len() == 12 && text.starts_with("BBG") {
+        return Figi::new(text).is_ok().then(|| Scalar::from("S"));
+    }
     if Isin::new(text).is_ok() {
         Some(Scalar::from("4"))
     } else if Cusip::new(text).is_ok() {
@@ -353,6 +358,16 @@ fn is_source(value: &str, kinds: &[IdType]) -> bool {
 fn alternate_isin(row: &NativeRow<'_>) -> Option<Isin> {
     let alternate = row.alternate(IdType::Isin)?;
     Isin::new(alternate.as_str()?).ok()
+}
+
+/// The first ISIN `secaltids` states, where the message states no
+/// `SecurityIDSource(22)` or an ISIN's: under another source `SecurityID`
+/// is that source's type, which an ISIN is not.
+fn security_id(row: &NativeRow<'_>) -> Option<Scalar> {
+    if row.get(22).is_some() && !row.source_in(22, &[IdType::Isin]) {
+        return None;
+    }
+    alternate_isin(row).map(Scalar::from)
 }
 
 fn symbol(row: &NativeRow<'_>) -> Option<Scalar> {

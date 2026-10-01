@@ -97,8 +97,7 @@ fn a_name_that_names_no_own_source_states_nothing() {
 fn the_wire_leads_and_an_unmapped_code_is_a_statement_of_its_own_source() {
     // The wire's field and the bridge's name are two sources, each stating
     // its own entry, and the wire's answers the type.
-    let held =
-        parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331005|#ISINCODE=US0378331005|10=0|");
+    let held = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331005|ISIN=US0378331005|10=0|");
     assert_eq!(
         ids(&held),
         [
@@ -112,6 +111,15 @@ fn the_wire_leads_and_an_unmapped_code_is_a_statement_of_its_own_source() {
         held.get_securityids().get(&IdType::Isin),
         Some("US0378331005")
     );
+    // `#ISINCODE` is the crated column, a view of the set: the code the
+    // wire's entry holds states nothing new.
+    let viewed =
+        parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331005|#ISINCODE=US0378331005|10=0|");
+    assert_eq!(
+        ids(&viewed),
+        ["derived:cusip=037833100", "fix:isin=US0378331005"]
+    );
+    assert!(anomalies(&viewed).is_empty());
 
     // A different code under another source stands beside the wire's,
     // which still answers the type: no source overrides another.
@@ -131,6 +139,178 @@ fn the_wire_leads_and_an_unmapped_code_is_a_statement_of_its_own_source() {
         ]
     );
     assert!(anomalies(&held).is_empty(), "{:?}", anomalies(&held));
+
+    // A bridge's namespace spelled before `fix` sorts ahead of the wire's
+    // key, and the wire's code still answers the type.
+    for line in [
+        &b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331005|ABC.ISIN=US5949181045|10=0|"[..],
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331005|DBI_ISIN=US5949181045|10=0|",
+    ] {
+        let held = parsed(line);
+        let bridge = ids(&held)[0].clone();
+        assert!(bridge.ends_with(":isin=US5949181045"), "{bridge}");
+        assert_eq!(
+            held.get_securityids().get(&IdType::Isin),
+            Some("US0378331005"),
+            "{:?}",
+            ids(&held)
+        );
+        assert_eq!(held.get_isincode(), Some("US0378331005"));
+        assert_eq!(
+            held.get_securityids()
+                .get_from(&yggdryl::IdSource::Derived, &IdType::Cusip),
+            Some("037833100"),
+            "{:?}",
+            ids(&held)
+        );
+    }
+}
+
+/// `SecurityID(48)` fills its type first: a `SecAltIDGrp(454)` occurrence
+/// restating its code is the same entry, and one stating another code under
+/// that type states nothing and is kept as an anomaly.
+#[test]
+fn an_alternate_restating_the_primarys_type_fills_nothing_and_a_different_code_is_an_anomaly() {
+    let held = parsed(
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331005|454=3|455=US0378331005|456=4|455=CH0012221716|456=4|455=US5949181045|456=4|10=0|",
+    );
+    assert_eq!(
+        ids(&held),
+        ["derived:cusip=037833100", "fix:isin=US0378331005"]
+    );
+    assert_eq!(
+        anomalies(&held),
+        [
+            (
+                "secaltids",
+                "states fix:isin=CH0012221716 where fix:isin=US0378331005 is already stated"
+            ),
+            (
+                "secaltids",
+                "states fix:isin=US5949181045 where fix:isin=US0378331005 is already stated"
+            )
+        ]
+    );
+    let wire = String::from_utf8(held.into_bytes(b'|')).expect("a text wire");
+    assert!(
+        wire.contains(
+            "|454=3|455=US0378331005|456=4|455=CH0012221716|456=4|455=US5949181045|456=4|"
+        ),
+        "every occurrence stays on the wire: {wire}"
+    );
+}
+
+/// A row narrowed to the `isincode` view without the `securityids` column
+/// reads the view back as the identifier it viewed, not as another source's.
+#[test]
+fn a_narrow_row_reads_the_isin_view_back_as_the_identifier_it_viewed() {
+    let registry = committed_registry();
+    let schema = yggdryl::fix_schema(&registry, "fix").expect("the fixed row");
+    let narrow = yggdryl::StructType::from_fields(
+        [
+            "beginstring",
+            "msgtype",
+            "currunix",
+            "creaunix",
+            "currhashcode",
+            "crosshashcode",
+            "curruuid",
+            "crossuuid",
+            "isincode",
+            "fixentries",
+        ]
+        .iter()
+        .map(|name| schema.fields()[schema.index_of(name).expect(name)].clone()),
+    )
+    .map(yggdryl::DataType::from)
+    .expect("a narrow root")
+    .required_field("fix");
+    let held = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=1|22=4|48=US0378331005|10=0|");
+    assert_eq!(
+        ids(&held),
+        ["derived:cusip=037833100", "fix:isin=US0378331005"]
+    );
+    let row = held.into_row(&narrow).expect("the narrow row");
+    let back =
+        FixMsg::from_row(std::sync::Arc::clone(&registry), &narrow, &row).expect("the row reads");
+    assert_eq!(ids(&back), ids(&held));
+    assert!(anomalies(&back).is_empty(), "{:?}", anomalies(&back));
+}
+
+/// A source spelled `{NAMESPACE}INSTRUMENTID` states a venue's instrument
+/// key from that namespace rather than from `fix`, on the primary and an
+/// alternate alike, and the source crosses the row and the leaf.
+#[test]
+fn a_namespaced_instrument_source_states_its_namespace_through_the_row_and_the_leaf() {
+    let registry = committed_registry();
+    let schema = yggdryl::fix_schema(&registry, "fix").expect("the fixed row");
+    let ullink: yggdryl::IdSource = "ullink".parse().expect("a word");
+    for line in [
+        &b"8=FIX.4.4|35=D|11=C1|55=HOLN|54=1|38=5|40=2|22=ULLINKINSTRUMENTID|48=dbi;CH0012214059_XSWX_CHF|10=0|"[..],
+        b"8=FIX.4.4|35=D|11=C1|55=HOLN|54=1|38=5|40=2|454=1|455=dbi;CH0012214059_XSWX_CHF|456=ULLINKINSTRUMENTID|10=0|",
+    ] {
+        let held = parsed(line);
+        assert_eq!(
+            ids(&held),
+            [
+                "derived:valor=1221405",
+                "ullink:instrumentid=dbi;CH0012214059_XSWX_CHF",
+                "ullink:isin=CH0012214059"
+            ],
+            "{}",
+            String::from_utf8_lossy(line)
+        );
+        let row = held.into_row(&schema).expect("its row");
+        let back = FixMsg::from_row(std::sync::Arc::clone(&registry), &schema, &row)
+            .expect("the row reads");
+        assert_eq!(ids(&back), ids(&held));
+        let leaves = held.into_market_data().expect("an order leaf");
+        let [yggdryl::graph::MarketData::OrderEvent(order)] = leaves.as_slice() else {
+            panic!("one order event, got {}", leaves.len())
+        };
+        assert_eq!(
+            order
+                .get_securityids()
+                .get_from(&ullink, &IdType::InstrumentId),
+            Some("dbi;CH0012214059_XSWX_CHF")
+        );
+    }
+}
+
+/// The namespace is read as a key's source is: folded, its separators at
+/// either end dropped, so every spelling of one venue is one source.
+#[test]
+fn a_namespaced_instrument_source_names_the_namespace_without_its_separator() {
+    let ullink: yggdryl::IdSource = "ullink".parse().expect("a word");
+    for source in [
+        "ULLINKINSTRUMENTID",
+        "ULLINK_INSTRUMENTID",
+        "ULLINK.INSTRUMENTID",
+        "Ullink Instrument ID",
+        "ullink-instrumentid",
+    ] {
+        for line in [
+            format!("8=FIX.4.4|35=D|11=A1|55=AAPL|22={source}|48=dbi;CH0012214059_XSWX_CHF|10=0|"),
+            format!(
+                "8=FIX.4.4|35=D|11=A1|55=AAPL|454=1|455=dbi;CH0012214059_XSWX_CHF|456={source}|10=0|"
+            ),
+        ] {
+            let held = parsed(line.as_bytes());
+            assert_eq!(
+                held.get_securityids()
+                    .get_from(&ullink, &IdType::InstrumentId),
+                Some("dbi;CH0012214059_XSWX_CHF"),
+                "{line}: {:?} {:?}",
+                ids(&held),
+                anomalies(&held)
+            );
+            assert_eq!(
+                held.get_securityids().get_from(&ullink, &IdType::Isin),
+                Some("CH0012214059"),
+                "{line}"
+            );
+        }
+    }
 }
 
 #[test]

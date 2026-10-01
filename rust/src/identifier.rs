@@ -582,14 +582,16 @@ impl Identifiers {
         self.get_identifier(kind).map(Identifier::value)
     }
 
-    /// The first identifier of `kind` a named source stated, else the one
-    /// stated under no source (`base`), else the one the crate derived.
+    /// The identifier of `kind` the wire stated (`fix`), else the first
+    /// another named source stated in key order, else the one stated under
+    /// no source (`base`), else the one the crate derived.
     #[must_use]
     pub fn get_identifier(&self, kind: &IdType) -> Option<&Identifier> {
         let rank = |held: &Identifier| match held.src() {
-            IdSource::Base => 1,
-            IdSource::Derived => 2,
-            _ => 0,
+            IdSource::Fix => 0,
+            IdSource::Base => 2,
+            IdSource::Derived => 3,
+            _ => 1,
         };
         let mut best: Option<&Identifier> = None;
         for held in self.0.iter().filter(|held| held.kind() == kind) {

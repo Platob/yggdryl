@@ -363,6 +363,32 @@ fn an_identifier_names_the_standard_that_closes_it() {
 }
 
 #[test]
+fn a_figi_in_securityid_states_its_own_source_and_never_an_isin() {
+    let reader = reader();
+    // Microsoft's composite FIGI closes ISO 6166's digit too; a twelve-byte
+    // code behind `BBG` is a FIGI, as a symbol's shape reads it.
+    assert!(Isin::new("BBG000BPH459").is_ok());
+    let figi = settled(
+        &reader,
+        b"8=FIX.4.4|35=D|11=A|55=MSFT|48=BBG000BPH459|10=0|",
+    );
+    assert_eq!(text(&figi, 22).as_deref(), Some("S"));
+    assert_eq!(isincode(&figi), None, "{}", figi.get_securityids());
+    assert_eq!(
+        figi.get_securityids()
+            .get_from(&IdSource::Fix, &IdType::Figi),
+        Some("BBG000BPH459")
+    );
+    assert_eq!(figi.get_by_tag(470), None, "a FIGI names no country");
+    // A `BBG` code no FIGI check closes answers nothing.
+    let typo = settled(
+        &reader,
+        b"8=FIX.4.4|35=D|11=A|55=MSFT|48=BBG000BPH458|10=0|",
+    );
+    assert_eq!(typo.get_by_tag(22), None);
+}
+
+#[test]
 fn an_isin_reaches_its_normalized_column_from_wherever_the_message_put_it() {
     let reader = reader();
     // The alternate identifier whose source says ISIN is the ISIN, and once
@@ -437,6 +463,39 @@ fn an_isin_reaches_its_normalized_column_from_wherever_the_message_put_it() {
 }
 
 #[test]
+fn an_alternate_isin_fills_securityid_only_under_no_source_or_an_isins() {
+    let reader = reader();
+    // An exchange symbol's source states what `SecurityID` would be: an
+    // ISIN is none, so it stays the alternate it was and no symbol is read
+    // off it.
+    let symbol = settled(
+        &reader,
+        b"8=FIX.4.4|35=D|11=A|22=8|454=1|455=US0378331005|456=4|10=0|",
+    );
+    assert_eq!(symbol.get_by_tag(48), None);
+    assert_eq!(symbol.get_by_tag(55), None);
+    assert_eq!(
+        symbol.get_securityids().to_string(),
+        "[derived:cusip=037833100, fix:isin=US0378331005]"
+    );
+    // Under a CUSIP's source no `SecurityID` is made for the source to
+    // refuse.
+    let cusip = settled(
+        &reader,
+        b"8=FIX.4.4|35=D|11=A|55=AAPL|22=1|454=1|455=US0378331005|456=4|10=0|",
+    );
+    assert_eq!(cusip.get_by_tag(48), None);
+    assert!(cusip.anomalies().is_empty(), "{:?}", cusip.anomalies());
+    assert_eq!(isincode(&cusip).as_deref(), Some("US0378331005"));
+    // Under an ISIN's own source the alternate is the `SecurityID`.
+    let isin = settled(
+        &reader,
+        b"8=FIX.4.4|35=D|11=A|55=AAPL|22=4|454=1|455=US0378331005|456=4|10=0|",
+    );
+    assert_eq!(text(&isin, 48).as_deref(), Some("US0378331005"));
+}
+
+#[test]
 fn a_symbol_is_what_an_exchange_or_bloomberg_called_the_instrument() {
     let reader = reader();
     let exchange = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=ABBN|22=8|10=0|");
@@ -456,6 +515,30 @@ fn a_symbol_is_what_an_exchange_or_bloomberg_called_the_instrument() {
 
     let stated = settled(&reader, b"8=FIX.4.4|35=D|11=A|55=NOVN|48=ABBN|22=8|10=0|");
     assert_eq!(text(&stated, 55).as_deref(), Some("NOVN"));
+}
+
+#[test]
+fn a_symbol_a_rule_fills_names_its_currency_pair_as_a_stated_one_does() {
+    let reader = reader();
+    let stated = settled(
+        &reader,
+        b"8=FIX.4.4|35=D|11=A|55=EUR/USD|22=8|48=EUR/USD|54=1|38=1000000|40=1|10=0|",
+    );
+    let filled = settled(
+        &reader,
+        b"8=FIX.4.4|35=D|11=A|22=8|48=EUR/USD|54=1|38=1000000|40=1|10=0|",
+    );
+    assert_eq!(text(&filled, 55).as_deref(), Some("EUR/USD"));
+    assert_eq!(
+        filled.get_securityids().to_string(),
+        "[derived:forex=EUR/USD, fix:exchsymb=EUR/USD]"
+    );
+    assert_eq!(filled.get_securityids(), stated.get_securityids());
+    for tag in [15, 120, 167, 460, 461, 2897] {
+        assert_eq!(filled.get_by_tag(tag), stated.get_by_tag(tag), "{tag}");
+    }
+    assert_eq!(text(&filled, 15).as_deref(), Some("EUR"));
+    assert_eq!(miccode(&filled).as_deref(), Some("XXXX"));
 }
 
 #[test]
@@ -1325,6 +1408,93 @@ fn the_lifecycle_yields_an_identity_once_within_its_dedup_window() {
     assert_eq!(hours, [minute[0], minute[1], minute[3]]);
 }
 
+/// A twin of a message that took its chain's side restates to the live
+/// one's identity: what the walk wrote into the live one's content it
+/// writes into the twin's, so the two digest alike and the window yields
+/// that identity once.
+#[test]
+fn a_twin_of_an_acknowledgement_that_took_its_chains_side_is_one_identity() {
+    use yggdryl::graph::Element;
+
+    let codec = super::fixed_codec(super::committed_registry());
+    let lines: [&[u8]; 3] = [
+        b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30.250|11=A1|55=AAPL|54=1|38=100|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=1|52=20260102-10:15:30.500|11=A1|37=O1|150=0|39=0|55=AAPL|10=0|",
+        // The acknowledgement delivered again under another sequence.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=2|52=20260102-10:15:30.500|11=A1|37=O1|150=0|39=0|55=AAPL|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("three messages");
+    let every: Vec<FixMsg> = codec
+        .clone()
+        .with_dedup_window_ms(0)
+        .lifecycle(parsed.clone())
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    assert_eq!(every.len(), 3, "both deliveries are walked");
+    assert_eq!(text(&every[1], 54).as_deref(), Some("BUYS"));
+    assert_eq!(text(&every[2], 54).as_deref(), Some("BUYS"));
+    assert_eq!(
+        every[2].get_curruuid(),
+        every[1].get_curruuid(),
+        "a twin finalizes to the live one's identity"
+    );
+    let once = walked(&codec, parsed);
+    assert_eq!(once.len(), 2, "the window yields that identity once");
+    assert_eq!(once[1].0, every[1].get_curruuid());
+}
+
+/// An acknowledgement delivered again after the fill that moved its chain
+/// on at the same instant is another statement of the acknowledgement, not
+/// a step after the fill: it restates to the acknowledgement's identity,
+/// which the window yields once.
+#[test]
+fn an_acknowledgement_delivered_again_after_its_fill_adds_no_step() {
+    use yggdryl::MarketDataKind;
+    use yggdryl::graph::Element;
+
+    let codec = super::fixed_codec(super::committed_registry());
+    let lines: [&[u8]; 4] = [
+        b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30.000|11=A1|55=AAPL|54=1|38=100|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=1|52=20260102-10:15:30.500|11=A1|37=O1|150=0|39=0|54=1|55=AAPL|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=2|52=20260102-10:15:30.500|11=A1|37=O1|17=E1|150=F|39=1|14=10|151=90|31=10|32=10|54=1|55=AAPL|10=0|",
+        // The acknowledgement delivered again, after the fill of its instant.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=3|52=20260102-10:15:30.500|11=A1|37=O1|150=0|39=0|54=1|55=AAPL|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the messages");
+    let orders = |codec: &FixCodec| {
+        codec
+            .lifecycle(parsed.clone())
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the walk")
+            .into_iter()
+            .filter(|held| held.msgcat() == MarketDataKind::Order)
+            .collect::<Vec<_>>()
+    };
+    let every = orders(&codec.clone().with_dedup_window_ms(0));
+    let [order, ack, fill, again] = every.as_slice() else {
+        panic!("four order messages, not {}", every.len())
+    };
+    assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(again.get_curruuid(), ack.get_curruuid());
+    assert_eq!(*again.get_state(), State::New);
+    let once = orders(&codec);
+    assert_eq!(
+        once.len(),
+        3,
+        "the order, its acknowledgement and its fill's report: {:?}",
+        once.iter()
+            .map(|held| *held.get_state())
+            .collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn a_grid_view_is_never_a_repeat_of_what_it_views() {
     // A view at the live message's own instant derives the live message's
@@ -1382,6 +1552,34 @@ fn a_side_less_follower_states_the_side_of_the_chain_it_joins() {
     )
     .expect("the row reads");
     assert_eq!(again.get_side(), Side::Sell);
+}
+
+/// The acknowledgement the lifecycle page walks names no side: the side it
+/// takes from its order is written to its wire, beside no stamp.
+#[test]
+fn the_side_an_acknowledgement_takes_from_its_order_is_written_to_its_wire() {
+    use yggdryl::Side;
+    use yggdryl::graph::Element;
+
+    let codec = super::fixed_codec(super::committed_registry());
+    let lines: [&[u8]; 2] = [
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|52=20260102-10:15:30.250|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|52=20260102-10:15:30.500|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("two messages");
+    let chained: Vec<FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    let ack = &chained[1];
+    assert_eq!(ack.get_prevuuid(), Some(chained[0].get_curruuid()));
+    assert_eq!(ack.get_side(), Side::Buy);
+    let wire = ack.into_text('|').expect("a text wire");
+    assert!(wire.contains("|54=1|"), "{wire}");
+    assert!(!wire.contains("65014="), "no stamp is a field");
 }
 
 #[cfg(feature = "internals")]
@@ -1577,13 +1775,112 @@ fn a_following_message_takes_the_metadata_keys_of_its_chain_it_does_not_state() 
     assert_eq!(second.get_identifiers().get(&IdType::ExecId), Some("E-2"));
 }
 
+/// A follower naming no security carries its chain's security identifiers
+/// whole - read off `SecurityID(48)` under `SecurityIDSource(22)` and the
+/// `SecAltIDGrp(454)`, the CUSIP the ISIN embeds included - writing no
+/// field, and one naming another ISIN takes none of them.
+#[test]
+fn a_follower_stating_no_security_takes_its_chains_identifiers_and_another_isin_takes_none() {
+    use yggdryl::graph::Element;
+
+    let codec = reader();
+    let lines: [&[u8]; 3] = [
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|48=US0378331005|22=4|454=1|455=BBG000B9XRY4|456=S|54=1|38=10|44=100|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:01|11=C1|37=O1|150=0|39=0|54=1|55=AAPL|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:02|11=C1|37=O1|150=D|39=0|54=1|55=MSFT|48=US5949181045|22=4|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("three messages");
+    let chained: Vec<FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    let [order, ack, other] = chained.as_slice() else {
+        panic!("three messages, not {}", chained.len())
+    };
+    let ids = order.get_securityids();
+    assert_eq!(
+        ids.get_from(&IdSource::Fix, &IdType::Isin),
+        Some("US0378331005")
+    );
+    assert_eq!(
+        ids.get_from(&IdSource::Fix, &IdType::Figi),
+        Some("BBG000B9XRY4")
+    );
+    assert_eq!(ids.get(&IdType::Cusip), Some("037833100"));
+    assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(ack.get_securityids(), ids, "the chain's, whole");
+    for tag in [48, 22, 454] {
+        assert!(
+            ack.get_by_tag(tag).is_none_or(|held| held.is_null()),
+            "tag {tag}: carried, never written"
+        );
+    }
+    assert_eq!(other.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(other.get_isincode(), Some("US5949181045"));
+    assert_eq!(
+        other.get_securityids().get(&IdType::Cusip),
+        Some("594918104")
+    );
+    assert_eq!(
+        other.get_securityids().get(&IdType::Figi),
+        None,
+        "another instrument takes none"
+    );
+}
+
+/// A follower naming no party carries its chain's party ids - the
+/// `Parties(453)` group's and the `Account(1)` - as its own word, writing
+/// neither field.
+#[test]
+fn a_follower_naming_no_party_takes_its_chains_parties_and_writes_none() {
+    use yggdryl::graph::Element;
+
+    let codec = reader();
+    let lines: [&[u8]; 2] = [
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|1=ACC-9|453=1|448=T-1|447=D|452=12|55=AAPL|54=1|38=10|44=100|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:01|11=C1|37=O1|150=0|39=0|54=1|55=AAPL|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("two messages");
+    let chained: Vec<FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    let [order, ack] = chained.as_slice() else {
+        panic!("two messages, not {}", chained.len())
+    };
+    assert_eq!(
+        order.get_partyids().get(&IdType::ExecutingTrader),
+        Some("T-1")
+    );
+    assert_eq!(order.get_partyids().get(&IdType::Account), Some("ACC-9"));
+    assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(ack.get_crosscode(), "10:1:C1");
+    assert_eq!(
+        ack.get_partyids(),
+        order.get_partyids(),
+        "the chain's parties"
+    );
+    for tag in [1, 453] {
+        assert!(
+            ack.get_by_tag(tag).is_none_or(|held| held.is_null()),
+            "tag {tag}: held as the message's word, written to no field"
+        );
+    }
+}
+
 /// The parentage a walk gives the identifiers of a chain: each base a
 /// message states takes its parents - the value it held before it last
 /// changed, back to the chain's first - from the message before it.
 mod parentage {
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, Operation};
+    use yggdryl::graph::{Element, Event, Operation};
     use yggdryl::{FixCodec, FixMsg, IdSource, IdType};
 
     use super::SoleMessage;
@@ -1710,6 +2007,50 @@ mod parentage {
             sources.contains(&"fix:parentorderid".to_owned()),
             "{sources:?}"
         );
+    }
+
+    /// A message that names no `OrderID(37)` carries the chain's, and the
+    /// parents the chain gave it with it: a cancel request between the
+    /// order's restatement and the cancel's acknowledgement leaves the
+    /// acknowledgement the lineage it would have had without it.
+    #[test]
+    fn an_order_identifier_keeps_its_parents_across_a_message_that_states_none() {
+        let codec = super::reader();
+        let chain = walked(
+            &codec,
+            &[
+                b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=10|44=100|10=0|",
+                b"8=FIX.4.4|35=8|52=20260921-10:00:01|11=C1|37=O1|150=0|39=0|54=1|55=AAPL|10=0|",
+                // The venue restates the order under a new OrderID.
+                b"8=FIX.4.4|35=8|52=20260921-10:00:02|11=C1|37=O2|150=D|39=0|54=1|55=AAPL|10=0|",
+                // A cancel request naming no OrderID.
+                b"8=FIX.4.4|35=F|52=20260921-10:00:03|11=C2|41=C1|54=1|55=AAPL|38=10|10=0|",
+                b"8=FIX.4.4|35=8|52=20260921-10:00:04|11=C2|41=C1|37=O2|150=4|39=4|54=1|55=AAPL|10=0|",
+            ],
+        );
+        assert_eq!(chain.len(), 5);
+        assert!(
+            chain
+                .windows(2)
+                .all(|pair| pair[1].get_prevuuid() == Some(pair[0].get_curruuid())),
+            "one chain"
+        );
+        let lineage = |message: &FixMsg| {
+            [
+                fix(message, "orderid"),
+                fix(message, "parentorderid"),
+                fix(message, "origorderid"),
+            ]
+        };
+        let some = |text: &str| Some(text.to_owned());
+        let restated = [some("O2"), some("O1"), some("O1")];
+        assert_eq!(lineage(&chain[2]), restated);
+        assert_eq!(lineage(&chain[3]), restated, "carried with the base");
+        assert_eq!(lineage(&chain[4]), restated, "the base kept its value");
+        // A parent travels with a base the chain carries, and only then: the
+        // client order identifier is not carried, nor is its parent.
+        assert_eq!(fix(&chain[3], "clordid").as_deref(), Some("C2"));
+        assert_eq!(fix(&chain[3], "origclordid").as_deref(), Some("C1"));
     }
 
     /// A registry that states its own list for `OrderID(37)` is the one the

@@ -51,7 +51,7 @@ Hold these facts:
   changed `orderid` leaves its previous value as `parentorderid` and the
   chain's first as `origorderid`, a changed `clordid` leaves `origclordid`
   (`FIX:parents` states the list a FIX field has). A FIX lifecycle message takes the `metadata` keys and
-  only the ids its dictionary follows. `EventIterator` joins a stream by cross
+  only the ids its dictionary follows, each with its parents. `EventIterator` joins a stream by cross
   identity and by the type and value of an `identifiers` identifier a live element
   went by (or the parent identifier it replaced, joined under its base),
   within one `marketdatakind` (an order and an execution under one cross code

@@ -384,6 +384,40 @@ fn a_mass_cancel_report_splits_into_the_orders_it_names() {
     );
 }
 
+/// In a lifecycle, the entry naming a live order joins its chain - the one
+/// side alive under the name, whose side and code it takes - and states
+/// the cancellation it reports, a terminal state that ends the chain.
+#[test]
+fn a_mass_cancel_report_entry_ends_the_order_it_names_in_the_lifecycle() {
+    let codec = fixed_codec(committed_registry());
+    let lines: [&[u8]; 3] = [
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=5|44=100|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:01|11=C1|37=O1|150=0|39=0|54=1|55=AAPL|10=0|",
+        b"8=FIX.4.4|35=r|52=20260921-10:00:02|37=MC1|1369=R1|530=7|531=7|534=1|1824=C1|535=O1|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the order, its ack, the report and its entry");
+    let chained: Vec<FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    let ack = chained
+        .iter()
+        .find(|held| held.header().msgtype() == "8")
+        .expect("the acknowledgement");
+    let entry = chained
+        .iter()
+        .find(|held| held.header().msgtype() == "r" && held.msgcat() == MarketDataKind::Order)
+        .expect("the entry");
+    assert_eq!(entry.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(entry.get_crosscode(), "10:1:C1");
+    assert_eq!(entry.get_crossuuid(), ack.get_crossuuid());
+    assert_eq!(entry.get_side(), Side::Buy);
+    assert_eq!(*entry.get_state(), State::Canceled);
+}
+
 /// A trade side stating no `Side(54)`.
 const NO_SIDE: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=4|31=101.25|60=20260921-10:00:00|552=1|1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|";
 

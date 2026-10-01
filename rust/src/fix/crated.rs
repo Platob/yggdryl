@@ -303,10 +303,12 @@ pub(super) fn state_codeset() -> Option<Arc<str>> {
 
 /// When the message stops being good, where it does.
 ///
-/// `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or
-/// `MaturityDate(541)`, the first stated, as a message is built; the
-/// previous deadline when the next event states none; a newer explicit
-/// deadline replaces it, including when it shortens the lifetime.
+/// `ExpireTime(126)`, else `ValidUntilTime(62)`, else the end of the day
+/// `ExpireDate(432)` names - the last day an order can trade - the first
+/// stated, as a message is built; the previous deadline when the next event
+/// states none; a newer explicit deadline replaces it, including when it
+/// shortens the lifetime. `MaturityDate(541)` is the instrument's, no
+/// message's deadline.
 pub const EXPRUNIX_TAG_NAME: (i32, &str) = (65_010, "exprunix");
 
 /// The tag and name carrying the business category of the message type, as

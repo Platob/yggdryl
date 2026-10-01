@@ -343,7 +343,10 @@ enum Source<E, I> {
 /// logged at every hop it passed - is another statement of the live
 /// element and not the one after it. It is yielded [restating](super::Event::restating)
 /// the live one, so it takes the live one's predecessor and place and
-/// finalizes to the same identity, and the chain grows by nothing.
+/// finalizes to the same identity, and the chain grows by nothing. One
+/// arriving under the identity a statement the chain moved past at the live
+/// element's own instant arrived under is yielded restating that statement,
+/// and the chain stays where it moved.
 ///
 /// Opened over elements the caller says are sorted, the walk reads them as
 /// they come and yields each as it is read; over elements the caller does
@@ -494,11 +497,15 @@ type Chain = (Uuid, MarketDataKind);
 
 /// One identity's live element and the identity it arrived under - what it
 /// was before the walk stated it, which is what another statement of the
-/// same element still carries.
+/// same element still carries - beside the statements the chain moved past
+/// at the live element's own instant, each under the identity it arrived
+/// under: a sorted walk reads another statement of one of them nowhere but
+/// at that instant, so they are dropped once the chain moves to a later one.
 #[derive(Debug)]
 struct Live<E> {
     element: E,
     arrived: Uuid,
+    passed: Vec<(Uuid, E)>,
 }
 
 impl<E, I> EventIterator<E, I>
@@ -656,11 +663,24 @@ where
                     }
                 }
             }
+            // The statement this one replaces stays the chain's at their
+            // shared instant, unless this one is another statement of it.
+            let instant = element.walked_currunix();
+            let passed = match self.alive.remove(&identity) {
+                Some(mut live) if live.element.walked_currunix() == instant => {
+                    if live.arrived != arrived {
+                        live.passed.push((live.arrived, live.element));
+                    }
+                    live.passed
+                }
+                _ => Vec::new(),
+            };
             self.alive.insert(
                 identity,
                 Live {
                     element: element.clone(),
                     arrived,
+                    passed,
                 },
             );
             if let Some(deadline) = element.walked_exprunix() {
@@ -795,7 +815,9 @@ where
         expired.finalize();
         self.place(&mut expired);
         let fallback = expired.clone();
-        Some(expired.with_previous(&previous).unwrap_or(fallback))
+        let mut expired = expired.with_previous(&previous).unwrap_or(fallback);
+        joined(&mut expired, identity);
+        Some(expired)
     }
 
     /// States one source element against the live generation it reaches.
@@ -805,6 +827,20 @@ where
         }
         let identity = self.identity_of(&element);
         let arrived = element.get_curruuid();
+        let passed = self.alive.get(&identity).and_then(|live| {
+            live.passed
+                .iter()
+                .find(|(held, _)| *held == arrived)
+                .map(|(_, statement)| statement)
+        });
+        if let Some(statement) = passed {
+            // A statement the chain moved past at this instant, logged
+            // again: another statement of that one, and the chain stays
+            // where it moved.
+            let mut element = element.walked_restating(statement);
+            joined(&mut element, identity);
+            return element;
+        }
         let mut element = match self.alive.get(&identity) {
             Some(live) if live.arrived == arrived => element.walked_restating(&live.element),
             Some(live) if element.is_before(&live.element) => {
@@ -817,19 +853,10 @@ where
                 // keeps the higher rank of the two, so a `NEW` over a live
                 // `ACTIVE`, `RUNNING` or `REPLACED` no longer reads `NEW`.
                 let stated_new = element.walked_state() == Some(&State::New);
-                let mut element = match element.clone().with_previous(&live.element) {
-                    Some(mut followed) => {
-                        // A chain with no cross code is the chain of its
-                        // first element, whose identity is its cross
-                        // element: every element after it stands under that
-                        // one cross element, not under its own identity.
-                        if followed.get_crosshashcode() == 0 {
-                            followed.set_crossuuid(live.element.get_crossuuid());
-                        }
-                        followed
-                    }
-                    None => element,
-                };
+                let mut element = element
+                    .clone()
+                    .with_previous(&live.element)
+                    .unwrap_or(element);
                 // A `NEW` stated over a live element that is itself new -
                 // or carrying on, or restated - is that element updated.
                 if stated_new
@@ -848,6 +875,9 @@ where
                 element
             }
         };
+        if self.alive.contains_key(&identity) {
+            joined(&mut element, identity);
+        }
         created(
             &mut element,
             self.alive
@@ -1040,8 +1070,18 @@ where
 {
 }
 
-/// Whether an element can still be followed: its state can still change,
-/// and it is not past its expiration.
+/// Stands `element` under the cross element of the chain it stands in, after
+/// its last finalize: a chain whose first element states no cross code is
+/// that element's identity, which no finalize of another element derives -
+/// each derives its own - so every element after it, a follower stating a
+/// code of its own included, is stated under it here. A coded chain's cross
+/// element is the one its forced code derives, so this moves nothing there.
+fn joined<E: Walked>(element: &mut E, identity: Chain) {
+    if element.get_crossuuid() != identity.0 {
+        element.set_crossuuid(identity.0);
+    }
+}
+
 /// States when `element`'s lifecycle was created where it states none: the
 /// creation of the chain it stands in - `chain`, the earliest the fold kept -
 /// else its own instant, since an element starting a chain is its creation.
@@ -1056,6 +1096,8 @@ fn created<E: Walked>(element: &mut E, chain: Option<i64>) {
     }
 }
 
+/// Whether an element can still be followed: its state can still change,
+/// and it is not past its expiration.
 fn is_alive<E: Walked>(element: &E) -> bool {
     element.walked_state().is_some_and(|state| state.is_live())
         && element.walked_exprunix().is_none_or(|expiration| {

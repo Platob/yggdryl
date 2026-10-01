@@ -115,14 +115,19 @@ pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
     // The currency pair a symbol names is detected first, so the rules read
     // the cells it fills.
     detect_forex(registry, &mut held);
-    enrich_detected(held)
+    enrich_detected(registry, held)
 }
 
 /// [`enrich_restated`] past FX detection: the rules to their fixpoint, then
-/// the one settle.
-fn enrich_detected(msg: FixMsg) -> FixMsg {
+/// the one settle. A `Symbol(55)` a rule filled is detected as a stated one
+/// is, and the rules run again over what its detection filled.
+fn enrich_detected(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
     let mut held = msg;
+    let symbol = held.states_indexed_tag(55);
     super::native_derivations::fill_all(&mut held);
+    if !symbol && held.states_indexed_tag(55) && detect_forex(registry, &mut held) {
+        super::native_derivations::fill_all(&mut held);
+    }
     // Settled once, at the end: a built message arrives unsettled, a
     // restatement leaves it so and the writes above land unsettled - so
     // every message is settled here, once, after everything the pass wrote.
@@ -157,7 +162,7 @@ fn detect_forex(registry: &FixRegistry, msg: &mut FixMsg) -> bool {
 pub(super) fn redated(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
     let mut held = msg;
     if detect_forex(registry, &mut held) || super::native_derivations::lands_anything(&held) {
-        return enrich_detected(held);
+        return enrich_detected(registry, held);
     }
     held.settle_clock();
     held
@@ -554,9 +559,16 @@ impl Element for LifecycleMessage {
 }
 
 impl Event for LifecycleMessage {
+    /// A twin is the live message's arrival again, so what following wrote
+    /// into the live one's content - the order links, the side - is
+    /// written into the twin's too, before it restates: the two digest
+    /// alike.
     fn restating(self, live: &Self) -> Self {
+        let mut message = self.message;
+        inherit_order_links(&mut message, &live.message);
+        inherit_side(&mut message, &live.message);
         Self {
-            message: self.message.restating(&live.message),
+            message: message.restating(&live.message),
         }
     }
 

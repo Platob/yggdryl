@@ -123,7 +123,7 @@ ulbridge[001]:0.field.price	"72.280000000000000000"
 ulbridge[001]:0.field.currency	"CHF"
 ulbridge[001]:0.field.unit	""
 ulbridge[001]:0.field.side	"BUYS"
-ulbridge[001]:0.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"base:isin":["base","isin","CH0012214059"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
+ulbridge[001]:0.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
 ulbridge[001]:0.field.isincode	"CH0012214059"
 ulbridge[001]:0.field.cficode	"ESXXXX"
 ulbridge[001]:0.field.miccode	"XSWX"
@@ -299,7 +299,7 @@ ulbridge[001]:1.field.price	"72.280000000000000000"
 ulbridge[001]:1.field.currency	"CHF"
 ulbridge[001]:1.field.unit	""
 ulbridge[001]:1.field.side	"BUYS"
-ulbridge[001]:1.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"base:isin":["base","isin","CH0012214059"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
+ulbridge[001]:1.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
 ulbridge[001]:1.field.isincode	"CH0012214059"
 ulbridge[001]:1.field.cficode	"ESXXXX"
 ulbridge[001]:1.field.miccode	"XSWX"
@@ -476,7 +476,7 @@ ulbridge[003]:0.field.price	"72.280000000000000000"
 ulbridge[003]:0.field.currency	"CHF"
 ulbridge[003]:0.field.unit	""
 ulbridge[003]:0.field.side	"BUYS"
-ulbridge[003]:0.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"base:isin":["base","isin","CH0012214059"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
+ulbridge[003]:0.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
 ulbridge[003]:0.field.isincode	"CH0012214059"
 ulbridge[003]:0.field.cficode	"ESXXXX"
 ulbridge[003]:0.field.miccode	"XSWX"
@@ -650,7 +650,7 @@ ulbridge[003]:1.field.price	"72.280000000000000000"
 ulbridge[003]:1.field.currency	"CHF"
 ulbridge[003]:1.field.unit	""
 ulbridge[003]:1.field.side	"BUYS"
-ulbridge[003]:1.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"base:isin":["base","isin","CH0012214059"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
+ulbridge[003]:1.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
 ulbridge[003]:1.field.isincode	"CH0012214059"
 ulbridge[003]:1.field.cficode	"ESXXXX"
 ulbridge[003]:1.field.miccode	"XSWX"
@@ -827,7 +827,7 @@ ulbridge[004]:0.field.price	"72.280000000000000000"
 ulbridge[004]:0.field.currency	"CHF"
 ulbridge[004]:0.field.unit	""
 ulbridge[004]:0.field.side	"BUYS"
-ulbridge[004]:0.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"base:isin":["base","isin","CH0012214059"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
+ulbridge[004]:0.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
 ulbridge[004]:0.field.isincode	"CH0012214059"
 ulbridge[004]:0.field.cficode	"ESXXXX"
 ulbridge[004]:0.field.miccode	"XSWX"
@@ -1012,7 +1012,7 @@ ulbridge[004]:1.field.price	"72.280000000000000000"
 ulbridge[004]:1.field.currency	"CHF"
 ulbridge[004]:1.field.unit	""
 ulbridge[004]:1.field.side	"BUYS"
-ulbridge[004]:1.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"base:isin":["base","isin","CH0012214059"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
+ulbridge[004]:1.field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
 ulbridge[004]:1.field.isincode	"CH0012214059"
 ulbridge[004]:1.field.cficode	"ESXXXX"
 ulbridge[004]:1.field.miccode	"XSWX"
@@ -1483,7 +1483,7 @@ ulbridge[006]:0.field.price	"83.080000000000000000"
 ulbridge[006]:0.field.currency	"CHF"
 ulbridge[006]:0.field.unit	""
 ulbridge[006]:0.field.side	"BUYS"
-ulbridge[006]:0.field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+ulbridge[006]:0.field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 ulbridge[006]:0.field.isincode	"CH0012221716"
 ulbridge[006]:0.field.cficode	"ESVTFR"
 ulbridge[006]:0.field.miccode	"XSWX"
@@ -1636,7 +1636,7 @@ ulbridge[006]:1.field.price	"83.080000000000000000"
 ulbridge[006]:1.field.currency	"CHF"
 ulbridge[006]:1.field.unit	""
 ulbridge[006]:1.field.side	"BUYS"
-ulbridge[006]:1.field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+ulbridge[006]:1.field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 ulbridge[006]:1.field.isincode	"CH0012221716"
 ulbridge[006]:1.field.cficode	"ESVTFR"
 ulbridge[006]:1.field.miccode	"XSWX"
@@ -5019,7 +5019,7 @@ ulbridge[024]:0.field.price	"121.940000000000000000"
 ulbridge[024]:0.field.currency	"CHF"
 ulbridge[024]:0.field.unit	""
 ulbridge[024]:0.field.side	"BUYS"
-ulbridge[024]:0.field.securityids	{"base:isin":["base","isin","CH0012005267"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"]}
+ulbridge[024]:0.field.securityids	{"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"]}
 ulbridge[024]:0.field.isincode	"CH0012005267"
 ulbridge[024]:0.field.cficode	"ESXXXX"
 ulbridge[024]:0.field.miccode	"XSWX"
@@ -5164,7 +5164,7 @@ ulbridge[025]:0.field.price	"121.940000000000000000"
 ulbridge[025]:0.field.currency	"CHF"
 ulbridge[025]:0.field.unit	""
 ulbridge[025]:0.field.side	"BUYS"
-ulbridge[025]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"base:isin":["base","isin","CH0012005267"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
+ulbridge[025]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
 ulbridge[025]:0.field.isincode	"CH0012005267"
 ulbridge[025]:0.field.cficode	"ESXXXX"
 ulbridge[025]:0.field.miccode	"XSWX"
@@ -5315,7 +5315,7 @@ ulbridge[026]:0.field.price	"121.940000000000000000"
 ulbridge[026]:0.field.currency	"CHF"
 ulbridge[026]:0.field.unit	""
 ulbridge[026]:0.field.side	"BUYS"
-ulbridge[026]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"base:isin":["base","isin","CH0012005267"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
+ulbridge[026]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
 ulbridge[026]:0.field.isincode	"CH0012005267"
 ulbridge[026]:0.field.cficode	"ESXXXX"
 ulbridge[026]:0.field.miccode	"XSWX"
@@ -5466,7 +5466,7 @@ ulbridge[027]:0.field.price	"121.940000000000000000"
 ulbridge[027]:0.field.currency	"CHF"
 ulbridge[027]:0.field.unit	""
 ulbridge[027]:0.field.side	"BUYS"
-ulbridge[027]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"base:isin":["base","isin","CH0012005267"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
+ulbridge[027]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
 ulbridge[027]:0.field.isincode	"CH0012005267"
 ulbridge[027]:0.field.cficode	"ESXXXX"
 ulbridge[027]:0.field.miccode	"XSWX"
@@ -5619,7 +5619,7 @@ ulbridge[030]:0.field.price	"121.940000000000000000"
 ulbridge[030]:0.field.currency	"CHF"
 ulbridge[030]:0.field.unit	""
 ulbridge[030]:0.field.side	"BUYS"
-ulbridge[030]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"base:isin":["base","isin","CH0012005267"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
+ulbridge[030]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
 ulbridge[030]:0.field.isincode	"CH0012005267"
 ulbridge[030]:0.field.cficode	"ESXXXX"
 ulbridge[030]:0.field.miccode	"XSWX"
@@ -5773,7 +5773,7 @@ ulbridge[032]:0.field.price	"121.940000000000000000"
 ulbridge[032]:0.field.currency	"CHF"
 ulbridge[032]:0.field.unit	""
 ulbridge[032]:0.field.side	"BUYS"
-ulbridge[032]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"base:isin":["base","isin","CH0012005267"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
+ulbridge[032]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
 ulbridge[032]:0.field.isincode	"CH0012005267"
 ulbridge[032]:0.field.cficode	"ESXXXX"
 ulbridge[032]:0.field.miccode	"XSWX"
@@ -5927,7 +5927,7 @@ ulbridge[033]:0.field.price	"121.940000000000000000"
 ulbridge[033]:0.field.currency	"CHF"
 ulbridge[033]:0.field.unit	""
 ulbridge[033]:0.field.side	"BUYS"
-ulbridge[033]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"base:isin":["base","isin","CH0012005267"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
+ulbridge[033]:0.field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
 ulbridge[033]:0.field.isincode	"CH0012005267"
 ulbridge[033]:0.field.cficode	"ESXXXX"
 ulbridge[033]:0.field.miccode	"XSWX"
@@ -6379,7 +6379,7 @@ ulbridge[035]:0.field.price	"83.080000000000000000"
 ulbridge[035]:0.field.currency	"CHF"
 ulbridge[035]:0.field.unit	""
 ulbridge[035]:0.field.side	"BUYS"
-ulbridge[035]:0.field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+ulbridge[035]:0.field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 ulbridge[035]:0.field.isincode	"CH0012221716"
 ulbridge[035]:0.field.cficode	"ESVTFR"
 ulbridge[035]:0.field.miccode	"XSWX"
@@ -6517,7 +6517,7 @@ ulbridge[035]:1.field.price	"83.080000000000000000"
 ulbridge[035]:1.field.currency	"CHF"
 ulbridge[035]:1.field.unit	""
 ulbridge[035]:1.field.side	"BUYS"
-ulbridge[035]:1.field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+ulbridge[035]:1.field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 ulbridge[035]:1.field.isincode	"CH0012221716"
 ulbridge[035]:1.field.cficode	"ESVTFR"
 ulbridge[035]:1.field.miccode	"XSWX"
@@ -10642,7 +10642,7 @@ ulbridge[056]:0.field.price	"83.080000000000000000"
 ulbridge[056]:0.field.currency	"CHF"
 ulbridge[056]:0.field.unit	""
 ulbridge[056]:0.field.side	"BUYS"
-ulbridge[056]:0.field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+ulbridge[056]:0.field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 ulbridge[056]:0.field.isincode	"CH0012221716"
 ulbridge[056]:0.field.cficode	"ESVTFR"
 ulbridge[056]:0.field.miccode	"XSWX"
@@ -10795,7 +10795,7 @@ ulbridge[056]:1.field.price	"83.080000000000000000"
 ulbridge[056]:1.field.currency	"CHF"
 ulbridge[056]:1.field.unit	""
 ulbridge[056]:1.field.side	"BUYS"
-ulbridge[056]:1.field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+ulbridge[056]:1.field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 ulbridge[056]:1.field.isincode	"CH0012221716"
 ulbridge[056]:1.field.cficode	"ESVTFR"
 ulbridge[056]:1.field.miccode	"XSWX"
@@ -14095,7 +14095,7 @@ ulbridge[073]:0.field.price	"83.080000000000000000"
 ulbridge[073]:0.field.currency	"CHF"
 ulbridge[073]:0.field.unit	""
 ulbridge[073]:0.field.side	"BUYS"
-ulbridge[073]:0.field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+ulbridge[073]:0.field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 ulbridge[073]:0.field.isincode	"CH0012221716"
 ulbridge[073]:0.field.cficode	"ESVTFR"
 ulbridge[073]:0.field.miccode	"XSWX"
@@ -14233,7 +14233,7 @@ ulbridge[073]:1.field.price	"83.080000000000000000"
 ulbridge[073]:1.field.currency	"CHF"
 ulbridge[073]:1.field.unit	""
 ulbridge[073]:1.field.side	"BUYS"
-ulbridge[073]:1.field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+ulbridge[073]:1.field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 ulbridge[073]:1.field.isincode	"CH0012221716"
 ulbridge[073]:1.field.cficode	"ESVTFR"
 ulbridge[073]:1.field.miccode	"XSWX"
@@ -19472,7 +19472,7 @@ ulbridge[123]:0.field.marketdatatype	"ORDMKT"
 ulbridge[123]:0.field.currency	"TWD"
 ulbridge[123]:0.field.unit	""
 ulbridge[123]:0.field.side	"BUYS"
-ulbridge[123]:0.field.securityids	{"base:isin":["base","isin","TW0001605004"],"fix:isin":["fix","isin","TW0001605004"]}
+ulbridge[123]:0.field.securityids	{"fix:isin":["fix","isin","TW0001605004"]}
 ulbridge[123]:0.field.isincode	"TW0001605004"
 ulbridge[123]:0.field.miccode	"RJEA"
 ulbridge[123]:0.field.execunix	"2026-08-14T01:03:17.000000000Z"
@@ -19549,7 +19549,7 @@ ulbridge[123]:1.field.marketdatatype	"ORDMKT"
 ulbridge[123]:1.field.currency	"TWD"
 ulbridge[123]:1.field.unit	""
 ulbridge[123]:1.field.side	"BUYS"
-ulbridge[123]:1.field.securityids	{"base:isin":["base","isin","TW0001605004"],"fix:isin":["fix","isin","TW0001605004"]}
+ulbridge[123]:1.field.securityids	{"fix:isin":["fix","isin","TW0001605004"]}
 ulbridge[123]:1.field.isincode	"TW0001605004"
 ulbridge[123]:1.field.miccode	"RJEA"
 ulbridge[123]:1.field.execunix	"2026-08-14T01:03:17.000000000Z"
@@ -19630,7 +19630,7 @@ ulbridge[125]:0.field.marketdatatype	"ORDMKT"
 ulbridge[125]:0.field.currency	"TWD"
 ulbridge[125]:0.field.unit	""
 ulbridge[125]:0.field.side	"BUYS"
-ulbridge[125]:0.field.securityids	{"base:isin":["base","isin","TW0001605004"],"fix:isin":["fix","isin","TW0001605004"]}
+ulbridge[125]:0.field.securityids	{"fix:isin":["fix","isin","TW0001605004"]}
 ulbridge[125]:0.field.isincode	"TW0001605004"
 ulbridge[125]:0.field.miccode	"RJEA"
 ulbridge[125]:0.field.execunix	"2026-08-14T01:03:17.000000000Z"
@@ -19712,7 +19712,7 @@ ulbridge[125]:1.field.marketdatatype	"ORDMKT"
 ulbridge[125]:1.field.currency	"TWD"
 ulbridge[125]:1.field.unit	""
 ulbridge[125]:1.field.side	"BUYS"
-ulbridge[125]:1.field.securityids	{"base:isin":["base","isin","TW0001605004"],"fix:isin":["fix","isin","TW0001605004"]}
+ulbridge[125]:1.field.securityids	{"fix:isin":["fix","isin","TW0001605004"]}
 ulbridge[125]:1.field.isincode	"TW0001605004"
 ulbridge[125]:1.field.miccode	"RJEA"
 ulbridge[125]:1.field.execunix	"2026-08-14T01:03:17.000000000Z"
@@ -20251,7 +20251,7 @@ ulbridge[138]:0.field.marketdatakind	"UNKN"
 ulbridge[138]:0.field.marketdatatype	"UNKN"
 ulbridge[138]:0.field.currency	"TWD"
 ulbridge[138]:0.field.unit	""
-ulbridge[138]:0.field.securityids	{"base:bloomberg":["base","bloomberg","2454 TT Equity"],"base:isin":["base","isin","TW0002454006"],"fix:bloomberg":["fix","bloomberg","2454 TT Equity"],"fix:isin":["fix","isin","TW0002454006"],"fix:ric":["fix","ric","2454.TW"],"ullink:instrumentid":["ullink","instrumentid","dbi;TW0002454006_XTAI_TWD"]}
+ulbridge[138]:0.field.securityids	{"fix:bloomberg":["fix","bloomberg","2454 TT Equity"],"fix:isin":["fix","isin","TW0002454006"],"fix:ric":["fix","ric","2454.TW"],"ullink:instrumentid":["ullink","instrumentid","dbi;TW0002454006_XTAI_TWD"]}
 ulbridge[138]:0.field.isincode	"TW0002454006"
 ulbridge[138]:0.field.cficode	"ESXXXX"
 ulbridge[138]:0.field.miccode	"XTAI"
@@ -20408,7 +20408,7 @@ ulbridge[140]:0.field.marketdatakind	"UNKN"
 ulbridge[140]:0.field.marketdatatype	"UNKN"
 ulbridge[140]:0.field.currency	"TWD"
 ulbridge[140]:0.field.unit	""
-ulbridge[140]:0.field.securityids	{"base:bloomberg":["base","bloomberg","2454 TT Equity"],"base:isin":["base","isin","TW0002454006"],"fix:bloomberg":["fix","bloomberg","2454 TT Equity"],"fix:isin":["fix","isin","TW0002454006"],"fix:ric":["fix","ric","2454.TW"],"ullink:instrumentid":["ullink","instrumentid","dbi;TW0002454006_XTAI_TWD"]}
+ulbridge[140]:0.field.securityids	{"fix:bloomberg":["fix","bloomberg","2454 TT Equity"],"fix:isin":["fix","isin","TW0002454006"],"fix:ric":["fix","ric","2454.TW"],"ullink:instrumentid":["ullink","instrumentid","dbi;TW0002454006_XTAI_TWD"]}
 ulbridge[140]:0.field.isincode	"TW0002454006"
 ulbridge[140]:0.field.cficode	"ESXXXX"
 ulbridge[140]:0.field.miccode	"XTAI"
@@ -20565,7 +20565,7 @@ ulbridge[141]:0.field.marketdatakind	"UNKN"
 ulbridge[141]:0.field.marketdatatype	"UNKN"
 ulbridge[141]:0.field.currency	"TWD"
 ulbridge[141]:0.field.unit	""
-ulbridge[141]:0.field.securityids	{"base:bloomberg":["base","bloomberg","2454 TT Equity"],"base:isin":["base","isin","TW0002454006"],"fix:bloomberg":["fix","bloomberg","2454 TT Equity"],"fix:isin":["fix","isin","TW0002454006"],"fix:ric":["fix","ric","2454.TW"],"ullink:instrumentid":["ullink","instrumentid","dbi;TW0002454006_XTAI_TWD"]}
+ulbridge[141]:0.field.securityids	{"fix:bloomberg":["fix","bloomberg","2454 TT Equity"],"fix:isin":["fix","isin","TW0002454006"],"fix:ric":["fix","ric","2454.TW"],"ullink:instrumentid":["ullink","instrumentid","dbi;TW0002454006_XTAI_TWD"]}
 ulbridge[141]:0.field.isincode	"TW0002454006"
 ulbridge[141]:0.field.cficode	"ESXXXX"
 ulbridge[141]:0.field.miccode	"XTAI"
@@ -20749,7 +20749,7 @@ lifecycle[001].field.marketdatatype	"ORDMKT"
 lifecycle[001].field.currency	"TWD"
 lifecycle[001].field.unit	""
 lifecycle[001].field.side	"BUYS"
-lifecycle[001].field.securityids	{"base:isin":["base","isin","TW0001605004"],"fix:isin":["fix","isin","TW0001605004"]}
+lifecycle[001].field.securityids	{"fix:isin":["fix","isin","TW0001605004"]}
 lifecycle[001].field.isincode	"TW0001605004"
 lifecycle[001].field.miccode	"RJEA"
 lifecycle[001].field.execunix	"2026-08-14T01:03:17.000000000Z"
@@ -20839,7 +20839,7 @@ lifecycle[002].field.marketdatatype	"ORDMKT"
 lifecycle[002].field.currency	"TWD"
 lifecycle[002].field.unit	""
 lifecycle[002].field.side	"BUYS"
-lifecycle[002].field.securityids	{"base:isin":["base","isin","TW0001605004"],"fix:isin":["fix","isin","TW0001605004"]}
+lifecycle[002].field.securityids	{"fix:isin":["fix","isin","TW0001605004"]}
 lifecycle[002].field.isincode	"TW0001605004"
 lifecycle[002].field.miccode	"RJEA"
 lifecycle[002].field.execunix	"2026-08-14T01:03:17.000000000Z"
@@ -21057,7 +21057,7 @@ lifecycle[006].field.price	"72.280000000000000000"
 lifecycle[006].field.currency	"CHF"
 lifecycle[006].field.unit	""
 lifecycle[006].field.side	"BUYS"
-lifecycle[006].field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"base:isin":["base","isin","CH0012214059"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
+lifecycle[006].field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
 lifecycle[006].field.isincode	"CH0012214059"
 lifecycle[006].field.cficode	"ESXXXX"
 lifecycle[006].field.miccode	"XSWX"
@@ -21232,7 +21232,7 @@ lifecycle[007].field.price	"72.280000000000000000"
 lifecycle[007].field.currency	"CHF"
 lifecycle[007].field.unit	""
 lifecycle[007].field.side	"BUYS"
-lifecycle[007].field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"base:isin":["base","isin","CH0012214059"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
+lifecycle[007].field.securityids	{"base:bloomberg":["base","bloomberg","HOLN SW"],"derived:valor":["derived","valor","1221405"],"fix:isin":["fix","isin","CH0012214059"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012214059_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012214059_XSWX_CHF"]}
 lifecycle[007].field.isincode	"CH0012214059"
 lifecycle[007].field.cficode	"ESXXXX"
 lifecycle[007].field.miccode	"XSWX"
@@ -21424,7 +21424,7 @@ lifecycle[008].field.price	"83.080000000000000000"
 lifecycle[008].field.currency	"CHF"
 lifecycle[008].field.unit	""
 lifecycle[008].field.side	"BUYS"
-lifecycle[008].field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+lifecycle[008].field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 lifecycle[008].field.isincode	"CH0012221716"
 lifecycle[008].field.cficode	"ESVTFR"
 lifecycle[008].field.miccode	"XSWX"
@@ -21620,7 +21620,7 @@ lifecycle[009].field.price	"83.080000000000000000"
 lifecycle[009].field.currency	"CHF"
 lifecycle[009].field.unit	""
 lifecycle[009].field.side	"BUYS"
-lifecycle[009].field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+lifecycle[009].field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 lifecycle[009].field.isincode	"CH0012221716"
 lifecycle[009].field.cficode	"ESVTFR"
 lifecycle[009].field.miccode	"XSWX"
@@ -21818,7 +21818,7 @@ lifecycle[010].field.price	"83.080000000000000000"
 lifecycle[010].field.currency	"CHF"
 lifecycle[010].field.unit	""
 lifecycle[010].field.side	"BUYS"
-lifecycle[010].field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+lifecycle[010].field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 lifecycle[010].field.isincode	"CH0012221716"
 lifecycle[010].field.cficode	"ESVTFR"
 lifecycle[010].field.miccode	"XSWX"
@@ -22016,7 +22016,7 @@ lifecycle[011].field.price	"83.080000000000000000"
 lifecycle[011].field.currency	"CHF"
 lifecycle[011].field.unit	""
 lifecycle[011].field.side	"BUYS"
-lifecycle[011].field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+lifecycle[011].field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 lifecycle[011].field.isincode	"CH0012221716"
 lifecycle[011].field.cficode	"ESVTFR"
 lifecycle[011].field.miccode	"XSWX"
@@ -22215,7 +22215,7 @@ lifecycle[012].field.price	"83.080000000000000000"
 lifecycle[012].field.currency	"CHF"
 lifecycle[012].field.unit	""
 lifecycle[012].field.side	"BUYS"
-lifecycle[012].field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+lifecycle[012].field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 lifecycle[012].field.isincode	"CH0012221716"
 lifecycle[012].field.cficode	"ESVTFR"
 lifecycle[012].field.miccode	"XSWX"
@@ -22418,7 +22418,7 @@ lifecycle[013].field.price	"83.080000000000000000"
 lifecycle[013].field.currency	"CHF"
 lifecycle[013].field.unit	""
 lifecycle[013].field.side	"BUYS"
-lifecycle[013].field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+lifecycle[013].field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 lifecycle[013].field.isincode	"CH0012221716"
 lifecycle[013].field.cficode	"ESVTFR"
 lifecycle[013].field.miccode	"XSWX"
@@ -22656,7 +22656,7 @@ lifecycle[015].field.price	"121.940000000000000000"
 lifecycle[015].field.currency	"CHF"
 lifecycle[015].field.unit	""
 lifecycle[015].field.side	"BUYS"
-lifecycle[015].field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"base:isin":["base","isin","CH0012005267"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
+lifecycle[015].field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
 lifecycle[015].field.isincode	"CH0012005267"
 lifecycle[015].field.cficode	"ESXXXX"
 lifecycle[015].field.miccode	"XSWX"
@@ -22817,7 +22817,7 @@ lifecycle[016].field.price	"121.940000000000000000"
 lifecycle[016].field.currency	"CHF"
 lifecycle[016].field.unit	""
 lifecycle[016].field.side	"BUYS"
-lifecycle[016].field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"base:isin":["base","isin","CH0012005267"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
+lifecycle[016].field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
 lifecycle[016].field.isincode	"CH0012005267"
 lifecycle[016].field.cficode	"ESXXXX"
 lifecycle[016].field.miccode	"XSWX"
@@ -23016,7 +23016,7 @@ lifecycle[017].field.price	"83.080000000000000000"
 lifecycle[017].field.currency	"CHF"
 lifecycle[017].field.unit	""
 lifecycle[017].field.side	"BUYS"
-lifecycle[017].field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+lifecycle[017].field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 lifecycle[017].field.isincode	"CH0012221716"
 lifecycle[017].field.cficode	"ESVTFR"
 lifecycle[017].field.miccode	"XSWX"
@@ -23217,7 +23217,7 @@ lifecycle[018].field.price	"83.080000000000000000"
 lifecycle[018].field.currency	"CHF"
 lifecycle[018].field.unit	""
 lifecycle[018].field.side	"BUYS"
-lifecycle[018].field.securityids	{"base:isin":["base","isin","CH0012221716"],"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
+lifecycle[018].field.securityids	{"derived:ric":["derived","ric","ABBN.S"],"derived:valor":["derived","valor","1222171"],"fix:isin":["fix","isin","CH0012221716"]}
 lifecycle[018].field.isincode	"CH0012221716"
 lifecycle[018].field.cficode	"ESVTFR"
 lifecycle[018].field.miccode	"XSWX"
@@ -24454,7 +24454,7 @@ lifecycle[033].field.price	"121.940000000000000000"
 lifecycle[033].field.currency	"CHF"
 lifecycle[033].field.unit	""
 lifecycle[033].field.side	"BUYS"
-lifecycle[033].field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"base:isin":["base","isin","CH0012005267"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
+lifecycle[033].field.securityids	{"base:bloomberg":["base","bloomberg","NOVN SW"],"derived:valor":["derived","valor","1200526"],"fix:isin":["fix","isin","CH0012005267"],"oms:instrumentid":["oms","instrumentid","dbi;CH0012005267_XSWX_CHF"],"ullink:instrumentid":["ullink","instrumentid","dbi;CH0012005267_XSWX_CHF"]}
 lifecycle[033].field.isincode	"CH0012005267"
 lifecycle[033].field.cficode	"ESXXXX"
 lifecycle[033].field.miccode	"XSWX"
@@ -24744,7 +24744,7 @@ lifecycle[036].field.marketdatakind	"UNKN"
 lifecycle[036].field.marketdatatype	"UNKN"
 lifecycle[036].field.currency	"TWD"
 lifecycle[036].field.unit	""
-lifecycle[036].field.securityids	{"base:bloomberg":["base","bloomberg","2454 TT Equity"],"base:isin":["base","isin","TW0002454006"],"fix:bloomberg":["fix","bloomberg","2454 TT Equity"],"fix:isin":["fix","isin","TW0002454006"],"fix:ric":["fix","ric","2454.TW"],"ullink:instrumentid":["ullink","instrumentid","dbi;TW0002454006_XTAI_TWD"]}
+lifecycle[036].field.securityids	{"fix:bloomberg":["fix","bloomberg","2454 TT Equity"],"fix:isin":["fix","isin","TW0002454006"],"fix:ric":["fix","ric","2454.TW"],"ullink:instrumentid":["ullink","instrumentid","dbi;TW0002454006_XTAI_TWD"]}
 lifecycle[036].field.isincode	"TW0002454006"
 lifecycle[036].field.cficode	"ESXXXX"
 lifecycle[036].field.miccode	"XTAI"
@@ -28469,7 +28469,6 @@ latest[001]:0.field.currhashcode	4959598710914636947
 latest[001]:0.field.crosshashcode	10983359574656295142
 latest[001]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
 latest[001]:0.field.creaunix	"2024-01-02T10:15:30.000000000Z"
-latest[001]:0.field.exprunix	"2024-06-05T00:00:00.000000000Z"
 latest[001]:0.field.state	"PENDING_NEW"
 latest[001]:0.field.marketdatakind	"ORDR"
 latest[001]:0.field.marketdatatype	"UNKN"

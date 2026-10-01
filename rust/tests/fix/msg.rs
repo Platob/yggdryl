@@ -189,6 +189,36 @@ fn a_stated_identifier_replaces_a_derived_one() {
     assert_eq!(wire_value(&message, 22).as_deref(), Some("4"));
 }
 
+/// Removing the ISIN takes back what was derived under it, and the
+/// currency pair the symbol names - which hangs on the symbol - stands.
+#[test]
+fn removing_the_isin_keeps_the_pair_the_symbol_names() {
+    let (_, reader) = reader();
+    let mut message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|55=EUR/USD|22=4|48=US0378331005|54=1|38=1|10=0|")
+        .expect("an order");
+    assert_eq!(
+        shown(message.get_securityids()),
+        [
+            "derived:cusip=037833100",
+            "derived:forex=EUR/USD",
+            "fix:isin=US0378331005"
+        ]
+    );
+    assert!(
+        message
+            .remove_securityid(&IdSource::Fix, &IdType::Isin)
+            .unwrap()
+    );
+    assert_eq!(shown(message.get_securityids()), ["derived:forex=EUR/USD"]);
+    message.finalize();
+    assert_eq!(
+        shown(message.get_securityids()),
+        ["derived:forex=EUR/USD"],
+        "and a settle restates neither"
+    );
+}
+
 #[test]
 fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     let (registry, reader) = reader();
@@ -817,6 +847,72 @@ fn a_parsed_execution_report_states_its_execution_at_its_instant() {
     .unwrap();
     assert!(unstated.get_prevuuid().is_some());
     assert_eq!(unstated.get_execunix(), None);
+}
+
+/// `ExpireDate(432)` is the last day an order can trade, so it stops being
+/// good where that day ends - an order good until today is alive the day it
+/// is placed, and its acknowledgement follows it - while `ExpireTime(126)` is
+/// the instant it names. `MaturityDate(541)` is when the instrument matures,
+/// no deadline of the message stating it.
+#[test]
+fn an_expire_date_is_good_through_its_day_and_a_maturity_is_no_deadline() {
+    const PLACED: i64 = 1_789_984_800_000_000_000; // 2026-09-21T10:00:00Z
+    const DAY_ENDS: i64 = 1_790_035_200_000_000_000; // 2026-09-22T00:00:00Z
+    const AT_1630: i64 = 1_790_008_200_000_000_000; // 2026-09-21T16:30:00Z
+
+    let (_, reader) = reader();
+    let lines: [&[u8]; 2] = [
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=10|44=100|40=2|59=6|432=20260921|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:01|11=C1|37=O1|150=0|39=0|54=1|55=AAPL|59=6|432=20260921|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = reader
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("two messages");
+    let placed = &parsed[0];
+    assert_eq!(placed.get_currunix(), PLACED);
+    assert_eq!(placed.get_exprunix(), Some(DAY_ENDS));
+    let chained: Vec<FixMsg> = reader
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    let [order, ack, expired] = chained.as_slice() else {
+        panic!(
+            "the order, its acknowledgement and its expiry: {}",
+            chained.len()
+        )
+    };
+    assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(ack.get_crossuuid(), order.get_crossuuid());
+    assert_eq!(expired.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(expired.get_currunix(), DAY_ENDS);
+    assert_eq!(*expired.get_state(), yggdryl::State::Expired);
+
+    // A written date reads back as the day it names, so the wire a walk
+    // answers re-parses to the same deadline.
+    let rewritten = reader
+        .sole_line(order.into_text('|').unwrap().as_bytes())
+        .unwrap();
+    assert_eq!(rewritten.get_exprunix(), Some(DAY_ENDS));
+
+    // An expiry time is exact, and wins over a date beside it.
+    let timed = reader
+        .sole_line(
+            b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C2|55=AAPL|54=1|126=20260921-16:30:00|432=20260921|10=0|",
+        )
+        .unwrap();
+    assert_eq!(timed.get_exprunix(), Some(AT_1630));
+
+    // An instrument maturing today leaves the order without a deadline.
+    let maturing = reader
+        .sole_line(b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C3|55=ESZ6|54=1|541=20260921|10=0|")
+        .unwrap();
+    assert_eq!(maturing.get_exprunix(), None);
+    let walked: Vec<FixMsg> = reader
+        .lifecycle([maturing])
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    assert_eq!(walked.len(), 1, "nothing expires it");
 }
 
 const ORDER: &[u8] = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|VenueThing=7|9999=x|10=0|";
@@ -2243,16 +2339,20 @@ mod identifier_maps {
     #[test]
     fn a_following_operation_carries_what_the_dictionary_follows() {
         let held = parsed("8=FIX.4.4|35=8|17=E1|37=O1|10=0|");
-        for key in ["orderid", "secondaryorderid"] {
+        // The parents of an identifier are no flag of any field: they travel
+        // with a base that follows, so a follower naming no `OrderID(37)`
+        // keeps its chain's lineage, and not with one that does not.
+        for key in [
+            "orderid",
+            "secondaryorderid",
+            "parentorderid",
+            "origorderid",
+        ] {
             assert!(held.is_followed_identifier(&fix_id(key, "x")), "{key}");
         }
-        // The parents of an identifier are no flag of any field: a follower
-        // takes them from its chain by the parentage rule.
         for key in [
             "clordid",
             "execid",
-            "parentorderid",
-            "origorderid",
             "origclordid",
             "ultraderclordid",
             "marketorderid",

@@ -662,6 +662,27 @@ fn a_stated_source_answers_before_a_derived_one() {
 }
 
 #[test]
+fn the_wire_answers_a_type_first_then_a_named_source_then_base_then_derived() {
+    let mut ids = Identifiers::new();
+    let answer = |ids: &Identifiers| {
+        ids.get_identifier(&IdType::Isin)
+            .map(|held| held.key().to_string())
+    };
+    ids.insert(id("derived", "isin", "US0378331005"));
+    assert_eq!(answer(&ids).as_deref(), Some("derived:isin"));
+    ids.insert(id("base", "isin", "US0378331005"));
+    assert_eq!(answer(&ids).as_deref(), Some("base:isin"));
+    // Named sources answer in key order, and every one sorting before `fix`
+    // or after it stands behind the wire's.
+    ids.insert(id("venue", "isin", "US0378331005"));
+    ids.insert(id("abc", "isin", "US5949181045"));
+    assert_eq!(answer(&ids).as_deref(), Some("abc:isin"));
+    ids.insert(id("fix", "isin", "CH0012221716"));
+    assert_eq!(answer(&ids).as_deref(), Some("fix:isin"));
+    assert_eq!(ids.get(&IdType::Isin), Some("CH0012221716"));
+}
+
+#[test]
 fn a_set_carries_what_it_admits_and_never_replaces_what_it_states() {
     let previous = fix(&[
         ("clordid", "A"),

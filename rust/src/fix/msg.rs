@@ -118,7 +118,7 @@ fn facts_of_tag(registry: &FixRegistry, tag: i32) -> u32 {
         59 => fact::TIF,
         55 => fact::TICKER,
         326 | 340 | 965 => fact::TRADABLE,
-        126 | 62 | 432 | 541 => fact::EXPIRY,
+        126 | 62 | 432 => fact::EXPIRY,
         140 => fact::PREVPX,
         BIDPX_TAG | OFFERPX_TAG | BIDSIZE_TAG | OFFERSIZE_TAG => {
             fact::BIDASK | fact::PRICE | fact::QUANTITY
@@ -774,6 +774,9 @@ pub struct FixMsg {
     anomalies: Vec<super::FixAnomaly>,
     /// How many of `anomalies` the parse recorded, which every settle keeps.
     arrival_anomalies: usize,
+    /// How many of `anomalies`, last, the identifier maps' latest rebuild
+    /// dropped: the next rebuild replaces them.
+    idmap_anomalies: usize,
 }
 
 /// Whether `held` is the four parts of a session event joined by `:`,
@@ -1364,6 +1367,7 @@ impl FixMsg {
             detected_fx: 0,
             anomalies: Vec::new(),
             arrival_anomalies: 0,
+            idmap_anomalies: 0,
         };
         // The instant the message happened: what it states, else when the
         // transaction it reports happened, else when it was sent - the one
@@ -2053,9 +2057,15 @@ impl FixMsg {
             self.event.set_marketdatatype(mdtype, over(fact::MDTYPE));
         }
         if reached(fact::EXPIRY) {
-            let exprunix = [126, 62, 432, 541].into_iter().find_map(|tag| {
+            let instant = |tag| {
                 self.stated_by_tag(tag)
                     .and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond))
+            };
+            // ExpireDate is the last day the order can trade: it stops being
+            // good where that day ends, whatever clock a bridge wrote with it.
+            let exprunix = instant(126).or_else(|| instant(62)).or_else(|| {
+                instant(432)
+                    .and_then(|day| (day.div_euclid(NANOS_PER_DAY) + 1).checked_mul(NANOS_PER_DAY))
             });
             if over(fact::EXPIRY) || self.event.get_exprunix().is_none() {
                 self.event.set_exprunix(exprunix);
@@ -2344,9 +2354,11 @@ impl FixMsg {
         for id in self.derived.iter() {
             self.event.derive_securityid(id.kind(), id.value());
         }
-        // What this reading dropped replaces what the last one did.
+        // What this reading dropped replaces what the last one did, and the
+        // identifier maps' tail behind it, which the next rebuild restates.
         self.anomalies.truncate(self.arrival_anomalies);
         self.anomalies.extend(dropped);
+        self.idmap_anomalies = 0;
     }
 
     /// One field's value, where it states one that is not null.
@@ -2623,40 +2635,48 @@ impl FixMsg {
         // Fill only: the same code twice under one type and source is one
         // entry, and a later different one is dropped with an anomaly,
         // staying on the wire as it arrived.
-        let mut insert = |field: &str, made: crate::Result<Identifier>| match made {
-            Ok(id) => match ids.get_from(id.src(), id.kind()) {
-                Some(held) if held != id.value() => anomalies.push(super::FixAnomaly::new(
-                    field,
-                    format!(
-                        "states {id} where {}:{}={held} is already stated",
-                        id.src(),
-                        id.kind()
-                    ),
-                )),
-                Some(_) => {}
-                None => {
-                    ids.insert(id);
+        let mut insert =
+            |ids: &mut Identifiers, field: &str, made: crate::Result<Identifier>| match made {
+                Ok(id) => match ids.get_from(id.src(), id.kind()) {
+                    Some(held) if held != id.value() => anomalies.push(super::FixAnomaly::new(
+                        field,
+                        format!(
+                            "states {id} where {}:{}={held} is already stated",
+                            id.src(),
+                            id.kind()
+                        ),
+                    )),
+                    Some(_) => {}
+                    None => {
+                        ids.insert(id);
+                    }
+                },
+                Err(error) => anomalies.push(super::FixAnomaly::new(field, error.to_string())),
+            };
+        let mut state =
+            |ids: &mut Identifiers, field: &str, source: Option<SmolStr>, code: Option<SmolStr>| {
+                if let (Some(source), Some(code)) = (source, code) {
+                    insert(
+                        ids,
+                        field,
+                        security_identifier(&source, IdSource::Fix, &code),
+                    );
                 }
-            },
-            Err(error) => anomalies.push(super::FixAnomaly::new(field, error.to_string())),
-        };
-        let mut state = |field: &str, source: Option<SmolStr>, code: Option<SmolStr>| {
-            if let (Some(source), Some(code)) = (source, code) {
-                insert(field, security_identifier(&source, IdSource::Fix, &code));
-            }
-        };
+            };
         state(
+            &mut ids,
             "securityid",
             self.get_by_tag(22).as_ref().and_then(scalar_text),
             self.get_by_tag(48).as_ref().and_then(scalar_text),
         );
         for [source, code] in self.group_rows("secaltids", ["securityaltidsource", "securityaltid"])
         {
-            state("secaltids", source, code);
+            state(&mut ids, "secaltids", source, code);
         }
         // A crated column's row-stated entry is the crate's own statement,
         // ranked after the wire's and before a name a bridge happened to
-        // spell.
+        // spell; the column is a view of the set, so a code an identifier of
+        // its type already holds, whatever its source, states nothing new.
         for (bit, kind, name) in [
             (ROW_STATED_ISIN, IdType::Isin, super::ISINCODE_TAG_NAME.1),
             (
@@ -2669,8 +2689,9 @@ impl FixMsg {
         ] {
             if row_stated & bit != 0
                 && let Some(id) = self.event.get_securityids().get_identifier(&kind)
+                && !ids.of_kind(&kind).any(|held| held.value() == id.value())
             {
-                insert(name, Ok(id.clone()));
+                insert(&mut ids, name, Ok(id.clone()));
             }
         }
         // An entry no dictionary maps whose key names a security
@@ -2684,7 +2705,7 @@ impl FixMsg {
             if let Some(made) = inferred_identifier(key, text, declared, false)
                 .filter(|made| made.as_ref().ok().is_none_or(|id| id.kind().is_security()))
             {
-                insert(key, made);
+                insert(&mut ids, key, made);
             }
         });
         (ids, anomalies)
@@ -2911,6 +2932,10 @@ impl FixMsg {
                 identifiers.insert(id);
             }
         });
+        // What this rebuild dropped replaces what the last one did.
+        self.anomalies
+            .truncate(self.anomalies.len() - self.idmap_anomalies);
+        self.idmap_anomalies = dropped.len();
         self.anomalies.extend(dropped);
         // What a caller or a row stated is its word, which no settle
         // restates: each value it holds stands, lineage included, and an
@@ -4660,32 +4685,27 @@ fn instrument_key(ids: &Identifiers) -> Option<InstrumentKey> {
 const INSTRUMENT_ID: &str = "instrumentid";
 
 /// The security identifier a stated `source` and `code` make, from `src`:
-/// a source spelled `{NAMESPACE}INSTRUMENTID` - `ULLINKINSTRUMENTID` - is an
-/// [`IdType::InstrumentId`] from that namespace, and every other source is
-/// the type [`IdType::from_security_source`] reads it as.
+/// a source spelled `{NAMESPACE}INSTRUMENTID` - `ULLINKINSTRUMENTID`,
+/// `ULLINK.INSTRUMENTID`, `Ullink Instrument ID` - is an
+/// [`IdType::InstrumentId`] from that namespace, read as a key's source is
+/// read ([`Identifier::from_key`]): folded, the dots at its ends dropped.
+/// Every other source is the type [`IdType::from_security_source`] reads it
+/// as.
 pub(super) fn security_identifier(
     source: &str,
     src: IdSource,
     code: &str,
 ) -> crate::Result<Identifier> {
-    match instrument_namespace(source) {
+    let mut buffer = [0_u8; crate::identifier::IDENTIFIER_KEY_WIDTH];
+    let namespace = crate::identifier::fold_into(source, &mut buffer)
+        .ok()
+        .and_then(|folded| folded.strip_suffix(INSTRUMENT_ID))
+        .map(|namespace| namespace.trim_matches('.'))
+        .filter(|namespace| !namespace.is_empty());
+    match namespace {
         Some(namespace) => Identifier::new(namespace.parse()?, IdType::InstrumentId, code),
         None => Identifier::new(src, IdType::from_security_source(source)?, code),
     }
-}
-
-/// The namespace a source spelled `{NAMESPACE}INSTRUMENTID` names, matched
-/// in place ignoring case: the namespace is folded where the identifier is
-/// built, so no upper-cased copy of the source is made.
-fn instrument_namespace(source: &str) -> Option<&str> {
-    let source = source.trim();
-    source
-        .len()
-        .checked_sub(INSTRUMENT_ID.len())
-        .filter(|at| *at > 0)
-        .and_then(|at| Some((source.get(..at)?, source.get(at..)?)))
-        .filter(|(_, suffix)| suffix.eq_ignore_ascii_case(INSTRUMENT_ID))
-        .map(|(namespace, _)| namespace)
 }
 
 /// Feeds one level of the entry tree to a digest in canonical name order.
@@ -5430,6 +5450,7 @@ impl Clone for FixMsg {
             detected_fx: self.detected_fx,
             anomalies: self.anomalies.clone(),
             arrival_anomalies: self.arrival_anomalies,
+            idmap_anomalies: self.idmap_anomalies,
         }
     }
 }
@@ -5778,7 +5799,13 @@ impl Market for FixMsg {
             }
         }
         self.stated |= fact::SECURITYIDS;
-        self.event.remove_securityid(src, kind)
+        let removed = self.event.remove_securityid(src, kind)?;
+        // The event takes back every derived identifier with the ISIN; what
+        // the overlay still holds goes back as derived.
+        for id in self.derived.iter() {
+            self.event.derive_securityid(id.kind(), id.value());
+        }
+        Ok(removed)
     }
 
     fn derive_securityid(&mut self, kind: &IdType, code: &str) -> bool {
@@ -6085,13 +6112,20 @@ impl Operation for FixMsg {
     }
 
     /// The registry's own answer: an identifier whose type's `FIX:idmap`
-    /// entry follows.
+    /// entry follows, or a parent of one, which travels with its base.
     fn is_followed_identifier(&self, id: &Identifier) -> bool {
-        self.registry.idmap_sources().iter().any(|(_, source)| {
-            source.follows()
-                && source.map() == FixIdMapKind::Identifiers
-                && source.key() == id.kind()
-        })
+        let follows = |kind: &IdType| {
+            self.registry.idmap_sources().iter().any(|(_, source)| {
+                source.follows()
+                    && source.map() == FixIdMapKind::Identifiers
+                    && source.key() == kind
+            })
+        };
+        follows(id.kind())
+            || self
+                .registry
+                .parent_of(id.kind())
+                .is_some_and(|(base, _)| follows(&base))
     }
 }
 

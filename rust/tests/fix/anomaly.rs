@@ -76,3 +76,44 @@ fn a_settle_keeps_what_the_parse_recorded_and_a_clone_carries_it() {
         "one refusal, exactly as recorded"
     );
 }
+
+#[test]
+fn every_settle_states_what_it_dropped_once() {
+    use yggdryl::graph::Element;
+    // Two regulatory trade ids of one type: the second is dropped by each
+    // settle's reading of the identifiers, which replaces the last one's.
+    let mut held = parsed(
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|1907=2|1903=UTI-1|1906=0|1903=UTI-2|1906=0|10=0|",
+    );
+    let dropped = |held: &FixMsg| {
+        held.anomalies()
+            .iter()
+            .filter(|anomaly| anomaly.field() == "regulatorytradeids")
+            .count()
+    };
+    assert_eq!(dropped(&held), 1, "{:?}", pairs(&held));
+    held.finalize();
+    held.finalize();
+    assert_eq!(dropped(&held), 1, "settled twice more: {:?}", pairs(&held));
+    held.set(44, yggdryl::Scalar::from("101.5"))
+        .expect("a price the message can state");
+    assert_eq!(dropped(&held), 1, "a write settles: {:?}", pairs(&held));
+    // A write reaching the security identifiers restates their reading,
+    // and the reading of every other identifier still stands once beside it.
+    held.set(48, yggdryl::Scalar::from("US0378331006"))
+        .expect("a security identifier the message can state");
+    held.set(22, yggdryl::Scalar::from("4"))
+        .expect("its source");
+    assert_eq!(dropped(&held), 1, "{:?}", pairs(&held));
+    assert_eq!(
+        held.anomalies()
+            .iter()
+            .filter(|anomaly| anomaly.field() == "securityid")
+            .count(),
+        1,
+        "{:?}",
+        pairs(&held)
+    );
+    held.finalize();
+    assert_eq!(held.anomalies().len(), 2, "{:?}", pairs(&held));
+}

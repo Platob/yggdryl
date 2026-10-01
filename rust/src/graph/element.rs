@@ -501,7 +501,12 @@ pub(super) fn follow_element<E: Element + ?Sized>(this: &mut E, previous: &E) ->
         this.set_crosscode(previous.get_crosscode().to_owned());
         changed = true;
     }
-    changed |= this.sync_cross();
+    // An element stating no cross code has none to bring in step: the cross
+    // element of a chain with no code is its first element's identity,
+    // which a walk states and a finalize derives as the element's own.
+    if !this.get_crosscode().is_empty() {
+        changed |= this.sync_cross();
+    }
     changed
 }
 

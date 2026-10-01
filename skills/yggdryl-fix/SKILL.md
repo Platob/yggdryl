@@ -273,7 +273,9 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   off its fields, the wire kept as sent, each identifier `src:type=value` in
   lower-case words: `securityids` (`SecurityID(48)` under its
   `SecurityIDSource(22)`'s type and each `SecAltIDGrp(454)` occurrence, from
-  `fix`; an ISIN's embedded codes and a symbol's FX pair from `derived`),
+  `fix` - a `{NAMESPACE}INSTRUMENTID` source an `instrumentid` from that
+  namespace, `ULLINK.INSTRUMENTID` `ullink`; an ISIN's embedded codes and a
+  symbol's FX pair from `derived`; `get(type)` answers the wire's first),
   `identifiers` (each `FIX:idmap` field a type from `fix`; regulatory trade ids
   under `regtradeid`, `tvtic`, ...) and `partyids` - each `PartyID(448)` typed by its
   `PartyRole(452)` code's name folded (`executingtrader`; an unnamed code
@@ -287,7 +289,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   nearest first (`ClOrdID(11)` has `["origclordid"]`); a follower and every
   settle fill a base from its nearest stated parent (`orderid` from
   `parentorderid`, else `origorderid`); a follower whose `orderid` changed keeps
-  the previous value as `parentorderid` and the chain's first as `origorderid`. A caller's
+  the previous value as `parentorderid` and the chain's first as `origorderid`,
+  and one naming no `orderid` carries the chain's with both. A caller's
   `insert_*`/`set_*` is the message's word and writes no field: to change the
   wire, write the field. `SecurityID(48)`, `SecurityIDSource(22)`,
   `Parties(453)` and `SecAltIDGrp(454)` are no columns of the fixed row (152

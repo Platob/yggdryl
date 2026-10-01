@@ -752,7 +752,7 @@ pub trait Operation: Market {
     /// type but a book entry's [`IdType::MdEntryRefId`], the reference one
     /// statement reaches its predecessor by, unless the holder's own
     /// dictionary says otherwise - a FIX message follows its `FIX:idmap`
-    /// flags.
+    /// flags, each followed type's parents with it.
     fn is_followed_identifier(&self, id: &Identifier) -> bool {
         id.kind() != &IdType::MdEntryRefId
     }
