@@ -987,7 +987,8 @@ def test_defaults_fill_in_and_a_stored_column_derives_by_function() -> None:
 
     stored = Selector("ccy, test.add(size) as next").into_field(ROWS)
     assert stored.dtype["next"].transform["function"] == "test.add"
-    assert stored.dtype["next"].transform["sources"] == '["size"]'
+    assert stored.dtype["next"].transform["by"] == '["size"]'
+    assert stored.dtype["next"].transform.by == ["size"]
     assert str(Selector.from_field(stored)) == "ccy utf8 null, test.add(size) as next int64 null"
     with pytest.raises(ValueError, match="test.add"):
         Term("test.add()").field(ROWS)

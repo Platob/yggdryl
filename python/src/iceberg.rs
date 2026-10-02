@@ -14,7 +14,7 @@
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
+use pyo3::types::{PyBytes, PyDict, PyString, PyTuple, PyType};
 
 use yggdryl::IOBase as _;
 use yggdryl::holder::Holder;
@@ -133,16 +133,38 @@ fn format_version_from_value(value: &Bound<'_, PyAny>) -> PyResult<FormatVersion
 
 /// Read a core partition spec out of what Python names one with.
 ///
-/// A sequence of column names is the spelling a caller reaches for, and it
-/// means the identity transform over those columns - the only transform that
-/// can place a row without inverting a hash.
+/// A sequence is a `PARTITION:by` declaration, each entry a projection: a
+/// bare column (`symbol`) an identity field, an epoch function over a column
+/// (`days(ts)`, `minutes(ts, 15)`, `weeks(ts)`, `quarters(ts)`) or
+/// `truncate(name, 4)` a derived one, an `as alias` naming it. The entries
+/// are declared on a copy of the schema root and read by the core's one rule,
+/// [`PartitionSpec::from_schema`], so a refusal names the entry it could not
+/// honour.
 fn spec_from_value(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<PartitionSpec> {
     if let Ok(spec) = value.extract::<PyRef<'_, PyPartitionSpec>>() {
         return Ok(spec.inner.clone());
     }
-    let columns = crate::enums::strings_from_iterable(value, "partition_by")?;
-    let borrowed: Vec<&str> = columns.iter().map(String::as_str).collect();
-    PartitionSpec::identity(0, schema, &borrowed).map_err(value_error)
+    if value.is_instance_of::<PyString>() {
+        return Err(PyTypeError::new_err(
+            "partition_by must be a PartitionSpec or an iterable of entries, not one string",
+        ));
+    }
+    // Text crosses as it is, so a malformed entry is refused naming it; a
+    // `Term` or a `(term, alias)` pair crosses as the text it spells.
+    let mut entries = Vec::new();
+    for entry in value.try_iter()? {
+        let entry = entry?;
+        entries.push(match entry.extract::<String>() {
+            Ok(text) => text,
+            Err(_) => crate::expression::projection_from_value(&entry)?.to_string(),
+        });
+    }
+    let mut declared = schema.clone();
+    declared
+        .as_partition_mut()
+        .set_by_texts(entries)
+        .map_err(value_error)?;
+    PartitionSpec::from_schema(0, &declared).map_err(value_error)
 }
 
 /// Project one Iceberg partition value as the Python value it stands for.
@@ -1010,8 +1032,11 @@ impl PyTable {
 
     /// Create a table, writing its first metadata document.
     ///
-    /// `partition_by` accepts a [`PartitionSpec`] or the column names to
-    /// partition on; the default is unpartitioned. Unnumbered schema columns
+    /// `partition_by` accepts a [`PartitionSpec`] or the `PARTITION:by`
+    /// entries to partition on - `symbol`, `days(ts)`, `minutes(ts, 15)`,
+    /// `truncate(name, 4) as prefix` - read by the core's one rule; without
+    /// it the schema's own declaration is read the same way, and a schema
+    /// declaring nothing is unpartitioned. Unnumbered schema columns
     /// are numbered automatically, so a plain `PyArrow` schema works as it is;
     /// a schema that already carries field identifiers keeps every one of them.
     #[classmethod]
@@ -1026,7 +1051,7 @@ impl PyTable {
         let schema = numbered_schema_from_value(schema)?;
         let spec = match partition_by {
             Some(value) => spec_from_value(value, &schema)?,
-            None => PartitionSpec::unpartitioned(),
+            None => PartitionSpec::from_schema(0, &schema).map_err(value_error)?,
         };
         let version = match format_version {
             Some(value) => format_version_from_value(value)?,
@@ -1062,7 +1087,7 @@ impl PyTable {
         let schema = numbered_schema_from_value(schema)?;
         let spec = match partition_by {
             Some(value) => spec_from_value(value, &schema)?,
-            None => PartitionSpec::unpartitioned(),
+            None => PartitionSpec::from_schema(0, &schema).map_err(value_error)?,
         };
         let version = match format_version {
             Some(value) => format_version_from_value(value)?,

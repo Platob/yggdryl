@@ -35,13 +35,14 @@ use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{
-    IntoPyDict, PyCapsule, PyFrozenSet, PyIterator, PyList, PyMapping, PySequence, PySet, PySlice,
+    IntoPyDict, PyBytes, PyCapsule, PyFrozenSet, PyIterator, PyList, PyMapping, PySequence, PySet,
+    PySlice, PyString,
 };
 use yggdryl::arrow::BatchReader;
 use yggdryl::media::RecordOptions;
 use yggdryl::{
     ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, MimeType, Scalar, Serie,
-    SerieReader,
+    SerieReader, SortOptions,
 };
 
 use crate::chunked_serie::{PyChunkedSerie, chunked_from_arrays};
@@ -59,6 +60,8 @@ use crate::scalar::{
     PyScalar, PyScalarIterator, as_py, as_py_with_field, from_py, from_py_under,
     pyarrow_scalar_as_array,
 };
+use crate::serie_slice::PySerieSlice;
+use crate::text::line::{PyFieldPath, core_path_from_value};
 use crate::{cast_options, compare, normalize_index, value_error};
 
 /// Many values: a schema-free run, or the Arrow buffers of one field.
@@ -81,6 +84,18 @@ impl PySerie {
     /// Resolve a Python index against the serie, negative from the end.
     fn index(&self, index: isize) -> PyResult<usize> {
         normalize_index(index, self.inner.len()).ok_or_else(|| PyIndexError::new_err(index))
+    }
+
+    /// Answer `read` over this serie off the GIL, over a clone taken and
+    /// released before it starts, so another thread writing this serie waits
+    /// for the GIL rather than finding it borrowed.
+    fn detached<T, F>(slf: &Bound<'_, Self>, read: F) -> PyResult<T>
+    where
+        T: Send,
+        F: FnOnce(Serie) -> yggdryl::Result<T> + Send,
+    {
+        let serie = slf.borrow().inner.clone();
+        slf.py().detach(move || read(serie)).map_err(value_error)
     }
 }
 
@@ -146,9 +161,11 @@ impl Leaf {
     }
 }
 
-/// Convert every Python value in `rows` to a core value, once.
 /// Convert Python rows, each a value of `field` when the rows have one.
-fn rows_from_py(field: Option<&CoreField>, rows: &Bound<'_, PyAny>) -> PyResult<Vec<Scalar>> {
+pub(crate) fn rows_from_py(
+    field: Option<&CoreField>,
+    rows: &Bound<'_, PyAny>,
+) -> PyResult<Vec<Scalar>> {
     if let Ok(serie) = rows.extract::<PyRef<'_, PySerie>>() {
         return Ok(serie.inner.rows().into_owned());
     }
@@ -158,6 +175,67 @@ fn rows_from_py(field: Option<&CoreField>, rows: &Bound<'_, PyAny>) -> PyResult<
             None => from_py(&row?),
         })
         .collect::<PyResult<Vec<Scalar>>>()
+}
+
+/// The two facts an ordering states beside its key, as Python spells them:
+/// two keyword booleans, ascending with nulls last unless stated.
+pub(crate) const fn sort_options(descending: bool, nulls_first: bool) -> SortOptions {
+    let direction = if descending {
+        SortOptions::descending()
+    } else {
+        SortOptions::ascending()
+    };
+    direction.with_nulls_first(nulls_first)
+}
+
+/// Read the serie a verb takes beside its own - indices, a mask, keys - once.
+///
+/// A columnar object is the column [`columnar`] reads it as: a `Serie`
+/// shared, chunks joined, a stream drained. Any other iterable is the run
+/// of its values, each read through `Scalar` as `Serie(values)` reads it.
+/// Text, bytes and a mapping iterate as something other than values, so
+/// they are refused by name rather than read as characters or keys.
+pub(crate) fn serie_argument(value: &Bound<'_, PyAny>, name: &str) -> PyResult<Serie> {
+    if let Some(columnar) = columnar(value)? {
+        return columnar.into_serie(value.py(), None, ArrowCastOptions::new());
+    }
+    if value.is_instance_of::<PyString>()
+        || value.is_instance_of::<PyBytes>()
+        || value.cast::<PyMapping>().is_ok()
+        || !value.hasattr(intern!(value.py(), "__iter__"))?
+    {
+        return Err(PyTypeError::new_err(format!(
+            "expected {name} as a Serie, a columnar object or an iterable of values, got {}",
+            type_name(value)
+        )));
+    }
+    rows_from_py(None, value).map(Serie::new)
+}
+
+/// Hand groups to Python as `(key, rows)` pairs, each serie its leaf class.
+pub(crate) fn groups_to_py(
+    py: Python<'_>,
+    groups: Vec<(Scalar, Serie)>,
+) -> PyResult<Vec<(PyScalar, Py<PyAny>)>> {
+    groups
+        .into_iter()
+        .map(|(key, rows)| Ok((PyScalar::from_inner(key), described(py, rows)?)))
+        .collect()
+}
+
+/// Resolve the paths a record partitions by, once: one path - a
+/// `FieldPath` or its text - or an iterable of them.
+fn paths_of(paths: &Bound<'_, PyAny>) -> PyResult<Vec<FieldPath>> {
+    if paths.is_instance_of::<PyString>() || paths.is_instance_of::<PyFieldPath>() {
+        return Ok(vec![core_path_from_value(paths)?]);
+    }
+    let items = paths.try_iter().map_err(|_| {
+        PyTypeError::new_err(format!(
+            "expected a FieldPath, a path string or an iterable of them, got {}",
+            type_name(paths)
+        ))
+    })?;
+    items.map(|path| core_path_from_value(&path?)).collect()
 }
 
 /// Resolve an optional Python field argument once.
@@ -925,7 +1003,7 @@ impl PySerie {
     }
 
     /// Every row as the Python value it is, a record as a `dict`.
-    fn as_py(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+    pub(crate) fn as_py(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let list = PyList::empty(py);
         match self.inner.field() {
             Some(field) => {
@@ -1098,6 +1176,176 @@ impl PySerie {
             .detach(move || serie.cast(&target, options))
             .map_err(value_error)?;
         described(py, cast)
+    }
+
+    // ------------------------------------------------------------------
+    // Ordering, uniqueness and grouping: the reads answer a new serie off
+    // the GIL over a clone taken and released first, as `cast` does; the
+    // `as_*` writes bring this serie into the state in place, under the GIL,
+    // so a buffer it holds alone is rewritten where it stands, and answer
+    // this same object so calls chain.
+    // ------------------------------------------------------------------
+
+    /// The row positions in sorted order as a `uint32` column named
+    /// `index`: stable, absent rows where `nulls_first` puts them.
+    #[pyo3(signature = (*, descending = false, nulls_first = false))]
+    fn sort_indices(
+        slf: &Bound<'_, Self>,
+        descending: bool,
+        nulls_first: bool,
+    ) -> PyResult<Py<PyAny>> {
+        let options = sort_options(descending, nulls_first);
+        let order = Self::detached(slf, move |serie| serie.sort_indices(options))?;
+        described(slf.py(), order)
+    }
+
+    /// Whether the rows are in sorted order: one pass over adjacent rows.
+    #[pyo3(signature = (*, descending = false, nulls_first = false))]
+    fn is_sorted(slf: &Bound<'_, Self>, descending: bool, nulls_first: bool) -> PyResult<bool> {
+        let options = sort_options(descending, nulls_first);
+        Self::detached(slf, move |serie| Ok(serie.is_sorted(options)))
+    }
+
+    /// Whether no two rows hold one value; two absent rows are a repeat.
+    fn is_unique(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        Self::detached(slf, |serie| Ok(serie.is_unique()))
+    }
+
+    /// How many distinct values the rows hold, an absent row one of them.
+    fn unique_count(slf: &Bound<'_, Self>) -> PyResult<usize> {
+        Self::detached(slf, |serie| Ok(serie.unique_count()))
+    }
+
+    /// The rows in sorted order as a new serie under the same field.
+    #[pyo3(signature = (*, descending = false, nulls_first = false))]
+    fn into_sorted(
+        slf: &Bound<'_, Self>,
+        descending: bool,
+        nulls_first: bool,
+    ) -> PyResult<Py<PyAny>> {
+        let options = sort_options(descending, nulls_first);
+        let sorted = Self::detached(slf, move |serie| serie.into_sorted(options))?;
+        described(slf.py(), sorted)
+    }
+
+    /// The first occurrence of every value, in order of first occurrence.
+    fn into_unique(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let unique = Self::detached(slf, |serie| serie.into_unique())?;
+        described(slf.py(), unique)
+    }
+
+    /// The rows in reverse order as a new serie.
+    fn into_reversed(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let reversed = Self::detached(slf, |serie| Ok(serie.into_reversed()))?;
+        described(slf.py(), reversed)
+    }
+
+    /// The rows `indices` names, in that order: integers of any width, as a
+    /// `Serie`, a columnar object or an iterable of values.
+    fn into_taken(slf: &Bound<'_, Self>, indices: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let indices = serie_argument(indices, "indices")?;
+        let taken = Self::detached(slf, move |serie| serie.into_taken(&indices))?;
+        described(slf.py(), taken)
+    }
+
+    /// The rows `mask` keeps: booleans as long as this serie, an absent
+    /// mask row keeping nothing.
+    fn into_filtered(slf: &Bound<'_, Self>, mask: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let mask = serie_argument(mask, "mask")?;
+        let kept = Self::detached(slf, move |serie| serie.into_filtered(&mask))?;
+        described(slf.py(), kept)
+    }
+
+    /// The rows grouped by `keys`, as long as this serie: one `(key, rows)`
+    /// per distinct key in order of first occurrence.
+    fn partition_by(
+        slf: &Bound<'_, Self>,
+        keys: &Bound<'_, PyAny>,
+    ) -> PyResult<Vec<(PyScalar, Py<PyAny>)>> {
+        let keys = serie_argument(keys, "keys")?;
+        let groups = Self::detached(slf, move |serie| serie.partition_by(&keys))?;
+        groups_to_py(slf.py(), groups)
+    }
+
+    /// A record column's rows grouped by the cells `paths` reach, keyed by
+    /// the run of those cells.
+    fn partition_by_paths(
+        slf: &Bound<'_, Self>,
+        paths: &Bound<'_, PyAny>,
+    ) -> PyResult<Vec<(PyScalar, Py<PyAny>)>> {
+        let paths = paths_of(paths)?;
+        let groups = Self::detached(slf, move |serie| serie.partition_by_paths(&paths))?;
+        groups_to_py(slf.py(), groups)
+    }
+
+    /// The bytes the rows occupy: a column's buffers as its own slice
+    /// counts them, a run's values as the row estimator charges them.
+    fn memory_size(&self) -> usize {
+        self.inner.memory_size()
+    }
+
+    /// Sort the rows in place, answering this serie.
+    #[pyo3(signature = (*, descending = false, nulls_first = false))]
+    fn as_sorted<'py>(
+        slf: &Bound<'py, Self>,
+        descending: bool,
+        nulls_first: bool,
+    ) -> PyResult<Bound<'py, Self>> {
+        let options = sort_options(descending, nulls_first);
+        slf.borrow_mut()
+            .inner
+            .as_sorted(options)
+            .map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// Keep the first occurrence of every value, in place.
+    fn as_unique<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Self>> {
+        slf.borrow_mut().inner.as_unique().map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// Reverse the rows in place.
+    fn as_reversed<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Self>> {
+        slf.borrow_mut().inner.as_reversed().map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// Keep the rows `indices` names, in that order, in place.
+    fn as_taken<'py>(
+        slf: &Bound<'py, Self>,
+        indices: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, Self>> {
+        let indices = serie_argument(indices, "indices")?;
+        slf.borrow_mut()
+            .inner
+            .as_taken(&indices)
+            .map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// Keep the rows `mask` keeps, in place.
+    fn as_filtered<'py>(
+        slf: &Bound<'py, Self>,
+        mask: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, Self>> {
+        let mask = serie_argument(mask, "mask")?;
+        slf.borrow_mut()
+            .inner
+            .as_filtered(&mask)
+            .map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// The window `offset..offset + length` as a `SerieSlice` holding this
+    /// serie object: every read and write goes through the serie when it is
+    /// asked, window-relative.
+    fn window(slf: &Bound<'_, Self>, offset: usize, length: usize) -> PyResult<PySerieSlice> {
+        slf.borrow()
+            .inner
+            .window(offset, length)
+            .map_err(value_error)?;
+        Ok(PySerieSlice::new(slf.clone().unbind(), offset, length))
     }
 
     /// This column's one row as a `pyarrow.Scalar`, sharing its buffers.

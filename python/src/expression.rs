@@ -87,11 +87,29 @@ pub(crate) fn term_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreTerm> {
 
 /// Read one projection: a `Term`, or any scalar [`CoreProjection::from_scalar`]
 /// reads - text, or a `(term, alias)` pair.
-fn projection_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreProjection> {
+pub(crate) fn projection_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreProjection> {
     if let Ok(term) = value.extract::<PyRef<'_, PyTerm>>() {
         return Ok(CoreProjection::new(term.inner.clone()));
     }
     CoreProjection::from_scalar(&crate::scalar::from_py(value)?).map_err(value_error)
+}
+
+/// Read a list of projections - a `PARTITION:by` declaration, a spec's
+/// fields - each what [`projection_from_value`] reads. One string is refused
+/// rather than read as its characters.
+pub(crate) fn projections_from_iterable(
+    value: &Bound<'_, PyAny>,
+    label: &str,
+) -> PyResult<Vec<CoreProjection>> {
+    if value.is_instance_of::<PyString>() {
+        return Err(pyo3::exceptions::PyTypeError::new_err(format!(
+            "{label} must be an iterable of projections, not one string"
+        )));
+    }
+    value
+        .try_iter()?
+        .map(|entry| projection_from_value(&entry?))
+        .collect()
 }
 
 /// Read a list of operands, each a term or a value.

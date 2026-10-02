@@ -594,3 +594,132 @@ class TestPyCapsule:
         # A native chunked serie never crosses its own capsule inside the
         # binding: it lands as what it holds, the sorted keys kept.
         assert ChunkedSerie.from_arrow_reader(chunked).field == chunked.field
+
+
+def chunked(values: list[int | None], cut: int) -> ChunkedSerie:
+    """`values` cut into chunks of `cut` rows each, under the price field."""
+    field = Field("price", "int64", nullable=any(value is None for value in values))
+    chunks = [values[start : start + cut] for start in range(0, len(values), cut)]
+    return ChunkedSerie.from_arrow_chunked_array(pa.chunked_array(chunks, pa.int64()), field)
+
+
+class TestOrder:
+    """Ordering, uniqueness and grouping across the chunks - mirrors the
+    order cases of ``rust/tests/root/chunked_serie.rs``."""
+
+    def test_is_sorted_reads_each_chunk_and_every_chunk_edge(self) -> None:
+        ordered = chunked([1, 2, 2, 3, None], 2)
+        assert ordered.is_sorted()
+        assert not ordered.is_sorted(descending=True)
+        # Each chunk sorted, the edge not: [1, 5] then [2, 3].
+        edge = chunked([1, 5, 2, 3], 2)
+        assert not edge.is_sorted()
+        assert edge.slice(0, 2).is_sorted()
+        # An empty chunk between two is no edge.
+        gapped = ChunkedSerie.from_arrow_chunked_array(
+            pa.chunked_array([[1], [], [2]], pa.int64()), price()
+        )
+        assert gapped.num_chunks == 3
+        assert gapped.is_sorted()
+        assert ChunkedSerie.empty(price()).is_sorted()
+
+    def test_sorting_and_uniqueness_join_once_and_answer_one_chunk_under_the_field(
+        self,
+    ) -> None:
+        prices = chunked([3, None, 1, 3, 2], 2)
+        assert not prices.is_unique()
+        assert prices.unique_count() == 4
+        order = prices.sort_indices()
+        assert order.field == Field("index", "uint32", nullable=False)
+        assert order.as_py() == [2, 4, 0, 3, 1]
+        assert prices.sort_indices(descending=True, nulls_first=True).as_py() == [
+            1,
+            0,
+            3,
+            4,
+            2,
+        ]
+        ordered = prices.into_sorted()
+        assert (ordered.num_chunks, len(ordered)) == (1, 5)
+        assert ordered.field == prices.field
+        assert ordered.is_sorted()
+        assert [row.as_py() for row in ordered.rows()] == [1, 2, 3, 3, None]
+        unique = prices.into_unique()
+        assert (unique.num_chunks, len(unique)) == (1, 4)
+        assert unique.is_unique()
+        # The chunked serie is as it was.
+        assert prices.num_chunks == 3
+        taken = prices.into_taken([4, 0])
+        assert [row.as_py() for row in taken.rows()] == [2, 3]
+        with pytest.raises(ValueError, match="names no row"):
+            prices.into_taken([5])
+
+    def test_reversing_and_filtering_keep_the_chunks_apart(self) -> None:
+        prices = chunked([1, 2, 3, None, 5], 2)
+        reversed_ = prices.into_reversed()
+        assert reversed_.num_chunks == 3
+        assert [row.as_py() for row in reversed_.rows()] == [5, None, 3, 2, 1]
+        first = reversed_.chunk(0)
+        assert first is not None and len(first) == 1
+        kept = prices.into_filtered([True, False, None, True, True])
+        assert kept.num_chunks == 3
+        assert [row.as_py() for row in kept.rows()] == [1, None, 5]
+        with pytest.raises(
+            ValueError, match="a mask of 1 rows cannot filter the 5 rows price holds"
+        ):
+            prices.into_filtered([True])
+
+    def test_partition_by_merges_each_chunk_s_groups_in_first_occurrence_order(
+        self,
+    ) -> None:
+        prices = chunked([1, 2, 3, 4, 5], 2)
+        groups = prices.partition_by(["a", "b", "b", "a", "c"])
+        assert len(groups) == 3
+        assert groups[0][0].as_py() == "a"
+        assert [row.as_py() for row in groups[0][1].rows()] == [1, 4]
+        assert groups[0][1].num_chunks == 2
+        assert groups[1][0].as_py() == "b"
+        assert [row.as_py() for row in groups[1][1].rows()] == [2, 3]
+        assert groups[2][0].as_py() == "c"
+        assert groups[2][1].field == prices.field
+        # Keys held in chunks group the same way, chunk beside chunk where
+        # both are cut at the same rows, the keys joined once where not.
+        for cut in ([["a", "b"], ["b", "a"], ["c"]], [["a", "b", "b"], ["a", "c"]]):
+            keys = pa.chunked_array(cut)
+            for held in (keys, ChunkedSerie.from_(keys)):
+                assert [
+                    (key.as_py(), [row.as_py() for row in rows.rows()])
+                    for key, rows in prices.partition_by(held)
+                ] == [("a", [1, 4]), ("b", [2, 3]), ("c", [5])]
+        assert len(prices.partition_by(["a", "b", "b", "a", "c"])) == 3
+        with pytest.raises(
+            ValueError, match="1 keys cannot partition the 5 rows price holds"
+        ):
+            prices.partition_by(pa.chunked_array([["a"]]))
+        with pytest.raises(
+            ValueError, match="1 keys cannot partition the 5 rows price holds"
+        ):
+            prices.partition_by(["a"])
+
+    def test_memory_size_sums_the_chunks_and_the_as_writes_replace_them_in_place(
+        self,
+    ) -> None:
+        prices = chunked([3, 1, 2, 2], 2)
+        assert prices.memory_size() == sum(chunk.memory_size() for chunk in prices.chunks)
+        assert prices.memory_size() > 0
+        assert prices.as_sorted(descending=True).as_unique().as_reversed() is prices
+        assert [row.as_py() for row in prices.rows()] == [1, 2, 3]
+        assert prices.num_chunks == 1
+        assert prices.as_taken([2, 0]).as_filtered([True, False]) is prices
+        assert [row.as_py() for row in prices.rows()] == [3]
+        assert prices.field == price()
+        # A refused write leaves the chunked serie as it was.
+        with pytest.raises(ValueError):
+            prices.as_taken([9])
+        with pytest.raises(TypeError, match="expected indices"):
+            prices.as_taken("0")
+        assert [row.as_py() for row in prices.rows()] == [3]
+        apart = chunked([1, 2, 3], 2)
+        apart.as_reversed()
+        assert apart.num_chunks == 2
+        assert [row.as_py() for row in apart.rows()] == [3, 2, 1]
