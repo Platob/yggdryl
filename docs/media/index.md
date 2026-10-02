@@ -2945,18 +2945,37 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/
 
 #### Against PyIceberg
 
-One run of `python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5` beside PyIceberg 0.11.1 with its SQLite catalog, on one local warehouse: Intel Xeon @ 2.10 GHz, 4 cores, rustc 1.94.1, CPython 3.11.15, PyArrow 25.0.1, release wheel. Each append writes 1,048,576 six-column rows into a fresh table; both readers then read the table PyIceberg wrote, so they decode the same files, and what both read is compared before anything is timed. The ratio is PyIceberg's median over this crate's, so above one is in this crate's favor.
+One run of `python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5` beside PyIceberg 0.11.1 with its SQLite catalog, on one local warehouse: Intel Xeon @ 2.10 GHz, 4 cores, a shared virtual host; rustc 1.97.0, CPython 3.11.15, PyArrow 25.0.1, release wheel. Each append writes 1,048,576 six-column rows, one second apart so they span fourteen UTC days, into a fresh table in three layouts: unpartitioned, eight partitions by `symbol`, fourteen by `day(ts)`. Both readers then read the table PyIceberg wrote, so they decode the same files, and what both read is compared before anything is timed. The ratio is PyIceberg's median over this crate's, so above one is in this crate's favor. On this host the median of an unchanged scan moved by up to a quarter between runs, so a ratio that close to one is a tie.
 
-| operation | unpartitioned | PyIceberg | ratio | 8 partitions | PyIceberg | ratio |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| append | 126.44 ms | 228.71 ms | 1.81 | 249.98 ms | 275.58 ms | 1.10 |
-| open | 0.96 ms | 0.72 ms | 0.75 | 1.07 ms | 0.68 ms | 0.64 |
-| scan everything | 27.37 ms | 51.83 ms | 1.89 | 31.55 ms | 45.08 ms | 1.43 |
-| scan `symbol = 'AAPL'` | 37.08 ms | 63.14 ms | 1.70 | 8.38 ms | 21.25 ms | 2.54 |
-| scan `price > 900` | 34.30 ms | 61.63 ms | 1.80 | 41.58 ms | 47.66 ms | 1.15 |
-| scan `id, price` | 22.71 ms | 25.58 ms | 1.13 | 19.37 ms | 25.32 ms | 1.31 |
+| append | this crate | PyIceberg | ratio |
+| --- | ---: | ---: | ---: |
+| unpartitioned | 136.04 ms | 246.92 ms | 1.82 |
+| 8 partitions by `symbol` | 280.12 ms | 320.94 ms | 1.15 |
+| 14 partitions by `day(ts)` | 209.32 ms | 189.34 ms | 0.90 |
 
-The appends pay one thing PyIceberg's do not: every file published on local storage is flushed to the device before the metadata that names it, so a crash cannot leave the table pointing at a file the disk never received. Opening is the one row behind. PyIceberg is handed the metadata location, while this crate finds it - a table PyIceberg's catalog wrote has no version hint, so the metadata folder is listed - and parses the document twice, once as a value and once through the official crate's validating reader.
+Each read cell is this crate's median, then PyIceberg's, then the ratio.
+
+| read | unpartitioned | 8 partitions by `symbol` | 14 partitions by `day(ts)` |
+| --- | ---: | ---: | ---: |
+| open | 0.99 / 0.65 ms, 0.66 | 1.11 / 0.69 ms, 0.62 | 1.46 / 0.70 ms, 0.48 |
+| scan everything | 29.52 / 56.49 ms, 1.91 | 33.12 / 45.26 ms, 1.37 | 37.98 / 53.26 ms, 1.40 |
+| scan `symbol = 'AAPL'` | 36.77 / 62.10 ms, 1.69 | 8.33 / 24.92 ms, 2.99 | 40.88 / 63.06 ms, 1.54 |
+| scan `price > 900` | 31.57 / 62.98 ms, 2.00 | 39.58 / 54.21 ms, 1.37 | 38.41 / 63.90 ms, 1.66 |
+| scan `id, price` | 24.65 / 25.83 ms, 1.05 | 21.36 / 27.33 ms, 1.28 | 26.99 / 38.43 ms, 1.42 |
+| scan one day of `ts` | 33.52 / 77.15 ms, 2.30 | 31.99 / 51.38 ms, 1.61 | 7.91 / 20.32 ms, 2.57 |
+
+The appends pay one thing PyIceberg's do not: every file published on local storage is flushed to the device before the metadata that names it, so a crash cannot leave the table pointing at a file the disk never received. A file costs about 2 ms of that here, which is why the gap narrows as the files multiply. An unpartitioned file also encodes its columns on every thread, while a partitioned append writes its groups one file per thread. A group's rows are sliced where they are one run of a batch, as every day of these rows is, and gathered where partitions interleave, as `symbol` does. A group already in the table's sort order is neither joined nor copied.
+
+Opening is the one row behind. PyIceberg is handed the metadata location, while this crate finds it - a table PyIceberg's catalog wrote has no version hint, so the metadata folder is listed - and parses the document twice, once as a value and once through the official crate's validating reader.
+
+The script ends with the same rows appended into a table partitioned by `minutes(ts, 15)`, a transform PyIceberg cannot write. That append is 1,166 data files, and a scan of one hour of `ts` keeps four of them and skips 1,162.
+
+| `minutes(ts, 15)`, this crate alone | median |
+| --- | ---: |
+| append | 993.95 ms |
+| scan one hour of `ts` | 97.62 ms |
+
+About 90 ms of that scan is planning: the one manifest's 1,166 entries are decoded to keep four, at the full-decode rate the manifest table above states.
 
 ```bash
 python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
