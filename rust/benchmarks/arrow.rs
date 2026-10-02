@@ -919,6 +919,43 @@ fn null_visibility_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// What the one memory estimate every byte bound reads costs to take.
+///
+/// A commit cadence, a write limit and the Iceberg file rolling measure each
+/// batch they hold, so the estimate sits on the write path once per batch:
+/// over the whole batch, and over the [`BATCHES`] zero-copy slices a stream
+/// of it is cut into, which count the batch once between them. The estimate
+/// reads offsets and lengths, never a value, so its cost follows the
+/// columns rather than the rows.
+fn memory_size_benchmarks(criterion: &mut Criterion) {
+    let root = root();
+    let mut group = criterion.benchmark_group("arrow_memory_size");
+    for count in ROWS {
+        let batch = batch(&root, count);
+        let parts = parts(&batch);
+        // Every slice but the first adds only the one offset that opens its
+        // symbol column; no slice is charged its parent's buffers.
+        assert_eq!(
+            parts.iter().map(yggdryl::arrow::memory_size).sum::<usize>(),
+            yggdryl::arrow::memory_size(&batch) + (parts.len() - 1) * 4,
+            "the slices count the batch once between them"
+        );
+        group.throughput(Throughput::Elements(count as u64));
+        group.bench_function(format!("whole/{count}"), |bencher| {
+            bencher.iter(|| yggdryl::arrow::memory_size(black_box(&batch)));
+        });
+        group.bench_function(format!("sliced/{count}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&parts)
+                    .iter()
+                    .map(yggdryl::arrow::memory_size)
+                    .sum::<usize>()
+            });
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     arrow_values,
     construction_benchmarks,
@@ -928,5 +965,6 @@ criterion_group!(
     cast_benchmarks,
     structured_benchmarks,
     null_visibility_benchmarks,
+    memory_size_benchmarks,
 );
 criterion_main!(arrow_values);

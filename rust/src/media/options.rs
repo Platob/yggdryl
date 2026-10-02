@@ -301,6 +301,13 @@ pub trait IORecordOptions: Sized {
     /// remainder, so a streamed write of any length holds at most one
     /// target file of rows before each commit. A resumable write session
     /// publishes by [`DEFAULT_COMMIT_BYTE_SIZE`].
+    ///
+    /// Whichever cadence applies, an overwrite's first commit replaces and
+    /// every later one appends, an append appends on every commit, and every
+    /// commit of a merge merges by its key - a merge an Iceberg table keys by
+    /// its partition alone replaces a partition on the first commit of the
+    /// write that reaches it and appends to it on every later one. The
+    /// commits completed before a later failure stay published.
     fn commit_batch_num(&self) -> Option<usize>;
 
     /// Set the publication cadence for a streamed write, in batches.

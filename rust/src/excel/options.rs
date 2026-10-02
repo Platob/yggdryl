@@ -48,7 +48,15 @@ pub struct ExcelOptions {
     pub row_offset: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
-    /// Rows published per streamed-write commit; `None` publishes once.
+    /// Whole batches published per streamed-write commit, never rows; `None`
+    /// is the destination's own cadence: a leaf or a folder publishes once,
+    /// after the source ends; an Iceberg table each time the held batches
+    /// reach its target file size, then the remainder, an overwrite's first
+    /// commit replacing and every later one appending while every commit of a
+    /// merge merges by its key; a write session by
+    /// [`DEFAULT_COMMIT_BYTE_SIZE`](crate::media::DEFAULT_COMMIT_BYTE_SIZE).
+    /// The commits completed before a later failure stay published. The rule
+    /// is [`IORecordOptions::commit_batch_num`]'s.
     pub commit_batch_num: Option<usize>,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,

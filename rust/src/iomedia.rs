@@ -464,9 +464,8 @@ pub trait IOMedia: Send {
     /// A folder routes each row to the leaf its partition values name, creating
     /// the `column=value` directory when the layout has one and no leaf holds
     /// that value yet. A folder holding a table format commits instead: an
-    /// Iceberg table writes one snapshot, whose merge reads only the data files
-    /// whose statistics say they can hold an incoming key and carries the rest
-    /// forward untouched.
+    /// Iceberg table writes a snapshot per cadence, the first replacing the
+    /// addressed partitions and the rest appending.
     ///
     /// A limited overwrite truncates data the caller offered:
     /// [`max_row_size`](crate::media::IORecordOptions::max_row_size) and
@@ -481,8 +480,12 @@ pub trait IOMedia: Send {
     /// ever split. The first cadence overwrites and every later one appends.
     /// Successful prefixes remain visible if a later cadence fails; zero is
     /// rejected before the source is pulled. With no cadence, a leaf or a
-    /// folder publishes once at the end and an Iceberg table publishes a
-    /// commit per target file size of batches.
+    /// folder publishes once at the end, and an Iceberg table publishes a
+    /// commit each time the held batches reach its target file size
+    /// (`write.target-file-size-bytes`), then the remainder - the first
+    /// commit overwriting, the rest appending, and the commits before a
+    /// later failure staying published, so a stream longer than the target
+    /// is never an atomic replacement.
     ///
     /// # Errors
     ///
@@ -578,8 +581,8 @@ pub trait IOMedia: Send {
     /// A folder appends into each partition the incoming rows name, leaving
     /// every other partition untouched. A folder holding a table format appends
     /// the way that format does: an Iceberg table writes new data files and
-    /// commits a snapshot that keeps every manifest the last one had, so nothing
-    /// already stored is read, rewritten, or even listed.
+    /// commits a snapshot per cadence that keeps every manifest the last one
+    /// had, so nothing already stored is read, rewritten, or even listed.
     ///
     /// A limited write truncates data the caller offered: an append is a
     /// write, so
@@ -589,13 +592,18 @@ pub trait IOMedia: Send {
     /// [`overwrite_arrow_reader`](Self::overwrite_arrow_reader), and a
     /// limit combined with a non-empty match key is refused the same way.
     /// `commit_batch_num` retains append intent for every bounded publication;
-    /// successful prefixes remain visible after a later failure.
+    /// successful prefixes remain visible after a later failure. With no
+    /// cadence a leaf or a folder publishes once at the end, and an Iceberg
+    /// table commits each time the held batches reach its target file size
+    /// (`write.target-file-size-bytes`), then the remainder.
     ///
     /// # Errors
     ///
-    /// Returns a listing, read, cast, encoding, or write failure. With no
-    /// commit cadence the resource stays unchanged until the replacement is
-    /// complete; with a positive cadence, completed prefixes stay published.
+    /// Returns a listing, read, cast, encoding, or write failure. A leaf or a
+    /// folder with no commit cadence stays unchanged until the rewrite is
+    /// complete; an Iceberg table with none, and any destination with a
+    /// positive cadence, keeps the commits completed before the failure
+    /// published.
     fn append_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -631,12 +639,25 @@ pub trait IOMedia: Send {
     /// after the declared field has been popped from a cloned options value, so
     /// the already-cast rows are never cast to that field twice.
     ///
+    /// A folder holding an Iceberg table merges the way the table does: the
+    /// partition columns lead the match key, so a key naming nothing beyond
+    /// them replaces the partitions the rows fall in, and otherwise only the
+    /// data files whose statistics say they can hold an incoming key are
+    /// read, the rest carried forward untouched. With no cadence it commits
+    /// each time the held batches reach its target file size
+    /// (`write.target-file-size-bytes`), then the remainder, and every
+    /// commit merges by the key: a keyed merge upserts per commit, and a
+    /// merge keyed by the partition alone replaces a partition on the first
+    /// commit of the write that reaches it and appends to it on every later
+    /// one, so no commit drops the rows an earlier one wrote.
+    ///
     /// # Errors
     ///
     /// Returns a read, cast, merge, encoding, or write failure. An empty match
     /// key is refused: use overwrite or append when rows have no identity.
-    /// `commit_batch_num` retains merge intent for every bounded publication;
-    /// successful prefixes remain visible after a later failure.
+    /// `commit_batch_num`, and an Iceberg table's own cadence where none is
+    /// stated, retain merge intent for every bounded publication; successful
+    /// prefixes remain visible after a later failure.
     fn merge_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,

@@ -88,7 +88,7 @@
 //! `main` remains future work, because a commit's parent is currently always
 //! the table's current snapshot.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1343,6 +1343,33 @@ impl<H: IOBase> Table<H> {
         merge_by: &crate::Selector,
         safe: bool,
     ) -> Result<()> {
+        self.commit_merge_cadence(
+            filters,
+            batches,
+            merge_by,
+            safe,
+            &mut ReplacedPartitions::default(),
+        )
+    }
+
+    /// One commit of a streamed merge: [`Self::commit_merge_where`] over
+    /// the partitions the write's earlier commits replaced.
+    ///
+    /// A merge keyed by the partition alone replaces the partitions its
+    /// rows fall in, and a stream cut into commits by its cadence must not
+    /// replace one per commit - that would keep only the last commit's rows
+    /// of each. So `replaced` carries the partitions this write has already
+    /// replaced: the first commit that reaches a partition replaces it and
+    /// records it, every later one carries its files and appends beside
+    /// them. A keyed merge joins by key on every commit and records nothing.
+    pub(crate) fn commit_merge_cadence(
+        &mut self,
+        filters: &[(&str, &str)],
+        batches: BatchReader,
+        merge_by: &crate::Selector,
+        safe: bool,
+        replaced: &mut ReplacedPartitions,
+    ) -> Result<()> {
         self.require_row_id_preserving_rewrite("merge")?;
         let schema = self.schema()?.clone();
         let spec = self.metadata.default_spec()?.clone();
@@ -1424,9 +1451,18 @@ impl<H: IOBase> Table<H> {
                 )));
             }
         }
+        let mut replacing: Vec<Vec<Scalar>> = Vec::new();
         for (write, tasks) in writes.iter_mut().zip(own) {
             if !keyed {
-                // The partition is the key: its files are replaced, not read.
+                // The partition is the key: its files are replaced, not
+                // read, by the first commit of the write that reaches it,
+                // and carried - this commit appends beside them - by every
+                // later commit of the same write.
+                if replaced.contains(&write.values) {
+                    carried.extend(tasks);
+                } else {
+                    replacing.push(write.values.clone());
+                }
                 continue;
             }
             let incoming: Vec<RecordBatch> = write
@@ -1458,6 +1494,9 @@ impl<H: IOBase> Table<H> {
                 entries: carried,
             },
         )?;
+        // Recorded once the commit is published: a commit that failed
+        // replaced nothing, and the write it belonged to is over.
+        replaced.tuples.extend(replacing);
         Ok(())
     }
 
@@ -2391,9 +2430,10 @@ impl<H: IOBase> Table<H> {
 /// already holds.
 ///
 /// A plain container handle addressing the table's folder answers the same
-/// contract - the three record methods, one commit per write - by probing the
-/// location for a table on every call. Holding the [`Table`] skips the probe:
-/// no metadata document is re-read, [`crate::IOMedia::read_arrow_field`] is
+/// contract - the three record methods, a commit per cadence of a write -
+/// by probing the location for a table on every call. Holding the
+/// [`Table`] skips the probe: no metadata document is re-read,
+/// [`crate::IOMedia::read_arrow_field`] is
 /// [`Table::schema`] with its field identifiers and protocol metadata rather
 /// than a shape lifted off decoded batches, and a
 /// [`partition_pairs`](IORecordOptions::partition_pairs) pair prunes data
@@ -2579,7 +2619,14 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         self.read_scoped(Filter::always_true(), options)
     }
 
-    /// One overwrite commit scoped to the selected partitions.
+    /// Replace the selected partitions, a commit per cadence of the stream.
+    ///
+    /// With no [`commit_batch_num`](IORecordOptions::commit_batch_num) the
+    /// cadence is the table's own: a commit each time the held batches
+    /// reach [`Table::target_file_size_bytes`], then the remainder. The
+    /// first commit overwrites and every later one appends, so a stream of
+    /// any length holds at most one target file of rows before a commit,
+    /// and the commits before a failure stay published.
     fn overwrite_arrow_reader(
         &mut self,
         batches: BatchReader,
@@ -2607,9 +2654,13 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         Ok(())
     }
 
-    /// One `append` snapshot, keeping every manifest the last one had.
+    /// Add the rows, an `append` snapshot per cadence of the stream, each
+    /// keeping every manifest the last one had.
     ///
-    /// A limited write truncates data the caller offered here too: an append
+    /// The cadence is the table's own where none is stated - a commit per
+    /// [`Table::target_file_size_bytes`] of held batches, then the
+    /// remainder - and the commits before a failure stay published. A
+    /// limited write truncates data the caller offered here too: an append
     /// is a write.
     fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
         options.require_write_mode(crate::IOMode::Append)?;
@@ -2633,12 +2684,19 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         Ok(())
     }
 
-    /// One merge commit scoped to the selected partitions.
+    /// Merge into the selected partitions, a commit per cadence of the stream.
     ///
     /// The partition columns lead the match key, so an empty
     /// [`merge_by`](IORecordOptions::merge_by) on a partitioned table
     /// replaces the partitions the rows fall in; see
-    /// [`Table::commit_merge_where`].
+    /// [`Table::commit_merge_where`]. The cadence is the table's own where
+    /// none is stated - a commit per [`Table::target_file_size_bytes`] of
+    /// held batches, then the remainder - and every commit merges by the
+    /// key: a keyed merge upserts per commit, and a merge keyed by the
+    /// partition alone replaces a partition on the first commit of the
+    /// write that reaches it and appends to it on every later one, so a
+    /// stream longer than the target loses no row. The commits before a
+    /// failure stay published.
     fn merge_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
         // The generic rule - a merge names a key - is met by the partition
         // columns of a partitioned table, so only an unpartitioned one has
@@ -2662,8 +2720,15 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
+        let mut replaced = ReplacedPartitions::default();
         for commit in options.commit_arrow_readers(batches, cadence)? {
-            self.commit_merge_where(&pairs, commit?, options.merge_by(), options.safe())?;
+            self.commit_merge_cadence(
+                &pairs,
+                commit?,
+                options.merge_by(),
+                options.safe(),
+                &mut replaced,
+            )?;
         }
         Ok(())
     }
@@ -2810,6 +2875,32 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
     window
         .checked_add(1)
         .map_or_else(|| hasher.finish(), |width| hasher.finish() % width)
+}
+
+/// The partitions one streamed merge has replaced, carried across its
+/// commits.
+///
+/// A merge keyed by the partition columns alone replaces the partitions its
+/// rows fall in. Cut into several commits by its cadence, it would replace
+/// each partition once per commit and keep only the last commit's rows, so
+/// [`Table::commit_merge_cadence`] replaces a partition on the first commit
+/// of a write that reaches it and appends to it on every later one. One
+/// value per write - a [`Table`] or [`super::Located`] stream, or a write
+/// session - and nothing a keyed merge records.
+///
+/// Bounded by the partitions the write's rows fall in: one tuple each,
+/// held until the write ends, because a later commit may reach any of them.
+#[derive(Debug, Default)]
+pub(crate) struct ReplacedPartitions {
+    /// The partition tuples replaced so far, in spec order.
+    tuples: HashSet<Vec<Scalar>>,
+}
+
+impl ReplacedPartitions {
+    /// Whether a commit of this write already replaced the partition.
+    fn contains(&self, tuple: &[Scalar]) -> bool {
+        self.tuples.contains(tuple)
+    }
 }
 
 /// One partition's rows to write, and the stored files they merge with.

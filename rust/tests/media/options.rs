@@ -930,48 +930,91 @@ fn a_reader_without_limits_is_returned_as_it_stands() {
     assert_eq!(rows(options.limit_arrow_reader(reader(3, 2)).unwrap()), 6);
 }
 
+/// The rows and the batches one publication reader carries.
+#[cfg(feature = "internals")]
+fn rows_and_batches(reader: BatchReader) -> (usize, usize) {
+    reader.fold((0, 0), |(rows, batches), batch| {
+        (rows + batch.unwrap().num_rows(), batches + 1)
+    })
+}
+
+/// `reader(count, per_batch)` with a zero-row batch before, between and
+/// after its batches.
+#[cfg(feature = "internals")]
+fn reader_with_empty_batches(count: i64, per_batch: i64) -> BatchReader {
+    let schema = schema().into_arrow_schema().unwrap();
+    let empty = RecordBatch::new_empty(Arc::clone(&schema));
+    let mut batches = vec![empty.clone()];
+    for index in 0..count {
+        batches.push(batch(index * per_batch..(index + 1) * per_batch));
+        batches.push(empty.clone());
+    }
+    yggdryl::arrow::batch_reader(schema, batches)
+}
+
 #[cfg(feature = "internals")]
 #[test]
 fn commit_readers_cut_whole_batches_at_the_cadence() {
     // A cadence counts batches and never cuts one: two batches a commit
     // over batches of two, four and one rows is six rows, then one.
     let schema = schema().into_arrow_schema().unwrap();
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_batch_num(2);
+    let commits = |source: BatchReader| {
+        yggdryl::internals::media_options::commit_arrow_readers(&options, source)
+            .unwrap()
+            .map(|commit| rows_and_batches(commit.unwrap()))
+            .collect::<Vec<_>>()
+    };
     let source =
         yggdryl::arrow::batch_reader(Arc::clone(&schema), [batch(0..2), batch(2..6), batch(6..7)]);
-    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_batch_num(2);
-    let commits = yggdryl::internals::media_options::commit_arrow_readers(&options, source)
-        .unwrap()
-        .map(|commit| rows(commit.unwrap()))
-        .collect::<Vec<_>>();
+    assert_eq!(commits(source), [(6, 2), (1, 1)]);
 
-    assert_eq!(commits, [6, 1]);
+    // An empty batch counts for nothing and is never published: the same
+    // rows with zero-row batches between them commit exactly the same.
+    let empty = RecordBatch::new_empty(Arc::clone(&schema));
+    let source = yggdryl::arrow::batch_reader(
+        Arc::clone(&schema),
+        [
+            batch(0..2),
+            empty.clone(),
+            batch(2..6),
+            empty.clone(),
+            batch(6..7),
+            empty,
+        ],
+    );
+    assert_eq!(commits(source), [(6, 2), (1, 1)]);
 }
 
 #[cfg(feature = "internals")]
 #[test]
 fn a_byte_cadence_closes_when_the_held_batches_reach_the_target() {
     // Two int64 rows a batch: sixteen bytes each, as `memory_size` counts.
-    let commits = |options: &RecordOptions, target: u64| {
-        yggdryl::internals::media_options::commit_arrow_readers_by_bytes(
-            options,
-            reader(4, 2),
-            target,
-        )
-        .unwrap()
-        .map(|commit| rows(commit.unwrap()))
-        .collect::<Vec<_>>()
+    let commits = |options: &RecordOptions, source: BatchReader, target: u64| {
+        yggdryl::internals::media_options::commit_arrow_readers_by_bytes(options, source, target)
+            .unwrap()
+            .map(|commit| rows_and_batches(commit.unwrap()))
+            .collect::<Vec<_>>()
     };
     let unstated = RecordOptions::Ipc(IpcOptions::new());
-    // A target under one batch: every batch is a cadence, none is cut.
-    assert_eq!(commits(&unstated, 1), [2, 2, 2, 2]);
-    // Reached inside the second batch: two batches a cadence.
-    assert_eq!(commits(&unstated, 24), [4, 4]);
-    assert_eq!(commits(&unstated, 32), [4, 4]);
-    // Never reached: one remainder.
-    assert_eq!(commits(&unstated, 1_000), [8]);
-    // A stated batch count wins over the destination's byte default.
-    let stated = RecordOptions::Ipc(IpcOptions::new()).with_commit_batch_num(3);
-    assert_eq!(commits(&stated, 1), [6, 2]);
+    // An empty batch counts for nothing, its zero bytes included, and is
+    // never published, so a stream with zero-row batches between its
+    // batches commits exactly as the same stream without them.
+    for source in [reader, reader_with_empty_batches] {
+        // A target under one batch: every batch is a cadence, none is cut.
+        assert_eq!(
+            commits(&unstated, source(4, 2), 1),
+            [(2, 1), (2, 1), (2, 1), (2, 1)]
+        );
+        // Reached inside the second batch: two batches a cadence.
+        assert_eq!(commits(&unstated, source(4, 2), 24), [(4, 2), (4, 2)]);
+        assert_eq!(commits(&unstated, source(4, 2), 32), [(4, 2), (4, 2)]);
+        // Never reached: one remainder.
+        assert_eq!(commits(&unstated, source(4, 2), 1_000), [(8, 4)]);
+        // A stated batch count wins over the destination's byte default.
+        let stated = RecordOptions::Ipc(IpcOptions::new()).with_commit_batch_num(3);
+        assert_eq!(commits(&stated, source(4, 2), 1), [(6, 3), (2, 1)]);
+    }
 }
 
 #[cfg(feature = "internals")]

@@ -391,6 +391,9 @@ enum ArrowWriteTarget {
     Iceberg {
         located: Box<crate::iceberg::Located>,
         stored: crate::Field,
+        /// The partitions this write's merge cadences replaced so far, so a
+        /// merge keyed by the partition alone replaces each once.
+        replaced: crate::iceberg::ReplacedPartitions,
     },
 }
 
@@ -652,6 +655,7 @@ impl ArrowWriteSession {
                 self.target = Some(ArrowWriteTarget::Iceberg {
                     located: Box::new(located),
                     stored,
+                    replaced: crate::iceberg::ReplacedPartitions::default(),
                 });
                 return Ok(());
             }
@@ -820,13 +824,16 @@ impl ArrowWriteSession {
                 }
             },
             #[cfg(feature = "iceberg")]
-            ArrowWriteTarget::Iceberg { located, .. } => match mode {
+            ArrowWriteTarget::Iceberg {
+                located, replaced, ..
+            } => match mode {
                 crate::IOMode::Overwrite => located.overwrite_prepared(batches)?,
                 crate::IOMode::Append => located.append_prepared(batches)?,
                 crate::IOMode::Merge => located.merge_prepared(
                     batches,
                     self.delegated.merge_by(),
                     self.delegated.safe(),
+                    replaced,
                 )?,
                 crate::IOMode::ReadOnly | crate::IOMode::Random => {
                     return Err(crate::Error::InvalidRecord {

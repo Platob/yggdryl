@@ -112,6 +112,7 @@ pub use partition::{FIRST_PARTITION_ID, PartitionField, PartitionSpec, Transform
 pub use scan::{ScanPlan, ScanTask};
 pub use schema::{assign_field_ids, last_column_id, schema_from_json, schema_into_json};
 pub use snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
+pub(crate) use table::ReplacedPartitions;
 pub use table::{CommitConflict, Compaction, Table};
 pub use types::PrimitiveType;
 
@@ -168,11 +169,17 @@ impl Located {
     }
 
     /// Publish one already-shaped merge cadence.
+    ///
+    /// `replaced` is the one write's accumulator of the partitions its
+    /// earlier cadences replaced, so a merge keyed by the partition alone
+    /// replaces each partition once and appends to it after; see
+    /// [`Table::commit_merge_cadence`].
     pub(crate) fn merge_prepared(
         &mut self,
         batches: crate::arrow::BatchReader,
         merge_by: &crate::Selector,
         safe: bool,
+        replaced: &mut ReplacedPartitions,
     ) -> Result<()> {
         let filters = self.filters.clone();
         let pairs: Vec<(&str, &str)> = filters
@@ -180,7 +187,7 @@ impl Located {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         self.table
-            .commit_merge_where(&pairs, batches, merge_by, safe)
+            .commit_merge_cadence(&pairs, batches, merge_by, safe, replaced)
     }
 
     /// Return the table a container handle addresses, if it addresses one.
@@ -252,7 +259,14 @@ impl Located {
         self.table.read_scoped(scope, options)
     }
 
-    /// Replace the addressed table partition in one commit.
+    /// Replace the addressed table partition, a commit per cadence of the
+    /// stream.
+    ///
+    /// With no [`commit_batch_num`](crate::media::IORecordOptions::commit_batch_num)
+    /// the cadence is the table's own - a commit each time the held batches
+    /// reach [`Table::target_file_size_bytes`], then the remainder - the
+    /// first commit overwriting and every later one appending, and the
+    /// commits before a failure stay published.
     ///
     /// # Errors
     ///
@@ -287,7 +301,12 @@ impl Located {
         Ok(())
     }
 
-    /// Add the rows as a new snapshot, keeping every stored file.
+    /// Add the rows, a snapshot per cadence of the stream, each keeping
+    /// every stored file.
+    ///
+    /// The cadence is the table's own where none is stated - a commit per
+    /// [`Table::target_file_size_bytes`] of held batches, then the
+    /// remainder - and the commits before a failure stay published.
     ///
     /// # Errors
     ///
@@ -321,7 +340,18 @@ impl Located {
         Ok(())
     }
 
-    /// Merge rows into the addressed table partition in one commit.
+    /// Merge rows into the addressed table partition, a commit per cadence
+    /// of the stream.
+    ///
+    /// The partition columns lead the match key, so a `merge_by` naming
+    /// nothing beyond them replaces the partitions the rows fall in; see
+    /// [`Table::commit_merge_where`]. The cadence is the table's own where
+    /// none is stated - a commit per [`Table::target_file_size_bytes`] of
+    /// held batches, then the remainder - and every commit merges by the
+    /// key: a keyed merge upserts per commit, and a merge keyed by the
+    /// partition alone replaces a partition on the first commit of the
+    /// write that reaches it and appends to it on every later one. The
+    /// commits before a failure stay published.
     ///
     /// # Errors
     ///
@@ -346,14 +376,9 @@ impl Located {
         let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
-        let filters: Vec<(String, String)> = self.filters.clone();
-        let pairs: Vec<(&str, &str)> = filters
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
+        let mut replaced = ReplacedPartitions::default();
         for commit in options.commit_arrow_readers(batches, cadence)? {
-            self.table
-                .commit_merge_where(&pairs, commit?, options.merge_by(), options.safe())?;
+            self.merge_prepared(commit?, options.merge_by(), options.safe(), &mut replaced)?;
         }
         Ok(())
     }

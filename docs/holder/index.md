@@ -2275,8 +2275,10 @@ Overwrite replaces, append keeps the stored rows, merge updates matching `merge_
 | `commit_batch_num` | publication |
 | --- | --- |
 | unset | the destination's own cadence: a leaf or a plain folder once, when the source ends; an Iceberg table each time the batches it holds reach its target file size (`write.target-file-size-bytes`), then the remainder |
-| `N > 0` | every `N` batches, then the remainder; a committed prefix survives a later failure |
+| `N > 0` | every `N` batches, then the remainder |
 | `0` | rejected before any input is pulled |
+
+Whatever the cadence, an overwrite's first commit replaces and every later one appends, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a stream longer than the target keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement.
 
 A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/index.md#iceberg). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
 

@@ -3,11 +3,14 @@
 use std::sync::Arc;
 
 use arrow_array::builder::{Int8Builder, ListBuilder};
+use arrow_array::types::Int32Type;
 use arrow_array::{
-    Array, ArrayRef, BooleanArray, DictionaryArray, Int8Array, Int64Array, RecordBatch,
-    StringArray, StringViewArray, StructArray,
+    Array, ArrayRef, BooleanArray, DictionaryArray, Int8Array, Int32Array, Int64Array,
+    LargeListViewArray, ListViewArray, RecordBatch, RunArray, StringArray, StringViewArray,
+    StructArray, UnionArray,
 };
-use arrow_schema::{DataType as ArrowType, Field as ArrowField, Schema};
+use arrow_buffer::ScalarBuffer;
+use arrow_schema::{DataType as ArrowType, Field as ArrowField, Schema, UnionFields};
 use yggdryl::arrow::{array_memory_size, memory_size, scalar_memory_size};
 use yggdryl::{DataType, Scalar};
 
@@ -140,5 +143,145 @@ fn a_scalar_costs_its_payload_and_a_fixed_row_width() {
     assert_eq!(
         scalar_memory_size(&held),
         16 + 16 + array_memory_size(&column.into_arrow_array().expect("an array"))
+    );
+}
+
+/// Cut a column into `pieces` equal slices and sum what each one costs.
+fn pieces_cost(column: &ArrayRef, pieces: usize) -> usize {
+    let width = column.len() / pieces;
+    (0..pieces)
+        .map(|piece| array_memory_size(&column.slice(piece * width, width)))
+        .sum()
+}
+
+#[test]
+fn a_run_end_slice_counts_only_the_runs_its_window_falls_in() {
+    // 256 runs of four rows: four bytes of run end and eight of value each.
+    let run_ends = Int32Array::from_iter_values((1..=256).map(|run| run * 4));
+    let values = Int64Array::from_iter_values(0..256);
+    let runs: ArrayRef = Arc::new(RunArray::<Int32Type>::try_new(&run_ends, &values).unwrap());
+    assert_eq!(runs.len(), 1024);
+    assert_eq!(array_memory_size(&runs), 256 * (4 + 8));
+
+    // Sixteen rows aligned to the runs reach four of them, never the
+    // parent's 256, so the slices sum to the column.
+    assert_eq!(array_memory_size(&runs.slice(16, 16)), 4 * (4 + 8));
+    assert_eq!(pieces_cost(&runs, 64), array_memory_size(&runs));
+    // A window inside one run reaches that run; one across a boundary both.
+    assert_eq!(array_memory_size(&runs.slice(1, 2)), 4 + 8);
+    assert_eq!(array_memory_size(&runs.slice(3, 2)), 2 * (4 + 8));
+    assert_eq!(array_memory_size(&runs.slice(5, 0)), 0);
+
+    // The batch measure reads the same column arm.
+    let whole = batch(vec![("price", Arc::clone(&runs))]);
+    let piece = whole.slice(16, 16);
+    assert_eq!(memory_size(&piece), 4 * (4 + 8));
+    assert!(memory_size(&piece) < memory_size(&whole));
+}
+
+#[test]
+fn a_dense_union_slice_counts_the_child_range_its_offsets_reach() {
+    // Rows alternate an int64 and an int32 child, each child's offsets
+    // counting up, so a row costs its type id, its offset and its value.
+    let fields = UnionFields::try_new(
+        vec![0_i8, 1],
+        vec![
+            ArrowField::new("wide", ArrowType::Int64, false),
+            ArrowField::new("narrow", ArrowType::Int32, false),
+        ],
+    )
+    .unwrap();
+    let type_ids: Vec<i8> = (0..1024).map(|row| (row % 2) as i8).collect();
+    let offsets: Vec<i32> = (0..1024).map(|row| row / 2).collect();
+    let union: ArrayRef = Arc::new(
+        UnionArray::try_new(
+            fields,
+            ScalarBuffer::from(type_ids),
+            Some(ScalarBuffer::from(offsets)),
+            vec![
+                Arc::new(Int64Array::from_iter_values(0..512)) as ArrayRef,
+                Arc::new(Int32Array::from_iter_values(0..512)) as ArrayRef,
+            ],
+        )
+        .unwrap(),
+    );
+    let whole = 1024 * (1 + 4) + 512 * 8 + 512 * 4;
+    assert_eq!(array_memory_size(&union), whole);
+
+    // Sixteen rows: sixteen type ids and offsets, eight values of each child.
+    let piece = array_memory_size(&union.slice(32, 16));
+    assert_eq!(piece, 16 * (1 + 4) + 8 * 8 + 8 * 4);
+    assert!(piece < whole);
+    assert_eq!(pieces_cost(&union, 64), whole);
+    // One row of the narrow child reaches that one value and no wide one.
+    assert_eq!(array_memory_size(&union.slice(1, 1)), 1 + 4 + 4);
+}
+
+#[test]
+fn a_sparse_union_slice_counts_its_children_as_the_slice_cut_them() {
+    let fields = UnionFields::try_new(
+        vec![0_i8, 1],
+        vec![
+            ArrowField::new("left", ArrowType::Int64, false),
+            ArrowField::new("right", ArrowType::Int64, false),
+        ],
+    )
+    .unwrap();
+    let type_ids: Vec<i8> = (0..1024).map(|row| (row % 2) as i8).collect();
+    let union: ArrayRef = Arc::new(
+        UnionArray::try_new(
+            fields,
+            ScalarBuffer::from(type_ids),
+            None,
+            vec![ids(1024), ids(1024)],
+        )
+        .unwrap(),
+    );
+    let whole = 1024 + 2 * 1024 * 8;
+    assert_eq!(array_memory_size(&union), whole);
+    assert_eq!(array_memory_size(&union.slice(16, 16)), 16 + 2 * 16 * 8);
+    assert_eq!(pieces_cost(&union, 64), whole);
+}
+
+#[test]
+fn a_list_view_slice_counts_its_offsets_sizes_and_the_child_range_they_reach() {
+    // Two values a row: an offset, a size and sixteen child bytes each.
+    let offsets: Vec<i32> = (0..1024).map(|row| row * 2).collect();
+    let field = Arc::new(ArrowField::new("item", ArrowType::Int64, false));
+    let lists: ArrayRef = Arc::new(
+        ListViewArray::try_new(
+            Arc::clone(&field),
+            ScalarBuffer::from(offsets),
+            ScalarBuffer::from(vec![2_i32; 1024]),
+            ids(2048),
+            None,
+        )
+        .unwrap(),
+    );
+    let whole = 1024 * (4 + 4 + 2 * 8);
+    assert_eq!(array_memory_size(&lists), whole);
+    let piece = array_memory_size(&lists.slice(16, 16));
+    assert_eq!(piece, 16 * (4 + 4 + 2 * 8));
+    assert!(piece < whole);
+    assert_eq!(pieces_cost(&lists, 64), whole);
+
+    // Rows may share or reorder their values: the range is the lowest
+    // offset to the highest end, and an empty row reaches nothing.
+    let shuffled: ArrayRef = Arc::new(
+        LargeListViewArray::try_new(
+            field,
+            ScalarBuffer::from(vec![6_i64, 0, 2, 9]),
+            ScalarBuffer::from(vec![2_i64, 2, 2, 0]),
+            ids(10),
+            None,
+        )
+        .unwrap(),
+    );
+    // Four eight-byte offsets and sizes, child values 0 to 8.
+    assert_eq!(array_memory_size(&shuffled), 4 * (8 + 8) + 8 * 8);
+    // Rows two and three: values 2 and 3 alone, the empty row reaching none.
+    assert_eq!(
+        array_memory_size(&shuffled.slice(2, 2)),
+        2 * (8 + 8) + 2 * 8
     );
 }

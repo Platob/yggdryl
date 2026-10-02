@@ -29,6 +29,7 @@
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, RecordBatch};
+use arrow_schema::{UnionFields, UnionMode};
 
 use crate::Scalar;
 
@@ -60,11 +61,16 @@ pub fn memory_size(batch: &RecordBatch) -> usize {
 /// A flat column counts its sliced buffers. The layouts whose values live
 /// elsewhere count what the slice reaches: a view column its sixteen-byte
 /// views and the out-of-line bytes they point at, a list or map only the
-/// child range its offsets span, a struct its children, a dictionary its keys
-/// sliced and its values whole. A layout that cannot be sliced so falls back
-/// to its whole buffers. A flat, struct or dictionary column is measured off
-/// its buffers with nothing allocated; a list, map or view column allocates
-/// the one `Arc` of the child window its offsets span.
+/// child range its offsets span, a list view the range its offsets and
+/// sizes reach, a struct its children, a run-end column the runs its window
+/// falls in - found by binary search over the run ends - and their values, a
+/// dense union its type ids and offsets with the range of each child they
+/// reach, a sparse union its type ids and its children (which its slice
+/// already cut), a dictionary its keys sliced and its values whole. A layout
+/// not named here falls back to its whole buffers. A flat, view, struct,
+/// sparse union or dictionary column is measured off its buffers with
+/// nothing allocated; a list, map, list view, run-end or dense union column
+/// allocates the one `Arc` of each child window it reaches.
 #[must_use]
 pub fn array_memory_size(column: &ArrayRef) -> usize {
     sliced_size(column.as_ref())
@@ -191,14 +197,127 @@ fn sliced_size(array: &dyn Array) -> usize {
             let dictionary = array.as_any_dictionary();
             sliced_size(dictionary.keys()) + dictionary.values().get_array_memory_size()
         }
-        _ => {
-            let whole = array.get_array_memory_size();
-            array
-                .to_data()
-                .get_slice_memory_size()
-                .map_or(whole, |sliced| sliced.min(whole))
+        ArrowType::ListView(_) => nulls + list_view_size(array.as_list_view::<i32>()),
+        ArrowType::LargeListView(_) => nulls + list_view_size(array.as_list_view::<i64>()),
+        // A run-end column keeps its validity on its values, so `nulls` is
+        // zero here and the values' own count carries it.
+        ArrowType::RunEndEncoded(run_ends, _) => match run_ends.data_type() {
+            ArrowType::Int16 => run_end_size::<arrow_array::types::Int16Type>(array),
+            ArrowType::Int32 => run_end_size::<arrow_array::types::Int32Type>(array),
+            ArrowType::Int64 => run_end_size::<arrow_array::types::Int64Type>(array),
+            _ => whole_size(array),
+        },
+        ArrowType::Union(fields, mode) => union_size(array.as_union(), fields, *mode),
+        _ => whole_size(array),
+    }
+}
+
+/// A layout the arms above do not cut: its whole buffers, as Arrow counts
+/// them, capped by what its own slice accounting reaches.
+fn whole_size(array: &dyn Array) -> usize {
+    let whole = array.get_array_memory_size();
+    array
+        .to_data()
+        .get_slice_memory_size()
+        .map_or(whole, |sliced| sliced.min(whole))
+}
+
+/// A run-end column's runs within its window, and the values they carry.
+///
+/// A slice keeps the whole run-end and value buffers and moves only its
+/// logical window, so the runs it falls in are found by binary search over
+/// the run ends - the first run holding the window's first row, the last
+/// holding its last - and only those runs and their values are counted.
+fn run_end_size<R: arrow_array::types::RunEndIndexType>(array: &dyn Array) -> usize {
+    use arrow_array::cast::AsArray;
+
+    let runs = array.as_run::<R>();
+    let ends = runs.run_ends();
+    if ends.is_empty() {
+        return 0;
+    }
+    let first = ends.get_start_physical_index();
+    let count = ends.get_end_physical_index() + 1 - first;
+    count * std::mem::size_of::<R::Native>()
+        + sliced_size(runs.values().slice(first, count).as_ref())
+}
+
+/// A union's type ids, and what its children cost within the window.
+///
+/// A sparse union's slice cuts every child to the window, so each counts as
+/// it stands. A dense union's slice cuts its type ids and offsets and keeps
+/// its children whole, so each child counts the range its rows of that
+/// type reach: from the lowest offset among them to the highest, found in
+/// one pass over the window.
+fn union_size(union: &arrow_array::UnionArray, fields: &UnionFields, mode: UnionMode) -> usize {
+    let type_ids = union.type_ids();
+    let mut size = std::mem::size_of_val(type_ids.as_ref());
+    match mode {
+        UnionMode::Sparse => {
+            for (type_id, _) in fields.iter() {
+                size += sliced_size(union.child(type_id).as_ref());
+            }
+        }
+        UnionMode::Dense => {
+            let Some(offsets) = union.offsets() else {
+                return whole_size(union);
+            };
+            size += std::mem::size_of_val(offsets.as_ref());
+            // A type id is a non-negative `i8`, so one slot per possible id
+            // holds every child's reach with nothing allocated.
+            let mut reached = [None::<(usize, usize)>; 128];
+            for (type_id, offset) in type_ids.iter().zip(offsets.iter()) {
+                let (Ok(slot), Ok(offset)) = (usize::try_from(*type_id), usize::try_from(*offset))
+                else {
+                    continue;
+                };
+                if let Some(span) = reached.get_mut(slot) {
+                    *span = Some(span.map_or((offset, offset), |(first, last)| {
+                        (first.min(offset), last.max(offset))
+                    }));
+                }
+            }
+            for (type_id, _) in fields.iter() {
+                let span = usize::try_from(type_id)
+                    .ok()
+                    .and_then(|slot| reached.get(slot).copied().flatten());
+                if let Some((first, last)) = span {
+                    size +=
+                        sliced_size(union.child(type_id).slice(first, last + 1 - first).as_ref());
+                }
+            }
         }
     }
+    size
+}
+
+/// A list view's offsets and sizes, and the child range they reach.
+///
+/// A list view's rows may overlap, share or skip child values in any order,
+/// so the range counted runs from the lowest offset a non-empty row states
+/// to the highest end one reaches; a null or empty row reaches nothing.
+fn list_view_size<O: arrow_array::OffsetSizeTrait>(
+    list: &arrow_array::GenericListViewArray<O>,
+) -> usize {
+    let offsets = list.offsets();
+    let sizes = list.sizes();
+    let mut reached: Option<(usize, usize)> = None;
+    for (row, (offset, size)) in offsets.iter().zip(sizes.iter()).enumerate() {
+        let size = size.as_usize();
+        if size == 0 || list.is_null(row) {
+            continue;
+        }
+        let first = offset.as_usize();
+        let last = first + size;
+        reached = Some(reached.map_or((first, last), |(low, high)| {
+            (low.min(first), high.max(last))
+        }));
+    }
+    std::mem::size_of_val(offsets.as_ref())
+        + std::mem::size_of_val(sizes.as_ref())
+        + reached.map_or(0, |(first, last)| {
+            sliced_size(list.values().slice(first, last - first).as_ref())
+        })
 }
 
 /// A list's offsets and the child range they span.

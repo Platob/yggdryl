@@ -5054,6 +5054,245 @@ mod handles {
         }
     }
 
+    /// Store a target file size on the table at `path`, so every handle
+    /// that opens it - a held [`Table`] or a folder addressing it - reads
+    /// the same cadence.
+    fn set_target_file_size(path: &std::path::Path, target: u64) {
+        Table::open(LocalFolder::new(path).unwrap())
+            .unwrap()
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property("write.target-file-size-bytes", target.to_string())?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    /// The snapshots the table at `path` holds, read afresh.
+    fn snapshots(path: &std::path::Path) -> usize {
+        Table::open(LocalFolder::new(path).unwrap())
+            .unwrap()
+            .metadata()
+            .snapshots()
+            .len()
+    }
+
+    /// `(id, symbol, venue)` triples as [`collect`] answers them.
+    fn triples(rows: &[(i64, &str, &str)]) -> Vec<(i64, Option<String>, Option<String>)> {
+        rows.iter()
+            .map(|(id, symbol, venue)| (*id, Some((*symbol).to_owned()), Some((*venue).to_owned())))
+            .collect()
+    }
+
+    #[test]
+    fn an_unset_cadence_commits_a_located_table_per_target_file_size_of_batches() {
+        // The folder addressing a table reads the table's own target: under
+        // the 512 MiB default every write is one commit; under a one-byte
+        // target every one-row batch reaches it and commits on its own, and
+        // every row still reads back exactly once.
+        for (label, target, per_batch) in [("default", None, false), ("tiny", Some(1), true)] {
+            let (path, mut folder) = table(&format!("handle-located-byte-cadence-{label}"));
+            if let Some(target) = target {
+                set_target_file_size(&path, target);
+            }
+            let options = options(&folder);
+            assert_eq!(options.commit_batch_num(), None, "{label}");
+            let commits = |batches: usize| if per_batch { batches } else { 1 };
+
+            // The first commit overwrites, every later one appends.
+            let batch = trades(
+                &[1, 2, 3],
+                &[Some("AAPL"), Some("MSFT"), Some("VOD")],
+                &[Some("XNAS"), Some("XNYS"), Some("XLON")],
+            );
+            folder
+                .overwrite_arrow_reader(one_row_batches(&batch), &options)
+                .unwrap();
+            let mut expected = commits(3);
+            assert_eq!(snapshots(&path), expected, "{label}");
+
+            let batch = trades(&[4, 5], &[Some("BP"), Some("SHEL")], &[Some("XLON"); 2]);
+            folder
+                .append_arrow_reader(one_row_batches(&batch), &options)
+                .unwrap();
+            expected += commits(2);
+            assert_eq!(snapshots(&path), expected, "{label}");
+
+            // A keyed merge upserts on every commit: the update of one
+            // commit and the insert of the next both land, once.
+            let merging = options.clone().with_merge_by(["id"]).unwrap();
+            let batch = trades(
+                &[2, 6],
+                &[Some("MSFT.L"), Some("ARM")],
+                &[Some("XNYS"), Some("XLON")],
+            );
+            folder
+                .merge_arrow_reader(one_row_batches(&batch), &merging)
+                .unwrap();
+            expected += commits(2);
+            assert_eq!(snapshots(&path), expected, "{label}");
+            assert_eq!(
+                collect(folder.read_arrow_reader(&options).unwrap()),
+                triples(&[
+                    (1, "AAPL", "XNAS"),
+                    (2, "MSFT.L", "XNYS"),
+                    (3, "VOD", "XLON"),
+                    (4, "BP", "XLON"),
+                    (5, "SHEL", "XLON"),
+                    (6, "ARM", "XLON"),
+                ]),
+                "{label}"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn an_unset_cadence_merges_a_held_table_per_target_file_size_keyed_or_not() {
+        let path = root("handle-table-merge-byte-cadence");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+        let mut explicit = yggdryl::iceberg::IcebergOptions::default();
+        explicit.set_target_file_size_bytes(1).unwrap();
+        table.set_options(explicit);
+        let options = yggdryl::IOMedia::record_options(&table)
+            .unwrap()
+            .with_field(schema);
+        assert_eq!(options.commit_batch_num(), None);
+        // One batch is one commit whatever the target.
+        let seed = trades(
+            &[10, 11, 12],
+            &[Some("OLD"); 3],
+            &[Some("XNAS"), Some("XLON"), Some("XNYS")],
+        );
+        table
+            .append_arrow_reader(
+                yggdryl::arrow::batch_reader(seed.schema(), [seed]),
+                &options,
+            )
+            .unwrap();
+        assert_eq!(table.metadata().snapshots().len(), 1);
+
+        // Keyed: a commit per one-row batch, each upserting by the key.
+        let keyed = options.clone().with_merge_by(["id"]).unwrap();
+        let batch = trades(
+            &[10, 20],
+            &[Some("NEW"), Some("ADD")],
+            &[Some("XNAS"), Some("XLON")],
+        );
+        table
+            .merge_arrow_reader(one_row_batches(&batch), &keyed)
+            .unwrap();
+        assert_eq!(table.metadata().snapshots().len(), 3);
+        assert_eq!(
+            collect(table.read_arrow_reader(&options).unwrap()),
+            triples(&[
+                (10, "NEW", "XNAS"),
+                (11, "OLD", "XLON"),
+                (12, "OLD", "XNYS"),
+                (20, "ADD", "XLON"),
+            ])
+        );
+
+        // Keyed by the partition alone: the first commit reaching a partition
+        // replaces it and every later one appends to it, so the four commits
+        // keep all four rows and the partition no row names keeps its own.
+        let batch = trades(
+            &[1, 2, 3, 4],
+            &[Some("A"), Some("B"), Some("C"), Some("D")],
+            &[Some("XNAS"), Some("XLON"), Some("XNAS"), Some("XLON")],
+        );
+        assert!(options.merge_by().is_empty());
+        table
+            .merge_arrow_reader(one_row_batches(&batch), &options)
+            .unwrap();
+        assert_eq!(table.metadata().snapshots().len(), 7);
+        assert_eq!(
+            collect(table.read_arrow_reader(&options).unwrap()),
+            triples(&[
+                (1, "A", "XNAS"),
+                (2, "B", "XLON"),
+                (3, "C", "XNAS"),
+                (4, "D", "XLON"),
+                (12, "OLD", "XNYS"),
+            ])
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_merge_keyed_by_the_partition_alone_keeps_every_row_across_its_commits() {
+        // Each door replaces a partition on the first commit of the write
+        // that reaches it and appends on the later ones: the held table with
+        // no key, the folder and a write session with the partition column
+        // as the key - the merge their own refusal of an empty key leaves.
+        let seed = trades(
+            &[10, 11, 12],
+            &[Some("OLD"); 3],
+            &[Some("XNAS"), Some("XLON"), Some("XNYS")],
+        );
+        let incoming = trades(
+            &[1, 2, 3, 4],
+            &[Some("A"), Some("B"), Some("C"), Some("D")],
+            &[Some("XNAS"), Some("XLON"), Some("XNAS"), Some("XLON")],
+        );
+        let expected = triples(&[
+            (1, "A", "XNAS"),
+            (2, "B", "XLON"),
+            (3, "C", "XNAS"),
+            (4, "D", "XLON"),
+            (12, "OLD", "XNYS"),
+        ]);
+        for door in ["table", "folder", "session"] {
+            let (path, mut folder) = table(&format!("handle-partition-merge-{door}"));
+            set_target_file_size(&path, 1);
+            let options = options(&folder);
+            folder
+                .append_arrow_reader(
+                    yggdryl::arrow::batch_reader(seed.schema(), [seed.clone()]),
+                    &options,
+                )
+                .unwrap();
+            let by_partition = options.clone().with_merge_by(["venue"]).unwrap();
+            match door {
+                "table" => {
+                    let mut table = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+                    table
+                        .merge_arrow_reader(one_row_batches(&incoming), &options)
+                        .unwrap();
+                }
+                "folder" => folder
+                    .merge_arrow_reader(one_row_batches(&incoming), &by_partition)
+                    .unwrap(),
+                _ => {
+                    // A session publishes by its own byte default, so one
+                    // batch a commit is asked for.
+                    let cadence = by_partition.clone().with_commit_batch_num(1);
+                    let mut session = yggdryl::ArrowWriteSession::merge(&cadence).unwrap();
+                    assert!(
+                        session
+                            .push(&mut folder, one_row_batches(&incoming))
+                            .unwrap()
+                    );
+                    session.finish(&mut folder).unwrap();
+                }
+            }
+            assert_eq!(snapshots(&path), 1 + 4, "{door}");
+            assert_eq!(
+                collect(folder.read_arrow_reader(&options).unwrap()),
+                expected,
+                "{door}"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
     #[test]
     fn a_table_source_failure_leaves_the_committed_prefix_visible() {
         let path = root("handle-table-partial-commit");

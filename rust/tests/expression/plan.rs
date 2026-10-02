@@ -894,6 +894,32 @@ mod streams {
     }
 
     #[test]
+    fn a_target_reads_its_commit_cadence_as_a_batch_count() {
+        let scratch = Scratch::new("cadence");
+        let plain = scratch.url("trades.arrows");
+        let holder = Target::parse(&format!("'{plain}'"))
+            .unwrap()
+            .holder(None)
+            .unwrap();
+        // Unstated, the destination keeps its own cadence.
+        let options = Target::parse(&format!("'{plain}'"))
+            .unwrap()
+            .record_options(&holder)
+            .unwrap();
+        assert_eq!(options.commit_batch_num(), None);
+        let target = Target::parse(&format!("'{plain}' with (commit_batch_num = '3')")).unwrap();
+        let options = target.record_options(&holder).unwrap();
+        assert_eq!(options.commit_batch_num(), Some(3));
+        // A cadence that is not a count is refused naming the knob.
+        let broken =
+            Target::parse(&format!("'{plain}' with (commit_batch_num = 'three')")).unwrap();
+        let error = broken.record_options(&holder).unwrap_err().to_string();
+        assert!(error.contains("$.with.commit_batch_num"), "{error}");
+        assert!(error.contains("a batch count"), "{error}");
+        assert!(error.contains("three"), "{error}");
+    }
+
+    #[test]
     fn a_holder_is_built_from_a_url_and_properties() {
         let scratch = Scratch::new("url");
         std::fs::write(scratch.0.join("t.csv"), b"id\n1\n").unwrap();
