@@ -2940,9 +2940,21 @@ struct GroupRows {
 
 impl GroupRows {
     /// Reduce the batch to this partition's rows, once.
+    ///
+    /// Rows that are one contiguous run of the batch - every partition of a
+    /// stream written in the order its partitions advance, such as a time
+    /// partition over rows in event order - are a zero-copy slice; only rows
+    /// interleaved with another partition's are gathered by a take.
     fn gather(&mut self) -> Result<()> {
         if let Some(rows) = self.rows.take() {
-            self.batch = arrow_select::take::take_record_batch(&self.batch, &rows)?;
+            let values = rows.values();
+            self.batch = match (values.first(), values.last()) {
+                // Indices arrive in batch order, so a run is first..=last.
+                (Some(&first), Some(&last)) if (last - first) as usize + 1 == values.len() => {
+                    self.batch.slice(first as usize, values.len())
+                }
+                _ => arrow_select::take::take_record_batch(&self.batch, &rows)?,
+            };
         }
         Ok(())
     }
@@ -3175,10 +3187,10 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<Dat
     if rows.is_empty() {
         return Ok(Vec::new());
     }
-    if !write.sort.is_empty() {
-        // Ordering needs the group's rows side by side; rows that keep their
-        // arrival order go to the encoder as the batches they arrived in, so
-        // an unsorted group is never copied into one batch first.
+    if !write.sort.is_empty() && !batches_sorted(&rows, write.sort)? {
+        // Ordering needs the group's rows side by side; a group already in
+        // order - each batch and every batch edge - goes to the encoder as
+        // the batches it arrived in, so it is never copied into one first.
         let batch =
             arrow_select::concat::concat_batches(&arrow_schema, &rows).map_err(Error::Arrow)?;
         rows = vec![sorted(batch, write.sort)?];
@@ -3199,30 +3211,68 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<Dat
     Ok(written)
 }
 
-/// Order one partition group's rows by the table's default sort order.
-///
-/// Rows already in that order are handed back as they are: one comparison
-/// pass over the key columns finds out, and a group that arrived sorted -
-/// the common case for a stream written in event order - is neither
-/// permuted nor copied.
+/// Order one partition group's rows, joined into one batch, by the table's
+/// default sort order: [`batches_sorted`] already found them out of order.
 fn sorted(batch: RecordBatch, sort: &[SortColumnSpec]) -> Result<RecordBatch> {
-    if batch.num_rows() < 2 {
-        return Ok(batch);
-    }
-    let columns: Vec<SortColumn> = sort
-        .iter()
+    let columns = batch_sort_columns(&batch, sort)?;
+    let indices = lexsort_to_indices(&columns, None).map_err(Error::Arrow)?;
+    arrow_select::take::take_record_batch(&batch, &indices).map_err(Error::Arrow)
+}
+
+/// The key columns of one batch under the table's default sort order.
+fn batch_sort_columns(batch: &RecordBatch, sort: &[SortColumnSpec]) -> Result<Vec<SortColumn>> {
+    sort.iter()
         .map(|column| {
             Ok(SortColumn {
-                values: column_at(&batch, &column.path)?,
+                values: column_at(batch, &column.path)?,
                 options: Some(column.options),
             })
         })
-        .collect::<Result<_>>()?;
-    if is_sorted(&columns)? {
-        return Ok(batch);
+        .collect()
+}
+
+/// Return whether a group's batches, read one after another, are already in
+/// the table's default sort order.
+///
+/// Each batch is read in one comparison pass over its key columns and each
+/// edge between two batches in one comparison of the last row before it with
+/// the first after it, so a group that arrived sorted - the common case for
+/// a stream written in event order - is neither joined, permuted nor copied.
+fn batches_sorted(batches: &[RecordBatch], sort: &[SortColumnSpec]) -> Result<bool> {
+    let mut previous: Option<Vec<SortColumn>> = None;
+    for batch in batches {
+        let columns = batch_sort_columns(batch, sort)?;
+        if !is_sorted(&columns)? {
+            return Ok(false);
+        }
+        if let Some(before) = &previous
+            && edge_descends(before, &columns)?
+        {
+            return Ok(false);
+        }
+        previous = Some(columns);
     }
-    let indices = lexsort_to_indices(&columns, None).map_err(Error::Arrow)?;
-    arrow_select::take::take_record_batch(&batch, &indices).map_err(Error::Arrow)
+    Ok(true)
+}
+
+/// Return whether the last row of one batch's key columns orders after the
+/// first row of the next batch's, each column under its own direction and
+/// nulls placement.
+fn edge_descends(before: &[SortColumn], after: &[SortColumn]) -> Result<bool> {
+    for (left, right) in before.iter().zip(after) {
+        let compare = arrow_ord::ord::make_comparator(
+            left.values.as_ref(),
+            right.values.as_ref(),
+            left.options.unwrap_or_default(),
+        )
+        .map_err(Error::Arrow)?;
+        match compare(left.values.len() - 1, 0) {
+            std::cmp::Ordering::Less => return Ok(false),
+            std::cmp::Ordering::Equal => {}
+            std::cmp::Ordering::Greater => return Ok(true),
+        }
+    }
+    Ok(false)
 }
 
 /// Return whether rows are already in lexical order over the key columns,
