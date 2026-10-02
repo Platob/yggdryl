@@ -563,7 +563,7 @@ Worker rules: no worker runs `cargo fmt --all` while others edit, and all edits 
 15. **Size answer.** Default: `memory_size` unchanged; a resident-only size answer is a follow-up.
 16. **Decode validation.** Default: kept. `with_skip_validation` is rejected because it would be a second `unsafe`.
 17. **Unsafe budget.** Default: zero new `unsafe` (`map_file` + `make_read_only`).
-18. **Windows proof.** Default: add a narrow `windows-latest` CI job running `cargo test --locked -p yggdryl --test root spill`, `--test serie spill` and `--test media merge` (default features). The alternative is to report Windows unproven.
+18. **Windows proof. DECIDED by the user ("Add windows too"):** add a narrow `windows-latest` job to `.github/workflows/ci.yml` running `cargo test --locked -p yggdryl --test root spill`, `--test serie spill` and `--test media merge` (default features), so the anonymous file's delete-on-close and the read-only mapping are proven on Windows; AGENTS.md §2's job table gains its row.
 19. **Re-mask under absent parents.** Default: unchanged in this change. A follow-up in `child_of`: skip the re-mask when the child's validity already covers the parent's absence (one word-wise AND, no allocation). This would make every spilled column heap-free.
 20. **Automatic spilling** by byte threshold or budget, and an IOBase "lend a Buffer" hook so the IPC medium reads `LocalFile` zero copy: default not in this change.
 21. **Expression roots and `into_arrow_schema` widening.** Default: unchanged, still refusing.
