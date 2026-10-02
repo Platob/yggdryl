@@ -2477,9 +2477,14 @@ fn shared_children<T>(
 }
 
 /// The one duplicate-key rule a mapping is held to, naming the index of the
-/// first entry restating an earlier key: a scan for a short mapping, a set
-/// past sixteen entries.
+/// first entry restating an earlier key: one pass for keys in strictly
+/// ascending order - distinct by that alone, since the order is total and
+/// agrees with equality - else a scan for a short mapping, a set past
+/// sixteen entries.
 fn unique_keys(entries: &[(Scalar, Scalar)]) -> Result<()> {
+    if entries.windows(2).all(|pair| pair[0].0 < pair[1].0) {
+        return Ok(());
+    }
     if entries.len() <= 16 {
         for (index, (key, _)) in entries.iter().enumerate() {
             if entries[..index].iter().any(|(existing, _)| existing == key) {

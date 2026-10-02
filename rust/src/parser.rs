@@ -2186,6 +2186,38 @@ pub(crate) fn folds_equal(left: &str, right: &str) -> bool {
     folded(left).eq(folded(right))
 }
 
+/// One spelling's [`folded`] form as a number: XXH64 over its UTF-8, so
+/// two spellings [`folds_equal`] calls one always answer one digest, and an
+/// index keyed by it confirms each hit with [`folds_equal`] rather than
+/// trusting the number.
+///
+/// An ASCII spelling folds one byte to one byte and is fed in stack chunks;
+/// any other is fed character by character, because one character can fold
+/// to several. The registry's own name key lowercases ASCII alone and is no
+/// substitute: `ÉTAT` and `état` are one fold and two of its keys.
+pub(crate) fn fold_digest(value: &str) -> u64 {
+    let mut state = crate::xxhash::Xxh64::new();
+    if value.is_ascii() {
+        let mut chunk = [0_u8; 64];
+        let mut held = 0;
+        for byte in value.bytes().filter(|byte| !is_dropped(*byte)) {
+            chunk[held] = byte.to_ascii_lowercase();
+            held += 1;
+            if held == chunk.len() {
+                state.write_bytes(&chunk);
+                held = 0;
+            }
+        }
+        state.write_bytes(&chunk[..held]);
+    } else {
+        let mut character_bytes = [0_u8; 4];
+        for character in folded(value) {
+            state.write_bytes(character.encode_utf8(&mut character_bytes).as_bytes());
+        }
+    }
+    state.as_u64()
+}
+
 pub(crate) fn normalized(value: &str) -> String {
     // Sized to the input once: a fold drops separators and lowercases the
     // rest, so the folded name is the input's length or near it.

@@ -1557,6 +1557,12 @@ fn broken_map_invariant(
     map: &crate::MappingType,
     entries: &[(Scalar, Scalar)],
 ) -> Option<(usize, &'static str)> {
+    // Keys in strictly ascending order are distinct and sorted at once: the
+    // order is total and agrees with equality, so the one pass a sorted map
+    // costs answers both invariants before either search below runs.
+    if entries.windows(2).all(|pair| pair[0].0 < pair[1].0) {
+        return None;
+    }
     if let Some(index) = duplicate_mapping_key_index(entries) {
         return Some((index, "map keys collide"));
     }

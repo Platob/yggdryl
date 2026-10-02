@@ -71,6 +71,12 @@ mod sealed {
         fn walked_parent_of(&self, kind: &IdType) -> Option<IdType>;
         /// [`Event::restating`].
         fn walked_restating(self, live: &Self) -> Self;
+        /// [`Event::finalized`] over the code the element already holds:
+        /// the identity its instant, place and cross hash derive, stamped
+        /// again without digesting what it states. A grid view moves only
+        /// instants, which feed no code, off a live element the walk keeps
+        /// settled, so its code stands and only the identity moves.
+        fn walked_restamp(&mut self);
         /// [`super::super::market::fill_execution`].
         fn walked_fill_execution(&mut self);
         /// Whether the walk chains this element at all.
@@ -145,6 +151,10 @@ mod sealed {
         }
         fn walked_restating(self, live: &Self) -> Self {
             self.restating(live)
+        }
+        fn walked_restamp(&mut self) {
+            let code = self.get_currhashcode();
+            self.finalized(code);
         }
         fn walked_fill_execution(&mut self) {
             let _ = super::super::market::fill_execution(self);
@@ -263,6 +273,17 @@ mod sealed {
                 }
                 (Self::Fix(this), Self::Fix(live)) => Self::Fix(Box::new((*this).restating(live))),
                 (this, _) => this,
+            }
+        }
+        /// Through the leaf's own [`Event::finalized`]; a value no walk
+        /// keeps alive is settled whole.
+        fn walked_restamp(&mut self) {
+            match self.as_event_operation_mut() {
+                Some(operation) => {
+                    let code = operation.get_currhashcode();
+                    operation.finalized(code);
+                }
+                None => self.finalize(),
             }
         }
         fn walked_fill_execution(&mut self) {
@@ -808,7 +829,9 @@ where
                 // chain's cross element whatever that identity derives. Its
                 // snapshot instant is the one its content was stated at -
                 // the live event's own, or the one a view it is kept - never
-                // the tick, which is its instant, nor a predecessor's.
+                // the tick, which is its instant, nor a predecessor's. Only
+                // instants moved, and they feed no code, so the live code
+                // stands and the identity is stamped again over it.
                 let mut snapshot = live.element.clone();
                 let cross = snapshot.get_crossuuid();
                 let original = snapshot
@@ -816,7 +839,7 @@ where
                     .or_else(|| snapshot.walked_currunix());
                 snapshot.walked_set_currunix(unix);
                 snapshot.walked_set_snapunix(original);
-                snapshot.finalize();
+                snapshot.walked_restamp();
                 snapshot.set_crossuuid(cross);
                 return Some(snapshot);
             }

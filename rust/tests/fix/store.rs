@@ -959,6 +959,40 @@ fn replacing_a_code_set_forgets_warm_typed_parse_memos() {
 }
 
 #[test]
+fn replacing_the_party_role_set_reads_a_warm_party_by_its_new_word() {
+    use yggdryl::graph::Operation;
+
+    let wire = b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=1|448=BROKER|447=D|452=1|10=0|";
+    let parse = |registry: &std::sync::Arc<FixRegistry>| {
+        super::fixed_codec(std::sync::Arc::clone(registry))
+            .parse_line(wire)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .get_partyids()
+            .clone()
+    };
+    let mut registry = std::sync::Arc::new(committed_registry().as_ref().clone());
+    let warm = parse(&registry);
+    assert_eq!(warm.get(&IdType::ExecutingFirm), Some("BROKER"));
+    assert_eq!(std::sync::Arc::strong_count(&registry), 1);
+    let set = registry
+        .codeset_of(registry.field(452).unwrap())
+        .unwrap()
+        .name()
+        .to_owned();
+    // The registry is mutated in place, so the memo that read `1` as
+    // `ExecutingFirm` is the one the next parse asks.
+    std::sync::Arc::make_mut(&mut registry)
+        .set_codeset(&set, &[FixCode::new("ClearingFirm", "1")])
+        .unwrap();
+    let replaced = parse(&registry);
+    assert_eq!(replaced.get(&IdType::ClearingFirm), Some("BROKER"));
+    assert_eq!(replaced.get(&IdType::ExecutingFirm), None);
+}
+
+#[test]
 fn a_stored_code_set_naming_another_stem_than_its_own_is_refused() {
     let root = scratch("codeset-stem");
     let mut folder = LocalFolder::new(&root).unwrap();

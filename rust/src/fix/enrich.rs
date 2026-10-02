@@ -373,11 +373,21 @@ fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
     }
     held.others.push(held.message);
     held.others.sort_by(reference_order);
+    // Every observation's sources, named once: a fold unions them, and a
+    // source reaches neither the code nor the identity, so the reference
+    // takes the whole union before the first fold and no fold below finds
+    // one to add - or settles again for one.
+    let sources: Vec<crate::Uuid> = held
+        .others
+        .iter()
+        .flat_map(|observation| observation.get_srcuuids().iter().copied())
+        .collect();
     let mut observations = held.others.into_iter();
     // The first is the reference, chosen once over every observation:
     // each fold keeps the earliest recording, so deciding again at
     // every pair would rank the rest against that instead.
     let mut reference = observations.next().expect("one session-event observation");
+    reference.set_srcuuids(sources);
     // The distinct contents already merged: a capture logs one event
     // at every hop, mostly as the same row, and merging a content
     // again fills nothing - so a repeat folds its facts alone.

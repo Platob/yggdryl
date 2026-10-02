@@ -288,7 +288,7 @@ pub use merge::Widening;
 pub use mic::*;
 pub(crate) use mime_type::MIMETYPE_EXTENSION_NAME;
 pub use mime_type::MimeTypeType;
-pub(crate) use parser::{folds_equal, normalized};
+pub(crate) use parser::{fold_digest, folds_equal, normalized};
 pub use pretty::Pretty;
 pub use ric::*;
 pub use runend::*;

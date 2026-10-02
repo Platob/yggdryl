@@ -822,6 +822,12 @@ fn a_grid_starts_no_earlier_than_the_first_fact_and_zero_preserves_source_stamps
             .collect::<Vec<_>>(),
         [(0, -1)]
     );
+    for view in walked.iter().filter(|event| event.get_snapunix().is_some()) {
+        let mut settled = view.clone();
+        settled.finalize();
+        settled.set_crossuuid(view.get_crossuuid());
+        assert_eq!(*view, settled, "a view is what settling it answers");
+    }
 
     // Without a grid the snapshot instant is left as it came, and a step
     // of no width is no grid.
@@ -1102,6 +1108,13 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
             snapshot.get_curruuid() == source.get_curruuid(),
             tick == source.get_currunix()
         );
+        // Only instants moved, and they feed no code: the view is stamped
+        // again over the live code, and is what settling a copy of it
+        // answers, under its chain's cross element.
+        let mut settled = snapshot.clone();
+        settled.finalize();
+        settled.set_crossuuid(snapshot.get_crossuuid());
+        assert_eq!(*snapshot, settled, "the view at {}", ms(tick));
     }
     assert!(walked.iter().all(|event| {
         event

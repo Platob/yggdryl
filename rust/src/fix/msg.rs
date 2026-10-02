@@ -13,6 +13,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::build::stated;
 use super::entry::{FixEntry, emit_bytes, emit_text, wire_text, wire_text_under};
 use super::identity::{self, FixCapture, FixHeader, FixLifted, Typed};
+use super::memo::{PartySlot, PartyWord};
 use super::registry::FixMap;
 use super::{FixId, FixIdMapKind, FixKey, FixRegistry};
 use crate::graph::facts::OperationEventFacts;
@@ -287,9 +288,11 @@ fn child_by_tag(
 
 /// The code sets a party is typed and sourced by: `PartyRole(452)`'s,
 /// `PartyIDSource(447)`'s and `AcctIDSource(660)`'s, each where the
-/// dictionary states one.
+/// dictionary states one, beside the memo that remembers what each text
+/// read as in them.
 #[derive(Clone, Copy)]
 pub(super) struct PartyCodes<'registry> {
+    memo: &'registry super::memo::Memo,
     roles: Option<super::FixCodeSet<'registry>>,
     sources: Option<super::FixCodeSet<'registry>>,
     accounts: Option<super::FixCodeSet<'registry>>,
@@ -304,6 +307,7 @@ impl<'registry> PartyCodes<'registry> {
                 .and_then(|field| registry.codeset_of(field))
         };
         Self {
+            memo: registry.memo(),
             roles: of(PARTY_ROLE),
             sources: of(PARTY_ID_SOURCE),
             accounts: of(ACCOUNT_SOURCE),
@@ -320,25 +324,66 @@ impl<'registry> PartyCodes<'registry> {
         role: Option<&str>,
         source: Option<&str>,
     ) -> Option<Identifier> {
-        let kind = match code_word(self.roles, role, "partyrole") {
-            Some(word) => word.parse().ok()?,
+        let kind = match role {
+            Some(role) => self.role(role)?,
             None => IdType::Party,
         };
-        let src = match code_word(self.sources, source, "partyidsource") {
-            Some(word) => word.parse().ok()?,
-            None => IdSource::Base,
-        };
+        let src = self.source(PartySlot::PartySource, self.sources, source)?;
         Identifier::new(IdKey::new(src, kind), value).ok()
     }
 
     /// The party `Account(1)` states: an [`IdType::Account`] sourced by its
     /// `AcctIDSource(660)`'s name, read through [`code_word`], where stated.
     fn account(&self, value: &str, source: Option<&str>) -> Option<Identifier> {
-        let src = match code_word(self.accounts, source, "acctidsource") {
-            Some(word) => word.parse().ok()?,
-            None => IdSource::Base,
-        };
+        let src = self.source(PartySlot::AccountSource, self.accounts, source)?;
         Identifier::new(IdKey::new(src, IdType::Account), value).ok()
+    }
+
+    /// The type a party's role `text` reads as through [`code_word`],
+    /// [`IdType::Party`] where it reads as no word; `None` where the word
+    /// is no type. Read once per distinct text and remembered.
+    fn role(&self, text: &str) -> Option<IdType> {
+        let text = text.trim();
+        let document = self.roles.map(super::FixCodeSet::document);
+        let read = || {
+            PartyWord::Role(
+                match code_word(self.roles, Some(text), PartySlot::Role.prefix()) {
+                    Some(word) => word.parse().ok(),
+                    None => Some(IdType::Party),
+                },
+            )
+        };
+        match self.memo.party_word(PartySlot::Role, document, text, read) {
+            PartyWord::Role(kind) => kind,
+            PartyWord::Source(_) => None,
+        }
+    }
+
+    /// The source a party's or an account's source `text` reads as in
+    /// `slot` through [`code_word`] over `codes`, [`IdSource::Base`] where
+    /// none is stated or it reads as no word; `None` where the word is no
+    /// source. Read once per distinct text and remembered.
+    fn source(
+        &self,
+        slot: PartySlot,
+        codes: Option<super::FixCodeSet<'registry>>,
+        text: Option<&str>,
+    ) -> Option<IdSource> {
+        let Some(text) = text else {
+            return Some(IdSource::Base);
+        };
+        let text = text.trim();
+        let read = || {
+            PartyWord::Source(match code_word(codes, Some(text), slot.prefix()) {
+                Some(word) => word.parse().ok(),
+                None => Some(IdSource::Base),
+            })
+        };
+        let document = codes.map(super::FixCodeSet::document);
+        match self.memo.party_word(slot, document, text, read) {
+            PartyWord::Source(src) => src,
+            PartyWord::Role(_) => None,
+        }
     }
 }
 
@@ -1889,7 +1934,9 @@ impl FixMsg {
             } else {
                 (mine, theirs)
             };
-            let kept = earlier.or(later).map(SmolStr::new);
+            // What is kept is this one's own or the other's: only the
+            // other's is stated again.
+            let takes_theirs = earlier.or(later) != mine;
             if let (Some(earlier), Some(later)) = (earlier, later)
                 && earlier != later
             {
@@ -1902,7 +1949,9 @@ impl FixMsg {
                     self.arrival_anomalies += 1;
                 }
             }
-            self.capture.set_provenance(tag, kept.as_deref());
+            if takes_theirs {
+                self.capture.set_provenance(tag, theirs);
+            }
         }
     }
 
@@ -2830,6 +2879,19 @@ impl FixMsg {
         self.event.finalized(code);
     }
 
+    /// What a settle moves when a split refiled a settled message: its
+    /// category, its state, its chain - each recorded as a crate column's
+    /// word, which no settle restates - and its sources. The fields, and so
+    /// the market, the maps and the parents read off them, stood still, so
+    /// what is left is the cross codes in step with the category and the
+    /// code the content digests to, and the identity they derive.
+    pub(super) fn settle_refiled(&mut self) {
+        debug_assert_eq!(self.stale, 0, "a refiled message moved no field");
+        self.event.sync_cross();
+        let code = self.currhashcode();
+        self.event.finalized(code);
+    }
+
     /// The security identifiers the message states, in rank order: the
     /// primary `SecurityID(48)` under its `SecurityIDSource(22)`, then each
     /// `secaltids` occurrence, each source read through
@@ -2902,9 +2964,11 @@ impl FixMsg {
     /// another type is [`Self::rebuild_idmaps`]'s.
     fn keyed_securityids(&self) -> SmallVec<[(SmolStr, crate::Result<Identifier>); 2]> {
         let declared = self.declared_identifiers();
+        let memo = self.registry.memo();
         let mut keyed = SmallVec::new();
         self.for_each_unmapped(|key, text| {
-            if let Some(made) = inferred_identifier(key, text, declared, false, IdType::is_security)
+            if let Some(made) =
+                inferred_identifier(memo, key, text, declared, false, IdType::is_security)
             {
                 keyed.push((SmolStr::new(key), made));
             }
@@ -3125,7 +3189,9 @@ impl FixMsg {
         let declared = self.declared_identifiers();
         self.for_each_unmapped(|key, text| {
             let Some(Ok(id)) =
-                inferred_identifier(key, text, declared, false, |kind| !kind.is_security())
+                inferred_identifier(registry.memo(), key, text, declared, false, |kind| {
+                    !kind.is_security()
+                })
             else {
                 return;
             };
@@ -5254,7 +5320,10 @@ impl Holds<'_> {
         metadata: &mut Metadata,
         lifted: &mut Lifted,
     ) {
-        match inferred_identifier(key, &text, identifiers, tagged, |_| true).and_then(Result::ok) {
+        let memo = self.registry.memo();
+        match inferred_identifier(memo, key, &text, identifiers, tagged, |_| true)
+            .and_then(Result::ok)
+        {
             Some(id) => lifted.push((SmolStr::new(key), text, id)),
             None => {
                 metadata.insert(SmolStr::new(key), text);
@@ -5275,8 +5344,10 @@ fn dropped_identifier(field: &str, id: &Identifier, held: &str) -> super::FixAno
 /// The identifier one unmapped scalar names, as [`Holds::land`] reads it,
 /// where its type is one `wanted` takes: `None` where its key names none of
 /// those or its value states nothing, the type's refusal where the type
-/// refuses it.
+/// refuses it. The key's reading is a fact of the dictionary and the key
+/// alone, so `memo` answers it once per distinct key and declaration.
 fn inferred_identifier(
+    memo: &super::memo::Memo,
     key: &str,
     value: &str,
     declared: Option<&str>,
@@ -5287,16 +5358,18 @@ fn inferred_identifier(
     if value.is_empty() || is_null_like(value) {
         return None;
     }
-    let names = declared
-        .into_iter()
-        .flat_map(|names| names.split(','))
-        .chain(
-            (!tagged)
-                .then(IdType::identifier_names)
-                .into_iter()
-                .flatten(),
-        );
-    let key = IdKey::infer(key, names)?;
+    let key = memo.identifier_key(declared, tagged, key, || {
+        let names = declared
+            .into_iter()
+            .flat_map(|names| names.split(','))
+            .chain(
+                (!tagged)
+                    .then(IdType::identifier_names)
+                    .into_iter()
+                    .flatten(),
+            );
+        IdKey::infer(key, names)
+    })?;
     wanted(key.kind()).then(|| Identifier::new(key, value))
 }
 

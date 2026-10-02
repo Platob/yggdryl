@@ -1451,6 +1451,82 @@ fn a_row_read_out_of_arrow_rebuilds_its_message_from_the_residual_map() {
     assert_eq!(held.into_row(&schema).unwrap(), row);
 }
 
+/// Children one fold names rebuild as the first of them, ASCII or not: a
+/// fixed row's root is wider than a level the rebuild scans, so its fold
+/// index decides which name a level already holds, and it decides as a scan
+/// of every child would - `Foo_Bar` before `foobar`, `ÉTAT` before `état`,
+/// and a residual entry of that fold, which rebuilds ahead of every column,
+/// before both.
+#[test]
+fn children_one_fold_names_rebuild_as_the_first_of_them_ascii_or_not() {
+    let (registry, reader) = reader();
+    let fixed = fix_schema(&registry, "fix").unwrap();
+    let tagged = |name: &str, tag: i32| {
+        let mut field = DataType::utf8().nullable_field(name);
+        field.as_fix_mut().set_tag(tag).unwrap();
+        field
+    };
+    let mut children = fixed.fields().to_vec();
+    let closing = children.len() - 1;
+    assert_eq!(children[closing].name(), "fixentries");
+    let extra = [
+        ("Foo_Bar", 9001, "a"),
+        ("foobar", 9002, "b"),
+        ("ÉTAT", 9004, "c"),
+        ("état", 9005, "d"),
+    ];
+    children.splice(
+        closing..closing,
+        extra.iter().map(|(name, tag, _)| tagged(name, *tag)),
+    );
+    let mut schema = fixed.clone();
+    schema
+        .set_dtype(
+            StructType::from_fields(children)
+                .map(DataType::from)
+                .unwrap(),
+        )
+        .unwrap();
+    let stated = |tag: i32, held: &yggdryl::FixMsg| {
+        held.get_by_tag(tag)
+            .and_then(|value| value.as_str().map(str::to_owned))
+    };
+    // `TimeInForce(59)` is the default the parse states; the bridge key
+    // rebuilds ahead of the columns as the unmapped entry it was parsed as.
+    for (line, foobar, children) in [
+        (
+            b"8=FIX.4.4|35=D|11=A|10=0|".as_slice(),
+            Some("a"),
+            ["timeinforce", "Foo_Bar", "ÉTAT"],
+        ),
+        (
+            b"8=FIX.4.4|35=D|11=A|FOO-BAR=z|10=0|".as_slice(),
+            None,
+            ["foobar", "timeinforce", "ÉTAT"],
+        ),
+    ] {
+        let message = reader.sole_line(line).unwrap();
+        let row = message.into_row(&schema).unwrap();
+        let filled = Scalar::from_sequence(row.as_sequence().unwrap().iter().enumerate().map(
+            |(index, cell)| match index.checked_sub(closing) {
+                Some(offset) if offset < extra.len() => Scalar::from(extra[offset].2),
+                _ => cell.clone(),
+            },
+        ));
+        let restored = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &filled).unwrap();
+        assert_eq!(stated(9001, &restored).as_deref(), foobar, "{line:?}");
+        assert_eq!(stated(9002, &restored), None, "{line:?}");
+        assert_eq!(stated(9004, &restored).as_deref(), Some("c"), "{line:?}");
+        assert_eq!(stated(9005, &restored), None, "{line:?}");
+        let names: Vec<&str> = restored
+            .entries()
+            .iter()
+            .map(yggdryl::FixEntry::name)
+            .collect();
+        assert_eq!(names, children, "{line:?}");
+    }
+}
+
 /// A group column whose counter column is null states its count by its
 /// occurrences, a column's as a run's.
 #[test]

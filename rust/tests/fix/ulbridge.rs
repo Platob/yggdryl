@@ -376,6 +376,36 @@ mod dataset {
             .expect("every line reads")
     }
 
+    /// Every grid view the capture's walk makes - one per minute and live
+    /// chain - is stamped again over the live message's code rather than
+    /// settled, and is exactly what settling a copy of it answers, stood
+    /// under its chain's cross element as a view is: its fields, its maps,
+    /// its identity and its anomalies. A message stating no cross code is a
+    /// chain of one, so settling it alone derives its cross element from
+    /// its own identity, which the view's tick moved.
+    #[test]
+    fn every_grid_view_of_the_capture_is_what_settling_it_answers() {
+        let codec = codec()
+            .with_exclude_msgtypes::<[&str; 0], &str>([])
+            .with_snapshot_ns(60_000_000_000);
+        let walked = codec
+            .lifecycle(line_messages(&codec))
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the capture walks");
+        let views: Vec<&FixMsg> = walked
+            .iter()
+            .filter(|message| message.get_snapunix().is_some())
+            .collect();
+        assert!(views.len() > 10, "the grid views: {}", views.len());
+        for view in views {
+            let mut settled = view.clone();
+            settled.finalize();
+            settled.set_crossuuid(view.get_crossuuid());
+            assert!(*view == settled, "{}", view.get_curruuid());
+            assert_eq!(view.anomalies(), settled.anomalies());
+        }
+    }
+
     /// A table read hour partition by hour partition hands the lifecycle its
     /// messages sorted by the instant they were stored under - the undated
     /// ones first, the walk dating them by their transactions - and the walk
@@ -583,6 +613,90 @@ mod dataset {
                 .collect::<Vec<_>>()
         };
         assert_eq!(walked(&codec, delivered(3)), walked(&codec, delivered(2)));
+    }
+
+    #[test]
+    fn a_capture_read_twice_walks_as_two_deliveries_naming_both_reads() {
+        // The capture read twice - its lines numbered on from the first read,
+        // so each line of the second is a line of its own - is every session
+        // event observed once per read, where two deliveries of one read
+        // observe it twice from the same lines. The walks answer the same
+        // rows and anomalies, and each session event names the union of what
+        // its observations name: its lines in both reads. A message keyed by
+        // no session event folds nothing: its second statement is a twin the
+        // walk's window drops, the first read's lines named alone.
+        let codec = codec().with_exclude_msgtypes::<[&str; 0], &str>([]);
+        let RecordOptions::Text(mut options) = reading() else {
+            panic!("a text read")
+        };
+        let first = framed(&options);
+        options.start_rownum = Some(i64::try_from(LINES).expect("a line count") + 1);
+        let second = framed(&options);
+        assert_eq!((first.len(), second.len()), (LINES, LINES));
+        let again: std::collections::HashMap<yggdryl::Uuid, yggdryl::Uuid> = first
+            .iter()
+            .zip(&second)
+            .map(|(first, second)| (first.get_curruuid(), second.get_curruuid()))
+            .inspect(|(first, second)| assert_ne!(first, second, "a line of its own"))
+            .collect();
+        let parsed = |lines: Vec<TextLine>| {
+            codec
+                .parse_text_lines(lines)
+                .collect::<yggdryl::Result<Vec<_>>>()
+                .expect("every line reads")
+        };
+        let once = parsed(first);
+        let read: Vec<FixMsg> = once.iter().cloned().chain(parsed(second)).collect();
+        let delivered: Vec<FixMsg> = once.iter().chain(&once).cloned().collect();
+        let walk = |messages: Vec<FixMsg>| {
+            codec
+                .lifecycle(messages)
+                .collect::<yggdryl::Result<Vec<_>>>()
+                .expect("the capture walks")
+        };
+        let (mut read, mut delivered) = (walk(read), walk(delivered));
+        assert_eq!(read.len(), delivered.len());
+        let (mut events, mut unions) = (0, 0);
+        for (read, delivered) in read.iter_mut().zip(&mut delivered) {
+            let folded = delivered.capture().msgsesseventid().is_some();
+            events += usize::from(folded);
+            let mut union: Vec<yggdryl::Uuid> = delivered
+                .get_srcuuids()
+                .iter()
+                .flat_map(|source| {
+                    std::iter::once(*source).chain(again.get(source).filter(|_| folded).copied())
+                })
+                .collect();
+            union.sort_unstable();
+            unions += usize::from(union.len() > delivered.get_srcuuids().len());
+            assert_eq!(
+                read.get_srcuuids(),
+                union.as_slice(),
+                "{}",
+                delivered.get_crosscode()
+            );
+            assert_eq!(read.anomalies(), delivered.anomalies());
+            // Everything else is the same walk.
+            read.set_srcuuids(Vec::new());
+            delivered.set_srcuuids(Vec::new());
+        }
+        // Every session event the walk answers names a line of each read.
+        assert_eq!((unions, events), (26, 26));
+        let stated = |messages: Vec<FixMsg>| {
+            let schema = super::format_target(&registry());
+            messages
+                .into_iter()
+                .map(|message| {
+                    format!(
+                        "{:?} {:?} {}",
+                        message.into_row(&schema).expect("a row"),
+                        OrderEvent::from(&message),
+                        message.digest(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(stated(read), stated(delivered));
     }
 
     /// The batch door's answer for the whole capture: a capture row in, one FIX

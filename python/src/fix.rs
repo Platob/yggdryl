@@ -2703,8 +2703,10 @@ impl PyFixCodec {
     /// `threads` is how many threads the line and row doors read on, the
     /// available CPUs when unstated; `threads=1` pulls a stream lazily,
     /// while more read a stream ahead and answer in its order. Arrow parse
-    /// doors give whole input batches to at most this many jobs and keep
-    /// their batch order; `include_msgtypes` and `exclude_msgtypes`
+    /// doors hand each thread one job at a time - an input batch, or one of
+    /// the row ranges, the core's 256 rows or more, that a batch past twice
+    /// that is cut into - and keep the input's order; `include_msgtypes` and
+    /// `exclude_msgtypes`
     /// are the message types a parse keeps and refuses, each read before a
     /// frame is built, spelled
     /// as codes or as names - `"0"`, `"Heartbeat"` - with `"unknown"`
@@ -3138,8 +3140,9 @@ impl PyFixCodec {
     /// the messages' `recdunix` and the sending clock of one stating none -
     /// and batches close on the bytes each row lands as
     /// against `batch_byte_size`. With more than one `threads`, at most that
-    /// many whole input batches are jobs at once and their answers stay in
-    /// input-batch order.
+    /// many jobs run at once - an input batch, or one of the row ranges, the
+    /// core's 256 rows or more, that a batch past twice that is cut into -
+    /// and their answers stay in input order.
     ///
     /// The capture's own columns fill nothing: the carried ones, and the one
     /// the crate tags - a `sourceurl` column - are read off the source row

@@ -4277,6 +4277,113 @@ mod threads {
         );
     }
 
+    /// A batch past twice [`FixCodec::PARALLEL_JOB_ROWS`] rows is cut into
+    /// row ranges the workers share, and the cut is invisible: the bridge
+    /// capture sixteen times over, read as the text reader batches it by
+    /// default - one batch of every line - and in batches of eight lines,
+    /// answers on four threads the messages and the batches it answers on
+    /// one, the output closing every eight rows across the cuts as well as
+    /// on its own bytes.
+    #[test]
+    fn arrow_parse_pool_cuts_a_large_batch_into_rows_answering_what_one_thread_does() {
+        let (_, mut options) = capture();
+        let source = Buffer::from_bytes(include_bytes!("ulbridge.log").repeat(16)).with_media_type(
+            Url::from_str("file:///ulbridge.log")
+                .expect("a URL")
+                .media_type(),
+        );
+        let one = super::fixed_codec(super::committed_registry())
+            .with_exclude_msgtypes::<[&str; 0], &str>([]);
+        let four = one.clone().with_threads(4);
+        let whole: RecordOptions = options.clone().into();
+        let held = source
+            .read_arrow_reader(&whole)
+            .expect("a text reader")
+            .map(|batch| batch.expect("a batch").num_rows())
+            .collect::<Vec<_>>();
+        assert_eq!(held.len(), 1, "one batch of every line");
+        assert!(held[0] > 4 * FixCodec::PARALLEL_JOB_ROWS, "{held:?}");
+        options.batch_row_size = Some(8);
+        let eights: RecordOptions = options.into();
+        for (record, closing) in [(&whole, 8), (&eights, FixCodec::DEFAULT_BATCH_ROW_SIZE)] {
+            let reader = || source.read_arrow_reader(record).expect("a text reader");
+            let (one, four) = (
+                one.clone().with_batch_row_size(closing),
+                four.clone().with_batch_row_size(closing),
+            );
+            let read = messages(one.parse_arrow_messages(reader()).expect("messages"));
+            assert!(read.len() > 16 * 100, "{}", read.len());
+            same_messages(
+                &read,
+                &messages(four.parse_arrow_messages(reader()).expect("messages")),
+            );
+            same_batches(
+                &batches(one.parse_text_arrow_reader(reader()).expect("a reader")),
+                &batches(four.parse_text_arrow_reader(reader()).expect("a reader")),
+            );
+        }
+    }
+
+    /// A cell the landing refuses costs its row alone wherever the cut put
+    /// it, and its warning names the row of the source batch - never the
+    /// row of the range a worker was handed.
+    #[test]
+    fn arrow_parse_pool_names_a_refused_cell_by_the_row_of_its_source_batch() {
+        use std::fmt::Write as _;
+
+        const ROWS: usize = 4096;
+        // A code no member of the state enum takes.
+        const FOREIGN: u16 = 7;
+        let capture = yggdryl::DataType::from(
+            yggdryl::StructType::from_fields([
+                yggdryl::DataType::binary().required_field("body"),
+                yggdryl::DataType::State.nullable_field("cutstate"),
+            ])
+            .unwrap(),
+        )
+        .required_field("capture");
+        let frames: Vec<Vec<u8>> = (0..ROWS)
+            .map(|row| {
+                let mut frame = String::new();
+                write!(frame, "8=FIX.4.4|35=D|11=R{row}|10=0|").unwrap();
+                frame.into_bytes()
+            })
+            .collect();
+        let mut codes = vec![yggdryl::State::New.code(); ROWS];
+        codes[ROWS - 1] = FOREIGN;
+        let batch = RecordBatch::try_new(
+            capture.into_arrow_schema().unwrap(),
+            vec![
+                Arc::new(arrow_array::BinaryArray::from_iter_values(&frames)),
+                Arc::new(arrow_array::UInt16Array::from(codes)),
+            ],
+        )
+        .unwrap();
+        const { assert!(ROWS > 2 * FixCodec::PARALLEL_JOB_ROWS, "the batch is cut") };
+        let codec = super::fixed_codec(super::committed_registry()).with_threads(4);
+        let (read, warnings) = crate::warned::naming("yggdryl::fix::batch", "cutstate", || {
+            codec
+                .parse_arrow_messages(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap()
+                .collect::<yggdryl::Result<Vec<FixMsg>>>()
+                .expect("a refused row is no error")
+        });
+        assert_eq!(read.len(), ROWS - 1, "every row but the refused one");
+        for (row, message) in read.iter().enumerate() {
+            let id = message.get_by_tag(11).unwrap();
+            assert_eq!(
+                id.as_str(),
+                Some(format!("R{row}").as_str()),
+                "in row order"
+            );
+        }
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0].contains(&format!("in row {} of its batch", ROWS - 1)),
+            "{warnings:?}"
+        );
+    }
+
     /// The source's own failure is yielded after every message read before
     /// it, and ends the stream: nothing after a reader that failed is read.
     #[test]

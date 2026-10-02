@@ -36,7 +36,7 @@ use std::thread::JoinHandle;
 
 /// How many line chunks one lane holds: the chunk its worker is working,
 /// and the one waiting behind it, so the worker never idles while the puller
-/// reads the next. Whole-batch jobs override this with one.
+/// reads the next. Batch jobs override this with one.
 pub(crate) const LANE_DEPTH: usize = 2;
 
 /// `work` over every item of `source`, on `threads` threads, in order.
@@ -87,8 +87,8 @@ pub struct Ordered<I: Iterator, R, F> {
 
 impl<I: Iterator, R, F> Ordered<I, R, F> {
     /// Limits the chunks each worker may hold. Batch jobs use one: each job
-    /// already owns a whole input batch, while line chunks retain the normal
-    /// read-ahead depth.
+    /// already owns an input batch or a row range of one, while line chunks
+    /// retain the normal read-ahead depth.
     #[must_use]
     pub fn with_lane_depth(mut self, lane_depth: usize) -> Self {
         self.lane_depth = lane_depth.max(1);

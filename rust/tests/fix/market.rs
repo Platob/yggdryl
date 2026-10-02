@@ -227,6 +227,63 @@ fn an_order_execution_splits_off_one_filled_execution_message() {
     assert_eq!(acknowledged[0].msgcat(), MarketDataKind::Order);
 }
 
+/// A fill's report and the execution split off it are settled by what the
+/// split moved alone - the category, the state, the chain, the sources -
+/// never by rebuilding what the fields state: each is exactly what a whole
+/// settle of it answers, anomalies included, over every line of the bridge
+/// capture that splits an execution off and over the numeric fills here.
+#[test]
+fn a_fill_and_its_report_are_what_a_whole_settle_answers() {
+    let codec = fixed_codec(committed_registry()).with_exclude_msgtypes::<[&str; 0], &str>([]);
+    let numeric: [&[u8]; 3] = [
+        b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|10=0|",
+        b"8=FIX.4.4|35=8|17=E-2|37=O-9|39=1|150=F|55=AAPL|54=2|32=5|31=10|10=0|",
+        b"8=FIX.4.2|35=8|17=E-3|37=O-9|117=Q-1|39=2|150=2|55=AAPL|54=1|32=5|31=10|453=1|448=BROKER|447=D|452=1|10=0|",
+    ];
+    let lines = include_bytes!("ulbridge.log")
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .chain(numeric);
+    let (mut fills, mut reports) = (0, 0);
+    for line in lines {
+        let Ok(parsed) = codec.parse_line(line) else {
+            continue;
+        };
+        let messages: Vec<FixMsg> = parsed.filter_map(Result::ok).collect();
+        let Some((report, split)) = messages.split_first() else {
+            continue;
+        };
+        if !split
+            .iter()
+            .any(|held| held.msgcat() == MarketDataKind::Execution)
+        {
+            continue;
+        }
+        reports += usize::from(report.msgcat() != MarketDataKind::Trade);
+        for held in &messages {
+            fills += usize::from(held.msgcat() == MarketDataKind::Execution);
+            let mut settled = held.clone();
+            settled.finalize();
+            assert!(
+                settled == *held,
+                "a {} message split off {:?} is not what a settle answers",
+                held.msgcat().as_str(),
+                String::from_utf8_lossy(line)
+            );
+            assert_eq!(settled.anomalies(), held.anomalies());
+            assert_eq!(settled.get_currhashcode(), held.get_currhashcode());
+            assert_eq!(settled.get_curruuid(), held.get_curruuid());
+        }
+    }
+    // Every numeric fill and the bridge's own: a fixture that stopped
+    // splitting would pass the loop by checking nothing.
+    assert!(
+        reports > numeric.len(),
+        "{reports} reports split a fill off"
+    );
+    assert!(fills >= reports, "{fills} executions");
+}
+
 /// A12: a trade splits off one sided execution message per `NoSides(552)`
 /// occurrence, each an `ExecutionReport` of its side and `FILLED`, and the
 /// trade itself is no leaf: its fills are those messages, once.

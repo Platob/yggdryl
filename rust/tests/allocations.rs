@@ -4970,15 +4970,45 @@ struct StageCosts {
 /// 8: its instrument registry takes its own table on its first learn, the
 /// empty registry sharing one static table until then.
 ///
+/// A fill's report and the execution split off it then came to settle by
+/// what the split recorded alone - the category, the state, the chain, the
+/// sources - which moves no field, so neither rebuilds the identifier maps
+/// a whole settle rebuilt off the fields its parse had already read. The
+/// bridge row's parse fell by eighteen to 574, the nine that rebuild cost
+/// at each of its two settles after the first: its identifier set grown
+/// twice (to four, then eight) by what its fields state and once past
+/// eight by the keys its unmapped entries name; its party set grown three
+/// times (to four, eight and sixteen) by the fifteen its group and its
+/// `Account(1)` state and once past sixteen by its unmapped entries; and
+/// the two occurrences stating the source
+/// `generallyacceptedmarketparticipantidentifier`, a text past `SmolStr`'s
+/// inline width, read again. A frame's fell by eight to 237, the four at
+/// each: its five identifiers grown twice, the fifth a regulatory trade
+/// identifier, and its five parties twice. The packed frame is a trade,
+/// whose sides settle whole, and did not move.
+///
+/// A map whose keys stand in strictly ascending order then came to prove
+/// them distinct in the one pass that proves them sorted, and a map past
+/// sixteen entries no longer builds the set its duplicate search held. A
+/// map is checked where its entries are gathered and again where its row is
+/// canonicalized, a map built in the metadata or residual's own order at
+/// both and a party map at the second alone, and a landing checks each once
+/// more. The bridge row's `into_row` fell by five to 111, its metadata's
+/// thirty-three keys and its residual's eighteen twice each and its eighteen
+/// parties once, and its landing by three to 1512; a frame's fell by four
+/// to 91, its metadata's seventeen keys and its residual's twenty-two twice
+/// each, and by two to 1494; the packed frame's by two to 260, its
+/// metadata's eighteen keys twice, and by one to 1532.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 592,
-            into_row: 116,
-            landing: 1515,
+            parse: 574,
+            into_row: 111,
+            landing: 1512,
             batch: 212,
             digest: 24,
             lifecycle: 8,
@@ -4988,9 +5018,9 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_pipe",
         72,
         StageCosts {
-            parse: 245,
-            into_row: 95,
-            landing: 1496,
+            parse: 237,
+            into_row: 91,
+            landing: 1494,
             batch: 212,
             digest: 24,
             lifecycle: 8,
@@ -5001,8 +5031,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         111,
         StageCosts {
             parse: 1153,
-            into_row: 262,
-            landing: 1533,
+            into_row: 260,
+            landing: 1532,
             batch: 212,
             digest: 16,
             lifecycle: 8,

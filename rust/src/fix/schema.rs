@@ -1342,13 +1342,15 @@ fn is_field_key(registry: &FixRegistry, tag: i32, name: &str) -> bool {
 fn content_from_entries(
     registry: &FixRegistry,
     entries: &[super::FixEntry],
+    tags: &TagCounts,
 ) -> Result<(Vec<Field>, Vec<crate::Scalar>)> {
     let mut fields: Vec<Field> = Vec::with_capacity(entries.len());
     let mut values: Vec<crate::Scalar> = Vec::with_capacity(entries.len());
+    let mut folds = FoldIndex::default();
     for entry in entries {
         let (mut field, value) = child_from_entry(registry, entry, None)?;
-        preserve_contended_name(entries, entry, &mut field);
-        push_child(registry, &mut fields, &mut values, field, value);
+        preserve_contended_name(tags, entry, &mut field);
+        push_child(registry, &mut fields, &mut values, &mut folds, field, value);
     }
     Ok((fields, values))
 }
@@ -1356,20 +1358,159 @@ fn content_from_entries(
 /// Keeps distinct names when several residual entries contend for one tag.
 /// The registry still supplies their datatype and metadata; the row name is
 /// the fact that keeps both children addressable instead of collapsing them.
-fn preserve_contended_name(
-    entries: &[super::FixEntry],
-    entry: &super::FixEntry,
-    field: &mut Field,
-) {
+fn preserve_contended_name(tags: &TagCounts, entry: &super::FixEntry, field: &mut Field) {
     if entry.tag() != 0
-        && entries
-            .iter()
-            .filter(|held| held.tag() == entry.tag())
-            .count()
-            > 1
+        && tags.count(entry.tag()) > 1
         && !crate::folds_equal(field.name(), entry.name())
     {
         field.set_name(entry.held_name().clone());
+    }
+}
+
+/// How many of one level's entries state each tag, and which states it
+/// first: counted once per level, so whether a name is contended, whether a
+/// column's tag is stated twice and which entry owns it are each a binary
+/// search rather than a pass over every entry.
+///
+/// Held on the stack up to 64 distinct tags - the widest residual the
+/// crate's suites rebuild states 27 - and spilling to the heap past it.
+struct TagCounts {
+    /// Each tag stated, the position of its first entry and how many
+    /// entries state it, sorted by tag.
+    counted: SmallVec<[(i32, usize, usize); 64]>,
+}
+
+impl TagCounts {
+    /// The counts of `entries`, in one pass.
+    fn of(entries: &[super::FixEntry]) -> Self {
+        let mut counted: SmallVec<[(i32, usize, usize); 64]> = SmallVec::new();
+        for (at, entry) in entries.iter().enumerate() {
+            match counted.binary_search_by_key(&entry.tag(), |held| held.0) {
+                Ok(slot) => counted[slot].2 += 1,
+                Err(slot) => counted.insert(slot, (entry.tag(), at, 1)),
+            }
+        }
+        Self { counted }
+    }
+
+    /// How many entries state `tag`.
+    fn count(&self, tag: i32) -> usize {
+        self.held(tag).map_or(0, |held| held.2)
+    }
+
+    /// The position of the first entry stating `tag`.
+    fn first(&self, tag: i32) -> Option<usize> {
+        self.held(tag).map(|held| held.1)
+    }
+
+    fn held(&self, tag: i32) -> Option<&(i32, usize, usize)> {
+        self.counted
+            .binary_search_by_key(&tag, |held| held.0)
+            .ok()
+            .map(|slot| &self.counted[slot])
+    }
+}
+
+/// The children of one level by the fold of their names, so whether a level
+/// already holds a name is a binary search rather than a
+/// [`crate::folds_equal`] against every child.
+///
+/// A level shorter than [`Self::SCANNED_BELOW`] is scanned as it stands: the
+/// digests are taken the first time the level is asked past that bound, and
+/// every change after it goes through the method naming it - a push, a
+/// rename, a replacement, a swap - so they stay in step with the children. A
+/// [`crate::fold_digest`] only proposes a child: each is confirmed with
+/// [`crate::folds_equal`], and the lowest position confirmed answers.
+///
+/// The digests are held on the stack up to 256 children - the fixed row
+/// with the widest message content the crate's suites rebuild is 176 - and
+/// spill to the heap past it.
+#[derive(Default)]
+struct FoldIndex {
+    /// Each child's fold digest beside its position, sorted.
+    digests: SmallVec<[(u64, usize); 256]>,
+    /// Whether `digests` holds every child: false until the level is asked
+    /// past [`Self::SCANNED_BELOW`].
+    built: bool,
+}
+
+impl FoldIndex {
+    /// The level size from which digests answer faster than a scan.
+    const SCANNED_BELOW: usize = 16;
+
+    /// The first of `fields` whose name folds to `name`.
+    fn first(&mut self, fields: &[Field], name: &str) -> Option<usize> {
+        if !self.built {
+            if fields.len() < Self::SCANNED_BELOW {
+                return fields
+                    .iter()
+                    .position(|held| crate::folds_equal(held.name(), name));
+            }
+            self.digests = fields
+                .iter()
+                .enumerate()
+                .map(|(at, held)| (crate::fold_digest(held.name()), at))
+                .collect();
+            self.digests.sort_unstable();
+            self.built = true;
+        }
+        let digest = crate::fold_digest(name);
+        let from = self.digests.partition_point(|held| held.0 < digest);
+        self.digests[from..]
+            .iter()
+            .take_while(|held| held.0 == digest)
+            .map(|held| held.1)
+            .find(|at| crate::folds_equal(fields[*at].name(), name))
+    }
+
+    /// Appends `field` to `fields`.
+    fn push(&mut self, fields: &mut Vec<Field>, field: Field) {
+        self.named(field.name(), fields.len());
+        fields.push(field);
+    }
+
+    /// Puts `field` in place of the child at `at`.
+    fn set(&mut self, fields: &mut [Field], at: usize, field: Field) {
+        self.unnamed(fields[at].name(), at);
+        self.named(field.name(), at);
+        fields[at] = field;
+    }
+
+    /// Renames the child at `at`.
+    fn rename(&mut self, fields: &mut [Field], at: usize, name: String) {
+        self.unnamed(fields[at].name(), at);
+        self.named(&name, at);
+        fields[at].set_name(name);
+    }
+
+    /// Swaps the children at `left` and `right`.
+    fn swap(&mut self, fields: &mut [Field], left: usize, right: usize) {
+        if left == right {
+            return;
+        }
+        self.unnamed(fields[left].name(), left);
+        self.unnamed(fields[right].name(), right);
+        self.named(fields[left].name(), right);
+        self.named(fields[right].name(), left);
+        fields.swap(left, right);
+    }
+
+    /// Records `name` at `at`, once the digests are taken.
+    fn named(&mut self, name: &str, at: usize) {
+        if self.built {
+            let held = (crate::fold_digest(name), at);
+            let slot = self.digests.partition_point(|probe| *probe < held);
+            self.digests.insert(slot, held);
+        }
+    }
+
+    /// Forgets `name` at `at`, once the digests are taken.
+    fn unnamed(&mut self, name: &str, at: usize) {
+        if self.built
+            && let Ok(slot) = self.digests.binary_search(&(crate::fold_digest(name), at))
+        {
+            self.digests.remove(slot);
+        }
     }
 }
 
@@ -1380,29 +1521,25 @@ fn push_child(
     registry: &FixRegistry,
     fields: &mut Vec<Field>,
     values: &mut Vec<crate::Scalar>,
+    folds: &mut FoldIndex,
     field: Field,
     value: crate::Scalar,
 ) {
-    let taken = |fields: &[Field], name: &str| {
-        fields
-            .iter()
-            .any(|held| crate::folds_equal(held.name(), name))
-    };
     if let Some(counter) = field.as_fix().counter().ok().flatten()
         && let Some(scalar) = registry.get_scalar_by_tag(counter)
-        && !taken(fields, scalar.name())
+        && folds.first(fields, scalar.name()).is_none()
     {
         let count = value.as_serie().map_or(0, crate::Serie::len);
         let count = super::build::typed_spelling(registry, scalar, &count.to_string());
         let mut scalar = scalar.clone();
         scalar.set_nullable(count.is_null());
-        fields.push(scalar);
+        folds.push(fields, scalar);
         values.push(count);
     }
-    if taken(fields, field.name()) {
+    if folds.first(fields, field.name()).is_some() {
         return;
     }
-    fields.push(field);
+    folds.push(fields, field);
     values.push(value);
 }
 
@@ -1707,12 +1844,13 @@ fn group_from_entry(
     for occurrence in entry.entries() {
         let mut fields = Vec::with_capacity(occurrence.entries().len());
         let mut values = Vec::with_capacity(occurrence.entries().len());
+        let (tags, mut folds) = (TagCounts::of(occurrence.entries()), FoldIndex::default());
         for member in occurrence.entries() {
             let slot = covered_member_index(declared, &facts, member)
                 .and_then(|index| declared.get(index));
             let (mut field, value) = child_from_entry(registry, member, slot)?;
-            preserve_contended_name(occurrence.entries(), member, &mut field);
-            push_child(registry, &mut fields, &mut values, field, value);
+            preserve_contended_name(&tags, member, &mut field);
+            push_child(registry, &mut fields, &mut values, &mut folds, field, value);
         }
         let mut members = Vec::with_capacity(fields.len());
         for (field, value) in fields.into_iter().zip(values) {
@@ -1888,10 +2026,11 @@ fn unknown_nested_from_entry(
     }
     let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
     let mut values: Vec<crate::Scalar> = Vec::with_capacity(entry.entries().len());
+    let (tags, mut folds) = (TagCounts::of(entry.entries()), FoldIndex::default());
     for member in entry.entries() {
         let (mut field, value) = child_from_entry(registry, member, None)?;
-        preserve_contended_name(entry.entries(), member, &mut field);
-        push_child(registry, &mut fields, &mut values, field, value);
+        preserve_contended_name(&tags, member, &mut field);
+        push_child(registry, &mut fields, &mut values, &mut folds, field, value);
     }
     let named: Vec<(SmolStr, crate::Scalar)> = fields
         .iter()
@@ -2017,12 +2156,13 @@ fn child_from_entry(
             let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
             let mut values: Vec<crate::Scalar> = Vec::with_capacity(entry.entries().len());
             let facts = member_facts(registry, known.fields());
+            let (tags, mut folds) = (TagCounts::of(entry.entries()), FoldIndex::default());
             for member in entry.entries() {
                 let slot = covered_member_index(known.fields(), &facts, member)
                     .and_then(|index| known.fields().get(index));
                 let (mut field, value) = child_from_entry(registry, member, slot)?;
-                preserve_contended_name(entry.entries(), member, &mut field);
-                push_child(registry, &mut fields, &mut values, field, value);
+                preserve_contended_name(&tags, member, &mut field);
+                push_child(registry, &mut fields, &mut values, &mut folds, field, value);
             }
             let named: Vec<(SmolStr, crate::Scalar)> = fields
                 .iter()
@@ -2255,13 +2395,12 @@ impl super::FixMsg {
         }
         let mut residual = residual.unwrap_or_default();
         residual.extend(unresolved);
+        let tags = TagCounts::of(&residual);
+        let mut folds = FoldIndex::default();
         if !residual.is_empty() {
-            let (fields, held) = content_from_entries(&registry, &residual)?;
+            let (fields, held) = content_from_entries(&registry, &residual, &tags)?;
             for (field, value) in fields.into_iter().zip(held) {
-                if let Some(at) = members
-                    .iter()
-                    .position(|known| crate::folds_equal(known.name(), field.name()))
-                {
+                if let Some(at) = folds.first(&members, field.name()) {
                     // A column the message lifts into a fact - `parties`,
                     // `secaltids` - may share its name with the dictionary
                     // group the fact is read from. The group is content and
@@ -2283,9 +2422,9 @@ impl super::FixMsg {
                         column.0.expect("a lifted column's tag"),
                         members[at].name()
                     );
-                    members[at].set_name(renamed);
+                    folds.rename(&mut members, at, renamed);
                 }
-                members.push(field);
+                folds.push(&mut members, field);
                 values.push(value);
             }
             // A tag several residual entries state answers its column with
@@ -2294,9 +2433,7 @@ impl super::FixMsg {
             // among them again, so the row it was read from is the row it
             // writes.
             for (tag, field, value) in &projected {
-                if field.dtype().is_nested()
-                    || residual.iter().filter(|entry| entry.tag() == *tag).count() < 2
-                {
+                if field.dtype().is_nested() || tags.count(*tag) < 2 {
                     continue;
                 }
                 let owners: SmallVec<[usize; 4]> = members
@@ -2313,7 +2450,7 @@ impl super::FixMsg {
                     super::entry::wire_text_under(&registry, &members[*at], &values[*at]) == stated
                 }) && let Some(first) = owners.first().copied()
                 {
-                    members.swap(first, at);
+                    folds.swap(&mut members, first, at);
                     values.swap(first, at);
                 }
             }
@@ -2323,7 +2460,7 @@ impl super::FixMsg {
         // its column, so rebuild it through the same child insertion rule as
         // an entry.
         for (tag, field, value) in projected {
-            if let Some(owner) = residual.iter().find(|entry| entry.tag() == tag) {
+            if let Some(owner) = tags.first(tag).map(|at| &residual[at]) {
                 // A group entry owns the occurrences, while its separate
                 // scalar counter column owns an explicitly stated count (or
                 // the derived count a semantic row records). Keep that scalar
@@ -2334,15 +2471,29 @@ impl super::FixMsg {
                         !member.dtype().is_nested()
                             && tag_and_counter(&registry, member).0 == Some(tag)
                     }) {
-                        members[index] = field;
+                        folds.set(&mut members, index, field);
                         values[index] = value;
                     } else {
-                        push_child(&registry, &mut members, &mut values, field, value);
+                        push_child(
+                            &registry,
+                            &mut members,
+                            &mut values,
+                            &mut folds,
+                            field,
+                            value,
+                        );
                     }
                 }
                 continue;
             }
-            push_child(&registry, &mut members, &mut values, field, value);
+            push_child(
+                &registry,
+                &mut members,
+                &mut values,
+                &mut folds,
+                field,
+                value,
+            );
         }
         // The columns are the schema's, validated when it was built, and
         // the content is the dictionary's fields, each kept only where no

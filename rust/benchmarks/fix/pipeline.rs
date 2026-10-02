@@ -600,6 +600,34 @@ pub fn benchmarks(criterion: &mut Criterion) {
             );
         });
     }
+    // The text reader's own batching hands the Arrow doors the capture as
+    // one batch: on four threads the pools cut it into row ranges the
+    // workers share rather than hand it to one of them.
+    let spread = codec.clone().with_threads(4);
+    group.bench_function("parse_text_arrow_reader_default/threads=4", |bencher| {
+        bencher.iter(|| {
+            let read = black_box(&source)
+                .read_arrow_reader(&text())
+                .expect("a reader");
+            spread
+                .parse_text_arrow_reader(read)
+                .expect("a reader")
+                .map(|batch| batch.expect("a batch").num_rows())
+                .sum::<usize>()
+        });
+    });
+    group.bench_function("parse_arrow_messages_default/threads=4", |bencher| {
+        bencher.iter(|| {
+            let read = black_box(&source)
+                .read_arrow_reader(&text())
+                .expect("a reader");
+            spread
+                .parse_arrow_messages(read)
+                .expect("messages")
+                .filter(Result::is_ok)
+                .count()
+        });
+    });
     group.finish();
 
     let snapshot_codec = codec.with_snapshot_ns(MINUTE);

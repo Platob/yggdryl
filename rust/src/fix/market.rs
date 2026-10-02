@@ -1162,7 +1162,7 @@ impl FixMsg {
                     super::MARKETDATAKIND_TAG_NAME.0,
                     &Scalar::MarketDataKind(report),
                 );
-                self.settle();
+                self.settle_refiled();
             }
             let base = self
                 .lifted()
@@ -1176,16 +1176,23 @@ impl FixMsg {
                         self.get_currhashcode()
                     )
                 });
-            let execution = executed(&self, self.clone(), base);
+            let mut execution = self.clone();
+            refile_executed(&self, &mut execution, base);
+            // A copy of a settled report: what the refiling recorded is all
+            // that moved.
+            execution.settle_refiled();
             return (self, vec![execution]);
         }
         (self, Vec::new())
     }
 }
 
-/// `derived` as the execution `source` split off, chained under `base`:
-/// the category `EXEC`, `FILLED`, and `source` named as its provenance.
-fn executed(source: &FixMsg, mut derived: FixMsg, base: String) -> FixMsg {
+/// Refiles `derived` as the execution `source` split off, chained under
+/// `base`: the category `EXEC`, `FILLED`, and `source` named as its
+/// provenance, each a word no settle restates. The caller settles it as
+/// what it holds requires: a fill's copy of its settled report moved
+/// nothing else, a trade's side moved its fields.
+fn refile_executed(source: &FixMsg, derived: &mut FixMsg, base: String) {
     derived.record(
         super::MARKETDATAKIND_TAG_NAME.0,
         &Scalar::MarketDataKind(MarketDataKind::Execution),
@@ -1193,8 +1200,6 @@ fn executed(source: &FixMsg, mut derived: FixMsg, base: String) -> FixMsg {
     derived.record(super::STATE_TAG_NAME.0, &Scalar::State(State::Filled));
     derived.set_crosscode(base);
     derived.set_srcuuids(provenance(source));
-    derived.settle();
-    derived
 }
 
 /// What a message split off `source` names as its sources: `source`
@@ -1308,7 +1313,9 @@ fn trade_sides(trade: &mut FixMsg) -> Vec<FixMsg> {
             .find_map(|tag| entry_value(occurrence, tag))
             .unwrap_or(chain.as_str());
         let base = format!("{}:{own}|{stable}", own.len());
-        sides.push(executed(trade, execution, base));
+        refile_executed(trade, &mut execution, base);
+        execution.settle();
+        sides.push(execution);
     }
     sides
 }

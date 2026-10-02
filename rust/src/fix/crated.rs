@@ -511,10 +511,10 @@ pub const PARTYIDS_TAG_NAME: (i32, &str) = (65_039, "partyids");
 /// the pairing is stated, so a column and its tag are never written twice.
 #[must_use]
 pub(super) fn element_column_of(tag: i32) -> Option<ElementColumn> {
-    CRATED.iter().find_map(|held| match held.holds {
-        Holds::Element(column) if held.tag_name.0 == tag => Some(column),
+    match crated(tag)?.holds {
+        Holds::Element(column) => Some(column),
         _ => None,
-    })
+    }
 }
 
 /// The graph event column one crate tag is, for the nine that are one,
@@ -522,10 +522,10 @@ pub(super) fn element_column_of(tag: i32) -> Option<ElementColumn> {
 /// [`EventColumn::record`] as the element columns are through theirs.
 #[must_use]
 pub(super) fn event_column_of(tag: i32) -> Option<EventColumn> {
-    CRATED.iter().find_map(|held| match held.holds {
-        Holds::Event(column) if held.tag_name.0 == tag => Some(column),
+    match crated(tag)?.holds {
+        Holds::Event(column) => Some(column),
         _ => None,
-    })
+    }
 }
 
 /// The graph market column one crate tag is, for the ones the crate tags:
@@ -534,10 +534,10 @@ pub(super) fn event_column_of(tag: i32) -> Option<EventColumn> {
 /// [`MarketColumn::record`].
 #[must_use]
 pub(super) fn market_column_of(tag: i32) -> Option<MarketColumn> {
-    CRATED.iter().find_map(|held| match held.holds {
-        Holds::Market(column) if held.tag_name.0 == tag => Some(column),
+    match crated(tag)?.holds {
+        Holds::Market(column) => Some(column),
         _ => None,
-    })
+    }
 }
 
 /// The graph operation column one crate tag is, for the four that are one,
@@ -545,10 +545,10 @@ pub(super) fn market_column_of(tag: i32) -> Option<MarketColumn> {
 /// [`OperationColumn::record`].
 #[must_use]
 pub(super) fn operation_column_of(tag: i32) -> Option<OperationColumn> {
-    CRATED.iter().find_map(|held| match held.holds {
-        Holds::Operation(column) if held.tag_name.0 == tag => Some(column),
+    match crated(tag)?.holds {
+        Holds::Operation(column) => Some(column),
         _ => None,
-    })
+    }
 }
 
 /// The crate tag a column of this name is stated under, where the crate
@@ -570,9 +570,15 @@ pub(super) fn tag_named(name: &str) -> Option<i32> {
 /// its walk folded forward; a row stating none leaves it to the fields.
 #[must_use]
 pub fn is_derived_tag(tag: i32) -> bool {
-    CRATED
-        .iter()
-        .any(|held| held.derived && held.tag_name.0 == tag)
+    crated(tag).is_some_and(|held| held.derived)
+}
+
+/// The row of [`CRATED`] a crate tag is, by its offset from
+/// [`CRATE_TAG_MIN`]: what every per-row reading of a crate tag dispatches
+/// through, one index rather than a pass over every definition.
+fn crated(tag: i32) -> Option<&'static Crated> {
+    let at = CRATED_AT.get(usize::try_from(tag.checked_sub(CRATE_TAG_MIN)?).ok()?)?;
+    CRATED.get(usize::from(*at))
 }
 
 /// Whether a tag is one of this crate's own.
@@ -1164,6 +1170,27 @@ const CRATED: [Crated; 49] = [
          column, carried beside the row and never one of its own.",
     ),
 ];
+
+/// Each crate tag's row of [`CRATED`], indexed by the tag's offset from
+/// [`CRATE_TAG_MIN`], with [`u8::MAX`] where no definition takes the tag.
+///
+/// Built from [`CRATED`] at compile time, so the table states nothing
+/// [`CRATED`] does not: a tag outside the crate's range, or one two
+/// definitions take, fails the build rather than answering either row.
+const CRATED_AT: [u8; (CRATE_TAG_MAX - CRATE_TAG_MIN) as usize] = {
+    let mut at = [u8::MAX; (CRATE_TAG_MAX - CRATE_TAG_MIN) as usize];
+    assert!(CRATED.len() < u8::MAX as usize, "every row fits a byte");
+    let mut row = 0;
+    while row < CRATED.len() {
+        let tag = CRATED[row].tag_name.0;
+        assert!(is_crate_tag(tag), "a crate definition takes a crate tag");
+        let slot = (tag - CRATE_TAG_MIN) as usize;
+        assert!(at[slot] == u8::MAX, "no two crate definitions take one tag");
+        at[slot] = row as u8;
+        row += 1;
+    }
+    at
+};
 
 /// Builds every field this crate defines, in tag order.
 fn build() -> Result<Vec<Field>> {

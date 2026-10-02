@@ -1613,6 +1613,14 @@ fn a_grid_view_is_never_a_repeat_of_what_it_views() {
     assert_eq!(walked.len(), 2, "the order and its view at its own tick");
     assert_eq!(walked[1].get_snapunix(), Some(walked[0].get_currunix()));
     assert_eq!(walked[1].get_curruuid(), walked[0].get_curruuid());
+    // The view is stamped again over the live code rather than settled: it
+    // is what settling a copy of it answers, under its chain's cross
+    // element.
+    let mut settled = walked[1].clone();
+    settled.finalize();
+    settled.set_crossuuid(walked[1].get_crossuuid());
+    assert_eq!(walked[1], settled);
+    assert_eq!(walked[1].anomalies(), settled.anomalies());
 }
 
 /// A cancel reject stating no `Side(54)` joins the one live side of its

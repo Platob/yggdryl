@@ -18,11 +18,19 @@ static ALLOCATOR: allocations::CountingAllocator = allocations::CountingAllocato
 /// be asserted without the isolation a process-global fixture needs.
 mod warned {
     use std::cell::RefCell;
-    use std::sync::Once;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Mutex, Once, PoisonError};
 
     thread_local! {
         static HELD: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
     }
+
+    /// One watch over every thread: its number, the site it reads and the
+    /// subject it names, beside what it caught.
+    type Watch = (u64, &'static str, String, Vec<String>);
+
+    /// The watches open.
+    static WATCHED: Mutex<Vec<Watch>> = Mutex::new(Vec::new());
 
     struct Sink;
 
@@ -40,6 +48,16 @@ mod warned {
                     held.push(record.args().to_string());
                 }
             });
+            let mut watched = WATCHED.lock().unwrap_or_else(PoisonError::into_inner);
+            for (_, site, subject, caught) in watched.iter_mut() {
+                // The site first, so a record no watch reads builds no text.
+                if record.target() == *site {
+                    let text = record.args().to_string();
+                    if text.contains(subject.as_str()) {
+                        caught.push(text);
+                    }
+                }
+            }
         }
 
         fn flush(&self) {}
@@ -48,15 +66,46 @@ mod warned {
     static SINK: Sink = Sink;
     static INSTALLED: Once = Once::new();
 
-    /// Runs `body`, answering everything it warned about beside what it
-    /// answered.
-    pub fn during_all<T>(body: impl FnOnce() -> T) -> (T, Vec<String>) {
+    fn install() {
         INSTALLED.call_once(|| {
             // Another logger may already own the process; the buffer is then
             // empty and the assertions say so rather than the install failing.
             drop(log::set_logger(&SINK));
             log::set_max_level(log::LevelFilter::Warn);
         });
+    }
+
+    /// Runs `body`, answering every warning `site` - a module path - raised
+    /// about `subject` on any thread while it ran.
+    ///
+    /// A pool's workers warn on their own threads, which [`during_all`]
+    /// does not read; a subject no other test names keeps another test's
+    /// warnings out.
+    pub fn naming<T>(
+        site: &'static str,
+        subject: &str,
+        body: impl FnOnce() -> T,
+    ) -> (T, Vec<String>) {
+        static WATCHES: AtomicU64 = AtomicU64::new(0);
+        install();
+        let watch = WATCHES.fetch_add(1, Ordering::Relaxed);
+        WATCHED
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((watch, site, subject.to_owned(), Vec::new()));
+        let answered = body();
+        let mut watched = WATCHED.lock().unwrap_or_else(PoisonError::into_inner);
+        let at = watched
+            .iter()
+            .position(|(held, ..)| *held == watch)
+            .expect("the watch this call opened");
+        (answered, watched.swap_remove(at).3)
+    }
+
+    /// Runs `body`, answering everything it warned about beside what it
+    /// answered.
+    pub fn during_all<T>(body: impl FnOnce() -> T) -> (T, Vec<String>) {
+        install();
         HELD.with_borrow_mut(|held| *held = Some(Vec::new()));
         let answered = body();
         let warnings = HELD.with_borrow_mut(Option::take).unwrap_or_default();

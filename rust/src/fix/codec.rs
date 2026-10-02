@@ -941,9 +941,11 @@ impl FixCodec {
     /// One reads a stream where it stands, a line at a time. A new codec uses
     /// the available CPU count, falling back to one. More threads read line,
     /// message-row and write doors ahead in chunks of [`Self::PARALLEL_CHUNK`]
-    /// lines, two chunks per thread; the Arrow capture doors instead hand one
-    /// whole input batch to each worker, at most one batch per worker ahead.
-    /// Each job is parsed on the thread it was handed to and every message is
+    /// lines, two chunks per thread; the Arrow capture doors instead hand
+    /// each worker one job, at most one job per worker ahead: an input batch
+    /// whole, or - past twice [`Self::PARALLEL_JOB_ROWS`] rows - one of the
+    /// near-equal row ranges it is cut into, so one large batch keeps every
+    /// thread busy. Each job is parsed on the thread it was handed to and every message is
     /// answered in the lines' order, so
     /// [`Self::parse_lines`], [`Self::parse_text_lines`],
     /// [`Self::parse_arrow_messages`] and [`Self::messages`] answer exactly
@@ -1155,6 +1157,14 @@ impl FixCodec {
     /// what one hand-over to a thread carries, and with the two chunks a
     /// thread holds, what bounds the read-ahead.
     pub const PARALLEL_CHUNK: usize = 64;
+
+    /// The fewest rows a job of the Arrow capture doors is cut to where they
+    /// read on several threads: an input batch of more than twice this many
+    /// rows is cut, without a copy, into near-equal row ranges - four per
+    /// thread, or fewer where the ranges would hold fewer rows than this -
+    /// and a smaller batch is one job. Never joined, so the first answer
+    /// waits on no batch after its own.
+    pub const PARALLEL_JOB_ROWS: usize = 256;
 
     /// The lines one chunk holds: one thread reads none ahead.
     pub(super) const fn chunk(&self) -> usize {
