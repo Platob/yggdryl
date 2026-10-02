@@ -2382,25 +2382,39 @@ pub(crate) fn decimal_from_text(
     {
         return Err("invalid decimal digits");
     }
-    // The coefficient's spelling is the sign and the digits either side of
-    // the point, joined on the stack: a 256-bit coefficient has at most 77
-    // digits, and only a spelling padded past that with zeros needs the heap.
-    let mut joined = [0_u8; 80];
-    let length = sign.len() + whole.len() + fraction.len();
-    let spilled;
-    let digits = if let Some(slot) = joined.get_mut(..length) {
-        let (head, digits) = slot.split_at_mut(sign.len());
-        head.copy_from_slice(sign.as_bytes());
-        let (integral, fractional) = digits.split_at_mut(whole.len());
-        integral.copy_from_slice(whole.as_bytes());
-        fractional.copy_from_slice(fraction.as_bytes());
-        std::str::from_utf8(slot).map_err(|_| "invalid decimal digits")?
+    let mut coefficient = if whole.len() + fraction.len() <= 38 {
+        // Thirty-eight digits are an `i128` whatever they spell, so the
+        // coefficient is read straight off them.
+        let magnitude = whole
+            .bytes()
+            .chain(fraction.bytes())
+            .fold(0_i128, |value, digit| value * 10 + i128::from(digit - b'0'));
+        i256::from_i128(if sign.is_empty() {
+            magnitude
+        } else {
+            -magnitude
+        })
     } else {
-        spilled = format!("{sign}{whole}{fraction}");
-        &spilled
+        // The coefficient's spelling is the sign and the digits either side
+        // of the point, joined on the stack: a 256-bit coefficient has at
+        // most 77 digits, and only a spelling padded past that with zeros
+        // needs the heap.
+        let mut joined = [0_u8; 80];
+        let length = sign.len() + whole.len() + fraction.len();
+        let spilled;
+        let digits = if let Some(slot) = joined.get_mut(..length) {
+            let (head, digits) = slot.split_at_mut(sign.len());
+            head.copy_from_slice(sign.as_bytes());
+            let (integral, fractional) = digits.split_at_mut(whole.len());
+            integral.copy_from_slice(whole.as_bytes());
+            fractional.copy_from_slice(fraction.as_bytes());
+            std::str::from_utf8(slot).map_err(|_| "invalid decimal digits")?
+        } else {
+            spilled = format!("{sign}{whole}{fraction}");
+            &spilled
+        };
+        i256::from_str(digits).map_err(|_| "decimal coefficient exceeds 256 bits")?
     };
-    let mut coefficient =
-        i256::from_str(digits).map_err(|_| "decimal coefficient exceeds 256 bits")?;
     if coefficient == i256::ZERO {
         return Ok(coefficient);
     }

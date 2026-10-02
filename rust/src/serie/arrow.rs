@@ -536,11 +536,6 @@ impl Resolved {
         Self::from_arc(&root)
     }
 
-    /// The root this tree was resolved from.
-    pub(crate) fn field(&self) -> &Field {
-        &self.field
-    }
-
     fn from_arc(field: &Arc<Field>) -> Self {
         Self {
             field: Arc::clone(field),

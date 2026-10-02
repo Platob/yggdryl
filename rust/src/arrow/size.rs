@@ -93,6 +93,17 @@ pub fn scalar_memory_size(value: &Scalar) -> usize {
     ROW_OVERHEAD + payload_bytes(value)
 }
 
+/// What [`scalar_memory_size`] answers for the run `cells` make - a struct
+/// row - for a producer holding the cells and not the run.
+pub(crate) fn run_memory_size<'a>(cells: impl IntoIterator<Item = &'a Scalar>) -> usize {
+    ROW_OVERHEAD + ROW_OVERHEAD + cells_payload(cells)
+}
+
+/// The payload a run's cells carry, summed.
+fn cells_payload<'a>(cells: impl IntoIterator<Item = &'a Scalar>) -> usize {
+    cells.into_iter().map(payload_bytes).sum::<usize>()
+}
+
 /// The leaf payload one value carries, summed through nesting.
 fn payload_bytes(value: &Scalar) -> usize {
     // A null costs a validity bit, not a value. Charging it a leaf's width
@@ -114,7 +125,7 @@ fn payload_bytes(value: &Scalar) -> usize {
                 // A column's cost is its buffers, and no row is built to
                 // count it.
                 Some(array) => array_memory_size(&array),
-                None => held.rows().iter().map(payload_bytes).sum::<usize>(),
+                None => cells_payload(held.rows().iter()),
             };
     }
     if let Some(held) = value.as_mapping() {

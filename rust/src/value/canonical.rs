@@ -361,6 +361,13 @@ pub(crate) fn dtype_canonical(dtype: &DataType, value: Scalar) -> Result<Scalar>
     if dtype.is_bare_contract_leaf() && value.id() == dtype.id() {
         return Ok(value);
     }
+    // An integer of another width arriving at an integer leaf is restated
+    // here: the check below admits exactly the integers the leaf's range
+    // holds, and the rewrite narrows one to the leaf's width, which is this.
+    // One out of range goes on, for the check to refuse in its own words.
+    if let Some(narrowed) = narrowed_integer(dtype, &value) {
+        return Ok(narrowed);
+    }
     // A spelling is read once, here: the check and the rewrite below each
     // begin by reading one, so both are handed what this read answered, and
     // a refused spelling is refused as the check refuses it.
@@ -377,6 +384,24 @@ pub(crate) fn dtype_canonical(dtype: &DataType, value: Scalar) -> Result<Scalar>
     // value itself, exactly as the check above roots one.
     let (canonical, changed) = canonicalize_dtype_value(dtype, &value)?;
     Ok(if changed { canonical } else { value })
+}
+
+/// An integer value restated at an integer leaf's width, where it is in the
+/// leaf's range: what [`validate_dtype_value`] admits and
+/// [`canonicalize_dtype_value`] answers for it, in one step.
+fn narrowed_integer(dtype: &DataType, value: &Scalar) -> Option<Scalar> {
+    use DataType as D;
+    Some(match dtype {
+        D::Int8 => Scalar::from(i8::try_from(value.as_i128()?).ok()?),
+        D::Int16 => Scalar::from(i16::try_from(value.as_i128()?).ok()?),
+        D::Int32 => Scalar::from(i32::try_from(value.as_i128()?).ok()?),
+        D::Int64 => Scalar::from(i64::try_from(value.as_i128()?).ok()?),
+        D::UInt8 => Scalar::from(u8::try_from(value.as_u128()?).ok()?),
+        D::UInt16 => Scalar::from(u16::try_from(value.as_u128()?).ok()?),
+        D::UInt32 => Scalar::from(u32::try_from(value.as_u128()?).ok()?),
+        D::UInt64 => Scalar::from(u64::try_from(value.as_u128()?).ok()?),
+        _ => return None,
+    })
 }
 
 /// Whether a bare [`Scalar::Null`] is a value this datatype holds.
@@ -530,6 +555,17 @@ impl<'a> RowCells<'a> {
         let value = self.value(field, index)?;
         canonicalize_field_value(field, &value).map(|(canonical, _)| canonical)
     }
+}
+
+/// The cell a record that names no `field` holds, under a struct whose
+/// children are checked at `depth`: the field's default, checked and
+/// canonicalized as [`validate_record_fields`] and [`RowCells::canonical`]
+/// treat an absent name - for a reader that plans that cell once rather
+/// than per row.
+pub(crate) fn absent_record_cell(field: &Field, depth: usize) -> Result<Scalar> {
+    let default = field.default_value()?;
+    validate_field_value_at_depth(field, &default, depth).map_err(rooted_failure)?;
+    canonicalize_field_value(field, &default).map(|(canonical, _)| canonical)
 }
 
 /// Re-root one value refusal at the field that refused it.

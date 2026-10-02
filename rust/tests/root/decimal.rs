@@ -1084,6 +1084,35 @@ mod spelling {
         );
     }
 
+    #[test]
+    fn a_coefficient_reads_alike_either_side_of_thirty_eight_digits() {
+        // Thirty-eight digits read straight into 128 bits, thirty-nine
+        // through the 256-bit parse; the point may fall anywhere in them.
+        let wide: DataType = "decimal256(76, 19)".parse().unwrap();
+        for digits in [37, 38, 39, 40] {
+            for point in [0, 1, 10, 19] {
+                let all = "9".repeat(digits);
+                let spelled = format!("{}.{}", &all[..digits - point], &all[digits - point..]);
+                for sign in ["", "-"] {
+                    let text = format!("{sign}{spelled}");
+                    let unscaled = format!("{sign}{all}{}", "0".repeat(19 - point));
+                    assert_eq!(
+                        wide.scalar(text.as_str()).unwrap(),
+                        Scalar::decimal256(i256::from_str(&unscaled).unwrap(), 19),
+                        "{text}"
+                    );
+                }
+            }
+        }
+        let money: DataType = "decimal128(38, 0)".parse().unwrap();
+        let most = "9".repeat(38);
+        assert_eq!(
+            money.scalar(most.as_str()).unwrap(),
+            Scalar::decimal128(i128::from_str(&most).unwrap(), 0)
+        );
+        assert!(money.scalar("9".repeat(39).as_str()).is_err());
+    }
+
     /// The text a decimal value spells, read through a cast into text.
     fn text(value: &Scalar) -> String {
         DataType::utf8()

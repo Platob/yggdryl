@@ -6687,18 +6687,18 @@ fn json_corpus(expression: &str, rows: usize) -> yggdryl::Serie {
     yggdryl::Serie::from_scalars(field, values).expect("the corpus lays out")
 }
 
-/// Writing a nested column as JSON allocates the row each cell is read as -
-/// one per row a struct or a serie is, two for a map of records - and the
-/// payload's growth, never a text per row: the JSON is written straight into
-/// the column's one buffer, a decimal's digits included.
+/// Writing a nested column as JSON allocates nothing per row - only the
+/// payload's growth: the column's leaves are narrowed once and every row is
+/// written from their buffers straight into the column's one buffer, no
+/// row value, no text and no decimal's digits built on the way.
 #[test]
-fn a_nested_column_writes_its_json_with_one_allocation_per_row_it_reads() {
+fn a_nested_column_writes_its_json_with_no_allocation_per_row() {
     let text = Field::new("json", DataType::utf8(), false);
     let strict = ArrowCastOptions::new().with_safe(false);
-    for (expression, per_row) in [
-        ("serie<int64>", 1),
-        ("struct<px: decimal128(12, 4), sym: utf8>", 1),
-        ("map<utf8, struct<k: int64>>", 2),
+    for expression in [
+        "serie<int64>",
+        "struct<px: decimal128(12, 4), sym: utf8>",
+        "map<utf8, struct<k: int64>>",
     ] {
         let cost = |rows: usize| {
             let column = json_corpus(expression, rows);
@@ -6708,9 +6708,9 @@ fn a_nested_column_writes_its_json_with_one_allocation_per_row_it_reads() {
         for rows in [1_024, 4_096] {
             let grown = cost(2 * rows) - cost(rows);
             assert!(
-                (per_row * rows..=per_row * rows + 2).contains(&grown),
-                "{expression}: {rows} more rows cost {grown} allocations, not {per_row} a row \
-                 and the payload's growth"
+                grown <= 2,
+                "{expression}: {rows} more rows cost {grown} allocations, not the payload's \
+                 growth alone"
             );
         }
         // One plan held answers every call alike.
@@ -6729,17 +6729,17 @@ fn a_nested_column_writes_its_json_with_one_allocation_per_row_it_reads() {
     }
 }
 
-/// Reading JSON text into a nested column costs a fixed count per row - the
-/// document's parse into a value and the field's canonical row - and nothing
-/// per column: the rows are laid out once, never checked a second time.
+/// Reading JSON text into a nested column allocates nothing per row - only
+/// the growth of the buffers the rows land in - and nothing per column: the
+/// target planned once reads each document straight into the buffers its
+/// column is laid out from, a struct's cells into one per child and a
+/// serie's items onto one run, no value tree built, no row built and no row
+/// checked a second time.
 #[test]
-fn a_column_of_documents_reads_into_a_nested_column_at_a_fixed_cost_per_row() {
+fn a_column_of_documents_reads_into_a_nested_column_with_no_allocation_per_row() {
     let text = Field::new("json", DataType::utf8(), false);
     let strict = ArrowCastOptions::new().with_safe(false);
-    for (expression, per_row) in [
-        ("serie<int64>", 3),
-        ("struct<px: decimal128(12, 4), sym: utf8>", 9),
-    ] {
+    for expression in ["serie<int64>", "struct<px: decimal128(12, 4), sym: utf8>"] {
         let cost = |rows: usize| {
             let column = json_corpus(expression, rows);
             let field = column.field().expect("a column").clone();
@@ -6748,10 +6748,11 @@ fn a_column_of_documents_reads_into_a_nested_column_at_a_fixed_cost_per_row() {
             counted(|| black_box(documents.cast(&field, strict).expect("the JSON reads"))).0
         };
         for rows in [1_024, 4_096] {
-            assert_eq!(
-                cost(2 * rows) - cost(rows),
-                per_row * rows,
-                "{expression}: {rows} more documents"
+            let grown = cost(2 * rows) - cost(rows);
+            assert!(
+                grown <= 2,
+                "{expression}: {rows} more documents cost {grown} allocations, not the \
+                 buffers' growth alone"
             );
         }
     }

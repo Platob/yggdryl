@@ -286,7 +286,7 @@ impl Serialize for JsonField<'_> {
     }
 }
 
-fn serialize_float<S: Serializer>(serializer: S, value: f64) -> Result<S::Ok, S::Error> {
+pub(super) fn serialize_float<S: Serializer>(serializer: S, value: f64) -> Result<S::Ok, S::Error> {
     if value.is_finite() {
         serializer.serialize_f64(value)
     } else {

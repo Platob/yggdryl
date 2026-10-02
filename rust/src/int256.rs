@@ -27,6 +27,9 @@ use crate::{Error, Result};
 /// The number of 64-bit words a 256-bit integer is stored in.
 const WORDS: usize = 4;
 
+/// `10^19`, the most base-10 digits one word holds.
+const DIGIT_CHUNK: u64 = 10_u64.pow(19);
+
 /// An unsigned 256-bit integer.
 ///
 /// The four words are stored least-significant first. It is the magnitude
@@ -335,37 +338,54 @@ impl u256 {
     }
 
     /// Write the base-10 digits, most significant first.
+    ///
+    /// The digits go out nineteen at a time - one word division per chunk
+    /// rather than per digit - and a value that fits 128 bits is spelled by
+    /// the native formatter outright. Like every digit write here, the
+    /// caller's width and fill are not applied.
     fn write_digits(self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_zero() {
-            return formatter.write_str("0");
+        if let Some(value) = self.as_u128() {
+            return write!(formatter, "{value}");
         }
-        // 2^256 is 78 digits, so one stack buffer renders any value.
-        let mut digits = [0_u8; 78];
-        let mut length = 0;
+        // 2^256 is 78 digits: five chunks of nineteen.
+        let mut chunks = [0_u64; 5];
+        let mut count = 0;
         let mut magnitude = self;
         while !magnitude.is_zero() {
-            let (quotient, remainder) = magnitude.div_rem_word(10);
-            digits[length] = b'0' + u8::try_from(remainder).unwrap_or(0);
-            length += 1;
+            let (quotient, remainder) = magnitude.div_rem_word(DIGIT_CHUNK);
+            chunks[count] = remainder;
+            count += 1;
             magnitude = quotient;
         }
-        digits[..length].reverse();
-        formatter.write_str(std::str::from_utf8(&digits[..length]).unwrap_or("0"))
+        let (leading, rest) = chunks[..count]
+            .split_last()
+            .expect("a value past 128 bits has a chunk");
+        write!(formatter, "{leading}")?;
+        rest.iter()
+            .rev()
+            .try_for_each(|chunk| write!(formatter, "{chunk:019}"))
     }
 
     /// Read base-10 digits, refusing anything that does not fit 256 bits.
     ///
     /// `target` names the type the caller is parsing, so a signed parse
-    /// reports `i256` rather than the magnitude type it ran through.
+    /// reports `i256` rather than the magnitude type it ran through. The
+    /// digits are taken nineteen at a time into one word, and the
+    /// magnitude is multiplied once per chunk: a prefix never exceeds the
+    /// whole, so the chunked refusal is the per-digit one.
     fn from_digits(digits: &str, target: &'static str) -> Result<Self> {
         if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
             return Err(parse_error(target, "expected base-10 digits"));
         }
         let mut magnitude = Self::ZERO;
-        for digit in digits.bytes() {
+        for chunk in digits.as_bytes().chunks(19) {
+            let word = chunk
+                .iter()
+                .fold(0_u64, |word, digit| word * 10 + u64::from(digit - b'0'));
+            let shift = 10_u64.pow(u32::try_from(chunk.len()).expect("a chunk is 19 digits"));
             magnitude = magnitude
-                .checked_mul_word(10)
-                .and_then(|held| held.checked_add_word(u64::from(digit - b'0')))
+                .checked_mul_word(shift)
+                .and_then(|held| held.checked_add_word(word))
                 .ok_or_else(|| parse_error(target, "integer exceeds 256 bits"))?;
         }
         Ok(magnitude)

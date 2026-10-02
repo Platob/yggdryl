@@ -16,6 +16,8 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::value::RawValue as JsonRawValue;
 
+pub(crate) mod column;
+pub(crate) mod field;
 mod parser;
 mod wire;
 
@@ -786,6 +788,8 @@ pub(crate) mod casts {
     use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, Buffer, NullBuffer, OffsetBuffer};
     use arrow_schema::DataType as ArrowDataType;
 
+    pub(crate) use super::field::FieldReader;
+    use super::field::Pool;
     use crate::arrow::{Error, Result};
     use crate::budget::{MaterializationBudget, reserve_vec_bytes};
     use crate::cast::columns::is_exposed;
@@ -799,9 +803,10 @@ pub(crate) mod casts {
     ///
     /// The column lands once under `source`, resolved when the plan was
     /// compiled, under what the plan that produced `array` certified: a leaf
-    /// it did not is proven at the landing, once and column by column, so a
-    /// row is read once and written straight into one payload, with no text
-    /// built per row. A row the encoder refuses - a non-finite float, a map
+    /// it did not is proven at the landing, once and column by column. Its
+    /// leaves are then narrowed once ([`JsonColumn`](super::column::JsonColumn))
+    /// and each row written from them straight into one payload, with no
+    /// value and no text built per row. A row the encoder refuses - a non-finite float, a map
     /// key JSON has no spelling for - is null under `safe` and an error
     /// naming the row otherwise.
     #[allow(clippy::too_many_arguments)]
@@ -822,7 +827,7 @@ pub(crate) mod casts {
         // judged nor read.
         let hidden = exposure.map(|exposure| NullBuffer::new(exposure.clone()));
         let column = land_planned_under(source, Arc::clone(array), hidden.as_ref(), proof, budget)?;
-        let declared = source.field();
+        let spelled = super::column::JsonColumn::bind(&column)?;
         let mut payload = Vec::new();
         let mut ends = Vec::new();
         ends.try_reserve_exact(rows.saturating_add(1))
@@ -832,11 +837,11 @@ pub(crate) mod casts {
         for index in 0..rows {
             let start = payload.len();
             let present = is_exposed(exposure, index)
-                && match column.scalar(index).and_then(|value| {
-                    if value.is_null() {
+                && match column.is_null(index).and_then(|absent| {
+                    if absent {
                         return Ok(false);
                     }
-                    super::into_field_vec(&value, declared.dtype(), &mut payload).map(|()| true)
+                    spelled.write(index, &mut payload).map(|()| true)
                 }) {
                     Ok(present) => present,
                     // A refused row may have left half a document behind.
@@ -934,15 +939,18 @@ pub(crate) mod casts {
     /// document under `target` - the nullable field of the nested datatype
     /// the cast lands in - and lays the values out as its column.
     ///
-    /// The reading half of [`render_json_array`]: each cell crosses
-    /// [`from_bytes_with_field`](super::from_bytes_with_field) - the parse,
-    /// then the field's own value contract - once, and the canonical rows it
-    /// answers are laid out as they are, never checked again. A cell that is
-    /// not JSON, or not a value of `target`, is null under `safe` and an
-    /// error naming the row otherwise.
+    /// The reading half of [`render_json_array`]: each cell is read once,
+    /// by `reader` - the target planned for documents, which reads one
+    /// straight into its canonical row - where it answers, and otherwise by
+    /// [`from_bytes_with_field`](super::from_bytes_with_field), the parse
+    /// then the field's own value contract, which the plan answers exactly
+    /// as. The canonical rows are laid out as they are, never checked again.
+    /// A cell that is not JSON, or not a value of `target`, is null under
+    /// `safe` and an error naming the row otherwise.
     pub(crate) fn ingest_json_array(
         array: &ArrayRef,
         target: &Field,
+        reader: Option<&FieldReader>,
         safe: bool,
         field: &Field,
         exposure: Option<&BooleanBuffer>,
@@ -952,10 +960,17 @@ pub(crate) mod casts {
         let rows = array.len();
         budget.add_array(field.dtype(), rows)?;
         reserve_vec_bytes::<Scalar>(budget, rows)?;
+        if let Some(reader) = reader.filter(|reader| reader.reads_cells()) {
+            return ingest_json_cells(&cells, rows, target, reader, safe, field, exposure, budget);
+        }
+        if let Some(reader) = reader.filter(|reader| reader.reads_items()) {
+            return ingest_json_items(&cells, rows, target, reader, safe, field, exposure, budget);
+        }
         let mut values = Vec::new();
         values
             .try_reserve_exact(rows)
             .map_err(|error| allocation_failed(&error))?;
+        let mut pool = Pool::default();
         for index in 0..rows {
             let value = match is_exposed(exposure, index)
                 .then(|| cells.get(index))
@@ -965,7 +980,10 @@ pub(crate) mod casts {
                 // empty text cell is wherever text enters a column that is
                 // not text, and the target's nullability says what follows.
                 None | Some([]) => Scalar::Null,
-                Some(document) => match super::from_bytes_with_field(document, target) {
+                Some(document) => match reader
+                    .and_then(|reader| reader.read(document, &mut pool))
+                    .map_or_else(|| super::from_bytes_with_field(document, target), Ok)
+                {
                     // The layout below charges a serie's or a map's offsets
                     // and not its items, so the rows are charged as read.
                     Ok(value) => {
@@ -980,6 +998,146 @@ pub(crate) mod casts {
         }
         let rows = values.iter().collect::<Vec<_>>();
         Ok(canonical_rows(target, &rows)?)
+    }
+
+    /// [`ingest_json_array`] for a struct target the reader plans: each
+    /// document is read straight into one column per child - the rows a
+    /// struct column is laid out from, never built as rows - and a document
+    /// the reader leaves to the door is read there and its row's cells taken
+    /// apart. Each row is charged what its row value would be.
+    #[allow(clippy::too_many_arguments)]
+    fn ingest_json_cells(
+        cells: &Cells<'_>,
+        rows: usize,
+        target: &Field,
+        reader: &FieldReader,
+        safe: bool,
+        field: &Field,
+        exposure: Option<&BooleanBuffer>,
+        budget: &mut MaterializationBudget,
+    ) -> Result<ArrayRef> {
+        let crate::DataType::Struct(fields) = target.dtype() else {
+            return Err(internal_target_error("json"));
+        };
+        let mut columns = fields
+            .iter()
+            .map(|_| {
+                let mut column = Vec::new();
+                column
+                    .try_reserve_exact(rows)
+                    .map_err(|error| allocation_failed(&error))?;
+                Ok(column)
+            })
+            .collect::<Result<Vec<Vec<Scalar>>>>()?;
+        let mut present = Vec::with_capacity(rows);
+        let mut pool = Pool::default();
+        // A row the column holds as absent: a null cell in every child.
+        let absent = |columns: &mut Vec<Vec<Scalar>>, present: &mut Vec<bool>| {
+            columns
+                .iter_mut()
+                .for_each(|column| column.push(Scalar::Null));
+            present.push(false);
+        };
+        for index in 0..rows {
+            let Some(document) = is_exposed(exposure, index)
+                .then(|| cells.get(index))
+                .flatten()
+                .filter(|document| !document.is_empty())
+            else {
+                absent(&mut columns, &mut present);
+                continue;
+            };
+            match reader.read_cells(document, &mut pool, &mut columns) {
+                Some(true) => {
+                    budget.add_bytes(crate::arrow::size::run_memory_size(
+                        columns.iter().filter_map(|column| column.last()),
+                    ))?;
+                    present.push(true);
+                }
+                Some(false) => {
+                    budget.add_bytes(crate::arrow::scalar_memory_size(&Scalar::Null))?;
+                    absent(&mut columns, &mut present);
+                }
+                None => match super::from_bytes_with_field(document, target) {
+                    Ok(value) => {
+                        budget.add_bytes(crate::arrow::scalar_memory_size(&value))?;
+                        match value.sequence_rows() {
+                            Some(row) if row.len() == columns.len() => {
+                                for (column, cell) in columns.iter_mut().zip(row.iter()) {
+                                    column.push(cell.clone());
+                                }
+                                present.push(true);
+                            }
+                            Some(_) => return Err(internal_target_error("json")),
+                            None => absent(&mut columns, &mut present),
+                        }
+                    }
+                    Err(_) if safe => absent(&mut columns, &mut present),
+                    Err(error) => return Err(unread(field, index, document, error)),
+                },
+            }
+        }
+        crate::serie::value::struct_array_of_cells(target, &columns, &present)
+    }
+
+    /// [`ingest_json_array`] for a serie target the reader plans: each
+    /// document's items are read straight onto one run - the items a serie
+    /// column is laid out from, never built as rows - and a document the
+    /// reader leaves to the door is read there and its row's items taken
+    /// apart. Each row is charged what its row value would be.
+    #[allow(clippy::too_many_arguments)]
+    fn ingest_json_items(
+        cells: &Cells<'_>,
+        rows: usize,
+        target: &Field,
+        reader: &FieldReader,
+        safe: bool,
+        field: &Field,
+        exposure: Option<&BooleanBuffer>,
+        budget: &mut MaterializationBudget,
+    ) -> Result<ArrayRef> {
+        let mut items = Vec::new();
+        let mut lengths = Vec::new();
+        lengths
+            .try_reserve_exact(rows)
+            .map_err(|error| allocation_failed(&error))?;
+        let mut pool = Pool::default();
+        for index in 0..rows {
+            let Some(document) = is_exposed(exposure, index)
+                .then(|| cells.get(index))
+                .flatten()
+                .filter(|document| !document.is_empty())
+            else {
+                lengths.push(None);
+                continue;
+            };
+            let held = items.len();
+            match reader.read_items(document, &mut pool, &mut items) {
+                Some(Some(count)) => {
+                    budget.add_bytes(crate::arrow::size::run_memory_size(&items[held..]))?;
+                    lengths.push(Some(count));
+                }
+                Some(None) => {
+                    budget.add_bytes(crate::arrow::scalar_memory_size(&Scalar::Null))?;
+                    lengths.push(None);
+                }
+                None => match super::from_bytes_with_field(document, target) {
+                    Ok(value) => {
+                        budget.add_bytes(crate::arrow::scalar_memory_size(&value))?;
+                        match value.sequence_rows() {
+                            Some(row) => {
+                                items.extend(row.iter().cloned());
+                                lengths.push(Some(row.len()));
+                            }
+                            None => lengths.push(None),
+                        }
+                    }
+                    Err(_) if safe => lengths.push(None),
+                    Err(error) => return Err(unread(field, index, document, error)),
+                },
+            }
+        }
+        crate::serie::value::serie_array_of_items(target, &items, &lengths)
     }
 
     /// A document the target does not read, named by its row and its text.

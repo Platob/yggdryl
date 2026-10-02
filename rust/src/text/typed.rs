@@ -278,7 +278,7 @@ fn mapping(value: Scalar, map: &crate::MappingType, field: &Field) -> Result<Sca
 }
 
 /// Whether a subtree stores bytes anywhere a document would spell base64.
-fn holds_byte_leaf(dtype: &DataType) -> bool {
+pub(crate) fn holds_byte_leaf(dtype: &DataType) -> bool {
     match dtype {
         crate::bytes_dtypes!() | DataType::Geometry(_) | DataType::Geography(_) => true,
         DataType::Serie(child)
@@ -303,7 +303,7 @@ fn holds_byte_leaf(dtype: &DataType) -> bool {
 }
 
 /// Decode the base64 a document spells a byte payload with.
-fn base64_payload(value: Scalar, field: &Field) -> Result<Scalar> {
+pub(crate) fn base64_payload(value: Scalar, field: &Field) -> Result<Scalar> {
     match value {
         crate::string_scalars!(encoded) => base64::engine::general_purpose::STANDARD
             .decode(encoded.as_str().as_bytes())

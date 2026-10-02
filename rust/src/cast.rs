@@ -1521,6 +1521,9 @@ enum ArrayCastKind {
     JsonIngest {
         text: Option<Box<ArrayCastPlan>>,
         target: Field,
+        /// The target planned for reading documents straight into its
+        /// rows, where every part of it is one the plan takes.
+        reader: Option<Box<crate::json::casts::FieldReader>>,
     },
     DeferredUnsupported {
         reason: String,
@@ -2352,6 +2355,10 @@ impl ArrayCastPlan {
                         }
                         _ => None,
                     },
+                    reader: crate::json::casts::FieldReader::compile(
+                        &field.clone().with_nullable(true),
+                    )
+                    .map(Box::new),
                     target: field.clone().with_nullable(true),
                 }
             }
@@ -2783,7 +2790,11 @@ impl ArrayCastPlan {
                     }
                 }
             }
-            ArrayCastKind::JsonIngest { text, target } => {
+            ArrayCastKind::JsonIngest {
+                text,
+                target,
+                reader,
+            } => {
                 let documents = match text {
                     Some(text) => text.cast_exposed(array, exposure, landed, budget)?,
                     None => array,
@@ -2791,6 +2802,7 @@ impl ArrayCastPlan {
                 ingest_json_array(
                     &documents,
                     target,
+                    reader.as_deref(),
                     self.safe(),
                     &self.field,
                     exposure,
