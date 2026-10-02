@@ -1323,6 +1323,32 @@ function castOptionArgs(options) {
   return [options.safe, options.representation]
 }
 
+// The two facts an ordering states beside its key, in the order the native
+// doors read them: `descending` and `nullsFirst`. An absent answer is skipped
+// and `null` clears it, each taking the core's default - ascending, nulls
+// last; anything but a boolean, and a key no ordering knows, is refused.
+const SORT_OPTION_NAMES = new Set(['descending', 'nullsFirst'])
+function sortOptionArgs(options, label) {
+  if (options === undefined || options === null) return []
+  if (typeof options !== 'object' || Array.isArray(options)) {
+    throw new TypeError(`${label} options must be an object of descending and nullsFirst`)
+  }
+  for (const key of Object.keys(options)) {
+    if (!SORT_OPTION_NAMES.has(key)) {
+      throw new TypeError(
+        `${label} options take descending and nullsFirst, got ${JSON.stringify(key)}`,
+      )
+    }
+  }
+  for (const key of SORT_OPTION_NAMES) {
+    const value = options[key]
+    if (value !== undefined && value !== null && typeof value !== 'boolean') {
+      throw new TypeError(`${label} option ${key} must be a boolean, got ${typeof value}`)
+    }
+  }
+  return [options.descending, options.nullsFirst]
+}
+
 // A field argument: a native Field as it is, any FieldLike through
 // `Field.from`, and an absent one skipped.
 function optionalField(field) {
@@ -1458,6 +1484,21 @@ const nativeSerie = Object.freeze({
   keysSorted: NativeSerie.prototype._keysSortedNative,
   names: NativeSerie.prototype._namesNative,
   withoutChild: NativeSerie.prototype._withoutChildNative,
+  sortIndices: NativeSerie.prototype._sortIndicesNative,
+  isSorted: NativeSerie.prototype._isSortedNative,
+  intoSorted: NativeSerie.prototype._intoSortedNative,
+  intoUnique: NativeSerie.prototype._intoUniqueNative,
+  intoReversed: NativeSerie.prototype._intoReversedNative,
+  intoTaken: NativeSerie.prototype._intoTakenNative,
+  intoFiltered: NativeSerie.prototype._intoFilteredNative,
+  partitionBy: NativeSerie.prototype._partitionByNative,
+  partitionByPaths: NativeSerie.prototype._partitionByPathsNative,
+  asSorted: NativeSerie.prototype._asSortedNative,
+  asUnique: NativeSerie.prototype._asUniqueNative,
+  asReversed: NativeSerie.prototype._asReversedNative,
+  asTaken: NativeSerie.prototype._asTakenNative,
+  asFiltered: NativeSerie.prototype._asFilteredNative,
+  window: NativeSerie.prototype._windowNative,
   // The natives that answer a serie, each handed out as its leaf's class.
   answering: Object.freeze({
     slice: NativeSerie.prototype._sliceNative,
@@ -1510,6 +1551,21 @@ for (const name of [
   '_cloneNative',
   '_intoRunNative',
   '_childrenNative',
+  '_sortIndicesNative',
+  '_isSortedNative',
+  '_intoSortedNative',
+  '_intoUniqueNative',
+  '_intoReversedNative',
+  '_intoTakenNative',
+  '_intoFilteredNative',
+  '_partitionByNative',
+  '_partitionByPathsNative',
+  '_asSortedNative',
+  '_asUniqueNative',
+  '_asReversedNative',
+  '_asTakenNative',
+  '_asFilteredNative',
+  '_windowNative',
 ]) {
   delete NativeSerie.prototype[name]
 }
@@ -1537,6 +1593,28 @@ function serieValues(values, field, label) {
     throw new TypeError(`${label} must be an iterable of values`)
   }
   return Array.from(values, (value) => serieValue(value, field))
+}
+
+// A serie a verb reads beside its own - indices, a mask, keys: a Serie as it
+// is, any other iterable of values as the schema-free run of them, each
+// value through Scalar. Text is one value, never the iterable of its
+// characters.
+function serieArgument(values, label) {
+  if (values instanceof NativeSerie) return values
+  if (typeof values === 'string') {
+    throw new TypeError(`${label} must be a Serie or an iterable of values, got a string`)
+  }
+  return new NativeSerie(serieValues(values, undefined, label))
+}
+
+// The field paths a record partitions by: one path - its text or a FieldPath
+// - or an iterable of them.
+function fieldPathsArgument(paths, label) {
+  if (typeof paths === 'string' || paths instanceof binding.FieldPath) return [paths]
+  if (paths == null || typeof paths[Symbol.iterator] !== 'function') {
+    throw new TypeError(`${label} must be a field path or an iterable of them`)
+  }
+  return Array.from(paths)
 }
 
 const Serie = publicNativeClass(
@@ -1875,6 +1953,136 @@ Object.defineProperties(Serie.prototype, {
       return Reflect.apply(nativeSerie.compare, this, [comparedRows(other, 'Serie.compare')])
     },
   },
+  // Ordering, uniqueness and grouping: a read answers a new serie as its
+  // leaf's class and leaves this one as it was; an `as*` write brings this
+  // serie into the state in place and answers it, so calls chain.
+  sortIndices: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return describedSerie(
+        Reflect.apply(nativeSerie.sortIndices, this, sortOptionArgs(options, 'Serie.sortIndices')),
+      )
+    },
+  },
+  isSorted: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return Reflect.apply(nativeSerie.isSorted, this, sortOptionArgs(options, 'Serie.isSorted'))
+    },
+  },
+  intoSorted: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return describedSerie(
+        Reflect.apply(nativeSerie.intoSorted, this, sortOptionArgs(options, 'Serie.intoSorted')),
+      )
+    },
+  },
+  intoUnique: {
+    configurable: true,
+    writable: true,
+    value() {
+      return describedSerie(Reflect.apply(nativeSerie.intoUnique, this, []))
+    },
+  },
+  intoReversed: {
+    configurable: true,
+    writable: true,
+    value() {
+      return describedSerie(Reflect.apply(nativeSerie.intoReversed, this, []))
+    },
+  },
+  intoTaken: {
+    configurable: true,
+    writable: true,
+    value(indices) {
+      return describedSerie(
+        Reflect.apply(nativeSerie.intoTaken, this, [
+          serieArgument(indices, 'Serie.intoTaken indices'),
+        ]),
+      )
+    },
+  },
+  intoFiltered: {
+    configurable: true,
+    writable: true,
+    value(mask) {
+      return describedSerie(
+        Reflect.apply(nativeSerie.intoFiltered, this, [
+          serieArgument(mask, 'Serie.intoFiltered mask'),
+        ]),
+      )
+    },
+  },
+  partitionBy: {
+    configurable: true,
+    writable: true,
+    value(keys) {
+      return Reflect.apply(nativeSerie.partitionBy, this, [
+        serieArgument(keys, 'Serie.partitionBy keys'),
+      ]).map(([key, rows]) => [key, describedSerie(rows)])
+    },
+  },
+  partitionByPaths: {
+    configurable: true,
+    writable: true,
+    value(paths) {
+      return Reflect.apply(nativeSerie.partitionByPaths, this, [
+        fieldPathsArgument(paths, 'Serie.partitionByPaths paths'),
+      ]).map(([key, rows]) => [key, describedSerie(rows)])
+    },
+  },
+  asSorted: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      Reflect.apply(nativeSerie.asSorted, this, sortOptionArgs(options, 'Serie.asSorted'))
+      return this
+    },
+  },
+  asUnique: {
+    configurable: true,
+    writable: true,
+    value() {
+      Reflect.apply(nativeSerie.asUnique, this, [])
+      return this
+    },
+  },
+  asReversed: {
+    configurable: true,
+    writable: true,
+    value() {
+      Reflect.apply(nativeSerie.asReversed, this, [])
+      return this
+    },
+  },
+  asTaken: {
+    configurable: true,
+    writable: true,
+    value(indices) {
+      Reflect.apply(nativeSerie.asTaken, this, [serieArgument(indices, 'Serie.asTaken indices')])
+      return this
+    },
+  },
+  asFiltered: {
+    configurable: true,
+    writable: true,
+    value(mask) {
+      Reflect.apply(nativeSerie.asFiltered, this, [serieArgument(mask, 'Serie.asFiltered mask')])
+      return this
+    },
+  },
+  // A window holds this serie and reads and writes through it at each call.
+  window: {
+    configurable: true,
+    writable: true,
+    value(offset, length) {
+      return Reflect.apply(nativeSerie.window, this, [offset, length])
+    },
+  },
 })
 
 // A sequence value holds a serie: the pivot hands it out as its leaf's class.
@@ -1882,6 +2090,266 @@ Object.defineProperty(Scalar.prototype, 'asSerie', {
   configurable: true,
   value() {
     return describedSerie(Reflect.apply(nativeSerie.scalarAsSerie, this, []))
+  },
+})
+
+// A window over a serie: it holds the serie object and an offset and a
+// length, and every call reads or writes through the serie as it stands at
+// that call - so the one class is both the shared and the mutable window.
+// The natives answering a serie are kept here, each handed out as its leaf's
+// class; values are typed through the field the serie carries.
+const NativeSerieSlice = binding.SerieSlice
+const nativeSerieSlice = Object.freeze({
+  asJs: NativeSerieSlice.prototype._asJsNative,
+  iter: NativeSerieSlice.prototype._iterNative,
+  isSorted: NativeSerieSlice.prototype._isSortedNative,
+  sortIndices: NativeSerieSlice.prototype._sortIndicesNative,
+  window: NativeSerieSlice.prototype._windowNative,
+  intoSerie: NativeSerieSlice.prototype._intoSerieNative,
+  intoSorted: NativeSerieSlice.prototype._intoSortedNative,
+  intoUnique: NativeSerieSlice.prototype._intoUniqueNative,
+  intoReversed: NativeSerieSlice.prototype._intoReversedNative,
+  intoTaken: NativeSerieSlice.prototype._intoTakenNative,
+  intoFiltered: NativeSerieSlice.prototype._intoFilteredNative,
+  partitionBy: NativeSerieSlice.prototype._partitionByNative,
+  equals: NativeSerieSlice.prototype._equalsNative,
+  set: NativeSerieSlice.prototype._setNative,
+  fill: NativeSerieSlice.prototype._fillNative,
+  copyFrom: NativeSerieSlice.prototype._copyFromNative,
+  splice: NativeSerieSlice.prototype._spliceNative,
+  asSorted: NativeSerieSlice.prototype._asSortedNative,
+  asReversed: NativeSerieSlice.prototype._asReversedNative,
+  asTaken: NativeSerieSlice.prototype._asTakenNative,
+})
+for (const name of [
+  '_asJsNative',
+  '_iterNative',
+  '_isSortedNative',
+  '_sortIndicesNative',
+  '_windowNative',
+  '_intoSerieNative',
+  '_intoSortedNative',
+  '_intoUniqueNative',
+  '_intoReversedNative',
+  '_intoTakenNative',
+  '_intoFilteredNative',
+  '_partitionByNative',
+  '_equalsNative',
+  '_setNative',
+  '_fillNative',
+  '_copyFromNative',
+  '_spliceNative',
+  '_asSortedNative',
+  '_asReversedNative',
+  '_asTakenNative',
+]) {
+  delete NativeSerieSlice.prototype[name]
+}
+const SerieSlice = function () {
+  throw new TypeError('SerieSlice is handed out by Serie; take one with serie.window(offset, length)')
+}
+Object.defineProperty(SerieSlice, 'name', { value: 'SerieSlice' })
+SerieSlice.prototype = NativeSerieSlice.prototype
+Object.defineProperty(SerieSlice.prototype, 'constructor', {
+  configurable: true,
+  value: SerieSlice,
+  writable: true,
+})
+
+// What a window copies from: another window, or a whole serie.
+function windowSource(other, label) {
+  if (other instanceof NativeSerieSlice || other instanceof NativeSerie) return other
+  throw new TypeError(`${label} takes a SerieSlice or a Serie`)
+}
+
+Object.defineProperties(SerieSlice.prototype, {
+  [Symbol.iterator]: {
+    configurable: true,
+    value() {
+      return Reflect.apply(nativeSerieSlice.iter, this, [])
+    },
+  },
+  asJs: {
+    configurable: true,
+    value(options) {
+      const maxDepth = options == null ? undefined : checkedOptions(options).maxDepth
+      return fromTransport(Reflect.apply(nativeSerieSlice.asJs, this, [maxDepth]))
+    },
+  },
+  toJSON: {
+    configurable: true,
+    value() {
+      return this.asJs()
+    },
+  },
+  isSorted: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return Reflect.apply(
+        nativeSerieSlice.isSorted,
+        this,
+        sortOptionArgs(options, 'SerieSlice.isSorted'),
+      )
+    },
+  },
+  sortIndices: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return describedSerie(
+        Reflect.apply(
+          nativeSerieSlice.sortIndices,
+          this,
+          sortOptionArgs(options, 'SerieSlice.sortIndices'),
+        ),
+      )
+    },
+  },
+  window: {
+    configurable: true,
+    writable: true,
+    value(offset, length) {
+      return Reflect.apply(nativeSerieSlice.window, this, [offset, length])
+    },
+  },
+  intoSerie: {
+    configurable: true,
+    writable: true,
+    value() {
+      return describedSerie(Reflect.apply(nativeSerieSlice.intoSerie, this, []))
+    },
+  },
+  intoSorted: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return describedSerie(
+        Reflect.apply(
+          nativeSerieSlice.intoSorted,
+          this,
+          sortOptionArgs(options, 'SerieSlice.intoSorted'),
+        ),
+      )
+    },
+  },
+  intoUnique: {
+    configurable: true,
+    writable: true,
+    value() {
+      return describedSerie(Reflect.apply(nativeSerieSlice.intoUnique, this, []))
+    },
+  },
+  intoReversed: {
+    configurable: true,
+    writable: true,
+    value() {
+      return describedSerie(Reflect.apply(nativeSerieSlice.intoReversed, this, []))
+    },
+  },
+  intoTaken: {
+    configurable: true,
+    writable: true,
+    value(indices) {
+      return describedSerie(
+        Reflect.apply(nativeSerieSlice.intoTaken, this, [
+          serieArgument(indices, 'SerieSlice.intoTaken indices'),
+        ]),
+      )
+    },
+  },
+  intoFiltered: {
+    configurable: true,
+    writable: true,
+    value(mask) {
+      return describedSerie(
+        Reflect.apply(nativeSerieSlice.intoFiltered, this, [
+          serieArgument(mask, 'SerieSlice.intoFiltered mask'),
+        ]),
+      )
+    },
+  },
+  partitionBy: {
+    configurable: true,
+    writable: true,
+    value(keys) {
+      return Reflect.apply(nativeSerieSlice.partitionBy, this, [
+        serieArgument(keys, 'SerieSlice.partitionBy keys'),
+      ]).map(([key, rows]) => [key, describedSerie(rows)])
+    },
+  },
+  // The rows compare against another window's or a serie's, however held.
+  equals: {
+    configurable: true,
+    writable: true,
+    value(other) {
+      return Reflect.apply(nativeSerieSlice.equals, this, [
+        windowSource(other, 'SerieSlice.equals'),
+      ])
+    },
+  },
+  // The writes: each borrows the serie mutably for the call, a value typed
+  // through the field the serie carries, and none grows or shrinks what the
+  // window views.
+  set: {
+    configurable: true,
+    writable: true,
+    value(index, value) {
+      Reflect.apply(nativeSerieSlice.set, this, [index, serieValue(value, this.field)])
+    },
+  },
+  fill: {
+    configurable: true,
+    writable: true,
+    value(value) {
+      Reflect.apply(nativeSerieSlice.fill, this, [serieValue(value, this.field)])
+    },
+  },
+  copyFrom: {
+    configurable: true,
+    writable: true,
+    value(other) {
+      Reflect.apply(nativeSerieSlice.copyFrom, this, [
+        windowSource(other, 'SerieSlice.copyFrom'),
+      ])
+    },
+  },
+  splice: {
+    configurable: true,
+    writable: true,
+    value(start, end, rows) {
+      Reflect.apply(nativeSerieSlice.splice, this, [
+        start,
+        end,
+        serieValues(rows ?? [], this.field, 'SerieSlice.splice rows'),
+      ])
+    },
+  },
+  asSorted: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      Reflect.apply(nativeSerieSlice.asSorted, this, sortOptionArgs(options, 'SerieSlice.asSorted'))
+      return this
+    },
+  },
+  asReversed: {
+    configurable: true,
+    writable: true,
+    value() {
+      Reflect.apply(nativeSerieSlice.asReversed, this, [])
+      return this
+    },
+  },
+  asTaken: {
+    configurable: true,
+    writable: true,
+    value(indices) {
+      Reflect.apply(nativeSerieSlice.asTaken, this, [
+        serieArgument(indices, 'SerieSlice.asTaken indices'),
+      ])
+      return this
+    },
   },
 })
 
@@ -1965,6 +2433,18 @@ const nativeChunkedSerie = Object.freeze({
   intoArrowArray: NativeChunkedSerie.prototype._intoArrowArrayIpcNative,
   equals: NativeChunkedSerie.prototype._equalsNative,
   compare: NativeChunkedSerie.prototype._compareNative,
+  sortIndices: NativeChunkedSerie.prototype._sortIndicesNative,
+  isSorted: NativeChunkedSerie.prototype._isSortedNative,
+  intoSorted: NativeChunkedSerie.prototype._intoSortedNative,
+  intoTaken: NativeChunkedSerie.prototype._intoTakenNative,
+  intoFiltered: NativeChunkedSerie.prototype._intoFilteredNative,
+  partitionBy: NativeChunkedSerie.prototype._partitionByNative,
+  partitionByChunked: NativeChunkedSerie.prototype._partitionByChunkedNative,
+  asSorted: NativeChunkedSerie.prototype._asSortedNative,
+  asUnique: NativeChunkedSerie.prototype._asUniqueNative,
+  asReversed: NativeChunkedSerie.prototype._asReversedNative,
+  asTaken: NativeChunkedSerie.prototype._asTakenNative,
+  asFiltered: NativeChunkedSerie.prototype._asFilteredNative,
 })
 for (const name of [
   '_chunksNative',
@@ -1977,6 +2457,18 @@ for (const name of [
   '_intoArrowArrayIpcNative',
   '_equalsNative',
   '_compareNative',
+  '_sortIndicesNative',
+  '_isSortedNative',
+  '_intoSortedNative',
+  '_intoTakenNative',
+  '_intoFilteredNative',
+  '_partitionByNative',
+  '_partitionByChunkedNative',
+  '_asSortedNative',
+  '_asUniqueNative',
+  '_asReversedNative',
+  '_asTakenNative',
+  '_asFilteredNative',
 ]) {
   delete NativeChunkedSerie.prototype[name]
 }
@@ -2158,6 +2650,137 @@ Object.defineProperties(ChunkedSerie.prototype, {
       ])
     },
   },
+  // Ordering, uniqueness and grouping across the chunks: a read answers a
+  // new value and leaves this one as it was; an `as*` write brings this one
+  // into the state in place and answers it, so calls chain.
+  sortIndices: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return describedSerie(
+        Reflect.apply(
+          nativeChunkedSerie.sortIndices,
+          this,
+          sortOptionArgs(options, 'ChunkedSerie.sortIndices'),
+        ),
+      )
+    },
+  },
+  isSorted: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return Reflect.apply(
+        nativeChunkedSerie.isSorted,
+        this,
+        sortOptionArgs(options, 'ChunkedSerie.isSorted'),
+      )
+    },
+  },
+  intoSorted: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return Reflect.apply(
+        nativeChunkedSerie.intoSorted,
+        this,
+        sortOptionArgs(options, 'ChunkedSerie.intoSorted'),
+      )
+    },
+  },
+  intoTaken: {
+    configurable: true,
+    writable: true,
+    value(indices) {
+      return Reflect.apply(nativeChunkedSerie.intoTaken, this, [
+        serieArgument(indices, 'ChunkedSerie.intoTaken indices'),
+      ])
+    },
+  },
+  intoFiltered: {
+    configurable: true,
+    writable: true,
+    value(mask) {
+      return Reflect.apply(nativeChunkedSerie.intoFiltered, this, [
+        serieArgument(mask, 'ChunkedSerie.intoFiltered mask'),
+      ])
+    },
+  },
+  // One grouping door: keys held in chunks - a ChunkedSerie, or an Apache
+  // Arrow JS vector, one chunk per Data - group chunk beside chunk where both
+  // are cut at the same rows, through the core's chunked partition; any other
+  // keys are one serie as long as the whole.
+  partitionBy: {
+    configurable: true,
+    writable: true,
+    value(keys) {
+      if (keys instanceof NativeChunkedSerie) {
+        return Reflect.apply(nativeChunkedSerie.partitionByChunked, this, [keys])
+      }
+      if (
+        keys !== null &&
+        typeof keys === 'object' &&
+        !(keys instanceof NativeSerie) &&
+        arrow().isArrowVector(keys)
+      ) {
+        const chunked = nativeChunkedSerie.fromArrowArray(
+          arrowVectorChunksIntoIPC(keys, 'ChunkedSerie.partitionBy keys'),
+        )
+        return Reflect.apply(nativeChunkedSerie.partitionByChunked, this, [chunked])
+      }
+      return Reflect.apply(nativeChunkedSerie.partitionBy, this, [
+        serieArgument(keys, 'ChunkedSerie.partitionBy keys'),
+      ])
+    },
+  },
+  asSorted: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      Reflect.apply(
+        nativeChunkedSerie.asSorted,
+        this,
+        sortOptionArgs(options, 'ChunkedSerie.asSorted'),
+      )
+      return this
+    },
+  },
+  asUnique: {
+    configurable: true,
+    writable: true,
+    value() {
+      Reflect.apply(nativeChunkedSerie.asUnique, this, [])
+      return this
+    },
+  },
+  asReversed: {
+    configurable: true,
+    writable: true,
+    value() {
+      Reflect.apply(nativeChunkedSerie.asReversed, this, [])
+      return this
+    },
+  },
+  asTaken: {
+    configurable: true,
+    writable: true,
+    value(indices) {
+      Reflect.apply(nativeChunkedSerie.asTaken, this, [
+        serieArgument(indices, 'ChunkedSerie.asTaken indices'),
+      ])
+      return this
+    },
+  },
+  asFiltered: {
+    configurable: true,
+    writable: true,
+    value(mask) {
+      Reflect.apply(nativeChunkedSerie.asFiltered, this, [
+        serieArgument(mask, 'ChunkedSerie.asFiltered mask'),
+      ])
+      return this
+    },
+  },
 })
 
 // A held chunked column is a stream of one record serie per chunk.
@@ -2225,6 +2848,7 @@ Object.defineProperty(ArrowCastPlan.prototype, 'apply', {
 })
 
 binding.Serie = Serie
+binding.SerieSlice = SerieSlice
 binding.SerieReader = SerieReader
 binding.ChunkedSerie = ChunkedSerie
 binding.ArrowCastPlan = ArrowCastPlan

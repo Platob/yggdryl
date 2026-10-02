@@ -17,6 +17,11 @@ pub const IPC_DICTIONARY_IDS_KEY: &str = "YGGDRYL:ipc:dictionary-ids";
   pub fn from_reader_error(error: ArrowError) -> Error
   pub type Result<T> = std::result::Result<T, Error>;
 
+### yggdryl::arrow::size  [rust/src/arrow/size.rs]  (the one memory estimator every byte bound reads: a batch or an array costs the bytes its own slice reaches, a scalar what the row-to-batch builder charges it)
+pub fn memory_size(batch: &RecordBatch) -> usize
+pub fn array_memory_size(column: &ArrayRef) -> usize
+pub fn scalar_memory_size(value: &Scalar) -> usize
+
 ### yggdryl::arrow::extension  [rust/src/arrow/extension.rs]  (arrow-rs's typed extension types for the datatypes that ride a name, every method redirecting into the recognizer Field::from_arrow_field imports through: the name over the storage the datatype lays out, a dictionary of it included, is that datatype, and any other storage or a document a parameter-free name states none of is refused)
 impl ExtensionType for UuidType, VariantType, VersionType, TimezoneType, MimeTypeType, MediaTypeType, StateType, MarketDataKindType, MarketDataTypeType, SideType, TimeInForceType, CountryType, CcyType, MicType, CfiType, IsinType, CusipType, SedolType, FigiType, RicType, BbgType, UnitType, ForexType  (NAME the datatype identifier's arrow_extension_name, Metadata = (), no document)
 impl ExtensionType for StringType  (NAME yggdryl.string, Metadata = Self: the leaf written whole as its extension_json document)
@@ -346,11 +351,12 @@ pub const RECURSION_LIMIT: usize = 32
   pub const fn is_safe(self) -> bool
   pub const fn as_str(self) -> &'static str
   pub enum Function
-  pub const ALL: [Self; 20] = [ Self::Lower, Self::Upper, Self::Length, Self::Substring, Self::Trim, Self::StartsWith, Self::EndsWith, Self::Contains, Self::Concat, Self::Year, Self::Month, Self::Day, Self::Hour, Self::Truncate, Self::Coalesce, Self::IfNull, Self::Size, Self::Get, Self::Slice, Self::Unnest ]  (`Unnest` - `unnest(serie)`, alias `explode` - is the one select-list form that multiplies rows: the whole term of a projection, at most once per select, and refused anywhere a value is read)
+  pub const ALL: [Self; 27] = [ Self::Lower, Self::Upper, Self::Length, Self::Substring, Self::Trim, Self::StartsWith, Self::EndsWith, Self::Contains, Self::Concat, Self::Year, Self::Month, Self::Day, Self::Hour, Self::Years, Self::Quarters, Self::Months, Self::Weeks, Self::Days, Self::Hours, Self::Minutes, Self::Truncate, Self::Coalesce, Self::IfNull, Self::Size, Self::Get, Self::Slice, Self::Unnest ]  (`Unnest` - `unnest(serie)`, alias `explode` - is the one select-list form that multiplies rows: the whole term of a projection, at most once per select, and refused anywhere a value is read)
   pub fn as_str(&self) -> &str
   pub fn from_name(name: &str) -> Option<Self>
   pub fn arity(&self) -> (usize, usize)
   pub fn is_calendar(&self) -> bool
+  pub const fn is_epoch(&self) -> bool  (the seven epoch periods, `years(x)` through `minutes(x, n)`; `minutes` alone takes two arguments, its step `n` a whole-number literal)
   pub fn vocabulary() -> String
   pub enum Expression
   pub fn select(selector: impl IntoSelector) -> Result<Self>
@@ -1736,15 +1742,15 @@ pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<Ar
 impl DigestField<'_>
   pub fn is_holder(&self) -> bool
   pub fn algorithm(&self) -> Result<Option<DigestAlgorithm>>
-  pub fn sources(&self) -> Result<Option<Vec<String>>>
+  pub fn by(&self) -> Result<Option<Vec<String>>>  (the `DIGEST:by` entries as stored - canonical expression texts, `"*"` included - a bare path fed from the column's buffers, any other term bound once per plan and computed per batch)
   pub fn declares_holder(&self) -> bool
   pub fn apply_arrow_batch(&self, batch: &arrow_array::RecordBatch) -> Result<arrow_array::RecordBatch>
   impl DigestFieldMut<'_>
   pub fn set_holder(&mut self) -> Result<()>
   pub fn set_algorithm(&mut self, algorithm: DigestAlgorithm) -> Result<()>
   pub fn remove_algorithm(&mut self) -> Option<String>
-  pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,
-  pub fn remove_sources(&mut self) -> Option<String>
+  pub fn set_by<I, P>(&mut self, by: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,  (each entry parsed as a term or `"*"` and stored as the grammar spells it; requires the holder role)
+  pub fn remove_by(&mut self) -> Option<String>
   pub fn remove_role(&mut self) -> Result<Option<String>>
   pub fn digest_fields(&self) -> DigestFields<'_>
   pub fn digest_field_names(&self) -> DigestFieldNames<'_>
@@ -2772,7 +2778,7 @@ pub struct Csv<H: IOBase>  (the medium over one handle: `IOMedia` and `IOBase` t
   pub const fn handle(&self) -> &H
   pub fn handle_mut(&mut self) -> &mut H
   pub fn into_handle(self) -> H
-pub struct CsvOptions  (the shared record sections - `name`, `field`, `filter`, `select`, `merge_by`, `safe`, `batch_byte_size`, `batch_row_size`, `max_row_size`, `row_offset`, `max_byte_size`, `commit_row_size`, `level` - as `pub` fields under `IORecordOptions`, and the dialect behind validated setters, each refusal `InvalidRecord` at `$.<setting>` leaving the options unchanged; Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)
+pub struct CsvOptions  (the shared record sections - `name`, `field`, `filter`, `select`, `merge_by`, `safe`, `batch_byte_size`, `batch_row_size`, `max_row_size`, `row_offset`, `max_byte_size`, `commit_batch_num`, `level` - as `pub` fields under `IORecordOptions`, and the dialect behind validated setters, each refusal `InvalidRecord` at `$.<setting>` leaving the options unchanged; Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)
   pub fn new() -> Self  (`,`, `"`, no escape, no comment, a header, `[""]` the null spellings, no trim, `DEFAULT_CSV_INFER_ROW_SIZE`, LF; `safe` true, `DEFAULT_RECORD_BATCH_ROW_SIZE` rows and `DEFAULT_CSV_BATCH_BYTE_SIZE` bytes a batch)
   pub fn tsv() -> Self  (`new()` under a tab)
   pub const fn separator(&self) -> u8
@@ -2889,6 +2895,8 @@ pub enum FormatVersion
   pub struct SortOrder
   pub const fn unsorted() -> Self
   pub fn for_spec(spec: &PartitionSpec) -> Self
+  pub fn from_schema(order_id: i64, schema: &Field) -> Result<Self>  (the schema's `SORT:by`: a bare column an identity field, an epoch function over one its transform, `truncate(col, w)` a truncation, each with its direction and nulls; unsorted where none is declared)
+  pub fn into_orderings(&self, schema: &Field) -> Result<Vec<Ordering>>  (the inverse; a `bucket`, `void` or `unknown` field refused by name)
   pub fn from_json(document: &Scalar) -> Result<Self>
   pub fn into_json(self) -> Result<Scalar>
   pub struct TableMetadata
@@ -2997,9 +3005,13 @@ pub enum WriteStaging
 
 ### yggdryl::iceberg::partition  [rust/src/iceberg/partition.rs]
 pub const FIRST_PARTITION_ID: i32 = 1000;
-  pub enum Transform
+  pub enum Transform  (`Minutes(u32)` is `minutes[n]`, beside `Week` and `Quarter`: this crate's own, crossing the official model as reserved bucket counts)
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn is_invertible(self) -> bool
+  pub const fn function(self) -> Option<Function>
+  pub const fn from_function(function: &Function) -> Option<Self>
+  pub fn from_term(term: &Term) -> Option<Self>
+  pub fn into_term(self, source: Term) -> Option<Term>
   pub fn result_type(self, source: &DataType) -> Result<DataType>
   pub struct PartitionField
   pub fn identity(source_id: i32, field_id: i32, name: impl Into<SmolStr>) -> Self
@@ -3350,6 +3362,7 @@ pub enum Media
 
 ### yggdryl::media::options  [rust/src/media/options.rs]
 pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
+pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-based write session publishes by when its options state no `commit_batch_num`)
   pub trait IORecordOptions: Sized
   fn declared(&self) -> Option<&Field>
   fn set_declared(&mut self, field: Option<Field>)
@@ -3364,15 +3377,14 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   fn set_batch_row_size(&mut self, batch_row_size: Option<usize>)
   fn batch_byte_size(&self) -> Option<u64>
   fn set_batch_byte_size(&mut self, batch_byte_size: Option<u64>)
-  fn write_batch_row_size(&self) -> Option<usize>
   fn max_row_size(&self) -> Option<u64>
   fn set_max_row_size(&mut self, max_row_size: Option<u64>)
   fn row_offset(&self) -> Option<u64>
   fn set_row_offset(&mut self, row_offset: Option<u64>)
   fn max_byte_size(&self) -> Option<u64>
   fn set_max_byte_size(&mut self, max_byte_size: Option<u64>)
-  fn commit_row_size(&self) -> Option<usize>
-  fn set_commit_row_size(&mut self, commit_row_size: Option<usize>)
+  fn commit_batch_num(&self) -> Option<usize>
+  fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>)
   fn level(&self) -> Level
   fn set_level(&mut self, level: Level)
   fn merge_by(&self) -> &Selector
@@ -3407,7 +3419,7 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   fn with_row_offset(mut self, row_offset: u64) -> Self
   fn with_max_row_size(mut self, max_row_size: u64) -> Self
   fn with_max_byte_size(mut self, max_byte_size: u64) -> Self
-  fn with_commit_row_size(mut self, commit_row_size: usize) -> Self
+  fn with_commit_batch_num(mut self, commit_batch_num: usize) -> Self
   fn with_level(mut self, level: Level) -> Self
   fn with_merge_by(mut self, merge_by: impl IntoSelector) -> Result<Self>
   fn require_merge_by(&self) -> Result<()>
@@ -3452,7 +3464,7 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   pub const fn csv_infer_row_size(&self) -> Option<usize>
   pub fn set_csv_infer_row_size(&mut self, infer_row_size: usize) -> Result<()>
   pub fn require_write_mode(&self, mode: IOMode) -> Result<()>
-  pub fn require_commit_row_size(&self) -> Result<Option<usize>>
+  pub fn require_commit_batch_num(&self) -> Result<Option<usize>>
   pub fn for_media_type(media_type: &MediaType) -> Result<Self>
   pub fn for_mime_type(base: &MimeType) -> Result<Self>  (`text/csv` -> `Csv(CsvOptions::new())`, `text/tab-separated-values` -> `Csv(CsvOptions::tsv())`)
   pub const fn mime_type(&self) -> MimeType  (a `Csv` under a tab separator `TSV`, else `CSV`)
@@ -3876,6 +3888,14 @@ pub struct MimeType(MimeTypeWire);
   pub fn is_binary(&self) -> bool
   pub fn stable_hash(&self) -> u64
 
+### yggdryl::root::sort_options  [rust/src/sort_options.rs]  (the direction of an ordering and where its absent rows go; re-exported at the root)
+pub struct SortOptions  (Clone, Copy, Debug, Default - ascending, nulls last, the plan's `order by` and DuckDB's default and the opposite of arrow_schema::SortOptions::default(), which puts nulls first - Eq, Hash, Ord; Display the suffix the plan's ordering writes after its key, ` desc`, ` nulls first`, both, or empty; FromStr of that suffix, asc/desc and nulls first/last in either order, case folded, a stray or repeated word refused by name)
+  pub const fn ascending() -> Self
+  pub const fn descending() -> Self
+  pub const fn with_nulls_first(self, nulls_first: bool) -> Self
+  pub const fn is_descending(&self) -> bool
+  pub const fn is_nulls_first(&self) -> bool
+
 ### yggdryl::root::scheme  [rust/src/scheme.rs]
 pub struct Scheme(SchemeWire);
   pub const HTTP: Self = Self(SchemeWire::Http);
@@ -3895,6 +3915,7 @@ pub struct Scheme(SchemeWire);
   pub const DIGEST: Self = Self(SchemeWire::Digest);
   pub const IDENTITY: Self = Self(SchemeWire::Identity);
   pub const PARTITION: Self = Self(SchemeWire::Partition);
+  pub const SORT: Self = Self(SchemeWire::Sort);
   pub const S3: Self = Self(SchemeWire::S3);
   pub const S3TABLES: Self = Self(SchemeWire::S3Tables);
   pub const GS: Self = Self(SchemeWire::Gs);
@@ -4211,6 +4232,70 @@ pub struct Element<'a>
   pub fn child(&self, namespace: Option<&str>, local: &str) -> Option<Element<'_>>
   pub fn child_in(&self, namespace: &str, local: &str) -> Option<Element<'_>>
   pub fn one_child_in(&self, namespace: &str, local: &str) -> Result<Element<'_>>
+
+### yggdryl::root::serie_slice  [rust/src/serie_slice.rs]  (a window over a serie that reads and writes through the serie's own implementation, every index window-relative; re-exported at the root)
+pub struct SerieSlice<'a>  (a reference to a serie, an offset and a length; Copy; Eq/Ord/Hash over the window's rows alone, PartialEq with Serie either side; Display the serie's name - $ for a run - and the window's rows, Debug the name, offset, len and nulls; IntoIterator for &SerieSlice)
+  pub const fn len(&self) -> usize
+  pub const fn is_empty(&self) -> bool
+  pub const fn offset(&self) -> usize  (the serie row the window starts at)
+  pub const fn serie(&self) -> &'a Serie  (the whole)
+  pub fn field(&self) -> Option<&'a Field>
+  pub fn dtype(&self) -> Result<DataType>  (a column's, read off the field; a run's agreed out of the window's rows)
+  pub fn null_count(&self) -> usize  (none where the column holds no absent row, else one validity read per window row, no row built; a run walks its values)
+  pub fn is_null(&self, index: usize) -> Result<bool>  (window-relative; refuses past the window naming the serie and both counts)
+  pub fn scalar(&self, index: usize) -> Result<Scalar>
+  pub fn get(&self, index: usize) -> Option<Cow<'a, Scalar>>
+  pub fn iter(&self) -> SerieSliceRows<'a>
+  pub fn rows(&self) -> Cow<'a, [Scalar]>  (lent for a run, built once for a column)
+  pub fn memory_size(&self) -> usize
+  pub fn window(&self, offset: usize, length: usize) -> Result<Self>  (a narrower window, rebased onto the serie)
+  pub fn into_serie(&self) -> Serie  (Serie::slice: zero copy for a column, the window's values copied for a run)
+  pub fn is_sorted(&self, options: SortOptions) -> bool  (what the sliced serie answers, and so for the rest of the ordering verbs)
+  pub fn is_unique(&self) -> bool
+  pub fn unique_count(&self) -> usize
+  pub fn sort_indices(&self, options: SortOptions) -> Result<Serie>
+  pub fn into_sorted(&self, options: SortOptions) -> Result<Serie>
+  pub fn into_unique(&self) -> Result<Serie>
+  pub fn into_reversed(&self) -> Serie
+  pub fn into_taken(&self, indices: &Serie) -> Result<Serie>
+  pub fn into_filtered(&self, mask: &Serie) -> Result<Serie>
+  pub fn partition_by(&self, keys: &Serie) -> Result<Vec<(Scalar, Serie)>>
+pub struct SerieSliceMut<'a>  (the same window over a &mut Serie; every read of SerieSlice answered directly and through as_window; Display and Debug as SerieSlice)
+  pub fn as_window(&self) -> SerieSlice<'_>  (the borrowed read-only view)
+  pub const fn len(&self) -> usize
+  pub const fn is_empty(&self) -> bool
+  pub const fn offset(&self) -> usize
+  pub fn serie(&self) -> &Serie
+  pub fn field(&self) -> Option<&Field>
+  pub fn dtype(&self) -> Result<DataType>
+  pub fn null_count(&self) -> usize
+  pub fn is_null(&self, index: usize) -> Result<bool>
+  pub fn scalar(&self, index: usize) -> Result<Scalar>
+  pub fn get(&self, index: usize) -> Option<Cow<'_, Scalar>>
+  pub fn iter(&self) -> SerieSliceRows<'_>
+  pub fn rows(&self) -> Cow<'_, [Scalar]>
+  pub fn memory_size(&self) -> usize
+  pub fn window(&self, offset: usize, length: usize) -> Result<SerieSlice<'_>>
+  pub fn into_serie(&self) -> Serie
+  pub fn is_sorted(&self, options: SortOptions) -> bool
+  pub fn is_unique(&self) -> bool
+  pub fn unique_count(&self) -> usize
+  pub fn sort_indices(&self, options: SortOptions) -> Result<Serie>
+  pub fn into_sorted(&self, options: SortOptions) -> Result<Serie>
+  pub fn into_unique(&self) -> Result<Serie>
+  pub fn into_reversed(&self) -> Serie
+  pub fn into_taken(&self, indices: &Serie) -> Result<Serie>
+  pub fn into_filtered(&self, mask: &Serie) -> Result<Serie>
+  pub fn partition_by(&self, keys: &Serie) -> Result<Vec<(Scalar, Serie)>>
+  pub fn set(&mut self, index: usize, value: Scalar) -> Result<()>  (Serie::set on the rebased row; refuses past the window)
+  pub fn fill(&mut self, value: Scalar) -> Result<()>  (the value proved once, written as clones over the window)
+  pub fn swap(&mut self, left: usize, right: usize) -> Result<()>  (two reads, two sets)
+  pub fn copy_from(&mut self, other: &SerieSlice<'_>) -> Result<()>  (the other window's rows written row for row through Serie::splice; refuses another length by name)
+  pub fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()>  (Serie::splice on the rebased range, only when rows.len() == range.len(): a window never grows or shrinks what it views)
+  pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self>  (in place, chaining: a primitive column held alone sorts the window of its native slice where it stands, a boolean column its two bitmaps, a run its values, any other leaf writes the sorted rows back through splice)
+  pub fn as_reversed(&mut self) -> Result<&mut Self>
+  pub fn as_taken(&mut self, indices: &Serie) -> Result<&mut Self>  (exactly as many indices as the window, window-relative; refused by name otherwise)
+pub struct SerieSliceRows<'a>  (Iterator<Item = Cow<'a, Scalar>> over a window's rows, DoubleEndedIterator, ExactSizeIterator, FusedIterator)
 
 ### yggdryl::soap  [rust/src/soap/mod.rs]
 pub const ENVELOPE_NAMESPACE: &str = "http://schemas.xmlsoap.org/soap/envelope/"
@@ -4861,7 +4946,9 @@ pub enum DataType
   pub fn has_partition_fields(&self) -> bool
   pub fn only_partition_fields(&self) -> Result<Self>
   pub fn without_partition_fields(&self) -> Result<Self>
-  pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self>
+  pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self>  (`with_partition_by` over the names as bare columns)
+  pub fn with_partition_by(&self, by: impl IntoIterator<Item = Projection>) -> Result<Self>  (stores `PARTITION:by`, marks every identity entry's column, materializes every derived entry as a marked `TRANSFORM:` column named by its alias or `{source}_{function}` in Iceberg's singular; an empty list removes the declaration)
+  pub fn partition_by(&self) -> Result<Vec<Projection>>  (the `PARTITION:by` entries, else the marked columns as bare ones)
   pub fn validate_value(&self, value: &Scalar) -> Result<()>
   pub fn canonicalize_value(&self, value: Scalar) -> Result<Scalar>
   pub fn from_natural_value(&self, value: Scalar) -> Result<Scalar>
@@ -4922,6 +5009,8 @@ pub enum DataType
   pub fn as_identity_mut(&mut self) -> protocol::IdentityFieldMut<'_>
   pub fn as_partition(&self) -> protocol::PartitionField<'_>
   pub fn as_partition_mut(&mut self) -> protocol::PartitionFieldMut<'_>
+  pub fn as_sort(&self) -> protocol::SortField<'_>
+  pub fn as_sort_mut(&mut self) -> protocol::SortFieldMut<'_>
   pub fn as_s3(&self) -> protocol::S3Field<'_>
   pub fn as_s3_mut(&mut self) -> protocol::S3FieldMut<'_>
   pub fn as_gs(&self) -> protocol::GsField<'_>
@@ -5158,7 +5247,9 @@ pub trait EnumRepr: ArrowNativeType + Copy + Default + Into<u16> + Into<i64> + T
   pub fn has_partition_fields(&self) -> bool
   pub fn only_partition_fields(&self) -> Result<Self>
   pub fn without_partition_fields(&self) -> Result<Self>
-  pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self>
+  pub fn with_partition_fields(&self, names: &[&str]) -> Result<Self>  (`with_partition_by` over the names as bare columns)
+  pub fn with_partition_by(&self, by: impl IntoIterator<Item = Projection>) -> Result<Self>  (stores `PARTITION:by`, marks every identity entry's column, materializes every derived entry as a marked `TRANSFORM:` column named by its alias or `{source}_{function}` in Iceberg's singular; an empty list removes the declaration)
+  pub fn partition_by(&self) -> Result<Vec<Projection>>  (the `PARTITION:by` entries, else the marked columns as bare ones)
   pub fn set_field_at(&mut self, index: usize, child: Self) -> Result<()>
   pub fn set_field_by_path(&mut self, path: &str, child: Self) -> Result<()>
   pub fn set_field<'key>(&mut self, key: impl Into<FieldKey<'key>>, child: Self) -> Result<()>
@@ -5332,6 +5423,20 @@ pub enum PythonKind
   pub fn properties(&self) -> [(&'static str, &str); 3]
   impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for PythonMetadata  (Ord is module-major, then qualified name, then form)
   impl fmt::Display for PythonMetadata  (the import path, "<module>.<qualname>")
+  impl<'field> PartitionField<'field>
+  pub fn by(&self) -> Result<Option<Vec<Projection>>>  (the `PARTITION:by` entries, each a term with an optional alias; `None` where the struct declares nothing)
+  pub fn declares_partition(&self) -> bool
+  impl PartitionFieldMut<'_>
+  pub fn set_by(&mut self, by: impl IntoIterator<Item = Projection>) -> Result<()>  (the declaration alone marks nothing; `Field::with_partition_by` does)
+  pub fn set_by_texts<I, P>(&mut self, by: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,  (each text parsed as a term with an optional alias and stored as the grammar spells it)
+  pub fn remove_by(&mut self) -> Option<String>
+  impl<'field> SortField<'field>
+  pub fn by(&self) -> Result<Option<Vec<Ordering>>>  (the `SORT:by` keys, most significant first; what `Plan::from_field` moves into its `order by` and an Iceberg table's default sort order reads)
+  pub fn declares_order(&self) -> bool
+  impl SortFieldMut<'_>
+  pub fn set_by(&mut self, by: impl IntoIterator<Item = Ordering>) -> Result<()>
+  pub fn set_by_texts<I, P>(&mut self, by: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,  (each text parsed as an `order by` key and stored as the grammar spells it)
+  pub fn remove_by(&mut self) -> Option<String>
   impl<'field> PythonField<'field>
   pub fn module(&self) -> Option<&'field str>
   pub fn qualname(&self) -> Option<&'field str>
@@ -5426,6 +5531,9 @@ pub struct ProtocolField<'field>
   pub struct PartitionField<'field>(ProtocolField<'field>);
   pub struct PartitionFieldMut<'field>(ProtocolFieldMut<'field>);
   pub fn as_protocol(&self) -> PartitionField<'_>
+  pub struct SortField<'field>(ProtocolField<'field>);
+  pub struct SortFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> SortField<'_>
   pub struct S3Field<'field>(ProtocolField<'field>);
   pub struct S3FieldMut<'field>(ProtocolFieldMut<'field>);
   pub fn as_protocol(&self) -> S3Field<'_>
@@ -5530,6 +5638,25 @@ pub struct ProtocolField<'field>
   pub const fn is_column(&self) -> bool
   pub fn into_run(self) -> Run  (a run answers itself; a column builds its rows once)
   pub fn into_arrow_array(&self) -> Option<ArrayRef>  (None for a run; shares buffers)
+  pub fn sort_indices(&self, options: SortOptions) -> Result<Self>  (the row positions in sorted order as a uint32 column named index, stable, in the values' order - Scalar's total order, a nested absence placed as a top-level one: a primitive column over its native slice, every NaN one value; a column whose stored bytes order as its values through Arrow's row format; a run and any other column - a version, windows-1252 text, a code, a URL, a union, a foreign NaN payload - through the values' own order, each row built once; absent rows gathered to the end the options name; refuses more rows than one uint32 index column addresses)
+  pub fn is_sorted(&self, options: SortOptions) -> bool  (one pass over adjacent rows on sort_indices' rung: Arrow's comparator over buffers that order as their values, else the values' order, each row built once)
+  pub fn is_unique(&self) -> bool  (one hash set over the row format's bytes or the values, an absent row one value; stops at the first repeat)
+  pub fn unique_count(&self) -> usize
+  pub fn into_sorted(&self, options: SortOptions) -> Result<Self>  (sort_indices then the take; a new serie under the same field, this one untouched)
+  pub fn into_unique(&self) -> Result<Self>  (the first occurrence of every value in first-occurrence order, the field kept)
+  pub fn into_reversed(&self) -> Self  (one take for a column, a copy for a run)
+  pub fn into_taken(&self, indices: &Self) -> Result<Self>  (the rows an integer column or run of any width names, in that order; refuses an absent, non-integer, negative or out-of-range index naming the serie and the index)
+  pub fn into_filtered(&self, mask: &Self) -> Result<Self>  (the rows a boolean column or run of the same length keeps, an absent mask row keeping nothing; refuses another length or a non-boolean row by name)
+  pub fn partition_by(&self, keys: &Self) -> Result<Vec<(Scalar, Self)>>  (one (key, rows) per distinct key of a serie of the same length, in first-occurrence order, an absent key one value; sorted keys cut every group as a zero-copy slice, other keys take each group once)
+  pub fn partition_by_paths(&self, paths: &[FieldPath]) -> Result<Vec<(Scalar, Self)>>  (a record column's rows grouped by the cells the paths reach, keyed by the run of those cells in path order; refuses a run, a non-record column, no path or a path reaching no column)
+  pub fn memory_size(&self) -> usize  (a column's buffers as its own slice counts them, a run's values as the row estimator charges them)
+  pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self>  (in place, chaining: a primitive column holding its buffer alone sorts the native slice where it stands and rewrites its validity, a boolean column its two bitmaps, a run its values; any other leaf replaces its buffers by the kernel's one copy; a refusal leaves the serie as it was)
+  pub fn as_unique(&mut self) -> Result<&mut Self>
+  pub fn as_reversed(&mut self) -> Result<&mut Self>  (a primitive column held alone reverses the native slice and its validity bits where they stand, a boolean column its two bitmaps)
+  pub fn as_taken(&mut self, indices: &Self) -> Result<&mut Self>
+  pub fn as_filtered(&mut self, mask: &Self) -> Result<&mut Self>
+  pub fn window(&self, offset: usize, length: usize) -> Result<SerieSlice<'_>>  (a window reading through this serie; refuses past the end naming the serie and both counts)
+  pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<SerieSliceMut<'_>>
   pub fn require_arrow_array(&self) -> Result<ArrayRef>  (refuses a run by name)
   pub fn slice(&self, offset: usize, length: usize) -> Result<Self>  (zero copy for a column, offsets rebased; a run copies its window; refuses past the end)
   pub fn child(&self, name: &str) -> Option<&Self>  (a record column's child by exact name)
@@ -5594,6 +5721,23 @@ pub struct ProtocolField<'field>
   pub fn cast(&self, target: &Field, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (already under target: a clone; otherwise one ArrowCastPlan compiled and applied to every chunk)
   pub fn into_arrow_arrays(&self) -> Vec<ArrayRef>  (each chunk's buffers, shared)
   pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader>  (one batch per chunk under one schema built once: a record's chunks are its batches, any other field's chunks each the one column of a row root, as Serie::into_arrow_batch crosses one; a record chunk holding an absent row refused)
+  pub fn sort_indices(&self, options: SortOptions) -> Result<Serie>  (the one join, then Serie::sort_indices)
+  pub fn is_sorted(&self, options: SortOptions) -> bool  (every chunk sorted and every chunk edge in order, an edge compared on the rung the chunks sort on - one comparator over both chunks' buffers, or one row per side - so it answers what the joined column does; no join)
+  pub fn is_unique(&self) -> bool  (the one join, then Serie::is_unique)
+  pub fn unique_count(&self) -> usize
+  pub fn into_sorted(&self, options: SortOptions) -> Result<Self>  (the one join then the sort: a chunked serie of one chunk under the field)
+  pub fn into_unique(&self) -> Result<Self>  (one chunk)
+  pub fn into_reversed(&self) -> Self  (the chunks reversed, each reversed, kept apart)
+  pub fn into_taken(&self, indices: &Serie) -> Result<Self>  (indices name rows across the whole: the one join then the take, one chunk)
+  pub fn into_filtered(&self, mask: &Serie) -> Result<Self>  (a mask as long as the whole, cut to each chunk's window and applied per chunk, the chunks kept apart; refuses another length naming the field)
+  pub fn partition_by(&self, keys: &Serie) -> Result<Vec<(Scalar, Self)>>  (keys as long as the whole, cut per chunk; one (key, rows) per distinct key in first-occurrence order across the chunks, each group's chunks what each chunk contributed, kept apart)
+  pub fn partition_by_chunked(&self, keys: &Self) -> Result<Vec<(Scalar, Self)>>  (partition_by over keys held as chunks: cut at the same rows, chunk i of the keys groups chunk i with no join; cut elsewhere, the keys joined once and cut per chunk; refuses another length naming the field)
+  pub fn memory_size(&self) -> usize  (the chunks summed)
+  pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self>  (in place, chaining: into_sorted replacing the chunks; a refusal leaves the serie as it was)
+  pub fn as_unique(&mut self) -> Result<&mut Self>
+  pub fn as_reversed(&mut self) -> Result<&mut Self>  (the chunks reversed, each reversed where it stands)
+  pub fn as_taken(&mut self, indices: &Serie) -> Result<&mut Self>
+  pub fn as_filtered(&mut self, mask: &Serie) -> Result<&mut Self>
   impl PartialEq<Serie> for ChunkedSerie
   impl PartialEq<ChunkedSerie> for Serie
   impl PartialOrd<Serie> for ChunkedSerie
@@ -6959,13 +7103,16 @@ pub enum Location
   pub const fn verb(&self) -> Verb
   pub const fn target(&self) -> Option<&Target>
   pub const fn merge_by(&self) -> &Selector
-  pub struct Ordering
+  pub struct Ordering  (a term and the `SortOptions` it sorts under; Display the `order by` key text, FromStr through the parser's order-key rule, serde the term beside the two flattened facts)
+  pub const fn new(term: Term, options: SortOptions) -> Self
   pub const fn asc(term: Term) -> Self
   pub const fn desc(term: Term) -> Self
   pub const fn nulls_first(mut self, nulls_first: bool) -> Self
   pub const fn term(&self) -> &Term
+  pub const fn options(&self) -> SortOptions
   pub const fn is_descending(&self) -> bool
   pub const fn is_nulls_first(&self) -> bool
+  impl FromStr for Ordering
   pub struct Plan
   pub fn new() -> Self
   pub fn from_scalar(value: &crate::Scalar) -> Result<Self>
@@ -7101,13 +7248,13 @@ pub fn explain(&self) -> String
   pub fn explain(&self) -> String
 
 ### yggdryl::expression::transform  [rust/src/expression/transform.rs]
-pub fn term(&self) -> Result<Option<Term>>
+pub fn term(&self) -> Result<Option<Term>>  (`TRANSFORM:expression`, else the function called over its `TRANSFORM:by`; no partition fallback)
   pub fn function(&self) -> Result<Option<Function>>
-  pub fn sources(&self) -> Result<Option<Vec<String>>>
+  pub fn by(&self) -> Result<Option<Vec<Term>>>
   pub fn is_derived(&self) -> bool
   pub fn declares_derivation(&self) -> bool
   pub fn set_term(&mut self, term: &Term) -> Result<()>
-  pub fn set_function<I, P>(&mut self, function: &Function, sources: I) -> Result<()> where
+  pub fn set_function<I, P>(&mut self, function: &Function, by: I) -> Result<()> where
   pub fn remove_term(&mut self) -> Option<String>
   pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch>
 

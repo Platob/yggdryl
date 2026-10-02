@@ -308,15 +308,15 @@ fn a_write_mode_is_checked_against_the_match_key() {
 
 #[test]
 fn a_zero_commit_cadence_is_refused_before_a_write() {
-    let zero = RecordOptions::from(XmlaOptions::new().with_commit_row_size(0));
-    let message = zero.require_commit_row_size().unwrap_err().to_string();
-    assert!(message.contains("$.commit_row_size"), "{message}");
-    assert!(message.contains("non-zero row count, got 0"), "{message}");
+    let zero = RecordOptions::from(XmlaOptions::new().with_commit_batch_num(0));
+    let message = zero.require_commit_batch_num().unwrap_err().to_string();
+    assert!(message.contains("$.commit_batch_num"), "{message}");
+    assert!(message.contains("non-zero batch count, got 0"), "{message}");
 
-    let every_three = RecordOptions::from(XmlaOptions::new().with_commit_row_size(3));
-    assert_eq!(every_three.require_commit_row_size().unwrap(), Some(3));
+    let every_three = RecordOptions::from(XmlaOptions::new().with_commit_batch_num(3));
+    assert_eq!(every_three.require_commit_batch_num().unwrap(), Some(3));
     let once = RecordOptions::from(XmlaOptions::new());
-    assert_eq!(once.require_commit_row_size().unwrap(), None);
+    assert_eq!(once.require_commit_batch_num().unwrap(), None);
 }
 
 #[test]
@@ -367,14 +367,13 @@ fn every_shared_setting_starts_unset() {
     assert_eq!(options.batch_byte_size(), None);
     assert_eq!(options.batch_row_size, None);
     assert_eq!(options.batch_row_size(), None);
-    assert_eq!(options.write_batch_row_size(), None);
     assert_eq!(options.max_row_size, None);
     assert_eq!(options.max_row_size(), None);
     assert_eq!(options.max_byte_size, None);
     assert_eq!(options.max_byte_size(), None);
     assert!(!options.write_limit_is_zero());
-    assert_eq!(options.commit_row_size, None);
-    assert_eq!(options.commit_row_size(), None);
+    assert_eq!(options.commit_batch_num, None);
+    assert_eq!(options.commit_batch_num(), None);
     assert_eq!(options.level, Level::DEFAULT);
     assert_eq!(options.level(), Level::DEFAULT);
     assert!(options.plan().is_empty());
@@ -600,8 +599,8 @@ fn every_bound_and_the_level_round_trip() {
     assert_eq!(options.max_row_size(), Some(10));
     options.set_max_byte_size(Some(1 << 20));
     assert_eq!(options.max_byte_size(), Some(1 << 20));
-    options.set_commit_row_size(Some(16));
-    assert_eq!(options.commit_row_size(), Some(16));
+    options.set_commit_batch_num(Some(16));
+    assert_eq!(options.commit_batch_num(), Some(16));
     options.set_level(Level::BEST);
     assert_eq!(options.level(), Level::BEST);
 
@@ -611,7 +610,7 @@ fn every_bound_and_the_level_round_trip() {
     assert_eq!(options.batch_row_size, Some(64));
     assert_eq!(options.max_row_size, Some(10));
     assert_eq!(options.max_byte_size, Some(1 << 20));
-    assert_eq!(options.commit_row_size, Some(16));
+    assert_eq!(options.commit_batch_num, Some(16));
     assert_eq!(options.level, Level::BEST);
 
     // The builders are the same setters.
@@ -622,7 +621,7 @@ fn every_bound_and_the_level_round_trip() {
             .with_batch_row_size(64)
             .with_max_row_size(10)
             .with_max_byte_size(1 << 20)
-            .with_commit_row_size(16)
+            .with_commit_batch_num(16)
             .with_level(Level::BEST),
         options
     );
@@ -632,30 +631,10 @@ fn every_bound_and_the_level_round_trip() {
     options.set_batch_row_size(None);
     options.set_max_row_size(None);
     options.set_max_byte_size(None);
-    options.set_commit_row_size(None);
+    options.set_commit_batch_num(None);
     options.set_safe(false);
     options.set_level(Level::DEFAULT);
     assert_eq!(options, XmlaOptions::new());
-}
-
-#[test]
-fn a_native_row_write_never_runs_past_the_next_commit() {
-    let commit = XmlaOptions::new().with_commit_row_size(5);
-    assert_eq!(commit.write_batch_row_size(), Some(5));
-    assert_eq!(
-        commit.clone().with_batch_row_size(3).write_batch_row_size(),
-        Some(3)
-    );
-    assert_eq!(
-        commit.with_batch_row_size(50).write_batch_row_size(),
-        Some(5)
-    );
-    assert_eq!(
-        XmlaOptions::new()
-            .with_batch_row_size(7)
-            .write_batch_row_size(),
-        Some(7)
-    );
 }
 
 #[test]
@@ -835,7 +814,7 @@ fn the_variant_forwards_every_shared_setting_to_the_xmla_options() {
     record.set_batch_row_size(Some(4));
     record.set_max_row_size(Some(3));
     record.set_max_byte_size(Some(2));
-    record.set_commit_row_size(Some(1));
+    record.set_commit_batch_num(Some(1));
     record.set_level(Level::FAST);
     let RecordOptions::Xmla(inner) = record else {
         unreachable!("the setters keep the variant");
@@ -856,7 +835,7 @@ fn the_variant_forwards_every_shared_setting_to_the_xmla_options() {
             .with_batch_row_size(4)
             .with_max_row_size(3)
             .with_max_byte_size(2)
-            .with_commit_row_size(1)
+            .with_commit_batch_num(1)
             .with_level(Level::FAST)
     );
 }
@@ -1390,12 +1369,12 @@ fn the_level_reaches_the_content_coding_and_nothing_else() {
 fn a_zero_commit_cadence_leaves_the_stored_document_as_it_was() {
     let mut stored = holding(&stated(THREE_ROWS));
     let before = stored.as_slice().to_vec();
-    let zero = RecordOptions::from(XmlaOptions::new().with_commit_row_size(0));
+    let zero = RecordOptions::from(XmlaOptions::new().with_commit_batch_num(0));
     let message = stored
         .overwrite_arrow_batch(batch(), &zero)
         .unwrap_err()
         .to_string();
-    assert!(message.contains("$.commit_row_size"), "{message}");
+    assert!(message.contains("$.commit_batch_num"), "{message}");
     assert_eq!(stored.as_slice(), before.as_slice());
 }
 
@@ -1526,9 +1505,9 @@ fn one_setting_each() -> Vec<(&'static str, XmlaOptions)> {
             },
         ),
         (
-            "commit_row_size",
+            "commit_batch_num",
             XmlaOptions {
-                commit_row_size: Some(1),
+                commit_batch_num: Some(1),
                 ..default()
             },
         ),

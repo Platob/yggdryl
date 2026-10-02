@@ -86,3 +86,23 @@ mod grammar {
         assert_eq!(Filter::from_json(&legacy).unwrap(), filter, "{legacy}");
     }
 }
+
+/// An epoch function serializes under its spelling, and `minutes` carries
+/// its step as the argument it is, so a stored term reads in any language's
+/// parser as it prints.
+mod epoch_function_tags {
+    use yggdryl::Term;
+
+    #[test]
+    fn the_tag_is_the_spelling_and_the_step_an_argument() {
+        for (text, tag) in [("minutes(t, 15)", "minutes"), ("weeks(t)", "weeks")] {
+            let term: Term = text.parse().unwrap();
+            let document = term.clone().into_json().unwrap();
+            let encoded = document.as_str();
+            assert!(encoded.contains(&format!("\"{tag}\"")), "{encoded}");
+            assert!(!encoded.contains("qhours"), "{encoded}");
+            assert_eq!(Term::from_json(&document).unwrap(), term);
+            assert_eq!(Term::from_json(&document).unwrap().to_string(), text);
+        }
+    }
+}

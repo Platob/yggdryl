@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Date32Array, RecordBatch};
 use criterion::{BatchSize, Criterion};
-use yggdryl::expression::Function;
 use yggdryl::{
     DataType, Field, MediaType, Metadata, MimeType, PythonKind, PythonMetadata, Scalar, Scheme,
     StructType, Url,
@@ -143,13 +142,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // computing the whole column from the one it names.
     let mut derived = DataType::Int32.nullable_field("year");
     derived
-        .as_partition_mut()
-        .set_sources(["event"])
-        .expect("a non-empty source path");
-    derived
-        .as_partition_mut()
-        .set_transform(Function::Year)
-        .expect("a transform of one argument");
+        .as_transform_mut()
+        .set_term(&"year(event)".parse().expect("a term"))
+        .expect("a function over one column");
     let declaring = Field::new(
         "row",
         StructType::from_fields([DataType::date32().required_field("event"), derived])
@@ -162,14 +157,14 @@ pub fn benchmarks(criterion: &mut Criterion) {
         Arc::new(Date32Array::from((0..1_024).collect::<Vec<i32>>())) as ArrayRef,
     )])
     .expect("one column of one length");
-    group.bench_function("partition_transform_typed", |bencher| {
+    group.bench_function("partition_term_typed", |bencher| {
         bencher.iter(|| {
             black_box(&declaring)
                 .field_at(1)
                 .expect("the declared partition column")
-                .as_partition()
-                .transform()
-                .expect("a canonical transform round trips")
+                .as_transform()
+                .term()
+                .expect("a canonical declaration round trips")
         });
     });
     group.bench_function("transform_apply_arrow_batch_1024", |bencher| {

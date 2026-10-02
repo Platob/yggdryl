@@ -29,6 +29,7 @@ from yggdryl import (
     ChunkedSerie,
     DataType,
     Field,
+    FieldPath,
     IOBase,
     FixedSizeSerieSerie,
     LargeSerieSerie,
@@ -1487,3 +1488,336 @@ def test_a_long_cast_leaves_the_serie_writable_from_another_thread() -> None:
             writer.join()
     assert errors == []
     assert writes > 0
+
+
+# Ordering, uniqueness and grouping - mirrors ``rust/tests/serie/order.rs``
+# case for case, through the binding's own spellings: two keyword booleans
+# for the ordering, and indices, masks and keys read from a ``Serie``, any
+# columnar object or an iterable of values.
+
+
+def int64_column(values: list[int | None]) -> Serie:
+    nullable = any(value is None for value in values)
+    return Serie.from_arrow_array(
+        pa.array(values, pa.int64()), Field("price", "int64", nullable=nullable)
+    )
+
+
+def utf8_column(values: list[str | None]) -> Serie:
+    nullable = any(value is None for value in values)
+    return Serie.from_arrow_array(
+        pa.array(values, pa.utf8()), Field("venue", "utf8", nullable=nullable)
+    )
+
+
+def quote_rows(rows: list[tuple[str, int]]) -> Serie:
+    root = Field(
+        "quote", "struct<venue: utf8 not null, price: int64 not null>", nullable=False
+    )
+    return Serie.from_scalars(root, [[venue, price] for venue, price in rows])
+
+
+def nested_columns() -> list[Serie]:
+    """Every nested, encoded and viewed layout: the ladder's lower rungs."""
+    records = quote_rows([("XNYS", 2), ("XNAS", 2), ("XNAS", 1), ("XNYS", 2)])
+    lists = Serie.from_arrow_array(pa.array([[2, 3], [1], [2, 3], [2]], pa.list_(pa.int64())))
+    dictionary = Serie.from_arrow_array(
+        pa.DictionaryArray.from_arrays(
+            pa.array([1, 0, 1, 2], pa.int8()), pa.array(["XNAS", "XNYS", "XPAR"])
+        )
+    )
+    views = Serie.from_arrow_array(
+        pa.array(
+            ["XNYS", "XNAS", "a view longer than twelve bytes", "XNYS"], pa.string_view()
+        )
+    )
+    booleans = Serie.from_arrow_array(pa.array([True, False, None, True]))
+    return [records, lists, dictionary, views, booleans]
+
+
+class TestOrder:
+    def test_sort_indices_answers_a_uint32_index_column_stable_on_both_leaves(self) -> None:
+        for serie in (Serie([3, 1, 2, 1]), int64_column([3, 1, 2, 1])):
+            order = serie.sort_indices()
+            assert order.field == Field("index", "uint32", nullable=False)
+            # The two equal rows keep their order: stable.
+            assert order.as_py() == [1, 3, 2, 0]
+            assert serie.sort_indices(descending=True).as_py() == [0, 2, 1, 3]
+
+    def test_absent_rows_gather_to_the_end_the_options_name(self) -> None:
+        for serie in (
+            Serie([None, 2, None, 1]),
+            int64_column([None, 2, None, 1]),
+            utf8_column([None, "b", None, "a"]),
+        ):
+            assert serie.sort_indices().as_py() == [3, 1, 0, 2]
+            first = serie.sort_indices(descending=True, nulls_first=True)
+            assert first.as_py() == [0, 2, 1, 3]
+
+    def test_is_sorted_reads_adjacent_rows_under_the_options_on_both_leaves(self) -> None:
+        for serie in (Serie([1, 1, 2, None]), int64_column([1, 1, 2, None])):
+            assert serie.is_sorted()
+            assert not serie.is_sorted(descending=True)
+            assert not serie.is_sorted(nulls_first=True)
+            assert serie.into_reversed().is_sorted(descending=True, nulls_first=True)
+        assert Serie([]).is_sorted()
+        assert int64_column([1]).is_sorted(descending=True, nulls_first=True)
+
+    def test_uniqueness_counts_an_absent_row_as_one_value_on_both_leaves(self) -> None:
+        for serie in (Serie([1, None, 1, None, 2]), int64_column([1, None, 1, None, 2])):
+            assert not serie.is_unique()
+            assert serie.unique_count() == 3
+            unique = serie.into_unique()
+            assert unique.as_py() == [1, None, 2]
+            assert unique.is_unique()
+            assert unique.field == serie.field
+            # The serie is as it was.
+            assert len(serie) == 5
+        assert Serie([1, None]).is_unique()
+
+    def test_into_sorted_answers_a_new_serie_under_the_same_field_and_leaves_this_one(
+        self,
+    ) -> None:
+        column = int64_column([3, None, 1])
+        ordered = column.into_sorted()
+        assert ordered.as_py() == [1, 3, None]
+        assert ordered.field == column.field
+        assert ordered.is_sorted()
+        assert column.scalar(0).as_py() == 3
+
+        run = Serie(["b", "a"])
+        ordered = run.into_sorted()
+        assert ordered.as_py() == ["a", "b"]
+        assert ordered.field is None
+
+    def test_into_reversed_reverses_both_leaves_with_their_absences(self) -> None:
+        assert int64_column([1, None, 3]).into_reversed().as_py() == [3, None, 1]
+        assert Serie([1, 2]).into_reversed().as_py() == [2, 1]
+        assert Serie([]).into_reversed().is_empty()
+
+    def test_into_taken_reads_indices_of_any_integer_width_and_refuses_what_names_no_row(
+        self,
+    ) -> None:
+        column = int64_column([10, 20, 30])
+        run = Serie([10, 20, 30])
+        every_spelling: list[object] = [
+            Serie.from_scalars(Field("index", "uint32"), [2, 0, 2]),
+            Serie([2, 0, 2]),
+            int64_column([2, 0, 2]),
+            pa.array([2, 0, 2], pa.uint8()),
+            np.array([2, 0, 2], dtype=np.int16),
+            [2, 0, 2],
+            (index for index in (2, 0, 2)),
+        ]
+        for serie in (column, run):
+            for indices in every_spelling:
+                if not isinstance(indices, (list, Serie, pa.Array, np.ndarray)):
+                    indices = (index for index in (2, 0, 2))
+                taken = serie.into_taken(indices)
+                assert taken.as_py() == [30, 10, 30]
+                assert taken.field == serie.field
+            assert serie.into_taken([]).is_empty()
+            for refused in ([3], [-1], [None], ["0"], int64_column([None])):
+                with pytest.raises(ValueError, match="names no row of the 3"):
+                    serie.into_taken(refused)
+        for spelling in ("0", b"0", {"index": 0}, 0):
+            with pytest.raises(TypeError, match="expected indices as a Serie"):
+                column.into_taken(spelling)
+
+    def test_into_filtered_keeps_what_the_mask_keeps_and_an_absent_mask_row_keeps_nothing(
+        self,
+    ) -> None:
+        column = int64_column([10, 20, 30])
+        run = Serie([10, 20, 30])
+        masks: list[object] = [
+            Serie([True, None, True]),
+            Serie.from_arrow_array(pa.array([True, None, True])),
+            pa.array([True, None, True]),
+            [True, None, True],
+        ]
+        for serie in (column, run):
+            for mask in masks:
+                kept = serie.into_filtered(mask)
+                assert kept.as_py() == [10, 30]
+                assert kept.field == serie.field
+            with pytest.raises(ValueError, match="a mask of 1 rows cannot filter the 3 rows"):
+                serie.into_filtered([True])
+            with pytest.raises(ValueError, match="neither a boolean nor absent"):
+                serie.into_filtered([1, 1, 1])
+
+    def test_partition_by_groups_in_first_occurrence_order_and_slices_sorted_keys_zero_copy(
+        self,
+    ) -> None:
+        prices = int64_column([1, 2, 3, 4])
+        groups = prices.partition_by(utf8_column(["a", "a", "b", None]))
+        assert [(key.as_py(), rows.as_py()) for key, rows in groups] == [
+            ("a", [1, 2]),
+            ("b", [3]),
+            (None, [4]),
+        ]
+        # Sorted keys: every group is a slice sharing the column's buffer.
+        held = prices.into_arrow_array().buffers()[1]
+        for _, rows in groups:
+            values = rows.into_arrow_array().buffers()[1]
+            assert held.address <= values.address < held.address + held.size
+
+        groups = prices.partition_by(["b", "a", "b", "a"])
+        assert [(key.as_py(), rows.as_py()) for key, rows in groups] == [
+            ("b", [1, 3]),
+            ("a", [2, 4]),
+        ]
+
+        # A run partitions the same way, by a run of keys.
+        groups = Serie([1, 2, 3, 4]).partition_by(Serie(["b", "a", "b", None]))
+        assert len(groups) == 3
+        assert groups[2][0].as_py() is None
+        assert groups[2][1].as_py() == [4]
+
+        with pytest.raises(ValueError, match="1 keys cannot partition the 4 rows"):
+            prices.partition_by([1])
+        assert Serie([]).partition_by([]) == []
+
+    def test_partition_by_paths_keys_a_record_by_the_run_of_its_cells(self) -> None:
+        quotes = quote_rows([("XNAS", 1), ("XNYS", 2), ("XNAS", 1), ("XNAS", 3)])
+        groups = quotes.partition_by_paths(["venue", FieldPath("price")])
+        assert len(groups) == 3
+        assert groups[0][0].as_py() == ["XNAS", 1]
+        assert len(groups[0][1]) == 2
+        assert groups[0][1].field == quotes.field
+        assert type(groups[0][1]) is StructSerie
+        assert groups[1][0].as_py() == ["XNYS", 2]
+        # One path alone is a path, never the characters of its text.
+        by_venue = quotes.partition_by_paths("venue")
+        assert len(by_venue) == 2
+        assert by_venue[0][0].as_py() == ["XNAS"]
+        assert len(by_venue[0][1]) == 3
+        # One child is the same ask through `child`.
+        venue = quotes.child("venue")
+        assert venue is not None
+        by_child = quotes.partition_by(venue)
+        assert by_child[0][0].as_py() == "XNAS"
+        assert by_child[0][1] == by_venue[0][1]
+
+        with pytest.raises(ValueError, match="partitions by no path"):
+            quotes.partition_by_paths([])
+        with pytest.raises(ValueError, match="tier reaches no column of quote"):
+            quotes.partition_by_paths(["tier"])
+        with pytest.raises(ValueError, match="a schema-free run partitions by no path"):
+            Serie([1]).partition_by_paths(["price"])
+        with pytest.raises(TypeError, match="expected a FieldPath, a path string"):
+            quotes.partition_by_paths(3)  # type: ignore[arg-type]
+
+    def test_memory_size_counts_a_column_as_its_slice_and_a_run_as_its_values(self) -> None:
+        column = int64_column(list(range(1_000)))
+        whole = column.memory_size()
+        assert whole >= 8_000
+        assert column.slice(0, 10).memory_size() < whole // 10
+        assert Serie([1, 2, 3]).memory_size() > 0
+        assert Serie([]).memory_size() == 0
+
+    def test_as_sorted_rewrites_a_primitive_column_in_place_gathering_its_absences(
+        self,
+    ) -> None:
+        for descending, nulls_first, expected in [
+            (False, False, [1, 2, 3, None, None]),
+            (True, False, [3, 2, 1, None, None]),
+            (False, True, [None, None, 1, 2, 3]),
+            (True, True, [None, None, 3, 2, 1]),
+        ]:
+            column = int64_column([3, None, 1, None, 2])
+            field = column.field
+            assert column.as_sorted(descending=descending, nulls_first=nulls_first) is column
+            assert column.as_py() == expected
+            assert column.null_count() == 2
+            assert column.field == field
+            assert column.is_sorted(descending=descending, nulls_first=nulls_first)
+            assert column.into_arrow_array().null_count == 2
+        # No absence: the slice alone.
+        column = int64_column([3, 1, 2])
+        assert column.as_sorted().as_reversed() is column
+        assert column.as_py() == [3, 2, 1]
+
+    def test_as_sorted_on_a_shared_column_copies_once_and_leaves_the_other_holder_alone(
+        self,
+    ) -> None:
+        column = int64_column([2, 1])
+        other = copy.copy(column)
+        other.as_sorted()
+        assert other.as_py() == [1, 2]
+        assert column.as_py() == [2, 1]
+        # A column over pyarrow's buffers never writes them: the write copies.
+        array = pa.array([2, 1], pa.int64())
+        shared = Serie.from_arrow_array(array, Field("price", "int64", nullable=False))
+        shared.as_sorted().as_reversed()
+        assert shared.as_py() == [2, 1] and shared.as_sorted().as_py() == [1, 2]
+        assert array.to_pylist() == [2, 1]
+
+    def test_every_as_write_brings_a_run_or_a_kernel_leaf_into_the_state_and_chains(
+        self,
+    ) -> None:
+        run = Serie(["b", None, "a", "b"])
+        assert run.as_sorted().as_unique().as_reversed() is run
+        assert run.as_py() == [None, "b", "a"]
+        assert run.as_taken([2, 1]).as_filtered([False, True]) is run
+        assert run.as_py() == ["b"]
+
+        strings = utf8_column(["b", None, "a", "b"])
+        field = strings.field
+        strings.as_sorted().as_unique().as_reversed()
+        assert strings.as_py() == [None, "b", "a"]
+        assert strings.field == field
+        strings.as_taken([2, 1]).as_filtered([False, True])
+        assert strings.as_py() == ["b"]
+        assert strings.field == field
+
+    def test_a_refused_write_leaves_the_serie_as_it_was(self) -> None:
+        column = int64_column([2, 1])
+        with pytest.raises(ValueError, match="names no row"):
+            column.as_taken([5])
+        with pytest.raises(ValueError, match="cannot filter"):
+            column.as_filtered([])
+        with pytest.raises(TypeError, match="expected mask"):
+            column.as_filtered("01")
+        assert column.as_py() == [2, 1]
+
+    def test_as_reversed_reverses_a_primitive_column_in_place_with_its_validity(self) -> None:
+        column = int64_column([1, None, None, 4, 5])
+        assert column.as_reversed() is column
+        assert column.as_py() == [5, 4, None, None, 1]
+        assert column.null_count() == 2
+
+    @pytest.mark.parametrize(
+        "column",
+        nested_columns(),
+        ids=["records", "lists", "dictionary", "views", "booleans"],
+    )
+    def test_every_layout_answers_every_verb_through_the_ladder(self, column: Serie) -> None:
+        assert len(column.sort_indices()) == 4
+        ordered = column.into_sorted()
+        assert ordered.is_sorted()
+        assert ordered.field == column.field
+        # Each answer is handed out as its leaf's class.
+        assert type(ordered) is type(column)
+        # The sort agrees with the values' own order, absences last.
+        present = sorted(row for row in column.rows() if row.as_py() is not None)
+        absent = [row for row in column.rows() if row.as_py() is None]
+        assert ordered.rows() == present + absent
+        assert column.into_sorted(descending=True).is_sorted(descending=True)
+        assert not column.is_unique()
+        assert column.unique_count() == 3
+        unique = column.into_unique()
+        assert len(unique) == 3
+        assert unique.is_unique()
+        assert unique.scalar(0) == column.scalar(0)
+        assert column.into_reversed().scalar(0) == column.scalar(3)
+        groups = column.partition_by(column)
+        assert len(groups) == 3
+        assert len(groups[0][1]) == 2
+        written = copy.copy(column)
+        written.as_sorted().as_unique().as_reversed()
+        assert len(written) == 3
+        assert written.field == column.field
+        # Ascending with absences last, reversed, is descending with
+        # absences first.
+        assert written.is_sorted(descending=True, nulls_first=True)
+        assert column.memory_size() > 0

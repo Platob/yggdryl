@@ -51,7 +51,7 @@ fn a_later_chunk_of_another_layout_is_shaped_onto_the_first() {
         .with_field(schema())
         .with_filter("id > 1")
         .unwrap()
-        .with_commit_row_size(2);
+        .with_commit_batch_num(2);
     let declared = schema().into_arrow_schema().unwrap();
     // The same columns laid out another way: a narrower key admitting nulls.
     let narrow = Arc::new(Schema::new(vec![

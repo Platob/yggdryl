@@ -362,6 +362,65 @@ else:
 assert len(rows) == 2  # unchanged
 ```
 
+## Sort, deduplicate, group and window
+
+Every leaf answers every verb in one order - `Scalar`'s total order, absent
+values last unless `nulls_first=True` (the plan's `order by` and DuckDB's
+default, the opposite of Arrow's) - so a column and the run of its rows sort,
+deduplicate and group alike. `into_*` answers a new serie under the same
+field; `as_*` brings the serie into that state in place and chains
+(`copy.copy` first to keep the original). `indices`, `mask` and `keys` are a
+`Serie`, any columnar object or an iterable of values. A `ChunkedSerie`
+answers the same: `is_sorted`, `into_reversed`, `into_filtered` and
+`partition_by` chunk by chunk, the rest through one join.
+
+```python
+import copy
+
+import pyarrow as pa
+
+from yggdryl import ChunkedSerie, Field, Serie
+
+prices = Serie.from_arrow_array(
+    pa.array([3, None, 1, 3], pa.int64()), Field("price", "int64", nullable=True)
+)
+
+# The order as positions: stable, absences last unless told otherwise.
+assert prices.sort_indices().as_py() == [2, 0, 3, 1]
+assert prices.sort_indices(descending=True, nulls_first=True).as_py() == [1, 0, 3, 2]
+
+# The reads answer a new serie; this one is as it was.
+assert prices.into_sorted().as_py() == [1, 3, 3, None]
+assert prices.into_sorted().is_sorted()
+assert (prices.is_unique(), prices.unique_count()) == (False, 3)
+assert len(prices.into_unique()) == 3
+assert prices.into_taken([2, 0]).as_py() == [1, 3]
+assert len(prices.into_filtered([True, False, False, True])) == 2
+
+# The writes chain in place; a primitive column holding its buffer alone sorts where it stands.
+held = copy.copy(prices)
+assert held.as_sorted().as_unique().as_reversed() is held
+assert held.as_py() == [None, 3, 1]
+
+# One (key, rows) per distinct key, in first-occurrence order.
+groups = prices.partition_by(["XNAS", "XNYS", "XNAS", "XNYS"])
+assert (len(groups), groups[0][0].as_py()) == (2, "XNAS")
+assert groups[0][1].as_py() == [3, 1]
+
+# A window reads and writes a stretch where it stands, window-relative.
+column = Serie.from_scalars(Field("price", "int64", nullable=False), [9, 3, 1, 2, 0])
+assert column.window(1, 3).into_sorted().as_py() == [1, 2, 3]
+column.window(1, 3).as_sorted()
+assert column.as_py() == [9, 1, 2, 3, 0]
+assert column.memory_size() > 0
+
+# Chunks: the edge between two sorted chunks is read with no join.
+chunked = ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([[3, 1], [2, 3]], pa.int64()))
+assert not chunked.is_sorted()
+assert chunked.into_sorted().num_chunks == 1
+assert chunked.into_reversed().num_chunks == 2
+```
+
 ## Keep chunks and batches apart
 
 `ChunkedSerie` holds a chunked array or a table without concatenating;

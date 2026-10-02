@@ -212,6 +212,7 @@ mod enums;
 pub(crate) mod layout;
 mod mapping;
 mod null;
+mod order;
 mod primitive;
 mod runend;
 mod sequence;
@@ -2346,7 +2347,7 @@ impl Serie {
     }
 
     /// The path a refusal names: the field's name, or `$` for a run.
-    fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         self.field().map_or(RUN_PATH, Field::name)
     }
 

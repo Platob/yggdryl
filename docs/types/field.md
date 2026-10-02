@@ -680,12 +680,10 @@ required column its protocol did not write is still refused by path.
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, Date32Array, RecordBatch};
-    use yggdryl::expression::Function;
     use yggdryl::{ArrowCastOptions, DataType, StructType};
 
     let mut year = DataType::Int32.nullable_field("year");
-    year.as_partition_mut().set_sources(["event"])?;
-    year.as_partition_mut().set_transform(Function::Year)?;
+    year.as_transform_mut().set_term(&"year(event)".parse()?)?;
     let mut row_digest = DataType::UInt64.nullable_field("row_digest");
     row_digest.as_digest_mut().set_holder()?;
     let root = DataType::from(StructType::from_fields([
@@ -735,8 +733,7 @@ required column its protocol did not write is still refused by path.
     from yggdryl import DataType, Field
 
     year = Field("year", "int32", nullable=True)
-    year.partition.sources = ["event"]
-    year.partition.transform = "year"
+    year.transform["expression"] = "year(event)"
     row_digest = Field("row_digest", "uint64", nullable=True)
     row_digest.digest["role"] = "holder"
     root = Field(
@@ -761,8 +758,7 @@ required column its protocol did not write is still refused by path.
 
     # A declared non-null column its protocol did not write is refused by path.
     required_year = Field("year", "int32", nullable=False)
-    required_year.partition.sources = ["event"]
-    required_year.partition.transform = "year"
+    required_year.transform["expression"] = "year(event)"
     required_root = Field(
         "row",
         DataType.from_fields([Field("event", "date32", nullable=False), required_year]),

@@ -48,8 +48,11 @@ pub(crate) const FIELD_ENUM_KEY: &str = "FIELD:enum";
 pub(crate) const FIELD_INIT_KEY: &str = "FIELD:init";
 pub(crate) const FIELD_PARTITION_KEY: &str = "FIELD:partition";
 pub(crate) const PARQUET_FIELD_ID_KEY: &str = "PARQUET:field_id";
-pub(crate) const PARTITION_SOURCES_KEY: &str = "PARTITION:sources";
-pub(crate) const PARTITION_TRANSFORM_KEY: &str = "PARTITION:transform";
+/// The projections a struct's rows partition by, in order, as expression
+/// texts: a bare column an identity partition, a term a derived one.
+pub(crate) const PARTITION_BY_KEY: &str = "PARTITION:by";
+/// The `order by` keys a struct's rows keep, in order, as expression texts.
+pub(crate) const SORT_BY_KEY: &str = "SORT:by";
 
 type MetadataMap = BTreeMap<String, String>;
 
@@ -185,6 +188,14 @@ macro_rules! for_each_well_known_protocol {
             PartitionField,
             PartitionFieldMut,
             "partition"
+        );
+        $emit!(
+            as_sort,
+            as_sort_mut,
+            SORT,
+            SortField,
+            SortFieldMut,
+            "sort order"
         );
         $emit!(
             as_transform,
@@ -940,13 +951,10 @@ mod validation;
 pub use protocol::ProtocolMetadata;
 use validation::*;
 pub(crate) use validation::{
-    ALL_SOURCES, parse_content_length, parse_field_id, parse_partition_transform,
-    parse_reserved_bool, parse_source_list, parse_string_enum, property_key, property_name,
-    protocol_metadata_prefix, render_source_list, write_json_string,
+    ALL_COLUMNS, is_all_columns, parse_by_list, parse_by_ordering, parse_by_projection,
+    parse_by_term, parse_content_length, parse_field_id, parse_reserved_bool, parse_string_enum,
+    property_key, property_name, protocol_metadata_prefix, render_by_list, write_json_string,
 };
-// Read only by `xxhash::arrow`, which the `arrow` feature gates, so the name
-// is gated the same way.
-pub(crate) use validation::is_all_sources;
 
 #[cfg(feature = "internals")]
 #[doc(hidden)]

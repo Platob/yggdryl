@@ -675,3 +675,262 @@ mod fixed_leaves {
         }
     }
 }
+
+/// The seven epoch functions floor a date and an instant to the period it
+/// falls in, before the epoch included, and both tiers agree about it.
+mod epoch_functions {
+    use yggdryl::{
+        ArrowCastOptions, DataType, Field, Scalar, Selector, Serie, StructType, TimeUnit, Timezone,
+    };
+
+    fn schema() -> Field {
+        StructType::from_fields([
+            DataType::date32().nullable_field("d"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::UTC,
+            }
+            .nullable_field("t"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    }
+
+    /// What one projection answers for one row, by row and by batch, which
+    /// must be one value.
+    fn answer(text: &str, days: Option<i32>, micros: Option<i64>) -> Scalar {
+        let schema = schema();
+        let row = Scalar::from_sequence([
+            days.map_or(Scalar::Null, Scalar::date32),
+            micros.map_or(Scalar::Null, |count| {
+                Scalar::datetime64(count, TimeUnit::Microsecond, Timezone::UTC).unwrap()
+            }),
+        ]);
+        let selector: Selector = text.parse().unwrap();
+        let by_row = selector.apply_scalar(&schema, &row).unwrap();
+        let batch = Serie::from_scalars(schema.clone(), [row])
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
+        let by_batch = Serie::from_arrow_batch(
+            None,
+            &selector.apply_arrow_batch(&batch).unwrap(),
+            ArrowCastOptions::new(),
+        )
+        .unwrap()
+        .scalar(0)
+        .unwrap();
+        assert_eq!(by_row, by_batch, "{text} over {days:?} / {micros:?}");
+        by_row.as_sequence().unwrap()[0].clone()
+    }
+
+    #[test]
+    fn a_date_floors_to_its_week_quarter_month_and_year() {
+        // Weeks start on a Monday and count from Monday 1969-12-29.
+        for (days, week) in [
+            (-4, -1),
+            (-3, 0),
+            (-1, 0),
+            (0, 0),
+            (3, 0),
+            (4, 1),
+            (19_782, 2826),
+        ] {
+            assert_eq!(
+                answer("weeks(d)", Some(days), None),
+                Scalar::from(week),
+                "{days}"
+            );
+        }
+        // Quarters count from 1970-Q1: 1970-03-31 is 0, 1970-04-01 is 1.
+        for (days, quarter) in [(-1, -1), (0, 0), (89, 0), (90, 1), (19_782, 216)] {
+            assert_eq!(
+                answer("quarters(d)", Some(days), None),
+                Scalar::from(quarter),
+                "{days}"
+            );
+        }
+        for (days, month) in [(-1, -1), (0, 0), (30, 0), (31, 1), (90, 3), (19_782, 649)] {
+            assert_eq!(
+                answer("months(d)", Some(days), None),
+                Scalar::from(month),
+                "{days}"
+            );
+        }
+        for (days, year) in [(-1, -1), (0, 0), (364, 0), (365, 1), (19_782, 54)] {
+            assert_eq!(
+                answer("years(d)", Some(days), None),
+                Scalar::from(year),
+                "{days}"
+            );
+        }
+        assert_eq!(answer("days(d)", Some(-1), None), Scalar::date32(-1));
+        assert_eq!(
+            answer("days(d)", Some(19_782), None),
+            Scalar::date32(19_782)
+        );
+        assert_eq!(answer("weeks(d)", None, None), Scalar::Null);
+    }
+
+    #[test]
+    fn an_instant_floors_to_every_period_before_and_after_the_epoch() {
+        // 2017-11-16T22:31:08, the instant Apache Iceberg's own transform
+        // fixtures use.
+        let at = 1_510_871_468_000_000_i64;
+        for (text, expected) in [
+            ("years(t)", Scalar::from(47)),
+            ("quarters(t)", Scalar::from(191)),
+            ("months(t)", Scalar::from(574)),
+            ("weeks(t)", Scalar::from(2498)),
+            ("days(t)", Scalar::date32(17_486)),
+            ("hours(t)", Scalar::from(419_686)),
+            ("minutes(t, 30)", Scalar::from(839_373)),
+            ("minutes(t, 15)", Scalar::from(1_678_746)),
+            ("minutes(t, 1)", Scalar::from(25_181_191)),
+            ("minutes(t, 60)", Scalar::from(419_686)),
+            ("minutes(t, 1440)", Scalar::from(17_486)),
+        ] {
+            assert_eq!(answer(text, None, Some(at)), expected, "{text}");
+        }
+        // One microsecond before the epoch is in the period before it, in
+        // every period; the last instant of a period stays in it.
+        for (text, expected) in [
+            ("years(t)", Scalar::from(-1)),
+            ("quarters(t)", Scalar::from(-1)),
+            ("months(t)", Scalar::from(-1)),
+            ("weeks(t)", Scalar::from(0)),
+            ("days(t)", Scalar::date32(-1)),
+            ("hours(t)", Scalar::from(-1)),
+            ("minutes(t, 30)", Scalar::from(-1)),
+            ("minutes(t, 15)", Scalar::from(-1)),
+            ("minutes(t, 1)", Scalar::from(-1)),
+        ] {
+            assert_eq!(answer(text, None, Some(-1)), expected, "{text}");
+        }
+        for (text, micros, expected) in [
+            ("minutes(t, 15)", 899_999_999, 0),
+            ("minutes(t, 15)", 900_000_000, 1),
+            ("minutes(t, 30)", 1_799_999_999, 0),
+            ("minutes(t, 30)", 1_800_000_000, 1),
+            ("minutes(t, 1)", 59_999_999, 0),
+            ("minutes(t, 1)", 60_000_000, 1),
+            ("hours(t)", 3_600_000_000, 1),
+            ("minutes(t, 15)", -900_000_000, -1),
+            ("minutes(t, 15)", -900_000_001, -2),
+        ] {
+            assert_eq!(
+                answer(text, None, Some(micros)),
+                Scalar::from(expected),
+                "{text} of {micros}"
+            );
+        }
+        assert_eq!(answer("minutes(t, 15)", None, None), Scalar::Null);
+    }
+
+    #[test]
+    fn sixty_minutes_are_the_hour_and_the_widest_step_floors_exactly() {
+        for micros in [
+            1_510_871_468_000_000_i64,
+            0,
+            -1,
+            3_599_999_999,
+            3_600_000_000,
+            -3_600_000_001,
+        ] {
+            assert_eq!(
+                answer("minutes(t, 60)", None, Some(micros)),
+                answer("hours(t)", None, Some(micros)),
+                "{micros}"
+            );
+        }
+        // The widest step there is - 257_698_037_700 seconds - still floors
+        // exactly: its first period starts on its own length.
+        let widest = format!("minutes(t, {})", u32::MAX);
+        for (micros, expected) in [
+            (257_698_037_700_000_000_i64, 1),
+            (257_698_037_699_999_999, 0),
+            (-1, -1),
+            (-257_698_037_700_000_001, -2),
+        ] {
+            assert_eq!(
+                answer(&widest, None, Some(micros)),
+                Scalar::from(expected),
+                "{micros}"
+            );
+        }
+    }
+
+    /// A count of seconds names years past `i32`, so a calendar period of
+    /// one is read from its exact year: a number that fits `int32` is that
+    /// number, and one past it answers null - never a year wrapped into one
+    /// that fits, which would also stop the function being monotone, and a
+    /// statistic mapped through it pruning by it.
+    #[test]
+    fn a_second_count_past_int32_answers_null_and_never_a_wrapped_year() {
+        let schema = StructType::from_fields([DataType::DateTime64 {
+            unit: TimeUnit::Second,
+            timezone: Timezone::UTC,
+        }
+        .nullable_field("t")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        let answer = |text: &str, seconds: i64| {
+            let row = Scalar::from_sequence([Scalar::datetime64(
+                seconds,
+                TimeUnit::Second,
+                Timezone::UTC,
+            )
+            .unwrap()]);
+            let selector: Selector = text.parse().unwrap();
+            let by_row = selector.apply_scalar(&schema, &row).unwrap();
+            let batch = Serie::from_scalars(schema.clone(), [row])
+                .unwrap()
+                .into_arrow_batch()
+                .unwrap();
+            let by_batch = Serie::from_arrow_batch(
+                None,
+                &selector.apply_arrow_batch(&batch).unwrap(),
+                ArrowCastOptions::new(),
+            )
+            .unwrap()
+            .scalar(0)
+            .unwrap();
+            assert_eq!(by_row, by_batch, "{text} of {seconds}");
+            by_row.as_sequence().unwrap()[0].clone()
+        };
+        for seconds in [
+            i64::MAX,
+            i64::MIN,
+            68_000_000_000_000_000,
+            -68_000_000_000_000_000,
+        ] {
+            for text in [
+                "years(t)",
+                "quarters(t)",
+                "months(t)",
+                "weeks(t)",
+                "days(t)",
+                "hours(t)",
+                "minutes(t, 15)",
+            ] {
+                assert_eq!(answer(text, seconds), Scalar::Null, "{text} of {seconds}");
+            }
+        }
+        // 6.7e16 seconds is in year 2123147449, whose number of years since
+        // 1970 still fits `int32`; its quarters and months do not.
+        for (seconds, years) in [
+            (67_000_000_000_000_000_i64, 2_123_145_479),
+            (-67_000_000_000_000_000, -2_123_145_480),
+        ] {
+            assert_eq!(
+                answer("years(t)", seconds),
+                Scalar::from(years),
+                "{seconds}"
+            );
+            assert_eq!(answer("quarters(t)", seconds), Scalar::Null, "{seconds}");
+            assert_eq!(answer("months(t)", seconds), Scalar::Null, "{seconds}");
+        }
+    }
+}

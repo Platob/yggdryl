@@ -2270,15 +2270,17 @@ Overwrite replaces, append keeps the stored rows, merge updates matching `merge_
 
 ### Commit cadence
 
-`commit_row_size` is the one publication boundary of a streamed write, applied after shaping.
+`commit_batch_num` is the one publication boundary of a streamed write, applied after shaping. It counts whole batches - a batch is one the shaped stream yields, cut by `batch_row_size` and `batch_byte_size` where a row adapter built it, never by the cadence - and an empty batch counts for nothing.
 
-| `commit_row_size` | publication |
+| `commit_batch_num` | publication |
 | --- | --- |
-| unset | once, when the source ends |
-| `N > 0` | every complete group of `N` rows, then the remainder; a committed prefix survives a later failure |
+| unset | the destination's own cadence: a leaf or a plain folder once, when the source ends; an Iceberg table each time the batches it holds reach its target file size (`write.target-file-size-bytes`), then the remainder |
+| `N > 0` | every `N` batches, then the remainder |
 | `0` | rejected before any input is pulled |
 
-A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/index.md#iceberg).
+Whatever the cadence, an overwrite's first commit replaces and every later one appends, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a stream longer than the target keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement.
+
+A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/index.md#iceberg). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
 
 ### Absent and unknown
 
@@ -2766,7 +2768,7 @@ let _ = std::fs::remove_dir_all(&root);
 
 ### Derived partition columns
 
-A column can also be computed from another column of the same rows. The [`PARTITION:`](../types/protocol.md) view declares it: `PARTITION:sources` names the field it reads, `PARTITION:transform` the [expression](../expression/grammar.md) function, identity when absent. `apply_arrow_batch` on the Struct root fills a declared column that is absent or all null and leaves one carrying values alone.
+A column can also be computed from another column of the same rows. The struct's [`PARTITION:by`](../types/protocol.md#partition-columns) declares it - `years(event)`, `truncate(name, 4) as prefix` - and `with_partition_by` materializes each derived entry as a marked column carrying its term as a [transform](../types/protocol.md) declaration, so the folder spells it in its paths exactly as it spells an identity column. `apply_arrow_batch` on the Struct root fills a declared column that is absent or all null and leaves one carrying values alone, and a partitioned write runs it before it cuts the rows by their directories.
 
 === "Rust"
 
@@ -2774,14 +2776,12 @@ A column can also be computed from another column of the same rows. The [`PARTIT
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
-    use yggdryl::expression::Function;
     use yggdryl::{DataType, StructType};
 
-    let mut year = DataType::Int32.nullable_field("year");
-    year.as_partition_mut().set_sources(["event"])?;
-    year.as_partition_mut().set_transform(Function::Year)?;
-    let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event"), year])?)
-        .required_field("row");
+    let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event")])?)
+        .required_field("row")
+        .with_partition_by(["year(event) as year".parse()?])?;
+    assert_eq!(root.partition_field_names().collect::<Vec<_>>(), ["year"]);
 
     let batch = RecordBatch::try_from_iter([(
         "event",
@@ -2799,9 +2799,10 @@ A column can also be computed from another column of the same rows. The [`PARTIT
     // The declaration is one term, which is also what a predicate over the
     // same value binds against.
     assert_eq!(
-        root.field_at(1)?.as_partition().term()?.map(|read| read.to_string()),
+        root.field_at(1)?.as_transform().term()?.map(|read| read.to_string()),
         Some("year(event)".to_owned()),
     );
+    assert_eq!(root.get_metadata("PARTITION:by"), Some(r#"["year(event) as year"]"#));
     ```
 
 === "Python"
@@ -2811,24 +2812,46 @@ A column can also be computed from another column of the same rows. The [`PARTIT
 
     from yggdryl import DataType, Field
 
-    year = Field("year", "int32", nullable=True)
-    year.partition.sources = ["event"]
-    year.partition.transform = "dayofmonth"
-
-    # A dialect alias resolves on the way in, so one name is stored.
-    assert year.partition.transform == "day"
-
     root = Field(
-        "row",
-        DataType.from_fields([Field("event", "date32", nullable=False), year]),
-        nullable=False,
-    )
-    batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
+        "row", DataType.from_fields([Field("event", "date32", nullable=False)]), nullable=False
+    ).with_partition_by(["year(event) as year"])
+    assert root.partition_field_names == ["year"]
 
-    filled = root.partition.apply_arrow_batch(batch)
+    batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
+    filled = root.transform.apply_arrow_batch(batch)
 
     assert filled.column_names == ["event", "year"]
-    assert filled.column("year").to_pylist() == [1, 1]
+    assert filled.column("year").to_pylist() == [2024, 2025]
+
+    # The declaration is one term, which is also what a predicate over the
+    # same value binds against.
+    assert str(root.dtype["year"].transform.term) == "year(event)"
+    assert root.metadata["PARTITION:by"] == '["year(event) as year"]'
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { DataType, Field, Selector } = require('yggdryl')
+
+    const root = new Field('row', DataType.fromFields([new Field('event', 'date32', false)]), false)
+      .withPartitionBy(['year(event) as year'])
+    assert.deepEqual(root.partitionFieldNames(), ['year'])
+
+    // The declaration is one term, which is also what a predicate over the
+    // same value binds against.
+    assert.equal(root.dtype.getFieldByPath('year').transform.term.toString(), 'year(event)')
+    assert.equal(root.get('PARTITION:by'), '["year(event) as year"]')
+
+    // The root's selector computes the derived column from the rows.
+    const batch = new arrow.Table({
+      event: arrow.vectorFromArray([new Date('2024-01-01'), new Date('2025-01-01')], new arrow.DateDay()),
+    }).batches[0]
+    const filled = Selector.fromField(root).applyArrowBatch(batch)
+    assert.deepEqual(filled.schema.fields.map((field) => field.name), ['event', 'year'])
+    assert.deepEqual([...filled.getChild('year')], [2024, 2025])
     ```
 
 ## Call counts

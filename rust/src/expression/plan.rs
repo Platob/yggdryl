@@ -50,6 +50,7 @@
 //! sort first; every other section is one batch at a time.
 
 use std::fmt;
+use std::str::FromStr;
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -57,7 +58,7 @@ use super::Expression;
 use super::filter::{Filter, IntoFilter};
 use super::selector::{IntoSelector, Selector};
 use super::term::Term;
-use crate::{Error, Field, Result, Url};
+use crate::{Error, Field, Result, SortOptions, Url};
 
 /// Where a target is: a URL, or the parts of a catalog path.
 #[derive(
@@ -147,7 +148,7 @@ impl From<Url> for Location {
 /// The properties are the `with (...)` clause, kept in the order they were
 /// written. The ones a holder reads - `media_type`, `codec`, an object
 /// store's endpoint and credentials - open the location; the ones a write
-/// reads - `safe`, `batch_row_size`, `commit_row_size`, `max_row_size`,
+/// reads - `safe`, `batch_row_size`, `commit_batch_num`, `max_row_size`,
 /// `row_offset` and their byte counterparts - shape the read or write. Anything else travels
 /// along unread, the way a catalog's properties do.
 #[derive(
@@ -447,11 +448,38 @@ impl fmt::Display for Write {
     }
 }
 
-/// One `order by` key.
+/// One `order by` key: a term and the [`SortOptions`] it sorts under.
+///
+/// `Display` writes the key as the grammar spells it - `price desc nulls
+/// first` - and `FromStr` reads one back, which is also how a `SORT:by`
+/// entry is stored and read ([`SortField`](crate::SortField)).
+///
+/// ```
+/// use yggdryl::SortOptions;
+/// use yggdryl::expression::Ordering;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let key: Ordering = "price desc nulls first".parse()?;
+/// assert_eq!(key.term().to_string(), "price");
+/// assert_eq!(key.options(), SortOptions::descending().with_nulls_first(true));
+/// assert_eq!(key.to_string(), "price desc nulls first");
+/// assert_eq!("ts".parse::<Ordering>()?.options(), SortOptions::default());
+/// # Ok(())
+/// # }
+/// ```
 #[derive(
     Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
+#[serde(from = "OrderingWire", into = "OrderingWire")]
 pub struct Ordering {
+    term: Term,
+    options: SortOptions,
+}
+
+/// The document shape of an [`Ordering`]: the term beside its two facts,
+/// each written only when it is not the default.
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+struct OrderingWire {
     term: Term,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     descending: bool,
@@ -459,31 +487,50 @@ pub struct Ordering {
     nulls_first: bool,
 }
 
+impl From<OrderingWire> for Ordering {
+    fn from(wire: OrderingWire) -> Self {
+        let direction = if wire.descending {
+            SortOptions::descending()
+        } else {
+            SortOptions::ascending()
+        };
+        Self::new(wire.term, direction.with_nulls_first(wire.nulls_first))
+    }
+}
+
+impl From<Ordering> for OrderingWire {
+    fn from(ordering: Ordering) -> Self {
+        Self {
+            descending: ordering.options.is_descending(),
+            nulls_first: ordering.options.is_nulls_first(),
+            term: ordering.term,
+        }
+    }
+}
+
 impl Ordering {
+    /// Order by a term under `options`.
+    #[must_use]
+    pub const fn new(term: Term, options: SortOptions) -> Self {
+        Self { term, options }
+    }
+
     /// Order by a term, ascending, nulls last.
     #[must_use]
     pub const fn asc(term: Term) -> Self {
-        Self {
-            term,
-            descending: false,
-            nulls_first: false,
-        }
+        Self::new(term, SortOptions::ascending())
     }
 
     /// Order by a term, descending, nulls last.
     #[must_use]
     pub const fn desc(term: Term) -> Self {
-        Self {
-            term,
-            descending: true,
-            nulls_first: false,
-        }
+        Self::new(term, SortOptions::descending())
     }
 
     /// Return this key with nulls sorted first.
     #[must_use]
     pub const fn nulls_first(mut self, nulls_first: bool) -> Self {
-        self.nulls_first = nulls_first;
+        self.options = self.options.with_nulls_first(nulls_first);
         self
     }
 
@@ -493,29 +540,36 @@ impl Ordering {
         &self.term
     }
 
+    /// The direction and the nulls placement, as one value.
+    #[must_use]
+    pub const fn options(&self) -> SortOptions {
+        self.options
+    }
+
     /// Whether the order is descending.
     #[must_use]
     pub const fn is_descending(&self) -> bool {
-        self.descending
+        self.options.is_descending()
     }
 
     /// Whether nulls sort first.
     #[must_use]
     pub const fn is_nulls_first(&self) -> bool {
-        self.nulls_first
+        self.options.is_nulls_first()
     }
 }
 
 impl fmt::Display for Ordering {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}", self.term)?;
-        if self.descending {
-            formatter.write_str(" desc")?;
-        }
-        if self.nulls_first {
-            formatter.write_str(" nulls first")?;
-        }
-        Ok(())
+        write!(formatter, "{}{}", self.term, self.options())
+    }
+}
+
+impl FromStr for Ordering {
+    type Err = Error;
+
+    fn from_str(input: &str) -> Result<Self> {
+        super::parser::parse_ordering(input)
     }
 }
 
@@ -616,7 +670,14 @@ impl Plan {
 
     /// The plan a struct field declares: a `create` section holding every
     /// column with its datatype, nullability and metadata, named after the
-    /// field when the field is not named [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME).
+    /// field when the field is not named [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME),
+    /// and the `order by` keys the field's `SORT:by` declares.
+    ///
+    /// The `order by` section is the one owner of the sort order, so the
+    /// `SORT:by` property leaves the root's metadata here and
+    /// [`Self::field`] writes it back from the section. A declaration that
+    /// does not parse stays in the metadata as it is and is refused where it
+    /// is read.
     ///
     /// [`Self::field`] reads the field back, so a plan is where a record
     /// option keeps its declared schema.
@@ -624,10 +685,19 @@ impl Plan {
     pub fn from_field(field: &Field) -> Self {
         let create = (field.name() != crate::media::DEFAULT_ROOT_NAME)
             .then(|| Target::parts([field.name()]));
+        let mut root_metadata = field.as_metadata().clone();
+        let order_by = match field.as_sort().by() {
+            Ok(Some(keys)) => {
+                root_metadata.remove(crate::metadata::SORT_BY_KEY);
+                keys
+            }
+            _ => Vec::new(),
+        };
         Self {
             create,
             schema: Some(Selector::from_field(field)),
-            root_metadata: field.as_metadata().clone(),
+            root_metadata,
+            order_by,
             ..Self::default()
         }
     }
@@ -933,12 +1003,17 @@ impl Plan {
             .transpose()
     }
 
-    /// One declared root with the metadata the plan keeps for it.
+    /// One declared root with the metadata the plan keeps for it, the
+    /// `order by` keys written as its `SORT:by`.
     fn rooted(&self, field: Field) -> Result<Field> {
-        if self.root_metadata.is_empty() {
+        if self.root_metadata.is_empty() && self.order_by.is_empty() {
             return Ok(field);
         }
-        field.try_with_metadata_entries(self.root_metadata.iter())
+        let mut field = field.try_with_metadata_entries(self.root_metadata.iter())?;
+        if !self.order_by.is_empty() {
+            field.as_sort_mut().set_by(self.order_by.iter().cloned())?;
+        }
+        Ok(field)
     }
 
     /// The struct root this plan leaves a stream at, from `root`.
@@ -1056,11 +1131,7 @@ impl Plan {
             order_by: self
                 .order_by
                 .iter()
-                .map(|key| Ordering {
-                    term: key.term.simplify(),
-                    descending: key.descending,
-                    nulls_first: key.nulls_first,
-                })
+                .map(|key| Ordering::new(key.term.simplify(), key.options))
                 .collect(),
             limit: self.limit,
             offset: self.offset,
@@ -1364,7 +1435,7 @@ mod arrow {
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, UInt32Array};
-    use arrow_ord::sort::{SortColumn, SortOptions, lexsort_to_indices};
+    use arrow_ord::sort::{SortColumn, lexsort_to_indices};
 
     use super::{Plan, Source, Target, Verb};
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
@@ -1404,8 +1475,8 @@ mod arrow {
             if let Some(bytes) = self.knob("batch_byte_size", "a byte count")? {
                 options.set_batch_byte_size(Some(bytes));
             }
-            if let Some(rows) = self.knob("commit_row_size", "a row count")? {
-                options.set_commit_row_size(Some(rows));
+            if let Some(batches) = self.knob("commit_batch_num", "a batch count")? {
+                options.set_commit_batch_num(Some(batches));
             }
             if let Some(rows) = self.knob("max_row_size", "a row count")? {
                 options.set_max_row_size(Some(rows));
@@ -1648,10 +1719,7 @@ mod arrow {
                 }
                 columns.push(SortColumn {
                     values,
-                    options: Some(SortOptions {
-                        descending: key.descending,
-                        nulls_first: key.nulls_first,
-                    }),
+                    options: Some(key.options().into_arrow()),
                 });
             }
             columns.push(SortColumn {

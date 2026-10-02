@@ -1105,6 +1105,31 @@ export declare class ChunkedSerie {
    * would be.
    */
   toString(): string
+  /**
+   * Whether no two rows across the chunks hold one value; two absent rows
+   * are a repeat.
+   */
+  isUnique(): boolean
+  /**
+   * How many distinct values the rows hold across the chunks, an absent
+   * row one of them.
+   */
+  uniqueCount(): number
+  /**
+   * The bytes the rows occupy: every chunk's, as its own slice counts
+   * them.
+   */
+  memorySize(): number
+  /**
+   * The first occurrence of every value across the chunks, as a chunked
+   * serie of one chunk.
+   */
+  intoUnique(): ChunkedSerie
+  /**
+   * The rows in reverse order: the chunks reversed, each reversed, kept
+   * apart.
+   */
+  intoReversed(): ChunkedSerie
 }
 export type JsChunkedSerie = ChunkedSerie
 
@@ -2476,6 +2501,11 @@ export declare class Field {
   get partition(): JsProtocolField
   /** The live generic transform-field property view. */
   get transform(): JsProtocolField
+  /**
+   * The live sort-order property view: on a struct, `SORT:by` - the
+   * `order by` keys its rows keep, most significant first.
+   */
+  get sort(): JsProtocolField
   /** The live Amazon S3 property view. */
   get s3(): JsProtocolField
   /** The live Google Cloud Storage property view. */
@@ -2522,8 +2552,38 @@ export declare class Field {
   onlyPartitionFields(): Field
   /** Return this struct root without the columns a path spells out. */
   withoutPartitionFields(): Field
-  /** Return this struct root with the named children marked as partitions. */
+  /**
+   * Return this struct root with the named children marked as partitions.
+   *
+   * The bare-column form of `withPartitionBy`: the names are declared as
+   * `PARTITION:by` and marked.
+   */
   withPartitionFields(names: Array<string>): Field
+  /**
+   * Return this struct root partitioned by `entries`, each a projection
+   * of the expression grammar: the declaration stored as `PARTITION:by`,
+   * every identity entry's column marked, every derived entry
+   * materialized as a marked column computed from the rows.
+   *
+   * A bare column - `venue` - is an identity partition on a column the
+   * struct has. Any other entry - `years(ts)`, `minutes(ts, 15)`,
+   * `truncate(name, 4) as prefix` - is a derived partition: a child named
+   * by the alias, else `{source}_{function}` with the function in
+   * Iceberg's singular (`ts_year`, `ts_minutes`, `name_truncate`), typed
+   * by the term and carrying it as its `TRANSFORM:` declaration. A column
+   * marked before and no longer declared is unmarked; an empty array
+   * removes the declaration. Refused, naming the entry, when an entry
+   * does not parse, names a column the struct lacks, publishes a name
+   * another entry publishes, or cannot be typed against the struct.
+   */
+  withPartitionBy(entries: Array<string>): Field
+  /**
+   * The projections this struct's rows partition by, in order, each as
+   * the text the grammar writes: the `PARTITION:by` declaration where the
+   * root carries one, the marked columns where it carries none, and empty
+   * for a struct that partitions nothing.
+   */
+  partitionBy(): Array<string>
   /** Read one metadata value without materializing the metadata collection. */
   get(key: string): string | null
   /** Insert or replace one metadata value through the native Field API. */
@@ -6151,6 +6211,56 @@ export declare class ProtocolField {
    */
   get display(): string | null
   /**
+   * The `by` list this view's protocol declares, each entry the text its
+   * grammar writes, or `null` where the field declares none.
+   *
+   * On the `partition` view, the projections a struct's rows partition by
+   * (`venue`, `years(ts)`, `truncate(name, 4) as prefix`); on the `sort`
+   * view, the `order by` keys they keep (`venue`, `price desc nulls
+   * first`); on the `digest` view, the terms a holder reads, `"*"`
+   * included as stored; on the `transform` view, the terms its function
+   * reads. A stored list that does not parse is refused naming its key.
+   * Every other view refuses the property.
+   */
+  get by(): Array<string> | null
+  /**
+   * Record the `by` list this view's protocol declares, each entry read
+   * by its grammar and stored as it spells it, or clear it with `null`.
+   *
+   * The `partition` and `sort` views take any projection and `order by`
+   * key; the `digest` view takes terms or `["*"]` on a holder alone; the
+   * `transform` view's list is its function's arguments, written beside
+   * it by `term`, so assigning it there is refused. A refused entry
+   * leaves the field unchanged and names the key.
+   */
+  set by(entries: Array<string> | undefined | null)
+  /**
+   * Remove the `by` list this view's protocol declares, answering the
+   * text it held, or `null` where there was none; refused on the
+   * `transform` view, whose list goes with its `term`.
+   */
+  removeBy(): string | null
+  /**
+   * The term a `TRANSFORM:` column is computed with, on the `transform`
+   * view: an explicit `TRANSFORM:expression`, else its
+   * `TRANSFORM:function` called over its `by` terms, or `null` for an
+   * ordinary column.
+   */
+  get term(): Term | null
+  /**
+   * Declare the term this column is computed with - a `Term` or its
+   * text - or remove the declaration with `null`. A call over plain
+   * columns is stored as its function and the columns it reads as
+   * `TRANSFORM:by`, any other term as its canonical
+   * `TRANSFORM:expression`.
+   */
+  set term(term: Term | string | null)
+  /**
+   * Remove the declared derivation, answering the term it spelled, or
+   * `null` where there was none.
+   */
+  removeTerm(): string | null
+  /**
    * The dictionaries that contributed this field, on the `fix` view.
    *
    * `FIX:branches` read as an array: sorted, ASCII lowercase, and empty
@@ -6962,15 +7072,25 @@ export declare class RecordOptions {
   get maxByteSize(): number | null
   /** Set the bound on the result rows' Arrow in-memory bytes. */
   set maxByteSize(maxByteSize: number | undefined | null)
-  /** Rows published per streamed-write commit, when one is set. */
-  get commitRowSize(): number | null
   /**
-   * Set the streamed-write publication cadence.
+   * Whole batches published per streamed-write commit, when one is set.
+   *
+   * A positive count publishes every that many batches of the shaped
+   * stream, then the final remainder; a batch is one the source yields,
+   * cut by `batchRowSize` where records are converted, never by the
+   * cadence. `null` is the destination's own cadence: a file or folder
+   * publishes once after the source ends, an Iceberg table each time the
+   * batches it holds reach its target file size.
+   */
+  get commitBatchNum(): number | null
+  /**
+   * Set the streamed-write publication cadence, in whole batches.
    *
    * Zero is retained so the write preflight can reject it before touching a
-   * one-shot JavaScript source. `null` restores one publication at the end.
+   * one-shot JavaScript source. `null` restores the destination's own
+   * cadence.
    */
-  set commitRowSize(commitRowSize: number | undefined | null)
+  set commitBatchNum(commitBatchNum: number | undefined | null)
   /** The compression level on the shared 0-to-9 scale. */
   get level(): number
   /** Set the compression level on the shared 0-to-9 scale. */
@@ -7196,8 +7316,8 @@ export declare class RecordOptions {
   withMaxRowSize(maxRowSize: number): RecordOptions
   /** Return these options with a bound on the result rows' Arrow bytes. */
   withMaxByteSize(maxByteSize: number): RecordOptions
-  /** Return these options with a streamed-write publication cadence. */
-  withCommitRowSize(commitRowSize: number): RecordOptions
+  /** Return these options with a publication every `commitBatchNum` batches. */
+  withCommitBatchNum(commitBatchNum: number): RecordOptions
   /** Return these options with a different compression level. */
   withLevel(level: number): RecordOptions
   /** Return these options with the keys a write matches stored rows on. */
@@ -7765,6 +7885,19 @@ export declare class Serie {
   intoArrowReader(): BatchReader
   /** The rows, rendered behind the field's name. */
   toString(): string
+  /**
+   * Whether no two rows hold one value; two absent rows are a repeat.
+   *
+   * One hash set over the rows, stopping at the first repeat.
+   */
+  isUnique(): boolean
+  /** How many distinct values the rows hold, an absent row one of them. */
+  uniqueCount(): number
+  /**
+   * The bytes the rows occupy: a column's buffers as its own slice counts
+   * them, a run's values as the row estimator charges them.
+   */
+  memorySize(): number
 }
 export type JsSerie = Serie
 
@@ -7801,6 +7934,67 @@ export declare class SerieReader {
   intoArrowReader(): BatchReader
 }
 export type JsSerieReader = SerieReader
+
+/**
+ * A window over a serie: `length` rows from `offset`, read and written
+ * through the serie at each call, moving nothing.
+ *
+ * Handed out by `serie.window(offset, length)`. The window holds the serie
+ * object it was taken from, so it is both the shared and the mutable window:
+ * a read borrows the serie for that call, a write borrows it mutably for that
+ * call, and a write never grows or shrinks what the window views. Identity
+ * is the window's rows alone, as a serie's is its rows.
+ */
+export declare class SerieSlice {
+  /** The number of rows the window holds. */
+  get length(): number
+  /** The serie row the window starts at. */
+  get offset(): number
+  /**
+   * The whole serie the window reads and writes through: the very object
+   * `window` was called on.
+   */
+  get serie(): Serie
+  /** The field every row is typed by, or `null` for a window over a run. */
+  get field(): Field | null
+  /**
+   * The serie's datatype: `serie(<the field named item>)` for a column,
+   * agreed out of the window's rows for a run.
+   */
+  get dtype(): DataType
+  /** Whether the window holds no row. */
+  isEmpty(): boolean
+  /**
+   * The window's absent rows, counted off the validity bits with no row
+   * built.
+   */
+  nullCount(): number
+  /** Whether window row `index` is absent. */
+  isNull(index: number): boolean
+  /** Window row `index`, built as one value. */
+  scalar(index: number): Scalar
+  /** Window row `index`, or `null` past the window. */
+  at(index: number): Scalar | null
+  /** Every row of the window, each built once. */
+  rows(): Array<Scalar>
+  /** The bytes the window's rows occupy, as its own slice counts them. */
+  memorySize(): number
+  /**
+   * Whether no two window rows hold one value; two absent rows are a
+   * repeat.
+   */
+  isUnique(): boolean
+  /**
+   * How many distinct values the window's rows hold, an absent row one of
+   * them.
+   */
+  uniqueCount(): number
+  /** The window's rows, rendered behind the serie's name. */
+  toString(): string
+  /** Swap window rows `left` and `right`. */
+  swap(left: number, right: number): void
+}
+export type JsSerieSlice = SerieSlice
 
 /**
  * An HTTP/1.1 server hosting `IOBase` handles and fixed answers, answering
@@ -8337,22 +8531,32 @@ export declare class Table {
   /**
    * Create a table, writing its first metadata document.
    *
-   * `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the column
-   * names to partition on, and defaults to unpartitioned. Unnumbered schema
-   * columns are numbered automatically, so a plain schema works as it is; a
-   * schema that already carries field identifiers keeps every one of them.
+   * `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the
+   * `PARTITION:by` entries to partition on: a bare column - `venue` - is an
+   * identity partition, and an epoch function over a column - `days(ts)`,
+   * `hours(ts)`, `minutes(ts, 15)`, `weeks(ts)`, `quarters(ts)` - or
+   * `truncate(name, 4)` is a derived one, named by its alias
+   * (`days(ts) as day`) or `{source}_{function}` (`ts_day`). An entry no
+   * spec can hold is refused, naming it. Omitted, the schema's own
+   * `PARTITION:by` declaration is read the same way - a schema declaring
+   * nothing is unpartitioned - and `null` is unpartitioned whatever the
+   * schema declares. Unnumbered schema columns are numbered automatically,
+   * so a plain schema works as it is; a schema that already carries field
+   * identifiers keeps every one of them.
    */
-  static create(root: LocationInput, schema: Field, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
+  static create(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null): Table
   /** Open the table a container handle addresses. */
   static open(root: LocationInput): Table
   /**
    * Open the table if it exists, creating it otherwise.
    *
-   * Like [`create`](Self::create), unnumbered schema columns are numbered
-   * automatically; an existing table is opened as it is and `schema`
-   * describes only the table this call would create.
+   * Like [`create`](Self::create), `partitionBy` is a spec, the
+   * `PARTITION:by` entries one is read from, `null` for none, or - omitted -
+   * the schema's own declaration, and unnumbered schema columns are
+   * numbered automatically; an existing table is opened as it is and
+   * `schema` describes only the table this call would create.
    */
-  static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | undefined | null, version?: number | undefined | null): Table
+  static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null): Table
   /**
    * The folder the table lives in.
    *
@@ -9073,10 +9277,10 @@ export declare class TextOptions {
   get batchRowSize(): number | null
   /** Set or clear the row-per-batch bound. */
   set batchRowSize(size: number | undefined | null)
-  /** Return the streamed-write commit cadence. */
-  get commitRowSize(): number | null
-  /** Set or clear the streamed-write commit cadence. */
-  set commitRowSize(value: number | undefined | null)
+  /** Return the streamed-write commit cadence, in whole batches. */
+  get commitBatchNum(): number | null
+  /** Set or clear the streamed-write commit cadence, in whole batches. */
+  set commitBatchNum(value: number | undefined | null)
   /** Return the total result-row bound. */
   get maxRowSize(): number | null
   /** Set or clear the total result-row bound. */
@@ -9211,8 +9415,8 @@ export declare class TextOptions {
   withSafe(safe: boolean): TextOptions
   /** Return a copy with a row-per-batch bound. */
   withBatchRowSize(size: number): TextOptions
-  /** Return a copy with a streamed-write commit cadence. */
-  withCommitRowSize(rows: number): TextOptions
+  /** Return a copy publishing every `commitBatchNum` batches. */
+  withCommitBatchNum(batches: number): TextOptions
   /** Return a copy skipping the given leading result rows. */
   withRowOffset(rows: number): TextOptions
   /** Return a copy with a total result-row bound. */

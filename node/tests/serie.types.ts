@@ -11,9 +11,11 @@ import {
   SerieReader,
   SerieSerie,
   SerieViewSerie,
+  SerieSlice,
   StructSerie,
   fields,
   type ArrowCastOptions,
+  type SortOptions,
 } from '..'
 import type {
   RecordBatch as ArrowRecordBatch,
@@ -205,3 +207,37 @@ const chunkedRows: boolean = wide.equals(ChunkedSerie.fromSerie(wide))
 const chunkedOrder: number = wide.compare(ChunkedSerie.fromSerie(wide))
 void chunkedRows
 void chunkedOrder
+
+// Ordering, uniqueness and grouping: the options are an object of two
+// booleans, indices, masks and keys a Serie or any iterable of values, and an
+// `as*` write answers the serie it was called on.
+const descending: SortOptions = { descending: true, nullsFirst: null }
+const order: Serie = wide.sortIndices(descending)
+const ordered: boolean = wide.isSorted()
+const unique: boolean = wide.isUnique()
+const distinct: number = wide.uniqueCount()
+const bytes: number = wide.memorySize()
+const sorted: Serie = wide.intoSorted({ nullsFirst: true })
+const deduplicated: Serie = wide.intoUnique()
+const reversed: Serie = wide.intoReversed()
+const taken: Serie = wide.intoTaken([2, 0])
+const takenBy: Serie = wide.intoTaken(order)
+const filtered: Serie = wide.intoFiltered([true, false])
+const groups: Array<[Scalar, Serie]> = wide.partitionBy(['a', 'b'])
+const byPaths: Array<[Scalar, Serie]> = records.partitionByPaths(['id'])
+const byPath: Array<[Scalar, Serie]> = records.partitionByPaths('id')
+const chained: Serie = wide.asSorted().asUnique().asReversed().asTaken([0]).asFiltered([true])
+const leafChained: StructSerie = records.child('row') as StructSerie
+const sameLeaf: StructSerie = leafChained.asSorted()
+const window: SerieSlice = wide.window(0, 1)
+// @ts-expect-error an ordering option is `descending` or `nullsFirst`
+wide.isSorted({ nullsLast: true })
+// @ts-expect-error an ordering option is a boolean
+wide.intoSorted({ descending: 'yes' })
+// @ts-expect-error a window takes an offset and a length
+wide.window(0)
+// @ts-expect-error the private ordering bridges are hidden
+wide._sortIndicesNative
+
+void [order, ordered, unique, distinct, bytes, sorted, deduplicated, reversed, taken, takenBy,
+  filtered, groups, byPaths, byPath, chained, sameLeaf, window]

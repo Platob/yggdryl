@@ -40,7 +40,7 @@ const safe: boolean = options.safe
 const batchRowSize: number | null = options.batchRowSize
 const maxRowSize: number | null = options.maxRowSize
 const maxByteSize: number | null = options.maxByteSize
-const commitRowSize: number | null = options.commitRowSize
+const commitBatchNum: number | null = options.commitBatchNum
 const level: number = options.level
 const blockCodec: string | null = options.blockCodec
 const syncMarker: Buffer | null = options.syncMarker
@@ -65,8 +65,8 @@ options.maxRowSize = 10
 options.maxRowSize = null
 options.maxByteSize = 1024
 options.maxByteSize = null
-options.commitRowSize = 1_000
-options.commitRowSize = null
+options.commitBatchNum = 10
+options.commitBatchNum = null
 options.level = 9
 const avroOptions = RecordOptions.from('trades.avro')
 avroOptions.blockCodec = 'zstandard'
@@ -86,7 +86,7 @@ const chained: RecordOptions = options
   .withBatchRowSize(512)
   .withMaxRowSize(10)
   .withMaxByteSize(1024)
-  .withCommitRowSize(1_000)
+  .withCommitBatchNum(10)
   .withLevel(1)
 const printed: string = chained.toString()
 

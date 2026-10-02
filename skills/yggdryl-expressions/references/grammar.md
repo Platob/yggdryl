@@ -56,7 +56,7 @@ orders      := expr ["asc" | "desc"] ["nulls" ("first" | "last")] ("," ...)*
 | `delete from t where ...` | `delete t where ...` | remove rows the predicate keeps |
 
 Target properties: `media_type`, `codec`, `safe`, `batch_row_size`,
-`batch_byte_size`, `commit_row_size`, `max_row_size`, `max_byte_size`, plus
+`batch_byte_size`, `commit_batch_num`, `max_row_size`, `max_byte_size`, plus
 what a holder reads - `t with (media_type = 'text/csv', batch_row_size = '1024')`.
 
 ## Terms

@@ -9,6 +9,7 @@ suite with it.
 from __future__ import annotations
 
 import copy
+import datetime
 import json
 import pathlib
 import pickle
@@ -123,6 +124,128 @@ class TestSchemasCarryIdentifiers:
     def test_a_document_that_is_not_a_schema_is_refused(self) -> None:
         with pytest.raises(ValueError):
             schema_from_json("row", {"type": "long"})
+
+
+TIMED = pa.schema(
+    [
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("ts", pa.timestamp("us"), nullable=False),
+        pa.field("name", pa.string()),
+    ]
+)
+
+MINUTE = 60_000_000
+DAY = 86_400_000_000
+
+
+def _timed(ids: list[int], instants: list[int]) -> pa.RecordBatch:
+    """Rows at `instants`, microseconds since the epoch."""
+    return pa.record_batch(
+        {
+            "id": ids,
+            "ts": pa.array(instants, pa.timestamp("us")),
+            "name": [f"n{id}" for id in ids],
+        },
+        schema=TIMED,
+    )
+
+
+class TestPartitionByEntries:
+    """`partition_by` is a `PARTITION:by` declaration the core reads into a spec."""
+
+    def test_a_bare_column_is_an_identity_field(self, tmp_path: pathlib.Path) -> None:
+        table = Table.create(IOBase(tmp_path / "names"), assign_field_ids(TIMED), ["name"])
+        assert [(field.name, field.transform) for field in table.spec.fields] == [
+            ("name", "identity")
+        ]
+
+    def test_a_day_partition_writes_one_data_file_per_utc_day(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        table = Table.create(IOBase(tmp_path / "days"), assign_field_ids(TIMED), ["days(ts)"])
+        assert [(field.name, field.transform) for field in table.spec.fields] == [
+            ("ts_day", "day")
+        ]
+        # The table reports the declaration it was created with.
+        assert table.schema.partition.by == ["days(ts)"]
+
+        table.append(_timed([1, 2, 3, 4], [0, 60 * MINUTE, DAY + 1, 2 * DAY + 5]))
+
+        files = table.data_files()
+        assert len(files) == 3
+        assert sorted(data_file.partition for data_file, _ in files) == [
+            (datetime.date(1970, 1, 1),),
+            (datetime.date(1970, 1, 2),),
+            (datetime.date(1970, 1, 3),),
+        ]
+        assert sorted(data_file.record_count for data_file, _ in files) == [1, 1, 2]
+        assert sorted(table.scan().read_all().column("id").to_pylist()) == [1, 2, 3, 4]
+
+    def test_a_minutes_partition_cuts_one_file_per_period(self, tmp_path: pathlib.Path) -> None:
+        table = Table.create(
+            IOBase(tmp_path / "quarters"), assign_field_ids(TIMED), ["minutes(ts, 15)"]
+        )
+        assert [(field.name, field.transform) for field in table.spec.fields] == [
+            ("ts_minutes", "minutes[15]")
+        ]
+
+        table.append(_timed([1, 2, 3, 4], [0, 14 * MINUTE, 15 * MINUTE, 31 * MINUTE]))
+
+        assert sorted(data_file.partition for data_file, _ in table.data_files()) == [
+            (0,),
+            (1,),
+            (2,),
+        ]
+        assert sorted(table.scan().read_all().column("id").to_pylist()) == [1, 2, 3, 4]
+
+    def test_an_alias_names_the_field_and_a_term_crosses_as_its_text(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        table = Table.open_or_create(
+            IOBase(tmp_path / "aliased"),
+            assign_field_ids(TIMED),
+            ["weeks(ts) as week", ("truncate(name, 2)", "prefix")],
+        )
+        assert [(field.name, field.transform) for field in table.spec.fields] == [
+            ("week", "week"),
+            ("prefix", "truncate[2]"),
+        ]
+
+    def test_without_partition_by_the_schema_s_own_declaration_is_read(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        declared = Field.from_arrow_schema(TIMED)
+        declared.partition.by = ["days(ts)"]
+        table = Table.create(IOBase(tmp_path / "declared"), declared)
+        assert [(field.name, field.transform) for field in table.spec.fields] == [
+            ("ts_day", "day")
+        ]
+        # An explicit argument wins over the declaration.
+        explicit = Table.create(IOBase(tmp_path / "explicit"), declared, ["name"])
+        assert [field.name for field in explicit.spec.fields] == ["name"]
+        # A schema declaring nothing is unpartitioned.
+        plain = Table.create(IOBase(tmp_path / "plain"), assign_field_ids(TIMED))
+        assert plain.spec.fields == []
+        # `None` is a value: it partitions nothing, whatever the schema declares,
+        # and so does an empty list.
+        for name, stated in [("none", None), ("empty", [])]:
+            flat = Table.create(IOBase(tmp_path / name), declared, stated)
+            assert flat.spec.is_unpartitioned(), name
+        reopened = Table.open_or_create(IOBase(tmp_path / "flat"), declared, None)
+        assert reopened.spec.is_unpartitioned()
+
+    def test_an_entry_no_spec_can_hold_is_refused_naming_it(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        numbered = assign_field_ids(TIMED)
+        with pytest.raises(ValueError, match="got `lower\\(name\\)`"):
+            Table.create(IOBase(tmp_path / "lower"), numbered, ["lower(name)"])
+        with pytest.raises(ValueError, match='no column "missing"'):
+            Table.create(IOBase(tmp_path / "missing"), numbered, ["missing"])
+        with pytest.raises(ValueError, match='entry "year\\("'):
+            Table.create(IOBase(tmp_path / "malformed"), numbered, ["year("])
+        with pytest.raises(TypeError, match="not one string"):
+            Table.create(IOBase(tmp_path / "one"), numbered, "name")  # type: ignore[arg-type]
 
 
 class TestCreatingAndOpening:

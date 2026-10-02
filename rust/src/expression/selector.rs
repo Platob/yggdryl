@@ -902,10 +902,10 @@ impl Selector {
     ///
     /// Every child becomes one column declaration - its datatype, its
     /// nullability and its metadata, protocol views included - published
-    /// under the child's name. A child carrying an explicit
-    /// `TRANSFORM:expression` is read as the term that computes it, aliased
-    /// to the child's name; a declaration that does not parse is kept as the
-    /// metadata it is and refused where it is read. A root that is not a
+    /// under the child's name. A child carrying a `TRANSFORM:` derivation -
+    /// a derived partition column included - is read as the term that
+    /// computes it, aliased to the child's name; a declaration that does not
+    /// parse is kept as the metadata it is and refused where it is read. A root that is not a
     /// struct is one column named after it. Nothing is lost:
     /// [`Self::declared_field`] gives the field back.
     #[must_use]
@@ -918,10 +918,9 @@ impl Selector {
 
     /// One child as the column declaration that recreates it.
     fn column_declaration(child: &Field) -> Projection {
-        // A partition column's own declaration is not a selector's to
-        // restate: only the transform protocol's two spellings are read.
         let transform = child.as_transform();
-        let declared = (transform.is_derived() && !child.as_partition().is_derived())
+        let declared = transform
+            .is_derived()
             .then(|| transform.term().ok().flatten())
             .flatten();
         let (term, alias, metadata) = match declared {

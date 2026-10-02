@@ -405,3 +405,126 @@ mod grammar {
         assert_eq!(bound.term().to_string(), "s = 'a' and i = 1");
     }
 }
+
+/// An epoch function is monotone over its argument, so a predicate on it
+/// prunes by the argument's statistics mapped through the period.
+mod epoch_functions {
+    use yggdryl::expression::Bounds;
+    use yggdryl::{DataType, Field, Scalar, StructType, Term, TimeUnit, Timezone};
+
+    fn schema() -> Field {
+        StructType::from_fields([
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::UTC,
+            }
+            .nullable_field("t"),
+            DataType::date32().nullable_field("d"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    }
+
+    fn instant(micros: i64) -> Scalar {
+        Scalar::datetime64(micros, TimeUnit::Microsecond, Timezone::UTC).unwrap()
+    }
+
+    /// A container of 2024-01-01T00:00 through 00:29:59.999999, no nulls.
+    fn bounds() -> Bounds {
+        let start = 1_704_067_200_000_000_i64;
+        Bounds::new(Some(10))
+            .with_column(
+                "t",
+                Some(instant(start)),
+                Some(instant(start + 1_799_999_999)),
+                Some(0),
+            )
+            .with_column(
+                "d",
+                Some(Scalar::date32(19_723)),
+                Some(Scalar::date32(19_730)),
+                Some(2),
+            )
+    }
+
+    fn certainty(text: &str) -> Option<bool> {
+        text.parse::<Term>()
+            .unwrap()
+            .bind(&schema())
+            .unwrap()
+            .statistics_certainty(&bounds())
+    }
+
+    #[test]
+    fn a_predicate_on_a_period_prunes_by_the_arguments_range() {
+        // The half hour spans quarter hours 0 and 1 of the day, which are
+        // 1_893_408 and 1_893_409 since the epoch.
+        assert_eq!(certainty("minutes(t, 15) = 1893409"), None);
+        assert_eq!(certainty("minutes(t, 15) = 1893410"), Some(false));
+        assert_eq!(certainty("minutes(t, 15) < 1893408"), Some(false));
+        assert_eq!(certainty("minutes(t, 15) >= 1893408"), Some(true));
+        assert_eq!(
+            certainty("minutes(t, 15) in (1893410, 1893411)"),
+            Some(false)
+        );
+        assert_eq!(
+            certainty("minutes(t, 15) between 1893408 and 1893409"),
+            Some(true)
+        );
+        // Every instant is in 2024, and in the one half hour.
+        assert_eq!(certainty("years(t) = 54"), Some(true));
+        assert_eq!(certainty("years(t) <> 54"), Some(false));
+        assert_eq!(certainty("minutes(t, 30) = 946704"), Some(true));
+        assert_eq!(certainty("days(t) = '2024-01-01'"), Some(true));
+        assert_eq!(certainty("minutes(t, 15) is null"), Some(false));
+        // The minute is the step 1: thirty of them, from 28_401_120.
+        assert_eq!(certainty("minutes(t, 1) >= 28401120"), Some(true));
+        assert_eq!(certainty("minutes(t, 1) > 28401149"), Some(false));
+        // A date column whose rows hold null, spanning weeks 2818 and 2819:
+        // the week is settled, the nullness decides "every row".
+        assert_eq!(certainty("weeks(d) = 2818"), None);
+        assert_eq!(certainty("weeks(d) > 2819"), Some(false));
+        assert_eq!(certainty("weeks(d) >= 2818"), None);
+        assert_eq!(certainty("weeks(d) is not null"), None);
+        // A calendar part is not monotone, so it stays opaque.
+        assert_eq!(certainty("month(t) = 1"), None);
+    }
+
+    /// A count of seconds reaches years past `i32`: the period of a bound
+    /// that far is past `int32` and bounds nothing, so a predicate a row
+    /// below that bound satisfies is never pruned by a wrapped year.
+    #[test]
+    fn a_bound_whose_period_is_past_int32_bounds_nothing() {
+        let schema = StructType::from_fields([DataType::DateTime64 {
+            unit: TimeUnit::Second,
+            timezone: Timezone::UTC,
+        }
+        .nullable_field("t")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        let seconds =
+            |count: i64| Scalar::datetime64(count, TimeUnit::Second, Timezone::UTC).unwrap();
+        // From 1e15 seconds - year 31690708 - up to `i64::MAX` seconds.
+        let bounds = Bounds::new(Some(2)).with_column(
+            "t",
+            Some(seconds(1_000_000_000_000_000)),
+            Some(seconds(i64::MAX)),
+            Some(0),
+        );
+        let certainty = |text: &str| {
+            text.parse::<Term>()
+                .unwrap()
+                .bind(&schema)
+                .unwrap()
+                .statistics_certainty(&bounds)
+        };
+        // Year 300001970 lies inside the range, so a row may hold it.
+        assert_eq!(certainty("years(t) >= 300000000"), None);
+        assert_eq!(certainty("quarters(t) >= 1200000000"), None);
+        // The lower end still bounds.
+        assert_eq!(certainty("years(t) < 31688738"), Some(false));
+        assert_eq!(certainty("years(t) >= 31688738"), None);
+    }
+}

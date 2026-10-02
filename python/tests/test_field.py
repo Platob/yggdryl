@@ -15,8 +15,10 @@ from yggdryl import (
     Field,
     MediaType,
     MimeType,
+    Plan,
     PythonMetadata,
     Serie,
+    Term,
     Uri,
     Url,
     enums,
@@ -631,10 +633,16 @@ def test_python_metadata_is_an_immutable_value() -> None:
     assert not read.is_importable
 
 
-def _derived_root() -> Field:
+def _year_column() -> Field:
+    """A nullable column derived as the calendar year of `event`."""
     year = Field("year", "int32", nullable=True)
-    year.partition.sources = ["event"]
-    year.partition.transform = "year"
+    year.transform.term = "year(event)"
+    return year
+
+
+def _derived_root() -> Field:
+    year = _year_column()
+    year.set_partition(True)
     return Field(
         "row",
         DataType.from_fields([Field("event", "date32", nullable=False), year]),
@@ -642,27 +650,145 @@ def _derived_root() -> Field:
     )
 
 
-def test_partition_view_stores_a_transform_in_its_canonical_spelling() -> None:
-    year = Field("year", "int32", nullable=True)
-    year.partition.sources = ["event"]
-    year.partition.transform = "dayofmonth"
+def _struct_row() -> Field:
+    return Field(
+        "row",
+        DataType.from_fields(
+            [Field("venue", "utf8", nullable=False), Field("id", "int64", nullable=False)]
+        ),
+        nullable=False,
+    )
 
-    # The dialect alias resolves on the way in, so one name is stored.
-    assert year.partition.transform == "day"
-    assert year.metadata["PARTITION:transform"] == "day"
-    assert year.partition.sources == ["event"]
-    assert year.metadata["PARTITION:sources"] == '["event"]'
 
-    with pytest.raises(ValueError):
-        # A function of two arguments is not a transform of one column.
-        year.partition.transform = "truncate"
-    with pytest.raises(ValueError):
-        year.partition.transform = "epoch"
-    with pytest.raises(ValueError):
-        year.partition.sources = [""]
-    # A refused write leaves the field unchanged.
-    assert year.partition.transform == "day"
-    assert year.partition.sources == ["event"]
+def test_the_partition_view_declares_what_rows_partition_by() -> None:
+    row = _struct_row()
+    assert row.partition.by is None
+
+    row.partition.by = ["venue", "Years(ts)", "truncate(name, 4) as prefix"]
+    # Every entry is stored as the grammar spells it.
+    assert (
+        row.metadata["PARTITION:by"]
+        == '["venue","years(ts)","truncate(name, 4) as prefix"]'
+    )
+    entries = row.partition.by
+    assert entries == ["venue", "years(ts)", "truncate(name, 4) as prefix"]
+    again = _struct_row()
+    again.partition.by = entries
+    assert again == row
+
+    # An entry is a term with an optional alias: a declared datatype or
+    # column metadata is a column declaration, not a partition entry.
+    unchanged = copy.copy(row)
+    for entry in [
+        "venue int64",
+        "venue not null",
+        "venue with (comment = 'x')",
+        "year(",
+    ]:
+        with pytest.raises(ValueError, match="PARTITION:by"):
+            row.partition.by = [entry]
+        assert row == unchanged, entry
+    with pytest.raises(TypeError, match="not one string"):
+        row.partition.by = "venue"
+    assert (
+        row.partition.remove_by()
+        == '["venue","years(ts)","truncate(name, 4) as prefix"]'
+    )
+    assert row.partition.by is None
+    assert row.partition.remove_by() is None
+    # Assigning `None` removes the declaration too.
+    row.partition.by = ["venue"]
+    row.partition.by = None
+    assert "PARTITION:by" not in row.metadata
+
+
+def test_the_sort_view_declares_the_order_a_struct_keeps() -> None:
+    row = Field(
+        "row",
+        DataType.from_fields(
+            [Field("venue", "utf8", nullable=False), Field("price", "float64")]
+        ),
+        nullable=False,
+    )
+    assert row.sort.scheme == "sort"
+    assert row.sort.prefix == "SORT"
+    assert row.protocol("Sort").scheme == "sort"
+    assert row.sort.by is None
+
+    row.sort.by = ["venue", "price DESC NULLS FIRST"]
+    assert row.metadata["SORT:by"] == '["venue","price desc nulls first"]'
+    keys = row.sort.by
+    assert keys == ["venue", "price desc nulls first"]
+    again = copy.copy(row)
+    again.sort.by = keys
+    assert again == row
+
+    # A plan owns the order: the key leaves the root's metadata for the
+    # `order by` section and comes back from it.
+    plan = Plan.from_field(row)
+    assert [(str(term), direction, nulls) for term, direction, nulls in plan.ordering] == [
+        ("venue", "asc", "last"),
+        ("price", "desc", "first"),
+    ]
+    assert plan.root_metadata == {}
+    assert (
+        str(plan)
+        == "create (venue utf8 not null, price float64 null) order by venue, price desc nulls first"
+    )
+    assert plan.field() == row
+
+    # The declaration travels into Arrow and back.
+    assert Field.from_arrow(pa.field(row)).sort.by == keys
+
+    # A key that is not an `order by` key is refused naming the property,
+    # by the typed setter and by the generic write alike.
+    unchanged = copy.copy(row)
+    with pytest.raises(ValueError, match="SORT:by"):
+        row.sort.by = ["price desc nulls"]
+    assert row == unchanged
+    with pytest.raises(ValueError, match="SORT:by"):
+        row.sort["by"] = '["venue","venue"]'
+    with pytest.raises(ValueError, match="SORT:by"):
+        row.sort["by"] = '["price >"]'
+
+    assert row.sort.remove_by() == '["venue","price desc nulls first"]'
+    assert row.sort.by is None
+
+
+def test_a_view_of_another_protocol_answers_no_by() -> None:
+    field = Field("year", "int32", nullable=True)
+    for view in (field.http, field.iceberg, field.fix):
+        with pytest.raises(TypeError, match="by is a partition, sort, digest or transform"):
+            view.by
+        with pytest.raises(TypeError):
+            view.by = ["year"]
+        with pytest.raises(TypeError):
+            view.remove_by()
+
+
+def test_the_transform_view_declares_its_term_and_reads_the_terms_its_function_reads() -> None:
+    year = _year_column()
+    # A call over plain columns is stored as its function beside its `by`.
+    assert year.metadata["TRANSFORM:function"] == "year"
+    assert year.transform.by == ["event"]
+    term = year.transform.term
+    assert term is not None
+    assert str(term) == "year(event)"
+    # Any other term is stored whole, and the function and its `by` go.
+    year.transform.term = "YEAR(event) + 1"
+    assert dict(year.transform) == {"expression": "year(event) + 1"}
+    assert year.transform.by is None
+    # A function's arguments are never written apart from it.
+    with pytest.raises(TypeError, match="assign field.transform.term"):
+        year.transform.by = ["event"]
+    with pytest.raises(TypeError, match="assign field.transform.term"):
+        year.transform.remove_by()
+    assert year.transform.remove_term() is not None
+    assert year.transform.term is None
+    year.transform.term = "year(event)"
+    year.transform.term = None
+    assert year.transform.term is None
+    assert Field("plain", "int64").transform.term is None
 
 
 def test_partition_vocabulary_is_refused_on_another_protocols_view() -> None:
@@ -670,25 +796,189 @@ def test_partition_vocabulary_is_refused_on_another_protocols_view() -> None:
 
     for view in (field.http, field.iceberg):
         with pytest.raises(TypeError):
-            view.transform
-        with pytest.raises(TypeError):
-            view.sources
+            view.term
         with pytest.raises(TypeError):
             view.apply_arrow_batch(pa.record_batch({"event": pa.array([1])}))
-    # `apply_arrow_batch` is the one verb both declaring protocols answer, so
-    # the digest view takes it while the partition vocabulary stays refused.
+    # `term` is the transform view's: the partition view no longer has a
+    # transform of its own, a derived partition column being a transform.
     with pytest.raises(TypeError):
-        field.digest.transform
+        field.partition.term
+    with pytest.raises(AttributeError):
+        field.partition.transform  # type: ignore[attr-defined]
+    with pytest.raises(AttributeError):
+        field.partition.sources  # type: ignore[attr-defined]
+    # `apply_arrow_batch` is the one verb the declaring protocols answer, so
+    # the digest view takes it while the transform vocabulary stays refused.
+    with pytest.raises(TypeError):
+        field.digest.term
     root = Field("row", DataType.from_fields([field]), nullable=False)
     assert root.digest.apply_arrow_batch(
         pa.record_batch({"year": pa.array([1], pa.int32())})
     ).column_names == ["year"]
 
 
+class TestPartitionBy:
+    """`Field.with_partition_by` and `Field.partition_by`, mirroring
+    ``rust/tests/root/structure.rs``'s `partition_by` module."""
+
+    @staticmethod
+    def rows() -> Field:
+        return Field(
+            "row",
+            DataType.from_fields(
+                [
+                    Field("venue", "utf8", nullable=False),
+                    Field("ts", "timestamp[us]", nullable=False),
+                    Field("name", "utf8", nullable=False),
+                    Field("price", "int64", nullable=False),
+                ]
+            ),
+            nullable=False,
+        )
+
+    def test_a_derived_entry_is_named_by_its_alias_or_the_singular_convention(
+        self,
+    ) -> None:
+        partitioned = self.rows().with_partition_by(
+            [
+                "venue",
+                "years(ts)",
+                Term("days(ts)"),
+                "minutes(ts, 15)",
+                ("truncate(name, 4)", "prefix"),
+            ]
+        )
+        assert partitioned.partition_field_names == [
+            "venue",
+            "ts_year",
+            "ts_day",
+            "ts_minutes",
+            "prefix",
+        ]
+        assert partitioned.metadata["PARTITION:by"] == (
+            '["venue","years(ts)","days(ts)","minutes(ts, 15)",'
+            '"truncate(name, 4) as prefix"]'
+        )
+        # The identity column carries only its mark; a derived column is a
+        # marked transform typed by its term.
+        venue = partitioned.dtype["venue"]
+        assert venue.is_partition
+        assert venue.transform.term is None
+        day = partitioned.dtype["ts_day"]
+        assert day.dtype == DataType("date32")
+        assert day.is_partition
+        assert str(day.transform.term) == "days(ts)"
+        prefix = partitioned.dtype["prefix"]
+        assert prefix.dtype == DataType("utf8")
+        assert str(prefix.transform.term) == "truncate(name, 4)"
+        assert partitioned.partition_by == [
+            "venue",
+            "years(ts)",
+            "days(ts)",
+            "minutes(ts, 15)",
+            "truncate(name, 4) as prefix",
+        ]
+        assert partitioned.partition.by == partitioned.partition_by
+        # Every ordinary column is still there, unmarked.
+        assert len(partitioned.dtype) == 8
+        assert not partitioned.dtype["price"].is_partition
+
+    def test_redeclaring_replaces_the_marks_and_an_empty_declaration_removes_them(
+        self,
+    ) -> None:
+        first = self.rows().with_partition_by(["venue", "years(ts)"])
+        second = first.with_partition_by(["weeks(ts) as week"])
+        assert second.partition_field_names == ["week"]
+        # The column the first declaration derived stays a column, unmarked.
+        year = second.dtype["ts_year"]
+        assert not year.is_partition
+        assert year.transform.term is not None
+        assert second.metadata["PARTITION:by"] == '["weeks(ts) as week"]'
+
+        none = second.with_partition_by([])
+        assert not none.has_partition_fields
+        assert "PARTITION:by" not in none.metadata
+        assert none.partition_by == []
+
+        # Re-declaring the same entry is the same schema.
+        assert first.with_partition_by(["venue", "years(ts)"]) == first
+
+    def test_with_partition_fields_is_the_declaration_over_bare_columns(self) -> None:
+        marked = self.rows().with_partition_fields(["venue", "name"])
+        assert marked == self.rows().with_partition_by(["venue", "name"])
+        assert marked.metadata["PARTITION:by"] == '["venue","name"]'
+        # Marks alone are a declaration too: a layout read off a folder
+        # marks without declaring, and the marks are what it partitions by.
+        venue = Field("venue", "utf8", nullable=False)
+        venue.set_partition(True)
+        unmarked_declaration = Field(
+            "row",
+            DataType.from_fields([venue, Field("price", "int64", nullable=False)]),
+            nullable=False,
+        )
+        assert "PARTITION:by" not in unmarked_declaration.metadata
+        assert unmarked_declaration.partition_by == ["venue"]
+
+    def test_the_declaration_refuses_what_it_cannot_name_or_find(self) -> None:
+        with pytest.raises(ValueError, match="missing"):
+            self.rows().with_partition_by(["missing"])
+        with pytest.raises(ValueError, match="alias"):
+            self.rows().with_partition_by(["price * 2"])
+        with pytest.raises(ValueError, match="ts_year"):
+            self.rows().with_partition_by(["years(ts)", "weeks(ts) as ts_year"])
+        with pytest.raises(ValueError, match="absent"):
+            self.rows().with_partition_by(["lower(absent)"])
+        with pytest.raises(ValueError):
+            Field("id", "int64", nullable=False).with_partition_by([])
+        with pytest.raises(ValueError):
+            Field("id", "int64", nullable=False).partition_by
+        # One string is a spelling of one entry nobody can tell from its
+        # characters, so it is refused rather than iterated.
+        with pytest.raises(TypeError, match="not one string"):
+            self.rows().with_partition_by("venue")
+
+    def test_marks_that_contradict_the_declaration_are_refused_naming_both(
+        self,
+    ) -> None:
+        venue = Field("venue", "utf8", nullable=False)
+        venue.set_partition(True)
+        marked = DataType.from_fields([venue, Field("ts", "int64", nullable=False)])
+        with pytest.raises(ValueError, match=r"PARTITION:by \[ts\]") as refused:
+            Field("row", marked, nullable=False, metadata={"PARTITION:by": '["ts"]'})
+        assert '"venue" the declaration does not name' in str(refused.value)
+        # The other way round contradicts nothing: a declared column may be
+        # unmarked or absent.
+        for declaration in ['["venue"]', '["absent"]', '["years(ts)"]']:
+            Field(
+                "row",
+                self.rows().dtype,
+                nullable=False,
+                metadata={"PARTITION:by": declaration},
+            )
+        unmarked = Field(
+            "row", self.rows().dtype, nullable=False, metadata={"PARTITION:by": '["venue"]'}
+        )
+        assert not unmarked.has_partition_fields
+        assert unmarked.partition_by == ["venue"]
+        assert unmarked.with_partition_by(unmarked.partition_by).partition_field_names == [
+            "venue"
+        ]
+
+    def test_removing_columns_keeps_the_declaration_consistent(self) -> None:
+        partitioned = self.rows().with_partition_by(["venue", "years(ts)"])
+        # What a leaf stores: the rows minus the partition columns, and no
+        # declaration - the folder's layout is the declaration.
+        stored = partitioned.without_partition_fields()
+        assert len(stored.dtype) == 3
+        assert "PARTITION:by" not in stored.metadata
+        assert not stored.has_partition_fields
+        kept = partitioned.only_partition_fields()
+        assert len(kept.dtype) == 2
+        assert kept.metadata["PARTITION:by"] == '["venue","years(ts)"]'
+
+
 def _applied_root() -> Field:
-    year = Field("year", "int32", nullable=True)
-    year.partition.sources = ["event"]
-    year.partition.transform = "year"
+    year = _year_column()
     row_digest = Field("row_digest", "uint64", nullable=True)
     row_digest.digest["role"] = "holder"
     return Field(
@@ -736,7 +1026,23 @@ def test_partition_apply_arrow_batch_computes_a_declared_column() -> None:
     assert filled.num_columns == 2
     assert filled.column("year").to_pylist() == [2024, 2025]
     # The declaration travels with the filled column.
-    assert filled.schema.field(1).metadata[b"PARTITION:sources"] == b'["event"]'
+    assert filled.schema.field(1).metadata[b"TRANSFORM:function"] == b"year"
+    assert filled.schema.field(1).metadata[b"TRANSFORM:by"] == b'["event"]'
+
+
+def test_partition_apply_arrow_batch_computes_what_with_partition_by_declares() -> None:
+    root = Field(
+        "row",
+        DataType.from_fields([Field("event", "date32", nullable=False)]),
+        nullable=False,
+    ).with_partition_by(["years(event)", "year(event) as year"])
+    batch = pa.record_batch({"event": pa.array([0, 19_723], pa.date32())})
+
+    filled = root.partition.apply_arrow_batch(batch)
+
+    # `years` counts from the epoch; `year` is the calendar part.
+    assert filled.column("event_year").to_pylist() == [0, 54]
+    assert filled.column("year").to_pylist() == [1970, 2024]
 
 
 def test_partition_apply_arrow_batch_leaves_a_stored_column_alone() -> None:
@@ -899,7 +1205,7 @@ def test_digest_roles_select_effective_components_and_validate_atomically() -> N
     venue = Field("venue", "utf8", nullable=False)
     narrowed = Field("row_digest", "uint64", nullable=False)
     narrowed.digest["role"] = "holder"
-    narrowed.digest["sources"] = '["venue"]'
+    narrowed.digest["by"] = '["venue"]'
     explicit = Field(
         "row",
         DataType.from_fields([symbol, venue, price, narrowed]),
@@ -908,11 +1214,11 @@ def test_digest_roles_select_effective_components_and_validate_atomically() -> N
     assert dict(venue.digest) == {}
     assert explicit.digest_field_names == ["symbol", "venue", "price"]
     assert explicit.digest_field_len == 3
-    with pytest.raises(ValueError, match="DIGEST:sources"):
+    with pytest.raises(ValueError, match="DIGEST:by"):
         Field(
             "bad",
             "uint64",
-            metadata={"DIGEST:role": "holder", "DIGEST:sources": '["*","venue"]'},
+            metadata={"DIGEST:role": "holder", "DIGEST:by": '["*","venue"]'},
         )
 
     holders_only = Field(

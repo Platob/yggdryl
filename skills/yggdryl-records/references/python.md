@@ -1,6 +1,6 @@
 # yggdryl-records in Python
 
-`from yggdryl import IOBase, RecordOptions, TextOptions`; Iceberg is `from yggdryl.iceberg import Table`. Every record method takes keyword-only `options=` plus the option properties by name (`select=`, `filter=`, `field=`, `merge_by=`, `max_row_size=`, `row_offset=`, `commit_row_size=`, `compression=`, `rowheader=`, ...), each set on a copy.
+`from yggdryl import IOBase, RecordOptions, TextOptions`; Iceberg is `from yggdryl.iceberg import Table`. Every record method takes keyword-only `options=` plus the option properties by name (`select=`, `filter=`, `field=`, `merge_by=`, `max_row_size=`, `row_offset=`, `commit_batch_num=`, `compression=`, `rowheader=`, ...), each set on a copy.
 
 ## Which encoding will this handle use?
 
@@ -208,7 +208,7 @@ except ValueError as refused:
 
 ## Bound memory on large writes
 
-`commit_row_size=N` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `batch_row_size` bounds the batches a Parquet or Arrow IPC read yields.
+`commit_batch_num=N` publishes every N whole batches, then the remainder (a committed prefix survives a later failure); a cadence never cuts a batch, and native rows are cut into batches by `batch_row_size`. Unset is the destination's own cadence - a file or folder commits once, an Iceberg table each time its held batches reach the target file size; `0` is refused before any input is pulled. `batch_row_size` bounds the batches a Parquet or Arrow IPC read yields.
 
 ```python
 import pathlib
@@ -223,14 +223,16 @@ root = pathlib.Path(tempfile.mkdtemp())
 table = pa.table({"id": list(range(10))})
 
 handle = IOBase(root / "trades.parquet")
-handle.overwrite_arrow_table(table, commit_row_size=4)
+# Three batches at two batches a commit: rows 0-7 publish, then rows 8-9.
+batches = pa.Table.from_batches(table.to_batches(max_chunksize=4))
+handle.overwrite_arrow_table(batches, commit_batch_num=2)
 assert handle.row_size() == 10
 
 sizes = [batch.num_rows for batch in handle.read_arrow_reader(batch_row_size=4)]
 assert sum(sizes) == 10 and max(sizes) <= 4
 
-with pytest.raises(ValueError, match="commit_row_size"):
-    handle.overwrite_arrow_table(table, commit_row_size=0)
+with pytest.raises(ValueError, match="commit_batch_num"):
+    handle.overwrite_arrow_table(table, commit_batch_num=0)
 ```
 
 ## Parquet: compression, pruning, footer answers
@@ -440,21 +442,21 @@ assert [child.partitions for child in lake.children_where({"year": "2024"})] == 
 
 ## Derive a partition column from another column
 
-`PARTITION:sources` and `PARTITION:transform` on the derived field; `apply_arrow_batch` on the root fills it where absent or all null and leaves values alone.
+`PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `with_partition_by` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata; `apply_arrow_batch` on the transform view of the root fills it where absent or all null and leaves values alone.
 
 ```python
 import pyarrow as pa
 
 from yggdryl import DataType, Field
 
-year = Field("year", "int32", nullable=True)
-year.partition.sources = ["event"]
-year.partition.transform = "year"
+root = Field(
+    "row", DataType.from_fields([Field("event", "date32", nullable=False)]), nullable=False
+).with_partition_by(["year(event) as year"])
+assert root.partition_field_names == ["year"]
+assert root.partition_by == ["year(event) as year"]
 
-root = Field("row", DataType.from_fields([Field("event", "date32", nullable=False), year]), nullable=False)
 batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
-
-filled = root.partition.apply_arrow_batch(batch)
+filled = root.transform.apply_arrow_batch(batch)
 assert filled.column_names == ["event", "year"]
 assert filled.column("year").to_pylist() == [2024, 2025]
 ```

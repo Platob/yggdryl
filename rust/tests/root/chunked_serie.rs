@@ -16,7 +16,7 @@ use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, S
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::{
     ArrowCastOptions, ChunkedSerie, DataType, Field, FieldPath, Scalar, Serie, SerieReader,
-    StructType, UnionFields, UnionMode,
+    SortOptions, StructType, UnionFields, UnionMode,
 };
 
 fn price() -> Field {
@@ -1538,5 +1538,346 @@ fn a_union_of_no_member_is_refused_rather_than_laid_out() {
     assert!(ChunkedSerie::from_series(Some(&memberless), [], ArrowCastOptions::new()).is_err());
     assert!(
         ChunkedSerie::from_arrow_arrays(Some(&memberless), [], ArrowCastOptions::new()).is_err()
+    );
+}
+
+/// `values` cut into chunks of `cut` rows each, under the price field;
+/// `None` an absent row.
+fn chunked(values: &[Option<i64>], cut: usize) -> ChunkedSerie {
+    let field = Field::new("price", DataType::Int64, values.iter().any(Option::is_none));
+    let arrays: Vec<ArrayRef> = values
+        .chunks(cut)
+        .map(|chunk| Arc::new(Int64Array::from(chunk.to_vec())) as ArrayRef)
+        .collect();
+    ChunkedSerie::from_arrow_arrays(Some(&field), arrays, ArrowCastOptions::new())
+        .expect("int64 chunks")
+}
+
+#[test]
+fn is_sorted_reads_each_chunk_and_every_chunk_edge() {
+    let sorted = chunked(&[Some(1), Some(2), Some(2), Some(3), None], 2);
+    assert!(sorted.is_sorted(SortOptions::default()));
+    assert!(!sorted.is_sorted(SortOptions::descending()));
+    // Each chunk sorted, the edge not: [1, 5] then [2, 3].
+    let edge = chunked(&[Some(1), Some(5), Some(2), Some(3)], 2);
+    assert!(!edge.is_sorted(SortOptions::default()));
+    assert!(
+        edge.slice(0, 2)
+            .expect("a chunk")
+            .is_sorted(SortOptions::default())
+    );
+    // An empty chunk between two is no edge.
+    let empty: ArrayRef = Arc::new(Int64Array::from(Vec::<i64>::new()));
+    let one: ArrayRef = Arc::new(Int64Array::from(vec![1]));
+    let two: ArrayRef = Arc::new(Int64Array::from(vec![2]));
+    let gapped =
+        ChunkedSerie::from_arrow_arrays(Some(&price()), [one, empty, two], ArrowCastOptions::new())
+            .expect("three chunks");
+    assert!(gapped.is_sorted(SortOptions::default()));
+    assert!(
+        ChunkedSerie::empty(price())
+            .expect("no chunk")
+            .is_sorted(SortOptions::default())
+    );
+}
+
+#[test]
+fn sorting_and_uniqueness_join_once_and_answer_one_chunk_under_the_field() {
+    let prices = chunked(&[Some(3), None, Some(1), Some(3), Some(2)], 2);
+    assert!(!prices.is_unique());
+    assert_eq!(prices.unique_count(), 4);
+    let order = prices
+        .sort_indices(SortOptions::default())
+        .expect("an order");
+    assert_eq!(
+        order.rows().to_vec(),
+        vec![
+            Scalar::from(2_u32),
+            Scalar::from(4_u32),
+            Scalar::from(0_u32),
+            Scalar::from(3_u32),
+            Scalar::from(1_u32)
+        ]
+    );
+    let sorted = prices.into_sorted(SortOptions::default()).expect("sorted");
+    assert_eq!((sorted.num_chunks(), sorted.len()), (1, 5));
+    assert_eq!(sorted.field(), prices.field());
+    assert!(sorted.is_sorted(SortOptions::default()));
+    assert_eq!(
+        sorted.rows(),
+        price_rows(&[1, 2, 3, 3])
+            .into_iter()
+            .chain([Scalar::Null])
+            .collect::<Vec<_>>()
+    );
+    let unique = prices.into_unique().expect("unique");
+    assert_eq!((unique.num_chunks(), unique.len()), (1, 4));
+    assert!(unique.is_unique());
+    // The serie is as it was.
+    assert_eq!(prices.num_chunks(), 3);
+    let taken = prices
+        .into_taken(&Serie::new(vec![Scalar::from(4_u32), Scalar::from(0_u32)]))
+        .expect("taken");
+    assert_eq!(taken.rows(), price_rows(&[2, 3]));
+    assert!(
+        prices
+            .into_taken(&Serie::new(vec![Scalar::from(5_u32)]))
+            .is_err()
+    );
+}
+
+#[test]
+fn reversing_and_filtering_keep_the_chunks_apart() {
+    let prices = chunked(&[Some(1), Some(2), Some(3), None, Some(5)], 2);
+    let reversed = prices.into_reversed();
+    assert_eq!(reversed.num_chunks(), 3);
+    assert_eq!(
+        reversed.rows(),
+        vec![
+            Scalar::from(5_i64),
+            Scalar::Null,
+            Scalar::from(3_i64),
+            Scalar::from(2_i64),
+            Scalar::from(1_i64)
+        ]
+    );
+    assert_eq!(reversed.chunk(0).expect("a chunk").len(), 1);
+    let mask = Serie::new(vec![
+        Scalar::from(true),
+        Scalar::from(false),
+        Scalar::Null,
+        Scalar::from(true),
+        Scalar::from(true),
+    ]);
+    let kept = prices.into_filtered(&mask).expect("filtered");
+    assert_eq!(kept.num_chunks(), 3);
+    assert_eq!(
+        kept.rows(),
+        vec![Scalar::from(1_i64), Scalar::Null, Scalar::from(5_i64)]
+    );
+    let refused = prices
+        .into_filtered(&Serie::new(vec![Scalar::from(true)]))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("a mask of 1 rows cannot filter the 5 rows price holds"),
+        "{refused}"
+    );
+}
+
+#[test]
+fn partition_by_merges_each_chunk_s_groups_in_first_occurrence_order() {
+    let prices = chunked(&[Some(1), Some(2), Some(3), Some(4), Some(5)], 2);
+    let keys = Serie::new(vec![
+        Scalar::from("a"),
+        Scalar::from("b"),
+        Scalar::from("b"),
+        Scalar::from("a"),
+        Scalar::from("c"),
+    ]);
+    let groups = prices.partition_by(&keys).expect("groups");
+    assert_eq!(groups.len(), 3);
+    assert_eq!(groups[0].0, Scalar::from("a"));
+    assert_eq!(groups[0].1.rows(), price_rows(&[1, 4]));
+    assert_eq!(groups[0].1.num_chunks(), 2);
+    assert_eq!(groups[1].0, Scalar::from("b"));
+    assert_eq!(groups[1].1.rows(), price_rows(&[2, 3]));
+    assert_eq!(groups[2].0, Scalar::from("c"));
+    assert_eq!(groups[2].1.field(), prices.field());
+    let refused = prices
+        .partition_by(&Serie::new(vec![Scalar::from("a")]))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("1 keys cannot partition the 5 rows price holds"),
+        "{refused}"
+    );
+}
+
+#[test]
+fn memory_size_sums_the_chunks_and_the_as_writes_replace_them_in_place() {
+    let mut prices = chunked(&[Some(3), Some(1), Some(2), Some(2)], 2);
+    assert_eq!(
+        prices.memory_size(),
+        prices
+            .chunks()
+            .iter()
+            .map(Serie::memory_size)
+            .sum::<usize>()
+    );
+    assert!(prices.memory_size() > 0);
+    prices
+        .as_sorted(SortOptions::descending())
+        .expect("sorted")
+        .as_unique()
+        .expect("unique")
+        .as_reversed()
+        .expect("reversed");
+    assert_eq!(prices.rows(), price_rows(&[1, 2, 3]));
+    assert_eq!(prices.num_chunks(), 1);
+    prices
+        .as_taken(&Serie::new(vec![Scalar::from(2_u32), Scalar::from(0_u32)]))
+        .expect("taken")
+        .as_filtered(&Serie::new(vec![Scalar::from(true), Scalar::from(false)]))
+        .expect("filtered");
+    assert_eq!(prices.rows(), price_rows(&[3]));
+    assert_eq!(prices.field(), &price());
+    // A refused write leaves the serie as it was.
+    assert!(
+        prices
+            .as_taken(&Serie::new(vec![Scalar::from(9_u32)]))
+            .is_err()
+    );
+    assert_eq!(prices.rows(), price_rows(&[3]));
+    let mut apart = chunked(&[Some(1), Some(2), Some(3)], 2);
+    apart.as_reversed().expect("reversed");
+    assert_eq!(
+        (apart.num_chunks(), apart.rows()),
+        (2, price_rows(&[3, 2, 1]))
+    );
+}
+
+/// The four orderings `SortOptions` states.
+const ORDERINGS: [SortOptions; 4] = [
+    SortOptions::ascending(),
+    SortOptions::ascending().with_nulls_first(true),
+    SortOptions::descending(),
+    SortOptions::descending().with_nulls_first(true),
+];
+
+/// `rows` under `field`, one chunk per row, so every pair of neighbours is
+/// a chunk edge.
+fn one_row_per_chunk(field: &Field, rows: &[Scalar]) -> ChunkedSerie {
+    ChunkedSerie::from_series(
+        Some(field),
+        rows.iter().map(|row| {
+            Serie::from_scalars(field.clone(), [row.clone()]).expect("a row the field accepts")
+        }),
+        ArrowCastOptions::new(),
+    )
+    .expect("chunks under one field")
+}
+
+#[test]
+fn is_sorted_judges_a_chunk_edge_exactly_as_the_joined_column_judges_it() {
+    let record = Field::new(
+        "q",
+        DataType::from(
+            StructType::from_fields([Field::new("a", DataType::Int64, true)]).expect("a child"),
+        ),
+        false,
+    );
+    let version = Field::new("v", DataType::Version, false);
+    let negative_nan = f64::from_bits(f64::NAN.to_bits() | (1 << 63));
+    let float = Field::new("f", DataType::Float64, true);
+    let cases = [
+        (
+            record.clone(),
+            vec![
+                Scalar::from_sequence([Scalar::from(1_i64)]),
+                Scalar::from_sequence([Scalar::Null]),
+            ],
+        ),
+        (
+            record,
+            vec![
+                Scalar::from_sequence([Scalar::Null]),
+                Scalar::from_sequence([Scalar::from(1_i64)]),
+            ],
+        ),
+        (
+            version.clone(),
+            ["1.9.0", "1.10.0"]
+                .map(|text| version.scalar(text).expect("a version"))
+                .to_vec(),
+        ),
+        (
+            version.clone(),
+            ["1.10.0", "1.9.0"]
+                .map(|text| version.scalar(text).expect("a version"))
+                .to_vec(),
+        ),
+        (
+            float.clone(),
+            vec![Scalar::from(1.0_f64), Scalar::Null, Scalar::from(f64::NAN)],
+        ),
+        (
+            float,
+            vec![Scalar::from(f64::NAN), Scalar::from(1.0_f64), Scalar::Null],
+        ),
+    ];
+    for (field, rows) in cases {
+        let chunked = one_row_per_chunk(&field, &rows);
+        let joined = chunked.into_serie().expect("one join");
+        for options in ORDERINGS {
+            assert_eq!(
+                chunked.is_sorted(options),
+                joined.is_sorted(options),
+                "{chunked}{options}"
+            );
+            let sorted = chunked.into_sorted(options).expect("sorted");
+            let resorted = one_row_per_chunk(&field, &sorted.rows());
+            assert!(resorted.is_sorted(options), "{resorted}{options}");
+        }
+    }
+    // A chunk holding a NaN payload Arrow orders first is still the one NaN
+    // its rows hold, at the edge as inside the chunk.
+    let arrays: [ArrayRef; 2] = [
+        Arc::new(arrow_array::Float64Array::from(vec![1.0, 2.0])),
+        Arc::new(arrow_array::Float64Array::from(vec![negative_nan])),
+    ];
+    let floats =
+        ChunkedSerie::from_arrow_arrays(None, arrays, ArrowCastOptions::new()).expect("floats");
+    assert!(floats.is_sorted(SortOptions::default()));
+    assert!(
+        floats
+            .into_serie()
+            .expect("one join")
+            .is_sorted(SortOptions::default())
+    );
+}
+
+#[test]
+fn partition_by_chunked_pairs_chunks_cut_alike_and_joins_keys_cut_otherwise() {
+    let prices = chunked(&[Some(1), Some(2), Some(3), Some(4), Some(5)], 2);
+    let venue = Field::new("venue", DataType::utf8(), false);
+    let venues = |cuts: &[&[&str]]| {
+        ChunkedSerie::from_arrow_arrays(
+            Some(&venue),
+            cuts.iter()
+                .map(|cut| Arc::new(StringArray::from(cut.to_vec())) as ArrayRef),
+            ArrowCastOptions::new(),
+        )
+        .expect("venue chunks")
+    };
+    let expected = prices
+        .partition_by(
+            &venues(&[&["a", "b", "b", "a", "c"]])
+                .into_serie()
+                .expect("one key column"),
+        )
+        .expect("groups");
+    // Cut where the rows are cut: chunk beside chunk, no join.
+    let alike = venues(&[&["a", "b"], &["b", "a"], &["c"]]);
+    // Cut elsewhere: the keys joined once and cut to each chunk of rows.
+    let otherwise = venues(&[&["a"], &["b", "b", "a"], &["c"]]);
+    for keys in [&alike, &otherwise] {
+        let groups = prices.partition_by_chunked(keys).expect("groups");
+        assert_eq!(groups.len(), 3);
+        for ((key, rows), (expected_key, expected_rows)) in groups.iter().zip(&expected) {
+            assert_eq!(key, expected_key);
+            assert_eq!(rows.rows(), expected_rows.rows());
+            assert_eq!(rows.num_chunks(), expected_rows.num_chunks());
+        }
+        assert_eq!(groups[0].1.rows(), price_rows(&[1, 4]));
+        assert_eq!(groups[0].1.num_chunks(), 2);
+    }
+    let refused = prices
+        .partition_by_chunked(&venues(&[&["a"]]))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("1 keys cannot partition the 5 rows price holds"),
+        "{refused}"
     );
 }

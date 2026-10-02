@@ -443,6 +443,92 @@ mod iceberg {
         let _ = std::fs::remove_dir_all(&plain);
     }
 
+    /// A partition group arriving in several batches is ordered across them:
+    /// each batch in order is not enough, so the edge between two is read
+    /// too; and a group's rows land as they stood, a run of a batch - at its
+    /// start, its middle or its end - as surely as rows interleaved with
+    /// another partition's.
+    #[test]
+    fn a_group_is_ordered_across_its_batches_and_every_run_lands_intact() {
+        let schema = schema();
+        let batch = |ids: &[i64], symbols: &[&str], venues: &[&str]| {
+            RecordBatch::try_new(
+                schema.clone().into_arrow_schema().unwrap(),
+                vec![
+                    Arc::new(Int64Array::from(ids.to_vec())),
+                    Arc::new(StringArray::from(symbols.to_vec())),
+                    Arc::new(StringArray::from(venues.to_vec())),
+                ],
+            )
+            .unwrap()
+        };
+        let appended = |label: &str, batches: Vec<RecordBatch>| -> Vec<i64> {
+            let mut table = Table::create_sorted(
+                LocalFolder::new(root(label)).unwrap(),
+                FormatVersion::V2,
+                schema.clone(),
+                PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+                order_by_symbol().clone(),
+            )
+            .unwrap();
+            let arrow = batches[0].schema();
+            table
+                .commit_append(yggdryl::arrow::batch_reader(arrow, batches))
+                .unwrap();
+            table
+                .scan(None)
+                .unwrap()
+                .flat_map(|batch| {
+                    batch
+                        .unwrap()
+                        .column_by_name("id")
+                        .unwrap()
+                        .as_any()
+                        .downcast_ref::<Int64Array>()
+                        .unwrap()
+                        .values()
+                        .to_vec()
+                })
+                .collect()
+        };
+
+        // Each batch in symbol order, the second opening below where the
+        // first closed: the group is ordered as one.
+        let edge = appended(
+            "edge-descends",
+            vec![
+                batch(&[1, 2], &["b", "c"], &["X", "X"]),
+                batch(&[3, 4], &["a", "d"], &["X", "X"]),
+            ],
+        );
+        assert_eq!(edge, [3, 1, 2, 4]);
+        // In order across the edge too, ties included: rows land as they came.
+        let ordered = appended(
+            "edge-holds",
+            vec![
+                batch(&[1, 2], &["a", "b"], &["X", "X"]),
+                batch(&[3, 4], &["b", "c"], &["X", "X"]),
+            ],
+        );
+        assert_eq!(ordered, [1, 2, 3, 4]);
+
+        // Runs at a batch's start, middle and end, then two partitions
+        // interleaved: files follow the groups' first rows, each group's
+        // rows in symbol order.
+        let runs = appended(
+            "runs",
+            vec![
+                batch(
+                    &[1, 2, 3, 4, 5],
+                    &["a", "b", "a", "b", "c"],
+                    &["X", "X", "Y", "Y", "Z"],
+                ),
+                batch(&[6, 7, 8], &["b", "a", "a"], &["W", "V", "W"]),
+            ],
+        );
+        assert_eq!(runs, [1, 2, 3, 4, 5, 8, 6, 7]);
+    }
+
     #[test]
     fn a_table_streams_none_of_the_files_that_store_it() {
         use yggdryl::{Error, IOBase, IOKind};

@@ -361,14 +361,19 @@ mod lake {
         let full = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
         let reader = Box::new(RecordBatchIterator::new(
             [
-                Ok(full.clone()),
+                // One row a batch: a cadence of two batches publishes the
+                // first two rows and still holds the third when the source
+                // fails, so only that complete prefix is kept.
+                Ok(full.slice(0, 1)),
+                Ok(full.slice(1, 1)),
+                Ok(full.slice(2, 1)),
                 Err(ArrowError::ComputeError(
                     "later partition source failure".into(),
                 )),
             ],
             full.schema(),
         ));
-        let committed = options(Some(field.clone())).with_commit_row_size(2);
+        let committed = options(Some(field.clone())).with_commit_batch_num(2);
 
         let message = handle
             .overwrite_arrow_reader(reader, &committed)
@@ -442,7 +447,7 @@ mod lake {
             let mut merging = options(Some(field.clone()))
                 .with_merge_by(["year", "month"])
                 .unwrap();
-            merging.set_commit_row_size(cadence);
+            merging.set_commit_batch_num(cadence);
 
             let message = handle
                 .merge_arrow_reader(
@@ -1066,9 +1071,8 @@ fn a_path_value_its_column_refuses_is_refused_as_the_whole_column_would_be() {
 /// A root declaring `year` as `year(event)` beside the column it reads.
 fn derived_schema() -> Field {
     let mut year = DataType::Int32.nullable_field("year");
-    year.as_partition_mut().set_sources(["event"]).unwrap();
-    year.as_partition_mut()
-        .set_transform(yggdryl::expression::Function::Year)
+    year.as_transform_mut()
+        .set_term(&"year(event)".parse().unwrap())
         .unwrap();
     StructType::from_fields([DataType::date32().required_field("event"), year])
         .map(DataType::from)
@@ -1111,13 +1115,98 @@ fn a_derived_column_is_not_marked_as_one_a_path_spells_out() {
         .unwrap();
 
     // `FIELD:partition` says a directory carries the column. This one is
-    // computed from the rows, so the declaration travels unchanged.
+    // computed from the rows and declared by nothing but its transform, so
+    // the declaration travels unchanged and marks nothing.
     let declared = Field::from_arrow_field(filled.schema().field(1)).unwrap();
     assert!(!declared.is_partition());
     assert_eq!(
-        declared.as_partition().sources().unwrap(),
-        Some(vec!["event".to_owned()])
+        declared
+            .as_transform()
+            .term()
+            .unwrap()
+            .map(|term| term.to_string()),
+        Some("year(event)".to_owned())
     );
+}
+
+#[test]
+fn a_derived_partition_entry_is_a_marked_column_a_folder_spells_out() {
+    use yggdryl::IOMedia;
+    use yggdryl::holder::Holder;
+    use yggdryl::media::IORecordOptions as _;
+
+    // `with_partition_by` marks the identity entry and materializes the
+    // derived one as a column the folder layout spells in its paths,
+    // computed from the rows before they are written.
+    let rows = StructType::from_fields([
+        DataType::utf8().required_field("venue"),
+        DataType::date32().required_field("event"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row")
+    .with_partition_by([
+        "venue".parse().unwrap(),
+        "year(event) as year".parse().unwrap(),
+    ])
+    .unwrap();
+    assert_eq!(
+        rows.partition_field_names().collect::<Vec<_>>(),
+        ["venue", "year"]
+    );
+    assert_eq!(
+        rows.get_metadata("PARTITION:by"),
+        Some(r#"["venue","year(event) as year"]"#)
+    );
+
+    let mut root = yggdryl::local::LocalFolder::temporary()
+        .unwrap()
+        .path()
+        .unwrap();
+    root.push(format!("yggdryl-lake-derived-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let mut handle = Holder::folder(&root).unwrap();
+    let options = RecordOptions::for_mime_type(&yggdryl::MimeType::ARROW_STREAM)
+        .unwrap()
+        .with_field(rows.clone());
+    let incoming = RecordBatch::try_from_iter([
+        (
+            "venue",
+            Arc::new(StringArray::from(vec!["XNAS", "XNAS", "XNYS"])) as ArrayRef,
+        ),
+        (
+            "event",
+            Arc::new(arrow_array::Date32Array::from(vec![19_723, 20_089, 20_089])) as ArrayRef,
+        ),
+    ])
+    .unwrap();
+    handle
+        .overwrite_arrow_reader(
+            yggdryl::arrow::batch_reader(incoming.schema(), [incoming]),
+            &options,
+        )
+        .unwrap();
+
+    assert!(root.join("venue=XNAS").join("year=2024").is_dir());
+    assert!(root.join("venue=XNAS").join("year=2025").is_dir());
+    assert!(root.join("venue=XNYS").join("year=2025").is_dir());
+    let mut found = Vec::new();
+    for batch in handle.read_arrow_reader(&options).unwrap() {
+        let batch = batch.unwrap();
+        let years = batch
+            .column_by_name("year")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<Int32Array>()
+            .unwrap()
+            .clone();
+        found.extend(years.values().iter().copied());
+    }
+    found.sort_unstable();
+    assert_eq!(found, [2024, 2025, 2025]);
+
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -1175,9 +1264,11 @@ fn a_column_holding_nothing_but_nulls_is_filled_from_the_batchs_own_schema() {
 }
 
 #[test]
-fn an_absent_transform_copies_the_source_value_unchanged() {
+fn a_bare_column_term_copies_the_source_value_unchanged() {
     let mut day = DataType::date32().nullable_field("event_day");
-    day.as_partition_mut().set_sources(["event"]).unwrap();
+    day.as_transform_mut()
+        .set_term(&"event".parse().unwrap())
+        .unwrap();
     let root = StructType::from_fields([DataType::date32().required_field("event"), day])
         .map(DataType::from)
         .unwrap()
@@ -1191,11 +1282,8 @@ fn an_absent_transform_copies_the_source_value_unchanged() {
 #[test]
 fn a_source_path_reaches_a_struct_child() {
     let mut year = DataType::Int32.nullable_field("year");
-    year.as_partition_mut()
-        .set_sources(["trade.event"])
-        .unwrap();
-    year.as_partition_mut()
-        .set_transform(yggdryl::expression::Function::Year)
+    year.as_transform_mut()
+        .set_term(&"year(trade.event)".parse().unwrap())
         .unwrap();
     let trade = StructType::from_fields([DataType::date32().required_field("event")])
         .map(DataType::from)
@@ -1265,62 +1353,38 @@ fn a_widened_batch_keeps_the_schema_metadata_it_arrived_with() {
 }
 
 #[test]
-fn a_transform_without_sources_beside_it_is_refused() {
+fn a_function_without_by_beside_it_is_refused() {
     let mut year = DataType::Int32.nullable_field("year");
-    year.as_partition_mut()
-        .set_transform(yggdryl::expression::Function::Year)
-        .unwrap();
+    year.as_transform_mut().insert("function", "year").unwrap();
 
-    let error = year.as_partition().term().unwrap_err().to_string();
-    assert!(error.contains("PARTITION:sources"), "{error}");
+    let error = year.as_transform().term().unwrap_err().to_string();
+    assert!(error.contains("TRANSFORM:by"), "{error}");
 }
 
 #[test]
-fn a_transform_that_is_not_a_function_of_one_argument_is_refused() {
-    let mut year = DataType::Int32.nullable_field("year");
-    assert!(
-        year.as_partition_mut()
-            .set_transform(yggdryl::expression::Function::Truncate)
-            .is_err()
-    );
+fn a_partition_declaration_that_is_not_a_term_is_refused() {
+    let mut row = schema();
+    let unchanged = row.clone();
     // The refused write leaves the field untouched, and the generic mutation
-    // path runs the same validator.
-    assert!(year.as_partition().is_empty());
-    let error = year
+    // path runs the same validator as the typed setter.
+    let error = row
         .as_partition_mut()
-        .insert("transform", "epoch")
+        .insert("by", r#"["year("]"#)
         .unwrap_err()
         .to_string();
-    assert!(error.contains("PARTITION:transform"), "{error}");
-    assert!(year.as_partition().is_empty());
-}
-
-#[test]
-fn a_transform_reading_more_than_one_source_is_refused_for_now() {
-    let mut year = DataType::Int32.nullable_field("year");
-    year.as_partition_mut()
-        .set_sources(["event", "venue"])
-        .unwrap();
-    year.as_partition_mut()
-        .set_transform(yggdryl::expression::Function::Year)
-        .unwrap();
-
-    // The list shape is stored, so the intent survives; only evaluating it is
-    // refused, and by a message that says which shape reads today.
-    assert_eq!(
-        year.as_partition().sources().unwrap(),
-        Some(vec!["event".to_owned(), "venue".to_owned()])
-    );
-    let error = year.as_partition().term().unwrap_err().to_string();
-    assert!(error.contains("exactly one source"), "{error}");
-
-    // The one shape every `sources` property refuses, whatever declares it.
+    assert!(error.contains("PARTITION:by"), "{error}");
+    assert_eq!(row, unchanged);
     assert!(
-        year.as_partition_mut()
-            .set_sources(["event", "event"])
+        row.as_partition_mut()
+            .set_by_texts(["price int64"])
             .is_err()
     );
-    assert!(year.as_partition_mut().set_sources(["*", "event"]).is_err());
+    assert!(
+        row.as_partition_mut()
+            .set_by_texts(["price", "price"])
+            .is_err()
+    );
+    assert_eq!(row, unchanged);
 }
 
 #[test]
@@ -1337,21 +1401,19 @@ fn a_source_column_the_batch_does_not_carry_is_refused() {
 fn a_nested_declaration_is_filled_before_the_level_above_reads_it() {
     let mut inner_year = DataType::Int32.nullable_field("year");
     inner_year
-        .as_partition_mut()
-        .set_sources(["event"])
+        .as_transform_mut()
+        .set_term(&"year(event)".parse().unwrap())
         .unwrap();
-    inner_year
-        .as_partition_mut()
-        .set_transform(yggdryl::expression::Function::Year)
-        .unwrap();
-    // A source path is relative to the Struct that declares it, so the nested
+    // A term is relative to the Struct that declares it, so the nested
     // column names `event`, and the level above names `trade.year`.
     let trade = StructType::from_fields([DataType::date32().required_field("event"), inner_year])
         .map(DataType::from)
         .unwrap()
         .required_field("trade");
     let mut top = DataType::Int32.nullable_field("top_year");
-    top.as_partition_mut().set_sources(["trade.year"]).unwrap();
+    top.as_transform_mut()
+        .set_term(&"trade.year".parse().unwrap())
+        .unwrap();
     let root = StructType::from_fields([trade, top])
         .map(DataType::from)
         .unwrap()
@@ -1405,12 +1467,8 @@ fn a_nested_declaration_is_filled_before_the_level_above_reads_it() {
 fn a_nested_struct_keeps_its_own_null_mask_through_a_fill() {
     let mut inner_year = DataType::Int32.nullable_field("year");
     inner_year
-        .as_partition_mut()
-        .set_sources(["event"])
-        .unwrap();
-    inner_year
-        .as_partition_mut()
-        .set_transform(yggdryl::expression::Function::Year)
+        .as_transform_mut()
+        .set_term(&"year(event)".parse().unwrap())
         .unwrap();
     let trade = StructType::from_fields([DataType::date32().required_field("event"), inner_year])
         .map(DataType::from)
@@ -1449,9 +1507,8 @@ fn a_nested_struct_keeps_its_own_null_mask_through_a_fill() {
 #[test]
 fn a_required_column_still_holding_its_canonical_default_is_filled() {
     let mut year = DataType::Int32.required_field("year");
-    year.as_partition_mut().set_sources(["event"]).unwrap();
-    year.as_partition_mut()
-        .set_transform(yggdryl::expression::Function::Year)
+    year.as_transform_mut()
+        .set_term(&"year(event)".parse().unwrap())
         .unwrap();
     let root = StructType::from_fields([DataType::date32().required_field("event"), year])
         .map(DataType::from)

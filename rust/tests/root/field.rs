@@ -537,12 +537,8 @@ mod arrow {
     fn applied_root() -> Field {
         let mut inner_year = DataType::Int32.nullable_field("year");
         inner_year
-            .as_partition_mut()
-            .set_sources(["event"])
-            .unwrap();
-        inner_year
-            .as_partition_mut()
-            .set_transform(yggdryl::expression::Function::Year)
+            .as_transform_mut()
+            .set_term(&"year(event)".parse().unwrap())
             .unwrap();
         let mut inner_digest = DataType::UInt64.nullable_field("trade_digest");
         inner_digest.as_digest_mut().set_holder().unwrap();
@@ -557,8 +553,8 @@ mod arrow {
 
         let mut top_year = DataType::Int32.nullable_field("top_year");
         top_year
-            .as_partition_mut()
-            .set_sources(["trade.year"])
+            .as_transform_mut()
+            .set_term(&"trade.year".parse().unwrap())
             .unwrap();
         let mut row_digest = DataType::UInt64.nullable_field("row_digest");
         row_digest.as_digest_mut().set_holder().unwrap();
@@ -908,9 +904,8 @@ mod arrow {
     /// that is not a contradiction is that the two protocols write them.
     fn required_applied_root() -> Field {
         let mut year = DataType::Int32.required_field("year");
-        year.as_partition_mut().set_sources(["event"]).unwrap();
-        year.as_partition_mut()
-            .set_transform(yggdryl::expression::Function::Year)
+        year.as_transform_mut()
+            .set_term(&"year(event)".parse().unwrap())
             .unwrap();
         let mut row_digest = DataType::UInt64.required_field("row_digest");
         row_digest.as_digest_mut().set_holder().unwrap();

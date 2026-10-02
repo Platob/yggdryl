@@ -1,6 +1,6 @@
 ---
 name: yggdryl-arrow
-description: Moves columns, tables and streams across the Apache Arrow boundary with yggdryl's Serie (one column), ChunkedSerie (chunked arrays and tables kept apart) and SerieReader (a stream under one compiled plan), and casts them with ArrowCastPlan and ArrowCastOptions (safe, representation). Use when landing arrow-rs arrays / RecordBatches / readers, pyarrow or Arrow JS (apache-arrow) tables and vectors under a Field (from_arrow_array / fromArrowArray, from_arrow_batch, SerieReader.from_arrow_reader), taking pyarrow, pandas, polars or NumPy in via Serie.from_, reading typed buffers (as_int64().values()), casting a column or a stream, or handing data back (into_arrow_array / intoArrowTable, into_pandas / into_polars). Covers Rust, Python and Node.js.
+description: Moves columns, tables and streams across the Apache Arrow boundary with yggdryl's Serie (one column), ChunkedSerie (chunked arrays and tables kept apart) and SerieReader (a stream under one compiled plan), and casts them with ArrowCastPlan and ArrowCastOptions (safe, representation). Use when landing arrow-rs arrays / RecordBatches / readers, pyarrow or Arrow JS (apache-arrow) tables and vectors under a Field (from_arrow_array / fromArrowArray, from_arrow_batch, SerieReader.from_arrow_reader), taking pyarrow, pandas, polars or NumPy in via Serie.from_, reading typed buffers (as_int64().values()), casting a column or a stream, sorting, deduplicating, grouping or windowing a column (sort_indices / into_sorted, into_unique, partition_by, window), or handing data back (into_arrow_array / intoArrowTable, into_pandas / into_polars). Covers Rust, Python and Node.js.
 ---
 
 # yggdryl Arrow: Serie, ChunkedSerie, SerieReader, casts
@@ -58,6 +58,11 @@ cross-language conventions: see the `yggdryl` entry skill.
 | Write rows | `push`, `set`, `insert`, `remove`, `pop`, `extend`, `splice(range, rows)`, `resize`, `truncate`, `clear`, `extend_from_serie` | same names, `splice(start, end, rows)` | `push`, `set`, `insert`, `remove`, `pop`, `extend`, `splice(start, end, rows)`, `resize`, `truncate`, `clear`, `extendFromSerie` |
 | Children of a record column | `child(name)`, `children()`, `items()`, `get_child_by_path(&FieldPath)`, `set_child(serie)?`, `set_cell(&path, i, v)?` | `child`, `children()`, `items()`, `get_child_by_path("a.b")`, `set_child`, `set_cell("a.b", i, v)` | `child`, `children()`, `items()`, `getChildByPath`, `setChild`, `setCell` |
 | Zero-copy window | `serie.slice(offset, len)?` | `serie.slice(offset, len)`, `serie[a:b]` | `serie.slice(offset, len)` |
+| Read or write a stretch where it stands | `serie.window(offset, len)?`, `window_mut(offset, len)?` (`set`, `fill`, `swap`, `as_sorted`, ...) | `serie.window(offset, length)` -> `SerieSlice` | `serie.window(offset, length)` -> `SerieSlice` |
+| Sort, order, deduplicate, take, filter (a new serie) | `sort_indices(options)?`, `into_sorted(options)?`, `into_unique()?`, `into_reversed()`, `into_taken(&indices)?`, `into_filtered(&mask)?`, `is_sorted(options)`, `is_unique()`, `unique_count()` | same names; `options` are `descending=False, nulls_first=False` keywords | `sortIndices`, `intoSorted`, `intoUnique`, `intoReversed`, `intoTaken`, `intoFiltered`, `isSorted`, `isUnique`, `uniqueCount`; `options` is `{ descending, nullsFirst }` |
+| The same, in place and chained | `serie.as_sorted(options)?.as_unique()?.as_reversed()?`, `as_taken`, `as_filtered` | `serie.as_sorted().as_unique().as_reversed()`, `as_taken`, `as_filtered` | `serie.asSorted().asUnique().asReversed()`, `asTaken`, `asFiltered` |
+| Group rows by a key | `partition_by(&keys)?`, `partition_by_paths(&paths)?`; a chunked serie's keys held in chunks: `partition_by_chunked` | `partition_by(keys)`, `partition_by_paths("venue")` | `partitionBy(keys)`, `partitionByPaths('venue')` |
+| Bytes a column occupies | `serie.memory_size()` | `serie.memory_size()` | `serie.memorySize()` |
 | Column -> Arrow | `into_arrow_array()` (`None` for a run), `require_arrow_array()?`, `into_arrow_batch()?`, `into_arrow_reader()?`, `into_arrow_scalar()?` | `into_arrow_array()`, `into_arrow_batch()`, `into_arrow_table()`, `into_arrow_reader()`, `into_arrow_scalar()`, `into_pandas()`, `into_polars()`, `into_numpy()`; PyCapsule: `pa.array(serie)`, `pa.table(record)` | `intoArrowArray()`, `intoArrowBatch()`, `intoArrowReader()`, `intoArrowScalar()` |
 | Chunked -> Arrow | `into_arrow_arrays()`, `into_arrow_reader()?` | `into_arrow_chunked_array()`, `into_arrow_table()`, `into_arrow_reader()` | `intoArrowArray()`, `intoArrowTable()`, `intoArrowReader()` |
 | Column as one value, and back | `Scalar::from(serie)`, `value.as_serie()` | `serie.into_scalar()`, `Scalar.from_(serie)`, `value.as_serie()` | `serie.intoScalar()`, `value.asSerie()` |
@@ -142,6 +147,15 @@ the record `row`.
 14. **Schema-changing loops compile one plan per distinct source schema.** A
     plan refuses an input of another layout by name; key your plans by the
     source schema rather than recompiling per batch.
+15. **One order for every leaf.** `sort_indices`, `into_sorted`, `into_unique`
+    and `partition_by` answer `Scalar`'s total order: absent values go last
+    (nulls first is an option, and the opposite of Arrow's own default), every
+    NaN is one value above every number, and a column and the run of its rows
+    agree. `into_*` leaves the serie as it was; `as_*` rewrites it in place -
+    a primitive or boolean column held alone sorts where it stands - and a
+    refusal leaves it unchanged. A `ChunkedSerie` joins for `sort_indices`,
+    `into_sorted`, `into_unique` and `into_taken`, and keeps its chunks apart
+    for `into_reversed`, `into_filtered` and `partition_by`.
 
 ## Pitfalls
 
@@ -206,6 +220,8 @@ the record `row`.
 
 - Serie: https://platob.github.io/yggdryl/types/serie/ - leaves, costs,
   [every columnar runtime in](https://platob.github.io/yggdryl/types/serie/#arrow-every-columnar-runtime-in)
+  [sorting, uniqueness and partitions](https://platob.github.io/yggdryl/types/serie/#sorting-uniqueness-and-partitions),
+  [windows](https://platob.github.io/yggdryl/types/serie-slice/)
 - ChunkedSerie: https://platob.github.io/yggdryl/types/chunked-serie/
 - Cast: https://platob.github.io/yggdryl/types/cast/ -
   [required columns](https://platob.github.io/yggdryl/types/cast/#required-columns),

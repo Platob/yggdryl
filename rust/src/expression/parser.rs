@@ -96,6 +96,16 @@ pub(crate) fn parse_projection(input: &str) -> Result<Projection> {
     Ok(projection)
 }
 
+/// Parse one `order by` key: a term, then `asc` or `desc`, then `nulls
+/// first` or `nulls last`.
+pub(crate) fn parse_ordering(input: &str) -> Result<Ordering> {
+    let mut parser = Parser::new(input)?;
+    let ordering = parser.ordering()?;
+    parser.expect_end()?;
+    ordering.term().check_budget()?;
+    Ok(ordering)
+}
+
 /// Parse one expression: a plan, or plans separated by `;`.
 ///
 /// A plan spelling only its `select` section is the selector; only its

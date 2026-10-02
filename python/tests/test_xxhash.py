@@ -561,11 +561,20 @@ def test_the_digest_view_carries_the_holder_vocabulary_it_declares() -> None:
 
     field.digest.algorithm = "xxh3-64"
     assert field.digest.algorithm == "xxh3-64"
-    field.digest.sources = ["id", "symbol"]
-    assert field.digest.sources == ["id", "symbol"]
+    # Each entry is a term of the expression grammar, stored canonically.
+    field.digest.by = ["id", "LOWER(symbol)"]
+    assert field.digest.by == ["id", "lower(symbol)"]
+    assert field.metadata["DIGEST:by"] == '["id","lower(symbol)"]'
+    # `*` is the whole selection, and travels alone.
+    with pytest.raises(ValueError, match="DIGEST:by"):
+        field.digest.by = ["*", "id"]
+    assert field.digest.by == ["id", "lower(symbol)"]
 
-    assert field.digest.remove_sources() is not None
-    assert field.digest.sources is None
+    assert field.digest.remove_by() == '["id","lower(symbol)"]'
+    assert field.digest.by is None
+    field.digest.by = ["*"]
+    field.digest.by = None
+    assert field.digest.by is None
     assert field.digest.remove_algorithm() == "xxh3-64"
     assert field.digest.algorithm is None
     assert field.digest.remove_role() == "holder"
@@ -585,9 +594,17 @@ def test_the_digest_view_carries_the_holder_vocabulary_it_declares() -> None:
         field.fix.is_holder()
     with pytest.raises(TypeError):
         field.http.remove_role()
-    # `sources` is the one property both declaring protocols answer.
-    partitioned = Field("year", "int32")
-    partitioned.partition.sources = ["timestamp"]
-    assert partitioned.partition.sources == ["timestamp"]
+    # `by` is the one property the four declaring protocols answer.
+    partitioned = Field(
+        "row",
+        DataType.from_fields([Field("timestamp", "timestamp[us]", nullable=False)]),
+        nullable=False,
+    )
+    partitioned.partition.by = ["days(timestamp)"]
+    assert partitioned.partition.by == ["days(timestamp)"]
+    partitioned.sort.by = ["timestamp desc"]
+    assert partitioned.sort.by == ["timestamp desc"]
     with pytest.raises(TypeError):
-        field.http.sources
+        field.http.by
+    with pytest.raises(TypeError):
+        field.http.remove_by()

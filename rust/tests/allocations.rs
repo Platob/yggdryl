@@ -40,7 +40,7 @@ use yggdryl::{
     ArrowCastOptions, ArrowCastPlan, Charset, ChunkedSerie, DataType, DataTypeId, Decimal, Field,
     FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec, FixId, FixMsg, FixRegistry, IdSource,
     IdType, Identifier, Int64, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, Serie,
-    Side, State, TimeUnit, Timezone, Value, Variant, Version,
+    Side, SortOptions, State, TimeUnit, Timezone, Value, Variant, Version,
 };
 use yggdryl::{
     Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructType, UncheckedFieldScalar, Uuid,
@@ -2183,6 +2183,757 @@ fn cloning_a_column_allocates_nothing() {
     }
 }
 
+/// A fresh int64 column of `rows` rows in descending order, no row absent,
+/// holding its buffer alone.
+fn descending_counts(rows: usize) -> Serie {
+    use arrow_array::Int64Array;
+
+    let counts = Int64Array::from(
+        (0..rows)
+            .rev()
+            .map(|index| i64::try_from(index).expect("a row count"))
+            .collect::<Vec<_>>(),
+    );
+    Serie::from_arrow_array(
+        Some(&Field::new("count", DataType::Int64, false)),
+        Arc::new(counts),
+        ArrowCastOptions::new(),
+    )
+    .expect("an int64 column")
+}
+
+/// A utf8 column of `rows` rows, every third row one of three venues, so a
+/// sort groups them and `partition_by` over the sorted column cuts three.
+fn venue_column(rows: usize) -> Serie {
+    use arrow_array::StringArray;
+
+    let venues = StringArray::from(
+        (0..rows)
+            .map(|index| ["XNAS", "XNYS", "XPAR"][index % 3])
+            .collect::<Vec<_>>(),
+    );
+    Serie::from_arrow_array(
+        Some(&Field::new("venue", DataType::utf8(), false)),
+        Arc::new(venues),
+        ArrowCastOptions::new(),
+    )
+    .expect("a utf8 column")
+}
+
+#[test]
+fn ordering_a_column_costs_its_rung_of_the_ladder_and_never_a_row() {
+    // Every read costs what its rung of the ladder builds - a comparator,
+    // a row-format buffer, a hash set, the answer - and nothing per row:
+    // the counts are the same at 64 and at 4,096 rows, except the stable
+    // sort's scratch, which Rust keeps on the stack below a size and heaps
+    // above it (the one count that moves by one). `as_sorted` and
+    // `as_reversed` on a primitive column holding its buffer alone sort and
+    // reverse the native slice where it stands: what they cost is Arrow's
+    // builder handshake - the vectors an `ArrayData` carries, taken apart
+    // and put back - never a row, and the same whatever the row count.
+    for (rows, scratch) in [(64_usize, 0_usize), (4_096, 1)] {
+        let counts = descending_counts(rows);
+        let venues = venue_column(rows);
+        let sorted_venues = venues
+            .into_sorted(SortOptions::default())
+            .expect("sorted venues");
+        let (is_sorted, _) = counted(|| black_box(&counts).is_sorted(SortOptions::default()));
+        assert_eq!(
+            is_sorted, 2,
+            "is_sorted on {rows} int64 rows: the boxed comparator"
+        );
+        let (is_sorted, _) = counted(|| black_box(&venues).is_sorted(SortOptions::default()));
+        assert_eq!(
+            is_sorted, 2,
+            "is_sorted on {rows} utf8 rows: the boxed comparator"
+        );
+        let (is_unique, _) = counted(|| black_box(&counts).is_unique());
+        assert_eq!(
+            is_unique, 8,
+            "is_unique on {rows} int64 rows: the row format and one set"
+        );
+        let (is_unique, _) = counted(|| black_box(&venues).is_unique());
+        assert_eq!(
+            is_unique, 9,
+            "is_unique on {rows} utf8 rows: the row format and one set"
+        );
+        let (sort_indices, order) =
+            counted(|| black_box(&counts).sort_indices(SortOptions::default()));
+        assert_eq!(order.expect("an order").len(), rows);
+        assert_eq!(
+            sort_indices,
+            6 + scratch,
+            "sort_indices on {rows} int64 rows: the typed order, its scratch, the index column"
+        );
+        let (sort_indices, _) = counted(|| black_box(&venues).sort_indices(SortOptions::default()));
+        assert_eq!(
+            sort_indices,
+            14 + scratch,
+            "sort_indices on {rows} utf8 rows: the row format, the order, its scratch, the index column"
+        );
+        let (into_sorted, _) = counted(|| black_box(&counts).into_sorted(SortOptions::default()));
+        assert_eq!(
+            into_sorted,
+            9 + scratch,
+            "into_sorted on {rows} int64 rows: the order and one take"
+        );
+        let (into_unique, _) = counted(|| black_box(&venues).into_unique());
+        assert_eq!(
+            into_unique, 22,
+            "into_unique on {rows} utf8 rows: the row format, one set, the mask and one filter"
+        );
+        let (partition_by, groups) =
+            counted(|| black_box(&counts).partition_by(black_box(&sorted_venues)));
+        assert_eq!(groups.expect("three groups").len(), 3);
+        assert_eq!(
+            partition_by, 6,
+            "partition_by on {rows} rows under sorted keys: the comparator, three keys and three zero-copy slices"
+        );
+        let mut held = descending_counts(rows);
+        let (as_sorted, _) = counted(|| {
+            black_box(&mut held)
+                .as_sorted(SortOptions::default())
+                .expect("sorted in place");
+        });
+        assert!(held.is_sorted(SortOptions::default()));
+        let (as_sorted_again, _) = counted(|| {
+            black_box(&mut held)
+                .as_sorted(SortOptions::descending())
+                .expect("sorted in place");
+        });
+        let (as_reversed, _) = counted(|| {
+            black_box(&mut held)
+                .as_reversed()
+                .expect("reversed in place");
+        });
+        assert!(held.is_sorted(SortOptions::default()));
+        assert_eq!(
+            (as_sorted, as_sorted_again, as_reversed),
+            (6, 6, 6),
+            "as_sorted and as_reversed on {rows} int64 rows held alone: the builder handshake, no row"
+        );
+    }
+}
+
+#[test]
+fn a_window_over_a_primitive_column_reads_through_it_and_adds_nothing_to_a_write() {
+    // Taking a window is two words beside a reference; a read through it
+    // is one bounds check more than the serie's own; a write through it is
+    // exactly the serie's own write on the rebased row.
+    for rows in [64_usize, 4_096] {
+        let counts = descending_counts(rows);
+        let middle = rows / 2;
+        free(&format!("window over {rows} rows"), || {
+            let window = black_box(&counts).window(1, rows - 2).expect("a window");
+            assert_eq!(window.len(), rows - 2);
+            assert_eq!(window.offset(), 1);
+            black_box(window.window(1, 1).expect("a narrower window").offset());
+        });
+        let window = counts.window(1, rows - 2).expect("a window");
+        free(&format!("scalar on a window over {rows} rows"), || {
+            assert_eq!(
+                black_box(&window)
+                    .scalar(black_box(middle))
+                    .expect("in range"),
+                Scalar::from((rows - 2 - middle) as i64)
+            );
+            assert!(!black_box(&window).is_null(middle).expect("in range"));
+            assert_eq!(black_box(&window).null_count(), 0);
+        });
+        // The window as a serie shares the buffers and boxes one leaf.
+        costs(
+            &format!("into_serie on a window over {rows} rows"),
+            1,
+            || {
+                assert_eq!(black_box(&window).into_serie().len(), rows - 2);
+            },
+        );
+        let mut held = descending_counts(rows);
+        // The first write takes the buffer; every later one is in place.
+        held.set(0, Scalar::from(1_i64)).expect("one slot");
+        let (direct, ()) = counted(|| {
+            black_box(&mut held)
+                .set(black_box(middle + 1), Scalar::from(7_i64))
+                .expect("one slot");
+        });
+        let mut window = held.window_mut(1, rows - 2).expect("a window");
+        let (through, ()) = counted(|| {
+            black_box(&mut window)
+                .set(black_box(middle), Scalar::from(7_i64))
+                .expect("one slot");
+        });
+        assert_eq!(
+            through, direct,
+            "set through a window over {rows} rows costs exactly the serie's own set"
+        );
+        let (sorted, ()) = counted(|| {
+            black_box(&mut window)
+                .as_sorted(SortOptions::default())
+                .expect("sorted in place");
+        });
+        assert_eq!(
+            sorted, 6,
+            "as_sorted on a window over {rows} rows held alone: the builder handshake, no row"
+        );
+        assert!(window.is_sorted(SortOptions::default()));
+    }
+}
+
+/// A non-null boolean column of `rows` rows, every other row kept.
+fn every_other(rows: usize) -> Serie {
+    use arrow_array::BooleanArray;
+
+    Serie::from_arrow_array(
+        Some(&Field::new("keep", DataType::Boolean, false)),
+        Arc::new(BooleanArray::from(
+            (0..rows).map(|index| index % 2 == 0).collect::<Vec<_>>(),
+        )),
+        ArrowCastOptions::new(),
+    )
+    .expect("a boolean column")
+}
+
+/// A `uint32` column naming every other row of `rows`, last first.
+fn every_other_index(rows: usize) -> Serie {
+    use arrow_array::UInt32Array;
+
+    let rows = u32::try_from(rows).expect("a row count");
+    Serie::from_arrow_array(
+        Some(&Field::new("pick", DataType::UInt32, false)),
+        Arc::new(UInt32Array::from(
+            (0..rows).rev().step_by(2).collect::<Vec<_>>(),
+        )),
+        ArrowCastOptions::new(),
+    )
+    .expect("a uint32 column")
+}
+
+/// A boolean column of `rows` rows, every fifth absent, held alone.
+fn flags(rows: usize) -> Serie {
+    use arrow_array::BooleanArray;
+
+    Serie::from_arrow_array(
+        Some(&Field::new("flag", DataType::Boolean, true)),
+        Arc::new(BooleanArray::from(
+            (0..rows)
+                .map(|index| (index % 5 != 0).then_some(index % 3 == 0))
+                .collect::<Vec<_>>(),
+        )),
+        ArrowCastOptions::new(),
+    )
+    .expect("a boolean column")
+}
+
+#[test]
+fn every_other_serie_verb_costs_its_rung_and_never_a_row() {
+    // What `ordering_a_column_costs_its_rung_of_the_ladder_and_never_a_row`
+    // pins for the sorts, here for the rest: every count is the same at 64
+    // and at 4,096 rows. A kernel read costs the index or the mask it
+    // builds and the kernel's own buffers; grouping by unsorted keys lays
+    // each group out at its exact size, so it follows the three groups and
+    // never the rows; an `as_*` write over a kernel leaf costs exactly its
+    // `into_*` read; and a primitive or boolean column held alone sorts and
+    // reverses its buffers where they stand, absent rows and all.
+    let options = SortOptions::default();
+    for rows in [64_usize, 4_096] {
+        let counts = descending_counts(rows);
+        let venues = venue_column(rows);
+        let mask = every_other(rows);
+        let picks = every_other_index(rows);
+        for (what, expected, (cost, ())) in [
+            (
+                "unique_count on int64: the row format and one set",
+                8,
+                counted(|| {
+                    black_box(black_box(&counts).unique_count());
+                }),
+            ),
+            (
+                "unique_count on utf8: the row format and one set",
+                9,
+                counted(|| {
+                    black_box(black_box(&venues).unique_count());
+                }),
+            ),
+            (
+                "into_reversed on int64: the order and one take",
+                9,
+                counted(|| {
+                    black_box(black_box(&counts).into_reversed());
+                }),
+            ),
+            (
+                "into_reversed on utf8: the order and one take",
+                11,
+                counted(|| {
+                    black_box(black_box(&venues).into_reversed());
+                }),
+            ),
+            (
+                "into_taken on int64: the order read off the indices and one take",
+                9,
+                counted(|| {
+                    black_box(black_box(&counts).into_taken(&picks).expect("taken"));
+                }),
+            ),
+            (
+                "into_filtered on int64: the mask and one filter",
+                11,
+                counted(|| {
+                    black_box(black_box(&counts).into_filtered(&mask).expect("filtered"));
+                }),
+            ),
+            (
+                "into_filtered on utf8: the mask and one filter",
+                13,
+                counted(|| {
+                    black_box(black_box(&venues).into_filtered(&mask).expect("filtered"));
+                }),
+            ),
+            (
+                "partition_by under unsorted keys: the comparator, the map, three groups at their sizes, three takes",
+                42,
+                counted(|| {
+                    black_box(black_box(&counts).partition_by(&venues).expect("groups"));
+                }),
+            ),
+            (
+                "memory_size on int64: the array handle",
+                1,
+                counted(|| {
+                    black_box(black_box(&counts).memory_size());
+                }),
+            ),
+        ] {
+            assert_eq!(cost, expected, "{what}, at {rows} rows");
+        }
+
+        // An `as_*` write over a kernel leaf is its `into_*` read.
+        for (what, (write, ()), (read, ())) in [
+            (
+                "as_unique",
+                counted(|| {
+                    counts.clone().as_unique().expect("unique");
+                }),
+                counted(|| {
+                    black_box(counts.clone().into_unique().expect("unique"));
+                }),
+            ),
+            (
+                "as_taken",
+                counted(|| {
+                    counts.clone().as_taken(&picks).expect("taken");
+                }),
+                counted(|| {
+                    black_box(counts.clone().into_taken(&picks).expect("taken"));
+                }),
+            ),
+            (
+                "as_filtered",
+                counted(|| {
+                    counts.clone().as_filtered(&mask).expect("filtered");
+                }),
+                counted(|| {
+                    black_box(counts.clone().into_filtered(&mask).expect("filtered"));
+                }),
+            ),
+        ] {
+            assert_eq!(
+                write, read,
+                "{what} at {rows} rows costs more than its read"
+            );
+        }
+
+        // Several keys are one record of the cells the paths reach.
+        let root = Field::new(
+            "quote",
+            DataType::from(
+                StructType::from_fields([
+                    Field::new("venue", DataType::utf8(), false),
+                    Field::new("count", DataType::Int64, false),
+                ])
+                .expect("two children"),
+            ),
+            false,
+        );
+        let batch = arrow_array::RecordBatch::try_new(
+            root.clone().into_arrow_schema().expect("a schema"),
+            vec![
+                venues.into_arrow_array().expect("a column"),
+                counts.into_arrow_array().expect("a column"),
+            ],
+        )
+        .expect("a batch");
+        let records =
+            Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("records");
+        let paths = ["venue".parse::<FieldPath>().expect("a path")];
+        let (by_paths, groups) = counted(|| black_box(&records).partition_by_paths(&paths));
+        assert_eq!(groups.expect("three groups").len(), 3);
+        assert_eq!(
+            by_paths, 154,
+            "partition_by_paths over {rows} records: the key record and three takes"
+        );
+
+        // In place, absent rows and all: Arrow's builder handshake, the one
+        // validity builder more, and the buffer kept.
+        let (mut nullable, _) = leaf_columns(rows);
+        let before = nullable.as_int64().expect("int64").values().as_ptr();
+        let (sorted, ()) = counted(|| {
+            nullable.as_sorted(options).expect("sorted in place");
+        });
+        assert_eq!(
+            nullable.as_int64().expect("int64").values().as_ptr(),
+            before
+        );
+        let (mut nullable, _) = leaf_columns(rows);
+        let before = nullable.as_int64().expect("int64").values().as_ptr();
+        let (window_sorted, ()) = counted(|| {
+            nullable
+                .window_mut(1, rows - 2)
+                .expect("a window")
+                .as_sorted(options)
+                .expect("sorted in place");
+        });
+        assert_eq!(
+            nullable.as_int64().expect("int64").values().as_ptr(),
+            before
+        );
+        assert_eq!(
+            (sorted, window_sorted),
+            (7, 7),
+            "as_sorted on {rows} int64 rows with absences held alone, whole and through a window"
+        );
+
+        // A boolean column's two bitmaps, rewritten where they stand.
+        let mut held = flags(rows);
+        let bits = |serie: &Serie| {
+            serie
+                .as_boolean()
+                .expect("booleans")
+                .values()
+                .inner()
+                .as_ptr()
+        };
+        let before = bits(&held);
+        let (sorted, ()) = counted(|| {
+            held.as_sorted(options).expect("sorted in place");
+        });
+        let (reversed, ()) = counted(|| {
+            held.as_reversed().expect("reversed in place");
+        });
+        let (window_sorted, ()) = counted(|| {
+            held.window_mut(1, rows - 2)
+                .expect("a window")
+                .as_sorted(options)
+                .expect("sorted in place");
+        });
+        assert_eq!(
+            bits(&held),
+            before,
+            "a boolean column of {rows} rows moved its bitmap"
+        );
+        assert_eq!(
+            (sorted, reversed, window_sorted),
+            (4, 4, 4),
+            "as_sorted, as_reversed and a window's as_sorted on {rows} booleans held alone: the two bitmaps handed back"
+        );
+    }
+}
+
+#[test]
+fn a_window_verb_costs_the_window_s_serie_and_the_serie_s_own_verb() {
+    // A window's read is the serie of its rows - one boxed leaf over the
+    // shared buffers - then the serie's own verb, so a count is the serie's
+    // plus one and never a row. A write goes through the serie on the
+    // rebased range and costs what the serie's own write does.
+    let options = SortOptions::default();
+    for rows in [64_usize, 4_096] {
+        let counts = descending_counts(rows);
+        let window = counts.window(1, rows - 2).expect("a window");
+        let sliced = window.into_serie();
+        let keys = sliced.clone();
+        let mask = every_other(rows - 2);
+        let picks = every_other_index(rows - 2);
+        for (what, (through, ()), (direct, ())) in [
+            (
+                "is_sorted",
+                counted(|| {
+                    black_box(window.is_sorted(options));
+                }),
+                counted(|| {
+                    black_box(sliced.is_sorted(options));
+                }),
+            ),
+            (
+                "is_unique",
+                counted(|| {
+                    black_box(window.is_unique());
+                }),
+                counted(|| {
+                    black_box(sliced.is_unique());
+                }),
+            ),
+            (
+                "unique_count",
+                counted(|| {
+                    black_box(window.unique_count());
+                }),
+                counted(|| {
+                    black_box(sliced.unique_count());
+                }),
+            ),
+            (
+                "sort_indices",
+                counted(|| {
+                    black_box(window.sort_indices(options).expect("an order"));
+                }),
+                counted(|| {
+                    black_box(sliced.sort_indices(options).expect("an order"));
+                }),
+            ),
+            (
+                "into_sorted",
+                counted(|| {
+                    black_box(window.into_sorted(options).expect("sorted"));
+                }),
+                counted(|| {
+                    black_box(sliced.into_sorted(options).expect("sorted"));
+                }),
+            ),
+            (
+                "into_unique",
+                counted(|| {
+                    black_box(window.into_unique().expect("unique"));
+                }),
+                counted(|| {
+                    black_box(sliced.into_unique().expect("unique"));
+                }),
+            ),
+            (
+                "into_reversed",
+                counted(|| {
+                    black_box(window.into_reversed());
+                }),
+                counted(|| {
+                    black_box(sliced.into_reversed());
+                }),
+            ),
+            (
+                "into_taken",
+                counted(|| {
+                    black_box(window.into_taken(&picks).expect("taken"));
+                }),
+                counted(|| {
+                    black_box(sliced.into_taken(&picks).expect("taken"));
+                }),
+            ),
+            (
+                "into_filtered",
+                counted(|| {
+                    black_box(window.into_filtered(&mask).expect("filtered"));
+                }),
+                counted(|| {
+                    black_box(sliced.into_filtered(&mask).expect("filtered"));
+                }),
+            ),
+            (
+                "partition_by",
+                counted(|| {
+                    black_box(window.partition_by(&keys).expect("groups"));
+                }),
+                counted(|| {
+                    black_box(sliced.partition_by(&keys).expect("groups"));
+                }),
+            ),
+            (
+                "memory_size",
+                counted(|| {
+                    black_box(window.memory_size());
+                }),
+                counted(|| {
+                    black_box(sliced.memory_size());
+                }),
+            ),
+        ] {
+            assert_eq!(
+                through,
+                direct + 1,
+                "{what} through a window of {rows} rows is the window's serie and the serie's own"
+            );
+        }
+
+        let mut held = descending_counts(rows);
+        // The first write takes the buffer; every later one is in place.
+        held.set(0, Scalar::from(1_i64)).expect("one slot");
+        let (set, ()) = counted(|| {
+            black_box(&mut held)
+                .set(black_box(1), Scalar::from(7_i64))
+                .expect("one slot");
+        });
+        let other = descending_counts(rows);
+        let source = other.window(0, rows - 2).expect("a window");
+        let mut window = held.window_mut(1, rows - 2).expect("a window");
+        let (swap, ()) = counted(|| {
+            window.swap(0, 1).expect("two rows");
+        });
+        assert_eq!(
+            swap,
+            2 * set,
+            "swap through a window of {rows} rows is two sets"
+        );
+        for (what, expected, (cost, ())) in [
+            (
+                "fill: the value proved once, its clones laid out once",
+                8,
+                counted(|| {
+                    window.fill(Scalar::from(3_i64)).expect("filled");
+                }),
+            ),
+            (
+                "copy_from: the source's rows laid out once",
+                8,
+                counted(|| {
+                    window.copy_from(&source).expect("copied");
+                }),
+            ),
+            (
+                "as_reversed: the native slice reversed where it stands",
+                6,
+                counted(|| {
+                    window.as_reversed().expect("reversed");
+                }),
+            ),
+        ] {
+            assert_eq!(cost, expected, "{what}, through a window of {rows} rows");
+        }
+    }
+}
+
+#[test]
+fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
+    // `is_sorted` reads each chunk with one comparator and each edge with
+    // one more over the two chunks' buffers: two per chunk, three per edge.
+    // `into_filtered`, `into_reversed`, `as_reversed` and `partition_by`
+    // work chunk by chunk, so their counts follow the chunks and never the
+    // rows; `partition_by_chunked` over keys cut alike pairs the chunks and
+    // cuts no key; `memory_size` is one array handle per chunk; and the
+    // verbs that must see every row together cost the one join and the
+    // serie's own verb - the stable sort's scratch, heaped past a size, the
+    // one count that moves with the rows.
+    let options = SortOptions::default();
+    for (rows, cuts, scratch) in [(64_usize, 4_usize, 0_usize), (4_096, 4, 1), (4_096, 64, 1)] {
+        let size = rows / cuts;
+        let cut = |serie: &Serie| {
+            ChunkedSerie::from_series(
+                None,
+                (0..cuts).map(|chunk| serie.slice(chunk * size, size).expect("a chunk")),
+                ArrowCastOptions::new(),
+            )
+            .expect("chunks under one field")
+        };
+        let chunked = cut(&descending_counts(rows));
+        let keys = venue_column(rows)
+            .into_sorted(options)
+            .expect("sorted keys");
+        let chunked_keys = cut(&keys);
+        let mask = every_other(rows);
+        let (join, _) = counted(|| black_box(&chunked).into_serie().expect("one join"));
+        assert_eq!(
+            join,
+            8 + cuts,
+            "the join of {cuts} chunks: one array handle per chunk"
+        );
+        let (partition_by, _) =
+            counted(|| black_box(&chunked).partition_by(&keys).expect("groups"));
+        let (partition_by_chunked, _) = counted(|| {
+            black_box(&chunked)
+                .partition_by_chunked(&chunked_keys)
+                .expect("groups")
+        });
+        for (what, expected, cost) in [
+            (
+                "is_sorted: two per chunk, three per edge",
+                2 * cuts + 3 * (cuts - 1),
+                counted(|| black_box(&chunked).is_sorted(SortOptions::descending())).0,
+            ),
+            (
+                "into_filtered: twelve per chunk",
+                12 * cuts + 2,
+                counted(|| black_box(&chunked).into_filtered(&mask).expect("filtered")).0,
+            ),
+            (
+                "into_reversed: nine per chunk",
+                9 * cuts + 2,
+                counted(|| black_box(&chunked).into_reversed()).0,
+            ),
+            (
+                "as_reversed: each chunk, shared with the source, copied once and reversed",
+                8 * cuts + 1,
+                {
+                    let mut held = chunked.clone();
+                    counted(|| {
+                        held.as_reversed().expect("reversed");
+                    })
+                    .0
+                },
+            ),
+            (
+                "memory_size: one array handle per chunk",
+                cuts,
+                counted(|| black_box(&chunked).memory_size()).0,
+            ),
+            (
+                "partition_by: one key slice per chunk more than keys cut alike",
+                partition_by_chunked + cuts,
+                partition_by,
+            ),
+            (
+                "sort_indices: the join, the order, its scratch, the index column",
+                join + 6 + scratch,
+                counted(|| black_box(&chunked).sort_indices(options).expect("an order")).0,
+            ),
+            (
+                "is_unique: the join, the row format and one set",
+                join + 8,
+                counted(|| black_box(&chunked).is_unique()).0,
+            ),
+            (
+                "unique_count: the join, the row format and one set",
+                join + 8,
+                counted(|| black_box(&chunked).unique_count()).0,
+            ),
+            (
+                "into_sorted: the join, the order and one take",
+                join + 11 + scratch,
+                counted(|| black_box(&chunked).into_sorted(options).expect("sorted")).0,
+            ),
+            (
+                "into_unique: the join, the row format, one set, the mask and one filter",
+                join + 19,
+                counted(|| black_box(&chunked).into_unique().expect("unique")).0,
+            ),
+            (
+                "as_sorted: into_sorted, replacing the chunks",
+                join + 11 + scratch,
+                {
+                    let mut held = chunked.clone();
+                    counted(|| {
+                        held.as_sorted(options).expect("sorted");
+                    })
+                    .0
+                },
+            ),
+        ] {
+            assert_eq!(cost, expected, "{what}, {rows} rows in {cuts} chunks");
+        }
+        assert_eq!(
+            (partition_by, partition_by_chunked),
+            if cuts == 4 { (31, 27) } else { (340, 276) },
+            "partition_by over {rows} rows in {cuts} chunks: per chunk, never per row"
+        );
+    }
+}
+
 /// The int64 column of [`leaf_columns`] at `rows` rows, held as `cuts`
 /// chunks of equal length sliced out of it.
 fn chunked_counts(rows: usize, cuts: usize) -> ChunkedSerie {
@@ -2971,6 +3722,46 @@ fn session_chunk_costs(
 }
 
 #[test]
+fn measuring_a_batch_of_flat_and_struct_columns_allocates_nothing() {
+    use arrow_array::{BooleanArray, Int64Array, RecordBatch, StringArray, StructArray};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+    use yggdryl::arrow::memory_size;
+
+    // `memory_size` is what every byte bound reads per batch - the commit
+    // cadence, the write limit, the Iceberg file rolling - so it reads the
+    // sliced extents off the arrays and builds no `ArrayData` to count them.
+    for rows in [8_i64, 4_096] {
+        let record: arrow_array::ArrayRef = Arc::new(StructArray::from(vec![(
+            Arc::new(ArrowField::new("flag", ArrowDataType::Boolean, false)),
+            Arc::new(BooleanArray::from(vec![true; rows as usize])) as arrow_array::ArrayRef,
+        )]));
+        let schema = Arc::new(Schema::new(vec![
+            ArrowField::new("id", ArrowDataType::Int64, false),
+            ArrowField::new("symbol", ArrowDataType::Utf8, false),
+            ArrowField::new("payload", record.data_type().clone(), false),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(Int64Array::from_iter_values(0..rows)),
+                Arc::new(StringArray::from_iter_values(
+                    (0..rows).map(|id| id.to_string()),
+                )),
+                record,
+            ],
+        )
+        .expect("the measured batch");
+        let piece = batch.slice(1, (rows / 2) as usize);
+        free(&format!("memory_size over {rows} rows"), || {
+            black_box(memory_size(black_box(&batch)));
+        });
+        free(&format!("memory_size over a slice of {rows} rows"), || {
+            black_box(memory_size(black_box(&piece)));
+        });
+    }
+}
+
+#[test]
 fn a_write_session_compiles_its_shaping_once() {
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     use yggdryl::media::IORecordOptions as _;
@@ -2985,7 +3776,7 @@ fn a_write_session_compiles_its_shaping_once() {
     let options = yggdryl::media::RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
         .expect("Arrow IPC options")
         .with_field(root.clone())
-        .with_commit_row_size(1);
+        .with_commit_batch_num(1);
     let declared = root.into_arrow_schema().expect("the session root projects");
     // The same columns under another layout: a key admitting nulls.
     let relaxed = Arc::new(Schema::new(vec![

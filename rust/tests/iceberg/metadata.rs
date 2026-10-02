@@ -9,9 +9,10 @@
 use smol_str::SmolStr;
 
 use yggdryl::iceberg::{
-    FormatVersion, PartitionSpec, Snapshot, SnapshotRef, SortOrder, TableMetadata,
+    FormatVersion, PartitionField, PartitionSpec, Snapshot, SnapshotRef, SortField, SortOrder,
+    TableMetadata, Transform, assign_field_ids,
 };
-use yggdryl::{DataType, Field, Scalar, StructType};
+use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 
 fn document(version: FormatVersion) -> Scalar {
     let schema = StructType::from_fields([DataType::Int64.required_field("id")])
@@ -177,6 +178,151 @@ fn every_historical_layout_must_bind_to_a_retained_schema() {
         .to_string();
     assert!(message.contains("sort order 1"), "{message}");
     assert!(message.contains("retained schema"), "{message}");
+}
+
+/// `id` (1) an `int64`, `venue` (2) a `utf8`, `day` (3) a `date32` and `ts`
+/// (4) a microsecond timestamp.
+fn period_sources() -> Field {
+    let mut schema = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue"),
+        DataType::date32().nullable_field("day"),
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::NAIVE,
+        }
+        .required_field("ts"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    assign_field_ids(&mut schema, 1).unwrap();
+    schema
+}
+
+fn period_spec(spec_id: i32, source_id: i32, transform: Transform) -> PartitionSpec {
+    PartitionSpec {
+        spec_id,
+        fields: vec![PartitionField {
+            source_id,
+            field_id: 1000 + spec_id,
+            name: format!("period_{spec_id}").into(),
+            transform,
+        }],
+    }
+}
+
+fn period_order(order_id: i64, source_id: i32, transform: Transform) -> SortOrder {
+    SortOrder {
+        order_id,
+        fields: vec![SortField {
+            source_id,
+            transform,
+            direction: SmolStr::new_static("asc"),
+            null_order: SmolStr::new_static("nulls-first"),
+        }],
+    }
+}
+
+/// The crate's own transforms cross the official model as buckets, which
+/// bind to an `int64` or a `utf8` as readily as to a timestamp; the source
+/// each of them reads is judged as the specification's own time transforms
+/// are, wherever a spec or an order is bound to a schema - a table built, a
+/// document read, a spec or an order added - and refused naming the
+/// transform and the source's type.
+#[test]
+fn a_transform_of_the_crates_own_binds_only_to_a_source_it_reads() {
+    let refusals = [
+        // `id`, `venue`: no period reads a number or a text.
+        (1, Transform::Minutes(15), "int64"),
+        (1, Transform::Week, "int64"),
+        (1, Transform::Quarter, "int64"),
+        (2, Transform::Minutes(15), "utf8"),
+        (2, Transform::Week, "utf8"),
+        (2, Transform::Quarter, "utf8"),
+        // `day`: a date has no clock to cut into minutes.
+        (3, Transform::Minutes(15), "date32"),
+    ];
+    let named = |message: &str, transform: Transform, dtype: &str| {
+        assert!(message.contains(&transform.to_string()), "{message}");
+        assert!(message.contains(dtype), "{message}");
+    };
+    for (source_id, transform, dtype) in refusals {
+        let message = TableMetadata::new(
+            FormatVersion::V2,
+            "file:///tmp/period-sources",
+            period_sources(),
+            period_spec(0, source_id, transform),
+        )
+        .unwrap_err()
+        .to_string();
+        named(&message, transform, dtype);
+
+        let mut metadata = TableMetadata::new(
+            FormatVersion::V2,
+            "file:///tmp/period-sources",
+            period_sources(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let before = metadata.clone();
+        let message = metadata
+            .add_spec(period_spec(1, source_id, transform))
+            .unwrap_err()
+            .to_string();
+        named(&message, transform, dtype);
+        let message = metadata
+            .add_sort_order(period_order(1, source_id, transform))
+            .unwrap_err()
+            .to_string();
+        named(&message, transform, dtype);
+        assert_eq!(metadata, before, "a refused update changes nothing");
+
+        // A document stating the same spec or order is refused as it reads.
+        let document = before.clone().into_json().unwrap();
+        let specs =
+            Scalar::from_sequence([period_spec(0, source_id, transform).into_json().unwrap()]);
+        let spelled = document
+            .with_key("partition-specs", specs)
+            .unwrap()
+            .with_key("last-partition-id", 1000_i64)
+            .unwrap();
+        let message = TableMetadata::from_json(&spelled).unwrap_err().to_string();
+        named(&message, transform, dtype);
+        let orders = Scalar::from_sequence([
+            SortOrder::unsorted().into_json().unwrap(),
+            period_order(1, source_id, transform).into_json().unwrap(),
+        ]);
+        let spelled = document.with_key("sort-orders", orders).unwrap();
+        let message = TableMetadata::from_json(&spelled).unwrap_err().to_string();
+        named(&message, transform, dtype);
+    }
+
+    // The sources each one reads bind on every path.
+    for (source_id, transform) in [
+        (4, Transform::Minutes(15)),
+        (4, Transform::Week),
+        (4, Transform::Quarter),
+        (3, Transform::Week),
+        (3, Transform::Quarter),
+    ] {
+        let metadata = TableMetadata::new(
+            FormatVersion::V2,
+            "file:///tmp/period-sources",
+            period_sources(),
+            period_spec(0, source_id, transform),
+        )
+        .unwrap();
+        let read = TableMetadata::from_json(&metadata.clone().into_json().unwrap()).unwrap();
+        assert_eq!(read.default_spec().unwrap().fields[0].transform, transform);
+        let mut evolved = metadata;
+        evolved
+            .add_spec(period_spec(1, source_id, transform))
+            .unwrap();
+        evolved
+            .add_sort_order(period_order(2, source_id, transform))
+            .unwrap();
+    }
 }
 
 /// A v3 table's metadata over one column of each v3 type beside a `long`
@@ -376,6 +522,102 @@ fn a_v1_or_v2_table_takes_no_v3_type_through_evolution_either() {
                 message.contains("later") && message.contains(spelling) && message.contains("v3"),
                 "{version:?} {spelling}: {message}"
             );
+        }
+    }
+}
+
+mod declared_order {
+    //! A sort order read from, and written as, a schema's `SORT:by`.
+
+    use yggdryl::expression::Ordering;
+    use yggdryl::iceberg::{SortField, SortOrder, Transform, assign_field_ids};
+    use yggdryl::{DataType, Field, SortOptions, StructType, TimeUnit, Timezone};
+
+    fn schema() -> Field {
+        let mut schema = DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("venue"),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond,
+                    timezone: Timezone::NAIVE,
+                }
+                .required_field("ts"),
+                DataType::Float64.nullable_field("price"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema
+    }
+
+    #[test]
+    fn a_declaration_reads_as_an_order_and_an_order_writes_its_keys() {
+        let mut declared = schema();
+        declared
+            .as_sort_mut()
+            .set_by_texts(["venue", "days(ts) desc", "price desc nulls first"])
+            .unwrap();
+        let order = SortOrder::from_schema(1, &declared).unwrap();
+        assert_eq!(
+            order,
+            SortOrder {
+                order_id: 1,
+                fields: vec![
+                    SortField {
+                        source_id: 1,
+                        transform: Transform::Identity,
+                        direction: "asc".into(),
+                        null_order: "nulls-last".into(),
+                    },
+                    SortField {
+                        source_id: 2,
+                        transform: Transform::Day,
+                        direction: "desc".into(),
+                        null_order: "nulls-last".into(),
+                    },
+                    SortField {
+                        source_id: 3,
+                        transform: Transform::Identity,
+                        direction: "desc".into(),
+                        null_order: "nulls-first".into(),
+                    },
+                ],
+            }
+        );
+        let keys = order.into_orderings(&schema()).unwrap();
+        assert_eq!(keys, declared.as_sort().by().unwrap().unwrap());
+        assert_eq!(
+            keys[2],
+            Ordering::new(
+                "price".parse().unwrap(),
+                SortOptions::descending().with_nulls_first(true)
+            )
+        );
+        // A schema declaring nothing is the unsorted order; a bucket has no
+        // key to spell and is refused by name on the way out.
+        assert_eq!(
+            SortOrder::from_schema(1, &schema()).unwrap(),
+            SortOrder::unsorted()
+        );
+        let bucketed = SortOrder {
+            order_id: 2,
+            fields: vec![SortField {
+                source_id: 1,
+                transform: Transform::Bucket(4),
+                direction: "asc".into(),
+                null_order: "nulls-last".into(),
+            }],
+        };
+        let error = bucketed.into_orderings(&schema()).unwrap_err().to_string();
+        assert!(error.contains("bucket[4]"), "{error}");
+        for entry in ["lower(venue)", "truncate(venue, 0)", "absent desc"] {
+            let mut declared = schema();
+            declared.as_sort_mut().set_by_texts([entry]).unwrap();
+            let error = SortOrder::from_schema(1, &declared)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(entry), "{entry}: {error}");
         }
     }
 }

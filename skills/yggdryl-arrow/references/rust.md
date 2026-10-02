@@ -436,6 +436,73 @@ assert!(refused.is_err());
 assert_eq!(rows.len(), 2); // unchanged
 ```
 
+## Sort, deduplicate, group and window
+
+Every leaf answers every verb in one order - `Scalar`'s total order, absent
+values last unless `SortOptions` says otherwise (the plan's `order by` and
+DuckDB's default, the opposite of Arrow's) - so a column and the run of its
+rows sort, deduplicate and group alike. `into_*` answers a new serie under the
+same field; `as_*` brings the serie into that state in place and chains. A
+`ChunkedSerie` answers the same: `is_sorted`, `into_reversed`, `into_filtered`
+and `partition_by` chunk by chunk, the rest through one join.
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{ArrayRef, Int64Array};
+use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SortOptions};
+
+let prices = Serie::from_scalars(
+    Field::new("price", DataType::Int64, true),
+    [Scalar::from(3_i64), Scalar::Null, Scalar::from(1_i64), Scalar::from(3_i64)],
+)?;
+
+// The order as positions: stable, absences last unless told otherwise.
+assert_eq!(prices.sort_indices(SortOptions::default())?.rows().to_vec(), [2_u32, 0, 3, 1].map(Scalar::from));
+let first = SortOptions::descending().with_nulls_first(true);
+assert_eq!(prices.sort_indices(first)?.rows().to_vec(), [1_u32, 0, 3, 2].map(Scalar::from));
+
+// The reads answer a new serie; this one is as it was.
+let sorted = prices.into_sorted(SortOptions::default())?;
+assert!(sorted.is_sorted(SortOptions::default()));
+assert_eq!((prices.is_unique(), prices.unique_count()), (false, 3));
+assert_eq!(prices.into_unique()?.len(), 3);
+let picked = Serie::new(vec![Scalar::from(2_u32), Scalar::from(0_u32)]);
+assert_eq!(prices.into_taken(&picked)?.rows().to_vec(), [1_i64, 3].map(Scalar::from));
+let mask = Serie::new([true, false, false, true].map(Scalar::from).to_vec());
+assert_eq!(prices.into_filtered(&mask)?.len(), 2);
+
+// The writes chain in place; a primitive column holding its buffer alone sorts where it stands.
+let mut held = prices.clone();
+held.as_sorted(SortOptions::default())?.as_unique()?.as_reversed()?;
+assert_eq!(held.rows().to_vec(), vec![Scalar::Null, Scalar::from(3_i64), Scalar::from(1_i64)]);
+
+// One (key, rows) per distinct key, in first-occurrence order.
+let venues = Serie::new(["XNAS", "XNYS", "XNAS", "XNYS"].map(Scalar::from).to_vec());
+let groups = prices.partition_by(&venues)?;
+assert_eq!((groups.len(), groups[0].0.clone()), (2, Scalar::from("XNAS")));
+assert_eq!(groups[0].1.rows().to_vec(), [3_i64, 1].map(Scalar::from));
+
+// A window reads and writes a stretch where it stands, window-relative.
+let mut column = Serie::from_scalars(
+    Field::new("price", DataType::Int64, false),
+    [9_i64, 3, 1, 2, 0].map(Scalar::from),
+)?;
+assert_eq!(column.window(1, 3)?.into_sorted(SortOptions::default())?.rows().to_vec(), [1_i64, 2, 3].map(Scalar::from));
+column.window_mut(1, 3)?.as_sorted(SortOptions::default())?;
+assert_eq!(column.rows().to_vec(), [9_i64, 1, 2, 3, 0].map(Scalar::from));
+assert!(column.window(3, 3).is_err()); // past the end
+assert!(column.memory_size() > 0);
+
+// Chunks: the edge between two sorted chunks is read with no join.
+let field = Field::new("price", DataType::Int64, false);
+let chunks = [vec![3_i64, 1], vec![2, 3]].map(|rows| Arc::new(Int64Array::from(rows)) as ArrayRef);
+let chunked = ChunkedSerie::from_arrow_arrays(Some(&field), chunks, ArrowCastOptions::new())?;
+assert!(!chunked.is_sorted(SortOptions::default()));
+assert_eq!(chunked.into_sorted(SortOptions::default())?.num_chunks(), 1);
+assert_eq!(chunked.into_reversed().num_chunks(), 2);
+```
+
 ## Keep chunks and batches apart
 
 `ChunkedSerie` holds arrays or batches without concatenating: a row is a

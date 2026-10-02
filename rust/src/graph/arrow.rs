@@ -777,7 +777,7 @@ fn charge(value: &MarketData) -> u64 {
         }
         _ => 0,
     };
-    (1 + nested as u64) * (crate::arrow::rows::ROW_OVERHEAD + OPERATION_ROW_BYTES)
+    (1 + nested as u64) * (crate::arrow::size::ROW_OVERHEAD as u64 + OPERATION_ROW_BYTES)
 }
 
 /// A struct's columns as the writer lays them out, resolved once per

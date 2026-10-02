@@ -19,3 +19,5 @@ mod extension;
 mod mod_;
 #[path = "arrow/rows.rs"]
 mod rows;
+#[path = "arrow/size.rs"]
+mod size;

@@ -304,6 +304,12 @@ const root = new Field('rows', 'struct<ccy:utf8,size:int64>', false)
 const stored = new Selector('ccy, size * 2 as doubled int32').intoField(root)
 assert.equal(stored.dtype.getFieldAt(1).transform.get('expression'), 'size * 2')
 assert.ok(Selector.fromField(stored).equals('ccy utf8 null, size * 2 as doubled int32 null'))
+
+// Any other term is the expression; a call over plain columns is a function over its `by`.
+assert.equal(String(stored.dtype.getFieldAt(1).transform.term), 'size * 2')
+const called = new Selector('lower(ccy) as low').intoField(root)
+assert.equal(called.dtype.getFieldAt(0).transform.get('function'), 'lower')
+assert.deepEqual(called.dtype.getFieldAt(0).transform.by, ['ccy'])
 ```
 
 ## Read the plan, the text and the document

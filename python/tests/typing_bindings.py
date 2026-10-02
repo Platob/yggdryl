@@ -297,8 +297,16 @@ applied_partition_batch: pa.RecordBatch = applied_root.partition.apply_arrow_bat
     source_batch
 )
 applied_digest_batch: pa.RecordBatch = applied_root.digest.apply_arrow_batch(source_batch)
-partition_sources: list[str] | None = applied_root.partition.sources
-partition_transform: str | None = applied_root.partition.transform
+partition_by: list[str] | None = applied_root.partition.by
+sort_by: list[str] | None = applied_root.sort.by
+digest_by: list[str] | None = applied_root.digest.by
+transform_by: list[str] | None = applied_root.transform.by
+applied_root.sort.by = ["value desc"]
+applied_root.sort.by = None
+removed_partition_by: str | None = applied_root.partition.remove_by()
+transform_term: Term | None = applied_root.transform.term
+partitioned_root: Field = applied_root.with_partition_by(["value", ("value", "copy")])
+declared_partition_by: list[str] = partitioned_root.partition_by
 filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().apply_arrow_batch(
     Field(
         "rows",
@@ -814,7 +822,7 @@ record_options_reduce: tuple[object, tuple[dict[str, Any]]] = (
 record_options_copy: RecordOptions = hashable_record_options.__copy__()
 record_options_deepcopy: RecordOptions = hashable_record_options.__deepcopy__({})
 record_options.batch_row_size = 1024
-record_options.commit_row_size = 10_000
+record_options.commit_batch_num = 10
 record_options.name = "trade"
 record_options.safe = True
 record_mime_type: MimeType = record_options.mime_type
@@ -2363,6 +2371,56 @@ assert chunked_values and chunked_get is None and chunked_reader is not None
 assert chunked_plan is not None and chunked_serie_plan is not None
 assert chunked_from is not None and chunked_series is not None and chunked_empty.is_empty()
 assert chunked_one is not None and not chunked_equal and not chunked_ordered
+
+# Ordering, uniqueness and grouping: the reads answer a new serie, the
+# `as_*` writes this same object, so calls chain; a window reads and writes
+# through the serie it was taken from.
+order_prices: yggdryl.Serie = yggdryl.Serie.from_scalars(Field("price", "int64"), [3, 1, 2])
+order_indices: yggdryl.Serie = order_prices.sort_indices(descending=True, nulls_first=True)
+order_sorted: bool = order_prices.is_sorted()
+order_unique: bool = order_prices.is_unique()
+order_count: int = order_prices.unique_count()
+order_into: yggdryl.Serie = order_prices.into_sorted(nulls_first=True)
+order_distinct: yggdryl.Serie = order_prices.into_unique()
+order_reversed: yggdryl.Serie = order_prices.into_reversed()
+order_taken: yggdryl.Serie = order_prices.into_taken([2, 0])
+order_kept: yggdryl.Serie = order_prices.into_filtered([True, False, None])
+order_groups: list[tuple[Scalar, yggdryl.Serie]] = order_prices.partition_by(["a", "b", "a"])
+order_record: yggdryl.Serie = yggdryl.Serie.from_(source_batch)
+order_by_paths: list[tuple[Scalar, yggdryl.Serie]] = order_record.partition_by_paths(["value"])
+order_bytes: int = order_prices.memory_size()
+order_chained: yggdryl.Serie = (
+    order_prices.as_sorted().as_unique().as_reversed().as_taken([0]).as_filtered([True])
+)
+order_window: yggdryl.SerieSlice = order_into.window(0, 2)
+order_window_row: Scalar = order_window[0]
+order_window_narrower: yggdryl.SerieSlice = order_window[1:]
+order_window_serie: yggdryl.Serie = order_window.serie
+order_window_whole: yggdryl.Serie = order_window.into_serie()
+order_window_offset: int = order_window.offset
+order_window_written: yggdryl.SerieSlice = order_window.as_sorted(descending=True).as_reversed()
+order_window.set(0, 7)
+order_window.swap(0, 1)
+order_window.fill(4)
+order_window.splice(0, 1, [5])
+order_window.copy_from(order_window)
+order_window_groups: list[tuple[Scalar, yggdryl.Serie]] = order_window.partition_by([1, 1])
+order_window_equal: bool = order_window == order_prices
+chunked_order: yggdryl.ChunkedSerie = chunked_prices.into_sorted(descending=True)
+chunked_order_groups: list[tuple[Scalar, yggdryl.ChunkedSerie]] = chunked_prices.partition_by(
+    chunked_prices
+)
+chunked_order_chained: yggdryl.ChunkedSerie = chunked_prices.as_reversed().as_unique()
+chunked_order_indices: yggdryl.Serie = chunked_prices.sort_indices()
+assert order_indices is not None and order_sorted is False and order_unique and order_count
+assert order_into and order_distinct and order_reversed and order_taken and order_kept
+assert order_groups and order_by_paths and order_bytes and order_chained is order_prices
+assert order_window_row is not None and len(order_window_narrower) == 1
+assert order_window_serie is order_into and order_window_whole is not None
+assert order_window_offset == 0 and order_window_written is order_window
+assert order_window_groups and not order_window_equal
+assert chunked_order is not None and chunked_order_groups and chunked_order_indices is not None
+assert chunked_order_chained is chunked_prices
 
 # HTTP: the requests-shaped client, the four storage roles, and the server.
 # Nothing below the functions touches the network; the functions are checked,

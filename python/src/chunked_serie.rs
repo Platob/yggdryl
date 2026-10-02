@@ -18,7 +18,7 @@ use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBool, PyList, PySlice};
-use yggdryl::{ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, SerieReader};
+use yggdryl::{ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, Scalar, SerieReader};
 
 use crate::datatype::{
     ArrayIntake, PyDataType, arrow_array_to_pyarrow, core_field_to_pyarrow, pyarrow,
@@ -29,8 +29,8 @@ use crate::iomedia::{
 };
 use crate::scalar::{PyScalar, PyScalarIterator, as_py_with_field, from_py};
 use crate::serie::{
-    PySerie, columnar, described, field_of, reader_capsule, requested_field, serie_from_value,
-    stream_of, target_of,
+    PySerie, columnar, described, field_of, reader_capsule, requested_field, serie_argument,
+    serie_from_value, sort_options, stream_of, target_of,
 };
 use crate::{cast_options, compare, normalize_index, value_error};
 
@@ -49,6 +49,25 @@ impl PyChunkedSerie {
     /// Resolve a Python index against the rows, negative from the end.
     fn index(&self, index: isize) -> PyResult<usize> {
         normalize_index(index, self.inner.len()).ok_or_else(|| PyIndexError::new_err(index))
+    }
+
+    /// Hand groups to Python as `(key, rows)` pairs.
+    fn groups(groups: Vec<(Scalar, ChunkedSerie)>) -> Vec<(PyScalar, Self)> {
+        groups
+            .into_iter()
+            .map(|(key, rows)| (PyScalar::from_inner(key), Self::from_inner(rows)))
+            .collect()
+    }
+
+    /// Answer `read` over these chunks off the GIL, over a clone taken and
+    /// released before it starts, as `cast` and `into_serie` do.
+    fn detached<T, F>(slf: &Bound<'_, Self>, read: F) -> PyResult<T>
+    where
+        T: Send,
+        F: FnOnce(ChunkedSerie) -> yggdryl::Result<T> + Send,
+    {
+        let chunked = slf.borrow().inner.clone();
+        slf.py().detach(move || read(chunked)).map_err(value_error)
     }
 }
 
@@ -469,6 +488,150 @@ impl PyChunkedSerie {
             .detach(move || chunked.cast(&target, options))
             .map(Self::from_inner)
             .map_err(value_error)
+    }
+
+    // ------------------------------------------------------------------
+    // Ordering, uniqueness and grouping across the chunks: the reads off
+    // the GIL over a clone, as `Serie`'s are; the `as_*` writes in place,
+    // answering this same object so calls chain.
+    // ------------------------------------------------------------------
+
+    /// The row positions in sorted order across every chunk, as a `uint32`
+    /// column named `index`: the one join, then the sort.
+    #[pyo3(signature = (*, descending = false, nulls_first = false))]
+    fn sort_indices(
+        slf: &Bound<'_, Self>,
+        descending: bool,
+        nulls_first: bool,
+    ) -> PyResult<Py<PyAny>> {
+        let options = sort_options(descending, nulls_first);
+        let order = Self::detached(slf, move |chunked| chunked.sort_indices(options))?;
+        described(slf.py(), order)
+    }
+
+    /// Whether the rows are in sorted order across the chunks: every chunk
+    /// and every chunk edge read, none joined.
+    #[pyo3(signature = (*, descending = false, nulls_first = false))]
+    fn is_sorted(slf: &Bound<'_, Self>, descending: bool, nulls_first: bool) -> PyResult<bool> {
+        let options = sort_options(descending, nulls_first);
+        Self::detached(slf, move |chunked| Ok(chunked.is_sorted(options)))
+    }
+
+    /// Whether no two rows across the chunks hold one value.
+    fn is_unique(slf: &Bound<'_, Self>) -> PyResult<bool> {
+        Self::detached(slf, |chunked| Ok(chunked.is_unique()))
+    }
+
+    /// How many distinct values the rows hold across the chunks.
+    fn unique_count(slf: &Bound<'_, Self>) -> PyResult<usize> {
+        Self::detached(slf, |chunked| Ok(chunked.unique_count()))
+    }
+
+    /// The rows in sorted order, as a chunked serie of one chunk.
+    #[pyo3(signature = (*, descending = false, nulls_first = false))]
+    fn into_sorted(slf: &Bound<'_, Self>, descending: bool, nulls_first: bool) -> PyResult<Self> {
+        let options = sort_options(descending, nulls_first);
+        Self::detached(slf, move |chunked| chunked.into_sorted(options)).map(Self::from_inner)
+    }
+
+    /// The first occurrence of every value, as a chunked serie of one chunk.
+    fn into_unique(slf: &Bound<'_, Self>) -> PyResult<Self> {
+        Self::detached(slf, |chunked| chunked.into_unique()).map(Self::from_inner)
+    }
+
+    /// The rows in reverse order: the chunks reversed, each reversed.
+    fn into_reversed(slf: &Bound<'_, Self>) -> PyResult<Self> {
+        Self::detached(slf, |chunked| Ok(chunked.into_reversed())).map(Self::from_inner)
+    }
+
+    /// The rows `indices` names across the chunks, as one chunk.
+    fn into_taken(slf: &Bound<'_, Self>, indices: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let indices = serie_argument(indices, "indices")?;
+        Self::detached(slf, move |chunked| chunked.into_taken(&indices)).map(Self::from_inner)
+    }
+
+    /// The rows `mask` keeps, chunk by chunk and kept apart.
+    fn into_filtered(slf: &Bound<'_, Self>, mask: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let mask = serie_argument(mask, "mask")?;
+        Self::detached(slf, move |chunked| chunked.into_filtered(&mask)).map(Self::from_inner)
+    }
+
+    /// The rows grouped by `keys`, as long as the whole: one `(key, rows)`
+    /// per distinct key in order of first occurrence, each group's rows
+    /// what each chunk contributed, kept apart. Keys held in chunks - a
+    /// `ChunkedSerie`, a `pyarrow.ChunkedArray` or a table - are grouped
+    /// chunk beside chunk where both are cut at the same rows, with no
+    /// join, and the keys joined once and cut to the rows' chunks otherwise.
+    fn partition_by(
+        slf: &Bound<'_, Self>,
+        keys: &Bound<'_, PyAny>,
+    ) -> PyResult<Vec<(PyScalar, Self)>> {
+        let groups = if let Some(keys) = chunked_of(keys)? {
+            Self::detached(slf, move |chunked| chunked.partition_by_chunked(&keys))?
+        } else {
+            let keys = serie_argument(keys, "keys")?;
+            Self::detached(slf, move |chunked| chunked.partition_by(&keys))?
+        };
+        Ok(Self::groups(groups))
+    }
+
+    /// The bytes the rows occupy: every chunk's.
+    fn memory_size(&self) -> usize {
+        self.inner.memory_size()
+    }
+
+    /// Sort the rows in place, one chunk replacing the chunks, answering
+    /// this chunked serie.
+    #[pyo3(signature = (*, descending = false, nulls_first = false))]
+    fn as_sorted<'py>(
+        slf: &Bound<'py, Self>,
+        descending: bool,
+        nulls_first: bool,
+    ) -> PyResult<Bound<'py, Self>> {
+        let options = sort_options(descending, nulls_first);
+        slf.borrow_mut()
+            .inner
+            .as_sorted(options)
+            .map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// Keep the first occurrence of every value, in place.
+    fn as_unique<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Self>> {
+        slf.borrow_mut().inner.as_unique().map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// Reverse the rows in place: the chunks reversed, each where it stands.
+    fn as_reversed<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Self>> {
+        slf.borrow_mut().inner.as_reversed().map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// Keep the rows `indices` names, in place, as one chunk.
+    fn as_taken<'py>(
+        slf: &Bound<'py, Self>,
+        indices: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, Self>> {
+        let indices = serie_argument(indices, "indices")?;
+        slf.borrow_mut()
+            .inner
+            .as_taken(&indices)
+            .map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// Keep the rows `mask` keeps, in place and chunk by chunk.
+    fn as_filtered<'py>(
+        slf: &Bound<'py, Self>,
+        mask: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, Self>> {
+        let mask = serie_argument(mask, "mask")?;
+        slf.borrow_mut()
+            .inner
+            .as_filtered(&mask)
+            .map_err(value_error)?;
+        Ok(slf.clone())
     }
 
     /// Every chunk's buffers as one `pyarrow.ChunkedArray`, shared: one

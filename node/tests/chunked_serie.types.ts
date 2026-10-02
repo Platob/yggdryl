@@ -116,3 +116,34 @@ void [empty, typedEmpty, one, many, cast, arrays, wide, single, drained, field, 
   length, chunks, chunk, nulls, isEmpty, isNull, row, maybe, rows, values, json, iter, window,
   child, childAt, children, items, reached, joined, recast, typed, copy, back, stream, out, held,
   same, sameRows, order, text]
+
+// Ordering, uniqueness and grouping across the chunks.
+const chunkOrder: Serie = wide.sortIndices({ descending: true })
+const chunkOrdered: boolean = wide.isSorted()
+const chunkUnique: boolean = wide.isUnique()
+const chunkDistinct: number = wide.uniqueCount()
+const chunkBytes: number = wide.memorySize()
+const chunkSorted: ChunkedSerie = wide.intoSorted({ nullsFirst: true })
+const chunkDeduplicated: ChunkedSerie = wide.intoUnique()
+const chunkReversed: ChunkedSerie = wide.intoReversed()
+const chunkTaken: ChunkedSerie = wide.intoTaken([1, 0])
+const chunkFiltered: ChunkedSerie = wide.intoFiltered(new Serie([true]))
+const chunkGroups: Array<[Scalar, ChunkedSerie]> = wide.partitionBy(['a'])
+const chunkKeyGroups: Array<[Scalar, ChunkedSerie]> = wide.partitionBy(batches)
+const vectorKeyGroups: Array<[Scalar, ChunkedSerie]> = wide.partitionBy(vector)
+// @ts-expect-error one grouping door: keys held in chunks go through partitionBy
+wide.partitionByChunked(batches)
+const chunkChained: ChunkedSerie = wide
+  .asSorted()
+  .asUnique()
+  .asReversed()
+  .asTaken([0])
+  .asFiltered([true])
+// @ts-expect-error an ordering option is `descending` or `nullsFirst`
+wide.asSorted({ nulls: 'first' })
+// @ts-expect-error the private ordering bridges are hidden
+wide._partitionByNative
+
+void [chunkOrder, chunkOrdered, chunkUnique, chunkDistinct, chunkBytes, chunkSorted,
+  chunkDeduplicated, chunkReversed, chunkTaken, chunkFiltered, chunkGroups, chunkKeyGroups,
+  vectorKeyGroups, chunkChained]

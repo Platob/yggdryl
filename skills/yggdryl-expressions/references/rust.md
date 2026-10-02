@@ -407,10 +407,10 @@ let tripled = "skills.triple(size) as tripled".parse::<Selector>()?.apply_arrow_
 assert_eq!(tripled.column(0).as_ref(), &Int64Array::from(vec![Some(3), None, Some(9)]) as &dyn Array);
 assert_eq!("skills.triple(size) > 3".parse::<Filter>()?.apply_arrow_batch(&batch)?.num_rows(), 1);
 
-// A stored column records the derivation as TRANSFORM:function over TRANSFORM:sources.
+// A stored column records the derivation as TRANSFORM:function over TRANSFORM:by.
 let stored = "skills.triple(size) as tripled".parse::<Selector>()?.into_field(&rows)?;
 assert_eq!(stored.fields()[0].get_metadata("TRANSFORM:function"), Some("skills.triple"));
-assert_eq!(stored.fields()[0].get_metadata("TRANSFORM:sources"), Some(r#"["size"]"#));
+assert_eq!(stored.fields()[0].get_metadata("TRANSFORM:by"), Some(r#"["size"]"#));
 
 assert!(unregister_function(&UserRef::parse("skills.triple")?));
 assert!("skills.triple(size)".parse::<yggdryl::expression::Term>()?.field(&rows).is_err());

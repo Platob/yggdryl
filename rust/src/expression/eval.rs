@@ -24,6 +24,7 @@
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::num::NonZeroU32;
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -701,6 +702,16 @@ fn call(
         Function::Year | Function::Month | Function::Day | Function::Hour => {
             calendar_part(first, function)
         }
+        Function::Years
+        | Function::Quarters
+        | Function::Months
+        | Function::Weeks
+        | Function::Days
+        | Function::Hours
+        | Function::Minutes => match function.epoch_period(values.iter().map(Some))? {
+            Some(period) => epoch_value(period, first),
+            None => Scalar::Null,
+        },
         Function::Truncate => truncate(first, values.get(1).unwrap_or(&Scalar::Null), dtype)?,
         Function::Coalesce | Function::IfNull => values
             .iter()
@@ -824,6 +835,223 @@ fn calendar_part(value: &Scalar, function: &Function) -> Scalar {
         _ => None,
     };
     parsed.map_or(Scalar::Null, Scalar::from)
+}
+
+/// One period a temporal floors to, counted from the Unix epoch.
+///
+/// This is the one place the epoch-relative floor rules live: the grammar's
+/// `years(x)` through `minutes(x, n)` and the Iceberg partition transforms
+/// `year` through `minutes[n]` both read it, so a filter and a partition value
+/// cannot disagree about which period an instant falls in. Every rule floors
+/// (`div_euclid`), so an instant before the epoch lands in its own period
+/// rather than the one after it. A week starts on a Monday as an ISO 8601
+/// week does, counted from Monday 1969-12-29, the Monday on or before the
+/// epoch; a quarter is counted from 1970-Q1; `n` minutes are counted from
+/// the epoch itself, so `Minutes(60)` is the hour.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum EpochPeriod {
+    /// Years since 1970.
+    Year,
+    /// Quarters since 1970-Q1.
+    Quarter,
+    /// Months since 1970-01.
+    Month,
+    /// Weeks since Monday 1969-12-29.
+    Week,
+    /// Days since 1970-01-01.
+    Day,
+    /// Hours since 1970-01-01T00:00.
+    Hour,
+    /// Periods of `n` minutes since the epoch; never zero, so a floor by
+    /// one never divides by zero.
+    Minutes(NonZeroU32),
+}
+
+impl EpochPeriod {
+    /// The `n`-minute period a `minutes(x, n)` step states.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a step that is not a whole number from 1 to `u32::MAX`, naming
+    /// the step it was given.
+    pub(crate) fn minutes(step: &Scalar) -> Result<Self> {
+        step.as_i128()
+            .and_then(|step| u32::try_from(step).ok())
+            .and_then(NonZeroU32::new)
+            .map(Self::Minutes)
+            .ok_or_else(|| {
+                // The step as the grammar spells it, so `'x'` reads as text.
+                let spelled = Literal::infer(step.clone()).map_or_else(
+                    |_| SmolStr::new(step.kind()),
+                    |literal| format_smolstr!("{literal}"),
+                );
+                Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!(
+                        "expected the step n of minutes(x, n) to be a whole number from 1 to {}, \
+                         got {spelled}",
+                        u32::MAX
+                    ),
+                }
+            })
+    }
+
+    /// The fixed length of this period in seconds, when it has one.
+    ///
+    /// A calendar period - a year, a quarter, a month - has none, and a week
+    /// has one but is not aligned to the epoch, so it is read through its day.
+    pub(crate) const fn seconds(self) -> Option<i64> {
+        match self {
+            Self::Day => Some(86_400),
+            Self::Hour => Some(3_600),
+            Self::Minutes(step) => Some(60 * step.get() as i64),
+            Self::Year | Self::Quarter | Self::Month | Self::Week => None,
+        }
+    }
+
+    /// Whether a date, which has no clock, floors to this period.
+    pub(crate) const fn takes_date(self) -> bool {
+        !matches!(self, Self::Hour | Self::Minutes(_))
+    }
+
+    /// The period a day number falls in.
+    ///
+    /// A sub-day period over a day count is the one the day's first instant
+    /// falls in, which a date never asks for ([`Self::takes_date`]). A
+    /// calendar period reads the day's year exactly, as wide as the day
+    /// count reaches - an `i64` count of seconds names years past `i32` - so
+    /// the period stays monotone in the day and one past `int32` is the
+    /// number it is, which [`epoch_value`] answers as null.
+    pub(crate) const fn of_days(self, days: i64) -> i64 {
+        match self {
+            Self::Year => {
+                let (year, _, _) = crate::timezone::civil_from_days_wide(days);
+                year - 1970
+            }
+            Self::Quarter => {
+                let (year, month, _) = crate::timezone::civil_from_days_wide(days);
+                (year - 1970) * 4 + (month as i64 - 1) / 3
+            }
+            Self::Month => {
+                let (year, month, _) = crate::timezone::civil_from_days_wide(days);
+                (year - 1970) * 12 + month as i64 - 1
+            }
+            Self::Week => (days + 3).div_euclid(7),
+            Self::Day => days,
+            Self::Hour => days.saturating_mul(24),
+            Self::Minutes(step) => days.saturating_mul(1_440).div_euclid(step.get() as i64),
+        }
+    }
+
+    /// The period a timestamp count in `unit` falls in, floored.
+    ///
+    /// `None` for a unit no instant counts in - a day or an interval layout.
+    pub(crate) fn of_count(self, count: i64, unit: TimeUnit) -> Option<i64> {
+        let per_second = crate::temporal::per_second(unit)?;
+        Some(match self.seconds() {
+            // Many minutes in a fine unit can pass `i64`, so the floor is
+            // taken wide; the period it answers is never wider than the count.
+            Some(seconds) => i64::try_from(
+                i128::from(count).div_euclid(i128::from(per_second) * i128::from(seconds)),
+            )
+            .ok()?,
+            None => self.of_days(count.div_euclid(per_second * 86_400)),
+        })
+    }
+
+    /// Whether every value `dtype` holds floors to a period `int32` holds.
+    ///
+    /// The floor is monotone in the count, so the two ends of the source's
+    /// count decide: a `date32` and a count of nanoseconds always fit, a
+    /// count of seconds reaches every period past `int32`, a `date64` or a
+    /// count of milliseconds reaches months, and `hours` over microseconds
+    /// leaves it in the year 246,970. Where it does not fit,
+    /// [`epoch_value`] answers null, so the function's column is nullable
+    /// whatever its argument is.
+    pub(crate) fn fits_int32(self, dtype: &DataType) -> bool {
+        const DAY_MILLIS: i64 = 86_400_000;
+        let ends = match dtype {
+            DataType::Date32 => Some((
+                self.of_days(i64::from(i32::MIN)),
+                self.of_days(i64::from(i32::MAX)),
+            )),
+            DataType::Date64 => Some((
+                self.of_days(i64::MIN.div_euclid(DAY_MILLIS)),
+                self.of_days(i64::MAX.div_euclid(DAY_MILLIS)),
+            )),
+            DataType::DateTime64 { unit, .. } => self
+                .of_count(i64::MIN, *unit)
+                .zip(self.of_count(i64::MAX, *unit)),
+            _ => None,
+        };
+        ends.is_some_and(|(low, high)| i32::try_from(low).is_ok() && i32::try_from(high).is_ok())
+    }
+
+    /// The first day of one period, for the periods a date floors to.
+    ///
+    /// `None` for a sub-day period, or a period past the calendar. The two
+    /// inverses are what an Iceberg scan bounds a source column by.
+    #[cfg(feature = "iceberg")]
+    pub(crate) fn start_days(self, period: i64) -> Option<i64> {
+        let civil = |years: i64, month: u32| -> Option<i64> {
+            let year = i32::try_from(1970_i64.checked_add(years)?).ok()?;
+            Some(crate::timezone::days_from_civil(year, month, 1))
+        };
+        match self {
+            Self::Year => civil(period, 1),
+            Self::Quarter => civil(
+                period.div_euclid(4),
+                u32::try_from(period.rem_euclid(4) * 3 + 1).ok()?,
+            ),
+            Self::Month => civil(
+                period.div_euclid(12),
+                u32::try_from(period.rem_euclid(12) + 1).ok()?,
+            ),
+            Self::Week => period.checked_mul(7)?.checked_sub(3),
+            Self::Day => Some(period),
+            Self::Hour | Self::Minutes(_) => None,
+        }
+    }
+
+    /// The first instant of one period, as a count in `unit`.
+    ///
+    /// `None` when the count does not fit, or the unit counts no instant.
+    #[cfg(feature = "iceberg")]
+    pub(crate) fn start_count(self, period: i64, unit: TimeUnit) -> Option<i64> {
+        let per_second = crate::temporal::per_second(unit)?;
+        match self.seconds() {
+            Some(seconds) => period.checked_mul(per_second.checked_mul(seconds)?),
+            None => self
+                .start_days(period)?
+                .checked_mul(per_second.checked_mul(86_400)?),
+        }
+    }
+}
+
+/// The period one temporal value falls in, as the value the grammar answers.
+///
+/// A date and a timestamp are read as their day or their count, floored
+/// through [`EpochPeriod`]; [`EpochPeriod::Day`] answers the `date32` of the
+/// day, every other period its `int32` number. Null, a value of another kind,
+/// a date under a sub-day period, and a number past `int32` all answer null.
+pub(crate) fn epoch_value(period: EpochPeriod, value: &Scalar) -> Scalar {
+    let number = match value {
+        Scalar::Date32(date) if period.takes_date() => {
+            Some(period.of_days(i64::from(date.count())))
+        }
+        Scalar::Date64(_) if period.takes_date() => value
+            .temporal_count_at(TimeUnit::Day)
+            .map(|days| period.of_days(days)),
+        Scalar::DateTime64(datetime) => period.of_count(datetime.count(), datetime.unit()),
+        _ => None,
+    };
+    let Some(number) = number.and_then(|number| i32::try_from(number).ok()) else {
+        return Scalar::Null;
+    };
+    match period {
+        EpochPeriod::Day => Scalar::date32(number),
+        _ => Scalar::from(number),
+    }
 }
 
 /// Floor a value to a unit or to a multiple.

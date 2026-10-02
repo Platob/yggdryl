@@ -39,26 +39,30 @@ def seed(handle: IOBase, intent: str) -> list[int]:
     return stored
 
 
-def write_options(handle: IOBase, intent: str, commit_rows: int | None) -> Any:
+def write_options(handle: IOBase, intent: str, commit_batches: int | None) -> Any:
     """Build valid options for one explicit write intent."""
     options = handle.record_options()
-    options.commit_row_size = commit_rows
+    options.commit_batch_num = commit_batches
     if intent == "merge":
         options.merge_by = ["id"]
     return options
 
 
 @pytest.mark.parametrize("value", [True, False])
-def test_commit_row_size_rejects_booleans_like_the_javascript_binding(value: bool) -> None:
+def test_commit_batch_num_rejects_booleans_like_the_javascript_binding(value: bool) -> None:
     handle = IOBase.from_bytes()
     handle.media_type = "application/vnd.apache.arrow.stream"
     options = handle.record_options()
-    with pytest.raises(TypeError, match="commit_row_size.*not bool"):
-        options.commit_row_size = value
+    with pytest.raises(TypeError, match="commit_batch_num.*not bool"):
+        options.commit_batch_num = value
 
 
 def expected_prefix(intent: str) -> list[int]:
-    """The first two incoming rows after one successful publication."""
+    """The first two incoming rows after one successful publication.
+
+    Each fixture publishes rows 1 and 2 as one complete cadence of whole
+    batches before its failure, so this is that cadence's state.
+    """
     if intent == "append":
         return [1, 2, 9]
     if intent == "merge":
@@ -103,7 +107,7 @@ def test_zero_cadence_is_rejected_before_every_input_is_inspected(
     source = Untouched()
     Untouched.touches = 0
 
-    with pytest.raises(ValueError, match=r"\$\.commit_row_size.*non-zero"):
+    with pytest.raises(ValueError, match=r"\$\.commit_batch_num.*non-zero"):
         getattr(handle, f"{intent}_{shape}")(source, options=options)
 
     assert Untouched.touches == 0
@@ -210,7 +214,7 @@ def input_for(shape: str, table: pa.Table) -> object:
 
 @pytest.mark.parametrize("shape", WRITE_SHAPES)
 @pytest.mark.parametrize("intent", ["overwrite", "append", "merge"])
-def test_every_python_adapter_honours_every_intent_with_a_one_row_cadence(
+def test_every_python_adapter_honours_every_intent_with_a_one_batch_cadence(
     tmp_path: pathlib.Path, shape: str, intent: str
 ) -> None:
     """Reader, held Arrow, rows, and frame adapters share the core splitter."""
@@ -232,7 +236,11 @@ def test_every_python_adapter_honours_every_intent_with_a_one_row_cadence(
 def test_a_source_failure_leaves_each_complete_prefix_visible(
     tmp_path: pathlib.Path, intent: str
 ) -> None:
-    """An Arrow source error discards only its incomplete cadence."""
+    """An Arrow source error discards only its incomplete cadence.
+
+    Two one-row batches complete the two-batch cadence and publish; the third
+    batch opens a cadence the failure discards.
+    """
     path = tmp_path / f"source-{intent}.parquet"
     handle = IOBase(path)
     seed(handle, intent)
@@ -241,6 +249,7 @@ def test_a_source_failure_leaves_each_complete_prefix_visible(
     def batches() -> Iterator[pa.RecordBatch]:
         yield id_batch([1])
         yield id_batch([2])
+        yield id_batch([3])
         raise RuntimeError("source failed after one commit")
 
     reader = pa.RecordBatchReader.from_batches(ID_SCHEMA, batches())
@@ -254,11 +263,16 @@ def test_a_source_failure_leaves_each_complete_prefix_visible(
 def test_a_python_row_conversion_failure_leaves_each_complete_prefix_visible(
     tmp_path: pathlib.Path, intent: str
 ) -> None:
-    """Row conversion stops at, rather than reading beyond, the cadence."""
+    """Rows convert one batch at a time, and the core counts the batches.
+
+    At one row per batch, rows 1 and 2 are the two batches of one complete
+    cadence, published before the third batch's row fails to convert.
+    """
     path = tmp_path / f"conversion-{intent}.parquet"
     handle = IOBase(path)
     seed(handle, intent)
     options = write_options(handle, intent, 2)
+    options.batch_row_size = 1
 
     def records() -> Iterator[dict[str, object]]:
         yield {"id": 1}
@@ -272,25 +286,29 @@ def test_a_python_row_conversion_failure_leaves_each_complete_prefix_visible(
 
 
 @pytest.mark.parametrize("intent", ["overwrite", "append", "merge"])
-def test_non_dividing_row_batches_stop_at_the_exact_commit_before_row_n_plus_one(
+def test_row_batches_publish_whole_cadences_before_a_conversion_failure(
     tmp_path: pathlib.Path, intent: str
 ) -> None:
-    """Batch 1,024 plus 476 publishes N=1,500 before converting row 1,501."""
-    path = tmp_path / f"non-dividing-{intent}.parquet"
+    """Two batches of 1,024 rows publish 2,048 rows; the third fails whole.
+
+    A cadence counts whole batches and never cuts one, so the partial third
+    batch - rows 2,049 to 2,500 and the row that fails - is discarded whole.
+    """
+    path = tmp_path / f"whole-batches-{intent}.parquet"
     handle = IOBase(path)
     seed(handle, intent)
-    options = write_options(handle, intent, 1_500)
+    options = write_options(handle, intent, 2)
     options.batch_row_size = 1_024
 
     def records() -> Iterator[dict[str, object]]:
-        for row_id in range(1, 1_501):
+        for row_id in range(1, 2_501):
             yield {"id": row_id}
         yield {"id": object()}
 
     with pytest.raises(ValueError, match="Could not convert"):
         getattr(handle, f"{intent}_records")(records(), options=options)
 
-    expected = list(range(1, 1_501))
+    expected = list(range(1, 2_049))
     if intent == "append":
         expected.append(9)
         expected.sort()
@@ -301,11 +319,14 @@ def test_non_dividing_row_batches_stop_at_the_exact_commit_before_row_n_plus_one
 def test_a_native_cast_failure_leaves_each_complete_prefix_visible(
     tmp_path: pathlib.Path, intent: str
 ) -> None:
-    """A core cast error after a commit does not roll its prefix back."""
+    """A core cast error after a commit does not roll its prefix back.
+
+    The first batch is one complete cadence of one batch; the second fails.
+    """
     path = tmp_path / f"cast-{intent}.parquet"
     handle = IOBase(path)
     seed(handle, intent)
-    options = write_options(handle, intent, 2)
+    options = write_options(handle, intent, 1)
     options.field = ID_SCHEMA
     options.safe = False
 
@@ -363,14 +384,14 @@ def test_a_cadence_larger_than_the_stream_publishes_only_the_final_remainder(
     assert ids_at(path) == [1, 2]
 
 
-def test_a_commit_crossing_batch_boundaries_does_not_read_ahead(
+def test_a_full_cadence_publishes_before_the_next_batch_is_pulled(
     tmp_path: pathlib.Path,
 ) -> None:
-    """The splitter slices one batch and publishes before asking for another."""
-    path = tmp_path / "cross-batch.parquet"
+    """The splitter never cuts a batch and never reads past a full cadence."""
+    path = tmp_path / "whole-batches.parquet"
     handle = IOBase(path)
     handle.overwrite_arrow_batch(id_batch([9]))
-    options = write_options(handle, "overwrite", 3)
+    options = write_options(handle, "overwrite", 2)
     observed: list[list[int]] = []
 
     def batches() -> Iterator[pa.RecordBatch]:
@@ -378,14 +399,16 @@ def test_a_commit_crossing_batch_boundaries_does_not_read_ahead(
         observed.append(ids_at(path))
         yield id_batch([3, 4])
         observed.append(ids_at(path))
-        raise RuntimeError("stop with one incomplete row")
+        yield id_batch([5])
+        observed.append(ids_at(path))
+        raise RuntimeError("stop with one incomplete cadence")
 
     reader = pa.RecordBatchReader.from_batches(ID_SCHEMA, batches())
-    with pytest.raises(ValueError, match="one incomplete row"):
+    with pytest.raises(ValueError, match="one incomplete cadence"):
         handle.overwrite_arrow_reader(reader, options=options)
 
-    assert observed == [[9], [1, 2, 3]]
-    assert ids_at(path) == [1, 2, 3]
+    assert observed == [[9], [1, 2, 3, 4], [1, 2, 3, 4]]
+    assert ids_at(path) == [1, 2, 3, 4]
 
 
 def test_limits_apply_once_before_the_stream_is_split_into_commits(

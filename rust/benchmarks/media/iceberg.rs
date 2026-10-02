@@ -451,6 +451,77 @@ fn partition_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// One partition value of a time transform: the period arithmetic a
+/// partitioned write runs once per distinct grouping key - this crate's own
+/// `minutes[15]`, `week` and `quarter` beside the specification's `day` - over
+/// one microsecond instant. The write plan is the crate's own, so the group
+/// is reached through its internals and runs where that feature is on.
+#[cfg(feature = "internals")]
+fn partition_value_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::iceberg::PartitionField;
+    use yggdryl::internals::iceberg_partition::write_transforms;
+    use yggdryl::{TimeUnit, Timezone};
+
+    let mut schema = StructType::from_fields([DataType::DateTime64 {
+        unit: TimeUnit::Microsecond,
+        timezone: Timezone::NAIVE,
+    }
+    .required_field("ts")])
+    .map(DataType::from)
+    .expect("a valid schema")
+    .required_field("row");
+    assign_field_ids(&mut schema, 1).expect("ids assign");
+    // 2017-11-16T22:31:08, the instant Apache Iceberg's own fixtures use.
+    let instant = Scalar::datetime64(
+        1_510_871_468_000_000,
+        TimeUnit::Microsecond,
+        Timezone::NAIVE,
+    )
+    .expect("a valid instant");
+    let mut group = criterion.benchmark_group("iceberg_partition_value");
+    for (name, transform, expected) in [
+        (
+            "minutes_15",
+            Transform::Minutes(15),
+            Scalar::from(1_678_746),
+        ),
+        ("week", Transform::Week, Scalar::from(2_498)),
+        ("quarter", Transform::Quarter, Scalar::from(191)),
+        ("day", Transform::Day, Scalar::date32(17_486)),
+    ] {
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![PartitionField {
+                source_id: 1,
+                field_id: 1000,
+                name: "ts_period".into(),
+                transform,
+            }],
+        };
+        let partition = spec
+            .partition_field(&schema)
+            .expect("the transform reads ts");
+        let plan = write_transforms(&spec, &schema, &partition)
+            .expect("the plan resolves")
+            .remove(0);
+        // Proven once outside the timer: the period is the one the
+        // partition tests pin.
+        assert_eq!(
+            plan.partition_value(instant.clone())
+                .expect("the period computes"),
+            expected,
+            "{name}"
+        );
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| {
+                plan.partition_value(black_box(instant.clone()))
+                    .expect("the period computes")
+            });
+        });
+    }
+    group.finish();
+}
+
 /// Stable structural hashes over representative immutable Iceberg values.
 fn identity_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("identity");
@@ -1652,6 +1723,8 @@ pub(crate) fn benchmarks(criterion: &mut Criterion) {
     metadata_benchmarks(criterion);
     manifest_benchmarks(criterion);
     partition_benchmarks(criterion);
+    #[cfg(feature = "internals")]
+    partition_value_benchmarks(criterion);
     identity_benchmarks(criterion);
     compact_benchmarks(criterion);
     merge_benchmarks(criterion);

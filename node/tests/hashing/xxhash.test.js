@@ -219,7 +219,7 @@ test('streaming states fill default digest holders without changing themselves',
     const before = state.asDigest().toString()
     const holder = new Field('row_digest', dtype, false, {
       'DIGEST:role': 'holder',
-      'DIGEST:sources': '[ "symbol" ]',
+      'DIGEST:by': '[ "symbol" ]',
     })
     const root = new Field(
       'row',

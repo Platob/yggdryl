@@ -13,11 +13,11 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BooleanArray};
-use arrow_buffer::{BooleanBuffer, NullBuffer};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer};
 
 use super::{Serie, layout, require_range, require_row, require_window};
 use crate::value::SerieValue;
-use crate::{Field, Result, Scalar};
+use crate::{Field, Result, Scalar, SortOptions};
 
 /// One column of booleans: a bitmap of values beside a bitmap of validity.
 #[derive(Clone)]
@@ -146,6 +146,80 @@ impl BooleanSerie {
         let len = self.values.len();
         self.write_array(len..len, other.values.clone());
         true
+    }
+
+    /// Take both bitmaps as builders over their own bytes, copied once
+    /// where this column does not hold them alone.
+    fn take_bits(&mut self) -> (BooleanBufferBuilder, Option<BooleanBufferBuilder>) {
+        let (bits, nulls) =
+            std::mem::replace(&mut self.values, BooleanArray::new_null(0)).into_parts();
+        (
+            layout::owned_bits(bits),
+            nulls.map(|nulls| layout::owned_bits(nulls.into_inner())),
+        )
+    }
+
+    /// Put both bitmaps back.
+    fn put_bits(
+        &mut self,
+        mut values: BooleanBufferBuilder,
+        validity: Option<BooleanBufferBuilder>,
+    ) {
+        let nulls = validity.map(|mut validity| NullBuffer::new(validity.finish()));
+        self.values = BooleanArray::new(values.finish(), nulls);
+    }
+
+    /// Sort rows `range` in place under `options`: the present falses and
+    /// trues counted and written back as two runs - falses first ascending,
+    /// trues first descending - and the absent rows gathered to the end
+    /// `options` names, both bitmaps rewritten where they stand.
+    ///
+    /// No row is built and nothing is copied when the column holds its
+    /// bitmaps alone; a shared one is copied once.
+    pub(crate) fn sort_in_place(&mut self, range: Range<usize>, options: SortOptions) {
+        let (mut values, mut validity) = self.take_bits();
+        let (mut trues, mut absent) = (0, 0);
+        for index in range.clone() {
+            match &validity {
+                Some(valid) if !valid.get_bit(index) => absent += 1,
+                _ => trues += usize::from(values.get_bit(index)),
+            }
+        }
+        let present = range.len() - absent;
+        let (present_start, absent_start) = if options.is_nulls_first() {
+            (range.start + absent, range.start)
+        } else {
+            (range.start, range.start + present)
+        };
+        let (first, first_count) = if options.is_descending() {
+            (true, trues)
+        } else {
+            (false, present - trues)
+        };
+        for offset in 0..present {
+            values.set_bit(present_start + offset, (offset < first_count) == first);
+        }
+        if let Some(valid) = validity.as_mut() {
+            for index in present_start..present_start + present {
+                valid.set_bit(index, true);
+            }
+            for index in absent_start..absent_start + absent {
+                valid.set_bit(index, false);
+                values.set_bit(index, false);
+            }
+        }
+        self.put_bits(values, validity);
+    }
+
+    /// Reverse rows `range` in place: both bitmaps reversed where they
+    /// stand, copied once where this column does not hold them alone.
+    pub(crate) fn reverse_in_place(&mut self, range: Range<usize>) {
+        let (mut values, mut validity) = self.take_bits();
+        layout::reverse_bits(&mut values, range.clone());
+        if let Some(valid) = validity.as_mut() {
+            layout::reverse_bits(valid, range);
+        }
+        self.put_bits(values, validity);
     }
 }
 

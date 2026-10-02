@@ -13,14 +13,21 @@ that grows as the benchmark runs and drags the later samples down.
 
 The rows after them put the same work beside PyIceberg
 (``pip install "pyiceberg[pyarrow,sql-sqlite]==0.11.1"``) on one local
-warehouse: an append of 1,048,576 six-column rows into a fresh table, once
-unpartitioned and once partitioned by ``symbol``, then opening the table and
-four scans of it to Arrow - everything, one partition of eight, a filter on a
-non-partition column, and two of six columns. Both readers read the table
-PyIceberg wrote, so they decode the same files; PyIceberg opens it from its
-metadata location, this crate from the table folder. What both read is
-compared before anything is timed. The ratio column is PyIceberg's median
-over this crate's, so above one is in this crate's favor.
+warehouse: an append of 1,048,576 six-column rows, one second apart so they
+span fourteen UTC days, into a fresh table - unpartitioned, partitioned by
+``symbol`` (eight partitions), and partitioned by ``day(ts)`` (fourteen) -
+then opening the table and five scans of it to Arrow: everything, one
+``symbol`` of eight, a filter on a non-partition column, two of six columns,
+and one day of ``ts``. Both readers read the table PyIceberg wrote, so they
+decode the same files; PyIceberg opens it from its metadata location, this
+crate from the table folder. What both read is compared before anything is
+timed. The ratio column is PyIceberg's median over this crate's, so above one
+is in this crate's favor.
+
+The last rows are this crate's alone: the same rows appended to a table
+partitioned by ``minutes(ts, 15)`` - a transform of this crate's own, which
+PyIceberg reads as ``unknown`` and cannot write - and a scan of one hour of
+``ts``, which the quarter-hour periods prune to four data files.
 
 Local writes differ in one thing a timer cannot see: every file this crate
 publishes on local storage is flushed to the device before the next one names
@@ -87,6 +94,9 @@ ROWS = TABLE.to_pylist()
 # The table both libraries write and read in the comparison.
 SYMBOLS = np.array(["AAPL", "MSFT", "GOOG", "AMZN", "NVDA", "META", "TSLA", "BP"])
 COMPARED_ROWS = 1 << 20
+# One UTC day and one hour inside the fourteen the compared rows span.
+DAY_START, DAY_END = "2023-11-20T00:00:00+00:00", "2023-11-21T00:00:00+00:00"
+HOUR_START, HOUR_END = "2023-11-20T10:00:00+00:00", "2023-11-20T11:00:00+00:00"
 
 
 def _compared_table() -> pa.Table:
@@ -96,7 +106,7 @@ def _compared_table() -> pa.Table:
     return pa.table(
         {
             "id": ids,
-            "ts": pa.array((1_700_000_000_000_000 + ids * 1_000).astype("datetime64[us]")).cast(
+            "ts": pa.array((1_700_000_000_000_000 + ids * 1_000_000).astype("datetime64[us]")).cast(
                 pa.timestamp("us", tz="UTC")
             ),
             "symbol": SYMBOLS[ids % len(SYMBOLS)],
@@ -162,8 +172,9 @@ def _against_pyiceberg(repeat: int) -> None:
     try:
         from pyiceberg import __version__ as pyiceberg_version
         from pyiceberg.catalog.sql import SqlCatalog
-        from pyiceberg.expressions import EqualTo, GreaterThan
+        from pyiceberg.expressions import And, EqualTo, GreaterThan, GreaterThanOrEqual, LessThan
         from pyiceberg.table import StaticTable
+        from pyiceberg.transforms import DayTransform
     except ImportError as error:
         print(f"against PyIceberg: SKIPPED (pyiceberg is not installed: {error})")
         return
@@ -178,20 +189,32 @@ def _against_pyiceberg(repeat: int) -> None:
     counter = itertools.count()
     held: dict[str, Any] = {}
 
-    def theirs(partitioned: bool) -> Callable[[], None]:
+    # Each layout: its label, this crate's `PARTITION:by` entries, and the
+    # PyIceberg spec update that declares the same partitioning.
+    layouts: list[tuple[str, list[str] | None, Callable[[Any], None] | None]] = [
+        ("unpartitioned", None, None),
+        ("8 partitions by symbol", ["symbol"], lambda update: update.add_identity("symbol")),
+        (
+            "14 partitions by day(ts)",
+            ["days(ts)"],
+            lambda update: update.add_field("ts", DayTransform(), "ts_day"),
+        ),
+    ]
+
+    def theirs(spec: Callable[[Any], None] | None) -> Callable[[], None]:
         def setup() -> None:
             table = catalog.create_table(f"bench.t{next(counter)}", schema=data.schema)
-            if partitioned:
+            if spec is not None:
                 with table.update_spec() as update:
-                    update.add_identity("symbol")
+                    spec(update)
             held["theirs"] = table
 
         return setup
 
-    def ours(partitioned: bool) -> Callable[[], None]:
+    def ours(partition_by: list[str] | None) -> Callable[[], None]:
         def setup() -> None:
             folder = IOBase(root / "yggdryl" / f"t{next(counter)}")
-            held["ours"] = Table.create(folder, numbered, ["symbol"] if partitioned else None)
+            held["ours"] = Table.create(folder, numbered, partition_by)
 
         return setup
 
@@ -206,20 +229,19 @@ def _against_pyiceberg(repeat: int) -> None:
     def report(name: str, mine: float, other: float) -> None:
         print(f"{name:36} {mine * 1e3:9.2f} ms {other * 1e3:9.2f} ms {other / mine:7.2f}", flush=True)
 
-    for partitioned in (False, True):
-        label = "append, partitioned by symbol" if partitioned else "append, unpartitioned"
-        mine = _median(lambda: held["ours"].append(data), repeat, ours(partitioned))
-        other = _median(lambda: held["theirs"].append(data), repeat, theirs(partitioned))
-        report(label, mine, other)
+    for label, partition_by, spec in layouts:
+        mine = _median(lambda: held["ours"].append(data), repeat, ours(partition_by))
+        other = _median(lambda: held["theirs"].append(data), repeat, theirs(spec))
+        report(f"append, {label}", mine, other)
 
-    for partitioned in (False, True):
-        theirs(partitioned)()
+    for label, _, spec in layouts:
+        theirs(spec)()
         written = held["theirs"]
         written.append(data)
         written = catalog.load_table(written.name())
         location = pathlib.Path(written.location().removeprefix("file://"))
         metadata = written.metadata_location
-        suffix = " (8 partitions)" if partitioned else ""
+        suffix = "" if spec is None else f" ({label.split(' by ')[0]})"
         mine_table = Table.open(IOBase(location))
         their_table = StaticTable.from_metadata(metadata)
         projection = pa.schema([data.schema.field("id"), data.schema.field("price")])
@@ -241,6 +263,15 @@ def _against_pyiceberg(repeat: int) -> None:
                 lambda: mine_table.scan(projection).read_all(),
                 lambda: their_table.scan(selected_fields=("id", "price")).to_arrow(),
             ),
+            (
+                "scan one day of ts",
+                lambda: mine_table.scan_matching(
+                    f"ts >= '{DAY_START}' and ts < '{DAY_END}'"
+                ).read_all(),
+                lambda: their_table.scan(
+                    row_filter=And(GreaterThanOrEqual("ts", DAY_START), LessThan("ts", DAY_END))
+                ).to_arrow(),
+            ),
         ]
         for name, mine_operation, their_operation in cases:
             if name != "open":
@@ -248,6 +279,34 @@ def _against_pyiceberg(repeat: int) -> None:
                 if (read.num_rows, read.num_columns) != (expected.num_rows, expected.num_columns):
                     raise SystemExit(f"{name}: the two readers disagree on what the table holds")
             report(name + suffix, _median(mine_operation, repeat), _median(their_operation, repeat))
+
+
+
+def _crate_transforms(repeat: int) -> None:
+    """Time this crate's own quarter-hour partitioning, which PyIceberg cannot write."""
+    data = _compared_table()
+    numbered = assign_field_ids(data.schema)
+    root = ROOT / "crate"
+    counter = itertools.count()
+    held: dict[str, Any] = {}
+
+    def setup() -> None:
+        folder = IOBase(root / "yggdryl-minutes" / f"t{next(counter)}")
+        held["table"] = Table.create(folder, numbered, ["minutes(ts, 15)"])
+
+    print()
+    print(f"this crate alone, partitioned by minutes(ts, 15): {COMPARED_ROWS:,} rows")
+    print(f"{'operation':36} {'yggdryl':>12}")
+    print("-" * 50)
+    appended = _median(lambda: held["table"].append(data), repeat, setup)
+    print(f"{'append':36} {appended * 1e3:9.2f} ms", flush=True)
+    table = held["table"]
+    hour = f"ts >= '{HOUR_START}' and ts < '{HOUR_END}'"
+    rows = table.scan_matching(hour).read_all().num_rows
+    if rows != 3_600:
+        raise SystemExit(f"one hour of ts: expected 3,600 rows, got {rows:,}")
+    scanned = _median(lambda: table.scan_matching(hour).read_all(), repeat)
+    print(f"{'scan one hour of ts':36} {scanned * 1e3:9.2f} ms", flush=True)
 
 
 def main() -> None:
@@ -292,6 +351,7 @@ def main() -> None:
         finally:
             gc.enable()
         _against_pyiceberg(arguments.repeat)
+        _crate_transforms(arguments.repeat)
     finally:
         shutil.rmtree(ROOT, ignore_errors=True)
 

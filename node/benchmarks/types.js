@@ -164,6 +164,131 @@ const heldRecords = Serie.fromArrowBatch(chunkedTable)
 const heldRecordsWide = fields.struct('row', [fields.float64('id')], { nullable: false })
 benchmark('serie_reader/from_serie', () => SerieReader.fromSerie(heldRecords))
 benchmark('serie_reader/cast', () => SerieReader.fromSerie(heldRecords).cast(heldRecordsWide))
+// Ordering, uniqueness and grouping over a 64-row primitive column, a
+// 64-row text column and a record of both; every argument serie is built
+// once, so a row measures the verb and its crossing alone. An `as*` write
+// runs on a serie of its own, which it leaves in a state the next call
+// accepts.
+const orderRows = 64
+const orderPrices = Serie.fromScalars(
+  fields.int64('price'),
+  Array.from({ length: orderRows }, (_, index) => (index * 37) % 23),
+)
+const orderVenues = Serie.fromScalars(
+  fields.utf8('venue'),
+  Array.from({ length: orderRows }, (_, index) => ['XNAS', 'XNYS', 'XPAR'][index % 3]),
+)
+const orderQuotes = Serie.fromScalars(
+  fields.struct('quote', [fields.utf8('venue'), fields.int64('price')], { nullable: false }),
+  Array.from({ length: orderRows }, (_, index) => ({
+    venue: ['XNAS', 'XNYS', 'XPAR'][index % 3],
+    price: index % 5,
+  })),
+)
+const orderIndices = Serie.fromScalars(
+  fields.uint32('index', { nullable: false }),
+  Array.from({ length: orderRows }, (_, index) => orderRows - 1 - index),
+)
+const orderMask = Serie.fromScalars(
+  fields.boolean('keep', { nullable: false }),
+  Array.from({ length: orderRows }, () => true),
+)
+const descending = { descending: true }
+benchmark('serie/sort_indices', () => orderPrices.sortIndices())
+benchmark('serie/sort_indices_utf8', () => orderVenues.sortIndices(descending))
+benchmark('serie/is_sorted', () => orderPrices.isSorted())
+benchmark('serie/is_unique', () => orderVenues.isUnique())
+benchmark('serie/unique_count', () => orderVenues.uniqueCount())
+benchmark('serie/memory_size', () => orderPrices.memorySize())
+benchmark('serie/into_sorted', () => orderPrices.intoSorted())
+benchmark('serie/into_unique', () => orderVenues.intoUnique())
+benchmark('serie/into_reversed', () => orderPrices.intoReversed())
+benchmark('serie/into_taken', () => orderPrices.intoTaken(orderIndices))
+benchmark('serie/into_filtered', () => orderPrices.intoFiltered(orderMask))
+benchmark('serie/partition_by', () => orderPrices.partitionBy(orderVenues))
+benchmark('serie/partition_by_paths', () => orderQuotes.partitionByPaths(['venue', 'price']))
+const sortedInPlace = orderPrices.intoSorted()
+benchmark('serie/as_sorted', () => sortedInPlace.asSorted())
+const uniqueInPlace = orderVenues.intoUnique()
+benchmark('serie/as_unique', () => uniqueInPlace.asUnique())
+const reversedInPlace = orderPrices.intoSorted()
+benchmark('serie/as_reversed', () => reversedInPlace.asReversed())
+const takenInPlace = orderPrices.intoSorted()
+benchmark('serie/as_taken', () => takenInPlace.asTaken(orderIndices))
+const filteredInPlace = orderPrices.intoSorted()
+benchmark('serie/as_filtered', () => filteredInPlace.asFiltered(orderMask))
+benchmark('serie/window', () => orderPrices.window(8, 32))
+// A window reads and writes through the serie it holds at each call.
+const windowed = orderPrices.intoSorted()
+const window = windowed.window(8, 32)
+const windowIndices = Serie.fromScalars(
+  fields.uint32('index', { nullable: false }),
+  Array.from({ length: 32 }, (_, index) => 31 - index),
+)
+const windowMask = Serie.fromScalars(
+  fields.boolean('keep', { nullable: false }),
+  Array.from({ length: 32 }, () => true),
+)
+const windowKeys = orderVenues.slice(8, 32)
+const windowSource = orderPrices.window(0, 32)
+const windowRows = Array.from({ length: 4 }, (_, index) => Scalar.from(index))
+const windowValue = Scalar.from(7)
+benchmark('serie_slice/null_count', () => window.nullCount())
+benchmark('serie_slice/scalar', () => window.scalar(3))
+benchmark('serie_slice/rows', () => window.rows())
+benchmark('serie_slice/memory_size', () => window.memorySize())
+benchmark('serie_slice/is_sorted', () => window.isSorted())
+benchmark('serie_slice/is_unique', () => window.isUnique())
+benchmark('serie_slice/unique_count', () => window.uniqueCount())
+benchmark('serie_slice/sort_indices', () => window.sortIndices())
+benchmark('serie_slice/window', () => window.window(4, 8))
+benchmark('serie_slice/into_serie', () => window.intoSerie())
+benchmark('serie_slice/into_sorted', () => window.intoSorted(descending))
+benchmark('serie_slice/into_unique', () => window.intoUnique())
+benchmark('serie_slice/into_reversed', () => window.intoReversed())
+benchmark('serie_slice/into_taken', () => window.intoTaken(windowIndices))
+benchmark('serie_slice/into_filtered', () => window.intoFiltered(windowMask))
+benchmark('serie_slice/partition_by', () => window.partitionBy(windowKeys))
+benchmark('serie_slice/set', () => window.set(3, windowValue))
+benchmark('serie_slice/fill', () => window.fill(windowValue))
+benchmark('serie_slice/swap', () => window.swap(0, 31))
+benchmark('serie_slice/copy_from', () => window.copyFrom(windowSource))
+benchmark('serie_slice/splice', () => window.splice(4, 8, windowRows))
+benchmark('serie_slice/as_sorted', () => window.asSorted())
+benchmark('serie_slice/as_reversed', () => window.asReversed())
+benchmark('serie_slice/as_taken', () => window.asTaken(windowIndices))
+// Across the chunks: chunk by chunk where a chunk can answer alone, through
+// the one join where the rows must be seen together.
+const orderChunked = ChunkedSerie.fromSeries(
+  [orderPrices.slice(0, 32), orderPrices.slice(32, 32)],
+  orderPrices.field,
+)
+benchmark('chunked_serie/sort_indices', () => orderChunked.sortIndices())
+benchmark('chunked_serie/is_sorted', () => orderChunked.isSorted())
+benchmark('chunked_serie/is_unique', () => orderChunked.isUnique())
+benchmark('chunked_serie/unique_count', () => orderChunked.uniqueCount())
+benchmark('chunked_serie/memory_size', () => orderChunked.memorySize())
+benchmark('chunked_serie/into_sorted', () => orderChunked.intoSorted())
+benchmark('chunked_serie/into_unique', () => orderChunked.intoUnique())
+benchmark('chunked_serie/into_reversed', () => orderChunked.intoReversed())
+benchmark('chunked_serie/into_taken', () => orderChunked.intoTaken(orderIndices))
+benchmark('chunked_serie/into_filtered', () => orderChunked.intoFiltered(orderMask))
+benchmark('chunked_serie/partition_by', () => orderChunked.partitionBy(orderVenues))
+const orderChunkedVenues = ChunkedSerie.fromSeries(
+  [orderVenues.slice(0, 32), orderVenues.slice(32, 32)],
+  orderVenues.field,
+)
+benchmark('chunked_serie/partition_by_chunked_keys', () =>
+  orderChunked.partitionBy(orderChunkedVenues),
+)
+const chunkedInPlace = orderChunked.intoSorted()
+benchmark('chunked_serie/as_sorted', () => chunkedInPlace.asSorted())
+benchmark('chunked_serie/as_unique', () => chunkedInPlace.asUnique())
+benchmark('chunked_serie/as_reversed', () => chunkedInPlace.asReversed())
+const chunkedTakenInPlace = orderChunked.intoSorted()
+benchmark('chunked_serie/as_taken', () => chunkedTakenInPlace.asTaken(orderIndices))
+const chunkedFilteredInPlace = orderChunked.intoSorted()
+benchmark('chunked_serie/as_filtered', () => chunkedFilteredInPlace.asFiltered(orderMask))
 benchmark('schema/map_of', () => fields.mapOf('labels', 'utf8', 'int32'))
 benchmark('schema/time_infer_time32', () => DataType.time('ms'))
 benchmark('schema/time_infer_time64', () => DataType.time('ns'))
@@ -220,6 +345,19 @@ benchmark('schema/protocol_property_get', () =>
 benchmark('schema/protocol_view_set', () => iceberg.set('doc', 'closing price'))
 benchmark('schema/protocol_view_entries', () => iceberg.entries())
 benchmark('schema/partition_field_names', () => partitioned.partitionFieldNames())
+// The `by` declarations: a partition declaration materialized on a struct
+// root, read back, and the typed list on a protocol view.
+const declaring = Field.from('row: struct<venue: utf8 not null, ts: timestamp(us) not null> not null')
+const declared = declaring.withPartitionBy(['venue', 'days(ts)'])
+const sortView = declaring.clone().sort
+sortView.by = ['venue', 'ts desc']
+benchmark('schema/with_partition_by', () => declaring.withPartitionBy(['venue', 'days(ts)']))
+benchmark('schema/partition_by', () => declared.partitionBy())
+benchmark('schema/protocol_by_get', () => sortView.by)
+benchmark('schema/protocol_by_set', () => {
+  sortView.by = ['venue', 'ts desc']
+})
+benchmark('schema/protocol_remove_by', () => declared.clone().partition.removeBy())
 benchmark('schema/without_partition_fields', () =>
   partitioned.withoutPartitionFields(),
 )

@@ -278,7 +278,7 @@ assert!(refused.to_string().contains("expected overwrite, got append"), "{refuse
 
 ## Bound memory on large writes
 
-`with_commit_row_size(N)` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `with_batch_row_size` bounds the batches any record read yields - Parquet, Arrow IPC, Avro, and plain text alike.
+`with_commit_batch_num(N)` publishes every N whole batches, then the remainder (a committed prefix survives a later failure); a cadence never cuts a batch. Unset is the destination's own cadence - a leaf or folder commits once, an Iceberg table each time its held batches reach the target file size; `0` is refused before any input is pulled. `with_batch_row_size` bounds the batches any record read yields - Parquet, Arrow IPC, Avro, and plain text alike.
 
 ```rust
 use std::sync::Arc;
@@ -295,9 +295,11 @@ let batch = RecordBatch::try_new(Arc::clone(&arrow_schema), vec![Arc::new(Int64A
 
 let mut handle = Buffer::new().with_media_type(MimeType::PARQUET.into());
 let options = handle.record_options()?;
+// Three batches at two batches a commit: rows 0-7 publish, then rows 8-9.
+let batches = [batch.slice(0, 4), batch.slice(4, 4), batch.slice(8, 2)];
 handle.overwrite_arrow_reader(
-    arrow::batch_reader(Arc::clone(&arrow_schema), [batch.clone()]),
-    &options.clone().with_commit_row_size(4),
+    arrow::batch_reader(Arc::clone(&arrow_schema), batches),
+    &options.clone().with_commit_batch_num(2),
 )?;
 assert_eq!(handle.row_size()?, 10);
 
@@ -309,9 +311,9 @@ assert_eq!(sizes.iter().sum::<usize>(), 10);
 assert!(sizes.iter().all(|rows| *rows <= 4));
 
 let refused = handle
-    .overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options.with_commit_row_size(0))
+    .overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options.with_commit_batch_num(0))
     .unwrap_err();
-assert!(refused.to_string().contains("commit_row_size"), "{refused}");
+assert!(refused.to_string().contains("commit_batch_num"), "{refused}");
 ```
 
 ## Parquet: compression, pruning, footer answers
@@ -570,20 +572,18 @@ let _ = std::fs::remove_dir_all(&root);
 
 ## Derive a partition column from another column
 
-`PARTITION:sources` and `PARTITION:transform` on the derived field; `apply_arrow_batch` on the root fills it where absent or all null and leaves values alone.
+`PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `with_partition_by` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata; `apply_arrow_batch` on the transform view of the root fills it where absent or all null and leaves values alone.
 
 ```rust
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
-use yggdryl::expression::Function;
 use yggdryl::{DataType, StructType};
 
-let mut year = DataType::Int32.nullable_field("year");
-year.as_partition_mut().set_sources(["event"])?;
-year.as_partition_mut().set_transform(Function::Year)?;
-let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event"), year])?)
-    .required_field("row");
+let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event")])?)
+    .required_field("row")
+    .with_partition_by(["year(event) as year".parse()?])?;
+assert_eq!(root.partition_field_names().collect::<Vec<_>>(), ["year"]);
 
 let batch = RecordBatch::try_from_iter([(
     "event",
@@ -733,7 +733,7 @@ std::fs::remove_dir_all(&root)?;
 
 - `IOBase`, `IOMedia` and `IORecordOptions` are traits: import them or the methods do not resolve.
 - Every verb that decodes, casts, or writes rows takes `&RecordOptions`; get it from `handle.record_options()?` so the variant matches the encoding. `row_size()`, `column_size()`, `record_options()` and `read_parquet_statistics()` take none: they derive their own options internally. `read_arrow`/`write_arrow` take `Option<&RecordOptions>`.
-- `with_select`, `with_filter`, `with_merge_by` and `with_plan` parse and return `Result`; `with_field`, `with_max_row_size`, `with_commit_row_size` do not.
+- `with_select`, `with_filter`, `with_merge_by` and `with_plan` parse and return `Result`; `with_field`, `with_max_row_size`, `with_commit_batch_num` do not.
 - `with_plan` keeps a plan's `limit` as `max_row_size` and its `offset` as `row_offset`; a merge with a `row_offset` is refused.
 - `write_arrow` on a JSON, JSON Lines, YAML, TOML or XML handle takes `IOMode::Overwrite` only: a document is written whole.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; `with_safe(false)` refuses it.

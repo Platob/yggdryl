@@ -95,7 +95,12 @@ string and byte leaves, the legacy `list` words - is in
    accessors (`parquet_field_id`, `comment`, `location`, `display`) and the
    protocol views (`iceberg`, `digest`, `partition`, ...) read and write that
    same map; keep no parallel dict. Every write validates first and a failed
-   one leaves the field unchanged.
+   one leaves the field unchanged. A struct's `by` declarations -
+   `PARTITION:by` (`with_partition_by` / `withPartitionBy` also adds the
+   derived columns), `SORT:by`, `DIGEST:by`, `TRANSFORM:by` - are JSON arrays of
+   expression texts, each stored as its grammar spells it (`Lower(symbol)` is
+   `lower(symbol)`); Python and Node assign them as lists through
+   `field.partition.by`, `field.sort.by` and `field.digest.by`.
 6. **Subscripting a field reaches a child, never metadata.** `field["x"]` is
    the child `x`; metadata is `field.metadata["x"]` (Python) or
    `field.get('x')` (JavaScript). A path string is parsed once by `FieldPath`:

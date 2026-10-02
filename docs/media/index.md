@@ -260,7 +260,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     options = RecordOptions("trades.parquet")
     options.field = schema
     options.batch_row_size = 1024
-    options.commit_row_size = 10_000
+    options.commit_batch_num = 10
 
     assert str(options.mime_type) == "application/vnd.apache.parquet"
     assert options.name == "row"
@@ -268,7 +268,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     assert options.select.is_all
     assert options.filter.is_always_true
     assert options.batch_row_size == 1024
-    assert options.commit_row_size == 10_000
+    assert options.commit_batch_num == 10
 
     # A setting one encoding has reads as None on an encoding that has none.
     assert options.max_row_group_size == 1_048_576
@@ -2425,6 +2425,278 @@ nullability, so its child is the grammar's nullable `item`. A v3 `variant` and a
 
 A scan decodes its files side by side once two of at least 64 KiB qualify (`read.parallel.min-files`, `read.parallel.min-file-size-bytes`), and the files in flight share `read.parallelism` with the columns inside them; a commit shares `write.parallelism` the same way between its partitions and their columns. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row.
 
+A streamed write with no `commit_batch_num` commits a snapshot each time the batches it holds reach the table's target file size (`write.target-file-size-bytes`, `IcebergOptions`' `target_file_size`) as `yggdryl::arrow::memory_size` measures them, then the remainder, so a stream of any length holds at most one target file of rows before each commit; `commit_batch_num = N` commits every `N` whole batches instead. An overwrite's first commit replaces and the rest append; an append or a merge keeps its intent in every commit.
+
+A partition spec names one transform per field, `Transform` in Rust. The specification's own are read and written as it spells them; three more - `minutes[n]`, `week` and `quarter` - are this crate's own, and no other implementation knows them: Apache Iceberg's Java implementation and PyIceberg read a name they do not know as `unknown` and prune nothing by it, as the specification says of an unknown transform, while iceberg-rust 0.10 refuses a metadata or manifest document naming one, so a table partitioned or sorted by one does not open there. Every time transform is the expression grammar's [epoch function](../expression/functions.md#calendar-parts-and-epoch-periods) of the same name, computed by one rule and floored, so an instant before 1970 lands in its own period - and because a file's tuple names the period every row's source falls in, a filter on the source column prunes files and manifests by it, with no partition column named in the filter, a column two fields read pruning by the tighter of them. A writer that truncated an instant before 1970 toward zero filed it one period late, which Java's reader allows for; a scan here allows for it the same way, so a period at or below zero of the specification's `year`, `month`, `day` and `hour` (of a date, `year` and `month`) also keeps the instants of the period before it. A `bucket` or a `truncate` prunes nothing. A timestamp source of a time transform is counted in microseconds or nanoseconds, the two units Iceberg spells, and one in seconds or milliseconds is refused by all seven alike. Spark's DDL plurals - `years`, `months`, `days`, `hours`, `weeks`, `quarters` - are intake spellings, read and written singular. `minutes[n]` takes its step in brackets as `bucket[n]` does - `minutes[15]` the quarter hour, `minutes[30]` the half hour, `minutes[60]` the hour - with `n` from 1 to 2147483645, and has that one spelling: `minutes[0]`, `minutes(15)`, `minutes[+15]` and a bare `minutes` are refused by name.
+
+| Transform | Also read | Source | Partition value | Grammar function | Whose |
+| --- | --- | --- | --- | --- | --- |
+| `identity` | | any primitive | the value | | specification |
+| `bucket[n]` | `bucket(n)` | int, long, decimal, date, time, timestamp, string, uuid, fixed, binary | `int32` hash bucket | | specification |
+| `truncate[w]` | `truncate(w)` | int, long, decimal, string, binary | the value shortened | | specification |
+| `year` | `years` | date, timestamp | `int32` years since 1970 | `years(x)` | specification |
+| `month` | `months` | date, timestamp | `int32` months since 1970-01 | `months(x)` | specification |
+| `day` | `days` | date, timestamp | `date32` the UTC day | `days(x)` | specification |
+| `hour` | `hours` | timestamp | `int32` hours since the epoch | `hours(x)` | specification |
+| `minutes[n]` | | timestamp | `int32` periods of `n` minutes since the epoch | `minutes(x, n)` | this crate |
+| `week` | `weeks` | date, timestamp | `int32` Monday-start weeks since Monday 1969-12-29 | `weeks(x)` | this crate |
+| `quarter` | `quarters` | date, timestamp | `int32` quarters since 1970-Q1 | `quarters(x)` | this crate |
+| `void` | | any | null | | specification |
+| `unknown` | | any | not computed; a spec holding one is not written to | | specification |
+
+In the table's metadata the three cross the Apache Iceberg model this crate validates with as reserved bucket counts above `i32::MAX` - `minutes[n]` as `bucket[2147483648 + n]`, `quarter` as `bucket[4294967294]`, `week` as `bucket[4294967295]` - and come back as themselves; the metadata and manifest files on disk spell the names above, never the bucket, so another writer of this crate reads them. A `bucket[n]` above `i32::MAX`, built in code or stated by a metadata document or a manifest header, is refused by its count rather than read as one of the three, and because a bucket binds to sources a period cannot read, the source of each of the three is judged by the period's own rule - `minutes[n]` over an `int64` or a date is refused naming the transform and the type - wherever a spec or a sort order meets a schema: a table created or read, a spec or an order added. `Transform::from_term` and `Transform::into_term` map a grammar call to its transform and back - `minutes(ts, 15)` is `minutes[15]` - for a partition declaration spelled as an expression; `Transform::function` / `Transform::from_function` are the parameter-free half of that mapping (Rust-only).
+
+A table partitioned by `minutes[15]` writes one data file per quarter hour its rows fall in, and a filter on the timestamp skips the files whose period cannot hold it:
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::{FormatVersion, PartitionField, PartitionSpec, Table, Transform, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{DataType, Scalar, StructType, TimeUnit, Timezone, arrow};
+
+    use arrow_array::{Int64Array, RecordBatch, TimestampMicrosecondArray};
+    use std::sync::Arc;
+
+    let mut schema = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }.required_field("ts"),
+    ])?)
+    .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+
+    // `minutes[15]` of `ts` (field id 2): one partition per quarter hour since the epoch.
+    let spec = PartitionSpec {
+        spec_id: 0,
+        fields: vec![PartitionField {
+            source_id: 2,
+            field_id: 1000,
+            name: "ts_minutes".into(),
+            transform: Transform::from_str("minutes[15]")?,
+        }],
+    };
+    assert!(Transform::from_str("minutes(15)").is_err(), "one spelling");
+
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-minutes");
+    let _ = std::fs::remove_dir_all(&path);
+    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+
+    // 00:00, 00:14:59, 00:15 and 01:00 of 1970-01-01: three quarter hours.
+    let batch = RecordBatch::try_new(
+        schema.into_arrow_schema()?,
+        vec![
+            Arc::new(Int64Array::from(vec![1_i64, 2, 3, 4])),
+            Arc::new(TimestampMicrosecondArray::from(vec![0_i64, 899_000_000, 900_000_000, 3_600_000_000])),
+        ],
+    )?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+
+    let mut periods: Vec<Scalar> = table.data_files()?.into_iter().map(|(file, _)| file.partition[0].clone()).collect();
+    periods.sort();
+    assert_eq!(periods, vec![Scalar::from(0), Scalar::from(1), Scalar::from(4)]);
+
+    // A filter on `ts` itself skips the files whose period cannot hold it.
+    let early = table.plan_matching("ts < '1970-01-01T00:15:00'")?;
+    assert_eq!(early.tasks.len(), 1);
+    assert_eq!(early.files_skipped(), 2);
+    let _ = std::fs::remove_dir_all(&path);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.iceberg import PartitionSpec, Table
+
+    schema = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("ts", pa.timestamp("us"), nullable=False),
+    ])
+    root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "ticks")
+
+    # `minutes[15]` of `ts`, the second column (field id 2): one partition per
+    # quarter hour since the epoch.
+    spec = PartitionSpec.from_json({
+        "spec-id": 0,
+        "fields": [{"name": "ts_minutes", "transform": "minutes[15]", "source-id": 2, "field-id": 1000}],
+    })
+    table = Table.create(root, schema, spec)
+
+    # 00:00, 00:14:59, 00:15 and 01:00 of 1970-01-01: three quarter hours.
+    table.append(pa.record_batch(
+        {"id": [1, 2, 3, 4], "ts": pa.array([0, 899_000_000, 900_000_000, 3_600_000_000], pa.timestamp("us"))},
+        schema=schema,
+    ))
+    assert sorted(file.partition for file, _ in table.data_files()) == [(0,), (1,), (4,)]
+    assert table.scan().read_all().num_rows == 4
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('ts: timestamp(us)')], {
+      nullable: false,
+    })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'ticks')
+
+    // `minutes[15]` of `ts`, the second column (field id 2): one partition per
+    // quarter hour since the epoch.
+    const spec = iceberg.PartitionSpec.fromJSON({
+      'spec-id': 0,
+      fields: [{ name: 'ts_minutes', transform: 'minutes[15]', 'source-id': 2, 'field-id': 1000 }],
+    })
+    const table = iceberg.Table.create(root, schema, spec)
+
+    // 00:00, 00:14:59, 00:15 and 01:00 of 1970-01-01, as Arrow JS's milliseconds.
+    table.append(
+      new arrow.Table({
+        id: arrow.vectorFromArray([1n, 2n, 3n, 4n], new arrow.Int64()),
+        ts: arrow.vectorFromArray([0, 899_000, 900_000, 3_600_000], new arrow.TimestampMicrosecond()),
+      }),
+    )
+    const periods = table
+      .dataFiles()
+      .map((file) => file.partition[0].asJs())
+      .sort((left, right) => left - right)
+    assert.deepEqual(periods, [0, 1, 4])
+    assert.equal(table.scan().intoTable().numRows, 4)
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+A table is also created from what its schema declares. `PartitionSpec::from_schema` reads the root's [`PARTITION:by`](../types/protocol.md#partition-columns) - a bare column an identity field, an epoch function over a column its transform, `truncate(col, w)` a truncation, each named by its alias or by the convention (`ts_minutes`, `name_truncate`), anything else refused by name - and `Table::create` reads the root's [`SORT:by`](../types/protocol.md#sort-order) as the default sort order, `SortOrder::for_spec` where it declares none. The declarations are written on the root rather than through `with_partition_by`, because a derived partition value lives in the manifest and not in the rows. `Table::schema()` reports both keys back, `mark_partitions` writing the spec's fields the grammar can spell (a `bucket` has no spelling and is left out) and the default order its keys, so a reopened table says how it partitions and sorts. A partition group whose rows already arrive in the table's order is written as it arrived.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, SortOrder, Table, Transform, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{DataType, StructType, TimeUnit, Timezone};
+
+    let mut schema = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().required_field("venue"),
+        DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }.required_field("ts"),
+    ])?)
+    .required_field("row");
+    schema.as_partition_mut().set_by_texts(["venue", "minutes(ts, 15)"])?;
+    schema.as_sort_mut().set_by_texts(["ts desc", "id"])?;
+    assign_field_ids(&mut schema, 1)?;
+
+    let spec = PartitionSpec::from_schema(1, &schema)?;
+    assert_eq!(spec.fields[1].transform, Transform::Minutes(15));
+    assert_eq!(spec.fields[1].name, "ts_minutes");
+    assert_eq!(SortOrder::from_schema(1, &schema)?.fields.len(), 2);
+
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-declared");
+    let _ = std::fs::remove_dir_all(&path);
+    let table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema, spec)?;
+    assert_eq!(table.metadata().default_sort_order()?.fields[0].direction, "desc");
+    assert_eq!(table.schema()?.get_metadata("PARTITION:by"), Some(r#"["venue","minutes(ts, 15)"]"#));
+    assert_eq!(table.schema()?.get_metadata("SORT:by"), Some(r#"["ts desc","id"]"#));
+    let _ = std::fs::remove_dir_all(&path);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import DataType, Field, IOBase
+    from yggdryl.iceberg import Table
+
+    schema = Field(
+        "row",
+        DataType.from_fields([
+            Field("id", "int64", nullable=False),
+            Field("venue", "utf8", nullable=False),
+            Field("ts", "timestamp(us)", nullable=False),
+        ]),
+        nullable=False,
+    )
+    schema.partition.by = ["venue", "minutes(ts, 15)"]
+    schema.sort.by = ["ts desc", "id"]
+    root = pathlib.Path(tempfile.mkdtemp())
+
+    # Omitted, the table partitions and sorts as its schema declares.
+    table = Table.create(IOBase(root / "declared"), schema)
+    assert [(field.name, field.transform) for field in table.spec.fields] == [
+        ("venue", "identity"),
+        ("ts_minutes", "minutes[15]"),
+    ]
+    assert table.schema.partition.by == ["venue", "minutes(ts, 15)"]
+    assert table.schema.sort.by == ["ts desc", "id"]
+
+    # Stated, the entries are read by the same rule and replace the declaration.
+    stated = Table.create(IOBase(root / "stated"), schema, ["days(ts)", "truncate(venue, 4) as prefix"])
+    assert [(field.name, field.transform) for field in stated.spec.fields] == [
+        ("ts_day", "day"),
+        ("prefix", "truncate[4]"),
+    ]
+
+    # `None` partitions nothing, whatever the schema declares.
+    assert Table.create(IOBase(root / "flat"), schema, None).spec.is_unpartitioned()
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { DataType, Field, iceberg } = require('yggdryl')
+
+    const schema = new Field(
+      'row',
+      DataType.fromFields([
+        new Field('id', 'int64', false),
+        new Field('venue', 'utf8', false),
+        new Field('ts', 'timestamp(us)', false),
+      ]),
+      false,
+    )
+    schema.partition.by = ['venue', 'minutes(ts, 15)']
+    schema.sort.by = ['ts desc', 'id']
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+
+    // Omitted, the table partitions and sorts as its schema declares.
+    const table = iceberg.Table.create(path.join(root, 'declared'), schema)
+    assert.deepEqual(
+      table.spec.fields.map((field) => [field.name, field.transform]),
+      [['venue', 'identity'], ['ts_minutes', 'minutes[15]']],
+    )
+    assert.deepEqual(table.schema.partition.by, ['venue', 'minutes(ts, 15)'])
+    assert.deepEqual(table.schema.sort.by, ['ts desc', 'id'])
+
+    // Stated, the entries are read by the same rule and replace the declaration.
+    const stated = iceberg.Table.create(path.join(root, 'stated'), schema, ['days(ts)', 'truncate(venue, 4) as prefix'])
+    assert.deepEqual(
+      stated.spec.fields.map((field) => [field.name, field.transform]),
+      [['ts_day', 'day'], ['prefix', 'truncate[4]']],
+    )
+
+    // `null` partitions nothing, whatever the schema declares.
+    assert.equal(iceberg.Table.create(path.join(root, 'flat'), schema, null).spec.isUnpartitioned(), true)
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+`Table.create` and `open_or_create` take the partitioning as a `PartitionSpec` or as `PARTITION:by` entries - Python's `partition_by`, JavaScript's `partitionBy`, each entry its text, in Python a `Term` or a `(term, alias)` pair too - read by `PartitionSpec::from_schema`'s rule, so a refusal names the entry. Omitted, the schema's own `PARTITION:by` is read; `None` in Python and `null` in JavaScript - or an empty list - partition nothing whatever the schema declares. The default sort order is the schema's `SORT:by` either way.
+
 === "Rust"
 
     ```rust
@@ -2673,18 +2945,37 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/
 
 #### Against PyIceberg
 
-One run of `python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5` beside PyIceberg 0.11.1 with its SQLite catalog, on one local warehouse: Intel Xeon @ 2.10 GHz, 4 cores, rustc 1.94.1, CPython 3.11.15, PyArrow 25.0.1, release wheel. Each append writes 1,048,576 six-column rows into a fresh table; both readers then read the table PyIceberg wrote, so they decode the same files, and what both read is compared before anything is timed. The ratio is PyIceberg's median over this crate's, so above one is in this crate's favor.
+One run of `python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5` beside PyIceberg 0.11.1 with its SQLite catalog, on one local warehouse: Intel Xeon @ 2.10 GHz, 4 cores, a shared virtual host; rustc 1.97.0, CPython 3.11.15, PyArrow 25.0.1, release wheel. Each append writes 1,048,576 six-column rows, one second apart so they span fourteen UTC days, into a fresh table in three layouts: unpartitioned, eight partitions by `symbol`, fourteen by `day(ts)`. Both readers then read the table PyIceberg wrote, so they decode the same files, and what both read is compared before anything is timed. The ratio is PyIceberg's median over this crate's, so above one is in this crate's favor. On this host the median of an unchanged scan moved by up to a quarter between runs, so a ratio that close to one is a tie.
 
-| operation | unpartitioned | PyIceberg | ratio | 8 partitions | PyIceberg | ratio |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| append | 126.44 ms | 228.71 ms | 1.81 | 249.98 ms | 275.58 ms | 1.10 |
-| open | 0.96 ms | 0.72 ms | 0.75 | 1.07 ms | 0.68 ms | 0.64 |
-| scan everything | 27.37 ms | 51.83 ms | 1.89 | 31.55 ms | 45.08 ms | 1.43 |
-| scan `symbol = 'AAPL'` | 37.08 ms | 63.14 ms | 1.70 | 8.38 ms | 21.25 ms | 2.54 |
-| scan `price > 900` | 34.30 ms | 61.63 ms | 1.80 | 41.58 ms | 47.66 ms | 1.15 |
-| scan `id, price` | 22.71 ms | 25.58 ms | 1.13 | 19.37 ms | 25.32 ms | 1.31 |
+| append | this crate | PyIceberg | ratio |
+| --- | ---: | ---: | ---: |
+| unpartitioned | 136.04 ms | 246.92 ms | 1.82 |
+| 8 partitions by `symbol` | 280.12 ms | 320.94 ms | 1.15 |
+| 14 partitions by `day(ts)` | 209.32 ms | 189.34 ms | 0.90 |
 
-The appends pay one thing PyIceberg's do not: every file published on local storage is flushed to the device before the metadata that names it, so a crash cannot leave the table pointing at a file the disk never received. Opening is the one row behind. PyIceberg is handed the metadata location, while this crate finds it - a table PyIceberg's catalog wrote has no version hint, so the metadata folder is listed - and parses the document twice, once as a value and once through the official crate's validating reader.
+Each read cell is this crate's median, then PyIceberg's, then the ratio.
+
+| read | unpartitioned | 8 partitions by `symbol` | 14 partitions by `day(ts)` |
+| --- | ---: | ---: | ---: |
+| open | 0.99 / 0.65 ms, 0.66 | 1.11 / 0.69 ms, 0.62 | 1.46 / 0.70 ms, 0.48 |
+| scan everything | 29.52 / 56.49 ms, 1.91 | 33.12 / 45.26 ms, 1.37 | 37.98 / 53.26 ms, 1.40 |
+| scan `symbol = 'AAPL'` | 36.77 / 62.10 ms, 1.69 | 8.33 / 24.92 ms, 2.99 | 40.88 / 63.06 ms, 1.54 |
+| scan `price > 900` | 31.57 / 62.98 ms, 2.00 | 39.58 / 54.21 ms, 1.37 | 38.41 / 63.90 ms, 1.66 |
+| scan `id, price` | 24.65 / 25.83 ms, 1.05 | 21.36 / 27.33 ms, 1.28 | 26.99 / 38.43 ms, 1.42 |
+| scan one day of `ts` | 33.52 / 77.15 ms, 2.30 | 31.99 / 51.38 ms, 1.61 | 7.91 / 20.32 ms, 2.57 |
+
+The appends pay one thing PyIceberg's do not: every file published on local storage is flushed to the device before the metadata that names it, so a crash cannot leave the table pointing at a file the disk never received. A file costs about 2 ms of that here, which is why the gap narrows as the files multiply. An unpartitioned file also encodes its columns on every thread, while a partitioned append writes its groups one file per thread. A group's rows are sliced where they are one run of a batch, as every day of these rows is, and gathered where partitions interleave, as `symbol` does. A group already in the table's sort order is neither joined nor copied.
+
+Opening is the one row behind. PyIceberg is handed the metadata location, while this crate finds it - a table PyIceberg's catalog wrote has no version hint, so the metadata folder is listed - and parses the document twice, once as a value and once through the official crate's validating reader.
+
+The script ends with the same rows appended into a table partitioned by `minutes(ts, 15)`, a transform PyIceberg cannot write. That append is 1,166 data files, and a scan of one hour of `ts` keeps four of them and skips 1,162.
+
+| `minutes(ts, 15)`, this crate alone | median |
+| --- | ---: |
+| append | 993.95 ms |
+| scan one hour of `ts` | 97.62 ms |
+
+About 90 ms of that scan is planning: the one manifest's 1,166 entries are decoded to keep four, at the full-decode rate the manifest table above states.
 
 ```bash
 python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5

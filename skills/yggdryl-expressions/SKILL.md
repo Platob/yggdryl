@@ -125,7 +125,7 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
     with the schema's `Field` `stable_hash`, because a `Bound` is resolved
     against one schema.
 12. **A `Field` is a plan holder.** `into_field` stores each derivation as
-    `TRANSFORM:function` + `TRANSFORM:sources` (a call over plain columns) or
+    `TRANSFORM:function` + `TRANSFORM:by` (a call over plain columns) or
     `TRANSFORM:expression`, and `Field::apply_arrow_batch` /
     `apply_arrow_reader` (Python `field.apply_arrow_batch(batch)`; not bound
     in JavaScript) recomputes them on a batch - it runs the field's cast

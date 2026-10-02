@@ -10,16 +10,13 @@
 //! [`Selector::from_field`](super::Selector::from_field) reads it back, which
 //! is what lets a field carry a plan.
 //!
-//! # One derivation, two declarations
+//! # One derivation, one declaration
 //!
-//! A partition column has declared its derivation since before this protocol
-//! existed, as the pair `PARTITION:sources` and `PARTITION:transform` - the
-//! shape an Iceberg partition spec takes, one function over one source
-//! column. That pair stays what an Iceberg spec is read from, and it is *read
-//! here*: [`TransformField::term`] answers the explicit expression where one
-//! is declared and the partition pair otherwise, so a column derives one way
-//! whichever protocol declared it, and the derivation runs in exactly one
-//! place - [`TransformField::apply_arrow_batch`].
+//! A column computed from the rows around it is a `TRANSFORM:` column,
+//! whatever asked for it: a `select` projection, or a derived entry of a
+//! struct's [`PARTITION:by`](crate::PartitionField) declaration, which
+//! [`Field::with_partition_by`] materializes as exactly such a column. The
+//! derivation runs in exactly one place - [`TransformField::apply_arrow_batch`].
 //!
 //! # Applying
 //!
@@ -43,8 +40,8 @@ const EXPRESSION: &str = "expression";
 /// The property naming the function a column is computed with, qualified.
 const FUNCTION: &str = "function";
 
-/// The property listing the columns a function reads, in argument order.
-const SOURCES: &str = "sources";
+/// The property listing the terms a function reads, in argument order.
+const BY: &str = "by";
 
 /// The full key of the term a column is computed with.
 pub(crate) const TRANSFORM_EXPRESSION_KEY: &str = "TRANSFORM:expression";
@@ -52,28 +49,27 @@ pub(crate) const TRANSFORM_EXPRESSION_KEY: &str = "TRANSFORM:expression";
 /// The full key of the function a column is computed with.
 pub(crate) const TRANSFORM_FUNCTION_KEY: &str = "TRANSFORM:function";
 
-/// The full key of the columns a function reads.
-pub(crate) const TRANSFORM_SOURCES_KEY: &str = "TRANSFORM:sources";
+/// The full key of the argument terms a function reads.
+pub(crate) const TRANSFORM_BY_KEY: &str = "TRANSFORM:by";
 
 /// The three properties one derivation may be spelled with.
 pub(crate) const TRANSFORM_KEYS: [&str; 3] = [
     TRANSFORM_EXPRESSION_KEY,
     TRANSFORM_FUNCTION_KEY,
-    TRANSFORM_SOURCES_KEY,
+    TRANSFORM_BY_KEY,
 ];
 
 impl<'field> TransformField<'field> {
     /// The term this column is computed with, if it declares one.
     ///
-    /// An explicit `TRANSFORM:expression` answers first. Without one, a
-    /// partition column's own declaration - its `PARTITION:transform` over its
-    /// `PARTITION:sources` - is the term, so a column derived either way reads
-    /// the same here. `None` is an ordinary column.
+    /// An explicit `TRANSFORM:expression` answers first; without one, the
+    /// `TRANSFORM:function` called over its `TRANSFORM:by` terms is the
+    /// term. `None` is an ordinary column.
     ///
     /// # Errors
     ///
     /// Returns an error naming the property when a stored declaration does
-    /// not parse, or a partition declaration is incomplete.
+    /// not parse, or a function is declared with no `TRANSFORM:by` beside it.
     pub fn term(&self) -> Result<Option<Term>> {
         if let Some(stored) = self.get(EXPRESSION) {
             return stored
@@ -84,25 +80,20 @@ impl<'field> TransformField<'field> {
                     reason: format_smolstr!("{error}"),
                 });
         }
-        if let Some(function) = self.function()? {
-            let Some(sources) = self.sources()? else {
-                return Err(Error::InvalidMetadataValue {
-                    key: SmolStr::new_static(TRANSFORM_SOURCES_KEY),
-                    reason: format_smolstr!(
-                        "expected the columns {} reads beside {}, got none",
-                        function.as_str(),
-                        TRANSFORM_FUNCTION_KEY
-                    ),
-                });
-            };
-            let arguments = sources.iter().map(|source| {
-                let mut segments = source.split('.');
-                let root = segments.next().unwrap_or_default();
-                segments.fold(Term::column(root), Term::child)
+        let Some(function) = self.function()? else {
+            return Ok(None);
+        };
+        let Some(arguments) = self.by()? else {
+            return Err(Error::InvalidMetadataValue {
+                key: SmolStr::new_static(TRANSFORM_BY_KEY),
+                reason: format_smolstr!(
+                    "expected the terms {} reads beside {}, got none",
+                    function.as_str(),
+                    TRANSFORM_FUNCTION_KEY
+                ),
             });
-            return Ok(Some(Term::call(function, arguments)));
-        }
-        self.as_field().as_partition().term()
+        };
+        Ok(Some(Term::call(function, arguments)))
     }
 
     /// The function this column is computed with, when it declares one by
@@ -119,17 +110,21 @@ impl<'field> TransformField<'field> {
             .transpose()
     }
 
-    /// The columns the declared function reads, in argument order: dotted
-    /// paths, as [`Field::get_field_by_path`](crate::Field::get_field_by_path)
-    /// spells them.
+    /// The terms the declared function reads, in argument order: bare
+    /// columns for a call a `select` stored, any term otherwise.
     ///
     /// # Errors
     ///
     /// Returns an error naming the property when the stored text is not a
-    /// JSON array of paths.
-    pub fn sources(&self) -> Result<Option<Vec<String>>> {
-        self.get(SOURCES)
-            .map(|stored| crate::metadata::parse_source_list(TRANSFORM_SOURCES_KEY, stored))
+    /// JSON array of terms.
+    pub fn by(&self) -> Result<Option<Vec<Term>>> {
+        self.get(BY)
+            .map(|stored| {
+                crate::metadata::parse_by_list(TRANSFORM_BY_KEY, stored)?
+                    .iter()
+                    .map(|entry| crate::metadata::parse_by_term(TRANSFORM_BY_KEY, entry))
+                    .collect()
+            })
             .transpose()
     }
 
@@ -140,10 +135,7 @@ impl<'field> TransformField<'field> {
     /// read.
     #[must_use]
     pub fn is_derived(&self) -> bool {
-        self.contains_key(EXPRESSION)
-            || self.contains_key(FUNCTION)
-            || self.contains_key(SOURCES)
-            || self.as_field().as_partition().is_derived()
+        self.contains_key(EXPRESSION) || self.contains_key(FUNCTION) || self.contains_key(BY)
     }
 
     /// Return whether this root declares a derived column anywhere.
@@ -166,11 +158,11 @@ impl TransformFieldMut<'_> {
     /// Record the term this column is computed with.
     ///
     /// A call over plain columns - `year(event)`, `py.double(size)` - is
-    /// stored as the function and its sources, the shape a
-    /// [signature](super::FunctionSignature) reads and a partition spec
-    /// shares; any other term is stored as its canonical text. Either
-    /// spelling reads back through [`TransformField::term`], and the one not
-    /// written is removed, so a column declares its derivation once.
+    /// stored as the function and the columns it reads as its `TRANSFORM:by`,
+    /// the shape a [signature](super::FunctionSignature) reads; any other
+    /// term is stored as its canonical text. Either spelling reads back
+    /// through [`TransformField::term`], and the one not written is removed,
+    /// so a column declares its derivation once.
     ///
     /// # Errors
     ///
@@ -190,25 +182,32 @@ impl TransformFieldMut<'_> {
         }
         self.insert(EXPRESSION, term.to_string())?;
         self.remove(FUNCTION);
-        self.remove(SOURCES);
+        self.remove(BY);
         Ok(())
     }
 
-    /// Record the function this column is computed with and the columns it
-    /// reads, in argument order.
+    /// Record the function this column is computed with and the terms it
+    /// reads, in argument order, each an expression text stored canonically.
     ///
     /// # Errors
     ///
-    /// Returns an error when a source path is empty or repeated, or a property
-    /// write is refused.
-    pub fn set_function<I, P>(&mut self, function: &Function, sources: I) -> Result<()>
+    /// Returns an error when a term is empty, repeated or does not parse, or
+    /// a property write is refused, leaving the field unchanged.
+    pub fn set_function<I, P>(&mut self, function: &Function, by: I) -> Result<()>
     where
         I: IntoIterator<Item = P>,
         P: AsRef<str>,
     {
-        let rendered = crate::metadata::render_source_list(TRANSFORM_SOURCES_KEY, sources)?;
+        let terms = by
+            .into_iter()
+            .map(|entry| {
+                crate::metadata::parse_by_term(TRANSFORM_BY_KEY, entry.as_ref())
+                    .map(|term| term.to_string())
+            })
+            .collect::<Result<Vec<String>>>()?;
+        let rendered = crate::metadata::render_by_list(TRANSFORM_BY_KEY, terms)?;
         self.insert(FUNCTION, function.as_str())?;
-        self.insert(SOURCES, rendered)?;
+        self.insert(BY, rendered)?;
         self.remove(EXPRESSION);
         Ok(())
     }
@@ -218,7 +217,7 @@ impl TransformFieldMut<'_> {
         let term = self.as_field().as_transform().term().ok().flatten();
         self.remove(EXPRESSION);
         self.remove(FUNCTION);
-        self.remove(SOURCES);
+        self.remove(BY);
         term.map(|term| term.to_string())
     }
 }

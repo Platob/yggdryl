@@ -14,7 +14,7 @@
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
+use pyo3::types::{PyBytes, PyDict, PyString, PyTuple, PyType};
 
 use yggdryl::IOBase as _;
 use yggdryl::holder::Holder;
@@ -30,6 +30,7 @@ use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar, StructType};
 use crate::datatype::{PyDataType, core_dtype_from_value};
 use crate::enums::{PyMimeType, core_mime_type_from_value};
 use crate::field::{PyField, core_field_from_value};
+use crate::graph::ellipsis;
 use crate::iobase::PyIOBase;
 use crate::iomedia::{
     batch_reader_from_any, batch_reader_from_records, batch_reader_to_pyarrow,
@@ -133,16 +134,51 @@ fn format_version_from_value(value: &Bound<'_, PyAny>) -> PyResult<FormatVersion
 
 /// Read a core partition spec out of what Python names one with.
 ///
-/// A sequence of column names is the spelling a caller reaches for, and it
-/// means the identity transform over those columns - the only transform that
-/// can place a row without inverting a hash.
+/// A sequence is a `PARTITION:by` declaration, each entry a projection: a
+/// bare column (`symbol`) an identity field, an epoch function over a column
+/// (`days(ts)`, `minutes(ts, 15)`, `weeks(ts)`, `quarters(ts)`) or
+/// `truncate(name, 4)` a derived one, an `as alias` naming it. The entries
+/// are declared on a copy of the schema root and read by the core's one rule,
+/// [`PartitionSpec::from_schema`], so a refusal names the entry it could not
+/// honour.
+/// The spec a `partition_by` argument states: omitted (`...`) the schema's
+/// own `PARTITION:by` declaration, `None` unpartitioned, anything else
+/// [`spec_from_value`]'s reading.
+fn spec_from_argument(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<PartitionSpec> {
+    if value.is(value.py().Ellipsis()) {
+        return PartitionSpec::from_schema(0, schema).map_err(value_error);
+    }
+    if value.is_none() {
+        return Ok(PartitionSpec::unpartitioned());
+    }
+    spec_from_value(value, schema)
+}
+
 fn spec_from_value(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<PartitionSpec> {
     if let Ok(spec) = value.extract::<PyRef<'_, PyPartitionSpec>>() {
         return Ok(spec.inner.clone());
     }
-    let columns = crate::enums::strings_from_iterable(value, "partition_by")?;
-    let borrowed: Vec<&str> = columns.iter().map(String::as_str).collect();
-    PartitionSpec::identity(0, schema, &borrowed).map_err(value_error)
+    if value.is_instance_of::<PyString>() {
+        return Err(PyTypeError::new_err(
+            "partition_by must be a PartitionSpec or an iterable of entries, not one string",
+        ));
+    }
+    // Text crosses as it is, so a malformed entry is refused naming it; a
+    // `Term` or a `(term, alias)` pair crosses as the text it spells.
+    let mut entries = Vec::new();
+    for entry in value.try_iter()? {
+        let entry = entry?;
+        entries.push(match entry.extract::<String>() {
+            Ok(text) => text,
+            Err(_) => crate::expression::projection_from_value(&entry)?.to_string(),
+        });
+    }
+    let mut declared = schema.clone();
+    declared
+        .as_partition_mut()
+        .set_by_texts(entries)
+        .map_err(value_error)?;
+    PartitionSpec::from_schema(0, &declared).map_err(value_error)
 }
 
 /// Project one Iceberg partition value as the Python value it stands for.
@@ -1010,24 +1046,26 @@ impl PyTable {
 
     /// Create a table, writing its first metadata document.
     ///
-    /// `partition_by` accepts a [`PartitionSpec`] or the column names to
-    /// partition on; the default is unpartitioned. Unnumbered schema columns
+    /// `partition_by` accepts a [`PartitionSpec`] or the `PARTITION:by`
+    /// entries to partition on - `symbol`, `days(ts)`, `minutes(ts, 15)`,
+    /// `truncate(name, 4) as prefix` - read by the core's one rule; omitted,
+    /// the schema's own declaration is read the same way, and `None` - like a
+    /// schema declaring nothing - is unpartitioned. Unnumbered schema columns
     /// are numbered automatically, so a plain `PyArrow` schema works as it is;
     /// a schema that already carries field identifiers keeps every one of them.
     #[classmethod]
-    #[pyo3(signature = (root, schema, partition_by = None, *, format_version = None))]
+    #[pyo3(signature = (root, schema, partition_by = ellipsis(), *, format_version = None))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
     fn create(
         _cls: &Bound<'_, PyType>,
         root: &PyIOBase,
         schema: &Bound<'_, PyAny>,
-        partition_by: Option<&Bound<'_, PyAny>>,
+        partition_by: Py<PyAny>,
         format_version: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
+        let partition_by = partition_by.bind(schema.py());
         let schema = numbered_schema_from_value(schema)?;
-        let spec = match partition_by {
-            Some(value) => spec_from_value(value, &schema)?,
-            None => PartitionSpec::unpartitioned(),
-        };
+        let spec = spec_from_argument(partition_by, &schema)?;
         let version = match format_version {
             Some(value) => format_version_from_value(value)?,
             None => FormatVersion::V2,
@@ -1051,19 +1089,18 @@ impl PyTable {
     /// automatically; an existing table is opened as it is and `schema`
     /// describes only the table this call would create.
     #[classmethod]
-    #[pyo3(signature = (root, schema, partition_by = None, *, format_version = None))]
+    #[pyo3(signature = (root, schema, partition_by = ellipsis(), *, format_version = None))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
     fn open_or_create(
         _cls: &Bound<'_, PyType>,
         root: &PyIOBase,
         schema: &Bound<'_, PyAny>,
-        partition_by: Option<&Bound<'_, PyAny>>,
+        partition_by: Py<PyAny>,
         format_version: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
+        let partition_by = partition_by.bind(schema.py());
         let schema = numbered_schema_from_value(schema)?;
-        let spec = match partition_by {
-            Some(value) => spec_from_value(value, &schema)?,
-            None => PartitionSpec::unpartitioned(),
-        };
+        let spec = spec_from_argument(partition_by, &schema)?;
         let version = match format_version {
             Some(value) => format_version_from_value(value)?,
             None => FormatVersion::V2,

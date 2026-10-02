@@ -511,7 +511,7 @@ impl PyIOBase {
     ) -> PyResult<Option<RecordOptions>> {
         let options = self.resolve_options(options, properties)?;
         options.require_write_mode(mode).map_err(value_error)?;
-        options.require_commit_row_size().map_err(value_error)?;
+        options.require_commit_batch_num().map_err(value_error)?;
         options.require_write_limits().map_err(value_error)?;
         if options.write_limit_is_zero() {
             if mode == IOMode::Overwrite {

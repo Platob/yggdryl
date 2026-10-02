@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use crate::Scalar;
 use crate::expression::{
-    Function, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_SOURCES_KEY,
+    Ordering, Projection, TRANSFORM_BY_KEY, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, Term,
     canonicalize_transform_expression, canonicalize_transform_function,
 };
 use crate::protocol::{
@@ -15,194 +15,207 @@ use crate::txhash::{
     DIGEST_TIME_KEY, DIGEST_UNIT_KEY, canonicalize_digest_unit, validate_digest_time,
 };
 use crate::xxhash::{
-    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY,
+    DIGEST_ALGORITHM_KEY, DIGEST_BY_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY,
     canonicalize_digest_algorithm,
 };
 
 use super::*;
 
-/// The shape every `sources` property has, whatever namespace declares it.
-pub(crate) const SOURCE_LIST_SHAPE: &str = "a JSON array of unique non-empty field path strings";
+/// The shape every `by` property has, whatever namespace declares it.
+pub(crate) const BY_LIST_SHAPE: &str = "a JSON array of unique non-empty expression texts";
 
-/// The one source spelling that names every field rather than one path.
-pub(crate) const ALL_SOURCES: &str = "*";
+/// The one `DIGEST:by` entry that names every column rather than one term.
+pub(crate) const ALL_COLUMNS: &str = "*";
 
-/// Return whether a source list is the select-everything spelling.
-pub(crate) fn is_all_sources(sources: &[String]) -> bool {
-    sources.len() == 1 && sources[0] == ALL_SOURCES
+/// Return whether a `by` list is the select-everything spelling.
+pub(crate) fn is_all_columns(entries: &[String]) -> bool {
+    entries.len() == 1 && entries[0] == ALL_COLUMNS
 }
 
-/// Parse the ordered field paths one `sources` property names.
+/// Parse the ordered expression texts one `by` property holds.
 ///
-/// One shape serves every namespace that names its inputs, so a `DIGEST:` and
-/// a `PARTITION:` list are read, written and refused identically. `["*"]` is
-/// the whole selection rather than a path, so it is the one entry that may not
-/// travel beside another: a list naming both everything and one column states
-/// no order for the rest.
+/// One shape serves every namespace that names what it reads, orders or
+/// partitions by: a JSON array of expression texts, each read by the
+/// grammar its key names - a term for `DIGEST:by` and `TRANSFORM:by`, a
+/// projection for `PARTITION:by`, an `order by` key for `SORT:by` - and
+/// stored canonically. This reads the array; the caller reads each entry
+/// through its grammar. `"*"` is the whole selection rather than a term,
+/// so it is the one entry that may not travel beside another.
 ///
 /// # Errors
 ///
 /// Returns an error naming `key` when the text is not that array.
-pub(crate) fn parse_source_list(key: &str, value: &str) -> Result<Vec<String>> {
+pub(crate) fn parse_by_list(key: &str, value: &str) -> Result<Vec<String>> {
     let document = crate::json::from_utf8(value).map_err(|error| {
-        invalid_source_list(
+        invalid_by_list(
             key,
             format_smolstr!(
-                "expected {SOURCE_LIST_SHAPE}, got invalid JSON: {}",
+                "expected {BY_LIST_SHAPE}, got invalid JSON: {}",
                 crate::text::elide_display(&error)
             ),
         )
     })?;
     let Some(values) = document.as_sequence() else {
-        return Err(invalid_source_list(
+        return Err(invalid_by_list(
             key,
             crate::text::expected_got(
-                SOURCE_LIST_SHAPE,
+                BY_LIST_SHAPE,
                 format_args!("{:?}", crate::text::elide_to(value, 256)),
             ),
         ));
     };
-    let mut sources = Vec::with_capacity(values.len());
-    let mut seen = HashSet::with_capacity(values.len());
+    let mut entries = Vec::with_capacity(values.len());
     for (index, value) in values.iter().enumerate() {
-        let Some(path) = value.as_str() else {
+        let Some(text) = value.as_str() else {
             let actual = crate::json::into_utf8(value)
                 .unwrap_or_else(|_| "<unencodable JSON value>".to_owned());
-            return Err(invalid_source_list(
+            return Err(invalid_by_list(
                 key,
                 format_smolstr!(
-                    "expected a field path string at index {index}, got {:?}",
+                    "expected an expression text at index {index}, got {:?}",
                     crate::text::elide_to(&actual, 256)
                 ),
             ));
         };
-        if path.is_empty() {
-            return Err(invalid_source_list(
-                key,
-                format_smolstr!("expected a non-empty field path string at index {index}"),
-            ));
-        }
-        if !seen.insert(path) {
-            return Err(invalid_source_list(
-                key,
-                format_smolstr!("expected each field path once, got {path:?} twice"),
-            ));
-        }
-        sources.push(path.to_owned());
+        entries.push(text.to_owned());
     }
-    reject_mixed_all(key, &sources)?;
-    Ok(sources)
+    check_by_entries(key, &entries)?;
+    Ok(entries)
 }
 
-/// Render ordered sources through the canonical compact JSON codec.
+/// Render ordered expression texts through the canonical compact JSON codec.
 ///
 /// # Errors
 ///
-/// [`parse_source_list`] carries the rule.
-pub(crate) fn render_source_list<I, P>(key: &str, sources: I) -> Result<String>
+/// [`parse_by_list`] carries the rule.
+pub(crate) fn render_by_list<I, P>(key: &str, entries: I) -> Result<String>
 where
     I: IntoIterator<Item = P>,
     P: AsRef<str>,
 {
-    let sources: Vec<String> = sources
+    let entries: Vec<String> = entries
         .into_iter()
-        .map(|path| path.as_ref().to_owned())
+        .map(|entry| entry.as_ref().to_owned())
         .collect();
-    let mut seen = HashSet::with_capacity(sources.len());
-    for (index, path) in sources.iter().enumerate() {
-        if path.is_empty() {
-            return Err(invalid_source_list(
-                key,
-                format_smolstr!("expected a non-empty field path string at index {index}"),
-            ));
-        }
-        if !seen.insert(path.as_str()) {
-            return Err(invalid_source_list(
-                key,
-                format_smolstr!("expected each field path once, got {path:?} twice"),
-            ));
-        }
-    }
-    reject_mixed_all(key, &sources)?;
-    let document = Scalar::from_sequence(sources.into_iter().map(Scalar::from));
+    check_by_entries(key, &entries)?;
+    let document = Scalar::from_sequence(entries.into_iter().map(Scalar::from));
     crate::json::into_utf8(&document).map_err(|error| {
-        invalid_source_list(
+        invalid_by_list(
             key,
             format_smolstr!(
-                "could not encode canonical field paths: {}",
+                "could not encode canonical expression texts: {}",
                 crate::text::elide_display(&error)
             ),
         )
     })
 }
 
-/// Restate externally supplied source JSON in its one stored spelling.
-///
-/// # Errors
-///
-/// [`parse_source_list`] carries the rule.
-pub(crate) fn canonicalize_source_list(key: &str, value: &str) -> Result<String> {
-    render_source_list(key, parse_source_list(key, value)?)
-}
-
-/// Refuse the select-everything spelling beside a named path.
-fn reject_mixed_all(key: &str, sources: &[String]) -> Result<()> {
-    if sources.len() > 1 && sources.iter().any(|source| source == ALL_SOURCES) {
-        return Err(invalid_source_list(
+/// Refuse an empty entry, a repeated one, and the select-everything spelling
+/// beside a named one.
+fn check_by_entries(key: &str, entries: &[String]) -> Result<()> {
+    let mut seen = HashSet::with_capacity(entries.len());
+    for (index, entry) in entries.iter().enumerate() {
+        if entry.is_empty() {
+            return Err(invalid_by_list(
+                key,
+                format_smolstr!("expected a non-empty expression text at index {index}"),
+            ));
+        }
+        if !seen.insert(entry.as_str()) {
+            return Err(invalid_by_list(
+                key,
+                format_smolstr!("expected each entry once, got {entry:?} twice"),
+            ));
+        }
+    }
+    if entries.len() > 1 && entries.iter().any(|entry| entry == ALL_COLUMNS) {
+        return Err(invalid_by_list(
             key,
             format_smolstr!(
-                "expected {ALL_SOURCES:?} alone, got it beside {} named path(s)",
-                sources.len() - 1
+                "expected {ALL_COLUMNS:?} alone, got it beside {} named entries",
+                entries.len() - 1
             ),
         ));
     }
     Ok(())
 }
 
-fn invalid_source_list(key: &str, reason: SmolStr) -> Error {
+/// Restate an externally supplied `by` list in its one stored spelling: each
+/// entry read through `canonical` and written back as that reading spells it.
+///
+/// # Errors
+///
+/// [`parse_by_list`] and `canonical` carry the rule.
+fn canonicalize_by_list(
+    key: &str,
+    value: &str,
+    canonical: impl Fn(&str) -> Result<String>,
+) -> Result<String> {
+    let entries = parse_by_list(key, value)?
+        .iter()
+        .map(|entry| canonical(entry))
+        .collect::<Result<Vec<String>>>()?;
+    render_by_list(key, entries)
+}
+
+/// Read one `by` entry as a term of the expression grammar.
+///
+/// # Errors
+///
+/// Returns an error naming `key` when the text is not a term.
+pub(crate) fn parse_by_term(key: &str, text: &str) -> Result<Term> {
+    text.parse::<Term>()
+        .map_err(|error| invalid_by_list(key, format_smolstr!("entry {text:?}: {error}")))
+}
+
+/// Read one `by` entry as a term with an optional alias, the shape a
+/// partition entry has: `venue`, `years(ts)`, `truncate(name, 4) as prefix`.
+///
+/// A declared datatype, nullability or `with (...)` metadata is a column
+/// declaration rather than a partition entry and is refused by name.
+///
+/// # Errors
+///
+/// Returns an error naming `key` when the text is not that shape.
+pub(crate) fn parse_by_projection(key: &str, text: &str) -> Result<Projection> {
+    let projection = text
+        .parse::<Projection>()
+        .map_err(|error| invalid_by_list(key, format_smolstr!("entry {text:?}: {error}")))?;
+    if projection.dtype().is_some() || projection.nullable().is_some() {
+        return Err(invalid_by_list(
+            key,
+            format_smolstr!(
+                "entry {text:?}: expected a term with an optional alias, got a declared datatype"
+            ),
+        ));
+    }
+    if !projection.metadata().is_empty() {
+        return Err(invalid_by_list(
+            key,
+            format_smolstr!(
+                "entry {text:?}: expected a term with an optional alias, got column metadata"
+            ),
+        ));
+    }
+    Ok(projection)
+}
+
+/// Read one `by` entry as an `order by` key: a term, then `asc` or `desc`,
+/// then `nulls first` or `nulls last`.
+///
+/// # Errors
+///
+/// Returns an error naming `key` when the text is not that key.
+pub(crate) fn parse_by_ordering(key: &str, text: &str) -> Result<Ordering> {
+    text.parse::<Ordering>()
+        .map_err(|error| invalid_by_list(key, format_smolstr!("entry {text:?}: {error}")))
+}
+
+fn invalid_by_list(key: &str, reason: SmolStr) -> Error {
     Error::InvalidMetadataValue {
         key: SmolStr::new(key),
         reason,
     }
-}
-
-/// Resolve the one-argument transform a stored `PARTITION:transform` names.
-///
-/// The vocabulary is the expression grammar's own [`Function`] set, so a
-/// derived partition column and a predicate over the same value share one
-/// implementation. Only a function of a single argument is a transform of one
-/// column; the parameterized ones are not one yet.
-///
-/// # Errors
-///
-/// Returns an error naming `key` when the text is no such function.
-pub(crate) fn parse_partition_transform(key: &str, value: &str) -> Result<Function> {
-    let function = Function::from_name(value).ok_or_else(|| Error::InvalidMetadataValue {
-        key: SmolStr::new(key),
-        reason: crate::text::expected_got(
-            format_args!("one of {}", Function::vocabulary()),
-            format_args!("{:?}", crate::text::elide_to(value, 64)),
-        ),
-    })?;
-    let (least, most) = function.arity();
-    if least > 1 || most < 1 {
-        return Err(Error::InvalidMetadataValue {
-            key: SmolStr::new(key),
-            reason: format_smolstr!(
-                "expected a transform of one argument, got {value} taking {least} to {most}"
-            ),
-        });
-    }
-    Ok(function)
-}
-
-/// Restate an externally supplied transform in its one canonical spelling.
-///
-/// # Errors
-///
-/// [`parse_partition_transform`] carries the rule.
-pub(crate) fn canonicalize_partition_transform(key: &str, value: &str) -> Result<String> {
-    Ok(parse_partition_transform(key, value)?.as_str().to_owned())
 }
 
 /// Return the full `SCHEME:name` key one property is stored under.
@@ -256,21 +269,30 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
         }
         LOCATION_KEY => Url::from_str(&value)?.to_string(),
         DIGEST_ALGORITHM_KEY => canonicalize_digest_algorithm(&value)?,
-        DIGEST_SOURCES_KEY => canonicalize_source_list(DIGEST_SOURCES_KEY, &value)?,
+        DIGEST_BY_KEY => canonicalize_by_list(DIGEST_BY_KEY, &value, |entry| {
+            if entry == ALL_COLUMNS {
+                return Ok(entry.to_owned());
+            }
+            parse_by_term(DIGEST_BY_KEY, entry).map(|term| term.to_string())
+        })?,
         DIGEST_TIME_KEY => {
             validate_digest_time(&value)?;
             value
         }
         DIGEST_UNIT_KEY => canonicalize_digest_unit(&value)?,
-        PARTITION_SOURCES_KEY => canonicalize_source_list(PARTITION_SOURCES_KEY, &value)?,
-        PARTITION_TRANSFORM_KEY => {
-            canonicalize_partition_transform(PARTITION_TRANSFORM_KEY, &value)?
-        }
+        PARTITION_BY_KEY => canonicalize_by_list(PARTITION_BY_KEY, &value, |entry| {
+            parse_by_projection(PARTITION_BY_KEY, entry).map(|projection| projection.to_string())
+        })?,
+        SORT_BY_KEY => canonicalize_by_list(SORT_BY_KEY, &value, |entry| {
+            parse_by_ordering(SORT_BY_KEY, entry).map(|ordering| ordering.to_string())
+        })?,
         TRANSFORM_EXPRESSION_KEY => {
             canonicalize_transform_expression(TRANSFORM_EXPRESSION_KEY, &value)?
         }
         TRANSFORM_FUNCTION_KEY => canonicalize_transform_function(TRANSFORM_FUNCTION_KEY, &value)?,
-        TRANSFORM_SOURCES_KEY => canonicalize_source_list(TRANSFORM_SOURCES_KEY, &value)?,
+        TRANSFORM_BY_KEY => canonicalize_by_list(TRANSFORM_BY_KEY, &value, |entry| {
+            parse_by_term(TRANSFORM_BY_KEY, entry).map(|term| term.to_string())
+        })?,
         DIGEST_ROLE_KEY => {
             if value.as_str() != DIGEST_ROLE_HOLDER {
                 return Err(Error::InvalidMetadataValue {

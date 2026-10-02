@@ -306,7 +306,7 @@ assert big.where("size").apply_arrow_batch(batch).column("ccy").to_pylist() == [
 
 stored = Selector("skills.triple(size) as tripled").into_field(rows)
 assert stored.dtype["tripled"].transform["function"] == "skills.triple"
-assert stored.dtype["tripled"].transform["sources"] == '["size"]'
+assert stored.dtype["tripled"].transform.by == ["size"]
 
 for function in (triple, shout, big):
     assert function.unregister()

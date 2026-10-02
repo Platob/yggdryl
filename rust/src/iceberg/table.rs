@@ -88,7 +88,7 @@
 //! `main` remains future work, because a commit's parent is currently always
 //! the table's current snapshot.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -114,7 +114,7 @@ use crate::arrow::BatchReader;
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
 use crate::expression::Projection;
 use crate::holder::Holder;
-use crate::media::{IORecordOptions, RecordOptions};
+use crate::media::{Cadence, IORecordOptions, RecordOptions};
 use crate::{
     DataType, Error, Field, Filter, IOKind, MimeType, Result, Scalar, Selector, StructType, Term,
 };
@@ -161,22 +161,33 @@ impl<H: IOBase> Table<H> {
     /// by hand still numbers first with [`super::assign_field_ids`], because
     /// a spec names its source columns by identifier.
     ///
-    /// The table's default sort order is [`SortOrder::for_spec`]: the spec's
-    /// source columns ascending, nulls first, and the unsorted order zero when
-    /// the spec partitions nothing. [`Self::create_sorted`] takes another.
+    /// The table's default sort order is the one the schema declares as its
+    /// `SORT:by` ([`SortOrder::from_schema`]), else [`SortOrder::for_spec`]:
+    /// the spec's source columns ascending, nulls first, and the unsorted
+    /// order zero when the spec partitions nothing. [`Self::create_sorted`]
+    /// takes another.
     ///
     /// # Errors
     ///
     /// Returns a conflict when the handle already contains a table, or an
     /// error when the handle is not a container, the schema is not a non-null
-    /// struct root, or the metadata document cannot be written.
+    /// struct root, a declared order names what no sort field holds, or the
+    /// metadata document cannot be written.
     pub fn create(
         root: H,
         format_version: FormatVersion,
-        schema: Field,
+        mut schema: Field,
         spec: PartitionSpec,
     ) -> Result<Self> {
-        let order = SortOrder::for_spec(&spec);
+        let order = if schema.as_sort().declares_order() {
+            // An order names its columns by identifier, so the schema is
+            // numbered here exactly as the metadata document numbers it.
+            let start = super::last_column_id(&schema)?.saturating_add(1);
+            super::assign_field_ids(&mut schema, start)?;
+            SortOrder::from_schema(1, &schema)?
+        } else {
+            SortOrder::for_spec(&spec)
+        };
         Self::create_sorted(root, format_version, schema, spec, order)
     }
 
@@ -360,9 +371,15 @@ impl<H: IOBase> Table<H> {
     /// Iceberg's own default of 512 MiB.
     ///
     /// What a write measures against this target is the Arrow in-memory size
-    /// of the accumulated rows - a zero-copy slice counts its own extent, not
-    /// its parent's buffers - estimated *before* encoding. Parquet compresses
-    /// what it writes, so data files land under the target rather than at it.
+    /// of the accumulated rows as [`memory_size`](crate::arrow::memory_size)
+    /// counts it - a zero-copy slice counts its own extent, not its parent's
+    /// buffers - estimated *before* encoding. Parquet compresses what it
+    /// writes, so data files land under the target rather than at it. The
+    /// same target is the cadence a streamed write through [`IOMedia`] commits
+    /// at when its options state no
+    /// [`commit_batch_num`](crate::media::IORecordOptions::commit_batch_num):
+    /// the batches held reach it, they commit, and the stream holds at most
+    /// one target file of rows between commits.
     ///
     /// # Errors
     ///
@@ -1326,6 +1343,33 @@ impl<H: IOBase> Table<H> {
         merge_by: &crate::Selector,
         safe: bool,
     ) -> Result<()> {
+        self.commit_merge_cadence(
+            filters,
+            batches,
+            merge_by,
+            safe,
+            &mut ReplacedPartitions::default(),
+        )
+    }
+
+    /// One commit of a streamed merge: [`Self::commit_merge_where`] over
+    /// the partitions the write's earlier commits replaced.
+    ///
+    /// A merge keyed by the partition alone replaces the partitions its
+    /// rows fall in, and a stream cut into commits by its cadence must not
+    /// replace one per commit - that would keep only the last commit's rows
+    /// of each. So `replaced` carries the partitions this write has already
+    /// replaced: the first commit that reaches a partition replaces it and
+    /// records it, every later one carries its files and appends beside
+    /// them. A keyed merge joins by key on every commit and records nothing.
+    pub(crate) fn commit_merge_cadence(
+        &mut self,
+        filters: &[(&str, &str)],
+        batches: BatchReader,
+        merge_by: &crate::Selector,
+        safe: bool,
+        replaced: &mut ReplacedPartitions,
+    ) -> Result<()> {
         self.require_row_id_preserving_rewrite("merge")?;
         let schema = self.schema()?.clone();
         let spec = self.metadata.default_spec()?.clone();
@@ -1407,9 +1451,18 @@ impl<H: IOBase> Table<H> {
                 )));
             }
         }
+        let mut replacing: Vec<Vec<Scalar>> = Vec::new();
         for (write, tasks) in writes.iter_mut().zip(own) {
             if !keyed {
-                // The partition is the key: its files are replaced, not read.
+                // The partition is the key: its files are replaced, not
+                // read, by the first commit of the write that reaches it,
+                // and carried - this commit appends beside them - by every
+                // later commit of the same write.
+                if replaced.contains(&write.values) {
+                    carried.extend(tasks);
+                } else {
+                    replacing.push(write.values.clone());
+                }
                 continue;
             }
             let incoming: Vec<RecordBatch> = write
@@ -1441,6 +1494,9 @@ impl<H: IOBase> Table<H> {
                 entries: carried,
             },
         )?;
+        // Recorded once the commit is published: a commit that failed
+        // replaced nothing, and the write it belonged to is over.
+        replaced.tuples.extend(replacing);
         Ok(())
     }
 
@@ -2374,9 +2430,10 @@ impl<H: IOBase> Table<H> {
 /// already holds.
 ///
 /// A plain container handle addressing the table's folder answers the same
-/// contract - the three record methods, one commit per write - by probing the
-/// location for a table on every call. Holding the [`Table`] skips the probe:
-/// no metadata document is re-read, [`crate::IOMedia::read_arrow_field`] is
+/// contract - the three record methods, a commit per cadence of a write -
+/// by probing the location for a table on every call. Holding the
+/// [`Table`] skips the probe: no metadata document is re-read,
+/// [`crate::IOMedia::read_arrow_field`] is
 /// [`Table::schema`] with its field identifiers and protocol metadata rather
 /// than a shape lifted off decoded batches, and a
 /// [`partition_pairs`](IORecordOptions::partition_pairs) pair prunes data
@@ -2562,14 +2619,21 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         self.read_scoped(Filter::always_true(), options)
     }
 
-    /// One overwrite commit scoped to the selected partitions.
+    /// Replace the selected partitions, a commit per cadence of the stream.
+    ///
+    /// With no [`commit_batch_num`](IORecordOptions::commit_batch_num) the
+    /// cadence is the table's own: a commit each time the held batches
+    /// reach [`Table::target_file_size_bytes`], then the remainder. The
+    /// first commit overwrites and every later one appends, so a stream of
+    /// any length holds at most one target file of rows before a commit,
+    /// and the commits before a failure stay published.
     fn overwrite_arrow_reader(
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
         options.require_write_mode(crate::IOMode::Overwrite)?;
-        let commit_row_size = options.require_commit_row_size()?;
+        let cadence = options.commit_cadence(Cadence::Bytes(self.target_file_size_bytes()?))?;
         let stored = self.schema()?.clone();
         let (batches, _, _) =
             crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
@@ -2578,11 +2642,8 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        if commit_row_size.is_none() {
-            return self.commit_overwrite_where(&pairs, batches);
-        }
         let schema = batches.schema();
-        let mut commits = options.commit_arrow_readers(batches)?;
+        let mut commits = options.commit_arrow_readers(batches, cadence)?;
         let Some(first) = commits.next() else {
             return self.commit_overwrite_where(&pairs, crate::arrow::batch_reader(schema, []));
         };
@@ -2593,13 +2654,17 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         Ok(())
     }
 
-    /// One `append` snapshot, keeping every manifest the last one had.
+    /// Add the rows, an `append` snapshot per cadence of the stream, each
+    /// keeping every manifest the last one had.
     ///
-    /// A limited write truncates data the caller offered here too: an append
+    /// The cadence is the table's own where none is stated - a commit per
+    /// [`Table::target_file_size_bytes`] of held batches, then the
+    /// remainder - and the commits before a failure stay published. A
+    /// limited write truncates data the caller offered here too: an append
     /// is a write.
     fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
         options.require_write_mode(crate::IOMode::Append)?;
-        let commit_row_size = options.require_commit_row_size()?;
+        let cadence = options.commit_cadence(Cadence::Bytes(self.target_file_size_bytes()?))?;
         options.require_write_limits()?;
         if options.write_limit_is_zero() {
             return Ok(());
@@ -2613,21 +2678,25 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
-        if commit_row_size.is_none() {
-            return self.commit_append(batches);
-        }
-        for commit in options.commit_arrow_readers(batches)? {
+        for commit in options.commit_arrow_readers(batches, cadence)? {
             self.commit_append(commit?)?;
         }
         Ok(())
     }
 
-    /// One merge commit scoped to the selected partitions.
+    /// Merge into the selected partitions, a commit per cadence of the stream.
     ///
     /// The partition columns lead the match key, so an empty
     /// [`merge_by`](IORecordOptions::merge_by) on a partitioned table
     /// replaces the partitions the rows fall in; see
-    /// [`Table::commit_merge_where`].
+    /// [`Table::commit_merge_where`]. The cadence is the table's own where
+    /// none is stated - a commit per [`Table::target_file_size_bytes`] of
+    /// held batches, then the remainder - and every commit merges by the
+    /// key: a keyed merge upserts per commit, and a merge keyed by the
+    /// partition alone replaces a partition on the first commit of the
+    /// write that reaches it and appends to it on every later one, so a
+    /// stream longer than the target loses no row. The commits before a
+    /// failure stay published.
     fn merge_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
         // The generic rule - a merge names a key - is met by the partition
         // columns of a partitioned table, so only an unpartitioned one has
@@ -2635,7 +2704,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         if self.metadata.default_spec()?.is_unpartitioned() || !options.merge_by().is_empty() {
             options.require_write_mode(crate::IOMode::Merge)?;
         }
-        let commit_row_size = options.require_commit_row_size()?;
+        let cadence = options.commit_cadence(Cadence::Bytes(self.target_file_size_bytes()?))?;
         options.require_write_limits()?;
         let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
@@ -2651,11 +2720,15 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        if commit_row_size.is_none() {
-            return self.commit_merge_where(&pairs, batches, options.merge_by(), options.safe());
-        }
-        for commit in options.commit_arrow_readers(batches)? {
-            self.commit_merge_where(&pairs, commit?, options.merge_by(), options.safe())?;
+        let mut replaced = ReplacedPartitions::default();
+        for commit in options.commit_arrow_readers(batches, cadence)? {
+            self.commit_merge_cadence(
+                &pairs,
+                commit?,
+                options.merge_by(),
+                options.safe(),
+                &mut replaced,
+            )?;
         }
         Ok(())
     }
@@ -2804,6 +2877,32 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
         .map_or_else(|| hasher.finish(), |width| hasher.finish() % width)
 }
 
+/// The partitions one streamed merge has replaced, carried across its
+/// commits.
+///
+/// A merge keyed by the partition columns alone replaces the partitions its
+/// rows fall in. Cut into several commits by its cadence, it would replace
+/// each partition once per commit and keep only the last commit's rows, so
+/// [`Table::commit_merge_cadence`] replaces a partition on the first commit
+/// of a write that reaches it and appends to it on every later one. One
+/// value per write - a [`Table`] or [`super::Located`] stream, or a write
+/// session - and nothing a keyed merge records.
+///
+/// Bounded by the partitions the write's rows fall in: one tuple each,
+/// held until the write ends, because a later commit may reach any of them.
+#[derive(Debug, Default)]
+pub(crate) struct ReplacedPartitions {
+    /// The partition tuples replaced so far, in spec order.
+    tuples: HashSet<Vec<Scalar>>,
+}
+
+impl ReplacedPartitions {
+    /// Whether a commit of this write already replaced the partition.
+    fn contains(&self, tuple: &[Scalar]) -> bool {
+        self.tuples.contains(tuple)
+    }
+}
+
 /// One partition's rows to write, and the stored files they merge with.
 struct PartitionWrite {
     /// The partition tuple every row computes to, in spec order.
@@ -2841,9 +2940,21 @@ struct GroupRows {
 
 impl GroupRows {
     /// Reduce the batch to this partition's rows, once.
+    ///
+    /// Rows that are one contiguous run of the batch - every partition of a
+    /// stream written in the order its partitions advance, such as a time
+    /// partition over rows in event order - are a zero-copy slice; only rows
+    /// interleaved with another partition's are gathered by a take.
     fn gather(&mut self) -> Result<()> {
         if let Some(rows) = self.rows.take() {
-            self.batch = arrow_select::take::take_record_batch(&self.batch, &rows)?;
+            let values = rows.values();
+            self.batch = match (values.first(), values.last()) {
+                // Indices arrive in batch order, so a run is first..=last.
+                (Some(&first), Some(&last)) if (last - first) as usize + 1 == values.len() => {
+                    self.batch.slice(first as usize, values.len())
+                }
+                _ => arrow_select::take::take_record_batch(&self.batch, &rows)?,
+            };
         }
         Ok(())
     }
@@ -3076,10 +3187,10 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<Dat
     if rows.is_empty() {
         return Ok(Vec::new());
     }
-    if !write.sort.is_empty() {
-        // Ordering needs the group's rows side by side; rows that keep their
-        // arrival order go to the encoder as the batches they arrived in, so
-        // an unsorted group is never copied into one batch first.
+    if !write.sort.is_empty() && !batches_sorted(&rows, write.sort)? {
+        // Ordering needs the group's rows side by side; a group already in
+        // order - each batch and every batch edge - goes to the encoder as
+        // the batches it arrived in, so it is never copied into one first.
         let batch =
             arrow_select::concat::concat_batches(&arrow_schema, &rows).map_err(Error::Arrow)?;
         rows = vec![sorted(batch, write.sort)?];
@@ -3100,22 +3211,98 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<Dat
     Ok(written)
 }
 
-/// Order one partition group's rows by the table's default sort order.
+/// Order one partition group's rows, joined into one batch, by the table's
+/// default sort order: [`batches_sorted`] already found them out of order.
 fn sorted(batch: RecordBatch, sort: &[SortColumnSpec]) -> Result<RecordBatch> {
-    if batch.num_rows() < 2 {
-        return Ok(batch);
-    }
-    let columns: Vec<SortColumn> = sort
-        .iter()
+    let columns = batch_sort_columns(&batch, sort)?;
+    let indices = lexsort_to_indices(&columns, None).map_err(Error::Arrow)?;
+    arrow_select::take::take_record_batch(&batch, &indices).map_err(Error::Arrow)
+}
+
+/// The key columns of one batch under the table's default sort order.
+fn batch_sort_columns(batch: &RecordBatch, sort: &[SortColumnSpec]) -> Result<Vec<SortColumn>> {
+    sort.iter()
         .map(|column| {
             Ok(SortColumn {
-                values: column_at(&batch, &column.path)?,
+                values: column_at(batch, &column.path)?,
                 options: Some(column.options),
             })
         })
-        .collect::<Result<_>>()?;
-    let indices = lexsort_to_indices(&columns, None).map_err(Error::Arrow)?;
-    arrow_select::take::take_record_batch(&batch, &indices).map_err(Error::Arrow)
+        .collect()
+}
+
+/// Return whether a group's batches, read one after another, are already in
+/// the table's default sort order.
+///
+/// Each batch is read in one comparison pass over its key columns and each
+/// edge between two batches in one comparison of the last row before it with
+/// the first after it, so a group that arrived sorted - the common case for
+/// a stream written in event order - is neither joined, permuted nor copied.
+fn batches_sorted(batches: &[RecordBatch], sort: &[SortColumnSpec]) -> Result<bool> {
+    let mut previous: Option<Vec<SortColumn>> = None;
+    for batch in batches {
+        let columns = batch_sort_columns(batch, sort)?;
+        if !is_sorted(&columns)? {
+            return Ok(false);
+        }
+        if let Some(before) = &previous
+            && edge_descends(before, &columns)?
+        {
+            return Ok(false);
+        }
+        previous = Some(columns);
+    }
+    Ok(true)
+}
+
+/// Return whether the last row of one batch's key columns orders after the
+/// first row of the next batch's, each column under its own direction and
+/// nulls placement.
+fn edge_descends(before: &[SortColumn], after: &[SortColumn]) -> Result<bool> {
+    for (left, right) in before.iter().zip(after) {
+        let compare = arrow_ord::ord::make_comparator(
+            left.values.as_ref(),
+            right.values.as_ref(),
+            left.options.unwrap_or_default(),
+        )
+        .map_err(Error::Arrow)?;
+        match compare(left.values.len() - 1, 0) {
+            std::cmp::Ordering::Less => return Ok(false),
+            std::cmp::Ordering::Equal => {}
+            std::cmp::Ordering::Greater => return Ok(true),
+        }
+    }
+    Ok(false)
+}
+
+/// Return whether rows are already in lexical order over the key columns,
+/// each under its own direction and nulls placement.
+///
+/// One comparator per column, built once, and one adjacent-row comparison
+/// per row: nothing is allocated per row and no row is built.
+fn is_sorted(columns: &[SortColumn]) -> Result<bool> {
+    let comparators = columns
+        .iter()
+        .map(|column| {
+            arrow_ord::ord::make_comparator(
+                column.values.as_ref(),
+                column.values.as_ref(),
+                column.options.unwrap_or_default(),
+            )
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(Error::Arrow)?;
+    let rows = columns.first().map_or(0, |column| column.values.len());
+    for row in 1..rows {
+        for compare in &comparators {
+            match compare(row - 1, row) {
+                std::cmp::Ordering::Less => break,
+                std::cmp::Ordering::Equal => {}
+                std::cmp::Ordering::Greater => return Ok(false),
+            }
+        }
+    }
+    Ok(true)
 }
 
 /// Read one column through top-level and nested Struct arrays.
@@ -3159,9 +3346,7 @@ fn column_at(batch: &RecordBatch, path: &[SmolStr]) -> Result<ArrayRef> {
 fn sliced(batches: Vec<RecordBatch>, target: u64) -> Vec<Vec<RecordBatch>> {
     let rows: usize = batches.iter().map(RecordBatch::num_rows).sum();
     let bytes = batches.iter().fold(0_u64, |total, batch| {
-        total.saturating_add(
-            u64::try_from(crate::arrow::sliced_memory_size(batch)).unwrap_or(u64::MAX),
-        )
+        total.saturating_add(u64::try_from(crate::arrow::memory_size(batch)).unwrap_or(u64::MAX))
     });
     if rows == 0 || bytes <= target {
         return vec![batches];

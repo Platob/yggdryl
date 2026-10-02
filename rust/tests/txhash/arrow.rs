@@ -490,10 +490,10 @@ mod columns {
     }
 
     #[test]
-    fn a_coupled_holder_names_its_sources_unit_and_algorithm() {
+    fn a_coupled_holder_names_its_by_unit_and_algorithm() {
         let symbol = Field::new("symbol", DataType::utf8(), false);
         let mut key = coupled("key", 24, "event");
-        key.as_digest_mut().set_sources(["symbol"]).unwrap();
+        key.as_digest_mut().set_by(["symbol"]).unwrap();
         key.as_digest_mut().set_unit(TimeUnit::Second).unwrap();
         key.as_digest_mut()
             .set_algorithm(DigestAlgorithm::Xxh128)
@@ -773,7 +773,7 @@ mod columns {
         let nested = Field::new("nested", inner, false);
         let mut outer = Field::new("digest", DataType::UInt64, false);
         outer.as_digest_mut().set_holder().unwrap();
-        outer.as_digest_mut().set_sources(["nested"]).unwrap();
+        outer.as_digest_mut().set_by(["nested"]).unwrap();
         let root = struct_root([nested.clone(), outer]);
         let struct_fields = match nested.clone().into_arrow_field().unwrap().data_type() {
             ArrowDataType::Struct(fields) => fields.clone(),

@@ -3,6 +3,7 @@ import {
   MediaType,
   MimeType,
   ProtocolField,
+  Term,
   Url,
   fields,
   intoField,
@@ -203,3 +204,33 @@ void partitionFieldNames
 void onlyPartitionFields
 void withoutPartitionFields
 void withPartition
+
+// The `by` declarations: a struct's sort and partition lists, a holder's
+// digest terms and a derived column's arguments, each a list of expression
+// texts, `null` where nothing is declared and `null` assigned to clear.
+const sortView: ProtocolField = classField.sort
+const sortBy: string[] | null = sortView.by
+sortView.by = ['id desc nulls first']
+sortView.by = null
+const removedSort: string | null = sortView.removeBy()
+const partitionBy: string[] | null = classField.partition.by
+classField.partition.by = ['id']
+const digestBy: string[] | null = classField.digest.by
+const transformBy: string[] | null = classField.transform.by
+const transformTerm: Term | null = classField.transform.term
+classField.transform.term = 'year(event)'
+classField.transform.term = null
+const removedTerm: string | null = classField.transform.removeTerm()
+const declared: Field = classField.withPartitionBy(['id', 'truncate(id, 10) as bucket'])
+const declaration: string[] = declared.partitionBy()
+// @ts-expect-error a partition entry is expression text
+classField.withPartitionBy([1])
+
+void sortBy
+void removedSort
+void partitionBy
+void digestBy
+void transformBy
+void transformTerm
+void removedTerm
+void declaration
