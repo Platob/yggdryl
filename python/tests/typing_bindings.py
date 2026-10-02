@@ -2392,13 +2392,13 @@ order_bytes: int = order_prices.memory_size()
 order_chained: yggdryl.Serie = (
     order_prices.as_sorted().as_unique().as_reversed().as_taken([0]).as_filtered([True])
 )
-order_window: yggdryl.SerieSlice = order_into.window(0, 2)
+order_window: yggdryl.WindowSerie = order_into.window(0, 2)
 order_window_row: Scalar = order_window[0]
-order_window_narrower: yggdryl.SerieSlice = order_window[1:]
+order_window_narrower: yggdryl.WindowSerie = order_window[1:]
 order_window_serie: yggdryl.Serie = order_window.serie
 order_window_whole: yggdryl.Serie = order_window.into_serie()
 order_window_offset: int = order_window.offset
-order_window_written: yggdryl.SerieSlice = order_window.as_sorted(descending=True).as_reversed()
+order_window_written: yggdryl.WindowSerie = order_window.as_sorted(descending=True).as_reversed()
 order_window.set(0, 7)
 order_window.swap(0, 1)
 order_window.fill(4)

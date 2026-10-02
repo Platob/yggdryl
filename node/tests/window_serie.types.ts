@@ -1,7 +1,7 @@
-import { Field, Scalar, Serie, SerieSlice, type SortOptions } from '..'
+import { Field, Scalar, Serie, WindowSerie, type SortOptions } from '..'
 
 const prices: Serie = Serie.fromScalars(new Field('price', 'int64', true), [3, null, 1])
-const window: SerieSlice = prices.window(0, 3)
+const window: WindowSerie = prices.window(0, 3)
 
 // The window's own facts, and the serie it holds.
 const length: number = window.length
@@ -28,7 +28,7 @@ const ordered: boolean = window.isSorted(options)
 const unique: boolean = window.isUnique()
 const distinct: number = window.uniqueCount()
 const order: Serie = window.sortIndices()
-const narrower: SerieSlice = window.window(1, 1)
+const narrower: WindowSerie = window.window(1, 1)
 const whole: Serie = window.intoSerie()
 const sorted: Serie = window.intoSorted({ nullsFirst: true })
 const deduplicated: Serie = window.intoUnique()
@@ -46,10 +46,10 @@ window.swap(0, 2)
 window.copyFrom(prices.window(0, 3))
 window.copyFrom(prices)
 window.splice(0, 1, [6])
-const chained: SerieSlice = window.asSorted().asReversed().asTaken([2, 1, 0])
+const chained: WindowSerie = window.asSorted().asReversed().asTaken([2, 1, 0])
 
 // @ts-expect-error a window has no public constructor
-new SerieSlice()
+new WindowSerie()
 // @ts-expect-error a window never shrinks what it views
 window.asUnique()
 // @ts-expect-error a window never shrinks what it views

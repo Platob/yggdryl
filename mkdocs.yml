@@ -136,7 +136,7 @@ nav:
       - Scalar: types/scalar.md
       - Serie: types/serie.md
       - Chunked serie: types/chunked-serie.md
-      - Serie slice: types/serie-slice.md
+      - Window serie: types/window-serie.md
       - Cast: types/cast.md
       - Paths: types/paths.md
       - Protocol: types/protocol.md

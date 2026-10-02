@@ -13,12 +13,12 @@
 - From Design 2: wire values carry nothing; parts and children state none; writes that move rows withdraw `rownum`; overflow reads as null; `FieldScalar::get_by_path`; windows have no setters.
 - From the judges: a reader's batches stay bare, there is no per-batch stamp, and records are equal-or-none across `from_series`.
 
-**Reading confirmed.** Static values become one contract that every series kind answers with one spelling: `Serie`, `SerieSlice`, `SerieSliceMut`, `ChunkedSerie`, `SerieReader`, every `window_by` window, and later `MediaSerie`. A held window states its key cells, `windownum` and `rownum` exactly as a stream window does. Partition values can ride any series. Five corrections:
+**Reading confirmed.** Static values become one contract that every series kind answers with one spelling: `Serie`, `WindowSerie`, `WindowSerieMut`, `ChunkedSerie`, `SerieReader`, every `window_by` window, and later `MediaSerie`. A held window states its key cells, `windownum` and `rownum` exactly as a stream window does. Partition values can ride any series. Five corrections:
 1. **A schema-free run states none.** `Serie` is 40 B, which is a run's 32 B plus the tag, so there is no room, and a run has no field.
 2. **`rownum` is the one positional cell.** A contiguous cut shifts it. A gather, a regroup or a write that moves rows nulls it. Constants and `windownum` survive every verb.
 3. **Parts state none.** A reader's batches, a chunked serie's chunks and a record's children carry no record: one owner per fact.
 4. **Wire values carry nothing.** Serde, the value stream, pickle and Arrow write rows only. In-process copies keep the record.
-5. **`SerieSlice` loses `Copy`.** A `window_by` window owns its record, built in the one allocation its key already cost.
+5. **`WindowSerie` loses `Copy`.** A `window_by` window owns its record, built in the one allocation its key already cost.
 
 ---
 
@@ -34,13 +34,13 @@
 - Carriers only forward.
 
 **Spelling.** A sealed public trait, `StaticValues`, with one required borrow `statics()` and three provided readers: `static_field()`, `static_values()` and `get_static_value(&FieldPath)`.
-- Implemented by `Serie`, `SerieSlice`, `SerieSliceMut`, `ChunkedSerie` and `SerieReader`, and later `MediaSerie`.
+- Implemented by `Serie`, `WindowSerie`, `WindowSerieMut`, `ChunkedSerie` and `SerieReader`, and later `MediaSerie`.
 - Not implemented by the 15 column leaves (records belong to the root) or by `Statics` itself.
 - **Setters** are inherent and exist only where a carrier owns a record:
   - `Serie`: `set_`, `try_with_` and `clear_static_values`. `set_` is fallible because a run is refused.
   - `ChunkedSerie` and `SerieReader`: `set_`, `with_` and `clear_static_values`, all infallible.
-  - `SerieSlice`: `with_static_values` only, which states a view's own record.
-  - `SerieSliceMut`: none.
+  - `WindowSerie`: `with_static_values` only, which states a view's own record.
+  - `WindowSerieMut`: none.
 
 **Reserved names.** Their fields are fixed, so every record has one shape whatever its data.
 
@@ -84,8 +84,8 @@
 | `Serie::Run` | none | — | A run states none, and setting a record on one is refused |
 | `ChunkedSerie` | `statics: Option<Statics>` | +32 B | Its chunks state none |
 | `SerieReader` | `statics: Option<Statics>` (retyped) and `served: u64` (rows yielded so far) | +40 B | Its batches state none |
-| `SerieSlice<'a>` | `statics: Option<Statics>`: the holder's record shifted to the window, or the window's own | 24 → 56 B; `Clone`, no longer `Copy`; pinned by `const _: () = assert!(size_of::<SerieSlice<'static>>() == 56)` | — |
-| `SerieSliceMut<'a>` | `statics: Option<Statics>`: the holder's record shifted, taken again after a write that scatters | 24 → 56 B | — |
+| `WindowSerie<'a>` | `statics: Option<Statics>`: the holder's record shifted to the window, or the window's own | 24 → 56 B; `Clone`, no longer `Copy`; pinned by `const _: () = assert!(size_of::<WindowSerie<'static>>() == 56)` | — |
+| `WindowSerieMut<'a>` | `statics: Option<Statics>`: the holder's record shifted, taken again after a write that scatters | 24 → 56 B | — |
 | `SerieWindows<'a>` | `record: Arc<Field>`, `kept: Box<[Scalar]>`, `base: Option<u64>`, built once | Constant | — |
 | `SerieReaderWindows` | as in flight; the `rownum` child becomes nullable | — | — |
 
@@ -95,7 +95,7 @@
 | --- | --- |
 | `statics()`, `static_field()`, `static_values()` at shift 0 or with no non-null `rownum`, `get_static_value` | 0. A cell is an `Arc` bump or inline; a derived `rownum` is an inline `UInt64` |
 | `static_values()` at shift > 0 over a non-null `rownum` | 1: the derived row |
-| A cut: `Serie::slice`, `window`, `window_mut`, `SerieSlice::window`, `ChunkedSerie::slice` | 0: the shift moves and the fresh leaf takes the record through `Arc::get_mut` |
+| A cut: `Serie::slice`, `window`, `window_mut`, `WindowSerie::window`, `ChunkedSerie::slice` | 0: the shift moves and the fresh leaf takes the record through `Arc::get_mut` |
 | Keeping across a cast | 0, onto the fresh landed leaf |
 | Scatter | +1 row, only when a non-null `rownum` is stated; otherwise an `Arc` clone |
 | Stating or clearing a record on a column | 0 on a unique leaf. A shared leaf costs one leaf-struct copy through `Arc::make_mut` (a record's children `Vec` adds 1) |
@@ -115,9 +115,9 @@ A "fresh leaf" is the one a door just landed. Taking the record onto it costs 0 
 | Class | Verbs | Rule |
 | --- | --- | --- |
 | **Keep** | `Clone`; `Scalar::from(serie)` and `Scalar::as_serie`; `SerieValue::into_serie` of a whole leaf; `Serie::slice(0, len)` (`self.clone()`); `Serie::cast` and `ArrowCastPlan::apply`, identity or not (cast.rs:677: the record is taken again after `land_planned`); `apply_chunked` (cast.rs:699); `ChunkedSerie::cast`; `SerieReader::cast` | Same record, same shift. A cast keeps it because it says where the rows are, not what the root declares |
-| **Keep: overwrites** | `Serie::set`; a `splice` where `range.len() == rows.len()`; `set_cell`; `set_child` (the entering child is stripped); `SerieSliceMut::{set, fill, copy_from, splice}` | The rows stay where they are, so `rownum` stays true |
-| **Shift** | `Serie::slice(o, l)` (serie.rs:2626: `shifted(o)` on the fresh leaf); `Serie::window`/`window_mut` (snapshot); `SerieSlice::window`; `SerieSlice::into_serie` (the slice, then the window's own record); `ChunkedSerie::slice`; `partition_by` groups over sorted keys (they go through `slice`, order.rs:1140) | `rownum += o`, read on demand |
-| **Scatter** | `Serie::taken` and `Serie::filtered` (order.rs:987/1071), which wrap both arms, including `taken`'s zero-width fixed-size-serie `from_scalars` return at :1003. Through them: every `into_sorted`/`into_unique`/`into_reversed`/`into_taken`/`into_filtered`, every `as_*` doing `*self = self.into_*()`, `partition_by` groups over unsorted keys, and a held sorted gather. In place: `sort_range_in_place` and `reverse_range_in_place` (order.rs:1557/1577) when they return `true`, so the in-place and replacing forms agree. `SerieSliceMut::{swap, as_sorted, as_reversed, as_taken}`: the holder is scattered and the snapshot taken again. `ChunkedSerie` `into_*`/`as_*`, `partition_by` and `partition_by_chunked` groups | Constants and `windownum` kept, `rownum` null |
+| **Keep: overwrites** | `Serie::set`; a `splice` where `range.len() == rows.len()`; `set_cell`; `set_child` (the entering child is stripped); `WindowSerieMut::{set, fill, copy_from, splice}` | The rows stay where they are, so `rownum` stays true |
+| **Shift** | `Serie::slice(o, l)` (serie.rs:2626: `shifted(o)` on the fresh leaf); `Serie::window`/`window_mut` (snapshot); `WindowSerie::window`; `WindowSerie::into_serie` (the slice, then the window's own record); `ChunkedSerie::slice`; `partition_by` groups over sorted keys (they go through `slice`, order.rs:1140) | `rownum += o`, read on demand |
+| **Scatter** | `Serie::taken` and `Serie::filtered` (order.rs:987/1071), which wrap both arms, including `taken`'s zero-width fixed-size-serie `from_scalars` return at :1003. Through them: every `into_sorted`/`into_unique`/`into_reversed`/`into_taken`/`into_filtered`, every `as_*` doing `*self = self.into_*()`, `partition_by` groups over unsorted keys, and a held sorted gather. In place: `sort_range_in_place` and `reverse_range_in_place` (order.rs:1557/1577) when they return `true`, so the in-place and replacing forms agree. `WindowSerieMut::{swap, as_sorted, as_reversed, as_taken}`: the holder is scattered and the snapshot taken again. `ChunkedSerie` `into_*`/`as_*`, `partition_by` and `partition_by_chunked` groups | Constants and `windownum` kept, `rownum` null |
 | **Scatter: writes that move rows** | `Serie::splice` with `range.len() != rows.len()`, so `push`, `insert`, `remove`, `pop`, `truncate`, `clear` and `extend`; `Serie::write` with a count change (`resize`); `Serie::append` (the `extend_from_serie` fast path); every `get_<leaf>_mut` borrow, through one `leaf_mut`, conservatively, because a typed writer can move rows and states nothing about which; `ChunkedSerie::push_chunk` | One check at each `Serie` door, after the write succeeds. A refused write changes nothing. `extend_from_serie` never reads `other`'s record |
 | **Derive** | `window_by` on the five owners | See Windowing |
 | **Take** | `ChunkedSerie::from_serie`; `SerieReader::from_serie` (a non-record serie becomes a stripped child in `held_record`, serie/arrow.rs:1527); `SerieReader::from_chunked`; `ChunkedSerie::from_serie_reader` (the reader's record shifted by `served`, read before the drain); `ChunkedSerie::into_serie` (the join, `[one]` or `[]` states the chunked record) | Moved to the container, and the part becomes bare |
@@ -138,7 +138,7 @@ A "fresh leaf" is the one a door just landed. Taking the record onto it costs 0 
 - `serie_leaf!`'s `compare_rows`/`hash_rows` (serie.rs:149/305/318);
 - `Serie`'s `Eq`/`Ord`/`Hash` (serie.rs:3142-3176);
 - `ChunkedSerie` (chunked_serie.rs `PartialEq`/`Ord`/`Hash`);
-- `SerieSlice` (serie_slice.rs:980-1019);
+- `WindowSerie` (window_serie.rs:980-1019);
 - `Scalar::Serie` (scalar.rs `Ord`/`Hash`);
 - `Display` (`display_column`), `stable_hash`, the xxhash Arrow row digests (which read arrays) and `memory_size`.
 
@@ -146,7 +146,7 @@ A "fresh leaf" is the one a door just landed. Taking the record onto it costs 0 
 
 **`Debug`** prints the record only when one is stated:
 - `debug_column` gains a `statics: Option<&Statics>` parameter, which each of the 15 leaf `Debug` impls passes;
-- `SerieSlice`, `SerieSliceMut`, `ChunkedSerie` and `SerieReader` (as in flight) print it too;
+- `WindowSerie`, `WindowSerieMut`, `ChunkedSerie` and `SerieReader` (as in flight) print it too;
 - `Statics` prints its field name and derived cells.
 
 **Wire rule:** a record lives in this process and travels with in-process copies only.
@@ -276,13 +276,13 @@ impl SerieReader {
 - `Iterator::next` adds each yielded batch's length to `served`, for every source.
 - `cast` keeps both `statics` and `served`.
 
-**`rust/src/serie_slice.rs`:**
+**`rust/src/window_serie.rs`:**
 
 ```rust
-#[derive(Clone)] pub struct SerieSlice<'a> { serie: &'a Serie, offset: usize, len: usize, statics: Option<Statics> }
-pub struct SerieSliceMut<'a> { serie: &'a mut Serie, offset: usize, len: usize, statics: Option<Statics> }
-impl StaticValues for SerieSlice<'_> {}  impl StaticValues for SerieSliceMut<'_> {}
-impl<'a> SerieSlice<'a> {
+#[derive(Clone)] pub struct WindowSerie<'a> { serie: &'a Serie, offset: usize, len: usize, statics: Option<Statics> }
+pub struct WindowSerieMut<'a> { serie: &'a mut Serie, offset: usize, len: usize, statics: Option<Statics> }
+impl StaticValues for WindowSerie<'_> {}  impl StaticValues for WindowSerieMut<'_> {}
+impl<'a> WindowSerie<'a> {
     pub fn with_static_values(self, values: Statics) -> Self; // this window stating its own record; the holder untouched
 }
 impl SerieWindows<'_> {
@@ -290,8 +290,8 @@ impl SerieWindows<'_> {
 }
 ```
 
-- `SerieSliceRows` holds a copy of the window without its record.
-- `SerieSliceMut::as_window` clones the snapshot.
+- `WindowSerieRows` holds a copy of the window without its record.
+- `WindowSerieMut::as_window` clones the snapshot.
 
 **`rust/src/chunked_serie.rs`:**
 
@@ -317,7 +317,7 @@ Its 19 call sites (chunked_serie.rs plus cast.rs:708) are respelled by one sweep
 - The crate-private `struct Statics` in serie/arrow.rs:1475.
 - The inherent `SerieReader::static_values` and `get_static_value`. Callers now `use yggdryl::StaticValues`.
 - The `FieldRecord`-taking `set_`/`with_static_values`.
-- The test-side `// The window is Copy` pin (tests/root/serie_slice.rs:171).
+- The test-side `// The window is Copy` pin (tests/root/window_serie.rs:171).
 
 ---
 
@@ -331,10 +331,10 @@ Its 19 call sites (chunked_serie.rs plus cast.rs:708) are respelled by one sweep
 
 **The collision refusal** (the in-flight refusal 5, now `Statics::window_field`) runs at all five owners, after the binder's refusals and before any key row is read. A key named `rownum` or `windownum` is aliased. Every window states a record, even over a bare carrier.
 
-**Held** (`Serie`, `SerieSlice` and `SerieSliceMut::window_by` give `SerieWindows`):
+**Held** (`Serie`, `WindowSerie` and `WindowSerieMut::window_by` give `SerieWindows`):
 - `SerieWindows::new` builds `record`, `kept` and `base` once (+S). The base is `None` on the `Cuts::Gathered` path, since the gathered holder already went through `taken` and so is scattered.
 - Each `SerieWindowsIter` step calls `Statics::window(record, kept, keys, key_row, position, rownum)`: one row (kept, then the key children's cells at `key_row`, then `windownum`, then `rownum`), which replaces `proven_row(&keys, key_row)`.
-- The step yields `(key, SerieSlice { serie: holder, offset, len, statics: Some(record) })`.
+- The step yields `(key, WindowSerie { serie: holder, offset, len, statics: Some(record) })`.
 - `rownum` under `Cuts::Starts` is `base + (offset − windows.offset)`.
 - An absent key-record row yields the key `Scalar::Null` and null key cells.
 - The per-window cost is unchanged, and `ptr::eq(windows.serie(), &quotes)` holds over keys in order.
@@ -380,12 +380,12 @@ Members:
 - `PySerieReader`: the same four.
   - It caches `statics: Option<Statics>` beside `field`, captured at `from_inner`, so a spent reader still answers.
   - `set_static_values` writes both the cache and the live reader. On a spent reader it raises the error `take()` raises.
-- `PySerieSlice` stays frozen and gains `statics: Option<Statics>`, the window's own record (`Statics` is `Send + Sync`).
+- `PyWindowSerie` stays frozen and gains `statics: Option<Statics>`, the window's own record (`Statics` is `Send + Sync`).
   - `read()`, `detached()` and `write()` rebuild `parent.window(o, l)?` and then `.with_static_values(own.clone())` when it has its own record.
   - `None` reads the parent's live record through the core snapshot.
   - It has the three readers and no setter.
   - The docstring line "holds the Serie object, an offset and a length, and nothing else" gains "and a `window_by` window's own record".
-- `Serie.window_by` and `SerieSlice.window_by`: the detached closure returns `(Option<Serie>, Vec<(Scalar, usize, usize, Statics)>)`, each record an `Arc`-bump clone.
+- `Serie.window_by` and `WindowSerie.window_by`: the detached closure returns `(Option<Serie>, Vec<(Scalar, usize, usize, Statics)>)`, each record an `Arc`-bump clone.
 - `SerieReaderWindows.static_field` is as in flight.
 - `_native.pyi`, `typing_bindings.py`, and `mypy --strict`.
 
@@ -395,17 +395,17 @@ Members:
   - `staticField` getter;
   - `getStaticValue(path: string | FieldPath)`;
   - `setStaticValues(values, field?)`: `undefined` is skipped and keeps the record, `null` clears it.
-- `JsSerieSlice` gains `statics: Option<Statics>` and gets the three readers.
+- `JsWindowSerie` gains `statics: Option<Statics>` and gets the three readers.
 - `JsSerieReader` caches the record at `from_core`, before any take or end of stream.
 - Natives go into the frozen native tables and their delete lists (binding.js:1455-1571, 2101-2146, 2358-2474) and into binding.d.ts. `node/index.{js,d.ts}` are regenerated by `npm run --prefix node build:debug`.
 - Arrow crossings drop the record. Node has no `SerieReader` write door, so a JS part writer reads `staticValues` before `intoArrowReader()`; a `SerieReader` IOMedia door is MediaSerie's change, not this one.
 
 **Parity.**
 - Identical in all three languages: the names (snake and camel case), the argument order `(values, field)`, `None`/`null` clears, the reserved names, the refusal texts, and windows being read-only.
-- Rust only: the `StaticValues` trait, the `Statics` type, `try_with_static_values`, `SerieSliceMut`, `SerieSlice::with_static_values`, `SerieWindows::static_field`, and `FieldScalar::get_by_path`.
+- Rust only: the `StaticValues` trait, the `Statics` type, `try_with_static_values`, `WindowSerieMut`, `WindowSerie::with_static_values`, `SerieWindows::static_field`, and `FieldScalar::get_by_path`.
 
 **Inventories.** `.api-bindings.txt`:
-- Python lines 70, 74 and 78: the four members on Serie, ChunkedSerie and SerieReader; line 80: SerieSlice gets the three readers; the `SerieReaderWindows` entry.
+- Python lines 70, 74 and 78: the four members on Serie, ChunkedSerie and SerieReader; line 80: WindowSerie gets the three readers; the `SerieReaderWindows` entry.
 - Node lines 534-568: the camelCase twins.
 
 ---
@@ -421,7 +421,7 @@ Mirror files, refusals first. Each new file opens with its `//!` source line.
   - `a_shift_moves_rownum_alone_and_an_overflow_reads_null`.
   - `a_scatter_nulls_rownum_and_keeps_every_other_cell`.
   - `two_records_are_equal_and_hash_alike_when_fields_and_derived_cells_are`.
-  - `every_carrier_answers_one_spelling`: one generic `fn check(c: &impl StaticValues)` over Serie, a plain SerieSlice, SerieSliceMut, ChunkedSerie, SerieReader, a held window, a chunked window and a stream window.
+  - `every_carrier_answers_one_spelling`: one generic `fn check(c: &impl StaticValues)` over Serie, a plain WindowSerie, WindowSerieMut, ChunkedSerie, SerieReader, a held window, a chunked window and a stream window.
   - `static_values_never_enter_identity`: `==`, `cmp`, hash, a `HashSet` holding one, `Display`, serde JSON, value-stream bytes, `stable_hash` and `memory_size`, stated against bare, for each carrier and for `Scalar::from(serie)`.
   - `every_value_and_byte_door_drops_them`: `into_arrow_array` then `from_arrow_array`, serde, the value stream, `into_run`, `from_scalars`.
 - **`rust/tests/root/typed.rs`:** `field_scalar_get_by_path_lends_record_steps_by_exact_name`.
@@ -436,7 +436,7 @@ Mirror files, refusals first. Each new file opens with its `//!` source line.
   - `a_gather_keeps_constants_and_windownum_and_nulls_rownum`: every `into_*` against its `as_*` twin, the primitive and boolean in-place arms, and `taken`'s zero-width fixed-size branch;
   - `partition_by_shifts_rownum_where_sliced_and_nulls_it_where_taken`;
   - `held_window_by_refuses_a_key_cell_folding_onto_a_kept_or_reserved_name_before_any_row`.
-- **`rust/tests/root/serie_slice.rs`:**
+- **`rust/tests/root/window_serie.rs`:**
   - `a_window_states_its_holders_record_shifted_at_the_cut`, including a window of a window;
   - `a_window_by_window_owns_its_record_and_narrowing_shifts_it`;
   - `into_serie_states_what_the_window_states`;
@@ -462,9 +462,9 @@ Mirror files, refusals first. Each new file opens with its `//!` source line.
   - `window_by_on_a_reader_refuses_before_any_pull` loses its "`rownum` static of utf8" case, which `from_record` now owns.
 - **Python:**
   - `python/tests/test_serie.py` (Serie and SerieReader): dict in field order, `static_field`, a str and a `FieldPath` path, `None` clears, a run raises `ValueError`, copy keeps and pickle drops, `==` ignores the record, a spent reader still answers, held window records;
-  - `test_serie_slice.py` (read-only, `window_by` records, narrowing shifts) and `test_chunked_serie.py`;
+  - `test_window_serie.py` (read-only, `window_by` records, narrowing shifts) and `test_chunked_serie.py`;
   - `typing_bindings.py`.
-- **Node:** `node/tests/{serie,serie_slice,chunked_serie}.test.js`, mirroring the Python cases, plus `setStaticValues(undefined)` keeping the record and `setStaticValues(null)` clearing it; `*.types.ts` with `@ts-expect-error setStaticValues` on a `SerieSlice`.
+- **Node:** `node/tests/{serie,window_serie,chunked_serie}.test.js`, mirroring the Python cases, plus `setStaticValues(undefined)` keeping the record and `setStaticValues(null)` clearing it; `*.types.ts` with `@ts-expect-error setStaticValues` on a `WindowSerie`.
 
 ---
 
@@ -474,7 +474,7 @@ All in `rust/tests/allocations.rs`, each run at 64 and at 4,096 rows.
 
 **New pins:**
 1. `static_values_are_lent_free_on_every_carrier`. It replaces the in-flight `static_values_are_lent_free`. Every reader costs 0 on every carrier; `static_values()` after a shift over a non-null `rownum` costs 1; `get_static_value(rownum)` costs 0.
-2. `a_cut_carries_its_record_for_nothing`. Each of these costs the same stating a record as bare: `Serie::slice`, `window`, `SerieSlice::window`, a partial `into_serie`, `ChunkedSerie::slice`, a non-identity `ArrowCastPlan::apply`, `apply_chunked`.
+2. `a_cut_carries_its_record_for_nothing`. Each of these costs the same stating a record as bare: `Serie::slice`, `window`, `WindowSerie::window`, a partial `into_serie`, `ChunkedSerie::slice`, a non-identity `ArrowCastPlan::apply`, `apply_chunked`.
 3. `a_gather_nulls_rownum_with_one_row`. Stating `{venue, rownum}` costs bare + 1. Stating `{venue}` costs bare, including the in-place `as_sorted`.
 4. `a_write_that_moves_rows_nulls_rownum_once`. The first `push` costs bare + 1, the second costs bare, and `set` costs bare.
 5. `stating_a_record_copies_a_leaf_only_when_shared`. On a unique leaf it costs 0; on a shared one, 1 (a record leaf, 2). `from_record` costs ≈ 2 + F.
@@ -491,7 +491,7 @@ All in `rust/tests/allocations.rs`, each run at 64 and at 4,096 rows.
 
 No per-window, per-chunk, per-edge or slice pin moves, and every statics-free pin stays put. A move anywhere else is a defect.
 
-**Size pins:** `size_of::<Statics>() == 32`, `size_of::<Option<Statics>>() == 32`, `size_of::<SerieSlice<'static>>() == 56`. The 40 and 48 B gates are untouched.
+**Size pins:** `size_of::<Statics>() == 32`, `size_of::<Option<Statics>>() == 32`, `size_of::<WindowSerie<'static>>() == 56`. The 40 and 48 B gates are untouched.
 
 **Benchmarks**, direction only with `--quick`:
 - `rust/benchmarks/types/datatype/serie.rs`: `serie/static_values/lend`, `serie/slice_stated` against `serie/slice`, `serie/into_sorted_stated`, `window_by/record_read`;
@@ -519,7 +519,7 @@ No Performance table changes.
   - the stale "Size | 24 bytes" row (line 13) becomes 40 B, plus "a stated column's leaf + 32 B";
   - a Static values row in the doors table linking the new page;
   - "Windows by key" says every window states its record.
-- **`docs/types/serie-slice.md`:** `SerieSlice` is `Clone` and 56 B; a window states its holder's record shifted, or its own; `with_static_values` is Rust only; windows have no setters.
+- **`docs/types/window-serie.md`:** `WindowSerie` is `Clone` and 56 B; a window states its holder's record shifted, or its own; `with_static_values` is Rust only; windows have no setters.
 - **`docs/types/chunked-serie.md`:** one record per chunked serie and chunks state none; the `from_series` agreement rule; `push_chunk`; window records.
 - **`docs/arrow/readers.md`:** the extension's "Static values" section shrinks to the stream specifics plus a link: batches are bare; `served`; `from_serie`, `from_chunked` and `from_serie_reader` carry the record; windows state the shared shape.
 - **`docs/media/index.md`:** one sentence in the Read and write overview: a part's static values are the partition seam, read before `write_arrow`.
@@ -527,7 +527,7 @@ No Performance table changes.
   - a door row: "values constant over a series (partition, key, place)", spelled `StaticValues::static_values` / `static_values` / `staticValues`;
   - pitfalls: transport and pickle drop the record; a gather or a moving write nulls `rownum`; a run states none; a window has no setter.
 - **`AGENTS.md`:**
-  - Layout rows: `statics.rs` (Statics, the sealed StaticValues, reserved names, shift, scatter, window records, `common`); `serie.rs + serie/` (every column leaf holds `Option<Statics>` beside its field, a run holds none, the hooks sit at `slice`, `taken`, `filtered`, `splice`, `write`, `append`, `leaf_mut`); `serie_slice.rs` (a reference, an offset, a length and its record; `Clone`); `chunked_serie.rs` (one record, chunks bare); `typed.rs` (`get_by_path`).
+  - Layout rows: `statics.rs` (Statics, the sealed StaticValues, reserved names, shift, scatter, window records, `common`); `serie.rs + serie/` (every column leaf holds `Option<Statics>` beside its field, a run holds none, the hooks sit at `slice`, `taken`, `filtered`, `splice`, `write`, `append`, `leaf_mut`); `window_serie.rs` (a reference, an offset, a length and its record; `Clone`); `chunked_serie.rs` (one record, chunks bare); `typed.rs` (`get_by_path`).
   - The DataType/Field/Scalar table gets a row "values constant over the rows | `Statics`, beside the root, never a column, rows-alone identity".
   - "Serie is the collection" gets a Want/Spell row.
   - Zero copy gets a bullet: lending, a cut and a cast carry a record at 0 allocations.
@@ -535,7 +535,7 @@ No Performance table changes.
   - a `statics.rs` section: `Statics` (`from_record`, `field`, `values`, `get`, `TryFrom`) and `StaticValues` (`statics`, `static_field`, `static_values`, `get_static_value`);
   - `set_`/`try_with_`/`clear_static_values` on `Serie`;
   - `set_`/`with_`/`clear_` on `ChunkedSerie` and `SerieReader`, with the inherent `SerieReader` readers deleted;
-  - `SerieSlice::with_static_values` and `SerieWindows::static_field`;
+  - `WindowSerie::with_static_values` and `SerieWindows::static_field`;
   - `FieldScalar::get_by_path`.
 - **Rustdoc:** runnable examples on `Statics::from_record`, `StaticValues`, each setter, `SerieWindows::static_field` and `FieldScalar::get_by_path`. The in-flight `SerieReader` examples are respelled with `use yggdryl::{StaticValues, Statics}`.
 - **Checks:** `python scripts/check_api_inventory.py`; `python -m mkdocs build --strict --config-file mkdocs.yml`; `python scripts/check_docs_examples.py --lang rust|python|javascript`.
@@ -563,19 +563,19 @@ These are edits to apply on top of whatever the in-flight X1a–X4 land. Nothing
    New row: a reader's yielded batches are bare.
 6. **"Held windows attach no static values" is deleted, with its `(key, position, offset)` pin.**
    - `SerieWindows` gains `record`, `kept`, `base` and `static_field()`.
-   - Each item's `SerieSlice` owns its record, built in the row that replaces the key run; the key is a view of that row.
+   - Each item's `WindowSerie` owns its record, built in the row that replaces the key run; the key is a view of that row.
    - The correspondence pin compares records across held, chunked and stream windows, as in Windowing.
 7. **`ChunkedSerie::window_by` windows state records.** A regroup builds each merged window's row (+1 per window on that path).
 8. **Refusal 5** (the key-cell collision) applies at all five `window_by` owners, through `Statics::window_field`.
-9. **`SerieSlice` loses `Copy`.** It grows 24 → 56 B, `SerieSliceRows` holds a copy without the record, and the in-flight item stays `(Scalar, SerieSlice<'s>)`.
+9. **`WindowSerie` loses `Copy`.** It grows 24 → 56 B, `WindowSerieRows` holds a copy without the record, and the in-flight item stays `(Scalar, WindowSerie<'s>)`.
 10. **Allocation pins:**
     - `static_values_are_lent_free` widens to every carrier;
     - the held builds and the chunked `BIND` gain + S, and the chunked regroup gains + W;
     - the stream law stands.
 11. **Bindings (X5 and X6):**
-    - the accessors spread from `SerieReader` to `Serie`, `SerieSlice` (read-only) and `ChunkedSerie`;
+    - the accessors spread from `SerieReader` to `Serie`, `WindowSerie` (read-only) and `ChunkedSerie`;
     - the Python held `window_by` closure returns `(Scalar, usize, usize, Statics)`;
-    - Node's `_windowByNative` carries each window's record into `JsSerieSlice`;
+    - Node's `_windowByNative` carries each window's record into `JsWindowSerie`;
     - the `PySerieReader` and `JsSerieReader` caches hold a `Statics`.
 12. **Docs (X7):** the Static values contract moves from `docs/arrow/readers.md` to `docs/types/static-values.md`.
 13. **The seam paragraph stands.** `MediaSerie` implements `StaticValues`.
@@ -592,9 +592,9 @@ These are edits to apply on top of whatever the in-flight X1a–X4 land. Nothing
 | S2a leaves | `serie` | `rust/src/serie/{null,boolean,primitive,bytes,enums,mapping,runend,sequence,structure,union,variant}.rs` (one compiler-driven sweep: the field, `new`, the six `Clone` impls, struct literals, `Debug`) | S1 | Settled together with S2b |
 | S2b serie root | `serie` | `rust/src/serie.rs`, `rust/tests/root/serie.rs` | S1, in parallel with S2a | One `cargo check --keep-going` after both; `--test root serie static` |
 | S3 serie verbs | `serie` | `rust/src/serie/order.rs`, `rust/src/serie/arrow.rs`, `rust/tests/serie/{order,arrow}.rs` | S2 | Settled together with S4 |
-| S4 carriers | root | `rust/src/serie_slice.rs`, `rust/src/chunked_serie.rs` (the `from_landed` sweep), `rust/src/cast.rs`, `rust/tests/root/{serie_slice,chunked_serie,cast}.rs` | S2, in parallel with S3 | One `cargo check --keep-going` after both; `--test serie order`; `--test serie arrow static`; `--test root serie_slice`; `--test root chunked`; `--test root cast`; `--doc window_by` |
+| S4 carriers | root | `rust/src/window_serie.rs`, `rust/src/chunked_serie.rs` (the `from_landed` sweep), `rust/src/cast.rs`, `rust/tests/root/{window_serie,chunked_serie,cast}.rs` | S2, in parallel with S3 | One `cargo check --keep-going` after both; `--test serie order`; `--test serie arrow static`; `--test root window_serie`; `--test root chunked`; `--test root cast`; `--doc window_by` |
 | S5 cost | — | `rust/tests/allocations.rs`, `rust/benchmarks/types/datatype/serie.rs` | S3 and S4 | `--test allocations -- static window_by chunked_window`; `--test iobase_calls windowing`; `cargo bench -p yggdryl --bench types -- static --quick`. The core settles here |
-| X5 Python | — | The extension's X5 set (`python/src/{serie,serie_slice,chunked_serie,lib}.rs`, `_native.pyi`, the three test files, `typing_bindings.py`, `benchmarks/types/serie.py`), with the members above | S5 | The extension's X5 smoke |
+| X5 Python | — | The extension's X5 set (`python/src/{serie,window_serie,chunked_serie,lib}.rs`, `_native.pyi`, the three test files, `typing_bindings.py`, `benchmarks/types/serie.py`), with the members above | S5 | The extension's X5 smoke |
 | X6 Node | — | The extension's X6 set | X5 | The extension's X6 smoke |
 | X7 Docs | — | The extension's X7 set plus `docs/types/static-values.md` and `mkdocs.yml` | Foreground, while X8 holds the cargo lock | `mkdocs build --strict`, `check_api_inventory.py` |
 | X8 chain | — | One background script, one log | X6 | The extension's X8 chain, then commit, push and read CI |
@@ -605,7 +605,7 @@ These are edits to apply on top of whatever the in-flight X1a–X4 land. Nothing
 
 | # | Decision | Default | Alternative and why not |
 | --- | --- | --- | --- |
-| 1 | `SerieSlice` storage | Owns `Option<Statics>`: 56 B, `Clone`, a `window_by` record built in its key's row | Design 2's lazy `cut: &SerieWindows`, `Copy` at 48 B, costs one row per read and a public `get`/`into_owned` on `SerieWindows`. Design 1's eager table costs O(W × width) memory |
+| 1 | `WindowSerie` storage | Owns `Option<Statics>`: 56 B, `Clone`, a `window_by` record built in its key's row | Design 2's lazy `cut: &SerieWindows`, `Copy` at 48 B, costs one row per read and a public `get`/`into_owned` on `SerieWindows`. Design 1's eager table costs O(W × width) memory |
 | 2 | Writes | Overwrites keep; count-changing writes, reorders and every `get_<leaf>_mut` borrow null `rownum`; constants are always the owner's statement | "Writes keep everything" is simpler but leaves a false `rownum` that a later slice compounds |
 | 3 | `ChunkedSerie::from_series` | All chunks agree, else none | Always none loses partition values on a rebuild; per-name intersection silently erases claims |
 | 4 | Wire | serde, the value stream, pickle and Arrow drop the record; copies keep it | An optional `SerieWire` key plus a third pickle argument is a new shape, and equal `Scalar`s would serialize differently |
@@ -616,6 +616,6 @@ These are edits to apply on top of whatever the in-flight X1a–X4 land. Nothing
 | 9 | Key children over a nullable holder | Declared nullable; an absent key row gives a `Null` key and null cells | A data-dependent record shape |
 | 10 | The expression binder scope (statics as `Kind::Literal`, typed `Bounds` from a record) | Not in this change; a seam | It pulls in X2's `bind.rs`, `typing.rs` and `selector.rs` |
 | 11 | A Node `SerieReader` IOMedia door | Not in this change; it is MediaSerie's | — |
-| 12 | Task #15 (`SerieSlice` → `WindowSerie`) | Lands after this, as its own sweep script, and renames the new members with everything else | — |
+| 12 | Task #15 (`WindowSerie` → `WindowSerie`) | Lands after this, as its own sweep script, and renames the new members with everything else | — |
 | 13 | Typed leaf verbs | A leaf's own `slice` and the like state none; a whole leaf turned back into a serie keeps the record it carried | Hooking 15 leaf bodies, which the compiler does not force |
 | 14 | Storage width per leaf | 32 B inline (`Option<Statics>`), so cuts and window records cost 0 extra allocations | `Option<Arc<...>>` plus a shift is 16 B, but adds one allocation per stated record and per window and moves the per-window pins |

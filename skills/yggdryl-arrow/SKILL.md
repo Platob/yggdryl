@@ -58,7 +58,7 @@ cross-language conventions: see the `yggdryl` entry skill.
 | Write rows | `push`, `set`, `insert`, `remove`, `pop`, `extend`, `splice(range, rows)`, `resize`, `truncate`, `clear`, `extend_from_serie` | same names, `splice(start, end, rows)` | `push`, `set`, `insert`, `remove`, `pop`, `extend`, `splice(start, end, rows)`, `resize`, `truncate`, `clear`, `extendFromSerie` |
 | Children of a record column | `child(name)`, `children()`, `items()`, `get_child_by_path(&FieldPath)`, `set_child(serie)?`, `set_cell(&path, i, v)?` | `child`, `children()`, `items()`, `get_child_by_path("a.b")`, `set_child`, `set_cell("a.b", i, v)` | `child`, `children()`, `items()`, `getChildByPath`, `setChild`, `setCell` |
 | Zero-copy window | `serie.slice(offset, len)?` | `serie.slice(offset, len)`, `serie[a:b]` | `serie.slice(offset, len)` |
-| Read or write a stretch where it stands | `serie.window(offset, len)?`, `window_mut(offset, len)?` (`set`, `fill`, `swap`, `as_sorted`, ...) | `serie.window(offset, length)` -> `SerieSlice` | `serie.window(offset, length)` -> `SerieSlice` |
+| Read or write a stretch where it stands | `serie.window(offset, len)?`, `window_mut(offset, len)?` (`set`, `fill`, `swap`, `as_sorted`, ...) | `serie.window(offset, length)` -> `WindowSerie` | `serie.window(offset, length)` -> `WindowSerie` |
 | Sort, order, deduplicate, take, filter (a new serie) | `sort_indices(options)?`, `into_sorted(options)?`, `into_unique()?`, `into_reversed()`, `into_taken(&indices)?`, `into_filtered(&mask)?`, `is_sorted(options)`, `is_unique()`, `unique_count()` | same names; `options` are `descending=False, nulls_first=False` keywords | `sortIndices`, `intoSorted`, `intoUnique`, `intoReversed`, `intoTaken`, `intoFiltered`, `isSorted`, `isUnique`, `uniqueCount`; `options` is `{ descending, nullsFirst }` |
 | The same, in place and chained | `serie.as_sorted(options)?.as_unique()?.as_reversed()?`, `as_taken`, `as_filtered` | `serie.as_sorted().as_unique().as_reversed()`, `as_taken`, `as_filtered` | `serie.asSorted().asUnique().asReversed()`, `asTaken`, `asFiltered` |
 | Group rows by a key | `partition_by(&keys)?`, `partition_by_paths(&paths)?`; a chunked serie's keys held in chunks: `partition_by_chunked` | `partition_by(keys)`, `partition_by_paths("venue")` | `partitionBy(keys)`, `partitionByPaths('venue')` |
@@ -221,7 +221,7 @@ the record `row`.
 - Serie: https://platob.github.io/yggdryl/types/serie/ - leaves, costs,
   [every columnar runtime in](https://platob.github.io/yggdryl/types/serie/#arrow-every-columnar-runtime-in)
   [sorting, uniqueness and partitions](https://platob.github.io/yggdryl/types/serie/#sorting-uniqueness-and-partitions),
-  [windows](https://platob.github.io/yggdryl/types/serie-slice/)
+  [windows](https://platob.github.io/yggdryl/types/window-serie/)
 - ChunkedSerie: https://platob.github.io/yggdryl/types/chunked-serie/
 - Cast: https://platob.github.io/yggdryl/types/cast/ -
   [required columns](https://platob.github.io/yggdryl/types/cast/#required-columns),

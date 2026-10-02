@@ -2098,28 +2098,28 @@ Object.defineProperty(Scalar.prototype, 'asSerie', {
 // that call - so the one class is both the shared and the mutable window.
 // The natives answering a serie are kept here, each handed out as its leaf's
 // class; values are typed through the field the serie carries.
-const NativeSerieSlice = binding.SerieSlice
-const nativeSerieSlice = Object.freeze({
-  asJs: NativeSerieSlice.prototype._asJsNative,
-  iter: NativeSerieSlice.prototype._iterNative,
-  isSorted: NativeSerieSlice.prototype._isSortedNative,
-  sortIndices: NativeSerieSlice.prototype._sortIndicesNative,
-  window: NativeSerieSlice.prototype._windowNative,
-  intoSerie: NativeSerieSlice.prototype._intoSerieNative,
-  intoSorted: NativeSerieSlice.prototype._intoSortedNative,
-  intoUnique: NativeSerieSlice.prototype._intoUniqueNative,
-  intoReversed: NativeSerieSlice.prototype._intoReversedNative,
-  intoTaken: NativeSerieSlice.prototype._intoTakenNative,
-  intoFiltered: NativeSerieSlice.prototype._intoFilteredNative,
-  partitionBy: NativeSerieSlice.prototype._partitionByNative,
-  equals: NativeSerieSlice.prototype._equalsNative,
-  set: NativeSerieSlice.prototype._setNative,
-  fill: NativeSerieSlice.prototype._fillNative,
-  copyFrom: NativeSerieSlice.prototype._copyFromNative,
-  splice: NativeSerieSlice.prototype._spliceNative,
-  asSorted: NativeSerieSlice.prototype._asSortedNative,
-  asReversed: NativeSerieSlice.prototype._asReversedNative,
-  asTaken: NativeSerieSlice.prototype._asTakenNative,
+const NativeWindowSerie = binding.WindowSerie
+const nativeWindowSerie = Object.freeze({
+  asJs: NativeWindowSerie.prototype._asJsNative,
+  iter: NativeWindowSerie.prototype._iterNative,
+  isSorted: NativeWindowSerie.prototype._isSortedNative,
+  sortIndices: NativeWindowSerie.prototype._sortIndicesNative,
+  window: NativeWindowSerie.prototype._windowNative,
+  intoSerie: NativeWindowSerie.prototype._intoSerieNative,
+  intoSorted: NativeWindowSerie.prototype._intoSortedNative,
+  intoUnique: NativeWindowSerie.prototype._intoUniqueNative,
+  intoReversed: NativeWindowSerie.prototype._intoReversedNative,
+  intoTaken: NativeWindowSerie.prototype._intoTakenNative,
+  intoFiltered: NativeWindowSerie.prototype._intoFilteredNative,
+  partitionBy: NativeWindowSerie.prototype._partitionByNative,
+  equals: NativeWindowSerie.prototype._equalsNative,
+  set: NativeWindowSerie.prototype._setNative,
+  fill: NativeWindowSerie.prototype._fillNative,
+  copyFrom: NativeWindowSerie.prototype._copyFromNative,
+  splice: NativeWindowSerie.prototype._spliceNative,
+  asSorted: NativeWindowSerie.prototype._asSortedNative,
+  asReversed: NativeWindowSerie.prototype._asReversedNative,
+  asTaken: NativeWindowSerie.prototype._asTakenNative,
 })
 for (const name of [
   '_asJsNative',
@@ -2143,37 +2143,37 @@ for (const name of [
   '_asReversedNative',
   '_asTakenNative',
 ]) {
-  delete NativeSerieSlice.prototype[name]
+  delete NativeWindowSerie.prototype[name]
 }
-const SerieSlice = function () {
-  throw new TypeError('SerieSlice is handed out by Serie; take one with serie.window(offset, length)')
+const WindowSerie = function () {
+  throw new TypeError('WindowSerie is handed out by Serie; take one with serie.window(offset, length)')
 }
-Object.defineProperty(SerieSlice, 'name', { value: 'SerieSlice' })
-SerieSlice.prototype = NativeSerieSlice.prototype
-Object.defineProperty(SerieSlice.prototype, 'constructor', {
+Object.defineProperty(WindowSerie, 'name', { value: 'WindowSerie' })
+WindowSerie.prototype = NativeWindowSerie.prototype
+Object.defineProperty(WindowSerie.prototype, 'constructor', {
   configurable: true,
-  value: SerieSlice,
+  value: WindowSerie,
   writable: true,
 })
 
 // What a window copies from: another window, or a whole serie.
 function windowSource(other, label) {
-  if (other instanceof NativeSerieSlice || other instanceof NativeSerie) return other
-  throw new TypeError(`${label} takes a SerieSlice or a Serie`)
+  if (other instanceof NativeWindowSerie || other instanceof NativeSerie) return other
+  throw new TypeError(`${label} takes a WindowSerie or a Serie`)
 }
 
-Object.defineProperties(SerieSlice.prototype, {
+Object.defineProperties(WindowSerie.prototype, {
   [Symbol.iterator]: {
     configurable: true,
     value() {
-      return Reflect.apply(nativeSerieSlice.iter, this, [])
+      return Reflect.apply(nativeWindowSerie.iter, this, [])
     },
   },
   asJs: {
     configurable: true,
     value(options) {
       const maxDepth = options == null ? undefined : checkedOptions(options).maxDepth
-      return fromTransport(Reflect.apply(nativeSerieSlice.asJs, this, [maxDepth]))
+      return fromTransport(Reflect.apply(nativeWindowSerie.asJs, this, [maxDepth]))
     },
   },
   toJSON: {
@@ -2187,9 +2187,9 @@ Object.defineProperties(SerieSlice.prototype, {
     writable: true,
     value(options) {
       return Reflect.apply(
-        nativeSerieSlice.isSorted,
+        nativeWindowSerie.isSorted,
         this,
-        sortOptionArgs(options, 'SerieSlice.isSorted'),
+        sortOptionArgs(options, 'WindowSerie.isSorted'),
       )
     },
   },
@@ -2199,9 +2199,9 @@ Object.defineProperties(SerieSlice.prototype, {
     value(options) {
       return describedSerie(
         Reflect.apply(
-          nativeSerieSlice.sortIndices,
+          nativeWindowSerie.sortIndices,
           this,
-          sortOptionArgs(options, 'SerieSlice.sortIndices'),
+          sortOptionArgs(options, 'WindowSerie.sortIndices'),
         ),
       )
     },
@@ -2210,14 +2210,14 @@ Object.defineProperties(SerieSlice.prototype, {
     configurable: true,
     writable: true,
     value(offset, length) {
-      return Reflect.apply(nativeSerieSlice.window, this, [offset, length])
+      return Reflect.apply(nativeWindowSerie.window, this, [offset, length])
     },
   },
   intoSerie: {
     configurable: true,
     writable: true,
     value() {
-      return describedSerie(Reflect.apply(nativeSerieSlice.intoSerie, this, []))
+      return describedSerie(Reflect.apply(nativeWindowSerie.intoSerie, this, []))
     },
   },
   intoSorted: {
@@ -2226,9 +2226,9 @@ Object.defineProperties(SerieSlice.prototype, {
     value(options) {
       return describedSerie(
         Reflect.apply(
-          nativeSerieSlice.intoSorted,
+          nativeWindowSerie.intoSorted,
           this,
-          sortOptionArgs(options, 'SerieSlice.intoSorted'),
+          sortOptionArgs(options, 'WindowSerie.intoSorted'),
         ),
       )
     },
@@ -2237,14 +2237,14 @@ Object.defineProperties(SerieSlice.prototype, {
     configurable: true,
     writable: true,
     value() {
-      return describedSerie(Reflect.apply(nativeSerieSlice.intoUnique, this, []))
+      return describedSerie(Reflect.apply(nativeWindowSerie.intoUnique, this, []))
     },
   },
   intoReversed: {
     configurable: true,
     writable: true,
     value() {
-      return describedSerie(Reflect.apply(nativeSerieSlice.intoReversed, this, []))
+      return describedSerie(Reflect.apply(nativeWindowSerie.intoReversed, this, []))
     },
   },
   intoTaken: {
@@ -2252,8 +2252,8 @@ Object.defineProperties(SerieSlice.prototype, {
     writable: true,
     value(indices) {
       return describedSerie(
-        Reflect.apply(nativeSerieSlice.intoTaken, this, [
-          serieArgument(indices, 'SerieSlice.intoTaken indices'),
+        Reflect.apply(nativeWindowSerie.intoTaken, this, [
+          serieArgument(indices, 'WindowSerie.intoTaken indices'),
         ]),
       )
     },
@@ -2263,8 +2263,8 @@ Object.defineProperties(SerieSlice.prototype, {
     writable: true,
     value(mask) {
       return describedSerie(
-        Reflect.apply(nativeSerieSlice.intoFiltered, this, [
-          serieArgument(mask, 'SerieSlice.intoFiltered mask'),
+        Reflect.apply(nativeWindowSerie.intoFiltered, this, [
+          serieArgument(mask, 'WindowSerie.intoFiltered mask'),
         ]),
       )
     },
@@ -2273,8 +2273,8 @@ Object.defineProperties(SerieSlice.prototype, {
     configurable: true,
     writable: true,
     value(keys) {
-      return Reflect.apply(nativeSerieSlice.partitionBy, this, [
-        serieArgument(keys, 'SerieSlice.partitionBy keys'),
+      return Reflect.apply(nativeWindowSerie.partitionBy, this, [
+        serieArgument(keys, 'WindowSerie.partitionBy keys'),
       ]).map(([key, rows]) => [key, describedSerie(rows)])
     },
   },
@@ -2283,8 +2283,8 @@ Object.defineProperties(SerieSlice.prototype, {
     configurable: true,
     writable: true,
     value(other) {
-      return Reflect.apply(nativeSerieSlice.equals, this, [
-        windowSource(other, 'SerieSlice.equals'),
+      return Reflect.apply(nativeWindowSerie.equals, this, [
+        windowSource(other, 'WindowSerie.equals'),
       ])
     },
   },
@@ -2295,22 +2295,22 @@ Object.defineProperties(SerieSlice.prototype, {
     configurable: true,
     writable: true,
     value(index, value) {
-      Reflect.apply(nativeSerieSlice.set, this, [index, serieValue(value, this.field)])
+      Reflect.apply(nativeWindowSerie.set, this, [index, serieValue(value, this.field)])
     },
   },
   fill: {
     configurable: true,
     writable: true,
     value(value) {
-      Reflect.apply(nativeSerieSlice.fill, this, [serieValue(value, this.field)])
+      Reflect.apply(nativeWindowSerie.fill, this, [serieValue(value, this.field)])
     },
   },
   copyFrom: {
     configurable: true,
     writable: true,
     value(other) {
-      Reflect.apply(nativeSerieSlice.copyFrom, this, [
-        windowSource(other, 'SerieSlice.copyFrom'),
+      Reflect.apply(nativeWindowSerie.copyFrom, this, [
+        windowSource(other, 'WindowSerie.copyFrom'),
       ])
     },
   },
@@ -2318,10 +2318,10 @@ Object.defineProperties(SerieSlice.prototype, {
     configurable: true,
     writable: true,
     value(start, end, rows) {
-      Reflect.apply(nativeSerieSlice.splice, this, [
+      Reflect.apply(nativeWindowSerie.splice, this, [
         start,
         end,
-        serieValues(rows ?? [], this.field, 'SerieSlice.splice rows'),
+        serieValues(rows ?? [], this.field, 'WindowSerie.splice rows'),
       ])
     },
   },
@@ -2329,7 +2329,7 @@ Object.defineProperties(SerieSlice.prototype, {
     configurable: true,
     writable: true,
     value(options) {
-      Reflect.apply(nativeSerieSlice.asSorted, this, sortOptionArgs(options, 'SerieSlice.asSorted'))
+      Reflect.apply(nativeWindowSerie.asSorted, this, sortOptionArgs(options, 'WindowSerie.asSorted'))
       return this
     },
   },
@@ -2337,7 +2337,7 @@ Object.defineProperties(SerieSlice.prototype, {
     configurable: true,
     writable: true,
     value() {
-      Reflect.apply(nativeSerieSlice.asReversed, this, [])
+      Reflect.apply(nativeWindowSerie.asReversed, this, [])
       return this
     },
   },
@@ -2345,8 +2345,8 @@ Object.defineProperties(SerieSlice.prototype, {
     configurable: true,
     writable: true,
     value(indices) {
-      Reflect.apply(nativeSerieSlice.asTaken, this, [
-        serieArgument(indices, 'SerieSlice.asTaken indices'),
+      Reflect.apply(nativeWindowSerie.asTaken, this, [
+        serieArgument(indices, 'WindowSerie.asTaken indices'),
       ])
       return this
     },
@@ -2848,7 +2848,7 @@ Object.defineProperty(ArrowCastPlan.prototype, 'apply', {
 })
 
 binding.Serie = Serie
-binding.SerieSlice = SerieSlice
+binding.WindowSerie = WindowSerie
 binding.SerieReader = SerieReader
 binding.ChunkedSerie = ChunkedSerie
 binding.ArrowCastPlan = ArrowCastPlan

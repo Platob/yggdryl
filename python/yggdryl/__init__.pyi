@@ -231,7 +231,7 @@ from .serie import (
     SerieField as SerieField,
     SerieReader as SerieReader,
     SerieSerie as SerieSerie,
-    SerieSlice as SerieSlice,
+    WindowSerie as WindowSerie,
     SerieViewField as SerieViewField,
     SerieViewSerie as SerieViewSerie,
     StructSerie as StructSerie,

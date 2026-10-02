@@ -123,7 +123,7 @@ Every verb answers on both leaves; only its cost differs.
 | `as_sorted(options)`, `as_unique()`, `as_reversed()`, `as_taken(indices)`, `as_filtered(mask)` | the same, in place, answering `&mut Self` so calls chain; a refusal leaves the serie as it was |
 | `partition_by(keys)`, `partition_by_paths(paths)` | the rows grouped by a key serie of the same length, or a record column's rows by the cells `paths` reach: one `(key, rows)` per distinct key in first-occurrence order, an absent key one value |
 | `memory_size()` | the bytes the rows occupy: a column's buffers as its own slice counts them, a run's values as the row estimator charges them |
-| `window(offset, length)`, `window_mut(offset, length)` | a [`SerieSlice`](serie-slice.md) / `SerieSliceMut` reading and writing through this serie, window-relative; refused past the end |
+| `window(offset, length)`, `window_mut(offset, length)` | a [`WindowSerie`](window-serie.md) / `WindowSerieMut` reading and writing through this serie, window-relative; refused past the end |
 
 Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, rows)`, `from_scalars(field, rows)` and `from_default(field, rows)` for a column; `from_arrow_array`, `from_arrow_batch` and `from_arrow_reader` for buffers already holding it, each taking the field or root to land under and the [cast options](cast.md). `cast(field, options)` is the same column under another field. `Serie` is `Default` (the empty run), `FromIterator<Scalar>` (a run in one allocation), `From<Run>`, and `From<Serie> for Scalar`.
 
@@ -532,7 +532,7 @@ Every leaf answers every verb in one order - `Scalar`'s total order, with every 
     assert.ok(quotes.memorySize() > 0)
     ```
 
-A `SortOptions` crosses as keywords in Python - `descending` and `nulls_first`, on `sort_indices`, `is_sorted`, `into_sorted` and `as_sorted` - and as a plain `{ descending, nullsFirst }` object in JavaScript, omitted or `null` the default. `indices`, `mask` and `keys` are a `Serie` or an iterable of values read through `Scalar`, and in Python any columnar object too. `window(offset, length)` answers a [`SerieSlice`](serie-slice.md) in all three.
+A `SortOptions` crosses as keywords in Python - `descending` and `nulls_first`, on `sort_indices`, `is_sorted`, `into_sorted` and `as_sorted` - and as a plain `{ descending, nullsFirst }` object in JavaScript, omitted or `null` the default. `indices`, `mask` and `keys` are a `Serie` or an iterable of values read through `Scalar`, and in Python any columnar object too. `window(offset, length)` answers a [`WindowSerie`](window-serie.md) in all three.
 
 ## Children
 

@@ -30,12 +30,12 @@ This extension is layered on `.handoff/window-by/WINDOW_BY_SPEC.md` (the base). 
 | Base item | Extension |
 | --- | --- |
 | `window_by(by)` on the five owners (SerieReader is new) | `window_by(by, sorted: bool)`; no `sorted_window_by` anywhere |
-| `SerieWindows<'a>`, an `Iterator` | An owner over `Cow<'a, Serie>` that lends `(Scalar, SerieSlice<'_>)` through `iter()` and `&SerieWindows: IntoIterator`; `SerieWindowsIter<'s>` is the iterator. `impl Iterator/ExactSizeIterator/FusedIterator for SerieWindows` is deleted |
+| `SerieWindows<'a>`, an `Iterator` | An owner over `Cow<'a, Serie>` that lends `(Scalar, WindowSerie<'_>)` through `iter()` and `&SerieWindows: IntoIterator`; `SerieWindowsIter<'s>` is the iterator. `impl Iterator/ExactSizeIterator/FusedIterator for SerieWindows` is deleted |
 | `SerieWindows::new(serie, offset, keys)` | `SerieWindows::new(holder, offset, keys, sorted) -> Result<Self>` |
 | `Serie::window_starts(&self) -> BooleanBuffer` | `Serie::window_starts(&self, regroup: bool) -> Result<WindowCut>`: the same single pass, now also answering the first descent and, when asked and needed, the regrouping |
 | `Serie::same_key` | Deleted; `Serie::compare_to_row` compares a held key to a row in place |
 | `BoundSelector::apply_serie` (one arm, `Proof::Unproven`) | Same signature, three arms (direct, narrow, whole), the key plan hoisted into `bind_key`; plus `apply_serie_window` |
-| `SerieSlice::window_by` keys over `self.into_serie()` | Keys over `apply_serie_window(holder, offset, len)`, never `into_serie` |
+| `WindowSerie::window_by` keys over `self.into_serie()` | Keys over `apply_serie_window(holder, offset, len)`, never `into_serie` |
 | `Compare` rungs `Buffers`, `Values` | Adds a `Record` rung |
 | Base phases 5–8 (bindings, docs, chain) | Folded into X5–X8, run once against the extension's signatures |
 
@@ -43,7 +43,7 @@ This extension is layered on `.handoff/window-by/WINDOW_BY_SPEC.md` (the base). 
 
 ### One verb, one flag
 
-`window_by(by, sorted)` is the one verb on `Serie`, `SerieSlice`, `SerieSliceMut`, `ChunkedSerie` and `SerieReader`. `by` is read exactly as in the base.
+`window_by(by, sorted)` is the one verb on `Serie`, `WindowSerie`, `WindowSerieMut`, `ChunkedSerie` and `SerieReader`. `by` is read exactly as in the base.
 
 - **Rust:** a trailing `sorted: bool`. Rust has no default arguments, and the crate already takes a trailing bool flag: `IOBase::remove(recursive)`, `IOBase::children_where(filters, include_private)`, `EventIterator::new(elements, sorted)`.
 - **Python:** `window_by(by, sorted=False)`.
@@ -53,7 +53,7 @@ This extension is layered on `.handoff/window-by/WINDOW_BY_SPEC.md` (the base). 
 
 **`sorted = true`** answers each distinct key exactly once, in key order: ascending, absent keys last. That is `SortOptions::default()`, the default of the plan's `order by` and of DuckDB.
 - **Cut and verdict.** Equality is the base's and has no direction, so the windows are cut where `sorted = false` cuts them. `sorted` adds the order verdict, read in the same comparator pass: `Greater` between adjacent rows is a descent.
-- **Held owners** (`Serie`, `SerieSlice`, `SerieSliceMut`):
+- **Held owners** (`Serie`, `WindowSerie`, `WindowSerieMut`):
   - With no descent, the answer is exactly the `sorted = false` windows over the same holder, at the same cost (`std::ptr::eq(windows.serie(), &quotes)`).
   - With a descent, the runs (not the rows) are sorted stably by key, adjacent runs of one key are merged, and the rows are gathered once into key order, into a holder the windows value owns. Rows of one key keep their arrival order.
   - The gather alone requires `u32`-indexable rows. Past `u32::MAX` it is refused by `require_indexable`, naming the serie. This check runs after the key pass, and only when a gather is needed.
@@ -183,13 +183,13 @@ impl Serie {
 
 Its body is `let key = self.window_key(&by.into_selector()?)?; SerieWindows::new(self, 0, key.apply_serie(self)?, sorted)`. The rustdoc example adds `sorted` over XNYS, XNAS, XNYS, XNAS: two windows, XNAS first.
 
-Public, `rust/src/serie_slice.rs`:
+Public, `rust/src/window_serie.rs`:
 
 ```rust
-impl<'a> SerieSlice<'a> {
+impl<'a> WindowSerie<'a> {
     pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> Result<SerieWindows<'a>>;
 }
-impl<'a> SerieSliceMut<'a> {
+impl<'a> WindowSerieMut<'a> {
     pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> Result<SerieWindows<'_>>;
     // window_mut unchanged
 }
@@ -223,7 +223,7 @@ impl<'a> SerieWindows<'a> {
     pub fn iter(&self) -> SerieWindowsIter<'_>;
 }
 impl<'s, 'a: 's> IntoIterator for &'s SerieWindows<'a> {
-    type Item = (Scalar, SerieSlice<'s>);
+    type Item = (Scalar, WindowSerie<'s>);
     type IntoIter = SerieWindowsIter<'s>;
 }
 
@@ -235,14 +235,14 @@ pub struct SerieWindowsIter<'s> {
     at: usize,
     remaining: usize,
 }
-impl<'s> Iterator for SerieWindowsIter<'s> { type Item = (Scalar, SerieSlice<'s>); }
+impl<'s> Iterator for SerieWindowsIter<'s> { type Item = (Scalar, WindowSerie<'s>); }
 impl ExactSizeIterator for SerieWindowsIter<'_> {}
 impl FusedIterator for SerieWindowsIter<'_> {}
 ```
 
-- `SerieWindows<'a>` is covariant in `'a` (`Cow<'a, Serie>`), so `&'s SerieWindows<'a>` lends `SerieSlice<'s>`.
+- `SerieWindows<'a>` is covariant in `'a` (`Cow<'a, Serie>`), so `&'s SerieWindows<'a>` lends `WindowSerie<'s>`.
 - The `Starts` walk is the base's `next` body, moved.
-- A `Gathered` step yields `(proven_row(&keys, key_row), SerieSlice { serie: holder, offset: at, len: end - at })`.
+- A `Gathered` step yields `(proven_row(&keys, key_row), WindowSerie { serie: holder, offset: at, len: end - at })`.
 - The type name follows the crate's `MetadataIter` and `HeadersIter`.
 
 Public, `rust/src/chunked_serie.rs`:
@@ -288,7 +288,7 @@ impl Debug for SerieReaderWindows {}
 
 - `SerieReaderWindows` is `Send + Sync`, because `Walk: Send`. A sub-reader is `Send`, as `SerieReader` is.
 - `rust/src/serie.rs:204` becomes `pub use arrow::{SerieReader, SerieReaderWindows};`. `lib.rs:299` already has `pub use serie::*`.
-- `rust/src/lib.rs:230` becomes `pub use serie_slice::{SerieSlice, SerieSliceMut, SerieSliceRows, SerieWindows, SerieWindowsIter};`.
+- `rust/src/lib.rs:230` becomes `pub use window_serie::{WindowSerie, WindowSerieMut, WindowSerieRows, SerieWindows, SerieWindowsIter};`.
 
 Crate-private, `rust/src/serie/order.rs`:
 
@@ -378,14 +378,14 @@ Each existing `match` gains the `Window` arm:
 
 `window_by` binds through `by.into_selector()?.bind_key(&self.root, self.root.name(), "window by")`.
 
-`rust/src/serie_slice.rs`, crate-private: `pub(crate) fn SerieWindows::new(holder: &'a Serie, offset: usize, keys: Serie, sorted: bool) -> Result<Self>`. It runs `keys.window_starts(sorted)`. If it regrouped:
+`rust/src/window_serie.rs`, crate-private: `pub(crate) fn SerieWindows::new(holder: &'a Serie, offset: usize, keys: Serie, sorted: bool) -> Result<Self>`. It runs `keys.window_starts(sorted)`. If it regrouped:
 1. `require_indexable(holder)`;
 2. shift `order` by `offset` in place;
 3. `Cow::Owned(holder.taken(&order)?)`, offset 0, `Cuts::Gathered(windows)`.
 
 The `order` is then dropped. Otherwise the result is `Cow::Borrowed(holder)` with `Cuts::Starts`.
 
-**Re-spelled by one sweep script** driven by `cargo check -p yggdryl --all-targets --keep-going --message-format=short`: every `.window_by(x)` becomes `.window_by(x, false)`, plus `.iter()` wherever an iterator was used. This covers order.rs, serie_slice.rs and chunked_serie.rs, their tests and doc examples, and `allocations.rs:3129-3201, 3376-3418`.
+**Re-spelled by one sweep script** driven by `cargo check -p yggdryl --all-targets --keep-going --message-format=short`: every `.window_by(x)` becomes `.window_by(x, false)`, plus `.iter()` wherever an iterator was used. This covers order.rs, window_serie.rs and chunked_serie.rs, their tests and doc examples, and `allocations.rs:3129-3201, 3376-3418`.
 
 ## Algorithm and cost
 
@@ -549,7 +549,7 @@ These are the in-flight pins of this same branch, re-pinned in X4. Each move is 
 ## Nested
 
 **O(1), zero copy, or constant in rows:**
-- A held window: a `SerieSlice`, 0 allocations at any depth.
+- A held window: a `WindowSerie`, 0 allocations at any depth.
 - A lying key cell (bare column, record path, a column `*` keeps): an `Arc` clone with no proof, unless a record on its path holds an absent row.
 - A record key over ordered leaves: one Arrow struct comparator. Over mixed leaves, the `Record` rung: only the value-ordered children build their leaf rows (one `Vec`, 0 per row inline), and only float cells are NaN-scanned.
 - An edge: 0 for inline cells.
@@ -581,7 +581,7 @@ These are the in-flight pins of this same branch, re-pinned in X4. Each move is 
 Each method only parses, redirects and wraps. Every pull runs in `py.detach`.
 
 **Held owners:**
-- `Serie.window_by(by, sorted=False)` and `SerieSlice.window_by(by, sorted=False)` return `list[tuple[Scalar, SerieSlice]]`.
+- `Serie.window_by(by, sorted=False)` and `WindowSerie.window_by(by, sorted=False)` return `list[tuple[Scalar, WindowSerie]]`.
   - The signature is `#[pyo3(signature = (by, sorted = false))]`, positional or keyword, in Rust's order. A non-bool `sorted` (including `None`) is a `TypeError`, matching `EventIterator(items, sorted=True)`.
   - The detached closure returns `(Option<Serie>, Vec<(Scalar, usize, usize)>)`. The first half is `Some(windows.serie().clone())` (an `Arc` bump) only when `!ptr::eq(windows.serie(), serie)`.
   - Windows wrap the caller's own object (`w.serie is quotes`), or one new `Serie` shared by every window.
@@ -609,10 +609,10 @@ Refusals are a `ValueError` carrying the core message. `_native.pyi` gains `clas
 Natives are `skip_typescript` and are deleted from the prototypes.
 
 **Held owners:**
-- `_windowByNative(env, reference, by: SelectorInput, sorted: Option<bool>)` on `JsSerie` and `JsSerieSlice`, and `_windowByNative(by, sorted)` on `JsChunkedSerie`.
+- `_windowByNative(env, reference, by: SelectorInput, sorted: Option<bool>)` on `JsSerie` and `JsWindowSerie`, and `_windowByNative(by, sorted)` on `JsChunkedSerie`.
 - `undefined` is skipped and `null` clears to the default `false`, the `SortOptions` field precedent (`binding.d.ts:4396-4402`).
 - Windows sit over `reference.clone(env)?`, or over one new `JsSerie` of the gathered copy: `strictEqual(w.serie, quotes)` holds when nothing was gathered.
-- `binding.js` adds `windowBy(by, sorted)` on `Serie`, `SerieSlice` and `ChunkedSerie`.
+- `binding.js` adds `windowBy(by, sorted)` on `Serie`, `WindowSerie` and `ChunkedSerie`.
 
 **Streams:**
 - `SerieReader.prototype.windowBy(by, sorted)` consumes the reader ("a stream is read once"). `selector_from_input` runs before the take.
@@ -627,7 +627,7 @@ Natives are `skip_typescript` and are deleted from the prototypes.
 
 `binding.d.ts`:
 - `windowBy(by: Selector | Term | string | readonly (Term | string)[], sorted?: boolean | null)`;
-- `Array<[Scalar, SerieSlice]>` on `Serie` and `SerieSlice`, `Array<[Scalar, ChunkedSerie]>` on `ChunkedSerie`, and `SerieReaderWindows` on `SerieReader`.
+- `Array<[Scalar, WindowSerie]>` on `Serie` and `WindowSerie`, `Array<[Scalar, ChunkedSerie]>` on `ChunkedSerie`, and `SerieReaderWindows` on `SerieReader`.
 
 `node/index.js` and `node/index.d.ts` are regenerated by `npm run --prefix node build:debug`.
 
@@ -642,11 +642,11 @@ These are identical in all three languages:
 
 Divergences:
 - Rust only: setting is `set_`/`with_`/`clear_` over a `FieldRecord`. The bindings have one `set_static_values` / `setStaticValues` whose `None` / `null` clears.
-- Rust-only types: `SerieWindowsIter` and `SerieSliceMut`.
+- Rust-only types: `SerieWindowsIter` and `WindowSerieMut`.
 - Pre-existing: a Rust list of `&str` is column names.
 
 `.api-bindings.txt`:
-- Python lines 70-81: `window_by(by, sorted=False)` on `Serie`, `SerieSlice` and `ChunkedSerie`. `SerieReader` gains `get_static_value`, `set_static_values`, `static_field`, `static_values`, `window_by`. A new `SerieReaderWindows` entry.
+- Python lines 70-81: `window_by(by, sorted=False)` on `Serie`, `WindowSerie` and `ChunkedSerie`. `SerieReader` gains `get_static_value`, `set_static_values`, `static_field`, `static_values`, `window_by`. A new `SerieReaderWindows` entry.
 - Node lines 537-568: the camelCase twins.
 
 ## Tests
@@ -659,10 +659,10 @@ Refusals come first. Each new test file opens with its `//!` source line.
   - `window_by_sorted_gathers_the_rows_once_in_stable_key_order`: XNYS, XNAS, XNYS, absent, XNAS gives XNAS (rows 1 and 4, in that order), XNYS, absent last; it equals `into_taken(stable order)` cut by `sorted = false`.
   - `window_by_cuts_every_nested_key_as_its_values_do`: over `nested_columns()` (`order.rs:502`) plus a union, a map, a run-end column and `{venue: mic, px: float64 with a foreign NaN and ±0.0, qty}`, under both flags, against a reference cut by `compare_values` over `rows()`.
   - `the_record_rung_agrees_with_its_run_under_every_ordering`: extends `agrees_with_its_run` and `a_nested_absence_goes_where_the_options_put_a_top_level_one_on_every_rung` (`order.rs:883`) under the four `ORDERINGS`. The test at `order.rs:973` is renamed `a_record_with_a_value_ordered_leaf_compares_child_by_child_and_agrees_with_its_run`.
-- **`rust/tests/root/serie_slice.rs`:**
+- **`rust/tests/root/window_serie.rs`:**
   - `serie_windows_owns_a_gathered_holder_and_borrows_otherwise`;
   - `serie_windows_lends_its_windows_again_and_again`: `iter()` twice, `&windows` in a `for`, `len`, `is_empty`, an exact and fused iterator;
-  - `a_window_windows_sorted_over_its_own_rows`: borrowed offsets are absolute, a gather takes the window's rows only at offset 0, and `SerieSliceMut::window_by` answers the same.
+  - `a_window_windows_sorted_over_its_own_rows`: borrowed offsets are absolute, a gather takes the window's rows only at offset 0, and `WindowSerieMut::window_by` answers the same.
 - **`rust/tests/root/chunked_serie.rs`:**
   - `window_by_sorted_regroups_runs_across_chunks_with_no_row_copied`: `[B, A] [A, B]` gives A (one edge-merged run) and B (two pieces); `shares`; it equals `into_serie()?.window_by(by, true)`;
   - `window_by_compares_chunk_edges_in_place`: a NaN and ±0.0 at an edge.
@@ -683,10 +683,10 @@ Refusals come first. Each new test file opens with its `//!` source line.
 - **Untouched, and must stay green:** `rust/tests/media/merge.rs`, `iceberg/mod_.rs:8264`, `node/tests/iceberg.test.js:1320`.
 - **Python:**
   - `python/tests/test_serie.py` (`SerieReader` lives in `src/serie.rs`): `test_window_by_sorted_*` and `test_reader_window_by_*` mirroring the Rust names, including `w.serie is quotes` only over sorted keys, `static_values` as a dict, a passed window raising `ValueError`, `for w in walk: pass` raising nothing, and `sorted=None` raising `TypeError`;
-  - `test_serie_slice.py`, `test_chunked_serie.py`;
+  - `test_window_serie.py`, `test_chunked_serie.py`;
   - `typing_bindings.py`, plus `mypy --strict`.
 - **Node:**
-  - `node/tests/serie.test.js`, `serie_slice.test.js` and `chunked_serie.test.js`: the same cases, plus `windowBy(by)` deep-equal to `windowBy(by, false)` and `windowBy(by, null)`;
+  - `node/tests/serie.test.js`, `window_serie.test.js` and `chunked_serie.test.js`: the same cases, plus `windowBy(by)` deep-equal to `windowBy(by, false)` and `windowBy(by, null)`;
   - `*.types.ts` with `@ts-expect-error windowBy('venue', 'yes')`.
 
 ## Benchmarks
@@ -705,7 +705,7 @@ Refusals come first. Each new test file opens with its `//!` source line.
   - nested keys (path, struct, list or map cell, union);
   - a cost table: per call, per window, the comparison alone per row, and the Not-O(1) list;
   - edges: the `sorted` word, a direction other than ascending uses `sorted = false`, and the u32 bound on the gather.
-- **`docs/types/serie-slice.md`:** the Doors row `window_by(by, sorted)`. The cost row changes from `+ into_serie` to `+1 per key cell`.
+- **`docs/types/window-serie.md`:** the Doors row `window_by(by, sorted)`. The cost row changes from `+ into_serie` to `+1 per key cell`.
 - **`docs/types/chunked-serie.md`:** sorted runs regrouped as pieces, no join; edges compared in place.
 - **`docs/arrow/readers.md`:**
   - new "Windows of a stream": lazy sub-readers; one batch held whatever the window length; read a window before taking the next; passed versus served versus dropped; `sorted` verifies and refuses; windows of windows; a three-language example of `read_arrow`, then `window_by('venue', true)`, then each window's `static_values`, then `write_arrow` to its own file;
@@ -719,7 +719,7 @@ Refusals come first. Each new test file opens with its `//!` source line.
 - **`AGENTS.md`:**
   - Layout rows:
     - `serie.rs + serie/`: `order.rs` gains the `Record` rung and `window_starts`' descent and regrouping; `arrow.rs` gains `SerieReader` static values and `SerieReaderWindows`;
-    - `serie_slice.rs`: `SerieWindows` owner, `SerieWindowsIter`;
+    - `window_serie.rs`: `SerieWindows` owner, `SerieWindowsIter`;
     - `chunked_serie.rs`: sorted regrouping;
     - `expression/`: the key plan and its three arms, and `child_position`.
   - The `SerieReader` row of the `DataType`/`Field`/`Scalar` table: a reader states its constants as one record, never a column.
@@ -737,12 +737,12 @@ Refusals come first. Each new test file opens with its `//!` source line.
 | --- | --- | --- | --- | --- |
 | X1a ladder | `serie` | `rust/src/serie/order.rs`, `rust/tests/serie/order.rs` | gate | settled with X1b: `cargo check --all-targets --keep-going --message-format=short`, then `--test serie order` |
 | X2 key door | `expression` | `rust/src/expression/{selector,bind,arrow,path}.rs`, `rust/tests/expression/selector.rs` | gate, in parallel with X1a | `--test expression selector`; `--features internals --test expression selector`; `--test media merge`; `--features iceberg --test iceberg merge` |
-| X1b held surface | root | `rust/src/serie_slice.rs`, `rust/src/chunked_serie.rs`, `rust/src/lib.rs`, `rust/tests/root/{serie_slice,chunked_serie}.rs`, plus the sweep script over their doc examples | X1a and X2 (reads `window_starts` and `apply_serie_window`) | `--test root serie_slice`, `--test root chunked`, `--doc window_by` |
+| X1b held surface | root | `rust/src/window_serie.rs`, `rust/src/chunked_serie.rs`, `rust/src/lib.rs`, `rust/tests/root/{window_serie,chunked_serie}.rs`, plus the sweep script over their doc examples | X1a and X2 (reads `window_starts` and `apply_serie_window`) | `--test root window_serie`, `--test root chunked`, `--doc window_by` |
 | X3 stream | `serie` | `rust/src/serie/arrow.rs`, `rust/src/serie.rs`, `rust/tests/serie/arrow.rs` | X1a and X2, in parallel with X1b | `--test serie arrow`, `--doc SerieReader` |
 | X4 cost | — | `rust/tests/allocations.rs`, `rust/tests/iobase_calls.rs`, `rust/benchmarks/types/datatype/serie.rs`, `rust/benchmarks/arrow.rs` | X1b and X3 | `--test allocations -- window_by static_values windowed_stream chunked_sorted`, `--test iobase_calls windowing`, the two `--quick` benches. The core settles here |
-| X5 Python | — | `python/src/{serie,serie_slice,chunked_serie,lib}.rs`, `python/yggdryl/_native.pyi`, `python/tests/{test_serie,test_serie_slice,test_chunked_serie}.py`, `python/tests/typing_bindings.py`, `python/benchmarks/types/serie.py` | X4 | `cargo check --workspace --all-targets --keep-going --message-format=short`, `maturin develop`, `pytest python/tests/test_serie.py -x -q`, `mypy --strict` |
-| X6 Node | — | `node/src/{serie,serie_slice,chunked_serie}.rs`, `node/binding.js`, `node/binding.d.ts`, the generated `node/index.{js,d.ts}`, `node/tests/{serie,serie_slice,chunked_serie}.test.js`, `node/tests/*.types.ts`, `node/benchmarks/types.js` | X5 | `npm run --prefix node build:debug`, `node --test node/tests/serie.test.js` |
-| X7 Docs | — | `docs/types/{serie,serie-slice,chunked-serie}.md`, `docs/arrow/readers.md`, `docs/media/index.md`, `skills/yggdryl-arrow/**`, `AGENTS.md`, `.api-inventory.txt`, `.api-bindings.txt` | foreground, while X8 holds the cargo lock | `mkdocs build --strict`, `check_api_inventory.py` |
+| X5 Python | — | `python/src/{serie,window_serie,chunked_serie,lib}.rs`, `python/yggdryl/_native.pyi`, `python/tests/{test_serie,test_window_serie,test_chunked_serie}.py`, `python/tests/typing_bindings.py`, `python/benchmarks/types/serie.py` | X4 | `cargo check --workspace --all-targets --keep-going --message-format=short`, `maturin develop`, `pytest python/tests/test_serie.py -x -q`, `mypy --strict` |
+| X6 Node | — | `node/src/{serie,window_serie,chunked_serie}.rs`, `node/binding.js`, `node/binding.d.ts`, the generated `node/index.{js,d.ts}`, `node/tests/{serie,window_serie,chunked_serie}.test.js`, `node/tests/*.types.ts`, `node/benchmarks/types.js` | X5 | `npm run --prefix node build:debug`, `node --test node/tests/serie.test.js` |
+| X7 Docs | — | `docs/types/{serie,window-serie,chunked-serie}.md`, `docs/arrow/readers.md`, `docs/media/index.md`, `skills/yggdryl-arrow/**`, `AGENTS.md`, `.api-inventory.txt`, `.api-bindings.txt` | foreground, while X8 holds the cargo lock | `mkdocs build --strict`, `check_api_inventory.py` |
 | X8 chain | — | one background script, one log | X6 | `cargo test --all-targets --all-features --no-fail-fast`, clippy, `--doc`, the §3 and §4 pre-push blocks, `build_docs_playground.js --check`, `build_docs_fix.js --check`, the example runner per language; then one commit, push, and read CI |
 
 The `Proof::Proven` site that X2 adds is reviewed before the commit. `cargo fmt --all` runs once, after the last worker returns.
@@ -753,7 +753,7 @@ The `Proof::Proven` site that X2 adds is reviewed before the commit. `cargo fmt 
    - **Default:** a plain `sorted: bool`, on the crate's trailing-bool precedent.
    - **Rejected:** `Option<SortOptions>` and a one-bit options type. The first states two facts in one argument and publishes directions that a stream can only verify. The second is a second vocabulary for one bit.
 2. **`SerieWindows` as an owner.** It breaks the in-flight iterator (bind the value, then `iter()`).
-   - **Default:** take it. It is the only shape that keeps zero-copy `SerieSlice` items and one return type over both a borrowed holder and a gathered one.
+   - **Default:** take it. It is the only shape that keeps zero-copy `WindowSerie` items and one return type over both a borrowed holder and a gathered one.
    - **Fallback:** owned `(Scalar, Serie)` items, at k + 2 per record window, losing holder identity and absolute offsets.
 3. **Key arms 2 and 3 landing `plan.proof`.** This is one new `Proven` site, for lying cells.
    - **Default:** take it, with the AGENTS review.

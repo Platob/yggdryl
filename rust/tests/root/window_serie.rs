@@ -1,4 +1,4 @@
-//! `rust/src/serie_slice.rs`: a window over a serie that reads and writes
+//! `rust/src/window_serie.rs`: a window over a serie that reads and writes
 //! through the serie's own implementation, every index window-relative.
 
 use std::collections::hash_map::DefaultHasher;
@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Int64Array, StringArray};
 use yggdryl::{
-    ArrowCastOptions, DataType, Error, Field, Scalar, Serie, SerieSlice, SerieWindows, SortOptions,
+    ArrowCastOptions, DataType, Error, Field, Scalar, Serie, SerieWindows, SortOptions, WindowSerie,
 };
 
 fn i64s(values: &[i64]) -> Vec<Scalar> {
@@ -167,9 +167,9 @@ fn identity_is_the_window_rows_alone_like_a_serie() {
     let mut held = column.clone();
     let mutable = held.window_mut(1, 2).expect("a window");
     assert_eq!(mutable.to_string(), window.to_string());
-    assert!(format!("{mutable:?}").starts_with("SerieSliceMut"));
+    assert!(format!("{mutable:?}").starts_with("WindowSerieMut"));
     // The window is `Copy`.
-    let copied: SerieSlice<'_> = window;
+    let copied: WindowSerie<'_> = window;
     assert_eq!(copied, window);
 }
 

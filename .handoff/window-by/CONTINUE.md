@@ -1,4 +1,4 @@
-# Continue: `window_by(by, sorted)`, static values on every series, `SerieSlice` → `WindowSerie`
+# Continue: `window_by(by, sorted)`, static values on every series, `WindowSerie` → `WindowSerie`
 
 This prompt stands alone. You are continuing work on the Rust crate **yggdryl** (`Platob/yggdryl`), which has two native views (Python in `python/`, Node in `node/`) and a CLI. `AGENTS.md` at the repo root is the binding contract: read it first and follow it, especially Smoke loop, Pace, §1 Patterns (Serie is the collection, Zero copy, Public vocabulary), §2 Validation, §3/§4 bindings and §5 docs.
 
@@ -6,23 +6,23 @@ This prompt stands alone. You are continuing work on the Rust crate **yggdryl** 
 
 - **Branch:** `claude/iceberg-partition-expressions-oc6r3k`. Develop, commit and push there: `git push -u origin claude/iceberg-partition-expressions-oc6r3k`.
 - **Never force-push.** The environment denies it. To bring in `main`, merge it into the branch with a merge commit.
-- **`main`** is at `655f596`. That commit is the squash merge of PR #187 (Iceberg transforms, `commit_batch_num`, the `by` protocols, Serie ordering, `SerieSlice`), on top of `183b0f8`.
+- **`main`** is at `655f596`. That commit is the squash merge of PR #187 (Iceberg transforms, `commit_batch_num`, the `by` protocols, Serie ordering, `WindowSerie`), on top of `183b0f8`.
 - **The branch, in order on top of `main`:**
   1. `2f4340d` merges `main` back in. Its tree is identical to `main`.
   2. `3851a88`, the **base `window_by` core**:
      - `Run` is a view over one shared `Arc<[Scalar]>` (start and length), so slicing a run shares the values. A slice of a slice reaches the holder with the offsets summed. The whole serie is the serie itself. `Serie` is 40 B, `Scalar` stays 48 B, and `Run::into_inner` is gone.
      - `Selector::bind_key` is the one key rule, shared by merge and `window_by`.
      - `BoundSelector::apply_serie` computes the key record.
-     - `window_by(by)` is on `Serie`, `SerieSlice` and `SerieSliceMut`, plus `SerieSliceMut::window_mut`.
+     - `window_by(by)` is on `Serie`, `WindowSerie` and `WindowSerieMut`, plus `WindowSerieMut::window_mut`.
      - `ChunkedSerie::window_by` merges a run that crosses a chunk edge.
      - Allocation pins cover all of the above.
   3. The **WIP extension-core commit** that holds this file. It implements the extension spec's phases X1a, X2, X1b, X3 and X4, described next.
 - **The extension, as it stands in the WIP commit:**
-  - **The verb:** `window_by(by, sorted: bool)` on `Serie`, `SerieSlice`, `SerieSliceMut`, `ChunkedSerie` and `SerieReader`.
+  - **The verb:** `window_by(by, sorted: bool)` on `Serie`, `WindowSerie`, `WindowSerieMut`, `ChunkedSerie` and `SerieReader`.
   - **Comparison:** `Compare` has a `Record` rung, and `window_starts(regroup)` answers a `WindowCut` (the descent, and the stable run regrouping).
   - **Keys:** a hoisted `KeyPlan` with direct, narrow and whole arms, plus `apply_serie_window`. `Bound::lies_where` and `child_position` exist.
   - **Proof:** this adds one new `Proof::Proven` site, for key cells that "lie" (cells that are selections of a landed column, re-stated rather than computed). It is commented in `rust/src/expression/selector.rs`.
-  - **Held windows:** `SerieWindows` is an owner (a `Cow` holder, `Cuts::Starts` or `Cuts::Gathered`) that lends `(Scalar, SerieSlice)` through `iter()` and `SerieWindowsIter`.
+  - **Held windows:** `SerieWindows` is an owner (a `Cow` holder, `Cuts::Starts` or `Cuts::Gathered`) that lends `(Scalar, WindowSerie)` through `iter()` and `SerieWindowsIter`.
   - **Chunked:** `ChunkedSerie` regroups sorted windows as zero-copy pieces.
   - **Streams:**
     - `SerieReader` has crate-private `Statics` and inherent static-value accessors.
@@ -52,7 +52,7 @@ All are in `.handoff/window-by/`:
 | --- | --- | --- |
 | `WINDOW_BY_SPEC.md` | Base spec: `window_by(by)`, Run view, `bind_key`, `apply_serie` | Implemented in `3851a88`; its bindings and docs phases are folded into the extension's X5–X8 |
 | `WINDOW_BY_EXTENSION_SPEC.md` | `window_by(by, sorted)`, the Record rung, the key plan arms, the `SerieWindows` owner, `SerieReader` static values and stream sub-readers, MediaSerie/partition seam (described only) | X1a–X4 implemented in the WIP commit; review, X5–X8 pending |
-| `STATIC_VALUES_SPEC.md` | One generic static-values contract: public `Statics` in a new `rust/src/statics.rs`, a sealed `StaticValues` trait answered by `Serie`, `SerieSlice`, `SerieSliceMut`, `ChunkedSerie`, `SerieReader`; storage inline in each column leaf; per-verb keep/shift/scatter/derive/take/common/drop algebra; held windows state records too | Not started: phases S1–S5, then X5–X8 bind and document it |
+| `STATIC_VALUES_SPEC.md` | One generic static-values contract: public `Statics` in a new `rust/src/statics.rs`, a sealed `StaticValues` trait answered by `Serie`, `WindowSerie`, `WindowSerieMut`, `ChunkedSerie`, `SerieReader`; storage inline in each column leaf; per-verb keep/shift/scatter/derive/take/common/drop algebra; held windows state records too | Not started: phases S1–S5, then X5–X8 bind and document it |
 | `EXTENSION_PHASE_REPORTS.md` | The implementers' reports for X1a, X2, X1b, X3: what each did, deviations from the spec, smoke results | Read before reviewing; X4's report was lost when the workflow stopped (its pins and benches are in the tree and pass) |
 
 Spec line numbers refer to the tree at the time of writing. Read the code as it stands now.
@@ -75,12 +75,12 @@ A `MediaSerie` and media partition values flowing through static values are **la
 - **Static-values spec:** decisions 1–14 keep their defaults, **except decision 12**. The `WindowSerie` rename runs **before** the static-values phases, so the new code is written once, under the new names.
 - **No `sorted_window_by` name anywhere.** One method, `window_by(by, sorted)`. Rust takes a trailing `sorted: bool`; Python `window_by(by, sorted=False)`; JavaScript `windowBy(by, sorted)`.
 - **The rename:**
-  - `SerieSlice` becomes `WindowSerie`, `SerieSliceMut` becomes `WindowSerieMut` and `SerieSliceRows` becomes `WindowSerieRows`.
-  - Files: `rust/src/serie_slice.rs` and `rust/tests/root/serie_slice.rs` become `window_serie.rs`; `python/src/serie_slice.rs`, `node/src/serie_slice.rs`, `python/tests/test_serie_slice.py`, `node/tests/serie_slice.test.js` and `node/tests/serie_slice.types.ts` are renamed the same way; `docs/types/serie-slice.md` becomes `docs/types/window-serie.md`, with its `mkdocs.yml` nav title "Window serie" and every link.
-  - The Python and JavaScript class `SerieSlice` becomes `WindowSerie`, and the native classes `PySerieSlice`/`JsSerieSlice` follow.
-  - Bench keys `serie_slice/...` become `window_serie/...`; the inventories, `AGENTS.md` and the skills follow too.
+  - `WindowSerie` becomes `WindowSerie`, `WindowSerieMut` becomes `WindowSerieMut` and `WindowSerieRows` becomes `WindowSerieRows`.
+  - Files: `rust/src/window_serie.rs` and `rust/tests/root/window_serie.rs` become `window_serie.rs`; `python/src/window_serie.rs`, `node/src/window_serie.rs`, `python/tests/test_window_serie.py`, `node/tests/window_serie.test.js` and `node/tests/window_serie.types.ts` are renamed the same way; `docs/types/window-serie.md` becomes `docs/types/window-serie.md`, with its `mkdocs.yml` nav title "Window serie" and every link.
+  - The Python and JavaScript class `WindowSerie` becomes `WindowSerie`, and the native classes `PyWindowSerie`/`JsWindowSerie` follow.
+  - Bench keys `window_serie/...` become `window_serie/...`; the inventories, `AGENTS.md` and the skills follow too.
   - No alias. `SerieWindows` and `SerieWindowsIter` keep their names.
-  - About 35 files hold references: `git grep -l "SerieSlice\|serie_slice\|serie-slice"`.
+  - About 35 files hold references: `git grep -l "WindowSerie\|window_serie\|window-serie"`.
 
 ## What to do, in order
 

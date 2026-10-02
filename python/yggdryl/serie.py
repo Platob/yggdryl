@@ -4,7 +4,7 @@ A ``Serie`` is many values, as a schema-free run or as the Arrow buffers of
 one field; ``SerieReader`` is the same over a stream: one record ``Serie``
 per batch, each cast by one plan; ``ChunkedSerie`` is many ``Serie`` columns
 under one field, held apart - a ``pyarrow.ChunkedArray``, or a
-``pyarrow.Table`` of one batch per chunk; ``SerieSlice`` is a window over a
+``pyarrow.Table`` of one batch per chunk; ``WindowSerie`` is a window over a
 ``Serie`` - ``serie.window(offset, length)`` - that reads and writes through
 it.
 
@@ -35,7 +35,7 @@ from ._native import (
     Serie,
     SerieReader,
     SerieSerie,
-    SerieSlice,
+    WindowSerie,
     SerieViewSerie,
     StructSerie,
 )
@@ -142,7 +142,7 @@ __all__ = [
     "SerieField",
     "SerieReader",
     "SerieSerie",
-    "SerieSlice",
+    "WindowSerie",
     "SerieViewField",
     "SerieViewSerie",
     "StructSerie",

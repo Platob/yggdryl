@@ -107,7 +107,7 @@ import type {
   Selector,
   Serie as NativeSerie,
   SerieReader,
-  SerieSlice as NativeSerieSlice,
+  WindowSerie as NativeWindowSerie,
   ArrowCastPlan,
   StringParametersInput,
   Term,
@@ -198,11 +198,11 @@ export declare const Serie: Omit<typeof NativeSerie, 'prototype'> & {
  * A window over a serie, read and written through it at each call: both the
  * shared and the mutable window.
  */
-export type SerieSlice = NativeSerieSlice
+export type WindowSerie = NativeWindowSerie
 /** Handed out by `serie.window(offset, length)`: there is no public constructor. */
-export declare const SerieSlice: Omit<typeof NativeSerieSlice, 'prototype'> &
-  (abstract new () => SerieSlice) & {
-    readonly prototype: SerieSlice
+export declare const WindowSerie: Omit<typeof NativeWindowSerie, 'prototype'> &
+  (abstract new () => WindowSerie) & {
+    readonly prototype: WindowSerie
   }
 
 /** Many columns under one field, held apart: a chunked array, or a table. */
@@ -1064,10 +1064,10 @@ declare module './index' {
      * serie and reads and writes through it at each call, moving nothing.
      * Refused naming the serie and both counts when it reaches past the end.
      */
-    window(offset: number, length: number): SerieSlice
+    window(offset: number, length: number): WindowSerie
   }
 
-  interface SerieSlice extends Iterable<Scalar> {
+  interface WindowSerie extends Iterable<Scalar> {
     /** Iterate the window's rows as Scalar values. */
     [Symbol.iterator](): IterableIterator<Scalar>
     /** Every row of the window as its natural JavaScript value. */
@@ -1079,7 +1079,7 @@ declare module './index' {
     /** The window-relative row positions in sorted order, as a `uint32` column named `index`. */
     sortIndices(options?: SortOptions | null): Serie
     /** A narrower window, window-relative, over the same serie. */
-    window(offset: number, length: number): SerieSlice
+    window(offset: number, length: number): WindowSerie
     /** The window's rows as a serie: `slice`, sharing a column's buffers. */
     intoSerie(): Serie
     /** The window's rows in sorted order, as a new serie. */
@@ -1095,7 +1095,7 @@ declare module './index' {
     /** The window's rows grouped by `keys`, as long as the window. */
     partitionBy(keys: SerieArgument): Array<[Scalar, Serie]>
     /** Whether the window's rows equal another window's, or a serie's. */
-    equals(other: SerieSlice | Serie): boolean
+    equals(other: WindowSerie | Serie): boolean
     /** Overwrite window row `index` through the serie's field: one buffer write on a primitive leaf. */
     set(index: number, value: unknown): void
     /** Overwrite every window row with `value`, proved once. */
@@ -1104,7 +1104,7 @@ declare module './index' {
      * Overwrite the window, row for row, with another window's rows or a
      * whole serie's, which must be exactly as many.
      */
-    copyFrom(other: SerieSlice | Serie): void
+    copyFrom(other: WindowSerie | Serie): void
     /**
      * Replace window rows `start..end` by exactly as many `rows`: a window
      * never grows or shrinks what it views.

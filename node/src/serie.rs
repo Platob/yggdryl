@@ -39,11 +39,11 @@ use crate::datatype::JsDataType;
 use crate::field::JsField;
 use crate::iomedia::{JsBatchReader, encoded};
 use crate::napi_error;
-use crate::serie_slice::JsSerieSlice;
 use crate::text::codec::{
     JsScalar, checked_depth, value_to_transport, value_to_transport_with_field,
 };
 use crate::text::line::JsFieldPath;
+use crate::window_serie::JsWindowSerie;
 
 /// The invariant `binding.js` keeps: a leaf verb is published only on the
 /// class `_leafNative` names, so the leaf is the one it asks for.
@@ -893,8 +893,8 @@ impl JsSerie {
         reference: Reference<JsSerie>,
         offset: f64,
         length: f64,
-    ) -> Result<JsSerieSlice> {
-        JsSerieSlice::new(
+    ) -> Result<JsWindowSerie> {
+        JsWindowSerie::new(
             reference,
             position(offset, "offset")?,
             position(length, "length")?,

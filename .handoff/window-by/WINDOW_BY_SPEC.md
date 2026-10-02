@@ -1,12 +1,12 @@
 # window_by and view flattening: implementation spec
 
 Base: Design 1 (two of the three judgements ranked it best). Grafted from the others:
-- `SerieSliceMut::window_mut`;
+- `WindowSerieMut::window_mut`;
 - one shared key rule `Selector::bind_key`;
 - a lazy `SerieWindows` iterator in place of an eager `Vec`;
 - `Run::into_inner` deleted;
 - the whole-window `slice(0, len)` rule;
-- a `SerieSlice` argument resolved through its holder in both bindings;
+- a `WindowSerie` argument resolved through its holder in both bindings;
 - the absent-row test on a caller's struct key;
 - one boundary predicate `Compare::opens`, shared with `partition_by`.
 
@@ -20,7 +20,7 @@ Defects fixed:
 - merge's "empty match key" message is kept.
 
 The ask ("ins" read as "is") maps to two parts:
-1. `window_by(expressions)` on `Serie`, `SerieSlice`, `SerieSliceMut` and `ChunkedSerie`.
+1. `window_by(expressions)` on `Serie`, `WindowSerie`, `WindowSerieMut` and `ChunkedSerie`.
 2. Every view of a view resolves to its holder with the offsets summed, so nothing nests and nothing copies. This covers a `Run` slice of a slice, a window of a window, a mutable window of a mutable window, `window_by` over a window, and a window passed back to a binding.
 
 ## Semantics
@@ -59,8 +59,8 @@ Names resolve as in every expression: ASCII case is folded, and two columns that
 - No options are taken: equality has no direction and no null placement.
 
 **What each owner answers.**
-- `Serie`, `SerieSlice` and `SerieSliceMut` answer `SerieWindows<'a>`, a lazy, exact-size, fused iterator of `(Scalar, SerieSlice<'a>)`. Every window views the holder: `window.serie()` is the holding serie and `offset()` is absolute in it.
-- On a `SerieSlice`, keys are evaluated over the window's rows only, so rows outside it never influence a cut.
+- `Serie`, `WindowSerie` and `WindowSerieMut` answer `SerieWindows<'a>`, a lazy, exact-size, fused iterator of `(Scalar, WindowSerie<'a>)`. Every window views the holder: `window.serie()` is the holding serie and `offset()` is absolute in it.
+- On a `WindowSerie`, keys are evaluated over the window's rows only, so rows outside it never influence a cut.
 - `ChunkedSerie` answers `Vec<(Scalar, ChunkedSerie)>`, each window being `self.slice(from, len)`. A run that crosses a chunk edge is one window keeping the chunks it reaches.
 
 **Edges.**
@@ -86,26 +86,26 @@ Names resolve as in every expression: ASCII case is folded, and two columns that
 
 Public:
 - `rust/src/serie/order.rs`: `impl Serie { pub fn window_by(&self, by: impl IntoSelector) -> Result<SerieWindows<'_>> }`. The rows cut into windows of equal adjacent keys that `by` computes, each a view over this serie, in row order.
-- `rust/src/serie_slice.rs`:
+- `rust/src/window_serie.rs`:
   ```rust
   #[must_use]
   #[derive(Clone, Debug)]
   pub struct SerieWindows<'a> { serie: &'a Serie, offset: usize, keys: Serie, starts: BooleanBuffer, front: usize, remaining: usize }
-  impl<'a> Iterator for SerieWindows<'a> { type Item = (Scalar, SerieSlice<'a>); }
+  impl<'a> Iterator for SerieWindows<'a> { type Item = (Scalar, WindowSerie<'a>); }
   impl ExactSizeIterator for SerieWindows<'_> {}
   impl FusedIterator for SerieWindows<'_> {}
   ```
-- `rust/src/serie_slice.rs`: `impl<'a> SerieSlice<'a> { pub fn window_by(&self, by: impl IntoSelector) -> Result<SerieWindows<'a>> }`. The window's rows cut by keys evaluated over the window alone. Every window is over the same serie at absolute offsets.
-- `rust/src/serie_slice.rs`:
+- `rust/src/window_serie.rs`: `impl<'a> WindowSerie<'a> { pub fn window_by(&self, by: impl IntoSelector) -> Result<SerieWindows<'a>> }`. The window's rows cut by keys evaluated over the window alone. Every window is over the same serie at absolute offsets.
+- `rust/src/window_serie.rs`:
   ```rust
-  impl<'a> SerieSliceMut<'a> {
-      pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<SerieSliceMut<'_>>;
+  impl<'a> WindowSerieMut<'a> {
+      pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<WindowSerieMut<'_>>;
       pub fn window_by(&self, by: impl IntoSelector) -> Result<SerieWindows<'_>>;
   }
   ```
   `window_mut` is a narrower mutable window over the same `&mut Serie`: `require_window(self.name(), offset, length, self.len)`, then `offset: self.offset + offset`. `window_by` is `self.as_window().window_by(by)`.
 - `rust/src/chunked_serie.rs`: `impl ChunkedSerie { pub fn window_by(&self, by: impl IntoSelector) -> crate::Result<Vec<(Scalar, ChunkedSerie)>> }`. The same runs across the chunks under one bind. A run crossing a chunk edge is one window, a zero-copy `slice` keeping the chunks it reaches.
-- `rust/src/lib.rs:230`: `pub use serie_slice::{SerieSlice, SerieSliceMut, SerieSliceRows, SerieWindows};`
+- `rust/src/lib.rs:230`: `pub use window_serie::{WindowSerie, WindowSerieMut, WindowSerieRows, SerieWindows};`
 - `rust/src/serie/datatype.rs`:
   ```rust
   #[derive(Clone)]
@@ -154,7 +154,7 @@ Crate-private:
   - `pub(crate) fn Serie::window_starts(&self) -> BooleanBuffer`: one `Compare::new(self, SortOptions::default())`, then `BooleanBuffer::collect_bool(len, |index| compare.opens(index))`.
   - `fn Compare::opens(&self, index: usize) -> bool`: `index == 0 || self.cmp(index - 1, index) != Ordering::Equal`. This is the one boundary predicate. `partition_by`'s sorted branch (order.rs:1012) now reads `index == len || compare.opens(index)`, so its pinned count does not move.
   - `pub(crate) fn same_key(left: &Scalar, right: &Scalar) -> bool`: `compare_values(left, right, SortOptions::default()) == Ordering::Equal`, used for the chunk-edge test.
-- `rust/src/serie_slice.rs`: `pub(crate) fn SerieWindows::new(serie: &'a Serie, offset: usize, keys: Serie, starts: BooleanBuffer) -> Self`. Sets `remaining = starts.count_set_bits()` and `front = 0`.
+- `rust/src/window_serie.rs`: `pub(crate) fn SerieWindows::new(serie: &'a Serie, offset: usize, keys: Serie, starts: BooleanBuffer) -> Self`. Sets `remaining = starts.count_set_bits()` and `front = 0`.
 
 ## Algorithm and cost
 
@@ -172,13 +172,13 @@ Crate-private:
 1. `start = front`.
 2. `end` is the next set bit after `start`, found with `arrow_buffer::bit_iterator::BitIndexIterator::new(starts.values(), starts.offset() + start + 1, len - start - 1)`, or `len` if there is none.
 3. Set `front = end` and decrement `remaining`.
-4. Yield `(proven_row(&keys, start), SerieSlice { serie, offset: self.offset + start, len: end - start })`.
+4. Yield `(proven_row(&keys, start), WindowSerie { serie, offset: self.offset + start, len: end - start })`.
 
 Allocations:
 - the window: zero;
 - the key: one `Arc<[Scalar]>` for the key run (none for an absent record row), plus one `Arc<str>` per text cell past `INLINE_CAPACITY`.
 
-**`SerieSlice::window_by`.**
+**`WindowSerie::window_by`.**
 1. Refuse through `self.serie.window_key(..)`, which names the holder.
 2. `keys = key.apply_serie(&self.into_serie())`.
 3. `SerieWindows::new(self.serie, self.offset, keys, starts)`. Windows are never built over the temporary.
@@ -220,7 +220,7 @@ The allocation row therefore cannot reveal this cost. The `window_by/epoch_key` 
    - `run.slice(0, n)` and `run.slice(0, 0)`;
    - `run.window(1, n - 2).into_serie()`.
 
-   For each of the 11 `SerieSlice` ordering verbs over a run window, `costs(window.verb()) == costs(sliced.verb())`, where `sliced = run.slice(1, n - 2)` is built outside. `partition_by` over a run with sorted run keys costs the same at both sizes for a fixed group count.
+   For each of the 11 `WindowSerie` ordering verbs over a run window, `costs(window.verb()) == costs(sliced.verb())`, where `sliced = run.slice(1, n - 2)` is built outside. `partition_by` over a run with sorted run keys costs the same at both sizes for a fixed group count.
 2. `a_slice_of_the_whole_serie_is_the_serie`: `column.slice(0, n)` and `column.window(0, n).into_serie()` cost nothing.
 3. `window_by_costs_one_plan_per_call_one_key_per_window_and_nothing_per_row`. The fixture is a record `quote{venue: utf8 (inline), count: int64, ts: datetime64(ns, UTC)}` laid out as 3 venue runs and 4 `minutes(ts, 15)` buckets at both sizes.
    - The build of `window_by(&venue)` costs C, equal at both sizes. Build plus drain costs C + 3.
@@ -239,18 +239,18 @@ Each site lists its change and the pin that holds it.
 | --- | --- | --- | --- |
 | `Serie::slice` run arm, serie.rs:2603-2606 | copies the window; a slice of a slice is a copy chain | `Run::slice`: same `Arc`, offsets summed; zero length answers the shared empty | datatype.rs pointer tests; allocations row 1 |
 | `Serie::slice(0, len)`, every leaf | boxes a new leaf, or copies a run | `self.clone()` | root/serie.rs; allocations row 2 |
-| `SerieSlice::into_serie` (296-300) and every ordering verb on a window (304-376, `dtype` 185, `memory_size` 275) | a run window copied first | inherits both rules: a run window and a whole window cost nothing | allocations rows 1 and 2; the column `through == direct + 1` at 2644-2763 is unchanged |
+| `WindowSerie::into_serie` (296-300) and every ordering verb on a window (304-376, `dtype` 185, `memory_size` 275) | a run window copied first | inherits both rules: a run window and a whole window cost nothing | allocations rows 1 and 2; the column `through == direct + 1` at 2644-2763 is unchanged |
 | `partition_by` sorted groups, order.rs:1014 | a copy per group over a run | views, unchanged code | allocations row 1 |
 | `ChunkedSerie` mask and keys per chunk, chunked_serie.rs:918 and 961 | run argument copied per chunk | views, unchanged code | existing chunked tests stay green |
 | `[a:b]` and `slice()` over a run row: scalar.rs:2288-2294, expression/path.rs:296-303, eval.rs:747-763, fix/market.rs:1273 | copy | views, unchanged code | whole run; any drop must equal the removed copy |
 | `Run::make_mut` (callers order.rs:1236, 1252) | `Arc::make_mut` clones the whole shared holder | in place if unique, else the window alone copied | datatype.rs write test |
 | `splice_run`, serie.rs:2275 | copies the whole run | copies the window alone, which releases the holder; no code change | datatype.rs write test |
-| `SerieSlice::window` (285-292) | already flat | unchanged | allocations.rs:2330 stays free |
-| `SerieSliceMut` mutable sub-window | not expressible | `window_mut`, offsets summed over one `&mut Serie` | root/serie_slice.rs; allocations row 3 |
-| `window_by` on a `SerieSlice` | n/a | windows over `self.serie` at `self.offset + start`, never over the `into_serie` temporary | `std::ptr::eq(w.serie(), &holder)` |
+| `WindowSerie::window` (285-292) | already flat | unchanged | allocations.rs:2330 stays free |
+| `WindowSerieMut` mutable sub-window | not expressible | `window_mut`, offsets summed over one `&mut Serie` | root/window_serie.rs; allocations row 3 |
+| `window_by` on a `WindowSerie` | n/a | windows over `self.serie` at `self.offset + start`, never over the `into_serie` temporary | `std::ptr::eq(w.serie(), &holder)` |
 | `ChunkedSerie::window_by` | n/a | `self.slice(from, len)` over the original chunks; an edge-crossing run merged into one window | root/chunked_serie.rs `shares` |
-| Python `columnar()`, python/src/serie.rs:435 | a `SerieSlice` iterated into a field-less run (keys, indices, mask, `extend`, `splice`, `Serie.from_`, `Scalar.from_`) | a `PySerieSlice` arm returns `Columnar::Held(window.into_core_serie(py)?)`: the live holder re-windowed, zero copy, field kept | test_serie_slice.py |
-| Node `serieArgument` (binding.js:1602) and `comparedRows` (2495) | a `SerieSlice` iterated into a run; `serie.equals(window)` refused | a `SerieSlice` resolves by `_intoSerieNative`; `Serie.equals` and `compare` accept a window | serie_slice.test.js |
+| Python `columnar()`, python/src/serie.rs:435 | a `WindowSerie` iterated into a field-less run (keys, indices, mask, `extend`, `splice`, `Serie.from_`, `Scalar.from_`) | a `PyWindowSerie` arm returns `Columnar::Held(window.into_core_serie(py)?)`: the live holder re-windowed, zero copy, field kept | test_window_serie.py |
+| Node `serieArgument` (binding.js:1602) and `comparedRows` (2495) | a `WindowSerie` iterated into a run; `serie.equals(window)` refused | a `WindowSerie` resolves by `_intoSerieNative`; `Serie.equals` and `compare` accept a window | window_serie.test.js |
 | Binding `window_by` | n/a | windows over the same holder object (`slf.clone().unbind()`, `self.serie.clone_ref(py)`, `Reference<JsSerie>`, `self.serie.clone(env)?`) at the core's absolute offsets | `w.serie is quotes` / `strictEqual(w.serie, quotes)` |
 
 Not changed, stated in the docs:
@@ -262,29 +262,29 @@ Not changed, stated in the docs:
 ## Bindings
 
 **Python.** Each method only parses with an existing helper, then redirects to the core.
-- `python/src/serie.rs`: `#[pyo3(signature = (by))] fn window_by(slf: &Bound<'_, Self>, by: &Bound<'_, PyAny>) -> PyResult<Vec<(PyScalar, PySerieSlice)>>`.
+- `python/src/serie.rs`: `#[pyo3(signature = (by))] fn window_by(slf: &Bound<'_, Self>, by: &Bound<'_, PyAny>) -> PyResult<Vec<(PyScalar, PyWindowSerie)>>`.
   1. `selector_from_value(by)` under the GIL.
   2. `Self::detached(slf, move |serie| Ok(serie.window_by(selector)?.map(|(k, w)| (k, w.offset(), w.len())).collect::<Vec<_>>()))`.
-  3. `(PyScalar::from_inner(k), PySerieSlice::new(slf.clone().unbind(), offset, len))`.
-- `python/src/serie_slice.rs`:
-  - `fn window_by(&self, py, by) -> PyResult<Vec<(PyScalar, PySerieSlice)>>` runs the same through `self.detached`, building each window as `PySerieSlice::new(self.serie.clone_ref(py), offset, len)`.
+  3. `(PyScalar::from_inner(k), PyWindowSerie::new(slf.clone().unbind(), offset, len))`.
+- `python/src/window_serie.rs`:
+  - `fn window_by(&self, py, by) -> PyResult<Vec<(PyScalar, PyWindowSerie)>>` runs the same through `self.detached`, building each window as `PyWindowSerie::new(self.serie.clone_ref(py), offset, len)`.
   - `pub(crate) fn into_core_serie(&self, py) -> PyResult<Serie>` is `self.read(py, |w| Ok(w.into_serie()))`.
 - `python/src/chunked_serie.rs`: `fn window_by(&self, py, by) -> PyResult<Vec<(PyScalar, Py<PyAny>)>>`, the windows going through the existing chunked group describer.
-- `columnar()` gets the `PySerieSlice` arm described above.
+- `columnar()` gets the `PyWindowSerie` arm described above.
 - `python/yggdryl/_native.pyi`:
-  - `Serie` (beside `window`) and `SerieSlice`: `def window_by(self, by: SelectorLike) -> list[tuple[Scalar, SerieSlice]]: ...`;
+  - `Serie` (beside `window`) and `WindowSerie`: `def window_by(self, by: SelectorLike) -> list[tuple[Scalar, WindowSerie]]: ...`;
   - `ChunkedSerie`: `-> list[tuple[Scalar, ChunkedSerie]]`.
-- Refusals map to `ValueError` with the core message; a value that is not a selector is a `TypeError`. `SerieSliceMut`, `window_mut` and `SerieWindows` stay Rust-only.
+- Refusals map to `ValueError` with the core message; a value that is not a selector is a `TypeError`. `WindowSerieMut`, `window_mut` and `SerieWindows` stay Rust-only.
 
 **Node.** Natives are `skip_typescript` and are deleted from the prototype.
-- `node/src/serie.rs`: `#[napi(js_name = "_windowByNative", skip_typescript)] pub fn window_by_native(&self, env: Env, reference: Reference<JsSerie>, by: SelectorInput) -> Result<Vec<(JsScalar, JsSerieSlice)>>`. It calls `selector_from_input`, then the core, then builds windows over `reference.clone(env)?` at the absolute offsets.
-- `node/src/serie_slice.rs`: `_windowByNative(env, by)`, building windows over `self.serie.clone(env)?`.
+- `node/src/serie.rs`: `#[napi(js_name = "_windowByNative", skip_typescript)] pub fn window_by_native(&self, env: Env, reference: Reference<JsSerie>, by: SelectorInput) -> Result<Vec<(JsScalar, JsWindowSerie)>>`. It calls `selector_from_input`, then the core, then builds windows over `reference.clone(env)?` at the absolute offsets.
+- `node/src/window_serie.rs`: `_windowByNative(env, by)`, building windows over `self.serie.clone(env)?`.
 - `node/src/chunked_serie.rs`: `_windowByNative(by) -> Vec<(JsScalar, JsChunkedSerie)>`.
 - `node/binding.js`:
-  - public `windowBy(by)` on `Serie`, `SerieSlice` and `ChunkedSerie`; ChunkedSerie windows are re-prototyped as its partition groups are;
+  - public `windowBy(by)` on `Serie`, `WindowSerie` and `ChunkedSerie`; ChunkedSerie windows are re-prototyped as its partition groups are;
   - the natives go on the delete-lists;
-  - `serieArgument` and `comparedRows` get the `SerieSlice` arm.
-- `node/binding.d.ts`: `windowBy(by: Selector | Term | string | readonly (Term | string)[]): Array<[Scalar, SerieSlice]>`; ChunkedSerie answers `Array<[Scalar, ChunkedSerie]>`. `serie.equals` and `compare` accept a `SerieSlice`.
+  - `serieArgument` and `comparedRows` get the `WindowSerie` arm.
+- `node/binding.d.ts`: `windowBy(by: Selector | Term | string | readonly (Term | string)[]): Array<[Scalar, WindowSerie]>`; ChunkedSerie answers `Array<[Scalar, ChunkedSerie]>`. `serie.equals` and `compare` accept a `WindowSerie`.
 - `node/index.js` and `node/index.d.ts` are regenerated by `npm run --prefix node build:debug`.
 
 **Parity.** Argument order, refusal text and key shape are the same in all three languages. The one divergence is pre-existing: a Rust list of `&str` is exact column names, while a Python or JS list is projection texts.
@@ -320,8 +320,8 @@ Refusals come first. Each new test file opens with its `//!` source line, per th
   - `a_non_record_column_windows_by_its_own_name`: `ts.window_by("days(ts)")`; window offsets carried to an aligned serie through `window(offset, len)`; zero rows give no window.
   - `a_star_beside_terms_keys_every_column_it_keeps`: `"* exclude (ts), days(ts)"`.
   - `a_rust_list_of_texts_names_columns`: `window_by(["minutes(ts, 15)"])` is refused as the column `minutes(ts, 15)`.
-- `rust/tests/root/serie_slice.rs`:
-  - `a_window_windows_by_its_own_rows_over_the_serie`: a window over rows 1..5; every `serie()` is the holder; offsets are absolute, the first being 1; a run starting before the window is cut at its edge; the results equal the holder's windows restricted to the window; a whole window answers what `serie.window_by` answers; `SerieSliceMut::window_by` answers the same; a window over a run is refused.
+- `rust/tests/root/window_serie.rs`:
+  - `a_window_windows_by_its_own_rows_over_the_serie`: a window over rows 1..5; every `serie()` is the holder; offsets are absolute, the first being 1; a run starting before the window is cut at its edge; the results equal the holder's windows restricted to the window; a whole window answers what `serie.window_by` answers; `WindowSerieMut::window_by` answers the same; a window over a run is refused.
   - `a_mutable_window_narrows_onto_the_same_serie`: three nested `window_mut` levels sum to one offset; writes land at the summed row; a sub-window past its parent is refused naming the serie and both counts.
   - `serie_windows_is_an_exact_fused_walk`: `size_hint`, `None` after the end, `Clone`.
 - `rust/tests/root/chunked_serie.rs`, `window_by_merges_a_run_across_a_chunk_edge`:
@@ -338,11 +338,11 @@ Refusals come first. Each new test file opens with its `//!` source line, per th
 - Untouched, and must stay green: `rust/tests/media/merge.rs`, `rust/tests/iceberg/mod_.rs:8264`, `node/tests/iceberg.test.js:1320` (`empty match key`).
 - Python:
   - `python/tests/test_serie.py` `test_window_by_*` mirrors the order.rs names;
-  - `test_serie_slice.py` adds `test_a_window_windows_by_its_own_rows_over_the_serie` (`w.serie is serie`, absolute offsets) and `test_a_window_passed_as_keys_keeps_its_field`;
+  - `test_window_serie.py` adds `test_a_window_windows_by_its_own_rows_over_the_serie` (`w.serie is serie`, absolute offsets) and `test_a_window_passed_as_keys_keeps_its_field`;
   - `test_chunked_serie.py` adds the edge merge;
-  - `typing_bindings.py` adds `list[tuple[Scalar, SerieSlice]]`.
+  - `typing_bindings.py` adds `list[tuple[Scalar, WindowSerie]]`.
 - Node:
-  - `node/tests/serie.test.js`, `serie_slice.test.js` (`strictEqual(w.serie, quotes)`, `serie.equals(window)`, natives private) and `chunked_serie.test.js` mirror the same cases;
+  - `node/tests/serie.test.js`, `window_serie.test.js` (`strictEqual(w.serie, quotes)`, `serie.equals(window)`, natives private) and `chunked_serie.test.js` mirror the same cases;
   - `*.types.ts` have `windowBy` and `@ts-expect-error windowBy(3)`.
 
 ## Benchmarks
@@ -351,8 +351,8 @@ Refusals come first. Each new test file opens with its `//!` source line, per th
   - `window_by/column_key`, `window_by/epoch_key`, `window_by/through_window`, `chunked/window_by`;
   - `run/slice`, `run/row_at`, `run/window_is_sorted`. `run/row_at` must show the two extra bounds checks in `as_slice` flat before phase 1 settles.
   - Run `cargo bench -p yggdryl --bench types -- "window_by|run/" --quick` (direction only).
-- `python/benchmarks/types/serie.py`: rows `Serie.window_by, minutes(ts, 15)`, `SerieSlice.window_by`, `ChunkedSerie.window_by`.
-- `node/benchmarks/types.js`: `serie/windowBy`, `serie_slice/windowBy`, `chunked_serie/windowBy`.
+- `python/benchmarks/types/serie.py`: rows `Serie.window_by, minutes(ts, 15)`, `WindowSerie.window_by`, `ChunkedSerie.window_by`.
+- `node/benchmarks/types.js`: `serie/windowBy`, `window_serie/windowBy`, `chunked_serie/windowBy`.
 - No Performance table on any page changes, since no release number is stated.
 
 ## Docs and skills
@@ -366,7 +366,7 @@ Refusals come first. Each new test file opens with its `//!` source line, per th
   - line 535: the key crosses as a selector;
   - edges: a returning key opens a new window, the one-cell run key, UTC buckets, the `*` rule, and a view pinning its holder;
   - lines 1788 and 1800: writes copy the window alone.
-- `docs/types/serie-slice.md`:
+- `docs/types/window-serie.md`:
   - Doors row: `window_by` gives windows of the holder at absolute offsets; `window_mut` is Rust-only;
   - line 12 and the cost table at 160-166: `into_serie` is zero copy for a run and for a whole window;
   - Bindings row: windows hold the same serie object;
@@ -378,13 +378,13 @@ Refusals come first. Each new test file opens with its `//!` source line, per th
 - `AGENTS.md`:
   - Layout rows:
     - `serie.rs + serie/`: `Run` is "a window over one shared `Arc<[Scalar]>`, one allocation to build and none to slice"; `order.rs` lists `window_by`;
-    - `serie_slice.rs`: `SerieWindows`, `window_by`, `window_mut`;
+    - `window_serie.rs`: `SerieWindows`, `window_by`, `window_mut`;
     - `chunked_serie.rs`: `window_by`;
     - `expression/`: `apply_serie` and `bind_key`.
   - Zero copy: a run's slice shares its values and a slice of a slice reaches the holder; the whole serie is itself.
   - The "Serie is the collection" table: a row "rows cut where the key changes".
-- Rustdoc: the `serie_slice.rs` module doc (lines 1-17), `Serie::slice`, `SerieSlice::into_serie`, the `Run` doc, and the size rationale at serie.rs:430-432.
-- `.api-inventory.txt`: the `Run` block (about 5159-5176, `into_inner` retired), `Serie::slice` (5661), `SerieSlice::into_serie` (4252), the four `window_by` entries, `SerieWindows`, and `SerieSliceMut::window_mut`.
+- Rustdoc: the `window_serie.rs` module doc (lines 1-17), `Serie::slice`, `WindowSerie::into_serie`, the `Run` doc, and the size rationale at serie.rs:430-432.
+- `.api-inventory.txt`: the `Run` block (about 5159-5176, `into_inner` retired), `Serie::slice` (5661), `WindowSerie::into_serie` (4252), the four `window_by` entries, `SerieWindows`, and `WindowSerieMut::window_mut`.
 - `.api-bindings.txt`: Python lines 70-71, 74-75 and 80-81; Node lines 537, 542 and 559-561.
 - Checks: `python scripts/check_api_inventory.py`, `python -m mkdocs build --strict --config-file mkdocs.yml`, and `python scripts/check_docs_examples.py --lang rust|python|javascript`.
 
@@ -414,16 +414,16 @@ The phases follow AGENTS order. File sets are disjoint per worker, and `cargo fm
    Phases 1 and 2 share no file and run in parallel; one `cargo check` follows both.
 3. **Core, window_by.**
    - 3a (theme `serie`): `rust/src/serie/order.rs` and `rust/tests/serie/order.rs`. Smoke `--test serie order`.
-   - 3b (root): `rust/src/serie_slice.rs`, `rust/src/chunked_serie.rs`, `rust/src/lib.rs`, `rust/tests/root/serie_slice.rs` and `rust/tests/root/chunked_serie.rs`. Smoke `--test root serie_slice`, `--test root chunked`, `--doc window_by`.
+   - 3b (root): `rust/src/window_serie.rs`, `rust/src/chunked_serie.rs`, `rust/src/lib.rs`, `rust/tests/root/window_serie.rs` and `rust/tests/root/chunked_serie.rs`. Smoke `--test root window_serie`, `--test root chunked`, `--doc window_by`.
    - Sequential: 3b reads `window_starts`.
 4. **Cost.** `rust/tests/allocations.rs` and `rust/benchmarks/types/datatype/serie.rs`. Smoke `--test allocations -- run_slice whole_serie window_by chunked_window_by`, then the `--quick` bench. The core settles here.
-5. **Python.** `python/src/{serie,serie_slice,chunked_serie}.rs`, `python/yggdryl/_native.pyi`, `python/tests/{test_serie,test_serie_slice,test_chunked_serie}.py`, `python/tests/typing_bindings.py`, `python/benchmarks/types/serie.py`. Smoke:
+5. **Python.** `python/src/{serie,window_serie,chunked_serie}.rs`, `python/yggdryl/_native.pyi`, `python/tests/{test_serie,test_window_serie,test_chunked_serie}.py`, `python/tests/typing_bindings.py`, `python/benchmarks/types/serie.py`. Smoke:
    - `cargo check --workspace --all-targets --keep-going --message-format=short`;
    - `maturin develop`;
-   - `pytest python/tests/test_serie_slice.py -x -q`;
+   - `pytest python/tests/test_window_serie.py -x -q`;
    - `mypy --strict`.
-6. **Node.** `node/src/{serie,serie_slice,chunked_serie}.rs`, `node/binding.js`, `node/binding.d.ts`, generated `node/index.js` and `index.d.ts`, `node/tests/{serie,serie_slice,chunked_serie}.test.js`, `node/tests/*.types.ts`, `node/benchmarks/types.js`. Smoke: `npm run --prefix node build:debug`, then `node --test node/tests/serie_slice.test.js`.
-7. **Docs** (the foreground, while the chain below holds the cargo lock). `docs/types/{serie,serie-slice,chunked-serie}.md`, `skills/yggdryl-arrow/**`, `AGENTS.md`, `.api-inventory.txt`, `.api-bindings.txt`. Smoke: `mkdocs build --strict`.
+6. **Node.** `node/src/{serie,window_serie,chunked_serie}.rs`, `node/binding.js`, `node/binding.d.ts`, generated `node/index.js` and `index.d.ts`, `node/tests/{serie,window_serie,chunked_serie}.test.js`, `node/tests/*.types.ts`, `node/benchmarks/types.js`. Smoke: `npm run --prefix node build:debug`, then `node --test node/tests/window_serie.test.js`.
+7. **Docs** (the foreground, while the chain below holds the cargo lock). `docs/types/{serie,window-serie,chunked-serie}.md`, `skills/yggdryl-arrow/**`, `AGENTS.md`, `.api-inventory.txt`, `.api-bindings.txt`. Smoke: `mkdocs build --strict`.
 8. **The chain**, in the background with one log:
    1. `cargo test --all-targets --all-features --no-fail-fast`;
    2. clippy;
@@ -438,7 +438,7 @@ The phases follow AGENTS order. File sets are disjoint per worker, and `cargo fm
 
 1. **Run view** (Serie grows from 24 to 40 bytes, and a view pins its holder). This is what makes "detect the slice, get the holder, merge" hold for runs. Each `Vec<Serie>` entry grows 16 bytes. A `u32` start and length would give 32 bytes, but needs a refusal inside the infallible `Run::new`.
    - **Default: take it, with `usize`, gated by the `run/row_at` bench.**
-   - Fallback: drop phase 1 and merge only at the view level (SerieSlice, `window_mut`, ChunkedSerie, bindings). Then a partial run window's `into_serie` keeps copying.
+   - Fallback: drop phase 1 and merge only at the view level (WindowSerie, `window_mut`, ChunkedSerie, bindings). Then a partial run window's `into_serie` keeps copying.
 2. **A vectorized epoch arm** in `expression/arrow.rs` (`PrimitiveArray::unary_opt`, with one shared `EpochPeriod` narrowing owner, a hoisted `i64` divisor, and a row-tier equivalence test). It also speeds up `select`, `where`, `TRANSFORM`, `PARTITION` and `DIGEST`.
    - **Default: not in this change.** Report the `window_by/epoch_key` and `window_by/column_key` benchmark numbers, and open it as its own change.
 3. **A key-in-hand door** `window_by_keys(&Serie)`, the only way to window a schema-free run or keys held as a run.

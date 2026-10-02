@@ -1,7 +1,7 @@
-//! JavaScript's native view of the shared [`SerieSlice`] and
-//! [`SerieSliceMut`]: a window over a serie that reads and writes through it.
+//! JavaScript's native view of the shared [`WindowSerie`] and
+//! [`WindowSerieMut`]: a window over a serie that reads and writes through it.
 //!
-//! [`JsSerieSlice`] holds the parent `Serie` object, an offset and a length,
+//! [`JsWindowSerie`] holds the parent `Serie` object, an offset and a length,
 //! and nothing else. Every call takes the core window over the parent as the
 //! parent stands at that call - a read through [`Serie::window`], a write
 //! through [`Serie::window_mut`] - so the one class is both the shared and the
@@ -13,7 +13,7 @@
 use napi::bindgen_prelude::{ClassInstance, Either, Env, Reference, Result};
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
-use yggdryl::{Serie, SerieSlice, SerieSliceMut};
+use yggdryl::{Serie, WindowSerie, WindowSerieMut};
 
 use crate::datatype::JsDataType;
 use crate::field::JsField;
@@ -31,15 +31,15 @@ use crate::text::codec::{
 /// a read borrows the serie for that call, a write borrows it mutably for that
 /// call, and a write never grows or shrinks what the window views. Identity
 /// is the window's rows alone, as a serie's is its rows.
-#[napi(js_name = "SerieSlice")]
-pub struct JsSerieSlice {
+#[napi(js_name = "WindowSerie")]
+pub struct JsWindowSerie {
     /// The serie object the window reads and writes through.
     serie: Reference<JsSerie>,
     offset: usize,
     len: usize,
 }
 
-impl JsSerieSlice {
+impl JsWindowSerie {
     /// The window `offset..offset + len` over `serie`, refused by the core
     /// when it reaches past the end.
     pub(crate) fn new(serie: Reference<JsSerie>, offset: usize, len: usize) -> Result<Self> {
@@ -48,7 +48,7 @@ impl JsSerieSlice {
     }
 
     /// The core window over the serie as it stands now.
-    fn window(&self) -> Result<SerieSlice<'_>> {
+    fn window(&self) -> Result<WindowSerie<'_>> {
         self.serie
             .inner
             .window(self.offset, self.len)
@@ -56,14 +56,14 @@ impl JsSerieSlice {
     }
 
     /// The core mutable window over the serie as it stands now.
-    fn window_mut(&mut self) -> Result<SerieSliceMut<'_>> {
+    fn window_mut(&mut self) -> Result<WindowSerieMut<'_>> {
         let (offset, len) = (self.offset, self.len);
         self.serie.inner.window_mut(offset, len).map_err(napi_error)
     }
 }
 
 #[napi]
-impl JsSerieSlice {
+impl JsWindowSerie {
     /// The number of rows the window holds.
     #[napi(getter)]
     pub fn length(&self) -> f64 {
@@ -304,7 +304,7 @@ impl JsSerieSlice {
     #[napi(js_name = "_equalsNative", skip_typescript)]
     pub fn equals_native(
         &self,
-        other: Either<ClassInstance<'_, JsSerieSlice>, ClassInstance<'_, JsSerie>>,
+        other: Either<ClassInstance<'_, JsWindowSerie>, ClassInstance<'_, JsSerie>>,
     ) -> Result<bool> {
         let window = self.window()?;
         Ok(match other {
@@ -354,7 +354,7 @@ impl JsSerieSlice {
     pub fn copy_from_native(
         &self,
         env: Env,
-        other: Either<ClassInstance<'_, JsSerieSlice>, ClassInstance<'_, JsSerie>>,
+        other: Either<ClassInstance<'_, JsWindowSerie>, ClassInstance<'_, JsSerie>>,
     ) -> Result<()> {
         // The source is held apart before the serie is borrowed mutably, so
         // a window copied from the serie it views reads the rows as they

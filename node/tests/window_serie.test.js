@@ -1,13 +1,13 @@
 'use strict'
 
-// Pins node/src/serie_slice.rs: a window over a serie that reads and writes
+// Pins node/src/window_serie.rs: a window over a serie that reads and writes
 // through the serie at each call, every index window-relative. Each case
-// mirrors rust/tests/root/serie_slice.rs by name.
+// mirrors rust/tests/root/window_serie.rs by name.
 
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { Field, Serie, SerieSlice, StructSerie } = require('yggdryl')
+const { Field, Serie, WindowSerie, StructSerie } = require('yggdryl')
 
 // Prices as an int64 column, `null` an absent row.
 const column = (values) =>
@@ -17,7 +17,7 @@ const run = (values) => new Serie(values)
 test('a window reads through the serie, window-relative, on both leaves', () => {
   for (const serie of [column([1, 2, null, 4, 5, 6]), run([1, 2, null, 4, 5, 6])]) {
     const window = serie.window(1, 3)
-    assert.ok(window instanceof SerieSlice)
+    assert.ok(window instanceof WindowSerie)
     assert.deepEqual([window.length, window.offset, window.isEmpty()], [3, 1, false])
     // The window holds the very serie it was taken from.
     assert.strictEqual(window.serie, serie)
@@ -53,7 +53,7 @@ test('a window reads through the serie, window-relative, on both leaves', () => 
     assert.equal(serie.window(6, 0).length, 0)
   }
   // A window has no public constructor: a serie hands it out.
-  assert.throws(() => new SerieSlice(), /handed out by Serie/)
+  assert.throws(() => new WindowSerie(), /handed out by Serie/)
 })
 
 test('every edge is refused naming the serie and both counts', () => {
@@ -95,7 +95,7 @@ test('identity is the window rows alone, like a serie', () => {
   assert.equal(window.equals(prices.window(2, 2)), false)
   assert.equal(window.toString(), 'price[Int64(Int64(1)), Int64(Int64(2))]')
   assert.equal(otherWindow.toString(), '$[Int64(Int64(1)), Int64(Int64(2))]')
-  assert.throws(() => window.equals([1, 2]), /SerieSlice.equals takes a SerieSlice or a Serie/)
+  assert.throws(() => window.equals([1, 2]), /WindowSerie.equals takes a WindowSerie or a Serie/)
 })
 
 test('the reads of a window answer what the sliced serie answers', () => {
@@ -165,7 +165,7 @@ test('every write goes through the serie on the rebased range and never past the
   // A window copied from the serie it views reads the rows as they were.
   prices.window(0, 2).copyFrom(prices.window(2, 2))
   assert.deepEqual(prices.asJs(), [5, 6, 5, 6, 5])
-  assert.throws(() => window.copyFrom([1, 2, 3]), /SerieSlice.copyFrom takes a SerieSlice or a Serie/)
+  assert.throws(() => window.copyFrom([1, 2, 3]), /WindowSerie.copyFrom takes a WindowSerie or a Serie/)
 
   // A run is written the same way.
   const values = run([1, 2, 3, 4, 5])
@@ -231,10 +231,10 @@ test('the window natives stay outside the public surface', () => {
     '_asReversedNative',
     '_asTakenNative',
   ]) {
-    assert.equal(name in SerieSlice.prototype, false, name)
+    assert.equal(name in WindowSerie.prototype, false, name)
   }
   // A window never shrinks what it views, so it offers neither write that
   // would.
-  assert.equal('asUnique' in SerieSlice.prototype, false)
-  assert.equal('asFiltered' in SerieSlice.prototype, false)
+  assert.equal('asUnique' in WindowSerie.prototype, false)
+  assert.equal('asFiltered' in WindowSerie.prototype, false)
 })

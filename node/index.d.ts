@@ -7945,7 +7945,7 @@ export type JsSerieReader = SerieReader
  * call, and a write never grows or shrinks what the window views. Identity
  * is the window's rows alone, as a serie's is its rows.
  */
-export declare class SerieSlice {
+export declare class WindowSerie {
   /** The number of rows the window holds. */
   get length(): number
   /** The serie row the window starts at. */
@@ -7994,7 +7994,7 @@ export declare class SerieSlice {
   /** Swap window rows `left` and `right`. */
   swap(left: number, right: number): void
 }
-export type JsSerieSlice = SerieSlice
+export type JsWindowSerie = WindowSerie
 
 /**
  * An HTTP/1.1 server hosting `IOBase` handles and fixed answers, answering

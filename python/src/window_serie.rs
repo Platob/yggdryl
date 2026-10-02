@@ -1,11 +1,11 @@
-//! Python's native view of the shared [`SerieSlice`]: a window over a serie
+//! Python's native view of the shared [`WindowSerie`]: a window over a serie
 //! that reads and writes through the serie's own implementation.
 //!
-//! [`PySerieSlice`] holds the `Serie` object it was taken from, an offset
+//! [`PyWindowSerie`] holds the `Serie` object it was taken from, an offset
 //! and a length, and nothing else: every call borrows that serie when it is
 //! asked - shared for a read, mutably for a write - takes the core window
 //! over it again, and redirects. One class is therefore both the core's
-//! `SerieSlice` and its `SerieSliceMut`: Python has no borrow to tell them
+//! `WindowSerie` and its `WindowSerieMut`: Python has no borrow to tell them
 //! apart, so a write is checked when it is made rather than when the window
 //! is taken. A window taken before its serie shrank is refused naming the
 //! serie and both counts, as the core refuses a window past the end.
@@ -19,7 +19,7 @@ use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PySlice};
-use yggdryl::{Scalar, Serie, SerieSlice, SerieSliceMut};
+use yggdryl::{Scalar, Serie, WindowSerie, WindowSerieMut};
 
 use crate::datatype::PyDataType;
 use crate::field::PyField;
@@ -29,18 +29,18 @@ use crate::{compare, normalize_index, value_error};
 
 /// A window over a `Serie`, read and written through it, window-relative.
 #[pyclass(
-    name = "SerieSlice",
+    name = "WindowSerie",
     module = "yggdryl._native",
     frozen,
     skip_from_py_object
 )]
-pub(crate) struct PySerieSlice {
+pub(crate) struct PyWindowSerie {
     serie: Py<PySerie>,
     offset: usize,
     len: usize,
 }
 
-impl PySerieSlice {
+impl PyWindowSerie {
     /// The window `offset..offset + len` over `serie`, which the caller has
     /// proven against the serie's length.
     pub(crate) const fn new(serie: Py<PySerie>, offset: usize, len: usize) -> Self {
@@ -52,7 +52,7 @@ impl PySerieSlice {
     fn read<T>(
         &self,
         py: Python<'_>,
-        read: impl FnOnce(SerieSlice<'_>) -> PyResult<T>,
+        read: impl FnOnce(WindowSerie<'_>) -> PyResult<T>,
     ) -> PyResult<T> {
         let serie = self.serie.bind(py).borrow();
         read(
@@ -68,7 +68,7 @@ impl PySerieSlice {
     fn detached<T, F>(&self, py: Python<'_>, read: F) -> PyResult<T>
     where
         T: Send,
-        F: for<'a> FnOnce(SerieSlice<'a>) -> yggdryl::Result<T> + Send,
+        F: for<'a> FnOnce(WindowSerie<'a>) -> yggdryl::Result<T> + Send,
     {
         let serie = self.serie.bind(py).borrow().inner.clone();
         let (offset, len) = (self.offset, self.len);
@@ -81,7 +81,7 @@ impl PySerieSlice {
     fn write<T>(
         &self,
         py: Python<'_>,
-        write: impl FnOnce(SerieSliceMut<'_>) -> yggdryl::Result<T>,
+        write: impl FnOnce(WindowSerieMut<'_>) -> yggdryl::Result<T>,
     ) -> PyResult<T> {
         let mut serie = self.serie.bind(py).borrow_mut();
         let window = serie
@@ -104,7 +104,7 @@ impl PySerieSlice {
         normalize_index(index, self.len).ok_or_else(|| PyIndexError::new_err(index))
     }
 
-    /// The serie object and the range a `SerieSlice` or `Serie` argument
+    /// The serie object and the range a `WindowSerie` or `Serie` argument
     /// views: a `Serie` as its whole window.
     fn viewed(other: &Bound<'_, PyAny>) -> PyResult<(Py<PySerie>, usize, usize)> {
         if let Ok(window) = other.cast::<Self>() {
@@ -120,7 +120,7 @@ impl PySerieSlice {
             return Ok((serie.clone().unbind(), 0, len));
         }
         Err(PyTypeError::new_err(format!(
-            "expected a SerieSlice or a Serie, got {}",
+            "expected a WindowSerie or a Serie, got {}",
             crate::iomedia::type_name(other)
         )))
     }
@@ -138,7 +138,7 @@ impl PySerieSlice {
 
 #[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
 #[pymethods]
-impl PySerieSlice {
+impl PyWindowSerie {
     // The rows are the identity and the serie under them is mutable.
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
@@ -412,18 +412,18 @@ impl PySerieSlice {
             let window = slice.indices(isize::try_from(self.len).unwrap_or(isize::MAX))?;
             if window.step != 1 {
                 return Err(PyValueError::new_err(
-                    "a SerieSlice slices with a step of 1 only",
+                    "a WindowSerie slices with a step of 1 only",
                 ));
             }
             let start = usize::try_from(window.start).unwrap_or(0);
             return self.window(py, start, window.slicelength)?.into_py_any(py);
         }
         if key.is_instance_of::<PyBool>() {
-            return Err(PyTypeError::new_err("SerieSlice indexes must be int"));
+            return Err(PyTypeError::new_err("WindowSerie indexes must be int"));
         }
         let index = key
             .extract::<isize>()
-            .map_err(|_| PyTypeError::new_err("SerieSlice indexes must be int or slice"))?;
+            .map_err(|_| PyTypeError::new_err("WindowSerie indexes must be int or slice"))?;
         self.scalar(py, self.index(index)?)?.into_py_any(py)
     }
 

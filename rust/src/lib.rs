@@ -121,7 +121,6 @@ pub mod securityid;
 pub mod sedol;
 pub(crate) mod serde;
 pub mod serie;
-mod serie_slice;
 pub mod side;
 pub mod soap;
 mod sort_options;
@@ -149,6 +148,7 @@ mod variant;
 pub mod version;
 mod vocabulary;
 pub(crate) mod warning;
+mod window_serie;
 pub mod wkb;
 pub mod xml;
 pub mod xmla;
@@ -227,7 +227,6 @@ pub use protocol::{
     TransformFieldMut, UrnField, UrnFieldMut,
 };
 pub use scheme::Scheme;
-pub use serie_slice::{SerieSlice, SerieSliceMut, SerieSliceRows, SerieWindows, SerieWindowsIter};
 pub use sort_options::SortOptions;
 pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
@@ -237,6 +236,9 @@ pub use uri::{
     UriType, Url, UrlParents, Urn,
 };
 pub(crate) use uri::{URL_EXTENSION_NAME, URN_EXTENSION_NAME};
+pub use window_serie::{
+    SerieWindows, SerieWindowsIter, WindowSerie, WindowSerieMut, WindowSerieRows,
+};
 pub use xxhash::{DigestFieldNames, DigestFields};
 
 pub(crate) use arithmetic::Arithmetic;

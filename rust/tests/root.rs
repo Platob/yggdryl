@@ -155,8 +155,6 @@ mod sedol;
 mod serde;
 #[path = "root/serie.rs"]
 mod serie;
-#[path = "root/serie_slice.rs"]
-mod serie_slice;
 #[path = "root/side.rs"]
 mod side;
 #[path = "root/sort_options.rs"]
@@ -198,6 +196,8 @@ mod vocabulary;
 #[cfg(feature = "internals")]
 #[path = "root/warning.rs"]
 mod warning;
+#[path = "root/window_serie.rs"]
+mod window_serie;
 #[path = "root/wkb.rs"]
 mod wkb;
 #[path = "root/zlib.rs"]

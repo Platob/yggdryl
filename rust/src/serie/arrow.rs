@@ -2328,7 +2328,7 @@ impl Cut {
 
     /// Where the rows from the cursor stop belonging to one window.
     fn end(&self) -> usize {
-        crate::serie_slice::window_end(&self.starts, self.at)
+        crate::window_serie::window_end(&self.starts, self.at)
     }
 }
 

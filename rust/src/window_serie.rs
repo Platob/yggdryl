@@ -1,12 +1,12 @@
-//! SerieSlice: a window over a serie that reads and writes through it.
+//! WindowSerie: a window over a serie that reads and writes through it.
 //!
 //! [`Serie::slice`] answers a new serie - zero copy, an Arrow slice of a
 //! column or a view of a run's values - and a caller who wants to read or
 //! write a stretch of rows where they stand wants no serie at all: a
-//! [`SerieSlice`] points at the serie and the window, moving nothing, and
+//! [`WindowSerie`] points at the serie and the window, moving nothing, and
 //! every index it takes is window-relative, bounds-checked against the
 //! window, then rebased onto the serie, so a leaf's `value(i)` under it is
-//! one bounds check and one buffer read as it was. A [`SerieSliceMut`] is
+//! one bounds check and one buffer read as it was. A [`WindowSerieMut`] is
 //! the same window over a serie the caller holds mutably, and its writes go
 //! through [`Serie::splice`] and [`Serie::set`] on the rebased range - so a
 //! primitive leaf's `set` stays one buffer write, and a sort of a uniquely
@@ -15,9 +15,9 @@
 //! refused by name.
 //!
 //! A window of a window is a window of the serie, its offsets summed, so
-//! nothing nests: [`SerieSlice::window`] and [`SerieSliceMut::window_mut`]
+//! nothing nests: [`WindowSerie::window`] and [`WindowSerieMut::window_mut`]
 //! narrow onto the same serie, and [`SerieWindows`] - the windows of equal
-//! adjacent keys [`Serie::window_by`] and [`SerieSlice::window_by`] cut -
+//! adjacent keys [`Serie::window_by`] and [`WindowSerie::window_by`] cut -
 //! are every one over the serie, at offsets in it, unless `sorted` had to
 //! gather the rows into key order: then every window is over that one
 //! gathered copy, which the windows value owns.
@@ -74,7 +74,7 @@ use crate::{DataType, Field, Result, Scalar, Serie, SortOptions};
 ///
 /// `Copy`: two words beside the reference. Every index is window-relative.
 #[derive(Clone, Copy)]
-pub struct SerieSlice<'a> {
+pub struct WindowSerie<'a> {
     serie: &'a Serie,
     offset: usize,
     len: usize,
@@ -82,7 +82,7 @@ pub struct SerieSlice<'a> {
 
 /// A window over a serie the caller holds mutably, read and written
 /// through the serie's own implementation on the rebased range.
-pub struct SerieSliceMut<'a> {
+pub struct WindowSerieMut<'a> {
     serie: &'a mut Serie,
     offset: usize,
     len: usize,
@@ -90,19 +90,19 @@ pub struct SerieSliceMut<'a> {
 
 /// The rows of one window, lent for a run and built one at a time for a
 /// column, from either end.
-pub struct SerieSliceRows<'a> {
-    window: SerieSlice<'a>,
+pub struct WindowSerieRows<'a> {
+    window: WindowSerie<'a>,
     front: usize,
     back: usize,
 }
 
 /// The windows of equal adjacent keys over one serie: what
-/// [`Serie::window_by`], [`SerieSlice::window_by`] and
-/// [`SerieSliceMut::window_by`] answer.
+/// [`Serie::window_by`], [`WindowSerie::window_by`] and
+/// [`WindowSerieMut::window_by`] answer.
 ///
 /// An owner, lending its windows as often as asked: [`Self::iter`] - or
 /// `&windows` in a `for` - walks them as `(key, window)` pairs, each window
-/// a [`SerieSlice`] over [`Self::serie`]. Without `sorted`, or with keys
+/// a [`WindowSerie`] over [`Self::serie`]. Without `sorted`, or with keys
 /// already in order, the windows are in row order over the windowed serie
 /// itself, borrowed, at their offsets in it; with `sorted` and keys out of
 /// order they are in key order over the one copy of the rows gathered in
@@ -211,9 +211,9 @@ impl Serie {
     ///
     /// Returns an error naming the serie and both counts when the window
     /// reaches past the end.
-    pub fn window(&self, offset: usize, length: usize) -> Result<SerieSlice<'_>> {
+    pub fn window(&self, offset: usize, length: usize) -> Result<WindowSerie<'_>> {
         require_window(self.name(), offset, length, self.len())?;
-        Ok(SerieSlice {
+        Ok(WindowSerie {
             serie: self,
             offset,
             len: length,
@@ -241,9 +241,9 @@ impl Serie {
     ///
     /// Returns an error naming the serie and both counts when the window
     /// reaches past the end.
-    pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<SerieSliceMut<'_>> {
+    pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<WindowSerieMut<'_>> {
         require_window(self.name(), offset, length, self.len())?;
-        Ok(SerieSliceMut {
+        Ok(WindowSerieMut {
             serie: self,
             offset,
             len: length,
@@ -251,7 +251,7 @@ impl Serie {
     }
 }
 
-impl<'a> SerieSlice<'a> {
+impl<'a> WindowSerie<'a> {
     /// The number of rows the window holds.
     pub const fn len(&self) -> usize {
         self.len
@@ -343,8 +343,8 @@ impl<'a> SerieSlice<'a> {
 
     /// Walk the window's rows: lent for a run, built one at a time for a
     /// column.
-    pub fn iter(&self) -> SerieSliceRows<'a> {
-        SerieSliceRows {
+    pub fn iter(&self) -> WindowSerieRows<'a> {
+        WindowSerieRows {
             window: *self,
             front: 0,
             back: self.len,
@@ -537,10 +537,10 @@ impl<'a> SerieSlice<'a> {
     }
 }
 
-impl<'a> SerieSliceMut<'a> {
-    /// The same window, read only: every read of [`SerieSlice`].
-    pub fn as_window(&self) -> SerieSlice<'_> {
-        SerieSlice {
+impl<'a> WindowSerieMut<'a> {
+    /// The same window, read only: every read of [`WindowSerie`].
+    pub fn as_window(&self) -> WindowSerie<'_> {
+        WindowSerie {
             serie: self.serie,
             offset: self.offset,
             len: self.len,
@@ -576,7 +576,7 @@ impl<'a> SerieSliceMut<'a> {
     ///
     /// # Errors
     ///
-    /// [`SerieSlice::dtype`]'s refusal.
+    /// [`WindowSerie::dtype`]'s refusal.
     pub fn dtype(&self) -> Result<DataType> {
         self.as_window().dtype()
     }
@@ -590,7 +590,7 @@ impl<'a> SerieSliceMut<'a> {
     ///
     /// # Errors
     ///
-    /// [`SerieSlice::is_null`]'s refusal.
+    /// [`WindowSerie::is_null`]'s refusal.
     pub fn is_null(&self, index: usize) -> Result<bool> {
         self.as_window().is_null(index)
     }
@@ -599,7 +599,7 @@ impl<'a> SerieSliceMut<'a> {
     ///
     /// # Errors
     ///
-    /// [`SerieSlice::scalar`]'s refusal.
+    /// [`WindowSerie::scalar`]'s refusal.
     pub fn scalar(&self, index: usize) -> Result<Scalar> {
         self.as_window().scalar(index)
     }
@@ -610,7 +610,7 @@ impl<'a> SerieSliceMut<'a> {
     }
 
     /// Walk the window's rows.
-    pub fn iter(&self) -> SerieSliceRows<'_> {
+    pub fn iter(&self) -> WindowSerieRows<'_> {
         self.as_window().iter()
     }
 
@@ -628,8 +628,8 @@ impl<'a> SerieSliceMut<'a> {
     ///
     /// # Errors
     ///
-    /// [`SerieSlice::window`]'s refusal.
-    pub fn window(&self, offset: usize, length: usize) -> Result<SerieSlice<'_>> {
+    /// [`WindowSerie::window`]'s refusal.
+    pub fn window(&self, offset: usize, length: usize) -> Result<WindowSerie<'_>> {
         self.as_window().window(offset, length)
     }
 
@@ -657,9 +657,9 @@ impl<'a> SerieSliceMut<'a> {
     ///
     /// Returns an error naming the serie and both counts when the window
     /// reaches past this one.
-    pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<SerieSliceMut<'_>> {
+    pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<WindowSerieMut<'_>> {
         require_window(self.name(), offset, length, self.len)?;
-        Ok(SerieSliceMut {
+        Ok(WindowSerieMut {
             serie: self.serie,
             offset: self.offset + offset,
             len: length,
@@ -667,7 +667,7 @@ impl<'a> SerieSliceMut<'a> {
     }
 
     /// The window's rows cut into windows of equal adjacent keys, read only:
-    /// [`SerieSlice::window_by`] over [`Self::as_window`].
+    /// [`WindowSerie::window_by`] over [`Self::as_window`].
     ///
     /// ```
     /// use yggdryl::{DataType, Field, Scalar, Serie};
@@ -694,7 +694,7 @@ impl<'a> SerieSliceMut<'a> {
     ///
     /// # Errors
     ///
-    /// [`SerieSlice::window_by`]'s refusals, naming the serie.
+    /// [`WindowSerie::window_by`]'s refusals, naming the serie.
     pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> Result<SerieWindows<'_>> {
         self.as_window().window_by(by, sorted)
     }
@@ -850,7 +850,7 @@ impl<'a> SerieSliceMut<'a> {
     ///
     /// Returns an error naming the serie when `other` is another length, or
     /// [`Serie::splice`]'s refusal.
-    pub fn copy_from(&mut self, other: &SerieSlice<'_>) -> Result<()> {
+    pub fn copy_from(&mut self, other: &WindowSerie<'_>) -> Result<()> {
         self.splice(0..self.len, other.rows().into_owned())
     }
 
@@ -964,7 +964,7 @@ impl<'a> SerieSliceMut<'a> {
     }
 }
 
-impl Rows for SerieSlice<'_> {
+impl Rows for WindowSerie<'_> {
     fn rows_len(&self) -> usize {
         self.len
     }
@@ -977,40 +977,40 @@ impl Rows for SerieSlice<'_> {
     }
 }
 
-impl PartialEq for SerieSlice<'_> {
+impl PartialEq for WindowSerie<'_> {
     fn eq(&self, other: &Self) -> bool {
         compare_rows(self, other) == Ordering::Equal
     }
 }
 
-impl Eq for SerieSlice<'_> {}
+impl Eq for WindowSerie<'_> {}
 
-impl PartialEq<Serie> for SerieSlice<'_> {
+impl PartialEq<Serie> for WindowSerie<'_> {
     fn eq(&self, other: &Serie) -> bool {
         compare_rows(self, other) == Ordering::Equal
     }
 }
 
-impl PartialEq<SerieSlice<'_>> for Serie {
-    fn eq(&self, other: &SerieSlice<'_>) -> bool {
+impl PartialEq<WindowSerie<'_>> for Serie {
+    fn eq(&self, other: &WindowSerie<'_>) -> bool {
         compare_rows(self, other) == Ordering::Equal
     }
 }
 
-impl Ord for SerieSlice<'_> {
+impl Ord for WindowSerie<'_> {
     /// The window's rows, and nothing else: not the serie, not the offset.
     fn cmp(&self, other: &Self) -> Ordering {
         compare_rows(self, other)
     }
 }
 
-impl PartialOrd for SerieSlice<'_> {
+impl PartialOrd for WindowSerie<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Hash for SerieSlice<'_> {
+impl Hash for WindowSerie<'_> {
     /// What `<[Scalar]>::hash` writes for the window's rows, so a window
     /// hashes like the serie of the same rows.
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -1018,7 +1018,7 @@ impl Hash for SerieSlice<'_> {
     }
 }
 
-impl fmt::Display for SerieSlice<'_> {
+impl fmt::Display for WindowSerie<'_> {
     /// The serie's name - `$` for a run - and the window's rows.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}[", self.name())?;
@@ -1032,10 +1032,10 @@ impl fmt::Display for SerieSlice<'_> {
     }
 }
 
-impl fmt::Debug for SerieSlice<'_> {
+impl fmt::Debug for WindowSerie<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("SerieSlice")
+            .debug_struct("WindowSerie")
             .field("serie", &self.name())
             .field("offset", &self.offset)
             .field("len", &self.len)
@@ -1044,16 +1044,16 @@ impl fmt::Debug for SerieSlice<'_> {
     }
 }
 
-impl fmt::Display for SerieSliceMut<'_> {
+impl fmt::Display for WindowSerieMut<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.as_window(), formatter)
     }
 }
 
-impl fmt::Debug for SerieSliceMut<'_> {
+impl fmt::Debug for WindowSerieMut<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("SerieSliceMut")
+            .debug_struct("WindowSerieMut")
             .field("serie", &self.name())
             .field("offset", &self.offset)
             .field("len", &self.len)
@@ -1062,16 +1062,16 @@ impl fmt::Debug for SerieSliceMut<'_> {
     }
 }
 
-impl<'a> IntoIterator for &SerieSlice<'a> {
+impl<'a> IntoIterator for &WindowSerie<'a> {
     type Item = Cow<'a, Scalar>;
-    type IntoIter = SerieSliceRows<'a>;
+    type IntoIter = WindowSerieRows<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
 }
 
-impl<'a> Iterator for SerieSliceRows<'a> {
+impl<'a> Iterator for WindowSerieRows<'a> {
     type Item = Cow<'a, Scalar>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -1089,7 +1089,7 @@ impl<'a> Iterator for SerieSliceRows<'a> {
     }
 }
 
-impl DoubleEndedIterator for SerieSliceRows<'_> {
+impl DoubleEndedIterator for WindowSerieRows<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.front >= self.back {
             return None;
@@ -1099,13 +1099,13 @@ impl DoubleEndedIterator for SerieSliceRows<'_> {
     }
 }
 
-impl ExactSizeIterator for SerieSliceRows<'_> {
+impl ExactSizeIterator for WindowSerieRows<'_> {
     fn len(&self) -> usize {
         self.back - self.front
     }
 }
 
-impl FusedIterator for SerieSliceRows<'_> {}
+impl FusedIterator for WindowSerieRows<'_> {}
 
 impl<'a> SerieWindows<'a> {
     /// The windows `keys` cuts, one key row per row of `holder` from
@@ -1179,7 +1179,7 @@ impl<'a> SerieWindows<'a> {
 }
 
 impl<'s, 'a: 's> IntoIterator for &'s SerieWindows<'a> {
-    type Item = (Scalar, SerieSlice<'s>);
+    type Item = (Scalar, WindowSerie<'s>);
     type IntoIter = SerieWindowsIter<'s>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -1201,7 +1201,7 @@ pub(crate) fn window_end(starts: &BooleanBuffer, start: usize) -> usize {
 }
 
 impl<'s> Iterator for SerieWindowsIter<'s> {
-    type Item = (Scalar, SerieSlice<'s>);
+    type Item = (Scalar, WindowSerie<'s>);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
@@ -1226,7 +1226,7 @@ impl<'s> Iterator for SerieWindowsIter<'s> {
         self.remaining -= 1;
         Some((
             proven_row(&windows.keys, key_row),
-            SerieSlice {
+            WindowSerie {
                 serie: &windows.holder,
                 offset,
                 len,

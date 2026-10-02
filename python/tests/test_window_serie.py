@@ -1,7 +1,7 @@
-"""``python/src/serie_slice.rs``: a window over a serie, read and written
+"""``python/src/window_serie.rs``: a window over a serie, read and written
 through it, every index window-relative.
 
-Mirrors ``rust/tests/root/serie_slice.rs`` case for case. One Python class is
+Mirrors ``rust/tests/root/window_serie.rs`` case for case. One Python class is
 both the core's shared and its mutable window: it holds the serie object, an
 offset and a length, and borrows the serie when each call is made.
 """
@@ -13,7 +13,7 @@ import copy
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, Serie, SerieSlice
+from yggdryl import DataType, Field, Serie, WindowSerie
 
 
 def column(values: list[int | None]) -> Serie:
@@ -29,7 +29,7 @@ def test_a_window_reads_through_the_serie_window_relative_on_both_leaves() -> No
     run = Serie([1, 2, None, 4, 5, 6])
     for serie in (prices, run):
         window = serie.window(1, 3)
-        assert isinstance(window, SerieSlice)
+        assert isinstance(window, WindowSerie)
         assert (len(window), window.offset, window.is_empty()) == (3, 1, False)
         # The window holds the serie object itself, never a copy.
         assert window.serie is serie

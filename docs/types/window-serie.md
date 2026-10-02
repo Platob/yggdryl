@@ -1,19 +1,19 @@
-# Serie slice
+# Window serie
 
-A window over a [`Serie`](serie.md) that reads and writes through the serie's own implementation, moving nothing: `SerieSlice` over a serie the caller holds, `SerieSliceMut` over one it holds mutably.
+A window over a [`Serie`](serie.md) that reads and writes through the serie's own implementation, moving nothing: `WindowSerie` over a serie the caller holds, `WindowSerieMut` over one it holds mutably.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
-| What it is | `SerieSlice<'a>`: a reference to a serie, an offset and a length - two words beside the reference, `Copy`. `SerieSliceMut<'a>` is the same window over a `&mut Serie`. Neither holds a row or a buffer of its own |
+| What it is | `WindowSerie<'a>`: a reference to a serie, an offset and a length - two words beside the reference, `Copy`. `WindowSerieMut<'a>` is the same window over a `&mut Serie`. Neither holds a row or a buffer of its own |
 | Doors | `Serie::window(offset, length)` and `Serie::window_mut(offset, length)`; refused naming the serie and both counts when the window reaches past the end. `window(offset, length)` on a window is a narrower one, rebased onto the serie |
 | Indexes | Every index is window-relative, bounds-checked against the window, then rebased by the offset before the serie answers - so a leaf's `value(i)` under it is one bounds check and one buffer read, as it was |
 | Reads | `len`, `is_empty`, `offset`, `serie()` (the whole), `field`, `dtype`, `null_count` (none when the column holds no absent row, else one validity read per window row, no row built), `is_null(i)`, `scalar(i)`, `get(i)`, `iter()`, `rows()`, `memory_size`, `into_serie()` (`Serie::slice`: zero copy for a column, the window's values copied for a run), and the [ordering verbs](serie.md#sorting-uniqueness-and-partitions) over the window: `is_sorted`, `is_unique`, `unique_count`, `sort_indices`, `into_sorted`, `into_unique`, `into_reversed`, `into_taken`, `into_filtered`, `partition_by`, each what the sliced serie answers |
-| Writes | `SerieSliceMut` only: `set(i, v)`, `fill(v)`, `swap(i, j)`, `copy_from(&SerieSlice)`, `splice(range, rows)`, `as_sorted(options)`, `as_reversed()`, `as_taken(indices)`, each through `Serie::splice` or `Serie::set` on the rebased range. A window never grows or shrinks what it views: `splice` takes exactly as many rows as the range, `as_taken` exactly as many indices as the window, and `as_unique` and `as_filtered` are not offered |
+| Writes | `WindowSerieMut` only: `set(i, v)`, `fill(v)`, `swap(i, j)`, `copy_from(&WindowSerie)`, `splice(range, rows)`, `as_sorted(options)`, `as_reversed()`, `as_taken(indices)`, each through `Serie::splice` or `Serie::set` on the rebased range. A window never grows or shrinks what it views: `splice` takes exactly as many rows as the range, `as_taken` exactly as many indices as the window, and `as_unique` and `as_filtered` are not offered |
 | In place | `as_sorted` and `as_reversed` sort or reverse the window of a primitive column's native slice, or a boolean column's two bitmaps, where it stands when the column holds its buffer alone, and a run's values in place when it holds them alone; every other leaf writes the ordered rows back through `splice` |
 | Identity | The window's rows alone, as a serie's is its rows: a window equals, orders as and hashes like the serie of the same rows, on either side of the comparison; neither the serie nor the offset is identity. `Display` renders the serie's name - `$` for a run - and the window's rows; `Debug` the name, the offset, the length and the null count |
-| Bindings | Rust, Python and JavaScript. In both bindings `serie.window(offset, length)` is one class, `SerieSlice`, holding the serie object beside the offset and the length and delegating per call: it is the shared and the mutable window at once, a write checked when it is made, and `window_mut`, `as_window` and `SerieSliceRows` are Rust only. Python's window is unhashable, as the mutable serie it holds is, and `window[a:b]` is a narrower window; JavaScript's equality is `equals` |
+| Bindings | Rust, Python and JavaScript. In both bindings `serie.window(offset, length)` is one class, `WindowSerie`, holding the serie object beside the offset and the length and delegating per call: it is the shared and the mutable window at once, a write checked when it is made, and `window_mut`, `as_window` and `WindowSerieRows` are Rust only. Python's window is unhashable, as the mutable serie it holds is, and `window[a:b]` is a narrower window; JavaScript's equality is `equals` |
 
 One verb, three spellings:
 
@@ -184,25 +184,25 @@ A window reads a stretch of rows where they stand and writes them back where the
 - A value the field refuses refuses `set`, `fill`, `swap`, `copy_from` and `splice` naming the field, and the serie is left as it was; a run accepts any value.
 - A window over a shared column writes through `Arc::make_mut`: the column is copied once and the other holder is left alone, exactly as a `Serie` write does.
 - `into_serie` on a run copies the window's values, so the ordering reads over a run's window cost that copy; a column's window shares its buffers.
-- The borrowed view of a mutable window is `as_window()`, which answers every read of `SerieSlice`; the mutable window also answers them directly, each through that view.
+- The borrowed view of a mutable window is `as_window()`, which answers every read of `WindowSerie`; the mutable window also answers them directly, each through that view.
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --test root serie_slice
+    cargo test -p yggdryl --test root window_serie
     cargo test -p yggdryl --test allocations -- a_window_over_a_primitive
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/test_serie_slice.py
+    python/.venv/bin/python -m pytest python/tests/test_window_serie.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/serie_slice.test.js
+    node --test node/tests/window_serie.test.js
     ```

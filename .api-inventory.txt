@@ -4233,8 +4233,8 @@ pub struct Element<'a>
   pub fn child_in(&self, namespace: &str, local: &str) -> Option<Element<'_>>
   pub fn one_child_in(&self, namespace: &str, local: &str) -> Result<Element<'_>>
 
-### yggdryl::root::serie_slice  [rust/src/serie_slice.rs]  (a window over a serie that reads and writes through the serie's own implementation, every index window-relative; re-exported at the root)
-pub struct SerieSlice<'a>  (a reference to a serie, an offset and a length; Copy; Eq/Ord/Hash over the window's rows alone, PartialEq with Serie either side; Display the serie's name - $ for a run - and the window's rows, Debug the name, offset, len and nulls; IntoIterator for &SerieSlice)
+### yggdryl::root::window_serie  [rust/src/window_serie.rs]  (a window over a serie that reads and writes through the serie's own implementation, every index window-relative; re-exported at the root)
+pub struct WindowSerie<'a>  (a reference to a serie, an offset and a length; Copy; Eq/Ord/Hash over the window's rows alone, PartialEq with Serie either side; Display the serie's name - $ for a run - and the window's rows, Debug the name, offset, len and nulls; IntoIterator for &WindowSerie)
   pub const fn len(&self) -> usize
   pub const fn is_empty(&self) -> bool
   pub const fn offset(&self) -> usize  (the serie row the window starts at)
@@ -4245,7 +4245,7 @@ pub struct SerieSlice<'a>  (a reference to a serie, an offset and a length; Copy
   pub fn is_null(&self, index: usize) -> Result<bool>  (window-relative; refuses past the window naming the serie and both counts)
   pub fn scalar(&self, index: usize) -> Result<Scalar>
   pub fn get(&self, index: usize) -> Option<Cow<'a, Scalar>>
-  pub fn iter(&self) -> SerieSliceRows<'a>
+  pub fn iter(&self) -> WindowSerieRows<'a>
   pub fn rows(&self) -> Cow<'a, [Scalar]>  (lent for a run, built once for a column)
   pub fn memory_size(&self) -> usize
   pub fn window(&self, offset: usize, length: usize) -> Result<Self>  (a narrower window, rebased onto the serie)
@@ -4260,8 +4260,8 @@ pub struct SerieSlice<'a>  (a reference to a serie, an offset and a length; Copy
   pub fn into_taken(&self, indices: &Serie) -> Result<Serie>
   pub fn into_filtered(&self, mask: &Serie) -> Result<Serie>
   pub fn partition_by(&self, keys: &Serie) -> Result<Vec<(Scalar, Serie)>>
-pub struct SerieSliceMut<'a>  (the same window over a &mut Serie; every read of SerieSlice answered directly and through as_window; Display and Debug as SerieSlice)
-  pub fn as_window(&self) -> SerieSlice<'_>  (the borrowed read-only view)
+pub struct WindowSerieMut<'a>  (the same window over a &mut Serie; every read of WindowSerie answered directly and through as_window; Display and Debug as WindowSerie)
+  pub fn as_window(&self) -> WindowSerie<'_>  (the borrowed read-only view)
   pub const fn len(&self) -> usize
   pub const fn is_empty(&self) -> bool
   pub const fn offset(&self) -> usize
@@ -4272,10 +4272,10 @@ pub struct SerieSliceMut<'a>  (the same window over a &mut Serie; every read of 
   pub fn is_null(&self, index: usize) -> Result<bool>
   pub fn scalar(&self, index: usize) -> Result<Scalar>
   pub fn get(&self, index: usize) -> Option<Cow<'_, Scalar>>
-  pub fn iter(&self) -> SerieSliceRows<'_>
+  pub fn iter(&self) -> WindowSerieRows<'_>
   pub fn rows(&self) -> Cow<'_, [Scalar]>
   pub fn memory_size(&self) -> usize
-  pub fn window(&self, offset: usize, length: usize) -> Result<SerieSlice<'_>>
+  pub fn window(&self, offset: usize, length: usize) -> Result<WindowSerie<'_>>
   pub fn into_serie(&self) -> Serie
   pub fn is_sorted(&self, options: SortOptions) -> bool
   pub fn is_unique(&self) -> bool
@@ -4290,12 +4290,12 @@ pub struct SerieSliceMut<'a>  (the same window over a &mut Serie; every read of 
   pub fn set(&mut self, index: usize, value: Scalar) -> Result<()>  (Serie::set on the rebased row; refuses past the window)
   pub fn fill(&mut self, value: Scalar) -> Result<()>  (the value proved once, written as clones over the window)
   pub fn swap(&mut self, left: usize, right: usize) -> Result<()>  (two reads, two sets)
-  pub fn copy_from(&mut self, other: &SerieSlice<'_>) -> Result<()>  (the other window's rows written row for row through Serie::splice; refuses another length by name)
+  pub fn copy_from(&mut self, other: &WindowSerie<'_>) -> Result<()>  (the other window's rows written row for row through Serie::splice; refuses another length by name)
   pub fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()>  (Serie::splice on the rebased range, only when rows.len() == range.len(): a window never grows or shrinks what it views)
   pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self>  (in place, chaining: a primitive column held alone sorts the window of its native slice where it stands, a boolean column its two bitmaps, a run its values, any other leaf writes the sorted rows back through splice)
   pub fn as_reversed(&mut self) -> Result<&mut Self>
   pub fn as_taken(&mut self, indices: &Serie) -> Result<&mut Self>  (exactly as many indices as the window, window-relative; refused by name otherwise)
-pub struct SerieSliceRows<'a>  (Iterator<Item = Cow<'a, Scalar>> over a window's rows, DoubleEndedIterator, ExactSizeIterator, FusedIterator)
+pub struct WindowSerieRows<'a>  (Iterator<Item = Cow<'a, Scalar>> over a window's rows, DoubleEndedIterator, ExactSizeIterator, FusedIterator)
 
 ### yggdryl::soap  [rust/src/soap/mod.rs]
 pub const ENVELOPE_NAMESPACE: &str = "http://schemas.xmlsoap.org/soap/envelope/"
@@ -5655,8 +5655,8 @@ pub struct ProtocolField<'field>
   pub fn as_reversed(&mut self) -> Result<&mut Self>  (a primitive column held alone reverses the native slice and its validity bits where they stand, a boolean column its two bitmaps)
   pub fn as_taken(&mut self, indices: &Self) -> Result<&mut Self>
   pub fn as_filtered(&mut self, mask: &Self) -> Result<&mut Self>
-  pub fn window(&self, offset: usize, length: usize) -> Result<SerieSlice<'_>>  (a window reading through this serie; refuses past the end naming the serie and both counts)
-  pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<SerieSliceMut<'_>>
+  pub fn window(&self, offset: usize, length: usize) -> Result<WindowSerie<'_>>  (a window reading through this serie; refuses past the end naming the serie and both counts)
+  pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<WindowSerieMut<'_>>
   pub fn require_arrow_array(&self) -> Result<ArrayRef>  (refuses a run by name)
   pub fn slice(&self, offset: usize, length: usize) -> Result<Self>  (zero copy for a column, offsets rebased; a run copies its window; refuses past the end)
   pub fn child(&self, name: &str) -> Option<&Self>  (a record column's child by exact name)

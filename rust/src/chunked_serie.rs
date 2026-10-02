@@ -71,8 +71,8 @@ use crate::serie::{
     Proof, Resolved, Rows, compare_rows, compare_values, hash_rows, land, proven_row,
     require_window,
 };
-use crate::serie_slice::window_end;
 use crate::value::Children;
+use crate::window_serie::window_end;
 use crate::{DataType, Field, FieldPath, Scalar, Serie, SerieReader, SortOptions};
 
 /// The invariant every chunk carries: it is a column, and its field is the

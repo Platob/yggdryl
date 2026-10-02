@@ -27,7 +27,7 @@ Because `compare_values` is crate-private, the tests carry their own copy of tha
 
 **Smoke results:**
 - Real tree, `cargo check -p yggdryl --all-targets --keep-going --message-format=short`: 6 errors, all in the expected places:
-  - `rust/src/serie_slice.rs:1043`, `:1047` and `:1049` (old `window_starts()` and `SerieWindows::new`);
+  - `rust/src/window_serie.rs:1043`, `:1047` and `:1049` (old `window_starts()` and `SerieWindows::new`);
   - `rust/src/chunked_serie.rs:1071` (`same_key`);
   - `rust/src/serie/order.rs:1375`, two errors, both from calling the 4-argument `SerieWindows::new` that X1b has not written yet.
 - Scratch copy, `cargo test -p yggdryl --test serie order`: 41 passed. Whole `--test serie`: 226 passed.
@@ -39,7 +39,7 @@ Because `compare_values` is crate-private, the tests carry their own copy of tha
 **Build hazard:** the scratch workspace shared `target-w2` with the same relative package path, so it wrote over the real tree's `yggdryl` build files. I then touched my two files so the next real-tree build rebuilds from source, and deleted the scratch copy. If a smoke run since about 11:30 UTC behaved oddly, rerun it.
 
 **Needs other owners:**
-- **`rust/src/serie.rs` (X3):** beside `mod order;` (line 216) add `pub(crate) use order::{compare_values, require_indexable};`. Without it, `serie_slice.rs` cannot reach `require_indexable` and `chunked_serie.rs` cannot reach `compare_values`. The `WindowCut` and `Regrouped` fields are reachable without naming the types.
+- **`rust/src/serie.rs` (X3):** beside `mod order;` (line 216) add `pub(crate) use order::{compare_values, require_indexable};`. Without it, `window_serie.rs` cannot reach `require_indexable` and `chunked_serie.rs` cannot reach `compare_values`. The `WindowCut` and `Regrouped` fields are reachable without naming the types.
 - **X1b:**
   - Write `SerieWindows::new(holder, offset, keys, sorted) -> Result<Self>` per the spec.
   - In `chunked_serie.rs`, replace `same_key` with `keys.compare_to_row(&last_key, 0, SortOptions::default())`.
@@ -48,7 +48,7 @@ Because `compare_values` is crate-private, the tests carry their own copy of tha
 
 ## x2:key-door
 
-X2 (the key door) is in place in my five files, and all four smoke commands pass. I ran them in a scratch worktree, because the main tree's lib can't compile until X1b lands. X1a has changed `window_starts` and deleted `same_key`, so `serie_slice.rs:1043-1049` and `chunked_serie.rs:1071` fail to build. The worktree was a detached checkout at HEAD 3851a88 with only my five files copied in, using the same `CARGO_TARGET_DIR`; I've removed it since. Nothing was committed or pushed.
+X2 (the key door) is in place in my five files, and all four smoke commands pass. I ran them in a scratch worktree, because the main tree's lib can't compile until X1b lands. X1a has changed `window_starts` and deleted `same_key`, so `window_serie.rs:1043-1049` and `chunked_serie.rs:1071` fail to build. The worktree was a detached checkout at HEAD 3851a88 with only my five files copied in, using the same `CARGO_TARGET_DIR`; I've removed it since. Nothing was committed or pushed.
 
 **Files edited**
 - `rust/src/expression/selector.rs`
@@ -96,10 +96,10 @@ X2 (the key door) is in place in my five files, and all four smoke commands pass
 | `WINDOW_BY_VALUES_KEY` | 35 + rows | 24 + rows |
 | chunked `window_by` | 105 | 80 |
 
-The period key goes up by 2 at 3 children; X4's wide-record pin should confirm it stays constant in width. The through-window case is still `direct + 5` (39 against 34), because `SerieSlice::window_by` still keys through `into_serie`. It becomes `direct + 1` once X1b calls `apply_serie_window`.
+The period key goes up by 2 at 3 children; X4's wide-record pin should confirm it stays constant in width. The through-window case is still `direct + 5` (39 against 34), because `WindowSerie::window_by` still keys through `into_serie`. It becomes `direct + 1` once X1b calls `apply_serie_window`.
 
 **Left for other owners**
-- **X1b** must use `key.apply_serie_window(self.serie, self.offset, self.len)` in `SerieSlice::window_by` and fix the broken call sites above.
+- **X1b** must use `key.apply_serie_window(self.serie, self.offset, self.len)` in `WindowSerie::window_by` and fix the broken call sites above.
 - **X4** re-pins the numbers in the table.
 - **Possible engine defect, untouched** (arrow.rs, but outside X2's spec): `Context::new` matches batch columns by the first case-insensitive name, so two root columns whose names differ only in case can read the wrong column. Exact-name-first matching would fix it.
 - **Disk**: the scratch builds left a few hundred MB to a couple of GB of yggdryl artifacts in `/home/user/target-w2` that I can't separate from other workers' by name. 7.0 GB is free now.
@@ -109,10 +109,10 @@ The period key goes up by 2 at 3 children; X4's wide-record pin should confirm i
 X1b is done. My files compile, and every smoke I own passes in the real tree, not a scratch copy. `cargo check --all-targets` still fails, but only in `allocations.rs` and the `types` bench. Both are X4's, and both just need the new `window_by(by, sorted)` spelling (sites listed at the end).
 
 **Files edited** (all under `/home/user/yggdryl/`; each ran through `rustfmt --edition 2024` except `lib.rs`, whose changed line is 97 chars):
-- `rust/src/serie_slice.rs`
+- `rust/src/window_serie.rs`
 - `rust/src/chunked_serie.rs`
 - `rust/src/lib.rs`
-- `rust/tests/root/serie_slice.rs`
+- `rust/tests/root/window_serie.rs`
 - `rust/tests/root/chunked_serie.rs`
 
 **What was implemented**
@@ -124,17 +124,17 @@ X1b is done. My files compile, and every smoke I own passes in the real tree, no
 - **`SerieWindows::new(holder, offset, keys, sorted) -> Result<Self>`** runs `keys.window_starts(sorted)?`.
   - On a regroup: `require_indexable(holder)?`, shift `order` by `offset` in place, take the rows once into an owned holder, keep the window table. `order` is then dropped.
   - Otherwise it borrows the holder.
-- **`SerieSlice::window_by(by, sorted)`** keys through `apply_serie_window(self.serie, self.offset, self.len)`, never `into_serie`. `SerieSliceMut::window_by(by, sorted)` goes through `as_window()`.
+- **`WindowSerie::window_by(by, sorted)`** keys through `apply_serie_window(self.serie, self.offset, self.len)`, never `into_serie`. `WindowSerieMut::window_by(by, sorted)` goes through `as_window()`.
 - **`ChunkedSerie::window_by(by, sorted)`**:
   - Binds once. Per non-empty chunk: `apply_serie`, then `window_starts(false)`, reading its `descent`.
   - At each chunk edge, `keys.compare_to_row(&pending_key, 0, SortOptions::default())`: `Equal` extends the pending window and builds no key; `Greater` records a descent.
   - Unsorted, or no descent: each window is `self.slice(..)`, as before.
   - Sorted with a descent: a stable `sort_by` of the runs on `compare_values`, adjacent equal keys merged. Each window is `from_landed` over its runs' zero-copy pieces in arrival order, keyed by its first run's key. No join, no row copy.
 - **Two small helpers:**
-  - `pub(crate) fn window_end(starts, start)` in `serie_slice.rs`, shared by the walk and the chunk fold.
+  - `pub(crate) fn window_end(starts, start)` in `window_serie.rs`, shared by the walk and the chunk fold.
   - `ChunkedSerie::extend_pieces`, a private split of `slice`'s body. `slice` keeps its allocation count: one pieces `Vec`, now sized with `reserve_exact`, plus `ends`.
 - **Tests:**
-  - **serie_slice:** the existing window tests and the run/empty/`*` refusals now run under both flags. New: `serie_windows_lends_its_windows_again_and_again` (replaces `serie_windows_is_an_exact_fused_walk`), `serie_windows_owns_a_gathered_holder_and_borrows_otherwise`, `a_window_windows_sorted_over_its_own_rows`.
+  - **window_serie:** the existing window tests and the run/empty/`*` refusals now run under both flags. New: `serie_windows_lends_its_windows_again_and_again` (replaces `serie_windows_is_an_exact_fused_walk`), `serie_windows_owns_a_gathered_holder_and_borrows_otherwise`, `a_window_windows_sorted_over_its_own_rows`.
   - **chunked:** the refusals run under both flags. New: `window_by_sorted_regroups_runs_across_chunks_with_no_row_copied` (`[B, A] [A, B]`, a descent only at an edge, absent keys last across an edge, `shares`, equal to the joined `window_by(.., true)`) and `window_by_compares_chunk_edges_in_place` (NaN payloads and ±0.0 at edges, both flags). The NaN case moved there out of the merge test.
 
 **Deviations**
@@ -147,10 +147,10 @@ X1b is done. My files compile, and every smoke I own passes in the real tree, no
 | Command | Result |
 | --- | --- |
 | `cargo check -p yggdryl --all-targets --keep-going --message-format=short` | lib and `root` test clean; 28 errors left, all in `rust/tests/allocations.rs` and `rust/benchmarks/types/datatype/serie.rs` (old `window_by(x)` spelling) |
-| `cargo test -p yggdryl --test root serie_slice` | ok, 12 passed |
+| `cargo test -p yggdryl --test root window_serie` | ok, 12 passed |
 | `cargo test -p yggdryl --test root chunked` | ok, 48 passed |
 | `cargo test -p yggdryl --doc window_by` | ok, 5 passed (includes X3's `SerieReader::window_by`) |
-| `--doc serie_slice` | ok, 9 passed |
+| `--doc window_serie` | ok, 9 passed |
 | Widened: `--test serie order` | ok, 41 passed |
 | Widened: whole `--test root` | ok, 1293 passed |
 | `cargo clippy -p yggdryl --lib --test root --no-deps` | nothing from my files; one warning in X3's `rust/src/serie/arrow.rs:2424` (collapsible `if`). X1a's unused-`descent` warning is gone |
@@ -209,7 +209,7 @@ All three were formatted with `rustfmt --edition 2024`, and nothing was committe
 3. The descent path is `$[base + before + row]`, the absolute row number the window's `rownum` uses. For a top-level reader that is the plain stream row.
 4. Keys in the descent message are printed with the serie's `Display`, cut to 64 bytes with `elide_display`. `Scalar` itself has no `Display`.
 5. The passed-window refusal's path is the root's name, since the spec gave none.
-6. The next-window search reuses X1b's `crate::serie_slice::window_end` rather than repeating it.
+6. The next-window search reuses X1b's `crate::window_serie::window_end` rather than repeating it.
 7. A poisoned lock is recovered with `into_inner` and `clear_poison`. The first puller to hit it fails the walk, marks the open window passed and gets the internal error; every pull after that ends.
 
 **Smoke results** (with `CARGO_TARGET_DIR=/home/user/target-w2 CARGO_INCREMENTAL=0`)

@@ -11,7 +11,7 @@ import {
   SerieReader,
   SerieSerie,
   SerieViewSerie,
-  SerieSlice,
+  WindowSerie,
   StructSerie,
   fields,
   type ArrowCastOptions,
@@ -229,7 +229,7 @@ const byPath: Array<[Scalar, Serie]> = records.partitionByPaths('id')
 const chained: Serie = wide.asSorted().asUnique().asReversed().asTaken([0]).asFiltered([true])
 const leafChained: StructSerie = records.child('row') as StructSerie
 const sameLeaf: StructSerie = leafChained.asSorted()
-const window: SerieSlice = wide.window(0, 1)
+const window: WindowSerie = wide.window(0, 1)
 // @ts-expect-error an ordering option is `descending` or `nullsFirst`
 wide.isSorted({ nullsLast: true })
 // @ts-expect-error an ordering option is a boolean

@@ -60,8 +60,8 @@ use crate::scalar::{
     PyScalar, PyScalarIterator, as_py, as_py_with_field, from_py, from_py_under,
     pyarrow_scalar_as_array,
 };
-use crate::serie_slice::PySerieSlice;
 use crate::text::line::{PyFieldPath, core_path_from_value};
+use crate::window_serie::PyWindowSerie;
 use crate::{cast_options, compare, normalize_index, value_error};
 
 /// Many values: a schema-free run, or the Arrow buffers of one field.
@@ -1337,15 +1337,15 @@ impl PySerie {
         Ok(slf.clone())
     }
 
-    /// The window `offset..offset + length` as a `SerieSlice` holding this
+    /// The window `offset..offset + length` as a `WindowSerie` holding this
     /// serie object: every read and write goes through the serie when it is
     /// asked, window-relative.
-    fn window(slf: &Bound<'_, Self>, offset: usize, length: usize) -> PyResult<PySerieSlice> {
+    fn window(slf: &Bound<'_, Self>, offset: usize, length: usize) -> PyResult<PyWindowSerie> {
         slf.borrow()
             .inner
             .window(offset, length)
             .map_err(value_error)?;
-        Ok(PySerieSlice::new(slf.clone().unbind(), offset, length))
+        Ok(PyWindowSerie::new(slf.clone().unbind(), offset, length))
     }
 
     /// This column's one row as a `pyarrow.Scalar`, sharing its buffers.
