@@ -388,4 +388,21 @@ Random access reads and edits any cell by its `A1` reference, lays a sheet's row
 
 ## Performance
 
-The benchmark is `cargo bench -p yggdryl --bench media -- excel`, timing the record write and read of ten thousand rows of five columns, the inferred read, one cell through `Workbook`, and a sheet into and from a `Serie`; `python/benchmarks/media/excel.py` times the same file against openpyxl. Neither table is stated here until a release run measures them on a named machine.
+### Record and workbook doors
+
+One release run of the `media` Criterion target on one Linux x86_64 container - Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.97.0, release profile (thin LTO, one codegen unit) - medians of 100 samples, on 2026-10-02. The workbook holds 10,000 rows of `id: int64`, `symbol: utf8` with every fifth row null, `price: float64`, `live: boolean` and `traded: date32`, written by this crate.
+
+| 10,000 rows, five columns | median | rows/s |
+| --- | ---: | ---: |
+| `overwrite_arrow_batch` into a new workbook | 47.16 ms | 212k rows/s |
+| `read_arrow_reader`, declared field | 55.58 ms | 180k rows/s |
+| `read_arrow_field`, then `read_arrow_reader`: inferred | 143.7 ms | 69.6k rows/s |
+| `Workbook::from_bytes`, then one cell | 56.29 ms | - |
+| `Workbook::from_bytes`, then the sheet `into_serie` | 74.76 ms | 134k rows/s |
+| `Sheet::from_serie` | 15.26 ms | 655k rows/s |
+
+The inferred read passes the part twice - once for the field, once for the rows - and costs about two and a half declared reads. One cell through `Workbook` parses its sheet whole on first access, so it costs what a declared read does, and every cell after it is answered from the parsed sheet.
+
+```bash
+cargo bench -p yggdryl --bench media -- media/excel
+```

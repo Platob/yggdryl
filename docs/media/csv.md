@@ -291,8 +291,18 @@ handle.readRecords({ separator: ';' })    // JavaScript: every read and write ta
 
 ## Performance
 
-No table yet: the release run of the command below writes it, on the machine it names, and nothing here is measured in a debug build or edited by hand.
+One release run of the `media` Criterion target on one Linux x86_64 container - Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.97.0, release profile (thin LTO, one codegen unit) - medians of 100 samples, on 2026-10-02. The table is 10,000 rows of `id: int64`, `symbol: utf8` with every fifth row null, `price: float64` and `live: boolean`, in three documents: plain; quoted, where every symbol holds the separator and two quotes, so each is quoted and its quotes doubled; and gzip, the plain document under a `.csv.gz` name. The write is `overwrite_arrow_reader` from one batch; the declared read types every cell by the field, the inferred one samples the first 1,024 records and streams the rest under the field they inferred, and `row_size` counts the records.
+
+| 10,000 rows | plain | quoted | gzip |
+| --- | ---: | ---: | ---: |
+| document | 230.0 KiB | 339.3 KiB | 60.1 KiB |
+| write, `overwrite_arrow_reader` | 4.422 ms (2.26M rows/s) | 4.653 ms (2.15M rows/s) | 12.25 ms (816k rows/s) |
+| read, declared field | 12.38 ms (808k rows/s) | 13.29 ms (753k rows/s) | 13.26 ms (754k rows/s) |
+| read, inferred field | 13.55 ms (738k rows/s) | 13.86 ms (722k rows/s) | 13.64 ms (733k rows/s) |
+| `row_size` | 1.092 ms (9.16M rows/s) | 1.549 ms (6.45M rows/s) | 1.492 ms (6.7M rows/s) |
+
+`row_size` walks the same bytes, counting records and reading no cell, in about a tenth of a read's time, so most of a read is spent past finding the records: each cell typed through its column's value door and laid into Arrow. Quoting, inference and gzip decoding each move a read by a millisecond or less, inside the spread of this host's samples, so a read costs about the same whatever the document; a gzip write pays for its compression, almost three times the plain one. The bench times no other implementation, so the rows compare the documents with one another.
 
 ```bash
-cargo bench -p yggdryl --bench media -- csv
+cargo bench -p yggdryl --bench media -- media/csv
 ```
