@@ -2042,6 +2042,31 @@ fn window_by_refuses_before_any_chunk_is_read() {
 }
 
 #[test]
+fn window_by_states_no_record_so_a_key_cell_named_as_one_is_taken() {
+    // A window is its key and its rows, its place its place in the `Vec`:
+    // no record names `windownum` or `rownum`, so a key cell may - where the
+    // joined column's held windows, which state one, refuse it.
+    let venues = venue_chunks();
+    for sorted in [false, true] {
+        for key in ["venue as rownum", "venue as WindowNum"] {
+            let windows = venues.window_by(key, sorted).expect("windows");
+            assert_eq!(windows.len(), 2, "{key}");
+            let joined = venues.into_serie().expect("joined");
+            let refused = joined
+                .window_by(key, sorted)
+                .err()
+                .map(|error| error.to_string());
+            assert!(
+                refused
+                    .as_deref()
+                    .is_some_and(|refused| refused.contains("alias")),
+                "{key}: {refused:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn window_by_sorted_regroups_runs_across_chunks_with_no_row_copied() {
     let venues = mixed_venue_chunks();
     let xnas = Scalar::from_sequence([Scalar::from("XNAS")]);

@@ -1054,6 +1054,15 @@ impl ChunkedSerie {
     /// per row: [`Self::into_serie`] first, then [`Serie::window_by`], is
     /// the cheaper door there.
     ///
+    /// No window states a record of static values, as a held window
+    /// [`Serie::window_by`] lends does
+    /// ([`WindowSerie::static_values`](crate::WindowSerie::static_values)):
+    /// a window's key is the first half of its item, and its place among
+    /// the windows - what a record calls `windownum` - is its place in the
+    /// `Vec`. So a key cell named `windownum` or `rownum`, which
+    /// [`Serie::window_by`] refuses because its record names both, is taken
+    /// here; alias it before joining the chunks to window the joined column.
+    ///
     /// The key is bound once, against the field, and computed chunk by
     /// chunk; at each chunk edge the pending window's key, already built, is
     /// compared in place against the next chunk's first key row, as the
@@ -1097,8 +1106,9 @@ impl ChunkedSerie {
     ///
     /// # Errors
     ///
-    /// [`Serie::window_by`]'s refusals, naming the field, before any row is
-    /// read - with no chunk at all as with many.
+    /// [`Serie::window_by`]'s refusals but the one for a key cell named
+    /// `windownum` or `rownum`, naming the field, before any row is read -
+    /// with no chunk at all as with many.
     pub fn window_by(
         &self,
         by: impl IntoSelector,

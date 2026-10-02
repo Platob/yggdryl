@@ -13,7 +13,6 @@
 //! the rest of the file reads `crate::{Error, Result}`, and one scope cannot
 //! hold both names.
 
-use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::sync::atomic::{AtomicU8, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -26,7 +25,6 @@ use arrow_array::{
 use arrow_buffer::{BooleanBuffer, NullBuffer, OffsetBuffer};
 use smol_str::{SmolStr, format_smolstr};
 
-use super::structure::StructSerie;
 use super::{
     Serie, boolean, bytes, enums, mapping, null, primitive, proven_row, runend, sequence,
     structure, union, variant,
@@ -40,10 +38,8 @@ use crate::arrow::{
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
 use crate::expression::{BoundSelector, IntoSelector};
 use crate::media::DEFAULT_ROOT_NAME;
-use crate::{
-    DataType, Field, FieldPath, FieldRecord, FieldScalar, FieldSegment, Scalar, SortOptions,
-    StructType,
-};
+use crate::window_serie::{WindowRecord, key_cells};
+use crate::{DataType, Field, FieldScalar, Scalar, SortOptions};
 
 /// How many rows this array leaves absent that its parent does not.
 ///
@@ -1453,24 +1449,26 @@ impl Serie {
 /// reader is dropped - which releases a C stream at the point an early close
 /// would - and the reader is fused.
 ///
-/// A reader may state [static values](Self::static_values): one record of
-/// values constant over every row it yields - where the rows come from,
-/// never a column of them - so [`Self::field`] is the same with or without
-/// them. [`Self::cast`] keeps them; the transport face
+/// [`Self::window_by`] cuts the stream into one reader per window, and a
+/// window's reader states [static values](Self::static_values): one record
+/// of values constant over every row it yields - its key and its place,
+/// where the rows come from and never a column of them - so [`Self::field`]
+/// is the same with or without them. No other reader states one.
+/// [`Self::cast`] keeps them; the transport face
 /// ([`Self::into_arrow_reader`]) and a held table built from the reader
-/// carry rows only, and drop them. [`Self::window_by`] cuts the stream
-/// into one reader per window, each stating its key and its place.
+/// carry rows only, and drop them.
 pub struct SerieReader {
     inner: Option<Source>,
     root: Arc<Field>,
     schema: SchemaRef,
-    /// The record of values every yielded row shares, beside the root.
+    /// The record of values every yielded row shares, beside the root: a
+    /// window's.
     statics: Option<Statics>,
 }
 
 /// A reader's static values: a non-null record field and its row, proven
-/// under it - by the [`FieldRecord`] that stated them, or laid out by a
-/// window's walk from cells a landing already proved.
+/// under it - laid out by a window's walk from cells a landing already
+/// proved.
 #[derive(Clone, Debug)]
 struct Statics {
     field: Arc<Field>,
@@ -1490,22 +1488,6 @@ enum Source {
     /// One window of a [`SerieReaderWindows`] walk: its rows served piece
     /// by piece out of the one batch the walk holds.
     Window(WindowPart),
-}
-
-/// The static value naming a window's place among the windows of the
-/// reader it was cut from, from 0.
-const WINDOWNUM: &str = "windownum";
-
-/// The static value naming the number a reader's first row has in the
-/// stream it was cut from: the crate's word for a row's number.
-const ROWNUM: &str = "rownum";
-
-/// The reserved static name `name` folds onto, under the binder's ASCII
-/// fold.
-fn reserved(name: &str) -> Option<&'static str> {
-    [WINDOWNUM, ROWNUM]
-        .into_iter()
-        .find(|reserved| reserved.eq_ignore_ascii_case(name))
 }
 
 /// The record root a held column of `field` streams under, shared, and
@@ -1762,116 +1744,49 @@ impl SerieReader {
         }
     }
 
-    /// The values constant over every row this reader yields: the record
-    /// field they are typed by and its row, lent with no allocation.
+    /// The values constant over every row this reader yields, where it is a
+    /// window [`Self::window_by`] cut: the record field they are typed by -
+    /// [`SerieReaderWindows::static_field`] - and its row, lent with no
+    /// allocation, every cell read through [`FieldScalar`]'s own accessors.
+    /// `None` for every other reader.
     ///
     /// ```
-    /// use yggdryl::{DataType, FieldRecord, Scalar, Serie, SerieReader, StructType};
+    /// use yggdryl::{DataType, Scalar, Serie, SerieReader, StructType};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let prices = Serie::from_scalars(
-    ///     DataType::Int64.required_field("price"),
-    ///     [Scalar::from(1_i64), Scalar::from(2_i64)],
-    /// )?;
-    /// let part = DataType::from(StructType::from_fields([
+    /// let root = DataType::from(StructType::from_fields([
     ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Int64.required_field("price"),
     /// ])?)
-    /// .required_field("part");
-    /// let mut reader = SerieReader::from_serie(prices)?;
+    /// .required_field("quote");
+    /// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    /// let quotes = Serie::from_scalars(root, [quote("XNAS", 1), quote("XNYS", 2)])?;
+    /// let reader = SerieReader::from_serie(quotes)?;
     /// assert!(reader.static_values().is_none());
     ///
-    /// reader.set_static_values(FieldRecord::new(&part, Scalar::from_sequence([Scalar::from("XNAS")]))?);
-    /// let statics = reader.static_values().expect("stated");
-    /// assert_eq!(statics.field(), &part);
-    /// assert_eq!(statics.value(), &Scalar::from_sequence([Scalar::from("XNAS")]));
-    /// // They sit beside the root, never a column of it.
-    /// assert_eq!(reader.field().field_len(), 1);
-    ///
-    /// reader.clear_static_values();
-    /// assert!(reader.static_values().is_none());
+    /// let mut windows = reader.window_by("venue", false)?;
+    /// let _xnas = windows.next().expect("a window")?;
+    /// let xnys = windows.next().expect("a window")?;
+    /// let record = xnys.static_values().expect("a window states its record");
+    /// assert_eq!(record.field(), windows.static_field());
+    /// assert_eq!(
+    ///     record.value(),
+    ///     &Scalar::from_sequence([Scalar::from("XNYS"), Scalar::from(1_u64), Scalar::from(1_u64)])
+    /// );
+    /// let venue = record.field().index_of("venue").and_then(|index| record.get(index));
+    /// assert_eq!(venue.as_deref(), Some(&Scalar::from("XNYS")));
+    /// // It sits beside the root, never a column of it.
+    /// assert_eq!(xnys.field().field_len(), 2);
     /// # Ok(())
     /// # }
     /// ```
     pub fn static_values(&self) -> Option<FieldScalar<'_>> {
         let statics = self.statics.as_ref()?;
-        // The row was proven under the field when it was stated.
+        // The row was proven under the field when the walk laid it out.
         Some(FieldScalar::from_checked(
             &statics.field,
             statics.row.clone(),
         ))
-    }
-
-    /// One of the [static values](Self::static_values), reached through
-    /// record steps by each child's exact name, as [`Field::index_of`]
-    /// resolves it; lent with no allocation.
-    ///
-    /// The empty path is the whole record. A folded name, a step past an
-    /// absent record and any segment but a record step answer `None`.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, FieldPath, FieldRecord, Scalar, Serie, SerieReader, StructType};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let part = DataType::from(StructType::from_fields([
-    ///     DataType::utf8().required_field("venue"),
-    ///     DataType::Int32.required_field("day"),
-    /// ])?)
-    /// .required_field("part");
-    /// let values = FieldRecord::new(&part, Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(3_i32)]))?;
-    /// let prices = Serie::from_scalars(DataType::Int64.required_field("price"), [Scalar::from(1_i64)])?;
-    /// let reader = SerieReader::from_serie(prices)?.with_static_values(values);
-    ///
-    /// let day = reader.get_static_value(&"day".parse::<FieldPath>()?).expect("stated");
-    /// assert_eq!(day.value(), &Scalar::from(3_i32));
-    /// assert!(reader.get_static_value(&"DAY".parse::<FieldPath>()?).is_none());
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn get_static_value(&self, path: &FieldPath) -> Option<FieldScalar<'_>> {
-        let statics = self.statics.as_ref()?;
-        let mut field: &Field = &statics.field;
-        let mut value = Cow::Borrowed(&statics.row);
-        for segment in path.segments() {
-            let FieldSegment::Field(name) = segment else {
-                return None;
-            };
-            let index = field.index_of(name)?;
-            let cell = match value {
-                Cow::Borrowed(record) => record.get(index)?,
-                Cow::Owned(record) => Cow::Owned(record.get(index)?.into_owned()),
-            };
-            field = field.fields().get(index)?;
-            value = cell;
-        }
-        // Each cell of a proven row is proven under its child.
-        Some(FieldScalar::from_checked(field, value.into_owned()))
-    }
-
-    /// State the values constant over every row this reader yields,
-    /// replacing any it stated: `values`' record field and its row.
-    ///
-    /// Infallible, because [`FieldRecord::new`] already refused anything
-    /// but a row under a non-null record. [`Self::static_values`] carries an
-    /// example.
-    pub fn set_static_values(&mut self, values: FieldRecord<'_>) {
-        let field = Arc::new(values.field().clone());
-        self.statics = Some(Statics {
-            field,
-            row: values.into_scalar(),
-        });
-    }
-
-    /// This reader stating `values`, as [`Self::set_static_values`] states
-    /// them.
-    #[must_use]
-    pub fn with_static_values(mut self, values: FieldRecord<'_>) -> Self {
-        self.set_static_values(values);
-        self
-    }
-
-    /// State no static values.
-    pub fn clear_static_values(&mut self) {
-        self.statics = None;
     }
 
     /// Cut the stream into windows of equal adjacent keys, one lazy reader
@@ -1881,14 +1796,18 @@ impl SerieReader {
     /// this reader's root before any batch is pulled. Each window is an
     /// ordinary [`SerieReader`] of the root's rows as they stand in the
     /// stream, and states as its [static values](Self::static_values) one
-    /// required record named as the root: this reader's own static values
-    /// but the two reserved ones, then the key cells named as the key's
-    /// projections are, then `windownum: uint64` - the window's place among
-    /// this reader's windows, from 0 - and `rownum: uint64` - the number its
-    /// first row has in the stream: this reader's own `rownum` (else 0) plus
-    /// the rows it yielded before it, so it stays absolute through windows
-    /// of windows. [`SerieReaderWindows::static_field`] names that record
-    /// before the first pull.
+    /// required record named as the root: where this reader is itself a
+    /// window, its record's cells but `windownum` and `rownum`; then the key
+    /// cells named as the key's projections are; then `windownum: uint64` -
+    /// the window's place among this reader's windows, from 0 - and
+    /// `rownum: uint64`, nullable - the number its first row has in the
+    /// stream: this reader's own `rownum` (else 0) plus the rows it yielded
+    /// before it, so it stays absolute through windows of windows, and never
+    /// null, since a stream is never reordered. It is the record a held
+    /// window states ([`WindowSerie::static_values`](crate::WindowSerie::static_values)),
+    /// field and values, for the same rows and key.
+    /// [`SerieReaderWindows::static_field`] names that record before the
+    /// first pull.
     ///
     /// The walk holds what this reader holds - at most one batch, dropped
     /// before the next is pulled - plus that batch's key record (the batch's
@@ -1922,12 +1841,11 @@ impl SerieReader {
     /// walk and every window end, and the stream is dropped. A window the
     /// walk was skipping when it failed refuses as passed, so a partial
     /// window is never presented as complete. A window whose first row's
-    /// number leaves `uint64` - this reader's `rownum` stated too near its
-    /// largest - is the walk's refusal, naming this reader's root, and ends
-    /// the walk the same way.
+    /// number would leave `uint64` is the walk's refusal, naming this
+    /// reader's root, and ends the walk the same way.
     ///
     /// ```
-    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, FieldPath, Scalar, Serie, SerieReader, StructType};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Scalar, Serie, SerieReader, StructType};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let root = DataType::from(StructType::from_fields([
@@ -1947,15 +1865,16 @@ impl SerieReader {
     /// assert_eq!(windows.static_field().field_len(), 3); // venue, windownum, rownum
     ///
     /// let xnas = windows.next().expect("a window")?;
-    /// let venue = xnas.get_static_value(&"venue".parse::<FieldPath>()?).expect("the key cell");
-    /// assert_eq!(venue.value(), &Scalar::from("XNAS"));
+    /// let record = xnas.static_values().expect("its record");
+    /// assert_eq!(record.get(0).as_deref(), Some(&Scalar::from("XNAS")));
     /// // Read before the next window is taken: one piece per batch it spans.
     /// let rows: usize = xnas.map(|piece| piece.map(|piece| piece.len())).sum::<Result<_, _>>()?;
     /// assert_eq!(rows, 3);
     ///
     /// let xnys = windows.next().expect("a window")?;
-    /// let rownum = xnys.get_static_value(&"rownum".parse::<FieldPath>()?).expect("its place");
-    /// assert_eq!(rownum.value(), &Scalar::from(3_u64));
+    /// let record = xnys.static_values().expect("its record");
+    /// let rownum = record.field().index_of("rownum").and_then(|index| record.get(index));
+    /// assert_eq!(rownum.as_deref(), Some(&Scalar::from(3_u64)));
     /// assert!(windows.next().is_none());
     /// # Ok(())
     /// # }
@@ -1966,87 +1885,36 @@ impl SerieReader {
     /// Before any batch is pulled, and in this order: the text's own parse
     /// error; then, naming this reader's root, a key stating no projection -
     /// an empty list, or a `*` alone - an `unnest`, and the binder's own
-    /// refusals; a key cell whose name folds onto one of this reader's
+    /// refusals; and a key cell whose name folds onto one of this reader's
     /// static values or onto `windownum` or `rownum`, naming both - alias
-    /// it; and a reader stating `windownum` or `rownum` at a datatype other
-    /// than `uint64`.
+    /// it.
     pub fn window_by(mut self, by: impl IntoSelector, sorted: bool) -> Result<SerieReaderWindows> {
         let root = Arc::clone(&self.root);
         let key = by
             .into_selector()?
             .bind_key(&root, root.name(), "window by")?;
-        let refused = |reason| {
-            Error::Core(crate::Error::InvalidRecord {
-                path: SmolStr::new(root.name()),
-                reason,
-            })
+        // The root is required, so no key row is absent and every key cell
+        // stays as the key declares it.
+        let record = WindowRecord::new(
+            root.name(),
+            root.name(),
+            self.static_values().as_ref(),
+            key.output().fields(),
+        )?;
+        let Some(base) = record.base else {
+            return Err(Error::internal(
+                "SerieReader::window_by: a stream window's rownum is never null",
+            ));
         };
-        let cells = key.output().fields();
-        // The reader's own static values: the two reserved ones read apart,
-        // every other one kept ahead of the key cells.
-        let statics = self.statics.take();
-        let (stated, row) = match &statics {
-            Some(statics) => (
-                statics.field.fields(),
-                statics.row.sequence_rows().unwrap_or_default(),
-            ),
-            None => (&[][..], Cow::Borrowed(&[][..])),
-        };
-        let mut fields = Vec::with_capacity(stated.len() + cells.len() + 2);
-        let mut kept = Vec::with_capacity(stated.len());
-        let mut base = 0;
-        let mut misdeclared = None;
-        for (field, value) in stated.iter().zip(row.iter()) {
-            match reserved(field.name()) {
-                Some(_) if field.dtype() != &DataType::UInt64 => {
-                    misdeclared.get_or_insert(field);
-                }
-                Some(ROWNUM) => {
-                    if let Scalar::UInt64(rownum) = value {
-                        base = rownum.get();
-                    }
-                }
-                Some(_) => {}
-                None => {
-                    fields.push(field.clone());
-                    kept.push(value.clone());
-                }
-            }
-        }
-        for cell in cells {
-            let collides = fields
-                .iter()
-                .map(Field::name)
-                .chain([WINDOWNUM, ROWNUM])
-                .find(|name| name.eq_ignore_ascii_case(cell.name()));
-            if let Some(name) = collides {
-                return Err(refused(format_smolstr!(
-                    "the key cell {:?} collides with the static value {name:?}; alias the key \
-                     cell (`... as <name>`)",
-                    cell.name()
-                )));
-            }
-        }
-        if let Some(field) = misdeclared {
-            return Err(refused(format_smolstr!(
-                "the static value {:?} is reserved as uint64 - a window's place, or the number of \
-                 a reader's first row - got {}",
-                field.name(),
-                field.dtype()
-            )));
-        }
-        fields.extend(cells.iter().cloned());
-        fields.push(DataType::UInt64.required_field(WINDOWNUM));
-        fields.push(DataType::UInt64.required_field(ROWNUM));
-        let statics =
-            Arc::new(DataType::from(StructType::from_fields(fields)?).required_field(root.name()));
+        self.statics = None;
+        let statics = Arc::new(record.field);
         let schema = Arc::clone(&self.schema);
         let walk = Walk {
             source: Some(self),
             root: Arc::clone(&root),
             key,
             sorted,
-            kept: kept.into(),
+            kept: record.kept,
             base,
             held: None,
             batch: 0,
@@ -2490,24 +2358,25 @@ impl Walk {
             self.finish();
             return Some(Err(error));
         }
-        let Some(cells) = cut.keys.as_struct().map(StructSerie::children) else {
+        let Some(keys) = cut.keys.as_struct() else {
             self.finish();
             return Some(Err(Error::internal(
                 "SerieReaderWindows: a key is a record",
             )));
         };
+        let cells = keys.children().len();
         let index = self.opened;
         self.opened += 1;
         let row = Scalar::from_sequence(
             self.kept
                 .iter()
                 .cloned()
-                .chain(cells.iter().map(|cell| proven_row(cell, at)))
+                .chain(key_cells(keys, at))
                 .chain([Scalar::from(index), Scalar::from(rownum)]),
         );
         let key = match &row {
             Scalar::Serie(Serie::Run(run)) => {
-                Scalar::Serie(Serie::Run(run.slice(self.kept.len(), cells.len())))
+                Scalar::Serie(Serie::Run(run.slice(self.kept.len(), cells)))
             }
             _ => {
                 self.finish();
@@ -2665,11 +2534,24 @@ impl RecordBatchReader for Reconciled {
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
-    //! What `rust/tests/allocations.rs` pins and a caller cannot reach.
+    //! What `rust/tests/allocations.rs` and `rust/tests/serie/arrow.rs` pin
+    //! and a caller cannot reach.
 
     use std::sync::Arc;
 
-    use crate::{Field, Scalar, Serie};
+    use crate::{Field, FieldRecord, Scalar, Serie, SerieReader};
+
+    /// `reader` stating `values` as its static values, as a window's walk
+    /// states its record - which no caller can: how the walk's checked
+    /// `rownum` arithmetic is reached near the largest `uint64`.
+    #[must_use]
+    pub fn with_static_values(mut reader: SerieReader, values: FieldRecord<'_>) -> SerieReader {
+        reader.statics = Some(super::Statics {
+            field: Arc::new(values.field().clone()),
+            row: values.into_scalar(),
+        });
+        reader
+    }
 
     /// Lay rows the field's contract already canonicalized out, and land
     /// them proven.

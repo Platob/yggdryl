@@ -12,8 +12,8 @@ use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, FieldPath, FieldRecord, Scalar, Selector,
-    Serie, SerieReader, SerieReaderWindows, StructType, TimeUnit, Timezone,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Selector, Serie, SerieReader,
+    SerieReaderWindows, StructType, TimeUnit, Timezone,
 };
 
 /// The options a refusal is pinned under: a present value is never nulled.
@@ -1937,11 +1937,6 @@ fn refusal(error: yggdryl::arrow::Error) -> (String, String) {
     }
 }
 
-/// A path a static value is read at.
-fn path(text: &str) -> FieldPath {
-    text.parse().expect("a path")
-}
-
 #[test]
 fn window_by_on_a_reader_refuses_before_any_pull() {
     let probe = Probe::default();
@@ -1998,45 +1993,28 @@ fn window_by_on_a_reader_refuses_before_any_pull() {
                 && reason.contains("alias"),
             "{reason}"
         );
-        let part = DataType::from(
-            StructType::from_fields([DataType::utf8().required_field("Venue")]).expect("one child"),
-        )
-        .required_field("part");
-        let stated = || {
-            probe.reader(rows).with_static_values(
-                FieldRecord::new(&part, Scalar::from_sequence([Scalar::from("all")]))
-                    .expect("a row"),
-            )
-        };
-        let (_, reason) = refusal(stated().window_by("venue", sorted).unwrap_err());
-        assert!(
-            reason.contains("\"venue\"") && reason.contains("\"Venue\""),
-            "{reason}"
-        );
-        assert!(stated().window_by("venue as desk", sorted).is_ok());
-        // A reserved static value at another datatype.
-        let misdeclared = DataType::from(
-            StructType::from_fields([DataType::utf8().required_field("rownum")])
-                .expect("one child"),
-        )
-        .required_field("part");
-        let (path, reason) = refusal(
-            probe
-                .reader(rows)
-                .with_static_values(
-                    FieldRecord::new(&misdeclared, Scalar::from_sequence([Scalar::from("7")]))
-                        .expect("a row"),
-                )
-                .window_by("venue", sorted)
-                .unwrap_err(),
-        );
-        assert_eq!(path, "quote");
-        assert!(
-            reason.contains("\"rownum\"") && reason.contains("uint64") && reason.contains("utf8"),
-            "{reason}"
-        );
     }
     assert_eq!(probe.pulls(), 0, "no refusal pulled a batch");
+
+    // A window's record keeps its venue: windowing the window by the venue
+    // again would name it twice, so it is refused naming both, and pulls
+    // nothing past what opened the window.
+    let walked = Probe::default();
+    let mut windows = walked
+        .reader(&[&[("XNAS", 1, 0), ("XNYS", 2, 0)]])
+        .window_by("venue", false)
+        .expect("a key");
+    let first = windows.next().expect("a window").expect("XNAS");
+    assert_eq!(walked.pulls(), 1);
+    let (path, reason) = refusal(first.window_by("Venue", false).unwrap_err());
+    assert_eq!(path, "quote");
+    assert!(
+        reason.contains("\"Venue\"") && reason.contains("\"venue\""),
+        "{reason}"
+    );
+    let second = windows.next().expect("a window").expect("XNYS");
+    assert!(second.window_by("venue as desk", true).is_ok());
+    assert_eq!(walked.pulls(), 1, "the refusal pulled nothing");
 
     // A refused key spends nothing but the reader; an accepted one names
     // what every window yields and states before the first pull.
@@ -2162,7 +2140,7 @@ fn a_window_states_its_key_windownum_and_rownum() {
         StructType::from_fields([
             DataType::utf8().required_field("venue"),
             DataType::UInt64.required_field("windownum"),
-            DataType::UInt64.required_field("rownum"),
+            DataType::UInt64.nullable_field("rownum"),
         ])
         .expect("three children"),
     )
@@ -2180,50 +2158,6 @@ fn a_window_states_its_key_windownum_and_rownum() {
         ])
     );
 
-    // A held serie windowed as a stream states exactly what its held
-    // windows answer: the key cells, the place and the offset.
-    let mixed = [
-        ("XNAS", 1, 0),
-        ("XNAS", 2, 0),
-        ("XNYS", 3, 0),
-        ("XNAS", 4, 0),
-    ];
-    let ordered = [
-        ("XLON", 1, 0),
-        ("XNAS", 2, 0),
-        ("XNAS", 3, 0),
-        ("XNYS", 4, 0),
-    ];
-    for (sorted, rows) in [(false, mixed), (true, ordered)] {
-        let rows = Serie::from_scalars(
-            window_root(),
-            rows.iter()
-                .map(|(venue, price, day)| window_quote(venue, *price, *day)),
-        )
-        .expect("quotes");
-        let held: Vec<Vec<Scalar>> = rows
-            .window_by("venue", sorted)
-            .expect("held windows")
-            .iter()
-            .enumerate()
-            .map(|(place, (key, window))| {
-                let mut cells = key.sequence_rows().expect("a key run").into_owned();
-                cells.extend([
-                    Scalar::from(place as u64),
-                    Scalar::from(window.offset() as u64),
-                ]);
-                cells
-            })
-            .collect();
-        let streamed: Vec<Vec<Scalar>> = SerieReader::from_serie(rows)
-            .expect("a held stream")
-            .window_by("venue", sorted)
-            .expect("stream windows")
-            .map(|window| static_cells(&window.expect("a window")))
-            .collect();
-        assert_eq!(streamed, held, "sorted {sorted}");
-    }
-
     // A window of a window keeps the outer key cells, states its own place,
     // and numbers its first row in the stream the outer windows were cut
     // from.
@@ -2239,11 +2173,7 @@ fn a_window_states_its_key_windownum_and_rownum() {
     let mut seen = Vec::new();
     for day in days {
         let day = day.expect("a day");
-        let date = day
-            .get_static_value(&path("day"))
-            .expect("the outer key cell")
-            .value()
-            .clone();
+        let date = static_cells(&day)[0].clone();
         let venues = day.window_by("venue", false).expect("an inner key");
         let names: Vec<&str> = venues
             .static_field()
@@ -2586,102 +2516,174 @@ fn a_foreign_nan_at_a_batch_edge_moves_no_window_boundary() {
 }
 
 #[test]
-fn static_values_are_carried_by_cast_and_dropped_at_the_transport_face() {
-    let part = DataType::from(
-        StructType::from_fields([
-            DataType::utf8().required_field("desk"),
-            DataType::from(
-                StructType::from_fields([DataType::Int32.nullable_field("day")])
-                    .expect("one child"),
-            )
-            .nullable_field("session"),
-        ])
-        .expect("two children"),
-    )
-    .required_field("part");
-    let values = || {
-        FieldRecord::new(
-            &part,
-            Scalar::from_sequence([
-                Scalar::from("rates"),
-                Scalar::from_sequence([Scalar::from(3_i32)]),
-            ]),
+fn held_and_stream_windows_state_the_same_record() {
+    // Unsorted, and sorted over keys in order, a held serie's windows and
+    // its stream's windows state one record field and one record, window by
+    // window - and so do the windows of their first windows.
+    let mixed = [
+        ("XNAS", 1, 0),
+        ("XNAS", 2, 0),
+        ("XNYS", 3, 1),
+        ("XNAS", 4, 1),
+    ];
+    let ordered = [
+        ("XLON", 1, 0),
+        ("XNAS", 2, 0),
+        ("XNAS", 3, 1),
+        ("XNYS", 4, 1),
+    ];
+    for (sorted, rows) in [(false, mixed), (true, ordered)] {
+        let rows = Serie::from_scalars(
+            window_root(),
+            rows.iter()
+                .map(|(venue, price, day)| window_quote(venue, *price, *day)),
         )
-        .expect("a row")
-    };
-    let probe = Probe::default();
-    let reader = probe
-        .reader(&[&[("XNAS", 1, 0)]])
-        .with_static_values(values());
-    assert_eq!(reader.field(), &window_root(), "never a column");
-    let statics = reader.static_values().expect("stated");
-    assert_eq!(statics.field(), &part);
-    assert_eq!(statics.value(), &values().into_scalar());
-    let stated = statics.value().clone();
-
-    // Exact names through record steps; anything else reaches nothing.
-    assert_eq!(
-        reader
-            .get_static_value(&path("desk"))
-            .expect("a cell")
-            .value(),
-        &Scalar::from("rates")
-    );
-    let day = reader
-        .get_static_value(&path("session.day"))
-        .expect("a nested cell");
-    assert_eq!(day.name(), "day");
-    assert_eq!(day.value(), &Scalar::from(3_i32));
-    assert_eq!(
-        reader
-            .get_static_value(&FieldPath::root())
-            .expect("the record")
-            .value(),
-        &stated
-    );
-    for missing in ["DESK", "session.DAY", "tier", "desk.day", "session[0]"] {
-        assert!(
-            reader.get_static_value(&path(missing)).is_none(),
-            "{missing}"
+        .expect("quotes");
+        let held = rows.window_by("venue", sorted).expect("held windows");
+        let held_records: Vec<Scalar> = held
+            .iter()
+            .map(|(_, window)| {
+                let statics = window.static_values().expect("a held record");
+                assert!(std::ptr::eq(statics.field(), held.static_field()));
+                statics.into_value()
+            })
+            .collect();
+        let streamed = SerieReader::from_serie(rows.clone())
+            .expect("a held stream")
+            .window_by("venue", sorted)
+            .expect("stream windows");
+        assert_eq!(
+            streamed.static_field(),
+            held.static_field(),
+            "sorted {sorted}"
         );
+        let stream_records: Vec<Scalar> = streamed
+            .map(|window| {
+                let window = window.expect("a window");
+                let statics = window.static_values().expect("a stream record");
+                assert_eq!(statics.field(), held.static_field());
+                statics.into_value()
+            })
+            .collect();
+        assert_eq!(stream_records, held_records, "sorted {sorted}");
+
+        // The first window windowed again: the outer key cell kept, the
+        // rownum absolute.
+        let (_, first) = held.iter().next().expect("a first held window");
+        let inner = first.window_by("days(ts) as day", sorted).expect("held");
+        let held_inner: Vec<Scalar> = inner
+            .iter()
+            .map(|(_, window)| window.static_values().expect("a record").into_value())
+            .collect();
+        let mut windows = SerieReader::from_serie(rows.clone())
+            .expect("a held stream")
+            .window_by("venue", sorted)
+            .expect("stream windows");
+        let first = windows.next().expect("a window").expect("the first");
+        let streamed = first.window_by("days(ts) as day", sorted).expect("stream");
+        assert_eq!(
+            streamed.static_field(),
+            inner.static_field(),
+            "sorted {sorted}"
+        );
+        let stream_inner: Vec<Scalar> = streamed
+            .map(|window| Scalar::from_sequence(static_cells(&window.expect("a window"))))
+            .collect();
+        assert_eq!(stream_inner, held_inner, "sorted {sorted}");
+        assert!(!stream_inner.is_empty());
     }
 
-    // A cast keeps them: they say where the rows come from.
-    let wider = DataType::from(
-        StructType::from_fields([
-            DataType::utf8().required_field("venue"),
-            DataType::Float64.required_field("price"),
-            DataType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
-                timezone: Timezone::UTC,
-            }
-            .required_field("ts"),
-        ])
-        .expect("three children"),
+    // A nullable record column holding no absent row streams under its
+    // required root, and its held windows state that root's record: every
+    // key cell as the key declares it.
+    let rows = Serie::from_scalars(
+        window_root().with_nullable(true),
+        [("XNAS", 1, 0), ("XNYS", 2, 0)]
+            .iter()
+            .map(|(venue, price, day)| window_quote(venue, *price, *day)),
     )
-    .required_field("quote");
-    let mut cast = reader
+    .expect("quotes under a nullable root");
+    let held = rows.window_by("venue", false).expect("held windows");
+    let streamed = SerieReader::from_serie(rows.clone())
+        .expect("a held stream")
+        .window_by("venue", false)
+        .expect("stream windows");
+    assert_eq!(streamed.static_field(), held.static_field());
+    assert!(!held.static_field().fields()[0].is_nullable());
+    let held_records: Vec<Scalar> = held
+        .iter()
+        .map(|(_, window)| window.static_values().expect("a record").into_value())
+        .collect();
+    let stream_records: Vec<Scalar> = streamed
+        .map(|window| Scalar::from_sequence(static_cells(&window.expect("a window"))))
+        .collect();
+    assert_eq!(stream_records, held_records);
+
+    // Sorted over keys out of order, the held windows are gathered and have
+    // no number; a stream refuses rather than reorder.
+    let rows = Serie::from_scalars(
+        window_root(),
+        [("XNYS", 1, 0), ("XNAS", 2, 0)]
+            .iter()
+            .map(|(venue, price, day)| window_quote(venue, *price, *day)),
+    )
+    .expect("quotes");
+    let held = rows.window_by("venue", true).expect("held windows");
+    let rownums: Vec<Scalar> = held
+        .iter()
+        .map(|(_, window)| {
+            let statics = window.static_values().expect("a record");
+            let index = statics.field().index_of("rownum").expect("a rownum");
+            statics.get(index).expect("a cell").into_owned()
+        })
+        .collect();
+    assert_eq!(rownums, [Scalar::Null, Scalar::Null]);
+}
+
+#[test]
+fn static_values_are_carried_by_cast_and_dropped_at_the_transport_face() {
+    // A reader that is no window states none.
+    let probe = Probe::default();
+    let reader = probe.reader(&[&[("XNAS", 1, 0)]]);
+    assert!(reader.static_values().is_none());
+    let windows = probe
+        .reader(&[&[("XNAS", 1, 0), ("XNYS", 2, 0)]])
+        .window_by("venue", false)
+        .expect("a key");
+    let record = windows.static_field().clone();
+    let mut windows = windows.map(|window| window.expect("a window"));
+    let xnas = windows.next().expect("XNAS");
+    assert_eq!(xnas.field(), &window_root(), "never a column");
+    let statics = xnas.static_values().expect("stated");
+    assert_eq!(statics.field(), &record);
+    let stated = statics.value().clone();
+    assert_eq!(
+        stated,
+        Scalar::from_sequence([
+            Scalar::from("XNAS"),
+            Scalar::from(0_u64),
+            Scalar::from(0_u64)
+        ])
+    );
+
+    // A cast keeps them: they say where the rows come from.
+    let wider = window_root_priced(DataType::Float64);
+    let cast = xnas
         .cast(&wider, ArrowCastOptions::new())
         .expect("int64 widens");
-    assert_eq!(cast.static_values().expect("kept").value(), &stated);
-    cast.clear_static_values();
-    assert!(cast.static_values().is_none());
-    cast.set_static_values(values());
-    assert!(cast.static_values().is_some());
+    let kept = cast.static_values().expect("kept");
+    assert_eq!((kept.field(), kept.value()), (&record, &stated));
 
     // A held table keeps rows only, and the transport face is a schema.
     let held = ChunkedSerie::from_serie_reader(cast).expect("a held table");
     assert_eq!(held.len(), 1);
-    let transport = SerieReader::from_arrow_reader(
-        None,
-        probe
-            .reader(&[&[("XNAS", 1, 0)]])
-            .with_static_values(values())
-            .into_arrow_reader(),
-        ArrowCastOptions::new(),
-    )
-    .expect("an identity plan");
+    let xnys = windows.next().expect("XNYS");
+    assert!(xnys.static_values().is_some());
+    let transport =
+        SerieReader::from_arrow_reader(None, xnys.into_arrow_reader(), ArrowCastOptions::new())
+            .expect("an identity plan");
     assert!(transport.static_values().is_none());
+    assert!(windows.next().is_none());
 }
 
 #[test]
@@ -2866,48 +2868,6 @@ fn a_reader_cast_twice_lands_every_cast_in_order() {
 }
 
 #[test]
-fn a_rownum_stated_too_near_its_largest_is_refused_naming_the_root() {
-    // The first window numbers its first row at the stated rownum itself;
-    // the next would number its own past the largest uint64, so it is
-    // refused - sorted or not - and the walk ends, its stream dropped.
-    let part = DataType::from(
-        StructType::from_fields([DataType::UInt64.required_field("rownum")]).expect("one child"),
-    )
-    .required_field("part");
-    for sorted in [false, true] {
-        let probe = Probe::default();
-        let mut windows = probe
-            .reader(&[&[("XNAS", 1, 0), ("XNAS", 2, 0), ("XNYS", 3, 0)]])
-            .with_static_values(
-                FieldRecord::new(&part, Scalar::from_sequence([Scalar::from(u64::MAX)]))
-                    .expect("a row"),
-            )
-            .window_by("venue", sorted)
-            .expect("a key");
-        let xnas = windows.next().expect("a window").expect("XNAS");
-        assert_eq!(
-            static_cells(&xnas),
-            [
-                Scalar::from("XNAS"),
-                Scalar::from(0_u64),
-                Scalar::from(u64::MAX)
-            ]
-        );
-        assert_eq!(window_rows(xnas).len(), 2);
-        let (path, reason) = refusal(windows.next().expect("the refusal").unwrap_err());
-        assert_eq!(path, "quote");
-        assert!(
-            reason.contains("window 1")
-                && reason.contains("2 rows")
-                && reason.contains(&u64::MAX.to_string()),
-            "{reason}"
-        );
-        assert!(windows.next().is_none());
-        assert!(probe.dropped(), "the walk dropped its stream");
-    }
-}
-
-#[test]
 fn a_pull_that_panics_poisons_the_walk_into_one_internal_error() {
     let first = window_batch(&[("XNAS", 1, 0)]);
     let batches = [Some(first), None].into_iter().map(|batch| match batch {
@@ -2941,4 +2901,59 @@ fn a_pull_that_panics_poisons_the_walk_into_one_internal_error() {
     let (_, reason) = refusal(xnas.next().expect("the refusal").unwrap_err());
     assert!(reason.starts_with("window 0 was passed"), "{reason}");
     assert!(xnas.next().is_none());
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    //! The walk's checked `rownum` arithmetic, which no caller reaches: a
+    //! window's record is the crate's alone, so a `rownum` near the largest
+    //! `uint64` is stated through `yggdryl::internals`.
+
+    use yggdryl::internals::serie_arrow::with_static_values;
+    use yggdryl::{DataType, FieldRecord, Scalar, StructType};
+
+    use super::{Probe, refusal, static_cells, window_rows};
+
+    #[test]
+    fn a_rownum_stated_too_near_its_largest_is_refused_naming_the_root() {
+        // The first window numbers its first row at the stated rownum
+        // itself; the next would number its own past the largest uint64, so
+        // it is refused - sorted or not - and the walk ends, its stream
+        // dropped.
+        let part = DataType::from(
+            StructType::from_fields([DataType::UInt64.required_field("rownum")])
+                .expect("one child"),
+        )
+        .required_field("part");
+        for sorted in [false, true] {
+            let probe = Probe::default();
+            let mut windows = with_static_values(
+                probe.reader(&[&[("XNAS", 1, 0), ("XNAS", 2, 0), ("XNYS", 3, 0)]]),
+                FieldRecord::new(&part, Scalar::from_sequence([Scalar::from(u64::MAX)]))
+                    .expect("a row"),
+            )
+            .window_by("venue", sorted)
+            .expect("a key");
+            let xnas = windows.next().expect("a window").expect("XNAS");
+            assert_eq!(
+                static_cells(&xnas),
+                [
+                    Scalar::from("XNAS"),
+                    Scalar::from(0_u64),
+                    Scalar::from(u64::MAX)
+                ]
+            );
+            assert_eq!(window_rows(xnas).len(), 2);
+            let (path, reason) = refusal(windows.next().expect("the refusal").unwrap_err());
+            assert_eq!(path, "quote");
+            assert!(
+                reason.contains("window 1")
+                    && reason.contains("2 rows")
+                    && reason.contains(&u64::MAX.to_string()),
+                "{reason}"
+            );
+            assert!(windows.next().is_none());
+            assert!(probe.dropped(), "the walk dropped its stream");
+        }
+    }
 }

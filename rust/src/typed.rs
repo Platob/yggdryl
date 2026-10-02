@@ -692,8 +692,15 @@ impl<'a> FieldScalar<'a> {
         self.value.get(index)
     }
 
-    /// Look up a record field or a text mapping key.
+    /// Look up a record field or a text mapping key. A record row under a
+    /// struct field is ordered, so its cell is the one at the child the field
+    /// names exactly ([`Field::index_of`]).
     pub fn get_key_str(&self, key: &str) -> Option<&Scalar> {
+        if let Some(cells) = self.value.as_sequence()
+            && self.field.is_struct()
+        {
+            return cells.get(self.field.index_of(key)?);
+        }
         self.value.get_key_str(key)
     }
 

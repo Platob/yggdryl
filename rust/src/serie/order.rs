@@ -1290,6 +1290,14 @@ impl Serie {
     /// ([`SerieWindows::serie`]). Only ascending is offered: keys grouped in
     /// any other order already answer each key once with `sorted` false.
     ///
+    /// Every window lent states a record
+    /// ([`WindowSerie::static_values`](crate::WindowSerie::static_values),
+    /// typed by [`SerieWindows::static_field`]): its key cells, `windownum` -
+    /// its place among the windows - and `rownum` - the number its first row
+    /// has in this serie, null where `sorted` gathered the rows - the record
+    /// a stream window of the same rows states
+    /// ([`SerieReader::window_by`]). It is built only when read.
+    ///
     /// `by` is a selector - a clause text such as `"venue, minutes(ts, 15)
     /// as bucket"`, or a [`Selector`], a projection, a term or a path -
     /// parsed once and bound once against
@@ -1375,14 +1383,15 @@ impl Serie {
     /// Returns an error, before any row is read, for text that is not a
     /// selector; naming the serie, for a run, which windows by no term, for
     /// a key stating no projection - an empty list, or a `*` alone - and for
-    /// an `unnest`; and the binder's own refusal for a column the key
-    /// reaches none of, or reaches two of, and for a period step that is not
-    /// a positive literal. With `sorted` and keys out of order, it refuses a
+    /// an `unnest`; the binder's own refusal for a column the key reaches
+    /// none of, or reaches two of, and for a period step that is not a
+    /// positive literal; and, naming the serie and both names, for a key
+    /// cell whose name folds onto `windownum` or `rownum` - alias it. With
+    /// `sorted` and keys out of order, it refuses a
     /// serie past `u32::MAX` rows, which the gather cannot address, naming
     /// it, once the keys are read.
     pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> Result<SerieWindows<'_>> {
-        let key = self.window_key(&by.into_selector()?)?;
-        SerieWindows::new(self, 0, key.apply_serie(self)?, sorted)
+        SerieWindows::new(self, 0, self.len(), &by.into_selector()?, None, sorted)
     }
 
     /// `by` bound as the key this serie's rows are windowed by: refused

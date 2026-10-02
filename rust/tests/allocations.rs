@@ -3169,19 +3169,30 @@ fn a_slice_of_the_whole_serie_is_the_serie() {
     }
 }
 
+/// What [`Serie::window_by`] adds to every call for the record each window
+/// states ([`yggdryl::SerieWindows::static_field`]), typed at the call before
+/// a row is read: the vector of its fields and its children - the kept
+/// cells none, the key cells' fields cloned behind their own handles, and
+/// `windownum` and `rownum` inline. Every held key constant below moved by
+/// exactly these two when held windows came to state a record, and by
+/// nothing else: a window's record is built only when it is read
+/// ([`HELD_WINDOW_RECORD`]).
+const WINDOW_BY_RECORD: usize = 1 + 1;
+
 /// What [`Serie::window_by`] costs a call over [`quote_buckets`] keyed by its
 /// venue: thirteen to bind the key against the root, four for the key plan
 /// the bind settles beside it - the nullable root every key lands under and
 /// where each cell lies - two for the direct arm, the record's own landed
 /// venue under that root, four for the root's Arrow projection, which the
 /// first cut builds and the plan keeps, six for the comparator over its one
-/// text child and two for the bitmap of a bit per row.
+/// text child and two for the bitmap of a bit per row, plus
+/// [`WINDOW_BY_RECORD`].
 ///
 /// It moved from `13 + 5 + 12 + 10 + 6 + 2` (48) when the key plan was
 /// hoisted into the bind: the record's array, the projection and the
 /// landing of every call (twenty-seven) became the direct arm (two), the key
 /// plan (four) and its root's projection (four).
-const WINDOW_BY_COLUMN_KEY: usize = 13 + 4 + 2 + 4 + 6 + 2;
+const WINDOW_BY_COLUMN_KEY: usize = 13 + 4 + 2 + 4 + 6 + 2 + WINDOW_BY_RECORD;
 
 /// The same keyed by `minutes(ts, 15)`: thirty-eight to bind and type the
 /// period term, eighteen for its key plan - the nullable root, and the
@@ -3190,13 +3201,13 @@ const WINDOW_BY_COLUMN_KEY: usize = 13 + 4 + 2 + 4 + 6 + 2;
 /// landing takes on trust - twenty-seven for the narrow arm, the instant
 /// column alone as a batch, the term evaluated over it per call through the
 /// row tier, never per row, and the key landed, then the same projection,
-/// comparator and bitmap.
+/// comparator and bitmap, plus [`WINDOW_BY_RECORD`].
 ///
 /// It moved from `38 + 5 + 32 + 10 + 6 + 2` (93) when the key plan was
 /// hoisted into the bind: the record's own array (five) is gone, and the
 /// plan, the narrow arm and the projection (forty-nine) stand where the
 /// evaluation and the landing of every call stood (forty-two).
-const WINDOW_BY_PERIOD_KEY: usize = 38 + 18 + 27 + 4 + 6 + 2;
+const WINDOW_BY_PERIOD_KEY: usize = 38 + 18 + 27 + 4 + 6 + 2 + WINDOW_BY_RECORD;
 
 #[test]
 fn window_by_over_buffer_ordered_keys_costs_one_plan_per_call_one_key_per_window_and_nothing_per_row()
@@ -3318,7 +3329,8 @@ fn currency_runs(rows: usize) -> Serie {
 /// it, four for its key plan, two for the direct arm - the column itself the
 /// key's one cell - two for the comparator, the record rung boxing its one
 /// child's, which builds the currencies' values once into one vector and
-/// nothing a row for an inline code, and two for the bitmap.
+/// nothing a row for an inline code, and two for the bitmap, plus
+/// [`WINDOW_BY_RECORD`].
 ///
 /// It moved from `2 + 13 + 17 + 1 + 2` and one key row a row when the
 /// record rung came: one leaf's values built, not one run per row - the
@@ -3326,7 +3338,7 @@ fn currency_runs(rows: usize) -> Serie {
 /// one vector of values (two) - and when the key plan was hoisted into the
 /// bind: the column wrapped and landed every call (seventeen) became the key
 /// plan (four) and the direct arm (two).
-const WINDOW_BY_VALUES_KEY: usize = 2 + 13 + 4 + 2 + 2 + 2;
+const WINDOW_BY_VALUES_KEY: usize = 2 + 13 + 4 + 2 + 2 + 2 + WINDOW_BY_RECORD;
 
 #[test]
 fn window_by_over_a_value_ordered_key_builds_its_values_once_and_nothing_per_row() {
@@ -3919,8 +3931,8 @@ fn window_by_sorted_gathers_the_rows_once_in_key_order() {
 /// path, nineteen for its key plan - the path's positions, and the engine a
 /// window holding an absent order evaluates through - two for the direct
 /// arm, the venue the order's own landed child, then the projection, the
-/// comparator and the bitmap of a column key.
-const WINDOW_BY_PATH_KEY: usize = 21 + 19 + 2 + 4 + 6 + 2;
+/// comparator and the bitmap of a column key, plus [`WINDOW_BY_RECORD`].
+const WINDOW_BY_PATH_KEY: usize = 21 + 19 + 2 + 4 + 6 + 2 + WINDOW_BY_RECORD;
 
 /// What an absent order adds to [`WINDOW_BY_PATH_KEY`]: the narrow arm in
 /// place of the direct one - the order column alone as a batch, the step
@@ -3982,10 +3994,10 @@ fn window_by_costs_the_same_whatever_the_record_is_wide() {
 /// plan, two for the direct arm, then four for the comparator - the record
 /// rung boxing its two children's, the venue's values built once into one
 /// vector and nothing a row for an inline code, and the side's over its
-/// buffers, an array handle and Arrow's comparator - and two for the bitmap.
-/// No Arrow array of the key is built, so its root's projection is never
-/// asked for.
-const WINDOW_BY_CODED_KEY: usize = 21 + 5 + 2 + (1 + 1 + 2) + 2;
+/// buffers, an array handle and Arrow's comparator - and two for the bitmap,
+/// plus [`WINDOW_BY_RECORD`]. No Arrow array of the key is built, so its
+/// root's projection is never asked for.
+const WINDOW_BY_CODED_KEY: usize = 21 + 5 + 2 + (1 + 1 + 2) + 2 + WINDOW_BY_RECORD;
 
 #[test]
 fn a_record_key_with_a_code_child_cuts_with_a_constant_count() {
@@ -4469,47 +4481,20 @@ fn a_continuing_window_edge_builds_no_key() {
 
 #[test]
 fn static_values_are_lent_free() {
-    // A reader's static values are one record row beside its root, lent as
-    // they stand: the whole record, or one value reached by its name, holds
-    // no handle - a stated record and a window's alike, whatever the rows.
-    let part = DataType::from(
-        StructType::from_fields([
-            DataType::utf8().required_field("venue"),
-            DataType::Int32.required_field("day"),
-        ])
-        .expect("two children"),
-    )
-    .required_field("part");
-    let day: FieldPath = "day".parse().expect("a path");
-    let rownum: FieldPath = "rownum".parse().expect("a path");
-    let key: FieldPath = "venue".parse().expect("a path");
+    // A stream window's static values are one record row beside its root,
+    // laid out once when the window opened and lent as they stand: reading
+    // the record, or one of its cells by its place, holds no handle,
+    // whatever the rows.
     let venue: yggdryl::Selector = "venue".parse().expect("a selector");
     for rows in [64_usize, 4_096] {
-        let values = FieldRecord::new(
-            &part,
-            Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(3_i32)]),
-        )
-        .expect("a part");
-        let reader = yggdryl::SerieReader::from_serie(quote_buckets(rows))
-            .expect("a reader")
-            .with_static_values(values);
+        let reader = yggdryl::SerieReader::from_serie(quote_buckets(rows)).expect("a reader");
         free(
-            &format!("a reader's static values over {rows} rows"),
+            &format!("a reader's absent static values over {rows} rows"),
             || {
                 black_box(black_box(&reader).static_values());
             },
         );
-        free(
-            &format!("a reader's static value by name over {rows} rows"),
-            || {
-                black_box(black_box(&reader).get_static_value(&day));
-            },
-        );
-
-        let mut windows = yggdryl::SerieReader::from_serie(quote_buckets(rows))
-            .expect("a reader")
-            .window_by(&venue, false)
-            .expect("windows");
+        let mut windows = reader.window_by(&venue, false).expect("windows");
         let window = windows.next().expect("a window").expect("a window");
         free(
             &format!("a window's static values over {rows} rows"),
@@ -4518,11 +4503,99 @@ fn static_values_are_lent_free() {
             },
         );
         free(&format!("a window's key cell over {rows} rows"), || {
-            black_box(black_box(&window).get_static_value(&key));
+            let statics = black_box(&window).static_values().expect("its record");
+            black_box(statics.get(0));
         });
         free(&format!("a window's row number over {rows} rows"), || {
-            black_box(black_box(&window).get_static_value(&rownum));
+            let statics = black_box(&window).static_values().expect("its record");
+            black_box(statics.get(2));
         });
+    }
+}
+
+/// What [`WindowSerie::static_values`](yggdryl::WindowSerie::static_values)
+/// costs a held window keyed by its venue: one run of the record's cells -
+/// the venue, inline, `windownum` and `rownum` - and nothing else.
+const HELD_WINDOW_RECORD: usize = 1;
+
+#[test]
+fn a_held_window_record_costs_one_row_only_when_read() {
+    // A held window's record is built when it is read, never as the walk
+    // passes: draining the windows costs what it cost before windows stated
+    // a record - one key a window - and each read of a record is one row,
+    // whatever the rows.
+    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+    for rows in [64_usize, 4_096] {
+        let quotes = quote_buckets(rows);
+        let windows = quotes.window_by(&venue, false).expect("windows");
+        // Once outside every count, so no process-wide first use is charged.
+        assert_eq!(
+            windows
+                .iter()
+                .filter_map(|(_, window)| window.static_values())
+                .count(),
+            3
+        );
+        let (walk, count) = counted(|| windows.iter().map(black_box).count());
+        assert_eq!(count, 3);
+        assert_eq!(
+            walk, 3,
+            "a walk over {rows} rows: one key a window, no record"
+        );
+        let (_, window) = windows.iter().next().expect("a window");
+        let (cost, statics) = counted(|| black_box(&window).static_values());
+        let statics = statics.expect("its record");
+        assert_eq!(statics.get(0).as_deref(), Some(&Scalar::from("XNAS")));
+        assert_eq!(
+            cost, HELD_WINDOW_RECORD,
+            "a held window's record over {rows} rows: one run of its cells"
+        );
+        let (twice, _) = counted(|| {
+            black_box(black_box(&window).static_values());
+            black_box(black_box(&window).static_values());
+        });
+        assert_eq!(
+            twice,
+            2 * HELD_WINDOW_RECORD,
+            "built on each read, never held"
+        );
+        // A window of the rows alone states none, for nothing.
+        let plain = quotes.window(0, rows).expect("a window");
+        free(&format!("a plain window's record over {rows} rows"), || {
+            black_box(black_box(&plain).static_values());
+        });
+    }
+}
+
+#[test]
+fn a_window_reached_by_nth_costs_one_key_whatever_it_skips() {
+    // Skipping windows builds no key: in row order the walk counts set
+    // bits, in key order it reads the cuts, and only the window lent is
+    // keyed - what a binding holding owned windows pays to reach one.
+    for rows in [64_usize, 4_096] {
+        let day = Field::new("day", DataType::Int64, false);
+        let ascending = Serie::from_scalars(day.clone(), (0..rows as i64).map(Scalar::from))
+            .expect("ascending days");
+        let descending = Serie::from_scalars(day, (0..rows as i64).rev().map(Scalar::from))
+            .expect("descending days");
+        for (serie, sorted, cuts) in [(&ascending, false, "row"), (&descending, true, "key")] {
+            let windows = serie.window_by("day", sorted).expect("windows");
+            assert_eq!(windows.len(), rows);
+            // Once outside every count, so no process-wide first use is charged.
+            black_box(windows.iter().nth(1));
+            let (cost, last) = counted(|| windows.iter().nth(rows - 1).map(black_box));
+            let (key, window) = last.expect("the last window");
+            // The last window holds the greatest day either way.
+            assert_eq!(
+                (key, window.len()),
+                (Scalar::from_sequence([Scalar::from(rows as i64 - 1)]), 1)
+            );
+            assert_eq!(
+                cost, 1,
+                "the last of {rows} windows in {cuts} order: its key alone"
+            );
+            assert!(windows.iter().nth(rows).is_none());
+        }
     }
 }
 

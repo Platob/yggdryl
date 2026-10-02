@@ -279,6 +279,9 @@ mod pairing {
         );
         assert_eq!(typed.as_struct(), None);
         assert_eq!(typed.get(0).as_deref(), Some(&Scalar::from(1_i64)));
+        // A row is ordered, and its field names each cell exactly.
+        assert_eq!(typed.get_key_str("id"), Some(&Scalar::from(1_i64)));
+        assert_eq!(typed.get_key_str("ID"), None);
         assert_eq!(typed.as_ref(), typed.value());
 
         let mapping = Scalar::from_mapping([(Scalar::from("id"), Scalar::from(1_i64))]).unwrap();
