@@ -7936,67 +7936,6 @@ export declare class SerieReader {
 export type JsSerieReader = SerieReader
 
 /**
- * A window over a serie: `length` rows from `offset`, read and written
- * through the serie at each call, moving nothing.
- *
- * Handed out by `serie.window(offset, length)`. The window holds the serie
- * object it was taken from, so it is both the shared and the mutable window:
- * a read borrows the serie for that call, a write borrows it mutably for that
- * call, and a write never grows or shrinks what the window views. Identity
- * is the window's rows alone, as a serie's is its rows.
- */
-export declare class WindowSerie {
-  /** The number of rows the window holds. */
-  get length(): number
-  /** The serie row the window starts at. */
-  get offset(): number
-  /**
-   * The whole serie the window reads and writes through: the very object
-   * `window` was called on.
-   */
-  get serie(): Serie
-  /** The field every row is typed by, or `null` for a window over a run. */
-  get field(): Field | null
-  /**
-   * The serie's datatype: `serie(<the field named item>)` for a column,
-   * agreed out of the window's rows for a run.
-   */
-  get dtype(): DataType
-  /** Whether the window holds no row. */
-  isEmpty(): boolean
-  /**
-   * The window's absent rows, counted off the validity bits with no row
-   * built.
-   */
-  nullCount(): number
-  /** Whether window row `index` is absent. */
-  isNull(index: number): boolean
-  /** Window row `index`, built as one value. */
-  scalar(index: number): Scalar
-  /** Window row `index`, or `null` past the window. */
-  at(index: number): Scalar | null
-  /** Every row of the window, each built once. */
-  rows(): Array<Scalar>
-  /** The bytes the window's rows occupy, as its own slice counts them. */
-  memorySize(): number
-  /**
-   * Whether no two window rows hold one value; two absent rows are a
-   * repeat.
-   */
-  isUnique(): boolean
-  /**
-   * How many distinct values the window's rows hold, an absent row one of
-   * them.
-   */
-  uniqueCount(): number
-  /** The window's rows, rendered behind the serie's name. */
-  toString(): string
-  /** Swap window rows `left` and `right`. */
-  swap(left: number, right: number): void
-}
-export type JsWindowSerie = WindowSerie
-
-/**
  * An HTTP/1.1 server hosting `IOBase` handles and fixed answers, answering
  * from its own threads.
  *
@@ -10313,6 +10252,67 @@ export declare class Version {
   toJSON(): string
 }
 export type JsVersion = Version
+
+/**
+ * A window over a serie: `length` rows from `offset`, read and written
+ * through the serie at each call, moving nothing.
+ *
+ * Handed out by `serie.window(offset, length)`. The window holds the serie
+ * object it was taken from, so it is both the shared and the mutable window:
+ * a read borrows the serie for that call, a write borrows it mutably for that
+ * call, and a write never grows or shrinks what the window views. Identity
+ * is the window's rows alone, as a serie's is its rows.
+ */
+export declare class WindowSerie {
+  /** The number of rows the window holds. */
+  get length(): number
+  /** The serie row the window starts at. */
+  get offset(): number
+  /**
+   * The whole serie the window reads and writes through: the very object
+   * `window` was called on.
+   */
+  get serie(): Serie
+  /** The field every row is typed by, or `null` for a window over a run. */
+  get field(): Field | null
+  /**
+   * The serie's datatype: `serie(<the field named item>)` for a column,
+   * agreed out of the window's rows for a run.
+   */
+  get dtype(): DataType
+  /** Whether the window holds no row. */
+  isEmpty(): boolean
+  /**
+   * The window's absent rows, counted off the validity bits with no row
+   * built.
+   */
+  nullCount(): number
+  /** Whether window row `index` is absent. */
+  isNull(index: number): boolean
+  /** Window row `index`, built as one value. */
+  scalar(index: number): Scalar
+  /** Window row `index`, or `null` past the window. */
+  at(index: number): Scalar | null
+  /** Every row of the window, each built once. */
+  rows(): Array<Scalar>
+  /** The bytes the window's rows occupy, as its own slice counts them. */
+  memorySize(): number
+  /**
+   * Whether no two window rows hold one value; two absent rows are a
+   * repeat.
+   */
+  isUnique(): boolean
+  /**
+   * How many distinct values the window's rows hold, an absent row one of
+   * them.
+   */
+  uniqueCount(): number
+  /** The window's rows, rendered behind the serie's name. */
+  toString(): string
+  /** Swap window rows `left` and `right`. */
+  swap(left: number, right: number): void
+}
+export type JsWindowSerie = WindowSerie
 
 /**
  * An Office Open XML workbook: its sheets in tab order, each parsed on first
