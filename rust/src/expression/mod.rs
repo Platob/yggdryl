@@ -60,7 +60,7 @@ mod path;
 mod plan;
 mod pushdown;
 mod records;
-mod selector;
+pub(crate) mod selector;
 mod serde;
 mod term;
 mod transform;

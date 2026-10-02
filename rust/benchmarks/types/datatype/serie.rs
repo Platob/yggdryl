@@ -10,12 +10,14 @@
 use std::hint::black_box;
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, Int64Array, StringArray, StructArray};
+use arrow_array::{
+    ArrayRef, Int64Array, RecordBatch, StringArray, StructArray, TimestampNanosecondArray,
+};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
 use criterion::{BatchSize, Criterion};
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SerieValue, SortOptions,
-    StructType, UnionMode,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Selector, Serie, SerieValue,
+    SortOptions, StructType, TimeUnit, Timezone, UnionMode,
 };
 
 /// Rows per measured column. The smoke corpus keeps `cargo test
@@ -175,6 +177,60 @@ fn eight_chunks(column: &Serie) -> ChunkedSerie {
         ArrowCastOptions::new(),
     )
     .expect("chunks under one field")
+}
+
+/// Rows per venue run in [`ticks_column`].
+const VENUE_RUN: usize = 100;
+
+/// One non-null record root of a venue, a count and a nanosecond UTC
+/// instant.
+fn ticks_root() -> Field {
+    let fields = StructType::from_fields([
+        Field::new("venue", DataType::utf8(), false),
+        Field::new("count", DataType::Int64, false),
+        Field::new(
+            "ts",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
+            false,
+        ),
+    ])
+    .expect("three named children");
+    Field::new("tick", DataType::from(fields), false)
+}
+
+/// `ROWS` ticks under [`ticks_root`] as Arrow buffers: the venue changing
+/// every [`VENUE_RUN`] rows, one second between instants from a
+/// fifteen-minute boundary, so a quarter-hour bucket holds 900 rows.
+fn ticks_column() -> Serie {
+    // 2024-01-01T00:00:00Z.
+    const MIDNIGHT_NS: i64 = 1_704_067_200_000_000_000;
+    const VENUES: [&str; 4] = ["XNAS", "XNYS", "XPAR", "XLON"];
+    let root = ticks_root();
+    let schema = root.clone().into_arrow_schema().expect("a record schema");
+    let instants = TimestampNanosecondArray::from(
+        (0..ROWS)
+            .map(|index| {
+                MIDNIGHT_NS + i64::try_from(index).expect("a row count fits i64") * 1_000_000_000
+            })
+            .collect::<Vec<_>>(),
+    )
+    .with_data_type(schema.field(2).data_type().clone());
+    let venues: Vec<&str> = (0..ROWS)
+        .map(|index| VENUES[index / VENUE_RUN % VENUES.len()])
+        .collect();
+    let batch = RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(StringArray::from(venues)),
+            price_array(),
+            Arc::new(instants),
+        ],
+    )
+    .expect("three equal columns");
+    Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("a record column")
 }
 
 /// One nullable union of an identifier and a symbol, in `mode`.
@@ -514,6 +570,74 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
             );
         });
     }
+
+    // Windows by key: one bind, one key record, one comparator and one
+    // bitmap a call, then one key per window walked. A column key projects
+    // the venue's buffers and compares them; a period key evaluates its term
+    // through the row tier, so its distance from the column key is that
+    // tier's time. Windowing a window keys the window's rows as a serie of
+    // their own; a chunked column keys each chunk and joins nothing.
+    let ticks = ticks_column();
+    let venue: Selector = "venue".parse().expect("a column key");
+    let bucket: Selector = "minutes(ts, 15)".parse().expect("a period key");
+    group.bench_function("window_by/column_key", |bencher| {
+        bencher.iter(|| {
+            black_box(&ticks)
+                .window_by(&venue)
+                .expect("windows")
+                .map(black_box)
+                .count()
+        });
+    });
+    group.bench_function("window_by/epoch_key", |bencher| {
+        bencher.iter(|| {
+            black_box(&ticks)
+                .window_by(&bucket)
+                .expect("windows")
+                .map(black_box)
+                .count()
+        });
+    });
+    group.bench_function("window_by/through_window", |bencher| {
+        bencher.iter(|| {
+            black_box(&ticks)
+                .window(1, ROWS - 2)
+                .expect("a window")
+                .window_by(&venue)
+                .expect("windows")
+                .map(black_box)
+                .count()
+        });
+    });
+    let chunked_ticks = eight_chunks(&ticks);
+    group.bench_function("chunked/window_by", |bencher| {
+        bencher.iter(|| {
+            black_box(&chunked_ticks)
+                .window_by(&venue)
+                .expect("windows")
+        });
+    });
+
+    // A run is a window over one shared slice: a slice shares it, a row
+    // read is the window's bounds and one index, and a window's verb reads
+    // the run sliced to it rather than a copy of its rows.
+    let run = Serie::new(price_rows());
+    group.bench_function("run/slice", |bencher| {
+        bencher.iter(|| black_box(&run).slice(1, ROWS - 2).expect("a slice"));
+    });
+    group.bench_function("run/row_at", |bencher| {
+        bencher.iter(|| {
+            black_box(black_box(&run).get(black_box(ROWS / 2)));
+        });
+    });
+    group.bench_function("run/window_is_sorted", |bencher| {
+        bencher.iter(|| {
+            black_box(&run)
+                .window(1, ROWS - 2)
+                .expect("a window")
+                .is_sorted(SortOptions::default())
+        });
+    });
 
     // A union push: a sparse one splices every member over the new row, a
     // dense one lands the payload on its own member.

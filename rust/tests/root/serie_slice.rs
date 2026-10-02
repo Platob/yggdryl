@@ -6,7 +6,9 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Int64Array, StringArray};
-use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, SerieSlice, SortOptions};
+use yggdryl::{
+    ArrowCastOptions, DataType, Error, Field, Scalar, Serie, SerieSlice, SerieWindows, SortOptions,
+};
 
 fn i64s(values: &[i64]) -> Vec<Scalar> {
     values.iter().map(|value| Scalar::from(*value)).collect()
@@ -446,4 +448,145 @@ fn a_window_over_a_shared_column_copies_the_column_once_and_leaves_the_clone() {
         .expect("sorted");
     assert_eq!(other.rows().to_vec(), i64s(&[1, 2, 3]));
     assert_eq!(column.rows().to_vec(), i64s(&[2, 1, 3]));
+}
+
+/// The venues XNAS, XNAS, XNAS, XNYS, XNYS, XNAS, XNAS as a utf8 column.
+fn venues() -> Serie {
+    let array: ArrayRef = Arc::new(StringArray::from(vec![
+        "XNAS", "XNAS", "XNAS", "XNYS", "XNYS", "XNAS", "XNAS",
+    ]));
+    let field = Field::new("venue", DataType::utf8(), false);
+    Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::new()).expect("a utf8 column")
+}
+
+/// Each window as its key, its offset and its length.
+fn cuts(windows: SerieWindows<'_>) -> Vec<(Scalar, usize, usize)> {
+    windows
+        .map(|(key, window)| (key, window.offset(), window.len()))
+        .collect()
+}
+
+#[test]
+fn a_window_windows_by_its_own_rows_over_the_serie() {
+    let venues = venues();
+    let window = venues.window(1, 4).expect("a window");
+    let windows: Vec<_> = window.window_by("venue").expect("windows").collect();
+    // Every window is over the serie itself, at its offset in the serie.
+    for (_, cut) in &windows {
+        assert!(std::ptr::eq(cut.serie(), &venues));
+    }
+    let xnas = Scalar::from_sequence([Scalar::from("XNAS")]);
+    let xnys = Scalar::from_sequence([Scalar::from("XNYS")]);
+    // The XNAS run that opens before the window is cut at its edge, and the
+    // one after it never reaches in.
+    assert_eq!(
+        cuts(window.window_by("venue").expect("windows")),
+        vec![(xnas.clone(), 1, 2), (xnys.clone(), 3, 2)]
+    );
+    assert_eq!(
+        windows[0].1.rows().into_owned(),
+        vec![Scalar::from("XNAS"); 2]
+    );
+
+    // What the serie's own windows answer, cut to the window.
+    let restricted: Vec<_> = cuts(venues.window_by("venue").expect("windows"))
+        .into_iter()
+        .filter_map(|(key, offset, len)| {
+            let start = offset.max(window.offset());
+            let end = (offset + len).min(window.offset() + window.len());
+            (start < end).then_some((key, start, end - start))
+        })
+        .collect();
+    assert_eq!(
+        cuts(window.window_by("venue").expect("windows")),
+        restricted
+    );
+
+    // A window over the whole serie answers what the serie answers.
+    let whole = venues.window(0, venues.len()).expect("the whole");
+    assert_eq!(
+        cuts(whole.window_by("venue").expect("windows")),
+        vec![(xnas.clone(), 0, 3), (xnys, 3, 2), (xnas, 5, 2)]
+    );
+    assert_eq!(
+        cuts(whole.window_by("venue").expect("windows")),
+        cuts(venues.window_by("venue").expect("windows"))
+    );
+    // An empty window cuts no window, and still binds first.
+    let empty = venues.window(3, 0).expect("an empty window");
+    assert_eq!(empty.window_by("venue").expect("windows").len(), 0);
+    assert!(empty.window_by("tier").is_err());
+
+    // A mutable window answers what the read-only one does.
+    let mut held = venues.clone();
+    let mutable = held.window_mut(1, 4).expect("a window");
+    assert_eq!(
+        cuts(mutable.window_by("venue").expect("windows")),
+        cuts(window.window_by("venue").expect("windows"))
+    );
+
+    // A window over a run has no field for a term to read, and the refusal
+    // names the serie.
+    let run = run(&[1, 1, 2]);
+    match run.window(1, 2).expect("a window").window_by("price") {
+        Err(Error::InvalidRecord { path, reason }) => assert_eq!(
+            (path.as_str(), reason.as_str()),
+            ("$", "a schema-free run windows by no term")
+        ),
+        other => panic!("expected the run refused, got {other:?}"),
+    }
+    // So is a key naming no column, under the serie's name.
+    let refused = window.window_by("*").unwrap_err().to_string();
+    assert!(
+        refused.contains("venue: expected at least one column to window by"),
+        "{refused}"
+    );
+}
+
+#[test]
+fn a_mutable_window_narrows_onto_the_same_serie() {
+    let mut prices = column((0..8).map(Some).collect());
+    {
+        let mut outer = prices.window_mut(1, 6).expect("a window");
+        let mut middle = outer.window_mut(1, 4).expect("a window of it");
+        assert_eq!((middle.offset(), middle.len()), (2, 4));
+        let mut inner = middle.window_mut(2, 2).expect("a window of that");
+        // Three levels are one window of the serie, its offsets summed.
+        assert_eq!((inner.offset(), inner.len()), (4, 2));
+        assert_eq!(inner.scalar(0).expect("a row"), Scalar::from(4_i64));
+        inner.set(1, Scalar::from(99_i64)).expect("a write");
+        // A narrower window never reaches past the one it narrows.
+        let refused = inner.window_mut(1, 2).unwrap_err().to_string();
+        assert!(
+            refused.contains("rows 1..3 reach past the 2 rows price holds"),
+            "{refused}"
+        );
+        let refused = inner.window_mut(usize::MAX, 2).unwrap_err().to_string();
+        assert!(
+            refused.contains("reaches past the 2 rows price holds"),
+            "{refused}"
+        );
+        // The parent reads the write once the narrower window is gone.
+        assert_eq!(middle.scalar(3).expect("a row"), Scalar::from(99_i64));
+    }
+    assert_eq!(prices.rows().to_vec(), i64s(&[0, 1, 2, 3, 4, 99, 6, 7]));
+}
+
+#[test]
+fn serie_windows_is_an_exact_fused_walk() {
+    let venues = venues();
+    let mut windows = venues.window_by("venue").expect("windows");
+    assert_eq!(windows.size_hint(), (3, Some(3)));
+    let copy = windows.clone();
+    assert!(windows.next().is_some());
+    assert_eq!((windows.len(), windows.size_hint()), (2, (2, Some(2))));
+    assert!(windows.next().is_some());
+    let (_, last) = windows.next().expect("a last window");
+    assert_eq!((last.offset(), last.len()), (5, 2));
+    assert_eq!(windows.len(), 0);
+    assert!(windows.next().is_none());
+    assert!(windows.next().is_none());
+    // A clone walks from where it was taken, on its own.
+    assert_eq!(copy.len(), 3);
+    assert_eq!(copy.count(), 3);
 }

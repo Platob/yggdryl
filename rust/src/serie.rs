@@ -18,7 +18,8 @@
 //!
 //! [`Serie::Run`] is a schema-free ordered run - what a row canonicalizes
 //! to, what a document parses as, and what [`Scalar::from_sequence`] builds.
-//! It holds its values and lends them. Every other leaf is a column: the
+//! It holds its values - a window over one shared slice, which a slice of it
+//! shares - and lends them. Every other leaf is a column: the
 //! Arrow buffers of one [`Field`], holding no [`Scalar`] at all, building a
 //! row only when one is asked for, writing its buffers in place when it
 //! holds them alone, and holding nested children as [`Serie`] all the way
@@ -429,7 +430,8 @@ pub(crate) fn require_window(name: &str, offset: usize, length: usize, len: usiz
 /// since its Arrow buffers are shared) and the first buffer edit copies the
 /// rows once; every later edit is in place. The run is held inline, because
 /// a row is one and paying an extra indirection per row is the one cost
-/// this type cannot take.
+/// this type cannot take: a window - one shared `Arc<[Scalar]>`, where it
+/// starts, how long - so slicing one shares its values.
 #[derive(Clone)]
 #[non_exhaustive]
 pub enum Serie {
@@ -603,9 +605,9 @@ pub enum Serie {
     Geography(Arc<BinarySerie>),
 }
 
-// A 16-byte `Arc<[Scalar]>` inline beside a discriminant; every column leaf
-// is one thin pointer.
-const _: () = assert!(size_of::<Serie>() == 24);
+// A run's window - one shared `Arc<[Scalar]>`, where it starts, how long -
+// inline beside a discriminant; every column leaf is one thin pointer.
+const _: () = assert!(size_of::<Serie>() == 40);
 
 /// Forward one verb to whichever column holds the rows, with the run's own
 /// answer beside it.
@@ -2276,7 +2278,8 @@ impl Leaf for BinaryViewSerie {
 const RUN_PATH: &str = "$";
 
 /// Replace `range` of a run by `rows`: `Arc<[Scalar]>` cannot grow in
-/// place, so the run is copied once.
+/// place, so the run's window is copied once, letting go of the slice it
+/// was a window over.
 fn splice_run(run: &mut Run, range: Range<usize>, rows: Vec<Scalar>) {
     let mut values = run.as_slice().to_vec();
     values.splice(range, rows);
@@ -2589,21 +2592,44 @@ impl Serie {
 
     /// Return the window `offset..offset + length`.
     ///
-    /// Zero copy for a column: an Arrow slice, a nested column slicing its
-    /// validity and its children to the reached window with its offsets
-    /// rebased. A run copies its window into a new run.
+    /// Zero copy for every leaf: a column is an Arrow slice, a nested column
+    /// slicing its validity and its children to the reached window with its
+    /// offsets rebased, and a run shares its values; a slice of a slice
+    /// reaches the holder with the offsets summed; the whole serie is the
+    /// serie itself; a zero-length run slice holds nothing.
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, Serie};
+    ///
+    /// let prices = Serie::new(vec![
+    ///     Scalar::from(125_i64),
+    ///     Scalar::from(126_i64),
+    ///     Scalar::from(127_i64),
+    /// ]);
+    /// let window = prices.slice(1, 2)?;
+    /// assert_eq!(window.scalar(0)?, Scalar::from(126_i64));
+    /// // The whole serie is the serie itself, the same values lent.
+    /// let whole = prices.slice(0, 3)?;
+    /// let (Some(whole), Some(held)) = (whole.as_run(), prices.as_run()) else {
+    ///     panic!("both are runs");
+    /// };
+    /// assert_eq!(whole.as_slice().as_ptr(), held.as_slice().as_ptr());
+    /// assert!(prices.slice(2, 2).is_err());
+    /// # Ok::<(), yggdryl::Error>(())
+    /// ```
     ///
     /// # Errors
     ///
     /// Returns an error naming the serie and both counts when the window
     /// reaches past the end.
     pub fn slice(&self, offset: usize, length: usize) -> Result<Self> {
+        require_window(self.name(), offset, length, self.len())?;
+        if offset == 0 && length == self.len() {
+            return Ok(self.clone());
+        }
         column!(
             self,
-            run => {
-                require_window(RUN_PATH, offset, length, run.as_slice().len())?;
-                Ok(Self::new(&run.as_slice()[offset..offset + length]))
-            },
+            run => Ok(Self::Run(run.slice(offset, length))),
             column => SerieValue::slice(column.as_ref(), offset, length).map(SerieValue::into_serie)
         )
     }
@@ -2713,8 +2739,8 @@ impl Serie {
     ///
     /// A column proves every row through its field's contract once, checks
     /// what a write could not do, and writes its buffers in place when it
-    /// holds them alone (copied once when it does not). A run is one shared
-    /// slice, so a write copies every value it holds.
+    /// holds them alone (copied once when it does not). A run is a window
+    /// over one shared slice, so a write copies the window's values alone.
     ///
     /// # Errors
     ///
@@ -2748,9 +2774,10 @@ impl Serie {
 
     /// Append one row, through the field's contract where there is one.
     ///
-    /// A column writes its buffers, amortized. A run is one shared slice, so
-    /// appending to it copies every value it holds - building a run one
-    /// push at a time is quadratic, and [`Scalar::from_sequence`] or
+    /// A column writes its buffers, amortized. A run is a window over one
+    /// shared slice, so appending to it copies every value its window holds -
+    /// building a run one push at a time is quadratic, and
+    /// [`Scalar::from_sequence`] or
     /// [`Self::new`] is what builds one from values already in hand.
     ///
     /// # Errors

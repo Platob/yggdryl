@@ -39,7 +39,7 @@
 //! a derived partition column be the projection it always was.
 
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -631,6 +631,34 @@ impl Selector {
         }
     }
 
+    /// Resolve this selector as a key against `root`: one value per row,
+    /// computed by at least one projection.
+    ///
+    /// The one key rule every keyed verb shares - a merge's match key, a
+    /// window's cut - so each refuses alike, naming `path` and what the key
+    /// was for (`verb`: `merge on`, `window by`). A `*` alone or an empty
+    /// list names no key; a `*` beside projections keys by every column it
+    /// keeps, then the projections after it. An `unnest` is refused: a key
+    /// is one value per row, where an unnest is one row per element. Names
+    /// fold ASCII case, as every binding does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a key stating no projection, for an `unnest`,
+    /// and for what [`Self::bind`] refuses, in that order.
+    pub(crate) fn bind_key(&self, root: &Field, path: &str, verb: &str) -> Result<BoundSelector> {
+        if self.is_empty() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new(path),
+                reason: format_smolstr!(
+                    "expected at least one column to {verb}, got an empty match key"
+                ),
+            });
+        }
+        self.refuse_unnest("in a key")?;
+        self.bind(root)
+    }
+
     /// Return this selector with one more projection, appended after
     /// everything it already publishes - a `*` and its exclusions included.
     #[must_use]
@@ -894,6 +922,7 @@ impl Selector {
             projections,
             unnested,
             identity,
+            key_root: OnceLock::new(),
         })
     }
 
@@ -1231,6 +1260,10 @@ pub struct BoundSelector {
     /// The projection that multiplies rows, when one does.
     unnested: Option<Unnested>,
     identity: bool,
+    /// The nullable record a key column lands under, built on the first
+    /// column [`Self::apply_serie`] keys and kept with its Arrow projection,
+    /// so keys computed chunk by chunk build their root once.
+    key_root: OnceLock<Arc<Field>>,
 }
 
 impl BoundSelector {
@@ -1340,7 +1373,7 @@ mod arrow {
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchReader, StructArray};
-    use arrow_schema::{ArrowError, SchemaRef};
+    use arrow_schema::{ArrowError, DataType as ArrowDataType, SchemaRef};
 
     use super::{BoundSelector, ColumnCast, Selector};
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
@@ -1348,7 +1381,8 @@ mod arrow {
     use crate::expression::arrow::{
         StructRows, collected, one_batch, scattered, struct_children, struct_rows, unnest,
     };
-    use crate::{Error, Field, Result};
+    use crate::serie::{Proof, land};
+    use crate::{Error, Field, Result, Serie};
 
     impl Selector {
         /// Wrap a reader so every batch it yields is what this selector
@@ -1505,6 +1539,44 @@ mod arrow {
             rebuilt_struct(&rows, &projected, self.unnested.is_some())
         }
 
+        /// The record column this selector computes from one column, bound
+        /// against [`SerieReader::root_of`](crate::SerieReader::root_of) its
+        /// field: a record column is its own rows, any other column the one
+        /// child of its record.
+        ///
+        /// The record's absent rows stay absent - the struct-null rule of
+        /// every expression - so the result's root is nullable whatever
+        /// `root_of` declared, and an absent row reads as null. That root is
+        /// built on the first column this selector keys and kept, its Arrow
+        /// projection with it, so every later column lands under it as is.
+        /// An identity selector hands the record's own array back, and a
+        /// bare column it projects is the column's own `ArrayRef`.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error for a run, for a column that does not lay out as
+        /// the bound root's child, and for what
+        /// [`Self::apply_arrow_array`] or the landing refuses.
+        pub(crate) fn apply_serie(&self, serie: &Serie) -> Result<Serie> {
+            let column = serie.require_arrow_array()?;
+            let records: ArrayRef = if serie.require_field()?.dtype().as_fields().is_some() {
+                column
+            } else {
+                let ArrowDataType::Struct(fields) = self.schema.as_arrow_field_ref()?.data_type()
+                else {
+                    return Err(crate::arrow::Error::internal("BoundSelector::apply_serie").into());
+                };
+                let records = StructArray::try_new(fields.clone(), vec![column], None)
+                    .map_err(|error| Error::from(crate::arrow::Error::Arrow(error)))?;
+                Arc::new(records)
+            };
+            let keys = self.apply_arrow_array(&records)?;
+            let root = self
+                .key_root
+                .get_or_init(|| Arc::new(self.output.clone().with_nullable(true)));
+            Ok(land(Arc::clone(root), keys, &Proof::Unproven)?)
+        }
+
         /// Wrap a reader so every batch it yields is what this selector
         /// publishes.
         ///
@@ -1645,5 +1717,43 @@ fn selector_shape_error(value: &Scalar) -> Error {
             "the text of a select clause, a sequence of projections, a mapping of aliases to terms, or null",
             format_args!("{value:?}"),
         ),
+    }
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/expression/selector.rs` pins and a caller cannot reach.
+    //!
+    //! `bind_key` is the key rule a merge and a window share, and
+    //! `apply_serie` the key column a window cuts by; a caller reaches each
+    //! only through the verbs that key by them.
+    use super::BoundSelector;
+    use crate::{Field, Result, Selector, Serie};
+
+    /// Resolve `selector` as a key against `root`, refusing under `path`
+    /// what keys no row, naming what the key was for (`verb`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a key stating no projection, for an `unnest`,
+    /// and for what the binding refuses, in that order.
+    pub fn bind_key(
+        selector: &Selector,
+        root: &Field,
+        path: &str,
+        verb: &str,
+    ) -> Result<BoundSelector> {
+        selector.bind_key(root, path, verb)
+    }
+
+    /// The record column `selector` computes from `serie`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a run, for a column that does not lay out as
+    /// the bound root's child, and for what the projection refuses.
+    pub fn apply_serie(selector: &BoundSelector, serie: &Serie) -> Result<Serie> {
+        selector.apply_serie(serie)
     }
 }

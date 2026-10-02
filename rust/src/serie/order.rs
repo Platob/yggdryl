@@ -1,5 +1,5 @@
-//! The ordering, uniqueness and grouping verbs every leaf answers, through
-//! one ladder over one order.
+//! The ordering, uniqueness, grouping and windowing verbs every leaf
+//! answers, through one ladder over one order.
 //!
 //! The order is the values': `Scalar`'s total order, every absent value -
 //! a row, or one nested in a sequence, a record or a map - at the end the
@@ -29,6 +29,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BooleanArray, UInt32Array};
+use arrow_buffer::BooleanBuffer;
 use arrow_data::ArrayData;
 use arrow_ord::ord::{DynComparator, make_comparator};
 use arrow_row::{RowConverter, Rows, SortField};
@@ -36,7 +37,11 @@ use arrow_schema::DataType as ArrowDataType;
 
 use super::{Proof, Rows as _, Serie, land};
 use crate::arrow::{array_memory_size, scalar_memory_size};
-use crate::{DataType, Error, Field, FieldPath, Result, Scalar, SortOptions};
+use crate::expression::{BoundSelector, IntoSelector};
+use crate::{
+    DataType, Error, Field, FieldPath, Result, Scalar, Selector, SerieReader, SerieWindows,
+    SortOptions,
+};
 
 /// The name an index column answers: the positions a sort chose.
 const INDEX_NAME: &str = "index";
@@ -272,6 +277,13 @@ impl<'a> Compare<'a> {
             Self::Buffers(compare) => compare(left, right),
             Self::Values { rows, options } => compare_values(&rows[left], &rows[right], *options),
         }
+    }
+
+    /// Whether row `index` opens a run of equal rows: the first row, or one
+    /// the row before it does not equal. The one boundary a sorted group
+    /// and a window are both cut at.
+    fn opens(&self, index: usize) -> bool {
+        index == 0 || self.cmp(index - 1, index) != Ordering::Equal
     }
 }
 
@@ -1010,7 +1022,7 @@ impl Serie {
             let mut groups = Vec::new();
             let mut start = 0;
             for index in 1..=len {
-                if index == len || compare.cmp(index - 1, index) != Ordering::Equal {
+                if index == len || compare.opens(index) {
                     groups.push((keys.scalar(start)?, self.slice(start, index - start)?));
                     start = index;
                 }
@@ -1129,6 +1141,111 @@ impl Serie {
         }
         let keys = Self::record_of(children)?;
         self.partition_by(&keys)
+    }
+
+    /// The rows cut into windows of equal adjacent keys, the keys `by`
+    /// computes from each row: one `(key, window)` per maximal run of
+    /// adjacent rows whose keys are equal, in row order, every window a view
+    /// over this serie. The windows are never empty, never overlap, and
+    /// cover every row; a key that comes back after another opens a window
+    /// of its own, where [`Self::partition_by`] gathers every row of a key
+    /// into one group - over keys already in order the two agree.
+    ///
+    /// `by` is a selector - a clause text such as `"venue, minutes(ts, 15)
+    /// as bucket"`, or a [`Selector`], a projection, a term or a path -
+    /// parsed once and bound once against
+    /// [`SerieReader::root_of`]: a record column binds against its own
+    /// field, any other column as the one child of its record, under its own
+    /// name. Names fold ASCII case, as every expression's do. A `*` beside
+    /// projections keys by every column it keeps, then the projections.
+    ///
+    /// A key is the run of its projected cells at a window's first row, in
+    /// selector order - one term keys a one-cell run. An absent record row
+    /// keys [`Scalar::Null`], and an absent cell is a null cell. Keys are
+    /// equal as the ordering verbs equate them: an absent key equals an
+    /// absent key, every NaN is one value, and a nested key compares item by
+    /// item. A period term such as `minutes(ts, 15)` keys the number of its
+    /// period since the epoch, in UTC whatever zone the column states.
+    ///
+    /// The cost is one plan per call and one key per window: the key column
+    /// computed once, one comparator over it and one bitmap of where the
+    /// windows open, then each window costs the run of its key and nothing
+    /// else. No key row is built where the keys order as their buffers -
+    /// text, integers, temporals and records of them. Any other key - a
+    /// registered code, a windows-1252 text, a version, a URL, a union -
+    /// builds each of its rows once and holds them for the call, as
+    /// [`Self::partition_by`] builds them: an allocation and a value per
+    /// row. A period term such as `minutes(ts, 15)` is evaluated row by row
+    /// through the expression's row tier, so it costs a constant count of
+    /// allocations but time and a transient value per row.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Field, Scalar, Serie, StructType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let root = Field::new(
+    ///     "quote",
+    ///     DataType::from(StructType::from_fields([
+    ///         Field::new("venue", DataType::utf8(), false),
+    ///         Field::new("price", DataType::Int64, false),
+    ///     ])?),
+    ///     false,
+    /// );
+    /// let quotes = Serie::from_scalars(root, [
+    ///     Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(1_i64)]),
+    ///     Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(2_i64)]),
+    ///     Scalar::from_sequence([Scalar::from("XNYS"), Scalar::from(3_i64)]),
+    ///     Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(4_i64)]),
+    /// ])?;
+    /// let windows: Vec<_> = quotes.window_by("venue")?.collect();
+    /// assert_eq!(windows.len(), 3);
+    /// assert_eq!(windows[0].0, Scalar::from_sequence([Scalar::from("XNAS")]));
+    /// assert_eq!((windows[0].1.offset(), windows[0].1.len()), (0, 2));
+    /// // XNAS comes back after XNYS, so it opens a window of its own.
+    /// assert_eq!(windows[2].0, Scalar::from_sequence([Scalar::from("XNAS")]));
+    /// assert_eq!((windows[2].1.offset(), windows[2].1.len()), (3, 1));
+    /// assert!(std::ptr::eq(windows[2].1.serie(), &quotes));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error, before any row is read, for text that is not a
+    /// selector; naming the serie, for a run, which windows by no term, for
+    /// a key stating no projection - an empty list, or a `*` alone - and for
+    /// an `unnest`; and the binder's own refusal for a column the key
+    /// reaches none of, or reaches two of, and for a period step that is not
+    /// a positive literal.
+    pub fn window_by(&self, by: impl IntoSelector) -> Result<SerieWindows<'_>> {
+        let key = self.window_key(&by.into_selector()?)?;
+        Ok(SerieWindows::new(self, 0, key.apply_serie(self)?))
+    }
+
+    /// `by` bound as the key this serie's rows are windowed by: refused
+    /// for a run, which no term reads, and under the key rule every keyed
+    /// verb shares, naming this serie.
+    pub(crate) fn window_key(&self, by: &Selector) -> Result<BoundSelector> {
+        let Some(field) = self.field() else {
+            return Err(self.not_a_record("windows by no term"));
+        };
+        by.bind_key(&SerieReader::root_of(field)?, self.name(), "window by")
+    }
+
+    /// Where the windows of equal adjacent rows open: one bit per row, set
+    /// where the row opens a run - one comparator over the rows and one
+    /// bitmap, whatever the run count.
+    pub(crate) fn window_starts(&self) -> BooleanBuffer {
+        let compare = Compare::new(self, SortOptions::default());
+        BooleanBuffer::collect_bool(self.len(), |index| compare.opens(index))
+    }
+
+    /// Whether two keys are one key, as [`Self::window_starts`] equates
+    /// adjacent rows: the values' own order, which the comparator over
+    /// buffers is gated to agree with. A keyed walk across chunks asks it
+    /// at each edge, of two keys it already built.
+    pub(crate) fn same_key(left: &Scalar, right: &Scalar) -> bool {
+        compare_values(left, right, SortOptions::default()) == Ordering::Equal
     }
 
     /// The record column whose children are `children`, which the caller

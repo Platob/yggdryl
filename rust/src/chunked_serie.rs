@@ -63,6 +63,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use crate::arrow::{BatchReader, batch_reader};
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
 use crate::diff::one_datatype;
+use crate::expression::IntoSelector;
 use crate::serie::arrow::{
     batch_schema, batch_under, item_field, land_planned, lands_exactly, storage_holds,
 };
@@ -70,7 +71,7 @@ use crate::serie::{
     Proof, Resolved, Rows, compare_rows, hash_rows, land, proven_row, require_window,
 };
 use crate::value::Children;
-use crate::{DataType, Field, FieldPath, Scalar, Serie, SerieReader, SortOptions};
+use crate::{DataType, Field, FieldPath, Scalar, Serie, SerieReader, SerieWindows, SortOptions};
 
 /// The invariant every chunk carries: it is a column, and its field is the
 /// collection's, so its buffers and its field are always there to lend.
@@ -1012,6 +1013,73 @@ impl ChunkedSerie {
             });
         }
         self.partition_by(&keys.into_serie()?)
+    }
+
+    /// The rows cut into windows of equal adjacent keys across the chunks,
+    /// exactly as [`Serie::window_by`] cuts the joined column: one `(key,
+    /// rows)` per maximal run of adjacent rows whose keys are equal, in row
+    /// order, every window a zero-copy [`Self::slice`] keeping the chunks it
+    /// reaches - so a run that crosses a chunk edge is one window over both.
+    ///
+    /// The key is bound once, against the field, and computed chunk by
+    /// chunk; at each chunk edge the last key of one chunk and the first of
+    /// the next, both already built, are compared as the ordering verbs
+    /// equate them. An empty chunk adds no row and no edge. The cost is one
+    /// bind, one key column, comparator and bitmap per chunk holding a row -
+    /// each on the terms [`Serie::window_by`] states for its key - and per
+    /// window its key and its slice, with no join.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, StringArray};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("venue", DataType::utf8(), false);
+    /// let first: ArrayRef = Arc::new(StringArray::from(vec!["XNAS", "XNAS"]));
+    /// let second: ArrayRef = Arc::new(StringArray::from(vec!["XNAS", "XNYS"]));
+    /// let venues = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// let windows = venues.window_by("venue")?;
+    /// assert_eq!(windows.len(), 2);
+    /// // The XNAS run crosses the chunk edge, and stays one window over both.
+    /// assert_eq!(windows[0].0, Scalar::from_sequence([Scalar::from("XNAS")]));
+    /// assert_eq!((windows[0].1.len(), windows[0].1.num_chunks()), (3, 2));
+    /// assert_eq!(windows[1].1.rows(), vec![Scalar::from("XNYS")]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::window_by`]'s refusals, naming the field, before any row is
+    /// read - with no chunk at all as with many.
+    pub fn window_by(&self, by: impl IntoSelector) -> crate::Result<Vec<(Scalar, Self)>> {
+        let key = by.into_selector()?.bind_key(
+            &SerieReader::root_of(&self.field)?,
+            self.field.name(),
+            "window by",
+        )?;
+        // Each window as its key, the row it starts at and its length.
+        let mut windows: Vec<(Scalar, usize, usize)> = Vec::new();
+        let mut base = 0;
+        for chunk in self.chunks.iter().filter(|chunk| !chunk.is_empty()) {
+            for (index, (value, window)) in
+                SerieWindows::new(chunk, 0, key.apply_serie(chunk)?).enumerate()
+            {
+                match windows.last_mut() {
+                    Some(last) if index == 0 && Serie::same_key(&last.0, &value) => {
+                        last.2 += window.len();
+                    }
+                    _ => windows.push((value, base + window.offset(), window.len())),
+                }
+            }
+            base += chunk.len();
+        }
+        windows
+            .into_iter()
+            .map(|(value, offset, length)| Ok((value, self.slice(offset, length)?)))
+            .collect()
     }
 
     /// Refuse a key count that is not this serie's length, naming the field.

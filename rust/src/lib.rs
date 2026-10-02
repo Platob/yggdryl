@@ -227,7 +227,7 @@ pub use protocol::{
     TransformFieldMut, UrnField, UrnFieldMut,
 };
 pub use scheme::Scheme;
-pub use serie_slice::{SerieSlice, SerieSliceMut, SerieSliceRows};
+pub use serie_slice::{SerieSlice, SerieSliceMut, SerieSliceRows, SerieWindows};
 pub use sort_options::SortOptions;
 pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
@@ -378,6 +378,7 @@ pub mod internals {
     pub use crate::diff::internals as diff;
     pub use crate::error::internals as error;
     pub use crate::expression::eval::internals as expression_eval;
+    pub use crate::expression::selector::internals as expression_selector;
     pub use crate::fix::catalog::internals as fix_catalog;
     pub use crate::fix::codec::internals as fix_codec;
     pub use crate::fix::codes::internals as fix_codes;

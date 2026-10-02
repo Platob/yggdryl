@@ -1,17 +1,24 @@
 //! SerieSlice: a window over a serie that reads and writes through it.
 //!
-//! [`Serie::slice`] answers a new serie - zero copy for a column, a copy for
-//! a run - and a caller who wants to read or write a stretch of rows where
-//! they stand wants neither: a [`SerieSlice`] points at the serie and the
-//! window, moving nothing, and every index it takes is window-relative,
-//! bounds-checked against the window, then rebased onto the serie, so a
-//! leaf's `value(i)` under it is one bounds check and one buffer read as it
-//! was. A [`SerieSliceMut`] is the same window over a serie the caller
-//! holds mutably, and its writes go through [`Serie::splice`] and
-//! [`Serie::set`] on the rebased range - so a primitive leaf's `set` stays
-//! one buffer write, and a sort of a uniquely held primitive or boolean
-//! buffer sorts the window where it stands. A window never grows or shrinks what it
-//! views: a write that would is refused by name.
+//! [`Serie::slice`] answers a new serie - zero copy, an Arrow slice of a
+//! column or a view of a run's values - and a caller who wants to read or
+//! write a stretch of rows where they stand wants no serie at all: a
+//! [`SerieSlice`] points at the serie and the window, moving nothing, and
+//! every index it takes is window-relative, bounds-checked against the
+//! window, then rebased onto the serie, so a leaf's `value(i)` under it is
+//! one bounds check and one buffer read as it was. A [`SerieSliceMut`] is
+//! the same window over a serie the caller holds mutably, and its writes go
+//! through [`Serie::splice`] and [`Serie::set`] on the rebased range - so a
+//! primitive leaf's `set` stays one buffer write, and a sort of a uniquely
+//! held primitive or boolean buffer sorts the window where it stands. A
+//! window never grows or shrinks what it views: a write that would is
+//! refused by name.
+//!
+//! A window of a window is a window of the serie, its offsets summed, so
+//! nothing nests: [`SerieSlice::window`] and [`SerieSliceMut::window_mut`]
+//! narrow onto the same serie, and [`SerieWindows`] - the windows of equal
+//! adjacent keys [`Serie::window_by`] and [`SerieSlice::window_by`] cut -
+//! are every one over the serie, at offsets in it.
 //!
 //! Identity is the window's rows alone, as a serie's is its rows: a window
 //! equals, orders as and hashes like the serie of the same rows.
@@ -47,9 +54,14 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::iter::FusedIterator;
 use std::ops::Range;
 
+use arrow_buffer::BooleanBuffer;
+use arrow_buffer::bit_iterator::BitIndexIterator;
+
 use crate::arrow::scalar_memory_size;
+use crate::expression::IntoSelector;
 use crate::serie::{
     Rows, compare_rows, hash_rows, proven_row, require_range, require_row, require_window,
 };
@@ -79,6 +91,48 @@ pub struct SerieSliceRows<'a> {
     window: SerieSlice<'a>,
     front: usize,
     back: usize,
+}
+
+/// The windows of equal adjacent keys over one serie, in row order: what
+/// [`Serie::window_by`] and [`SerieSlice::window_by`] answer.
+///
+/// It holds the key column and the bitmap of where each window opens, both
+/// computed once; each step finds the next set bit, builds the window's key,
+/// which is the key column's row at the window's first row, and lends the
+/// window over the serie at its offset in it, so a window costs its key and
+/// nothing else. Exact-size and fused.
+///
+/// ```
+/// use yggdryl::{Scalar, Serie};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let days = Serie::from_scalars(
+///     yggdryl::Field::new("day", yggdryl::DataType::Int32, false),
+///     [1_i32, 1, 2].map(Scalar::from),
+/// )?;
+/// let mut windows = days.window_by("day")?;
+/// assert_eq!(windows.len(), 2);
+/// let (key, window) = windows.next().expect("a first window");
+/// assert_eq!(key, Scalar::from_sequence([Scalar::from(1_i32)]));
+/// assert_eq!((window.offset(), window.len()), (0, 2));
+/// assert_eq!(windows.next().map(|(_, window)| window.offset()), Some(2));
+/// assert!(windows.next().is_none());
+/// # Ok(())
+/// # }
+/// ```
+#[must_use = "the windows are cut only as the walk reaches them"]
+#[derive(Clone, Debug)]
+pub struct SerieWindows<'a> {
+    serie: &'a Serie,
+    /// The serie row the keys' first row stands for.
+    offset: usize,
+    /// One key row per row windowed.
+    keys: Serie,
+    /// One bit per key row, set where a window opens.
+    starts: BooleanBuffer,
+    /// The key row the next window opens at.
+    front: usize,
+    remaining: usize,
 }
 
 impl Serie {
@@ -291,8 +345,9 @@ impl<'a> SerieSlice<'a> {
         })
     }
 
-    /// The window as a serie of its own: [`Serie::slice`], zero copy for a
-    /// column and a copy of the window's values for a run.
+    /// The window as a serie of its own: [`Serie::slice`], zero copy - an
+    /// Arrow slice of a column, a view of a run's values, and the serie
+    /// itself for a window over all of it.
     pub fn into_serie(&self) -> Serie {
         self.serie
             .slice(self.offset, self.len)
@@ -373,6 +428,42 @@ impl<'a> SerieSlice<'a> {
     /// [`Serie::partition_by`]'s refusal.
     pub fn partition_by(&self, keys: &Serie) -> Result<Vec<(Scalar, Serie)>> {
         self.into_serie().partition_by(keys)
+    }
+
+    /// The window's rows cut into windows of equal adjacent keys, as
+    /// [`Serie::window_by`] cuts a serie's: the keys are computed over this
+    /// window's rows alone, so a row outside it never moves a cut, and every
+    /// window answered is over the same serie as this one, at its offset in
+    /// that serie. Costs what [`Serie::window_by`] costs over
+    /// [`Self::into_serie`], plus that serie - nothing for a whole window.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Field, Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let days = Serie::from_scalars(
+    ///     Field::new("day", DataType::Int32, false),
+    ///     [1_i32, 1, 1, 2, 2].map(Scalar::from),
+    /// )?;
+    /// let tail = days.window(1, 4)?;
+    /// let windows: Vec<_> = tail.window_by("day")?.collect();
+    /// assert_eq!(windows.len(), 2);
+    /// // Offsets are the serie's: the first window starts where the tail does.
+    /// assert_eq!((windows[0].1.offset(), windows[0].1.len()), (1, 2));
+    /// assert_eq!((windows[1].1.offset(), windows[1].1.len()), (3, 2));
+    /// assert!(std::ptr::eq(windows[1].1.serie(), &days));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::window_by`]'s refusals, naming the serie, before any row is
+    /// read.
+    pub fn window_by(&self, by: impl IntoSelector) -> Result<SerieWindows<'a>> {
+        let key = self.serie.window_key(&by.into_selector()?)?;
+        let keys = key.apply_serie(&self.into_serie())?;
+        Ok(SerieWindows::new(self.serie, self.offset, keys))
     }
 }
 
@@ -470,6 +561,71 @@ impl<'a> SerieSliceMut<'a> {
     /// [`SerieSlice::window`]'s refusal.
     pub fn window(&self, offset: usize, length: usize) -> Result<SerieSlice<'_>> {
         self.as_window().window(offset, length)
+    }
+
+    /// A narrower window, `offset..offset + length` of this one, that reads
+    /// and writes through the same serie: the offsets summed, so a window of
+    /// a window of a window is one window of the serie, and this one is
+    /// borrowed while the narrower one lives.
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut prices = Serie::new([1_i64, 2, 3, 4, 5].map(Scalar::from).to_vec());
+    /// let mut tail = prices.window_mut(1, 4)?;
+    /// let mut middle = tail.window_mut(1, 2)?;
+    /// assert_eq!((middle.offset(), middle.len()), (2, 2));
+    /// middle.set(0, Scalar::from(9_i64))?;
+    /// assert!(middle.window_mut(1, 2).is_err());
+    /// assert_eq!(prices.scalar(2)?, Scalar::from(9_i64));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the serie and both counts when the window
+    /// reaches past this one.
+    pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<SerieSliceMut<'_>> {
+        require_window(self.name(), offset, length, self.len)?;
+        Ok(SerieSliceMut {
+            serie: self.serie,
+            offset: self.offset + offset,
+            len: length,
+        })
+    }
+
+    /// The window's rows cut into windows of equal adjacent keys, read only:
+    /// [`SerieSlice::window_by`] over [`Self::as_window`].
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Field, Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut days = Serie::from_scalars(
+    ///     Field::new("day", DataType::Int32, false),
+    ///     [1_i32, 1, 1, 2, 2].map(Scalar::from),
+    /// )?;
+    /// let tail = days.window_mut(1, 4)?;
+    /// let cuts: Vec<_> = tail
+    ///     .window_by("day")?
+    ///     .map(|(key, window)| (key, window.offset(), window.len()))
+    ///     .collect();
+    /// // Offsets are the serie's: the first window starts where the tail does.
+    /// assert_eq!(cuts, [
+    ///     (Scalar::from_sequence([Scalar::from(1_i32)]), 1, 2),
+    ///     (Scalar::from_sequence([Scalar::from(2_i32)]), 3, 2),
+    /// ]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::window_by`]'s refusals, naming the serie.
+    pub fn window_by(&self, by: impl IntoSelector) -> Result<SerieWindows<'_>> {
+        self.as_window().window_by(by)
     }
 
     /// The window as a serie of its own.
@@ -878,4 +1034,61 @@ impl ExactSizeIterator for SerieSliceRows<'_> {
     }
 }
 
-impl std::iter::FusedIterator for SerieSliceRows<'_> {}
+impl FusedIterator for SerieSliceRows<'_> {}
+
+impl<'a> SerieWindows<'a> {
+    /// The windows `keys` cuts, one key row per row of `serie` from
+    /// `offset`: where they open is read once, here.
+    pub(crate) fn new(serie: &'a Serie, offset: usize, keys: Serie) -> Self {
+        let starts = keys.window_starts();
+        Self {
+            serie,
+            offset,
+            remaining: starts.count_set_bits(),
+            keys,
+            starts,
+            front: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for SerieWindows<'a> {
+    type Item = (Scalar, SerieSlice<'a>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            return None;
+        }
+        let start = self.front;
+        let len = self.starts.len();
+        let end = BitIndexIterator::new(
+            self.starts.values(),
+            self.starts.offset() + start + 1,
+            len - start - 1,
+        )
+        .next()
+        .map_or(len, |next| start + 1 + next);
+        self.front = end;
+        self.remaining -= 1;
+        Some((
+            proven_row(&self.keys, start),
+            SerieSlice {
+                serie: self.serie,
+                offset: self.offset + start,
+                len: end - start,
+            },
+        ))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining, Some(self.remaining))
+    }
+}
+
+impl ExactSizeIterator for SerieWindows<'_> {
+    fn len(&self) -> usize {
+        self.remaining
+    }
+}
+
+impl FusedIterator for SerieWindows<'_> {}

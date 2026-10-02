@@ -9,10 +9,12 @@ use arrow_array::{
     Array, ArrayRef, BooleanArray, DictionaryArray, Int8Array, Int64Array, ListArray, StringArray,
     StringViewArray,
 };
-use arrow_buffer::OffsetBuffer;
+use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
+use yggdryl::expression::Selector;
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, FieldPath, Scalar, Serie, SortOptions, StructType,
+    ArrowCastOptions, DataType, Error, Field, FieldPath, Scalar, Serie, SerieReader, SerieSlice,
+    SortOptions, StructType, TimeUnit, Timezone,
 };
 
 fn i64s(values: &[i64]) -> Vec<Scalar> {
@@ -1191,4 +1193,470 @@ fn a_primitive_column_with_absent_rows_held_alone_sorts_where_it_stands() {
         assert_eq!(column.scalar(0).expect("a row"), Scalar::from(9_i64));
         assert_eq!(column.scalar(5).expect("a row"), Scalar::from(0_i64));
     }
+}
+
+// ---------------------------------------------------------------------------
+// window_by: the rows cut where the key changes
+// ---------------------------------------------------------------------------
+
+const MINUTE_NS: i64 = 60_000_000_000;
+
+fn utc_ns() -> DataType {
+    DataType::DateTime64 {
+        unit: TimeUnit::Nanosecond,
+        timezone: Timezone::UTC,
+    }
+}
+
+/// The record `quote{venue, count, ts}`, its root nullable so a row may be
+/// absent.
+fn quote_field() -> Field {
+    StructType::from_fields([
+        DataType::utf8().nullable_field("venue"),
+        DataType::Int64.required_field("count"),
+        utc_ns().nullable_field("ts"),
+    ])
+    .map(DataType::from)
+    .expect("three children")
+    .nullable_field("quote")
+}
+
+/// One quote row: its venue, its count and its instant in minutes.
+fn quote(venue: Option<&str>, count: i64, minutes: i64) -> Scalar {
+    Scalar::from_sequence([
+        venue.map_or(Scalar::Null, Scalar::from),
+        Scalar::from(count),
+        Scalar::from(minutes * MINUTE_NS),
+    ])
+}
+
+fn quote_column(rows: Vec<Scalar>) -> Serie {
+    let field = quote_field();
+    let rows = rows
+        .into_iter()
+        .map(|row| field.scalar(row).expect("a quote row"))
+        .collect::<Vec<_>>();
+    Serie::from_scalars(field, rows).expect("quote rows")
+}
+
+/// The venues XNAS, XNAS, XNYS, XNAS at minutes 0, 14, 15 and 31.
+fn venue_runs() -> Serie {
+    quote_column(vec![
+        quote(Some("XNAS"), 1, 0),
+        quote(Some("XNAS"), 2, 14),
+        quote(Some("XNYS"), 3, 15),
+        quote(Some("XNAS"), 4, 31),
+    ])
+}
+
+/// Each window as its key, its offset and its length.
+fn cuts<'a>(
+    windows: impl Iterator<Item = (Scalar, SerieSlice<'a>)>,
+) -> Vec<(Scalar, usize, usize)> {
+    windows
+        .map(|(key, window)| (key, window.offset(), window.len()))
+        .collect()
+}
+
+fn one_cell(value: impl Into<Scalar>) -> Scalar {
+    Scalar::from_sequence([value.into()])
+}
+
+/// The window refusal's path and reason.
+fn invalid_record(error: Error) -> (String, String) {
+    match error {
+        Error::InvalidRecord { path, reason } => (path.to_string(), reason.to_string()),
+        other => panic!("expected an invalid record, got {other}"),
+    }
+}
+
+#[test]
+fn window_by_refuses_a_run_an_empty_key_an_unnest_and_a_term_naming_no_column() {
+    let quotes = venue_runs();
+    let empty = quote_column(Vec::new());
+    for serie in [&quotes, &empty] {
+        let rows = serie.len();
+        // The text's own parse error, before anything else.
+        let parsed = "venue,".parse::<Selector>().unwrap_err().to_string();
+        assert_eq!(
+            serie.window_by("venue,").unwrap_err().to_string(),
+            parsed,
+            "{rows} rows"
+        );
+        // A key stating no column.
+        for refused in [
+            serie.window_by("*"),
+            serie.window_by(Selector::new(Vec::new())),
+        ] {
+            assert_eq!(
+                invalid_record(refused.unwrap_err()),
+                (
+                    "quote".to_owned(),
+                    "expected at least one column to window by, got an empty match key".to_owned()
+                ),
+                "{rows} rows"
+            );
+        }
+        // An unnest is one row per element, never one key per row.
+        let refused = serie.window_by("unnest(items)").unwrap_err().to_string();
+        assert!(refused.contains("in a key"), "{rows} rows: {refused}");
+        // A column the record does not hold, named; the binder's own text.
+        let root = SerieReader::root_of(serie.field().expect("a column")).expect("a root");
+        let unknown = "tier".parse::<Selector>().expect("a selector");
+        let refused = serie.window_by(&unknown).unwrap_err().to_string();
+        assert_eq!(refused, unknown.bind(&root).unwrap_err().to_string());
+        assert!(refused.contains("tier"), "{rows} rows: {refused}");
+        // A period's step is a positive literal.
+        for text in ["minutes(ts, 0)", "minutes(ts, count)"] {
+            let selector = text.parse::<Selector>().expect("a selector");
+            let refused = serie.window_by(&selector).unwrap_err().to_string();
+            assert_eq!(
+                refused,
+                selector.bind(&root).unwrap_err().to_string(),
+                "{rows} rows: {text}"
+            );
+        }
+    }
+
+    // A run has no field for a term to read.
+    for run in [Serie::new(i64s(&[1, 2])), Serie::new(Vec::new())] {
+        assert_eq!(
+            invalid_record(run.window_by("price").unwrap_err()),
+            (
+                "$".to_owned(),
+                "a schema-free run windows by no term".to_owned()
+            )
+        );
+    }
+
+    // Two columns that fold together are ambiguous to a folded name.
+    let field = StructType::from_fields([
+        DataType::Int64.required_field("a"),
+        DataType::Int64.required_field("A"),
+    ])
+    .map(DataType::from)
+    .expect("two children")
+    .required_field("pair");
+    let pair = Serie::from_scalars(
+        field.clone(),
+        [Scalar::from_sequence([
+            Scalar::from(1_i64),
+            Scalar::from(2_i64),
+        ])],
+    )
+    .expect("a pair");
+    let root = SerieReader::root_of(&field).expect("a root");
+    let selector = "a".parse::<Selector>().expect("a selector");
+    let refused = pair.window_by(&selector).unwrap_err().to_string();
+    assert_eq!(refused, selector.bind(&root).unwrap_err().to_string());
+    assert!(
+        refused.contains("a and A; quote the one meant"),
+        "{refused}"
+    );
+}
+
+#[test]
+fn window_by_cuts_runs_of_equal_adjacent_keys_in_row_order() {
+    let quotes = venue_runs();
+    let windows = quotes.window_by("venue").expect("windows");
+    assert_eq!(windows.len(), 3);
+    let drained: Vec<_> = windows.collect();
+    assert_eq!(drained.len(), 3);
+    assert_eq!(
+        cuts(drained.iter().cloned()),
+        vec![
+            (one_cell("XNAS"), 0, 2),
+            (one_cell("XNYS"), 2, 1),
+            (one_cell("XNAS"), 3, 1),
+        ]
+    );
+    // Every window is a view over the serie; together they cover it, one
+    // after another, and no two side by side share a key.
+    let mut next = 0;
+    for (key, window) in &drained {
+        assert!(std::ptr::eq(window.serie(), &quotes));
+        assert_eq!(window.offset(), next);
+        assert!(!window.is_empty());
+        next += window.len();
+        assert_eq!(
+            Scalar::from_sequence([window
+                .scalar(0)
+                .expect("a row")
+                .get(0)
+                .expect("venue")
+                .into_owned()]),
+            *key
+        );
+    }
+    assert_eq!(next, quotes.len());
+    for pair in drained.windows(2) {
+        assert_ne!(pair[0].0, pair[1].0);
+    }
+
+    // Two terms key a two-cell run in selector order, the alias naming the
+    // second; a period keys its number since the epoch.
+    assert_eq!(
+        cuts(
+            quotes
+                .window_by("venue, minutes(ts, 15) as bucket")
+                .expect("windows")
+        ),
+        vec![
+            (
+                Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(0_i32)]),
+                0,
+                2
+            ),
+            (
+                Scalar::from_sequence([Scalar::from("XNYS"), Scalar::from(1_i32)]),
+                2,
+                1
+            ),
+            (
+                Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(2_i32)]),
+                3,
+                1
+            ),
+        ]
+    );
+    assert_eq!(
+        cuts(quotes.window_by("minutes(ts, 15)").expect("windows")),
+        vec![
+            (one_cell(0_i32), 0, 2),
+            (one_cell(1_i32), 2, 1),
+            (one_cell(2_i32), 3, 1),
+        ]
+    );
+    assert_eq!(
+        cuts(quotes.window_by("days(ts)").expect("windows")),
+        vec![(one_cell(Scalar::date32(0)), 0, 4)]
+    );
+    // Names fold ASCII case.
+    assert_eq!(
+        cuts(quotes.window_by("VENUE").expect("windows")),
+        cuts(quotes.window_by("venue").expect("windows"))
+    );
+    // One key on every row is one window; a key per row a window per row.
+    assert_eq!(quotes.window_by("days(ts)").expect("windows").len(), 1);
+    assert_eq!(quotes.window_by("count").expect("windows").len(), 4);
+    // No row, no window.
+    assert_eq!(
+        quote_column(Vec::new())
+            .window_by("venue")
+            .expect("windows")
+            .len(),
+        0
+    );
+}
+
+#[test]
+fn window_by_keys_consecutive_absent_rows_as_one_null_window() {
+    let quotes = quote_column(vec![
+        quote(Some("XNAS"), 1, 0),
+        Scalar::Null,
+        Scalar::Null,
+        quote(None, 2, 1),
+        quote(None, 3, 2),
+    ]);
+    assert_eq!(
+        cuts(quotes.window_by("venue").expect("windows")),
+        vec![
+            (one_cell("XNAS"), 0, 1),
+            (Scalar::Null, 1, 2),
+            (one_cell(Scalar::Null), 3, 2),
+        ]
+    );
+
+    // A record landed off a foreign struct array: its children hold
+    // different values under the two absent parents, and the identity key
+    // still reads those rows as one absent key.
+    let field = quote_field();
+    let venue: ArrayRef = Arc::new(StringArray::from(vec![
+        Some("XNAS"),
+        Some("ghost"),
+        Some("other"),
+        Some("XNAS"),
+    ]));
+    let count: ArrayRef = Arc::new(Int64Array::from(vec![1, 98, 99, 1]));
+    let ts: ArrayRef = Arc::new(
+        arrow_array::TimestampNanosecondArray::from(vec![Some(0), Some(7), Some(8), Some(0)])
+            .with_timezone("UTC"),
+    );
+    let ArrowDataType::Struct(fields) = field
+        .as_arrow_field_ref()
+        .expect("a projection")
+        .data_type()
+        .clone()
+    else {
+        unreachable!("a record field projects to a struct")
+    };
+    let records = arrow_array::StructArray::try_new(
+        fields,
+        vec![venue, count, ts],
+        Some(NullBuffer::from(vec![true, false, false, true])),
+    )
+    .expect("a struct array");
+    let landed = Serie::from_arrow_array(Some(&field), Arc::new(records), ArrowCastOptions::new())
+        .expect("a record column");
+    let identity = landed.window_by("venue, count, ts").expect("windows");
+    assert_eq!(
+        cuts(identity)
+            .into_iter()
+            .map(|(_, offset, len)| (offset, len))
+            .collect::<Vec<_>>(),
+        vec![(0, 1), (1, 2), (3, 1)]
+    );
+    let (key, _) = landed
+        .window_by("venue, count, ts")
+        .expect("windows")
+        .nth(1)
+        .expect("the absent window");
+    assert_eq!(key, Scalar::Null);
+}
+
+#[test]
+fn window_by_over_sorted_keys_answers_what_partition_by_paths_answers() {
+    let negative_nan = f64::from_bits(f64::NAN.to_bits() | (1 << 63));
+    let payload_nan = f64::from_bits(f64::NAN.to_bits() | 1);
+    let venues: ArrayRef = Arc::new(StringArray::from(vec![
+        "XNAS", "XNAS", "XNAS", "XNAS", "XNAS", "XNAS", "XNAS", "XNAS", "XNYS",
+    ]));
+    let prices: ArrayRef = Arc::new(arrow_array::Float64Array::from(vec![
+        Some(-1.0),
+        Some(-0.0),
+        Some(0.0),
+        Some(0.0),
+        Some(f64::NAN),
+        Some(payload_nan),
+        Some(negative_nan),
+        None,
+        Some(1.0),
+    ]));
+    let records = arrow_array::StructArray::from(vec![
+        (
+            Arc::new(ArrowField::new("venue", ArrowDataType::Utf8, false)),
+            venues,
+        ),
+        (
+            Arc::new(ArrowField::new("px", ArrowDataType::Float64, true)),
+            prices,
+        ),
+    ]);
+    let quotes = Serie::from_arrow_array(None, Arc::new(records), ArrowCastOptions::new())
+        .expect("a record column");
+    let paths = [
+        "venue".parse::<FieldPath>().expect("a path"),
+        "px".parse().expect("a path"),
+    ];
+    let groups = quotes.partition_by_paths(&paths).expect("groups");
+    let windows: Vec<_> = quotes.window_by("venue, px").expect("windows").collect();
+    // Three NaN payloads are one key, -0.0 and 0.0 two, the absent price
+    // one of its own.
+    assert_eq!(windows.len(), 6);
+    assert_eq!(groups.len(), windows.len());
+    for ((group_key, group), (window_key, window)) in groups.iter().zip(&windows) {
+        assert_eq!(group_key, window_key);
+        assert_eq!(*group, window.into_serie());
+    }
+    // The whole serie keyed through the column alone agrees too.
+    let px = quotes.child("px").expect("a child");
+    let by_column = px.window_by("px").expect("windows");
+    let grouped = px.partition_by(px).expect("groups");
+    assert_eq!(by_column.len(), grouped.len());
+    for ((group_key, group), (window_key, window)) in grouped.iter().zip(by_column) {
+        assert_eq!(&one_cell(group_key.clone()), &window_key);
+        assert_eq!(*group, window.into_serie());
+    }
+}
+
+#[test]
+fn a_non_record_column_windows_by_its_own_name() {
+    let day = 24 * 60 * MINUTE_NS;
+    let ts = Serie::from_scalars(
+        utc_ns().nullable_field("ts"),
+        [0, 1, day, day + 1, -1]
+            .map(|nanos| utc_ns().scalar(Scalar::from(nanos)).expect("an instant")),
+    )
+    .expect("instants");
+    let windows = cuts(ts.window_by("days(ts)").expect("windows"));
+    assert_eq!(
+        windows,
+        vec![
+            (one_cell(Scalar::date32(0)), 0, 2),
+            (one_cell(Scalar::date32(1)), 2, 2),
+            (one_cell(Scalar::date32(-1)), 4, 1),
+        ]
+    );
+    // The offsets carry onto any serie aligned with the keys.
+    let counts = int64_column((0..5).map(Some).collect());
+    let carried: Vec<Vec<Scalar>> = windows
+        .iter()
+        .map(|(_, offset, len)| {
+            counts
+                .window(*offset, *len)
+                .expect("an aligned window")
+                .rows()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(carried, vec![i64s(&[0, 1]), i64s(&[2, 3]), i64s(&[4])]);
+    // The column's own name is the one its key reads.
+    assert!(ts.window_by("price").is_err());
+    let none = ts.slice(0, 0).expect("no row");
+    assert_eq!(none.window_by("days(ts)").expect("windows").len(), 0);
+}
+
+#[test]
+fn a_star_beside_terms_keys_every_column_it_keeps() {
+    // Same venue and count, the instant moving within a day: one window
+    // modulo `ts`; the count changing opens the next.
+    let quotes = quote_column(vec![
+        quote(Some("XNAS"), 1, 0),
+        quote(Some("XNAS"), 1, 5),
+        quote(Some("XNAS"), 1, 60),
+        quote(Some("XNAS"), 2, 61),
+    ]);
+    assert_eq!(
+        cuts(
+            quotes
+                .window_by("* exclude (ts), days(ts)")
+                .expect("windows")
+        ),
+        vec![
+            (
+                Scalar::from_sequence([
+                    Scalar::from("XNAS"),
+                    Scalar::from(1_i64),
+                    Scalar::date32(0)
+                ]),
+                0,
+                3
+            ),
+            (
+                Scalar::from_sequence([
+                    Scalar::from("XNAS"),
+                    Scalar::from(2_i64),
+                    Scalar::date32(0)
+                ]),
+                3,
+                1
+            ),
+        ]
+    );
+}
+
+#[test]
+fn a_rust_list_of_texts_names_columns() {
+    // A list is exact column names, as every list door reads it: a term is
+    // written as one clause text.
+    let quotes = venue_runs();
+    let refused = quotes
+        .window_by(["minutes(ts, 15)"])
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("minutes(ts, 15)"), "{refused}");
+    assert_eq!(
+        cuts(quotes.window_by(["venue"]).expect("windows")),
+        cuts(quotes.window_by("venue").expect("windows"))
+    );
 }

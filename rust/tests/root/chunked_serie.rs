@@ -1881,3 +1881,119 @@ fn partition_by_chunked_pairs_chunks_cut_alike_and_joins_keys_cut_otherwise() {
         "{refused}"
     );
 }
+
+/// The venue column cut `[XNAS, XNAS] [XNAS, XNYS] [] [XNYS]`.
+fn venue_chunks() -> ChunkedSerie {
+    let field = Field::new("venue", DataType::utf8(), false);
+    let arrays: [ArrayRef; 4] = [
+        Arc::new(StringArray::from(vec!["XNAS", "XNAS"])),
+        Arc::new(StringArray::from(vec!["XNAS", "XNYS"])),
+        Arc::new(StringArray::from(Vec::<&str>::new())),
+        Arc::new(StringArray::from(vec!["XNYS"])),
+    ];
+    ChunkedSerie::from_arrow_arrays(Some(&field), arrays, ArrowCastOptions::new())
+        .expect("four utf8 chunks")
+}
+
+/// The value bytes a utf8 column lends, which a slice of it keeps.
+fn text_of(serie: &Serie) -> Buffer {
+    serie
+        .into_arrow_array()
+        .expect("a column")
+        .to_data()
+        .buffers()[1]
+        .clone()
+}
+
+/// Each window as its key and its rows, joined or chunked alike.
+fn keyed_rows(windows: Vec<(Scalar, ChunkedSerie)>) -> Vec<(Scalar, Vec<Scalar>)> {
+    windows
+        .into_iter()
+        .map(|(key, rows)| (key, rows.rows()))
+        .collect()
+}
+
+/// What the joined column's windows answer, as keys and rows.
+fn joined_windows(chunked: &ChunkedSerie, by: &str) -> Vec<(Scalar, Vec<Scalar>)> {
+    let joined = chunked.into_serie().expect("one join");
+    joined
+        .window_by(by)
+        .expect("windows")
+        .map(|(key, window)| (key, window.rows().into_owned()))
+        .collect()
+}
+
+#[test]
+fn window_by_merges_a_run_across_a_chunk_edge() {
+    let venues = venue_chunks();
+    assert_eq!(venues.num_chunks(), 4);
+    let windows = venues.window_by("venue").expect("windows");
+    assert_eq!(windows.len(), 2);
+    let (xnas, xnys) = (&windows[0], &windows[1]);
+    // The XNAS run crosses the first edge: one window over both chunks.
+    assert_eq!(xnas.0, Scalar::from_sequence([Scalar::from("XNAS")]));
+    assert_eq!((xnas.1.len(), xnas.1.num_chunks()), (3, 2));
+    assert_eq!(xnas.1.rows(), vec![Scalar::from("XNAS"); 3]);
+    // The XNYS run crosses the empty chunk, which the slice keeps.
+    assert_eq!(xnys.0, Scalar::from_sequence([Scalar::from("XNYS")]));
+    assert_eq!((xnys.1.len(), xnys.1.num_chunks()), (2, 3));
+    assert_eq!(xnys.1.rows(), vec![Scalar::from("XNYS"); 2]);
+    // Every window is a slice of the chunks: their bytes, shared.
+    assert!(text_of(&xnas.1.chunks()[0]).ptr_eq(&text_of(&venues.chunks()[0])));
+    assert!(text_of(&xnas.1.chunks()[1]).ptr_eq(&text_of(&venues.chunks()[1])));
+    assert!(text_of(&xnys.1.chunks()[2]).ptr_eq(&text_of(&venues.chunks()[3])));
+    assert_eq!(keyed_rows(windows), joined_windows(&venues, "venue"));
+
+    // A NaN on each side of an edge is one key, whatever its payload; -0.0
+    // and 0.0 across the next are two, as the joined column has them.
+    let payload_nan = f64::from_bits(f64::NAN.to_bits() | 1);
+    let field = Field::new("px", DataType::Float64, false);
+    let arrays: [ArrayRef; 3] = [
+        Arc::new(arrow_array::Float64Array::from(vec![1.0, f64::NAN])),
+        Arc::new(arrow_array::Float64Array::from(vec![payload_nan, -0.0])),
+        Arc::new(arrow_array::Float64Array::from(vec![0.0])),
+    ];
+    let prices = ChunkedSerie::from_arrow_arrays(Some(&field), arrays, ArrowCastOptions::new())
+        .expect("float chunks");
+    let windows = prices.window_by("px").expect("windows");
+    assert_eq!(
+        windows
+            .iter()
+            .map(|(_, rows)| (rows.len(), rows.num_chunks()))
+            .collect::<Vec<_>>(),
+        vec![(1, 1), (2, 2), (1, 1), (1, 1)]
+    );
+    assert_eq!(keyed_rows(windows), joined_windows(&prices, "px"));
+
+    // One key over every chunk is one window keeping them all.
+    let every = cut(&[&[1, 1], &[1], &[1, 1]]);
+    let windows = every.window_by("price").expect("windows");
+    assert_eq!(windows.len(), 1);
+    assert_eq!((windows[0].1.len(), windows[0].1.num_chunks()), (5, 3));
+    assert!(shares(&windows[0].1.chunks()[1], &every.chunks()[1]));
+}
+
+#[test]
+fn window_by_refuses_before_any_chunk_is_read() {
+    let field = Field::new("venue", DataType::utf8(), false);
+    for venues in [
+        ChunkedSerie::empty(field).expect("no chunk"),
+        venue_chunks(),
+    ] {
+        let refused = venues.window_by("*").unwrap_err().to_string();
+        assert!(
+            refused.contains(
+                "venue: expected at least one column to window by, got an empty match key"
+            ),
+            "{refused}"
+        );
+        let refused = venues.window_by("tier").unwrap_err().to_string();
+        assert!(refused.contains("tier"), "{refused}");
+        let refused = venues.window_by("unnest(venue)").unwrap_err().to_string();
+        assert!(refused.contains("in a key"), "{refused}");
+    }
+    // No chunk, no window.
+    let empty =
+        ChunkedSerie::empty(Field::new("venue", DataType::utf8(), false)).expect("no chunk");
+    assert!(empty.window_by("venue").expect("windows").is_empty());
+}

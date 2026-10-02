@@ -2809,6 +2809,464 @@ fn a_window_verb_costs_the_window_s_serie_and_the_serie_s_own_verb() {
     }
 }
 
+/// A run of `rows` int64 values, `0..rows`, built in one slice.
+fn count_run(rows: usize) -> Serie {
+    Serie::new(
+        (0..rows)
+            .map(|index| Scalar::from(i64::try_from(index).expect("a row count")))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// A run of `rows` int64 keys in order, three values over a third of the
+/// rows each, so grouping by them cuts three groups at any row count.
+fn three_sorted_keys(rows: usize) -> Serie {
+    Serie::new(
+        (0..rows)
+            .map(|index| Scalar::from(i64::try_from(index * 3 / rows).expect("a group")))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Whether `view` lends row `at` of `holder` as its first value: the two
+/// runs are windows over the one slice.
+fn lends_from(view: &Serie, holder: &Serie, at: usize) -> bool {
+    std::ptr::eq(
+        view.as_run().expect("a run").as_slice().as_ptr(),
+        &holder.as_run().expect("a run").as_slice()[at],
+    )
+}
+
+#[test]
+fn a_run_slice_shares_its_values_and_merges_onto_its_holder() {
+    // A run is a window over one shared slice, so a slice of it bumps that
+    // slice's count and sums the offsets: a slice of a slice is one level
+    // over the slice the run was built in, the whole run is the run, and an
+    // empty slice is the one shared empty run - none of them a row or an
+    // allocation at any length. A window's verbs read the run sliced to it,
+    // so each costs exactly that run's verb, never the window copied first.
+    let options = SortOptions::default();
+    for rows in [64_usize, 4_096] {
+        let run = count_run(rows);
+        let sliced = run.slice(1, rows - 2).expect("a slice");
+        assert!(lends_from(&sliced, &run, 1));
+        assert!(lends_from(
+            &sliced.slice(1, rows - 4).expect("a slice of a slice"),
+            &run,
+            2
+        ));
+        assert!(lends_from(&run.slice(0, rows).expect("the whole"), &run, 0));
+        free(&format!("slicing a run of {rows} rows"), || {
+            black_box(black_box(&run).slice(1, rows - 2).expect("a slice"));
+        });
+        free(&format!("slicing a slice of a run of {rows} rows"), || {
+            black_box(
+                black_box(&sliced)
+                    .slice(1, rows - 4)
+                    .expect("a slice of a slice"),
+            );
+        });
+        free(
+            &format!("slicing the whole of a run of {rows} rows"),
+            || {
+                black_box(black_box(&run).slice(0, rows).expect("the whole"));
+            },
+        );
+        free(&format!("slicing nothing of a run of {rows} rows"), || {
+            black_box(black_box(&run).slice(0, 0).expect("nothing"));
+        });
+        free(
+            &format!("a window over a run of {rows} rows as a serie"),
+            || {
+                black_box(
+                    black_box(&run)
+                        .window(1, rows - 2)
+                        .expect("a window")
+                        .into_serie(),
+                );
+            },
+        );
+
+        let window = run.window(1, rows - 2).expect("a window");
+        let keys = three_sorted_keys(rows - 2);
+        let mask = every_other(rows - 2);
+        let picks = every_other_index(rows - 2);
+        for (what, (through, ()), (direct, ())) in [
+            (
+                "is_sorted",
+                counted(|| {
+                    black_box(window.is_sorted(options));
+                }),
+                counted(|| {
+                    black_box(sliced.is_sorted(options));
+                }),
+            ),
+            (
+                "is_unique",
+                counted(|| {
+                    black_box(window.is_unique());
+                }),
+                counted(|| {
+                    black_box(sliced.is_unique());
+                }),
+            ),
+            (
+                "unique_count",
+                counted(|| {
+                    black_box(window.unique_count());
+                }),
+                counted(|| {
+                    black_box(sliced.unique_count());
+                }),
+            ),
+            (
+                "sort_indices",
+                counted(|| {
+                    black_box(window.sort_indices(options).expect("an order"));
+                }),
+                counted(|| {
+                    black_box(sliced.sort_indices(options).expect("an order"));
+                }),
+            ),
+            (
+                "into_sorted",
+                counted(|| {
+                    black_box(window.into_sorted(options).expect("sorted"));
+                }),
+                counted(|| {
+                    black_box(sliced.into_sorted(options).expect("sorted"));
+                }),
+            ),
+            (
+                "into_unique",
+                counted(|| {
+                    black_box(window.into_unique().expect("unique"));
+                }),
+                counted(|| {
+                    black_box(sliced.into_unique().expect("unique"));
+                }),
+            ),
+            (
+                "into_reversed",
+                counted(|| {
+                    black_box(window.into_reversed());
+                }),
+                counted(|| {
+                    black_box(sliced.into_reversed());
+                }),
+            ),
+            (
+                "into_taken",
+                counted(|| {
+                    black_box(window.into_taken(&picks).expect("taken"));
+                }),
+                counted(|| {
+                    black_box(sliced.into_taken(&picks).expect("taken"));
+                }),
+            ),
+            (
+                "into_filtered",
+                counted(|| {
+                    black_box(window.into_filtered(&mask).expect("filtered"));
+                }),
+                counted(|| {
+                    black_box(sliced.into_filtered(&mask).expect("filtered"));
+                }),
+            ),
+            (
+                "partition_by",
+                counted(|| {
+                    black_box(window.partition_by(&keys).expect("groups"));
+                }),
+                counted(|| {
+                    black_box(sliced.partition_by(&keys).expect("groups"));
+                }),
+            ),
+            (
+                "memory_size",
+                counted(|| {
+                    black_box(window.memory_size());
+                }),
+                counted(|| {
+                    black_box(sliced.memory_size());
+                }),
+            ),
+        ] {
+            assert_eq!(
+                through, direct,
+                "{what} through a window over a run of {rows} rows is the run sliced to it"
+            );
+        }
+
+        // Grouping a run by sorted keys held as a run reads both where they
+        // lie and cuts each group as a slice of the run: the one vector of
+        // three groups, a key being a clone of an inline value - one at 64
+        // rows and one at 4,096.
+        let keys = three_sorted_keys(rows);
+        let groups = run.partition_by(&keys).expect("three groups");
+        assert_eq!(groups.len(), 3);
+        assert!(lends_from(&groups[1].1, &run, rows.div_ceil(3)));
+        costs(
+            &format!("partition_by over a run of {rows} rows under three sorted keys"),
+            1,
+            || {
+                black_box(black_box(&run).partition_by(&keys).expect("three groups"));
+            },
+        );
+    }
+}
+
+/// `rows` quotes as one record column - an inline venue, a count and a
+/// nanosecond UTC instant - laid out as three venue runs, changing at a
+/// third and at two thirds of the rows, and four fifteen-minute buckets,
+/// changing at every quarter, whatever the row count.
+fn quote_buckets(rows: usize) -> Serie {
+    use arrow_array::{Int64Array, StringArray, TimestampNanosecondArray};
+
+    // 2024-01-01T00:00:00Z, on a fifteen-minute boundary since the epoch.
+    const MIDNIGHT_NS: i64 = 1_704_067_200_000_000_000;
+    const QUARTER_HOUR_NS: i64 = 900_000_000_000;
+    let root = Field::new(
+        "quote",
+        DataType::from(
+            StructType::from_fields([
+                Field::new("venue", DataType::utf8(), false),
+                Field::new("count", DataType::Int64, false),
+                Field::new(
+                    "ts",
+                    DataType::DateTime64 {
+                        unit: TimeUnit::Nanosecond,
+                        timezone: Timezone::UTC,
+                    },
+                    false,
+                ),
+            ])
+            .expect("three children"),
+        ),
+        false,
+    );
+    let schema = root.clone().into_arrow_schema().expect("a schema");
+    let instants = TimestampNanosecondArray::from(
+        (0..rows)
+            .map(|index| {
+                let bucket = i64::try_from(index * 4 / rows).expect("a bucket");
+                let second = i64::try_from(index % 60).expect("a second");
+                MIDNIGHT_NS + bucket * QUARTER_HOUR_NS + second * 1_000_000_000
+            })
+            .collect::<Vec<_>>(),
+    )
+    .with_data_type(schema.field(2).data_type().clone());
+    let batch = arrow_array::RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(StringArray::from(
+                (0..rows)
+                    .map(|index| ["XNAS", "XNYS", "XPAR"][index * 3 / rows])
+                    .collect::<Vec<_>>(),
+            )),
+            Arc::new(Int64Array::from(
+                (0..rows)
+                    .map(|index| i64::try_from(index).expect("a row count"))
+                    .collect::<Vec<_>>(),
+            )),
+            Arc::new(instants),
+        ],
+    )
+    .expect("a batch");
+    Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("quotes")
+}
+
+#[test]
+fn a_slice_of_the_whole_serie_is_the_serie() {
+    // The whole serie, sliced or windowed and taken back, is the serie
+    // itself - a pointer bump for a column leaf, a count bump for a run's
+    // slice - and never a leaf boxed again or a run copied.
+    for rows in [64_usize, 4_096] {
+        for (what, serie) in [
+            ("int64", descending_counts(rows)),
+            ("record", quote_buckets(rows)),
+            ("run", count_run(rows)),
+        ] {
+            free(
+                &format!("slicing all {rows} rows of a {what} serie"),
+                || {
+                    black_box(black_box(&serie).slice(0, rows).expect("the whole"));
+                },
+            );
+            free(
+                &format!("a window over all {rows} rows of a {what} serie as a serie"),
+                || {
+                    black_box(
+                        black_box(&serie)
+                            .window(0, rows)
+                            .expect("the whole")
+                            .into_serie(),
+                    );
+                },
+            );
+        }
+    }
+}
+
+/// What [`Serie::window_by`] costs a call over [`quote_buckets`] keyed by its
+/// venue: thirteen to bind the key against the root, five for the record's
+/// own array, twelve to project the venue out of it, ten to land the key
+/// record under its nullable root, six for the comparator over its one text
+/// child and two for the bitmap of a bit per row.
+const WINDOW_BY_COLUMN_KEY: usize = 13 + 5 + 12 + 10 + 6 + 2;
+
+/// The same keyed by `minutes(ts, 15)`: thirty-eight to bind and type the
+/// period term, five for the record's array, thirty-two to evaluate the
+/// term - per call through the row tier, never per row - and the same
+/// landing, comparator and bitmap.
+const WINDOW_BY_PERIOD_KEY: usize = 38 + 5 + 32 + 10 + 6 + 2;
+
+/// A window over a record column of three children as a serie of its own:
+/// the children's vector, one leaf per child and the root's.
+const RECORD_WINDOW_AS_SERIE: usize = 1 + 3 + 1;
+
+#[test]
+fn window_by_over_buffer_ordered_keys_costs_one_plan_per_call_one_key_per_window_and_nothing_per_row()
+ {
+    // The key is a selector parsed once, here, so a call parses nothing: it
+    // binds the key once, lands it once and builds one comparator and one
+    // bitmap over it, so the call costs the same at 64 rows and at 4,096. A
+    // window is then two indices over the serie and its key the one run of
+    // its cells - one allocation a window, an inline venue or a period
+    // number holding no handle. A window's own windowing keys the window as
+    // a serie of its own, and costs that serie more than the serie's.
+    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+    let bucket: yggdryl::Selector = "minutes(ts, 15)".parse().expect("a selector");
+    for rows in [64_usize, 4_096] {
+        let quotes = quote_buckets(rows);
+        // Once outside every count, so no process-wide first use is charged.
+        assert_eq!(quotes.window_by(&venue).expect("windows").count(), 3);
+        assert_eq!(quotes.window_by(&bucket).expect("windows").count(), 4);
+        let (build, windows) = counted(|| black_box(&quotes).window_by(&venue).expect("windows"));
+        assert_eq!(windows.len(), 3);
+        drop(windows);
+        let (walk, count) = counted(|| {
+            black_box(&quotes)
+                .window_by(&venue)
+                .expect("windows")
+                .map(black_box)
+                .count()
+        });
+        assert_eq!(count, 3);
+        let (bucket_build, windows) =
+            counted(|| black_box(&quotes).window_by(&bucket).expect("windows"));
+        assert_eq!(windows.len(), 4);
+        drop(windows);
+        let (bucket_walk, count) = counted(|| {
+            black_box(&quotes)
+                .window_by(&bucket)
+                .expect("windows")
+                .map(black_box)
+                .count()
+        });
+        assert_eq!(count, 4);
+
+        let window = quotes.window(1, rows - 2).expect("a window");
+        let sliced = window.into_serie();
+        let (as_serie, _) = counted(|| black_box(&window).into_serie());
+        let (through, count) = counted(|| {
+            black_box(&window)
+                .window_by(&venue)
+                .expect("windows")
+                .map(black_box)
+                .count()
+        });
+        assert_eq!(count, 3);
+        let (direct, count) = counted(|| {
+            black_box(&sliced)
+                .window_by(&venue)
+                .expect("windows")
+                .map(black_box)
+                .count()
+        });
+        assert_eq!(count, 3);
+
+        assert_eq!(
+            (build, walk),
+            (WINDOW_BY_COLUMN_KEY, WINDOW_BY_COLUMN_KEY + 3),
+            "window_by a column over {rows} records: one plan a call, one key a window"
+        );
+        assert_eq!(
+            (bucket_build, bucket_walk),
+            (WINDOW_BY_PERIOD_KEY, WINDOW_BY_PERIOD_KEY + 4),
+            "window_by a period over {rows} records: one plan a call, one key a window"
+        );
+        assert_eq!(
+            (as_serie, through),
+            (RECORD_WINDOW_AS_SERIE, direct + RECORD_WINDOW_AS_SERIE),
+            "window_by through a window of {rows} records: the window as a serie, then the serie's"
+        );
+
+        let mut held = quotes.clone();
+        free(
+            &format!("a mutable window of a mutable window over {rows} rows"),
+            || {
+                let mut outer = held.window_mut(1, rows - 2).expect("a window");
+                let inner = outer.window_mut(1, 1).expect("a narrower window");
+                assert_eq!(inner.offset(), 2);
+                black_box(inner.len());
+            },
+        );
+    }
+}
+
+/// `rows` currencies as one column of three runs - USD, EUR, then USD
+/// again - changing at a third and at two thirds of the rows.
+fn currency_runs(rows: usize) -> Serie {
+    let field = Field::new("ccy", DataType::Ccy, false);
+    let currencies = ["USD", "EUR", "USD"].map(|code| field.scalar(code).expect("a currency"));
+    Serie::from_scalars(
+        field,
+        (0..rows).map(|index| currencies[index * 3 / rows].clone()),
+    )
+    .expect("currencies")
+}
+
+/// What [`Serie::window_by`] costs a call over [`currency_runs`] beside its
+/// key rows: two for the `row` root the column binds under, thirteen to
+/// bind the key against it, seventeen to wrap the column as the root's one
+/// child and land the key record under its nullable root - the root's
+/// projection and the landing root built once, the rest the column's - one
+/// for the vector the key rows are built into and two for the bitmap.
+const WINDOW_BY_VALUES_KEY: usize = 2 + 13 + 17 + 1 + 2;
+
+#[test]
+fn window_by_over_value_ordered_keys_builds_each_key_row_once() {
+    // A registered code is no key Arrow's comparator may equate - a foreign
+    // column may pad it - so its windows are cut as the values compare, over
+    // key rows built once each and held for the call, as `partition_by`
+    // builds them: one allocation a row beside the call's constant, the one
+    // cost of `window_by` that follows the rows. A window is still two
+    // indices over the serie and its key the one run of its cell.
+    let ccy: yggdryl::Selector = "ccy".parse().expect("a selector");
+    for rows in [64_usize, 4_096] {
+        let currencies = currency_runs(rows);
+        // Once outside every count, so no process-wide first use is charged.
+        assert_eq!(currencies.window_by(&ccy).expect("windows").count(), 3);
+        let (build, windows) = counted(|| black_box(&currencies).window_by(&ccy).expect("windows"));
+        assert_eq!(windows.len(), 3);
+        drop(windows);
+        let (walk, count) = counted(|| {
+            black_box(&currencies)
+                .window_by(&ccy)
+                .expect("windows")
+                .map(black_box)
+                .count()
+        });
+        assert_eq!(count, 3);
+        assert_eq!(
+            (build, walk),
+            (WINDOW_BY_VALUES_KEY + rows, WINDOW_BY_VALUES_KEY + rows + 3),
+            "window_by a currency over {rows} rows: one plan a call, one key row a row, one key a window"
+        );
+    }
+}
+
 #[test]
 fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
     // `is_sorted` reads each chunk with one comparator and each edge with
@@ -2819,7 +3277,11 @@ fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
     // cuts no key; `memory_size` is one array handle per chunk; and the
     // verbs that must see every row together cost the one join and the
     // serie's own verb - the stable sort's scratch, heaped past a size, the
-    // one count that moves with the rows.
+    // one count that moves with the rows. A chunk the sorted keys hold in
+    // one group is that group whole, and the whole serie is the serie: the
+    // chunk itself, where a cut boxes a leaf, so `partition_by` and
+    // `partition_by_chunked` cost one less per such chunk - two of four
+    // (31 and 27 before), sixty-two of sixty-four (340 and 276 before).
     let options = SortOptions::default();
     for (rows, cuts, scratch) in [(64_usize, 4_usize, 0_usize), (4_096, 4, 1), (4_096, 64, 1)] {
         let size = rows / cuts;
@@ -2928,8 +3390,86 @@ fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
         }
         assert_eq!(
             (partition_by, partition_by_chunked),
-            if cuts == 4 { (31, 27) } else { (340, 276) },
+            if cuts == 4 { (29, 25) } else { (278, 214) },
             "partition_by over {rows} rows in {cuts} chunks: per chunk, never per row"
+        );
+    }
+}
+
+/// `rows` venues as four chunks of a quarter of the rows each: XNAS over
+/// the first three eighths - the run that crosses the first chunk edge -
+/// XNYS over the rest of the second chunk, XPAR over the third and XNAS
+/// again over the fourth, so the two chunk edges after the first divide
+/// two keys and the key that returns opens a window of its own.
+fn chunked_venue_runs(rows: usize) -> ChunkedSerie {
+    use arrow_array::{ArrayRef, StringArray};
+
+    let size = rows / 4;
+    let venue = |index: usize| match index {
+        index if index < 3 * rows / 8 => "XNAS",
+        index if index < 2 * size => "XNYS",
+        index if index < 3 * size => "XPAR",
+        _ => "XNAS",
+    };
+    ChunkedSerie::from_arrow_arrays(
+        Some(&Field::new("venue", DataType::utf8(), false)),
+        (0..4).map(|chunk| {
+            Arc::new(StringArray::from(
+                (chunk * size..(chunk + 1) * size)
+                    .map(venue)
+                    .collect::<Vec<_>>(),
+            )) as ArrayRef
+        }),
+        ArrowCastOptions::new(),
+    )
+    .expect("four chunks of venues")
+}
+
+#[test]
+fn a_chunked_window_by_costs_one_bind_per_call_and_the_pinned_slice_per_window() {
+    // One bind a call: the `row` root a text column binds under, the key
+    // bound against it, and the root's Arrow projection and the nullable
+    // record the key lands under with its own, both built on the first
+    // chunk and kept on the bound key. Then each chunk holding a row is its
+    // array wrapped as the root's one child and landed as the key - the
+    // identity projection reusing it - a comparator and a bitmap; each
+    // window a chunk opens builds its key, the one opened across the first
+    // edge matched and dropped; and each window is the pinned `slice`,
+    // three where it cuts a chunk and two where it keeps whole ones, the
+    // windows gathered in two vectors. Never a join, never a row: the same
+    // at 64 rows and at 4,096.
+    const BIND: usize = 2 + 13 + 4 + 5;
+    const PER_CHUNK: usize = 16;
+    const KEYS_BUILT: usize = 4 + 1;
+    const SLICES: usize = 3 + 3 + 2 + 2;
+    const VECTORS: usize = 2;
+    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+    for rows in [64_usize, 4_096] {
+        let chunked = chunked_venue_runs(rows);
+        // Once outside every count, so no process-wide first use is charged.
+        let windows = chunked.window_by(&venue).expect("windows");
+        assert_eq!(
+            windows
+                .iter()
+                .map(|(key, window)| (key.clone(), window.len(), window.num_chunks()))
+                .collect::<Vec<_>>(),
+            [
+                ("XNAS", 3 * rows / 8, 2),
+                ("XNYS", rows / 8, 1),
+                ("XPAR", rows / 4, 1),
+                ("XNAS", rows / 4, 1),
+            ]
+            .map(|(venue, len, chunks)| (
+                Scalar::from_sequence([Scalar::from(venue)]),
+                len,
+                chunks
+            ))
+        );
+        let (cost, _) = counted(|| black_box(&chunked).window_by(&venue).expect("windows"));
+        assert_eq!(
+            cost,
+            BIND + 4 * PER_CHUNK + KEYS_BUILT + SLICES + VECTORS,
+            "window_by over {rows} rows in four chunks: one bind, per chunk, per window"
         );
     }
 }
@@ -5726,7 +6266,10 @@ struct StageCosts {
 /// execution clones it - so the parse stands at 595. `ParentClOrdID` came to
 /// reach `OrigClOrdID(41)` as its other spelling, so the bridge row lands
 /// that column's sixteen bytes where it landed a validity bitmap and its
-/// buffer: 1589.
+/// buffer: 1589. Splitting a trade into its sides cuts each side out of
+/// the sides group, and the whole serie is the serie: the packed frame's
+/// one side is that group itself, where the cut copied it, so its parse
+/// fell by that copy to 1152.
 ///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
@@ -5758,7 +6301,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1153,
+            parse: 1152,
             into_row: 279,
             landing: 1608,
             batch: 224,
