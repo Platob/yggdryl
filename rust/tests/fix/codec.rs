@@ -3835,9 +3835,9 @@ mod equivalence {
             .map(|line| {
                 let mut line = line.expect("a line");
                 // The bytes are the committed file above, not the temporary
-                // in-memory allocation used to exercise the reader. Text-line
-                // identity includes the identifier it was read under, so
-                // state that stable source.
+                // in-memory allocation used to exercise the reader. A line's
+                // identity is seeded by the cross hash of the identifier it
+                // was read under, so state that stable source.
                 line.set_sourceuri(Some(Arc::clone(&uri)));
                 line
             })

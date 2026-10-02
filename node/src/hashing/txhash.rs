@@ -236,9 +236,9 @@ impl JsTxHash {
     /// then by the whole digest. Neither the unit nor the algorithm survives.
     ///
     /// The digest is the only content this needs, because whatever else an
-    /// identity rests on is already inside it: a graph event digests its
-    /// cross code, its names, its parents, its state, its sequence and its
-    /// predecessor into `currhashcode` before coupling it here, so rehashing
+    /// identity rests on is already inside it: a graph event digests what it
+    /// states, a text line its body, into `currhashcode` before coupling it
+    /// here, so rehashing
     /// them into the identifier would only spend bits restating them.
     /// Throws for a digest that is not 64 bits wide, or an instant outside the
     /// `UUIDv7` range.

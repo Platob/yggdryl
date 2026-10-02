@@ -4909,11 +4909,8 @@ fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
 /// the captures is free because the slot already holds them. Reading the body
 /// and the index adds nothing.
 ///
-/// Reading the content code does, and this is where it moved: the code is no
-/// longer the body's bytes alone but the facts the line states as an event,
-/// which walks the names it goes by - a name and a value owned per capture,
-/// and the map that holds them. A line under no header goes by no name, so it
-/// still builds and digests for nothing.
+/// Reading the content code adds nothing either: the code is the one-shot
+/// XXH3-64 of the body, bytes the line already holds, under a header or none.
 #[test]
 fn a_line_built_and_read_allocates_nothing_and_its_captures_once() {
     let options = Arc::new(
@@ -4945,11 +4942,7 @@ fn a_line_built_and_read_allocates_nothing_and_its_captures_once() {
         black_box(line.captures().len());
         black_box(line.capture(1));
     });
-    // The named captures are the line's own reading and no event fact: the
-    // digest feeds the state, the place, the predecessor and the body, all
-    // of them held already, so the code costs nothing. It cost six - a name
-    // and a value per capture, over their map - while the names an element
-    // went by were an event fact the digest fed.
+    // The code is the body's XXH3-64, read off the bytes the line holds.
     let (code, _) = counted(|| black_box(line.get_currhashcode()));
     assert_eq!(code, 0, "the code reads what the line already holds");
     free("the content code asked again", || {

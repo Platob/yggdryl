@@ -9159,7 +9159,7 @@ export declare class TextLine {
    */
   get bodytype(): string
   /**
-   * The line itself, its row header included.
+   * The line past its row header: what `currhashcode` hashes.
    *
    * Text, always: what the constructor or the reader decoded.
    */
@@ -9190,7 +9190,7 @@ export declare class TextLine {
    * the line was read under, and empty where it was read under none.
    */
   get crosscode(): string
-  /** The XXH3-64 of the cross code, the row number and the line's bytes. */
+  /** The XXH3-64 of `body` and nothing else. */
   get currhashcode(): bigint
   /** The XXH3-64 of the cross code, `0n` where there is none. */
   get crosshashcode(): bigint
@@ -9811,9 +9811,9 @@ export declare class TxHash {
    * then by the whole digest. Neither the unit nor the algorithm survives.
    *
    * The digest is the only content this needs, because whatever else an
-   * identity rests on is already inside it: a graph event digests its
-   * cross code, its names, its parents, its state, its sequence and its
-   * predecessor into `currhashcode` before coupling it here, so rehashing
+   * identity rests on is already inside it: a graph event digests what it
+   * states, a text line its body, into `currhashcode` before coupling it
+   * here, so rehashing
    * them into the identifier would only spend bits restating them.
    * Throws for a digest that is not 64 bits wide, or an instant outside the
    * `UUIDv7` range.
