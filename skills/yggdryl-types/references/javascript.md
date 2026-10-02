@@ -221,7 +221,7 @@ const price = Scalar.decimal(1050n, 2)
 assert.equal(price.kind, 'd128')
 assert.equal(price.unscaled, 1050n)
 assert.equal(price.scale, 2)
-assert.equal(price.toString(), '"10.50"')         // asJs() answers the Scalar
+assert.equal(price.toString(), '"10.5"')          // the shortest exact text
 assert.ok(price.equals(Scalar.decimal(105n, 1)))  // normalized equality
 
 const amount = fields.decimal('amount', 10, 2)

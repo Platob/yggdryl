@@ -3600,10 +3600,10 @@ mod decimal_text {
         }
     }
 
-    /// The text a column renders is counted and charged before a byte of it
-    /// is held: a payload past the budget is refused by name, never built.
+    /// The text a column renders is charged to the cast budget: a payload
+    /// past it is refused by name.
     #[test]
-    fn a_text_payload_past_the_budget_is_refused_before_it_is_built() {
+    fn a_text_payload_past_the_budget_is_refused() {
         use std::sync::Arc;
 
         use arrow_array::{ArrayRef, Decimal128Array};

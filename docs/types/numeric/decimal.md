@@ -951,7 +951,7 @@ A `bigdecimal` column is `Decimal256(76, 18)` under `yggdryl.bigdecimal`, bare `
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- compatibility decimal::exact::comparison decimal::exact::family decimal::exact::fixed decimal::exact::representation decimal::exact::restating decimal::fields decimal::selection cast::fixed_decimal_text cast::float_decimals int256 merge::lattice parser::families regex::fractions temporal::datatypes variant::encoding wkb::exactness
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- compatibility decimal::exact::comparison decimal::exact::family decimal::exact::fixed decimal::exact::representation decimal::exact::restating decimal::fields decimal::selection cast::decimal_text cast::float_decimals int256 merge::lattice parser::families regex::fractions temporal::datatypes variant::encoding wkb::exactness
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test value -- canonical::value::readings
     cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- decimal::internal::reading arithmetic
     cargo test --manifest-path rust/Cargo.toml -p yggdryl --test expression -- fixed_leaves
