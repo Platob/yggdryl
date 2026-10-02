@@ -537,3 +537,32 @@ def test_apply_proves_foreign_data_before_a_row_is_read() -> None:
     for value in (array, pa.chunked_array([array])):
         with pytest.raises(ValueError, match="non-monotonic offset"):
             plan.apply(value)
+
+
+def test_a_nested_column_and_its_json_text_are_one_cast_apart() -> None:
+    entry = pa.struct([("px", pa.float64()), ("qty", pa.int64())])
+    books = Serie.from_arrow_array(
+        pa.array([[("AAPL", {"px": 1.5, "qty": 3})], None], pa.map_(pa.utf8(), entry))
+    )
+    text = books.cast(Field("books", "map<utf8, utf8>"))
+    assert text.cast(Field("v", "utf8")).as_py() == ['{"AAPL":"{\\"px\\":1.5,\\"qty\\":3}"}', None]
+    back = text.cast(Field("books", "map<utf8, struct<px: float64, qty: int64>>"))
+    assert back == books
+    # A struct is an object keyed in declaration order, and reads back by name.
+    quotes = Serie.from_arrow_array(
+        pa.array([{"sym": "AAPL", "px": 1.5}], pa.struct([("sym", pa.utf8()), ("px", pa.float64())]))
+    )
+    assert quotes.cast(Field("q", "utf8")).as_py() == ['{"sym":"AAPL","px":1.5}']
+    assert quotes.cast(Field("q", "binary")).as_py() == [b'{"sym":"AAPL","px":1.5}']
+    text = Serie.from_arrow_array(pa.array(['{"px":1.5,"sym":"AAPL"}']))
+    assert text.cast(Field("q", "struct<sym: utf8, px: float64>")).as_py() == [
+        {"sym": "AAPL", "px": 1.5}
+    ]
+
+
+def test_text_that_is_not_a_document_of_the_nested_target_follows_safe() -> None:
+    lots = pa.array(["[1, 2]", "abc", "", "null", None])
+    target = Field("lots", "serie<int64>")
+    assert Serie.from_arrow_array(lots, target).as_py() == [[1, 2], None, None, None, None]
+    with pytest.raises(ValueError, match="row 1"):
+        Serie.from_arrow_array(lots, target, safe=False)

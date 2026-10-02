@@ -1065,3 +1065,58 @@ mod fields {
         assert_eq!(held.id(), DataTypeId::Decimal128);
     }
 }
+
+/// A decimal's text is joined and written on the stack: a spelling padded
+/// past what the stack holds still reads, and the widest coefficients write
+/// every digit around the point.
+mod spelling {
+    use std::str::FromStr as _;
+
+    use yggdryl::{DataType, Scalar, i256};
+
+    #[test]
+    fn a_spelling_padded_past_the_stack_reads_as_the_number_it_names() {
+        let money: DataType = "decimal128(10, 2)".parse().unwrap();
+        let padded = format!("-{}1.50{}", "0".repeat(90), "0".repeat(10));
+        assert_eq!(
+            money.scalar(padded.as_str()).unwrap(),
+            Scalar::decimal128(-150, 2)
+        );
+    }
+
+    /// The text a decimal value spells, read through a cast into text.
+    fn text(value: &Scalar) -> String {
+        DataType::utf8()
+            .cast_scalar(value)
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    #[test]
+    fn the_widest_coefficients_write_every_digit_around_the_point() {
+        for spelled in [
+            "57896044618658097711785492504343953926634992332820282019728792003956564819967",
+            "-57896044618658097711785492504343953926634992332820282019728792003956564819968",
+        ] {
+            let coefficient = i256::from_str(spelled).unwrap();
+            let (sign, digits) = spelled
+                .strip_prefix('-')
+                .map_or(("", spelled), |digits| ("-", digits));
+            let split = digits.len() - 4;
+            assert_eq!(
+                text(&Scalar::decimal256(coefficient, 4)),
+                format!("{sign}{}.{}", &digits[..split], &digits[split..])
+            );
+        }
+        // A scale past the digits, a negative scale, and zero.
+        assert_eq!(text(&Scalar::decimal128(-5, 3)), "-0.005");
+        assert_eq!(text(&Scalar::decimal128(15, -2)), "1500");
+        assert_eq!(text(&Scalar::decimal128(0, 2)), "0.00");
+        assert_eq!(
+            text(&Scalar::decimal256(i256::from_str("-1234500").unwrap(), 4)),
+            "-123.4500"
+        );
+    }
+}

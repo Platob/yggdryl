@@ -650,15 +650,50 @@ fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
         // exactly as a struct root reads a record's field names.
         D::Map(_) | D::SortedMap(_) => {
             let record = value.as_struct()?;
-            Some(Scalar::from_mapping(
-                record
-                    .iter()
-                    .map(|(name, value)| (Scalar::from(name.as_str()), value.clone()))
-                    .collect::<Vec<_>>(),
-            ))
+            let entries = record
+                .iter()
+                .map(|(name, value)| (Scalar::from(name.as_str()), value.clone()))
+                .collect::<Vec<_>>();
+            Some(Scalar::from_mapping(match dtype.as_mapping() {
+                Some(map) => record_entries_in_key_order(&map, entries),
+                None => entries,
+            }))
         }
         _ => read_text_as(dtype, text_reading(value)?),
     }
+}
+
+/// The entries a record spells for a map, in the order the map keeps.
+///
+/// A record holds no order of its own, so a sorted map takes its entries in
+/// the order of the keys they name rather than of the names' text - `10`
+/// after `2` - where every name reads as one: each key is read here, once,
+/// and the entries carry what it read. A name that reads as no key is left
+/// for the map's own check to refuse by path.
+pub(crate) fn record_entries_in_key_order(
+    map: &crate::MappingType,
+    entries: Vec<(Scalar, Scalar)>,
+) -> Vec<(Scalar, Scalar)> {
+    let [key, _] = map.entries().fields() else {
+        return entries;
+    };
+    if !map.keys_sorted() {
+        return entries;
+    }
+    let Ok(keys) = entries
+        .iter()
+        .map(|(name, _)| key.dtype().scalar(name.clone()))
+        .collect::<Result<Vec<_>>>()
+    else {
+        return entries;
+    };
+    let mut keyed = keys
+        .into_iter()
+        .zip(entries)
+        .map(|(key, (_, value))| (key, value))
+        .collect::<Vec<_>>();
+    keyed.sort_by(|left, right| left.0.cmp(&right.0));
+    keyed
 }
 
 /// The text a value offers a datatype that stores something else.

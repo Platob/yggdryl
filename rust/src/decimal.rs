@@ -1616,7 +1616,7 @@ macro_rules! decimal_leaf {
 
         impl fmt::Display for $name {
             fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str(&decimal_text(self.coefficient.into_i256(), self.scale))
+                write_decimal(self.coefficient.into_i256(), self.scale, formatter)
             }
         }
     };
@@ -1844,25 +1844,62 @@ impl Scalar {
 
 /// Render a coefficient and scale in ordinary decimal notation.
 pub(crate) fn decimal_text(coefficient: i256, scale: i8) -> String {
-    let encoded = coefficient.to_string();
+    let mut text = String::new();
+    write_decimal(coefficient, scale, &mut text).expect("a String takes every write");
+    text
+}
+
+/// Write a coefficient and scale in ordinary decimal notation, with no text
+/// built on the way: the digits are spelled once, on the stack, and written
+/// around the point where they belong.
+fn write_decimal(coefficient: i256, scale: i8, out: &mut impl fmt::Write) -> fmt::Result {
+    /// The digits of one coefficient: a 256-bit integer spells at most 78
+    /// of them, and a sign.
+    struct Digits {
+        bytes: [u8; 80],
+        length: usize,
+    }
+    impl fmt::Write for Digits {
+        fn write_str(&mut self, text: &str) -> fmt::Result {
+            let end = self.length + text.len();
+            self.bytes
+                .get_mut(self.length..end)
+                .ok_or(fmt::Error)?
+                .copy_from_slice(text.as_bytes());
+            self.length = end;
+            Ok(())
+        }
+    }
+    fn zeros(out: &mut impl fmt::Write, count: usize) -> fmt::Result {
+        (0..count).try_for_each(|_| out.write_char('0'))
+    }
+    let mut spelled = Digits {
+        bytes: [0; 80],
+        length: 0,
+    };
+    fmt::write(&mut spelled, format_args!("{coefficient}"))?;
+    let encoded = std::str::from_utf8(&spelled.bytes[..spelled.length]).map_err(|_| fmt::Error)?;
     if scale == 0 {
-        return encoded;
+        return out.write_str(encoded);
     }
     let (sign, digits) = encoded
         .strip_prefix('-')
-        .map_or(("", encoded.as_str()), |digits| ("-", digits));
+        .map_or(("", encoded), |digits| ("-", digits));
+    out.write_str(sign)?;
     if scale < 0 {
-        return format!(
-            "{sign}{digits}{}",
-            "0".repeat(usize::from(scale.unsigned_abs()))
-        );
+        out.write_str(digits)?;
+        return zeros(out, usize::from(scale.unsigned_abs()));
     }
     let scale = usize::from(scale.unsigned_abs());
     if digits.len() > scale {
         let split = digits.len() - scale;
-        format!("{sign}{}.{}", &digits[..split], &digits[split..])
+        out.write_str(&digits[..split])?;
+        out.write_char('.')?;
+        out.write_str(&digits[split..])
     } else {
-        format!("{sign}0.{}{digits}", "0".repeat(scale - digits.len()))
+        out.write_str("0.")?;
+        zeros(out, scale - digits.len())?;
+        out.write_str(digits)
     }
 }
 
@@ -2345,9 +2382,25 @@ pub(crate) fn decimal_from_text(
     {
         return Err("invalid decimal digits");
     }
-    let digits = format!("{sign}{whole}{fraction}");
+    // The coefficient's spelling is the sign and the digits either side of
+    // the point, joined on the stack: a 256-bit coefficient has at most 77
+    // digits, and only a spelling padded past that with zeros needs the heap.
+    let mut joined = [0_u8; 80];
+    let length = sign.len() + whole.len() + fraction.len();
+    let spilled;
+    let digits = if let Some(slot) = joined.get_mut(..length) {
+        let (head, digits) = slot.split_at_mut(sign.len());
+        head.copy_from_slice(sign.as_bytes());
+        let (integral, fractional) = digits.split_at_mut(whole.len());
+        integral.copy_from_slice(whole.as_bytes());
+        fractional.copy_from_slice(fraction.as_bytes());
+        std::str::from_utf8(slot).map_err(|_| "invalid decimal digits")?
+    } else {
+        spilled = format!("{sign}{whole}{fraction}");
+        &spilled
+    };
     let mut coefficient =
-        i256::from_str(&digits).map_err(|_| "decimal coefficient exceeds 256 bits")?;
+        i256::from_str(digits).map_err(|_| "decimal coefficient exceeds 256 bits")?;
     if coefficient == i256::ZERO {
         return Ok(coefficient);
     }

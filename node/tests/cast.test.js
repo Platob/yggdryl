@@ -193,3 +193,25 @@ test('a fixed decimal leaf into text is its trimmed text', () => {
   const column = Serie.fromScalars(width, [width.dtype.scalar('1.125'), null])
   assert.deepEqual(column.cast(utf8).asJs(), ['1.125000000000000000', null])
 })
+
+test('a nested column and its json text are one cast apart', () => {
+  const books = Field.from('books: map<utf8, struct<px: float64, qty: int64>>')
+  const entry = books.dtype.scalar({ AAPL: { px: 1.5, qty: 3 } })
+  const column = Serie.fromScalars(books, [entry, null])
+  const text = column.cast(Field.from('books: map<utf8, utf8>'))
+  assert.deepEqual(text.cast(Field.from('v: utf8')).asJs(), ['{"AAPL":"{\\"px\\":1.5,\\"qty\\":3}"}', null])
+  assert.ok(text.cast(books).equals(column))
+  // A struct is an object keyed in declaration order, and reads back by name.
+  const quote = Field.from('q: struct<sym: utf8, px: float64>')
+  const quotes = Serie.fromScalars(quote, [quote.dtype.scalar({ px: 1.5, sym: 'AAPL' })])
+  assert.deepEqual(quotes.cast(Field.from('q: utf8')).asJs(), ['{"sym":"AAPL","px":1.5}'])
+  const permuted = arrow.vectorFromArray(['{"px":1.5,"sym":"AAPL"}'], new arrow.Utf8())
+  assert.deepEqual(Serie.fromArrowArray(permuted, quote).asJs(), [{ sym: 'AAPL', px: 1.5 }])
+})
+
+test('text that is not a document of the nested target follows safe', () => {
+  const lots = arrow.vectorFromArray(['[1, 2]', 'abc', '', 'null', null], new arrow.Utf8())
+  const target = Field.from('lots: serie<int64>')
+  assert.deepEqual(Serie.fromArrowArray(lots, target).asJs(), [[1, 2], null, null, null, null])
+  assert.throws(() => Serie.fromArrowArray(lots, target, { safe: false }), /row 1/)
+})

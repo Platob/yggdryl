@@ -597,7 +597,8 @@ the target charset (a fixed source trimmed of NUL first). Under `safe` a
 failing cell becomes null where the column may hold one; under `safe = false`,
 or in a required column, an error names the row and the column.
 A fixed leaf pads on the way in, and the stored column read back under `utf8`
-trims.
+trims. A struct, serie or map source writes its JSON, which the target's own
+rule then reads like any text ([Nested values as JSON](../cast.md#nested-values-as-json)).
 
 === "Rust"
 

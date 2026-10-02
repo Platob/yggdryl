@@ -374,6 +374,43 @@ fn every_leaf_family_renders_as_the_text_it_reads_back_from() {
     assert_eq!(read[1], vec![Scalar::Null; 22]);
 }
 
+/// A nested cell is the JSON a cast of its column into text spells: a struct
+/// keyed in declaration order, a map's keys as the text they read back from.
+#[test]
+fn a_nested_cell_is_the_json_a_cast_into_text_spells() {
+    let field = DataType::from_str("struct<meta: struct<v: utf8, k: int64>, m: map<int64, utf8>>")
+        .expect("a root")
+        .required_field("row");
+    let row = Scalar::from_sequence([
+        Scalar::from_struct([("k", Scalar::from(1_i64)), ("v", Scalar::from("x"))])
+            .expect("a record"),
+        Scalar::from_mapping([(Scalar::from(2_i64), Scalar::from("y"))]).expect("a map"),
+    ]);
+    let held = written("nested.csv", &field, vec![row.clone()], &CsvOptions::new());
+    assert_eq!(
+        text(&held),
+        "meta,m\n\"{\"\"v\"\":\"\"x\"\",\"\"k\"\":1}\",\"{\"\"2\"\":\"\"y\"\"}\"\n"
+    );
+    let column = Serie::from_scalars(field.clone(), [row.clone()])
+        .expect("a record column")
+        .child("meta")
+        .expect("the meta column")
+        .cast(
+            &Field::new("meta", DataType::utf8(), true),
+            ArrowCastOptions::default(),
+        )
+        .expect("a text column");
+    assert_eq!(
+        column.scalar(0).expect("a cell"),
+        Scalar::from(r#"{"v":"x","k":1}"#)
+    );
+    let expected = field.scalar(row).expect("the row canonicalizes");
+    assert_eq!(
+        rows_under(&held, &field, &CsvOptions::new())[0],
+        expected.as_serie().expect("a run").rows().to_vec()
+    );
+}
+
 #[test]
 fn a_dictionary_encoded_and_a_view_string_column_render_their_text() {
     // What Arrow JS infers for a plain record's string, and the view layout.
@@ -608,25 +645,25 @@ fn a_null_spelling_a_record_cannot_hold_as_it_stands_is_refused_by_name() {
 
 #[test]
 fn a_cell_the_writer_cannot_spell_is_refused_naming_the_column_and_the_row() {
-    let field = DataType::from_str("struct<k: utf8, mi: map<int64, int64>>")
+    // A top-level float spells NaN as text, but a nested cell is JSON, which
+    // has no spelling for one.
+    let field = DataType::from_str("struct<k: utf8, xs: serie<float64>>")
         .expect("a root")
         .required_field("row");
-    let entries =
-        Scalar::from_mapping([(Scalar::from(1_i64), Scalar::from(2_i64))]).expect("a map");
     let (held, result) = try_written(
         &field,
         vec![
             Scalar::from_sequence([Scalar::from("a"), Scalar::Null]),
-            Scalar::from_sequence([Scalar::from("b"), entries]),
+            Scalar::from_sequence([
+                Scalar::from("b"),
+                Scalar::from_sequence([Scalar::from(f64::NAN)]),
+            ]),
         ],
         &CsvOptions::new(),
     );
     let (path, reason) = refusal(result.unwrap_err());
-    assert_eq!(path, "$[1].mi");
-    assert!(
-        reason.contains("JSON object keys must be strings"),
-        "{reason}"
-    );
+    assert_eq!(path, "$[1].xs");
+    assert!(reason.contains("non-finite"), "{reason}");
     assert_eq!(held.size(), 0, "nothing reached the handle");
 }
 

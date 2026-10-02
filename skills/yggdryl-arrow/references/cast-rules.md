@@ -75,6 +75,9 @@ may arrive absent, and the finished batch is checked again.
 | decimal / bigdecimal -> text | trimmed (`1.125`); a parameterized width keeps its declared scale on columns |
 | bytes -> code or UUID | read as bytes under every binary framing; non-US-ASCII is a failed value |
 | text -> sized / fixed / non-UTF-8 string | every cell validated (length, width, repertoire); a failure follows the outcome table |
+| struct / serie / map -> text or bytes | its compact JSON: a struct an object keyed in declaration order, a serie an array, a map an object, every leaf the JSON codec's spelling (decimal text, ISO temporal, base64 bytes); a NaN or infinite float is a failed value |
+| text or bytes -> struct / serie / map | each cell read as one JSON document under the target, the round trip of the row above; `""` and `null` are absence, anything else not of the target follows the outcome table. A map comes back in its keys' text order, a sorted map in key order. A union or variant target keeps its own reading of text |
+| `map<utf8, struct<..>>` <-> `map<utf8, utf8>` (any depth) | the rows above, applied where the nested value sits |
 | two fixed sizes (serie or binary) | a value change, refused by name |
 | dictionary / run-end target | the values' own rule, then the encoding |
 | encoded source -> plain target | decoded first |

@@ -36,6 +36,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Media | [Iceberg](media/index.md#iceberg-performance) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1 |
 | Media | [Iceberg against PyIceberg](media/index.md#against-pyiceberg) | `python/benchmarks/media/iceberg.py`: appends, opens and four scans of a 1M-row table, unpartitioned and in eight partitions, beside PyIceberg's SQLite catalog; one containerized x86_64 Linux run |
 | Types | [Cast](types/cast.md) | One compiled `ArrowCastPlan` against planning per batch, over 1, 10 and 1,000 batches of 64 rows; one con... |
+| Types | [Nested JSON text](types/cast.md#nested-json-text) | A struct and a serie column written as JSON text and read back at 1,024 and 16,384 rows, beside Arrow's list-to-text kernel and a serde_json parse; one containerized x86_64 Linux run |
 | Types | [Field](types/field.md) | Rust times both consuming typed accessors, construction outside the timer; the bindings hold the cached val... |
 | Types | [Scalar](types/scalar.md) | The value model's own boundaries - enum, inference, and the `Scalar`/Arrow crossings - in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18... |
 

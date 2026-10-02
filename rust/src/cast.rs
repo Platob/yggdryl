@@ -51,6 +51,7 @@ use crate::decimal::casts::{
 };
 use crate::enums::{enum_refusal, ingest_enum_array};
 use crate::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
+use crate::json::casts::{ingest_json_array, render_json_array};
 use crate::path::{Path, Segment};
 use crate::string::casts::{StringSource, ingest_code_array, ingest_string_array};
 use crate::string::{is_text_storage, needs_extension};
@@ -659,7 +660,7 @@ mod plan {
         pub fn preflight(&self) -> Result<()> {
             let empty = arrow_array::new_empty_array(self.source.data_type());
             let mut budget = MaterializationBudget::default();
-            self.root.cast(empty, &mut budget).map(|_| ())
+            self.root.cast(empty, false, &mut budget).map(|_| ())
         }
 
         /// Casts one column whose field lays out as [`Self::as_source`].
@@ -682,7 +683,7 @@ mod plan {
             }
             let array = serie.require_arrow_array()?;
             let mut budget = MaterializationBudget::default();
-            let cast = self.root.cast(array, &mut budget)?;
+            let cast = self.root.cast(array, true, &mut budget)?;
             land_planned(&self.resolved, cast, &self.serie)
         }
 
@@ -733,13 +734,13 @@ mod plan {
         /// engine itself reads, and an exact array comes back as itself.
         pub(crate) fn reconcile_array(&self, array: ArrayRef) -> Result<ArrayRef> {
             let mut budget = MaterializationBudget::default();
-            self.root.cast(array, &mut budget)
+            self.root.cast(array, false, &mut budget)
         }
 
         /// Casts foreign buffers of the source layout and lands them.
         pub(crate) fn cast_array(&self, array: ArrayRef) -> Result<Serie> {
             let mut budget = MaterializationBudget::default();
-            let cast = self.root.cast(array, &mut budget)?;
+            let cast = self.root.cast(array, false, &mut budget)?;
             land_planned(&self.resolved, cast, &self.foreign)
         }
 
@@ -784,7 +785,7 @@ mod plan {
             let row_count = batch.num_rows();
             let source = super::struct_array_from_batch(batch.clone());
             let mut budget = MaterializationBudget::default();
-            let cast = self.root.cast(source, &mut budget)?;
+            let cast = self.root.cast(source, false, &mut budget)?;
             let columns = downcast::<StructArray>(cast.as_ref())?.columns();
 
             // Ownership allows handing the caller's own batch back only when
@@ -904,19 +905,15 @@ pub(crate) mod text {
     /// The one owner of the list the empty-cell rule turns on: `""` entering a
     /// datatype this answers `false` for is absence, never a spelling to parse.
     /// A string leaf and a byte leaf hold it as the value it is, past the
-    /// layout that encodes them; a list target reads a scalar source into its
-    /// item, so the item answers; an interval has no text spelling, so an
-    /// empty one is a spelling it refuses, never absence; and a code with a
+    /// layout that encodes them; a nested target reads text as the JSON
+    /// document it holds, and an empty one holds none; an interval has no
+    /// text spelling, so an empty one is a spelling it refuses, never
+    /// absence; and a code with a
     /// neutral member - the empty text its own reader accepts, which is also
     /// its canonical default - holds it as that member.
     pub(crate) fn keeps_empty_text(target: &DataType) -> bool {
         match encoded_value_of(target) {
             crate::string_dtypes!() | crate::bytes_dtypes!() | DataType::Interval(_) => true,
-            DataType::Serie(item)
-            | DataType::LargeSerie(item)
-            | DataType::SerieView(item)
-            | DataType::LargeSerieView(item)
-            | DataType::FixedSizeSerie(item, _) => keeps_empty_text(item.dtype()),
             code if code.is_code() => dtype_canonical(code, Scalar::from("")).is_ok(),
             _ => false,
         }
@@ -1389,6 +1386,8 @@ impl ArrayCastPlan {
             | ArrayCastKind::UuidIngest
             | ArrayCastKind::UrlIngest
             | ArrayCastKind::UrnIngest
+            | ArrayCastKind::JsonText { .. }
+            | ArrayCastKind::JsonIngest { .. }
             | ArrayCastKind::DeferredUnsupported { .. } => Proof::Proven,
             ArrayCastKind::Struct { columns, .. } => Proof::of_children(
                 columns
@@ -1495,6 +1494,33 @@ enum ArrayCastKind {
     /// that text under the string rule, as it reads bare text.
     FixedDecimalText {
         ingest: bool,
+    },
+    /// A nested column written as the compact natural JSON each row spells:
+    /// a struct an object keyed by its field names in declaration order, a
+    /// serie an array, a map an object, a union beneath one the
+    /// `[type_id, value]` pair the reading half takes back. The
+    /// source is read through `read` - the plan from its Arrow layout to the
+    /// field it imports as - and lands once under `source`; a target that is
+    /// not plain text or bytes then reads the JSON under its own rule, as it
+    /// reads bare text or bytes.
+    JsonText {
+        read: Box<ArrayCastPlan>,
+        source: crate::serie::Resolved,
+        /// What `read` certifies over foreign buffers and over a landed
+        /// column's, in that order: the rows of a column already landed are
+        /// not proven a second time.
+        proofs: [crate::serie::Proof; 2],
+        layout: ArrowDataType,
+        ingest: bool,
+    },
+    /// Text or bytes entering a nested datatype: every exposed cell is one
+    /// JSON document read under `target` - the nullable field of the
+    /// datatype - through the field's own value contract, the reading half
+    /// of [`Self::JsonText`]. A string column whose bytes are not UTF-8 is
+    /// first read as text by `text`.
+    JsonIngest {
+        text: Option<Box<ArrayCastPlan>>,
+        target: Field,
     },
     DeferredUnsupported {
         reason: String,
@@ -1856,6 +1882,16 @@ impl ArrayCastPlan {
                         ),
                     });
                 }
+            }
+            // A nested column entering text or bytes spells the natural JSON
+            // each row is, at every depth: a struct beneath a map's values
+            // spells its own object where the map holds it. An encoded source
+            // is decoded first, by the arms below, and a variant keeps its
+            // own encoding.
+            (crate::string_dtypes!() | crate::bytes_dtypes!(), source)
+                if holds_json_value(source) =>
+            {
+                Self::json_text(field, source_type, source_metadata, expected, rules, path)?
             }
             // The renderings below spell a value as text and write it into
             // the target's text storage as it is, so they take only a string
@@ -2291,6 +2327,34 @@ impl ArrayCastPlan {
             (_, ArrowDataType::RunEndEncoded(_, values)) => {
                 Self::decoded_kind(field, values.data_type(), source_metadata, rules, path)?
             }
+            // Text or bytes entering a nested datatype is read as the JSON
+            // document each cell holds, under the target's own value
+            // contract - the reading half of the arm above - so a cast there
+            // and back is the identity. Arrow's kernel would wrap each cell
+            // as a one-item list, which reads no text at all.
+            (target, source)
+                if crate::json::reads_json(target)
+                    && holds_json_document(source, source_extension) =>
+            {
+                ArrayCastKind::JsonIngest {
+                    text: match source_extension {
+                        // Bytes in another charset are text to decode first.
+                        Some(RecognizedExtension::String(declared))
+                            if !declared.string_parameters().is_some_and(is_text_storage) =>
+                        {
+                            Some(Box::new(Self::new_validated_with(
+                                &Field::new(field.name(), DataType::utf8(), true),
+                                source_type,
+                                source_metadata,
+                                nested,
+                                path,
+                            )?))
+                        }
+                        _ => None,
+                    },
+                    target: field.clone().with_nullable(true),
+                }
+            }
             _ if contains_struct(dtype) => {
                 return Err(Error::Unsupported {
                     kind: dtype.name(),
@@ -2323,6 +2387,69 @@ impl ArrayCastPlan {
         Ok(kind)
     }
 
+    /// Plans a nested source written as JSON into a string or byte target:
+    /// the field the source imports as, the plan that reads the source's
+    /// layout into it and what that plan certifies, all resolved once, and
+    /// the layout the JSON is first written in - the target's own, unless
+    /// the target has a rule of its own to run over it.
+    fn json_text(
+        field: &Field,
+        source_type: &ArrowDataType,
+        source_metadata: Option<&HashMap<String, String>>,
+        expected: &ArrowDataType,
+        rules: PlanRules,
+        path: Path<'_>,
+    ) -> Result<ArrayCastKind> {
+        let mut arrow = arrow_schema::Field::new(field.name(), source_type.clone(), true);
+        if let Some(metadata) = source_metadata {
+            arrow.set_metadata(metadata.clone());
+        }
+        let arrow = Arc::new(arrow);
+        // A layout this crate cannot hold is refused when a value arrives
+        // under it, as every pair no reading takes is.
+        let source = match Field::from_arrow_field_ref(Arc::clone(&arrow)) {
+            Ok(source) => source,
+            Err(error) => {
+                return Ok(ArrayCastKind::DeferredUnsupported {
+                    reason: format!(
+                        "casting {source_type:?} to {} as JSON: {error}",
+                        field.dtype()
+                    ),
+                });
+            }
+        };
+        let read = Self::new_nested_from_arrow_field(
+            &source,
+            &arrow,
+            PlanRules::nested(rules.options, rules.deferred),
+            path,
+        )?;
+        let proofs = [read.proof(false), read.proof(true)];
+        // A string with a charset or a bound, and a byte column with a
+        // width, check what they store: the JSON is written as plain text or
+        // bytes first and read under that rule.
+        let ingest = field
+            .dtype()
+            .string_parameters()
+            .is_some_and(needs_extension)
+            || field
+                .dtype()
+                .bytes_parameters()
+                .is_some_and(BytesType::is_bounded);
+        let layout = match (ingest, field.dtype().string_parameters()) {
+            (true, Some(_)) => ArrowDataType::Utf8,
+            (true, None) => ArrowDataType::Binary,
+            (false, _) => expected.clone(),
+        };
+        Ok(ArrayCastKind::JsonText {
+            read: Box::new(read),
+            source: crate::serie::Resolved::of(Arc::new(source)),
+            proofs,
+            layout,
+            ingest,
+        })
+    }
+
     /// Plans the column an encoding was hiding, so the cast reads values.
     fn decoded_kind(
         field: &Field,
@@ -2343,15 +2470,28 @@ impl ArrayCastPlan {
         })
     }
 
-    fn cast(&self, array: ArrayRef, budget: &mut MaterializationBudget) -> Result<ArrayRef> {
-        self.cast_exposed(array, None, budget)
+    fn cast(
+        &self,
+        array: ArrayRef,
+        landed: bool,
+        budget: &mut MaterializationBudget,
+    ) -> Result<ArrayRef> {
+        self.cast_exposed(array, None, landed, budget)
     }
 
+    /// Cast the rows `exposure` leaves visible - all of them where it is
+    /// `None` - into this node's target.
+    ///
+    /// `landed` says `array` is a landed column's, or a child of one: every
+    /// row it exposes was proven where it landed, so a node that lands what
+    /// it reads does not prove it again. Every node hands it to the children
+    /// it reads with the array's own children.
     #[allow(clippy::too_many_lines)] // Recursive Arrow dispatch and final null policy stay aligned.
     pub(crate) fn cast_exposed(
         &self,
         array: ArrayRef,
         exposure: Option<&BooleanBuffer>,
+        landed: bool,
         budget: &mut MaterializationBudget,
     ) -> Result<ArrayRef> {
         if array.data_type() != &self.source_type {
@@ -2610,6 +2750,53 @@ impl ArrayCastPlan {
                     spelled
                 }
             }
+            ArrayCastKind::JsonText {
+                read,
+                source,
+                proofs,
+                layout,
+                ingest,
+            } => {
+                let read = read.cast_exposed(array, exposure, landed, budget)?;
+                let spelled = render_json_array(
+                    &read,
+                    source,
+                    &proofs[usize::from(landed)],
+                    layout,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?;
+                match (*ingest, self.field.dtype().string_parameters()) {
+                    (false, _) => spelled,
+                    (true, Some(_)) => ingest_string_array(
+                        &spelled,
+                        &StringSource::Bare,
+                        self.safe(),
+                        &self.field,
+                        exposure,
+                        budget,
+                    )?,
+                    (true, None) => {
+                        ingest_bytes_array(&spelled, self.safe(), &self.field, exposure, budget)?
+                    }
+                }
+            }
+            ArrayCastKind::JsonIngest { text, target } => {
+                let documents = match text {
+                    Some(text) => text.cast_exposed(array, exposure, landed, budget)?,
+                    None => array,
+                };
+                ingest_json_array(
+                    &documents,
+                    target,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?
+            }
             ArrayCastKind::DecimalFromFloat => {
                 ingest_float_values(&array, self.safe(), &self.field, exposure, budget)?
             }
@@ -2648,22 +2835,24 @@ impl ArrayCastPlan {
                 arrow_array::new_null_array(&self.expected, array.len())
             }
             ArrayCastKind::Struct { fields, columns } => {
-                self.cast_struct_array(array, fields, columns, exposure, budget)?
+                self.cast_struct_array(array, fields, columns, exposure, landed, budget)?
             }
             ArrayCastKind::List { field, child, kind } => {
-                self.cast_list_array(array, field, child, *kind, exposure, budget)?
+                self.cast_list_array(array, field, child, *kind, exposure, landed, budget)?
             }
             ArrayCastKind::Map {
                 source,
                 field,
                 ordered,
                 entries,
-            } => self.cast_map_array(array, source, field, *ordered, entries, exposure, budget)?,
+            } => self.cast_map_array(
+                array, source, field, *ordered, entries, exposure, landed, budget,
+            )?,
             ArrayCastKind::Dictionary { source_key, values } => {
-                cast_dictionary_planned(source_key, self, array, values, exposure, budget)?
+                cast_dictionary_planned(source_key, self, array, values, exposure, landed, budget)?
             }
             ArrayCastKind::Encoded { values } => {
-                let read = values.cast_exposed(array, exposure, budget)?;
+                let read = values.cast_exposed(array, exposure, landed, budget)?;
                 let encoded = arrow_cast_exposed(
                     &read,
                     &self.expected,
@@ -2691,10 +2880,10 @@ impl ArrayCastPlan {
                     &self.field,
                     budget,
                 )?;
-                plan.cast_exposed(values, exposure, budget)?
+                plan.cast_exposed(values, exposure, landed, budget)?
             }
             ArrayCastKind::Union { fields, children } => {
-                cast_union_planned(fields, array, children, exposure, budget)?
+                cast_union_planned(fields, array, children, exposure, landed, budget)?
             }
             ArrayCastKind::RunEndEncoded {
                 source_run_type,
@@ -2705,6 +2894,7 @@ impl ArrayCastPlan {
                 array,
                 values,
                 exposure,
+                landed,
                 budget,
             )?,
         };
@@ -2932,6 +3122,42 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         }
         (_, RecognizedExtension::Geospatial(_)) => Ok(()),
     }
+}
+
+/// Whether a source layout is a nested value JSON spells: a struct, any
+/// serie layout or a map. A variant keeps its own encoding - its source
+/// is refused for every other target before planning - a union reads text
+/// through the member that takes it, and an encoding hides a column its own
+/// arms decode first.
+fn holds_json_value(source: &ArrowDataType) -> bool {
+    matches!(
+        source,
+        ArrowDataType::Struct(_)
+            | ArrowDataType::List(_)
+            | ArrowDataType::LargeList(_)
+            | ArrowDataType::ListView(_)
+            | ArrowDataType::LargeListView(_)
+            | ArrowDataType::FixedSizeList(..)
+            | ArrowDataType::Map(..)
+    )
+}
+
+/// Whether a source layout holds documents: text, or bytes that are not a
+/// UUID's or a geometry's identity.
+fn holds_json_document(source: &ArrowDataType, extension: Option<&RecognizedExtension>) -> bool {
+    matches!(
+        source,
+        ArrowDataType::Utf8
+            | ArrowDataType::LargeUtf8
+            | ArrowDataType::Utf8View
+            | ArrowDataType::Binary
+            | ArrowDataType::LargeBinary
+            | ArrowDataType::BinaryView
+            | ArrowDataType::FixedSizeBinary(_)
+    ) && !matches!(
+        extension,
+        Some(RecognizedExtension::Uuid | RecognizedExtension::Geospatial(_))
+    )
 }
 
 /// Names the field and the row on a refused cell.
@@ -3960,6 +4186,7 @@ pub(crate) mod columns {
                 fields: &arrow_schema::Fields,
                 columns: &[StructColumnPlan],
                 exposure: Option<&BooleanBuffer>,
+                landed: bool,
                 budget: &mut MaterializationBudget,
             ) -> Result<ArrayRef> {
                 let source = downcast::<StructArray>(&array)?;
@@ -3973,6 +4200,7 @@ pub(crate) mod columns {
                             let output = cast.cast_exposed(
                                 Arc::clone(source_column),
                                 child_exposure.as_ref(),
+                                landed,
                                 budget,
                             )?;
                             unchanged &= output.len() == source_column.len()
@@ -4003,6 +4231,7 @@ pub(crate) mod columns {
             }
 
             #[allow(clippy::too_many_lines)] // Keep the five Arrow list layouts behaviorally aligned.
+            #[allow(clippy::too_many_arguments)]
             pub(crate) fn cast_list_array(
                 &self,
                 array: ArrayRef,
@@ -4010,6 +4239,7 @@ pub(crate) mod columns {
                 child: &ArrayCastPlan,
                 kind: ListPlanKind,
                 exposure: Option<&BooleanBuffer>,
+                landed: bool,
                 budget: &mut MaterializationBudget,
             ) -> Result<ArrayRef> {
                 Ok(match kind {
@@ -4029,6 +4259,7 @@ pub(crate) mod columns {
                         let values = child.cast_exposed(
                             Arc::clone(source.values()),
                             child_exposure.as_ref(),
+                            landed,
                             budget,
                         )?;
                         let values = ensure_list_child_physical(&child.field, values, budget)?;
@@ -4060,6 +4291,7 @@ pub(crate) mod columns {
                         let values = child.cast_exposed(
                             Arc::clone(source.values()),
                             child_exposure.as_ref(),
+                            landed,
                             budget,
                         )?;
                         let values = ensure_list_child_physical(&child.field, values, budget)?;
@@ -4093,6 +4325,7 @@ pub(crate) mod columns {
                         let values = child.cast_exposed(
                             Arc::clone(source.values()),
                             child_exposure.as_ref(),
+                            landed,
                             budget,
                         )?;
                         let values = ensure_list_child_physical(&child.field, values, budget)?;
@@ -4124,6 +4357,7 @@ pub(crate) mod columns {
                         let values = child.cast_exposed(
                             Arc::clone(source.values()),
                             child_exposure.as_ref(),
+                            landed,
                             budget,
                         )?;
                         let values = ensure_list_child_physical(&child.field, values, budget)?;
@@ -4153,6 +4387,7 @@ pub(crate) mod columns {
                         let values = child.cast_exposed(
                             Arc::clone(source.values()),
                             child_exposure.as_ref(),
+                            landed,
                             budget,
                         )?;
                         let values = ensure_list_child_physical(&child.field, values, budget)?;
@@ -4181,6 +4416,7 @@ pub(crate) mod columns {
                 ordered: bool,
                 entries: &ArrayCastPlan,
                 exposure: Option<&BooleanBuffer>,
+                landed: bool,
                 budget: &mut MaterializationBudget,
             ) -> Result<ArrayRef> {
                 let source = downcast::<MapArray>(&array)?;
@@ -4206,6 +4442,7 @@ pub(crate) mod columns {
                 let entries = entries.cast_exposed(
                     Arc::clone(&source_entries),
                     entry_exposure.as_ref(),
+                    landed,
                     budget,
                 )?;
                 let unchanged =
@@ -5551,6 +5788,7 @@ pub(crate) mod columns {
         array: ArrayRef,
         values: &ArrayCastPlan,
         exposure: Option<&BooleanBuffer>,
+        landed: bool,
         budget: &mut MaterializationBudget,
     ) -> Result<ArrayRef> {
         let expected = &plan.expected;
@@ -5584,6 +5822,7 @@ pub(crate) mod columns {
                 let values = values.cast_exposed(
                     Arc::clone(source_values),
                     value_exposure.as_ref(),
+                    landed,
                     budget,
                 )?;
                 if array.data_type() == expected && Arc::ptr_eq(&values, source_values) {
@@ -5634,6 +5873,7 @@ pub(crate) mod columns {
         array: ArrayRef,
         plans: &[(i8, ArrayCastPlan)],
         exposure: Option<&BooleanBuffer>,
+        landed: bool,
         budget: &mut MaterializationBudget,
     ) -> Result<ArrayRef> {
         let source = downcast::<UnionArray>(&array)?;
@@ -5653,8 +5893,12 @@ pub(crate) mod columns {
                 |row| (source.type_id(row) == *type_id).then(|| source.value_offset(row)),
                 budget,
             )?;
-            let child =
-                plan.cast_exposed(Arc::clone(source_child), child_exposure.as_ref(), budget)?;
+            let child = plan.cast_exposed(
+                Arc::clone(source_child),
+                child_exposure.as_ref(),
+                landed,
+                budget,
+            )?;
             unchanged &= Arc::ptr_eq(&child, source_child);
             children.push(child);
         }
@@ -5730,6 +5974,7 @@ pub(crate) mod columns {
         array: ArrayRef,
         values: &ArrayCastPlan,
         exposure: Option<&BooleanBuffer>,
+        landed: bool,
         budget: &mut MaterializationBudget,
     ) -> Result<ArrayRef> {
         macro_rules! rebuild {
@@ -5740,6 +5985,7 @@ pub(crate) mod columns {
                 let values = values.cast_exposed(
                     Arc::clone(source_values),
                     value_exposure.as_ref(),
+                    landed,
                     budget,
                 )?;
                 if array.data_type() == expected && Arc::ptr_eq(&values, source_values) {

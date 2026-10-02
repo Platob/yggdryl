@@ -657,6 +657,26 @@ mod value {
     }
 }
 
+/// A record - what every JSON or YAML object reads as - holds no order, so a
+/// sorted map takes its entries in the order of the keys they name, not of
+/// the names' text: `10` after `2`.
+#[test]
+fn a_record_read_into_a_sorted_map_is_ordered_by_its_keys() {
+    use yggdryl::{DataType, Scalar};
+
+    let sorted = DataType::map_of(DataType::Int64, DataType::utf8(), true).unwrap();
+    let record =
+        Scalar::from_struct([("10", Scalar::from("b")), ("2", Scalar::from("a"))]).unwrap();
+    assert_eq!(
+        sorted.scalar(record).unwrap(),
+        Scalar::from_mapping([
+            (Scalar::from(2_i64), Scalar::from("a")),
+            (Scalar::from(10_i64), Scalar::from("b")),
+        ])
+        .unwrap()
+    );
+}
+
 #[test]
 fn a_value_of_a_bare_contract_leaf_is_answered_untouched() {
     // A value of the very leaf the datatype is, where the leaf carries no

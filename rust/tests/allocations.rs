@@ -5728,17 +5728,25 @@ struct StageCosts {
 /// that column's sixteen bytes where it landed a validity bitmap and its
 /// buffer: 1589.
 ///
+/// A decimal came to read and to write its text with no heap string built on
+/// the way - the coefficient's spelling joined on the stack, the pointed text
+/// written straight to its sink - and nothing else moved: each parse fell by
+/// the allocations the decimals it reads used to cost, ten for the bridge row
+/// (585), seven for a frame (234) and nineteen for the packed frame (1134),
+/// and each digest, which renders the decimals it holds, by eight (16), eight
+/// (16) and six (10).
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 595,
+            parse: 585,
             into_row: 152,
             landing: 1589,
             batch: 224,
-            digest: 24,
+            digest: 16,
             lifecycle: 7,
         },
     ),
@@ -5746,11 +5754,11 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_pipe",
         72,
         StageCosts {
-            parse: 241,
+            parse: 234,
             into_row: 109,
             landing: 1571,
             batch: 224,
-            digest: 24,
+            digest: 16,
             lifecycle: 7,
         },
     ),
@@ -5758,11 +5766,11 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1153,
+            parse: 1134,
             into_row: 279,
             landing: 1608,
             batch: 224,
-            digest: 16,
+            digest: 10,
             lifecycle: 7,
         },
     ),
@@ -6654,5 +6662,97 @@ fn a_spelling_read_by_its_words_reads_again_without_allocating() {
         free(&format!("reading {spelling:?} again"), || {
             black_box(yggdryl::State::from_spelling(black_box(spelling)));
         });
+    }
+}
+
+/// A nested column of `rows` rows under `expression`, every row present.
+fn json_corpus(expression: &str, rows: usize) -> yggdryl::Serie {
+    let field = Field::new(
+        "v",
+        expression.parse::<DataType>().expect("a datatype"),
+        false,
+    );
+    let values = (0..rows).map(|row| {
+        let count = Scalar::from(i64::try_from(row).expect("a small row"));
+        match expression {
+            "serie<int64>" => Scalar::from_sequence([count.clone(), count]),
+            "struct<px: decimal128(12, 4), sym: utf8>" => Scalar::from_sequence([
+                Scalar::decimal128(i128::try_from(row).expect("a small row"), 4),
+                Scalar::from("BRENT"),
+            ]),
+            _ => Scalar::from_mapping([(Scalar::from("k"), Scalar::from_sequence([count]))])
+                .expect("a map row"),
+        }
+    });
+    yggdryl::Serie::from_scalars(field, values).expect("the corpus lays out")
+}
+
+/// Writing a nested column as JSON allocates the row each cell is read as -
+/// one per row a struct or a serie is, two for a map of records - and the
+/// payload's growth, never a text per row: the JSON is written straight into
+/// the column's one buffer, a decimal's digits included.
+#[test]
+fn a_nested_column_writes_its_json_with_one_allocation_per_row_it_reads() {
+    let text = Field::new("json", DataType::utf8(), false);
+    let strict = ArrowCastOptions::new().with_safe(false);
+    for (expression, per_row) in [
+        ("serie<int64>", 1),
+        ("struct<px: decimal128(12, 4), sym: utf8>", 1),
+        ("map<utf8, struct<k: int64>>", 2),
+    ] {
+        let cost = |rows: usize| {
+            let column = json_corpus(expression, rows);
+            black_box(column.cast(&text, strict).expect("the column spells JSON"));
+            counted(|| black_box(column.cast(&text, strict).expect("JSON"))).0
+        };
+        for rows in [1_024, 4_096] {
+            let grown = cost(2 * rows) - cost(rows);
+            assert!(
+                (per_row * rows..=per_row * rows + 2).contains(&grown),
+                "{expression}: {rows} more rows cost {grown} allocations, not {per_row} a row \
+                 and the payload's growth"
+            );
+        }
+        // One plan held answers every call alike.
+        let column = json_corpus(expression, 64);
+        let plan =
+            yggdryl::ArrowCastPlan::compile(column.field().expect("a column"), &text, strict)
+                .expect("a plan");
+        let (once, repeated) = counted_once_and_repeated(|| {
+            black_box(plan.apply(black_box(&column)).expect("JSON"));
+        });
+        assert_eq!(
+            repeated,
+            once * 1_000,
+            "{expression}: a held plan's call grew"
+        );
+    }
+}
+
+/// Reading JSON text into a nested column costs a fixed count per row - the
+/// document's parse into a value and the field's canonical row - and nothing
+/// per column: the rows are laid out once, never checked a second time.
+#[test]
+fn a_column_of_documents_reads_into_a_nested_column_at_a_fixed_cost_per_row() {
+    let text = Field::new("json", DataType::utf8(), false);
+    let strict = ArrowCastOptions::new().with_safe(false);
+    for (expression, per_row) in [
+        ("serie<int64>", 3),
+        ("struct<px: decimal128(12, 4), sym: utf8>", 9),
+    ] {
+        let cost = |rows: usize| {
+            let column = json_corpus(expression, rows);
+            let field = column.field().expect("a column").clone();
+            let documents = column.cast(&text, strict).expect("the column spells JSON");
+            black_box(documents.cast(&field, strict).expect("the JSON reads back"));
+            counted(|| black_box(documents.cast(&field, strict).expect("the JSON reads"))).0
+        };
+        for rows in [1_024, 4_096] {
+            assert_eq!(
+                cost(2 * rows) - cost(rows),
+                per_row * rows,
+                "{expression}: {rows} more documents"
+            );
+        }
     }
 }

@@ -152,6 +152,15 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
     }
 }
 
+/// [`prepare`] under a bare datatype: the payloads a document spells in
+/// base64 are substituted for a reader holding no field, a scalar cast.
+pub(crate) fn prepare_dtype(value: Scalar, dtype: &DataType) -> Result<Scalar> {
+    if value.is_null() || !holds_byte_leaf(dtype) {
+        return Ok(value);
+    }
+    prepare(value, &Field::new("value", dtype.clone(), true))
+}
+
 fn prepare_for_type(value: Scalar, dtype: &DataType, context: &Field) -> Result<Scalar> {
     prepare(
         value,
@@ -241,23 +250,31 @@ fn mapping(value: Scalar, map: &crate::MappingType, field: &Field) -> Result<Sca
             "map entries do not contain key and value fields",
         ));
     };
-    let entries = match value {
-        Scalar::Map(entries) | Scalar::SortedMap(entries) => entries.as_slice().to_vec(),
+    let (entries, record) = match value {
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => (entries.as_slice().to_vec(), false),
         // A record is a map keyed by name, which the value contract reads too;
         // the entries are shaped here so the walk reaches their byte leaves.
-        Scalar::Struct(entries) => entries
-            .as_map()
-            .iter()
-            .map(|(name, value)| (Scalar::from(name.as_str()), value.clone()))
-            .collect(),
+        Scalar::Struct(entries) => (
+            entries
+                .as_map()
+                .iter()
+                .map(|(name, value)| (Scalar::from(name.as_str()), value.clone()))
+                .collect(),
+            true,
+        ),
         _ => return Err(invalid(field, "expected an object or mapping")),
     };
-    Scalar::from_mapping(
-        entries
-            .into_iter()
-            .map(|(key, value)| Ok((prepare(key, key_field)?, prepare(value, value_field)?)))
-            .collect::<Result<Vec<_>>>()?,
-    )
+    let prepared = entries
+        .into_iter()
+        .map(|(key, value)| Ok((prepare(key, key_field)?, prepare(value, value_field)?)))
+        .collect::<Result<Vec<_>>>()?;
+    // A record's entries are in no order of their own, so they take the one
+    // the value contract gives a record it reads as a map.
+    Scalar::from_mapping(if record {
+        crate::value::record_entries_in_key_order(map, prepared)
+    } else {
+        prepared
+    })
 }
 
 /// Whether a subtree stores bytes anywhere a document would spell base64.

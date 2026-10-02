@@ -158,15 +158,28 @@ impl<'a> Parser<'a> {
         let start = self.position;
         self.position += 1;
         let mut escaped = false;
+        // Whether every byte so far is one a string holds as it is: no
+        // escape to decode and no control character to refuse.
+        let mut verbatim = true;
         while let Some(byte) = self.peek() {
             self.position += 1;
             if escaped {
                 escaped = false;
             } else if byte == b'\\' {
                 escaped = true;
+                verbatim = false;
             } else if byte == b'"' {
-                return serde_json::from_slice(&self.input[start..self.position])
-                    .map_err(|error| serde_error(&self.input[start..self.position], start, error));
+                let quoted = &self.input[start..self.position];
+                // Nothing to decode: the characters are the bytes, once they
+                // are UTF-8. Anything else is serde_json's to read, and to
+                // refuse in its own words.
+                if verbatim && let Ok(text) = str::from_utf8(&quoted[1..quoted.len() - 1]) {
+                    return Ok(text.to_owned());
+                }
+                return serde_json::from_slice(quoted)
+                    .map_err(|error| serde_error(quoted, start, error));
+            } else if byte < 0x20 {
+                verbatim = false;
             }
         }
         Err(codec_error(start, "unterminated JSON string"))
