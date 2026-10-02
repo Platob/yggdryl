@@ -5000,6 +5000,13 @@ struct StageCosts {
 /// each, and by two to 1494; the packed frame's by two to 260, its
 /// metadata's eighteen keys twice, and by one to 1532.
 ///
+/// A boolean's text then came to be read as a column cast reads it, so the
+/// packed frame's `ManualOrderIndicator(1028)=no` types as false where it
+/// was refused: its parse fell by sixteen to 1137, the located error, the
+/// anomaly and the warning the refusal built, and its `into_row` rose by
+/// three to 263, the entry the typed flag now adds to the row's
+/// `fixentries`.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
@@ -5030,8 +5037,8 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1153,
-            into_row: 260,
+            parse: 1137,
+            into_row: 263,
             landing: 1532,
             batch: 212,
             digest: 16,
