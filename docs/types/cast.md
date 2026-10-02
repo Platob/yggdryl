@@ -464,10 +464,10 @@ batch is cast.
   nulls - keeps its nulls under a required field: there null is its value, not an absence.
 - An undeclared source column is dropped: the rule is about what the target declares, not about
   what the source carries beyond it.
-- The one repair is internal: a column a declaring protocol fills after the cast - a
-  [digest](../hashing.md) holder, a `TRANSFORM:` or `PARTITION:` derived column - may arrive
-  absent for that protocol to fill, and
-  [`apply_arrow_batch`](field.md#applying-a-schemas-declarations) checks the finished batch again.
+- The one repair is internal: a [digest](../hashing.md) holder, which `as_digest().apply_arrow_batch`
+  fills after the cast that lands its batch, may arrive absent for that fill. A `TRANSFORM:` or
+  `PARTITION:` derived column is an ordinary column to the cast, and
+  [`Field::apply_arrow_batch`](field.md#applying-a-schema) is this cast alone.
 
 === "Rust"
 
@@ -1241,11 +1241,11 @@ What each binding door accepts, each resolved once at the door:
 - A value the target cannot convert -> null in a nullable column under `safe`; refused by that value in a required column whatever `safe` says, and in any column under `safe=False`.
 - An empty text cell into a column that holds neither text nor bytes -> null before `safe` is asked, under every text layout and through the scalar door; a required column then refuses it by path. Whitespace is a spelling, not an empty cell. Into a string, byte or interval column, or a code whose neutral member is the empty text, it is the value it is.
 - A `Null` datatype, or an encoding whose values hold only nulls, under a required field -> null is its canonical default, so it is not absence and stays.
-- A column a declaring protocol fills after the cast - a digest holder, a `TRANSFORM:` or `PARTITION:` column - under `apply_arrow_batch` -> may arrive absent for that protocol, and the finished batch is checked again; nothing else repairs an absence.
+- A digest holder under `as_digest().apply_arrow_batch` -> may arrive absent, landing as its canonical default for the fill to replace; nothing else repairs an absence, a `TRANSFORM:` or `PARTITION:` column included.
 - A `DataType` target -> its required `value` field, so a refusal names `$.value`.
 - `into_arrow_scalar` -> exactly one row; any other length is refused naming it, and a run is refused by name.
 - A scalar wider than the declared type -> accepted when the value fits, then canonicalized into it (`U64` -> `I64`).
-- Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../media/index.md#json) accepts, a duration included, which Arrow reads into none.
+- Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../media/json.md#read) accepts, a duration included, which Arrow reads into none.
 - Text into a decimal -> read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer.
 - A float into a decimal -> the number its shortest text names, rounded half away from zero at the declared scale, on both tiers: `0.125` into `decimal(10, 2)` is `0.13`, and `1.15` is `1.15` where Arrow's kernel would scale the binary fraction. A `nan`, an infinity or a float past the precision -> null under `safe`, refused by row under strict.
 - A `decimal` or `bigdecimal` column into text -> the leaf's trimmed text on both tiers, `1.125` and never the `1.125000000000000000` of its storage; a parameterized width keeps its declared scale on the column tier (`1.125000000000000000` for `decimal128(38,18)`), while the row tier renders the value at the scale it holds.

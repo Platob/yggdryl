@@ -1,12 +1,14 @@
 //! The `TRANSFORM:` protocol: how a column is computed from the rows around
 //! it.
 //!
-//! A struct [`Field`] says what columns exist. A child carrying
-//! `TRANSFORM:expression` also says how it is *derived*: the property holds
-//! the canonical text of one [`Term`] over the other columns of the same
-//! struct, and applying the field computes it. That is the same declaration a
-//! [`Selector`](super::Selector) projection makes - `year(event) as year` -
-//! so [`Selector::into_field`](super::Selector::into_field) writes one and
+//! A struct [`Field`](crate::Field) says what columns exist. A child
+//! carrying `TRANSFORM:expression` also says how it is *derived*: the
+//! property holds the canonical text of one [`Term`] over the other columns
+//! of the same struct, and [`TransformField::apply_arrow_batch`] computes it -
+//! applying the field itself, or reading and writing under it, only casts.
+//! That is the same declaration a [`Selector`](super::Selector) projection
+//! makes - `year(event) as year` - so
+//! [`Selector::into_field`](super::Selector::into_field) writes one and
 //! [`Selector::from_field`](super::Selector::from_field) reads it back, which
 //! is what lets a field carry a plan.
 //!
@@ -15,8 +17,9 @@
 //! A column computed from the rows around it is a `TRANSFORM:` column,
 //! whatever asked for it: a `select` projection, or a derived entry of a
 //! struct's [`PARTITION:by`](crate::PartitionField) declaration, which
-//! [`Field::with_partition_by`] materializes as exactly such a column. The
-//! derivation runs in exactly one place - [`TransformField::apply_arrow_batch`].
+//! [`Field::with_partition_by`](crate::Field::with_partition_by) materializes
+//! as exactly such a column. The derivation runs in exactly one place -
+//! [`TransformField::apply_arrow_batch`].
 //!
 //! # Applying
 //!
@@ -32,7 +35,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::Function;
 use super::term::Term;
 use crate::protocol::{TransformField, TransformFieldMut};
-use crate::{Error, Field, Result};
+use crate::{Error, Result};
 
 /// The property naming the term a column is computed with.
 const EXPRESSION: &str = "expression";
@@ -136,21 +139,6 @@ impl<'field> TransformField<'field> {
     #[must_use]
     pub fn is_derived(&self) -> bool {
         self.contains_key(EXPRESSION) || self.contains_key(FUNCTION) || self.contains_key(BY)
-    }
-
-    /// Return whether this root declares a derived column anywhere.
-    ///
-    /// The answer walks the declared structs, which is exactly the reach
-    /// [`Self::apply_arrow_batch`] has, and reads no rows.
-    #[must_use]
-    pub fn declares_derivation(&self) -> bool {
-        fn any_derivation(fields: &[Field]) -> bool {
-            fields.iter().any(|field| {
-                field.as_transform().is_derived()
-                    || (field.is_struct() && any_derivation(field.fields()))
-            })
-        }
-        any_derivation(self.as_field().fields())
     }
 }
 
@@ -257,8 +245,6 @@ pub(crate) fn canonicalize_transform_expression(key: &str, value: &str) -> Resul
     Ok(term.to_string())
 }
 
-pub(crate) use arrow::TransformPlan;
-
 mod arrow {
     use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
@@ -327,39 +313,7 @@ mod arrow {
         pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch> {
             let root = self.as_field();
             root.require_struct()?;
-            TransformPlan::new(root).apply(batch)
-        }
-    }
-
-    /// The derivations one struct root declares, held for every batch they
-    /// fill.
-    ///
-    /// What a batch does not change is settled once and kept: each declared
-    /// term is parsed the first time a batch asks for it, bound once per
-    /// schema a level's batches carry - again only when that schema changes -
-    /// and cast into its column through one held plan. A stream applying a
-    /// root holds one; a single batch builds one and drops it.
-    pub(crate) struct TransformPlan {
-        root: Field,
-        level: Level,
-    }
-
-    impl TransformPlan {
-        /// The plan for one struct root; nothing is parsed or bound yet.
-        pub(crate) fn new(root: &Field) -> Self {
-            Self {
-                root: root.clone(),
-                level: Level::new(root),
-            }
-        }
-
-        /// Add the derived columns the root declares to one batch.
-        ///
-        /// # Errors
-        ///
-        /// [`TransformField::apply_arrow_batch`] carries the rule.
-        pub(crate) fn apply(&self, batch: &RecordBatch) -> Result<RecordBatch> {
-            Ok(filled_struct(&self.root, &self.level, batch)?.unwrap_or_else(|| batch.clone()))
+            Ok(filled_struct(root, &Level::new(root), batch)?.unwrap_or_else(|| batch.clone()))
         }
     }
 

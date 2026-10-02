@@ -287,7 +287,7 @@ applied_root = Field(
     "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
 )
 applied_batch: pa.RecordBatch = applied_root.apply_arrow_batch(
-    source_batch, digest=True, transform=True, cast=True
+    source_batch, safe=True, representation="value"
 )
 applied_schema: pa.Schema = applied_root.apply_arrow_schema(source_batch.schema)
 applied_reader: pa.RecordBatchReader = applied_root.apply_arrow_reader(

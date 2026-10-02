@@ -164,11 +164,13 @@ impl Workbook {
     /// # Errors
     ///
     /// Returns [`Error::Unsupported`] for a BIFF (`.xls`) or encrypted
-    /// workbook, [`Error::Codec`] for bytes that are not a ZIP package or a
+    /// workbook, [`Error::Codec`] for a handle whose name declares a content
+    /// coding (`trades.xlsx.gz`), for bytes that are not a ZIP package or for a
     /// part that is not well-formed, and [`Error::InvalidRecord`] naming the
     /// part for a package with no workbook.
     pub fn open(handle: impl Into<Holder>) -> Result<Self> {
         let handle = handle.into();
+        super::reject_outer_coding(&handle)?;
         if handle.size() == 0 {
             return Ok(Self::new());
         }

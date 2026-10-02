@@ -63,4 +63,4 @@ A setting of another encoding reads as `None`/`null`; setting it is an error.
 - Excel: the grid is 1,048,576 rows by 16,384 columns and a cell holds at most 32,767 characters; text is escaped as ECMA-376 spells it (`_xHHHH_`), which Excel reads back and openpyxl leaves as written; an inferred required column is one every row states.
 - Plain text: a blank physical line separates records and never is one; bytes are decoded once in the handle's declared charset, otherwise as UTF-8 with Windows-1252 fallback per invalid byte.
 
-Pages: https://platob.github.io/yggdryl/media/ (per format) and https://platob.github.io/yggdryl/holder/#records (the shared surface).
+Pages: https://platob.github.io/yggdryl/media/ (the overview, one page per format beneath it) and https://platob.github.io/yggdryl/holder/#records (the shared surface).

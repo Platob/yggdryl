@@ -67,9 +67,8 @@ use arrow_schema::{Schema, SchemaRef};
 use smol_str::SmolStr;
 
 use crate::arrow::field_from_arrow_schema;
-use crate::cast::ArrowCastOptions;
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
 use crate::expression::{Bound, BoundSelector, IntoFilter, IntoPlan, IntoSelector, Plan, Term};
-use crate::field::AppliedPlan;
 use crate::ipc::IpcOptions;
 use crate::{
     DataType, Error, Field, Filter, IOMode, Level, MediaType, MimeType, Result, Scalar, Selector,
@@ -750,11 +749,9 @@ pub trait IORecordOptions: Sized {
     /// a stored column for every reader of the resource. Each absent layer
     /// costs nothing.
     ///
-    /// A field shapes rows by [applying](Field::apply_arrow_batch), not by
-    /// casting: a declaration is a cast *and* the `TRANSFORM:`, `PARTITION:`
-    /// and `DIGEST:` columns it derives, so a column a schema declares arrives
-    /// written rather than arriving as the default nothing filled. A root that
-    /// declares no derivation applies as the cast alone.
+    /// A field shapes rows by the cast alone ([`Field::apply_arrow_batch`]):
+    /// a `TRANSFORM:`, `PARTITION:` or `DIGEST:` declaration it carries is
+    /// metadata the rows travel under, never a column the shaping fills.
     ///
     /// Every layer answers from the schemas alone, so the shaping is compiled
     /// against the batch's schema and then applied; a caller shaping many
@@ -788,12 +785,12 @@ pub trait IORecordOptions: Sized {
     ) -> Result<crate::arrow::BatchReader> {
         let options = ArrowCastOptions::new().with_safe(self.safe());
         let reader = match self.field() {
-            Some(declared) => declared.apply_arrow_reader(reader, true, true, true, options)?,
+            Some(declared) => declared.apply_arrow_reader(reader, options)?,
             None => reader,
         };
         let reader = self.apply_arrow_expressions(reader)?;
         match existing {
-            Some(stored) => Ok(stored.apply_arrow_reader(reader, true, true, true, options)?),
+            Some(stored) => Ok(stored.apply_arrow_reader(reader, options)?),
             None => Ok(reader),
         }
     }
@@ -890,18 +887,16 @@ pub trait IORecordOptions: Sized {
 ///
 /// The declared field, the `where` and `select` clauses and the stored field
 /// are each planned or bound once against the schema the layer before hands
-/// it, read off an empty batch, so a batch of that schema moves only rows.
+/// it, so a batch of that schema moves only rows.
 pub(crate) struct Shaping {
-    declared: Option<AppliedPlan>,
+    declared: Option<ArrowCastPlan>,
     /// Whether the `select` runs first, because the `where` reads a column
     /// only the selector builds.
     late: bool,
     filter: Option<Bound>,
     select: Option<BoundSelector>,
-    /// A holder already holding a value is left alone, so this fills only
-    /// what the destination declares and the incoming rows do not already
-    /// carry.
-    existing: Option<AppliedPlan>,
+    /// The cast completing the rows onto the destination's stored field.
+    existing: Option<ArrowCastPlan>,
 }
 
 impl Shaping {
@@ -917,18 +912,13 @@ impl Shaping {
         source: SchemaRef,
         existing: Option<&Field>,
     ) -> Result<Self> {
+        let cast = ArrowCastOptions::new().with_safe(options.safe());
         let mut schema = source;
         let declared = match options.declared() {
             Some(declared) => {
-                let plan = AppliedPlan::compile(
-                    declared,
-                    Arc::clone(&schema),
-                    true,
-                    true,
-                    true,
-                    ArrowCastOptions::new().with_safe(options.safe()),
-                )?;
-                schema = plan.apply(&RecordBatch::new_empty(schema))?.schema();
+                let plan =
+                    ArrowCastPlan::compile_schema(&schema, declared, cast, Deferred::default())?;
+                schema = Arc::clone(plan.target_schema()?);
                 Some(plan)
             }
             None => None,
@@ -946,13 +936,11 @@ impl Shaping {
             (filter, Self::bind_select(options.select(), &mut schema)?)
         };
         let existing = match existing {
-            Some(stored) => Some(AppliedPlan::compile(
+            Some(stored) => Some(ArrowCastPlan::compile_schema(
+                &schema,
                 stored,
-                schema,
-                true,
-                true,
-                true,
-                ArrowCastOptions::new().with_safe(options.safe()),
+                cast,
+                Deferred::default(),
             )?),
             None => None,
         };
@@ -993,7 +981,7 @@ impl Shaping {
     /// declaration cannot be satisfied, or a term fails over the rows.
     pub(crate) fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
         let mut batch = match &self.declared {
-            Some(plan) => plan.apply(&batch)?,
+            Some(plan) => plan.reconcile_batch(batch)?,
             None => batch,
         };
         if self.late {
@@ -1004,7 +992,7 @@ impl Shaping {
             batch = self.select(batch)?;
         }
         match &self.existing {
-            Some(plan) => Ok(plan.apply(&batch)?),
+            Some(plan) => Ok(plan.reconcile_batch(batch)?),
             None => Ok(batch),
         }
     }

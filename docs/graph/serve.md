@@ -80,7 +80,7 @@ Instants in an answer are the crate's canonical zoned spelling, RFC 9557 - nine 
 
 ## The audit download
 
-`audit.csv`, `audit.csv.gz` and `audit.csv.zst` answer the rows `events` answers, unbounded, written by the [CSV medium](../media/index.md#csv) into a buffer whose media type is the suffix's - `text/csv` under the coding the name carries - and served under that coding's own `Content-Type`, `text/csv`, `application/gzip` or `application/zstd`, with `Content-Disposition: attachment; filename="audit-<ticker>-<from>-<to>.<suffix>"`, the two instants to the second in UTC, `20260813T220000Z`, and the ticker kept to `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`, any other character `_`. The header line names the fifty-one columns, `bookunix,role,marketdatakind,currunix,...`, and the file reads back through any handle named with the same suffix.
+`audit.csv`, `audit.csv.gz` and `audit.csv.zst` answer the rows `events` answers, unbounded, written by the [CSV medium](../media/csv.md) into a buffer whose media type is the suffix's - `text/csv` under the coding the name carries - and served under that coding's own `Content-Type`, `text/csv`, `application/gzip` or `application/zstd`, with `Content-Disposition: attachment; filename="audit-<ticker>-<from>-<to>.<suffix>"`, the two instants to the second in UTC, `20260813T220000Z`, and the ticker kept to `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`, any other character `_`. The header line names the fifty-one columns, `bookunix,role,marketdatakind,currunix,...`, and the file reads back through any handle named with the same suffix.
 
 ## The components
 

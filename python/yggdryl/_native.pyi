@@ -1964,28 +1964,20 @@ class Field:
     def arrow_scalar(
         self, value: object, *, safe: bool = True
     ) -> pyarrow.Scalar: ...
-    # `cast` reconciles the batch to this root, `transform` computes every
-    # column a `TRANSFORM:` declaration derives - a derived partition column
-    # among them - and `digest` fills every holder last, over the rows as they
-    # finally stand.
+    # The cast onto this root alone; `field.transform` and `field.digest` fill
+    # the columns a declaration derives or holds.
     def apply_arrow_batch(
         self,
         value: pyarrow.RecordBatch,
         *,
-        digest: bool = True,
-        transform: bool = True,
-        cast: bool = True,
         safe: bool = True,
         representation: Representation = "value",
     ) -> pyarrow.RecordBatch: ...
-    # The applied shape, derived from the two schemas without reading a row.
+    # The cast shape, derived from the two schemas without reading a row.
     def apply_arrow_schema(
         self,
         value: pyarrow.Schema,
         *,
-        digest: bool = True,
-        transform: bool = True,
-        cast: bool = True,
         safe: bool = True,
         representation: Representation = "value",
     ) -> pyarrow.Schema: ...
@@ -1993,9 +1985,6 @@ class Field:
         self,
         value: pyarrow.RecordBatchReader,
         *,
-        digest: bool = True,
-        transform: bool = True,
-        cast: bool = True,
         safe: bool = True,
         representation: Representation = "value",
     ) -> pyarrow.RecordBatchReader: ...
@@ -2230,7 +2219,8 @@ class Field:
     def with_partition_fields(self, names: Iterable[str]) -> Field: ...
     # Each entry a projection - its text (`venue`, `years(ts)`,
     # `minutes(ts, 15)`, `truncate(name, 4) as prefix`), a `Term`, or a
-    # `(term, alias)` pair; a derived entry adds a marked column its term computes.
+    # `(term, alias)` pair; a derived entry adds a marked column its term computes
+    # through `field.partition.apply_arrow_batch` - a read or a write only casts.
     def with_partition_by(
         self, entries: Iterable[str | Term | tuple[str | Term, str]]
     ) -> Field: ...

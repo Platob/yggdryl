@@ -648,38 +648,20 @@ Python spells the class accessor `into_field` because a `@scalar` class converts
 
 An instance of such a class - or of any dataclass or named tuple - crosses as the record of its value fields. The class's field names are resolved on its first instance and remembered, so every instance costs one attribute read per field and nothing is re-inferred per value. `Class.into_field().scalar(instance)` is its canonical row, and the Python records writers land a stream of instances through that same value contract. A member holds a bare value, so a union member is spelled as the pair naming the branch [the union's own rule](nested/union.md#scalar) chooses - a `list[int] | str` member's list stays a list - and an enum member is the value it names. `None` beside several value types is a union member of its own - `int | str | None` infers the members `int`, `str` and a `null` member named `NoneType`, appended last - so an instance holding `None` crosses as that member's absence and reads back as `None`; `int | None` stays a nullable `int64`. The writers read each instance, and each mapping or positional row, onto the field the write declares by name, a column the class does not declare being null and a member the field does not declare left unread, or onto the class's own field when none is declared. `read_records(Class)` reads each batch of the class's own layout - proven once per batch, child by child - a window of 1,024 rows at a time: each member's column is converted in one native call, an exact leaf or temporal value passes unchanged, an enum value is looked up once, and nested classes and lists of them are read from their own columns, while instances are built lazily one row at a time in declaration order. `json.loads(..., cls=Class)` and a batch of any other layout read through the plan the class compiles once for a mapping: a value that already is its annotation's exact class - `int`, `float`, `str`, `bool`, `bytes`, `Decimal`, `UUID`, `date`, one of them or `None`, a union member's, or an enum's member or value - reaches the constructor unchanged, a nested class's mapping is read by that class's own plan, and a list item by item. Every other value is cast losslessly or refused as before, naming the path it reached, at the row it was read in.
 
-## Applying a schema's declarations
+## Applying a schema
 
-A `Field` states more about a batch than its shape. A
-[`PARTITION:`](../holder/index.md#derived-partition-columns) declaration says a
-column is *derived* from another; a [`DIGEST:`](../hashing.md) role says a column *holds*
-the row's hash. `apply_arrow_batch` is the one entry point that asks every declaring protocol,
-in the order their answers depend on: `cast` reconciles the batch to this root, `partition`
-computes the derived columns, and `digest` fills the holders last, over the rows as they
-finally stand.
+`apply_arrow_batch` is the [cast](cast.md) onto this root and nothing else: a column the rows do not carry is all-null where nullable and refused by path where required ([Required columns](cast.md#required-columns)). A [`PARTITION:`](../holder/index.md#derived-partition-columns) or `TRANSFORM:` declaration says a column is *derived* from another and a [`DIGEST:`](../hashing.md) role says a column *holds* the row's hash, but both are metadata the cast carries, never columns it fills. The root's `transform` and `digest` views fill them - `as_transform().apply_arrow_batch`, then `as_digest().apply_arrow_batch`, so the digest reads the derived column - each walking the Structs it declares and leaving a column holding anything but its canonical default alone, so applying twice writes nothing the first pass already did.
 
-Each protocol walks the Structs it declares and leaves a column holding anything but its
-canonical default alone, so applying twice writes nothing the first pass already did.
+The cast is a property of two schemas and never of the data: `apply_arrow_schema` answers the target schema without reading a row, and `apply_arrow_reader` uses that to report the shape a stream will have before its first batch is pulled - a reader already of this root's schema comes back untouched. The plan is compiled from those two schemas once, so a stream pays for it once.
 
-The declarations name every column they add, so the applied shape is a property of two schemas
-and never of the data: `apply_arrow_schema` answers it without reading a row, and
-`apply_arrow_reader` uses that to report the shape a stream will have before its first batch is
-pulled - which is what lets a partitioned read be handed straight to a write. The whole applied
-plan is compiled from those two schemas once, so a stream pays for it once.
-
-`options` carries the [conversion](cast.md) the first step runs under. A required column refuses
-a null or a column the source does not carry by path ([Required columns](cast.md#required-columns)),
-and that holds after the protocols have run too. A field an enabled protocol materializes may
-arrive absent or holding its canonical default - closing that hole is the protocol's job, and it
-has not run yet - but the applied batch is checked again once every protocol is done, so a
-required column its protocol did not write is still refused by path.
+`options` (`safe` and `representation` in Python) carries the [conversion](cast.md) the cast runs under.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, Date32Array, RecordBatch};
+    use arrow_array::{Array, ArrayRef, Date32Array, Int32Array, RecordBatch};
     use yggdryl::{ArrowCastOptions, DataType, StructType};
 
     let mut year = DataType::Int32.nullable_field("year");
@@ -698,27 +680,32 @@ required column its protocol did not write is still refused by path.
         Arc::new(Date32Array::from(vec![19_723])) as ArrayRef,
     )])?;
 
-    let applied = root.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?;
+    // Applying the field is the cast alone: the columns the rows do not carry land null.
+    let applied = root.apply_arrow_batch(&batch, ArrowCastOptions::new())?;
 
     assert_eq!(applied.num_columns(), 3);
-    // The digest saw the derived column, because the partition step ran first.
-    assert_eq!(applied.column(2).null_count(), 0);
-    // Applying again writes nothing: every column now holds a written value.
-    assert_eq!(
-        root.apply_arrow_batch(&applied, true, true, true, ArrowCastOptions::new())?,
-        applied,
-    );
+    assert_eq!(applied.column(1).null_count(), 1);
+    assert_eq!(applied.column(2).null_count(), 1);
 
-    // The same shape, with no rows read and no batch pulled.
-    let shape =
-        root.apply_arrow_schema(batch.schema(), true, true, true, ArrowCastOptions::new())?;
+    // A declaration is filled by its own view, transform before digest.
+    let derived = root.as_transform().apply_arrow_batch(&batch)?;
+    let filled = root.as_digest().apply_arrow_batch(&derived)?;
+
+    assert_eq!(
+        filled.column(1).as_ref(),
+        &Int32Array::from(vec![2024]) as &dyn Array,
+    );
+    // The digest saw the derived column, because the transform ran first.
+    assert_eq!(filled.column(2).null_count(), 0);
+    // Filling again writes nothing: every column now holds a written value.
+    assert_eq!(root.as_digest().apply_arrow_batch(&filled)?, filled);
+
+    // The cast's shape, with no rows read and no batch pulled.
+    let shape = root.apply_arrow_schema(batch.schema(), ArrowCastOptions::new())?;
     assert_eq!(shape, applied.schema());
 
     let mut stream = root.apply_arrow_reader(
         yggdryl::arrow::batch_reader(batch.schema(), [batch]),
-        true,
-        true,
-        true,
         ArrowCastOptions::new(),
     )?;
     assert_eq!(arrow_array::RecordBatchReader::schema(&stream), shape);
@@ -745,18 +732,21 @@ required column its protocol did not write is still refused by path.
     )
     batch = pa.record_batch({"event": pa.array([19_723], pa.date32())})
 
+    # Applying the field is the cast alone: the columns the rows do not carry land null.
     applied = root.apply_arrow_batch(batch)
 
     assert applied.column_names == ["event", "year", "row_digest"]
-    assert applied.column("year").to_pylist() == [2024]
-    assert applied.column("row_digest").null_count == 0
-    assert root.apply_arrow_batch(applied).equals(applied)
+    assert applied.column("year").null_count == 1
+    assert applied.column("row_digest").null_count == 1
 
-    # Each step is separately switchable; a cast alone materializes and writes nothing.
-    cast_only = root.apply_arrow_batch(batch, digest=False, transform=False)
-    assert cast_only.column("year").to_pylist() == [None]
+    # A declaration is filled by its own view, transform before digest.
+    filled = root.digest.apply_arrow_batch(root.transform.apply_arrow_batch(batch))
 
-    # A declared non-null column its protocol did not write is refused by path.
+    assert filled.column("year").to_pylist() == [2024]
+    assert filled.column("row_digest").null_count == 0
+    assert root.digest.apply_arrow_batch(filled).equals(filled)
+
+    # A declared non-null column the rows do not carry is refused by path.
     required_year = Field("year", "int32", nullable=False)
     required_year.transform["expression"] = "year(event)"
     required_root = Field(
@@ -764,15 +754,14 @@ required column its protocol did not write is still refused by path.
         DataType.from_fields([Field("event", "date32", nullable=False), required_year]),
         nullable=False,
     )
-    # With the partition step on, the column it writes satisfies its own
-    # declaration; with it off, nothing is going to write it.
-    assert required_root.apply_arrow_batch(batch).num_columns == 2
     try:
-        required_root.apply_arrow_batch(batch, transform=False)
+        required_root.apply_arrow_batch(batch)
     except ValueError as error:
         assert "$.year" in str(error), error
     else:
-        raise AssertionError("an apply must refuse the unwritten required column")
+        raise AssertionError("a cast must refuse the missing required column")
+    # The transform view writes the column, so the refusal is gone.
+    assert required_root.transform.apply_arrow_batch(batch).num_columns == 2
 
     # The same shape, with no rows read and no batch pulled.
     assert root.apply_arrow_schema(batch.schema) == applied.schema
@@ -788,7 +777,7 @@ required column its protocol did not write is still refused by path.
 
 ## Serializing a schema
 
-One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_dict`) backs JSON, YAML, and TOML, so a schema embeds inline in any document. Each writer takes the shared [`Formatting`](../media/index.md#json) option, `indent` in Python.
+One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_dict`) backs JSON, YAML, and TOML, so a schema embeds inline in any document. Each writer takes the shared [`Formatting`](../media/json.md#write) option, `indent` in Python.
 
 === "Rust"
 
@@ -988,13 +977,14 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - `with_metadata=false` -> metadata dropped at every depth.
 - `return_equal` -> false for `show_diffs`, true for `show_diff`; only `show_diff` prints `✓ equal`.
 - diff paths -> `$`-rooted places such as `$.nullable` and `$.fields[2]`.
-- `apply_arrow_batch` -> `cast`, then `partition`, then `digest`; a later step reads what an earlier one wrote.
-- `apply_arrow_batch(digest=True, cast=False)` -> the digest step reconciles to the root for itself, because a holder is addressed by position.
-- a column holding anything but its canonical default -> left alone by every step, so applying twice changes nothing.
-- `apply_arrow_schema` -> the empty batch through the same steps; a declaration that cannot be satisfied fails here, not on the first batch.
-- a required field an enabled protocol materializes -> may arrive absent; every other declared non-null field is refused where it stands, and the applied batch is checked again once the protocols are done.
-- `apply_arrow_reader` with all three off -> the reader itself, unwrapped; otherwise the applied schema is derived once and reported before the first pull.
-- a batch that fails inside `apply_arrow_reader` -> that batch's `Err`; the reader is not fused after it.
+- `apply_arrow_batch` -> the cast onto this root alone; `TRANSFORM:`, `PARTITION:` and `DIGEST:` declarations ride along as metadata and fill nothing.
+- `as_transform().apply_arrow_batch`, then `as_digest().apply_arrow_batch` (Python `field.transform`, `field.digest`) -> fill the derived columns, then the holders, the digest reading what the transform wrote.
+- a column holding anything but its canonical default -> left alone by a protocol view, so applying twice changes nothing.
+- `as_digest().apply_arrow_batch` -> casts the batch to the root itself; a holder it finds absent lands as its canonical default for the fill to replace.
+- a derived or holder column the rows do not carry -> `apply_arrow_batch` lands it null where nullable and refuses it by path where required; nothing repairs it.
+- `apply_arrow_schema` -> the cast's target schema, no row read; a required column the source does not carry fails here, not on the first batch.
+- `apply_arrow_reader` on a reader already of this root's schema -> the reader itself, unwrapped; otherwise the target schema is derived once and reported before the first pull.
+- a batch that fails inside `apply_arrow_reader` -> that batch's `Err`, and the reader is fused after it (a `SerieReader`'s rule).
 
 ## Commands
 

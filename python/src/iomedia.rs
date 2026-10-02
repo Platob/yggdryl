@@ -2423,11 +2423,10 @@ impl PyRecordOptions {
     /// resource already holds. A layer whose target already matches costs
     /// nothing.
     ///
-    /// A field shapes rows by applying, not by casting: a declaration is a
-    /// cast *and* the `TRANSFORM:` and `DIGEST:` columns it derives, so a
-    /// declared derived column arrives written. The selection after it only
-    /// narrows, because deriving there would restore what it was asked to
-    /// drop.
+    /// A field shapes rows by the cast alone: a `TRANSFORM:`, `PARTITION:` or
+    /// `DIGEST:` declaration it carries is metadata the rows travel under,
+    /// never a column the shaping fills - `field.transform` and
+    /// `field.digest` fill those.
     #[pyo3(signature = (batch, existing = None))]
     fn apply_arrow_batch<'py>(
         &self,
@@ -3005,11 +3004,10 @@ impl PyTextOptions {
     /// resource already holds. A layer whose target already matches costs
     /// nothing.
     ///
-    /// A field shapes rows by applying, not by casting: a declaration is a
-    /// cast *and* the `TRANSFORM:` and `DIGEST:` columns it derives, so a
-    /// declared derived column arrives written. The selection after it only
-    /// narrows, because deriving there would restore what it was asked to
-    /// drop.
+    /// A field shapes rows by the cast alone: a `TRANSFORM:`, `PARTITION:` or
+    /// `DIGEST:` declaration it carries is metadata the rows travel under,
+    /// never a column the shaping fills - `field.transform` and
+    /// `field.digest` fill those.
     #[pyo3(signature = (batch, existing = None))]
     fn apply_arrow_batch<'py>(
         &self,

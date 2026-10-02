@@ -86,7 +86,7 @@ pub use selector::{BoundSelector, IntoSelector, Projection, Selector};
 pub use term::{Term, col, lit};
 pub(crate) use transform::{
     TRANSFORM_BY_KEY, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_KEYS,
-    TransformPlan, canonicalize_transform_expression, canonicalize_transform_function,
+    canonicalize_transform_expression, canonicalize_transform_function,
 };
 pub use user::{
     FunctionSignature, UserFunction, UserRef, lookup_function, register_function,

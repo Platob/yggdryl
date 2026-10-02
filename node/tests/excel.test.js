@@ -129,6 +129,23 @@ test('records round-trip through a workbook file', (t) => {
   assert.equal(file.readArrowReader(file.recordOptions().withSheet('Missing')).intoTable().numRows, 0)
 })
 
+test('a coded workbook name is refused at every door', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  // A workbook is a ZIP package deflated inside, so `.xlsx.gz` names a file
+  // no spreadsheet opens: the write refuses it before a byte is written, and
+  // a read and `Workbook.open` refuse it too.
+  for (const [name, codec] of [['trades.xlsx.gz', 'gzip'], ['trades.xlsx.zst', 'zstd']]) {
+    const refused = new RegExp(`expected an uncompressed xlsx handle, got ${codec} coding`)
+    const file = new IOBase(path.join(root, name))
+    assert.throws(() => file.overwriteArrowTable(trades()), refused)
+    assert.equal(fs.existsSync(path.join(root, name)), false)
+    assert.throws(() => file.readArrowReader(), refused)
+    assert.throws(() => Workbook.open(path.join(root, name)), refused)
+  }
+})
+
 test('a reference reads every spelling and is a value', () => {
   for (const value of ['B3', '$B$3', [2, 1], new CellRef('B3')]) {
     const reference = new CellRef(value)

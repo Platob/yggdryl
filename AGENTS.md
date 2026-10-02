@@ -141,12 +141,12 @@ step is run, never which step is skipped.
 | --- | --- |
 | datatype variant | `<type>.rs` at the root, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
 | logical name | `DataType::LOGICAL_NAMES` only; resolves to an existing datatype, adds no variant |
-| codec | `<name>.rs` at the root (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> the Compression section of `docs/media/index.md` |
+| codec | `<name>.rs` at the root (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> a section of `docs/media/compression.md` |
 | string leaf | a `StringType` variant + `DataTypeId` appended + `string.rs` (spellings, the number rule, Arrow storage, grammar, value) + the charset's own root file - `utf8.rs`, `ascii.rs` or `cp1252.rs` - for the leaf's constructor, validation and reading -> tests -> bindings -> `docs/types/` |
 | byte leaf | a `BytesType` variant + `DataTypeId` appended + `bytes.rs` (spellings, the number rule, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
-| charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant; a charset that gets string leaves is a root file of its own beside `utf8.rs`, `ascii.rs` and `cp1252.rs`, holding its codec and those leaves -> interop both directions -> bench -> bindings -> the Charsets section of `docs/media/index.md` |
+| charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant; a charset that gets string leaves is a root file of its own beside `utf8.rs`, `ascii.rs` and `cp1252.rs`, holding its codec and those leaves -> interop both directions -> bench -> bindings -> `docs/media/charsets.md` |
 | storage backend | `<name>/` at the root with a location/container/leaf trio over the root traits - `<Name>Path`, `<Name>Folder`, `<Name>File` over a host tree; `<Name>Path`, `<Name>Node`, `<Name>Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
-| media format | `<name>/` at the root, free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
+| media format | `<name>/` at the root, free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> `docs/media/<name>.md` - Overview, Read, Write - with its entry in the `Media` nav and its row in the overview's table |
 | metadata property | a protocol view keyed `<SCHEME>:<property>`, the scheme upper case; never a new `Field` accessor |
 | binding method | core method first; the binding only infers, coerces, redirects - plus a parity test, a boundary benchmark, a docs entry |
 | Arrow collection verb | a `Serie` verb in `serie.rs` or `serie/arrow.rs`, a `ChunkedSerie` verb in `chunked_serie.rs`, or a node or rule of `ArrowCastPlan` in `cast.rs` - never a function in `arrow/`, a method on `DataTypeValue`, `FieldValue` or `Field`, or a helper in the calling module -> `rust/tests/serie/<file>.rs`, `rust/tests/root/chunked_serie.rs` or `rust/tests/root/cast.rs`, plus an `allocations` row at two corpus sizes -> both bindings' `Serie`, `ChunkedSerie`, `SerieReader` or `ArrowCastPlan` -> `docs/types/serie.md`, `docs/types/chunked-serie.md` or `docs/types/cast.md` |
@@ -323,7 +323,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `scalar.rs` | `Scalar`, the one value every part of the project speaks; `arithmetic.rs` checked arithmetic over exact natives, `path.rs` the one allocation-free value path every recursive walk uses, `pretty.rs` the indented rendering of a schema |
 | `value/` | what a datatype, a field and a value each owe the root that holds them, and what the leaves of one family share: the `Value` contract, `DataTypeValue` (its `kind` the family whose range its `id` is in), `FieldValue`, `FieldSidecar` and the payload datatypes `GeometryType`, `GeographyType`, `UnionType`, `RunEndType`, the leaf contracts `IntegerValue`, `FloatingValue`, `DecimalValue`, `TemporalValue`, `GeospatialValue`, `CodeValue`, `EnumValue` and `NestedValue` - declared here, implemented beside each leaf - and `SerieValue`, what every column leaf of `Serie` owes, its `id` and `kind` its field's, with `Children::Column`/`ColumnRows` walking a column's rows as `Cow`; a family is no type - it is the `DataTypeId` byte range its `DataTypeKind` owns, and a value is its leaf; `canonical.rs` the schema-directed validation and canonicalization of row values. The module is private, and every name is `yggdryl::<Name>` at the crate root |
 | `typed.rs` | the typed markers and the field-borrowing values: `TypedField<K>`, `FieldScalar<'_>`, `UncheckedFieldScalar<'_>`, `FieldRecord<'_>` and the prebuilt shared fields |
-| `cast.rs` | the one recursive cast engine, and it is `Serie`'s: the crate-private `ArrayCastPlan` node tree - exact, bit, kernel, byte bridge, the ingest and render kinds, and the nested and encoded arms - with the kernels it calls; the public `ArrowCastPlan`, one `Field`-to-`Field` cast compiled once, applied to a `Serie` - or, by `apply_chunked`, to every chunk of a `ChunkedSerie` - certifying per node which leaves it proved, with a transport face (`reconcile_batch`, `reconcile_array`) for batches that are only moved; `ArrowCastOptions`; and the crate's `PlanCache`, one plan per distinct source schema for a loop whose batches can change schema. `budget.rs` holds the bounded scratch and output reservations it draws on. Nothing reaches the engine except `Serie::cast`, the `Serie` and `ChunkedSerie` Arrow doors, `ChunkedSerie::cast`, `SerieReader`, a held `ArrowCastPlan`, and the crate's stage plans (`AppliedPlan` and the write session's shaping) |
+| `cast.rs` | the one recursive cast engine, and it is `Serie`'s: the crate-private `ArrayCastPlan` node tree - exact, bit, kernel, byte bridge, the ingest and render kinds, and the nested and encoded arms - with the kernels it calls; the public `ArrowCastPlan`, one `Field`-to-`Field` cast compiled once, applied to a `Serie` - or, by `apply_chunked`, to every chunk of a `ChunkedSerie` - certifying per node which leaves it proved, with a transport face (`reconcile_batch`, `reconcile_array`) for batches that are only moved; `ArrowCastOptions`; and the crate's `PlanCache`, one plan per distinct source schema for a loop whose batches can change schema. `budget.rs` holds the bounded scratch and output reservations it draws on. Nothing reaches the engine except `Serie::cast`, the `Serie` and `ChunkedSerie` Arrow doors, `ChunkedSerie::cast`, `SerieReader`, a held `ArrowCastPlan`, and the crate's stage plan (the write session's shaping) |
 | `integer.rs`, `floating.rs`, `decimal.rs`, `boolean.rs`, `bytes.rs`, `uuid.rs`, `geospatial.rs`, `enums.rs`, `structure.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `version.rs` | one family per file, each the whole of its datatype, field and scalar; `decimal.rs` holds the four parameterized widths and, beside them, the two fixed leaves at scale eighteen - `Decimal` over `decimal128(38, 18)` and `BigDecimal` over `decimal256(76, 18)`, each a datatype, field and scalar of its own under its `yggdryl.` extension name; `int256.rs` holds the `i256`/`u256` pair the exact decimals compute in, the one type file not named for its type because a module and a struct share one namespace at the root; `wkb.rs` the Well-Known Binary reader three types need; `regex.rs` the Struct inference from named captures |
 | `serie.rs` + `serie/` | `Serie`, the fourth side of the value model: many values, as a schema-free `Run` or as a column - the Arrow buffers of one `Field`, holding no `Scalar`, nested as `Serie` children all the way down - with the collection verbs (`scalar`, `get`, `rows`, `iter`, `slice`, `splice` and the writes spelled over it: `set`, `push`, `insert`, `remove`, `pop`, `truncate`, `clear`, `extend`, `extend_from_serie`, `resize`, `set_child`, `set_cell`), identity over the rows alone, serde, a flat root of one variant per storage layout named as the leaf that holds it (`Utf8String`, `DurationMillisecond`, `IntervalDayTime`) - a variant names the layout, never the datatype, because one layout serves several (`Utf8String` every string leaf laid out as UTF-8, `DurationSecond` both widths), so a column's datatype is its field's, `SerieValue::id`; the five serie layouts each serve one datatype and are named as it is - `Serie`, `SerieView`, `FixedSizeSerie`, `LargeSerie`, `LargeSerieView` - each holding its `<Variant>Serie` leaf (`SerieSerie`, `SerieViewSerie`, `FixedSizeSerieSerie`, `LargeSerieSerie`, `LargeSerieViewSerie`, over the `OffsetSerie<O>`/`OffsetViewSerie<O>` shapes whose offset width is an `OffsetLeaf`), so `Serie::as_serie` narrows a column to `SerieSerie` where `Scalar::as_serie` borrows the whole `Serie` a value holds; the codes, `Version`, `Url`, `Urn`, `Timezone`, `MimeType`, `MediaType`, `Uuid`, `Geometry`, `Geography` and `SortedMap` keep variants of their own - and the `as_<leaf>`/`get_<leaf>_mut` narrowings, and, crate-private, the `is_string_storage`/`is_byte_storage` predicates the text body readers and the FIX payload guard on, and the `value_bytes` those readers and the digest feed - which matches the same storage variants by name - read per row; `serie/datatype.rs` is the family's datatype and field - `SerieType`, the five serie layouts over one item field, and `SerieField` - and `Run`, the schema-free ordered run a row canonicalizes to: a window - a start and a length - over one shared `Arc<[Scalar]>`, one allocation to build, so a slice of a run shares its values and a slice of a slice reaches them with the offsets summed, and the one leaf of `Serie` that declares no field; `serie/` otherwise holds `order.rs` - the ordering, uniqueness, selection and grouping verbs (`sort_indices`, `is_sorted`, `is_unique`, `unique_count`, `partition_by`, `window_by`, `memory_size`, the `into_<state>`/`as_<state>` pairs) over one comparison ladder - Arrow's comparator over buffers that order as their values, a record compared child by child with each child on its own rung, and the values' own order - with the crate-private `window_starts` every `window_by` cuts by: one comparator and one bit per row, the first descent read in the same pass, and, asked to regroup, the runs sorted stably by key - and one leaf per Arrow layout - `primitive.rs`, `boolean.rs`, `null.rs`, `bytes.rs` with its `string.rs` aliases, `structure.rs`, `sequence.rs` (the five serie layouts), `mapping.rs`, `variant.rs`, `enums.rs`, `runend.rs`, `union.rs` - each lending its buffers and writing them in place through prove-check-write - a primitive, boolean or byte leaf reading its own typed buffer through the reading its field resolved where it landed, and a string or byte leaf's `value(i)` lending a run's bytes where they lie across offsets, views and fixed widths with no value built - `layout.rs` the buffer edits they share, `value.rs` the one codec between a row and an Arrow slot (named by nothing outside `serie/`, `cast.rs` and `temporal.rs`), and `arrow.rs` the one door buffers take in and out (`from_arrow_array`, `from_scalars`, `empty`, `with_capacity`, the batch and reader pairs, `SerieReader::from_serie` and `SerieReader::from_chunked`) - and the stream's windows: `SerieReader::window_by(by, sorted)` answering `SerieReaderWindows`, one lazy `SerieReader` per window of equal adjacent keys pulled through one walk holding at most one batch, its key record and one bit per row of it, windows read in order (a window its walk passed refuses once, naming it), `sorted` verifying the keys arrive in order and refusing the first going backwards by batch and row, `field` and `static_field` known before a pull; `SerieReader::static_values` the window's record - the windowed reader's own cells but `windownum` and `rownum`, the key cells, `windownum`, and `rownum` absolute in the stream - kept by `cast`, dropped at `into_arrow_reader`, and stated by nothing but a window - proving the layout against the field's projection, absence on the validity words, and - only where the layout is not the datatype's whole contract (`DataType::layout_is_contract`) - each row once, a refusal naming the landed row and the path below it (`$[3].alive[0].miccode`). `SerieValue`, the contract every column leaf owes, is in `value/` |
 | `chunked_serie.rs` | `ChunkedSerie`: many `Serie` columns under one field, held apart - the chunked array and the table - each chunk a column of exactly that field, proven at its own door, with the chunk ends kept beside the chunks so a row is a binary search and the length a read; the row verbs read across the chunks, a child is the child of every chunk, identity is the rows alone; `from_arrow_arrays`/`into_arrow_arrays` cross a chunked array one array per chunk, `from_arrow_reader`/`into_arrow_reader` a table one batch per chunk, `cast` is one plan over every chunk and `into_serie` the one join; `SerieReader::from_chunked`, beside `from_serie` in `serie/arrow.rs`, streams its chunks; the ordering verbs `Serie` answers, across the chunks - `is_sorted` reading each chunk and every chunk edge with no join, `into_reversed`, `into_filtered` and `partition_by` chunk by chunk and kept apart, `sort_indices`, `is_unique`, `unique_count`, `into_sorted`, `into_unique` and `into_taken` the one join then the verb, `memory_size` the chunks summed, and the `as_*` writes replacing the chunks in place; `window_by(by, sorted)` the windows `Serie::window_by` cuts the joined column into, as `Vec<(Scalar, ChunkedSerie)>` of zero-copy chunk pieces - a run crossing a chunk edge one window, the edge compared in place against the pending key so a continuing run builds no key, `sorted` regrouping runs and never rows, nothing joined - and stating no record, the key the pair's first half and the place its index, so a key cell named `windownum` or `rownum` is taken |
@@ -572,7 +572,7 @@ Equivalences a change keeps lossless, in both directions:
   `into_arrow_arrays` and `from_arrow_reader`/`into_arrow_reader`, one chunk
   per array or batch, by sharing buffers; `into_serie` is the one join.
 - a datatype's canonical default is `default_value`/`is_default_value` - the
-  value a declaring protocol's `apply_arrow_batch` leaves alone.
+  value a declaring protocol's `apply_arrow_batch` replaces.
 - widths: a family constructor picks the physical width once, and shared logic
   reads across widths with `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
   `temporal_unit`/`temporal_timezone`/`temporal_count`; which family is the
@@ -638,7 +638,7 @@ never to a wrapper's own buffer.
 | accept | `from_str`/`from_*`, `Uri::from_path`, `impl Into<Holder>`, `MimeType`/`MediaType`, `Coded::infer`, `text::io::Plan::infer`, `RecordOptions::for_media_type`, binding coercion (§3, §4) | every documented spelling of one thing, each listed and tested |
 | resolve | `DataType::from_str`, `Field::from_str`, `DataType::LOGICAL_NAMES`, `Scalar::dtype`, `inferred_*_field`, `DataType::scalar`/`Field::scalar` | one exact answer or a typed error, computed once |
 | carry | `DataType`, `Field`, `Scalar`, `TypedField<K>`, `FieldScalar<'_>`/`FieldRecord<'_>`, the dispatch enums | the proof travels with the value; no later caller re-derives it |
-| exploit | `ArrowCastPlan::compile`/`preflight`/`apply`, `SerieReader`, the crate's `PlanCache` and stage plans, the leaf reads (`as_<leaf>`, `values`, `value`, `offsets`, `nulls`) and the reading each leaf resolved where it landed, cached Arrow projections, `as_i128`/`as_u128`/`as_f64`/`as_decimal`/`temporal_*`, `default_value` | schema-dependent work leaves the per-item path |
+| exploit | `ArrowCastPlan::compile`/`preflight`/`apply`, `SerieReader`, the crate's `PlanCache` and stage plan, the leaf reads (`as_<leaf>`, `values`, `value`, `offsets`, `nulls`) and the reading each leaf resolved where it landed, cached Arrow projections, `as_i128`/`as_u128`/`as_f64`/`as_decimal`/`temporal_*`, `default_value` | schema-dependent work leaves the per-item path |
 
 - Precedence, where the caller did not say: an explicit argument, then a declared
   `Field`, `MediaType`, or path suffix, then one bounded content read - never a
@@ -747,7 +747,7 @@ all three run. A held column is a `Serie`, a held chunked column or table a
 - **One plan per stream, bind or write session.** A `Serie` Arrow door or
   `Serie::cast` inside a batch loop compiles per batch and is a defect. The
   loop holds a `SerieReader`, an `ArrowCastPlan`, or a stage plan
-  (`AppliedPlan`, the write session's shaping); a bound expression compiles its
+  (the write session's shaping); a bound expression compiles its
   casts at bind; a loop whose batches may change schema holds the crate's
   `PlanCache`, which recompiles only when the source fields change. Its
   `allocations` row proves a thousand batches cost a thousand times one.
@@ -1259,9 +1259,13 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   argument; generic `write_*` takes an `IOMode` and redirects to specialized core
   paths.
 - Plain-text rows are the fifteen element and event columns `ElementColumn::ALL` and `EventColumn::ALL` name -
-  the line as the event it is, `currunix` first and `state` last - then
-  required `body: utf8`, then one column per row-header capture, a capture
-  named `execunix` an ordinary one: a line is no market element. The event
+  the line as the event it is, the six element columns from `curruuid`
+  first, then the nine event columns from `currunix` to `state` last - then
+  required `body: utf8`, then one column per row-header capture that feeds
+  no event fact: a capture named `state`, `creaunix`, `recdunix`,
+  `exprunix`, `prevunix`, `snapunix` or `prevuuid`, or `mtime` under
+  `parse_mtime`, states that fact in the event's own column, and a capture
+  named `execunix` is an ordinary one: a line is no market element. The event
   states every fact a column used to repeat and no column repeats one: the
   object a line came from is `crosscode`, so `crosshashcode` is the XXH3-64 of
   that URL string and `crossuuid` derives from it; the row number under
@@ -1327,12 +1331,15 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   the whole declaration and an Iceberg table keeps a derived value in its
   manifest. `apply_arrow_batch` is the one verb every declaring protocol
   answers - it walks the Structs that protocol declares and leaves a column
-  holding anything but its canonical default alone. `Field` runs them in
-  dependency order: cast, transform, digest. `Plan::from_field` moves
-  `SORT:by` into its `order by` section and writes it back; an Iceberg spec
-  and sort order read the two keys (`PartitionSpec::from_schema`,
-  `SortOrder::from_schema`) and write them (`mark_partitions`), so
-  `Table::schema()` reports both.
+  holding anything but its canonical default alone - and a caller asks each
+  protocol it wants, transform before digest. `Field`'s own
+  `apply_arrow_batch` is the cast alone, as is every read and write a
+  declared or stored field shapes: a derived or holder column the rows do
+  not carry lands null, or is refused by path where it is required.
+  `Plan::from_field` moves `SORT:by` into its `order by` section and writes
+  it back; an Iceberg spec and sort order read the two keys
+  (`PartitionSpec::from_schema`, `SortOrder::from_schema`) and write them
+  (`mark_partitions`), so `Table::schema()` reports both.
 
 ### Digests
 
@@ -1366,8 +1373,8 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
 
 ### Iceberg
 
-The Iceberg section of `docs/media/index.md` documents the format surface; these bind a
-change to `iceberg/`.
+`docs/media/iceberg.md` documents the format surface; these bind a change to
+`iceberg/`.
 
 - A table is a folder reached only through `IOBase`: metadata = core JSON,
   manifests = core Avro, data = core Parquet, and no Iceberg/Avro/catalog
@@ -1391,7 +1398,7 @@ change to `iceberg/`.
 
 ## Charsets
 
-The Charsets section of `docs/media/index.md` documents the surface; these bind a change to `charset.rs`,
+`docs/media/charsets.md` documents the surface; these bind a change to `charset.rs`,
 `charset/`, the three charset files `utf8.rs`, `ascii.rs` and `cp1252.rs`, and
 every byte that becomes text anywhere else.
 
@@ -1655,7 +1662,7 @@ declares.
 
 ## Structured codecs
 
-The JSON, YAML, TOML, and XML sections of `docs/media/index.md` document the
+The JSON, YAML, TOML, and XML pages under `docs/media/` document the
 surface; these bind a change to `json/`, `toml/`, `yaml/`, `xml/` and the codec
 machinery they share in `text/`.
 
@@ -1733,9 +1740,8 @@ machinery they share in `text/`.
   value it cannot convert by that value whatever `safe` says, and a null, an
   empty text cell entering a non-text column and a column the source does not
   carry by path, never writing its canonical default. The one repair is
-  internal: a column a declaring protocol fills after the cast - a digest
-  holder, a `TRANSFORM:` or `PARTITION:` column - may arrive absent for that
-  protocol, and the finished batch is checked again. `Representation::Bits`
+  internal: a holder the digest fill writes after the cast that lands its
+  batch may arrive absent for that fill. `Representation::Bits`
   shares the value buffer between two fixed-width layouts of one byte width;
   it is a preference, so an unlike pair or a rule-governed target converts as
   it always did.
@@ -2036,21 +2042,26 @@ section change together. What binds every page:
   binding fact is documented on the page owning the vocabulary it belongs to,
   in that page's Python or JavaScript tab, so one operation is described once
   and every language spelling of it sits beside the others.
-  `docs/media/index.md` is the one page for every media type, content coding
-  and charset: a Read and write overview (native rows, then Arrow batches, then
-  `RecordOptions`), then one short section per media type - IPC, Parquet, Avro,
-  plain text, JSON, YAML, TOML, XML, XML for Analysis, Excel, Iceberg - then Compression (gzip, zlib, zstd)
-  and Charsets. Each section is a sentence or two and a tabbed example; the
-  example carries the detail, not the prose. A section's benchmarks sit in its
-  own `<section> performance` subsection, never in a shared one.
-  `docs/holder/index.md` is the same kind of page for storage: Handles
+  `docs/media/` is a theme of one page per medium under one `Media` nav
+  section: `index.md` is the overview - the table of every medium, then the
+  surface they all share: Read, Write with its three intents, and
+  `RecordOptions` - and each media type has its page -
+  `ipc.md`, `parquet.md`, `avro.md`, `text.md`, `csv.md`, `json.md`,
+  `yaml.md`, `toml.md`, `xml.md`, `xmla.md`, `excel.md`, `iceberg.md`,
+  `http.md` - beside `compression.md` (gzip, zlib, zstd) and `charsets.md`.
+  A media page reads Overview - a contract table: what declares it, its
+  build, its doors in each language, its settings and refusals - then Read
+  and Write, each a short paragraph and a tabbed example that carries the
+  detail, then the sections only that medium has, then its own Performance
+  section, never a shared one.
+  `docs/holder/index.md` is one page for storage: Handles
   (`Holder`, roles, delegation), then the `IOBase` surfaces - Bytes, Values,
   Records, Partitions, Call counts - then one section per backend: Buffer,
   Local, Filesystems, Object stores, Buffered, ZIP. A section may open with a
   `text` block of the few public signatures a caller implements or reaches for
   first, each with a one-line comment on what it promises; it is never the
   whole surface, which rustdoc owns.
-  `docs/types/` is a theme of the same kind: the Core pages - `datatype.md`,
+  `docs/types/` is a theme like Media: the Core pages - `datatype.md`,
   `field.md`, `scalar.md`, `cast.md`, `paths.md`, `protocol.md` - then one
   subsection per family (`numeric/`, `temporal/`, `text/`, `codes/`, `nested/`,
   `geospatial/`), each an `index.md` for what the family shares and one page per

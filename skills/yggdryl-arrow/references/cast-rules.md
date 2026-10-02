@@ -28,9 +28,10 @@ references; full detail at https://platob.github.io/yggdryl/types/cast/.
 | `null` datatype, or an encoding whose values are all null | null | kept: null is that datatype's canonical default, not an absence |
 
 A required column **never** writes its canonical default in place of a value
-it could not read. The only repair is internal: a column a declaring protocol
-fills after the cast (a digest holder, a `TRANSFORM:` or `PARTITION:` column)
-may arrive absent, and the finished batch is checked again.
+it could not read. The only repair is internal: a digest holder, which the
+digest view fills after the cast that lands its batch, may arrive absent for
+that fill. A `TRANSFORM:` or `PARTITION:` column is refused by path like any
+required column.
 
 ## Targets
 

@@ -315,9 +315,6 @@ fn prepare_leaf_arrow_write(
         let target = crate::csv::write_target(handle, csv, &incoming)?.unwrap_or(incoming);
         let completed = target.apply_arrow_reader(
             shaped,
-            true,
-            true,
-            true,
             crate::ArrowCastOptions::new().with_safe(options.safe()),
         )?;
         let batches = options.limit_arrow_reader(completed)?;
@@ -935,16 +932,10 @@ pub(crate) fn leaf_reader(
         RecordOptions::Excel(excel) => crate::excel::read_batch_reader(handle, declared, excel)?,
     };
     match declared {
-        // A declared root is applied, not merely cast: a `PARTITION:` or
-        // `DIGEST:` column the declaration derives arrives written rather than
-        // arriving as the default the cast materialized and nothing filled. A
-        // root that derives nothing applies as the cast alone, keeping the
-        // exact-schema short-circuit a plain read has always had.
+        // A declared root is the cast alone, and an exact schema hands the
+        // reader back untouched.
         Some(field) => Ok(field.apply_arrow_reader(
             reader,
-            true,
-            true,
-            true,
             crate::ArrowCastOptions::new().with_safe(options.safe()),
         )?),
         None => Ok(reader),

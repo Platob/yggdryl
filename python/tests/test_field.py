@@ -990,31 +990,30 @@ def _applied_root() -> Field:
     )
 
 
-def test_field_apply_arrow_batch_runs_every_protocol_in_order() -> None:
+def test_field_apply_arrow_batch_casts_and_fills_no_declared_column() -> None:
     root = _applied_root()
     batch = pa.record_batch({"event": pa.array([19_723], pa.date32())})
 
-    applied = root.apply_arrow_batch(batch)
+    cast = root.apply_arrow_batch(batch)
 
-    assert applied.column_names == ["event", "year", "row_digest"]
-    assert applied.column("year").to_pylist() == [2024]
-    # The digest ran last, over the rows the partition step had completed.
-    assert applied.column("row_digest").null_count == 0
-    # Every column now holds a written value, so a second pass writes nothing.
-    assert root.apply_arrow_batch(applied).equals(applied)
+    # The cast lays every declared column out and writes none of them.
+    assert cast.column_names == ["event", "year", "row_digest"]
+    assert cast.column("year").to_pylist() == [None]
+    assert cast.column("row_digest").null_count == 1
 
 
-def test_field_apply_arrow_batch_runs_only_what_it_is_asked_for() -> None:
+def test_field_apply_arrow_batch_leaves_the_protocols_to_their_views() -> None:
     root = _applied_root()
     batch = pa.record_batch({"event": pa.array([19_723], pa.date32())})
 
-    cast_only = root.apply_arrow_batch(batch, digest=False, transform=False)
-    assert cast_only.column("year").to_pylist() == [None]
-    assert cast_only.column("row_digest").null_count == 1
-
-    partitioned = root.apply_arrow_batch(batch, digest=False)
-    assert partitioned.column("year").to_pylist() == [2024]
-    assert partitioned.column("row_digest").null_count == 1
+    derived = root.transform.apply_arrow_batch(root.apply_arrow_batch(batch))
+    assert derived.column("year").to_pylist() == [2024]
+    assert derived.column("row_digest").null_count == 1
+    # The digest runs last, over the rows the transform completed.
+    filled = root.digest.apply_arrow_batch(derived)
+    assert filled.column("row_digest").null_count == 0
+    # A batch of the root's own schema casts to itself.
+    assert root.apply_arrow_batch(filled).equals(filled)
 
 
 def test_partition_apply_arrow_batch_computes_a_declared_column() -> None:
@@ -1093,9 +1092,7 @@ def test_field_apply_arrow_schema_answers_the_shape_without_reading_a_row() -> N
 
     with pytest.raises(ValueError, match="event"):
         root.apply_arrow_schema(
-            pa.schema([pa.field("price", pa.int64(), nullable=False)]),
-            digest=False,
-            cast=False,
+            pa.schema([pa.field("price", pa.int64(), nullable=False)])
         )
 
 
@@ -1112,8 +1109,9 @@ def test_field_apply_arrow_reader_reports_its_schema_before_the_first_batch() ->
     assert applied.schema.names == ["event", "year", "row_digest"]
     table = applied.read_all()
     assert table.num_rows == 2
-    assert table.column("year").to_pylist() == [2024, 2024]
-    assert table.column("row_digest").null_count == 0
+    # The reader casts; the transform and digest views fill.
+    assert table.column("year").null_count == 2
+    assert table.column("row_digest").null_count == 2
 
 
 def test_protocol_view_http_covers_https_and_ignores_header_case() -> None:

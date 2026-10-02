@@ -199,7 +199,23 @@ nav:
       - Value stream: types/value-stream.md
     - Playground: types/playground.md
   - Holder: holder/index.md
-  - Media: media/index.md
+  - Media:
+    - media/index.md
+    - Arrow IPC: media/ipc.md
+    - Parquet: media/parquet.md
+    - Avro: media/avro.md
+    - Plain text: media/text.md
+    - CSV: media/csv.md
+    - JSON: media/json.md
+    - YAML: media/yaml.md
+    - TOML: media/toml.md
+    - XML: media/xml.md
+    - XML for Analysis: media/xmla.md
+    - Excel: media/excel.md
+    - Iceberg: media/iceberg.md
+    - HTTP messages: media/http.md
+    - Compression: media/compression.md
+    - Charsets: media/charsets.md
   - URI:
     - uri/index.md
     - Path: uri/path.md

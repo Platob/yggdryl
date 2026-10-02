@@ -166,7 +166,7 @@
 
 ## Columns
 
-Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::column`), `MarketColumn` (`graph::market_column`), `OperationColumn` (`graph::operation_column`) - name every fact the traits answer, one column each, so a [text line](../media/index.md#plain-text)'s batch, a [FIX row](../fix/capture.md#the-crates-own-columns) and a [chained message](../fix/lifecycle.md#a-chain-carries-its-creation-and-its-history) join without mapping.
+Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::column`), `MarketColumn` (`graph::market_column`), `OperationColumn` (`graph::operation_column`) - name every fact the traits answer, one column each, so a [text line](../media/text.md)'s batch, a [FIX row](../fix/capture.md#the-crates-own-columns) and a [chained message](../fix/lifecycle.md#a-chain-carries-its-creation-and-its-history) join without mapping.
 
 | Enum | Columns, in `ALL` order |
 | --- | --- |

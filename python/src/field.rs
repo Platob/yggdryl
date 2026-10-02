@@ -453,25 +453,16 @@ impl PyField {
         Ok(scalar)
     }
 
-    /// Applies this schema's metadata-declared columns to one `RecordBatch`.
+    /// Casts one `RecordBatch` onto this struct root.
     ///
-    /// `cast` reconciles the batch to this root first, `transform` computes
-    /// every column a `TRANSFORM:` declaration derives - a derived partition
-    /// column among them - and `digest` fills every holder last,
-    /// over the rows as they finally stand. Each protocol walks the declared Structs beneath this
-    /// root and leaves a column holding anything but its canonical default
-    /// alone, so applying twice writes nothing the first pass already did.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
-    // The signature is the Python keyword surface: one parameter per keyword,
-    // so it is as wide as the contract is and cannot be narrowed here.
-    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    /// The cast alone: a `TRANSFORM:`, `PARTITION:` or `DIGEST:` declaration
+    /// is metadata the cast moves, never a column it fills - the protocol
+    /// views (`field.transform`, `field.digest`) fill those.
+    #[pyo3(signature = (value, *, safe=true, representation="value"))]
     fn apply_arrow_batch<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
-        digest: bool,
-        transform: bool,
-        cast: bool,
         safe: bool,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
@@ -479,27 +470,20 @@ impl PyField {
         let batch = record_batch_from_pyarrow(value)?;
         let applied = self
             .inner
-            .apply_arrow_batch(&batch, digest, transform, cast, options)
+            .apply_arrow_batch(&batch, options)
             .map_err(value_error)?;
         batch_to_pyarrow(py, applied)
     }
 
     /// Answers the `pyarrow.Schema` `apply_arrow_batch` produces, with no rows.
     ///
-    /// The declarations name every column they add, so the applied shape is a
-    /// property of two schemas: nothing is decoded, and a declaration that
-    /// cannot be satisfied fails here rather than on the first batch.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
-    // The signature is the Python keyword surface: one parameter per keyword,
-    // so it is as wide as the contract is and cannot be narrowed here.
-    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    /// The cast is compiled from the two schemas, so nothing is decoded, and
+    /// a source that cannot be cast fails here rather than on the first batch.
+    #[pyo3(signature = (value, *, safe=true, representation="value"))]
     fn apply_arrow_schema<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
-        digest: bool,
-        transform: bool,
-        cast: bool,
         safe: bool,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
@@ -507,26 +491,21 @@ impl PyField {
         let schema = Arc::new(ArrowSchema::from_pyarrow_bound(value)?);
         let applied = self
             .inner
-            .apply_arrow_schema(schema, digest, transform, cast, options)
+            .apply_arrow_schema(schema, options)
             .map_err(value_error)?;
         arrow_schema_to_pyarrow(py, &applied)
     }
 
-    /// Wraps a `pyarrow.RecordBatchReader` so every batch it yields is applied.
+    /// Wraps a `pyarrow.RecordBatchReader` so every batch it yields is cast.
     ///
-    /// The applied schema is derived once, so the returned reader answers it
-    /// before the first batch is pulled and can be handed straight to a write.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
-    // The signature is the Python keyword surface: one parameter per keyword,
-    // so it is as wide as the contract is and cannot be narrowed here.
-    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    /// The cast is compiled once, so the returned reader answers this root's
+    /// schema before the first batch is pulled and can be handed straight to
+    /// a write.
+    #[pyo3(signature = (value, *, safe=true, representation="value"))]
     fn apply_arrow_reader<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
-        digest: bool,
-        transform: bool,
-        cast: bool,
         safe: bool,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
@@ -534,7 +513,7 @@ impl PyField {
         let reader = batch_reader_from_arrow_reader(value)?;
         let applied = self
             .inner
-            .apply_arrow_reader(reader, digest, transform, cast, options)
+            .apply_arrow_reader(reader, options)
             .map_err(value_error)?;
         batch_reader_to_pyarrow(py, applied)
     }
@@ -1623,8 +1602,9 @@ impl PyField {
     /// `minutes(ts, 15)`, `truncate(name, 4) as prefix`), a `Term`, or a
     /// `(term, alias)` pair. A bare column is an identity partition and is
     /// marked; any other entry adds a marked column named by its alias, else
-    /// `{source}_{function}` (`ts_year`, `ts_minutes`), computed from the
-    /// rows by its term. The declaration is stored as `PARTITION:by`, and an
+    /// `{source}_{function}` (`ts_year`, `ts_minutes`), which its term
+    /// computes through `field.partition.apply_arrow_batch` - a read or a
+    /// write only casts. The declaration is stored as `PARTITION:by`, and an
     /// empty list removes it.
     fn with_partition_by(&self, entries: &Bound<'_, PyAny>) -> PyResult<Self> {
         let projections = crate::expression::projections_from_iterable(entries, "entries")?;
@@ -3272,9 +3252,6 @@ impl PyProtocolField {
     /// twice writes nothing the first pass already did.
     ///
     /// Every other protocol's view raises `TypeError` naming its own scheme.
-    // The signature is the Python keyword surface: one parameter per keyword,
-    // so it is as wide as the contract is and cannot be narrowed here.
-    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
     fn apply_arrow_batch<'py>(
         &self,
         py: Python<'py>,

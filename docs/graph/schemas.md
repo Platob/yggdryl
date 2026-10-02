@@ -1,6 +1,6 @@
 # Row schemas
 
-The crate generates three row shapes: a [plain-text line](../media/index.md#plain-text), a [FIX message](../fix/capture.md) and a [`marketdata` row](market-data.md). All three open with the same prefix:
+The crate generates three row shapes: a [plain-text line](../media/text.md), a [FIX message](../fix/capture.md) and a [`marketdata` row](market-data.md). All three open with the same prefix:
 
 - the [element](element.md) columns;
 - the [event](event.md) columns;

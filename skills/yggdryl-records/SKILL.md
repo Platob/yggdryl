@@ -75,11 +75,13 @@ medium does the work before a byte is decoded.
 3. **Declare the `field` to cast once.** A narrower field is a projection; a
    wider one fills missing nullable columns with nulls; the cast runs in the
    same pass as the decode. A `not null` column refuses a value, a null or a
-   missing column by name - it never stores a default. A nullable declared
-   column takes a value it cannot convert as null while `safe` holds, and
-   `safe` is on by default - so a bad value vanishes silently. Pass
-   `safe=False` / `{ safe: false }` / `.with_safe(false)` (or declare the
-   column `not null`) when an unconvertible value must be refused.
+   missing column by name - it never stores a default. A `TRANSFORM:`,
+   `PARTITION:` or `DIGEST:` declaration on the field is metadata the cast
+   carries, never a column it fills. A nullable declared column takes a value
+   it cannot convert as null while `safe` holds, and `safe` is on by default -
+   so a bad value vanishes silently. Pass `safe=False` / `{ safe: false }` /
+   `.with_safe(false)` (or declare the column `not null`) when an unconvertible
+   value must be refused.
 4. **`merge_by` is required for merge.** Keys use Arrow's row format: null
    matches null and the last arrival wins. Merge holds only the stored side in
    memory; `merge_by` absent is a refusal, never an overwrite.
@@ -131,10 +133,13 @@ medium does the work before a byte is decoded.
    not defaulted - and cost the most (4,096 rows: about 0.1 ms as
     a batch, 3 ms as records, on the docs' reference machine). Keep rows for
     small or hand-built data, batches for everything else.
-14. **Plain text has a fixed shape.** A text read answers the fifteen event
-    columns (`currunix` first, `state` last), then `body`, then one column per
-    named `rowheader` capture - the row header is the only thing that lifts a
-    column out of a line. `autotype` settles each capture's datatype from the
+14. **Plain text has a fixed shape.** A text read answers the fifteen element
+    and event columns (`curruuid` first, `state` last), then `body`, then one
+    column per named `rowheader` capture that feeds no event fact - a capture
+    named `state`, `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`
+    or `prevuuid` fills that event column instead, and `mtime` fills
+    `currunix` - and the row header is the only thing that lifts a column out
+    of a line. `autotype` settles each capture's datatype from the
     regex before a byte is read. An object's lines are one chain: a line whose
     own `creaunix` capture states none takes the earliest `currunix` the read
     has dated a line of its object by so far; a `creaunix` capture stands. Each
@@ -179,7 +184,9 @@ medium does the work before a byte is decoded.
 17. **Folders read by their layout.** A stored `column=value` layout is
     authoritative; with none on disk, the schema's partition-marked fields
     decide where rows go (`with_partition_fields`, or `with_partition_by` for
-    derived entries such as `years(ts)`). The first batch to reach a
+    derived entries such as `years(ts)`, whose column the caller fills first
+    through the transform view: a write only casts and refuses a required
+    column the rows lack, by path). The first batch to reach a
     leaf performs the write's operation; later ones append.
 
 ## Pitfalls
@@ -190,6 +197,9 @@ medium does the work before a byte is decoded.
   `{ mergeBy: ['id'] }` / `with_merge_by(["id"])?`.
 - Naming a file `trades.parquet.gz` - refused ("parquet compresses"); use
   `compression="zstd(3)"` on a plain `.parquet`.
+- Naming a workbook `trades.xlsx.gz` - refused ("expected an uncompressed xlsx
+  handle") by the write, the read and `Workbook.open`; the package is already
+  deflated inside, so name it `.xlsx`.
 - Skipping rows in the host after the read: `row_offset` (`rowOffset`,
   `with_row_offset`) skips leading rows before `max_row_size` counts, and a
   plan's `offset` lands there too (`options.plan`, `withPlan`, `with_plan`,
@@ -253,8 +263,8 @@ medium does the work before a byte is decoded.
 
 - Records surface (signatures, pushdown, limits, append and merge, commit cadence, lazy scans): https://platob.github.io/yggdryl/holder/#records
 - Partitions (pruning, partition columns, derived columns): https://platob.github.io/yggdryl/holder/#partitions
-- Media overview and options: https://platob.github.io/yggdryl/media/#read-and-write
-- Per format: https://platob.github.io/yggdryl/media/#arrow-ipc, https://platob.github.io/yggdryl/media/#parquet, https://platob.github.io/yggdryl/media/#avro, https://platob.github.io/yggdryl/media/#excel, https://platob.github.io/yggdryl/media/#csv, https://platob.github.io/yggdryl/media/#plain-text, https://platob.github.io/yggdryl/media/#iceberg
+- Media overview and options: https://platob.github.io/yggdryl/media/
+- Per format: https://platob.github.io/yggdryl/media/ipc/, https://platob.github.io/yggdryl/media/parquet/, https://platob.github.io/yggdryl/media/avro/, https://platob.github.io/yggdryl/media/excel/, https://platob.github.io/yggdryl/media/csv/, https://platob.github.io/yggdryl/media/text/, https://platob.github.io/yggdryl/media/iceberg/
 - Required columns and the cast rule: https://platob.github.io/yggdryl/types/cast/
 - Plans and write verbs: https://platob.github.io/yggdryl/expression/plans/
 - Sibling skills: `yggdryl-storage` (handles, backends, codings), `yggdryl-arrow` (`Serie`, `SerieReader`, casts), `yggdryl-expressions` (filter/select grammar, `Plan`), `yggdryl-uri` (hive paths, globs), `yggdryl-types` (fields, dataclasses), `yggdryl-documents` (JSON/YAML/TOML/XML).

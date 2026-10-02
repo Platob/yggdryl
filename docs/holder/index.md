@@ -108,6 +108,7 @@ The last four own the `Holder` they wrap; `repr` renders that stack outermost fi
 | `trades.log` | `Text(LocalPath)` |
 | `trades.json`, `trades` | `LocalPath` |
 | `trades.parquet.gz` | `LocalPath`: Parquet compresses internally, so the writer refuses the name |
+| `trades.xlsx.gz` | `LocalPath`: a workbook is deflated inside, so the Excel doors refuse the name |
 | `logs/` | `LocalPath`: a folder names no encoding, so its records are found beneath it |
 | `logs/*.log.gz` | `Text(LocalPath)`: a pattern's suffix names each leaf's encoding, and each leaf takes off its own coding, so none goes over the stream of them |
 | `lake/**/*.parquet` | `Parquet(LocalPath)`, reading the `.parquet` leaves the pattern matches as one table |
@@ -739,7 +740,7 @@ Rust asks `is_container`, `is_leaf`, `is_known`; the bindings `exists`, `is_dir`
     assert.equal(cursor.tell(), 3)
     ```
 
-A container streams its leaves. A folder, a location ending in `/` and a glob such as `logs/*.log` yield the bytes of every leaf beneath them - recursively under a folder, what the pattern matches under a glob, containers left out, and so is every private name, one starting with a dot such as `.venv` or `.config`, with the whole tree beneath it - one after another in the backend's listing order, each leaf's content coding taken off, so a `.gz` leaf contributes its text. `position` counts across the leaves, `read_all_bytes` and `read_range_bytes` read the same stream, and each leaf is opened only when the stream reaches it; the listing starts when the stream is built. Nothing separates two leaves, so a line-oriented reader reads them as objects instead: [plain text](../media/index.md#plain-text) and every record read go leaf by leaf. A container still holds no positional bytes - `pread`, and so a cursor's `read`, reads nothing and `size` is zero - and a digest, a copy or a coding transfer refuses it with `NotAtomic`, because a listing order is the backend's, not the value's. A `codec` property stated over a container spelling composes nothing, since each leaf takes off the coding its own name declares.
+A container streams its leaves. A folder, a location ending in `/` and a glob such as `logs/*.log` yield the bytes of every leaf beneath them - recursively under a folder, what the pattern matches under a glob, containers left out, and so is every private name, one starting with a dot such as `.venv` or `.config`, with the whole tree beneath it - one after another in the backend's listing order, each leaf's content coding taken off, so a `.gz` leaf contributes its text. `position` counts across the leaves, `read_all_bytes` and `read_range_bytes` read the same stream, and each leaf is opened only when the stream reaches it; the listing starts when the stream is built. Nothing separates two leaves, so a line-oriented reader reads them as objects instead: [plain text](../media/text.md) and every record read go leaf by leaf. A container still holds no positional bytes - `pread`, and so a cursor's `read`, reads nothing and `size` is zero - and a digest, a copy or a coding transfer refuses it with `NotAtomic`, because a listing order is the backend's, not the value's. A `codec` property stated over a container spelling composes nothing, since each leaf takes off the coding its own name declares.
 
 === "Rust"
 
@@ -1211,17 +1212,17 @@ A handle works without `open`; opening moves materialization to a known point an
 | --- | --- |
 | [`Buffer`](#buffer) | nothing; `opened` stays `false` |
 | [`LocalFile`](#local) | descriptor and memory mapping |
-| [`Coded`](../media/index.md#compression) | the decoded value |
-| [IPC](../media/index.md#arrow-ipc) | schema and dimensions |
-| [Parquet](../media/index.md#parquet) | the footer |
-| [Avro](../media/index.md#avro) | header and block metadata |
-| [Text](../media/index.md#plain-text) | resolved field, coding plan, dimensions |
+| [`Coded`](../media/compression.md) | the decoded value |
+| [IPC](../media/ipc.md) | schema and dimensions |
+| [Parquet](../media/parquet.md) | the footer |
+| [Avro](../media/avro.md) | header and block metadata |
+| [Text](../media/text.md) | resolved field, coding plan, dimensions |
 
 ### Clear and remove
 
 `clear` empties and keeps the resource; `remove` deletes it without a probe, treats absence as success, and refuses a container with children unless `recursive`. A wrapping handle removes what it wraps, cache included.
 
-| Call | Leaf | Container | [Iceberg](../media/index.md#iceberg) `Table` |
+| Call | Leaf | Container | [Iceberg](../media/iceberg.md) `Table` |
 | --- | --- | --- | --- |
 | `clear` | size `0` | loses every child recursively | one snapshot with no data files; schema, properties, history stay |
 | `remove` | deleted | deleted; refused while children remain, unless `recursive` | the whole location, metadata and data files |
@@ -1503,7 +1504,7 @@ Both stream [`pstream_bytes`](#streams-and-cursors) and retain one bounded chunk
 
 ### Structured values
 
-The media type selects JSON, YAML, TOML or XML and any outer gzip, zlib or zstd; a `field` directs parsing, and without one the natural value is inferred. Rust reads a struct row as `Scalar::Serie`; Python and JavaScript restore field names, and `cls=Scalar` / `{ scalar: true }` return the core value. The codecs are on the [Media](../media/index.md#json) page.
+The media type selects JSON, YAML, TOML or XML and any outer gzip, zlib or zstd; a `field` directs parsing, and without one the natural value is inferred. Rust reads a struct row as `Scalar::Serie`; Python and JavaScript restore field names, and `cls=Scalar` / `{ scalar: true }` return the core value. Each codec has its page under Media: [JSON](../media/json.md), [YAML](../media/yaml.md), [TOML](../media/toml.md), [XML](../media/xml.md).
 
 === "Rust"
 
@@ -1834,7 +1835,7 @@ fs.rmSync(root, { recursive: true, force: true })
 
 ### Column pushdown
 
-The options' field selects and casts in one pass; `select` narrows by name. [Parquet](../media/index.md#parquet) skips the column chunks, [Arrow IPC](../media/index.md#arrow-ipc) skips decode and allocation.
+The options' field selects and casts in one pass; `select` narrows by name. [Parquet](../media/parquet.md) skips the column chunks, [Arrow IPC](../media/ipc.md) skips decode and allocation.
 
 === "Rust"
 
@@ -2280,7 +2281,7 @@ Overwrite replaces, append keeps the stored rows, merge updates matching `merge_
 
 Whatever the cadence, an overwrite's first commit replaces and every later one appends, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a stream longer than the target keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement.
 
-A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/index.md#iceberg). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
+A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/iceberg.md). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
 
 ### Absent and unknown
 
@@ -2379,7 +2380,7 @@ memory.overwrite_arrow_table(pa.table({"symbol": ["AAPL"]}))
 assert memory.scan_arrow().to_table().num_rows == 1
 ```
 
-Plain-text records use the same methods; [Plain text](../media/index.md#plain-text) owns their schema.
+Plain-text records use the same methods; [Plain text](../media/text.md) owns their schema.
 
 ### Records performance
 
@@ -2768,7 +2769,7 @@ let _ = std::fs::remove_dir_all(&root);
 
 ### Derived partition columns
 
-A column can also be computed from another column of the same rows. The struct's [`PARTITION:by`](../types/protocol.md#partition-columns) declares it - `years(event)`, `truncate(name, 4) as prefix` - and `with_partition_by` materializes each derived entry as a marked column carrying its term as a [transform](../types/protocol.md) declaration, so the folder spells it in its paths exactly as it spells an identity column. `apply_arrow_batch` on the Struct root fills a declared column that is absent or all null and leaves one carrying values alone, and a partitioned write runs it before it cuts the rows by their directories.
+A column can also be computed from another column of the same rows. The struct's [`PARTITION:by`](../types/protocol.md#partition-columns) declares it - `years(event)`, `truncate(name, 4) as prefix` - and `with_partition_by` materializes each derived entry as a marked column carrying its term as a [transform](../types/protocol.md) declaration, so the folder spells it in its paths exactly as it spells an identity column. `apply_arrow_batch` on the root's transform view fills a declared column that is absent or all null and leaves one carrying values alone. A write only casts, so the rows carry the column before a partitioned write cuts them by their directories: a derived column they do not carry is refused by path where required and lands null where nullable.
 
 === "Rust"
 
@@ -3887,7 +3888,7 @@ The request count is the contract, asserted by tests.
 | the stream of a prefix, a `lake/` location or a glob | its listing, then one `GET` per object as the stream reaches it | the same | the same |
 | emptying or removing a prefix | one listing and one bulk delete per 1000 keys | per 100 | per 256 |
 
-A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `S3File::with_known_size` takes one a manifest already stated, which is how an [Iceberg](../media/index.md#iceberg) scan reads each data file with one `GET`.
+A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `S3File::with_known_size` takes one a manifest already stated, which is how an [Iceberg](../media/iceberg.md) scan reads each data file with one `GET`.
 
 | Iceberg operation | requests |
 | --- | ---: |
@@ -4878,7 +4879,7 @@ A server behind a reverse proxy sees the proxy's connection, not the client's: t
 
 [`with_trusted_proxies`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_trusted_proxies) names the peers - IP addresses or CIDR networks, `10.0.0.5`, `10.0.0.0/8`, `::1`, `fd00::/8`, an IPv4-mapped IPv6 peer matched as the IPv4 address it maps and a mapped network's bits counting the 96 of the mapping, so `::ffff:10.0.0.0/104` is `10.0.0.0/8` - whose forwarded fields are believed; none are by default, because any client can write those fields, so a request from any other peer is taken as it arrived and cannot state a host or a scheme of its own choosing. A proxy sets some forwarded fields and passes the rest through as the client wrote them, so even a trusted peer is believed only for the fields [`with_forwarded_headers`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_forwarded_headers) names, each a [`ForwardedHeader`](https://docs.rs/yggdryl/latest/yggdryl/http/enum.ForwardedHeader.html): name one only when the proxy sets or overwrites it on every request. An `X-Forwarded-Prefix`, once named, goes on the public path before this server's own prefix. [`with_path_prefix`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_path_prefix) is the path a proxy leaves in front of the routed one - `/olap` when the proxy forwards `/olap/xmla` to a server routing `/xmla` - stripped before routing and carried back on the URLs the server states; a request outside the prefix is routed as it is, so the routes answer with and without it, and a recorded request keeps `path` as routed and `target` as sent. Every recorded request also names its `peer` - the connection's address, the proxy's behind one - and its `client`, the address a trusted proxy forwarded, else the peer's.
 
-Two more things a proxy sends that a server on its own never sees. A `GET` or `HEAD` of a routed path with one trailing slash added - `/olap/xmla/` for a route `/olap/xmla`, which a proxy's `location /olap/` or a client's habit produces - is a `308` whose `Location` is relative, `../xmla`, the query kept, so it is right under any prefix; a `POST` to that path is served by the route and never redirected, because a client posting a body may not follow a redirect with it, and a method the bare path does not route is `405` there as it would be without the slash. And a proxy that speaks HTTP/1.0 upstream - nginx does unless `proxy_http_version 1.1` is set - is answered without chunking: a body [`Response::with_writer`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.Response.html#method.with_writer) runs is written close-delimited, `Connection: close` and neither `Transfer-Encoding` nor `Content-Length`, and a held body carries its length as it always did; it works, and costs a connection per request. What it cannot do is say a written body ended short: a writer that fails part way ends the body at the close, which an HTTP/1.0 peer reads as whole, where over HTTP/1.1 the missing last chunk tells it the transfer was cut. What a proxy in front of the XML for Analysis provider is configured with, nginx, Caddy, IIS or a cloud load balancer, is spelled out [there](../media/index.md#behind-a-reverse-proxy).
+Two more things a proxy sends that a server on its own never sees. A `GET` or `HEAD` of a routed path with one trailing slash added - `/olap/xmla/` for a route `/olap/xmla`, which a proxy's `location /olap/` or a client's habit produces - is a `308` whose `Location` is relative, `../xmla`, the query kept, so it is right under any prefix; a `POST` to that path is served by the route and never redirected, because a client posting a body may not follow a redirect with it, and a method the bare path does not route is `405` there as it would be without the slash. And a proxy that speaks HTTP/1.0 upstream - nginx does unless `proxy_http_version 1.1` is set - is answered without chunking: a body [`Response::with_writer`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.Response.html#method.with_writer) runs is written close-delimited, `Connection: close` and neither `Transfer-Encoding` nor `Content-Length`, and a held body carries its length as it always did; it works, and costs a connection per request. What it cannot do is say a written body ended short: a writer that fails part way ends the body at the close, which an HTTP/1.0 peer reads as whole, where over HTTP/1.1 the missing last chunk tells it the transfer was cut. What a proxy in front of the XML for Analysis provider is configured with, nginx, Caddy, IIS or a cloud load balancer, is spelled out [there](../media/xmla.md#behind-a-reverse-proxy).
 
 === "Rust"
 
