@@ -156,3 +156,46 @@ Where the caller did not say, an explicit argument wins, then the charset the me
     // A scalar the charset cannot spell is refused, never replaced.
     assert.throws(() => charset.encode('windows-1252', 'yen 円'), /U\+5186/)
     ```
+
+## Performance
+
+One release run of the `charset` Criterion target on one Linux x86_64 container - Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.97.0, release profile (thin LTO, one codegen unit) - medians of 100 samples, on 2026-10-02. The payload repeats `symbol,desk,price\nAAPL,London,187.23\n`; where it must transcode, the stated share of its bytes is `0xE9` - `é` in every single-byte charset here - and an encode takes the text that decodes to.
+
+| 1 MiB, one byte in twenty above US-ASCII | median | throughput |
+| --- | ---: | ---: |
+| `decode`, windows-1252 | 1.701 ms | 587.9 MiB/s |
+| `decode`, iso-8859-1 | 1.662 ms | 601.5 MiB/s |
+| `decode`, utf-16le, the same text in UTF-16 | 3.727 ms | 536.6 MiB/s |
+
+| 1 MiB, all US-ASCII | median | throughput |
+| --- | ---: | ---: |
+| `decode`, utf-8 | 47.18 us | 20.70 GiB/s |
+| `decode`, us-ascii | 109.6 us | 8.91 GiB/s |
+| `decode`, iso-8859-1 | 133.8 us | 7.30 GiB/s |
+| `decode`, windows-1252 | 132.4 us | 7.38 GiB/s |
+| `std::str::from_utf8` (baseline) | 44.16 us | 22.12 GiB/s |
+
+An all-ASCII payload is borrowed, never transcoded: UTF-8 checks it at `std::str::from_utf8`'s pace, and the single-byte charsets' scan for a byte above `0x7F` costs two and a half to three times that and still runs above 7 GiB/s - at least twelve times cheaper than transcoding the same megabyte, which runs at about 600 MiB/s whichever table it reads.
+
+| `encode`, 1 MiB of text | all US-ASCII | 5% above | 50% above |
+| --- | ---: | ---: | ---: |
+| iso-8859-1 | 68.15 us (14.33 GiB/s) | 1.277 ms (821.9 MiB/s) | 10.86 ms (138.2 MiB/s) |
+| windows-1252 | 73.37 us (13.31 GiB/s) | 1.244 ms (843.8 MiB/s) | 10.89 ms (137.7 MiB/s) |
+| utf-16le | 2.823 ms (354.2 MiB/s) | 3.355 ms (313.0 MiB/s) | 3.405 ms (440.5 MiB/s) |
+
+An encode borrows the same way and pays, per scalar above US-ASCII, for the reverse table it searches: a twentieth of the scalars cost about a millisecond a megabyte, half of them about eleven. UTF-16 spends two bytes on every scalar, so it neither borrows nor searches, and costs 2.8 to 3.4 ms at every mix.
+
+| 16 MiB of windows-1252, one byte in twenty above US-ASCII | median | throughput |
+| --- | ---: | ---: |
+| `Charset::decode`, the whole buffer | 45.94 ms | 348.3 MiB/s |
+| `decoder()`, pushed 8 KiB at a time | 45.60 ms | 350.9 MiB/s |
+| `reader()`, `read_to_string` | 48.77 ms | 328.1 MiB/s |
+| `Transcoded`, `read_all_bytes` | 40.41 ms | 396.0 MiB/s |
+| `Transcoded`, eight 4 KiB `read_range_bytes` windows | 647.9 us | 48.2 MiB/s |
+| the same eight windows over the decoded bytes in a `Buffer` (baseline) | 1.334 us | 22.87 GiB/s |
+
+Over 16 MiB the four doors decode within about a tenth of one another, so a stream costs its carry check rather than its throughput. A `Transcoded` handle seeks by its resume index: eight scattered windows cost a seventieth of decoding the whole, though still far above the same windows over bytes already decoded.
+
+```bash
+cargo bench -p yggdryl --bench charset -- '^charset_(decode|borrow)/[^/]+/1MiB$|^charset_encode/[^/]+/(0|5|50)pct/1MiB$|^charset_streaming/[^/]+/16MiB$'
+```
