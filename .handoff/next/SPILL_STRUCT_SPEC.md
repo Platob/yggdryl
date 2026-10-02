@@ -46,7 +46,7 @@ Base: HEAD `d7c4d93`. Task #14 (window statics) is in flight in `rust/src/serie/
 ### B. Struct state pair
 
 - **`into_struct_<root>(&self)`** answers the value itself when it is already a struct (clones only bump pointers), otherwise a one-child `struct<self>`. There is one per root: `into_struct_type`, `into_struct_field`, `into_struct_scalar`, `into_struct_serie`, plus `ChunkedSerie::into_struct_serie`.
-- **`as_struct_<root>(&mut self)`** is the in-place twin, `*self = self.into_struct_<root>()?`. It answers `&mut Self`, chains, and leaves `self` unchanged on refusal. These are the user's literal names, filed under AGENTS' `as_<state>` / `into_<state>` pair, like `as_spilled` / `into_spilled` from the same request.
+- **No `as_struct_*` form (the user's decision):** `as_<noun>` stays reserved for dedicated borrowed views, so the conversion has only its `into_struct_<root>` spelling. The borrowed "is it a struct" half is the existing narrowings below.
 - **The borrowed "already a struct?" half stays the existing narrowings**: `DataType::as_fields`, `StructField::from_field`, `Serie::as_struct`, `Scalar::as_struct`. The only new predicate is `DataType::is_struct()` (`Field::is_struct` exists).
 - "Already a struct" means the Struct shape at any nullability, with any absent rows. It is answered as itself, losslessly.
 - A wrapper is always required, because a wrap never adds an absent row.
@@ -85,7 +85,6 @@ impl ChunkedSerie {
     pub fn into_resident(&self) -> crate::arrow::Result<Self>;
     pub fn as_resident(&mut self) -> crate::arrow::Result<&mut Self>;
     pub fn into_struct_serie(&self) -> crate::Result<Self>;              // one shared root Arc for every chunk
-    pub fn as_struct_serie(&mut self) -> crate::Result<&mut Self>;
 }
 ```
 
@@ -153,15 +152,12 @@ pub(crate) fn decode_stream(buffer: arrow_buffer::Buffer)
 impl DataType {
     pub fn is_struct(&self) -> bool;                                // Field::is_struct now reads it
     pub fn into_struct_type(&self) -> crate::Result<DataType>;      // self, or struct<value: self> with `value` nullable; bounded
-    pub fn as_struct_type(&mut self) -> crate::Result<&mut Self>;
 }
 impl Field {
     pub fn into_struct_field(&self) -> crate::Result<Field>;        // self (any nullability), or required `row` whose one child is self unchanged; bounded
-    pub fn as_struct_field(&mut self) -> crate::Result<&mut Self>;
 }
 impl Scalar {
     pub fn into_struct_scalar(&self) -> Scalar;                     // Scalar::Struct as is, else Struct({"value": self})
-    pub fn as_struct_scalar(&mut self) -> &mut Self;
 }
 ```
 
@@ -171,7 +167,6 @@ impl Scalar {
 impl StructSerie { pub(crate) fn wrap(root: Arc<Field>, child: Serie) -> Self; } // nulls None, rows = child.len()
 impl Serie {
     pub fn into_struct_serie(&self) -> crate::Result<Serie>;        // Struct leaf as is; Run refused; else wrap(Arc::new(field.into_struct_field()?), self.clone())
-    pub fn as_struct_serie(&mut self) -> crate::Result<&mut Self>;
 }
 ```
 
@@ -267,11 +262,9 @@ There is no IPC round trip and no dependence on allocator alignment.
 
 ## 5. Struct conversions
 
-**Spelling.** The user named `as_struct_type`, `as_struct_field`, `as_struct_scalar` and `as_struct_serie`, plus their `into_*` equivalents.
-- AGENTS' `as_<noun>` must stay allocation-free, so an `as_*` that returns a converted value cannot be a borrow. A `Cow` was rejected because it allocates under an `as_` name.
-- The names are therefore filed as the `as_<state>` / `into_<state>` pair: in place, chainable and atomic, the same rule as `as_sorted` / `into_sorted` and `as_spilled` / `into_spilled`.
+**Spelling (decided by the user).** Only `into_struct_type`, `into_struct_field`, `into_struct_scalar` and `into_struct_serie` (plus `ChunkedSerie::into_struct_serie`): each answers self when already a struct, else the one-child wrap. There is no `as_struct_*` conversion: `as_<noun>` stays reserved for dedicated borrowed views, and the borrowed "is it a struct" half is the existing narrowings (`DataType::as_fields`, `StructField::from_field`, `Serie::as_struct`, `Scalar::as_struct`) plus `DataType::is_struct`.
 - The suffix names the root being converted, which keeps them apart from the unsuffixed leaf narrowing `Serie::as_struct`. The docs put both in one table.
-- AGENTS' Public vocabulary gains a row: `as_struct_<root>` / `into_struct_<root>`, the struct state pair, self when already a struct, else the one-child wrap.
+- AGENTS' Public vocabulary gains a row: `into_struct_<root>`, self when already a struct, else the one-child wrap.
 
 | Root | Already a struct | Otherwise | Borrowed "is it" (unchanged) |
 | --- | --- | --- | --- |
@@ -317,17 +310,16 @@ Both bindings only coerce and redirect. The `folder` argument meets one boundary
 
 | Class | Spill | Struct |
 | --- | --- | --- |
-| `Serie`, `ChunkedSerie` | `is_spilled()`; `into_spilled(folder=...)`; `as_spilled(folder=...) -> Self`; `into_resident()`; `as_resident() -> Self` | `into_struct_serie()`; `as_struct_serie() -> Self` |
+| `Serie`, `ChunkedSerie` | `is_spilled()`; `into_spilled(folder=...)`; `as_spilled(folder=...) -> Self`; `into_resident()`; `as_resident() -> Self` | `into_struct_serie()` |
 | `WindowSerie` (and the mutable window class where one is bound) | `is_spilled()` | |
 | `SerieReader` | `into_spilled(folder=...) -> ChunkedSerie` | |
 | `DataType` | | `is_struct()`, `into_struct_type()` |
-| `Field` (already mutable, e.g. `set_name`) | | `into_struct_field()`, `as_struct_field() -> Self` |
+| `Field` (already mutable, e.g. `set_name`) | | `into_struct_field()` |
 | `Scalar` | | `into_struct_scalar()` |
 
 - **`folder` intake** accepts `LocalFolder`, a `LocalPath` taken as a directory, `str`, `os.PathLike`, or a `file:` `Url`. It goes through the binding's existing holder coercion (`python/src/holder/handles.rs:175`). Omitted (`...`) or `None` means `LocalFolder.temporary()`. Any other holder raises `ValueError` naming its scheme.
 - **Off the GIL:** spill and resident run off the GIL, as the other I/O doors do.
 - **Zero-copy export:** a C Data / PyCapsule export of a spilled column is zero copy. A pyarrow array that outlives the `Serie` keeps the mapping alive.
-- **Rust-only in-place forms:** `as_struct_type` and `as_struct_scalar`. `DataType` and `Scalar` are bound as value objects whose hash must stay stable; this is documented.
 - **No rename (the user's decision): `Scalar.into_struct_field` keeps its name and handles both readings transparently, with no ambiguity between them:**
   - Rows of named records (today's domain, `Scalar::inferred_struct_field`) answer the inferred struct root, exactly as today.
   - Any other value answers `inferred_scalar_field()?.into_struct_field()`: a struct value answers its own struct field, and anything else is wrapped as `struct<value: ...>` under the generic rule.
@@ -339,11 +331,11 @@ Both bindings only coerce and redirect. The `folder` argument meets one boundary
 
 | Class | Spill | Struct |
 | --- | --- | --- |
-| `Serie`, `ChunkedSerie` | `isSpilled()`, `intoSpilled(folder?)`, `asSpilled(folder?)`, `intoResident()`, `asResident()` | `intoStructSerie()`, `asStructSerie()` |
+| `Serie`, `ChunkedSerie` | `isSpilled()`, `intoSpilled(folder?)`, `asSpilled(folder?)`, `intoResident()`, `asResident()` | `intoStructSerie()` |
 | `WindowSerie` | `isSpilled()` | |
 | `SerieReader` | `intoSpilled(folder?) -> ChunkedSerie` | |
 | `DataType` | | `isStruct()`, `intoStructType()` |
-| `Field` (already mutable, e.g. `setField`) | | `intoStructField()`, `asStructField()` |
+| `Field` (already mutable, e.g. `setField`) | | `intoStructField()` |
 | `Scalar` | | `intoStructScalar()` |
 
 - **In-place wrappers** return `this`. They follow `asSorted`'s `_asSortedNative` pattern in `node/binding.js` / `binding.d.ts`.
@@ -438,13 +430,11 @@ Further behaviour:
   - at `PARSE_RECURSION_LIMIT` it is refused, naming the field and the limit.
 - **`into_struct_scalar`:** `Int64(5)` → `{value: 5}`; `Null` → `{value: null}`; `Scalar::Struct` answers itself; the canonicalization `Field::scalar(wrapped)` holds under `into_struct_type()`'s field.
 - **Predicate:** `DataType::is_struct`.
-- **In place:** each `as_struct_*` is in place, and a refusal leaves `self` unchanged.
 
 ### `rust/tests/serie/structure.rs`
 - `into_struct_serie` is zero copy: the child's `into_arrow_array` buffers are `Arc::ptr_eq` with the source.
 - A struct with absent rows answers itself, validity kept.
 - A Run is refused.
-- `as_struct_serie` works in place.
 
 ### Unchanged suites prove the reroute
 - `rust/tests/serie/arrow.rs`: the `root_of`, `from_serie`, `from_chunked`, `into_arrow_batch` and held-record shape and refusal tests.
@@ -528,7 +518,7 @@ The counting allocator cannot see a mapping. Zero copy is proved by `internals::
   - the Zero copy "Holds" bullet: a spilled column's buffers are slices of one read-only mapping, freed with the last view;
   - "Serie is the collection" rows: "a column held on disk", "any column as a record";
   - the Proof::Proven list: a spill's read-back, and a resident copy;
-  - the Public vocabulary row for `as_struct_<root>` / `into_struct_<root>` and the spill and resident pairs;
+  - the Public vocabulary row for `into_struct_<root>` and the spill and resident pairs;
   - the Windows CI leg in §2's job table.
 - **Inventories:**
   - `.api-inventory.txt` sections: serie (`:5602`), chunked_serie, window_serie (`:4236`), structure (`:5194` / `:5277`), media (`:3346`, `DEFAULT_VALUE_NAME`), the `root_of` text;
@@ -558,7 +548,7 @@ Worker rules: no worker runs `cargo fmt --all` while others edit, and all edits 
 
 1. **Predicate spelling.** Default `is_spilled` (AGENTS `is_*`), not the user's bare `spilled`.
 2. **SpilledSerie type.** Default: none; spilled is a state of `Serie` / `ChunkedSerie`. The alternative, a public handle that mirrors every verb, is rejected.
-3. **The user's `as_struct_*` names.** Default: all four in place, plus `ChunkedSerie::as_struct_serie`, beside `into_struct_*`, with the AGENTS vocabulary amended. Alternatives: in-place forms on `Serie` / `ChunkedSerie` only, or `into_struct_*` only. Confirm with the user.
+3. **Struct conversion names. DECIDED by the user ("Remove the as_ staying with as_<noun> for dedicated borrowed"):** `into_struct_*` only; no `as_struct_*` conversion anywhere, in Rust or the bindings.
 4. **Borrowed "is it a struct".** Default: no new `as_struct` narrowings on DataType or Field; the existing narrowings plus `DataType::is_struct` answer it.
 5. **Already-struct nullability.** Default: answered as itself (nullable kept, absent rows kept). `root_of` alone forces required.
 6. **Wrap child.** Default: `value`, nullable, for DataType and Scalar; the field's own name for Field and Serie; a required `row` root for Field and Serie.
