@@ -24,11 +24,14 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions};
 use arrow_ipc::reader::StreamReader;
 use arrow_schema::{Schema, SchemaRef};
-use napi::bindgen_prelude::{Buffer, ClassInstance, Either, Generator, Result, Uint8Array};
+use napi::bindgen_prelude::{
+    Buffer, ClassInstance, Either, Generator, Reference, Result, Uint8Array,
+};
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
 use yggdryl::{
     ArrowCastOptions, Field as CoreField, FieldPath, Scalar, Serie, SerieReader, SerieValue,
+    SortOptions,
 };
 
 use crate::chunked_serie::JsChunkedSerie;
@@ -36,9 +39,11 @@ use crate::datatype::JsDataType;
 use crate::field::JsField;
 use crate::iomedia::{JsBatchReader, encoded};
 use crate::napi_error;
+use crate::serie_slice::JsSerieSlice;
 use crate::text::codec::{
     JsScalar, checked_depth, value_to_transport, value_to_transport_with_field,
 };
+use crate::text::line::JsFieldPath;
 
 /// The invariant `binding.js` keeps: a leaf verb is published only on the
 /// class `_leafNative` names, so the leaf is the one it asks for.
@@ -95,8 +100,37 @@ pub(crate) fn position(index: f64, name: &str) -> Result<usize> {
 }
 
 /// The core values of already-converted rows.
-fn rows_of(rows: &[ClassInstance<'_, JsScalar>]) -> Vec<Scalar> {
+pub(crate) fn rows_of(rows: &[ClassInstance<'_, JsScalar>]) -> Vec<Scalar> {
     rows.iter().map(|row| row.inner.clone()).collect()
+}
+
+/// The direction and nulls placement JavaScript states as two optional
+/// booleans, as the one native value: an absent or `null` answer is the
+/// default, ascending with nulls last.
+pub(crate) const fn sort_options(
+    descending: Option<bool>,
+    nulls_first: Option<bool>,
+) -> SortOptions {
+    let options = match descending {
+        Some(true) => SortOptions::descending(),
+        _ => SortOptions::ascending(),
+    };
+    options.with_nulls_first(matches!(nulls_first, Some(true)))
+}
+
+/// A row or item count as the number JavaScript reads.
+pub(crate) fn count(value: usize) -> f64 {
+    #[allow(clippy::cast_precision_loss)]
+    let value = value as f64;
+    value
+}
+
+/// The groups a partition answers, each its key and its rows.
+pub(crate) fn groups(groups: Vec<(Scalar, Serie)>) -> Vec<(JsScalar, JsSerie)> {
+    groups
+        .into_iter()
+        .map(|(key, rows)| (JsScalar::from_core(key), JsSerie::from_core(rows)))
+        .collect()
 }
 
 /// A range as the `[start, end]` pair JavaScript reads.
@@ -680,6 +714,191 @@ impl JsSerie {
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> String {
         self.inner.to_string()
+    }
+
+    // ------------------------------------------------------------------
+    // Ordering, uniqueness and grouping: the reads answer a new serie and
+    // leave this one as it was, the `_as*Native` writes bring it into the
+    // state in place. Each is one core verb; the loader validates the
+    // options, coerces indices, masks and keys, and hands every answered
+    // serie out as its leaf's class.
+    // ------------------------------------------------------------------
+
+    /// The row positions in sorted order, as a `uint32` column named `index`.
+    #[napi(js_name = "_sortIndicesNative", skip_typescript)]
+    pub fn sort_indices_native(
+        &self,
+        descending: Option<bool>,
+        nulls_first: Option<bool>,
+    ) -> Result<Self> {
+        self.inner
+            .sort_indices(sort_options(descending, nulls_first))
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Whether the rows are in sorted order under the options.
+    #[napi(js_name = "_isSortedNative", skip_typescript)]
+    pub fn is_sorted_native(&self, descending: Option<bool>, nulls_first: Option<bool>) -> bool {
+        self.inner.is_sorted(sort_options(descending, nulls_first))
+    }
+
+    /// Whether no two rows hold one value; two absent rows are a repeat.
+    ///
+    /// One hash set over the rows, stopping at the first repeat.
+    #[napi]
+    pub fn is_unique(&self) -> bool {
+        self.inner.is_unique()
+    }
+
+    /// How many distinct values the rows hold, an absent row one of them.
+    #[napi]
+    pub fn unique_count(&self) -> f64 {
+        count(self.inner.unique_count())
+    }
+
+    /// The bytes the rows occupy: a column's buffers as its own slice counts
+    /// them, a run's values as the row estimator charges them.
+    #[napi]
+    pub fn memory_size(&self) -> f64 {
+        count(self.inner.memory_size())
+    }
+
+    /// The rows in sorted order, this serie untouched.
+    #[napi(js_name = "_intoSortedNative", skip_typescript)]
+    pub fn into_sorted_native(
+        &self,
+        descending: Option<bool>,
+        nulls_first: Option<bool>,
+    ) -> Result<Self> {
+        self.inner
+            .into_sorted(sort_options(descending, nulls_first))
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The first occurrence of every value, in order of first occurrence.
+    #[napi(js_name = "_intoUniqueNative", skip_typescript)]
+    pub fn into_unique_native(&self) -> Result<Self> {
+        self.inner
+            .into_unique()
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The rows in reverse order, this serie untouched.
+    #[napi(js_name = "_intoReversedNative", skip_typescript)]
+    pub fn into_reversed_native(&self) -> Self {
+        Self::from_core(self.inner.into_reversed())
+    }
+
+    /// The rows an integer serie of positions names, in that order.
+    #[napi(js_name = "_intoTakenNative", skip_typescript)]
+    pub fn into_taken_native(&self, indices: &JsSerie) -> Result<Self> {
+        self.inner
+            .into_taken(&indices.inner)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The rows a boolean serie of the same length keeps.
+    #[napi(js_name = "_intoFilteredNative", skip_typescript)]
+    pub fn into_filtered_native(&self, mask: &JsSerie) -> Result<Self> {
+        self.inner
+            .into_filtered(&mask.inner)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The rows grouped by a key serie of the same length, one `[key, rows]`
+    /// pair per distinct key in order of first occurrence.
+    #[napi(js_name = "_partitionByNative", skip_typescript)]
+    pub fn partition_by_native(&self, keys: &JsSerie) -> Result<Vec<(JsScalar, Self)>> {
+        self.inner
+            .partition_by(&keys.inner)
+            .map(groups)
+            .map_err(napi_error)
+    }
+
+    /// A record column's rows grouped by the cells the field paths reach,
+    /// keyed by the run of those cells; a path is a `FieldPath` or its text.
+    #[napi(js_name = "_partitionByPathsNative", skip_typescript)]
+    pub fn partition_by_paths_native(
+        &self,
+        paths: Vec<Either<String, ClassInstance<'_, JsFieldPath>>>,
+    ) -> Result<Vec<(JsScalar, Self)>> {
+        let paths = paths
+            .iter()
+            .map(|path| match path {
+                Either::A(text) => FieldPath::from_str(text).map_err(napi_error),
+                Either::B(path) => Ok(path.inner.clone()),
+            })
+            .collect::<Result<Vec<FieldPath>>>()?;
+        self.inner
+            .partition_by_paths(&paths)
+            .map(groups)
+            .map_err(napi_error)
+    }
+
+    /// Sort the rows in place under the options.
+    #[napi(js_name = "_asSortedNative", skip_typescript)]
+    pub fn as_sorted_native(
+        &mut self,
+        descending: Option<bool>,
+        nulls_first: Option<bool>,
+    ) -> Result<()> {
+        self.inner
+            .as_sorted(sort_options(descending, nulls_first))
+            .map(|_| ())
+            .map_err(napi_error)
+    }
+
+    /// Keep the first occurrence of every value, in place.
+    #[napi(js_name = "_asUniqueNative", skip_typescript)]
+    pub fn as_unique_native(&mut self) -> Result<()> {
+        self.inner.as_unique().map(|_| ()).map_err(napi_error)
+    }
+
+    /// Reverse the rows in place.
+    #[napi(js_name = "_asReversedNative", skip_typescript)]
+    pub fn as_reversed_native(&mut self) -> Result<()> {
+        self.inner.as_reversed().map(|_| ()).map_err(napi_error)
+    }
+
+    /// Keep the rows an integer serie of positions names, in place.
+    #[napi(js_name = "_asTakenNative", skip_typescript)]
+    pub fn as_taken_native(&mut self, indices: &JsSerie) -> Result<()> {
+        let indices = indices.inner.clone();
+        self.inner
+            .as_taken(&indices)
+            .map(|_| ())
+            .map_err(napi_error)
+    }
+
+    /// Keep the rows a boolean serie of the same length keeps, in place.
+    #[napi(js_name = "_asFilteredNative", skip_typescript)]
+    pub fn as_filtered_native(&mut self, mask: &JsSerie) -> Result<()> {
+        let mask = mask.inner.clone();
+        self.inner
+            .as_filtered(&mask)
+            .map(|_| ())
+            .map_err(napi_error)
+    }
+
+    /// The window `offset..offset + length` over this serie, read and
+    /// written through it at each call.
+    #[napi(js_name = "_windowNative", skip_typescript)]
+    pub fn window_native(
+        &self,
+        reference: Reference<JsSerie>,
+        offset: f64,
+        length: f64,
+    ) -> Result<JsSerieSlice> {
+        JsSerieSlice::new(
+            reference,
+            position(offset, "offset")?,
+            position(length, "length")?,
+        )
     }
 
     // ------------------------------------------------------------------

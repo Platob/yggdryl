@@ -92,6 +92,7 @@ import type {
   DataType,
   Digest,
   Field,
+  FieldPath,
   IOBase,
   IOCursor,
   Listing,
@@ -106,6 +107,7 @@ import type {
   Selector,
   Serie as NativeSerie,
   SerieReader,
+  SerieSlice as NativeSerieSlice,
   ArrowCastPlan,
   StringParametersInput,
   Term,
@@ -191,6 +193,17 @@ export declare const Serie: Omit<typeof NativeSerie, 'prototype'> & {
   readonly prototype: Serie
   new(rows?: Iterable<unknown> | null): Serie
 }
+
+/**
+ * A window over a serie, read and written through it at each call: both the
+ * shared and the mutable window.
+ */
+export type SerieSlice = NativeSerieSlice
+/** Handed out by `serie.window(offset, length)`: there is no public constructor. */
+export declare const SerieSlice: Omit<typeof NativeSerieSlice, 'prototype'> &
+  (abstract new () => SerieSlice) & {
+    readonly prototype: SerieSlice
+  }
 
 /** Many columns under one field, held apart: a chunked array, or a table. */
 export type ChunkedSerie = NativeChunkedSerie
@@ -993,6 +1006,119 @@ declare module './index' {
     intoArrowArray(): ArrowVector
     /** Every row of this column as one Apache Arrow JS record batch. */
     intoArrowBatch(): ArrowRecordBatch
+    /**
+     * The row positions in sorted order under `options`, as a `uint32`
+     * column named `index`: stable, so equal rows keep their order, and
+     * absent rows gathered to the end `nullsFirst` names.
+     */
+    sortIndices(options?: SortOptions | null): Serie
+    /** Whether the rows are in sorted order under `options`: one pass, no row built for a column. */
+    isSorted(options?: SortOptions | null): boolean
+    /** The rows in sorted order under `options`, as a new serie under the same field. */
+    intoSorted(options?: SortOptions | null): Serie
+    /** The first occurrence of every value, in order of first occurrence; an absent row is one value. */
+    intoUnique(): Serie
+    /** The rows in reverse order, as a new serie. */
+    intoReversed(): Serie
+    /**
+     * The rows `indices` names, in that order: an integer serie of any
+     * width, or an iterable of integers. An index absent, negative or past
+     * the end is refused naming the serie.
+     */
+    intoTaken(indices: SerieArgument): Serie
+    /**
+     * The rows `mask` keeps: a boolean serie, or an iterable of booleans, as
+     * long as this serie; an absent mask row keeps nothing.
+     */
+    intoFiltered(mask: SerieArgument): Serie
+    /**
+     * The rows grouped by `keys`, a serie - or an iterable of values - as
+     * long as this one: one `[key, rows]` pair per distinct key in order of
+     * first occurrence, an absent key one value. Sorted keys cut every group
+     * as a zero-copy slice. A record groups by one child through
+     * `partitionBy(serie.child('venue'))`.
+     */
+    partitionBy(keys: SerieArgument): Array<[Scalar, Serie]>
+    /**
+     * A record column's rows grouped by the cells `paths` reach - one field
+     * path, its text, or an iterable of them - keyed by the run of those
+     * cells in `paths` order.
+     */
+    partitionByPaths(paths: FieldPathsArgument): Array<[Scalar, Serie]>
+    /**
+     * Sort the rows in place under `options` and answer this serie, so calls
+     * chain: a primitive column holding its buffer alone sorts where it
+     * stands; a shared buffer is copied once.
+     */
+    asSorted(options?: SortOptions | null): this
+    /** Keep the first occurrence of every value, in place, and answer this serie. */
+    asUnique(): this
+    /** Reverse the rows in place and answer this serie. */
+    asReversed(): this
+    /** Keep the rows `indices` names, in that order, in place, and answer this serie. */
+    asTaken(indices: SerieArgument): this
+    /** Keep the rows `mask` keeps, in place, and answer this serie. */
+    asFiltered(mask: SerieArgument): this
+    /**
+     * The window `offset..offset + length` over this serie: it holds this
+     * serie and reads and writes through it at each call, moving nothing.
+     * Refused naming the serie and both counts when it reaches past the end.
+     */
+    window(offset: number, length: number): SerieSlice
+  }
+
+  interface SerieSlice extends Iterable<Scalar> {
+    /** Iterate the window's rows as Scalar values. */
+    [Symbol.iterator](): IterableIterator<Scalar>
+    /** Every row of the window as its natural JavaScript value. */
+    asJs(options?: Pick<CodecOptions, 'maxDepth'> | null): unknown[]
+    /** The same row values as asJs, for JSON.stringify. */
+    toJSON(): unknown[]
+    /** Whether the window's rows are in sorted order under `options`. */
+    isSorted(options?: SortOptions | null): boolean
+    /** The window-relative row positions in sorted order, as a `uint32` column named `index`. */
+    sortIndices(options?: SortOptions | null): Serie
+    /** A narrower window, window-relative, over the same serie. */
+    window(offset: number, length: number): SerieSlice
+    /** The window's rows as a serie: `slice`, sharing a column's buffers. */
+    intoSerie(): Serie
+    /** The window's rows in sorted order, as a new serie. */
+    intoSorted(options?: SortOptions | null): Serie
+    /** The first occurrence of every value in the window, as a new serie. */
+    intoUnique(): Serie
+    /** The window's rows in reverse order, as a new serie. */
+    intoReversed(): Serie
+    /** The window rows `indices` names, window-relative, as a new serie. */
+    intoTaken(indices: SerieArgument): Serie
+    /** The window rows `mask`, as long as the window, keeps. */
+    intoFiltered(mask: SerieArgument): Serie
+    /** The window's rows grouped by `keys`, as long as the window. */
+    partitionBy(keys: SerieArgument): Array<[Scalar, Serie]>
+    /** Whether the window's rows equal another window's, or a serie's. */
+    equals(other: SerieSlice | Serie): boolean
+    /** Overwrite window row `index` through the serie's field: one buffer write on a primitive leaf. */
+    set(index: number, value: unknown): void
+    /** Overwrite every window row with `value`, proved once. */
+    fill(value: unknown): void
+    /**
+     * Overwrite the window, row for row, with another window's rows or a
+     * whole serie's, which must be exactly as many.
+     */
+    copyFrom(other: SerieSlice | Serie): void
+    /**
+     * Replace window rows `start..end` by exactly as many `rows`: a window
+     * never grows or shrinks what it views.
+     */
+    splice(start: number, end: number, rows?: Iterable<unknown> | null): void
+    /** Sort the window's rows in place under `options`, and answer this window. */
+    asSorted(options?: SortOptions | null): this
+    /** Reverse the window's rows in place, and answer this window. */
+    asReversed(): this
+    /**
+     * Rearrange the window's rows as `indices` - window-relative and exactly
+     * as many as the window holds - names them, and answer this window.
+     */
+    asTaken(indices: SerieArgument): this
   }
 
   namespace SerieReader {
@@ -1127,6 +1253,36 @@ declare module './index' {
      * core orders a column's, however the rows are cut.
      */
     compare(other: ChunkedSerie | Serie): number
+    /** The row positions in sorted order across the chunks, as a `uint32` column named `index`: the one join, then the sort. */
+    sortIndices(options?: SortOptions | null): Serie
+    /** Whether the rows are in sorted order across the chunks: each chunk and every chunk edge, with no join. */
+    isSorted(options?: SortOptions | null): boolean
+    /** The rows in sorted order, as a chunked serie of one chunk. */
+    intoSorted(options?: SortOptions | null): ChunkedSerie
+    /** The rows `indices` names across the chunks, as a chunked serie of one chunk. */
+    intoTaken(indices: SerieArgument): ChunkedSerie
+    /** The rows `mask`, as long as the whole, keeps: chunk by chunk, kept apart. */
+    intoFiltered(mask: SerieArgument): ChunkedSerie
+    /**
+     * The rows grouped by `keys`, as long as the whole: one `[key, rows]`
+     * pair per distinct key in order of first occurrence, each group's rows
+     * the chunks each chunk contributed, kept apart. Keys are a Serie or any
+     * iterable of values, or held in chunks - a ChunkedSerie, or an Apache
+     * Arrow JS vector of one chunk per `Data` - grouped chunk beside chunk
+     * with no join where both are cut at the same rows, and joined once and
+     * cut to the rows' chunks otherwise.
+     */
+    partitionBy(keys: SerieArgument | ChunkedSerie | ArrowVector): Array<[Scalar, ChunkedSerie]>
+    /** Sort the rows in place - one chunk replaces the chunks - and answer this chunked serie. */
+    asSorted(options?: SortOptions | null): this
+    /** Keep the first occurrence of every value in place - one chunk - and answer this chunked serie. */
+    asUnique(): this
+    /** Reverse the rows in place, the chunks kept apart, and answer this chunked serie. */
+    asReversed(): this
+    /** Keep the rows `indices` names in place - one chunk - and answer this chunked serie. */
+    asTaken(indices: SerieArgument): this
+    /** Keep the rows `mask` keeps in place, chunk by chunk, and answer this chunked serie. */
+    asFiltered(mask: SerieArgument): this
   }
 
   namespace ArrowCastPlan {
@@ -3848,7 +4004,10 @@ declare module './index' {
   type FileSystemInput = FileSystemHandler
   /** A location, or the file system one of its locations sits on. */
   type LocationOrFileSystemInput = LocationInput | FileSystemHandler
-  /** A partition spec, or the column names one would be built from. */
+  /**
+   * A partition spec, or the `PARTITION:by` entries one is read from: a bare
+   * column, `days(ts)`, `minutes(ts, 15)`, `truncate(name, 4) as prefix`.
+   */
   type PartitionInput = PartitionSpec | readonly string[]
   /** A native zone wrapper or an IANA name, alias, or fixed offset. */
   type TimezoneInput = Timezone | string
@@ -4233,6 +4392,25 @@ export interface ArrowCastOptions {
   representation?: Representation
 }
 
+/**
+ * The two facts an ordering states beside its key: `descending` and
+ * `nullsFirst`. An absent answer is skipped and `null` clears it, each taking
+ * the default: ascending, absent rows last - the plan's `order by` default.
+ */
+export interface SortOptions {
+  descending?: boolean | null
+  nullsFirst?: boolean | null
+}
+
+/**
+ * A serie a verb reads beside its own - indices, a mask, keys: a `Serie`, or
+ * any iterable of values, read as the schema-free run of them.
+ */
+export type SerieArgument = Serie | Iterable<unknown>
+
+/** The field paths a record partitions by: one path, its text, or an iterable of them. */
+export type FieldPathsArgument = FieldPath | string | Iterable<FieldPath | string>
+
 /** Anything that names a stream of Arrow record batches. */
 export type BatchSource =
   | BatchReader
@@ -4278,7 +4456,10 @@ export type IcebergProperties = {
   readonly compactAfterCommits?: number
   readonly dataMimeType?: MimeTypeInput
 }
-/** A partition spec, or the column names one would be built from. */
+/**
+ * A partition spec, or the `PARTITION:by` entries one is read from: a bare
+ * column, `days(ts)`, `minutes(ts, 15)`, `truncate(name, 4) as prefix`.
+ */
 export type PartitionInput = PartitionSpec | readonly string[]
 /** A native root `Field`, or the field expression naming one. */
 export type SchemaInput = Field | string

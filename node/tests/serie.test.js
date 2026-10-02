@@ -675,3 +675,392 @@ test('a serie compares against a chunked serie by the rows, on either side', () 
   assert.equal(SerieReader.fromSerie(records).field.name, 'trades')
   assert.equal(serie.intoArrowReader().field.name, 'row')
 })
+
+// ---------------------------------------------------------------------------
+// Ordering, uniqueness and grouping: each case mirrors rust/tests/serie/order.rs
+// by name, through the binding's doors - the options an object of descending
+// and nullsFirst, indices, masks and keys a Serie or an iterable of values.
+// ---------------------------------------------------------------------------
+
+// `values` as an int64 column, `null` an absent row.
+const int64Column = (values) =>
+  Serie.fromScalars(new Field('price', 'int64', values.includes(null)), values)
+// `values` as a utf8 column.
+const utf8Column = (values) =>
+  Serie.fromScalars(new Field('venue', 'utf8', values.includes(null)), values)
+// A record column of `[venue, price]` rows.
+const quotes = (rows) =>
+  Serie.fromScalars(
+    Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null'),
+    rows.map(([venue, price]) => ({ venue, price })),
+  )
+
+test('sort indices answer a uint32 index column, stable on both leaves', () => {
+  const run = new Serie([3, 1, 2, 1])
+  const column = int64Column([3, 1, 2, 1])
+  for (const serie of [run, column]) {
+    const order = serie.sortIndices()
+    assert.equal(order.field.name, 'index')
+    assert.equal(order.field.dtype.toString(), 'uint32')
+    // The two equal rows keep their order: stable.
+    assert.deepEqual(order.asJs(), [1, 3, 2, 0])
+    assert.deepEqual(serie.sortIndices({ descending: true }).asJs(), [0, 2, 1, 3])
+  }
+})
+
+test('absent rows gather to the end the options name', () => {
+  const run = new Serie([null, 2, null, 1])
+  const column = int64Column([null, 2, null, 1])
+  const strings = utf8Column([null, 'b', null, 'a'])
+  for (const serie of [run, column, strings]) {
+    assert.deepEqual(serie.sortIndices().asJs(), [3, 1, 0, 2])
+    assert.deepEqual(serie.sortIndices({ descending: true, nullsFirst: true }).asJs(), [0, 2, 1, 3])
+  }
+})
+
+test('isSorted reads adjacent rows under the options on both leaves', () => {
+  const run = new Serie([1, 1, 2, null])
+  const column = int64Column([1, 1, 2, null])
+  for (const serie of [run, column]) {
+    assert.equal(serie.isSorted(), true)
+    assert.equal(serie.isSorted({ descending: true }), false)
+    assert.equal(serie.isSorted({ nullsFirst: true }), false)
+    assert.equal(serie.intoReversed().isSorted({ descending: true, nullsFirst: true }), true)
+  }
+  assert.equal(new Serie([]).isSorted(), true)
+  assert.equal(int64Column([1]).isSorted({ descending: true, nullsFirst: true }), true)
+})
+
+test('uniqueness counts an absent row as one value on both leaves', () => {
+  const run = new Serie([1, null, 1, null, 2])
+  const column = int64Column([1, null, 1, null, 2])
+  for (const serie of [run, column]) {
+    assert.equal(serie.isUnique(), false)
+    assert.equal(serie.uniqueCount(), 3)
+    const unique = serie.intoUnique()
+    assert.deepEqual(unique.asJs(), [1, null, 2])
+    assert.equal(unique.isUnique(), true)
+    assert.equal(String(unique.field), String(serie.field))
+    // The serie is as it was.
+    assert.equal(serie.length, 5)
+  }
+  assert.equal(new Serie([1, null]).isUnique(), true)
+})
+
+test('intoSorted answers a new serie under the same field and leaves this one', () => {
+  const column = int64Column([3, null, 1])
+  const sorted = column.intoSorted()
+  assert.deepEqual(sorted.asJs(), [1, 3, null])
+  assert.ok(sorted.field.equals(column.field))
+  assert.equal(sorted.isSorted(), true)
+  assert.equal(column.scalar(0).asJs(), 3)
+
+  const run = new Serie(['b', 'a'])
+  const runSorted = run.intoSorted()
+  assert.deepEqual(runSorted.asJs(), ['a', 'b'])
+  assert.equal(runSorted.field, null)
+})
+
+test('intoReversed reverses both leaves with their absences', () => {
+  assert.deepEqual(int64Column([1, null, 3]).intoReversed().asJs(), [3, null, 1])
+  assert.deepEqual(new Serie([1, 2]).intoReversed().asJs(), [2, 1])
+  assert.equal(new Serie([]).intoReversed().isEmpty(), true)
+})
+
+test('intoTaken reads indices of any integer width and refuses what names no row', () => {
+  const column = int64Column([10, 20, 30])
+  const run = new Serie([10, 20, 30])
+  const byUint32 = Serie.fromScalars(new Field('index', 'uint32', false), [2, 0, 2])
+  const byInt64 = new Serie([2, 0, 2])
+  const byColumn = int64Column([2, 0, 2])
+  for (const serie of [column, run]) {
+    // An iterable of integers is the run of them.
+    for (const indices of [byUint32, byInt64, byColumn, [2, 0, 2]]) {
+      const taken = serie.intoTaken(indices)
+      assert.deepEqual(taken.asJs(), [30, 10, 30])
+      assert.equal(String(taken.field), String(serie.field))
+    }
+    assert.equal(serie.intoTaken(new Serie([])).isEmpty(), true)
+    for (const [indices, what] of [
+      [new Serie([3]), 'past the end'],
+      [new Serie([-1]), 'negative'],
+      [new Serie([null]), 'absent'],
+      [new Serie(['0']), 'text'],
+      [int64Column([null]), 'an absent column row'],
+    ]) {
+      assert.throws(() => serie.intoTaken(indices), /names no row of the 3/, what)
+    }
+  }
+  assert.throws(() => column.intoTaken('0'), /Serie.intoTaken indices must be a Serie or an iterable/)
+  assert.throws(() => column.intoTaken(2), /Serie.intoTaken indices must be an iterable/)
+})
+
+test('intoFiltered keeps what the mask keeps and an absent mask row keeps nothing', () => {
+  const column = int64Column([10, 20, 30])
+  const run = new Serie([10, 20, 30])
+  const maskRun = new Serie([true, null, true])
+  const maskColumn = Serie.fromScalars(new Field('keep', 'boolean', true), [true, null, true])
+  for (const serie of [column, run]) {
+    for (const mask of [maskRun, maskColumn, [true, null, true]]) {
+      const kept = serie.intoFiltered(mask)
+      assert.deepEqual(kept.asJs(), [10, 30])
+      assert.equal(String(kept.field), String(serie.field))
+    }
+    assert.throws(() => serie.intoFiltered([true]), /a mask of 1 rows cannot filter the 3 rows/)
+    assert.throws(() => serie.intoFiltered([1, 1, 1]), /neither a boolean nor absent/)
+  }
+})
+
+test('partitionBy groups in first-occurrence order, an absent key one value', () => {
+  const prices = int64Column([1, 2, 3, 4])
+  // Sorted keys cut every group as a slice of the column; the binding sees
+  // the same groups either way.
+  const groups = prices.partitionBy(utf8Column(['a', 'a', 'b', null]))
+  assert.deepEqual(
+    groups.map(([key, rows]) => [key.asJs(), rows.asJs()]),
+    [
+      ['a', [1, 2]],
+      ['b', [3]],
+      [null, [4]],
+    ],
+  )
+  for (const [, rows] of groups) assert.ok(rows.field.equals(prices.field))
+
+  const unsorted = prices.partitionBy(utf8Column(['b', 'a', 'b', 'a']))
+  assert.deepEqual(
+    unsorted.map(([key, rows]) => [key.asJs(), rows.asJs()]),
+    [
+      ['b', [1, 3]],
+      ['a', [2, 4]],
+    ],
+  )
+
+  // A run partitions the same way, by a run of keys - or any iterable.
+  const run = new Serie([1, 2, 3, 4])
+  for (const keys of [new Serie(['b', 'a', 'b', null]), ['b', 'a', 'b', null]]) {
+    const runGroups = run.partitionBy(keys)
+    assert.equal(runGroups.length, 3)
+    assert.equal(runGroups[2][0].asJs(), null)
+    assert.deepEqual(runGroups[2][1].asJs(), [4])
+  }
+
+  assert.throws(() => prices.partitionBy(new Serie([1])), /1 keys cannot partition the 4 rows/)
+  assert.deepEqual(new Serie([]).partitionBy(new Serie([])), [])
+})
+
+test('partitionByPaths keys a record by the run of its cells', () => {
+  const { FieldPath } = binding
+  const records = quotes([
+    ['XNAS', 1],
+    ['XNYS', 2],
+    ['XNAS', 1],
+    ['XNAS', 3],
+  ])
+  const groups = records.partitionByPaths(['venue', new FieldPath('price')])
+  assert.equal(groups.length, 3)
+  assert.deepEqual(groups[0][0].asJs(), ['XNAS', 1])
+  assert.equal(groups[0][1].length, 2)
+  assert.ok(groups[0][1] instanceof StructSerie)
+  assert.ok(groups[0][1].field.equals(records.field))
+  assert.deepEqual(groups[1][0].asJs(), ['XNYS', 2])
+  // One path is one key, spelled alone or in a list.
+  const byVenue = records.partitionByPaths('venue')
+  assert.equal(byVenue.length, 2)
+  assert.deepEqual(byVenue[0][0].asJs(), ['XNAS'])
+  assert.equal(byVenue[0][1].length, 3)
+  assert.equal(records.partitionByPaths(['venue']).length, 2)
+  // One child is the same ask through `child`.
+  const byChild = records.partitionBy(records.child('venue'))
+  assert.equal(byChild[0][0].asJs(), 'XNAS')
+  assert.ok(byChild[0][1].equals(byVenue[0][1]))
+
+  assert.throws(() => records.partitionByPaths([]), /partitions by no path/)
+  assert.throws(() => records.partitionByPaths(['tier']), /tier reaches no column of quote/)
+  assert.throws(
+    () => new Serie([1]).partitionByPaths(['price']),
+    /a schema-free run partitions by no path/,
+  )
+})
+
+test('memorySize counts a column as its slice and a run as its values', () => {
+  const column = int64Column(Array.from({ length: 1000 }, (_, index) => index))
+  const whole = column.memorySize()
+  assert.ok(whole >= 8000, `${whole}`)
+  assert.ok(column.slice(0, 10).memorySize() < whole / 10)
+  assert.ok(new Serie([1, 2, 3]).memorySize() > 0)
+  assert.equal(new Serie([]).memorySize(), 0)
+})
+
+test('asSorted rewrites a primitive column in place gathering its absences', () => {
+  for (const [options, expected] of [
+    [undefined, [1, 2, 3, null, null]],
+    [{ descending: true }, [3, 2, 1, null, null]],
+    [{ nullsFirst: true }, [null, null, 1, 2, 3]],
+    [{ descending: true, nullsFirst: true }, [null, null, 3, 2, 1]],
+  ]) {
+    const column = int64Column([3, null, 1, null, 2])
+    const field = column.field
+    assert.strictEqual(column.asSorted(options), column)
+    assert.deepEqual(column.asJs(), expected, JSON.stringify(options))
+    assert.equal(column.nullCount(), 2)
+    assert.ok(column.field.equals(field))
+    assert.equal(column.isSorted(options), true)
+    assert.equal(column.intoArrowArray().nullCount, 2)
+  }
+  // No absence: the slice alone; the writes chain.
+  const column = int64Column([3, 1, 2])
+  column.asSorted().asReversed()
+  assert.deepEqual(column.asJs(), [3, 2, 1])
+})
+
+test('asSorted on a shared column copies once and leaves the other holder alone', () => {
+  const column = int64Column([2, 1])
+  const other = column.clone()
+  other.asSorted()
+  assert.deepEqual(other.asJs(), [1, 2])
+  assert.deepEqual(column.asJs(), [2, 1])
+})
+
+test('every as write brings a run or a kernel leaf into the state and chains', () => {
+  const run = new Serie(['b', null, 'a', 'b'])
+  assert.strictEqual(run.asSorted().asUnique().asReversed(), run)
+  assert.deepEqual(run.asJs(), [null, 'b', 'a'])
+  run.asTaken([2, 1]).asFiltered([false, true])
+  assert.deepEqual(run.asJs(), ['b'])
+
+  const strings = utf8Column(['b', null, 'a', 'b'])
+  const field = strings.field
+  strings.asSorted().asUnique().asReversed()
+  assert.deepEqual(strings.asJs(), [null, 'b', 'a'])
+  assert.ok(strings.field.equals(field))
+  strings.asTaken(new Serie([2, 1])).asFiltered(new Serie([false, true]))
+  assert.deepEqual(strings.asJs(), ['b'])
+  assert.ok(strings.field.equals(field))
+})
+
+test('a refused write leaves the serie as it was', () => {
+  const column = int64Column([2, 1])
+  assert.throws(() => column.asTaken([5]))
+  assert.throws(() => column.asFiltered([]))
+  assert.deepEqual(column.asJs(), [2, 1])
+})
+
+test('asReversed reverses a primitive column in place with its validity', () => {
+  const column = int64Column([1, null, null, 4, 5])
+  column.asReversed()
+  assert.deepEqual(column.asJs(), [5, 4, null, null, 1])
+  assert.equal(column.nullCount(), 2)
+})
+
+// Every nested, encoded and viewed layout answers the ladder's lower rungs:
+// the row format, and the values' own order.
+function nestedColumns() {
+  const records = quotes([
+    ['XNYS', 2],
+    ['XNAS', 2],
+    ['XNAS', 1],
+    ['XNYS', 2],
+  ])
+  const lists = Serie.fromScalars(Field.from('item: list<int64>'), [[2, 3], [1], [2, 3], [2]])
+  const dictionary = Serie.fromArrowArray(
+    arrow.vectorFromArray(
+      ['XNYS', 'XNAS', 'XNYS', 'XPAR'],
+      new arrow.Dictionary(new arrow.Utf8(), new arrow.Int8()),
+    ),
+  )
+  const views = Serie.fromScalars(new Field('venue', 'utf8_view', false), [
+    'XNYS',
+    'XNAS',
+    'a view longer than twelve bytes',
+    'XNYS',
+  ])
+  const booleans = Serie.fromScalars(new Field('flag', 'boolean', true), [true, false, null, true])
+  return [records, lists, dictionary, views, booleans]
+}
+
+test('every layout answers every verb through the ladder', () => {
+  for (const column of nestedColumns()) {
+    const what = String(column.field)
+    assert.equal(column.sortIndices().length, 4, what)
+    const sorted = column.intoSorted()
+    assert.equal(sorted.isSorted(), true, what)
+    assert.ok(sorted.field.equals(column.field), what)
+    assert.equal(sorted.constructor, column.constructor, what)
+    // The sort agrees with the values' own order, absences last.
+    const byValue = column.rows().sort((left, right) => {
+      const [leftNull, rightNull] = [left.asJs() === null, right.asJs() === null]
+      if (leftNull || rightNull) return Number(leftNull) - Number(rightNull)
+      return left.compare(right)
+    })
+    assert.ok(sorted.equals(new Serie(byValue)), what)
+    assert.equal(column.intoSorted({ descending: true }).isSorted({ descending: true }), true, what)
+    assert.equal(column.isUnique(), false, what)
+    assert.equal(column.uniqueCount(), 3, what)
+    const unique = column.intoUnique()
+    assert.equal(unique.length, 3, what)
+    assert.equal(unique.isUnique(), true, what)
+    assert.ok(unique.scalar(0).equals(column.scalar(0)), what)
+    assert.ok(column.intoReversed().scalar(0).equals(column.scalar(3)), what)
+    const groups = column.partitionBy(column)
+    assert.equal(groups.length, 3, what)
+    assert.equal(groups[0][1].length, 2, what)
+    const written = column.clone()
+    written.asSorted().asUnique().asReversed()
+    assert.equal(written.length, 3, what)
+    assert.ok(written.field.equals(column.field), what)
+    // Ascending with absences last, reversed, is descending with absences
+    // first.
+    assert.equal(written.isSorted({ descending: true, nullsFirst: true }), true, what)
+    assert.ok(column.memorySize() > 0, what)
+  }
+})
+
+test('the ordering options are validated, skipped when absent and cleared by null', () => {
+  const column = int64Column([2, null, 1])
+  // `null` and an absent option both take the default.
+  assert.deepEqual(column.intoSorted({ descending: null, nullsFirst: null }).asJs(), [1, 2, null])
+  assert.deepEqual(column.intoSorted(null).asJs(), [1, 2, null])
+  assert.deepEqual(column.intoSorted({}).asJs(), [1, 2, null])
+  assert.throws(
+    () => column.isSorted({ descending: true, nullsLast: true }),
+    /Serie.isSorted options take descending and nullsFirst, got "nullsLast"/,
+  )
+  assert.throws(() => column.asSorted({ descending: 'yes' }), /option descending must be a boolean/)
+  assert.throws(() => column.sortIndices([true]), /options must be an object/)
+  // A refused option leaves the serie as it was.
+  assert.deepEqual(column.asJs(), [2, null, 1])
+})
+
+test('the ordering natives stay outside the public surface', () => {
+  for (const name of [
+    '_sortIndicesNative',
+    '_isSortedNative',
+    '_intoSortedNative',
+    '_intoUniqueNative',
+    '_intoReversedNative',
+    '_intoTakenNative',
+    '_intoFilteredNative',
+    '_partitionByNative',
+    '_partitionByPathsNative',
+    '_asSortedNative',
+    '_asUniqueNative',
+    '_asReversedNative',
+    '_asTakenNative',
+    '_asFilteredNative',
+    '_windowNative',
+  ]) {
+    assert.equal(name in Serie.prototype, false, name)
+  }
+  // A nested answer is handed out as its leaf's class.
+  const records = quotes([['XNAS', 1]])
+  for (const answer of [
+    records.intoSorted(),
+    records.intoUnique(),
+    records.intoReversed(),
+    records.intoTaken([0]),
+    records.intoFiltered([true]),
+    records.partitionBy(['a'])[0][1],
+  ]) {
+    assert.ok(answer instanceof StructSerie)
+  }
+})

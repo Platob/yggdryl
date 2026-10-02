@@ -9,7 +9,7 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 use yggdryl::{
     Field as CoreField, FixId as CoreFixId, ProtocolField as CoreProtocolField,
-    Scheme as CoreScheme,
+    Scheme as CoreScheme, expression::Projection,
 };
 
 use crate::{
@@ -1323,6 +1323,13 @@ impl JsField {
         JsProtocolField::new(reference, CoreScheme::TRANSFORM)
     }
 
+    /// The live sort-order property view: on a struct, `SORT:by` - the
+    /// `order by` keys its rows keep, most significant first.
+    #[napi(getter)]
+    pub fn sort(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::SORT)
+    }
+
     /// The live Amazon S3 property view.
     #[napi(getter)]
     pub fn s3(&self, reference: Reference<JsField>) -> JsProtocolField {
@@ -1471,12 +1478,54 @@ impl JsField {
     }
 
     /// Return this struct root with the named children marked as partitions.
+    ///
+    /// The bare-column form of `withPartitionBy`: the names are declared as
+    /// `PARTITION:by` and marked.
     #[napi]
     pub fn with_partition_fields(&self, names: Vec<String>) -> Result<Self> {
         let names: Vec<&str> = names.iter().map(String::as_str).collect();
         self.inner
             .with_partition_fields(&names)
             .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Return this struct root partitioned by `entries`, each a projection
+    /// of the expression grammar: the declaration stored as `PARTITION:by`,
+    /// every identity entry's column marked, every derived entry
+    /// materialized as a marked column computed from the rows.
+    ///
+    /// A bare column - `venue` - is an identity partition on a column the
+    /// struct has. Any other entry - `years(ts)`, `minutes(ts, 15)`,
+    /// `truncate(name, 4) as prefix` - is a derived partition: a child named
+    /// by the alias, else `{source}_{function}` with the function in
+    /// Iceberg's singular (`ts_year`, `ts_minutes`, `name_truncate`), typed
+    /// by the term and carrying it as its `TRANSFORM:` declaration. A column
+    /// marked before and no longer declared is unmarked; an empty array
+    /// removes the declaration. Refused, naming the entry, when an entry
+    /// does not parse, names a column the struct lacks, publishes a name
+    /// another entry publishes, or cannot be typed against the struct.
+    #[napi]
+    pub fn with_partition_by(&self, entries: Vec<String>) -> Result<Self> {
+        let entries = entries
+            .iter()
+            .map(|entry| entry.parse::<Projection>().map_err(napi_error))
+            .collect::<Result<Vec<Projection>>>()?;
+        self.inner
+            .with_partition_by(entries)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The projections this struct's rows partition by, in order, each as
+    /// the text the grammar writes: the `PARTITION:by` declaration where the
+    /// root carries one, the marked columns where it carries none, and empty
+    /// for a struct that partitions nothing.
+    #[napi]
+    pub fn partition_by(&self) -> Result<Vec<String>> {
+        self.inner
+            .partition_by()
+            .map(|entries| entries.iter().map(ToString::to_string).collect())
             .map_err(napi_error)
     }
 
@@ -1653,6 +1702,15 @@ impl JsField {
     }
 }
 
+/// The protocols whose view answers the typed `by` list.
+#[derive(Clone, Copy)]
+enum ByProtocol {
+    Partition,
+    Sort,
+    Digest,
+    Transform,
+}
+
 /// One protocol's properties on a field, read and written by bare name.
 ///
 /// The view is live: it holds the `Field` it was taken from and answers every
@@ -1673,6 +1731,43 @@ impl JsProtocolField {
     /// Borrow the core read view, which reads the live field's metadata.
     fn view(&self) -> CoreProtocolField<'_> {
         self.field.inner.protocol(&self.scheme)
+    }
+
+    /// Which of the four protocols declaring a `by` list this view is,
+    /// refusing every other: the typed list is answered by the `partition`,
+    /// `sort`, `digest` and `transform` views alone.
+    fn by_protocol(&self, env: Env) -> Result<ByProtocol> {
+        for (scheme, protocol) in [
+            (CoreScheme::PARTITION, ByProtocol::Partition),
+            (CoreScheme::SORT, ByProtocol::Sort),
+            (CoreScheme::DIGEST, ByProtocol::Digest),
+            (CoreScheme::TRANSFORM, ByProtocol::Transform),
+        ] {
+            if self.scheme == scheme {
+                return Ok(protocol);
+            }
+        }
+        Err(napi_type_error(
+            env,
+            format!(
+                "by is a partition, sort, digest or transform property, and this is a {} view",
+                self.scheme.as_str()
+            ),
+        ))
+    }
+
+    /// Refuse the transform's `term` on a view of another protocol.
+    fn require_transform(&self, env: Env, property: &str) -> Result<()> {
+        if self.scheme == CoreScheme::TRANSFORM {
+            return Ok(());
+        }
+        Err(napi_type_error(
+            env,
+            format!(
+                "{property} is a transform property, and this is a {} view",
+                self.scheme.as_str()
+            ),
+        ))
     }
 
     /// Refuse a typed FIX property on a view of another protocol.
@@ -1799,6 +1894,118 @@ impl JsProtocolField {
     #[napi(getter)]
     pub fn display(&self) -> Option<String> {
         self.view().display().map(ToOwned::to_owned)
+    }
+
+    /// The `by` list this view's protocol declares, each entry the text its
+    /// grammar writes, or `null` where the field declares none.
+    ///
+    /// On the `partition` view, the projections a struct's rows partition by
+    /// (`venue`, `years(ts)`, `truncate(name, 4) as prefix`); on the `sort`
+    /// view, the `order by` keys they keep (`venue`, `price desc nulls
+    /// first`); on the `digest` view, the terms a holder reads, `"*"`
+    /// included as stored; on the `transform` view, the terms its function
+    /// reads. A stored list that does not parse is refused naming its key.
+    /// Every other view refuses the property.
+    #[napi(getter)]
+    pub fn by(&self, env: Env) -> Result<Option<Vec<String>>> {
+        fn texts<T: ToString>(by: Option<Vec<T>>) -> Option<Vec<String>> {
+            by.map(|by| by.iter().map(ToString::to_string).collect())
+        }
+        let field = &self.field.inner;
+        match self.by_protocol(env)? {
+            ByProtocol::Partition => field.as_partition().by().map(texts),
+            ByProtocol::Sort => field.as_sort().by().map(texts),
+            ByProtocol::Digest => field.as_digest().by(),
+            ByProtocol::Transform => field.as_transform().by().map(texts),
+        }
+        .map_err(napi_error)
+    }
+
+    /// Record the `by` list this view's protocol declares, each entry read
+    /// by its grammar and stored as it spells it, or clear it with `null`.
+    ///
+    /// The `partition` and `sort` views take any projection and `order by`
+    /// key; the `digest` view takes terms or `["*"]` on a holder alone; the
+    /// `transform` view's list is its function's arguments, written beside
+    /// it by `term`, so assigning it there is refused. A refused entry
+    /// leaves the field unchanged and names the key.
+    #[napi(setter)]
+    pub fn set_by(&mut self, env: Env, entries: Option<Vec<String>>) -> Result<()> {
+        let protocol = self.by_protocol(env)?;
+        let Some(entries) = entries else {
+            self.remove_by(env)?;
+            return Ok(());
+        };
+        let field = &mut self.field.inner;
+        match protocol {
+            ByProtocol::Partition => field.as_partition_mut().set_by_texts(entries),
+            ByProtocol::Sort => field.as_sort_mut().set_by_texts(entries),
+            ByProtocol::Digest => field.as_digest_mut().set_by(entries),
+            ByProtocol::Transform => return Err(transform_by_refused(env, "by")),
+        }
+        .map_err(napi_error)
+    }
+
+    /// Remove the `by` list this view's protocol declares, answering the
+    /// text it held, or `null` where there was none; refused on the
+    /// `transform` view, whose list goes with its `term`.
+    #[napi]
+    pub fn remove_by(&mut self, env: Env) -> Result<Option<String>> {
+        let protocol = self.by_protocol(env)?;
+        let field = &mut self.field.inner;
+        Ok(match protocol {
+            ByProtocol::Partition => field.as_partition_mut().remove_by(),
+            ByProtocol::Sort => field.as_sort_mut().remove_by(),
+            ByProtocol::Digest => field.as_digest_mut().remove_by(),
+            ByProtocol::Transform => return Err(transform_by_refused(env, "removeBy")),
+        })
+    }
+
+    /// The term a `TRANSFORM:` column is computed with, on the `transform`
+    /// view: an explicit `TRANSFORM:expression`, else its
+    /// `TRANSFORM:function` called over its `by` terms, or `null` for an
+    /// ordinary column.
+    #[napi(getter)]
+    pub fn term(&self, env: Env) -> Result<Option<crate::expression::JsTerm>> {
+        self.require_transform(env, "term")?;
+        self.field
+            .inner
+            .as_transform()
+            .term()
+            .map(|term| term.map(crate::expression::JsTerm::from_core))
+            .map_err(napi_error)
+    }
+
+    /// Declare the term this column is computed with - a `Term` or its
+    /// text - or remove the declaration with `null`. A call over plain
+    /// columns is stored as its function and the columns it reads as
+    /// `TRANSFORM:by`, any other term as its canonical
+    /// `TRANSFORM:expression`.
+    #[napi(setter, ts_args_type = "term: Term | string | null")]
+    pub fn set_term(
+        &mut self,
+        env: Env,
+        term: Option<crate::expression::TermInput<'_>>,
+    ) -> Result<()> {
+        self.require_transform(env, "term")?;
+        let Some(term) = term else {
+            self.field.inner.as_transform_mut().remove_term();
+            return Ok(());
+        };
+        let term = crate::expression::term_from_input(term)?;
+        self.field
+            .inner
+            .as_transform_mut()
+            .set_term(&term)
+            .map_err(napi_error)
+    }
+
+    /// Remove the declared derivation, answering the term it spelled, or
+    /// `null` where there was none.
+    #[napi]
+    pub fn remove_term(&mut self, env: Env) -> Result<Option<String>> {
+        self.require_transform(env, "removeTerm")?;
+        Ok(self.field.inner.as_transform_mut().remove_term())
     }
 
     /// The dictionaries that contributed this field, on the `fix` view.
@@ -2414,4 +2621,17 @@ impl JsProtocolField {
                 .collect(),
         )
     }
+}
+
+/// A transform's `by` is the argument list of its function, written beside
+/// it by the `term` setter, so it is read on the view and never written
+/// alone.
+fn transform_by_refused(env: Env, property: &str) -> Error {
+    napi_type_error(
+        env,
+        format!(
+            "{property} on a transform view would leave its function without its \
+             arguments; assign field.transform.term instead"
+        ),
+    )
 }
