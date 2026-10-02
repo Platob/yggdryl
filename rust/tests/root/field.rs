@@ -576,118 +576,113 @@ mod arrow {
         .unwrap()
     }
 
+    fn int32_values(column: &arrow_array::ArrayRef) -> &[i32] {
+        column
+            .as_any()
+            .downcast_ref::<arrow_array::Int32Array>()
+            .unwrap()
+            .values()
+    }
+
     #[test]
-    fn apply_arrow_batch_runs_every_protocol_and_walks_nested_declarations() {
+    fn apply_arrow_batch_casts_and_fills_no_declared_column() {
         let root = applied_root();
 
         let applied = root
-            .apply_arrow_batch(&events(), true, true, true, ArrowCastOptions::new())
+            .apply_arrow_batch(&events(), ArrowCastOptions::new())
             .unwrap();
 
+        // Every declared column is laid out, the nested Struct widened too, and
+        // none of them is written: a declaration is metadata the cast moves.
         assert_eq!(applied.num_columns(), 3);
         let trade = applied
             .column_by_name("trade")
             .unwrap()
             .as_any()
             .downcast_ref::<arrow_array::StructArray>()
-            .expect("the nested struct both protocols widened");
+            .expect("the nested struct the cast widened");
         assert_eq!(trade.num_columns(), 3);
+        assert_eq!(trade.column_by_name("year").unwrap().null_count(), 2);
         assert_eq!(
-            trade
-                .column_by_name("year")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<arrow_array::Int32Array>()
-                .unwrap()
-                .values(),
+            trade.column_by_name("trade_digest").unwrap().null_count(),
+            2
+        );
+        assert_eq!(applied.column_by_name("top_year").unwrap().null_count(), 2);
+        assert_eq!(
+            applied.column_by_name("row_digest").unwrap().null_count(),
+            2
+        );
+        // The declarations travel with the schema.
+        assert_eq!(
+            Field::from_arrow_schema("row", applied.schema().as_ref()).unwrap(),
+            root
+        );
+    }
+
+    #[test]
+    fn apply_arrow_batch_hands_a_batch_of_the_root_schema_back() {
+        let root = applied_root();
+        let once = root
+            .apply_arrow_batch(&events(), ArrowCastOptions::new())
+            .unwrap();
+
+        let twice = root
+            .apply_arrow_batch(&once, ArrowCastOptions::new())
+            .unwrap();
+
+        assert_eq!(twice, once);
+        assert!(
+            twice
+                .columns()
+                .iter()
+                .zip(once.columns())
+                .all(|(twice, once)| Arc::ptr_eq(twice, once))
+        );
+    }
+
+    #[test]
+    fn the_protocols_fill_what_the_cast_landed() {
+        let root = applied_root();
+
+        // A caller wanting the declared columns written asks their protocols,
+        // in the order their answers depend on: the derivations, then the
+        // holders over the rows as they finally stand.
+        let landed = root
+            .apply_arrow_batch(&events(), ArrowCastOptions::new())
+            .unwrap();
+        let derived = root.as_transform().apply_arrow_batch(&landed).unwrap();
+        let digested = root.as_digest().apply_arrow_batch(&derived).unwrap();
+
+        let trade = digested
+            .column_by_name("trade")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::StructArray>()
+            .unwrap();
+        assert_eq!(
+            int32_values(trade.column_by_name("year").unwrap()),
             &[2024, 2025]
         );
-        // Every holder was filled, nested one included.
         assert_eq!(
             trade.column_by_name("trade_digest").unwrap().null_count(),
             0
         );
+        // The level above read what the nested declaration wrote.
         assert_eq!(
-            applied.column_by_name("row_digest").unwrap().null_count(),
-            0
-        );
-        // The level above read what the nested partition declaration wrote.
-        assert_eq!(
-            applied
-                .column_by_name("top_year")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<arrow_array::Int32Array>()
-                .unwrap()
-                .values(),
+            int32_values(digested.column_by_name("top_year").unwrap()),
             &[2024, 2025]
         );
-    }
-
-    #[test]
-    fn apply_arrow_batch_answers_the_same_batch_the_second_time() {
-        let root = applied_root();
-        let once = root
-            .apply_arrow_batch(&events(), true, true, true, ArrowCastOptions::new())
-            .unwrap();
-
-        assert_eq!(
-            root.apply_arrow_batch(&once, true, true, true, ArrowCastOptions::new())
-                .unwrap(),
-            once
-        );
-    }
-
-    #[test]
-    fn apply_arrow_batch_runs_only_the_protocols_it_is_asked_for() {
-        let root = applied_root();
-
-        // Cast alone materializes every declared column and writes none of them.
-        let cast_only = root
-            .apply_arrow_batch(&events(), false, false, true, ArrowCastOptions::new())
-            .unwrap();
-        assert_eq!(cast_only.num_columns(), 3);
-        assert_eq!(
-            cast_only.column_by_name("top_year").unwrap().null_count(),
-            2
-        );
-        assert_eq!(
-            cast_only.column_by_name("row_digest").unwrap().null_count(),
-            2
-        );
-
-        // Partition alone leaves the holders untouched.
-        let partitioned = root
-            .apply_arrow_batch(&events(), false, true, true, ArrowCastOptions::new())
-            .unwrap();
-        assert_eq!(
-            partitioned
-                .column_by_name("top_year")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<arrow_array::Int32Array>()
-                .unwrap()
-                .values(),
-            &[2024, 2025]
-        );
-        assert_eq!(
-            partitioned
-                .column_by_name("row_digest")
-                .unwrap()
-                .null_count(),
-            2
-        );
-
-        // A digest over the uncast batch still reconciles for itself, because a
-        // holder is addressed by position.
-        let digested = root
-            .apply_arrow_batch(&events(), true, false, false, ArrowCastOptions::new())
-            .unwrap();
         assert_eq!(
             digested.column_by_name("row_digest").unwrap().null_count(),
             0
         );
-        assert_eq!(digested.column_by_name("top_year").unwrap().null_count(), 2);
+        // What the protocols wrote is the root's own shape, so casting again
+        // moves nothing.
+        assert_eq!(
+            root.apply_arrow_batch(&digested, ArrowCastOptions::new())
+                .unwrap(),
+            digested
+        );
     }
 
     #[test]
@@ -695,7 +690,7 @@ mod arrow {
         let root = DataType::Int64.required_field("id");
 
         assert!(
-            root.apply_arrow_batch(&events(), false, true, false, ArrowCastOptions::new())
+            root.apply_arrow_batch(&events(), ArrowCastOptions::new())
                 .is_err()
         );
     }
@@ -706,13 +701,7 @@ mod arrow {
         let stored = events().schema();
 
         let applied = root
-            .apply_arrow_schema(
-                Arc::clone(&stored),
-                true,
-                true,
-                true,
-                ArrowCastOptions::new(),
-            )
+            .apply_arrow_schema(Arc::clone(&stored), ArrowCastOptions::new())
             .unwrap();
 
         assert_eq!(
@@ -731,14 +720,14 @@ mod arrow {
         // It is exactly the schema a batch comes back with.
         assert_eq!(
             applied,
-            root.apply_arrow_batch(&events(), true, true, true, ArrowCastOptions::new())
+            root.apply_arrow_batch(&events(), ArrowCastOptions::new())
                 .unwrap()
                 .schema()
         );
     }
 
     #[test]
-    fn apply_arrow_schema_refuses_a_declaration_the_reader_cannot_satisfy() {
+    fn apply_arrow_schema_refuses_a_source_lacking_a_required_column() {
         let root = applied_root();
         let unrelated = Arc::new(Schema::new(vec![ArrowField::new(
             "price",
@@ -748,7 +737,7 @@ mod arrow {
 
         // Nothing is decoded, and the missing source is named before any row is.
         let error = root
-            .apply_arrow_schema(unrelated, false, true, false, ArrowCastOptions::new())
+            .apply_arrow_schema(unrelated, ArrowCastOptions::new())
             .unwrap_err()
             .to_string();
         assert!(error.contains("trade"), "{error}");
@@ -761,7 +750,7 @@ mod arrow {
         let reader = yggdryl::arrow::batch_reader(Arc::clone(&stored), [events(), events()]);
 
         let mut applied = root
-            .apply_arrow_reader(reader, true, true, true, ArrowCastOptions::new())
+            .apply_arrow_reader(reader, ArrowCastOptions::new())
             .unwrap();
 
         // Read before pulling: the shape is a property of the two schemas.
@@ -770,7 +759,7 @@ mod arrow {
 
         let first = applied.next().expect("one batch").unwrap();
         assert_eq!(first.schema(), reported);
-        assert_eq!(first.column_by_name("row_digest").unwrap().null_count(), 0);
+        assert_eq!(first.column_by_name("row_digest").unwrap().null_count(), 2);
         assert_eq!(
             applied
                 .next()
@@ -783,32 +772,30 @@ mod arrow {
     }
 
     #[test]
-    fn apply_arrow_reader_asked_for_nothing_hands_the_reader_back() {
+    fn apply_arrow_reader_over_the_root_schema_moves_no_column() {
         let root = applied_root();
-        let stored = events().schema();
-        let reader = yggdryl::arrow::batch_reader(Arc::clone(&stored), [events()]);
+        let landed = root
+            .apply_arrow_batch(&events(), ArrowCastOptions::new())
+            .unwrap();
+        let reader = yggdryl::arrow::batch_reader(landed.schema(), [landed.clone()]);
 
         let mut untouched = root
-            .apply_arrow_reader(reader, false, false, false, ArrowCastOptions::new())
+            .apply_arrow_reader(reader, ArrowCastOptions::new())
             .unwrap();
 
-        assert_eq!(arrow_array::RecordBatchReader::schema(&untouched), stored);
         assert_eq!(
-            untouched.next().expect("one batch").unwrap().num_columns(),
-            1
+            arrow_array::RecordBatchReader::schema(&untouched),
+            landed.schema()
         );
-    }
-
-    /// [`applied_root`] with a signed holder beside the unsigned one: both read
-    /// the same sources, and the signed one stores the digest's bits.
-    fn signed_applied_root() -> Field {
-        let mut signed = DataType::Int64.nullable_field("signed_digest");
-        signed.as_digest_mut().set_holder().unwrap();
-        let unsigned = applied_root();
-        StructType::from_fields(unsigned.fields().iter().cloned().chain([signed]))
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row")
+        let batch = untouched.next().expect("one batch").unwrap();
+        assert!(
+            batch
+                .columns()
+                .iter()
+                .zip(landed.columns())
+                .all(|(batch, landed)| Arc::ptr_eq(batch, landed))
+        );
+        assert!(untouched.next().is_none());
     }
 
     fn events_on(days: &[i32]) -> arrow_array::RecordBatch {
@@ -823,85 +810,41 @@ mod arrow {
     }
 
     #[test]
-    fn apply_arrow_reader_digests_every_batch_as_the_batch_path_does() {
-        let root = signed_applied_root();
+    fn apply_arrow_reader_casts_every_batch_as_the_batch_path_does() {
+        let root = applied_root();
         let batches = vec![
             events_on(&[19_723, 20_089]),
             events_on(&[20_454]),
             events_on(&[]),
         ];
         let stored = batches[0].schema();
-        let streamed = |digest, transform, cast| {
-            root.apply_arrow_reader(
+
+        let streamed = root
+            .apply_arrow_reader(
                 yggdryl::arrow::batch_reader(Arc::clone(&stored), batches.clone()),
-                digest,
-                transform,
-                cast,
                 ArrowCastOptions::new(),
             )
             .unwrap()
             .collect::<Result<Vec<_>, _>>()
-            .unwrap()
-        };
+            .unwrap();
 
-        // The stream plans its digest fill once, over the batches its cast
-        // step already landed; each answers what the digest verb answers over
-        // that landed batch, which casts and plans for itself.
-        let applied = streamed(true, true, true);
-        assert_eq!(applied.len(), batches.len());
-        for (batch, applied) in batches.iter().zip(&applied) {
-            let landed = root
-                .apply_arrow_batch(batch, false, true, true, ArrowCastOptions::new())
-                .unwrap();
+        // The stream compiles its cast once; each batch is what the batch
+        // verb, which compiles for itself, answers.
+        assert_eq!(streamed.len(), batches.len());
+        for (batch, streamed) in batches.iter().zip(&streamed) {
             assert_eq!(
-                applied,
-                &root.as_digest().apply_arrow_batch(&landed).unwrap()
-            );
-            assert_eq!(
-                applied,
+                streamed,
                 &root
-                    .apply_arrow_batch(batch, true, true, true, ArrowCastOptions::new())
+                    .apply_arrow_batch(batch, ArrowCastOptions::new())
                     .unwrap()
-            );
-            let unsigned = applied
-                .column_by_name("row_digest")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<arrow_array::UInt64Array>()
-                .unwrap();
-            let signed = applied
-                .column_by_name("signed_digest")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<arrow_array::Int64Array>()
-                .unwrap();
-            assert_eq!(arrow_array::Array::null_count(signed), 0);
-            assert_eq!(
-                signed
-                    .values()
-                    .iter()
-                    .map(|value| u64::from_ne_bytes(value.to_ne_bytes()))
-                    .collect::<Vec<_>>(),
-                unsigned.values().to_vec()
-            );
-        }
-
-        // With no cast step the fill lands every batch on the root itself.
-        let digested = streamed(true, false, false);
-        assert_eq!(digested.len(), batches.len());
-        for (batch, digested) in batches.iter().zip(&digested) {
-            assert_eq!(
-                digested,
-                &root.as_digest().apply_arrow_batch(batch).unwrap()
             );
         }
     }
 
     /// A root whose derived and held columns are declared non-null.
     ///
-    /// This is the shape the required-column rule has to reason about: `year` and `row_digest`
-    /// are absent from the source and required in the schema, and the only reason
-    /// that is not a contradiction is that the two protocols write them.
+    /// `year` and `row_digest` are absent from the source and required in the
+    /// schema; only their protocols write them, and an apply runs none.
     fn required_applied_root() -> Field {
         let mut year = DataType::Int32.required_field("year");
         year.as_transform_mut()
@@ -924,33 +867,53 @@ mod arrow {
     }
 
     #[test]
-    fn an_apply_lets_an_enabled_protocol_fill_its_own_required_column() {
+    fn an_apply_refuses_a_required_protocol_column_the_source_lacks() {
         let root = required_applied_root();
+        let stored = dates().schema();
 
-        let applied = root
-            .apply_arrow_batch(&dates(), true, true, true, ArrowCastOptions::new())
-            .unwrap();
-
-        // Both columns were absent from the source and are declared non-null; the
-        // cast let them through because their protocols were about to write them,
-        // and the re-check over the finished batch found them written.
-        assert_eq!(applied.num_columns(), 3);
-        assert_eq!(applied.column(1).null_count(), 0);
-        assert_eq!(applied.column(2).null_count(), 0);
+        // A declared derivation is no promise that something will write the
+        // column: the cast refuses it where it stands, at every door, before a
+        // row is read.
+        let batch = root
+            .apply_arrow_batch(&dates(), ArrowCastOptions::new())
+            .unwrap_err()
+            .to_string();
+        let schema = root
+            .apply_arrow_schema(Arc::clone(&stored), ArrowCastOptions::new())
+            .unwrap_err()
+            .to_string();
+        let reader = root
+            .apply_arrow_reader(
+                yggdryl::arrow::batch_reader(Arc::clone(&stored), [dates()]),
+                ArrowCastOptions::new(),
+            )
+            .err()
+            .expect("the reader is refused before its first batch")
+            .to_string();
+        for message in [batch, schema, reader] {
+            assert!(
+                message.contains("required Arrow field $.year is missing from the source"),
+                "{message}"
+            );
+        }
     }
 
     #[test]
-    fn an_apply_refuses_the_column_whose_protocol_is_switched_off() {
+    fn a_required_protocol_column_casts_once_its_protocol_has_written_it() {
         let root = required_applied_root();
 
-        // The partition step is what would have written `year`, so with it off
-        // nothing will: the cast refuses the declared non-null column rather
-        // than inventing its default.
-        let message = root
-            .apply_arrow_batch(&dates(), true, false, true, ArrowCastOptions::new())
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("$.year"), "{message}");
+        // The transform adds `year` beside `event`; the digest fill lands the
+        // rows on the root and writes the holder; the cast then has nothing
+        // left to refuse.
+        let derived = root.as_transform().apply_arrow_batch(&dates()).unwrap();
+        let digested = root.as_digest().apply_arrow_batch(&derived).unwrap();
+        let applied = root
+            .apply_arrow_batch(&digested, ArrowCastOptions::new())
+            .unwrap();
+
+        assert_eq!(applied.num_columns(), 3);
+        assert_eq!(int32_values(applied.column(1)), &[2024, 2025]);
+        assert_eq!(applied.column(2).null_count(), 0);
     }
 
     #[test]
@@ -966,10 +929,8 @@ mod arrow {
             false,
         );
 
-        // No protocol declares `venue`, so nothing is going to write it: the cast
-        // refuses it where it stands rather than defaulting it and re-checking.
         let message = root
-            .apply_arrow_batch(&dates(), true, true, true, ArrowCastOptions::new())
+            .apply_arrow_batch(&dates(), ArrowCastOptions::new())
             .unwrap_err()
             .to_string();
         // The applied verbs answer a core error, so the runtime refusal travels
@@ -978,50 +939,6 @@ mod arrow {
             message.contains("required Arrow field $.venue is missing from the source"),
             "{message}"
         );
-    }
-
-    #[test]
-    fn an_applied_schema_is_still_derived_without_reading_a_row() {
-        let root = required_applied_root();
-        let stored = dates().schema();
-
-        let applied = root
-            .apply_arrow_schema(
-                Arc::clone(&stored),
-                true,
-                true,
-                true,
-                ArrowCastOptions::new(),
-            )
-            .unwrap();
-
-        assert_eq!(applied.fields().len(), 3);
-        assert_eq!(applied.field(1).name(), "year");
-        assert_eq!(applied.field(2).name(), "row_digest");
-    }
-
-    #[test]
-    fn an_applied_reader_answers_its_schema_and_applies_every_batch() {
-        let root = required_applied_root();
-        let stored = dates().schema();
-        let reader = yggdryl::arrow::batch_reader(Arc::clone(&stored), [dates(), dates()]);
-
-        let mut applied = root
-            .apply_arrow_reader(reader, true, true, true, ArrowCastOptions::new())
-            .unwrap();
-
-        assert_eq!(
-            arrow_array::RecordBatchReader::schema(&applied)
-                .fields()
-                .len(),
-            3
-        );
-        for _ in 0..2 {
-            let batch = applied.next().expect("a batch").unwrap();
-            assert_eq!(batch.num_columns(), 3);
-            assert_eq!(batch.column(2).null_count(), 0);
-        }
-        assert!(applied.next().is_none());
     }
 
     /// The storage a variant column lays out: the two binaries the Parquet

@@ -1121,11 +1121,11 @@ impl Field {
     /// are exactly the declaration's. An empty `by` removes the declaration.
     ///
     /// The layout reads the marks and the derived columns' terms: a
-    /// partitioned folder spells every marked column in its paths, computing
-    /// a derived one through [`TransformField::apply_arrow_batch`](crate::TransformField::apply_arrow_batch)
-    /// before it writes, and an Iceberg table reads the declaration into its
-    /// spec (`iceberg::PartitionSpec::from_schema`, under the `iceberg`
-    /// feature).
+    /// partitioned folder spells every marked column in its paths, reading a
+    /// derived one off the rows it is handed - a write only casts, so a caller
+    /// fills it through [`TransformField::apply_arrow_batch`](crate::TransformField::apply_arrow_batch)
+    /// first - and an Iceberg table reads the declaration into its spec
+    /// (`iceberg::PartitionSpec::from_schema`, under the `iceberg` feature).
     ///
     /// ```
     /// use yggdryl::{DataType, StructType, TimeUnit, Timezone};

@@ -75,11 +75,13 @@ medium does the work before a byte is decoded.
 3. **Declare the `field` to cast once.** A narrower field is a projection; a
    wider one fills missing nullable columns with nulls; the cast runs in the
    same pass as the decode. A `not null` column refuses a value, a null or a
-   missing column by name - it never stores a default. A nullable declared
-   column takes a value it cannot convert as null while `safe` holds, and
-   `safe` is on by default - so a bad value vanishes silently. Pass
-   `safe=False` / `{ safe: false }` / `.with_safe(false)` (or declare the
-   column `not null`) when an unconvertible value must be refused.
+   missing column by name - it never stores a default. A `TRANSFORM:`,
+   `PARTITION:` or `DIGEST:` declaration on the field is metadata the cast
+   carries, never a column it fills. A nullable declared column takes a value
+   it cannot convert as null while `safe` holds, and `safe` is on by default -
+   so a bad value vanishes silently. Pass `safe=False` / `{ safe: false }` /
+   `.with_safe(false)` (or declare the column `not null`) when an unconvertible
+   value must be refused.
 4. **`merge_by` is required for merge.** Keys use Arrow's row format: null
    matches null and the last arrival wins. Merge holds only the stored side in
    memory; `merge_by` absent is a refusal, never an overwrite.
@@ -182,7 +184,9 @@ medium does the work before a byte is decoded.
 17. **Folders read by their layout.** A stored `column=value` layout is
     authoritative; with none on disk, the schema's partition-marked fields
     decide where rows go (`with_partition_fields`, or `with_partition_by` for
-    derived entries such as `years(ts)`). The first batch to reach a
+    derived entries such as `years(ts)`, whose column the caller fills first
+    through the transform view: a write only casts and refuses a required
+    column the rows lack, by path). The first batch to reach a
     leaf performs the write's operation; later ones append.
 
 ## Pitfalls

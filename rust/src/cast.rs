@@ -235,10 +235,9 @@ mod kernel {
 /// refuses a null, an empty text cell entering a non-text column, and a
 /// column the source does not carry by its path, never inventing its
 /// canonical default - except where null is the datatype's own canonical
-/// default. The one repair is internal: a column a declaring protocol fills
-/// after the cast - a digest holder, a `TRANSFORM:` or partition column -
-/// takes its canonical default for the protocol to replace, and the finished
-/// batch is checked again.
+/// default. The one repair is internal: a digest holder, which the digest
+/// fill writes after the cast that lands its batch, takes its canonical
+/// default for the fill to replace.
 mod options {
     use std::fmt;
     use std::str::FromStr;
@@ -353,8 +352,8 @@ mod options {
         safe: bool,
         representation: Representation,
         /// Whether a required column the source leaves absent takes its
-        /// canonical default: set only by [`Self::deferred`], for the column
-        /// a declaring protocol fills after the cast.
+        /// canonical default: set only by [`Self::deferred`], for the digest
+        /// holder the fill writes after the cast.
         repair: bool,
     }
 
@@ -395,16 +394,17 @@ mod options {
 
         /// Returns these options with absence repaired rather than refused.
         ///
-        /// A materializing protocol fills its own column after the cast, so the
-        /// cast may not refuse the hole the protocol is about to close; the
-        /// finished batch is checked again once the protocol has run.
+        /// The digest fill writes its holders after the cast that lands its
+        /// batch, so that cast may not refuse the hole the fill is about to
+        /// close.
         pub(crate) const fn deferred(mut self) -> Self {
             self.repair = true;
             self
         }
 
         /// Whether absence is repaired to the canonical default rather than
-        /// refused - only ever for a column a protocol fills after the cast.
+        /// refused - only ever for a holder the digest fill writes after the
+        /// cast.
         pub(crate) const fn repairs(self) -> bool {
             self.repair
         }
@@ -582,8 +582,8 @@ mod plan {
         }
 
         /// Compiles the cast from one batch schema to one non-null Struct root,
-        /// leaving the columns a named protocol still has to materialize out of
-        /// the required-column check.
+        /// leaving the holders `deferred` names for the digest fill out of the
+        /// required-column check.
         pub(crate) fn compile_schema(
             source: &Schema,
             target: &Field,
@@ -1262,28 +1262,23 @@ enum StructPolicy {
     MapEntries,
 }
 
-/// The declaring protocols that will materialize a column after a cast.
+/// The columns the digest fill materializes after the cast that lands its
+/// batch.
 ///
-/// A column a protocol fills is allowed to arrive absent or holding its
-/// canonical default, because closing that hole is the protocol's job and it
-/// has not run yet. The refusal of absence therefore stops at such a field
-/// and resumes for every other one; the applied batch is checked again once
-/// the protocols are done.
+/// A holder the fill writes is allowed to arrive absent or holding its
+/// canonical default, because closing that hole is the fill's job and it has
+/// not run yet. The refusal of absence therefore stops at a holder and
+/// resumes for every other field.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Deferred {
-    /// A `TRANSFORM:` or partition declaration derives the column from others.
-    pub(crate) transform: bool,
     /// `DIGEST:role=holder` says the column holds the row's hash.
     pub(crate) digest: bool,
 }
 
 impl Deferred {
-    /// Returns whether an enabled protocol fills this field after the cast.
-    fn defers(self, field: &Field) -> Result<bool> {
-        if self.digest && field.as_digest().is_holder() {
-            return Ok(true);
-        }
-        Ok(self.transform && field.as_transform().is_derived())
+    /// Returns whether the digest fill writes this field after the cast.
+    fn defers(self, field: &Field) -> bool {
+        self.digest && field.as_digest().is_holder()
     }
 }
 
@@ -1317,15 +1312,15 @@ impl PlanRules {
         self
     }
 
-    /// The rules for one struct child, with absence repaired where an
-    /// enabled protocol is about to fill the column itself.
-    fn child(self, field: &Field) -> Result<Self> {
-        let options = if self.deferred.defers(field)? {
+    /// The rules for one struct child, with absence repaired where the
+    /// digest fill is about to write the column itself.
+    fn child(self, field: &Field) -> Self {
+        let options = if self.deferred.defers(field) {
             self.options.deferred()
         } else {
             self.options
         };
-        Ok(Self::nested(options, self.deferred))
+        Self::nested(options, self.deferred)
     }
 }
 
@@ -1361,8 +1356,8 @@ impl ArrayCastPlan {
     /// A required field whose datatype does not hold null as its default
     /// refuses the null a lenient conversion would leave, so it converts
     /// strictly and the refusal names the value rather than the null it
-    /// would have become - unless a protocol fills the column after the
-    /// cast, which repairs the null for that protocol to replace.
+    /// would have become - unless the digest fill writes the column after
+    /// the cast, which repairs the null for the fill to replace.
     pub(crate) fn safe(&self) -> bool {
         self.options.is_safe()
             && (self.field.is_nullable() || self.null_default || self.options.repairs())
@@ -2054,7 +2049,7 @@ impl ArrayCastPlan {
                 let mut columns = Vec::with_capacity(fields.len());
                 for (target_index, (target, source_index)) in fields.iter().zip(mapping).enumerate()
                 {
-                    let child_rules = rules.child(target)?;
+                    let child_rules = rules.child(target);
                     let child_path = path.field(target.name());
                     let column = match source_index {
                         Some(index) => {
@@ -2085,7 +2080,7 @@ impl ArrayCastPlan {
                             ));
                         }
                         // A required column no source carries is refused -
-                        // unless a protocol fills it after the cast: the
+                        // unless the digest fill writes it after the cast: the
                         // schemas alone answer it, so it fails at compile time
                         // rather than on the first batch.
                         None if !child_rules.options.repairs() && !target.is_nullable() => {

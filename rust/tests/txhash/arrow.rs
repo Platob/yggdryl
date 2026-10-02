@@ -64,9 +64,7 @@ mod columns {
     use yggdryl::txhash::{TxHash, TxHasher};
     use yggdryl::xxhash::Xxh3;
     use yggdryl::xxhash::arrow::{column_digests, row_digests};
-    use yggdryl::{
-        ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, StructType, TimeUnit, Timezone,
-    };
+    use yggdryl::{DataType, DigestAlgorithm, Field, Scalar, StructType, TimeUnit, Timezone};
 
     const INSTANTS: [i64; 3] = [
         1_700_000_000_000_000,
@@ -465,16 +463,8 @@ mod columns {
         assert_eq!(read[1], Some(expected));
         assert_eq!(read[0].unwrap().unix(), INSTANTS[0]);
 
-        // The same fill through the schema pipeline, and it is idempotent.
-        let applied = root
-            .apply_arrow_batch(&source, true, true, true, ArrowCastOptions::new())
-            .unwrap();
-        assert_eq!(applied, filled);
-        assert_eq!(
-            root.apply_arrow_batch(&applied, true, true, true, ArrowCastOptions::new())
-                .unwrap(),
-            applied
-        );
+        // A second fill leaves the written holder alone.
+        assert_eq!(root.as_digest().apply_arrow_batch(&filled).unwrap(), filled);
         // The seeded fill couples the seeded digest.
         let seeded = TxHasher::new(DigestAlgorithm::Xxh3)
             .with_seed(7)
