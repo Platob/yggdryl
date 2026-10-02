@@ -1136,8 +1136,8 @@ fn a_derived_partition_entry_is_a_marked_column_a_folder_spells_out() {
     use yggdryl::media::IORecordOptions as _;
 
     // `with_partition_by` marks the identity entry and materializes the
-    // derived one as a column the folder layout spells in its paths,
-    // computed from the rows before they are written.
+    // derived one as a column the folder layout spells in its paths. A write
+    // only casts, so the caller computes it through the transform protocol.
     let rows = StructType::from_fields([
         DataType::utf8().required_field("venue"),
         DataType::date32().required_field("event"),
@@ -1181,6 +1181,17 @@ fn a_derived_partition_entry_is_a_marked_column_a_folder_spells_out() {
         ),
     ])
     .unwrap();
+    // The rows as written carry no `year`: the cast refuses the required
+    // column by path before a leaf is touched.
+    let refused = handle
+        .overwrite_arrow_reader(
+            yggdryl::arrow::batch_reader(incoming.schema(), [incoming.clone()]),
+            &options,
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("$.year"), "{refused}");
+    let incoming = rows.as_transform().apply_arrow_batch(&incoming).unwrap();
     handle
         .overwrite_arrow_reader(
             yggdryl::arrow::batch_reader(incoming.schema(), [incoming]),

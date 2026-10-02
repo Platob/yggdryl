@@ -2129,114 +2129,85 @@ mod arrow {
         pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef> {
             crate::arrow::arrow_schema_from_field(&self)
         }
-        /// Apply this schema's metadata-declared columns to one Arrow batch.
+        /// Cast one Arrow batch onto this root.
         ///
-        /// A [`Field`] states more about a batch than its shape: a
-        /// [`TRANSFORM:`](crate::TransformField::apply_arrow_batch) declaration
-        /// says a column is *derived* from others, and a
-        /// [`DIGEST:`](crate::DigestField::apply_arrow_batch) role says a column
-        /// *holds* the row's hash. Each protocol owns how it answers, including
-        /// how far down it walks, and this is the one entry point that asks them
-        /// all in the order their answers depend on.
+        /// The batch is reconciled to the columns this non-null Struct root
+        /// declares, in its order and its types, by the one cast engine: a
+        /// nullable column the batch does not carry lands null, and a required
+        /// one - absent, null, or holding a value `options` cannot convert -
+        /// is refused by path. A batch already of this root's schema comes
+        /// back as itself, its column `Arc`s untouched.
         ///
-        /// That order is the argument order reversed, because a later step reads
-        /// what an earlier one wrote:
-        ///
-        /// - `cast` reconciles the batch to this root first - the columns it
-        ///   declares, in its order and its types, missing ones materialized as
-        ///   their canonical defaults.
-        /// - `transform` fills the derived columns - a derived partition column
-        ///   among them - so a value computed from another column exists before
-        ///   anything hashes it.
-        /// - `digest` fills the holders last, over the rows as they finally stand.
-        ///
-        /// Each protocol leaves a column holding anything but its canonical
-        /// [default](Self::default_value) alone, so applying twice changes nothing
-        /// the first pass already wrote. A digest fill reconciles to this root for
-        /// itself whatever `cast` says, because a holder is addressed by position.
-        ///
-        /// `options` carries the conversion the first step runs under. A
-        /// required field refuses a null or an absent column by path, and
-        /// that holds after the protocols have run too: a field an enabled
-        /// protocol materializes may arrive absent or holding its canonical
-        /// default, because closing that hole is the protocol's job, but the
-        /// applied batch is checked again once every protocol is done, so
-        /// what a protocol left null is refused by path.
+        /// Applying a field is the cast and nothing else: a `TRANSFORM:`,
+        /// `PARTITION:` or `DIGEST:` declaration it carries is metadata the cast
+        /// moves, never a column it fills. A caller wanting those columns asks
+        /// the protocol that owns them -
+        /// [`TransformField::apply_arrow_batch`](crate::TransformField::apply_arrow_batch)
+        /// for the derived ones,
+        /// [`DigestField::apply_arrow_batch`](crate::DigestField::apply_arrow_batch)
+        /// for the holders.
         ///
         /// ```
         /// use std::sync::Arc;
         ///
-        /// use arrow_array::{ArrayRef, Date32Array, RecordBatch};
+        /// use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringArray};
         /// use yggdryl::{ArrowCastOptions, DataType, StructType};
         ///
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-        /// let mut year = DataType::Int32.nullable_field("year");
-        /// year.as_transform_mut().set_term(&"year(event)".parse()?)?;
-        /// let mut stored = DataType::UInt64.nullable_field("row_digest");
-        /// stored.as_digest_mut().set_holder()?;
         /// let root = DataType::from(StructType::from_fields([
-        ///     DataType::date32().required_field("event"),
-        ///     year,
-        ///     stored,
+        ///     DataType::Int64.required_field("id"),
+        ///     DataType::utf8().nullable_field("name"),
         /// ])?)
         /// .required_field("row");
         ///
         /// let batch = RecordBatch::try_from_iter([(
-        ///     "event",
-        ///     Arc::new(Date32Array::from(vec![19_723])) as ArrayRef,
+        ///     "id",
+        ///     Arc::new(StringArray::from(vec!["7"])) as ArrayRef,
         /// )])?;
         ///
-        /// let applied = root.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?;
+        /// let applied = root.apply_arrow_batch(&batch, ArrowCastOptions::new())?;
         ///
-        /// assert_eq!(applied.num_columns(), 3);
-        /// // The digest saw the derived column, because the partition step ran first.
-        /// assert_eq!(applied.column(2).null_count(), 0);
-        ///
-        /// // Applying again changes nothing: every column now holds a written value.
+        /// assert_eq!(applied.num_columns(), 2);
         /// assert_eq!(
-        ///     root.apply_arrow_batch(&applied, true, true, true, ArrowCastOptions::new())?,
-        ///     applied,
+        ///     applied.column(0).as_ref(),
+        ///     &Int64Array::from(vec![7]) as &dyn Array,
         /// );
+        /// assert_eq!(applied.column(1).null_count(), 1);
         /// # Ok(())
         /// # }
         /// ```
         ///
         /// # Errors
         ///
-        /// Returns an error when this is not a Struct root, when the batch cannot
-        /// be cast to it, when either protocol refuses a declaration it carries, or
-        /// when the applied batch leaves a declared non-null field null.
+        /// Returns an error when this is not a bounded, non-null Struct root,
+        /// or when the batch cannot be cast to it.
         pub fn apply_arrow_batch(
             &self,
             batch: &arrow_array::RecordBatch,
-            digest: bool,
-            transform: bool,
-            cast: bool,
             options: crate::ArrowCastOptions,
         ) -> Result<arrow_array::RecordBatch> {
-            AppliedPlan::compile(self, batch.schema(), digest, transform, cast, options)?
-                .apply(batch)
+            Ok(self
+                .record_cast_plan(batch.schema_ref(), options)?
+                .reconcile_batch(batch.clone())?)
         }
         /// Answer the schema [`Self::apply_arrow_batch`] produces, with no rows.
         ///
         /// A reader has to report its schema before it yields anything, and a
         /// caller planning a write needs the same answer. Both get it here: the
-        /// declarations name every column they add, so the applied shape is a
-        /// property of two schemas and never of the data. The batch is the empty
-        /// one, so nothing is decoded and no column is materialized beyond its
-        /// zero-length arrays - and a declaration that cannot be satisfied, a
-        /// source column the reader does not carry above all, fails here rather
-        /// than on the first batch.
+        /// cast is compiled from the two schemas, so nothing is decoded, and a
+        /// source that cannot be cast - a required column it does not carry
+        /// above all - fails here rather than on the first batch.
         ///
         /// ```
         /// use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
         /// use yggdryl::{ArrowCastOptions, DataType, StructType};
         ///
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-        /// let mut year = DataType::Int32.nullable_field("year");
-        /// year.as_transform_mut().set_term(&"year(event)".parse()?)?;
-        /// let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event"), year])?)
-        ///     .required_field("row");
+        /// let root = DataType::from(StructType::from_fields([
+        ///     DataType::date32().required_field("event"),
+        ///     DataType::Int32.nullable_field("year"),
+        /// ])?)
+        /// .required_field("row");
         ///
         /// let stored = Schema::new(vec![ArrowField::new(
         ///     "event",
@@ -2244,8 +2215,7 @@ mod arrow {
         ///     false,
         /// )]);
         ///
-        /// let applied =
-        ///     root.apply_arrow_schema(stored.into(), true, true, true, ArrowCastOptions::new())?;
+        /// let applied = root.apply_arrow_schema(stored.into(), ArrowCastOptions::new())?;
         ///
         /// assert_eq!(applied.fields().len(), 2);
         /// assert_eq!(applied.field(1).name(), "year");
@@ -2259,42 +2229,48 @@ mod arrow {
         pub fn apply_arrow_schema(
             &self,
             schema: arrow_schema::SchemaRef,
-            digest: bool,
-            transform: bool,
-            cast: bool,
             options: crate::ArrowCastOptions,
         ) -> Result<arrow_schema::SchemaRef> {
-            Ok(AppliedPlan::compile(self, schema, digest, transform, cast, options)?.schema)
+            Ok(Arc::clone(
+                self.record_cast_plan(&schema, options)?.target_schema()?,
+            ))
         }
-        /// Wrap a reader so every batch it yields has this schema applied.
+        /// Wrap a reader so every batch it yields is cast onto this root.
         ///
-        /// The stream form of [`Self::apply_arrow_batch`], and a reader for the
-        /// reason every streaming shape in this crate is one: a lake being read
-        /// into a lake being written should not have to be held in memory to gain
-        /// its derived columns. The applied plan - the cast, the applied schema,
-        /// and the strict re-check - is compiled once from the reader's schema, so
-        /// the returned reader answers that schema before the first batch is
-        /// pulled and no batch is planned for twice.
+        /// The stream form of [`Self::apply_arrow_batch`]: the cast is compiled
+        /// once from the reader's schema, so the returned reader answers this
+        /// root's schema before the first batch is pulled and no batch is
+        /// planned for twice. A reader already of this root's schema is handed
+        /// back untouched.
         ///
         /// # Errors
         ///
-        /// Returns an error when the applied schema cannot be derived. A failure
-        /// on one batch surfaces as that batch's `Err`, and the reader is not
-        /// fused after it: it yields whatever the inner reader yields next.
+        /// Returns an error when the cast cannot be planned from the reader's
+        /// schema. A failure on one batch surfaces as that batch's `Err`, and
+        /// the reader is fused after it.
         pub fn apply_arrow_reader(
             &self,
             inner: crate::arrow::BatchReader,
-            digest: bool,
-            transform: bool,
-            cast: bool,
             options: crate::ArrowCastOptions,
         ) -> Result<crate::arrow::BatchReader> {
-            if !digest && !transform && !cast {
-                return Ok(inner);
-            }
-            let plan =
-                AppliedPlan::compile(self, inner.schema(), digest, transform, cast, options)?;
-            Ok(Box::new(AppliedReader { inner, plan }))
+            Ok(
+                crate::SerieReader::from_arrow_reader(Some(self), inner, options)?
+                    .into_arrow_reader(),
+            )
+        }
+        /// The cast [`Self::apply_arrow_batch`] and [`Self::apply_arrow_schema`]
+        /// run, compiled from `source`.
+        fn record_cast_plan(
+            &self,
+            source: &Schema,
+            options: crate::ArrowCastOptions,
+        ) -> Result<crate::cast::ArrowCastPlan> {
+            Ok(crate::cast::ArrowCastPlan::compile_schema(
+                source,
+                self,
+                options,
+                crate::cast::Deferred::default(),
+            )?)
         }
         /// Imports one complete Arrow schema as a non-null Struct root Field.
         ///
@@ -2763,209 +2739,6 @@ mod arrow {
         }
     }
 
-    /// One root's declarations, compiled once against one source schema.
-    ///
-    /// A reader applies the same three steps to every batch, and all three answer
-    /// from the schemas alone: which columns the cast reconciles, which columns
-    /// each protocol declares, and what the applied shape therefore is. Compiling
-    /// that once is what lets a stream pay for it once.
-    pub(crate) struct AppliedPlan {
-        root: Field,
-        cast: Option<crate::cast::ArrowCastPlan>,
-        /// The derivations the root declares, bound once for every batch.
-        transform: Option<crate::expression::TransformPlan>,
-        digest: Option<DigestStage>,
-        /// The strict re-check over the finished batch, compiled only when a
-        /// protocol was allowed to leave a hole for itself, or when no cast ran.
-        verify: Option<crate::cast::ArrowCastPlan>,
-        /// The schema every applied batch carries.
-        schema: arrow_schema::SchemaRef,
-    }
-
-    /// The digest step: the holders the root declares, planned once, and the
-    /// cast that lands a batch on the root where no cast step already has.
-    struct DigestStage {
-        prototype: crate::Digester,
-        fill: crate::xxhash::arrow::StructPlan,
-        landing: Option<crate::cast::ArrowCastPlan>,
-    }
-
-    impl AppliedPlan {
-        /// Compiles the three steps and derives the applied schema, without rows.
-        pub(crate) fn compile(
-            root: &Field,
-            source: arrow_schema::SchemaRef,
-            digest: bool,
-            transform: bool,
-            cast: bool,
-            options: crate::ArrowCastOptions,
-        ) -> Result<Self> {
-            use crate::cast::{ArrowCastPlan, Deferred};
-
-            // A protocol is asked whether it declares anything before it is
-            // planned: both walk every batch, and where no cast step runs the
-            // digest fill casts one to materialize the holder columns. A root
-            // that declares neither is the ordinary schema, and applying it must
-            // cost exactly the cast. The question is answered on the
-            // declaration, so it reads no row - but only after
-            // `require_struct`, because a root the protocols cannot run on at
-            // all is refused rather than skipped.
-            if transform || digest {
-                root.require_struct()?;
-            }
-            let transform = transform && root.as_transform().declares_derivation();
-            let digest = digest && root.as_digest().declares_holder();
-
-            let cast = if cast {
-                Some(ArrowCastPlan::compile_schema(
-                    &source,
-                    root,
-                    options,
-                    Deferred { transform, digest },
-                )?)
-            } else {
-                None
-            };
-            // The applied shape is a property of the two schemas, so it is read off
-            // an empty batch: nothing is decoded, and a declaration that cannot be
-            // satisfied fails here rather than on the first batch.
-            let transform = transform.then(|| crate::expression::TransformPlan::new(root));
-            let empty = arrow_array::RecordBatch::new_empty(source);
-            let landed = Self::transformed(cast.as_ref(), transform.as_ref(), &empty)?;
-            let digest = if digest {
-                // Seedless, so the holders answer the canonical digest; a holder
-                // whose width the default does not fit resolves its own.
-                let prototype = crate::DigestAlgorithm::Xxh3.digester();
-                let fill = crate::xxhash::arrow::StructPlan::compile(root, prototype.algorithm())?;
-                // A cast step already landed every batch on the root, and a
-                // transform keeps that shape.
-                let landing = match &cast {
-                    Some(_) => None,
-                    None => Some(ArrowCastPlan::compile_schema(
-                        landed.schema_ref(),
-                        root,
-                        options,
-                        Deferred {
-                            transform: transform.is_some(),
-                            digest: true,
-                        },
-                    )?),
-                };
-                Some(DigestStage {
-                    prototype,
-                    fill,
-                    landing,
-                })
-            } else {
-                None
-            };
-            let applied = Self::digested(root, digest.as_ref(), landed)?;
-            let schema = applied.schema();
-            // A cast with no protocol behind it already refused every hole, so the
-            // re-check exists only where something could still have left one.
-            let verify = if transform.is_some() || digest.is_some() || cast.is_none() {
-                Some(ArrowCastPlan::compile_schema(
-                    schema.as_ref(),
-                    root,
-                    options,
-                    Deferred::default(),
-                )?)
-            } else {
-                None
-            };
-            Ok(Self {
-                root: root.clone(),
-                cast,
-                transform,
-                digest,
-                verify,
-                schema,
-            })
-        }
-
-        /// Run cast, then transform - the steps the digest reads the answers of.
-        fn transformed(
-            cast: Option<&crate::cast::ArrowCastPlan>,
-            transform: Option<&crate::expression::TransformPlan>,
-            batch: &arrow_array::RecordBatch,
-        ) -> Result<arrow_array::RecordBatch> {
-            let mut applied = match cast {
-                Some(plan) => plan.reconcile_batch(batch.clone())?,
-                None => batch.clone(),
-            };
-            if let Some(transform) = transform {
-                applied = transform.apply(&applied)?;
-            }
-            Ok(applied)
-        }
-
-        /// Run the digest last, the order this crate publishes.
-        fn digested(
-            root: &Field,
-            digest: Option<&DigestStage>,
-            batch: arrow_array::RecordBatch,
-        ) -> Result<arrow_array::RecordBatch> {
-            let Some(digest) = digest else {
-                return Ok(batch);
-            };
-            let batch = match &digest.landing {
-                Some(landing) => landing.reconcile_batch(batch)?,
-                None => batch,
-            };
-            Ok(digest
-                .fill
-                .fill_arrow_batch(&digest.prototype, root, batch, false)?)
-        }
-
-        /// Apply the compiled declarations to one batch of the source schema.
-        pub(crate) fn apply(
-            &self,
-            batch: &arrow_array::RecordBatch,
-        ) -> Result<arrow_array::RecordBatch> {
-            let applied = Self::digested(
-                &self.root,
-                self.digest.as_ref(),
-                Self::transformed(self.cast.as_ref(), self.transform.as_ref(), batch)?,
-            )?;
-            if let Some(verify) = &self.verify {
-                // The applied batch is already the declared shape, so this is a
-                // zero-copy pass whose only product is the refusal it may raise.
-                verify.reconcile_batch(applied.clone())?;
-            }
-            Ok(applied)
-        }
-    }
-
-    /// A reader applying one root's declarations to every batch it yields.
-    ///
-    /// The schema is the applied one from the start, so a consumer reads the shape
-    /// it will get rather than the shape the inner reader stores.
-    struct AppliedReader {
-        inner: crate::arrow::BatchReader,
-        plan: AppliedPlan,
-    }
-
-    impl Iterator for AppliedReader {
-        type Item = std::result::Result<arrow_array::RecordBatch, arrow_schema::ArrowError>;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            let batch = match self.inner.next()? {
-                Ok(batch) => batch,
-                Err(error) => return Some(Err(error)),
-            };
-            Some(self.plan.apply(&batch).map_err(|error| {
-                arrow_schema::ArrowError::ComputeError(format!(
-                    "the declared columns could not be applied: {error}"
-                ))
-            }))
-        }
-    }
-
-    impl arrow_array::RecordBatchReader for AppliedReader {
-        fn schema(&self) -> arrow_schema::SchemaRef {
-            Arc::clone(&self.plan.schema)
-        }
-    }
     /// Builds a C Data Interface schema without losing nested datatype flags.
     ///
     /// Arrow's own `FFI_ArrowSchema` conversion rebuilds a nested node from its
@@ -3023,7 +2796,6 @@ mod arrow {
     }
 }
 
-pub(crate) use arrow::AppliedPlan;
 pub(crate) use arrow::{
     RecognizedExtension, arrow_field_ref_from_shared, recognized_arrow_extension,
 };

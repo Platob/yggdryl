@@ -293,8 +293,8 @@ assert.throws(() => term.bind(Field.from('rows: struct<size: int64> not null')),
 
 `intoField` writes a selector as the declaration it is, each computed column
 carrying `TRANSFORM:` metadata; `Selector.fromField` reads it back.
-Recomputing the derivations on a batch (`Field.apply_arrow_batch` in Rust and
-Python) is not bound in JavaScript.
+Recomputing the derivations on a batch (the transform view's `apply_arrow_batch`:
+`as_transform()` in Rust, `field.transform` in Python) is not bound in JavaScript.
 
 ```javascript
 const assert = require('node:assert/strict')

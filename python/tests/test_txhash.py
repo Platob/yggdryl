@@ -572,8 +572,10 @@ class TestHolders:
         second = txhash.TxHash.from_bytes("us", "xxh3-64", filled.column("key")[1].as_py())
         expected = Scalar.from_([dt.datetime(2023, 11, 14, 22, 13, 20, 1, tzinfo=UTC), "MSFT"])
         assert second == txhash.TxHash.from_parts(INSTANT + 1, expected.digest())
-        assert root.apply_arrow_batch(batch) == filled
-        assert root.apply_arrow_batch(filled) == filled, "filling again changes nothing"
+        # A field cast fills no holder, and this one is required.
+        with pytest.raises(ValueError, match="key"):
+            root.apply_arrow_batch(batch)
+        assert root.apply_arrow_batch(filled) == filled, "casting a filled batch changes nothing"
         seeded = txhash.TxHasher(seed=7).apply_arrow_batch(root, batch)
         state = xxhash.Xxh3(seed=7)
         state.write_scalar(expected)

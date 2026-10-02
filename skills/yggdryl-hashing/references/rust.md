@@ -169,12 +169,12 @@ state.write_scalar(&row);
 assert_eq!(state.as_digest(), row.digest(DigestAlgorithm::Xxh3));
 ```
 
-## Declare a row-digest column and let the schema fill it
+## Declare a row-digest column and fill it with the digest view
 
 Mark one field `DIGEST:role=holder`, name what it reads with `DIGEST:by`, and
-leave those columns ordinary; `Field::apply_arrow_batch` (cast, transform, then
-digest) fills it, adding the column where the root declares it.
-`as_digest().apply_arrow_batch` is the digest step alone.
+leave those columns ordinary; `as_digest().apply_arrow_batch` casts the batch to
+the root and fills it, adding the column where the root declares it.
+`Field::apply_arrow_batch` is the cast alone and fills none.
 
 ```rust
 use std::sync::Arc;
@@ -183,7 +183,7 @@ use arrow_array::cast::AsArray as _;
 use arrow_array::types::UInt64Type;
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use arrow_schema::Schema;
-use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, StructType};
+use yggdryl::{DataType, DigestAlgorithm, Field, Scalar, StructType};
 
 let symbol = Field::new("symbol", DataType::utf8(), false);
 let quantity = Field::new("quantity", DataType::Int64, false);
@@ -197,13 +197,12 @@ let batch = RecordBatch::try_new(
     vec![Arc::new(StringArray::from(vec!["AAPL", "MSFT"])), Arc::new(Int64Array::from(vec![100, 999]))],
 )?;
 
-let filled = root.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?;
+let filled = root.as_digest().apply_arrow_batch(&batch)?;
 let keys = filled.column(2).as_primitive::<UInt64Type>();
 let expected = Scalar::from_sequence([Scalar::from("MSFT")]).digest(DigestAlgorithm::Xxh3);
 assert_eq!(Some(keys.value(1)), expected.as_u64());
 // Filling again changes nothing: a written cell is preserved.
-assert_eq!(root.apply_arrow_batch(&filled, true, true, true, ArrowCastOptions::new())?, filled);
-assert_eq!(root.as_digest().apply_arrow_batch(&batch)?.column(2), filled.column(2));
+assert_eq!(root.as_digest().apply_arrow_batch(&filled)?, filled);
 ```
 
 ## Fill holders with a seeded state
@@ -423,7 +422,7 @@ use std::sync::Arc;
 use arrow_array::{FixedSizeBinaryArray, RecordBatch, StringArray, TimestampMicrosecondArray};
 use arrow_schema::Schema;
 use yggdryl::txhash::TxHash;
-use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, StructType, TimeUnit, Timezone};
+use yggdryl::{DataType, DigestAlgorithm, Field, StructType, TimeUnit, Timezone};
 
 let event = Field::new("event", DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)?, false);
 let symbol = Field::new("symbol", DataType::utf8(), false);
@@ -440,7 +439,7 @@ let batch = RecordBatch::try_new(
         Arc::new(StringArray::from(vec!["MSFT"])),
     ],
 )?;
-let filled = root.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?;
+let filled = root.as_digest().apply_arrow_batch(&batch)?;
 let cells = filled.column(2).as_any().downcast_ref::<FixedSizeBinaryArray>().expect("fixed_size_binary");
 let value = TxHash::from_bytes(TimeUnit::Second, DigestAlgorithm::Xxh3, cells.value(0))?;
 assert_eq!(value.unix(), 1_700_000_000, "the instant floors to the declared unit");

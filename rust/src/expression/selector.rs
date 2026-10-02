@@ -35,8 +35,11 @@
 //! or not. With the [`TRANSFORM:`](super::TransformField) protocol it also
 //! says how a column is computed, so [`Selector::into_field`] writes a
 //! selector into a field and [`Selector::from_field`] reads it back - which is
-//! what lets a declared field on record options carry a whole projection, and
-//! a derived partition column be the projection it always was.
+//! what lets a field carry a whole projection, and a derived partition column
+//! be the projection it always was. The field carries it as metadata: a
+//! record read or write under the field only casts, and
+//! [`TransformField::apply_arrow_batch`](crate::TransformField::apply_arrow_batch)
+//! computes it.
 
 use std::str::FromStr;
 use std::sync::Arc;

@@ -442,7 +442,7 @@ assert [child.partitions for child in lake.children_where({"year": "2024"})] == 
 
 ## Derive a partition column from another column
 
-`PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `with_partition_by` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata; `apply_arrow_batch` on the transform view of the root fills it where absent or all null and leaves values alone.
+`PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `with_partition_by` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata; `apply_arrow_batch` on the transform view of the root fills it where absent or all null and leaves values alone. A write only casts, so fill the column through `root.transform.apply_arrow_batch` before a partitioned write: a required derived column the rows lack is refused by path, a nullable one lands null.
 
 ```python
 import pyarrow as pa

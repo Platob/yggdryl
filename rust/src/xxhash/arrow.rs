@@ -165,10 +165,7 @@ pub(crate) fn apply_arrow_batch_with<S: ArrowDigestState>(
         batch.schema_ref(),
         root,
         ArrowCastOptions::new(),
-        Deferred {
-            transform: false,
-            digest: true,
-        },
+        Deferred { digest: true },
     )?
     .reconcile_batch(batch)?;
     plan.fill_arrow_batch(prototype, root, batch, force)
@@ -177,8 +174,8 @@ pub(crate) fn apply_arrow_batch_with<S: ArrowDigestState>(
 /// A complete immutable fill plan for one Struct node.
 ///
 /// Every declaration is read and every holder cast compiled here, from the
-/// fields alone, so a stream holding the plan moves only rows per batch.
-pub(crate) struct StructPlan {
+/// fields alone, so the fill itself moves only rows.
+struct StructPlan {
     nested: Vec<(usize, StructPlan)>,
     holders: Vec<HolderPlan>,
 }
@@ -221,13 +218,13 @@ struct Selection<'field> {
 
 impl StructPlan {
     /// Plans every holder `root` declares for a prototype of `algorithm`.
-    pub(crate) fn compile(root: &Field, algorithm: DigestAlgorithm) -> Result<Self> {
+    fn compile(root: &Field, algorithm: DigestAlgorithm) -> Result<Self> {
         Self::new(root.fields(), algorithm, "$")
     }
 
     /// Fill the holders in one batch already cast to the `root` this plan was
     /// compiled from, under a prototype of the algorithm it was compiled for.
-    pub(crate) fn fill_arrow_batch<S: ArrowDigestState>(
+    fn fill_arrow_batch<S: ArrowDigestState>(
         &self,
         prototype: &S,
         root: &Field,

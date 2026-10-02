@@ -2768,7 +2768,7 @@ let _ = std::fs::remove_dir_all(&root);
 
 ### Derived partition columns
 
-A column can also be computed from another column of the same rows. The struct's [`PARTITION:by`](../types/protocol.md#partition-columns) declares it - `years(event)`, `truncate(name, 4) as prefix` - and `with_partition_by` materializes each derived entry as a marked column carrying its term as a [transform](../types/protocol.md) declaration, so the folder spells it in its paths exactly as it spells an identity column. `apply_arrow_batch` on the Struct root fills a declared column that is absent or all null and leaves one carrying values alone, and a partitioned write runs it before it cuts the rows by their directories.
+A column can also be computed from another column of the same rows. The struct's [`PARTITION:by`](../types/protocol.md#partition-columns) declares it - `years(event)`, `truncate(name, 4) as prefix` - and `with_partition_by` materializes each derived entry as a marked column carrying its term as a [transform](../types/protocol.md) declaration, so the folder spells it in its paths exactly as it spells an identity column. `apply_arrow_batch` on the root's transform view fills a declared column that is absent or all null and leaves one carrying values alone. A write only casts, so the rows carry the column before a partitioned write cuts them by their directories: a derived column they do not carry is refused by path where required and lands null where nullable.
 
 === "Rust"
 

@@ -420,15 +420,16 @@ assert!("skills.triple(size)".parse::<yggdryl::expression::Term>()?.field(&rows)
 
 `into_field` writes a selector as the declaration it is - each computed
 column carrying `TRANSFORM:` metadata - and `from_field` reads it back, so a
-`Field` is a plan holder. `Field::apply_arrow_batch` (and
-`apply_arrow_reader`) recomputes the derivations on a batch; keep the source
-columns in the selector, because the stored field is what the recompute reads.
+`Field` is a plan holder. `as_transform().apply_arrow_batch` recomputes the
+derivations on a batch (`Field::apply_arrow_batch` is the cast alone); keep the
+source columns in the selector, because the stored field is what the recompute
+reads.
 
 ```rust
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray};
-use yggdryl::{ArrowCastOptions, DataType, Selector, StructType};
+use yggdryl::{DataType, Selector, StructType};
 
 let root = DataType::from(StructType::from_fields([
     DataType::utf8().nullable_field("ccy"),
@@ -447,7 +448,7 @@ let batch = RecordBatch::try_from_iter([
     ("ccy", Arc::new(StringArray::from(vec!["EUR", "USD"])) as ArrayRef),
     ("size", Arc::new(Int64Array::from(vec![3_i64, 4])) as ArrayRef),
 ])?;
-let applied = holder.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?;
+let applied = holder.as_transform().apply_arrow_batch(&batch)?;
 let doubled = applied.column(2).as_any().downcast_ref::<Int32Array>().ok_or("int32")?;
 assert_eq!(doubled.values().to_vec(), vec![6, 8]);
 ```

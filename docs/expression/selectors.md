@@ -236,7 +236,7 @@ A projection with a datatype is a `create table` column, and a `Selector` is wha
 | `price decimal(9,2) not null` | the same cast, a null or a value that does not fit refused naming `price` |
 | `id int64 with (comment = 'key')` | the column with that metadata on its field |
 
-`Selector::from_field` spells every child as `name dtype null|not null`, its metadata as `with (...)`, and its derivation as the term: a `TRANSFORM:function` over its `TRANSFORM:by` - `year(event)`, `py.double(size)`, the shape a [user function's signature](functions.md) reads - or a `TRANSFORM:expression` for any other term. `declared_field` and a plan's `create` section read the declaration back into a `Field`. The [transform protocol](../types/protocol.md) is where a stored field carries the derivation; a [derived partition column](../holder/index.md#derived-partition-columns) is one such column, materialized by `with_partition_by`.
+`Selector::from_field` spells every child as `name dtype null|not null`, its metadata as `with (...)`, and its derivation as the term: a `TRANSFORM:function` over its `TRANSFORM:by` - `year(event)`, `py.double(size)`, the shape a [user function's signature](functions.md) reads - or a `TRANSFORM:expression` for any other term. `declared_field` and a plan's `create` section read the declaration back into a `Field`. The [transform protocol](../types/protocol.md) is where a stored field carries the derivation; a [derived partition column](../holder/index.md#derived-partition-columns) is one such column, materialized by `with_partition_by`. The field carries it as metadata: a read or write under the field only casts, and the root's `as_transform().apply_arrow_batch` (Python `field.transform.apply_arrow_batch`) computes it.
 
 ## Edges
 
