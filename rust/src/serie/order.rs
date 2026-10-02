@@ -1,28 +1,38 @@
 //! The ordering, uniqueness and grouping verbs every leaf answers, through
-//! one ladder.
+//! one ladder over one order.
 //!
-//! A column sorts over its buffers where its layout has a typed sort - a
-//! primitive leaf sorts the native slice, stable, nulls gathered to the end
-//! the options name - and through Arrow's row format where the type has one,
-//! which is every layout but what the row format refuses; two rows compare
-//! through Arrow's comparator over the buffers wherever it has one, and the
-//! values' own total order everywhere else and for a run. Uniqueness is one
-//! hash set over the row format's bytes, or over the values. So every leaf
-//! answers every verb, and the cost is the ladder's rung, stated on each.
+//! The order is the values': `Scalar`'s total order, every absent value -
+//! a row, or one nested in a sequence, a record or a map - at the end the
+//! options name, and every present one reversed when descending. Each rung
+//! of the ladder answers exactly that order, so a column and the run of its
+//! rows sort, deduplicate and group alike. A primitive column sorts its
+//! native slice, stable, every NaN of a float one value above every number;
+//! a column whose stored bytes order as its values - every leaf beneath its
+//! field one whose storage is its value order, no float holding a NaN other
+//! than the one a value reads - goes through Arrow's row format and
+//! comparator; any other column - a version, a windows-1252 text, a
+//! registered code, a URL, a union, a float holding a foreign NaN - and a run
+//! go through the values' own order, each row built once. Uniqueness is one
+//! hash set over the row format's bytes on the same rung, or over the values.
+//! So every leaf answers every verb, and the cost is the ladder's rung,
+//! stated on each.
 //!
 //! The reads answer a new serie and leave this one as it is; the `as_*`
 //! writes bring this serie into the state in place, rewriting a uniquely
-//! held primitive buffer where it stands and replacing any other leaf's
-//! buffers by the kernel's one copy.
+//! held primitive or boolean buffer where it stands and replacing any other
+//! leaf's buffers by the kernel's one copy.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BooleanArray, UInt32Array};
+use arrow_data::ArrayData;
 use arrow_ord::ord::{DynComparator, make_comparator};
 use arrow_row::{RowConverter, Rows, SortField};
+use arrow_schema::DataType as ArrowDataType;
 
 use super::{Proof, Rows as _, Serie, land};
 use crate::arrow::{array_memory_size, scalar_memory_size};
@@ -74,67 +84,264 @@ fn row_format(array: &ArrayRef, options: SortOptions) -> Option<Rows> {
     converter.convert_columns(std::slice::from_ref(array)).ok()
 }
 
+/// Whether Arrow's comparator and row format over `dtype`'s storage order
+/// and equate its values exactly as the values' own order does.
+///
+/// Nested layouts answer for their children, because Arrow places a nested
+/// absence and reverses a nested value exactly as [`compare_values`] does.
+/// A leaf answers `false` where its value is not its stored bytes read in
+/// order: a version orders by its numbers, windows-1252 text by the
+/// characters its bytes decode to, a registered code trims the padding a
+/// foreign column may store, a URL, URN, zone, MIME or media type orders by
+/// what it parses to, a union and a variant by more than their buffers say,
+/// and a geospatial value by the WKB it validates to. A float leaf answers
+/// `true` and leaves its NaN payloads to [`holds_foreign_nan`].
+fn stored_order_is_value_order(dtype: &DataType) -> bool {
+    match dtype {
+        DataType::Null
+        | DataType::Boolean
+        | DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
+        | DataType::Int64
+        | DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
+        | DataType::UInt64
+        | DataType::Float16
+        | DataType::Float32
+        | DataType::Float64
+        | DataType::DateTime64 { .. }
+        | DataType::Date32
+        | DataType::Date64
+        | DataType::Time32(_)
+        | DataType::Time64(_)
+        | DataType::Duration32(_)
+        | DataType::Duration64(_)
+        | DataType::Interval(_)
+        | DataType::Decimal32 { .. }
+        | DataType::Decimal64 { .. }
+        | DataType::Decimal128 { .. }
+        | DataType::Decimal256 { .. }
+        | DataType::Decimal
+        | DataType::BigDecimal
+        // An enum member orders by its code, which is what the column
+        // stores, and a UUID by its 128 bits, stored big-endian.
+        | DataType::Side
+        | DataType::State
+        | DataType::TimeInForce
+        | DataType::MarketDataKind
+        | DataType::MarketDataType
+        | DataType::Uuid
+        | DataType::Binary
+        | DataType::LargeBinary
+        | DataType::BinaryView
+        | DataType::LargeBinaryView
+        | DataType::FixedBinary(_)
+        | DataType::SizedBinary(_)
+        // UTF-8 bytes order as the characters they spell, and a fixed slot
+        // pads with NUL, the least byte, so the padding orders as the end.
+        | DataType::Utf8String
+        | DataType::LargeUtf8String
+        | DataType::Utf8StringView
+        | DataType::LargeUtf8StringView
+        | DataType::FixedUtf8String(_)
+        | DataType::SizedUtf8String(_)
+        | DataType::AsciiString
+        | DataType::LargeAsciiString
+        | DataType::AsciiStringView
+        | DataType::LargeAsciiStringView
+        | DataType::FixedAsciiString(_)
+        | DataType::SizedAsciiString(_) => true,
+        DataType::Serie(item)
+        | DataType::SerieView(item)
+        | DataType::FixedSizeSerie(item, _)
+        | DataType::LargeSerie(item)
+        | DataType::LargeSerieView(item) => stored_order_is_value_order(item.dtype()),
+        DataType::Struct(fields) => fields
+            .iter()
+            .all(|field| stored_order_is_value_order(field.dtype())),
+        DataType::Map(map) | DataType::SortedMap(map) => {
+            stored_order_is_value_order(map.entries().dtype())
+        }
+        DataType::Dictionary(dictionary) => stored_order_is_value_order(dictionary.value()),
+        DataType::RunEndEncoded(encoded) => stored_order_is_value_order(encoded.values().dtype()),
+        _ => false,
+    }
+}
+
+/// Whether `values` holds a NaN of `$float` other than its positive quiet
+/// NaN, the one a value reads every NaN as.
+macro_rules! foreign_nan {
+    ($values:expr, $float:ty) => {{
+        let canonical = <$float>::NAN.to_bits();
+        $values
+            .iter()
+            .any(|value| value.is_nan() && value.to_bits() != canonical)
+    }};
+}
+
+/// Whether `array`, or any array beneath it, holds a float NaN other than
+/// the one every value reads a NaN as - the positive quiet NaN of its width.
+///
+/// Arrow orders and encodes a NaN by its bits, where a value holds one NaN,
+/// so a foreign payload is where the two orders part. A leaf is read off
+/// its own buffer; a nested array whose layout holds no float is answered
+/// from its datatype, and one that does is walked once.
+fn holds_foreign_nan(array: &dyn Array) -> bool {
+    use arrow_array::cast::AsArray as _;
+    use arrow_array::types::{Float16Type, Float32Type, Float64Type};
+
+    match array.data_type() {
+        ArrowDataType::Float16 => {
+            foreign_nan!(array.as_primitive::<Float16Type>().values(), half::f16)
+        }
+        ArrowDataType::Float32 => foreign_nan!(array.as_primitive::<Float32Type>().values(), f32),
+        ArrowDataType::Float64 => foreign_nan!(array.as_primitive::<Float64Type>().values(), f64),
+        dtype if layout_holds_float(dtype) => data_holds_foreign_nan(&array.to_data()),
+        _ => false,
+    }
+}
+
+/// Whether a layout of `dtype` has a float leaf anywhere beneath it.
+fn layout_holds_float(dtype: &ArrowDataType) -> bool {
+    match dtype {
+        ArrowDataType::Float16 | ArrowDataType::Float32 | ArrowDataType::Float64 => true,
+        ArrowDataType::List(item)
+        | ArrowDataType::LargeList(item)
+        | ArrowDataType::ListView(item)
+        | ArrowDataType::LargeListView(item)
+        | ArrowDataType::FixedSizeList(item, _)
+        | ArrowDataType::Map(item, _) => layout_holds_float(item.data_type()),
+        ArrowDataType::Struct(fields) => fields
+            .iter()
+            .any(|field| layout_holds_float(field.data_type())),
+        ArrowDataType::Union(fields, _) => fields
+            .iter()
+            .any(|(_, field)| layout_holds_float(field.data_type())),
+        ArrowDataType::Dictionary(_, values) => layout_holds_float(values),
+        ArrowDataType::RunEndEncoded(_, values) => layout_holds_float(values.data_type()),
+        _ => false,
+    }
+}
+
+/// [`holds_foreign_nan`] over one array's data and its children's, every
+/// slot read whether or not a row reaches it: a foreign NaN in a hidden
+/// slot only sends the column to the values' order, which agrees anyway.
+fn data_holds_foreign_nan(data: &ArrayData) -> bool {
+    let len = data.len();
+    let foreign = match data.data_type() {
+        ArrowDataType::Float16 => foreign_nan!(data.buffer::<half::f16>(0)[..len], half::f16),
+        ArrowDataType::Float32 => foreign_nan!(data.buffer::<f32>(0)[..len], f32),
+        ArrowDataType::Float64 => foreign_nan!(data.buffer::<f64>(0)[..len], f64),
+        _ => false,
+    };
+    foreign || data.child_data().iter().any(data_holds_foreign_nan)
+}
+
 /// How two rows of one serie compare under `options`: Arrow's comparator
-/// over the buffers where it has one, the values' own order elsewhere and
-/// for a run.
+/// over the buffers where they order as the values, the values' own order
+/// over rows built once otherwise and for a run.
 enum Compare<'a> {
     /// Arrow's comparator, which reads the buffers and builds no value.
     Buffers(DynComparator),
-    /// The values' total order, one row built per side.
+    /// The values' order over the rows: lent by a run, built once for a
+    /// column.
     Values {
-        serie: &'a Serie,
+        rows: Cow<'a, [Scalar]>,
         options: SortOptions,
     },
 }
 
 impl<'a> Compare<'a> {
     fn new(serie: &'a Serie, options: SortOptions) -> Self {
-        if let Some(array) = serie.into_arrow_array()
+        if let Some(array) = serie.ordered_buffers()
             && let Ok(compare) =
                 make_comparator(array.as_ref(), array.as_ref(), options.into_arrow())
         {
             return Self::Buffers(compare);
         }
-        Self::Values { serie, options }
+        Self::Values {
+            rows: serie.rows(),
+            options,
+        }
     }
 
     fn cmp(&self, left: usize, right: usize) -> Ordering {
         match self {
             Self::Buffers(compare) => compare(left, right),
-            Self::Values { serie, options } => {
-                compare_values(&serie.row_at(left), &serie.row_at(right), *options)
-            }
+            Self::Values { rows, options } => compare_values(&rows[left], &rows[right], *options),
         }
+    }
+}
+
+/// Where an absent value goes against a present one under `options`.
+const fn absent_against_present(options: SortOptions) -> Ordering {
+    if options.is_nulls_first() {
+        Ordering::Less
+    } else {
+        Ordering::Greater
+    }
+}
+
+/// `step` as `options` orders it: reversed when descending.
+const fn directed(step: Ordering, options: SortOptions) -> Ordering {
+    if options.is_descending() {
+        step.reverse()
+    } else {
+        step
     }
 }
 
 /// Two values under `options`: an absent one at the end the options name,
 /// two present ones in their own total order, reversed when descending.
-pub(crate) fn compare_values(left: &Scalar, right: &Scalar, options: SortOptions) -> Ordering {
+///
+/// A sequence - a serie value or a record's run - and a map compare item by
+/// item under the same options, every nested absence placed as a top-level
+/// one is, then the shorter first, reversed when descending: Arrow's own
+/// reading of nested buffers, so a run and a column of the same rows agree.
+fn compare_values(left: &Scalar, right: &Scalar, options: SortOptions) -> Ordering {
     match (left.is_null(), right.is_null()) {
         (true, true) => Ordering::Equal,
-        (true, false) => {
-            if options.is_nulls_first() {
-                Ordering::Less
-            } else {
-                Ordering::Greater
+        (true, false) => absent_against_present(options),
+        (false, true) => absent_against_present(options).reverse(),
+        (false, false) => match (left, right) {
+            (
+                Scalar::Serie(left)
+                | Scalar::SerieView(left)
+                | Scalar::FixedSizeSerie(left)
+                | Scalar::LargeSerie(left)
+                | Scalar::LargeSerieView(left),
+                Scalar::Serie(right)
+                | Scalar::SerieView(right)
+                | Scalar::FixedSizeSerie(right)
+                | Scalar::LargeSerie(right)
+                | Scalar::LargeSerieView(right),
+            ) => {
+                for index in 0..left.len().min(right.len()) {
+                    let step = compare_values(&left.row_at(index), &right.row_at(index), options);
+                    if step != Ordering::Equal {
+                        return step;
+                    }
+                }
+                directed(left.len().cmp(&right.len()), options)
             }
-        }
-        (false, true) => {
-            if options.is_nulls_first() {
-                Ordering::Greater
-            } else {
-                Ordering::Less
+            (
+                Scalar::Map(left) | Scalar::SortedMap(left),
+                Scalar::Map(right) | Scalar::SortedMap(right),
+            ) => {
+                let (left, right) = (left.as_slice(), right.as_slice());
+                for ((left_key, left_value), (right_key, right_value)) in left.iter().zip(right) {
+                    let step = compare_values(left_key, right_key, options)
+                        .then_with(|| compare_values(left_value, right_value, options));
+                    if step != Ordering::Equal {
+                        return step;
+                    }
+                }
+                directed(left.len().cmp(&right.len()), options)
             }
-        }
-        (false, false) => {
-            let step = left.cmp(right);
-            if options.is_descending() {
-                step.reverse()
-            } else {
-                step
-            }
-        }
+            _ => directed(left.cmp(right), options),
+        },
     }
 }
 
@@ -333,11 +540,14 @@ impl Serie {
     /// The row positions in sorted order under `options`, as a `uint32`
     /// column named `index`: stable, so equal rows keep their order.
     ///
-    /// A primitive column sorts its native slice; any other column sorts
-    /// through Arrow's row format where the type has one, and through the
-    /// values' own total order elsewhere; a run sorts its values. Absent
-    /// rows gather to the end `options` names. One allocation beside the
-    /// answer: the row format's bytes, where that rung is reached.
+    /// The order is the values': `Scalar`'s total order, with every absent
+    /// value, a row or one nested inside it, at the end `options` names. A
+    /// primitive column sorts its native slice, every NaN one value; a
+    /// column whose stored bytes order as its values sorts through Arrow's
+    /// row format, one allocation beside the answer for the format's bytes;
+    /// a run and any other column (a version, windows-1252 text, a code, a
+    /// URL, a union, a float holding a foreign NaN payload) sort through
+    /// the values' own order, each row built once.
     ///
     /// ```
     /// use yggdryl::{Scalar, Serie, SortOptions};
@@ -367,23 +577,60 @@ impl Serie {
         if let Some(order) = primitive!(self, column => column.sort_indices(0..len, options)) {
             return Ok(order);
         }
-        if let Some(array) = self.into_arrow_array()
+        let mut order: Vec<u32> = (0..len as u32).collect();
+        if let Some(array) = self.ordered_buffers()
             && let Some(rows) = row_format(&array, options)
         {
-            let mut order: Vec<u32> = (0..len as u32).collect();
             order.sort_by(|left, right| rows.row(*left as usize).cmp(&rows.row(*right as usize)));
             return Ok(order);
         }
         let compare = Compare::new(self, options);
-        let mut order: Vec<u32> = (0..len as u32).collect();
         order.sort_by(|left, right| compare.cmp(*left as usize, *right as usize));
         Ok(order)
     }
 
+    /// This column's buffers, where Arrow's comparator and row format over
+    /// them order and equate the rows exactly as their values do: every leaf
+    /// beneath the field one whose stored order is its value order, and no
+    /// float holding a NaN a value reads as another. `None` for a run and for
+    /// any other column, which the values' own order answers.
+    fn ordered_buffers(&self) -> Option<ArrayRef> {
+        if !stored_order_is_value_order(self.field()?.dtype()) {
+            return None;
+        }
+        let array = self.into_arrow_array()?;
+        (!holds_foreign_nan(array.as_ref())).then_some(array)
+    }
+
+    /// Row `left` of this serie against row `right` of `other`, a serie
+    /// under the same field, under `options`: Arrow's comparator over both
+    /// buffers where both order as their values - one comparator built - and
+    /// the values' own order otherwise, one row built per side.
+    pub(crate) fn compare_across(
+        &self,
+        left: usize,
+        other: &Self,
+        right: usize,
+        options: SortOptions,
+    ) -> Ordering {
+        if let (Some(left_array), Some(right_array)) =
+            (self.ordered_buffers(), other.ordered_buffers())
+            && let Ok(compare) = make_comparator(
+                left_array.as_ref(),
+                right_array.as_ref(),
+                options.into_arrow(),
+            )
+        {
+            return compare(left, right);
+        }
+        compare_values(&self.row_at(left), &other.row_at(right), options)
+    }
+
     /// Whether the rows are in sorted order under `options`: one pass over
-    /// adjacent rows, through Arrow's comparator over the buffers where the
-    /// layout has one and the values' own order elsewhere, so a column
-    /// builds no row and a run reads what it holds.
+    /// adjacent rows, through Arrow's comparator over the buffers where they
+    /// order as the values and the values' own order elsewhere, so such a
+    /// column builds no row, any other builds each row once, and a run reads
+    /// what it holds.
     ///
     /// ```
     /// use yggdryl::{Scalar, Serie, SortOptions};
@@ -394,17 +641,32 @@ impl Serie {
     /// assert!(!prices.is_sorted(SortOptions::ascending().with_nulls_first(true)));
     /// ```
     pub fn is_sorted(&self, options: SortOptions) -> bool {
-        let compare = Compare::new(self, options);
-        (1..self.len()).all(|index| compare.cmp(index - 1, index) != Ordering::Greater)
+        if let Some(array) = self.ordered_buffers()
+            && let Ok(compare) =
+                make_comparator(array.as_ref(), array.as_ref(), options.into_arrow())
+        {
+            return (1..self.len()).all(|index| compare(index - 1, index) != Ordering::Greater);
+        }
+        let mut rows = self.iter();
+        let Some(mut before) = rows.next() else {
+            return true;
+        };
+        for row in rows {
+            if compare_values(&before, &row, options) == Ordering::Greater {
+                return false;
+            }
+            before = row;
+        }
+        true
     }
 
     /// Walk the rows, telling `visit` whether each is the first of its
     /// value; `visit` answers whether to go on. One hash set over the row
-    /// format's bytes where the type has one, over the values elsewhere; an
-    /// absent row is one value.
+    /// format's bytes where the buffers order as the values, over the values
+    /// elsewhere; an absent row is one value.
     fn walk_distinct(&self, mut visit: impl FnMut(usize, bool) -> bool) {
         let len = self.len();
-        if let Some(array) = self.into_arrow_array()
+        if let Some(array) = self.ordered_buffers()
             && let Some(rows) = row_format(&array, SortOptions::default())
         {
             let mut seen: HashSet<&[u8]> = HashSet::with_capacity(len);
@@ -764,41 +1026,46 @@ impl Serie {
 
     /// The row positions of every distinct value, one group per value in
     /// order of first occurrence, each group in row order: one pass over
-    /// one map, keyed by the row format's bytes where the type has one and
-    /// by the values elsewhere.
+    /// one map, keyed by the row format's bytes where the buffers order as
+    /// the values and by the values elsewhere, that names each row's group,
+    /// then each group laid out at its exact size - so what this costs
+    /// follows the groups and never the rows.
     fn groups(&self) -> Result<Vec<Vec<u32>>> {
         require_indexable(self)?;
         let len = self.len();
-        let mut positions: Vec<Vec<u32>> = Vec::new();
-        if let Some(array) = self.into_arrow_array()
+        let mut group_of_row: Vec<u32> = Vec::with_capacity(len);
+        let mut sizes: Vec<usize> = Vec::new();
+        let mut assign = |group: usize| {
+            if group == sizes.len() {
+                sizes.push(0);
+            }
+            sizes[group] += 1;
+            group_of_row.push(group as u32);
+        };
+        if let Some(array) = self.ordered_buffers()
             && let Some(rows) = row_format(&array, SortOptions::default())
         {
             let mut group_of: std::collections::HashMap<&[u8], usize> =
                 std::collections::HashMap::new();
             for index in 0..len {
-                let next = positions.len();
-                let group = *group_of.entry(rows.row(index).data()).or_insert(next);
-                if group == next {
-                    positions.push(Vec::new());
-                }
-                positions[group].push(index as u32);
+                let next = group_of.len();
+                assign(*group_of.entry(rows.row(index).data()).or_insert(next));
             }
-            return Ok(positions);
+        } else {
+            // `Scalar`'s hash reads canonical content only, never the
+            // interior-mutable caches a datatype holds, so the key is stable.
+            #[allow(clippy::mutable_key_type)]
+            let mut group_of: std::collections::HashMap<Scalar, usize> =
+                std::collections::HashMap::new();
+            for row in self.iter() {
+                let next = group_of.len();
+                assign(*group_of.entry(row.into_owned()).or_insert(next));
+            }
         }
-        // `Scalar`'s hash reads canonical content only, never the
-        // interior-mutable caches a datatype holds, so the key is stable.
-        #[allow(clippy::mutable_key_type)]
-        let mut group_of: std::collections::HashMap<Scalar, usize> =
-            std::collections::HashMap::new();
-        for index in 0..len {
-            let next = positions.len();
-            let group = *group_of
-                .entry(self.row_at(index).into_owned())
-                .or_insert(next);
-            if group == next {
-                positions.push(Vec::new());
-            }
-            positions[group].push(index as u32);
+        let mut positions: Vec<Vec<u32>> =
+            sizes.iter().map(|size| Vec::with_capacity(*size)).collect();
+        for (index, group) in group_of_row.into_iter().enumerate() {
+            positions[group as usize].push(index as u32);
         }
         Ok(positions)
     }
@@ -927,10 +1194,12 @@ impl Serie {
     ///
     /// A primitive column holding its buffer alone sorts the native slice
     /// where it stands, gathers its absent rows to the end `options` names
-    /// and rewrites the validity bits, allocating nothing; a shared buffer
-    /// is copied once. Every other column replaces its buffers by the
-    /// kernel's one copy, and a run sorts its values in place when it holds
-    /// them alone, copied once when it does not.
+    /// and rewrites the validity bits, and a boolean column holding its
+    /// bitmaps alone counts its falses and trues and rewrites both bitmaps:
+    /// what either costs is Arrow's builder handshake, never a row, and a
+    /// shared buffer is copied once. Every other column replaces its
+    /// buffers by the kernel's one copy, and a run sorts its values in place
+    /// when it holds them alone, copied once when it does not.
     ///
     /// ```
     /// use yggdryl::{Scalar, Serie, SortOptions};
@@ -948,37 +1217,64 @@ impl Serie {
     /// [`Self::sort_indices`]'s refusal, which leaves this serie as it was.
     pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self> {
         let len = self.len();
-        if let Self::Run(run) = self {
-            run.make_mut()
-                .sort_by(|left, right| compare_values(left, right, options));
-            return Ok(self);
+        if !self.sort_range_in_place(0..len, options) {
+            *self = self.into_sorted(options)?;
         }
-        if self.primitive_sort_in_place(0..len, options) {
-            return Ok(self);
-        }
-        *self = self.into_sorted(options)?;
         Ok(self)
     }
 
-    /// Sort rows `range` of a primitive column where they stand, answering
-    /// whether this is one: the typed rung of the in-place ladder.
-    pub(crate) fn primitive_sort_in_place(
+    /// Sort rows `range` where they stand, answering whether the leaf could:
+    /// a primitive column through its native slice, a boolean column through
+    /// its two bitmaps, a run through its values, each copied once where it
+    /// is shared; any other leaf answers `false` and is left as it was.
+    pub(crate) fn sort_range_in_place(
         &mut self,
         range: Range<usize>,
         options: SortOptions,
     ) -> bool {
-        primitive_mut!(self, column => column.sort_in_place(range, options)).is_some()
+        match self {
+            Self::Run(run) => {
+                run.make_mut()[range].sort_by(|left, right| compare_values(left, right, options));
+                true
+            }
+            Self::Boolean(held) => {
+                Arc::make_mut(held).sort_in_place(range, options);
+                true
+            }
+            _ => primitive_mut!(self, column => column.sort_in_place(range, options)).is_some(),
+        }
     }
 
-    /// Reverse rows `range` of a primitive column where they stand,
-    /// answering whether this is one.
-    pub(crate) fn primitive_reverse_in_place(&mut self, range: Range<usize>) -> bool {
-        primitive_mut!(self, column => column.reverse_in_place(range)).is_some()
+    /// Reverse rows `range` where they stand, answering whether the leaf
+    /// could, exactly as [`Self::sort_range_in_place`] does.
+    pub(crate) fn reverse_range_in_place(&mut self, range: Range<usize>) -> bool {
+        match self {
+            Self::Run(run) => {
+                run.make_mut()[range].reverse();
+                true
+            }
+            Self::Boolean(held) => {
+                Arc::make_mut(held).reverse_in_place(range);
+                true
+            }
+            _ => primitive_mut!(self, column => column.reverse_in_place(range)).is_some(),
+        }
     }
 
     /// Keep the first occurrence of every value, in place, answering this
     /// serie: the kernel's one copy replaces the buffers of a column, and a
     /// run keeps its chosen values. The field is kept as it is.
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut venues = Serie::new(vec![Scalar::from("XNYS"), Scalar::from("XNAS"), Scalar::from("XNYS")]);
+    /// venues.as_unique()?.as_reversed()?;
+    /// assert_eq!(venues.rows().to_vec(), vec![Scalar::from("XNAS"), Scalar::from("XNYS")]);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -990,9 +1286,20 @@ impl Serie {
 
     /// Reverse the rows in place, answering this serie: a primitive column
     /// holding its buffer alone reverses the native slice and its validity
-    /// bits where they stand; every other column replaces its buffers by
-    /// the kernel's one copy, and a run reverses its values in place when
-    /// it holds them alone.
+    /// bits where they stand, a boolean column its two bitmaps; every other
+    /// column replaces its buffers by the kernel's one copy, and a run
+    /// reverses its values in place when it holds them alone.
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut flags = Serie::new(vec![Scalar::from(true), Scalar::Null, Scalar::from(false)]);
+    /// flags.as_reversed()?;
+    /// assert_eq!(flags.rows().to_vec(), vec![Scalar::from(false), Scalar::Null, Scalar::from(true)]);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -1000,19 +1307,27 @@ impl Serie {
     /// calls chain.
     pub fn as_reversed(&mut self) -> Result<&mut Self> {
         let len = self.len();
-        if let Self::Run(run) = self {
-            run.make_mut().reverse();
-            return Ok(self);
+        if !self.reverse_range_in_place(0..len) {
+            *self = self.into_reversed();
         }
-        if self.primitive_reverse_in_place(0..len) {
-            return Ok(self);
-        }
-        *self = self.into_reversed();
         Ok(self)
     }
 
     /// Keep the rows `indices` names, in that order, in place, answering
     /// this serie: the kernel's one copy replaces the buffers of a column.
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut prices = Serie::new(vec![Scalar::from(1_i64), Scalar::from(2_i64), Scalar::from(3_i64)]);
+    /// prices.as_taken(&Serie::new(vec![Scalar::from(2_u32), Scalar::from(0_u32)]))?;
+    /// assert_eq!(prices.rows().to_vec(), vec![Scalar::from(3_i64), Scalar::from(1_i64)]);
+    /// assert!(prices.as_taken(&Serie::new(vec![Scalar::from(9_u32)])).is_err());
+    /// assert_eq!(prices.len(), 2);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -1024,6 +1339,18 @@ impl Serie {
 
     /// Keep the rows `mask` keeps, in place, answering this serie: the
     /// kernel's one copy replaces the buffers of a column.
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut prices = Serie::new(vec![Scalar::from(1_i64), Scalar::from(2_i64), Scalar::from(3_i64)]);
+    /// let mask = Serie::new(vec![Scalar::from(true), Scalar::Null, Scalar::from(true)]);
+    /// prices.as_filtered(&mask)?;
+    /// assert_eq!(prices.rows().to_vec(), vec![Scalar::from(1_i64), Scalar::from(3_i64)]);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///

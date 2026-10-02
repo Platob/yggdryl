@@ -4,12 +4,16 @@
 use yggdryl::SortOptions;
 
 #[test]
-fn the_default_is_ascending_with_nulls_last_as_arrow_and_the_plan_default() {
+fn the_default_is_the_plan_s_nulls_last_and_the_opposite_of_arrow_s() {
     let options = SortOptions::default();
     assert!(!options.is_descending());
     assert!(!options.is_nulls_first());
     assert_eq!(options, SortOptions::ascending());
     assert_eq!(options.to_string(), "");
+    // Arrow's own default puts nulls first, which is what the docs warn of.
+    let arrow = arrow_schema::SortOptions::default();
+    assert!(!arrow.descending);
+    assert!(arrow.nulls_first);
 }
 
 #[test]

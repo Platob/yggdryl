@@ -14,8 +14,8 @@ use arrow_array::{ArrayRef, Int64Array, StringArray, StructArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
 use criterion::{BatchSize, Criterion};
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue, SortOptions, StructType,
-    UnionMode,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SerieValue, SortOptions,
+    StructType, UnionMode,
 };
 
 /// Rows per measured column. The smoke corpus keeps `cargo test
@@ -164,6 +164,17 @@ fn venues_column() -> Serie {
         ArrowCastOptions::new(),
     )
     .expect("a utf8 column")
+}
+
+/// `column` held as eight chunks of equal length sliced out of it.
+fn eight_chunks(column: &Serie) -> ChunkedSerie {
+    let size = ROWS / 8;
+    ChunkedSerie::from_series(
+        None,
+        (0..8).map(|chunk| column.slice(chunk * size, size).expect("a chunk")),
+        ArrowCastOptions::new(),
+    )
+    .expect("chunks under one field")
 }
 
 /// One nullable union of an identifier and a symbol, in `mode`.
@@ -373,6 +384,134 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
                     .partition_by(black_box(&keys))
                     .expect("sixteen groups")
             });
+        });
+        // The reads that answer without building a serie: one comparator
+        // pass, one hash set.
+        group.bench_function(format!("is_sorted/{name}"), |bencher| {
+            bencher.iter(|| black_box(&column).is_sorted(SortOptions::default()));
+        });
+        group.bench_function(format!("is_unique/{name}"), |bencher| {
+            bencher.iter(|| black_box(&column).is_unique());
+        });
+        group.bench_function(format!("unique_count/{name}"), |bencher| {
+            bencher.iter(|| black_box(&column).unique_count());
+        });
+
+        // A window reads through the serie and writes through it: its read
+        // is the serie of its rows and the verb, its in-place sort the
+        // native slice where it stands.
+        let window_len = ROWS - 2;
+        group.bench_function(format!("window_is_sorted/{name}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&column)
+                    .window(1, window_len)
+                    .expect("a window")
+                    .is_sorted(SortOptions::default())
+            });
+        });
+        group.bench_function(format!("window_into_sorted/{name}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&column)
+                    .window(1, window_len)
+                    .expect("a window")
+                    .into_sorted(SortOptions::default())
+                    .expect("sorted")
+            });
+        });
+        group.bench_function(format!("window_as_sorted/{name}"), |bencher| {
+            bencher.iter_batched(
+                || column.clone().into_reversed(),
+                |mut held| {
+                    held.window_mut(1, window_len)
+                        .expect("a window")
+                        .as_sorted(SortOptions::default())
+                        .expect("sorted in place")
+                        .len()
+                },
+                BatchSize::LargeInput,
+            );
+        });
+        group.bench_function(format!("window_as_reversed/{name}"), |bencher| {
+            bencher.iter_batched(
+                || column.clone().into_reversed(),
+                |mut held| {
+                    held.window_mut(1, window_len)
+                        .expect("a window")
+                        .as_reversed()
+                        .expect("reversed in place")
+                        .len()
+                },
+                BatchSize::LargeInput,
+            );
+        });
+
+        // The same column held as eight chunks: what a chunk answers alone
+        // stays per chunk, what needs every row together is the one join
+        // and the serie's own verb.
+        let chunked = eight_chunks(&column);
+        let chunked_keys = eight_chunks(&keys);
+        group.bench_function(format!("chunked_is_sorted/{name}"), |bencher| {
+            bencher.iter(|| black_box(&chunked).is_sorted(SortOptions::default()));
+        });
+        group.bench_function(format!("chunked_sort_indices/{name}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&chunked)
+                    .sort_indices(SortOptions::default())
+                    .expect("an order")
+            });
+        });
+        group.bench_function(format!("chunked_into_sorted/{name}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&chunked)
+                    .into_sorted(SortOptions::default())
+                    .expect("sorted")
+            });
+        });
+        group.bench_function(format!("chunked_unique_count/{name}"), |bencher| {
+            bencher.iter(|| black_box(&chunked).unique_count());
+        });
+        group.bench_function(format!("chunked_into_unique/{name}"), |bencher| {
+            bencher.iter(|| black_box(&chunked).into_unique().expect("unique"));
+        });
+        group.bench_function(format!("chunked_into_reversed/{name}"), |bencher| {
+            bencher.iter(|| black_box(&chunked).into_reversed());
+        });
+        let mask = Serie::new(
+            (0..ROWS)
+                .map(|index| Scalar::from(index % 3 != 0))
+                .collect::<Vec<_>>(),
+        );
+        group.bench_function(format!("chunked_into_filtered/{name}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&chunked)
+                    .into_filtered(black_box(&mask))
+                    .expect("filtered")
+            });
+        });
+        group.bench_function(format!("chunked_partition_by/{name}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&chunked)
+                    .partition_by(black_box(&keys))
+                    .expect("sixteen groups")
+            });
+        });
+        group.bench_function(format!("chunked_partition_by_chunked/{name}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&chunked)
+                    .partition_by_chunked(black_box(&chunked_keys))
+                    .expect("sixteen groups")
+            });
+        });
+        group.bench_function(format!("chunked_as_sorted/{name}"), |bencher| {
+            bencher.iter_batched(
+                || chunked.clone(),
+                |mut held| {
+                    held.as_sorted(SortOptions::default())
+                        .expect("sorted")
+                        .len()
+                },
+                BatchSize::LargeInput,
+            );
         });
     }
 

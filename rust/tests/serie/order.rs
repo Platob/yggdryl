@@ -591,3 +591,604 @@ fn every_layout_answers_every_verb_through_the_ladder() {
         assert!(column.memory_size() > 0, "{what}");
     }
 }
+
+/// The four orderings `SortOptions` states.
+const ORDERINGS: [SortOptions; 4] = [
+    SortOptions::ascending(),
+    SortOptions::ascending().with_nulls_first(true),
+    SortOptions::descending(),
+    SortOptions::descending().with_nulls_first(true),
+];
+
+/// Pin that `column` and the run of its own rows answer every ordering,
+/// uniqueness and grouping verb alike under all four orderings: one order,
+/// whichever rung of the ladder reads it.
+fn agrees_with_its_run(column: &Serie) {
+    let field = column.field().expect("a column").clone();
+    let run = Serie::new(column.rows().into_owned());
+    let what = format!("{column}");
+    for options in ORDERINGS {
+        let order = column.sort_indices(options).expect(&what);
+        let run_order = run.sort_indices(options).expect(&what);
+        assert_eq!(
+            order.rows(),
+            run_order.rows(),
+            "{what}{options}: sort_indices"
+        );
+        let sorted = column.into_sorted(options).expect(&what);
+        let run_sorted = run.into_sorted(options).expect(&what);
+        assert_eq!(
+            sorted.rows(),
+            run_sorted.rows(),
+            "{what}{options}: into_sorted"
+        );
+        assert!(sorted.is_sorted(options), "{what}{options}: {sorted}");
+        assert!(
+            run_sorted.is_sorted(options),
+            "{what}{options}: {run_sorted}"
+        );
+        assert_eq!(
+            column.is_sorted(options),
+            run.is_sorted(options),
+            "{what}{options}: is_sorted"
+        );
+        // The run's order, laid out as a column, is one the column calls
+        // sorted.
+        let relaid = Serie::from_scalars(field.clone(), run_sorted.rows().into_owned())
+            .expect("the run's rows under the column's field");
+        assert!(relaid.is_sorted(options), "{what}{options}: {relaid}");
+        let mut in_place = column.clone();
+        in_place.as_sorted(options).expect(&what);
+        assert_eq!(
+            in_place.rows(),
+            run_sorted.rows(),
+            "{what}{options}: as_sorted"
+        );
+        let mut run_in_place = run.clone();
+        run_in_place.as_sorted(options).expect(&what);
+        assert_eq!(run_in_place.rows(), run_sorted.rows(), "{what}{options}");
+    }
+    assert_eq!(column.unique_count(), run.unique_count(), "{what}");
+    assert_eq!(column.is_unique(), run.is_unique(), "{what}");
+    assert_eq!(
+        column.into_unique().expect(&what).rows(),
+        run.into_unique().expect(&what).rows(),
+        "{what}: into_unique"
+    );
+    let groups = |serie: &Serie| -> Vec<(Scalar, Vec<Scalar>)> {
+        serie
+            .partition_by(serie)
+            .expect("grouped by itself")
+            .into_iter()
+            .map(|(key, rows)| (key, rows.rows().into_owned()))
+            .collect()
+    };
+    assert_eq!(groups(column), groups(&run), "{what}: partition_by");
+}
+
+/// `values` laid out under `field`, each through the field's own contract.
+fn column_of(field: Field, values: &[Option<&str>]) -> Serie {
+    let rows: Vec<Scalar> = values
+        .iter()
+        .map(|value| match value {
+            Some(text) => field.scalar(*text).expect("a value the field accepts"),
+            None => Scalar::Null,
+        })
+        .collect();
+    Serie::from_scalars(field, rows).expect("rows the field accepts")
+}
+
+#[test]
+fn a_float_column_reads_every_nan_payload_as_the_one_nan_its_rows_hold() {
+    let negative_nan = f64::from_bits(f64::NAN.to_bits() | (1 << 63));
+    let payload_nan = f64::from_bits(f64::NAN.to_bits() | 1);
+    let array: ArrayRef = Arc::new(arrow_array::Float64Array::from(vec![
+        Some(1.0),
+        Some(negative_nan),
+        Some(f64::NAN),
+        None,
+        Some(-1.0),
+        Some(payload_nan),
+        Some(-0.0),
+        Some(0.0),
+    ]));
+    let column =
+        Serie::from_arrow_array(None, array, ArrowCastOptions::new()).expect("a float column");
+    agrees_with_its_run(&column);
+    // Three NaN payloads are one value, as the rows read them.
+    assert_eq!(column.unique_count(), 6);
+    let sorted = column
+        .into_sorted(SortOptions::default())
+        .expect("sorted")
+        .rows()
+        .into_owned();
+    assert!(
+        sorted[4..7]
+            .iter()
+            .all(|row| row.as_f64().is_some_and(f64::is_nan))
+    );
+    assert_eq!(sorted[7], Scalar::Null);
+    let groups = column.partition_by(&column).expect("grouped");
+    assert_eq!(groups.len(), 6);
+    // A uniquely held float column sorts in place to the same order.
+    let mut held = column.clone();
+    held.as_sorted(SortOptions::default()).expect("sorted");
+    assert_eq!(held.rows().to_vec(), sorted);
+
+    let narrow: ArrayRef = Arc::new(arrow_array::Float32Array::from(vec![
+        f32::from_bits(f32::NAN.to_bits() | 1),
+        2.0,
+        f32::NAN,
+        -f32::NAN,
+    ]));
+    let narrow =
+        Serie::from_arrow_array(None, narrow, ArrowCastOptions::new()).expect("a float column");
+    agrees_with_its_run(&narrow);
+    assert_eq!(narrow.unique_count(), 2);
+}
+
+#[test]
+fn a_leaf_whose_value_order_is_not_its_stored_order_sorts_as_its_values() {
+    // A version orders by its numbers, never its text.
+    let releases = column_of(
+        DataType::Version.required_field("release"),
+        &[Some("1.10.0"), Some("1.9.0"), Some("1.2.0"), Some("1.9.0")],
+    );
+    agrees_with_its_run(&releases);
+    let sorted = releases
+        .into_sorted(SortOptions::default())
+        .expect("sorted");
+    assert_eq!(
+        sorted.rows().to_vec(),
+        ["1.2.0", "1.9.0", "1.9.0", "1.10.0"]
+            .map(|text| DataType::Version.scalar(text).expect("a version"))
+            .to_vec()
+    );
+    // windows-1252 text orders by its characters, never its bytes: `€` is
+    // 0x80 and `é` 0xE9, but U+20AC follows U+00E9.
+    let names = column_of(
+        Field::new("name", DataType::cp1252(), true),
+        &[Some("€"), Some("é"), None, Some("a"), Some("é")],
+    );
+    agrees_with_its_run(&names);
+    assert_eq!(
+        names
+            .into_sorted(SortOptions::default())
+            .expect("sorted")
+            .rows()
+            .to_vec(),
+        vec![
+            Scalar::from("a"),
+            Scalar::from("é"),
+            Scalar::from("é"),
+            Scalar::from("€"),
+            Scalar::Null
+        ]
+    );
+    for (field, values) in [
+        (
+            Field::new("urn", DataType::Urn, true),
+            vec![
+                Some("urn:isbn:0451450523"),
+                Some("urn:example:a"),
+                None,
+                Some("urn:ietf:rfc:2648"),
+                Some("urn:example:a"),
+            ],
+        ),
+        (
+            Field::new("media", DataType::MediaType, true),
+            vec![
+                Some("text/plain"),
+                Some("application/json"),
+                Some("text/csv"),
+                None,
+                Some("text/plain"),
+            ],
+        ),
+        (
+            Field::new("mime", DataType::MimeType, false),
+            vec![
+                Some("text/plain"),
+                Some("application/json"),
+                Some("image/png"),
+                Some("text/plain"),
+            ],
+        ),
+        (
+            Field::new("zone", DataType::Timezone, false),
+            vec![
+                Some("Europe/Paris"),
+                Some("America/New_York"),
+                Some("UTC"),
+                Some("Asia/Tokyo"),
+            ],
+        ),
+        (
+            Field::new("currency", DataType::Ccy, false),
+            vec![Some("USD"), Some("EUR"), Some("JPY"), Some("EUR")],
+        ),
+        (
+            Field::new("state", DataType::State, true),
+            vec![Some("FILLED"), Some("NEW"), None, Some("CANCELED")],
+        ),
+        (
+            Field::new("id", DataType::Uuid, false),
+            vec![
+                Some("ffffffff-0000-0000-0000-000000000000"),
+                Some("00000000-0000-0000-0000-0000000000ff"),
+                Some("0f000000-0000-0000-0000-000000000000"),
+            ],
+        ),
+        (
+            Field::new("code", DataType::fixed_utf8(3).expect("a width"), false),
+            vec![Some("ab"), Some("a"), Some("abc"), Some("b")],
+        ),
+        (
+            Field::new("venue", DataType::utf8(), true),
+            vec![Some("é"), Some("€"), None, Some("z")],
+        ),
+    ] {
+        agrees_with_its_run(&column_of(field, &values));
+    }
+}
+
+#[test]
+fn a_registered_code_whose_column_pads_it_is_one_value_with_the_trimmed_code() {
+    // A column stamped as currencies by a foreign writer lands as it came,
+    // padding and all, and its value is the code the padding trims to.
+    let field = ArrowField::new("currency", ArrowDataType::Utf8, false).with_metadata(
+        [
+            ("ARROW:extension:name".to_owned(), "yggdryl.ccy".to_owned()),
+            ("ARROW:extension:metadata".to_owned(), String::new()),
+        ]
+        .into(),
+    );
+    let schema = Arc::new(arrow_schema::Schema::new(vec![field]));
+    let codes: ArrayRef = Arc::new(StringArray::from(vec!["USD\0", "EUR", "USD"]));
+    let batch = arrow_array::RecordBatch::try_new(schema, vec![codes]).expect("a batch");
+    let records =
+        Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new()).expect("a record column");
+    let currencies = records
+        .child("currency")
+        .expect("the currency column")
+        .clone();
+    let stored = currencies.into_arrow_array().expect("a column");
+    let stored = stored.as_any().downcast_ref::<StringArray>().expect("text");
+    assert_eq!(stored.value(0), "USD\0");
+    agrees_with_its_run(&currencies);
+    assert_eq!(currencies.unique_count(), 2);
+    assert_eq!(
+        currencies.partition_by(&currencies).expect("grouped").len(),
+        2
+    );
+}
+
+/// The record field `q{a: int64?, b: utf8}`.
+fn nullable_record() -> Field {
+    Field::new(
+        "q",
+        DataType::from(
+            StructType::from_fields([
+                Field::new("a", DataType::Int64, true),
+                Field::new("b", DataType::utf8(), false),
+            ])
+            .expect("two children"),
+        ),
+        true,
+    )
+}
+
+#[test]
+fn a_nested_absence_goes_where_the_options_put_a_top_level_one_on_every_rung() {
+    let record = |a: Option<i64>, b: &str| {
+        Scalar::from_sequence([a.map_or(Scalar::Null, Scalar::from), Scalar::from(b)])
+    };
+    let records = Serie::from_scalars(
+        nullable_record(),
+        [
+            record(None, "x"),
+            record(Some(1), "y"),
+            Scalar::Null,
+            record(Some(1), "x"),
+            record(None, "y"),
+        ],
+    )
+    .expect("record rows");
+    agrees_with_its_run(&records);
+    // Ascending with nulls last puts the absent child after the present one.
+    let sorted = records
+        .into_sorted(SortOptions::default())
+        .expect("sorted")
+        .rows()
+        .into_owned();
+    assert_eq!(
+        sorted,
+        vec![
+            record(Some(1), "x"),
+            record(Some(1), "y"),
+            record(None, "x"),
+            record(None, "y"),
+            Scalar::Null
+        ]
+    );
+    let sorted = records
+        .into_sorted(SortOptions::descending().with_nulls_first(true))
+        .expect("sorted")
+        .rows()
+        .into_owned();
+    assert_eq!(
+        sorted,
+        vec![
+            Scalar::Null,
+            record(None, "y"),
+            record(None, "x"),
+            record(Some(1), "y"),
+            record(Some(1), "x")
+        ]
+    );
+
+    let item = Arc::new(Field::new("item", DataType::Int64, true));
+    let lists = Serie::from_scalars(
+        Field::new("legs", DataType::Serie(Arc::clone(&item)), true),
+        [
+            Scalar::from_sequence([Scalar::from(1_i64), Scalar::Null]),
+            Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
+            Scalar::from_sequence([]),
+            Scalar::Null,
+            Scalar::from_sequence([Scalar::from(1_i64)]),
+            Scalar::from_sequence([Scalar::Null]),
+        ],
+    )
+    .expect("list rows");
+    agrees_with_its_run(&lists);
+
+    let entries = |pairs: &[(&str, Option<i64>)]| {
+        Scalar::from_mapping(
+            pairs
+                .iter()
+                .map(|(key, value)| (Scalar::from(*key), value.map_or(Scalar::Null, Scalar::from))),
+        )
+        .expect("a mapping")
+    };
+    let maps = Serie::from_scalars(
+        Field::new(
+            "tags",
+            DataType::map_of(DataType::utf8(), DataType::Int64, false).expect("a map"),
+            true,
+        ),
+        [
+            entries(&[("a", Some(1))]),
+            entries(&[("a", None)]),
+            entries(&[("a", Some(1)), ("b", Some(2))]),
+            Scalar::Null,
+            entries(&[("a", None)]),
+        ],
+    )
+    .expect("map rows");
+    agrees_with_its_run(&maps);
+}
+
+#[test]
+fn a_nested_leaf_that_orders_by_value_sends_its_whole_column_to_the_values_order() {
+    let root = Field::new(
+        "release",
+        DataType::from(
+            StructType::from_fields([
+                Field::new("version", DataType::Version, false),
+                Field::new("score", DataType::Float64, true),
+            ])
+            .expect("two children"),
+        ),
+        false,
+    );
+    let row = |version: &str, score: Option<f64>| {
+        Scalar::from_sequence([
+            DataType::Version.scalar(version).expect("a version"),
+            score.map_or(Scalar::Null, Scalar::from),
+        ])
+    };
+    let releases = Serie::from_scalars(
+        root,
+        [
+            row("1.10.0", Some(1.0)),
+            row("1.9.0", None),
+            row("1.9.0", Some(f64::NAN)),
+            row("1.2.0", Some(2.0)),
+        ],
+    )
+    .expect("record rows");
+    agrees_with_its_run(&releases);
+
+    // A list of floats holding a foreign NaN deep in its items.
+    let item = Arc::new(ArrowField::new("item", ArrowDataType::Float64, true));
+    let negative_nan = f64::from_bits(f64::NAN.to_bits() | (1 << 63));
+    let lists: ArrayRef = Arc::new(ListArray::new(
+        item,
+        OffsetBuffer::from_lengths([1, 1, 2]),
+        Arc::new(arrow_array::Float64Array::from(vec![
+            negative_nan,
+            f64::NAN,
+            1.0,
+            negative_nan,
+        ])),
+        None,
+    ));
+    let lists = Serie::from_arrow_array(None, lists, ArrowCastOptions::new()).expect("a list");
+    agrees_with_its_run(&lists);
+    assert_eq!(lists.unique_count(), 2);
+}
+
+#[test]
+fn every_other_leaf_agrees_with_the_run_of_its_rows() {
+    for column in nested_columns() {
+        agrees_with_its_run(&column);
+    }
+    agrees_with_its_run(&int64_column(vec![
+        Some(3),
+        None,
+        Some(1),
+        Some(3),
+        None,
+        Some(-2),
+    ]));
+    agrees_with_its_run(&utf8_column(vec![Some("b"), None, Some("a"), Some("b")]));
+    let flags: ArrayRef = Arc::new(BooleanArray::from(vec![
+        Some(true),
+        None,
+        Some(false),
+        Some(true),
+        None,
+        Some(false),
+    ]));
+    agrees_with_its_run(
+        &Serie::from_arrow_array(None, flags, ArrowCastOptions::new()).expect("booleans"),
+    );
+}
+
+/// A boolean column of `values`, holding its bitmaps alone.
+fn boolean_column(values: Vec<Option<bool>>) -> Serie {
+    let array: ArrayRef = Arc::new(BooleanArray::from(values));
+    Serie::from_arrow_array(
+        Some(&Field::new("flag", DataType::Boolean, true)),
+        array,
+        ArrowCastOptions::new(),
+    )
+    .expect("a boolean column")
+}
+
+/// Where a boolean column's values bitmap starts.
+fn bits_at(column: &Serie) -> *const u8 {
+    column
+        .as_boolean()
+        .expect("a boolean column")
+        .values()
+        .inner()
+        .as_ptr()
+}
+
+/// Where an int64 column's values buffer starts.
+fn values_at(column: &Serie) -> *const i64 {
+    column
+        .as_int64()
+        .expect("an int64 column")
+        .values()
+        .as_ptr()
+}
+
+#[test]
+fn a_boolean_column_held_alone_sorts_and_reverses_its_bitmaps_where_they_stand() {
+    let values = vec![
+        Some(true),
+        None,
+        Some(false),
+        Some(true),
+        None,
+        Some(false),
+        Some(true),
+    ];
+    for options in ORDERINGS {
+        let mut column = boolean_column(values.clone());
+        let before = bits_at(&column);
+        column.as_sorted(options).expect("sorted in place");
+        assert_eq!(bits_at(&column), before, "{options}: the bitmap moved");
+        let run = Serie::new(boolean_column(values.clone()).rows().into_owned())
+            .into_sorted(options)
+            .expect("sorted");
+        assert_eq!(column.rows(), run.rows(), "{options}");
+        assert_eq!(column.null_count(), 2);
+        assert!(column.is_sorted(options), "{options}: {column}");
+    }
+    let mut column = boolean_column(values.clone());
+    let before = bits_at(&column);
+    column.as_reversed().expect("reversed in place");
+    assert_eq!(bits_at(&column), before);
+    let mut reversed = values;
+    reversed.reverse();
+    assert_eq!(
+        column.rows().to_vec(),
+        reversed
+            .into_iter()
+            .map(|value| value.map_or(Scalar::Null, Scalar::from))
+            .collect::<Vec<_>>()
+    );
+    // A shared bitmap is copied once, and the other holder keeps its rows.
+    let original = boolean_column(vec![Some(true), Some(false)]);
+    let mut shared = original.clone();
+    shared.as_sorted(SortOptions::default()).expect("sorted");
+    assert_eq!(
+        shared.rows().to_vec(),
+        vec![Scalar::from(false), Scalar::from(true)]
+    );
+    assert_eq!(
+        original.rows().to_vec(),
+        vec![Scalar::from(true), Scalar::from(false)]
+    );
+}
+
+#[test]
+fn a_window_of_a_boolean_column_sorts_and_reverses_in_place() {
+    let mut column = boolean_column(vec![Some(true), Some(true), None, Some(false), Some(true)]);
+    let before = bits_at(&column);
+    column
+        .window_mut(1, 3)
+        .expect("a window")
+        .as_sorted(SortOptions::descending().with_nulls_first(true))
+        .expect("sorted");
+    assert_eq!(bits_at(&column), before);
+    assert_eq!(
+        column.rows().to_vec(),
+        vec![
+            Scalar::from(true),
+            Scalar::Null,
+            Scalar::from(true),
+            Scalar::from(false),
+            Scalar::from(true)
+        ]
+    );
+    column
+        .window_mut(0, 4)
+        .expect("a window")
+        .as_reversed()
+        .expect("reversed");
+    assert_eq!(bits_at(&column), before);
+    assert_eq!(
+        column.rows().to_vec(),
+        vec![
+            Scalar::from(false),
+            Scalar::from(true),
+            Scalar::Null,
+            Scalar::from(true),
+            Scalar::from(true)
+        ]
+    );
+}
+
+#[test]
+fn a_primitive_column_with_absent_rows_held_alone_sorts_where_it_stands() {
+    for options in ORDERINGS {
+        let mut column = int64_column(vec![Some(3), None, Some(1), None, Some(2)]);
+        let before = values_at(&column);
+        column.as_sorted(options).expect("sorted in place");
+        assert_eq!(values_at(&column), before, "{options}: the buffer moved");
+        assert!(column.is_sorted(options), "{options}");
+        let mut column = int64_column(vec![Some(9), Some(3), None, Some(1), None, Some(0)]);
+        let before = values_at(&column);
+        column
+            .window_mut(1, 4)
+            .expect("a window")
+            .as_sorted(options)
+            .expect("sorted in place");
+        assert_eq!(
+            values_at(&column),
+            before,
+            "{options}: the window's buffer moved"
+        );
+        assert!(
+            column.window(1, 4).expect("a window").is_sorted(options),
+            "{options}: {column}"
+        );
+        assert_eq!(column.scalar(0).expect("a row"), Scalar::from(9_i64));
+        assert_eq!(column.scalar(5).expect("a row"), Scalar::from(0_i64));
+    }
+}

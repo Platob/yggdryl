@@ -231,7 +231,6 @@ pub use datatype::{Run, SerieType};
 pub use enums::DictionarySerie;
 pub use mapping::MapSerie;
 pub use null::NullSerie;
-pub(crate) use order::compare_values;
 pub use primitive::{
     Date32Serie, Date64Serie, DateTimeMicrosecondSerie, DateTimeMillisecondSerie,
     DateTimeNanosecondSerie, DateTimeSecondSerie, Decimal32Serie, Decimal64Serie, Decimal128Serie,

@@ -15,6 +15,7 @@
 //! storage, so a [`Scalar`] through the field's contract is their one
 //! writer.
 
+use std::cmp::Ordering;
 use std::fmt;
 use std::ops::Range;
 use std::sync::Arc;
@@ -30,7 +31,7 @@ use arrow_array::types::{
     UInt32Type, UInt64Type,
 };
 use arrow_array::{Array, ArrayRef, ArrowNativeTypeOp, ArrowPrimitiveType, PrimitiveArray};
-use arrow_buffer::NullBuffer;
+use arrow_buffer::{IntervalDayTime, IntervalMonthDayNano, NullBuffer, bit_util, i256};
 
 use super::{Serie, require_range, require_row, require_window};
 use crate::serie::value::Reading;
@@ -61,6 +62,59 @@ pub trait PrimitiveLeaf: ArrowPrimitiveType + Sized + Send + Sync + 'static {
 /// native value needs no contract beyond nullability and a typed writer can
 /// take one.
 pub trait NativeLeaf: PrimitiveLeaf {}
+
+/// How two natives of one width order as the values they hold: Arrow's own
+/// order over the natives, except that every NaN of a float is the one
+/// value a [`Scalar`] reads it as - equal to every other NaN and above every
+/// number - so the typed rung sorts as the values do.
+pub(crate) trait NativeOrder: Copy {
+    /// `self` against `other`, ascending.
+    fn order(self, other: Self) -> Ordering;
+}
+
+/// The natives whose every bit pattern is one value: Arrow's order is theirs.
+macro_rules! native_order {
+    ($($native:ty),+ $(,)?) => {$(
+        impl NativeOrder for $native {
+            fn order(self, other: Self) -> Ordering {
+                self.compare(other)
+            }
+        }
+    )+};
+}
+
+native_order!(
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    i256,
+    u8,
+    u16,
+    u32,
+    u64,
+    IntervalDayTime,
+    IntervalMonthDayNano,
+);
+
+/// The floats: Arrow's total order over the bits, every NaN one value.
+macro_rules! float_order {
+    ($($native:ty),+ $(,)?) => {$(
+        impl NativeOrder for $native {
+            fn order(self, other: Self) -> Ordering {
+                match (self.is_nan(), other.is_nan()) {
+                    (true, true) => Ordering::Equal,
+                    (true, false) => Ordering::Greater,
+                    (false, true) => Ordering::Less,
+                    (false, false) => self.compare(other),
+                }
+            }
+        }
+    )+};
+}
+
+float_order!(half::f16, f32, f64);
 
 /// One column of fixed-width rows: the field that types them, and the Arrow
 /// buffers that hold them.
@@ -212,11 +266,14 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
     }
 
     /// The row positions of `range` in sorted order, stable, under
-    /// `options`: a typed sort over the values buffer, the absent rows
-    /// gathered to the end `options` names.
+    /// `options`: a typed sort over the values buffer in the values' own
+    /// order, the absent rows gathered to the end `options` names.
     ///
     /// One allocation, the answer; no value is built.
-    pub(crate) fn sort_indices(&self, range: Range<usize>, options: SortOptions) -> Vec<u32> {
+    pub(crate) fn sort_indices(&self, range: Range<usize>, options: SortOptions) -> Vec<u32>
+    where
+        T::Native: NativeOrder,
+    {
         let values = self.values.values();
         let present = |index: usize| self.values.is_valid(index);
         let absent = self.values.null_count();
@@ -239,7 +296,7 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
         // Stable: equal rows keep their order, so the sort is one every leaf
         // answers alike; its scratch is the one allocation beside the answer.
         order[first_present..].sort_by(|left, right| {
-            let step = values[*left as usize].compare(values[*right as usize]);
+            let step = values[*left as usize].order(values[*right as usize]);
             if options.is_descending() {
                 step.reverse()
             } else {
@@ -257,41 +314,45 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
     }
 
     /// Sort rows `range` in place under `options`: the native slice sorted
-    /// where it stands, the absent rows gathered to the end `options`
-    /// names, the validity bits of the range rewritten as one run.
+    /// where it stands in the values' own order, the absent rows gathered to
+    /// the end `options` names, the validity bits of the range rewritten as
+    /// one run.
     ///
-    /// Nothing is allocated when the column holds its buffer alone; a
-    /// shared or foreign buffer is copied once by the builder, as every
-    /// write copies it.
-    pub(crate) fn sort_in_place(&mut self, range: Range<usize>, options: SortOptions) {
-        let nulls = self.values.nulls().cloned();
+    /// No row is built and nothing is copied when the column holds its
+    /// buffers alone: the validity is read off the builder's own bits, so no
+    /// second holder makes Arrow copy them. A shared or foreign buffer is
+    /// copied once by the builder, as every write copies it.
+    pub(crate) fn sort_in_place(&mut self, range: Range<usize>, options: SortOptions)
+    where
+        T::Native: NativeOrder,
+    {
         let mut builder = self.take_builder();
         let (values, validity) = builder.slices_mut();
         let window = &mut values[range.clone()];
         let len = window.len();
-        let present = match &nulls {
-            Some(nulls) if nulls.null_count() > 0 => {
+        let present = match validity.as_deref() {
+            Some(bits) => {
                 // Compact the present values to the front, in order, so the
                 // sort runs over them alone.
                 let mut write = 0;
                 for read in 0..len {
-                    if nulls.is_valid(range.start + read) {
+                    if bit_util::get_bit(bits, range.start + read) {
                         window[write] = window[read];
                         write += 1;
                     }
                 }
                 write
             }
-            _ => len,
+            None => len,
         };
-        // Unstable, because two natives that compare equal are one value
-        // and nothing tells them apart; what stability would keep, the
-        // buffer cannot show, and the unstable sort allocates no scratch.
+        // Unstable, because two natives that order equal are one value -
+        // two NaN payloads included, which every reading answers as one NaN
+        // - and the unstable sort allocates no scratch.
         let sorted = &mut window[..present];
         if options.is_descending() {
-            sorted.sort_unstable_by(|left, right| right.compare(*left));
+            sorted.sort_unstable_by(|left, right| right.order(*left));
         } else {
-            sorted.sort_unstable_by(|left, right| left.compare(*right));
+            sorted.sort_unstable_by(|left, right| left.order(*right));
         }
         let absent = len - present;
         if absent > 0 {
@@ -306,9 +367,9 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
                 };
                 for index in range.clone() {
                     if (first_absent..last_absent).contains(&index) {
-                        arrow_buffer::bit_util::unset_bit(bits, index);
+                        bit_util::unset_bit(bits, index);
                     } else {
-                        arrow_buffer::bit_util::set_bit(bits, index);
+                        bit_util::set_bit(bits, index);
                     }
                 }
             }
@@ -326,17 +387,14 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
             let (mut low, mut high) = (range.start, range.end);
             while low + 1 < high {
                 high -= 1;
-                let (left, right) = (
-                    arrow_buffer::bit_util::get_bit(bits, low),
-                    arrow_buffer::bit_util::get_bit(bits, high),
-                );
+                let (left, right) = (bit_util::get_bit(bits, low), bit_util::get_bit(bits, high));
                 if left != right {
                     if right {
-                        arrow_buffer::bit_util::set_bit(bits, low);
-                        arrow_buffer::bit_util::unset_bit(bits, high);
+                        bit_util::set_bit(bits, low);
+                        bit_util::unset_bit(bits, high);
                     } else {
-                        arrow_buffer::bit_util::unset_bit(bits, low);
-                        arrow_buffer::bit_util::set_bit(bits, high);
+                        bit_util::unset_bit(bits, low);
+                        bit_util::set_bit(bits, high);
                     }
                 }
                 low += 1;

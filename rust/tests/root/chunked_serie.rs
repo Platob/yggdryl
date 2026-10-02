@@ -1736,3 +1736,148 @@ fn memory_size_sums_the_chunks_and_the_as_writes_replace_them_in_place() {
         (2, price_rows(&[3, 2, 1]))
     );
 }
+
+/// The four orderings `SortOptions` states.
+const ORDERINGS: [SortOptions; 4] = [
+    SortOptions::ascending(),
+    SortOptions::ascending().with_nulls_first(true),
+    SortOptions::descending(),
+    SortOptions::descending().with_nulls_first(true),
+];
+
+/// `rows` under `field`, one chunk per row, so every pair of neighbours is
+/// a chunk edge.
+fn one_row_per_chunk(field: &Field, rows: &[Scalar]) -> ChunkedSerie {
+    ChunkedSerie::from_series(
+        Some(field),
+        rows.iter().map(|row| {
+            Serie::from_scalars(field.clone(), [row.clone()]).expect("a row the field accepts")
+        }),
+        ArrowCastOptions::new(),
+    )
+    .expect("chunks under one field")
+}
+
+#[test]
+fn is_sorted_judges_a_chunk_edge_exactly_as_the_joined_column_judges_it() {
+    let record = Field::new(
+        "q",
+        DataType::from(
+            StructType::from_fields([Field::new("a", DataType::Int64, true)]).expect("a child"),
+        ),
+        false,
+    );
+    let version = Field::new("v", DataType::Version, false);
+    let negative_nan = f64::from_bits(f64::NAN.to_bits() | (1 << 63));
+    let float = Field::new("f", DataType::Float64, true);
+    let cases = [
+        (
+            record.clone(),
+            vec![
+                Scalar::from_sequence([Scalar::from(1_i64)]),
+                Scalar::from_sequence([Scalar::Null]),
+            ],
+        ),
+        (
+            record,
+            vec![
+                Scalar::from_sequence([Scalar::Null]),
+                Scalar::from_sequence([Scalar::from(1_i64)]),
+            ],
+        ),
+        (
+            version.clone(),
+            ["1.9.0", "1.10.0"]
+                .map(|text| version.scalar(text).expect("a version"))
+                .to_vec(),
+        ),
+        (
+            version.clone(),
+            ["1.10.0", "1.9.0"]
+                .map(|text| version.scalar(text).expect("a version"))
+                .to_vec(),
+        ),
+        (
+            float.clone(),
+            vec![Scalar::from(1.0_f64), Scalar::Null, Scalar::from(f64::NAN)],
+        ),
+        (
+            float,
+            vec![Scalar::from(f64::NAN), Scalar::from(1.0_f64), Scalar::Null],
+        ),
+    ];
+    for (field, rows) in cases {
+        let chunked = one_row_per_chunk(&field, &rows);
+        let joined = chunked.into_serie().expect("one join");
+        for options in ORDERINGS {
+            assert_eq!(
+                chunked.is_sorted(options),
+                joined.is_sorted(options),
+                "{chunked}{options}"
+            );
+            let sorted = chunked.into_sorted(options).expect("sorted");
+            let resorted = one_row_per_chunk(&field, &sorted.rows());
+            assert!(resorted.is_sorted(options), "{resorted}{options}");
+        }
+    }
+    // A chunk holding a NaN payload Arrow orders first is still the one NaN
+    // its rows hold, at the edge as inside the chunk.
+    let arrays: [ArrayRef; 2] = [
+        Arc::new(arrow_array::Float64Array::from(vec![1.0, 2.0])),
+        Arc::new(arrow_array::Float64Array::from(vec![negative_nan])),
+    ];
+    let floats =
+        ChunkedSerie::from_arrow_arrays(None, arrays, ArrowCastOptions::new()).expect("floats");
+    assert!(floats.is_sorted(SortOptions::default()));
+    assert!(
+        floats
+            .into_serie()
+            .expect("one join")
+            .is_sorted(SortOptions::default())
+    );
+}
+
+#[test]
+fn partition_by_chunked_pairs_chunks_cut_alike_and_joins_keys_cut_otherwise() {
+    let prices = chunked(&[Some(1), Some(2), Some(3), Some(4), Some(5)], 2);
+    let venue = Field::new("venue", DataType::utf8(), false);
+    let venues = |cuts: &[&[&str]]| {
+        ChunkedSerie::from_arrow_arrays(
+            Some(&venue),
+            cuts.iter()
+                .map(|cut| Arc::new(StringArray::from(cut.to_vec())) as ArrayRef),
+            ArrowCastOptions::new(),
+        )
+        .expect("venue chunks")
+    };
+    let expected = prices
+        .partition_by(
+            &venues(&[&["a", "b", "b", "a", "c"]])
+                .into_serie()
+                .expect("one key column"),
+        )
+        .expect("groups");
+    // Cut where the rows are cut: chunk beside chunk, no join.
+    let alike = venues(&[&["a", "b"], &["b", "a"], &["c"]]);
+    // Cut elsewhere: the keys joined once and cut to each chunk of rows.
+    let otherwise = venues(&[&["a"], &["b", "b", "a"], &["c"]]);
+    for keys in [&alike, &otherwise] {
+        let groups = prices.partition_by_chunked(keys).expect("groups");
+        assert_eq!(groups.len(), 3);
+        for ((key, rows), (expected_key, expected_rows)) in groups.iter().zip(&expected) {
+            assert_eq!(key, expected_key);
+            assert_eq!(rows.rows(), expected_rows.rows());
+            assert_eq!(rows.num_chunks(), expected_rows.num_chunks());
+        }
+        assert_eq!(groups[0].1.rows(), price_rows(&[1, 4]));
+        assert_eq!(groups[0].1.num_chunks(), 2);
+    }
+    let refused = prices
+        .partition_by_chunked(&venues(&[&["a"]]))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("1 keys cannot partition the 5 rows price holds"),
+        "{refused}"
+    );
+}

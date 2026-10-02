@@ -67,8 +67,7 @@ use crate::serie::arrow::{
     batch_schema, batch_under, item_field, land_planned, lands_exactly, storage_holds,
 };
 use crate::serie::{
-    Proof, Resolved, Rows, compare_rows, compare_values, hash_rows, land, proven_row,
-    require_window,
+    Proof, Resolved, Rows, compare_rows, hash_rows, land, proven_row, require_window,
 };
 use crate::value::Children;
 use crate::{DataType, Field, FieldPath, Scalar, Serie, SerieReader, SortOptions};
@@ -631,6 +630,23 @@ impl ChunkedSerie {
     /// chunk, as a `uint32` column named `index`: the one join, then
     /// [`Serie::sort_indices`].
     ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, SortOptions};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![3, 1]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![2]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// let order = prices.sort_indices(SortOptions::default())?;
+    /// assert_eq!(order.rows().to_vec(), vec![Scalar::from(1_u32), Scalar::from(2_u32), Scalar::from(0_u32)]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     ///
     /// [`Self::into_serie`]'s refusal and [`Serie::sort_indices`]'s.
@@ -640,8 +656,11 @@ impl ChunkedSerie {
 
     /// Whether the rows are in sorted order under `options` across the
     /// chunks: every chunk sorted, and at every chunk edge the last row of
-    /// one no greater than the first of the next - one row built per side
-    /// of each edge, and no join.
+    /// one no greater than the first of the next, compared on the rung the
+    /// chunks sort on - Arrow's comparator over both chunks' buffers where
+    /// they order as their values, the values' own order otherwise - so the
+    /// answer is the joined column's. One comparator, or one row per side,
+    /// per edge, and no join.
     ///
     /// ```
     /// use std::sync::Arc;
@@ -668,9 +687,7 @@ impl ChunkedSerie {
             return true;
         };
         for chunk in edges {
-            let last = proven_row(before, before.len() - 1);
-            let first = proven_row(chunk, 0);
-            if compare_values(&last, &first, options) == Ordering::Greater {
+            if before.compare_across(before.len() - 1, chunk, 0, options) == Ordering::Greater {
                 return false;
             }
             before = chunk;
@@ -682,6 +699,23 @@ impl ChunkedSerie {
     /// join, then [`Serie::is_unique`]; a join the chunks refuse - a
     /// dictionary whose gathered vocabulary outgrows its key - walks the
     /// rows into one set instead, one row built per row.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![2]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// assert!(!prices.is_unique());
+    /// assert!(prices.slice(0, 2)?.is_unique());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn is_unique(&self) -> bool {
         match self.into_serie() {
             Ok(joined) => joined.is_unique(),
@@ -699,6 +733,22 @@ impl ChunkedSerie {
     /// How many distinct values the rows hold across the chunks: the one
     /// join, then [`Serie::unique_count`], or the rows walked into one set
     /// where the join is refused, as [`Self::is_unique`] walks them.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, true);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![Some(1), None]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![None, Some(1)]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// assert_eq!(prices.unique_count(), 2);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn unique_count(&self) -> usize {
         match self.into_serie() {
             Ok(joined) => joined.unique_count(),
@@ -713,6 +763,25 @@ impl ChunkedSerie {
     /// The rows in sorted order under `options`, as a chunked serie of one
     /// chunk: the one join, then the sort.
     ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, SortOptions};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![3, 1]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![2]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// let sorted = prices.into_sorted(SortOptions::descending())?;
+    /// assert_eq!(sorted.num_chunks(), 1);
+    /// assert_eq!(sorted.rows(), vec![Scalar::from(3_i64), Scalar::from(2_i64), Scalar::from(1_i64)]);
+    /// assert_eq!(prices.num_chunks(), 2);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     ///
     /// [`Self::into_serie`]'s refusal and [`Serie::into_sorted`]'s.
@@ -724,6 +793,22 @@ impl ChunkedSerie {
     /// The first occurrence of every value across the chunks, as a chunked
     /// serie of one chunk: the one join, then [`Serie::into_unique`].
     ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, StringArray};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("venue", DataType::utf8(), false);
+    /// let first: ArrayRef = Arc::new(StringArray::from(vec!["XNYS", "XNAS"]));
+    /// let second: ArrayRef = Arc::new(StringArray::from(vec!["XNYS"]));
+    /// let venues = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// assert_eq!(venues.into_unique()?.rows(), vec![Scalar::from("XNYS"), Scalar::from("XNAS")]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     ///
     /// [`Self::into_serie`]'s refusal and [`Serie::into_unique`]'s.
@@ -734,6 +819,24 @@ impl ChunkedSerie {
 
     /// The rows in reverse order: the chunks reversed, each reversed, kept
     /// apart.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![3]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// let reversed = prices.into_reversed();
+    /// assert_eq!(reversed.num_chunks(), 2);
+    /// assert_eq!(reversed.rows(), vec![Scalar::from(3_i64), Scalar::from(2_i64), Scalar::from(1_i64)]);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn into_reversed(&self) -> Self {
         let chunks = self.chunks.iter().rev().map(Serie::into_reversed).collect();
         Self::from_landed(Arc::clone(&self.field), chunks)
@@ -742,6 +845,24 @@ impl ChunkedSerie {
     /// The rows `indices` names, in that order, as a chunked serie of one
     /// chunk: the one join, then [`Serie::into_taken`]. `indices` is an
     /// integer column or run naming rows across the chunks.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![3]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// let picked = prices.into_taken(&Serie::new(vec![Scalar::from(2_u32), Scalar::from(0_u32)]))?;
+    /// assert_eq!(picked.rows(), vec![Scalar::from(3_i64), Scalar::from(1_i64)]);
+    /// assert!(prices.into_taken(&Serie::new(vec![Scalar::from(3_u32)])).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -755,6 +876,25 @@ impl ChunkedSerie {
     /// boolean column or run as long as the whole, cut to each chunk's
     /// window - zero copy for a column mask - and applied to that chunk
     /// alone.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![3]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// let mask = Serie::new(vec![Scalar::from(true), Scalar::Null, Scalar::from(true)]);
+    /// let kept = prices.into_filtered(&mask)?;
+    /// assert_eq!(kept.num_chunks(), 2);
+    /// assert_eq!(kept.rows(), vec![Scalar::from(1_i64), Scalar::from(3_i64)]);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -786,35 +926,125 @@ impl ChunkedSerie {
     /// `(key, rows)` per distinct key in order of first occurrence, each
     /// group's rows a chunked serie whose chunks are what each chunk
     /// contributed, kept apart - so sorted keys cut every group as zero-copy
-    /// slices of the chunks. Keys held as a chunked serie join first with
-    /// [`Self::into_serie`].
+    /// slices of the chunks. Keys held as a chunked serie are
+    /// [`Self::partition_by_chunked`]'s.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![3]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// let venues = Serie::new(vec![Scalar::from("XNAS"), Scalar::from("XNYS"), Scalar::from("XNAS")]);
+    /// let groups = prices.partition_by(&venues)?;
+    /// assert_eq!(groups.len(), 2);
+    /// assert_eq!(groups[0].0, Scalar::from("XNAS"));
+    /// assert_eq!(groups[0].1.num_chunks(), 2);
+    /// assert_eq!(groups[0].1.rows(), vec![Scalar::from(1_i64), Scalar::from(3_i64)]);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
     /// Returns an error naming the field when `keys` is another length,
     /// and [`Serie::partition_by`]'s refusal.
     pub fn partition_by(&self, keys: &Serie) -> crate::Result<Vec<(Scalar, Self)>> {
-        if keys.len() != self.len() {
-            return Err(crate::Error::InvalidRecord {
-                path: smol_str::SmolStr::new(self.field.name()),
-                reason: smol_str::format_smolstr!(
-                    "{} keys cannot partition the {} rows {} holds",
-                    keys.len(),
-                    self.len(),
-                    self.field.name()
-                ),
+        self.require_keys(keys.len())?;
+        let mut start = 0;
+        self.partition_chunks(|chunk| {
+            let window = keys.slice(start, chunk.len())?;
+            start += chunk.len();
+            Ok(Cow::Owned(window))
+        })
+    }
+
+    /// The rows grouped by `keys`, a chunked serie as long as the whole,
+    /// exactly as [`Self::partition_by`] groups them: where the two are cut
+    /// at the same rows each chunk of rows is grouped by the chunk of keys
+    /// beside it, with no join; otherwise the keys are joined once and cut
+    /// to each chunk of rows.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array, StringArray};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let price = Field::new("price", DataType::Int64, false);
+    /// let venue = Field::new("venue", DataType::utf8(), false);
+    /// let prices: [ArrayRef; 2] = [Arc::new(Int64Array::from(vec![1, 2])), Arc::new(Int64Array::from(vec![3]))];
+    /// let venues: [ArrayRef; 2] = [
+    ///     Arc::new(StringArray::from(vec!["XNAS", "XNYS"])),
+    ///     Arc::new(StringArray::from(vec!["XNAS"])),
+    /// ];
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&price), prices, ArrowCastOptions::new())?;
+    /// let venues = ChunkedSerie::from_arrow_arrays(Some(&venue), venues, ArrowCastOptions::new())?;
+    /// let groups = prices.partition_by_chunked(&venues)?;
+    /// assert_eq!(groups.len(), 2);
+    /// assert_eq!(groups[0].0, Scalar::from("XNAS"));
+    /// assert_eq!(groups[0].1.rows(), vec![Scalar::from(1_i64), Scalar::from(3_i64)]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the field when `keys` is another length,
+    /// [`Self::into_serie`]'s refusal where the keys are joined, and
+    /// [`Serie::partition_by`]'s refusal.
+    pub fn partition_by_chunked(&self, keys: &Self) -> crate::Result<Vec<(Scalar, Self)>> {
+        self.require_keys(keys.len())?;
+        if keys.ends == self.ends {
+            let mut chunks = keys.chunks.iter();
+            return self.partition_chunks(|_| {
+                Ok(Cow::Borrowed(
+                    chunks
+                        .next()
+                        .expect("keys cut at the same rows hold as many chunks"),
+                ))
             });
         }
+        self.partition_by(&keys.into_serie()?)
+    }
+
+    /// Refuse a key count that is not this serie's length, naming the field.
+    fn require_keys(&self, keys: usize) -> crate::Result<()> {
+        if keys == self.len() {
+            return Ok(());
+        }
+        Err(crate::Error::InvalidRecord {
+            path: smol_str::SmolStr::new(self.field.name()),
+            reason: smol_str::format_smolstr!(
+                "{keys} keys cannot partition the {} rows {} holds",
+                self.len(),
+                self.field.name()
+            ),
+        })
+    }
+
+    /// Group every chunk by the keys `keys_of` answers for it, as long as
+    /// the chunk, and merge each chunk's groups by key in order of first
+    /// occurrence, every group keeping what each chunk contributed apart.
+    fn partition_chunks<'k>(
+        &self,
+        mut keys_of: impl FnMut(&Serie) -> crate::Result<Cow<'k, Serie>>,
+    ) -> crate::Result<Vec<(Scalar, Self)>> {
         let mut groups: Vec<(Scalar, Vec<Serie>)> = Vec::new();
         // `Scalar`'s hash reads canonical content only, never the
         // interior-mutable caches a datatype holds, so the key is stable.
         #[allow(clippy::mutable_key_type)]
         let mut group_of: std::collections::HashMap<Scalar, usize> =
             std::collections::HashMap::new();
-        let mut start = 0;
         for chunk in &self.chunks {
-            let window = keys.slice(start, chunk.len())?;
-            for (key, rows) in chunk.partition_by(&window)? {
+            let keys = keys_of(chunk)?;
+            for (key, rows) in chunk.partition_by(&keys)? {
                 let next = groups.len();
                 let group = *group_of.entry(key.clone()).or_insert(next);
                 if group == next {
@@ -822,7 +1052,6 @@ impl ChunkedSerie {
                 }
                 groups[group].1.push(rows);
             }
-            start += chunk.len();
         }
         Ok(groups
             .into_iter()
@@ -832,12 +1061,48 @@ impl ChunkedSerie {
 
     /// The bytes the rows occupy: every chunk's, as its own slice counts
     /// them.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![3]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// assert_eq!(
+    ///     prices.memory_size(),
+    ///     prices.chunks().iter().map(|chunk| chunk.memory_size()).sum::<usize>()
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn memory_size(&self) -> usize {
         self.chunks.iter().map(Serie::memory_size).sum()
     }
 
     /// Sort the rows in place under `options`, answering this serie so
     /// calls chain: [`Self::into_sorted`], one chunk, replacing the chunks.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, SortOptions};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![2, 1]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![2]));
+    /// let mut prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// prices.as_sorted(SortOptions::default())?.as_unique()?;
+    /// assert_eq!(prices.rows(), vec![Scalar::from(1_i64), Scalar::from(2_i64)]);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -850,6 +1115,23 @@ impl ChunkedSerie {
     /// Keep the first occurrence of every value, in place, answering this
     /// serie: [`Self::into_unique`], one chunk, replacing the chunks.
     ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![2, 1]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![2]));
+    /// let mut prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// prices.as_unique()?;
+    /// assert_eq!((prices.num_chunks(), prices.rows()), (1, vec![Scalar::from(2_i64), Scalar::from(1_i64)]));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     ///
     /// [`Self::into_unique`]'s refusal, which leaves this serie as it was.
@@ -860,6 +1142,24 @@ impl ChunkedSerie {
 
     /// Reverse the rows in place, answering this serie: the chunks
     /// reversed, each reversed where it stands.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![3]));
+    /// let mut prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// prices.as_reversed()?;
+    /// assert_eq!(prices.num_chunks(), 2);
+    /// assert_eq!(prices.rows(), vec![Scalar::from(3_i64), Scalar::from(2_i64), Scalar::from(1_i64)]);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -876,6 +1176,23 @@ impl ChunkedSerie {
     /// Keep the rows `indices` names, in place, answering this serie:
     /// [`Self::into_taken`], one chunk, replacing the chunks.
     ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![3]));
+    /// let mut prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// prices.as_taken(&Serie::new(vec![Scalar::from(2_u32), Scalar::from(1_u32)]))?;
+    /// assert_eq!(prices.rows(), vec![Scalar::from(3_i64), Scalar::from(2_i64)]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     ///
     /// [`Self::into_taken`]'s refusal, which leaves this serie as it was.
@@ -886,6 +1203,23 @@ impl ChunkedSerie {
 
     /// Keep the rows `mask` keeps, in place and chunk by chunk, answering
     /// this serie.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![1, 2]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![3]));
+    /// let mut prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// prices.as_filtered(&Serie::new(vec![Scalar::from(false), Scalar::from(true), Scalar::from(true)]))?;
+    /// assert_eq!((prices.num_chunks(), prices.rows()), (2, vec![Scalar::from(2_i64), Scalar::from(3_i64)]));
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///

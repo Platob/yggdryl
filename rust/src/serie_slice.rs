@@ -9,8 +9,8 @@
 //! was. A [`SerieSliceMut`] is the same window over a serie the caller
 //! holds mutably, and its writes go through [`Serie::splice`] and
 //! [`Serie::set`] on the rebased range - so a primitive leaf's `set` stays
-//! one buffer write, and a sort of a uniquely held primitive buffer sorts
-//! the window where it stands. A window never grows or shrinks what it
+//! one buffer write, and a sort of a uniquely held primitive or boolean
+//! buffer sorts the window where it stands. A window never grows or shrinks what it
 //! views: a write that would is refused by name.
 //!
 //! Identity is the window's rows alone, as a serie's is its rows: a window
@@ -51,8 +51,7 @@ use std::ops::Range;
 
 use crate::arrow::scalar_memory_size;
 use crate::serie::{
-    Rows, compare_rows, compare_values, hash_rows, proven_row, require_range, require_row,
-    require_window,
+    Rows, compare_rows, hash_rows, proven_row, require_range, require_row, require_window,
 };
 use crate::{DataType, Field, Result, Scalar, Serie, SortOptions};
 
@@ -84,7 +83,20 @@ pub struct SerieSliceRows<'a> {
 
 impl Serie {
     /// The window `offset..offset + length` as a view that reads through
-    /// this serie, moving nothing.
+    /// this serie, moving nothing: every index it takes is window-relative.
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let prices = Serie::new(vec![Scalar::from(1_i64), Scalar::from(2_i64), Scalar::from(3_i64)]);
+    /// let tail = prices.window(1, 2)?;
+    /// assert_eq!((tail.len(), tail.scalar(0)?), (2, Scalar::from(2_i64)));
+    /// assert!(tail.scalar(2).is_err());
+    /// assert!(prices.window(2, 2).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -100,7 +112,21 @@ impl Serie {
     }
 
     /// The window `offset..offset + length` as a view that reads and writes
-    /// through this serie, moving nothing.
+    /// through this serie, moving nothing; a write never grows or shrinks
+    /// what the window views.
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut prices = Serie::new(vec![Scalar::from(1_i64), Scalar::from(2_i64), Scalar::from(3_i64)]);
+    /// let mut tail = prices.window_mut(1, 2)?;
+    /// tail.set(1, Scalar::from(9_i64))?;
+    /// assert!(tail.splice(0..1, Vec::new()).is_err());
+    /// assert_eq!(prices.rows().to_vec(), vec![Scalar::from(1_i64), Scalar::from(2_i64), Scalar::from(9_i64)]);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -230,6 +256,16 @@ impl<'a> SerieSlice<'a> {
 
     /// The bytes the window's rows occupy: a column's as its own slice
     /// counts them, a run's as the row estimator charges them.
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let prices = Serie::new(vec![Scalar::from(1_i64), Scalar::from(2_i64)]);
+    /// assert!(prices.window(0, 1)?.memory_size() < prices.memory_size());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn memory_size(&self) -> usize {
         match self.serie {
             Serie::Run(run) => run.as_slice()[self.offset..self.offset + self.len]
@@ -618,9 +654,28 @@ impl<'a> SerieSliceMut<'a> {
 
     /// Sort the window's rows in place under `options`, answering this
     /// window so calls chain: a primitive column holding its buffer alone
-    /// sorts the window of its native slice where it stands, a run sorts
-    /// its values in place, and every other leaf writes the sorted rows
-    /// back through [`Serie::splice`].
+    /// sorts the window of its native slice where it stands, a boolean
+    /// column its two bitmaps, a run its values, and every other leaf
+    /// writes the sorted rows back through [`Serie::splice`].
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, Serie, SortOptions};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut flags = Serie::new(vec![
+    ///     Scalar::from(true),
+    ///     Scalar::from(true),
+    ///     Scalar::Null,
+    ///     Scalar::from(false),
+    /// ]);
+    /// flags.window_mut(1, 3)?.as_sorted(SortOptions::default())?;
+    /// assert_eq!(
+    ///     flags.rows().to_vec(),
+    ///     vec![Scalar::from(true), Scalar::from(false), Scalar::from(true), Scalar::Null]
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -637,8 +692,9 @@ impl<'a> SerieSliceMut<'a> {
 
     /// Reverse the window's rows in place, answering this window: a
     /// primitive column holding its buffer alone reverses the window of
-    /// its native slice where it stands, a run its values, and every other
-    /// leaf writes the reversed rows back through [`Serie::splice`].
+    /// its native slice where it stands, a boolean column its two bitmaps,
+    /// a run its values, and every other leaf writes the reversed rows back
+    /// through [`Serie::splice`].
     ///
     /// # Errors
     ///
@@ -678,33 +734,6 @@ impl<'a> SerieSliceMut<'a> {
         let range = self.range();
         self.serie.splice(range, rows)?;
         Ok(self)
-    }
-}
-
-impl Serie {
-    /// Sort rows `range` where they stand, answering whether the leaf
-    /// could: a primitive column through its native slice, a run through
-    /// its values; any other leaf answers `false` and is left as it was.
-    pub(crate) fn sort_range_in_place(
-        &mut self,
-        range: Range<usize>,
-        options: SortOptions,
-    ) -> bool {
-        if let Self::Run(run) = self {
-            run.make_mut()[range].sort_by(|left, right| compare_values(left, right, options));
-            return true;
-        }
-        self.primitive_sort_in_place(range, options)
-    }
-
-    /// Reverse rows `range` where they stand, answering whether the leaf
-    /// could, exactly as [`Self::sort_range_in_place`] does.
-    pub(crate) fn reverse_range_in_place(&mut self, range: Range<usize>) -> bool {
-        if let Self::Run(run) = self {
-            run.make_mut()[range].reverse();
-            return true;
-        }
-        self.primitive_reverse_in_place(range)
     }
 }
 

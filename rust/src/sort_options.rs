@@ -4,7 +4,10 @@
 //! the caller's - a column, a term of the expression grammar - and the two
 //! facts are this type, so a `Serie`, a `ChunkedSerie`, a `SerieSlice` and
 //! the plan's `order by` key all spell them once: ascending with nulls last
-//! unless stated, exactly what Arrow's own sort defaults to.
+//! unless stated, as the plan's `order by` key and DuckDB default to. That
+//! is the opposite of Arrow's own default, which puts nulls first: a caller
+//! moving from Arrow's sort with its default options states
+//! `with_nulls_first(true)` to keep the order it had.
 //!
 //! ```
 //! use yggdryl::SortOptions;
@@ -24,8 +27,10 @@ use std::str::FromStr;
 
 /// The direction of an ordering and where its absent rows go.
 ///
-/// `Copy`, and `Default` is ascending with nulls last - what Arrow's sort and
-/// the plan's `order by` key default to. `Display` writes the suffix the
+/// `Copy`, and `Default` is ascending with nulls last - what the plan's
+/// `order by` key and DuckDB default to, and the opposite of
+/// `arrow_schema::SortOptions::default()`, which puts nulls first.
+/// `Display` writes the suffix the
 /// plan's ordering writes after its key - ` desc`, ` nulls first`, both, or
 /// nothing for the default - and `FromStr` reads it back.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -68,7 +73,8 @@ impl SortOptions {
         self.nulls_first
     }
 
-    /// The same two facts as Arrow's sort kernels spell them.
+    /// The same two facts as Arrow's sort kernels spell them; the default
+    /// crosses as nulls last, never as Arrow's own default.
     pub(crate) const fn into_arrow(self) -> arrow_schema::SortOptions {
         arrow_schema::SortOptions {
             descending: self.descending,
