@@ -477,7 +477,25 @@ fs.rmSync(root, { recursive: true, force: true })
 
 ## Derive a partition column from another column
 
-Not bound in JavaScript: the `PARTITION:` view's `apply_arrow_batch` is Rust and Python only. Declare and fill the derived column there, or write it as an ordinary column.
+`PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `withPartitionBy` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata. The field views have no `applyArrowBatch`: the root's `Selector` computes the derived column.
+
+```javascript
+const assert = require('node:assert/strict')
+const arrow = require('apache-arrow')
+const { DataType, Field, Selector } = require('yggdryl')
+
+const root = new Field('row', DataType.fromFields([new Field('event', 'date32', false)]), false)
+  .withPartitionBy(['year(event) as year'])
+assert.deepEqual(root.partitionFieldNames(), ['year'])
+assert.deepEqual(root.partitionBy(), ['year(event) as year'])
+
+const batch = new arrow.Table({
+  event: arrow.vectorFromArray([new Date('2024-01-01'), new Date('2025-01-01')], new arrow.DateDay()),
+}).batches[0]
+const filled = Selector.fromField(root).applyArrowBatch(batch)
+assert.deepEqual(filled.schema.fields.map((field) => field.name), ['event', 'year'])
+assert.deepEqual([...filled.getChild('year')], [2024, 2025])
+```
 
 ## Iceberg: create, append, upsert, scan
 

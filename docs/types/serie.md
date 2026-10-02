@@ -22,7 +22,7 @@ Many values: a schema-free run, or the Arrow buffers of one [`Field`](field.md).
 | Leaf contract | `SerieValue`, implemented by every column leaf: its field, and the `id` and `kind` that field's datatype answers - never the variant's, because one layout holds several datatypes. `Serie` itself does not implement it, because a run has no field to answer with; the root answers the same verbs inherently, with `field()` an `Option` |
 | Wire | A `Scalar` holding a serie writes one tag per layout, the layout's own name - `serie`, `serie_view`, `fixed_size_serie`, `large_serie`, `large_serie_view` - over a run's rows or a column's `{"field": .., "rows": [..]}`, the payload's shape saying which; the tags written before the rename (`list`, `list_view`, `fixed_size_list`, `large_list`, `large_list_view`, and the column tags `list_view_serie`, `fixed_size_list_serie`, `large_list_serie`, `large_list_view_serie`) are still read. `Serie`'s own serde reads back only the column wire; JSON, YAML and TOML write the rows alone, because a codec document carries no schema envelope |
 | Arrow value | A held column, table or one-row array is a `Serie`; a held chunked column or table, its arrays or batches kept apart, is a [`ChunkedSerie`](chunked-serie.md); a stream is a `SerieReader`. `Scalar::from(serie)` makes a column one value and `Scalar::as_serie` borrows it back, neither reading a row; a stream is never a `Scalar` |
-| Bindings | Rust, Python and JavaScript bind `Serie` and `SerieReader`: the constructors, the row verbs, the nested leaves (`StructSerie`, the serie leaves, `MapSerie`) and the [Arrow doors](#arrow-the-door-and-what-it-proves) - Python over the C Data Interface, sharing buffers, with `Serie.from_` and `SerieReader.from_` as the [one entry from every columnar runtime](#arrow-every-columnar-runtime-in), and `ChunkedSerie.from_` reading the same ladder as chunks; JavaScript as copied IPC. The typed leaf accessors and writers (`as_<leaf>`, `get_<leaf>_mut`, `push_value`) are Rust only |
+| Bindings | Rust, Python and JavaScript bind `Serie` and `SerieReader`: the constructors, the row verbs, the nested leaves (`StructSerie`, the serie leaves, `MapSerie`) and the [Arrow doors](#arrow-the-door-and-what-it-proves) - Python over the C Data Interface, sharing buffers, with `Serie.from_` and `SerieReader.from_` as the [one entry from every columnar runtime](#arrow-every-columnar-runtime-in), and `ChunkedSerie.from_` reading the same ladder as chunks; JavaScript as copied IPC. The [ordering, uniqueness and grouping verbs](#sorting-uniqueness-and-partitions) and `window` are bound in both. The typed leaf accessors and writers (`as_<leaf>`, `get_<leaf>_mut`, `push_value`) are Rust only |
 
 ## The leaves
 
@@ -161,14 +161,14 @@ Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, r
 | `SerieReader::cast` | one more plan over the stream, compiled at the call; the reader's own root hands the reader back |
 | `cast` | one plan compiled per call; a column already under the target is a clone |
 | `from_default` | one row laid out through the field's default, then repeated by index |
-| `sort_indices`, `into_sorted` | a primitive column sorts its native slice (stable, the sort's scratch and the index column the allocations); any other column goes through Arrow's row format - one buffer of the rows' bytes - and a run through the values' own order; `into_sorted` is the order and one take |
-| `is_sorted` | one pass through Arrow's comparator over the buffers, two allocations for the boxed comparator and no row built; the values' order for a run or a layout the comparator refuses, one row per side |
-| `is_unique`, `unique_count`, `into_unique` | the row format and one hash set over its bytes, or one set over the values; `into_unique` adds the mask and one filter |
+| `sort_indices`, `into_sorted` | a primitive column sorts its native slice, every NaN one value (stable; the sort's scratch and the index column are the allocations); a column whose stored bytes order as its values goes through Arrow's row format, one buffer of the rows' bytes; a run and any other column - a version, windows-1252 text, a registered code, a URL, URN, zone, MIME or media type, a union, a variant, a geospatial value, or a float holding a NaN other than the positive quiet NaN - go through the values' own order, each row built once. `into_sorted` is the order and one take |
+| `is_sorted` | one pass through Arrow's comparator over buffers that order as their values (two allocations, no row built); the values' order elsewhere, each row built once |
+| `is_unique`, `unique_count`, `into_unique` | one hash set over the row format's bytes on the same rung, or one set over the values; `into_unique` adds the mask and one filter |
 | `into_reversed`, `into_taken`, `into_filtered` | one kernel pass over the buffers - a take, a filter - for a column, landed proven; a copy of the chosen values for a run |
-| `as_sorted`, `as_reversed` on a primitive column held alone | the native slice sorted or reversed where it stands, absent rows gathered to the end the options name, the validity bits rewritten: Arrow's builder handshake and never a row; a shared buffer copied once |
+| `as_sorted`, `as_reversed` on a primitive or boolean column held alone | the native slice, or the boolean's two bitmaps (falses and trues counted and rewritten), sorted or reversed where they stand, absent rows gathered to the end the options name; validity read off the builder's own bits, never copied; a shared buffer copied once |
 | `as_sorted`, `as_unique`, `as_reversed`, `as_taken`, `as_filtered` elsewhere | the kernel's one copy replaces the buffers; a run rewrites its values in place when it holds them alone |
 | `partition_by` on sorted keys | one comparator pass over the keys and one zero-copy `slice` per group |
-| `partition_by` on unsorted keys | one map over the row format's bytes (or the values) and one take per group |
+| `partition_by` on unsorted keys | one map names each row's group, then each group is laid out at its exact size and taken once - the cost follows the groups, never the rows |
 | `memory_size` | a walk of the column's buffers, no row read; a run walks its values |
 | `window`, `window_mut` | two words beside a reference, nothing moved; a read through it is one bounds check more than the serie's own, a write exactly the serie's own on the rebased row |
 
@@ -336,7 +336,7 @@ The typed accessors are the buffers themselves: reading row `i` off one is a bou
 
 ## Sorting, uniqueness and partitions
 
-Every leaf answers the same verbs through one ladder: a primitive column sorts its native slice, every other column goes through Arrow's row format where the type has one and the values' own total order elsewhere, and a run sorts its values. A `SortOptions` carries the two facts an ordering states beside its key - the direction and where absent rows go - and defaults to ascending with nulls last, exactly what Arrow's sort and the plan's `order by` key default to; it displays as the suffix the plan writes after a key (` desc nulls first`) and parses it back. The `into_*` reads answer a new serie under the same field and leave this one as it was; the `as_*` writes bring this serie into the state in place and answer it, so calls chain, and a refused write leaves the serie as it was.
+Every leaf answers every verb in one order - `Scalar`'s total order, with every absent value (a row, or one nested in a serie, record or map) at the end the options name and every present value reversed when descending - so a column and the run of its rows sort, deduplicate and group alike. The rungs that answer it: a primitive column sorts its native slice, a column whose stored bytes order as its values goes through Arrow's row format, and a run and any other column go through the values' own order. A `SortOptions` carries the two facts an ordering states beside its key - the direction and where absent rows go - and defaults to ascending with nulls last, as the plan's `order by` key and DuckDB do - the opposite of Arrow's own default, which puts nulls first; it displays as the suffix the plan writes after a key (` desc nulls first`) and parses it back. The `into_*` reads answer a new serie under the same field and leave this one as it was; the `as_*` writes bring this serie into the state in place and answer it, so calls chain, and a refused write leaves the serie as it was.
 
 === "Rust"
 
@@ -418,14 +418,121 @@ Every leaf answers the same verbs through one ladder: a primitive column sorts i
 === "Python"
 
     ```python
-    # Rust only.
+    import copy
+
+    import pyarrow as pa
+
+    from yggdryl import Field, Serie
+
+    prices = Serie.from_arrow_array(
+        pa.array([3, None, 1, 3], pa.int64()), Field("price", "int64", nullable=True)
+    )
+
+    # The order as positions: stable, absences last unless told otherwise.
+    assert prices.sort_indices().as_py() == [2, 0, 3, 1]
+    assert prices.sort_indices(descending=True, nulls_first=True).as_py() == [1, 0, 3, 2]
+
+    # The reads answer a new serie; the serie is as it was.
+    sorted_prices = prices.into_sorted()
+    assert sorted_prices.is_sorted()
+    assert sorted_prices.as_py() == [1, 3, 3, None]
+    assert prices[0].as_py() == 3
+    assert not prices.is_unique()
+    assert prices.unique_count() == 3
+    assert len(prices.into_unique()) == 3
+    assert prices.into_reversed()[0].as_py() == 3
+    assert prices.into_taken([2, 0]).as_py() == [1, 3]
+    assert len(prices.into_filtered([True, None, False, True])) == 2
+
+    # The writes bring the serie into the state in place and chain: a
+    # primitive column holding its buffer alone sorts where it stands.
+    held = copy.copy(prices)
+    assert held.as_sorted().as_unique().as_reversed() is held
+    assert held.as_py() == [None, 3, 1]
+    assert held.field == prices.field
+
+    # Partitions: one group per distinct key, in first-occurrence order;
+    # sorted keys cut every group as a zero-copy slice.
+    venues = Serie.from_arrow_array(
+        pa.array(["XNAS", "XNYS", "XNAS", "XNYS"]), Field("venue", "utf8", nullable=False)
+    )
+    groups = prices.partition_by(venues)
+    assert len(groups) == 2
+    assert groups[0][0].as_py() == "XNAS"
+    assert groups[0][1].as_py() == [3, 1]
+
+    # A record column partitions by the cells its paths reach, keyed by
+    # the run of those cells.
+    quotes = Serie.from_scalars(
+        Field("quote", "struct<venue: utf8 not null, side: utf8 not null>", nullable=False),
+        [["XNAS", "B"], ["XNAS", "S"], ["XNAS", "B"]],
+    )
+    groups = quotes.partition_by_paths(["venue", "side"])
+    assert len(groups) == 2
+    assert groups[0][0].as_py() == ["XNAS", "B"]
+    assert len(groups[0][1]) == 2
+    assert quotes.memory_size() > 0
     ```
 
 === "JavaScript"
 
     ```javascript
-    // Rust only.
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Field, Serie } = require('yggdryl')
+
+    const prices = Serie.fromArrowArray(
+      arrow.vectorFromArray([3n, null, 1n, 3n], new arrow.Int64()),
+      Field.from('price: int64'),
+    )
+
+    // The order as positions: stable, absences last unless told otherwise.
+    assert.deepEqual(prices.sortIndices().asJs(), [2, 0, 3, 1])
+    assert.deepEqual(prices.sortIndices({ descending: true, nullsFirst: true }).asJs(), [1, 0, 3, 2])
+
+    // The reads answer a new serie; the serie is as it was.
+    const sorted = prices.intoSorted()
+    assert.equal(sorted.isSorted(), true)
+    assert.deepEqual(sorted.asJs(), [1, 3, 3, null])
+    assert.equal(prices.scalar(0).asJs(), 3)
+    assert.equal(prices.isUnique(), false)
+    assert.equal(prices.uniqueCount(), 3)
+    assert.equal(prices.intoUnique().length, 3)
+    assert.equal(prices.intoReversed().scalar(0).asJs(), 3)
+    assert.deepEqual(prices.intoTaken([2, 0]).asJs(), [1, 3])
+    assert.equal(prices.intoFiltered([true, null, false, true]).length, 2)
+
+    // The writes bring the serie into the state in place and chain: a
+    // primitive column holding its buffer alone sorts where it stands.
+    const held = prices.clone()
+    assert.equal(held.asSorted().asUnique().asReversed(), held)
+    assert.deepEqual(held.asJs(), [null, 3, 1])
+
+    // Partitions: one group per distinct key, in first-occurrence order;
+    // sorted keys cut every group as a zero-copy slice.
+    const venues = Serie.fromArrowArray(
+      arrow.vectorFromArray(['XNAS', 'XNYS', 'XNAS', 'XNYS'], new arrow.Utf8()),
+      Field.from('venue: utf8 not null'),
+    )
+    let groups = prices.partitionBy(venues)
+    assert.equal(groups.length, 2)
+    assert.equal(groups[0][0].asJs(), 'XNAS')
+    assert.deepEqual(groups[0][1].asJs(), [3, 1])
+
+    // A record column partitions by the cells its paths reach, keyed by
+    // the run of those cells.
+    const quotes = Serie.fromScalars(
+      Field.from('quote: struct<venue: utf8 not null, side: utf8 not null> not null'),
+      [['XNAS', 'B'], ['XNAS', 'S'], ['XNAS', 'B']],
+    )
+    groups = quotes.partitionByPaths(['venue', 'side'])
+    assert.equal(groups.length, 2)
+    assert.deepEqual(groups[0][0].asJs(), ['XNAS', 'B'])
+    assert.equal(groups[0][1].length, 2)
+    assert.ok(quotes.memorySize() > 0)
     ```
+
+A `SortOptions` crosses as keywords in Python - `descending` and `nulls_first`, on `sort_indices`, `is_sorted`, `into_sorted` and `as_sorted` - and as a plain `{ descending, nullsFirst }` object in JavaScript, omitted or `null` the default. `indices`, `mask` and `keys` are a `Serie` or an iterable of values read through `Scalar`, and in Python any columnar object too. `window(offset, length)` answers a [`SerieSlice`](serie-slice.md) in all three.
 
 ## Children
 

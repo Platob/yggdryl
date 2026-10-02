@@ -579,7 +579,7 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
 
     holder = Field("row_digest", "uint64", nullable=False)
     holder.digest.set_holder()
-    holder.digest["by"] = '["symbol"]'
+    holder.digest.by = ["symbol"]
     root = Field(
         "row",
         DataType.from_fields(
@@ -613,10 +613,9 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
     const arrow = require('apache-arrow')
     const { DataType, Field, Scalar, xxhash } = require('yggdryl')
     
-    const holder = new Field('row_digest', 'uint64', false, {
-      'DIGEST:role': 'holder',
-      'DIGEST:by': '["symbol"]',
-    })
+    const holder = new Field('row_digest', 'uint64', false)
+    holder.digest.set('role', 'holder')
+    holder.digest.by = ['symbol']
     const root = new Field(
       'row',
       DataType.fromFields([new Field('symbol', 'utf8', false), new Field('quantity', 'int64', false), holder]),

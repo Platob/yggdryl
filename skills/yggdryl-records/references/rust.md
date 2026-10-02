@@ -572,20 +572,18 @@ let _ = std::fs::remove_dir_all(&root);
 
 ## Derive a partition column from another column
 
-`PARTITION:sources` and `PARTITION:transform` on the derived field; `apply_arrow_batch` on the root fills it where absent or all null and leaves values alone.
+`PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `with_partition_by` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata; `apply_arrow_batch` on the transform view of the root fills it where absent or all null and leaves values alone.
 
 ```rust
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
-use yggdryl::expression::Function;
 use yggdryl::{DataType, StructType};
 
-let mut year = DataType::Int32.nullable_field("year");
-year.as_partition_mut().set_sources(["event"])?;
-year.as_partition_mut().set_transform(Function::Year)?;
-let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event"), year])?)
-    .required_field("row");
+let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event")])?)
+    .required_field("row")
+    .with_partition_by(["year(event) as year".parse()?])?;
+assert_eq!(root.partition_field_names().collect::<Vec<_>>(), ["year"]);
 
 let batch = RecordBatch::try_from_iter([(
     "event",

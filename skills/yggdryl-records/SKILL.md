@@ -51,8 +51,8 @@ medium does the work before a byte is decoded.
 | a compressed CSV | `Holder::local("trades.csv.gz")?.into_declared_media()` | `IOBase("trades.csv.gz")` | `new IOBase('trades.csv.gz')` |
 | write a partitioned folder | `Holder::folder(&root)?.overwrite_arrow_reader(r, &options)?` | `IOBase(dir).overwrite_arrow_batch(b, options=o)` | `new IOBase(dir).overwriteArrowTable(t, options)` |
 | leaves of one partition | `children_where(&[("year", "2024")], false)?` | `children_where({"year": "2024"})` | `childrenWhere({ year: '2024' })` |
-| derived partition column | `field.as_partition_mut().set_transform(Function::Year)?`, `root.as_transform().apply_arrow_batch(&b)?` | `field.partition.transform = "year"`, `root.partition.apply_arrow_batch(b)` | not bound |
-| Iceberg table | `Table::create(LocalFolder::new(p)?, FormatVersion::V2, schema, spec)?` | `Table.create(IOBase(p), schema, ["venue"])` | `iceberg.Table.create(p, schema, ['venue'])` |
+| derived partition column | `root.with_partition_by(["year(event) as year".parse()?])?`, `root.as_transform().apply_arrow_batch(&b)?` | `root.with_partition_by(["year(event) as year"])`, `root.transform.apply_arrow_batch(b)` | `root.withPartitionBy(['year(event) as year'])`, `Selector.fromField(root).applyArrowBatch(b)` |
+| Iceberg table | `Table::create(LocalFolder::new(p)?, FormatVersion::V2, schema, PartitionSpec::from_schema(1, &schema)?)?` | `Table.create(IOBase(p), schema, ["venue", "minutes(ts, 15)"])` | `iceberg.Table.create(p, schema, ['venue', 'minutes(ts, 15)'])` |
 | Iceberg write | `commit_append(r)?`, `commit_overwrite`, `commit_merge(r, &sel, safe)?` | `append(t)`, `overwrite`, `merge(t, ["id"])` | `append(t)`, `overwrite`, `merge(t, ['id'])` |
 | Iceberg filtered scan | `scan_matching("px > 1", None)?`, `plan_matching(..)?` | `scan_matching("px > 1")`, `plan_matching(..)` | `scanMatching('px > 1')`, `planMatching(..)` |
 | Iceberg time travel | `scan_at(snapshot_id, &[], None)?` | `scan_at(snapshot_id)` | `scanAt(snapshotId)` |
@@ -165,12 +165,18 @@ medium does the work before a byte is decoded.
 16. **Iceberg commits are snapshots.** `append` and metadata-only commits
     rebase on a concurrent commit; `overwrite`, `merge` and `compact` report a
     conflict instead. A merge keys on the identity partition columns plus
-    `merge_by`, so a row only ever updates its own partition. A scan decodes
-    qualifying files side by side (`read.parallelism`) and hands batches back
-    in plan order.
+    `merge_by`, so a row only ever updates its own partition. A table is
+    created from the partitioning its schema declares (`PARTITION:by`: `venue`,
+    `days(ts)`, `minutes(ts, 15)`, `truncate(name, 4) as prefix`) unless
+    `partition_by` / `partitionBy` states entries, or `[]` / `null` states
+    none, and from its `SORT:by` as the default sort order; `minutes[n]`,
+    `week` and `quarter` are this crate's own transforms, which other Iceberg
+    readers do not prune by. A scan decodes qualifying files side by side
+    (`read.parallelism`) and hands batches back in plan order.
 17. **Folders read by their layout.** A stored `column=value` layout is
     authoritative; with none on disk, the schema's partition-marked fields
-    decide where rows go (`with_partition_fields`). The first batch to reach a
+    decide where rows go (`with_partition_fields`, or `with_partition_by` for
+    derived entries such as `years(ts)`). The first batch to reach a
     leaf performs the write's operation; later ones append.
 
 ## Pitfalls

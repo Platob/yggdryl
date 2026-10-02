@@ -226,6 +226,13 @@ class TestPartitionByEntries:
         # A schema declaring nothing is unpartitioned.
         plain = Table.create(IOBase(tmp_path / "plain"), assign_field_ids(TIMED))
         assert plain.spec.fields == []
+        # `None` is a value: it partitions nothing, whatever the schema declares,
+        # and so does an empty list.
+        for name, stated in [("none", None), ("empty", [])]:
+            flat = Table.create(IOBase(tmp_path / name), declared, stated)
+            assert flat.spec.is_unpartitioned(), name
+        reopened = Table.open_or_create(IOBase(tmp_path / "flat"), declared, None)
+        assert reopened.spec.is_unpartitioned()
 
     def test_an_entry_no_spec_can_hold_is_refused_naming_it(
         self, tmp_path: pathlib.Path

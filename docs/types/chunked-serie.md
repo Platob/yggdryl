@@ -16,7 +16,7 @@ Many [`Serie`](serie.md) columns under one [`Field`](field.md), in order and hel
 | Cast | `cast(target, options)` is one [`ArrowCastPlan`](cast.md#compiled-plans) compiled and applied to every chunk; a chunked serie already under the target is itself, its chunks shared |
 | Stream | `SerieReader::from_chunked` reads the chunks as a stream, one record column per chunk, nothing cast, copied or read |
 | Order, uniqueness, partitions | the [verbs a `Serie` answers](serie.md#sorting-uniqueness-and-partitions), across the chunks: `is_sorted` reads each chunk and every chunk edge with no join, an edge compared on the rung the chunks sort on; `into_reversed`, `into_filtered`, `partition_by` and `partition_by_chunked` work chunk by chunk and keep the chunks apart; `sort_indices`, `is_unique`, `unique_count`, `into_sorted`, `into_unique` and `into_taken` are the one join then the verb, answering a chunked serie of one chunk; `memory_size` sums the chunks; the `as_*` writes replace the chunks in place |
-| Bindings | Rust, Python and JavaScript. Python crosses the C Data Interface and shares buffers: a `pyarrow.ChunkedArray`'s chunks and a `pyarrow.Table`'s batches are kept as chunks, and go back out as a `ChunkedArray` and a `Table`. JavaScript crosses as copied IPC: an Apache Arrow JS `Vector`'s `Data` are the chunks, and so are a `Table`'s batches. `field_ref`, `from_serie_reader` (Python reaches it through `ChunkedSerie.from_`), the `ChunkedRows` iterator type and `Hash` are Rust only: the Python class is mutable and unhashable |
+| Bindings | Rust, Python and JavaScript. Python crosses the C Data Interface and shares buffers: a `pyarrow.ChunkedArray`'s chunks and a `pyarrow.Table`'s batches are kept as chunks, and go back out as a `ChunkedArray` and a `Table`. JavaScript crosses as copied IPC: an Apache Arrow JS `Vector`'s `Data` are the chunks, and so are a `Table`'s batches. The [ordering, uniqueness and grouping verbs](#sorting-uniqueness-and-partitions) are bound in both, `partition_by` taking chunked keys where Rust spells `partition_by_chunked`. `field_ref`, `from_serie_reader` (Python reaches it through `ChunkedSerie.from_`), the `ChunkedRows` iterator type and `Hash` are Rust only: the Python class is mutable and unhashable |
 
 One verb, three spellings, where the runtimes name the Arrow values differently:
 
@@ -329,14 +329,100 @@ A chunked serie answers what a [`Serie`](serie.md#sorting-uniqueness-and-partiti
 === "Python"
 
     ```python
-    # Rust only.
+    import copy
+
+    import pyarrow as pa
+
+    from yggdryl import ChunkedSerie, Field, Serie
+
+    field = Field("price", "int64", nullable=False)
+    prices = ChunkedSerie.from_arrow_chunked_array(
+        pa.chunked_array([[3, 1], [2, 3]], pa.int64()), field
+    )
+
+    # Each chunk is sorted; the edge between them is not.
+    assert not prices.is_sorted()
+    assert prices.slice(2, 2).is_sorted()
+
+    # The one join, then the verb: one chunk back.
+    sorted_prices = prices.into_sorted()
+    assert (sorted_prices.num_chunks, sorted_prices.as_py()) == (1, [1, 2, 3, 3])
+    assert prices.unique_count() == 3
+    assert len(prices.into_unique()) == 3
+
+    # Chunk by chunk, kept apart.
+    reversed_prices = prices.into_reversed()
+    assert (reversed_prices.num_chunks, reversed_prices.as_py()) == (2, [3, 2, 1, 3])
+    assert prices.into_filtered([True, False, True, True]).num_chunks == 2
+    venues = ["a", "b", "b", "a"]
+    groups = prices.partition_by(venues)
+    assert len(groups) == 2
+    assert (groups[0][0].as_py(), groups[0][1].num_chunks) == ("a", 2)
+    assert groups[0][1].as_py() == [3, 3]
+
+    # Keys held as chunks cut at the same rows: chunk beside chunk, no join.
+    chunked_venues = ChunkedSerie.from_arrow_chunked_array(
+        pa.chunked_array([["a", "b"], ["b", "a"]]), Field("venue", "utf8", nullable=False)
+    )
+    paired = prices.partition_by(chunked_venues)
+    assert len(paired) == 2
+    assert paired[0][1].as_py() == groups[0][1].as_py()
+
+    # In place, chaining, and the field kept.
+    held = copy.copy(prices)
+    assert held.as_sorted(descending=True).as_unique() is held
+    assert held.as_py() == [3, 2, 1]
+    assert held.field == field
+    assert held.memory_size() > 0
     ```
 
 === "JavaScript"
 
     ```javascript
-    // Rust only.
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { ChunkedSerie, Field } = require('yggdryl')
+
+    const int64 = (values) => arrow.vectorFromArray(values, new arrow.Int64())
+    const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
+    const prices = ChunkedSerie.fromArrowArray(
+      int64([3n, 1n]).concat(int64([2n, 3n])),
+      Field.from('price: int64 not null'),
+    )
+
+    // Each chunk is sorted; the edge between them is not.
+    assert.equal(prices.isSorted(), false)
+    assert.equal(prices.slice(2, 2).isSorted(), true)
+
+    // The one join, then the verb: one chunk back.
+    const sorted = prices.intoSorted()
+    assert.deepEqual([sorted.numChunks, sorted.asJs()], [1, [1, 2, 3, 3]])
+    assert.equal(prices.uniqueCount(), 3)
+    assert.equal(prices.intoUnique().length, 3)
+
+    // Chunk by chunk, kept apart.
+    const reversed = prices.intoReversed()
+    assert.deepEqual([reversed.numChunks, reversed.asJs()], [2, [3, 2, 1, 3]])
+    assert.equal(prices.intoFiltered([true, false, true, true]).numChunks, 2)
+    const groups = prices.partitionBy(['a', 'b', 'b', 'a'])
+    assert.equal(groups.length, 2)
+    assert.deepEqual([groups[0][0].asJs(), groups[0][1].numChunks], ['a', 2])
+    assert.deepEqual(groups[0][1].asJs(), [3, 3])
+
+    // Keys held as chunks cut at the same rows: chunk beside chunk, no join.
+    const venues = ChunkedSerie.fromArrowArray(utf8(['a', 'b']).concat(utf8(['b', 'a'])), Field.from('venue: utf8 not null'))
+    const paired = prices.partitionBy(venues)
+    assert.equal(paired.length, 2)
+    assert.deepEqual(paired[0][1].asJs(), groups[0][1].asJs())
+
+    // In place, chaining, and the field kept.
+    const held = prices.clone()
+    assert.equal(held.asSorted({ descending: true }).asUnique(), held)
+    assert.deepEqual(held.asJs(), [3, 2, 1])
+    assert.ok(held.memorySize() > 0)
     ```
+
+The options and the `indices`, `mask` and `keys` arguments cross as [a `Serie`'s do](serie.md#sorting-uniqueness-and-partitions). `partition_by` also takes keys held in chunks: in Python a `ChunkedSerie`, a `pyarrow.ChunkedArray` or a table, in JavaScript a `ChunkedSerie` or an Arrow JS vector of one chunk per `Data`.
 
 ## Arrow: a chunked array and a table
 

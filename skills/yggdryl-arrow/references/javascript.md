@@ -334,6 +334,62 @@ assert.throws(() => rows.push([3n, 'not a list']))
 assert.equal(rows.length, 2) // unchanged
 ```
 
+## Sort, deduplicate, group and window
+
+Every leaf answers every verb in one order - `Scalar`'s total order, absent
+values last unless `nullsFirst: true` (the plan's `order by` and DuckDB's
+default, the opposite of Arrow's) - so a column and the run of its rows sort,
+deduplicate and group alike. `into*` answers a new serie under the same field;
+`as*` brings the serie into that state in place and chains (`clone()` first to
+keep the original). `indices`, `mask` and `keys` are a `Serie` or an iterable
+of values; the options are a plain `{ descending, nullsFirst }` object. A
+`ChunkedSerie` answers the same: `isSorted`, `intoReversed`, `intoFiltered` and
+`partitionBy` chunk by chunk, the rest through one join.
+
+```javascript
+const assert = require('node:assert/strict')
+const arrow = require('apache-arrow')
+const { ChunkedSerie, Field, Serie } = require('yggdryl')
+
+const int64 = (values) => arrow.vectorFromArray(values, new arrow.Int64())
+const prices = Serie.fromArrowArray(int64([3n, null, 1n, 3n]), Field.from('price: int64'))
+
+// The order as positions: stable, absences last unless told otherwise.
+assert.deepEqual(prices.sortIndices().asJs(), [2, 0, 3, 1])
+assert.deepEqual(prices.sortIndices({ descending: true, nullsFirst: true }).asJs(), [1, 0, 3, 2])
+
+// The reads answer a new serie; this one is as it was.
+assert.deepEqual(prices.intoSorted().asJs(), [1, 3, 3, null])
+assert.equal(prices.intoSorted().isSorted(), true)
+assert.deepEqual([prices.isUnique(), prices.uniqueCount()], [false, 3])
+assert.equal(prices.intoUnique().length, 3)
+assert.deepEqual(prices.intoTaken([2, 0]).asJs(), [1, 3])
+assert.equal(prices.intoFiltered([true, false, false, true]).length, 2)
+
+// The writes chain in place; a primitive column holding its buffer alone sorts where it stands.
+const held = prices.clone()
+assert.equal(held.asSorted().asUnique().asReversed(), held)
+assert.deepEqual(held.asJs(), [null, 3, 1])
+
+// One [key, rows] per distinct key, in first-occurrence order.
+const groups = prices.partitionBy(['XNAS', 'XNYS', 'XNAS', 'XNYS'])
+assert.deepEqual([groups.length, groups[0][0].asJs()], [2, 'XNAS'])
+assert.deepEqual(groups[0][1].asJs(), [3, 1])
+
+// A window reads and writes a stretch where it stands, window-relative.
+const column = Serie.fromScalars(Field.from('price: int64 not null'), [9n, 3n, 1n, 2n, 0n])
+assert.deepEqual(column.window(1, 3).intoSorted().asJs(), [1, 2, 3])
+column.window(1, 3).asSorted()
+assert.deepEqual(column.asJs(), [9, 1, 2, 3, 0])
+assert.ok(column.memorySize() > 0)
+
+// Chunks: the edge between two sorted chunks is read with no join.
+const chunked = ChunkedSerie.fromArrowArray(int64([3n, 1n]).concat(int64([2n, 3n])))
+assert.equal(chunked.isSorted(), false)
+assert.equal(chunked.intoSorted().numChunks, 1)
+assert.equal(chunked.intoReversed().numChunks, 2)
+```
+
 ## Keep chunks and batches apart
 
 `ChunkedSerie` holds a vector's `Data` or a table's batches without

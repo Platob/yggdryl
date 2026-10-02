@@ -5284,8 +5284,8 @@ class Table:
     # core reads into one: a bare column an identity field, `days(ts)`,
     # `minutes(ts, 15)`, `weeks(ts)`, `quarters(ts)`, `truncate(name, 4)` a
     # derived one, `as alias` naming it. Omitted, the schema's own
-    # declaration is read the same way; a schema declaring nothing is
-    # unpartitioned.
+    # declaration is read the same way; `None`, like a schema declaring
+    # nothing, is unpartitioned.
     @classmethod
     def create(
         cls,
@@ -5293,7 +5293,8 @@ class Table:
         schema: FieldLike,
         partition_by: PartitionSpec
         | Iterable[str | Term | tuple[str | Term, str]]
-        | None = None,
+        | None
+        | EllipsisType = ...,
         *,
         format_version: int | None = None,
     ) -> Table: ...
@@ -5306,7 +5307,8 @@ class Table:
         schema: FieldLike,
         partition_by: PartitionSpec
         | Iterable[str | Term | tuple[str | Term, str]]
-        | None = None,
+        | None
+        | EllipsisType = ...,
         *,
         format_version: int | None = None,
     ) -> Table: ...

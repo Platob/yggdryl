@@ -442,21 +442,21 @@ assert [child.partitions for child in lake.children_where({"year": "2024"})] == 
 
 ## Derive a partition column from another column
 
-`PARTITION:sources` and `PARTITION:transform` on the derived field; `apply_arrow_batch` on the root fills it where absent or all null and leaves values alone.
+`PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `with_partition_by` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata; `apply_arrow_batch` on the transform view of the root fills it where absent or all null and leaves values alone.
 
 ```python
 import pyarrow as pa
 
 from yggdryl import DataType, Field
 
-year = Field("year", "int32", nullable=True)
-year.partition.sources = ["event"]
-year.partition.transform = "year"
+root = Field(
+    "row", DataType.from_fields([Field("event", "date32", nullable=False)]), nullable=False
+).with_partition_by(["year(event) as year"])
+assert root.partition_field_names == ["year"]
+assert root.partition_by == ["year(event) as year"]
 
-root = Field("row", DataType.from_fields([Field("event", "date32", nullable=False), year]), nullable=False)
 batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
-
-filled = root.partition.apply_arrow_batch(batch)
+filled = root.transform.apply_arrow_batch(batch)
 assert filled.column_names == ["event", "year"]
 assert filled.column("year").to_pylist() == [2024, 2025]
 ```

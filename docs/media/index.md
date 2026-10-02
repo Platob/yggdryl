@@ -2427,7 +2427,7 @@ A scan decodes its files side by side once two of at least 64 KiB qualify (`read
 
 A streamed write with no `commit_batch_num` commits a snapshot each time the batches it holds reach the table's target file size (`write.target-file-size-bytes`, `IcebergOptions`' `target_file_size`) as `yggdryl::arrow::memory_size` measures them, then the remainder, so a stream of any length holds at most one target file of rows before each commit; `commit_batch_num = N` commits every `N` whole batches instead. An overwrite's first commit replaces and the rest append; an append or a merge keeps its intent in every commit.
 
-A partition spec names one transform per field, `Transform` in Rust. The specification's own are read and written as it spells them; three more - `minutes[n]`, `week` and `quarter` - are this crate's own, and no other implementation knows them: Apache Iceberg's Java implementation and PyIceberg read a name they do not know as `unknown` and prune nothing by it, as the specification says of an unknown transform, while iceberg-rust 0.10 refuses a metadata or manifest document naming one, so a table partitioned or sorted by one does not open there. Every time transform is the expression grammar's [epoch function](../expression/functions.md#calendar-parts-and-epoch-periods) of the same name, computed by one rule and floored, so an instant before 1970 lands in its own period - and because a file's tuple names the period every row's source falls in, a filter on the source column prunes files and manifests by it, with no partition column named in the filter, a column two fields read pruning by the tighter of them. A writer that truncated an instant before 1970 toward zero filed it one period late, which Java's reader allows for; a scan here allows for it the same way, so a period at or below zero of the specification's `year`, `month`, `day` and `hour` (of a date, `year` and `month`) also keeps the instants of the period before it. A `bucket` or a `truncate` prunes nothing. A timestamp source of a time transform is counted in microseconds or nanoseconds, the two units Iceberg spells, and one in seconds or milliseconds is refused by all seven alike. Spark's DDL plurals - `years`, `months`, `days`, `hours`, `weeks`, `quarters` - are intake spellings, read and written singular. `minutes[n]` takes its step in brackets as `bucket[n]` does - `minutes[15]` the quarter hour, `minutes[30]` the half hour, `minutes[60]` the hour - with `n` from 1 to 2147483645, and has that one spelling: `minutes[0]`, `minutes(15)`, `minutes[+15]`, a bare `minutes`, `minute` and `min15` are refused by name.
+A partition spec names one transform per field, `Transform` in Rust. The specification's own are read and written as it spells them; three more - `minutes[n]`, `week` and `quarter` - are this crate's own, and no other implementation knows them: Apache Iceberg's Java implementation and PyIceberg read a name they do not know as `unknown` and prune nothing by it, as the specification says of an unknown transform, while iceberg-rust 0.10 refuses a metadata or manifest document naming one, so a table partitioned or sorted by one does not open there. Every time transform is the expression grammar's [epoch function](../expression/functions.md#calendar-parts-and-epoch-periods) of the same name, computed by one rule and floored, so an instant before 1970 lands in its own period - and because a file's tuple names the period every row's source falls in, a filter on the source column prunes files and manifests by it, with no partition column named in the filter, a column two fields read pruning by the tighter of them. A writer that truncated an instant before 1970 toward zero filed it one period late, which Java's reader allows for; a scan here allows for it the same way, so a period at or below zero of the specification's `year`, `month`, `day` and `hour` (of a date, `year` and `month`) also keeps the instants of the period before it. A `bucket` or a `truncate` prunes nothing. A timestamp source of a time transform is counted in microseconds or nanoseconds, the two units Iceberg spells, and one in seconds or milliseconds is refused by all seven alike. Spark's DDL plurals - `years`, `months`, `days`, `hours`, `weeks`, `quarters` - are intake spellings, read and written singular. `minutes[n]` takes its step in brackets as `bucket[n]` does - `minutes[15]` the quarter hour, `minutes[30]` the half hour, `minutes[60]` the hour - with `n` from 1 to 2147483645, and has that one spelling: `minutes[0]`, `minutes(15)`, `minutes[+15]` and a bare `minutes` are refused by name.
 
 | Transform | Also read | Source | Partition value | Grammar function | Whose |
 | --- | --- | --- | --- | --- | --- |
@@ -2611,15 +2611,91 @@ A table is also created from what its schema declares. `PartitionSpec::from_sche
 
 === "Python"
 
-    !!! note "Rust-only"
-        Creating a table from a schema's `PARTITION:by` and `SORT:by` is Rust-only; Python's
-        `Table.create` takes the identity partition columns by name.
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import DataType, Field, IOBase
+    from yggdryl.iceberg import Table
+
+    schema = Field(
+        "row",
+        DataType.from_fields([
+            Field("id", "int64", nullable=False),
+            Field("venue", "utf8", nullable=False),
+            Field("ts", "timestamp(us)", nullable=False),
+        ]),
+        nullable=False,
+    )
+    schema.partition.by = ["venue", "minutes(ts, 15)"]
+    schema.sort.by = ["ts desc", "id"]
+    root = pathlib.Path(tempfile.mkdtemp())
+
+    # Omitted, the table partitions and sorts as its schema declares.
+    table = Table.create(IOBase(root / "declared"), schema)
+    assert [(field.name, field.transform) for field in table.spec.fields] == [
+        ("venue", "identity"),
+        ("ts_minutes", "minutes[15]"),
+    ]
+    assert table.schema.partition.by == ["venue", "minutes(ts, 15)"]
+    assert table.schema.sort.by == ["ts desc", "id"]
+
+    # Stated, the entries are read by the same rule and replace the declaration.
+    stated = Table.create(IOBase(root / "stated"), schema, ["days(ts)", "truncate(venue, 4) as prefix"])
+    assert [(field.name, field.transform) for field in stated.spec.fields] == [
+        ("ts_day", "day"),
+        ("prefix", "truncate[4]"),
+    ]
+
+    # `None` partitions nothing, whatever the schema declares.
+    assert Table.create(IOBase(root / "flat"), schema, None).spec.is_unpartitioned()
+    ```
 
 === "JavaScript"
 
-    !!! note "Rust-only"
-        Creating a table from a schema's `PARTITION:by` and `SORT:by` is Rust-only;
-        JavaScript's `Table.create` takes the identity partition columns by name.
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { DataType, Field, iceberg } = require('yggdryl')
+
+    const schema = new Field(
+      'row',
+      DataType.fromFields([
+        new Field('id', 'int64', false),
+        new Field('venue', 'utf8', false),
+        new Field('ts', 'timestamp(us)', false),
+      ]),
+      false,
+    )
+    schema.partition.by = ['venue', 'minutes(ts, 15)']
+    schema.sort.by = ['ts desc', 'id']
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+
+    // Omitted, the table partitions and sorts as its schema declares.
+    const table = iceberg.Table.create(path.join(root, 'declared'), schema)
+    assert.deepEqual(
+      table.spec.fields.map((field) => [field.name, field.transform]),
+      [['venue', 'identity'], ['ts_minutes', 'minutes[15]']],
+    )
+    assert.deepEqual(table.schema.partition.by, ['venue', 'minutes(ts, 15)'])
+    assert.deepEqual(table.schema.sort.by, ['ts desc', 'id'])
+
+    // Stated, the entries are read by the same rule and replace the declaration.
+    const stated = iceberg.Table.create(path.join(root, 'stated'), schema, ['days(ts)', 'truncate(venue, 4) as prefix'])
+    assert.deepEqual(
+      stated.spec.fields.map((field) => [field.name, field.transform]),
+      [['ts_day', 'day'], ['prefix', 'truncate[4]']],
+    )
+
+    // `null` partitions nothing, whatever the schema declares.
+    assert.equal(iceberg.Table.create(path.join(root, 'flat'), schema, null).spec.isUnpartitioned(), true)
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+`Table.create` and `open_or_create` take the partitioning as a `PartitionSpec` or as `PARTITION:by` entries - Python's `partition_by`, JavaScript's `partitionBy`, each entry its text, in Python a `Term` or a `(term, alias)` pair too - read by `PartitionSpec::from_schema`'s rule, so a refusal names the entry. Omitted, the schema's own `PARTITION:by` is read; `None` in Python and `null` in JavaScript - or an empty list - partition nothing whatever the schema declares. The default sort order is the schema's `SORT:by` either way.
 
 === "Rust"
 

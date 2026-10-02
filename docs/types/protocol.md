@@ -81,7 +81,7 @@ The view remembers the scheme; the caller writes the bare name.
     field.postgres["type"] = "numeric"
     field.digest["role"] = "holder"
     field.identity.update({"role": "primary", "nulls": "distinct"})
-    field.metadata["SORT:by"] = '["price DESC"]'
+    field.sort.by = ["price DESC"]
 
     assert field.iceberg["doc"] == "closing price"
     assert field.iceberg.key("doc") == "ICEBERG:doc"
@@ -90,6 +90,7 @@ The view remembers the scheme; the caller writes the bare name.
     assert field.digest["role"] == "holder"
     assert field.identity["role"] == "primary"
     # A `by` list is stored as the grammar spells it.
+    assert field.sort.by == ["price desc"]
     assert field.metadata["SORT:by"] == '["price desc"]'
 
     # It is a view of the one metadata mapping, not a copy of part of it.
@@ -107,15 +108,17 @@ The view remembers the scheme; the caller writes the bare name.
         The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, `DigestField`,
         `IdentityField`, and seventeen others) are Rust-only. Python reads the generic property
         mapping through `field.iceberg`, and the validated HTTP values stay attributes on the
-        field. `field.fix`, `field.digest`, `field.partition` and
-        `field.python` are the exceptions: `id`,
-        `tag`, `tags`, `aliases`, `branches`, `identifiers`, `description`, `nulls`, `directions`
-        and the catalog references on the first; `is_holder`, `algorithm`, `time`,
-        `unit`, `is_coupled` and `apply_arrow_batch` on the second;
-        [`apply_arrow_batch`](../holder/index.md#derived-partition-columns) on the
-        third; `class_metadata` and its three parts on the fourth, each answered only by its own
-        view. The `by` lists and the sort view are read and written through the generic
-        mapping until the bindings expose them.
+        field. The `fix`, `digest`, `partition`, `sort`, `transform` and `python` views add typed
+        vocabulary, each answered only by its own view: `id`, `tag`, `tags`, `aliases`,
+        `branches`, `identifiers`, `description`, `nulls`, `directions` and the catalog
+        references on `field.fix`; `is_holder`, `algorithm`, `time`, `unit`, `is_coupled` and
+        `apply_arrow_batch` on `field.digest`;
+        [`apply_arrow_batch`](../holder/index.md#derived-partition-columns) on `field.partition`
+        and `field.transform`; `class_metadata` and its three parts on `field.python`. `by` is the
+        typed list of the digest, partition and sort views - canonical texts, `None` when absent,
+        assigned as a list and removed by `remove_by()` - and read only on the transform view,
+        whose `term` is written (a `Term` or its text, `None` removes it) and `remove_term()`
+        drops the derivation. Every other view refuses `by` and `term` naming its scheme.
 
 === "JavaScript"
 
@@ -130,7 +133,7 @@ The view remembers the scheme; the caller writes the bare name.
     field.postgres.set('type', 'numeric')
     field.digest.set('role', 'holder')
     field.identity.update({ role: 'primary', nulls: 'distinct' })
-    field.set('SORT:by', '["price DESC"]')
+    field.sort.by = ['price DESC']
 
     assert.equal(field.iceberg.get('doc'), 'closing price')
     assert.equal(field.iceberg.key('doc'), 'ICEBERG:doc')
@@ -139,6 +142,7 @@ The view remembers the scheme; the caller writes the bare name.
     assert.equal(field.digest.get('role'), 'holder')
     assert.equal(field.identity.get('role'), 'primary')
     // A `by` list is stored as the grammar spells it.
+    assert.deepEqual(field.sort.by, ['price desc'])
     assert.equal(field.get('SORT:by'), '["price desc"]')
 
     // It is a view of the one metadata map, not a copy of part of it.
@@ -155,12 +159,15 @@ The view remembers the scheme; the caller writes the bare name.
     !!! note "Rust-only"
         The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, `DigestField`,
         `IdentityField`, `PartitionField`, `SortField`, `PythonField`, and fifteen others) are
-        Rust-only, and so are the `by` vocabularies and the Python-class vocabulary Python
-        binds. JavaScript reads the
+        Rust-only, and so is the Python-class vocabulary Python binds. JavaScript reads the
         generic property `Map` through `field.iceberg` and `field.python`; `field.fix` is the
         exception, answering `id`, `tag`, `tags`, `aliases`, `branches`, `identifiers`,
         `description`, `nulls`, `directions`, `addBranch` and `hasBranch`, and the validated HTTP
-        values stay accessors on the field.
+        values stay accessors on the field. The `partition`, `sort`, `digest` and `transform`
+        views add `by`: a `string[]` of canonical texts, `null` when absent, assigned as an array
+        and removed by `removeBy()` - read only on `transform`, whose `term` is written (a `Term`
+        or its text, `null` removes it) and dropped by `removeTerm()`. Every other view refuses
+        `by` and `term` by naming its scheme.
 
 ## Reserved keys
 
@@ -356,7 +363,8 @@ holder, in declaration order.
 
     # Narrowing the input is the holder's business; `id` stays an ordinary column,
     # and a term is stored as the grammar spells it.
-    stored.digest["by"] = '["id", "Lower(symbol)"]'
+    stored.digest.by = ["id", "Lower(symbol)"]
+    assert stored.digest.by == ["id", "lower(symbol)"]
     assert stored.digest["by"] == '["id","lower(symbol)"]'
     assert dict(identifier.digest) == {}
 
@@ -383,7 +391,8 @@ holder, in declaration order.
     )
     assert.deepEqual(fallback.digestFieldNames(), ['id', 'price'])
 
-    stored.digest.set('by', '["id", "Lower(symbol)"]')
+    stored.digest.by = ['id', 'Lower(symbol)']
+    assert.deepEqual(stored.digest.by, ['id', 'lower(symbol)'])
     assert.equal(stored.digest.get('by'), '["id","lower(symbol)"]')
     assert.deepEqual(identifier.digest.entries(), [])
 
@@ -418,7 +427,7 @@ column an identity partition, a term a derived one, named by its alias or by
 `with_partition_by` stores the declaration and turns it into the layout: every identity column
 is marked `FIELD:partition`, and every derived entry is added as a marked column carrying its
 [transform](../expression/selectors.md#a-selector-declares-a-schema), typed by the term.
-`with_partition_fields` is the same over bare columns. A marked column the declaration does not
+`with_partition_fields` is the same over bare columns. `partition_by` answers the declaration as canonical texts, else the marked columns; the `partition` view's `by` answers the declaration alone. A marked column the declaration does not
 name is refused naming both; a declared column may be unmarked or absent, because a leaf stores
 the rows minus the partition columns under the whole declaration, and an Iceberg table keeps a
 derived value in its manifest ([Iceberg](../media/index.md#iceberg)).
@@ -493,12 +502,22 @@ derived value in its manifest ([Iceberg](../media/index.md#iceberg)).
 
     assert len(schema.without_partition_fields().dtype) == 1
     assert len(schema.only_partition_fields().dtype) == 2
-    ```
 
-    !!! note "Rust-only"
-        `with_partition_by` and `partition_by` - a declaration with derived entries - are
-        Rust-only; Python reads and writes the declaration through
-        `field.metadata["PARTITION:by"]`.
+    # A derived entry is a marked column computed from the rows, named by
+    # the convention unless aliased.
+    derived = Field(
+        "row",
+        DataType.from_fields([
+            Field("venue", "string", nullable=False),
+            Field("event", "date32", nullable=False),
+        ]),
+        nullable=False,
+    ).with_partition_by(["venue", "years(event)", "truncate(venue, 2) as prefix"])
+    assert derived.partition_field_names == ["venue", "event_year", "prefix"]
+    assert str(derived.dtype["event_year"].transform.term) == "years(event)"
+    assert derived.partition_by == ["venue", "years(event)", "truncate(venue, 2) as prefix"]
+    assert derived.partition.by == derived.partition_by
+    ```
 
 === "JavaScript"
 
@@ -524,11 +543,19 @@ derived value in its manifest ([Iceberg](../media/index.md#iceberg)).
 
     assert.equal(schema.withoutPartitionFields().dtype.length, 1)
     assert.equal(schema.onlyPartitionFields().dtype.length, 2)
-    ```
 
-    !!! note "Rust-only"
-        `withPartitionBy` and `partitionBy` are Rust-only; JavaScript reads and writes the
-        declaration through `field.get('PARTITION:by')` and `field.set`.
+    // A derived entry is a marked column computed from the rows, named by
+    // the convention unless aliased.
+    const derived = new Field(
+      'row',
+      DataType.fromFields([new Field('venue', 'string', false), new Field('event', 'date32', false)]),
+      false,
+    ).withPartitionBy(['venue', 'years(event)', 'truncate(venue, 2) as prefix'])
+    assert.deepEqual(derived.partitionFieldNames(), ['venue', 'event_year', 'prefix'])
+    assert.equal(derived.dtype.getFieldByPath('event_year').transform.term.toString(), 'years(event)')
+    assert.deepEqual(derived.partitionBy(), ['venue', 'years(event)', 'truncate(venue, 2) as prefix'])
+    assert.deepEqual(derived.partition.by, derived.partitionBy())
+    ```
 
 Folder writes and reads read the marks and the derived columns' terms, and an Iceberg spec reads
 the declaration: [Partitions](../holder/index.md#partitions), [Iceberg](../media/index.md#iceberg).
@@ -583,14 +610,20 @@ from the schema takes them as its default sort order.
         ]),
         nullable=False,
     )
-    rows.metadata["SORT:by"] = '["venue", "price DESC NULLS FIRST"]'
+    rows.sort.by = ["venue", "price DESC NULLS FIRST"]
 
+    assert rows.sort.by == ["venue", "price desc nulls first"]
     assert rows.metadata["SORT:by"] == '["venue","price desc nulls first"]'
+
+    # Removing the declaration answers the stored text.
+    assert rows.sort.remove_by() == '["venue","price desc nulls first"]'
+    assert rows.sort.by is None
     ```
 
     !!! note "Rust-only"
-        The `SortField` view, `Ordering` and `SortOptions` are Rust-only; Python reads and
-        writes the declaration through `field.metadata["SORT:by"]`.
+        `Ordering` and `SortOptions` are Rust-only: the keys cross as texts, and the
+        [serie verbs](serie.md#sorting-uniqueness-and-partitions) take `descending` and
+        `nulls_first` keywords.
 
 === "JavaScript"
 
@@ -606,14 +639,20 @@ from the schema takes them as its default sort order.
       ]),
       false,
     )
-    rows.set('SORT:by', '["venue", "price DESC NULLS FIRST"]')
+    rows.sort.by = ['venue', 'price DESC NULLS FIRST']
 
+    assert.deepEqual(rows.sort.by, ['venue', 'price desc nulls first'])
     assert.equal(rows.get('SORT:by'), '["venue","price desc nulls first"]')
+
+    // Removing the declaration answers the stored text.
+    assert.equal(rows.sort.removeBy(), '["venue","price desc nulls first"]')
+    assert.equal(rows.sort.by, null)
     ```
 
     !!! note "Rust-only"
-        The `SortField` view, `Ordering` and `SortOptions` are Rust-only; JavaScript reads and
-        writes the declaration through `field.get('SORT:by')` and `field.set`.
+        `Ordering` and `SortOptions` are Rust-only: the keys cross as texts, and the
+        [serie verbs](serie.md#sorting-uniqueness-and-partitions) take a plain
+        `{ descending, nullsFirst }` object.
 
 ## Edges
 

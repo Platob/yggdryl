@@ -11,9 +11,24 @@ A window over a [`Serie`](serie.md) that reads and writes through the serie's ow
 | Indexes | Every index is window-relative, bounds-checked against the window, then rebased by the offset before the serie answers - so a leaf's `value(i)` under it is one bounds check and one buffer read, as it was |
 | Reads | `len`, `is_empty`, `offset`, `serie()` (the whole), `field`, `dtype`, `null_count` (none when the column holds no absent row, else one validity read per window row, no row built), `is_null(i)`, `scalar(i)`, `get(i)`, `iter()`, `rows()`, `memory_size`, `into_serie()` (`Serie::slice`: zero copy for a column, the window's values copied for a run), and the [ordering verbs](serie.md#sorting-uniqueness-and-partitions) over the window: `is_sorted`, `is_unique`, `unique_count`, `sort_indices`, `into_sorted`, `into_unique`, `into_reversed`, `into_taken`, `into_filtered`, `partition_by`, each what the sliced serie answers |
 | Writes | `SerieSliceMut` only: `set(i, v)`, `fill(v)`, `swap(i, j)`, `copy_from(&SerieSlice)`, `splice(range, rows)`, `as_sorted(options)`, `as_reversed()`, `as_taken(indices)`, each through `Serie::splice` or `Serie::set` on the rebased range. A window never grows or shrinks what it views: `splice` takes exactly as many rows as the range, `as_taken` exactly as many indices as the window, and `as_unique` and `as_filtered` are not offered |
-| In place | `as_sorted` and `as_reversed` sort or reverse the window of a primitive column's native slice where it stands when the column holds its buffer alone, and a run's values in place when it holds them alone; every other leaf writes the ordered rows back through `splice` |
+| In place | `as_sorted` and `as_reversed` sort or reverse the window of a primitive column's native slice, or a boolean column's two bitmaps, where it stands when the column holds its buffer alone, and a run's values in place when it holds them alone; every other leaf writes the ordered rows back through `splice` |
 | Identity | The window's rows alone, as a serie's is its rows: a window equals, orders as and hashes like the serie of the same rows, on either side of the comparison; neither the serie nor the offset is identity. `Display` renders the serie's name - `$` for a run - and the window's rows; `Debug` the name, the offset, the length and the null count |
-| Bindings | Rust. A binding's `serie.window(offset, length)` is one class holding the serie object beside the offset and the length and delegating per call; the binding workers follow the Rust page |
+| Bindings | Rust, Python and JavaScript. In both bindings `serie.window(offset, length)` is one class, `SerieSlice`, holding the serie object beside the offset and the length and delegating per call: it is the shared and the mutable window at once, a write checked when it is made, and `window_mut`, `as_window` and `SerieSliceRows` are Rust only. Python's window is unhashable, as the mutable serie it holds is, and `window[a:b]` is a narrower window; JavaScript's equality is `equals` |
+
+One verb, three spellings:
+
+| Rust | Python | JavaScript |
+| --- | --- | --- |
+| `serie.window(offset, length)?`, `window_mut` | `serie.window(offset, length)` | `serie.window(offset, length)` |
+| `len()`, `offset()`, `serie()`, `field()`, `dtype()` | `len(window)`, `offset`, `serie`, `field`, `dtype` | `length`, `offset`, `serie`, `field`, `dtype` |
+| `scalar(i)?`, `get(i)`, `iter()`, `rows()` | `scalar(i)`, `get(i)`, `window[i]`, `iter(window)`, `rows()`, `as_py()` | `scalar(i)`, `at(i)`, `[Symbol.iterator]`, `rows()`, `asJs()` |
+| `is_null(i)`, `null_count()`, `is_empty()`, `memory_size()` | the same names | `isNull(i)`, `nullCount()`, `isEmpty()`, `memorySize()` |
+| `into_serie()` | `into_serie()` | `intoSerie()` |
+| `is_sorted(options)`, `sort_indices(options)`, `into_sorted(options)` | `is_sorted(descending=, nulls_first=)`, `sort_indices(...)`, `into_sorted(...)` | `isSorted(options?)`, `sortIndices(options?)`, `intoSorted(options?)` |
+| `is_unique()`, `unique_count()`, `into_unique()`, `into_reversed()`, `into_taken(indices)`, `into_filtered(mask)`, `partition_by(keys)` | the same names | `isUnique()`, `uniqueCount()`, `intoUnique()`, `intoReversed()`, `intoTaken(indices)`, `intoFiltered(mask)`, `partitionBy(keys)` |
+| `set(i, v)?`, `fill(v)?`, `swap(i, j)?`, `copy_from(window)?`, `splice(range, rows)?` | `set(i, v)`, `window[i] = v`, `fill(v)`, `swap(i, j)`, `copy_from(other)`, `splice(start, end, rows)` | `set(i, v)`, `fill(v)`, `swap(i, j)`, `copyFrom(other)`, `splice(start, end, rows)` |
+| `as_sorted(options)?`, `as_reversed()?`, `as_taken(indices)?` | `as_sorted(descending=, nulls_first=)`, `as_reversed()`, `as_taken(indices)` | `asSorted(options?)`, `asReversed()`, `asTaken(indices)` |
+| `==`, `<` against a window or a `Serie` | `==`, `<`, `<=`, `>`, `>=` | `equals(other)` |
 
 ## Use
 
@@ -62,13 +77,82 @@ A window reads a stretch of rows where they stand and writes them back where the
 === "Python"
 
     ```python
-    # Rust only.
+    import pyarrow as pa
+
+    from yggdryl import Field, Serie
+
+    prices = Serie.from_arrow_array(
+        pa.array([9, 3, 1, 2, 0], pa.int64()), Field("price", "int64", nullable=False)
+    )
+
+    # A window reads through the serie, window-relative.
+    middle = prices.window(1, 3)
+    assert (len(middle), middle.offset) == (3, 1)
+    assert middle.scalar(0).as_py() == 3
+    assert middle.as_py() == [3, 1, 2]
+    try:
+        middle.scalar(3)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a row past the window is refused")
+    assert middle.window(1, 2).offset == 2
+    assert middle.into_serie() == prices.slice(1, 3)
+    assert not middle.is_sorted()
+    assert middle.into_sorted().as_py() == [1, 2, 3]
+
+    # Identity is the window's rows.
+    assert middle == Serie.from_scalars(Field("price", "int64", nullable=False), [3, 1, 2])
+
+    # And writes through it, in place, never past its edges.
+    window = prices.window(1, 3)
+    window.set(0, 7)
+    window.swap(0, 2)
+    window.as_sorted().as_reversed()
+    try:
+        window.splice(0, 1, [])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a window never shrinks what it views")
+    assert prices.as_py() == [9, 7, 2, 1, 0]
+    prices.window(0, 2).fill(4)
+    assert prices.as_py() == [4, 4, 2, 1, 0]
     ```
 
 === "JavaScript"
 
     ```javascript
-    // Rust only.
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Field, Serie } = require('yggdryl')
+
+    const field = Field.from('price: int64 not null')
+    const prices = Serie.fromArrowArray(arrow.vectorFromArray([9n, 3n, 1n, 2n, 0n], new arrow.Int64()), field)
+
+    // A window reads through the serie, window-relative.
+    const middle = prices.window(1, 3)
+    assert.deepEqual([middle.length, middle.offset], [3, 1])
+    assert.equal(middle.scalar(0).asJs(), 3)
+    assert.deepEqual(middle.asJs(), [3, 1, 2])
+    assert.throws(() => middle.scalar(3))
+    assert.equal(middle.window(1, 2).offset, 2)
+    assert.ok(middle.intoSerie().equals(prices.slice(1, 3)))
+    assert.equal(middle.isSorted(), false)
+    assert.deepEqual(middle.intoSorted().asJs(), [1, 2, 3])
+
+    // Identity is the window's rows.
+    assert.ok(middle.equals(Serie.fromScalars(field, [3n, 1n, 2n])))
+
+    // And writes through it, in place, never past its edges.
+    const window = prices.window(1, 3)
+    window.set(0, 7n)
+    window.swap(0, 2)
+    window.asSorted().asReversed()
+    assert.throws(() => window.splice(0, 1, []))
+    assert.deepEqual(prices.asJs(), [9, 7, 2, 1, 0])
+    prices.window(0, 2).fill(4n)
+    assert.deepEqual(prices.asJs(), [4, 4, 2, 1, 0])
     ```
 
 ## Reads
@@ -80,7 +164,7 @@ A window reads a stretch of rows where they stand and writes them back where the
 | `null_count` | constant where the column holds no absent row; one validity read per window row otherwise; a run walks its values |
 | `into_serie` | `Serie::slice`: the buffers shared and one leaf boxed for a column, the window's values copied for a run |
 | `memory_size` | a column's window as its own slice counts it; a run's values as the row estimator charges them |
-| `is_sorted`, `is_unique`, `unique_count`, `sort_indices`, `into_*`, `partition_by` | [what the serie's verb costs](serie.md#what-each-ask-costs) over the sliced window, which for a column shares the buffers |
+| `is_sorted`, `is_unique`, `unique_count`, `sort_indices`, `into_*`, `partition_by` | one boxed leaf - the window's serie, for a column sharing the buffers - plus [what the serie's verb costs](serie.md#what-each-ask-costs) over it |
 
 ## Writes
 
@@ -90,7 +174,7 @@ A window reads a stretch of rows where they stand and writes them back where the
 | `fill(v)` | `v` proved once and written as clones over the rebased range |
 | `swap(i, j)` | two rows read and two `Serie::set` |
 | `copy_from(window)`, `splice(range, rows)` | `Serie::splice` on the rebased range, every row through the field's contract; refused by name when the counts differ |
-| `as_sorted(options)`, `as_reversed()` | a primitive column held alone: the window of the native slice sorted or reversed where it stands, absent rows gathered to the end the options name - Arrow's builder handshake and never a row; a run held alone: its values in place; any other leaf: the ordered rows written back through `splice` |
+| `as_sorted(options)`, `as_reversed()` | a primitive or boolean column held alone: the window of the native slice, or of the boolean's two bitmaps, sorted or reversed where it stands, absent rows gathered to the end the options name - Arrow's builder handshake and never a row; a run held alone: its values in place; any other leaf: the ordered rows written back through `splice` |
 | `as_taken(indices)` | the rearranged rows written back through `splice`; exactly as many indices as the window |
 
 ## Edges
@@ -114,11 +198,11 @@ A window reads a stretch of rows where they stand and writes them back where the
 === "Python"
 
     ```bash
-    # Rust only.
+    python/.venv/bin/python -m pytest python/tests/test_serie_slice.py
     ```
 
 === "JavaScript"
 
     ```bash
-    # Rust only.
+    node --test node/tests/serie_slice.test.js
     ```

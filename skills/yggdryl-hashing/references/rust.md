@@ -171,10 +171,10 @@ assert_eq!(state.as_digest(), row.digest(DigestAlgorithm::Xxh3));
 
 ## Declare a row-digest column and let the schema fill it
 
-Mark one field `DIGEST:role=holder` and leave its sources ordinary columns;
-`Field::apply_arrow_batch` (cast, transform, then digest) fills it, adding the
-column where the root declares it. `as_digest().apply_arrow_batch` is the
-digest step alone.
+Mark one field `DIGEST:role=holder`, name what it reads with `DIGEST:by`, and
+leave those columns ordinary; `Field::apply_arrow_batch` (cast, transform, then
+digest) fills it, adding the column where the root declares it.
+`as_digest().apply_arrow_batch` is the digest step alone.
 
 ```rust
 use std::sync::Arc;
@@ -189,7 +189,7 @@ let symbol = Field::new("symbol", DataType::utf8(), false);
 let quantity = Field::new("quantity", DataType::Int64, false);
 let mut key = Field::new("key", DataType::UInt64, false);
 key.as_digest_mut().set_holder()?;
-key.as_digest_mut().set_sources(["symbol"])?;
+key.as_digest_mut().set_by(["symbol"])?;
 let root = DataType::from(StructType::from_fields([symbol.clone(), quantity.clone(), key])?).required_field("row");
 
 let batch = RecordBatch::try_new(
@@ -457,7 +457,7 @@ assert_eq!(value.unix(), 1_700_000_000, "the instant floors to the declared unit
   hasher is a configuration, not a running digest.
 - A holder or `DIGEST:time` under a serie, map, union, dictionary or run-end
   layout is refused by path; holders live in Structs only.
-- `row_digests` ignores a holder's `DIGEST:sources`; narrowing belongs to
+- `row_digests` ignores a holder's `DIGEST:by`; narrowing belongs to
   `apply_arrow_batch`.
 - A `variant` column digests as the value it decodes to, in both
   `row_digests` and `column_digests` - not refused.

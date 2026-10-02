@@ -155,9 +155,10 @@ assert state.as_digest() == symbol.digest()
 
 ## Declare a row-digest column and let the schema fill it
 
-Mark one field a holder through its `digest` view and leave its sources
-ordinary columns; `Field.apply_arrow_batch` (cast, transform, then digest)
-adds and fills it. `root.digest.apply_arrow_batch` is the digest step alone.
+Mark one field a holder through its `digest` view, name what it reads with
+`digest.by`, and leave those columns ordinary; `Field.apply_arrow_batch` (cast,
+transform, then digest) adds and fills it. `root.digest.apply_arrow_batch` is
+the digest step alone.
 
 ```python
 import pyarrow as pa
@@ -166,7 +167,7 @@ from yggdryl import DataType, Field, Scalar
 
 key = Field("key", "uint64", nullable=False)
 key.digest.set_holder()
-key.digest.sources = ["symbol"]
+key.digest.by = ["symbol"]
 root = Field(
     "row",
     DataType.from_fields([Field("symbol", "utf8", nullable=False), Field("quantity", "int64", nullable=False), key]),
@@ -401,6 +402,6 @@ assert value.digest == row.digest()
 - `True` is refused as an instant (`TypeError`), never read as `1`.
 - `TxHasher(seed=...)` drops a secret; give a secret through
   `TxHasher.from_state(xxhash.Xxh3(seed=..., secret=...))`.
-- `row_digests` ignores a holder's `DIGEST:sources`; narrowing belongs to the
+- `row_digests` ignores a holder's `DIGEST:by`; narrowing belongs to the
   holder fill.
 - xxHash is not cryptographic and is not Iceberg `bucket[N]` (murmur3).

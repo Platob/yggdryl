@@ -40,7 +40,7 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
 | stable hash of a value | `scalar.stable_hash()` | `Scalar.from_(v).stable_hash()` | `Scalar.from(v).stableHash()` |
 | value digest, any algorithm | `scalar.digest(alg)` | `scalar.digest("xxh64")` | `scalar.digest('xxh64')` |
 | feed a value into a state | `state.write_scalar(&v)` | `state.write_scalar(v)` | `state.writeScalar(v)` |
-| declare a holder column | `f.as_digest_mut().set_holder()?`, `set_sources([..])?` | `f.digest.set_holder()`, `f.digest.sources = [..]` | metadata `'DIGEST:role': 'holder'`, `'DIGEST:sources': '["a"]'` |
+| declare a holder column | `f.as_digest_mut().set_holder()?`, `set_by(["a"])?` | `f.digest.set_holder()`, `f.digest.by = ["a"]` | `f.digest.set('role', 'holder')`, `f.digest.by = ['a']` |
 | fill holders, seedless | `root.apply_arrow_batch(&b, true, true, true, opts)?`, `root.as_digest().apply_arrow_batch(&b)?` | `root.apply_arrow_batch(b)`, `root.digest.apply_arrow_batch(b)` | `new xxhash.Xxh3().applyArrowBatch(root, b)` |
 | fill holders, seeded / forced | `state.apply_arrow_batch(&root, b, force)?` | `state.apply_arrow_batch(root, b, force=True)` | `state.applyArrowBatch(root, b, true)` |
 | digest every row / cell | `xxhash::arrow::row_digests(&b, alg)?`, `column_digests(a, &f, alg)?` | `xxhash.row_digests(b)`, `column_digests(a, f)` | not bound |
@@ -84,12 +84,13 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
 7. **Carry the algorithm.** Store or send a `Digest` (`xxh3-64:<hex>`) or a
    `TxHash` rather than a bare integer: `xxh64` and `xxh3-64` are both 64 bits
    and differ.
-8. **Mark one holder, leave its sources ordinary columns.** `DIGEST:role =
-   holder` on the digest column; `DIGEST:sources` (a JSON array of paths
-   relative to its own Struct) narrows the input, absent or `["*"]` meaning
-   every non-holder field. The schema pipeline fills holders last, after cast
-   and transform, and a written (non-default) cell is preserved unless forced -
-   so re-filling is idempotent and cheap.
+8. **Mark one holder, leave what it reads ordinary columns.** `DIGEST:role =
+   holder` on the digest column; `DIGEST:by` (a JSON array of expression terms
+   relative to its own Struct: a bare column feeds its buffers, any other term
+   such as `lower(symbol)` is computed per batch) narrows the input, absent or
+   `["*"]` meaning every non-holder field. The schema pipeline fills holders
+   last, after cast and transform, and a written (non-default) cell is
+   preserved unless forced - so re-filling is idempotent and cheap.
 9. **Seedless or seeded, decide once.** `Field.apply_arrow_batch` and the
    `digest` view fill with the seedless `stable_hash`; a state's
    `apply_arrow_batch` applies its seed and secret. A seed changes every
@@ -127,7 +128,7 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
 | a column mixing bare `xxh64` and `xxh3-64` integers | keep the `Digest` (it carries its algorithm) or one declared `DIGEST:algorithm` |
 | JS `xxhash.xxh3(buf) === 123` or `+ 1` | it is a `bigint`: compare with `123n`; only `xxh32` is a `number` |
 | marking the source columns as holders too | mark only the digest column; a holder never feeds itself and may not select a sibling holder in its own Struct, but a selected nested Struct holding exactly one holder feeds that holder's value in its place (several direct holders there are ambiguous - name one by path) |
-| `DIGEST:sources` naming a path through a serie or map | sources descend Structs only; a serie, map or union is selected whole |
+| `DIGEST:by` naming a path through a serie or map | a path descends Structs only; a serie, map or union is selected whole |
 | `TxHasher::new(..).with_seed(7)` after giving a secret | `with_seed` drops a secret: build `Xxh3::from_seed_and_secret` / `Xxh3(seed=, secret=)` and pass it to `from_digester` / `from_state` |
 | sorting raw `TxHash` bytes across units, algorithms or pre-1970 instants | sort values (`<`, `compare`), or keep one unit and algorithm; a negative instant's bytes sort last |
 | `txh128(...).into_uuid()` | refused: UUIDv7 carries 64 digest bits - use `xxh3-64` or `xxh64` |

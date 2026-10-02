@@ -2812,29 +2812,47 @@ A column can also be computed from another column of the same rows. The struct's
 
     from yggdryl import DataType, Field
 
-    year = Field("year", "int32", nullable=True)
-    year.transform["expression"] = "DayOfMonth(event)"
-    year.set_partition(True)
-
-    # A dialect alias resolves on the way in, so one name is stored.
-    assert year.transform["expression"] == "day(event)"
-
     root = Field(
-        "row",
-        DataType.from_fields([Field("event", "date32", nullable=False), year]),
-        nullable=False,
-    )
-    batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
+        "row", DataType.from_fields([Field("event", "date32", nullable=False)]), nullable=False
+    ).with_partition_by(["year(event) as year"])
+    assert root.partition_field_names == ["year"]
 
+    batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
     filled = root.transform.apply_arrow_batch(batch)
 
     assert filled.column_names == ["event", "year"]
-    assert filled.column("year").to_pylist() == [1, 1]
+    assert filled.column("year").to_pylist() == [2024, 2025]
+
+    # The declaration is one term, which is also what a predicate over the
+    # same value binds against.
+    assert str(root.dtype["year"].transform.term) == "year(event)"
+    assert root.metadata["PARTITION:by"] == '["year(event) as year"]'
     ```
 
-    !!! note "Rust-only"
-        `with_partition_by` is Rust-only; Python declares a derived partition column as its
-        transform and its mark, as above.
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { DataType, Field, Selector } = require('yggdryl')
+
+    const root = new Field('row', DataType.fromFields([new Field('event', 'date32', false)]), false)
+      .withPartitionBy(['year(event) as year'])
+    assert.deepEqual(root.partitionFieldNames(), ['year'])
+
+    // The declaration is one term, which is also what a predicate over the
+    // same value binds against.
+    assert.equal(root.dtype.getFieldByPath('year').transform.term.toString(), 'year(event)')
+    assert.equal(root.get('PARTITION:by'), '["year(event) as year"]')
+
+    // The root's selector computes the derived column from the rows.
+    const batch = new arrow.Table({
+      event: arrow.vectorFromArray([new Date('2024-01-01'), new Date('2025-01-01')], new arrow.DateDay()),
+    }).batches[0]
+    const filled = Selector.fromField(root).applyArrowBatch(batch)
+    assert.deepEqual(filled.schema.fields.map((field) => field.name), ['event', 'year'])
+    assert.deepEqual([...filled.getChild('year')], [2024, 2025])
+    ```
 
 ## Call counts
 
