@@ -8,11 +8,14 @@ import {
   MapSerie,
   Scalar,
   Serie,
+  Selector,
   SerieReader,
+  SerieReaderWindows,
   SerieSerie,
   SerieViewSerie,
-  SerieSlice,
+  WindowSerie,
   StructSerie,
+  Term,
   fields,
   type ArrowCastOptions,
   type SortOptions,
@@ -229,7 +232,7 @@ const byPath: Array<[Scalar, Serie]> = records.partitionByPaths('id')
 const chained: Serie = wide.asSorted().asUnique().asReversed().asTaken([0]).asFiltered([true])
 const leafChained: StructSerie = records.child('row') as StructSerie
 const sameLeaf: StructSerie = leafChained.asSorted()
-const window: SerieSlice = wide.window(0, 1)
+const window: WindowSerie = wide.window(0, 1)
 // @ts-expect-error an ordering option is `descending` or `nullsFirst`
 wide.isSorted({ nullsLast: true })
 // @ts-expect-error an ordering option is a boolean
@@ -241,3 +244,46 @@ wide._sortIndicesNative
 
 void [order, ordered, unique, distinct, bytes, sorted, deduplicated, reversed, taken, takenBy,
   filtered, groups, byPaths, byPath, chained, sameLeaf, window]
+
+// Windows by key: each `[key, window]`, the window stating its record; a
+// stream cuts into one lazy reader per window.
+const windows: Array<[Scalar, WindowSerie]> = records.windowBy('id')
+const sortedWindows: Array<[Scalar, WindowSerie]> = records.windowBy(['id'], true)
+const clearedWindows: Array<[Scalar, WindowSerie]> = records.windowBy(new Selector('id'), null)
+const termWindows: Array<[Scalar, WindowSerie]> = records.windowBy([Term.column('id'), 'id as k'])
+const windowRecord: Scalar | null = windows[0][1].staticValues
+const walk: SerieReaderWindows = SerieReader.fromSerie(records).windowBy('id', false)
+const walkField: Field = walk.field
+const walkStaticField: Field = walk.staticField
+const step: IteratorResult<SerieReader> = walk.next()
+const self: SerieReaderWindows = walk[Symbol.iterator]()
+for (const opened of walk) {
+  const sub: SerieReader = opened
+  const subRecord: Scalar | null = sub.staticValues
+  const nested: SerieReaderWindows = sub.windowBy(Term.column('id'))
+  for (const serie of sub) {
+    const piece: Serie = serie
+    void piece
+  }
+  void [subRecord, nested]
+}
+const readerRecord: Scalar | null = held.staticValues
+// @ts-expect-error `sorted` is a boolean
+records.windowBy('id', 'yes')
+// @ts-expect-error `sorted` is a boolean
+SerieReader.fromSerie(records).windowBy('id', 1)
+// @ts-expect-error a key is a Selector, a Term, a text or an array of them
+records.windowBy(7)
+// @ts-expect-error a reader's record is a getter, not a mutable slot
+held.staticValues = null
+// @ts-expect-error a serie states no record: only a window does
+records.staticValues
+// @ts-expect-error the walk is handed out by a reader, never constructed
+new SerieReaderWindows()
+// @ts-expect-error the private windowing bridges are hidden
+records._windowByNative
+// @ts-expect-error the private windowing bridges are hidden
+walk._nextNative
+
+void [windows, sortedWindows, clearedWindows, termWindows, windowRecord, walkField,
+  walkStaticField, step, self, readerRecord]

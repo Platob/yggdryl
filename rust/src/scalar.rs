@@ -1642,10 +1642,7 @@ impl Scalar {
 
     /// The one shared empty sequence, which every empty run answers with.
     fn empty_sequence() -> Self {
-        static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
-        Self::Serie(Serie::Run(Run::new(Arc::clone(
-            EMPTY.get_or_init(|| Arc::from([])),
-        ))))
+        Self::Serie(Serie::Run(Run::default()))
     }
 
     /// The one shared empty mapping.

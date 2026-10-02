@@ -2,7 +2,7 @@
 //!
 //! An ordering is a key, a direction and where absent rows go. The key is
 //! the caller's - a column, a term of the expression grammar - and the two
-//! facts are this type, so a `Serie`, a `ChunkedSerie`, a `SerieSlice` and
+//! facts are this type, so a `Serie`, a `ChunkedSerie`, a `WindowSerie` and
 //! the plan's `order by` key all spell them once: ascending with nulls last
 //! unless stated, as the plan's `order by` key and DuckDB default to. That
 //! is the opposite of Arrow's own default, which puts nulls first: a caller

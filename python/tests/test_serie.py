@@ -38,9 +38,11 @@ from yggdryl import (
     Scalar,
     Serie,
     SerieReader,
+    SerieReaderWindows,
     SerieSerie,
     SerieViewSerie,
     StructSerie,
+    WindowSerie,
 )
 
 
@@ -1821,3 +1823,273 @@ class TestOrder:
         # absences first.
         assert written.is_sorted(descending=True, nulls_first=True)
         assert column.memory_size() > 0
+
+
+# ---------------------------------------------------------------------------
+# window_by: the rows cut where the key changes - mirrors the window_by cases
+# of rust/tests/serie/order.rs and the reader's of rust/tests/serie/arrow.rs
+# ---------------------------------------------------------------------------
+
+MINUTE_NS = 60_000_000_000
+
+
+def quote_field() -> Field:
+    """The record `quote{venue, count, ts}`, its root nullable so a row may be
+    absent."""
+    return Field(
+        "quote",
+        "struct<venue: utf8, count: int64 not null, ts: timestamp(ns, UTC)>",
+        nullable=True,
+    )
+
+
+def quote_column(rows: list[tuple[str | None, int, int] | None]) -> Serie:
+    """Quotes, each its venue, its count and its instant in minutes."""
+    return Serie.from_scalars(
+        quote_field(),
+        [None if row is None else [row[0], row[1], row[2] * MINUTE_NS] for row in rows],
+    )
+
+
+def venue_runs() -> Serie:
+    """The venues XNAS, XNAS, XNYS, XNAS at minutes 0, 14, 15 and 31."""
+    return quote_column([("XNAS", 1, 0), ("XNAS", 2, 14), ("XNYS", 3, 15), ("XNAS", 4, 31)])
+
+
+def window_cuts(windows: list[tuple[Scalar, WindowSerie]]) -> list[tuple[object, int, int]]:
+    return [(key.as_py(), window.offset, len(window)) for key, window in windows]
+
+
+def reader_rows(window: SerieReader) -> list[object]:
+    return [row for piece in window for row in piece.as_py()]
+
+
+class TestWindowBy:
+    @pytest.mark.parametrize("sorted_", [False, True])
+    def test_window_by_refuses_a_run_an_empty_key_an_unnest_and_a_term_naming_no_column(
+        self, sorted_: bool
+    ) -> None:
+        for serie in (venue_runs(), quote_column([])):
+            with pytest.raises(ValueError, match="expected a value or a name"):
+                serie.window_by("venue,", sorted_)
+            for empty in ("*", []):
+                with pytest.raises(
+                    ValueError,
+                    match="expected at least one column to window by, got an empty match key",
+                ):
+                    serie.window_by(empty, sorted_)
+            with pytest.raises(ValueError, match="in a key"):
+                serie.window_by("unnest(items)", sorted_)
+            with pytest.raises(ValueError, match="tier"):
+                serie.window_by("tier", sorted_)
+            for text in ("minutes(ts, 0)", "minutes(ts, count)"):
+                with pytest.raises(ValueError):
+                    serie.window_by(text, sorted_)
+            # A key cell named as a static value is refused before any row.
+            with pytest.raises(ValueError, match='collides with the static value "rownum"'):
+                serie.window_by("count as ROWNUM", sorted_)
+        with pytest.raises(ValueError, match="a schema-free run windows by no term"):
+            Serie([1, 2]).window_by("price", sorted_)
+        with pytest.raises(TypeError):
+            venue_runs().window_by("venue", 1)  # type: ignore[arg-type]
+
+    def test_window_by_cuts_runs_of_equal_adjacent_keys_in_row_order(self) -> None:
+        quotes = venue_runs()
+        windows = quotes.window_by("venue")
+        assert window_cuts(windows) == [(["XNAS"], 0, 2), (["XNYS"], 2, 1), (["XNAS"], 3, 1)]
+        for key, window in windows:
+            assert isinstance(window, WindowSerie)
+            # Every window is over the serie object itself.
+            assert window.serie is quotes
+            assert key.as_py() == [window[0].as_py()[0]]
+        # `sorted` is positional or keyword, and `None` is its default.
+        for spelled in (
+            quotes.window_by("venue", False),
+            quotes.window_by("venue", None),
+            quotes.window_by(by="venue", sorted=None),
+        ):
+            assert window_cuts(spelled) == window_cuts(windows)
+        # Two terms key a two-cell run in selector order; a list is
+        # projection texts; a period keys its number since the epoch.
+        expected = [(["XNAS", 0], 0, 2), (["XNYS", 1], 2, 1), (["XNAS", 2], 3, 1)]
+        assert window_cuts(quotes.window_by("venue, minutes(ts, 15) as bucket")) == expected
+        assert window_cuts(quotes.window_by(["venue", "minutes(ts, 15) as bucket"])) == expected
+        assert window_cuts(quotes.window_by("VENUE")) == window_cuts(windows)
+        assert len(quotes.window_by("count")) == 4
+        assert quote_column([]).window_by("venue") == []
+
+    def test_window_by_keys_consecutive_absent_rows_as_one_null_window(self) -> None:
+        quotes = quote_column([("XNAS", 1, 0), None, None, (None, 4, 0), (None, 5, 0)])
+        assert window_cuts(quotes.window_by("venue")) == [
+            (["XNAS"], 0, 1),
+            (None, 1, 2),
+            ([None], 3, 2),
+        ]
+
+    def test_window_by_sorted_gathers_the_rows_once_in_stable_key_order(self) -> None:
+        quotes = quote_column(
+            [("XNYS", 1, 0), ("XNAS", 2, 0), ("XNYS", 3, 0), None, ("XNAS", 5, 0)]
+        )
+        windows = quotes.window_by("venue", True)
+        assert window_cuts(windows) == [(["XNAS"], 0, 2), (["XNYS"], 2, 2), (None, 4, 1)]
+        gathered = windows[0][1].serie
+        assert gathered is not quotes
+        assert isinstance(gathered, StructSerie)
+        assert all(window.serie is gathered for _, window in windows)
+        assert gathered == quotes.into_taken([1, 4, 0, 2, 3])
+        # Over keys already in order, nothing is gathered.
+        ordered = venue_runs().window_by("minutes(ts, 15)", sorted=True)
+        assert all(window.serie is not gathered for _, window in ordered)
+        assert window_cuts(ordered) == [([0], 0, 2), ([1], 2, 1), ([2], 3, 1)]
+
+    def test_a_non_record_column_windows_by_its_own_name(self) -> None:
+        venues = Serie.from_arrow_array(
+            pa.array(["XNAS", "XNAS", "XNYS"]), Field("venue", "utf8", nullable=False)
+        )
+        windows = venues.window_by("venue")
+        assert window_cuts(windows) == [(["XNAS"], 0, 2), (["XNYS"], 2, 1)]
+        assert [window.static_values.as_py() for _, window in windows if window.static_values] == [
+            {"venue": "XNAS", "windownum": 0, "rownum": 0},
+            {"venue": "XNYS", "windownum": 1, "rownum": 2},
+        ]
+
+
+class TestReaderWindowBy:
+    def test_reader_window_by_refuses_before_any_pull(self) -> None:
+        # A text that does not parse leaves the reader usable.
+        reader = SerieReader.from_serie(venue_runs())
+        with pytest.raises(ValueError, match="expected a value or a name"):
+            reader.window_by("venue,")
+        with pytest.raises(TypeError):
+            reader.window_by("venue", 1)  # type: ignore[arg-type]
+        assert len(list(reader)) == 1
+        # A key the root refuses spends it, as a refused cast does.
+        for refused, reason in (
+            ("*", "empty match key"),
+            ("tier", "tier"),
+            ("unnest(items)", "in a key"),
+            ("count as windownum", 'collides with the static value "windownum"'),
+        ):
+            reader = SerieReader.from_serie(venue_runs())
+            with pytest.raises(ValueError, match=reason):
+                reader.window_by(refused)
+            assert list(reader) == []
+            with pytest.raises(ValueError, match="already handed over"):
+                reader.window_by("venue")
+
+    def test_reader_window_by_yields_one_lazy_reader_per_window(self) -> None:
+        quotes = venue_runs()
+        stream = SerieReader.from_chunked(
+            ChunkedSerie.from_series([quotes.slice(0, 1), quotes.slice(1, 3)], quotes.field)
+        )
+        walk = stream.window_by("venue")
+        assert isinstance(walk, SerieReaderWindows)
+        assert iter(walk) is walk
+        # Both records are known before a batch is pulled; the root a held
+        # column streams under is required.
+        assert walk.field == SerieReader.from_serie(quotes).field
+        assert not walk.field.nullable
+        assert [child.name for child in walk.static_field] == ["venue", "windownum", "rownum"]
+        assert repr(walk).startswith("SerieReaderWindows(field=")
+        with pytest.raises(TypeError):
+            hash(walk)
+        xnas = next(walk)
+        assert isinstance(xnas, SerieReader)
+        assert xnas.field == walk.field
+        assert xnas.static_values is not None
+        assert xnas.static_values.as_py() == {"venue": "XNAS", "windownum": 0, "rownum": 0}
+        # The run crossing the batch edge is one window, one piece per batch.
+        assert [len(piece) for piece in xnas] == [1, 1]
+        xnys = next(walk)
+        assert reader_rows(xnys) == quotes.slice(2, 1).as_py()
+        tail = next(walk)
+        assert tail.static_values is not None
+        assert tail.static_values.as_py() == {"venue": "XNAS", "windownum": 2, "rownum": 3}
+        with pytest.raises(StopIteration):
+            next(walk)
+        # Walking without reading raises nothing.
+        for _ in SerieReader.from_serie(quotes).window_by("venue", sorted=None):
+            pass
+
+    def test_reader_window_by_refuses_a_window_the_walk_passed(self) -> None:
+        windows = list(SerieReader.from_serie(venue_runs()).window_by("venue"))
+        assert len(windows) == 3
+        with pytest.raises(
+            ValueError,
+            match="window 0 was passed by its walk with rows unread; read each window before "
+            "taking the next",
+        ):
+            next(windows[0])
+        # Fused after the refusal.
+        assert list(windows[0]) == []
+
+    def test_reader_window_by_sorted_refuses_a_key_going_backwards_naming_batch_and_row(
+        self,
+    ) -> None:
+        quotes = quote_column([("XLON", 1, 0), ("XNYS", 2, 0), ("XNAS", 3, 0)])
+        walk = SerieReader.from_serie(quotes).window_by("venue", True)
+        assert len(reader_rows(next(walk))) == 1
+        assert len(reader_rows(next(walk))) == 1
+        with pytest.raises(
+            ValueError,
+            match=r"window by expects keys in order, ascending with absent keys last: batch 0 "
+            r"row 2",
+        ):
+            next(walk)
+        assert list(walk) == []
+        # Unsorted, every key is windowed where it arrives.
+        unsorted = SerieReader.from_serie(quotes).window_by("venue")
+        venues = [window.static_values.as_py()["venue"] for window in unsorted if window.static_values]
+        assert venues == ["XLON", "XNYS", "XNAS"]
+
+    def test_a_reader_window_states_the_record_a_held_window_states(self) -> None:
+        quotes = venue_runs()
+        for by in ("venue", "minutes(ts, 15) as bucket, venue"):
+            for sorted_ in (False, True):
+                held = [
+                    window.static_values.as_py()
+                    for _, window in quotes.window_by(by, sorted_)
+                    if window.static_values
+                ]
+                walk = SerieReader.from_serie(quotes).window_by(by, sorted_)
+                if by == "venue" and sorted_:
+                    # Out of order, the held rows gather and state no rownum,
+                    # where the stream refuses the key going back.
+                    assert [record["rownum"] for record in held] == [None, None]
+                    with pytest.raises(ValueError, match="expects keys in order"):
+                        list(walk)
+                    continue
+                streamed = [
+                    window.static_values.as_py() for window in walk if window.static_values
+                ]
+                assert streamed == held
+        # A window of a stream window keeps the outer cells and an absolute
+        # rownum.
+        outer = next(SerieReader.from_serie(quotes).window_by("minutes(ts, 30) as half"))
+        inner = [
+            window.static_values.as_py() for window in outer.window_by("venue") if window.static_values
+        ]
+        assert inner == [
+            {"half": 0, "venue": "XNAS", "windownum": 0, "rownum": 0},
+            {"half": 0, "venue": "XNYS", "windownum": 1, "rownum": 2},
+        ]
+
+    def test_reader_static_values_survive_cast_and_hand_over_and_never_reach_a_batch(
+        self,
+    ) -> None:
+        quotes = venue_runs()
+        assert SerieReader.from_serie(quotes).static_values is None
+        window = next(SerieReader.from_serie(quotes).window_by("venue"))
+        record = window.static_values
+        assert record is not None
+        wider = Field(
+            "quote",
+            "struct<venue: utf8, count: float64 not null, ts: timestamp(ns, UTC)>",
+            nullable=True,
+        )
+        cast = window.cast(wider)
+        assert cast.static_values == record
+        batches = cast.into_arrow_reader()
+        assert cast.static_values == record
+        assert batches.schema.names == ["venue", "count", "ts"]
+        assert batches.read_all().num_rows == 2

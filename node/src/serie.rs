@@ -15,6 +15,8 @@
 //! when the reader was built, the one record serie a held column is, or one
 //! per chunk of a held chunked column - and, cast into another root, the
 //! reader the core hands back with every record cast by one plan more.
+//! [`JsSerieReaderWindows`] is the core's walk over a stream's windows, one
+//! lazy `SerieReader` per window.
 
 use std::borrow::Cow;
 use std::io::Cursor;
@@ -25,25 +27,26 @@ use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions};
 use arrow_ipc::reader::StreamReader;
 use arrow_schema::{Schema, SchemaRef};
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Either, Generator, Reference, Result, Uint8Array,
+    Buffer, ClassInstance, Either, Env, Generator, Reference, Result, Uint8Array,
 };
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
 use yggdryl::{
-    ArrowCastOptions, Field as CoreField, FieldPath, Scalar, Serie, SerieReader, SerieValue,
-    SortOptions,
+    ArrowCastOptions, Field as CoreField, FieldPath, FieldScalar, Scalar, Serie, SerieReader,
+    SerieReaderWindows, SerieValue, SortOptions,
 };
 
 use crate::chunked_serie::JsChunkedSerie;
 use crate::datatype::JsDataType;
+use crate::expression::{SelectorInput, selector_from_input};
 use crate::field::JsField;
 use crate::iomedia::{JsBatchReader, encoded};
 use crate::napi_error;
-use crate::serie_slice::JsSerieSlice;
 use crate::text::codec::{
     JsScalar, checked_depth, value_to_transport, value_to_transport_with_field,
 };
 use crate::text::line::JsFieldPath;
+use crate::window_serie::JsWindowSerie;
 
 /// The invariant `binding.js` keeps: a leaf verb is published only on the
 /// class `_leafNative` names, so the leaf is the one it asks for.
@@ -131,6 +134,30 @@ pub(crate) fn groups(groups: Vec<(Scalar, Serie)>) -> Vec<(JsScalar, JsSerie)> {
         .into_iter()
         .map(|(key, rows)| (JsScalar::from_core(key), JsSerie::from_core(rows)))
         .collect()
+}
+
+/// The record a window states, as the struct value JavaScript reads with
+/// `Scalar`'s own accessors - `get('venue')`, `path('.rownum')`: each cell
+/// under the name the record's field gives it. `None` for a serie or reader
+/// that is no window.
+pub(crate) fn static_record(record: Option<FieldScalar<'_>>) -> Result<Option<Scalar>> {
+    let Some(record) = record else {
+        return Ok(None);
+    };
+    let cells = record
+        .value()
+        .sequence_rows()
+        .ok_or_else(|| napi_error("a window's static values are one record row"))?;
+    Scalar::from_struct(
+        record
+            .field()
+            .fields()
+            .iter()
+            .map(CoreField::name)
+            .zip(cells.iter().cloned()),
+    )
+    .map(Some)
+    .map_err(napi_error)
 }
 
 /// A range as the `[start, end]` pair JavaScript reads.
@@ -820,6 +847,30 @@ impl JsSerie {
             .map_err(napi_error)
     }
 
+    /// The windows `by` cuts the rows into: one `[key, window]` pair per run
+    /// of equal adjacent keys, in row order - or, `sorted`, each key once in
+    /// key order - every window over this very serie object, or, where
+    /// `sorted` gathered the rows into key order, over one new serie of the
+    /// gathered copy they all share. Each window states its record as its
+    /// `staticValues`, read off the rows as they stood at this call: the
+    /// windows hold them - buffers shared, no row copied - so a write on this
+    /// serie while they are alive copies the written leaf away from them
+    /// once. `sorted` absent or `null` is `false`.
+    #[napi(js_name = "_windowByNative", skip_typescript)]
+    pub fn window_by_native(
+        &self,
+        env: Env,
+        reference: Reference<JsSerie>,
+        by: SelectorInput<'_>,
+        sorted: Option<bool>,
+    ) -> Result<Vec<(JsScalar, JsWindowSerie)>> {
+        let windows = self
+            .inner
+            .window_by(selector_from_input(by)?, sorted.unwrap_or(false))
+            .map_err(napi_error)?;
+        JsWindowSerie::lend(env, &reference, &self.inner, windows)
+    }
+
     /// A record column's rows grouped by the cells the field paths reach,
     /// keyed by the run of those cells; a path is a `FieldPath` or its text.
     #[napi(js_name = "_partitionByPathsNative", skip_typescript)]
@@ -893,8 +944,8 @@ impl JsSerie {
         reference: Reference<JsSerie>,
         offset: f64,
         length: f64,
-    ) -> Result<JsSerieSlice> {
-        JsSerieSlice::new(
+    ) -> Result<JsWindowSerie> {
+        JsWindowSerie::new(
             reference,
             position(offset, "offset")?,
             position(length, "length")?,
@@ -1100,6 +1151,9 @@ pub struct JsSerieReader {
     /// The record every yielded serie is typed by, kept after the reader
     /// is taken.
     root: CoreField,
+    /// The struct value of the record a window states, kept after the
+    /// reader is taken; `None` for a reader that is no window.
+    statics: Option<Scalar>,
     /// Whether `intoArrowReader` took the reader rather than draining it here.
     taken: bool,
 }
@@ -1110,13 +1164,15 @@ fn serie_reader_consumed() -> napi::Error {
 }
 
 impl JsSerieReader {
-    /// Wrap one undrained core reader, keeping the root it names.
-    fn from_core(inner: SerieReader) -> Self {
-        Self {
+    /// Wrap one undrained core reader, keeping the root it names and the
+    /// record it states.
+    fn from_core(inner: SerieReader) -> Result<Self> {
+        Ok(Self {
             root: inner.field().clone(),
+            statics: static_record(inner.static_values())?,
             inner: Some(inner),
             taken: false,
-        }
+        })
     }
 }
 
@@ -1138,7 +1194,7 @@ impl JsSerieReader {
             options,
         )
         .map_err(napi_error)?;
-        Ok(Self::from_core(inner))
+        Self::from_core(inner)
     }
 
     /// Read one held column as a stream of one record serie: a record column
@@ -1148,8 +1204,8 @@ impl JsSerieReader {
     #[napi(factory, js_name = "_fromSerieNative", skip_typescript)]
     pub fn from_serie(serie: &JsSerie) -> Result<Self> {
         SerieReader::from_serie(serie.inner.clone())
-            .map(Self::from_core)
             .map_err(napi_error)
+            .and_then(Self::from_core)
     }
 
     /// Read a held chunked column as the stream of its chunks, one record
@@ -1159,14 +1215,26 @@ impl JsSerieReader {
     #[napi(factory, js_name = "_fromChunkedNative", skip_typescript)]
     pub fn from_chunked(chunked: &JsChunkedSerie) -> Result<Self> {
         SerieReader::from_chunked(chunked.inner.clone())
-            .map(Self::from_core)
             .map_err(napi_error)
+            .and_then(Self::from_core)
     }
 
     /// The record every yielded serie is typed by.
     #[napi(getter)]
     pub fn field(&self) -> JsField {
         JsField::from_core(self.root.clone())
+    }
+
+    /// The values constant over every row this reader yields, where it is a
+    /// window `windowBy` cut: one struct value, read with `Scalar`'s own
+    /// accessors - the cells of the record the windowed reader states but
+    /// `windownum` and `rownum`, the key cells, `windownum` (the window's
+    /// place, from 0) and `rownum` (the number its first row has in the
+    /// stream). `null` for every other reader. Kept once the reader is
+    /// consumed; never a column, and dropped at the Arrow face.
+    #[napi(getter)]
+    pub fn static_values(&self) -> Option<JsScalar> {
+        self.statics.clone().map(JsScalar::from_core)
     }
 
     /// Pull the next batch as its record serie, or `null` at the end.
@@ -1212,7 +1280,26 @@ impl JsSerieReader {
         self.taken = true;
         reader
             .cast(&target, options)
-            .map(Self::from_core)
+            .map_err(napi_error)
+            .and_then(Self::from_core)
+    }
+
+    /// Cut the stream into windows of equal adjacent keys, one lazy reader
+    /// each, in the order they arrive: `by` bound against the root before
+    /// any batch is pulled, `sorted` verifying that the keys arrive in key
+    /// order. The reader is consumed, a refused key included.
+    #[napi(js_name = "_windowByNative", skip_typescript)]
+    pub fn window_by_native(
+        &mut self,
+        by: SelectorInput<'_>,
+        sorted: Option<bool>,
+    ) -> Result<JsSerieReaderWindows> {
+        let by = selector_from_input(by)?;
+        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        self.taken = true;
+        reader
+            .window_by(by, sorted.unwrap_or(false))
+            .map(|inner| JsSerieReaderWindows { inner })
             .map_err(napi_error)
     }
 
@@ -1226,5 +1313,50 @@ impl JsSerieReader {
             reader.into_arrow_reader(),
             self.root.name(),
         ))
+    }
+}
+
+/// The windows of a stream, one lazy `SerieReader` per run of equal adjacent
+/// keys, in the order they arrive.
+///
+/// Every window is pulled through one walk holding at most one batch of the
+/// stream, so windows are read in order: taking the next window drops the
+/// unread rows of the one before, and a window read after the walk passed
+/// rows of it refuses once, naming it. Each window states its record as its
+/// `staticValues`.
+#[napi(js_name = "SerieReaderWindows")]
+pub struct JsSerieReaderWindows {
+    inner: SerieReaderWindows,
+}
+
+#[napi]
+impl JsSerieReaderWindows {
+    /// The record root every window yields: the windowed reader's own.
+    #[napi(getter)]
+    pub fn field(&self) -> JsField {
+        JsField::from_core(self.inner.field().clone())
+    }
+
+    /// The record every window's `staticValues` is typed by, known before
+    /// the first pull: the windowed reader's own but `windownum` and
+    /// `rownum`, the key cells, `windownum` and `rownum`.
+    #[napi(getter)]
+    pub fn static_field(&self) -> JsField {
+        JsField::from_core(self.inner.static_field().clone())
+    }
+
+    /// Open the next window as its lazy reader, or `null` after the last.
+    ///
+    /// The native half of the iteration protocol; the loader wraps it so
+    /// `for...of` yields each window's `SerieReader`.
+    #[napi(js_name = "_nextNative", skip_typescript)]
+    pub fn next_native(&mut self) -> Result<Option<JsSerieReader>> {
+        match self.inner.next() {
+            None => Ok(None),
+            Some(window) => window
+                .map_err(napi_error)
+                .and_then(JsSerieReader::from_core)
+                .map(Some),
+        }
     }
 }

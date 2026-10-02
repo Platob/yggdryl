@@ -341,11 +341,12 @@ impl SerieValue for StructSerie {
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
         require_window(self.field.name(), offset, length, self.rows)?;
-        let children = self
-            .children
-            .iter()
-            .map(|child| child.slice(offset, length))
-            .collect::<Result<Vec<Serie>>>()?;
+        // Sized once: a fallible collect knows no lower bound and would
+        // grow the vector past four children.
+        let mut children = Vec::with_capacity(self.children.len());
+        for child in &self.children {
+            children.push(child.slice(offset, length)?);
+        }
         Ok(Self::new(
             Arc::clone(&self.field),
             children,

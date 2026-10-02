@@ -53,7 +53,6 @@ mod properties;
 mod protocol;
 mod scalar;
 mod serie;
-mod serie_slice;
 mod side;
 mod state;
 mod text;
@@ -61,6 +60,7 @@ mod timeinforce;
 mod timezone;
 mod uri;
 mod version;
+mod window_serie;
 
 /// The extension's allocator: decoded Arrow buffers are large and short
 /// lived, and mimalloc reuses their pages where the system allocator maps
@@ -658,7 +658,8 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<serie::PyMapSerie>()?;
     module.add_class::<serie::PyStructSerie>()?;
     module.add_class::<serie::PySerieReader>()?;
-    module.add_class::<serie_slice::PySerieSlice>()?;
+    module.add_class::<serie::PySerieReaderWindows>()?;
+    module.add_class::<window_serie::PyWindowSerie>()?;
     module.add_class::<chunked_serie::PyChunkedSerie>()?;
     module.add_class::<scalar::PyScalarIterator>()?;
     module.add_class::<scalar::PyScalarEntryIterator>()?;

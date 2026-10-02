@@ -107,7 +107,8 @@ import type {
   Selector,
   Serie as NativeSerie,
   SerieReader,
-  SerieSlice as NativeSerieSlice,
+  SerieReaderWindows as NativeSerieReaderWindows,
+  WindowSerie as NativeWindowSerie,
   ArrowCastPlan,
   StringParametersInput,
   Term,
@@ -198,11 +199,19 @@ export declare const Serie: Omit<typeof NativeSerie, 'prototype'> & {
  * A window over a serie, read and written through it at each call: both the
  * shared and the mutable window.
  */
-export type SerieSlice = NativeSerieSlice
+export type WindowSerie = NativeWindowSerie
 /** Handed out by `serie.window(offset, length)`: there is no public constructor. */
-export declare const SerieSlice: Omit<typeof NativeSerieSlice, 'prototype'> &
-  (abstract new () => SerieSlice) & {
-    readonly prototype: SerieSlice
+export declare const WindowSerie: Omit<typeof NativeWindowSerie, 'prototype'> &
+  (abstract new () => WindowSerie) & {
+    readonly prototype: WindowSerie
+  }
+
+/** The windows of a stream: one lazy `SerieReader` per run of equal adjacent keys. */
+export type SerieReaderWindows = NativeSerieReaderWindows
+/** Handed out by `reader.windowBy(by, sorted)`: there is no public constructor. */
+export declare const SerieReaderWindows: Omit<typeof NativeSerieReaderWindows, 'prototype'> &
+  (abstract new () => SerieReaderWindows) & {
+    readonly prototype: SerieReaderWindows
   }
 
 /** Many columns under one field, held apart: a chunked array, or a table. */
@@ -955,10 +964,10 @@ declare module './index' {
   }
 
   interface Serie extends Iterable<Scalar> {
-    /** Whether the rows equal another serie's, or a chunked serie's. */
-    equals(other: Serie | ChunkedSerie): boolean
-    /** Order the rows against another serie's, or a chunked serie's. */
-    compare(other: Serie | ChunkedSerie): number
+    /** Whether the rows equal another serie's, a chunked serie's or a window's. */
+    equals(other: Serie | ChunkedSerie | WindowSerie): boolean
+    /** Order the rows against another serie's, a chunked serie's or a window's. */
+    compare(other: Serie | ChunkedSerie | WindowSerie): number
     /** Every row as its natural JavaScript value. */
     asJs(options?: Pick<CodecOptions, 'maxDepth'> | null): unknown[]
     /** The same row values as asJs, for JSON.stringify. */
@@ -1064,10 +1073,24 @@ declare module './index' {
      * serie and reads and writes through it at each call, moving nothing.
      * Refused naming the serie and both counts when it reaches past the end.
      */
-    window(offset: number, length: number): SerieSlice
+    window(offset: number, length: number): WindowSerie
+    /**
+     * The rows cut into windows by `by`, read as a projection list against
+     * the record root (a column that is no record is the one child of a
+     * `row` root): one `[key, window]` pair per run of equal adjacent keys,
+     * in row order, the key a run of the key's cells. Each window holds this
+     * serie, at its own offset. With `sorted`, each key once in key order -
+     * ascending, absent keys last: the windows of keys already in order are
+     * the same windows, and keys out of order gather the rows once into one
+     * new serie every window holds. Every window states its record as its
+     * `staticValues`. `sorted` absent or `null` is `false`. A run, an empty
+     * key, an `unnest` and a term naming no column are refused naming the
+     * serie, before any row is read.
+     */
+    windowBy(by: WindowKey, sorted?: boolean | null): Array<[Scalar, WindowSerie]>
   }
 
-  interface SerieSlice extends Iterable<Scalar> {
+  interface WindowSerie extends Iterable<Scalar> {
     /** Iterate the window's rows as Scalar values. */
     [Symbol.iterator](): IterableIterator<Scalar>
     /** Every row of the window as its natural JavaScript value. */
@@ -1078,9 +1101,19 @@ declare module './index' {
     isSorted(options?: SortOptions | null): boolean
     /** The window-relative row positions in sorted order, as a `uint32` column named `index`. */
     sortIndices(options?: SortOptions | null): Serie
-    /** A narrower window, window-relative, over the same serie. */
-    window(offset: number, length: number): SerieSlice
-    /** The window's rows as a serie: `slice`, sharing a column's buffers. */
+    /** A narrower window, window-relative, over the same serie. It states no record. */
+    window(offset: number, length: number): WindowSerie
+    /**
+     * The window's rows cut into windows by `by`, as `Serie.windowBy` cuts
+     * them: each over the same serie at its own offset, or over one new
+     * serie of the rows `sorted` gathered, from offset 0. Each states its
+     * record as its `staticValues`; under a window `windowBy` lent, the
+     * rows are those it was cut over, its record's cells come first -
+     * `windownum` and `rownum` but - and `rownum` stays absolute, so a key
+     * cell named as a kept cell is refused naming both.
+     */
+    windowBy(by: WindowKey, sorted?: boolean | null): Array<[Scalar, WindowSerie]>
+    /** The window's rows as a serie: `slice`, sharing a column's buffers. It carries rows only. */
     intoSerie(): Serie
     /** The window's rows in sorted order, as a new serie. */
     intoSorted(options?: SortOptions | null): Serie
@@ -1095,7 +1128,7 @@ declare module './index' {
     /** The window's rows grouped by `keys`, as long as the window. */
     partitionBy(keys: SerieArgument): Array<[Scalar, Serie]>
     /** Whether the window's rows equal another window's, or a serie's. */
-    equals(other: SerieSlice | Serie): boolean
+    equals(other: WindowSerie | Serie): boolean
     /** Overwrite window row `index` through the serie's field: one buffer write on a primitive leaf. */
     set(index: number, value: unknown): void
     /** Overwrite every window row with `value`, proved once. */
@@ -1104,7 +1137,7 @@ declare module './index' {
      * Overwrite the window, row for row, with another window's rows or a
      * whole serie's, which must be exactly as many.
      */
-    copyFrom(other: SerieSlice | Serie): void
+    copyFrom(other: WindowSerie | Serie): void
     /**
      * Replace window rows `start..end` by exactly as many `rows`: a window
      * never grows or shrinks what it views.
@@ -1159,6 +1192,31 @@ declare module './index' {
      * stream's batches as they are pulled. The reader is consumed.
      */
     cast(field: Field | DataType | string, options?: ArrowCastOptions): SerieReader
+    /**
+     * The stream cut into one lazy reader per run of equal adjacent keys,
+     * in the order they arrive, `by` bound against the root before any batch
+     * is pulled. Windows are read in order: taking the next window drops
+     * the unread rows of the one before, and a window read after the walk
+     * passed rows of it refuses once, naming it. With `sorted`, the keys
+     * must arrive in key order - ascending, absent keys last - and the
+     * first that goes backwards is refused naming its batch and row; a
+     * stream is never reordered. Every window states its record as its
+     * `staticValues`. `sorted` absent or `null` is `false`. The reader is
+     * consumed, a refused key included.
+     */
+    windowBy(by: WindowKey, sorted?: boolean | null): SerieReaderWindows
+  }
+
+  interface SerieReaderWindows extends IterableIterator<SerieReader> {
+    /**
+     * Open the next window as its lazy reader, in the order they arrive, or
+     * done after the last: the unread rows of the window before are pulled
+     * and dropped. A key going backwards under `sorted` is thrown once,
+     * naming its batch and row, and the walk is done after it.
+     */
+    next(): IteratorResult<SerieReader>
+    /** The windows themselves: one walk, iterated once. */
+    [Symbol.iterator](): SerieReaderWindows
   }
 
   namespace ChunkedSerie {
@@ -1246,13 +1304,13 @@ declare module './index' {
      * placeholder, which crosses back as no chunk.
      */
     intoArrowTable(): ArrowTable
-    /** Whether the rows equal another chunked serie's, or a serie's. */
-    equals(other: ChunkedSerie | Serie): boolean
+    /** Whether the rows equal another chunked serie's, a serie's or a window's. */
+    equals(other: ChunkedSerie | Serie | WindowSerie): boolean
     /**
-     * Order the rows against another chunked serie's, or a serie's, as the
-     * core orders a column's, however the rows are cut.
+     * Order the rows against another chunked serie's, a serie's or a
+     * window's, as the core orders a column's, however the rows are cut.
      */
-    compare(other: ChunkedSerie | Serie): number
+    compare(other: ChunkedSerie | Serie | WindowSerie): number
     /** The row positions in sorted order across the chunks, as a `uint32` column named `index`: the one join, then the sort. */
     sortIndices(options?: SortOptions | null): Serie
     /** Whether the rows are in sorted order across the chunks: each chunk and every chunk edge, with no join. */
@@ -1273,6 +1331,15 @@ declare module './index' {
      * cut to the rows' chunks otherwise.
      */
     partitionBy(keys: SerieArgument | ChunkedSerie | ArrowVector): Array<[Scalar, ChunkedSerie]>
+    /**
+     * The rows cut into windows by `by` across the chunks, as
+     * `Serie.windowBy` cuts the joined rows: a run crossing a chunk edge is
+     * one window, and with `sorted` each key's runs are regrouped into one
+     * window, its rows the pieces of the chunks it spans - no row copied. A
+     * chunked window states no record: its key is the pair's first half and
+     * its place the pair's index.
+     */
+    windowBy(by: WindowKey, sorted?: boolean | null): Array<[Scalar, ChunkedSerie]>
     /** Sort the rows in place - one chunk replaces the chunks - and answer this chunked serie. */
     asSorted(options?: SortOptions | null): this
     /** Keep the first occurrence of every value in place - one chunk - and answer this chunked serie. */
@@ -4407,6 +4474,12 @@ export interface SortOptions {
  * any iterable of values, read as the schema-free run of them.
  */
 export type SerieArgument = Serie | Iterable<unknown>
+
+/**
+ * The key a serie is windowed by: a `Selector`, a `Term`, the text of a
+ * projection list, or an array of terms and projection texts.
+ */
+export type WindowKey = Selector | Term | string | readonly (Term | string)[]
 
 /** The field paths a record partitions by: one path, its text, or an iterable of them. */
 export type FieldPathsArgument = FieldPath | string | Iterable<FieldPath | string>

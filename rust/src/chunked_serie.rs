@@ -63,13 +63,16 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use crate::arrow::{BatchReader, batch_reader};
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
 use crate::diff::one_datatype;
+use crate::expression::IntoSelector;
 use crate::serie::arrow::{
     batch_schema, batch_under, item_field, land_planned, lands_exactly, storage_holds,
 };
 use crate::serie::{
-    Proof, Resolved, Rows, compare_rows, hash_rows, land, proven_row, require_window,
+    Proof, Resolved, Rows, compare_rows, compare_values, hash_rows, land, proven_row,
+    require_window,
 };
 use crate::value::Children;
+use crate::window_serie::window_end;
 use crate::{DataType, Field, FieldPath, Scalar, Serie, SerieReader, SortOptions};
 
 /// The invariant every chunk carries: it is a column, and its field is the
@@ -456,29 +459,52 @@ impl ChunkedSerie {
     /// reaches past the end.
     pub fn slice(&self, offset: usize, length: usize) -> crate::Result<Self> {
         require_window(self.field.name(), offset, length, self.len())?;
-        let end = offset + length;
-        let (Some((first, _)), Some((last, _))) = (
-            length.checked_sub(1).and_then(|_| self.locate(offset)),
-            length
-                .checked_sub(1)
-                .and_then(|last| self.locate(offset + last)),
-        ) else {
-            return Ok(Self::from_landed(Arc::clone(&self.field), Vec::new()));
+        let chunks = match self.reach(offset, length) {
+            Some(reach) => {
+                let mut chunks = Vec::with_capacity(reach.1 - reach.0 + 1);
+                self.push_pieces(offset, length, reach, &mut chunks)?;
+                chunks
+            }
+            None => Vec::new(),
         };
-        let mut chunks = Vec::with_capacity(last - first + 1);
+        Ok(Self::from_landed(Arc::clone(&self.field), chunks))
+    }
+
+    /// The first and the last chunk the window `offset..offset + length`
+    /// reaches, by two binary searches; `None` for a zero-length window.
+    /// The caller proved the window.
+    fn reach(&self, offset: usize, length: usize) -> Option<(usize, usize)> {
+        let last = length.checked_sub(1)?;
+        Some((self.locate(offset)?.0, self.locate(offset + last)?.0))
+    }
+
+    /// Push the pieces of the chunks `first..=last` the window
+    /// `offset..offset + length` reaches onto `pieces`, in order, its room
+    /// reserved once and amortized - none where the caller sized the vector:
+    /// the two at its edges sliced, every other one a pointer bump. The
+    /// caller found the reach with [`Self::reach`] or [`Self::located`].
+    fn push_pieces(
+        &self,
+        offset: usize,
+        length: usize,
+        (first, last): (usize, usize),
+        pieces: &mut Vec<Serie>,
+    ) -> crate::Result<()> {
+        let end = offset + length;
+        pieces.reserve(last - first + 1);
         let mut start = if first == 0 { 0 } else { self.ends[first - 1] };
         for chunk in &self.chunks[first..=last] {
             let stop = start + chunk.len();
             let low = offset.max(start);
             let high = end.min(stop);
-            chunks.push(if low == start && high == stop {
+            pieces.push(if low == start && high == stop {
                 chunk.clone()
             } else {
                 chunk.slice(low - start, high - low)?
             });
             start = stop;
         }
-        Ok(Self::from_landed(Arc::clone(&self.field), chunks))
+        Ok(())
     }
 
     /// The chunked serie `select` reaches in every chunk, or `None` where it
@@ -1012,6 +1038,153 @@ impl ChunkedSerie {
             });
         }
         self.partition_by(&keys.into_serie()?)
+    }
+
+    /// The rows cut into windows of equal adjacent keys across the chunks,
+    /// exactly as [`Serie::window_by`] cuts the joined column, `sorted`
+    /// meaning what it means there: one `(key, rows)` per maximal run of
+    /// adjacent rows whose keys are equal, in row order, every window a
+    /// zero-copy [`Self::slice`] keeping the chunks it reaches - so a run
+    /// that crosses a chunk edge is one window over both. With `sorted`,
+    /// each key once and in key order - ascending, absent keys last: keys
+    /// already in order answer the same windows, and keys out of order
+    /// regroup the runs stably by key, each window the zero-copy pieces of
+    /// its runs in the order they arrived. No row is copied and the chunks
+    /// are never joined, so a key that changes on every row answers a piece
+    /// per row: [`Self::into_serie`] first, then [`Serie::window_by`], is
+    /// the cheaper door there.
+    ///
+    /// No window states a record of static values, as a held window
+    /// [`Serie::window_by`] lends does
+    /// ([`WindowSerie::static_values`](crate::WindowSerie::static_values)):
+    /// a window's key is the first half of its item, and its place among
+    /// the windows - what a record calls `windownum` - is its place in the
+    /// `Vec`. So a key cell named `windownum` or `rownum`, which
+    /// [`Serie::window_by`] refuses because its record names both, is taken
+    /// here; alias it before joining the chunks to window the joined column.
+    ///
+    /// The key is bound once, against the field, and computed chunk by
+    /// chunk; at each chunk edge the pending window's key, already built, is
+    /// compared in place against the next chunk's first key row, as the
+    /// ordering verbs order them, so a run continuing across the edge builds
+    /// no key. An empty chunk adds no row and no edge. The cost is one bind,
+    /// one key column, comparator and bitmap per chunk holding a row - each
+    /// on the terms [`Serie::window_by`] states for its key - and per window
+    /// its key and its slice, with no join; a regrouping adds one stable
+    /// sort of the runs, never of the rows.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, StringArray};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("venue", DataType::utf8(), false);
+    /// let first: ArrayRef = Arc::new(StringArray::from(vec!["XNAS", "XNAS"]));
+    /// let second: ArrayRef = Arc::new(StringArray::from(vec!["XNAS", "XNYS"]));
+    /// let venues = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// let windows = venues.window_by("venue", false)?;
+    /// assert_eq!(windows.len(), 2);
+    /// // The XNAS run crosses the chunk edge, and stays one window over both.
+    /// assert_eq!(windows[0].0, Scalar::from_sequence([Scalar::from("XNAS")]));
+    /// assert_eq!((windows[0].1.len(), windows[0].1.num_chunks()), (3, 2));
+    /// assert_eq!(windows[1].1.rows(), vec![Scalar::from("XNYS")]);
+    ///
+    /// // Sorted over keys out of order: each key once, its runs kept apart.
+    /// let first: ArrayRef = Arc::new(StringArray::from(vec!["XNYS", "XNAS"]));
+    /// let second: ArrayRef = Arc::new(StringArray::from(vec!["XNAS", "XNYS"]));
+    /// let venues = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// let windows = venues.window_by("venue", true)?;
+    /// assert_eq!(windows.len(), 2);
+    /// assert_eq!(windows[0].0, Scalar::from_sequence([Scalar::from("XNAS")]));
+    /// assert_eq!((windows[0].1.len(), windows[0].1.num_chunks()), (2, 2));
+    /// assert_eq!(windows[1].1.rows(), vec![Scalar::from("XNYS"); 2]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::window_by`]'s refusals but the one for a key cell named
+    /// `windownum` or `rownum`, naming the field, before any row is read -
+    /// with no chunk at all as with many.
+    pub fn window_by(
+        &self,
+        by: impl IntoSelector,
+        sorted: bool,
+    ) -> crate::Result<Vec<(Scalar, Self)>> {
+        let key = by.into_selector()?.bind_key(
+            &SerieReader::root_of(&self.field)?,
+            self.field.name(),
+            "window by",
+        )?;
+        // Each run as its key, the row it starts at and its length, in
+        // arrival order.
+        let mut runs: Vec<(Scalar, usize, usize)> = Vec::new();
+        let mut descent = false;
+        let mut base = 0;
+        for chunk in self.chunks.iter().filter(|chunk| !chunk.is_empty()) {
+            let keys = key.apply_serie(chunk)?;
+            let cut = keys.window_starts(false)?;
+            descent |= cut.descent.is_some();
+            let mut start = 0;
+            while start < keys.len() {
+                let end = window_end(&cut.starts, start);
+                // Only a chunk's first window meets an edge, against the
+                // pending window's key; a continuing run builds no key.
+                let edge = match runs.last() {
+                    Some(last) if start == 0 => {
+                        keys.compare_to_row(&last.0, 0, SortOptions::default())
+                    }
+                    _ => Ordering::Less,
+                };
+                if edge == Ordering::Equal
+                    && let Some(last) = runs.last_mut()
+                {
+                    last.2 += end;
+                } else {
+                    descent |= edge == Ordering::Greater;
+                    runs.push((proven_row(&keys, start), base + start, end - start));
+                }
+                start = end;
+            }
+            base += chunk.len();
+        }
+        if !(sorted && descent) {
+            return runs
+                .into_iter()
+                .map(|(value, offset, length)| Ok((value, self.slice(offset, length)?)))
+                .collect();
+        }
+        // Stable, so the runs of one key keep their arrival order.
+        runs.sort_by(|left, right| compare_values(&left.0, &right.0, SortOptions::default()));
+        // Each window as its key - its first run's - and its runs' pieces,
+        // in one vector a window grown geometrically, never once a run.
+        let mut windows: Vec<(Scalar, Vec<Serie>)> = Vec::new();
+        for (value, offset, length) in runs {
+            // A run is never empty, so its first and its last row locate.
+            let reach = (
+                self.located(offset)?.0,
+                self.located(offset + length - 1)?.0,
+            );
+            match windows.last_mut() {
+                Some((last, pieces))
+                    if compare_values(last, &value, SortOptions::default()) == Ordering::Equal =>
+                {
+                    self.push_pieces(offset, length, reach, pieces)?;
+                }
+                _ => {
+                    let mut pieces = Vec::new();
+                    self.push_pieces(offset, length, reach, &mut pieces)?;
+                    windows.push((value, pieces));
+                }
+            }
+        }
+        Ok(windows
+            .into_iter()
+            .map(|(value, pieces)| (value, Self::from_landed(Arc::clone(&self.field), pieces)))
+            .collect())
     }
 
     /// Refuse a key count that is not this serie's length, naming the field.

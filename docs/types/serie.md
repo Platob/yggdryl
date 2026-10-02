@@ -10,7 +10,7 @@ Many values: a schema-free run, or the Arrow buffers of one [`Field`](field.md).
 | Two leaves | `Serie::Run` is a schema-free ordered run - what a row canonicalizes to - and holds its values in one shared slice; every other leaf is a column and holds Arrow buffers. What separates them is the field: a run declares none |
 | Storage | A column stores a values buffer, offsets where the layout has them, and a validity bitmap. No `Scalar` is stored anywhere in a column; a row is built when one is asked for and kept nowhere |
 | Recursion | A record's children, a sequence's items, a mapping's entries, a dictionary's keys and values, a run-end column's ends and values, a union's members are each a `Serie`, so the nesting is one type all the way down |
-| Size | 24 bytes: the run's slice inline, because a row canonicalizes to one; every column leaf behind one shared pointer, so a `Scalar` carrying a column is two words and a clone is a pointer bump |
+| Size | 40 bytes, pinned by a `const` assert: a run's window - one shared `Arc<[Scalar]>`, where it starts, how long - inline beside the discriminant, because a row canonicalizes to one; every column leaf one thin shared pointer, so a clone is a pointer bump and a `Scalar` holding a serie stays 48 bytes |
 | Shape | A flat root, one variant per storage layout, named as the leaf that holds it: `Int32` holds an `Int32Serie` lending `&[i32]`, `Utf8String` a `Utf8StringSerie` lending the offsets and the characters, `Struct` a `StructSerie` holding one child `Serie` per child field. A variant names the layout, never the datatype: [one layout serves several](#the-root-names-the-layout-the-field-names-the-datatype), so a column's datatype is its field's |
 | Invariant 1 | A column holds only rows its field accepts: `from_scalars`, `splice` and every typed writer prove values through the field's contract, and the Arrow door proves them at import. A stored row never refuses to be read; `scalar(i)`'s one refusal is an index past the end |
 | Invariant 2 | A nested column's children are aligned: every record child has exactly `len` rows, a serie's offsets are monotone from `0` to `items.len()`, a fixed-size serie's items hold `len * width` rows, a mapping's entries are a record column of the entries field, a union's members hold the rows its type ids reach. No public path hands a child out mutably, so nothing can break it and `into_arrow_array` cannot fail |
@@ -22,7 +22,7 @@ Many values: a schema-free run, or the Arrow buffers of one [`Field`](field.md).
 | Leaf contract | `SerieValue`, implemented by every column leaf: its field, and the `id` and `kind` that field's datatype answers - never the variant's, because one layout holds several datatypes. `Serie` itself does not implement it, because a run has no field to answer with; the root answers the same verbs inherently, with `field()` an `Option` |
 | Wire | A `Scalar` holding a serie writes one tag per layout, the layout's own name - `serie`, `serie_view`, `fixed_size_serie`, `large_serie`, `large_serie_view` - over a run's rows or a column's `{"field": .., "rows": [..]}`, the payload's shape saying which; the tags written before the rename (`list`, `list_view`, `fixed_size_list`, `large_list`, `large_list_view`, and the column tags `list_view_serie`, `fixed_size_list_serie`, `large_list_serie`, `large_list_view_serie`) are still read. `Serie`'s own serde reads back only the column wire; JSON, YAML and TOML write the rows alone, because a codec document carries no schema envelope |
 | Arrow value | A held column, table or one-row array is a `Serie`; a held chunked column or table, its arrays or batches kept apart, is a [`ChunkedSerie`](chunked-serie.md); a stream is a `SerieReader`. `Scalar::from(serie)` makes a column one value and `Scalar::as_serie` borrows it back, neither reading a row; a stream is never a `Scalar` |
-| Bindings | Rust, Python and JavaScript bind `Serie` and `SerieReader`: the constructors, the row verbs, the nested leaves (`StructSerie`, the serie leaves, `MapSerie`) and the [Arrow doors](#arrow-the-door-and-what-it-proves) - Python over the C Data Interface, sharing buffers, with `Serie.from_` and `SerieReader.from_` as the [one entry from every columnar runtime](#arrow-every-columnar-runtime-in), and `ChunkedSerie.from_` reading the same ladder as chunks; JavaScript as copied IPC. The [ordering, uniqueness and grouping verbs](#sorting-uniqueness-and-partitions) and `window` are bound in both. The typed leaf accessors and writers (`as_<leaf>`, `get_<leaf>_mut`, `push_value`) are Rust only |
+| Bindings | Rust, Python and JavaScript bind `Serie` and `SerieReader`: the constructors, the row verbs, the nested leaves (`StructSerie`, the serie leaves, `MapSerie`) and the [Arrow doors](#arrow-the-door-and-what-it-proves) - Python over the C Data Interface, sharing buffers, with `Serie.from_` and `SerieReader.from_` as the [one entry from every columnar runtime](#arrow-every-columnar-runtime-in), and `ChunkedSerie.from_` reading the same ladder as chunks; JavaScript as copied IPC. The [ordering, uniqueness and grouping verbs](#sorting-uniqueness-and-partitions), `window` and [`window_by`](#windows-by-key) are bound in both. The typed leaf accessors and writers (`as_<leaf>`, `get_<leaf>_mut`, `push_value`) are Rust only |
 
 ## The leaves
 
@@ -107,7 +107,7 @@ Every verb answers on both leaves; only its cost differs.
 | `iter()` | `Cow<Scalar>` per row: lent for a run, built one at a time for a column |
 | `dtype()` | read off a column's field; agreed out of a run's rows |
 | `as_run()`, `as_slice()`, `is_column()`, `into_run()` | the run's values, `None` for a column; `into_run` builds a column's rows once, the one direction that drops the field, spelled rather than implied |
-| `slice(offset, length)` | zero copy for a column, offsets rebased; a run copies its window |
+| `slice(offset, length)` | zero copy: a column's offsets rebased, a run a window over the same shared values - so a slice of a slice reaches the one slice the run was built in, the offsets summed |
 | `child(name)`, `child_at(i)`, `children()` | a record column's children, a union's members; empty elsewhere |
 | `items()` | a sequence column's items, a mapping's entries, an encoding's values; `None` elsewhere |
 | `get_child_by_path(path)` | exactly `DataType::get_field_by_path`'s segments: a record child by name, a sequence transparent to its item, a mapping through its entries field; an index, key, range or predicate segment reaches no column |
@@ -123,7 +123,8 @@ Every verb answers on both leaves; only its cost differs.
 | `as_sorted(options)`, `as_unique()`, `as_reversed()`, `as_taken(indices)`, `as_filtered(mask)` | the same, in place, answering `&mut Self` so calls chain; a refusal leaves the serie as it was |
 | `partition_by(keys)`, `partition_by_paths(paths)` | the rows grouped by a key serie of the same length, or a record column's rows by the cells `paths` reach: one `(key, rows)` per distinct key in first-occurrence order, an absent key one value |
 | `memory_size()` | the bytes the rows occupy: a column's buffers as its own slice counts them, a run's values as the row estimator charges them |
-| `window(offset, length)`, `window_mut(offset, length)` | a [`SerieSlice`](serie-slice.md) / `SerieSliceMut` reading and writing through this serie, window-relative; refused past the end |
+| `window(offset, length)`, `window_mut(offset, length)` | a [`WindowSerie`](window-serie.md) / `WindowSerieMut` reading and writing through this serie, window-relative; refused past the end |
+| `window_by(by, sorted)` | the rows cut into [windows of equal keys](#windows-by-key) - one `(key, WindowSerie)` per window, lent by the `SerieWindows` it answers |
 
 Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, rows)`, `from_scalars(field, rows)` and `from_default(field, rows)` for a column; `from_arrow_array`, `from_arrow_batch` and `from_arrow_reader` for buffers already holding it, each taking the field or root to land under and the [cast options](cast.md). `cast(field, options)` is the same column under another field. `Serie` is `Default` (the empty run), `FromIterator<Scalar>` (a run in one allocation), `From<Run>`, and `From<Serie> for Scalar`.
 
@@ -151,7 +152,7 @@ Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, r
 | a write on a shared column | the leaf struct copied once (pointer bumps: its buffers are shared) and the first buffer edit copying the rows once; every later edit in place |
 | `child`, `child_at`, `children`, `items` | constant: a child is already a column |
 | `set_child`, `without_child` | one field edit and one `Vec` of pointers, never a row |
-| `slice` | zero copy on a column; a copy of the window on a run |
+| `slice` | zero copy: a column's buffers shared and one leaf boxed, a run's values shared with its start and length moved; the whole serie is the serie itself |
 | `into_arrow_array`, `into_arrow_scalar` | the array itself, shared |
 | `into_arrow_batch`, `into_arrow_reader` | one batch of the children's own arrays, or of the one column a non-record column is, no row decoded |
 | `from_arrow_array`, `from_arrow_batch` | no field, or an exact layout: the projection compared, the validity words counted, and - only where the datatype is narrower than its layout - each row read once; any other layout: one [`ArrowCastPlan`](cast.md#compiled-plans) compiled and applied once |
@@ -161,7 +162,7 @@ Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, r
 | `SerieReader::cast` | one more plan over the stream, compiled at the call; the reader's own root hands the reader back |
 | `cast` | one plan compiled per call; a column already under the target is a clone |
 | `from_default` | one row laid out through the field's default, then repeated by index |
-| `sort_indices`, `into_sorted` | a primitive column sorts its native slice, every NaN one value (stable; the sort's scratch and the index column are the allocations); a column whose stored bytes order as its values goes through Arrow's row format, one buffer of the rows' bytes; a run and any other column - a version, windows-1252 text, a registered code, a URL, URN, zone, MIME or media type, a union, a variant, a geospatial value, or a float holding a NaN other than the positive quiet NaN - go through the values' own order, each row built once. `into_sorted` is the order and one take |
+| `sort_indices`, `into_sorted` | a primitive column sorts its native slice, every NaN one value (stable; the sort's scratch and the index column are the allocations); a column whose stored bytes order as its values goes through Arrow's row format, one buffer of the rows' bytes; a record column whose buffers do not compares child by child - its absent rows where the options put an absence, then each child on its own rung - so only a value-ordered child builds its rows, one leaf's values and never one run per row; a run and any other column - a version, windows-1252 text, a registered code, a URL, URN, zone, MIME or media type, a union, a variant, a geospatial value, or a float holding a NaN other than the positive quiet NaN - go through the values' own order, each row built once. `into_sorted` is the order and one take |
 | `is_sorted` | one pass through Arrow's comparator over buffers that order as their values (two allocations, no row built); the values' order elsewhere, each row built once |
 | `is_unique`, `unique_count`, `into_unique` | one hash set over the row format's bytes on the same rung, or one set over the values; `into_unique` adds the mask and one filter |
 | `into_reversed`, `into_taken`, `into_filtered` | one kernel pass over the buffers - a take, a filter - for a column, landed proven; a copy of the chosen values for a run |
@@ -170,7 +171,8 @@ Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, r
 | `partition_by` on sorted keys | one comparator pass over the keys and one zero-copy `slice` per group |
 | `partition_by` on unsorted keys | one map names each row's group, then each group is laid out at its exact size and taken once - the cost follows the groups, never the rows |
 | `memory_size` | a walk of the column's buffers, no row read; a run walks its values |
-| `window`, `window_mut` | two words beside a reference, nothing moved; a read through it is one bounds check more than the serie's own, a write exactly the serie's own on the rebased row |
+| `window`, `window_mut` | an offset and a length beside a reference, nothing moved; a read through it is one bounds check more than the serie's own, a write exactly the serie's own on the rebased row |
+| `window_by` | one plan, one key column, one comparator and one bit per row, then each window its key and nothing else; with `sorted`, one gather only where the keys descend - [Windows by key](#windows-by-key) has the terms |
 
 ## Use
 
@@ -336,7 +338,7 @@ The typed accessors are the buffers themselves: reading row `i` off one is a bou
 
 ## Sorting, uniqueness and partitions
 
-Every leaf answers every verb in one order - `Scalar`'s total order, with every absent value (a row, or one nested in a serie, record or map) at the end the options name and every present value reversed when descending - so a column and the run of its rows sort, deduplicate and group alike. The rungs that answer it: a primitive column sorts its native slice, a column whose stored bytes order as its values goes through Arrow's row format, and a run and any other column go through the values' own order. A `SortOptions` carries the two facts an ordering states beside its key - the direction and where absent rows go - and defaults to ascending with nulls last, as the plan's `order by` key and DuckDB do - the opposite of Arrow's own default, which puts nulls first; it displays as the suffix the plan writes after a key (` desc nulls first`) and parses it back. The `into_*` reads answer a new serie under the same field and leave this one as it was; the `as_*` writes bring this serie into the state in place and answer it, so calls chain, and a refused write leaves the serie as it was.
+Every leaf answers every verb in one order - `Scalar`'s total order, with every absent value (a row, or one nested in a serie, record or map) at the end the options name and every present value reversed when descending - so a column and the run of its rows sort, deduplicate and group alike. The rungs that answer it: a primitive column sorts its native slice, a column whose stored bytes order as its values goes through Arrow's row format, a record column whose buffers do not compares child by child - each child on its own rung, so only a child whose stored order is not its value order builds its rows - and a run and any other column go through the values' own order. A `SortOptions` carries the two facts an ordering states beside its key - the direction and where absent rows go - and defaults to ascending with nulls last, as the plan's `order by` key and DuckDB do - the opposite of Arrow's own default, which puts nulls first; it displays as the suffix the plan writes after a key (` desc nulls first`) and parses it back. The `into_*` reads answer a new serie under the same field and leave this one as it was; the `as_*` writes bring this serie into the state in place and answer it, so calls chain, and a refused write leaves the serie as it was.
 
 === "Rust"
 
@@ -532,7 +534,178 @@ Every leaf answers every verb in one order - `Scalar`'s total order, with every 
     assert.ok(quotes.memorySize() > 0)
     ```
 
-A `SortOptions` crosses as keywords in Python - `descending` and `nulls_first`, on `sort_indices`, `is_sorted`, `into_sorted` and `as_sorted` - and as a plain `{ descending, nullsFirst }` object in JavaScript, omitted or `null` the default. `indices`, `mask` and `keys` are a `Serie` or an iterable of values read through `Scalar`, and in Python any columnar object too. `window(offset, length)` answers a [`SerieSlice`](serie-slice.md) in all three.
+A `SortOptions` crosses as keywords in Python - `descending` and `nulls_first`, on `sort_indices`, `is_sorted`, `into_sorted` and `as_sorted` - and as a plain `{ descending, nullsFirst }` object in JavaScript, omitted or `null` the default. `indices`, `mask` and `keys` are a `Serie` or an iterable of values read through `Scalar`, and in Python any columnar object too. `window(offset, length)` answers a [`WindowSerie`](window-serie.md) in all three.
+
+## Windows by key
+
+`window_by(by, sorted)` cuts the rows into windows of equal keys, the key `by` computes from each row, and answers `SerieWindows`: the owner of the windows, which lends each one as a `(key, window)` pair, the window a [`WindowSerie`](window-serie.md) - a view, moving nothing. The windows are never empty, never overlap and cover every row. The same verb windows a [window's rows](window-serie.md#windows-by-key), a [chunked serie](chunked-serie.md#windows-by-key) and a [stream](../arrow/readers.md#windows-of-a-stream).
+
+| Aspect | Rule |
+| --- | --- |
+| Key | `by` is a selector - clause text such as `"venue, minutes(ts, 15) as bucket"`, a `Selector`, a projection, a term or a path - parsed once and bound once against the record root [`SerieReader::root_of`](#arrow-an-array-a-batch-a-reader) names: a record column binds against its own field, any other column as the one child of a `row` record, under its own name. Names fold ASCII case. A `*` beside projections keys by every column it keeps, then the projections |
+| Key value | The run of the projected cells at a window's first row, in selector order, so one term keys a one-cell run. An absent record row keys `Scalar::Null`, and an absent cell is a null cell. Keys are equal as the [ordering verbs](#sorting-uniqueness-and-partitions) equate them: an absent key equals an absent key, every NaN is one value, a nested key compares item by item, and a period term such as `minutes(ts, 15)` keys the number of its period since the epoch, in UTC whatever zone the column states |
+| `sorted = false` | A window is a maximal run of adjacent rows whose keys are equal, in row order, over this serie at its offset in it: a key that comes back after another opens a window of its own, where `partition_by` gathers every row of a key into one group |
+| `sorted = true` | Each distinct key exactly once, in key order: ascending, an absent key last, as `SortOptions::default()` orders. Keys already in order answer exactly the `sorted = false` windows over this serie, at the same cost; any others have their runs - never their rows - sorted stably by key, the runs of one key merged, and the rows gathered once into key order, rows of one key in arrival order, into one serie the answer owns. Only ascending is offered: keys grouped in any other order already answer each key once with `sorted = false` |
+| The owner | `len()`, `is_empty()`, `serie()` - the serie every window views: this one, borrowed, or the gathered copy - and `iter()`, or `&windows` in a `for`, which lends the windows as often as asked. `SerieWindowsIter` is exact-size and fused, and its `nth` skips windows without building their keys. `get(index)` lends one window by its place in constant time - in row order the first call indexes where every window opens, once. `into_owned()` clones a borrowed serie - its buffers shared, no row copied - so the windows outlive the borrow |
+| The record | Every window lent states its [static values](window-serie.md#static-values): the key cells, `windownum: uint64` - its place among the windows - and `rownum: uint64` - the number its first row has in this serie, null where `sorted` gathered the rows. `static_field()` types that record before any window is walked. It is never the window's identity and never crosses into a serie or an Arrow array |
+| Identity | A window is its rows, as a serie is: the key and the record are beside it |
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scalar, Serie, StructType};
+
+    let root = DataType::from(StructType::from_fields([
+        DataType::utf8().required_field("venue"),
+        DataType::Int64.required_field("price"),
+    ])?)
+    .required_field("quote");
+    let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    let quotes = Serie::from_scalars(root, [quote("XNYS", 1), quote("XNAS", 2), quote("XNAS", 3), quote("XNYS", 4)])?;
+    let key = |venue: &str| Scalar::from_sequence([Scalar::from(venue)]);
+
+    // Unsorted: each run of equal adjacent keys is one window, in row order,
+    // over this serie at its offset; XNYS comes back, so it opens a window again.
+    let windows = quotes.window_by("venue", false)?;
+    assert_eq!(windows.len(), 3);
+    assert!(std::ptr::eq(windows.serie(), &quotes));
+    let cuts: Vec<_> = windows
+        .iter()
+        .map(|(key, window)| (key, window.offset(), window.len()))
+        .collect();
+    assert_eq!(cuts, [(key("XNYS"), 0, 1), (key("XNAS"), 1, 2), (key("XNYS"), 3, 1)]);
+
+    // Every window lent states its record, read through FieldScalar's accessors.
+    let (_, xnas) = windows.get(1).expect("a second window");
+    let record = xnas.static_values().expect("a window window_by lent");
+    assert_eq!(record.name(), "quote");
+    assert_eq!(record.get_key_str("venue"), Some(&Scalar::from("XNAS")));
+    assert_eq!(record.get_key_str("windownum"), Some(&Scalar::from(1_u64)));
+    assert_eq!(record.get_key_str("rownum"), Some(&Scalar::from(1_u64)));
+
+    // Sorted: each key once, in key order - the rows gathered once into a
+    // serie the windows own, rows of one key in arrival order, rownum null.
+    let sorted = quotes.window_by("venue", true)?;
+    assert_eq!(sorted.len(), 2);
+    assert!(!std::ptr::eq(sorted.serie(), &quotes));
+    let (first, xnys) = sorted.iter().nth(1).expect("a second window");
+    assert_eq!(first, key("XNYS"));
+    assert_eq!(xnys.rows().to_vec(), vec![quote("XNYS", 1), quote("XNYS", 4)]);
+    let record = xnys.static_values().expect("its record");
+    assert_eq!(record.get_key_str("rownum"), Some(&Scalar::Null));
+
+    // Two terms key two cells, named as their projections are, typed before a window is walked.
+    let late = quotes.window_by("venue, price > 2 as late", false)?;
+    let names: Vec<&str> = late.static_field().fields().iter().map(Field::name).collect();
+    assert_eq!(names, ["venue", "late", "windownum", "rownum"]);
+    assert_eq!(late.len(), 4);
+
+    // A key cell named like a counter is refused before any row is read.
+    assert!(quotes.window_by("price as rownum", false).is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Field, Serie
+
+    quotes = Serie.from_scalars(
+        Field("quote", "struct<venue: utf8 not null, price: int64 not null>", nullable=False),
+        [["XNYS", 1], ["XNAS", 2], ["XNAS", 3], ["XNYS", 4]],
+    )
+
+    # Unsorted: each run of equal adjacent keys is one window, in row order,
+    # over this serie at its offset; XNYS comes back, so it opens a window again.
+    windows = quotes.window_by("venue")
+    assert [(key.as_py(), window.offset, len(window)) for key, window in windows] == [
+        (["XNYS"], 0, 1),
+        (["XNAS"], 1, 2),
+        (["XNYS"], 3, 1),
+    ]
+    assert all(window.serie is quotes for _, window in windows)
+
+    # Every window lent states its record, a struct value read by name.
+    _, xnas = windows[1]
+    record = xnas.static_values
+    assert record is not None
+    assert record["venue"].as_py() == "XNAS"
+    assert record.as_py() == {"venue": "XNAS", "windownum": 1, "rownum": 1}
+
+    # Sorted: each key once, in key order - the rows gathered once into one
+    # new serie every window views, rows of one key in arrival order.
+    ordered = quotes.window_by("venue", sorted=True)
+    assert [key.as_py() for key, _ in ordered] == [["XNAS"], ["XNYS"]]
+    _, xnys = ordered[1]
+    assert xnys.serie is not quotes
+    assert xnys.as_py() == [{"venue": "XNYS", "price": 1}, {"venue": "XNYS", "price": 4}]
+    record = xnys.static_values
+    assert record is not None and record.as_py()["rownum"] is None
+
+    # A key cell named like a counter is refused before any row is read.
+    try:
+        quotes.window_by("price as rownum")
+    except ValueError as error:
+        assert "collides with the static value" in str(error)
+    else:
+        raise AssertionError("rownum is the record's own cell")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, Serie } = require('yggdryl')
+
+    const quotes = Serie.fromScalars(
+      Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null'),
+      [['XNYS', 1n], ['XNAS', 2n], ['XNAS', 3n], ['XNYS', 4n]],
+    )
+
+    // Unsorted: each run of equal adjacent keys is one window, in row order,
+    // over this serie at its offset; XNYS comes back, so it opens a window again.
+    const windows = quotes.windowBy('venue')
+    assert.deepEqual(
+      windows.map(([key, window]) => [key.asJs(), window.offset, window.length]),
+      [[['XNYS'], 0, 1], [['XNAS'], 1, 2], [['XNYS'], 3, 1]],
+    )
+    assert.ok(windows.every(([, window]) => window.serie === quotes))
+
+    // Every window lent states its record, a struct value read by name.
+    const [, xnas] = windows[1]
+    assert.equal(xnas.staticValues.get('venue').asJs(), 'XNAS')
+    assert.deepEqual(xnas.staticValues.asJs(), { venue: 'XNAS', windownum: 1, rownum: 1 })
+
+    // Sorted: each key once, in key order - the rows gathered once into one
+    // new serie every window views, rows of one key in arrival order.
+    const sorted = quotes.windowBy('venue', true)
+    assert.deepEqual(sorted.map(([key]) => key.asJs()), [['XNAS'], ['XNYS']])
+    const [, xnys] = sorted[1]
+    assert.notEqual(xnys.serie, quotes)
+    assert.deepEqual(xnys.intoSerie().child('price').asJs(), [1, 4])
+    assert.equal(xnys.staticValues.asJs().rownum, null)
+
+    // A key cell named like a counter is refused before any row is read.
+    assert.throws(() => quotes.windowBy('price as rownum'), /collides with the static value/)
+    ```
+
+`sorted` is `False` by default in Python, where `None` clears to it, and absent or `null` is `false` in JavaScript. Python answers a `list` of `(Scalar, WindowSerie)` pairs and JavaScript an `Array` of `[Scalar, WindowSerie]`, each window holding the serie object windowed - or, where `sorted` gathered, one new `Serie` every window shares - and each record a struct `Scalar` read by name. `SerieWindows`, its `iter`, `get`, `nth` and `into_owned` are Rust only; a binding's window holds the owned windows of its call and reaches its record through `get`.
+
+### Refusals
+
+Every refusal but the gather's comes before a row is read, naming the serie:
+
+- text that is not a selector, with the parser's position;
+- a run, which lays out no column for a term to read: `a schema-free run windows by no term`;
+- a key stating no projection - an empty list, or a `*` alone - and an `unnest`;
+- the binder's own: a term reaching no column or two of them, a period step that is not a positive literal;
+- a key cell whose name folds onto `windownum` or `rownum`, the record's own cells - `the key cell "rownum" collides with the static value "rownum"`, so alias it - and, windowing a window lent this way, onto a cell its record keeps;
+- with `sorted` and keys out of order, a serie past `u32::MAX` rows, which the gather cannot address, once the keys are read.
+
+### Cost
+
+One plan per call and one key per window: the key column computed once, one comparator over it and one bit per row marking where the windows open, read in one pass; then each window lent costs the run of its key and nothing else, and its record nothing until it is read. No key row is built where the keys order as their buffers - text, integers, temporals and records of them, a record key compared child by child on the [Record rung](#sorting-uniqueness-and-partitions); a key cell that does not - a registered code, windows-1252 text, a version, a URL - builds its own rows once for the call, never a run per row, and a list, map or union cell off the buffers builds each of its rows once. A period term is evaluated row by row through the expression's row tier: a constant count of allocations, but time and a transient value per row. A key costs the same whatever the record is wide: a key of the record's own columns takes them where they stand, never the record copied.
+
+With `sorted`, the descent is read in the same pass: keys already in order cost exactly what `sorted = false` costs and copy nothing. Only a descent gathers: one stable sort of the runs, the order the rows are taken in, and one take of every column - the only rows this verb copies.
 
 ## Children
 
@@ -1812,6 +1985,7 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- serie sort_options
     cargo test --features "internals parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test serie
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test allocations -- sequence column leaf ordering
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test allocations -- window_by window_record
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test media -- structured::
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^serie/'
     ```

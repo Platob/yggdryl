@@ -1095,3 +1095,711 @@ mod unnest {
         assert_eq!(int64s(out.column(1)), [None, Some(7)]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// The key door: the rule a merge and a window key by, and the key column
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "internals")]
+mod internal {
+
+    use std::sync::Arc;
+
+    use arrow_array::cast::AsArray;
+    use arrow_array::types::Int64Type;
+    use arrow_array::{Array, ArrayRef, Int64Array, StringArray, StructArray};
+    use arrow_buffer::NullBuffer;
+    use yggdryl::expression::Selector;
+    use yggdryl::internals::expression_selector::{
+        apply_serie, apply_serie_window, bind_key, lying_cells,
+    };
+    use yggdryl::{
+        ArrowCastOptions, DataType, Error, Field, Scalar, Serie, SerieReader, StructType, TimeUnit,
+        Timezone,
+    };
+
+    const MINUTE_NS: i64 = 60_000_000_000;
+
+    fn utc_ns() -> DataType {
+        DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC,
+        }
+    }
+
+    fn quote() -> Field {
+        StructType::from_fields([
+            DataType::utf8().nullable_field("venue"),
+            DataType::Int64.required_field("count"),
+            utc_ns().nullable_field("ts"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .nullable_field("quote")
+    }
+
+    /// Three present quotes: two on one venue, the third fifteen minutes
+    /// and a nanosecond later on another.
+    fn quotes() -> Serie {
+        let ts = |nanos: i64| Scalar::from(nanos);
+        let row = |venue: &str, count: i64, nanos: i64| {
+            Scalar::from_sequence([Scalar::from(venue), Scalar::from(count), ts(nanos)])
+        };
+        let rows = [
+            row("XNAS", 1, 0),
+            row("XNAS", 2, 15 * MINUTE_NS),
+            row("XNYS", 3, 30 * MINUTE_NS + 1),
+        ];
+        let field = quote();
+        let rows = rows
+            .into_iter()
+            .map(|row| field.scalar(row).unwrap())
+            .collect::<Vec<_>>();
+        Serie::from_scalars(field, rows).unwrap()
+    }
+
+    fn key(text: &str, serie: &Serie) -> yggdryl::Result<yggdryl::expression::BoundSelector> {
+        let selector: Selector = text.parse()?;
+        bind_key(
+            &selector,
+            &SerieReader::root_of(serie.field().unwrap())?,
+            serie.field().unwrap().name(),
+            "window by",
+        )
+    }
+
+    fn refusal(result: yggdryl::Result<impl std::fmt::Debug>) -> (String, String) {
+        match result.unwrap_err() {
+            Error::InvalidRecord { path, reason } => (path.to_string(), reason.to_string()),
+            other => panic!("expected an invalid record, got {other}"),
+        }
+    }
+
+    fn names(field: &Field) -> Vec<&str> {
+        field.fields().iter().map(Field::name).collect()
+    }
+
+    #[test]
+    fn a_key_naming_no_column_is_refused_under_the_path_and_the_verb() {
+        let root = SerieReader::root_of(&quote()).unwrap();
+        for selector in [
+            Selector::new(Vec::new()),
+            "*".parse().unwrap(),
+            Selector::all_except(["ts"]),
+        ] {
+            assert_eq!(
+                refusal(bind_key(&selector, &root, "quote", "window by")),
+                (
+                    "quote".to_owned(),
+                    "expected at least one column to window by, got an empty match key".to_owned()
+                ),
+                "{selector}"
+            );
+        }
+        // A merge's spelling, byte for byte, and judged before the root is:
+        // a root that is no record is not what refuses.
+        let refused = bind_key(
+            &Selector::new(Vec::new()),
+            &DataType::Int64.required_field("x"),
+            "$.merge_by",
+            "merge on",
+        )
+        .unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            "invalid record value at $.merge_by: expected at least one column to merge on, got \
+             an empty match key"
+        );
+    }
+
+    #[test]
+    fn an_unnest_in_a_key_is_refused_before_the_key_binds() {
+        let root = SerieReader::root_of(&quote()).unwrap();
+        // `nope` names no column: the unnest is what refuses, before the
+        // binder would have.
+        let selector: Selector = "venue, unnest(nope)".parse().unwrap();
+        let refused = bind_key(&selector, &root, "quote", "window by").unwrap_err();
+        assert!(
+            refused.to_string().contains(
+                "expected `unnest(nope)` as the whole term of a projection, got it in a key"
+            ),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn a_key_the_root_cannot_bind_is_the_binders_own_refusal() {
+        let root = SerieReader::root_of(&quote()).unwrap();
+        let selector: Selector = "tier".parse().unwrap();
+        let refused = bind_key(&selector, &root, "quote", "window by").unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            selector.bind(&root).unwrap_err().to_string()
+        );
+        assert!(refused.to_string().contains("tier"), "{refused}");
+    }
+
+    #[test]
+    fn a_star_beside_terms_keys_every_column_it_keeps_then_the_terms() {
+        let quotes = quotes();
+        let bound = key("* exclude (ts), days(ts)", &quotes).unwrap();
+        assert_eq!(names(bound.output()), ["venue", "count", "days(ts)"]);
+        let keys = apply_serie(&bound, &quotes).unwrap();
+        assert_eq!(
+            keys.scalar(2).unwrap(),
+            Scalar::from_sequence([Scalar::from("XNYS"), Scalar::from(3_i64), Scalar::date32(0)])
+        );
+    }
+
+    #[test]
+    fn a_record_column_keys_by_the_terms_it_binds_into_a_nullable_record() {
+        let quotes = quotes();
+        let bound = key("VENUE, minutes(ts, 15) as bucket", &quotes).unwrap();
+        let keys = apply_serie(&bound, &quotes).unwrap();
+        let field = keys.field().unwrap();
+        assert!(field.is_nullable());
+        assert_eq!(field.name(), "quote");
+        // The fold reaches `venue`; the cell publishes under the name the
+        // projection spelled.
+        assert_eq!(names(field), ["VENUE", "bucket"]);
+        assert_eq!(field.fields()[1].dtype(), &DataType::Int32);
+        let expected = [("XNAS", 0_i32), ("XNAS", 1), ("XNYS", 2)];
+        assert_eq!(keys.len(), expected.len());
+        for (row, (venue, bucket)) in expected.into_iter().enumerate() {
+            assert_eq!(
+                keys.scalar(row).unwrap(),
+                Scalar::from_sequence([Scalar::from(venue), Scalar::from(bucket)]),
+                "row {row}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_column_that_is_no_record_keys_as_the_one_child_of_its_record() {
+        let ts = Serie::from_scalars(
+            utc_ns().nullable_field("ts"),
+            [0, 24 * 60 * MINUTE_NS, -1].map(|nanos| utc_ns().scalar(Scalar::from(nanos)).unwrap()),
+        )
+        .unwrap();
+        let keys = apply_serie(&key("days(ts)", &ts).unwrap(), &ts).unwrap();
+        let field = keys.field().unwrap();
+        assert!(field.is_nullable());
+        assert_eq!(names(field), ["days(ts)"]);
+        // The day is the UTC day, so a nanosecond before the epoch is the
+        // day before it.
+        for (row, day) in [0, 1, -1].into_iter().enumerate() {
+            assert_eq!(
+                keys.scalar(row).unwrap(),
+                Scalar::from_sequence([Scalar::date32(day)]),
+                "row {row}"
+            );
+        }
+
+        // A bare column is the identity over its one-child record: the key's
+        // child is the column's own buffer.
+        let bare = apply_serie(&key("ts", &ts).unwrap(), &ts).unwrap();
+        let column = ts.into_arrow_array().unwrap();
+        let child = Arc::clone(bare.into_arrow_array().unwrap().as_struct().column(0));
+        assert_eq!(
+            child.to_data().buffers()[0].as_ptr(),
+            column.to_data().buffers()[0].as_ptr()
+        );
+        assert_eq!(
+            bare.scalar(2).unwrap(),
+            Scalar::from_sequence([ts.scalar(2).unwrap()])
+        );
+    }
+
+    /// A record of three rows whose middle row is absent, its children
+    /// holding values Arrow leaves unspecified there, and whose last row
+    /// states no venue.
+    fn absent_middle() -> Serie {
+        let field = quote();
+        let venue: ArrayRef = Arc::new(StringArray::from(vec![Some("XNAS"), Some("ghost"), None]));
+        let count: ArrayRef = Arc::new(Int64Array::from(vec![1, 99, 3]));
+        let ts: ArrayRef = Arc::new(
+            arrow_array::TimestampNanosecondArray::from(vec![Some(0), Some(7), None])
+                .with_timezone("UTC"),
+        );
+        let arrow_schema::DataType::Struct(fields) =
+            field.as_arrow_field_ref().unwrap().data_type().clone()
+        else {
+            unreachable!("a record field projects to a struct")
+        };
+        let records = StructArray::try_new(
+            fields,
+            vec![venue, count, ts],
+            Some(NullBuffer::from(vec![true, false, true])),
+        )
+        .unwrap();
+        Serie::from_arrow_array(Some(&field), Arc::new(records), ArrowCastOptions::new()).unwrap()
+    }
+
+    #[test]
+    fn an_absent_record_row_keys_null_and_an_absent_cell_a_null_cell() {
+        let quotes = absent_middle();
+        let keys = apply_serie(&key("venue", &quotes).unwrap(), &quotes).unwrap();
+        assert!(keys.field().unwrap().is_nullable());
+        assert_eq!(
+            keys.scalar(0).unwrap(),
+            Scalar::from_sequence([Scalar::from("XNAS")])
+        );
+        assert_eq!(keys.scalar(1).unwrap(), Scalar::Null);
+        assert_eq!(
+            keys.scalar(2).unwrap(),
+            Scalar::from_sequence([Scalar::Null])
+        );
+    }
+
+    #[test]
+    fn an_identity_key_hands_the_record_back() {
+        let quotes = absent_middle();
+        let bound = key("venue, count, ts", &quotes).unwrap();
+        assert!(bound.is_identity());
+        let keys = apply_serie(&bound, &quotes).unwrap();
+        let held = quotes.into_arrow_array().unwrap();
+        let answered = keys.into_arrow_array().unwrap();
+        assert_eq!(answered.nulls(), held.nulls());
+        let count = |array: &ArrayRef| {
+            array
+                .as_struct()
+                .column(1)
+                .as_primitive::<Int64Type>()
+                .values()
+                .as_ptr()
+        };
+        assert_eq!(count(&answered), count(&held));
+        assert_eq!(keys.scalar(1).unwrap(), Scalar::Null);
+        assert_eq!(keys.scalar(0).unwrap(), quotes.scalar(0).unwrap());
+    }
+
+    #[test]
+    fn a_run_has_no_record_to_key() {
+        let run = Serie::new([Scalar::from(1_i64)]);
+        let bound = key("count", &quotes()).unwrap();
+        let (path, reason) = refusal(apply_serie(&bound, &run));
+        assert_eq!(path, "$");
+        assert_eq!(reason, "a schema-free run declares no field");
+    }
+
+    #[test]
+    fn a_key_window_past_the_end_is_refused_naming_the_column() {
+        let quotes = quotes();
+        for text in ["venue", "minutes(ts, 15)"] {
+            let bound = key(text, &quotes).unwrap();
+            assert_eq!(
+                refusal(apply_serie_window(&bound, &quotes, 2, 5)),
+                (
+                    "quote".to_owned(),
+                    "rows 2..7 reach past the 3 rows quote holds".to_owned()
+                ),
+                "{text}"
+            );
+            assert_eq!(
+                apply_serie_window(&bound, &quotes, 3, 0).unwrap().len(),
+                0,
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_key_over_a_column_it_was_not_bound_against_is_refused_never_trusted() {
+        // Each arm meets a column of another layout: a lying key would hand
+        // its cells on under the key's root, and a computed one evaluate
+        // over them, so each refuses by name rather than build a record
+        // its children do not fit.
+        let quotes = quotes();
+        let counts = Serie::from_scalars(
+            DataType::Int64.nullable_field("venue"),
+            [Scalar::from(1_i64)],
+        )
+        .unwrap();
+        let other = Serie::from_scalars(
+            StructType::from_fields([DataType::Int64.nullable_field("venue")])
+                .map(DataType::from)
+                .unwrap()
+                .nullable_field("quote"),
+            [Scalar::from_sequence([Scalar::from(1_i64)])],
+        )
+        .unwrap();
+        for text in ["venue", "count", "minutes(ts, 15)"] {
+            let bound = key(text, &quotes).unwrap();
+            for misfit in [&counts, &other] {
+                let (path, reason) = refusal(apply_serie(&bound, misfit));
+                assert_eq!(path, misfit.field().unwrap().name(), "{text}");
+                assert!(!reason.is_empty(), "{text}");
+            }
+        }
+        // A selector bound as no key carries no key plan, and says so.
+        let bound = Selector::from_columns(["venue"])
+            .bind(&SerieReader::root_of(&quote()).unwrap())
+            .unwrap();
+        assert!(lying_cells(&bound).is_none());
+        assert!(apply_serie(&bound, &quotes).is_err());
+    }
+
+    /// A record holding a column of every kind a key cell can lie in or be
+    /// computed from: text, a required integer, a nullable record of a
+    /// text, a code and an instant, a serie of records, a map, a union, a
+    /// dictionary and a code.
+    fn trade() -> Field {
+        let order = StructType::from_fields([
+            DataType::utf8().nullable_field("venue"),
+            DataType::Mic.nullable_field("mic"),
+            utc_ns().nullable_field("ts"),
+        ])
+        .map(DataType::from)
+        .unwrap();
+        let leg = StructType::from_fields([
+            DataType::Float64.nullable_field("px"),
+            DataType::Int64.nullable_field("qty"),
+        ])
+        .map(DataType::from)
+        .unwrap();
+        StructType::from_fields([
+            DataType::utf8().nullable_field("venue"),
+            DataType::Int64.required_field("count"),
+            order.nullable_field("order"),
+            DataType::serie(leg.nullable_field("item")).nullable_field("legs"),
+            DataType::map_of(DataType::utf8(), DataType::utf8(), false)
+                .unwrap()
+                .nullable_field("attrs"),
+            DataType::dense_union([
+                DataType::Int64.nullable_field("a"),
+                DataType::utf8().nullable_field("b"),
+            ])
+            .unwrap()
+            .nullable_field("u"),
+            DataType::dictionary(DataType::Int32, DataType::utf8())
+                .unwrap()
+                .nullable_field("tag"),
+            DataType::Ccy.nullable_field("ccy"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .nullable_field("trade")
+    }
+
+    #[test]
+    fn a_key_plan_is_bound_once_and_names_its_lying_cells() {
+        let root = SerieReader::root_of(&trade()).unwrap();
+        let cells = |text: &str| -> Vec<Option<Vec<usize>>> {
+            let selector: Selector = text.parse().unwrap();
+            lying_cells(&bind_key(&selector, &root, "trade", "window by").unwrap()).unwrap()
+        };
+        // A column, a path through records - by a name or a key, folded -
+        // a whole record, a union cell, an alias and what a `*` keeps all
+        // lie where they landed; so does a required column restated as
+        // required.
+        assert_eq!(cells("venue"), [Some(vec![0])]);
+        assert_eq!(cells("count as c"), [Some(vec![1])]);
+        assert_eq!(cells("count as c int64 not null"), [Some(vec![1])]);
+        assert_eq!(cells("order.mic"), [Some(vec![2, 1])]);
+        assert_eq!(cells("ORDER['TS']"), [Some(vec![2, 2])]);
+        assert_eq!(cells("order"), [Some(vec![2])]);
+        assert_eq!(cells("u"), [Some(vec![5])]);
+        assert_eq!(cells("legs"), [Some(vec![3])]);
+        assert_eq!(
+            cells("* exclude (legs, attrs, u, tag), order.venue as at"),
+            [
+                Some(vec![0]),
+                Some(vec![1]),
+                Some(vec![2]),
+                Some(vec![7]),
+                Some(vec![2, 0])
+            ]
+        );
+        // A declared cast, a computed term, a serie or map step and a `not
+        // null` over a cell that may be absent are computed.
+        for text in [
+            "count as c float64",
+            "cast(count as float64)",
+            "minutes(order.ts, 15)",
+            "legs[0]",
+            "legs[0].px",
+            "attrs['desk']",
+            "venue as v utf8 not null",
+            "order.venue as ov utf8 not null",
+        ] {
+            assert_eq!(cells(text), [None], "{text}");
+        }
+        assert_eq!(
+            cells("venue, legs[0].px, order.mic"),
+            [Some(vec![0]), None, Some(vec![2, 1])]
+        );
+        // A union member is no step a key can take: the binder refuses it,
+        // so no such cell lies.
+        let member: Selector = "u.a".parse().unwrap();
+        assert!(bind_key(&member, &root, "trade", "window by").is_err());
+
+        // Bound once: every column the key is computed over - whichever arm
+        // answers it - lands under the one root the plan built.
+        let trades = trades(Absent::Nothing);
+        let absent = trades_with(Absent::Orders);
+        let bound = {
+            let selector: Selector = "venue, order.mic".parse().unwrap();
+            bind_key(&selector, &root, "trade", "window by").unwrap()
+        };
+        let roots = [
+            apply_serie(&bound, &trades).unwrap(),
+            apply_serie(&bound, &absent).unwrap(),
+            apply_serie_window(&bound.clone(), &trades, 1, 2).unwrap(),
+        ];
+        for keys in &roots[1..] {
+            assert!(std::ptr::eq(
+                keys.field().unwrap(),
+                roots[0].field().unwrap()
+            ));
+        }
+    }
+
+    /// Which records of [`trades`] are absent.
+    #[derive(Clone, Copy, Debug)]
+    enum Absent {
+        Nothing,
+        Orders,
+        Trades,
+        Both,
+    }
+
+    /// Six trades; an `order` absent at rows 1 and 4 and a trade absent at
+    /// rows 2 and 5 as [`Absent`] says, laid out by hand so the children of
+    /// an absent record keep the values they held - a foreign array Arrow
+    /// leaves unspecified there.
+    fn trades_with(absent: Absent) -> Serie {
+        let field = trade();
+        let clean = trades(Absent::Nothing).into_arrow_array().unwrap();
+        let rebuilt = |array: &StructArray, valid: Option<[bool; 6]>| -> StructArray {
+            let (fields, columns, _) = array.clone().into_parts();
+            StructArray::try_new(
+                fields,
+                columns,
+                valid.map(|valid| NullBuffer::from(valid.to_vec())),
+            )
+            .unwrap()
+        };
+        let orders = matches!(absent, Absent::Orders | Absent::Both)
+            .then_some([true, false, true, true, false, true]);
+        let records = matches!(absent, Absent::Trades | Absent::Both)
+            .then_some([true, true, false, true, true, false]);
+        let clean = clean.as_struct();
+        let (fields, mut columns, _) = clean.clone().into_parts();
+        columns[2] = Arc::new(rebuilt(columns[2].as_struct(), orders));
+        let rows = StructArray::try_new(
+            fields,
+            columns,
+            records.map(|valid| NullBuffer::from(valid.to_vec())),
+        )
+        .unwrap();
+        Serie::from_arrow_array(Some(&field), Arc::new(rows), ArrowCastOptions::new()).unwrap()
+    }
+
+    /// The six trades, every record present.
+    fn trades(absent: Absent) -> Serie {
+        if !matches!(absent, Absent::Nothing) {
+            return trades_with(absent);
+        }
+        let field = trade();
+        let order = |venue: Option<&str>, mic: &str, minutes: Option<i64>| {
+            Scalar::from_sequence([
+                venue.map_or(Scalar::Null, Scalar::from),
+                Scalar::from(mic),
+                minutes.map_or(Scalar::Null, |minutes| Scalar::from(minutes * MINUTE_NS)),
+            ])
+        };
+        let legs =
+            |legs: &[(f64, i64)]| {
+                Scalar::from_sequence(legs.iter().map(|(px, qty)| {
+                    Scalar::from_sequence([Scalar::from(*px), Scalar::from(*qty)])
+                }))
+            };
+        let text = |text: Option<&str>| text.map_or(Scalar::Null, Scalar::from);
+        let rows = [
+            (
+                Some("XNAS"),
+                1,
+                order(Some("XNAS"), "XNAS", Some(0)),
+                legs(&[(1.5, 2)]),
+                Some("a"),
+                "USD",
+            ),
+            (
+                Some("XNAS"),
+                2,
+                order(Some("XNAS"), "XNYS", Some(15)),
+                legs(&[]),
+                Some("a"),
+                "USD",
+            ),
+            (
+                None,
+                3,
+                order(None, "XPAR", Some(30)),
+                Scalar::Null,
+                Some("b"),
+                "EUR",
+            ),
+            (
+                Some("XNYS"),
+                3,
+                order(Some("XNYS"), "XNYS", None),
+                legs(&[(2.0, 1), (3.0, 4)]),
+                None,
+                "EUR",
+            ),
+            (
+                Some("XNYS"),
+                4,
+                order(Some("XNYS"), "XNYS", Some(45)),
+                legs(&[(2.5, 1)]),
+                Some("b"),
+                "USD",
+            ),
+            (
+                Some("XPAR"),
+                5,
+                order(Some("XPAR"), "XPAR", Some(60)),
+                legs(&[(1.0, 1)]),
+                Some("c"),
+                "USD",
+            ),
+        ];
+        let rows = rows
+            .into_iter()
+            .map(|(venue, count, order, legs, tag, ccy)| {
+                field
+                    .scalar(Scalar::from_sequence([
+                        text(venue),
+                        Scalar::from(count),
+                        order,
+                        legs,
+                        Scalar::Null,
+                        Scalar::from_sequence([Scalar::from(0_i8), Scalar::from(count)]),
+                        text(tag),
+                        Scalar::from(ccy),
+                    ]))
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        Serie::from_scalars(field, rows).unwrap()
+    }
+
+    #[test]
+    fn the_direct_key_arm_equals_the_engine_arm_on_every_nested_layout() {
+        let keys = [
+            "venue",
+            "count as c",
+            "order.venue",
+            "order.mic",
+            "order",
+            "legs",
+            "tag",
+            "ccy",
+            "u",
+            "venue, order.mic, ccy",
+            "* exclude (legs, attrs), order.mic as m",
+            "legs[0].px",
+            "minutes(order.ts, 15)",
+            "count as c float64",
+            "tag as t, legs[0].qty, order.venue as ov",
+        ];
+        for absent in [
+            Absent::Nothing,
+            Absent::Orders,
+            Absent::Trades,
+            Absent::Both,
+        ] {
+            let trades = trades(absent);
+            let rows = trades.len();
+            for text in keys {
+                let bound = key(text, &trades).unwrap();
+                let root = bound.output().clone().with_nullable(true);
+                let selector: Selector = text.parse().unwrap();
+                for (offset, length) in [(0, rows), (1, rows - 2), (rows - 1, 1), (2, 0)] {
+                    let answered = apply_serie_window(&bound, &trades, offset, length).unwrap();
+                    let records = trades.into_arrow_array().unwrap().slice(offset, length);
+                    let engine = Serie::from_arrow_array(
+                        Some(&root),
+                        selector.apply_arrow_array(&records).unwrap(),
+                        ArrowCastOptions::new(),
+                    )
+                    .unwrap();
+                    let at = format!("{text} over {absent:?} rows {offset}..+{length}");
+                    assert_eq!(answered.field(), Some(&root), "{at}");
+                    assert_eq!(answered.len(), length, "{at}");
+                    for row in 0..length {
+                        assert_eq!(
+                            answered.scalar(row).unwrap(),
+                            engine.scalar(row).unwrap(),
+                            "{at}, row {row}"
+                        );
+                    }
+                    assert_eq!(answered, engine, "{at}");
+                    // A key re-exported to Arrow is the engine's array.
+                    assert_eq!(
+                        answered.into_arrow_array().unwrap().to_data(),
+                        engine.into_arrow_array().unwrap().to_data(),
+                        "{at}"
+                    );
+                }
+            }
+        }
+
+        // Where every cell lies and nothing between is absent, the key hands
+        // the landed cells themselves on, each under the field it landed
+        // under; the keyed record's own absent rows are the key's.
+        let same = |answered: &Serie, at: usize, landed: &Serie| {
+            std::ptr::eq(
+                answered
+                    .as_struct()
+                    .unwrap()
+                    .child_at(at)
+                    .unwrap()
+                    .field()
+                    .unwrap(),
+                landed.field().unwrap(),
+            )
+        };
+        let trades = trades(Absent::Nothing);
+        let held = trades.as_struct().unwrap();
+        let order = held.child_at(2).unwrap();
+        let answered =
+            apply_serie(&key("count as c, order.mic", &trades).unwrap(), &trades).unwrap();
+        assert!(same(&answered, 0, held.child_at(1).unwrap()));
+        assert!(same(
+            &answered,
+            1,
+            order.as_struct().unwrap().child_at(1).unwrap()
+        ));
+        let trades = trades_with(Absent::Trades);
+        let answered = apply_serie(&key("count as c, venue", &trades).unwrap(), &trades).unwrap();
+        assert!(same(
+            &answered,
+            0,
+            trades.as_struct().unwrap().child_at(1).unwrap()
+        ));
+        assert_eq!(answered.scalar(2).unwrap(), Scalar::Null);
+        // A path whose record holds an absent row - here the trade's, which
+        // its landing folds into `order` - is computed instead.
+        let answered = apply_serie(&key("order.mic", &trades).unwrap(), &trades).unwrap();
+        let landed = trades.as_struct().unwrap().child_at(2).unwrap();
+        assert!(!same(
+            &answered,
+            0,
+            landed.as_struct().unwrap().child_at(1).unwrap()
+        ));
+        // An absent `order` sends the path through the step kernel, whose
+        // mask makes the ghost a child keeps under it absent.
+        let trades = trades_with(Absent::Orders);
+        let answered = apply_serie(&key("order.venue", &trades).unwrap(), &trades).unwrap();
+        assert_eq!(
+            answered.scalar(1).unwrap(),
+            Scalar::from_sequence([Scalar::Null])
+        );
+        assert_eq!(
+            answered.scalar(0).unwrap(),
+            Scalar::from_sequence([Scalar::from("XNAS")])
+        );
+    }
+}

@@ -144,6 +144,18 @@ wide.asSorted({ nulls: 'first' })
 // @ts-expect-error the private ordering bridges are hidden
 wide._partitionByNative
 
+// Windows by key across the chunks: each `[key, rows]`, stating no record.
+const chunkWindows: Array<[Scalar, ChunkedSerie]> = wide.windowBy('id')
+const chunkSortedWindows: Array<[Scalar, ChunkedSerie]> = wide.windowBy(['id'], true)
+const chunkClearedWindows: Array<[Scalar, ChunkedSerie]> = wide.windowBy('id', null)
+// @ts-expect-error `sorted` is a boolean
+wide.windowBy('id', 'yes')
+// @ts-expect-error a chunked window states no record
+chunkWindows[0][1].staticValues
+// @ts-expect-error the private windowing bridge is hidden
+wide._windowByNative
+void [chunkWindows, chunkSortedWindows, chunkClearedWindows]
+
 void [chunkOrder, chunkOrdered, chunkUnique, chunkDistinct, chunkBytes, chunkSorted,
   chunkDeduplicated, chunkReversed, chunkTaken, chunkFiltered, chunkGroups, chunkKeyGroups,
   vectorKeyGroups, chunkChained]

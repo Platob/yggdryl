@@ -14,9 +14,13 @@ const {
   ChunkedSerie,
   DataType,
   Field,
+  Selector,
   Serie,
   SerieReader,
+  SerieReaderWindows,
   StructSerie,
+  Term,
+  WindowSerie,
   fields,
 } = binding
 
@@ -663,7 +667,19 @@ test('a serie compares against a chunked serie by the rows, on either side', () 
   assert.equal(serie.compare(chunked), 0)
   assert.equal(serie.compare(chunked.slice(0, 2)), 1)
   assert.equal(chunked.slice(0, 2).compare(serie), -1)
-  assert.throws(() => serie.equals([125n]), /Serie.equals takes a ChunkedSerie or a Serie/)
+  // A window compares as the serie of its rows, and is any serie argument.
+  const held = Serie.fromScalars(price, [124n, 125n, 126n, 127n])
+  assert.ok(serie.equals(held.window(1, 3)))
+  assert.equal(serie.compare(held.window(0, 3)), 1)
+  assert.deepEqual(held.intoTaken(held.window(0, 0)).asJs(), [])
+  assert.deepEqual(
+    serie.partitionBy(Serie.fromScalars(price, [0n, 1n, 1n, 0n]).window(1, 3)).length,
+    2,
+  )
+  assert.throws(
+    () => serie.equals([125n]),
+    /Serie\.equals takes a ChunkedSerie, a Serie or a WindowSerie/,
+  )
   assert.equal('_equalsNative' in Serie.prototype, false)
   assert.equal('_compareNative' in Serie.prototype, false)
 
@@ -1048,6 +1064,7 @@ test('the ordering natives stay outside the public surface', () => {
     '_asTakenNative',
     '_asFilteredNative',
     '_windowNative',
+    '_windowByNative',
   ]) {
     assert.equal(name in Serie.prototype, false, name)
   }
@@ -1063,4 +1080,342 @@ test('the ordering natives stay outside the public surface', () => {
   ]) {
     assert.ok(answer instanceof StructSerie)
   }
+})
+
+// ---------------------------------------------------------------------------
+// windowBy: the rows cut where the key changes - mirrors the window_by cases
+// of rust/tests/serie/order.rs and the reader's of rust/tests/serie/arrow.rs
+// ---------------------------------------------------------------------------
+
+const MINUTE_NS = 60_000_000_000n
+
+// The record `quote{venue, count, ts}`, its root nullable so a row may be
+// absent.
+const quoteField = () =>
+  new Field('quote', 'struct<venue: utf8, count: int64 not null, ts: timestamp(ns, UTC)>', true)
+
+// Quotes, each its venue, its count and its instant in minutes; `null` an
+// absent row.
+const quoteColumn = (rows) =>
+  Serie.fromScalars(
+    quoteField(),
+    rows.map((row) =>
+      row === null ? null : { venue: row[0], count: row[1], ts: BigInt(row[2]) * MINUTE_NS },
+    ),
+  )
+
+// The venues XNAS, XNAS, XNYS, XNAS at minutes 0, 14, 15 and 31.
+const venueRuns = () =>
+  quoteColumn([
+    ['XNAS', 1, 0],
+    ['XNAS', 2, 14],
+    ['XNYS', 3, 15],
+    ['XNAS', 4, 31],
+  ])
+
+const windowCuts = (windows) =>
+  windows.map(([key, window]) => [key.asJs(), window.offset, window.length])
+
+// Every window's record as its natural JavaScript value.
+const staticRecords = (windows) => windows.map((window) => window.staticValues.asJs())
+
+const childNames = (field) =>
+  Array.from({ length: field.fieldLen }, (_, index) => field.getFieldAt(index).name)
+
+const readerRows = (window) => [...window].flatMap((piece) => piece.asJs())
+
+test('windowBy refuses a run, an empty key, an unnest and a term naming no column', () => {
+  for (const sorted of [false, true]) {
+    for (const serie of [venueRuns(), quoteColumn([])]) {
+      assert.throws(() => serie.windowBy('venue,', sorted), /expected a value or a name/)
+      for (const empty of ['*', []]) {
+        assert.throws(
+          () => serie.windowBy(empty, sorted),
+          /expected at least one column to window by, got an empty match key/,
+        )
+      }
+      assert.throws(() => serie.windowBy('unnest(items)', sorted), /in a key/)
+      assert.throws(() => serie.windowBy('tier', sorted), /tier/)
+      for (const text of ['minutes(ts, 0)', 'minutes(ts, count)']) {
+        assert.throws(() => serie.windowBy(text, sorted))
+      }
+      // A key cell named as a static value is refused before any row.
+      assert.throws(
+        () => serie.windowBy('count as ROWNUM', sorted),
+        /collides with the static value "rownum"/,
+      )
+      assert.throws(
+        () => serie.windowBy('count as windownum', sorted),
+        /collides with the static value "windownum"/,
+      )
+    }
+    assert.throws(
+      () => new Serie([1, 2]).windowBy('price', sorted),
+      /a schema-free run windows by no term/,
+    )
+  }
+  // The key and `sorted` are typed at the boundary.
+  assert.throws(() => venueRuns().windowBy('venue', 1), {
+    name: 'TypeError',
+    message: /Serie\.windowBy sorted must be a boolean, got number/,
+  })
+  assert.throws(() => venueRuns().windowBy(3), {
+    name: 'TypeError',
+    message: /Serie\.windowBy by must be a Selector, a Term/,
+  })
+})
+
+test('windowBy cuts runs of equal adjacent keys in row order', () => {
+  const quotes = venueRuns()
+  const windows = quotes.windowBy('venue')
+  assert.deepEqual(windowCuts(windows), [
+    [['XNAS'], 0, 2],
+    [['XNYS'], 2, 1],
+    [['XNAS'], 3, 1],
+  ])
+  for (const [key, window] of windows) {
+    assert.ok(window instanceof WindowSerie)
+    // Every window is over the serie object itself.
+    assert.strictEqual(window.serie, quotes)
+    assert.deepEqual(key.asJs(), [quotes.asJs()[window.offset].venue])
+  }
+  // `sorted` absent, `undefined` and `null` are its default, `false`.
+  for (const spelled of [
+    quotes.windowBy('venue', false),
+    quotes.windowBy('venue', undefined),
+    quotes.windowBy('venue', null),
+  ]) {
+    assert.deepEqual(windowCuts(spelled), windowCuts(windows))
+  }
+  // Two terms key a two-cell run in selector order; an array is projection
+  // texts and terms; a period keys its number since the epoch.
+  const expected = [
+    [['XNAS', 0], 0, 2],
+    [['XNYS', 1], 2, 1],
+    [['XNAS', 2], 3, 1],
+  ]
+  assert.deepEqual(windowCuts(quotes.windowBy('venue, minutes(ts, 15) as bucket')), expected)
+  assert.deepEqual(windowCuts(quotes.windowBy(['venue', 'minutes(ts, 15) as bucket'])), expected)
+  assert.deepEqual(
+    windowCuts(quotes.windowBy([Term.column('venue'), 'minutes(ts, 15) as bucket'])),
+    expected,
+  )
+  assert.deepEqual(windowCuts(quotes.windowBy(new Selector('venue'))), windowCuts(windows))
+  assert.deepEqual(windowCuts(quotes.windowBy(Term.column('venue'))), windowCuts(windows))
+  assert.deepEqual(windowCuts(quotes.windowBy('VENUE')), windowCuts(windows))
+  assert.equal(quotes.windowBy('count').length, 4)
+  assert.deepEqual(quoteColumn([]).windowBy('venue'), [])
+})
+
+test('windowBy keys consecutive absent rows as one null window', () => {
+  const quotes = quoteColumn([['XNAS', 1, 0], null, null, [null, 4, 0], [null, 5, 0]])
+  assert.deepEqual(windowCuts(quotes.windowBy('venue')), [
+    [['XNAS'], 0, 1],
+    [null, 1, 2],
+    [[null], 3, 2],
+  ])
+})
+
+test('windowBy sorted gathers the rows once in stable key order', () => {
+  const quotes = quoteColumn([['XNYS', 1, 0], ['XNAS', 2, 0], ['XNYS', 3, 0], null, ['XNAS', 5, 0]])
+  const windows = quotes.windowBy('venue', true)
+  assert.deepEqual(windowCuts(windows), [
+    [['XNAS'], 0, 2],
+    [['XNYS'], 2, 2],
+    [null, 4, 1],
+  ])
+  const gathered = windows[0][1].serie
+  assert.notStrictEqual(gathered, quotes)
+  assert.ok(gathered instanceof StructSerie)
+  assert.ok(windows.every(([, window]) => window.serie === gathered))
+  assert.ok(gathered.equals(quotes.intoTaken([1, 4, 0, 2, 3])))
+  // Over keys already in order, nothing is gathered.
+  const ordered = venueRuns()
+  const windowsInOrder = ordered.windowBy('minutes(ts, 15)', true)
+  assert.ok(windowsInOrder.every(([, window]) => window.serie === ordered))
+  assert.deepEqual(windowCuts(windowsInOrder), [
+    [[0], 0, 2],
+    [[1], 2, 1],
+    [[2], 3, 1],
+  ])
+})
+
+test('a column that is no record windows by its own name', () => {
+  const venues = Serie.fromScalars(new Field('venue', 'utf8', false), ['XNAS', 'XNAS', 'XNYS'])
+  const windows = venues.windowBy('venue')
+  assert.deepEqual(windowCuts(windows), [
+    [['XNAS'], 0, 2],
+    [['XNYS'], 2, 1],
+  ])
+  assert.deepEqual(
+    staticRecords(windows.map(([, window]) => window)),
+    [
+      { venue: 'XNAS', windownum: 0, rownum: 0 },
+      { venue: 'XNYS', windownum: 1, rownum: 2 },
+    ],
+  )
+})
+
+test('SerieReader.windowBy refuses before any pull', () => {
+  // A key that does not parse, or a `sorted` that is no boolean, leaves the
+  // reader usable.
+  const reader = SerieReader.fromSerie(venueRuns())
+  assert.throws(() => reader.windowBy('venue,'), /expected a value or a name/)
+  assert.throws(() => reader.windowBy('venue', 1), {
+    name: 'TypeError',
+    message: /SerieReader\.windowBy sorted must be a boolean/,
+  })
+  assert.equal([...reader].length, 1)
+  // A key the root refuses consumes it, as a refused cast does.
+  for (const [refused, reason] of [
+    ['*', /empty match key/],
+    ['tier', /tier/],
+    ['unnest(items)', /in a key/],
+    ['count as windownum', /collides with the static value "windownum"/],
+  ]) {
+    const spent = SerieReader.fromSerie(venueRuns())
+    assert.throws(() => spent.windowBy(refused), reason)
+    assert.throws(() => [...spent], /already been consumed/)
+    assert.throws(() => spent.windowBy('venue'), /already been consumed/)
+  }
+})
+
+test('SerieReader.windowBy yields one lazy reader per window', () => {
+  const quotes = venueRuns()
+  const stream = SerieReader.fromChunked(
+    ChunkedSerie.fromSeries([quotes.slice(0, 1), quotes.slice(1, 3)], quotes.field),
+  )
+  const walk = stream.windowBy('venue')
+  assert.ok(walk instanceof SerieReaderWindows)
+  assert.strictEqual(walk[Symbol.iterator](), walk)
+  // Both records are known before a batch is pulled; the root a held column
+  // streams under is required.
+  assert.ok(walk.field.equals(SerieReader.fromSerie(quotes).field))
+  assert.equal(walk.field.nullable, false)
+  assert.deepEqual(childNames(walk.staticField), ['venue', 'windownum', 'rownum'])
+  assert.equal(walk.staticField.name, 'quote')
+  const xnas = walk.next().value
+  assert.ok(xnas instanceof SerieReader)
+  assert.ok(xnas.field.equals(walk.field))
+  assert.deepEqual(xnas.staticValues.asJs(), { venue: 'XNAS', windownum: 0, rownum: 0 })
+  // The run crossing the batch edge is one window, one piece per batch.
+  assert.deepEqual(
+    [...xnas].map((piece) => piece.length),
+    [1, 1],
+  )
+  const xnys = walk.next().value
+  assert.deepEqual(readerRows(xnys), quotes.slice(2, 1).asJs())
+  const tail = walk.next().value
+  assert.deepEqual(tail.staticValues.asJs(), { venue: 'XNAS', windownum: 2, rownum: 3 })
+  assert.deepEqual(walk.next(), { done: true, value: undefined })
+  // Walking without reading throws nothing.
+  for (const window of SerieReader.fromSerie(quotes).windowBy('venue', null)) {
+    assert.ok(window instanceof SerieReader)
+  }
+  // The walk has no public constructor.
+  assert.throws(() => new SerieReaderWindows(), /handed out by SerieReader/)
+  assert.equal('_nextNative' in SerieReaderWindows.prototype, false)
+  assert.equal('_windowByNative' in SerieReader.prototype, false)
+})
+
+test('SerieReader.windowBy refuses a window the walk passed', () => {
+  const windows = [...SerieReader.fromSerie(venueRuns()).windowBy('venue')]
+  assert.equal(windows.length, 3)
+  assert.throws(
+    () => [...windows[0]],
+    /window 0 was passed by its walk with rows unread; read each window before taking the next/,
+  )
+  // Done after the refusal.
+  assert.deepEqual([...windows[0]], [])
+})
+
+test('SerieReader.windowBy sorted refuses a key going backwards naming batch and row', () => {
+  const quotes = quoteColumn([
+    ['XLON', 1, 0],
+    ['XNYS', 2, 0],
+    ['XNAS', 3, 0],
+  ])
+  const walk = SerieReader.fromSerie(quotes).windowBy('venue', true)
+  assert.equal(readerRows(walk.next().value).length, 1)
+  assert.equal(readerRows(walk.next().value).length, 1)
+  assert.throws(
+    () => walk.next(),
+    /window by expects keys in order, ascending with absent keys last: batch 0 row 2/,
+  )
+  // The walk ends after the refusal.
+  assert.deepEqual(walk.next(), { done: true, value: undefined })
+  assert.deepEqual([...walk], [])
+  // Unsorted, every key is windowed where it arrives.
+  const unsorted = SerieReader.fromSerie(quotes).windowBy('venue')
+  assert.deepEqual(
+    [...unsorted].map((window) => window.staticValues.asJs().venue),
+    ['XLON', 'XNYS', 'XNAS'],
+  )
+})
+
+test('a reader window states the record a held window states', () => {
+  const quotes = venueRuns()
+  for (const by of ['venue', 'minutes(ts, 15) as bucket, venue']) {
+    for (const sorted of [false, true]) {
+      const held = staticRecords(quotes.windowBy(by, sorted).map(([, window]) => window))
+      const walk = SerieReader.fromSerie(quotes).windowBy(by, sorted)
+      assert.ok(
+        walk.staticField.equals(
+          SerieReader.fromSerie(quotes).windowBy(by, sorted).staticField,
+        ),
+      )
+      if (by === 'venue' && sorted) {
+        // Out of order, the held rows gather and state no rownum, where the
+        // stream refuses the key going back.
+        assert.deepEqual(
+          held.map((record) => record.rownum),
+          [null, null],
+        )
+        assert.throws(() => [...walk], /expects keys in order/)
+        continue
+      }
+      assert.deepEqual(
+        [...walk].map((window) => window.staticValues.asJs()),
+        held,
+      )
+    }
+  }
+  // A window of a stream window keeps the outer cells and an absolute rownum.
+  const outer = SerieReader.fromSerie(quotes).windowBy('minutes(ts, 30) as half').next().value
+  assert.deepEqual(
+    [...outer.windowBy('venue')].map((window) => window.staticValues.asJs()),
+    [
+      { half: 0, venue: 'XNAS', windownum: 0, rownum: 0 },
+      { half: 0, venue: 'XNYS', windownum: 1, rownum: 2 },
+    ],
+  )
+})
+
+test('reader static values survive cast and hand over and never reach a batch', () => {
+  const quotes = venueRuns()
+  assert.equal(SerieReader.fromSerie(quotes).staticValues, null)
+  assert.equal(SerieReader.fromChunked(ChunkedSerie.fromSerie(quotes)).staticValues, null)
+  const window = SerieReader.fromSerie(quotes).windowBy('venue').next().value
+  const record = window.staticValues
+  assert.notEqual(record, null)
+  // The record is read through Scalar's own accessors.
+  assert.equal(record.get('venue').asJs(), 'XNAS')
+  assert.equal(record.path('.windownum').asJs(), 0)
+  assert.equal(record.has('rownum'), true)
+  assert.equal(record.get('count'), null)
+  const wider = new Field(
+    'quote',
+    'struct<venue: utf8, count: float64 not null, ts: timestamp(ns, UTC)>',
+    true,
+  )
+  const cast = window.cast(wider)
+  assert.ok(cast.staticValues.equals(record))
+  const batches = cast.intoArrowReader()
+  assert.ok(cast.staticValues.equals(record))
+  const table = batches.intoTable()
+  assert.deepEqual(
+    table.schema.fields.map((field) => field.name),
+    ['venue', 'count', 'ts'],
+  )
+  assert.equal(table.numRows, 2)
 })

@@ -2,17 +2,18 @@
 //! what it proves, what it refuses by name, and what crosses back out.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use arrow_array::{
     Array, ArrayRef, Int32Array, Int64Array, ListArray, RecordBatch, RecordBatchIterator,
-    StringArray, StructArray,
+    RecordBatchReader, StringArray, StructArray,
 };
 use arrow_buffer::{NullBuffer, OffsetBuffer};
-use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SerieReader, StructType,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Selector, Serie, SerieReader,
+    SerieReaderWindows, StructType, TimeUnit, Timezone,
 };
 
 /// The options a refusal is pinned under: a present value is never nulled.
@@ -1787,5 +1788,1172 @@ fn a_batch_that_lays_out_as_its_root_lands_as_it_stands_and_a_narrower_one_takes
         let refused =
             Serie::from_arrow_batch(Some(&root), &absent, options).expect_err("an absent id");
         assert!(refused.to_string().contains("id"), "{refused}");
+    }
+}
+
+/// One day in nanoseconds: what `days(ts)` cuts a quote's instant by.
+const DAY_NS: i64 = 86_400_000_000_000;
+
+/// `quote{venue: utf8, price: int64, ts: timestamp(ns, UTC)}`: the root
+/// every windowed stream below yields.
+fn window_root() -> Field {
+    DataType::from(
+        StructType::from_fields([
+            DataType::utf8().required_field("venue"),
+            DataType::Int64.required_field("price"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            }
+            .required_field("ts"),
+        ])
+        .expect("three children"),
+    )
+    .required_field("quote")
+}
+
+/// One quote: its venue, its price, and the day it was quoted on - the
+/// row [`window_root`] holds.
+fn window_quote(venue: &str, price: i64, day: i64) -> Scalar {
+    window_root()
+        .scalar(Scalar::from_sequence([
+            Scalar::from(venue),
+            Scalar::from(price),
+            Scalar::from(day * DAY_NS),
+        ]))
+        .expect("a quote row")
+}
+
+/// One Arrow batch of quotes under [`window_root`].
+fn window_batch(rows: &[(&str, i64, i64)]) -> RecordBatch {
+    Serie::from_scalars(
+        window_root(),
+        rows.iter()
+            .map(|(venue, price, day)| window_quote(venue, *price, *day)),
+    )
+    .expect("quote rows")
+    .into_arrow_batch()
+    .expect("a batch")
+}
+
+/// A stream of batches that counts what it hands over and flags its drop.
+struct Probed {
+    batches: std::vec::IntoIter<Result<RecordBatch, ArrowError>>,
+    schema: SchemaRef,
+    pulls: Arc<AtomicUsize>,
+    dropped: Arc<AtomicBool>,
+}
+
+impl Iterator for Probed {
+    type Item = Result<RecordBatch, ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self.batches.next();
+        if next.is_some() {
+            self.pulls.fetch_add(1, Ordering::SeqCst);
+        }
+        next
+    }
+}
+
+impl RecordBatchReader for Probed {
+    fn schema(&self) -> SchemaRef {
+        Arc::clone(&self.schema)
+    }
+}
+
+impl Drop for Probed {
+    fn drop(&mut self) {
+        self.dropped.store(true, Ordering::SeqCst);
+    }
+}
+
+/// What a [`Probed`] stream reports: the batches pulled from it and
+/// whether it was dropped.
+#[derive(Default)]
+struct Probe {
+    pulls: Arc<AtomicUsize>,
+    dropped: Arc<AtomicBool>,
+}
+
+impl Probe {
+    fn pulls(&self) -> usize {
+        self.pulls.load(Ordering::SeqCst)
+    }
+
+    fn dropped(&self) -> bool {
+        self.dropped.load(Ordering::SeqCst)
+    }
+
+    /// The quotes of `batches`, one Arrow batch each, read under
+    /// [`window_root`] through this probe.
+    fn reader(&self, batches: &[&[(&str, i64, i64)]]) -> SerieReader {
+        self.stream(batches.iter().map(|rows| Ok(window_batch(rows))).collect())
+    }
+
+    /// `batches` - failures included - read under [`window_root`].
+    fn stream(&self, batches: Vec<Result<RecordBatch, ArrowError>>) -> SerieReader {
+        let stream = Probed {
+            batches: batches.into_iter(),
+            schema: window_batch(&[]).schema(),
+            pulls: Arc::clone(&self.pulls),
+            dropped: Arc::clone(&self.dropped),
+        };
+        SerieReader::from_arrow_reader(Some(&window_root()), Box::new(stream), strict())
+            .expect("an identity plan")
+    }
+}
+
+/// A window's static values, as the cells of their row.
+fn static_cells(window: &SerieReader) -> Vec<Scalar> {
+    window
+        .static_values()
+        .expect("a window states its static values")
+        .value()
+        .sequence_rows()
+        .expect("a record row")
+        .into_owned()
+}
+
+/// Every row a window serves, each piece read as it comes.
+fn window_rows(window: SerieReader) -> Vec<Scalar> {
+    window
+        .flat_map(|piece| piece.expect("a piece").rows().into_owned())
+        .collect()
+}
+
+/// A one-cell key, as a window's key cells read.
+fn venue_key(venue: &str) -> Scalar {
+    Scalar::from_sequence([Scalar::from(venue)])
+}
+
+/// A refusal's path and reason.
+fn refusal(error: yggdryl::arrow::Error) -> (String, String) {
+    match error {
+        yggdryl::arrow::Error::Core(yggdryl::Error::InvalidRecord { path, reason }) => {
+            (path.to_string(), reason.to_string())
+        }
+        other => panic!("expected an invalid record, got {other}"),
+    }
+}
+
+#[test]
+fn window_by_on_a_reader_refuses_before_any_pull() {
+    let probe = Probe::default();
+    let rows: &[&[(&str, i64, i64)]] = &[&[("XNAS", 1, 0)]];
+    let root = window_root();
+    for sorted in [false, true] {
+        // The text's own parse error, before anything else.
+        let parsed = "venue,".parse::<Selector>().unwrap_err().to_string();
+        let refused = probe.reader(rows).window_by("venue,", sorted).unwrap_err();
+        assert_eq!(refused.to_string(), parsed);
+        // A key stating no column, named by the reader's root.
+        for refused in [
+            probe.reader(rows).window_by("*", sorted),
+            probe
+                .reader(rows)
+                .window_by(Selector::new(Vec::new()), sorted),
+        ] {
+            assert_eq!(
+                refusal(refused.unwrap_err()),
+                (
+                    "quote".to_owned(),
+                    "expected at least one column to window by, got an empty match key".to_owned()
+                )
+            );
+        }
+        let refused = probe
+            .reader(rows)
+            .window_by("unnest(items)", sorted)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("in a key"), "{refused}");
+        // The binder's own refusals, word for word.
+        for text in ["tier", "minutes(ts, 0)"] {
+            let selector = text.parse::<Selector>().expect("a selector");
+            let refused = probe
+                .reader(rows)
+                .window_by(&selector, sorted)
+                .unwrap_err()
+                .to_string();
+            assert_eq!(refused, selector.bind(&root).unwrap_err().to_string());
+        }
+        // A key cell named as a reserved static value, or folding onto one
+        // the reader states, is refused naming both.
+        let (path, reason) = refusal(
+            probe
+                .reader(rows)
+                .window_by("venue as RowNum", sorted)
+                .unwrap_err(),
+        );
+        assert_eq!(path, "quote");
+        assert!(
+            reason.contains("\"RowNum\"")
+                && reason.contains("\"rownum\"")
+                && reason.contains("alias"),
+            "{reason}"
+        );
+    }
+    assert_eq!(probe.pulls(), 0, "no refusal pulled a batch");
+
+    // A window's record keeps its venue: windowing the window by the venue
+    // again would name it twice, so it is refused naming both, and pulls
+    // nothing past what opened the window.
+    let walked = Probe::default();
+    let mut windows = walked
+        .reader(&[&[("XNAS", 1, 0), ("XNYS", 2, 0)]])
+        .window_by("venue", false)
+        .expect("a key");
+    let first = windows.next().expect("a window").expect("XNAS");
+    assert_eq!(walked.pulls(), 1);
+    let (path, reason) = refusal(first.window_by("Venue", false).unwrap_err());
+    assert_eq!(path, "quote");
+    assert!(
+        reason.contains("\"Venue\"") && reason.contains("\"venue\""),
+        "{reason}"
+    );
+    let second = windows.next().expect("a window").expect("XNYS");
+    assert!(second.window_by("venue as desk", true).is_ok());
+    assert_eq!(walked.pulls(), 1, "the refusal pulled nothing");
+
+    // A refused key spends nothing but the reader; an accepted one names
+    // what every window yields and states before the first pull.
+    let windows = probe
+        .reader(rows)
+        .window_by("venue, days(ts) as day", true)
+        .expect("a key");
+    assert_eq!(windows.field(), &root);
+    let names: Vec<&str> = windows
+        .static_field()
+        .fields()
+        .iter()
+        .map(Field::name)
+        .collect();
+    assert_eq!(names, ["venue", "day", "windownum", "rownum"]);
+    assert_eq!(windows.static_field().name(), "quote");
+    assert!(!windows.static_field().is_nullable());
+    assert_eq!(probe.pulls(), 0);
+}
+
+#[test]
+fn a_reader_windows_lazily_holding_one_batch() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    fn assert_send<T: Send>() {}
+    assert_send_sync::<SerieReaderWindows>();
+    assert_send::<SerieReader>();
+
+    let probe = Probe::default();
+    let batches: &[&[(&str, i64, i64)]] = &[
+        &[("XNAS", 1, 0), ("XNAS", 2, 0)],
+        &[("XNAS", 3, 0), ("XNYS", 4, 0)],
+        &[],
+        &[("XNYS", 5, 0), ("XLON", 6, 0)],
+    ];
+    let first = window_batch(batches[0]);
+    let mut windows = probe
+        .stream(vec![
+            Ok(first.clone()),
+            Ok(window_batch(batches[1])),
+            Ok(window_batch(batches[2])),
+            Ok(window_batch(batches[3])),
+        ])
+        .window_by("venue", false)
+        .expect("a key");
+    assert_eq!(
+        probe.pulls(),
+        0,
+        "nothing is pulled before the first window"
+    );
+    assert!(format!("{windows:?}").contains("SerieReaderWindows"));
+
+    // XNAS spans the first batch whole and the second's first row.
+    let mut xnas = windows.next().expect("a window").expect("XNAS");
+    assert_eq!(probe.pulls(), 1);
+    assert_eq!(xnas.field(), &window_root());
+    assert!(format!("{xnas:?}").contains("static_values"));
+    let whole = xnas.next().expect("a piece").expect("the first batch");
+    assert_eq!(whole.len(), 2);
+    // A batch a window spans whole is the landed batch itself: its buffers
+    // are the stream's own.
+    assert_eq!(
+        whole.children()[1]
+            .into_arrow_array()
+            .expect("prices")
+            .to_data()
+            .buffers()[0]
+            .as_ptr(),
+        first.column(1).to_data().buffers()[0].as_ptr(),
+    );
+    assert_eq!(probe.pulls(), 1, "a whole batch is served as it is held");
+    let edge = xnas
+        .next()
+        .expect("a piece")
+        .expect("the second batch's first row");
+    assert_eq!(edge.rows().into_owned(), [window_quote("XNAS", 3, 0)]);
+    assert_eq!(probe.pulls(), 2);
+    assert!(xnas.next().is_none());
+    assert!(xnas.next().is_none(), "fused");
+    assert_eq!(probe.pulls(), 2, "the window ended inside the held batch");
+
+    // XNYS opens in the held batch and reaches across the empty one.
+    let xnys = windows.next().expect("a window").expect("XNYS");
+    assert_eq!(probe.pulls(), 2, "the next window opens in the held batch");
+    assert_eq!(
+        static_cells(&xnys),
+        [
+            Scalar::from("XNYS"),
+            Scalar::from(1_u64),
+            Scalar::from(3_u64)
+        ]
+    );
+    assert_eq!(
+        window_rows(xnys),
+        [window_quote("XNYS", 4, 0), window_quote("XNYS", 5, 0)]
+    );
+    assert_eq!(probe.pulls(), 4, "the empty batch was pulled and skipped");
+
+    let xlon = windows.next().expect("a window").expect("XLON");
+    assert_eq!(
+        static_cells(&xlon),
+        [
+            Scalar::from("XLON"),
+            Scalar::from(2_u64),
+            Scalar::from(5_u64)
+        ]
+    );
+    assert_eq!(window_rows(xlon), [window_quote("XLON", 6, 0)]);
+    assert!(windows.next().is_none());
+    assert!(windows.next().is_none(), "fused");
+    assert!(probe.dropped(), "the stream is dropped at its end");
+}
+
+#[test]
+fn a_window_states_its_key_windownum_and_rownum() {
+    // The flat static record: the key cells, then the window's place and
+    // its first row's number.
+    let probe = Probe::default();
+    let mut windows = probe
+        .reader(&[&[("XNAS", 1, 0), ("XNYS", 2, 0)]])
+        .window_by("venue", false)
+        .expect("a key");
+    let expected = DataType::from(
+        StructType::from_fields([
+            DataType::utf8().required_field("venue"),
+            DataType::UInt64.required_field("windownum"),
+            DataType::UInt64.nullable_field("rownum"),
+        ])
+        .expect("three children"),
+    )
+    .required_field("quote");
+    assert_eq!(windows.static_field(), &expected);
+    let xnas = windows.next().expect("a window").expect("XNAS");
+    let statics = xnas.static_values().expect("stated");
+    assert_eq!(statics.field(), &expected);
+    assert_eq!(
+        statics.value(),
+        &Scalar::from_sequence([
+            Scalar::from("XNAS"),
+            Scalar::from(0_u64),
+            Scalar::from(0_u64)
+        ])
+    );
+
+    // A window of a window keeps the outer key cells, states its own place,
+    // and numbers its first row in the stream the outer windows were cut
+    // from.
+    let probe = Probe::default();
+    let days = probe
+        .reader(&[
+            &[("XNAS", 1, 0), ("XNYS", 2, 0)],
+            &[("XNYS", 3, 0), ("XNAS", 4, 1)],
+            &[("XNAS", 5, 1)],
+        ])
+        .window_by("days(ts) as day", false)
+        .expect("a key");
+    let mut seen = Vec::new();
+    for day in days {
+        let day = day.expect("a day");
+        let date = static_cells(&day)[0].clone();
+        let venues = day.window_by("venue", false).expect("an inner key");
+        let names: Vec<&str> = venues
+            .static_field()
+            .fields()
+            .iter()
+            .map(Field::name)
+            .collect();
+        assert_eq!(names, ["day", "venue", "windownum", "rownum"]);
+        for venue in venues {
+            let venue = venue.expect("a venue");
+            let cells = static_cells(&venue);
+            assert_eq!(cells[0], date);
+            let rows = window_rows(venue);
+            seen.push((
+                cells[1].clone(),
+                cells[2].clone(),
+                cells[3].clone(),
+                rows.len(),
+            ));
+        }
+    }
+    assert_eq!(
+        seen,
+        [
+            (
+                Scalar::from("XNAS"),
+                Scalar::from(0_u64),
+                Scalar::from(0_u64),
+                1
+            ),
+            (
+                Scalar::from("XNYS"),
+                Scalar::from(1_u64),
+                Scalar::from(1_u64),
+                2
+            ),
+            (
+                Scalar::from("XNAS"),
+                Scalar::from(0_u64),
+                Scalar::from(3_u64),
+                2
+            ),
+        ]
+    );
+}
+
+#[test]
+fn a_sorted_reader_refuses_a_key_going_backwards_naming_batch_and_row() {
+    let text = |venue: &str| venue_key(venue).as_serie().expect("a run").to_string();
+    let expected = |batch: usize, row: usize, key: &str, previous: &str| {
+        format!(
+            "window by expects keys in order, ascending with absent keys last: batch {batch} row \
+             {row} keys {} after {}; window it unsorted, or hold it \
+             (ChunkedSerie::from_serie_reader) and window it sorted",
+            text(key),
+            text(previous)
+        )
+    };
+
+    // A descent inside a batch: the windows before it are delivered whole,
+    // the last one ending where the key went back.
+    let probe = Probe::default();
+    let mut windows = probe
+        .reader(&[&[("XLON", 1, 0), ("XNYS", 2, 0), ("XNAS", 3, 0)]])
+        .window_by("venue", true)
+        .expect("a key");
+    let xlon = windows.next().expect("a window").expect("XLON");
+    assert_eq!(window_rows(xlon), [window_quote("XLON", 1, 0)]);
+    let xnys = windows.next().expect("a window").expect("XNYS");
+    assert_eq!(window_rows(xnys), [window_quote("XNYS", 2, 0)]);
+    let refused = windows.next().expect("the refusal").unwrap_err();
+    assert_eq!(
+        refusal(refused),
+        ("$[2]".to_owned(), expected(0, 2, "XNAS", "XNYS"))
+    );
+    assert!(windows.next().is_none(), "fused after the refusal");
+    assert!(probe.dropped(), "the stream is dropped at the refusal");
+
+    // A descent at an edge, an empty batch between: empty batches count.
+    let probe = Probe::default();
+    let mut windows = probe
+        .reader(&[
+            &[("XLON", 1, 0), ("XNYS", 2, 0)],
+            &[],
+            &[("XNAS", 3, 0), ("XNAS", 4, 0)],
+        ])
+        .window_by("venue", true)
+        .expect("a key");
+    let xlon = windows.next().expect("a window").expect("XLON");
+    assert_eq!(window_rows(xlon).len(), 1);
+    let xnys = windows.next().expect("a window").expect("XNYS");
+    // XNYS ends at the edge: its reader pulls the next batch, which opens
+    // another key, and ends.
+    assert_eq!(window_rows(xnys).len(), 1);
+    assert!(!probe.dropped());
+    let refused = windows.next().expect("the refusal").unwrap_err();
+    assert_eq!(
+        refusal(refused),
+        ("$[2]".to_owned(), expected(2, 0, "XNAS", "XNYS"))
+    );
+    assert!(windows.next().is_none());
+    assert!(probe.dropped());
+
+    // Unsorted, the same stream windows every key where it arrives.
+    let probe = Probe::default();
+    let venues: Vec<Scalar> = probe
+        .reader(&[&[("XLON", 1, 0), ("XNYS", 2, 0)], &[], &[("XNAS", 3, 0)]])
+        .window_by("venue", false)
+        .expect("a key")
+        .map(|window| static_cells(&window.expect("a window"))[0].clone())
+        .collect();
+    assert_eq!(
+        venues,
+        [
+            Scalar::from("XLON"),
+            Scalar::from("XNYS"),
+            Scalar::from("XNAS")
+        ]
+    );
+}
+
+#[test]
+fn a_window_passed_by_the_walk_refuses_to_be_read() {
+    let batches: &[&[(&str, i64, i64)]] = &[
+        &[("XNAS", 1, 0), ("XNAS", 2, 0)],
+        &[("XNYS", 3, 0), ("XLON", 4, 0)],
+    ];
+    let passed = "window 0 was passed by its walk with rows unread; read each window before \
+                  taking the next";
+
+    // Taken past with rows unread: the window refuses once, then ends.
+    let probe = Probe::default();
+    let mut windows = probe
+        .reader(batches)
+        .window_by("venue", false)
+        .expect("a key");
+    let mut xnas = windows.next().expect("a window").expect("XNAS");
+    let xnys = windows.next().expect("a window").expect("XNYS");
+    assert_eq!(
+        refusal(xnas.next().expect("the refusal").unwrap_err()),
+        ("quote".to_owned(), passed.to_owned())
+    );
+    assert!(xnas.next().is_none(), "fused after the refusal");
+    assert_eq!(window_rows(xnys), [window_quote("XNYS", 3, 0)]);
+
+    // Every row served, though the walk moved on before it said so: it ends.
+    let probe = Probe::default();
+    let mut windows = probe
+        .reader(batches)
+        .window_by("venue", false)
+        .expect("a key");
+    let mut xnas = windows.next().expect("a window").expect("XNAS");
+    assert_eq!(
+        xnas.next()
+            .expect("a piece")
+            .expect("the first batch")
+            .len(),
+        2
+    );
+    let xnys = windows.next().expect("a window").expect("XNYS");
+    assert!(xnas.next().is_none());
+    assert_eq!(window_rows(xnys).len(), 1);
+
+    // Dropped unread: it costs only the pull of its rows.
+    let probe = Probe::default();
+    let mut windows = probe
+        .reader(batches)
+        .window_by("venue", false)
+        .expect("a key");
+    drop(windows.next().expect("a window").expect("XNAS"));
+    let xnys = windows.next().expect("a window").expect("XNYS");
+    assert_eq!(window_rows(xnys), [window_quote("XNYS", 3, 0)]);
+
+    // Collected before any is read, every window was passed - loud, never
+    // a silent loss.
+    let probe = Probe::default();
+    let collected: Vec<SerieReader> = probe
+        .reader(batches)
+        .window_by("venue", false)
+        .expect("a key")
+        .collect::<Result<_, _>>()
+        .expect("three windows");
+    assert_eq!(collected.len(), 3);
+    for (place, mut window) in collected.into_iter().enumerate() {
+        let (_, reason) = refusal(window.next().expect("the refusal").unwrap_err());
+        assert!(
+            reason.starts_with(&format!("window {place} was passed")),
+            "{reason}"
+        );
+        assert!(window.next().is_none());
+    }
+
+    // A window outliving its walk reads to its end.
+    let probe = Probe::default();
+    let mut windows = probe
+        .reader(&[&[("XNAS", 1, 0)], &[("XNAS", 2, 0)], &[("XNYS", 3, 0)]])
+        .window_by("venue", false)
+        .expect("a key");
+    let xnas = windows.next().expect("a window").expect("XNAS");
+    drop(windows);
+    assert_eq!(
+        window_rows(xnas),
+        [window_quote("XNAS", 1, 0), window_quote("XNAS", 2, 0)]
+    );
+}
+
+#[test]
+fn a_reader_error_mid_window_is_the_pullers_item_and_fuses() {
+    let failing = |probe: &Probe| {
+        probe.stream(vec![
+            Ok(window_batch(&[("XNAS", 1, 0), ("XNAS", 2, 0)])),
+            Err(ArrowError::ComputeError("the wire was cut".to_owned())),
+            Ok(window_batch(&[("XNYS", 3, 0)])),
+        ])
+    };
+
+    // The window pulls the failure: it is the window's item, once.
+    let probe = Probe::default();
+    let mut windows = failing(&probe).window_by("venue", false).expect("a key");
+    let mut xnas = windows.next().expect("a window").expect("XNAS");
+    assert_eq!(
+        xnas.next()
+            .expect("a piece")
+            .expect("the first batch")
+            .len(),
+        2
+    );
+    let failure = xnas.next().expect("the failure").unwrap_err().to_string();
+    assert!(failure.contains("the wire was cut"), "{failure}");
+    assert!(xnas.next().is_none(), "the window fused");
+    assert!(windows.next().is_none(), "the walk fused");
+    assert!(
+        probe.dropped(),
+        "the stream is dropped where the failure arrived"
+    );
+    assert_eq!(probe.pulls(), 2, "nothing is pulled past the failure");
+
+    // The walk pulls the failure while it skips a window: the walk's item,
+    // and the window it was skipping is never presented as complete.
+    let probe = Probe::default();
+    let mut windows = failing(&probe).window_by("venue", false).expect("a key");
+    let mut xnas = windows.next().expect("a window").expect("XNAS");
+    let failure = windows
+        .next()
+        .expect("the failure")
+        .unwrap_err()
+        .to_string();
+    assert!(failure.contains("the wire was cut"), "{failure}");
+    assert!(windows.next().is_none(), "the walk fused");
+    let (_, reason) = refusal(xnas.next().expect("the refusal").unwrap_err());
+    assert!(reason.starts_with("window 0 was passed"), "{reason}");
+    assert!(xnas.next().is_none());
+    assert!(probe.dropped());
+
+    // A batch the stream's plan refuses is a failure like any other.
+    let probe = Probe::default();
+    let schema = Arc::new(Schema::new(vec![
+        ArrowField::new("venue", ArrowDataType::Utf8, true),
+        ArrowField::new("price", ArrowDataType::Int64, false),
+        ArrowField::new(
+            "ts",
+            ArrowDataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into())),
+            false,
+        ),
+    ]));
+    let absent = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![
+            Arc::new(StringArray::from(vec![None::<&str>])) as ArrayRef,
+            Arc::new(Int64Array::from(vec![1_i64])) as ArrayRef,
+            Arc::new(arrow_array::TimestampNanosecondArray::from(vec![0_i64]).with_timezone("UTC"))
+                as ArrayRef,
+        ],
+    )
+    .expect("a batch");
+    let stream = Probed {
+        batches: vec![Ok(absent)].into_iter(),
+        schema,
+        pulls: Arc::clone(&probe.pulls),
+        dropped: Arc::clone(&probe.dropped),
+    };
+    let mut windows =
+        SerieReader::from_arrow_reader(Some(&window_root()), Box::new(stream), strict())
+            .expect("a plan")
+            .window_by("venue", false)
+            .expect("a key");
+    let failure = windows
+        .next()
+        .expect("the failure")
+        .unwrap_err()
+        .to_string();
+    assert!(failure.contains("venue"), "{failure}");
+    assert!(windows.next().is_none());
+    assert!(probe.dropped());
+}
+
+#[test]
+fn a_foreign_nan_at_a_batch_edge_moves_no_window_boundary() {
+    let root = DataType::from(
+        StructType::from_fields([DataType::Float64.nullable_field("px")]).expect("one child"),
+    )
+    .required_field("tick");
+    let schema = Arc::new(Schema::new(vec![ArrowField::new(
+        "px",
+        ArrowDataType::Float64,
+        true,
+    )]));
+    let batch = |values: Vec<f64>| {
+        RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![Arc::new(arrow_array::Float64Array::from(values)) as ArrayRef],
+        )
+        .expect("a batch")
+    };
+    let foreign = f64::from_bits(0x7ff8_0000_0000_0001);
+    for sorted in [false, true] {
+        let reader = batch_reader(
+            Arc::clone(&schema),
+            [batch(vec![1.0, f64::NAN]), batch(vec![foreign, f64::NAN])],
+        );
+        let windows: Vec<(Vec<Scalar>, usize)> =
+            SerieReader::from_arrow_reader(Some(&root), reader, strict())
+                .expect("an identity plan")
+                .window_by("px", sorted)
+                .expect("a key")
+                .map(|window| {
+                    let window = window.expect("a window");
+                    let cells = static_cells(&window);
+                    (cells, window_rows(window).len())
+                })
+                .collect();
+        assert_eq!(windows.len(), 2, "sorted {sorted}: {windows:?}");
+        assert_eq!(windows[0].1, 1);
+        assert_eq!(windows[1].1, 3, "every NaN is one key, across the edge");
+        assert_eq!(
+            windows[1].0[1..],
+            [Scalar::from(1_u64), Scalar::from(1_u64)]
+        );
+    }
+}
+
+#[test]
+fn held_and_stream_windows_state_the_same_record() {
+    // Unsorted, and sorted over keys in order, a held serie's windows and
+    // its stream's windows state one record field and one record, window by
+    // window - and so do the windows of their first windows.
+    let mixed = [
+        ("XNAS", 1, 0),
+        ("XNAS", 2, 0),
+        ("XNYS", 3, 1),
+        ("XNAS", 4, 1),
+    ];
+    let ordered = [
+        ("XLON", 1, 0),
+        ("XNAS", 2, 0),
+        ("XNAS", 3, 1),
+        ("XNYS", 4, 1),
+    ];
+    for (sorted, rows) in [(false, mixed), (true, ordered)] {
+        let rows = Serie::from_scalars(
+            window_root(),
+            rows.iter()
+                .map(|(venue, price, day)| window_quote(venue, *price, *day)),
+        )
+        .expect("quotes");
+        let held = rows.window_by("venue", sorted).expect("held windows");
+        let held_records: Vec<Scalar> = held
+            .iter()
+            .map(|(_, window)| {
+                let statics = window.static_values().expect("a held record");
+                assert!(std::ptr::eq(statics.field(), held.static_field()));
+                statics.into_value()
+            })
+            .collect();
+        let streamed = SerieReader::from_serie(rows.clone())
+            .expect("a held stream")
+            .window_by("venue", sorted)
+            .expect("stream windows");
+        assert_eq!(
+            streamed.static_field(),
+            held.static_field(),
+            "sorted {sorted}"
+        );
+        let stream_records: Vec<Scalar> = streamed
+            .map(|window| {
+                let window = window.expect("a window");
+                let statics = window.static_values().expect("a stream record");
+                assert_eq!(statics.field(), held.static_field());
+                statics.into_value()
+            })
+            .collect();
+        assert_eq!(stream_records, held_records, "sorted {sorted}");
+
+        // The first window windowed again: the outer key cell kept, the
+        // rownum absolute.
+        let (_, first) = held.iter().next().expect("a first held window");
+        let inner = first.window_by("days(ts) as day", sorted).expect("held");
+        let held_inner: Vec<Scalar> = inner
+            .iter()
+            .map(|(_, window)| window.static_values().expect("a record").into_value())
+            .collect();
+        let mut windows = SerieReader::from_serie(rows.clone())
+            .expect("a held stream")
+            .window_by("venue", sorted)
+            .expect("stream windows");
+        let first = windows.next().expect("a window").expect("the first");
+        let streamed = first.window_by("days(ts) as day", sorted).expect("stream");
+        assert_eq!(
+            streamed.static_field(),
+            inner.static_field(),
+            "sorted {sorted}"
+        );
+        let stream_inner: Vec<Scalar> = streamed
+            .map(|window| Scalar::from_sequence(static_cells(&window.expect("a window"))))
+            .collect();
+        assert_eq!(stream_inner, held_inner, "sorted {sorted}");
+        assert!(!stream_inner.is_empty());
+    }
+
+    // A nullable record column holding no absent row streams under its
+    // required root, and its held windows state that root's record: every
+    // key cell as the key declares it.
+    let rows = Serie::from_scalars(
+        window_root().with_nullable(true),
+        [("XNAS", 1, 0), ("XNYS", 2, 0)]
+            .iter()
+            .map(|(venue, price, day)| window_quote(venue, *price, *day)),
+    )
+    .expect("quotes under a nullable root");
+    let held = rows.window_by("venue", false).expect("held windows");
+    let streamed = SerieReader::from_serie(rows.clone())
+        .expect("a held stream")
+        .window_by("venue", false)
+        .expect("stream windows");
+    assert_eq!(streamed.static_field(), held.static_field());
+    assert!(!held.static_field().fields()[0].is_nullable());
+    let held_records: Vec<Scalar> = held
+        .iter()
+        .map(|(_, window)| window.static_values().expect("a record").into_value())
+        .collect();
+    let stream_records: Vec<Scalar> = streamed
+        .map(|window| Scalar::from_sequence(static_cells(&window.expect("a window"))))
+        .collect();
+    assert_eq!(stream_records, held_records);
+
+    // Sorted over keys out of order, the held windows are gathered and have
+    // no number; a stream refuses rather than reorder.
+    let rows = Serie::from_scalars(
+        window_root(),
+        [("XNYS", 1, 0), ("XNAS", 2, 0)]
+            .iter()
+            .map(|(venue, price, day)| window_quote(venue, *price, *day)),
+    )
+    .expect("quotes");
+    let held = rows.window_by("venue", true).expect("held windows");
+    let rownums: Vec<Scalar> = held
+        .iter()
+        .map(|(_, window)| {
+            let statics = window.static_values().expect("a record");
+            let index = statics.field().index_of("rownum").expect("a rownum");
+            statics.get(index).expect("a cell").into_owned()
+        })
+        .collect();
+    assert_eq!(rownums, [Scalar::Null, Scalar::Null]);
+}
+
+#[test]
+fn static_values_are_carried_by_cast_and_dropped_at_the_transport_face() {
+    // A reader that is no window states none.
+    let probe = Probe::default();
+    let reader = probe.reader(&[&[("XNAS", 1, 0)]]);
+    assert!(reader.static_values().is_none());
+    let windows = probe
+        .reader(&[&[("XNAS", 1, 0), ("XNYS", 2, 0)]])
+        .window_by("venue", false)
+        .expect("a key");
+    let record = windows.static_field().clone();
+    let mut windows = windows.map(|window| window.expect("a window"));
+    let xnas = windows.next().expect("XNAS");
+    assert_eq!(xnas.field(), &window_root(), "never a column");
+    let statics = xnas.static_values().expect("stated");
+    assert_eq!(statics.field(), &record);
+    let stated = statics.value().clone();
+    assert_eq!(
+        stated,
+        Scalar::from_sequence([
+            Scalar::from("XNAS"),
+            Scalar::from(0_u64),
+            Scalar::from(0_u64)
+        ])
+    );
+
+    // A cast keeps them: they say where the rows come from.
+    let wider = window_root_priced(DataType::Float64);
+    let cast = xnas
+        .cast(&wider, ArrowCastOptions::new())
+        .expect("int64 widens");
+    let kept = cast.static_values().expect("kept");
+    assert_eq!((kept.field(), kept.value()), (&record, &stated));
+
+    // A held table keeps rows only, and the transport face is a schema.
+    let held = ChunkedSerie::from_serie_reader(cast).expect("a held table");
+    assert_eq!(held.len(), 1);
+    let xnys = windows.next().expect("XNYS");
+    assert!(xnys.static_values().is_some());
+    let transport =
+        SerieReader::from_arrow_reader(None, xnys.into_arrow_reader(), ArrowCastOptions::new())
+            .expect("an identity plan");
+    assert!(transport.static_values().is_none());
+    assert!(windows.next().is_none());
+}
+
+#[test]
+fn a_window_sub_reader_casts_and_crosses_as_batches_lazily() {
+    let wider = DataType::from(
+        StructType::from_fields([
+            DataType::utf8().required_field("venue"),
+            DataType::Float64.required_field("price"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            }
+            .required_field("ts"),
+        ])
+        .expect("three children"),
+    )
+    .required_field("quote");
+    let probe = Probe::default();
+    let mut windows = probe
+        .reader(&[
+            &[("XNAS", 1, 0), ("XNAS", 2, 0)],
+            &[("XNAS", 3, 0), ("XNYS", 4, 0)],
+        ])
+        .window_by("venue", false)
+        .expect("a key");
+
+    // Cast: each piece is cast as it is served, the static values kept.
+    let xnas = windows.next().expect("a window").expect("XNAS");
+    let stated = static_cells(&xnas);
+    let mut cast = xnas
+        .cast(&wider, ArrowCastOptions::new())
+        .expect("int64 widens");
+    assert_eq!(cast.field(), &wider);
+    assert_eq!(static_cells(&cast), stated);
+    assert_eq!(probe.pulls(), 1, "a cast pulls nothing");
+    let piece = cast.next().expect("a piece").expect("cast");
+    assert_eq!(piece.field(), Some(&wider));
+    assert_eq!(
+        piece.rows()[1],
+        wider
+            .scalar(Scalar::from_sequence([
+                Scalar::from("XNAS"),
+                Scalar::from(2.0_f64),
+                Scalar::from(0_i64),
+            ]))
+            .expect("a wider quote")
+    );
+    let rest: Vec<Serie> = cast.map(|piece| piece.expect("cast")).collect();
+    assert_eq!(rest.len(), 1);
+    assert_eq!(rest[0].field(), Some(&wider));
+
+    // Transport: one batch per piece, pulled as the batches are.
+    let xnys = windows.next().expect("a window").expect("XNYS");
+    let pulls = probe.pulls();
+    let mut batches = xnys.into_arrow_reader();
+    assert_eq!(batches.schema(), window_batch(&[]).schema());
+    assert_eq!(
+        probe.pulls(),
+        pulls,
+        "the transport face pulls nothing up front"
+    );
+    let batch = batches.next().expect("a batch").expect("the piece");
+    assert_eq!(batch.num_rows(), 1);
+    assert!(batches.next().is_none());
+    assert!(windows.next().is_none());
+}
+
+/// [`window_root`] with its price at `dtype`.
+fn window_root_priced(dtype: DataType) -> Field {
+    DataType::from(
+        StructType::from_fields([
+            DataType::utf8().required_field("venue"),
+            dtype.required_field("price"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            }
+            .required_field("ts"),
+        ])
+        .expect("three children"),
+    )
+    .required_field("quote")
+}
+
+/// Every row `reader` yields, piece after piece.
+fn reader_rows(reader: SerieReader) -> Vec<Scalar> {
+    reader
+        .flat_map(|piece| piece.expect("a piece").rows().into_owned())
+        .collect()
+}
+
+#[test]
+fn a_reader_cast_twice_lands_every_cast_in_order() {
+    // Each cast lands what the one before it cast: an int64 price widened
+    // to float64 reaches the second cast as float64 and leaves it as text -
+    // for a window's reader and for a stream opened under a real cast alike,
+    // exactly what a held reader cast the same two ways answers, and on the
+    // transport face too.
+    let float = window_root_priced(DataType::Float64);
+    let text = window_root_priced(DataType::utf8());
+    let twice = |reader: SerieReader| {
+        reader
+            .cast(&float, ArrowCastOptions::new())
+            .expect("int64 widens")
+            .cast(&text, ArrowCastOptions::new())
+            .expect("float64 renders")
+    };
+    let held = |quotes: &[(&str, i64, i64)]| {
+        SerieReader::from_serie(
+            Serie::from_scalars(
+                window_root(),
+                quotes
+                    .iter()
+                    .map(|(venue, price, day)| window_quote(venue, *price, *day)),
+            )
+            .expect("quotes"),
+        )
+        .expect("a held stream")
+    };
+    let expected = reader_rows(twice(held(&[
+        ("XNAS", 1, 0),
+        ("XNAS", 2, 0),
+        ("XNAS", 3, 0),
+    ])));
+    assert_eq!(
+        expected[0].sequence_rows().expect("a row")[1],
+        Scalar::from("1.0")
+    );
+
+    let probe = Probe::default();
+    let mut windows = probe
+        .reader(&[
+            &[("XNAS", 1, 0), ("XNAS", 2, 0)],
+            &[("XNAS", 3, 0), ("XNYS", 4, 0)],
+        ])
+        .window_by("venue", false)
+        .expect("a key");
+    let xnas = twice(windows.next().expect("a window").expect("XNAS"));
+    assert_eq!(xnas.field(), &text);
+    assert_eq!(reader_rows(xnas), expected);
+    let xnys = twice(windows.next().expect("a window").expect("XNYS"));
+    let batches: Vec<RecordBatch> = xnys.into_arrow_reader().map(Result::unwrap).collect();
+    assert_eq!(batches.len(), 1);
+    assert_eq!(batches[0].column(1).data_type(), &ArrowDataType::Utf8);
+    assert!(windows.next().is_none());
+
+    // A stream whose first plan widens int32 to int64, then cast twice.
+    let narrow = narrow_quote_batch();
+    let middle = quotes_root_with_id(DataType::Int64);
+    let float = quotes_root_with_id(DataType::Float64);
+    let text = quotes_root_with_id(DataType::utf8());
+    let twice = |reader: SerieReader| {
+        reader
+            .cast(&float, ArrowCastOptions::new())
+            .expect("int64 widens")
+            .cast(&text, ArrowCastOptions::new())
+            .expect("float64 renders")
+    };
+    let stream = || {
+        twice(
+            SerieReader::from_arrow_reader(
+                Some(&middle),
+                batch_reader(narrow.schema(), vec![narrow.clone(); 2]),
+                ArrowCastOptions::new(),
+            )
+            .expect("int32 widens to int64"),
+        )
+    };
+    let landed = Serie::from_arrow_batch(Some(&middle), &narrow, ArrowCastOptions::new())
+        .expect("int32 widens to int64");
+    let once = reader_rows(twice(
+        SerieReader::from_serie(landed).expect("a held stream"),
+    ));
+    assert_eq!(
+        once[0].sequence_rows().expect("a row")[0],
+        Scalar::from("1.0")
+    );
+    assert_eq!(reader_rows(stream()), [once.clone(), once].concat());
+    let batches: Vec<RecordBatch> = stream().into_arrow_reader().map(Result::unwrap).collect();
+    assert_eq!(batches.len(), 2);
+    assert_eq!(batches[0].column(0).data_type(), &ArrowDataType::Utf8);
+}
+
+#[test]
+fn a_pull_that_panics_poisons_the_walk_into_one_internal_error() {
+    let first = window_batch(&[("XNAS", 1, 0)]);
+    let batches = [Some(first), None].into_iter().map(|batch| match batch {
+        Some(batch) => Ok(batch),
+        None => panic!("the stream panicked"),
+    });
+    let reader: BatchReader = Box::new(RecordBatchIterator::new(
+        batches,
+        window_batch(&[]).schema(),
+    ));
+    let mut windows = SerieReader::from_arrow_reader(Some(&window_root()), reader, strict())
+        .expect("an identity plan")
+        .window_by("venue", false)
+        .expect("a key");
+    let mut xnas = windows.next().expect("a window").expect("XNAS");
+    assert_eq!(xnas.next().expect("a piece").expect("the batch").len(), 1);
+    // The window's next pull panics while it holds the walk.
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| xnas.next()));
+    assert!(panicked.is_err());
+    let failure = windows
+        .next()
+        .expect("the failure")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        failure.contains("SerieReaderWindows: a pull panicked while holding its walk"),
+        "{failure}"
+    );
+    assert!(windows.next().is_none(), "fused");
+    // The window open when it panicked is never presented as complete.
+    let (_, reason) = refusal(xnas.next().expect("the refusal").unwrap_err());
+    assert!(reason.starts_with("window 0 was passed"), "{reason}");
+    assert!(xnas.next().is_none());
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    //! The walk's checked `rownum` arithmetic, which no caller reaches: a
+    //! window's record is the crate's alone, so a `rownum` near the largest
+    //! `uint64` is stated through `yggdryl::internals`.
+
+    use yggdryl::internals::serie_arrow::with_static_values;
+    use yggdryl::{DataType, FieldRecord, Scalar, StructType};
+
+    use super::{Probe, refusal, static_cells, window_rows};
+
+    #[test]
+    fn a_rownum_stated_too_near_its_largest_is_refused_naming_the_root() {
+        // The first window numbers its first row at the stated rownum
+        // itself; the next would number its own past the largest uint64, so
+        // it is refused - sorted or not - and the walk ends, its stream
+        // dropped.
+        let part = DataType::from(
+            StructType::from_fields([DataType::UInt64.required_field("rownum")])
+                .expect("one child"),
+        )
+        .required_field("part");
+        for sorted in [false, true] {
+            let probe = Probe::default();
+            let mut windows = with_static_values(
+                probe.reader(&[&[("XNAS", 1, 0), ("XNAS", 2, 0), ("XNYS", 3, 0)]]),
+                FieldRecord::new(&part, Scalar::from_sequence([Scalar::from(u64::MAX)]))
+                    .expect("a row"),
+            )
+            .window_by("venue", sorted)
+            .expect("a key");
+            let xnas = windows.next().expect("a window").expect("XNAS");
+            assert_eq!(
+                static_cells(&xnas),
+                [
+                    Scalar::from("XNAS"),
+                    Scalar::from(0_u64),
+                    Scalar::from(u64::MAX)
+                ]
+            );
+            assert_eq!(window_rows(xnas).len(), 2);
+            let (path, reason) = refusal(windows.next().expect("the refusal").unwrap_err());
+            assert_eq!(path, "quote");
+            assert!(
+                reason.contains("window 1")
+                    && reason.contains("2 rows")
+                    && reason.contains(&u64::MAX.to_string()),
+                "{reason}"
+            );
+            assert!(windows.next().is_none());
+            assert!(probe.dropped(), "the walk dropped its stream");
+        }
     }
 }

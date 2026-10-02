@@ -1,7 +1,7 @@
-//! JavaScript's native view of the shared [`SerieSlice`] and
-//! [`SerieSliceMut`]: a window over a serie that reads and writes through it.
+//! JavaScript's native view of the shared [`WindowSerie`] and
+//! [`WindowSerieMut`]: a window over a serie that reads and writes through it.
 //!
-//! [`JsSerieSlice`] holds the parent `Serie` object, an offset and a length,
+//! [`JsWindowSerie`] holds the parent `Serie` object, an offset and a length,
 //! and nothing else. Every call takes the core window over the parent as the
 //! parent stands at that call - a read through [`Serie::window`], a write
 //! through [`Serie::window_mut`] - so the one class is both the shared and the
@@ -9,16 +9,30 @@
 //! on the parent is visible through it, and a window the parent no longer
 //! reaches is refused by the core at the call that reads it. Every index is
 //! window-relative and checked by the core.
+//!
+//! A window `windowBy` lent also holds where it was lent: the core's own
+//! windows of that call - one value every window of the call shares, holding
+//! the rows they were cut over (`SerieWindows::into_owned`, buffers shared,
+//! no row copied) - and its place among them, the single owner of its
+//! record. Its record - `staticValues` - and a `windowBy` of it redirect to
+//! the core window the core lends at that place, so a window of a window
+//! keeps the outer cells and an absolute `rownum` exactly as the core's
+//! does.
 
-use napi::bindgen_prelude::{ClassInstance, Either, Env, Reference, Result};
+use std::sync::Arc;
+
+use napi::bindgen_prelude::{ClassInstance, Either, Env, JavaScriptClassExt, Reference, Result};
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
-use yggdryl::{Serie, SerieSlice, SerieSliceMut};
+use yggdryl::{Serie, SerieWindows, WindowSerie, WindowSerieMut};
 
 use crate::datatype::JsDataType;
+use crate::expression::{SelectorInput, selector_from_input};
 use crate::field::JsField;
 use crate::napi_error;
-use crate::serie::{JsSerie, JsSerieIterator, count, groups, position, rows_of, sort_options};
+use crate::serie::{
+    JsSerie, JsSerieIterator, count, groups, position, rows_of, sort_options, static_record,
+};
 use crate::text::codec::{
     JsScalar, checked_depth, value_to_transport, value_to_transport_with_field,
 };
@@ -31,24 +45,78 @@ use crate::text::codec::{
 /// a read borrows the serie for that call, a write borrows it mutably for that
 /// call, and a write never grows or shrinks what the window views. Identity
 /// is the window's rows alone, as a serie's is its rows.
-#[napi(js_name = "SerieSlice")]
-pub struct JsSerieSlice {
+#[napi(js_name = "WindowSerie")]
+pub struct JsWindowSerie {
     /// The serie object the window reads and writes through.
     serie: Reference<JsSerie>,
     offset: usize,
     len: usize,
+    /// Where `windowBy` lent this window - the windows of that call, shared
+    /// by every window it lent and holding the rows they were cut over, and
+    /// its place among them - or `None` for every other window.
+    origin: Option<(Arc<SerieWindows<'static>>, usize)>,
 }
 
-impl JsSerieSlice {
+impl JsWindowSerie {
     /// The window `offset..offset + len` over `serie`, refused by the core
     /// when it reaches past the end.
     pub(crate) fn new(serie: Reference<JsSerie>, offset: usize, len: usize) -> Result<Self> {
         serie.inner.window(offset, len).map_err(napi_error)?;
-        Ok(Self { serie, offset, len })
+        Ok(Self {
+            serie,
+            offset,
+            len,
+            origin: None,
+        })
+    }
+
+    /// Every window `windows` lends, each beside its key: over `holder` -
+    /// the serie object whose rows `windowed` holds - or, where `sorted`
+    /// gathered the rows into a copy the windows own, over one new serie of
+    /// that copy, which every window shares. The windows are held once,
+    /// owning what they view, and each window lent keeps them and its place
+    /// among them, for its record.
+    pub(crate) fn lend(
+        env: Env,
+        holder: &Reference<JsSerie>,
+        windowed: &Serie,
+        windows: SerieWindows<'_>,
+    ) -> Result<Vec<(JsScalar, Self)>> {
+        let gathered = !std::ptr::eq(windows.serie(), windowed);
+        let windows = Arc::new(windows.into_owned());
+        let serie = if gathered {
+            JsSerie::from_core(windows.serie().clone()).into_reference(env)?
+        } else {
+            holder.clone(env)?
+        };
+        windows
+            .iter()
+            .enumerate()
+            .map(|(index, (key, window))| {
+                Ok((
+                    JsScalar::from_core(key),
+                    Self {
+                        serie: serie.clone(env)?,
+                        offset: window.offset(),
+                        len: window.len(),
+                        origin: Some((Arc::clone(&windows), index)),
+                    },
+                ))
+            })
+            .collect()
+    }
+
+    /// The core window `windowBy` lent this window as - the window at its
+    /// place among the windows of that call, stating its record - or `None`
+    /// for every other window; reached in constant time
+    /// ([`SerieWindows::get`]).
+    fn lent(&self) -> Option<WindowSerie<'_>> {
+        let (windows, index) = self.origin.as_ref()?;
+        windows.get(*index).map(|(_, window)| window)
     }
 
     /// The core window over the serie as it stands now.
-    fn window(&self) -> Result<SerieSlice<'_>> {
+    fn window(&self) -> Result<WindowSerie<'_>> {
         self.serie
             .inner
             .window(self.offset, self.len)
@@ -56,14 +124,14 @@ impl JsSerieSlice {
     }
 
     /// The core mutable window over the serie as it stands now.
-    fn window_mut(&mut self) -> Result<SerieSliceMut<'_>> {
+    fn window_mut(&mut self) -> Result<WindowSerieMut<'_>> {
         let (offset, len) = (self.offset, self.len);
         self.serie.inner.window_mut(offset, len).map_err(napi_error)
     }
 }
 
 #[napi]
-impl JsSerieSlice {
+impl JsWindowSerie {
     /// The number of rows the window holds.
     #[napi(getter)]
     pub fn length(&self) -> f64 {
@@ -81,6 +149,23 @@ impl JsSerieSlice {
     #[napi(getter)]
     pub fn serie(&self, env: Env) -> Result<Reference<JsSerie>> {
         self.serie.clone(env)
+    }
+
+    /// The values constant over this window's rows, where `windowBy` lent
+    /// it: one struct value, read with `Scalar`'s own accessors - the cells
+    /// of the record the windowed window states but `windownum` and
+    /// `rownum`, the key cells as the key's projections name them,
+    /// `windownum` (the window's place among the windows, from 0) and
+    /// `rownum` (the number its first row has in what was windowed,
+    /// absolute through windows of windows, `null` where `sorted` gathered
+    /// the rows out of their order) - read off the rows as they stood when
+    /// `windowBy` cut them. `null` for every other window: one `window`
+    /// takes, and a narrower one. Never the window's identity, and never
+    /// carried by `intoSerie` or an Arrow array of it.
+    #[napi(getter)]
+    pub fn static_values(&self) -> Result<Option<JsScalar>> {
+        let record = self.lent().and_then(|window| window.static_values());
+        Ok(static_record(record)?.map(JsScalar::from_core))
     }
 
     /// The field every row is typed by, or `null` for a window over a run.
@@ -236,7 +321,31 @@ impl JsSerieSlice {
             serie: self.serie.clone(env)?,
             offset,
             len,
+            origin: None,
         })
+    }
+
+    /// The windows `by` cuts the window's rows into, as the serie's own
+    /// `windowBy` cuts them: each over the serie at its own offset, or over
+    /// one new serie of the rows `sorted` gathered, at offset 0. A window
+    /// `windowBy` lent is windowed as the core window it is - the rows as
+    /// they stood when it was lent, its record's cells kept and its `rownum`
+    /// the base; any other as the rows the serie holds now.
+    #[napi(js_name = "_windowByNative", skip_typescript)]
+    pub fn window_by_native(
+        &self,
+        env: Env,
+        by: SelectorInput<'_>,
+        sorted: Option<bool>,
+    ) -> Result<Vec<(JsScalar, Self)>> {
+        let by = selector_from_input(by)?;
+        let sorted = sorted.unwrap_or(false);
+        let window = match self.lent() {
+            Some(window) => window,
+            None => self.window()?,
+        };
+        let windows = window.window_by(by, sorted).map_err(napi_error)?;
+        Self::lend(env, &self.serie, window.serie(), windows)
     }
 
     /// The window's rows as a serie: `slice`, sharing a column's buffers.
@@ -304,7 +413,7 @@ impl JsSerieSlice {
     #[napi(js_name = "_equalsNative", skip_typescript)]
     pub fn equals_native(
         &self,
-        other: Either<ClassInstance<'_, JsSerieSlice>, ClassInstance<'_, JsSerie>>,
+        other: Either<ClassInstance<'_, JsWindowSerie>, ClassInstance<'_, JsSerie>>,
     ) -> Result<bool> {
         let window = self.window()?;
         Ok(match other {
@@ -354,7 +463,7 @@ impl JsSerieSlice {
     pub fn copy_from_native(
         &self,
         env: Env,
-        other: Either<ClassInstance<'_, JsSerieSlice>, ClassInstance<'_, JsSerie>>,
+        other: Either<ClassInstance<'_, JsWindowSerie>, ClassInstance<'_, JsSerie>>,
     ) -> Result<()> {
         // The source is held apart before the serie is borrowed mutably, so
         // a window copied from the serie it views reads the rows as they

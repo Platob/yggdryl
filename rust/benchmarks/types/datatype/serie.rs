@@ -10,12 +10,14 @@
 use std::hint::black_box;
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, Int64Array, StringArray, StructArray};
+use arrow_array::{
+    ArrayRef, Int64Array, RecordBatch, StringArray, StructArray, TimestampNanosecondArray,
+};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
 use criterion::{BatchSize, Criterion};
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SerieValue, SortOptions,
-    StructType, UnionMode,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Selector, Serie, SerieValue,
+    SortOptions, StructType, TimeUnit, Timezone, UnionMode,
 };
 
 /// Rows per measured column. The smoke corpus keeps `cargo test
@@ -175,6 +177,243 @@ fn eight_chunks(column: &Serie) -> ChunkedSerie {
         ArrowCastOptions::new(),
     )
     .expect("chunks under one field")
+}
+
+/// Rows per venue run in [`ticks_column`].
+const VENUE_RUN: usize = 100;
+
+/// One non-null record root of a venue, a count and a nanosecond UTC
+/// instant.
+fn ticks_root() -> Field {
+    let fields = StructType::from_fields([
+        Field::new("venue", DataType::utf8(), false),
+        Field::new("count", DataType::Int64, false),
+        Field::new(
+            "ts",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
+            false,
+        ),
+    ])
+    .expect("three named children");
+    Field::new("tick", DataType::from(fields), false)
+}
+
+/// The venues a tick names, in key order.
+const TICK_VENUES: [&str; 4] = ["XLON", "XNAS", "XNYS", "XPAR"];
+
+/// `ROWS` ticks under [`ticks_root`] as Arrow buffers: the venue changing
+/// every [`VENUE_RUN`] rows, out of key order, one second between instants
+/// from a fifteen-minute boundary, so a quarter-hour bucket holds 900 rows.
+fn ticks_column() -> Serie {
+    ticks_landed(cycling_venue)
+}
+
+/// The venue of row `index` in [`ticks_column`]: XNAS, XNYS, XPAR, XLON, then
+/// XNAS again, each over [`VENUE_RUN`] rows.
+fn cycling_venue(index: usize) -> &'static str {
+    TICK_VENUES[(index / VENUE_RUN + 1) % TICK_VENUES.len()]
+}
+
+/// The same ticks with each venue over a quarter of the rows, in key order.
+fn sorted_ticks_column() -> Serie {
+    ticks_landed(|index| TICK_VENUES[index * TICK_VENUES.len() / ROWS])
+}
+
+/// [`ticks_batch`] landed under [`ticks_root`].
+fn ticks_landed(venue_of: impl Fn(usize) -> &'static str) -> Serie {
+    Serie::from_arrow_batch(
+        Some(&ticks_root()),
+        &ticks_batch(venue_of),
+        ArrowCastOptions::new(),
+    )
+    .expect("a record column")
+}
+
+/// `ROWS` ticks under [`ticks_root`] as one batch, row `index` at venue
+/// `venue_of(index)`.
+fn ticks_batch(venue_of: impl Fn(usize) -> &'static str) -> RecordBatch {
+    // 2024-01-01T00:00:00Z.
+    const MIDNIGHT_NS: i64 = 1_704_067_200_000_000_000;
+    let schema = ticks_root().into_arrow_schema().expect("a record schema");
+    let instants = TimestampNanosecondArray::from(
+        (0..ROWS)
+            .map(|index| {
+                MIDNIGHT_NS + i64::try_from(index).expect("a row count fits i64") * 1_000_000_000
+            })
+            .collect::<Vec<_>>(),
+    )
+    .with_data_type(schema.field(2).data_type().clone());
+    let venues: Vec<&str> = (0..ROWS).map(venue_of).collect();
+    RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(StringArray::from(venues)),
+            price_array(),
+            Arc::new(instants),
+        ],
+    )
+    .expect("three equal columns")
+}
+
+/// [`ticks_root`]'s three children, then the order a tick fills - `order:
+/// struct<venue, mic, ts>`, nullable - and, where `wide` asks, a serie of
+/// two legs a row, a dictionary tag and forty-two int64 columns: four
+/// children against forty-eight.
+fn order_ticks_root(wide: bool) -> Field {
+    let mut fields = ticks_root().fields().to_vec();
+    let instant = fields[2].dtype().clone();
+    fields.push(
+        DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("venue"),
+                DataType::Mic.required_field("mic"),
+                instant.required_field("ts"),
+            ])
+            .expect("three named children"),
+        )
+        .nullable_field("order"),
+    );
+    if wide {
+        fields.push(
+            "serie<struct<px: float64, qty: int64>>"
+                .parse::<DataType>()
+                .expect("a serie of legs")
+                .required_field("legs"),
+        );
+        fields.push(
+            DataType::dictionary(DataType::Int32, DataType::utf8())
+                .expect("a dictionary")
+                .required_field("tag"),
+        );
+        fields.extend((0..42).map(|index| DataType::Int64.required_field(format!("c{index:02}"))));
+    }
+    Field::new(
+        "tick",
+        DataType::from(StructType::from_fields(fields).expect("named children")),
+        false,
+    )
+}
+
+/// [`ticks_column`]'s rows under [`order_ticks_root`]: the order's venue
+/// and instant the tick's, its code the venue, never absent.
+fn order_ticks_column(wide: bool) -> Serie {
+    use arrow_array::types::Int32Type;
+    use arrow_array::{DictionaryArray, Float64Array, Int32Array, ListArray};
+    use arrow_buffer::OffsetBuffer;
+
+    let root = order_ticks_root(wide);
+    let schema = root.clone().into_arrow_schema().expect("a record schema");
+    let mut columns: Vec<ArrayRef> = ticks_batch(cycling_venue).columns().to_vec();
+    let ArrowDataType::Struct(order) = schema.field(3).data_type().clone() else {
+        panic!("an order record projects to a struct")
+    };
+    columns.push(Arc::new(
+        StructArray::try_new(
+            order,
+            vec![
+                Arc::clone(&columns[0]),
+                Arc::clone(&columns[0]),
+                Arc::clone(&columns[2]),
+            ],
+            None,
+        )
+        .expect("an order record"),
+    ));
+    if wide {
+        let ArrowDataType::List(item) = schema.field(4).data_type().clone() else {
+            panic!("a serie of legs projects to a list")
+        };
+        let ArrowDataType::Struct(leg) = item.data_type().clone() else {
+            panic!("a leg projects to a struct")
+        };
+        let legs = StructArray::try_new(
+            leg,
+            vec![
+                Arc::new(Float64Array::from(
+                    (0..2 * ROWS).map(|index| index as f64).collect::<Vec<_>>(),
+                )),
+                Arc::new(Int64Array::from(
+                    (0..2 * ROWS)
+                        .map(|index| i64::try_from(index).expect("a leg count fits i64"))
+                        .collect::<Vec<_>>(),
+                )),
+            ],
+            None,
+        )
+        .expect("legs");
+        columns.push(Arc::new(
+            ListArray::try_new(
+                item,
+                OffsetBuffer::from_lengths(std::iter::repeat_n(2, ROWS)),
+                Arc::new(legs),
+                None,
+            )
+            .expect("two legs a row"),
+        ));
+        columns.push(Arc::new(
+            DictionaryArray::<Int32Type>::try_new(
+                Int32Array::from(
+                    (0..ROWS)
+                        .map(|index| i32::from(index % 2 == 1))
+                        .collect::<Vec<_>>(),
+                ),
+                Arc::new(StringArray::from(vec!["bid", "ask"])),
+            )
+            .expect("tags"),
+        ));
+        columns.extend((0..42).map(|_| price_array()));
+    }
+    let batch = RecordBatch::try_new(schema, columns).expect("equal columns");
+    Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("a record column")
+}
+
+/// `ROWS` orders of a registered venue code, a side and a count: the venue
+/// changing every [`VENUE_RUN`] rows, the side every half run.
+fn coded_ticks_column() -> Serie {
+    use arrow_array::UInt8Array;
+
+    let root = Field::new(
+        "order",
+        DataType::from(
+            StructType::from_fields([
+                DataType::Mic.required_field("venue"),
+                DataType::Side.required_field("side"),
+                DataType::Int64.required_field("count"),
+            ])
+            .expect("three named children"),
+        ),
+        false,
+    );
+    let ArrowDataType::Struct(fields) = root
+        .clone()
+        .into_arrow_field()
+        .expect("a projection")
+        .data_type()
+        .clone()
+    else {
+        panic!("a record projects to a struct")
+    };
+    let records = StructArray::try_new(
+        fields,
+        vec![
+            Arc::new(StringArray::from(
+                (0..ROWS).map(cycling_venue).collect::<Vec<_>>(),
+            )),
+            Arc::new(UInt8Array::from(
+                (0..ROWS)
+                    .map(|index| 1 + u8::from(index / (VENUE_RUN / 2) % 2 == 1))
+                    .collect::<Vec<_>>(),
+            )),
+            price_array(),
+        ],
+        None,
+    )
+    .expect("an order record");
+    Serie::from_arrow_array(Some(&root), Arc::new(records), ArrowCastOptions::new())
+        .expect("a record column")
 }
 
 /// One nullable union of an identifier and a symbol, in `mode`.
@@ -514,6 +753,156 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
             );
         });
     }
+
+    // Windows by key: one bind, one key record, one comparator and one
+    // bitmap a call, then one key per window walked. A column key is the
+    // venue's own landed buffers, compared where they lie; a period key
+    // evaluates its term over the instant column through the row tier, so
+    // its distance from the column key is that tier's time. Windowing a
+    // window keys the window's rows where they stand, its key cell sliced to
+    // it; a chunked column keys each chunk and joins nothing.
+    let ticks = ticks_column();
+    let venue: Selector = "venue".parse().expect("a column key");
+    let bucket: Selector = "minutes(ts, 15)".parse().expect("a period key");
+    group.bench_function("window_by/column_key", |bencher| {
+        bencher.iter(|| {
+            black_box(&ticks)
+                .window_by(&venue, false)
+                .expect("windows")
+                .iter()
+                .map(black_box)
+                .count()
+        });
+    });
+    group.bench_function("window_by/epoch_key", |bencher| {
+        bencher.iter(|| {
+            black_box(&ticks)
+                .window_by(&bucket, false)
+                .expect("windows")
+                .iter()
+                .map(black_box)
+                .count()
+        });
+    });
+    group.bench_function("window_by/through_window", |bencher| {
+        bencher.iter(|| {
+            black_box(&ticks)
+                .window(1, ROWS - 2)
+                .expect("a window")
+                .window_by(&venue, false)
+                .expect("windows")
+                .iter()
+                .map(black_box)
+                .count()
+        });
+    });
+    let chunked_ticks = eight_chunks(&ticks);
+    group.bench_function("chunked/window_by", |bencher| {
+        bencher.iter(|| {
+            black_box(&chunked_ticks)
+                .window_by(&venue, false)
+                .expect("windows")
+        });
+    });
+
+    // Each key once, in key order. Keys already in order cut what the
+    // unsorted call cuts, the verdict read in the comparator's one pass, so
+    // `sorted_in_order` should sit on `column_key`; keys out of order - the
+    // venue returning every four runs - regroup their runs and take the rows
+    // once into key order, which is `sorted_gather`'s distance from it. A
+    // chunked column regroups its runs as zero-copy pieces and takes nothing.
+    let sorted_ticks = sorted_ticks_column();
+    group.bench_function("window_by/sorted_in_order", |bencher| {
+        bencher.iter(|| {
+            black_box(&sorted_ticks)
+                .window_by(&venue, true)
+                .expect("windows")
+                .iter()
+                .map(black_box)
+                .count()
+        });
+    });
+    group.bench_function("window_by/sorted_gather", |bencher| {
+        bencher.iter(|| {
+            black_box(&ticks)
+                .window_by(&venue, true)
+                .expect("windows")
+                .iter()
+                .map(black_box)
+                .count()
+        });
+    });
+    group.bench_function("chunked/window_by_sorted", |bencher| {
+        bencher.iter(|| {
+            black_box(&chunked_ticks)
+                .window_by(&venue, true)
+                .expect("windows")
+        });
+    });
+
+    // A record key with a registered code: the record rung compares each
+    // cell on its own, the code over its values built once and the side over
+    // its buffers, never a run per row.
+    let coded = coded_ticks_column();
+    let venue_side: Selector = "venue, side".parse().expect("a two-cell key");
+    group.bench_function("window_by/record_code_key", |bencher| {
+        bencher.iter(|| {
+            black_box(&coded)
+                .window_by(&venue_side, false)
+                .expect("windows")
+                .iter()
+                .map(black_box)
+                .count()
+        });
+    });
+
+    // A key reads the columns it names and no other, so each key costs the
+    // same over four children and over forty-eight: a column and a record
+    // path key as the landed cells they reach, a period term over a batch of
+    // the one column it reads.
+    let order_venue: Selector = "order.venue".parse().expect("a path key");
+    for (width, record) in [
+        (4, order_ticks_column(false)),
+        (48, order_ticks_column(true)),
+    ] {
+        for (name, key) in [
+            ("venue", &venue),
+            ("order_venue", &order_venue),
+            ("period", &bucket),
+        ] {
+            group.bench_function(format!("window_by/wide_record/{name}/{width}"), |bencher| {
+                bencher.iter(|| {
+                    black_box(&record)
+                        .window_by(key, false)
+                        .expect("windows")
+                        .iter()
+                        .map(black_box)
+                        .count()
+                });
+            });
+        }
+    }
+
+    // A run is a window over one shared slice: a slice shares it, a row
+    // read is the window's bounds and one index, and a window's verb reads
+    // the run sliced to it rather than a copy of its rows.
+    let run = Serie::new(price_rows());
+    group.bench_function("run/slice", |bencher| {
+        bencher.iter(|| black_box(&run).slice(1, ROWS - 2).expect("a slice"));
+    });
+    group.bench_function("run/row_at", |bencher| {
+        bencher.iter(|| {
+            black_box(black_box(&run).get(black_box(ROWS / 2)));
+        });
+    });
+    group.bench_function("run/window_is_sorted", |bencher| {
+        bencher.iter(|| {
+            black_box(&run)
+                .window(1, ROWS - 2)
+                .expect("a window")
+                .is_sorted(SortOptions::default())
+        });
+    });
 
     // A union push: a sparse one splices every member over the new row, a
     // dense one lands the payload on its own member.

@@ -1,6 +1,6 @@
 ---
 name: yggdryl-arrow
-description: Moves columns, tables and streams across the Apache Arrow boundary with yggdryl's Serie (one column), ChunkedSerie (chunked arrays and tables kept apart) and SerieReader (a stream under one compiled plan), and casts them with ArrowCastPlan and ArrowCastOptions (safe, representation). Use when landing arrow-rs arrays / RecordBatches / readers, pyarrow or Arrow JS (apache-arrow) tables and vectors under a Field (from_arrow_array / fromArrowArray, from_arrow_batch, SerieReader.from_arrow_reader), taking pyarrow, pandas, polars or NumPy in via Serie.from_, reading typed buffers (as_int64().values()), casting a column or a stream, sorting, deduplicating, grouping or windowing a column (sort_indices / into_sorted, into_unique, partition_by, window), or handing data back (into_arrow_array / intoArrowTable, into_pandas / into_polars). Covers Rust, Python and Node.js.
+description: Moves columns, tables and streams across the Apache Arrow boundary with yggdryl's Serie (one column), ChunkedSerie (chunked arrays and tables kept apart) and SerieReader (a stream under one compiled plan), and casts them with ArrowCastPlan and ArrowCastOptions (safe, representation). Use when landing arrow-rs arrays / RecordBatches / readers, pyarrow or Arrow JS (apache-arrow) tables and vectors under a Field (from_arrow_array / fromArrowArray, from_arrow_batch, SerieReader.from_arrow_reader), taking pyarrow, pandas, polars or NumPy in via Serie.from_, reading typed buffers (as_int64().values()), casting a column or a stream, sorting, deduplicating, grouping or windowing a column (sort_indices / into_sorted, into_unique, partition_by, window), cutting a column or stream into windows of equal keys (window_by / windowBy, static_values), or handing data back (into_arrow_array / intoArrowTable, into_pandas / into_polars). Covers Rust, Python and Node.js.
 ---
 
 # yggdryl Arrow: Serie, ChunkedSerie, SerieReader, casts
@@ -58,10 +58,14 @@ cross-language conventions: see the `yggdryl` entry skill.
 | Write rows | `push`, `set`, `insert`, `remove`, `pop`, `extend`, `splice(range, rows)`, `resize`, `truncate`, `clear`, `extend_from_serie` | same names, `splice(start, end, rows)` | `push`, `set`, `insert`, `remove`, `pop`, `extend`, `splice(start, end, rows)`, `resize`, `truncate`, `clear`, `extendFromSerie` |
 | Children of a record column | `child(name)`, `children()`, `items()`, `get_child_by_path(&FieldPath)`, `set_child(serie)?`, `set_cell(&path, i, v)?` | `child`, `children()`, `items()`, `get_child_by_path("a.b")`, `set_child`, `set_cell("a.b", i, v)` | `child`, `children()`, `items()`, `getChildByPath`, `setChild`, `setCell` |
 | Zero-copy window | `serie.slice(offset, len)?` | `serie.slice(offset, len)`, `serie[a:b]` | `serie.slice(offset, len)` |
-| Read or write a stretch where it stands | `serie.window(offset, len)?`, `window_mut(offset, len)?` (`set`, `fill`, `swap`, `as_sorted`, ...) | `serie.window(offset, length)` -> `SerieSlice` | `serie.window(offset, length)` -> `SerieSlice` |
+| Read or write a stretch where it stands | `serie.window(offset, len)?`, `window_mut(offset, len)?` (`set`, `fill`, `swap`, `as_sorted`, ...) | `serie.window(offset, length)` -> `WindowSerie` | `serie.window(offset, length)` -> `WindowSerie` |
 | Sort, order, deduplicate, take, filter (a new serie) | `sort_indices(options)?`, `into_sorted(options)?`, `into_unique()?`, `into_reversed()`, `into_taken(&indices)?`, `into_filtered(&mask)?`, `is_sorted(options)`, `is_unique()`, `unique_count()` | same names; `options` are `descending=False, nulls_first=False` keywords | `sortIndices`, `intoSorted`, `intoUnique`, `intoReversed`, `intoTaken`, `intoFiltered`, `isSorted`, `isUnique`, `uniqueCount`; `options` is `{ descending, nullsFirst }` |
 | The same, in place and chained | `serie.as_sorted(options)?.as_unique()?.as_reversed()?`, `as_taken`, `as_filtered` | `serie.as_sorted().as_unique().as_reversed()`, `as_taken`, `as_filtered` | `serie.asSorted().asUnique().asReversed()`, `asTaken`, `asFiltered` |
 | Group rows by a key | `partition_by(&keys)?`, `partition_by_paths(&paths)?`; a chunked serie's keys held in chunks: `partition_by_chunked` | `partition_by(keys)`, `partition_by_paths("venue")` | `partitionBy(keys)`, `partitionByPaths('venue')` |
+| Rows into windows of equal keys, as views | `serie.window_by("venue", sorted)?` -> `SerieWindows`; `for (key, window) in &windows`, each a `WindowSerie`; also on a `WindowSerie` | `serie.window_by("venue", sorted=False)` -> `[(key, WindowSerie)]` | `serie.windowBy('venue', sorted?)` -> `[[key, WindowSerie]]` |
+| The same across chunks, no join | `chunked.window_by("venue", sorted)?` -> `Vec<(Scalar, ChunkedSerie)>` | `chunked.window_by("venue", sorted=False)` | `chunked.windowBy('venue', sorted?)` |
+| A stream's windows, lazily, in order | `reader.window_by("venue", sorted)?` -> `SerieReaderWindows` of `SerieReader` | `reader.window_by(...)` -> `SerieReaderWindows` | `reader.windowBy(...)` -> `SerieReaderWindows` |
+| The values constant over a window | `window.static_values()` / `reader.static_values()` -> `Option<FieldScalar>`: `get_key_str("venue")`, `windownum`, `rownum` | `window.static_values` -> struct `Scalar` or `None`, `record["venue"]` | `window.staticValues` -> struct `Scalar` or `null`, `record.get('venue')` |
 | Bytes a column occupies | `serie.memory_size()` | `serie.memory_size()` | `serie.memorySize()` |
 | Column -> Arrow | `into_arrow_array()` (`None` for a run), `require_arrow_array()?`, `into_arrow_batch()?`, `into_arrow_reader()?`, `into_arrow_scalar()?` | `into_arrow_array()`, `into_arrow_batch()`, `into_arrow_table()`, `into_arrow_reader()`, `into_arrow_scalar()`, `into_pandas()`, `into_polars()`, `into_numpy()`; PyCapsule: `pa.array(serie)`, `pa.table(record)` | `intoArrowArray()`, `intoArrowBatch()`, `intoArrowReader()`, `intoArrowScalar()` |
 | Chunked -> Arrow | `into_arrow_arrays()`, `into_arrow_reader()?` | `into_arrow_chunked_array()`, `into_arrow_table()`, `into_arrow_reader()` | `intoArrowArray()`, `intoArrowTable()`, `intoArrowReader()` |
@@ -163,6 +167,20 @@ the record `row`.
     refusal leaves it unchanged. A `ChunkedSerie` joins for `sort_indices`,
     `into_sorted`, `into_unique` and `into_taken`, and keeps its chunks apart
     for `into_reversed`, `into_filtered` and `partition_by`.
+16. **Window by key instead of grouping by hand.** `window_by(by, sorted)`
+    takes a selector (`"venue, minutes(ts, 15) as bucket"`), computes the key
+    once and lends each window as a view - one key column and one bit per
+    row, then each window costs its key. With
+    `sorted=false` a window is a run of equal adjacent keys, so a key that
+    comes back opens another; with `sorted=true` each key comes once, in
+    key order: keys already in order copy nothing, a held serie gathers its
+    rows once only where the keys descend, a `ChunkedSerie` regroups its
+    runs as zero-copy pieces, and a stream verifies the order and refuses a
+    key going backwards. Every window a `Serie`, a `WindowSerie` or a
+    `SerieReader` cuts states its record - the key cells, `windownum` and
+    `rownum` (null after a gather) - as `static_values`; a chunked window
+    states none, its key and index being its record. A key cell named
+    `windownum` or `rownum` is refused wherever a record is stated: alias it.
 
 ## Pitfalls
 
@@ -207,6 +225,14 @@ the record `row`.
 - **Wrong:** `chunked.push_chunk(foreign)` in a loop of foreign chunks (a plan
   per call). **Right:** `ChunkedSerie.from_series(chunks, field)` - one plan
   per run of chunks of one source layout.
+- **Wrong:** `windows = list(reader.window_by("venue"))`, then reading
+  them. **Right:** read each stream window before taking the next; a window
+  its walk passed is refused once (`window 0 was passed by its walk`). Hold
+  the stream as a `ChunkedSerie` first when windows must be revisited.
+- **Wrong:** `partition_by` to find runs of a key, or `window_by(.., sorted=True)`
+  over a stream whose keys arrive out of order. **Right:** `window_by(..,
+  sorted=False)` cuts runs; a stream is never reordered, so window it
+  unsorted or hold it (`ChunkedSerie.from_(reader)`) and window that sorted.
 - **Wrong:** mutating a child column to edit a nested cell. **Right:** no
   child is handed out mutably; use `set_cell("a.b", i, v)` or replace a whole
   child with `set_child`.
@@ -228,7 +254,9 @@ the record `row`.
 - Serie: https://platob.github.io/yggdryl/types/serie/ - leaves, costs,
   [every columnar runtime in](https://platob.github.io/yggdryl/types/serie/#arrow-every-columnar-runtime-in)
   [sorting, uniqueness and partitions](https://platob.github.io/yggdryl/types/serie/#sorting-uniqueness-and-partitions),
-  [windows](https://platob.github.io/yggdryl/types/serie-slice/)
+  [windows](https://platob.github.io/yggdryl/types/window-serie/),
+  [windows by key](https://platob.github.io/yggdryl/types/serie/#windows-by-key),
+  [windows of a stream](https://platob.github.io/yggdryl/arrow/readers/#windows-of-a-stream)
 - ChunkedSerie: https://platob.github.io/yggdryl/types/chunked-serie/
 - Cast: https://platob.github.io/yggdryl/types/cast/ -
   [required columns](https://platob.github.io/yggdryl/types/cast/#required-columns),

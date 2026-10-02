@@ -548,9 +548,44 @@ pub(crate) fn struct_rows<'array>(
 
 /// One value per row of a [`StructRows::batch`], laid out at the struct's
 /// own positions by its scatter: null at every null row.
+///
+/// Arrow's take reads a dense union at a null index as its first member's
+/// first value, which need not exist; a dense union has no validity of its
+/// own to say the row is absent anyway. A row the scatter leaves null is an
+/// absent record's, whose children Arrow leaves unspecified, so a column
+/// holding a dense union takes the first row there instead - or, with no
+/// row to take, is laid out null.
 pub(crate) fn scattered(values: &dyn Array, scatter: &UInt32Array) -> crate::Result<ArrayRef> {
+    if scatter.null_count() > 0 && takes_a_dense_union(values.data_type()) {
+        if values.is_empty() {
+            return Ok(arrow_array::new_null_array(
+                values.data_type(),
+                scatter.len(),
+            ));
+        }
+        let filled: UInt32Array = scatter
+            .iter()
+            .map(|index| Some(index.unwrap_or(0)))
+            .collect();
+        return arrow_select::take::take(values, &filled, None)
+            .map_err(|error| crate::Error::from(Error::Arrow(error)));
+    }
     arrow_select::take::take(values, scatter, None)
         .map_err(|error| crate::Error::from(Error::Arrow(error)))
+}
+
+/// Whether a take of `dtype` with a null index reaches a dense union: the
+/// union itself, or one a struct child or a fixed-size serie's item holds,
+/// which Arrow takes at the same null index.
+fn takes_a_dense_union(dtype: &ArrowDataType) -> bool {
+    match dtype {
+        ArrowDataType::Union(_, arrow_schema::UnionMode::Dense) => true,
+        ArrowDataType::Struct(fields) => fields
+            .iter()
+            .any(|field| takes_a_dense_union(field.data_type())),
+        ArrowDataType::FixedSizeList(item, _) => takes_a_dense_union(item.data_type()),
+        _ => false,
+    }
 }
 
 /// Evaluate one resolved node over one batch.
@@ -739,10 +774,10 @@ fn segment_array(
     if let Some(name) = segment.as_name()
         && let Some(held) = array.as_any().downcast_ref::<StructArray>()
     {
-        let position = held
-            .fields()
-            .iter()
-            .position(|child| child.name().eq_ignore_ascii_case(name));
+        let position = child_position(
+            held.fields().iter().map(|child| child.name().as_str()),
+            name,
+        );
         if let Some(position) = position {
             let child = Arc::clone(&held.columns()[position]);
             // A child of a null struct is null, whatever its own buffer
@@ -795,6 +830,22 @@ fn segment_array(
         values.push(segment.apply_scalar(field, &column.scalar(row)?)?);
     }
     Ok(Serie::from_scalars(reached.clone(), values)?.require_arrow_array()?)
+}
+
+/// The position of the record child a named step reaches among `names`: the
+/// first that equals `name` ignoring ASCII case.
+///
+/// The one fold a record step resolves by - the typing of a path
+/// ([`FieldSegment::apply_field`]), its kernel here, and the key plan's
+/// reading of which cells lie in the landed record
+/// ([`Bound::lies_where`]) - so the three cannot reach different children.
+pub(crate) fn child_position<'n>(
+    names: impl IntoIterator<Item = &'n str>,
+    name: &str,
+) -> Option<usize> {
+    names
+        .into_iter()
+        .position(|held| held.eq_ignore_ascii_case(name))
 }
 
 /// One key of every map, through one `take` over the map's values.

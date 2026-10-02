@@ -2392,13 +2392,13 @@ order_bytes: int = order_prices.memory_size()
 order_chained: yggdryl.Serie = (
     order_prices.as_sorted().as_unique().as_reversed().as_taken([0]).as_filtered([True])
 )
-order_window: yggdryl.SerieSlice = order_into.window(0, 2)
+order_window: yggdryl.WindowSerie = order_into.window(0, 2)
 order_window_row: Scalar = order_window[0]
-order_window_narrower: yggdryl.SerieSlice = order_window[1:]
+order_window_narrower: yggdryl.WindowSerie = order_window[1:]
 order_window_serie: yggdryl.Serie = order_window.serie
 order_window_whole: yggdryl.Serie = order_window.into_serie()
 order_window_offset: int = order_window.offset
-order_window_written: yggdryl.SerieSlice = order_window.as_sorted(descending=True).as_reversed()
+order_window_written: yggdryl.WindowSerie = order_window.as_sorted(descending=True).as_reversed()
 order_window.set(0, 7)
 order_window.swap(0, 1)
 order_window.fill(4)
@@ -2421,6 +2421,39 @@ assert order_window_offset == 0 and order_window_written is order_window
 assert order_window_groups and not order_window_equal
 assert chunked_order is not None and chunked_order_groups and chunked_order_indices is not None
 assert chunked_order_chained is chunked_prices
+
+# Windows of equal adjacent keys: held windows over the serie object, each
+# stating its record as a struct value; a stream's windows are lazy readers.
+window_quotes: yggdryl.Serie = yggdryl.Serie.from_scalars(
+    Field("quote", "struct<venue: utf8, price: int64>", nullable=False),
+    [["XNAS", 1], ["XNAS", 2], ["XNYS", 3]],
+)
+window_by_venue: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window_by("venue")
+window_by_sorted: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window_by(
+    ["venue", yggdryl.Term.column("price")], sorted=True
+)
+window_by_default: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window_by(
+    yggdryl.Selector("venue"), None
+)
+window_record: Scalar | None = window_by_venue[0][1].static_values
+window_quotes.window_by("venue", "yes")  # type: ignore[arg-type]
+window_of_window: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window(
+    0, 2
+).window_by("price")
+window_chunked: list[tuple[Scalar, yggdryl.ChunkedSerie]] = chunked_prices.window_by(
+    "price", sorted=False
+)
+window_walk: yggdryl.SerieReaderWindows = SerieReader.from_serie(window_quotes).window_by(
+    "venue", True
+)
+window_walk_field: Field = window_walk.field
+window_walk_static: Field = window_walk.static_field
+window_readers: list[SerieReader] = list(window_walk)
+window_reader_record: Scalar | None = window_readers[0].static_values
+assert window_by_venue and window_by_sorted and window_by_default and window_of_window
+assert window_record is not None and window_chunked is not None
+assert window_walk_field is not None and window_walk_static is not None
+assert window_readers and window_reader_record is not None
 
 # HTTP: the requests-shaped client, the four storage roles, and the server.
 # Nothing below the functions touches the network; the functions are checked,

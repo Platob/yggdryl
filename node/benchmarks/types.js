@@ -233,30 +233,30 @@ const windowKeys = orderVenues.slice(8, 32)
 const windowSource = orderPrices.window(0, 32)
 const windowRows = Array.from({ length: 4 }, (_, index) => Scalar.from(index))
 const windowValue = Scalar.from(7)
-benchmark('serie_slice/null_count', () => window.nullCount())
-benchmark('serie_slice/scalar', () => window.scalar(3))
-benchmark('serie_slice/rows', () => window.rows())
-benchmark('serie_slice/memory_size', () => window.memorySize())
-benchmark('serie_slice/is_sorted', () => window.isSorted())
-benchmark('serie_slice/is_unique', () => window.isUnique())
-benchmark('serie_slice/unique_count', () => window.uniqueCount())
-benchmark('serie_slice/sort_indices', () => window.sortIndices())
-benchmark('serie_slice/window', () => window.window(4, 8))
-benchmark('serie_slice/into_serie', () => window.intoSerie())
-benchmark('serie_slice/into_sorted', () => window.intoSorted(descending))
-benchmark('serie_slice/into_unique', () => window.intoUnique())
-benchmark('serie_slice/into_reversed', () => window.intoReversed())
-benchmark('serie_slice/into_taken', () => window.intoTaken(windowIndices))
-benchmark('serie_slice/into_filtered', () => window.intoFiltered(windowMask))
-benchmark('serie_slice/partition_by', () => window.partitionBy(windowKeys))
-benchmark('serie_slice/set', () => window.set(3, windowValue))
-benchmark('serie_slice/fill', () => window.fill(windowValue))
-benchmark('serie_slice/swap', () => window.swap(0, 31))
-benchmark('serie_slice/copy_from', () => window.copyFrom(windowSource))
-benchmark('serie_slice/splice', () => window.splice(4, 8, windowRows))
-benchmark('serie_slice/as_sorted', () => window.asSorted())
-benchmark('serie_slice/as_reversed', () => window.asReversed())
-benchmark('serie_slice/as_taken', () => window.asTaken(windowIndices))
+benchmark('window_serie/null_count', () => window.nullCount())
+benchmark('window_serie/scalar', () => window.scalar(3))
+benchmark('window_serie/rows', () => window.rows())
+benchmark('window_serie/memory_size', () => window.memorySize())
+benchmark('window_serie/is_sorted', () => window.isSorted())
+benchmark('window_serie/is_unique', () => window.isUnique())
+benchmark('window_serie/unique_count', () => window.uniqueCount())
+benchmark('window_serie/sort_indices', () => window.sortIndices())
+benchmark('window_serie/window', () => window.window(4, 8))
+benchmark('window_serie/into_serie', () => window.intoSerie())
+benchmark('window_serie/into_sorted', () => window.intoSorted(descending))
+benchmark('window_serie/into_unique', () => window.intoUnique())
+benchmark('window_serie/into_reversed', () => window.intoReversed())
+benchmark('window_serie/into_taken', () => window.intoTaken(windowIndices))
+benchmark('window_serie/into_filtered', () => window.intoFiltered(windowMask))
+benchmark('window_serie/partition_by', () => window.partitionBy(windowKeys))
+benchmark('window_serie/set', () => window.set(3, windowValue))
+benchmark('window_serie/fill', () => window.fill(windowValue))
+benchmark('window_serie/swap', () => window.swap(0, 31))
+benchmark('window_serie/copy_from', () => window.copyFrom(windowSource))
+benchmark('window_serie/splice', () => window.splice(4, 8, windowRows))
+benchmark('window_serie/as_sorted', () => window.asSorted())
+benchmark('window_serie/as_reversed', () => window.asReversed())
+benchmark('window_serie/as_taken', () => window.asTaken(windowIndices))
 // Across the chunks: chunk by chunk where a chunk can answer alone, through
 // the one join where the rows must be seen together.
 const orderChunked = ChunkedSerie.fromSeries(
@@ -289,6 +289,53 @@ const chunkedTakenInPlace = orderChunked.intoSorted()
 benchmark('chunked_serie/as_taken', () => chunkedTakenInPlace.asTaken(orderIndices))
 const chunkedFilteredInPlace = orderChunked.intoSorted()
 benchmark('chunked_serie/as_filtered', () => chunkedFilteredInPlace.asFiltered(orderMask))
+// Windows by key over 64 quotes a minute apart, their venues in sorted runs
+// of 16: held windows and their records, chunks, and a stream drained window
+// by window. A lent window's record is read through the windows of its call,
+// skipping every window before it; the records stay unread otherwise.
+const ticked = Serie.fromScalars(
+  Field.from('quote: struct<venue: utf8 not null, ts: timestamp(ns, UTC) not null> not null'),
+  Array.from({ length: orderRows }, (_, index) => ({
+    venue: ['XLON', 'XNAS', 'XNYS', 'XPAR'][Math.floor(index / 16)],
+    ts: BigInt(index) * 60_000_000_000n,
+  })),
+)
+const tickedChunked = ChunkedSerie.fromSeries(
+  [ticked.slice(0, 32), ticked.slice(32, 32)],
+  ticked.field,
+)
+const lent = ticked.windowBy('venue')[1][1]
+const lentLast = ticked.windowBy('minutes(ts, 1)').at(-1)[1]
+function drained(windows) {
+  let rows = 0
+  for (const window of windows) {
+    for (const piece of window) rows += piece.length
+  }
+  return rows
+}
+if (
+  ticked.windowBy('venue').length !== 4 ||
+  tickedChunked.windowBy('venue').length !== 4 ||
+  drained(SerieReader.fromSerie(ticked).windowBy('venue', true)) !== orderRows ||
+  lentLast.staticValues.get('windownum').asJs() !== orderRows - 1
+) {
+  throw new Error('the window_by fixtures cut what they claim')
+}
+benchmark('serie/window_by_period', () => ticked.windowBy('minutes(ts, 15)'))
+benchmark('serie/window_by_in_order', () => ticked.windowBy('venue'))
+benchmark('serie/window_by_sorted_gathered', () => orderQuotes.windowBy('venue', true))
+benchmark('window_serie/window_by', () => ticked.window(8, 32).windowBy('venue'))
+benchmark('window_serie/window_by_lent', () => lent.windowBy('minutes(ts, 15)'))
+benchmark('window_serie/static_values', () => lent.staticValues)
+benchmark('window_serie/static_values_last_of_64', () => lentLast.staticValues)
+benchmark('chunked_serie/window_by', () => tickedChunked.windowBy('venue'))
+benchmark('chunked_serie/window_by_sorted', () => tickedChunked.windowBy('venue', true))
+benchmark('serie_reader/window_by_drained', () =>
+  drained(SerieReader.fromSerie(ticked).windowBy('venue')),
+)
+benchmark('serie_reader/window_by_sorted_drained', () =>
+  drained(SerieReader.fromSerie(ticked).windowBy('venue', true)),
+)
 benchmark('schema/map_of', () => fields.mapOf('labels', 'utf8', 'int32'))
 benchmark('schema/time_infer_time32', () => DataType.time('ms'))
 benchmark('schema/time_infer_time64', () => DataType.time('ns'))

@@ -4232,8 +4232,8 @@ pub struct Element<'a>
   pub fn child_in(&self, namespace: &str, local: &str) -> Option<Element<'_>>
   pub fn one_child_in(&self, namespace: &str, local: &str) -> Result<Element<'_>>
 
-### yggdryl::root::serie_slice  [rust/src/serie_slice.rs]  (a window over a serie that reads and writes through the serie's own implementation, every index window-relative; re-exported at the root)
-pub struct SerieSlice<'a>  (a reference to a serie, an offset and a length; Copy; Eq/Ord/Hash over the window's rows alone, PartialEq with Serie either side; Display the serie's name - $ for a run - and the window's rows, Debug the name, offset, len and nulls; IntoIterator for &SerieSlice)
+### yggdryl::root::window_serie  [rust/src/window_serie.rs]  (a window over a serie that reads and writes through the serie's own implementation, every index window-relative; re-exported at the root)
+pub struct WindowSerie<'a>  (a reference to a serie, an offset, a length and, on a window SerieWindows::iter lent, where its record comes from; 40 bytes, pinned by a const assert; Copy; Eq/Ord/Hash over the window's rows alone, PartialEq with Serie either side; Display the serie's name - $ for a run - and the window's rows, Debug the name, offset, len and nulls; IntoIterator for &WindowSerie)
   pub const fn len(&self) -> usize
   pub const fn is_empty(&self) -> bool
   pub const fn offset(&self) -> usize  (the serie row the window starts at)
@@ -4244,11 +4244,13 @@ pub struct SerieSlice<'a>  (a reference to a serie, an offset and a length; Copy
   pub fn is_null(&self, index: usize) -> Result<bool>  (window-relative; refuses past the window naming the serie and both counts)
   pub fn scalar(&self, index: usize) -> Result<Scalar>
   pub fn get(&self, index: usize) -> Option<Cow<'a, Scalar>>
-  pub fn iter(&self) -> SerieSliceRows<'a>
+  pub fn iter(&self) -> WindowSerieRows<'a>
   pub fn rows(&self) -> Cow<'a, [Scalar]>  (lent for a run, built once for a column)
   pub fn memory_size(&self) -> usize
   pub fn window(&self, offset: usize, length: usize) -> Result<Self>  (a narrower window, rebased onto the serie)
-  pub fn into_serie(&self) -> Serie  (Serie::slice: zero copy for a column, the window's values copied for a run)
+  pub fn into_serie(&self) -> Serie  (Serie::slice: zero copy, a column's buffers or a run's values shared; rows only, the record stays with the window)
+  pub fn static_values(&self) -> Option<FieldScalar<'a>>  (the record a window SerieWindows::iter lent states, read through FieldScalar's accessors: one required struct named as the windowed root - the kept cells of the window windowed but windownum and rownum, the key cells at the window's first row, windownum: uint64 required, rownum: uint64 nullable, absolute through windows of windows and null after a sorted gather; built on each call, one run of the cells; None for a narrower window, a Serie::window and a WindowSerieMut's; never identity)
+  pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> Result<SerieWindows<'a>>  (Serie::window_by over this window's rows alone, each window over the same serie at its offset in it, or over the copy of this window's rows a sorted gather took; a window that states a record keeps its cells and numbers rownum from its own; refuses a key cell folding onto a kept cell, windownum or rownum, naming both)
   pub fn is_sorted(&self, options: SortOptions) -> bool  (what the sliced serie answers, and so for the rest of the ordering verbs)
   pub fn is_unique(&self) -> bool
   pub fn unique_count(&self) -> usize
@@ -4259,8 +4261,8 @@ pub struct SerieSlice<'a>  (a reference to a serie, an offset and a length; Copy
   pub fn into_taken(&self, indices: &Serie) -> Result<Serie>
   pub fn into_filtered(&self, mask: &Serie) -> Result<Serie>
   pub fn partition_by(&self, keys: &Serie) -> Result<Vec<(Scalar, Serie)>>
-pub struct SerieSliceMut<'a>  (the same window over a &mut Serie; every read of SerieSlice answered directly and through as_window; Display and Debug as SerieSlice)
-  pub fn as_window(&self) -> SerieSlice<'_>  (the borrowed read-only view)
+pub struct WindowSerieMut<'a>  (the same window over a &mut Serie; every read of WindowSerie answered directly and through as_window; Display and Debug as WindowSerie)
+  pub fn as_window(&self) -> WindowSerie<'_>  (the borrowed read-only view)
   pub const fn len(&self) -> usize
   pub const fn is_empty(&self) -> bool
   pub const fn offset(&self) -> usize
@@ -4271,10 +4273,12 @@ pub struct SerieSliceMut<'a>  (the same window over a &mut Serie; every read of 
   pub fn is_null(&self, index: usize) -> Result<bool>
   pub fn scalar(&self, index: usize) -> Result<Scalar>
   pub fn get(&self, index: usize) -> Option<Cow<'_, Scalar>>
-  pub fn iter(&self) -> SerieSliceRows<'_>
+  pub fn iter(&self) -> WindowSerieRows<'_>
   pub fn rows(&self) -> Cow<'_, [Scalar]>
   pub fn memory_size(&self) -> usize
-  pub fn window(&self, offset: usize, length: usize) -> Result<SerieSlice<'_>>
+  pub fn window(&self, offset: usize, length: usize) -> Result<WindowSerie<'_>>
+  pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<WindowSerieMut<'_>>  (a narrower mutable window over the same serie, the offsets summed; this one borrowed while it lives)
+  pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> Result<SerieWindows<'_>>  (WindowSerie::window_by over as_window; a mutable window states no record)
   pub fn into_serie(&self) -> Serie
   pub fn is_sorted(&self, options: SortOptions) -> bool
   pub fn is_unique(&self) -> bool
@@ -4289,12 +4293,21 @@ pub struct SerieSliceMut<'a>  (the same window over a &mut Serie; every read of 
   pub fn set(&mut self, index: usize, value: Scalar) -> Result<()>  (Serie::set on the rebased row; refuses past the window)
   pub fn fill(&mut self, value: Scalar) -> Result<()>  (the value proved once, written as clones over the window)
   pub fn swap(&mut self, left: usize, right: usize) -> Result<()>  (two reads, two sets)
-  pub fn copy_from(&mut self, other: &SerieSlice<'_>) -> Result<()>  (the other window's rows written row for row through Serie::splice; refuses another length by name)
+  pub fn copy_from(&mut self, other: &WindowSerie<'_>) -> Result<()>  (the other window's rows written row for row through Serie::splice; refuses another length by name)
   pub fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()>  (Serie::splice on the rebased range, only when rows.len() == range.len(): a window never grows or shrinks what it views)
   pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self>  (in place, chaining: a primitive column held alone sorts the window of its native slice where it stands, a boolean column its two bitmaps, a run its values, any other leaf writes the sorted rows back through splice)
   pub fn as_reversed(&mut self) -> Result<&mut Self>
   pub fn as_taken(&mut self, indices: &Serie) -> Result<&mut Self>  (exactly as many indices as the window, window-relative; refused by name otherwise)
-pub struct SerieSliceRows<'a>  (Iterator<Item = Cow<'a, Scalar>> over a window's rows, DoubleEndedIterator, ExactSizeIterator, FusedIterator)
+pub struct WindowSerieRows<'a>  (Iterator<Item = Cow<'a, Scalar>> over a window's rows, DoubleEndedIterator, ExactSizeIterator, FusedIterator)
+pub struct SerieWindows<'a>  (what window_by answers on a Serie, a WindowSerie and a WindowSerieMut: the owner of the windows - the serie they view, borrowed, or the one copy a sorted gather took where the keys descend; the key column computed once; one bit per row where a window opens, or the gathered windows' table; the record every window states, typed once; in row order, where each window opens, indexed on the first get; #[must_use]; Clone, Debug; IntoIterator for &SerieWindows)
+  pub fn len(&self) -> usize  (how many windows)
+  pub fn is_empty(&self) -> bool  (no row was windowed)
+  pub fn serie(&self) -> &Serie  (the serie every window views: the windowed one, or the gathered copy)
+  pub fn static_field(&self) -> &Field  (the record every window states, known before any window is walked: the kept cells, the key cells - nullable where the windowed rows hold an absent record row - windownum: uint64 and rownum: uint64, nullable)
+  pub fn into_owned(self) -> SerieWindows<'static>  (a borrowed serie cloned, its buffers shared and no row copied, so the windows and their records outlive the borrow)
+  pub fn get(&self, index: usize) -> Option<(Scalar, WindowSerie<'_>)>  (the window index places from the first, as iter lends it, in constant time: in row order the first call indexes where every window opens - one allocation of a usize per window, kept - and every call after it reads that index; in key order the cuts are the index; None past the last)
+  pub fn iter(&self) -> SerieWindowsIter<'_>  (the windows from the first, as often as asked)
+pub struct SerieWindowsIter<'s>  (Iterator<Item = (Scalar, WindowSerie<'s>)>, each the window's key - the key column's row at its first row - and the window stating its record; ExactSizeIterator, FusedIterator, Clone, Debug; nth skips windows with no key built - one walk of the set bits in row order, one read of the cuts in key order)
 
 ### yggdryl::soap  [rust/src/soap/mod.rs]
 pub const ENVELOPE_NAMESPACE: &str = "http://schemas.xmlsoap.org/soap/envelope/"
@@ -5165,10 +5178,9 @@ pub trait EnumRepr: ArrowNativeType + Copy + Default + Into<u16> + Into<i64> + T
   pub fn large_serie(item: Field) -> Self
   pub fn large_serie_view(item: Field) -> Self
   pub fn serie_item(&self) -> Option<&Field>  (on DataType: the item field of any of the five serie layouts, borrowed; None for any other datatype)
-  pub struct Run  (the schema-free ordered run a row canonicalizes to: one shared Arc<[Scalar]>, one allocation to build, the one leaf of Serie that declares no field; Clone is a pointer bump; Eq/Ord/Hash = the slice's; Display = {:?} of the slice; Default empty)
+  pub struct Run  (the schema-free ordered run a row canonicalizes to: a window - a start and a length - over one shared Arc<[Scalar]>, one allocation to build, a slice sharing the values, the one leaf of Serie that declares no field; Clone is a pointer bump; Eq/Ord/Hash = the slice's; Display = {:?} of the slice; Default empty)
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self
-  pub fn as_slice(&self) -> &[Scalar]
-  pub fn into_inner(self) -> Arc<[Scalar]>
+  pub fn as_slice(&self) -> &[Scalar]  (the window's values)
   impl Value for Run  (from_scalar answers only a run)
   impl NestedValue for Run
   impl From<Run> for Serie
@@ -5599,7 +5611,7 @@ pub struct ProtocolField<'field>
   pub fn without_field(&self, name: &str) -> Result<Self>
 
 ### yggdryl::serie  [rust/src/serie.rs]  (Serie, the fourth side of the value model: many values, as a schema-free run or as the Arrow buffers of one Field; the flat root, the identity helpers and the serde shadow live here, the leaves in serie/)
-  pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per storage layout, named as the leaf that holds it without Serie - a variant names the layout, never the datatype, which is the field's (SerieValue::id): Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTimeSecond, DateTimeMillisecond, DateTimeMicrosecond, DateTimeNanosecond (Arc<DateTimeSecondSerie> ..), Date32, Date64, Time32Second, Time32Millisecond, Time64Microsecond, Time64Nanosecond (Arc<Time32SecondSerie> ..), DurationSecond, DurationMillisecond, DurationMicrosecond, DurationNanosecond (Arc<DurationSecondSerie> ..; each holds duration32 and duration64 alike, the width the field's), IntervalYearMonth, IntervalDayTime, IntervalMonthDayNano (Arc<IntervalYearMonthSerie> ..), Binary (a sized binary too), LargeBinary, BinaryView (a large view too), FixedBytes (Arc<BinarySerie> .. Arc<FixedBytesSerie>), Utf8String (every string leaf laid out as UTF-8, ascii and sized_utf8 among them), LargeUtf8String, Utf8ViewString, BinaryString, LargeBinaryString, BinaryViewString, FixedString (Arc<Utf8StringSerie> .. Arc<FixedStringSerie>), the fourteen codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Uuid(Arc<FixedBytesSerie>), Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (Arc<SerieSerie> .. Arc<LargeSerieViewSerie>; the one layout a datatype names, so the variant shares the datatype's name), Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 24 bytes; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
+  pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per storage layout, named as the leaf that holds it without Serie - a variant names the layout, never the datatype, which is the field's (SerieValue::id): Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTimeSecond, DateTimeMillisecond, DateTimeMicrosecond, DateTimeNanosecond (Arc<DateTimeSecondSerie> ..), Date32, Date64, Time32Second, Time32Millisecond, Time64Microsecond, Time64Nanosecond (Arc<Time32SecondSerie> ..), DurationSecond, DurationMillisecond, DurationMicrosecond, DurationNanosecond (Arc<DurationSecondSerie> ..; each holds duration32 and duration64 alike, the width the field's), IntervalYearMonth, IntervalDayTime, IntervalMonthDayNano (Arc<IntervalYearMonthSerie> ..), Binary (a sized binary too), LargeBinary, BinaryView (a large view too), FixedBytes (Arc<BinarySerie> .. Arc<FixedBytesSerie>), Utf8String (every string leaf laid out as UTF-8, ascii and sized_utf8 among them), LargeUtf8String, Utf8ViewString, BinaryString, LargeBinaryString, BinaryViewString, FixedString (Arc<Utf8StringSerie> .. Arc<FixedStringSerie>), the fourteen codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Uuid(Arc<FixedBytesSerie>), Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (Arc<SerieSerie> .. Arc<LargeSerieViewSerie>; the one layout a datatype names, so the variant shares the datatype's name), Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 40 bytes, pinned by a const assert - a run's window inline, every column leaf one thin pointer; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self  (a run)
   pub fn empty(field: impl Into<Arc<Field>>) -> Result<Self>  (the empty column of field; a union of no member, wherever it lies, refused)
   pub fn with_capacity(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self>  (the empty column whose buffers reserve rows; an encoding reserves nothing)
@@ -5619,7 +5631,12 @@ pub struct ProtocolField<'field>
   pub fn cast(self, target: &Field, options: ArrowCastOptions) -> crate::arrow::Result<SerieReader>  (every record cast into target - a record root, or a column as the one child of one - by one plan: the reader itself under its own root; held records cast once each; a stream's batches cast by the plan they were opened under and landed under target after it, or by one plan from the stream's own schema over an identity)
   pub fn root_of(field: &Field) -> crate::Result<Field>  (the record root a held column of field crosses into a table under: a record's own field, required, or the DEFAULT_ROOT_NAME record it is the one child of; what from_serie and from_chunked name their field by and what into_arrow_batch, into_arrow_reader and ChunkedSerie::into_arrow_reader project their schema from)
   pub fn field(&self) -> &Field
-  pub fn into_arrow_reader(self) -> BatchReader  (transport: batches reconciled to the root and never landed; the inner reader itself over an identity plan)
+  pub fn into_arrow_reader(self) -> BatchReader  (transport: batches reconciled to the root and never landed; the inner reader itself over an identity plan; a window's static values dropped)
+  pub fn static_values(&self) -> Option<FieldScalar<'_>>  (the record a window window_by cut states, lent with no allocation: the windowed reader's own cells but windownum and rownum, the key cells, windownum, and rownum absolute in the stream and never null; kept by cast; None for every other reader)
+  pub fn window_by(self, by: impl IntoSelector, sorted: bool) -> crate::arrow::Result<SerieReaderWindows>  (one lazy SerieReader per window of equal adjacent keys, in the order they arrive, by bound once against the root before any batch is pulled; windows read in order - taking the next drops the open one's unread rows, and a window its walk passed refuses once, naming it; sorted verifies the keys arrive ascending, absent last, and refuses the first window keyed backwards naming the batch and row; the walk holds at most one batch, its key record and one bit per row; refuses before any pull what Serie::window_by refuses, naming the root)
+  pub struct SerieReaderWindows  (the windows of a stream: Iterator<Item = crate::arrow::Result<SerieReader>>, FusedIterator, Debug; Send + Sync, every window Send; a failure is the item of whichever reader pulled it, once, then the walk and every window end)
+  pub fn field(&self) -> &Field  (the root every window yields: the windowed reader's own)
+  pub fn static_field(&self) -> &Field  (the record every window's static_values is typed by, known before the first pull)
   pub fn field(&self) -> Option<&Field>  (None for a run)
   pub fn field_ref(&self) -> Option<&Arc<Field>>
   pub fn require_field(&self) -> Result<&Field>  (refuses a run by name)
@@ -5637,7 +5654,7 @@ pub struct ProtocolField<'field>
   pub const fn is_column(&self) -> bool
   pub fn into_run(self) -> Run  (a run answers itself; a column builds its rows once)
   pub fn into_arrow_array(&self) -> Option<ArrayRef>  (None for a run; shares buffers)
-  pub fn sort_indices(&self, options: SortOptions) -> Result<Self>  (the row positions in sorted order as a uint32 column named index, stable, in the values' order - Scalar's total order, a nested absence placed as a top-level one: a primitive column over its native slice, every NaN one value; a column whose stored bytes order as its values through Arrow's row format; a run and any other column - a version, windows-1252 text, a code, a URL, a union, a foreign NaN payload - through the values' own order, each row built once; absent rows gathered to the end the options name; refuses more rows than one uint32 index column addresses)
+  pub fn sort_indices(&self, options: SortOptions) -> Result<Self>  (the row positions in sorted order as a uint32 column named index, stable, in the values' order - Scalar's total order, a nested absence placed as a top-level one: a primitive column over its native slice, every NaN one value; a column whose stored bytes order as its values through Arrow's row format; a record column whose buffers do not child by child, each child on its own rung, so only a value-ordered child builds its rows; a run and any other column - a version, windows-1252 text, a code, a URL, a union, a foreign NaN payload - through the values' own order, each row built once; absent rows gathered to the end the options name; refuses more rows than one uint32 index column addresses)
   pub fn is_sorted(&self, options: SortOptions) -> bool  (one pass over adjacent rows on sort_indices' rung: Arrow's comparator over buffers that order as their values, else the values' order, each row built once)
   pub fn is_unique(&self) -> bool  (one hash set over the row format's bytes or the values, an absent row one value; stops at the first repeat)
   pub fn unique_count(&self) -> usize
@@ -5654,10 +5671,11 @@ pub struct ProtocolField<'field>
   pub fn as_reversed(&mut self) -> Result<&mut Self>  (a primitive column held alone reverses the native slice and its validity bits where they stand, a boolean column its two bitmaps)
   pub fn as_taken(&mut self, indices: &Self) -> Result<&mut Self>
   pub fn as_filtered(&mut self, mask: &Self) -> Result<&mut Self>
-  pub fn window(&self, offset: usize, length: usize) -> Result<SerieSlice<'_>>  (a window reading through this serie; refuses past the end naming the serie and both counts)
-  pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<SerieSliceMut<'_>>
+  pub fn window(&self, offset: usize, length: usize) -> Result<WindowSerie<'_>>  (a window reading through this serie; refuses past the end naming the serie and both counts)
+  pub fn window_mut(&mut self, offset: usize, length: usize) -> Result<WindowSerieMut<'_>>
+  pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> Result<SerieWindows<'_>>  (the rows cut into windows of equal keys, by a selector bound once against SerieReader::root_of: sorted false, one window per run of equal adjacent keys in row order over this serie; sorted true, each key once in key order, ascending with absent keys last - keys already in order the same windows at the same cost, any others' runs sorted stably and the rows gathered once into a serie the answer owns; the key column computed once, one comparator and one bit per row, each window its key; refuses a run, a key with no projection, an unnest, the binder's refusals and a key cell folding onto windownum or rownum before any row is read, and with sorted a serie past u32::MAX rows once a descent is read)
   pub fn require_arrow_array(&self) -> Result<ArrayRef>  (refuses a run by name)
-  pub fn slice(&self, offset: usize, length: usize) -> Result<Self>  (zero copy for a column, offsets rebased; a run copies its window; refuses past the end)
+  pub fn slice(&self, offset: usize, length: usize) -> Result<Self>  (zero copy: a column's offsets rebased, a run a window over the same shared values, a slice of a slice reaching them with the offsets summed; the whole serie is itself; refuses past the end)
   pub fn child(&self, name: &str) -> Option<&Self>  (a record column's child by exact name)
   pub fn child_at(&self, index: usize) -> Option<&Self>
   pub fn children(&self) -> &[Self]  (a record or a union column's children; empty elsewhere)
@@ -5731,6 +5749,7 @@ pub struct ProtocolField<'field>
   pub fn into_filtered(&self, mask: &Serie) -> Result<Self>  (a mask as long as the whole, cut to each chunk's window and applied per chunk, the chunks kept apart; refuses another length naming the field)
   pub fn partition_by(&self, keys: &Serie) -> Result<Vec<(Scalar, Self)>>  (keys as long as the whole, cut per chunk; one (key, rows) per distinct key in first-occurrence order across the chunks, each group's chunks what each chunk contributed, kept apart)
   pub fn partition_by_chunked(&self, keys: &Self) -> Result<Vec<(Scalar, Self)>>  (partition_by over keys held as chunks: cut at the same rows, chunk i of the keys groups chunk i with no join; cut elsewhere, the keys joined once and cut per chunk; refuses another length naming the field)
+  pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> crate::Result<Vec<(Scalar, Self)>>  (the windows Serie::window_by cuts the joined column into, each zero-copy pieces of the chunks: a run crossing a chunk edge one window, the pending key compared in place at each edge; sorted regroups runs stably by key, never rows, with no join; no window states a record - the key is the item's first half, the place its index - so a key cell named windownum or rownum is taken; Serie::window_by's other refusals, naming the field, before any row is read)
   pub fn memory_size(&self) -> usize  (the chunks summed)
   pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self>  (in place, chaining: into_sorted replacing the chunks; a refusal leaves the serie as it was)
   pub fn as_unique(&mut self) -> Result<&mut Self>
