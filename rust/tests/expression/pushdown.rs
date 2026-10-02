@@ -490,4 +490,41 @@ mod epoch_functions {
         // A calendar part is not monotone, so it stays opaque.
         assert_eq!(certainty("month(t) = 1"), None);
     }
+
+    /// A count of seconds reaches years past `i32`: the period of a bound
+    /// that far is past `int32` and bounds nothing, so a predicate a row
+    /// below that bound satisfies is never pruned by a wrapped year.
+    #[test]
+    fn a_bound_whose_period_is_past_int32_bounds_nothing() {
+        let schema = StructType::from_fields([DataType::DateTime64 {
+            unit: TimeUnit::Second,
+            timezone: Timezone::UTC,
+        }
+        .nullable_field("t")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        let seconds =
+            |count: i64| Scalar::datetime64(count, TimeUnit::Second, Timezone::UTC).unwrap();
+        // From 1e15 seconds - year 31690708 - up to `i64::MAX` seconds.
+        let bounds = Bounds::new(Some(2)).with_column(
+            "t",
+            Some(seconds(1_000_000_000_000_000)),
+            Some(seconds(i64::MAX)),
+            Some(0),
+        );
+        let certainty = |text: &str| {
+            text.parse::<Term>()
+                .unwrap()
+                .bind(&schema)
+                .unwrap()
+                .statistics_certainty(&bounds)
+        };
+        // Year 300001970 lies inside the range, so a row may hold it.
+        assert_eq!(certainty("years(t) >= 300000000"), None);
+        assert_eq!(certainty("quarters(t) >= 1200000000"), None);
+        // The lower end still bounds.
+        assert_eq!(certainty("years(t) < 31688738"), Some(false));
+        assert_eq!(certainty("years(t) >= 31688738"), None);
+    }
 }

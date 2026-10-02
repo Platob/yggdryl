@@ -917,20 +917,24 @@ impl EpochPeriod {
     /// The period a day number falls in.
     ///
     /// A sub-day period over a day count is the one the day's first instant
-    /// falls in, which a date never asks for ([`Self::takes_date`]).
+    /// falls in, which a date never asks for ([`Self::takes_date`]). A
+    /// calendar period reads the day's year exactly, as wide as the day
+    /// count reaches - an `i64` count of seconds names years past `i32` - so
+    /// the period stays monotone in the day and one past `int32` is the
+    /// number it is, which [`epoch_value`] answers as null.
     pub(crate) const fn of_days(self, days: i64) -> i64 {
         match self {
             Self::Year => {
-                let (year, _, _) = crate::timezone::civil_from_days(days);
-                year as i64 - 1970
+                let (year, _, _) = crate::timezone::civil_from_days_wide(days);
+                year - 1970
             }
             Self::Quarter => {
-                let (year, month, _) = crate::timezone::civil_from_days(days);
-                (year as i64 - 1970) * 4 + (month as i64 - 1) / 3
+                let (year, month, _) = crate::timezone::civil_from_days_wide(days);
+                (year - 1970) * 4 + (month as i64 - 1) / 3
             }
             Self::Month => {
-                let (year, month, _) = crate::timezone::civil_from_days(days);
-                (year as i64 - 1970) * 12 + month as i64 - 1
+                let (year, month, _) = crate::timezone::civil_from_days_wide(days);
+                (year - 1970) * 12 + month as i64 - 1
             }
             Self::Week => (days + 3).div_euclid(7),
             Self::Day => days,

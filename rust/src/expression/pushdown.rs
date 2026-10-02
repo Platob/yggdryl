@@ -442,6 +442,11 @@ fn oriented<'node>(
 /// floors into the range of its ends' periods, and a null floors to null. So
 /// its statistics are the column's mapped through the function, and a
 /// predicate on the function prunes by the same rules as one on the column.
+///
+/// A period past `int32` answers null too, so an end whose period is past it
+/// bounds nothing on its side, and the column's null count is the
+/// function's only where both ends' periods fit - every value between them
+/// then does - or where every row is null.
 fn column_bounds<'bounds>(
     node: &Node,
     schema: &Field,
@@ -457,10 +462,19 @@ fn column_bounds<'bounds>(
                 .map(|value| epoch_value(period, value))
                 .filter(|value| !value.is_null())
         };
+        let minimum = mapped(&column.minimum);
+        let maximum = mapped(&column.maximum);
+        let nulls = if minimum.is_some() && maximum.is_some() {
+            column.nulls
+        } else {
+            column
+                .nulls
+                .filter(|nulls| Some(*nulls) == bounds.row_count())
+        };
         return Some(Cow::Owned(ColumnBounds {
-            minimum: mapped(&column.minimum),
-            maximum: mapped(&column.maximum),
-            nulls: column.nulls,
+            minimum,
+            maximum,
+            nulls,
         }));
     }
     let index = node.as_column()?;

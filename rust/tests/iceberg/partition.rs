@@ -377,14 +377,15 @@ mod time_transforms {
             Transform::from_str(" minutes[1] ").unwrap(),
             Transform::Minutes(1)
         );
-        assert_eq!(Transform::from_str("weeks").unwrap(), Transform::Week);
-        assert_eq!(Transform::from_str("quarters").unwrap(), Transform::Quarter);
-        // Spark's DDL spells the standard four in the plural too.
+        // Spark's DDL plurals are intake spellings of the parameter-free
+        // time transforms - wide in, one canonical spelling out.
         for (plural, transform) in [
             ("years", Transform::Year),
             ("months", Transform::Month),
             ("days", Transform::Day),
             ("hours", Transform::Hour),
+            ("weeks", Transform::Week),
+            ("quarters", Transform::Quarter),
         ] {
             assert_eq!(Transform::from_str(plural).unwrap(), transform);
             assert_ne!(transform.to_string(), plural, "the singular is written");
@@ -397,29 +398,37 @@ mod time_transforms {
 
     #[test]
     fn a_minutes_step_is_bracketed_positive_and_bounded() {
-        // The one spelling is the bracketed one: no bare word, no other name.
+        // The one spelling is the bracketed one: no bare word, no other name,
+        // no parenthesized step - which `bucket(n)` and `truncate(w)` keep -
+        // and unsigned digits with nothing around them.
         for spelling in [
             "minutes[0]",
             "minutes",
             "minutes[x]",
             "minutes[15",
             "minutes[2147483646]",
+            "minutes(15)",
+            "minutes[-15]",
+            "minutes[+15]",
+            "minutes [15]",
+            "minutes[ 15 ]",
             "minute",
             "min15",
             "qhour",
             "hhour",
         ] {
             let error = Transform::from_str(spelling).unwrap_err().to_string();
-            assert!(error.contains("minutes"), "{spelling}: {error}");
+            assert!(error.contains("minutes[n]"), "{spelling}: {error}");
+            assert!(error.contains(spelling), "{spelling}: {error}");
         }
-        for (spelling, named) in [
-            ("minutes[0]", "minutes[0]"),
-            ("minutes[15", "minutes[15"),
-            ("minutes[x]", "x"),
-        ] {
-            let error = Transform::from_str(spelling).unwrap_err().to_string();
-            assert!(error.contains(named), "{spelling}: {error}");
-        }
+        assert_eq!(
+            Transform::from_str("bucket(16)").unwrap(),
+            Transform::Bucket(16)
+        );
+        assert_eq!(
+            Transform::from_str("truncate(4)").unwrap(),
+            Transform::Truncate(4)
+        );
         // The most minutes the official model can carry reads; a step past
         // it, or none, built by hand is refused by its spelling.
         assert_eq!(
@@ -478,6 +487,41 @@ mod time_transforms {
             .unwrap_err()
             .to_string();
         assert!(error.contains("a date or a timestamp"), "{error}");
+    }
+
+    /// Every time transform reads a timestamp Iceberg can express - counted
+    /// in microseconds or nanoseconds - and refuses one counted in seconds
+    /// or milliseconds alike, the crate's own three by the same rule as the
+    /// specification's four.
+    #[test]
+    fn every_time_transform_refuses_a_unit_iceberg_cannot_express() {
+        for timezone in [Timezone::NAIVE, Timezone::UTC] {
+            for transform in [
+                Transform::Year,
+                Transform::Month,
+                Transform::Day,
+                Transform::Hour,
+                Transform::Minutes(60),
+                Transform::Week,
+                Transform::Quarter,
+            ] {
+                for unit in [TimeUnit::Microsecond, TimeUnit::Nanosecond] {
+                    let source = DataType::DateTime64 { unit, timezone };
+                    assert!(
+                        transform.result_type(&source).is_ok(),
+                        "{transform} over {source}"
+                    );
+                }
+                for unit in [TimeUnit::Second, TimeUnit::Millisecond] {
+                    let source = DataType::DateTime64 { unit, timezone };
+                    let error = transform.result_type(&source).unwrap_err().to_string();
+                    assert!(
+                        error.contains(&source.to_string()),
+                        "{transform} over {source}: {error}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

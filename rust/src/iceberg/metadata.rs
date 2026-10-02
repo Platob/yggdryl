@@ -3005,6 +3005,41 @@ fn ensure_unique<T: Copy + Eq + std::hash::Hash + fmt::Debug>(
     Ok(())
 }
 
+/// Judge the source of every transform of this crate's own against one
+/// schema.
+///
+/// The official model sees `minutes[n]`, `week` and `quarter` as the
+/// reserved buckets they cross it as, and a bucket binds to sources a period
+/// cannot read - an `int64`, a `utf8` - so its bind proves nothing about
+/// them: [`Transform::result_type`] is the rule, the one every write applies,
+/// and it is applied to every spec and every sort order wherever one is
+/// bound to a schema - a table built, read, or given a new spec or order.
+/// A source the schema does not hold is the official bind's to report.
+fn bridged_sources_bind(
+    fields: impl IntoIterator<Item = (i32, Transform)>,
+    schema: &Field,
+) -> std::result::Result<(), String> {
+    for (source_id, transform) in fields {
+        if !transform.is_bridged() {
+            continue;
+        }
+        let Some(source) = schema.field_by_parquet_field_id(source_id) else {
+            continue;
+        };
+        match transform.result_type(source.dtype()) {
+            Ok(_) => {}
+            Err(Error::Codec { reason, .. }) => {
+                return Err(format!(
+                    "{reason} (source {source_id}, {:?})",
+                    crate::text::elide_to(source.name(), 32)
+                ));
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(())
+}
+
 fn validate_partition_spec_history(specs: &[PartitionSpec], schemas: &[Field]) -> Result<()> {
     for spec in specs {
         spec.validate_shape()?;
@@ -3012,13 +3047,24 @@ fn validate_partition_spec_history(specs: &[PartitionSpec], schemas: &[Field]) -
         let mut last_error = None;
         let mut matched = false;
         for schema in schemas {
+            let bridged = bridged_sources_bind(
+                spec.fields
+                    .iter()
+                    .map(|field| (field.source_id, field.transform)),
+                schema,
+            );
             let schema = std::sync::Arc::new(official_schema(schema)?);
-            match official.clone().bind(schema) {
+            match official
+                .clone()
+                .bind(schema)
+                .map_err(|error| error.to_string())
+                .and(bridged)
+            {
                 Ok(_) => {
                     matched = true;
                     break;
                 }
-                Err(error) => last_error = Some(error.to_string()),
+                Err(error) => last_error = Some(error),
             }
         }
         if !matched {
@@ -3040,17 +3086,26 @@ fn validate_sort_order_history(orders: &[SortOrder], schemas: &[Field]) -> Resul
         let mut last_error = None;
         let mut matched = false;
         for schema in schemas {
+            let bridged = bridged_sources_bind(
+                order
+                    .fields
+                    .iter()
+                    .map(|field| (field.source_id, field.transform)),
+                schema,
+            );
             let schema = official_schema(schema)?;
             let result = OfficialSortOrder::builder()
                 .with_order_id(official.order_id)
                 .with_fields(official.fields.clone())
-                .build(&schema);
+                .build(&schema)
+                .map_err(|error| error.to_string())
+                .and(bridged);
             match result {
                 Ok(_) => {
                     matched = true;
                     break;
                 }
-                Err(error) => last_error = Some(error.to_string()),
+                Err(error) => last_error = Some(error),
             }
         }
         if !matched {

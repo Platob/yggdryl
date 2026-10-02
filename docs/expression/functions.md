@@ -143,7 +143,7 @@ The closed function set, and its one door: a user-defined function is registered
 
 Two families read a temporal, and they answer different questions. The four *calendar parts* - `year(x)`, `month(x)`, `day(x)`, `hour(x)` - read a field off the date: 2024, 1 through 12, 1 through 31, 0 through 23. The seven *epoch periods* - `years(x)`, `quarters(x)`, `months(x)`, `weeks(x)`, `days(x)`, `hours(x)`, `minutes(x, n)` - count the whole periods from the Unix epoch to the value, floored, so an instant before 1970 is in a negative period rather than the one after it: `years('1969-12-31')` is `-1`. They are spelled in the plural as Spark's Iceberg DDL spells them, each is one [Iceberg partition transform](../media/index.md#iceberg) (`minutes(ts, 15)` is the `minutes[15]` transform of `ts`), and each is monotone over its argument, so a range on `x` prunes a filter on `years(x)` by the same statistics.
 
-`minutes(x, n)` always states its step `n`, a whole-number literal from 1 to 4294967295 - `minutes(ts, 1)` the minute, `minutes(ts, 15)` the quarter hour, `minutes(ts, 30)` the half hour, `minutes(ts, 60)` the hour `hours(ts)` answers. A missing step, `minutes(ts, 0)`, `minutes(ts, 'x')` and a step a column holds are refused where the call is typed; a parameter supplied as a whole number is a literal there.
+`minutes(x, n)` always states its step `n`, a whole-number literal from 1 to 4294967295 - `minutes(ts, 1)` the minute, `minutes(ts, 15)` the quarter hour, `minutes(ts, 30)` the half hour, `minutes(ts, 60)` the hour `hours(ts)` answers. A missing step is refused by the parser, which reads `minutes` as a call of exactly two arguments; `minutes(ts, 0)`, `minutes(ts, 'x')` and a step a column holds parse, and are refused where the call is typed; a parameter supplied as a whole number is a literal there.
 
 | Function | Argument | Answers |
 | --- | --- | --- |
@@ -155,7 +155,7 @@ Two families read a temporal, and they answer different questions. The four *cal
 | `hours(x)` | timestamp | `int32` hours since the epoch |
 | `minutes(x, n)` | timestamp, and a whole-number literal `n` | `int32` periods of `n` minutes since the epoch |
 
-A date has no clock, so a sub-day period over one is refused where it is typed; a null answers null. A calendar unit is not a fixed length, so `truncate(x, 'month')` stays refused and `months(x)` is how a month is read.
+A date has no clock, so a sub-day period over one is refused where it is typed; a null answers null, and so does a period past `int32`, which a count of seconds reaches - never a number wrapped back into range. A calendar unit is not a fixed length, so `truncate(x, 'month')` stays refused and `months(x)` is how a month is read.
 
 === "Rust"
 

@@ -214,6 +214,20 @@ fn source_column<'schema>(
 /// transform's as the `date32` it stores - and an end that is absent, or
 /// whose first instant the source's own count cannot hold, bounds nothing on
 /// its side.
+///
+/// A writer that truncated a count before the epoch toward zero rather than
+/// flooring it filed instants of period `k - 1` under period `k`, for every
+/// `k` up to zero: Apache Iceberg's Java writers once did for every such
+/// instant, and iceberg-rust 0.10 still does for the last second of a day
+/// before 1970. Java's reader keeps those files by widening its projection
+/// of a negative period to the period after it
+/// (`ProjectionUtil.fixInclusiveTimeProjection`), and the range here is the
+/// same widening seen from the file: a lowest period at or below zero bounds
+/// the source from the first instant of the period before it. Only the
+/// specification's transforms are widened, and exactly where Java widens
+/// them - `year`, `month`, `day` and `hour` of a timestamp, `year` and
+/// `month` of a date, whose `day` is the date itself - because this crate's
+/// own are written by no other writer and this one floors.
 fn period_range(
     period: EpochPeriod,
     source: &DataType,
@@ -234,7 +248,24 @@ fn period_range(
         DataType::DateTime64 { unit, timezone } => Scalar::datetime64(count, *unit, *timezone).ok(),
         _ => None,
     };
-    let minimum = lower.and_then(number).and_then(start).and_then(at);
+    let truncated_by_writers = match source {
+        DataType::Date32 => matches!(period, EpochPeriod::Year | EpochPeriod::Month),
+        _ => matches!(
+            period,
+            EpochPeriod::Year | EpochPeriod::Month | EpochPeriod::Day | EpochPeriod::Hour
+        ),
+    };
+    let minimum = lower
+        .and_then(number)
+        .and_then(|lowest| {
+            if truncated_by_writers && lowest <= 0 {
+                lowest.checked_sub(1)
+            } else {
+                Some(lowest)
+            }
+        })
+        .and_then(start)
+        .and_then(at);
     let maximum = upper
         .and_then(number)
         .and_then(|number| number.checked_add(1))
@@ -244,19 +275,82 @@ fn period_range(
     (minimum, maximum)
 }
 
+/// One column's bounds gathered from every statistic that states one.
+///
+/// Each statistic is sound on its own - every value of the column lies
+/// within it - so their intersection is too: the larger minimum, the
+/// smaller maximum, whatever order the statistics arrive in. A column two
+/// partition fields read, an identity beside a period or two periods, is
+/// bounded by the tighter of them, never by whichever the spec lists first.
+struct ColumnRange<'schema> {
+    column: &'schema Field,
+    minimum: Option<Scalar>,
+    maximum: Option<Scalar>,
+    nulls: Option<u64>,
+}
+
+impl<'schema> ColumnRange<'schema> {
+    /// Narrow to one more statistic of the same column.
+    fn narrow(&mut self, minimum: Option<Scalar>, maximum: Option<Scalar>) {
+        let dtype = self.column.dtype();
+        let keep =
+            |held: &mut Option<Scalar>, other: Option<Scalar>, wanted: std::cmp::Ordering| {
+                let Some(other) = other else {
+                    return;
+                };
+                match held {
+                    Some(current) => {
+                        if crate::expression::eval::order(dtype, &other, current) == Some(wanted) {
+                            *current = other;
+                        }
+                    }
+                    None => *held = Some(other),
+                }
+            };
+        keep(&mut self.minimum, minimum, std::cmp::Ordering::Greater);
+        keep(&mut self.maximum, maximum, std::cmp::Ordering::Less);
+    }
+}
+
+/// Fold one more statistic of `column` into the ranges gathered so far.
+fn gather<'schema>(
+    ranges: &mut Vec<ColumnRange<'schema>>,
+    column: &'schema Field,
+    minimum: Option<Scalar>,
+    maximum: Option<Scalar>,
+    nulls: Option<u64>,
+) {
+    match ranges
+        .iter_mut()
+        .find(|range| range.column.name() == column.name())
+    {
+        Some(range) => {
+            range.narrow(minimum, maximum);
+            range.nulls = range.nulls.or(nulls);
+        }
+        None => ranges.push(ColumnRange {
+            column,
+            minimum,
+            maximum,
+            nulls,
+        }),
+    }
+}
+
 /// The statistics a manifest-list row states about the files it names.
 ///
 /// This is the cheapest level there is: a summary is one row of the manifest
 /// list, so a manifest ruled out here is never opened at all. An identity
 /// partition field bounds its schema column by the summary's own ends, and
 /// a time partition field by the first instant of its lowest period and the
-/// last of its highest; a bucket or a truncation bounds nothing.
+/// last of its highest; a bucket or a truncation bounds nothing. A column
+/// several fields read is bounded by the tightest of them.
 pub(super) fn manifest_bounds(
     manifest: &ManifestFile,
     spec: &PartitionSpec,
     schema: &Field,
 ) -> Bounds {
-    let mut bounds = Bounds::new(None);
+    let mut ranges: Vec<ColumnRange<'_>> = Vec::new();
     for (position, summary) in manifest.partitions.iter().enumerate() {
         // A summary says whether a null is present, never how many, so the
         // only count it can state is zero. A time transform of a null is
@@ -274,7 +368,7 @@ pub(super) fn manifest_bounds(
             } else {
                 (None, None)
             };
-            bounds = bounds.with_column(column.name(), minimum, maximum, nulls);
+            gather(&mut ranges, column, minimum, maximum, nulls);
             continue;
         }
         let Some((column, period)) = period_column(spec, position, schema) else {
@@ -293,18 +387,16 @@ pub(super) fn manifest_bounds(
             decode(&summary.lower_bound).as_ref(),
             decode(&summary.upper_bound).as_ref(),
         );
-        bounds = bounds.with_column(column.name(), minimum, maximum, nulls);
+        gather(&mut ranges, column, minimum, maximum, nulls);
     }
-    bounds
-}
-
-/// What a time partition value says of its source column in one file: the
-/// period's first and last instant, and whether the column is null.
-struct PeriodBounds<'schema> {
-    column: &'schema Field,
-    minimum: Option<Scalar>,
-    maximum: Option<Scalar>,
-    nulls: Option<u64>,
+    ranges.into_iter().fold(Bounds::new(None), |bounds, range| {
+        bounds.with_column(
+            range.column.name(),
+            range.minimum,
+            range.maximum,
+            range.nulls,
+        )
+    })
 }
 
 /// The statistics a manifest entry states about one data file.
@@ -313,13 +405,14 @@ struct PeriodBounds<'schema> {
 /// value every row of the file shares is a minimum equal to its maximum,
 /// which is what lets a partition predicate settle a file outright rather
 /// than merely fail to rule it out. A time partition value is the period
-/// every row's source falls in, which stands in for whichever of the
-/// column's own ends and null count the file left unstated.
+/// every row's source falls in, which narrows the column's own ends to the
+/// tightest of them all and stands in for a null count the file left
+/// unstated.
 pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field) -> Bounds {
     let rows = u64::try_from(file.record_count).ok();
     let mut bounds = Bounds::new(rows);
     let mut settled: Vec<&str> = Vec::new();
-    let mut periods: Vec<PeriodBounds<'_>> = Vec::new();
+    let mut periods: Vec<ColumnRange<'_>> = Vec::new();
     for position in 0..spec.fields.len() {
         let value = file
             .partition
@@ -341,21 +434,11 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         // A period of null is the period of a null source, so every row of
         // the file holds null there; a period states no null at all.
         if value.is_null() {
-            periods.push(PeriodBounds {
-                column,
-                minimum: None,
-                maximum: None,
-                nulls: rows,
-            });
+            gather(&mut periods, column, None, None, rows);
             continue;
         }
         let (minimum, maximum) = period_range(period, column.dtype(), Some(&value), Some(&value));
-        periods.push(PeriodBounds {
-            column,
-            minimum,
-            maximum,
-            nulls: Some(0),
-        });
+        gather(&mut periods, column, minimum, maximum, Some(0));
     }
     for column in schema.fields() {
         if settled.contains(&column.name()) {
@@ -378,11 +461,12 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         };
         let mut nulls = nulls;
         if let Some(period) = periods
-            .iter()
+            .iter_mut()
             .find(|period| period.column.name() == column.name())
         {
-            minimum = minimum.or_else(|| period.minimum.clone());
-            maximum = maximum.or_else(|| period.maximum.clone());
+            period.narrow(minimum, maximum);
+            minimum = period.minimum.take();
+            maximum = period.maximum.take();
             nulls = nulls.or(period.nulls);
         }
         if minimum.is_none() && maximum.is_none() && nulls.is_none() {

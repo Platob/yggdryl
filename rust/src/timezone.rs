@@ -51,7 +51,7 @@ use std::sync::{OnceLock, RwLock};
 
 use smol_str::SmolStr;
 pub use value::Timezone;
-pub(crate) use value::{civil_from_days, days_from_civil};
+pub(crate) use value::{civil_from_days, civil_from_days_wide, days_from_civil};
 
 use crate::typed::define_field_types;
 use crate::{Error, Result};
@@ -1092,8 +1092,33 @@ mod value {
 
     /// Return the civil date a day number falls on, as `(year, month, day)`.
     ///
-    /// The exact inverse of [`days_from_civil`], from the same paper.
+    /// The exact inverse of [`days_from_civil`] for every day number whose
+    /// year fits `i32` - every day a `date32` or a `date64` names, and every
+    /// instant a sub-second count reaches. A count of seconds reaches years
+    /// past it, and there the year saturates to `i32::MIN` or `i32::MAX`
+    /// rather than wrapping into a year a caller would believe;
+    /// [`civil_from_days_wide`] answers the year itself.
     pub(crate) const fn civil_from_days(days: i64) -> (i32, u32, u32) {
+        let (year, month, day) = civil_from_days_wide(days);
+        let year = if year > i32::MAX as i64 {
+            i32::MAX
+        } else if year < i32::MIN as i64 {
+            i32::MIN
+        } else {
+            year as i32
+        };
+        (year, month, day)
+    }
+
+    /// Return the civil date a day number falls on, its year as wide as the
+    /// day count reaches.
+    ///
+    /// The exact inverse of [`days_from_civil`], from the same paper, for
+    /// every day number up to `i64::MAX - 719_468`: an `i64` count of
+    /// seconds names a day of a year near 2.9e11, which no `i32` holds, and
+    /// what floors such an instant to its year, quarter or month needs that
+    /// year exactly.
+    pub(crate) const fn civil_from_days_wide(days: i64) -> (i64, u32, u32) {
         let days = days + 719_468;
         let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
         let day_of_era = days - era * 146_097;
@@ -1109,7 +1134,7 @@ mod value {
             month_index - 9
         };
         (
-            (if month <= 2 { year + 1 } else { year }) as i32,
+            if month <= 2 { year + 1 } else { year },
             month as u32,
             day as u32,
         )
@@ -1319,7 +1344,9 @@ pub mod internals {
     //! carries have to be read from inside or an unsorted insertion ships.
     //! The rows come back as their own public shape rather than as the
     //! crate's `Zone`, and `days_from_civil` - what every civil-time answer
-    //! is measured against here - is behind a forwarder.
+    //! is measured against here - is behind a forwarder, beside the two
+    //! readings of its inverse: the saturating `civil_from_days` and the
+    //! exact `civil_from_days_wide`.
 
     /// One row of the bundled zone registry.
     pub struct ZoneRow {
@@ -1363,5 +1390,17 @@ pub mod internals {
     #[must_use]
     pub const fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
         super::days_from_civil(year, month, day)
+    }
+
+    /// The civil date a day number falls on, its year saturated to `i32`.
+    #[must_use]
+    pub const fn civil_from_days(days: i64) -> (i32, u32, u32) {
+        super::civil_from_days(days)
+    }
+
+    /// The civil date a day number falls on, its year exact in `i64`.
+    #[must_use]
+    pub const fn civil_from_days_wide(days: i64) -> (i64, u32, u32) {
+        super::civil_from_days_wide(days)
     }
 }

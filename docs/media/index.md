@@ -2427,9 +2427,9 @@ A scan decodes its files side by side once two of at least 64 KiB qualify (`read
 
 A streamed write with no `commit_batch_num` commits a snapshot each time the batches it holds reach the table's target file size (`write.target-file-size-bytes`, `IcebergOptions`' `target_file_size`) as `yggdryl::arrow::memory_size` measures them, then the remainder, so a stream of any length holds at most one target file of rows before each commit; `commit_batch_num = N` commits every `N` whole batches instead. An overwrite's first commit replaces and the rest append; an append or a merge keeps its intent in every commit.
 
-A partition spec names one transform per field, `Transform` in Rust. The specification's own are read and written as it spells them; three more are this crate's own, and a reader that does not know them reads them as `unknown` and prunes nothing by them, which is what the specification says of an unknown transform. Every time transform is the expression grammar's [epoch function](../expression/functions.md#calendar-parts-and-epoch-periods) of the same name, computed by one rule and floored, so an instant before 1970 lands in its own period - and because a file's tuple names the period every row's source falls in, a filter on the source column prunes files and manifests by it, with no partition column named in the filter. A `bucket` or a `truncate` prunes nothing. The plural is Spark's DDL spelling and is read as an alias of a transform with no parameter; the singular is written. `minutes[n]` takes its step in brackets as `bucket[n]` does - `minutes[15]` the quarter hour, `minutes[30]` the half hour, `minutes[60]` the hour - with `n` from 1 to 2147483645, and has no other spelling: `minutes[0]` and a bare `minutes` are refused by name.
+A partition spec names one transform per field, `Transform` in Rust. The specification's own are read and written as it spells them; three more - `minutes[n]`, `week` and `quarter` - are this crate's own, and no other implementation knows them: Apache Iceberg's Java implementation and PyIceberg read a name they do not know as `unknown` and prune nothing by it, as the specification says of an unknown transform, while iceberg-rust 0.10 refuses a metadata or manifest document naming one, so a table partitioned or sorted by one does not open there. Every time transform is the expression grammar's [epoch function](../expression/functions.md#calendar-parts-and-epoch-periods) of the same name, computed by one rule and floored, so an instant before 1970 lands in its own period - and because a file's tuple names the period every row's source falls in, a filter on the source column prunes files and manifests by it, with no partition column named in the filter, a column two fields read pruning by the tighter of them. A writer that truncated an instant before 1970 toward zero filed it one period late, which Java's reader allows for; a scan here allows for it the same way, so a period at or below zero of the specification's `year`, `month`, `day` and `hour` (of a date, `year` and `month`) also keeps the instants of the period before it. A `bucket` or a `truncate` prunes nothing. A timestamp source of a time transform is counted in microseconds or nanoseconds, the two units Iceberg spells, and one in seconds or milliseconds is refused by all seven alike. Spark's DDL plurals - `years`, `months`, `days`, `hours`, `weeks`, `quarters` - are intake spellings, read and written singular. `minutes[n]` takes its step in brackets as `bucket[n]` does - `minutes[15]` the quarter hour, `minutes[30]` the half hour, `minutes[60]` the hour - with `n` from 1 to 2147483645, and has that one spelling: `minutes[0]`, `minutes(15)`, `minutes[+15]`, a bare `minutes`, `minute` and `min15` are refused by name.
 
-| Transform | Aliases read | Source | Partition value | Grammar function | Whose |
+| Transform | Also read | Source | Partition value | Grammar function | Whose |
 | --- | --- | --- | --- | --- | --- |
 | `identity` | | any primitive | the value | | specification |
 | `bucket[n]` | `bucket(n)` | int, long, decimal, date, time, timestamp, string, uuid, fixed, binary | `int32` hash bucket | | specification |
@@ -2438,13 +2438,143 @@ A partition spec names one transform per field, `Transform` in Rust. The specifi
 | `month` | `months` | date, timestamp | `int32` months since 1970-01 | `months(x)` | specification |
 | `day` | `days` | date, timestamp | `date32` the UTC day | `days(x)` | specification |
 | `hour` | `hours` | timestamp | `int32` hours since the epoch | `hours(x)` | specification |
-| `minutes[n]` | `minutes(n)` | timestamp | `int32` periods of `n` minutes since the epoch | `minutes(x, n)` | this crate |
+| `minutes[n]` | | timestamp | `int32` periods of `n` minutes since the epoch | `minutes(x, n)` | this crate |
 | `week` | `weeks` | date, timestamp | `int32` Monday-start weeks since Monday 1969-12-29 | `weeks(x)` | this crate |
 | `quarter` | `quarters` | date, timestamp | `int32` quarters since 1970-Q1 | `quarters(x)` | this crate |
 | `void` | | any | null | | specification |
 | `unknown` | | any | not computed; a spec holding one is not written to | | specification |
 
-In the table's metadata the three cross the Apache Iceberg model this crate validates with as reserved bucket counts above `i32::MAX` - `minutes[n]` as `bucket[2147483648 + n]`, `quarter` as `bucket[4294967294]`, `week` as `bucket[4294967295]` - and come back as themselves; the metadata and manifest files on disk spell the names above, never the bucket, so another writer of this crate reads them. `Transform::from_term` and `Transform::into_term` map a grammar call to its transform and back - `minutes(ts, 15)` is `minutes[15]` - for a partition declaration spelled as an expression; `Transform::function` / `Transform::from_function` are the parameter-free half of that mapping (Rust-only).
+In the table's metadata the three cross the Apache Iceberg model this crate validates with as reserved bucket counts above `i32::MAX` - `minutes[n]` as `bucket[2147483648 + n]`, `quarter` as `bucket[4294967294]`, `week` as `bucket[4294967295]` - and come back as themselves; the metadata and manifest files on disk spell the names above, never the bucket, so another writer of this crate reads them. A `bucket[n]` above `i32::MAX`, built in code or stated by a metadata document or a manifest header, is refused by its count rather than read as one of the three, and because a bucket binds to sources a period cannot read, the source of each of the three is judged by the period's own rule - `minutes[n]` over an `int64` or a date is refused naming the transform and the type - wherever a spec or a sort order meets a schema: a table created or read, a spec or an order added. `Transform::from_term` and `Transform::into_term` map a grammar call to its transform and back - `minutes(ts, 15)` is `minutes[15]` - for a partition declaration spelled as an expression; `Transform::function` / `Transform::from_function` are the parameter-free half of that mapping (Rust-only).
+
+A table partitioned by `minutes[15]` writes one data file per quarter hour its rows fall in, and a filter on the timestamp skips the files whose period cannot hold it:
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::iceberg::{FormatVersion, PartitionField, PartitionSpec, Table, Transform, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{DataType, Scalar, StructType, TimeUnit, Timezone, arrow};
+
+    use arrow_array::{Int64Array, RecordBatch, TimestampMicrosecondArray};
+    use std::sync::Arc;
+
+    let mut schema = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }.required_field("ts"),
+    ])?)
+    .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+
+    // `minutes[15]` of `ts` (field id 2): one partition per quarter hour since the epoch.
+    let spec = PartitionSpec {
+        spec_id: 0,
+        fields: vec![PartitionField {
+            source_id: 2,
+            field_id: 1000,
+            name: "ts_minutes".into(),
+            transform: Transform::from_str("minutes[15]")?,
+        }],
+    };
+    assert!(Transform::from_str("minutes(15)").is_err(), "one spelling");
+
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-minutes");
+    let _ = std::fs::remove_dir_all(&path);
+    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+
+    // 00:00, 00:14:59, 00:15 and 01:00 of 1970-01-01: three quarter hours.
+    let batch = RecordBatch::try_new(
+        schema.into_arrow_schema()?,
+        vec![
+            Arc::new(Int64Array::from(vec![1_i64, 2, 3, 4])),
+            Arc::new(TimestampMicrosecondArray::from(vec![0_i64, 899_000_000, 900_000_000, 3_600_000_000])),
+        ],
+    )?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+
+    let mut periods: Vec<Scalar> = table.data_files()?.into_iter().map(|(file, _)| file.partition[0].clone()).collect();
+    periods.sort();
+    assert_eq!(periods, vec![Scalar::from(0), Scalar::from(1), Scalar::from(4)]);
+
+    // A filter on `ts` itself skips the files whose period cannot hold it.
+    let early = table.plan_matching("ts < '1970-01-01T00:15:00'")?;
+    assert_eq!(early.tasks.len(), 1);
+    assert_eq!(early.files_skipped(), 2);
+    let _ = std::fs::remove_dir_all(&path);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.iceberg import PartitionSpec, Table
+
+    schema = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("ts", pa.timestamp("us"), nullable=False),
+    ])
+    root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "ticks")
+
+    # `minutes[15]` of `ts`, the second column (field id 2): one partition per
+    # quarter hour since the epoch.
+    spec = PartitionSpec.from_json({
+        "spec-id": 0,
+        "fields": [{"name": "ts_minutes", "transform": "minutes[15]", "source-id": 2, "field-id": 1000}],
+    })
+    table = Table.create(root, schema, spec)
+
+    # 00:00, 00:14:59, 00:15 and 01:00 of 1970-01-01: three quarter hours.
+    table.append(pa.record_batch(
+        {"id": [1, 2, 3, 4], "ts": pa.array([0, 899_000_000, 900_000_000, 3_600_000_000], pa.timestamp("us"))},
+        schema=schema,
+    ))
+    assert sorted(file.partition for file, _ in table.data_files()) == [(0,), (1,), (4,)]
+    assert table.scan().read_all().num_rows == 4
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('ts: timestamp(us)')], {
+      nullable: false,
+    })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'ticks')
+
+    // `minutes[15]` of `ts`, the second column (field id 2): one partition per
+    // quarter hour since the epoch.
+    const spec = iceberg.PartitionSpec.fromJSON({
+      'spec-id': 0,
+      fields: [{ name: 'ts_minutes', transform: 'minutes[15]', 'source-id': 2, 'field-id': 1000 }],
+    })
+    const table = iceberg.Table.create(root, schema, spec)
+
+    // 00:00, 00:14:59, 00:15 and 01:00 of 1970-01-01, as Arrow JS's milliseconds.
+    table.append(
+      new arrow.Table({
+        id: arrow.vectorFromArray([1n, 2n, 3n, 4n], new arrow.Int64()),
+        ts: arrow.vectorFromArray([0, 899_000, 900_000, 3_600_000], new arrow.TimestampMicrosecond()),
+      }),
+    )
+    const periods = table
+      .dataFiles()
+      .map((file) => file.partition[0].asJs())
+      .sort((left, right) => left - right)
+    assert.deepEqual(periods, [0, 1, 4])
+    assert.equal(table.scan().intoTable().numRows, 4)
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
 
 A table is also created from what its schema declares. `PartitionSpec::from_schema` reads the root's [`PARTITION:by`](../types/protocol.md#partition-columns) - a bare column an identity field, an epoch function over a column its transform, `truncate(col, w)` a truncation, each named by its alias or by the convention (`ts_minutes`, `name_truncate`), anything else refused by name - and `Table::create` reads the root's [`SORT:by`](../types/protocol.md#sort-order) as the default sort order, `SortOrder::for_spec` where it declares none. The declarations are written on the root rather than through `with_partition_by`, because a derived partition value lives in the manifest and not in the rows. `Table::schema()` reports both keys back, `mark_partitions` writing the spec's fields the grammar can spell (a `bucket` has no spelling and is left out) and the default order its keys, so a reopened table says how it partitions and sorts. A partition group whose rows already arrive in the table's order is written as it arrived.
 

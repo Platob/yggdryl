@@ -18,6 +18,10 @@
 //! serde is what spells the names and the official model still validates
 //! everything else: a column's identifier, its name, its requiredness, its
 //! defaults and its place in the tree, a spec's source and its uniqueness.
+//! The bridge is a bijection only because a document cannot state a
+//! reserved count itself: every transform a document names has its
+//! parameter checked on the way in, so a `bucket[n]` above `i32::MAX` is
+//! refused by its count rather than read back as one of the three.
 
 use std::collections::BTreeMap;
 
@@ -147,21 +151,37 @@ pub(super) fn table_metadata_document(
 
 /// The official spelling of one transform name, when the official model has
 /// none of its own for it: the crate's own transforms as reserved buckets.
-fn bridge_transform_name(name: &str) -> Option<SmolStr> {
-    let transform = Transform::from_str(name).ok()?;
-    if !transform.is_bridged() {
-        return None;
-    }
-    Some(SmolStr::new(transform.into_official().ok()?.to_string()))
+///
+/// Every name the crate reads has its parameter checked here, before the
+/// official model sees it, because the official model accepts a bucket of
+/// any count and a reserved one would come back as one of the crate's own.
+/// A name the crate does not read is left for the official parser to judge.
+///
+/// # Errors
+///
+/// Refuses a parameter no table can state, naming it: a bucket count above
+/// `i32::MAX` or of zero, a truncate width of zero, a `minutes[n]` the
+/// reserved counts cannot carry.
+fn bridge_transform_name(name: &str) -> Result<Option<SmolStr>> {
+    let Ok(transform) = Transform::from_str(name) else {
+        return Ok(None);
+    };
+    let official = transform.into_official()?;
+    Ok(transform
+        .is_bridged()
+        .then(|| SmolStr::new(official.to_string())))
 }
 
 /// The crate spelling of one transform name the official model wrote, when
 /// it is a reserved bucket carrying one of the crate's own.
-fn restore_transform_name(name: &str) -> Option<SmolStr> {
-    let transform = Transform::from_official(name.parse::<OfficialTransform>().ok()?);
-    transform
+fn restore_transform_name(name: &str) -> Result<Option<SmolStr>> {
+    let Ok(official) = name.parse::<OfficialTransform>() else {
+        return Ok(None);
+    };
+    let transform = Transform::from_official(official);
+    Ok(transform
         .is_bridged()
-        .then(|| SmolStr::new(transform.to_string()))
+        .then(|| SmolStr::new(transform.to_string())))
 }
 
 /// Rewrite every transform of every partition spec and sort order in a
@@ -185,6 +205,11 @@ pub(super) fn restore_transforms(document: &Scalar) -> Result<Scalar> {
 /// what that reader is handed instead of a document spelling one of the
 /// crate's own transforms.
 /// `None` says the document already reads as it is.
+///
+/// # Errors
+///
+/// Refuses a transform whose parameter no table can state, a `bucket[n]`
+/// above `i32::MAX` among them, by its parameter.
 pub(super) fn bridged_partition_spec(document: &Scalar) -> Result<Option<Scalar>> {
     if document.as_serie().is_some() {
         return rewrite_fields(document, &bridge_transform_name);
@@ -211,7 +236,10 @@ pub(super) fn bridge_sort_order(document: &Scalar) -> Result<Scalar> {
 
 /// Rewrite the transform names under `partition-specs`, a v1 bare
 /// `partition-spec` and `sort-orders`, through `rename`.
-fn walk_transforms(document: &Scalar, rename: &dyn Fn(&str) -> Option<SmolStr>) -> Result<Scalar> {
+fn walk_transforms(
+    document: &Scalar,
+    rename: &dyn Fn(&str) -> Result<Option<SmolStr>>,
+) -> Result<Scalar> {
     let mut rewritten = document.clone();
     for key in ["partition-specs", "sort-orders"] {
         if let Some(entries) = document.get_key_str(key)
@@ -232,7 +260,7 @@ fn walk_transforms(document: &Scalar, rename: &dyn Fn(&str) -> Option<SmolStr>) 
 /// array only when a name changed.
 fn rewrite_entries(
     entries: &Scalar,
-    rename: &dyn Fn(&str) -> Option<SmolStr>,
+    rename: &dyn Fn(&str) -> Result<Option<SmolStr>>,
 ) -> Result<Option<Scalar>> {
     let Some(entries) = entries.as_serie() else {
         return Ok(None);
@@ -260,7 +288,7 @@ fn rewrite_entries(
 /// only when a name changed.
 fn rewrite_fields(
     fields: &Scalar,
-    rename: &dyn Fn(&str) -> Option<SmolStr>,
+    rename: &dyn Fn(&str) -> Result<Option<SmolStr>>,
 ) -> Result<Option<Scalar>> {
     let Some(fields) = fields.as_serie() else {
         return Ok(None);
@@ -271,7 +299,9 @@ fn rewrite_fields(
         match field
             .get_key_str("transform")
             .and_then(Scalar::as_str)
-            .and_then(rename)
+            .map(rename)
+            .transpose()?
+            .flatten()
         {
             Some(renamed) => {
                 changed = true;

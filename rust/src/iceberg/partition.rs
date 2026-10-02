@@ -18,15 +18,19 @@
 //!
 //! The transforms of this crate's own have no spelling in the official model,
 //! which refuses a name it does not know. They cross it as a bucket whose
-//! count no table can state - above the `i32::MAX` [`Transform::result_type`]
-//! refuses: `minutes[n]` as `bucket[2147483648 + n]`, `quarter` as
-//! `bucket[4294967294]` and `week` as `bucket[4294967295]` - because a bucket
-//! is accepted on every date and timestamp source, answers the same `int32` a
-//! period does, and each count is its own transform to the official duplicate
-//! check. [`Transform::into_official`] and [`Transform::from_official`] are
-//! the two halves, and every document handed to the official model is
+//! count no table can state - above `i32::MAX`, which every bucket the crate
+//! hands the official model is checked against first: `minutes[n]` as
+//! `bucket[2147483648 + n]`, `quarter` as `bucket[4294967294]` and `week` as
+//! `bucket[4294967295]` - because a bucket is accepted on every date and
+//! timestamp source, answers the same `int32` a period does, and each count
+//! is its own transform to the official duplicate check. A bucket accepts
+//! sources a period does not, so the source of each of the three is judged
+//! by [`Transform::result_type`] wherever a spec or a sort order is bound to
+//! a schema. [`Transform::into_official`] and [`Transform::from_official`]
+//! are the two halves, and every document handed to the official model is
 //! rewritten through them in `official.rs`, so a document on disk always
-//! spells `minutes[n]`.
+//! spells `minutes[n]`, and a `bucket[n]` it spells above `i32::MAX` is
+//! refused by its count rather than read as one of the three.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -60,11 +64,20 @@ pub(super) const SPEC_ID: &str = "spec-id";
 /// How a source column value becomes a partition value.
 ///
 /// The specification's transforms and three of this crate's own -
-/// `minutes[n]`, `week` and `quarter` - each spelled by its name, a parameter
-/// in brackets as `bucket[n]` writes one, with the plural the Spark DDL
-/// writes read as an alias of a parameter-free one; a reader that does not
-/// know this crate's own reads them as `unknown` and prunes nothing by them,
-/// which is what the specification says of an unknown transform.
+/// `minutes[n]`, `week` and `quarter` - each written by its one name, a
+/// parameter in brackets as `bucket[n]` writes one. Spark's DDL plurals -
+/// `years`, `months`, `days`, `hours`, and `weeks` and `quarters` beside
+/// them - are read as intake spellings of the parameter-free time
+/// transforms and written singular; `minutes[n]` has no other spelling, so
+/// `minutes(15)`, `minutes[+15]`, a bare `minutes`, `minute` and `min15`
+/// are refused by name, while `bucket(n)` and `truncate(w)` stay read.
+///
+/// No other implementation knows this crate's own three. Apache Iceberg's
+/// Java implementation and PyIceberg read a name they do not know as
+/// `unknown` and prune nothing by it, as the specification says of an
+/// unknown transform; iceberg-rust 0.10 refuses a metadata or manifest
+/// document naming one, so a table partitioned or sorted by one does not
+/// open there.
 ///
 /// ```
 /// use yggdryl::iceberg::Transform;
@@ -76,6 +89,9 @@ pub(super) const SPEC_ID: &str = "spec-id";
 /// assert_eq!(Transform::Minutes(15).to_string(), "minutes[15]");
 /// assert!(Transform::from_str("minutes[0]").is_err());
 /// assert!(Transform::from_str("minutes").is_err());
+/// assert!(Transform::from_str("minutes(15)").is_err());
+/// assert_eq!(Transform::from_str("weeks")?, Transform::Week);
+/// assert_eq!(Transform::Week.to_string(), "week");
 ///
 /// // Invertibility is distinct from write support: bucket values are
 /// // computed by Apache Iceberg even though they cannot restore the source.
@@ -279,12 +295,17 @@ impl Transform {
     /// The official transform this one crosses the Apache model as.
     ///
     /// The standard transforms are themselves; this crate's own are each a
-    /// bucket of a reserved count (see the module documentation).
+    /// bucket of a reserved count (see the module documentation). Every
+    /// parameter is checked first, so a reserved count reaches the official
+    /// model only as one of the three it carries.
     ///
     /// # Errors
     ///
-    /// Refuses a `minutes[n]` whose `n` the reserved counts cannot carry.
+    /// Refuses a parameter no table can state: a bucket count of zero or
+    /// past `i32::MAX`, a truncate width of zero, or a `minutes[n]` whose
+    /// `n` the reserved counts cannot carry.
     pub(super) fn into_official(self) -> Result<OfficialTransform> {
+        self.validate_parameter()?;
         Ok(match self {
             Self::Identity => OfficialTransform::Identity,
             Self::Bucket(count) => OfficialTransform::Bucket(count),
@@ -293,10 +314,7 @@ impl Transform {
             Self::Month => OfficialTransform::Month,
             Self::Day => OfficialTransform::Day,
             Self::Hour => OfficialTransform::Hour,
-            Self::Minutes(step) => {
-                self.validate_parameter()?;
-                OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + step)
-            }
+            Self::Minutes(step) => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + step),
             Self::Week => OfficialTransform::Bucket(WEEK_BUCKET),
             Self::Quarter => OfficialTransform::Bucket(QUARTER_BUCKET),
             Self::Void => OfficialTransform::Void,
@@ -306,7 +324,9 @@ impl Transform {
 
     /// The transform an official one spells, the inverse of
     /// [`Self::into_official`]: a reserved bucket count reads as the
-    /// transform it carried.
+    /// transform it carried. Only the crate's own bridge hands the official
+    /// model a reserved count, because [`Self::into_official`] and the
+    /// document bridge refuse one stated as a bucket.
     pub(super) const fn from_official(transform: OfficialTransform) -> Self {
         match transform {
             OfficialTransform::Identity => Self::Identity,
@@ -335,6 +355,9 @@ impl Transform {
     /// Returns an error when the transform cannot apply to the source type:
     /// a sub-day period needs a timestamp, a week or a quarter a date or a
     /// timestamp, and the standard transforms what Apache Iceberg accepts.
+    /// Every time transform reads only a source Iceberg can express, so a
+    /// timestamp counted in seconds or milliseconds is refused by all seven
+    /// alike.
     pub fn result_type(self, source: &DataType) -> Result<DataType> {
         self.validate_parameter()?;
         if self == Self::Void {
@@ -344,6 +367,7 @@ impl Transform {
             return Ok(DataType::utf8());
         }
         if self.is_bridged() {
+            official_primitive_type(source)?;
             let period = self
                 .epoch_period()
                 .expect("a bridged transform is a period");
@@ -426,17 +450,23 @@ impl FromStr for Transform {
             return Ok(Self::Truncate(bracketed(rest, "truncate")?));
         }
         if let Some(rest) = trimmed.strip_prefix("minutes") {
-            let step = bracketed(rest, "minutes")?;
-            if step == 0 || step > MAX_MINUTES {
-                return Err(Error::Parse {
-                    target: "iceberg transform",
-                    position: 0,
-                    reason: format_smolstr!(
-                        "expected minutes[n] with n from 1 to {MAX_MINUTES}, got {trimmed:?}"
-                    ),
-                });
-            }
-            return Ok(Self::Minutes(step));
+            // One spelling: the step in brackets, unsigned digits only.
+            let step = rest
+                .strip_prefix('[')
+                .and_then(|rest| rest.strip_suffix(']'))
+                .filter(|digits| {
+                    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+                })
+                .and_then(|digits| digits.parse::<u32>().ok())
+                .filter(|step| (1..=MAX_MINUTES).contains(step));
+            return step.map(Self::Minutes).ok_or_else(|| Error::Parse {
+                target: "iceberg transform",
+                position: 0,
+                reason: format_smolstr!(
+                    "expected minutes[n] - the step in brackets, a whole number from 1 to \
+                     {MAX_MINUTES} - got {trimmed:?}"
+                ),
+            });
         }
         Err(Error::Parse {
             target: "iceberg transform",
@@ -470,9 +500,11 @@ impl fmt::Display for Transform {
 
 /// The bucket count above which the official model carries the transforms
 /// it has no spelling for: `i32::MAX + 1`, so `minutes[n]` is the count
-/// `n` after it. A real bucket count is at most `i32::MAX`
-/// ([`Transform::result_type`] refuses a larger one), so no table can state
-/// a reserved one.
+/// `n` after it. A real bucket count is at most `i32::MAX`, and a larger one
+/// is refused before anything reaches the official model - by
+/// [`Transform::into_official`] for a spec built in code, by the document
+/// bridge for a metadata document or a manifest header that states one - so
+/// a reserved count read back was written by the bridge.
 const BRIDGE_BUCKET_BASE: u32 = i32::MAX as u32 + 1;
 
 /// The reserved bucket count `week` crosses the official model as.

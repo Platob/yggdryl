@@ -9396,9 +9396,12 @@ mod time_partitions {
         }
         assert_eq!(rows(reopened.scan(None).unwrap()), 6);
 
-        // The second manifest holds only quarter hour 4, so a predicate
-        // before 00:15 never opens it; of the first manifest's three files,
-        // the tuple excludes two.
+        // The second manifest holds only quarter hour 4, so its
+        // manifest-list summary keeps a predicate before 00:15 from opening
+        // it; of the first manifest's three files, two are skipped by the
+        // `ts` bounds this writer records on every file - the period alone
+        // pruning a file without column statistics is pinned in
+        // `rust/tests/iceberg/scan.rs`.
         let early = reopened
             .plan_matching("ts < '1970-01-01T00:15:00'")
             .unwrap();
@@ -9407,8 +9410,8 @@ mod time_partitions {
         assert_eq!(early.manifests_read, 1);
         assert_eq!(early.files_skipped(), 2);
         assert_eq!(early.record_count().unwrap(), 2);
-        // Every row of the one file is in the period, so no residual is
-        // left for its rows.
+        // The file's own `ts` bounds put every row before 00:15, so no
+        // residual is left for its rows.
         assert!(early.tasks[0].residual.is_empty());
 
         // A range reaching into the third quarter hour keeps two files of

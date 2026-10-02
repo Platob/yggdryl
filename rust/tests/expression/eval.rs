@@ -860,4 +860,77 @@ mod epoch_functions {
             );
         }
     }
+
+    /// A count of seconds names years past `i32`, so a calendar period of
+    /// one is read from its exact year: a number that fits `int32` is that
+    /// number, and one past it answers null - never a year wrapped into one
+    /// that fits, which would also stop the function being monotone, and a
+    /// statistic mapped through it pruning by it.
+    #[test]
+    fn a_second_count_past_int32_answers_null_and_never_a_wrapped_year() {
+        let schema = StructType::from_fields([DataType::DateTime64 {
+            unit: TimeUnit::Second,
+            timezone: Timezone::UTC,
+        }
+        .nullable_field("t")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        let answer = |text: &str, seconds: i64| {
+            let row = Scalar::from_sequence([Scalar::datetime64(
+                seconds,
+                TimeUnit::Second,
+                Timezone::UTC,
+            )
+            .unwrap()]);
+            let selector: Selector = text.parse().unwrap();
+            let by_row = selector.apply_scalar(&schema, &row).unwrap();
+            let batch = Serie::from_scalars(schema.clone(), [row])
+                .unwrap()
+                .into_arrow_batch()
+                .unwrap();
+            let by_batch = Serie::from_arrow_batch(
+                None,
+                &selector.apply_arrow_batch(&batch).unwrap(),
+                ArrowCastOptions::new(),
+            )
+            .unwrap()
+            .scalar(0)
+            .unwrap();
+            assert_eq!(by_row, by_batch, "{text} of {seconds}");
+            by_row.as_sequence().unwrap()[0].clone()
+        };
+        for seconds in [
+            i64::MAX,
+            i64::MIN,
+            68_000_000_000_000_000,
+            -68_000_000_000_000_000,
+        ] {
+            for text in [
+                "years(t)",
+                "quarters(t)",
+                "months(t)",
+                "weeks(t)",
+                "days(t)",
+                "hours(t)",
+                "minutes(t, 15)",
+            ] {
+                assert_eq!(answer(text, seconds), Scalar::Null, "{text} of {seconds}");
+            }
+        }
+        // 6.7e16 seconds is in year 2123147449, whose number of years since
+        // 1970 still fits `int32`; its quarters and months do not.
+        for (seconds, years) in [
+            (67_000_000_000_000_000_i64, 2_123_145_479),
+            (-67_000_000_000_000_000, -2_123_145_480),
+        ] {
+            assert_eq!(
+                answer("years(t)", seconds),
+                Scalar::from(years),
+                "{seconds}"
+            );
+            assert_eq!(answer("quarters(t)", seconds), Scalar::Null, "{seconds}");
+            assert_eq!(answer("months(t)", seconds), Scalar::Null, "{seconds}");
+        }
+    }
 }

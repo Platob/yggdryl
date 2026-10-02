@@ -251,15 +251,23 @@ fn the_crates_own_transforms_cross_the_official_model_and_come_back() -> yggdryl
         assert!(text.contains(&format!("\"{name}\"")), "{text}");
     }
 
-    // A document spelling an alias reads, and writes back canonically.
+    // A document spelling Spark's plural reads it as an intake spelling,
+    // and writes the one canonical name back.
     let aliased = text.replace("\"week\"", "\"weeks\"");
     let read = TableMetadata::from_json(&yggdryl::json::from_utf8(&aliased)?)?;
     assert_eq!(read.default_spec()?.fields[1].transform, Transform::Week);
     assert!(yggdryl::json::into_utf8(&read.into_json()?)?.contains("\"week\""));
 
-    // A step the reserved counts cannot carry, or none, is refused by its
-    // spelling rather than read as a bucket.
-    for refused in ["minutes[0]", "minutes[2147483646]", "minutes"] {
+    // A step the reserved counts cannot carry, or none, or any spelling but
+    // the bracketed one, is refused by its spelling rather than read as a
+    // bucket.
+    for refused in [
+        "minutes[0]",
+        "minutes[2147483646]",
+        "minutes",
+        "minutes(15)",
+        "minutes[-15]",
+    ] {
         let spelled = text.replace("\"minutes[15]\"", &format!("\"{refused}\""));
         assert!(
             TableMetadata::from_json(&yggdryl::json::from_utf8(&spelled)?).is_err(),
@@ -269,35 +277,132 @@ fn the_crates_own_transforms_cross_the_official_model_and_come_back() -> yggdryl
     Ok(())
 }
 
-/// A real bucket keeps its count across the model: only the reserved counts
-/// above `i32::MAX`, which no spec can state, carry a transform.
+/// A real bucket keeps its count across the model. A count above `i32::MAX`
+/// is one no table can state, and it is exactly the space the crate's own
+/// transforms cross the official model in, so one stated by a caller or by
+/// a document is refused by its count before anything is bridged - never
+/// read back as the `minutes[n]`, `week` or `quarter` that count carries.
 #[test]
-fn a_bucket_count_is_never_mistaken_for_a_bridged_transform() -> yggdryl::Result<()> {
-    let spec = PartitionSpec {
+fn a_reserved_bucket_count_is_refused_by_its_count_never_read_as_a_bridged_transform()
+-> yggdryl::Result<()> {
+    let spec = |transform| PartitionSpec {
         spec_id: 0,
         fields: vec![PartitionField {
             source_id: 1,
             field_id: 1000,
             name: "id_bucket".into(),
-            transform: Transform::Bucket(i32::MAX as u32),
+            transform,
         }],
     };
     let metadata = TableMetadata::new(
         FormatVersion::V2,
         "file:///tmp/official-bucket",
         timestamp_schema(),
-        spec,
+        spec(Transform::Bucket(i32::MAX as u32)),
     )?;
+    let text = yggdryl::json::into_utf8(&metadata.clone().into_json()?)?;
     let read = TableMetadata::from_json(&metadata.clone().into_json()?)?;
     assert_eq!(
         read.default_spec()?.fields[0].transform,
         Transform::Bucket(i32::MAX as u32)
     );
-    assert!(
-        Transform::Bucket(i32::MAX as u32 + 1)
-            .result_type(&DataType::Int64)
-            .is_err(),
-        "a count past i32::MAX is refused before any bridge reads it"
-    );
+
+    // `bucket[2147483663]` is what `minutes[15]` crosses as, 4294967294
+    // `quarter` and 4294967295 `week`; 2147483648 carries nothing.
+    for count in [2_147_483_648_u32, 2_147_483_663, u32::MAX - 1, u32::MAX] {
+        let built = TableMetadata::new(
+            FormatVersion::V2,
+            "file:///tmp/official-bucket",
+            timestamp_schema(),
+            spec(Transform::Bucket(count)),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(built.contains(&format!("bucket[{count}]")), "{built}");
+
+        let spelled = text.replace("\"bucket[2147483647]\"", &format!("\"bucket[{count}]\""));
+        assert_ne!(spelled, text, "the document states the bucket");
+        let read = TableMetadata::from_json(&yggdryl::json::from_utf8(&spelled)?)
+            .unwrap_err()
+            .to_string();
+        assert!(read.contains(&format!("bucket[{count}]")), "{read}");
+
+        let mut evolved = metadata.clone();
+        let added = evolved
+            .add_spec(PartitionSpec {
+                spec_id: 1,
+                fields: vec![PartitionField {
+                    source_id: 1,
+                    field_id: 1001,
+                    name: "id_wide".into(),
+                    transform: Transform::Bucket(count),
+                }],
+            })
+            .unwrap_err()
+            .to_string();
+        assert!(added.contains(&format!("bucket[{count}]")), "{added}");
+        let ordered = evolved
+            .add_sort_order(SortOrder {
+                order_id: 2,
+                fields: vec![SortField {
+                    source_id: 1,
+                    transform: Transform::Bucket(count),
+                    direction: SmolStr::new_static("asc"),
+                    null_order: SmolStr::new_static("nulls-first"),
+                }],
+            })
+            .unwrap_err()
+            .to_string();
+        assert!(ordered.contains(&format!("bucket[{count}]")), "{ordered}");
+        assert_eq!(evolved, metadata, "a refused update changes nothing");
+    }
+    Ok(())
+}
+
+/// No other implementation knows the crate's own transforms, and the one
+/// this crate validates with - iceberg-rust 0.10 - does not read a name it
+/// does not know as `unknown`: it refuses the whole document. That is the
+/// interoperability the Iceberg page states, so it is pinned against the
+/// official crate itself, on the document as this crate writes it to disk.
+#[test]
+fn the_official_crate_refuses_a_document_naming_the_crates_own_transforms() -> yggdryl::Result<()> {
+    use iceberg_official::spec::{
+        TableMetadata as OfficialTableMetadata, Transform as OfficialTransform,
+    };
+
+    for (transform, name) in [
+        (Transform::Minutes(15), "minutes[15]"),
+        (Transform::Week, "week"),
+        (Transform::Quarter, "quarter"),
+    ] {
+        let metadata = TableMetadata::new(
+            FormatVersion::V2,
+            "file:///tmp/official-unbridged",
+            timestamp_schema(),
+            PartitionSpec {
+                spec_id: 0,
+                fields: vec![field("ts_period", 1000, transform)],
+            },
+        )?;
+        let text = yggdryl::json::into_utf8(&metadata.into_json()?)?;
+        assert!(text.contains(&format!("\"{name}\"")), "{text}");
+        assert!(
+            serde_json::from_str::<OfficialTableMetadata>(&text).is_err(),
+            "{name}: the official crate reads a document naming it"
+        );
+        let refusal = name.parse::<OfficialTransform>().unwrap_err().to_string();
+        assert!(refusal.contains("is invalid"), "{name}: {refusal}");
+        assert!(refusal.contains(name), "{name}: {refusal}");
+
+        // The same document under a transform the specification names is
+        // one the official crate reads.
+        let standard = text.replace(&format!("\"{name}\""), "\"day\"");
+        let read: OfficialTableMetadata =
+            serde_json::from_str(&standard).expect("a document naming day");
+        assert_eq!(
+            read.default_partition_spec().fields()[0].transform,
+            OfficialTransform::Day
+        );
+    }
     Ok(())
 }
