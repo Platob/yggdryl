@@ -1543,11 +1543,12 @@ impl<'a> SerieWindows<'a> {
         }
     }
 
-    /// The window `index` places from the first, as [`Self::iter`] lends it
-    /// - its key, and the window stating its [record](WindowSerie::static_values)
-    /// - or `None` past the last. Constant time: in row order the first call
-    /// indexes where every window opens, once, and every call after it reads
-    /// that index; in key order the cuts are the index.
+    /// The window `index` places from the first, as [`Self::iter`] lends it:
+    /// its key, and the window stating its
+    /// [record](WindowSerie::static_values); `None` past the last. Constant
+    /// time: in row order the first call indexes where every window opens,
+    /// once, and every call after it reads that index; in key order the cuts
+    /// are the index.
     ///
     /// ```
     /// use yggdryl::{DataType, Field, Scalar, Serie};
