@@ -153,6 +153,12 @@ string and byte leaves, the legacy `list` words - is in
 - A Python `float` into a decimal column is refused (`expected unscaled
   decimal integer, got f64`): pass `Decimal("12.5")`, the text `"12.5"`, or an
   `int`. Same in JavaScript: pass `'12.5'` or a `bigint`.
+- Decimal text is the shortest exact text - `decimal(10,2)` 10.50 writes
+  `"10.5"`, 100.00 writes `"100"` - in every codec and in a cast to text; the
+  scale is the type's. Reading takes every exact spelling (`" +10.5 "`,
+  `"1.05e1"`, `"1_0.5"`, `"10.50000"`) at the declared scale and refuses a
+  digit the scale cannot hold and a comma (`"1,050"`). Python's `as_py()`
+  still answers a `Decimal` at the column scale (`Decimal("10.50")`).
 - A Python `dict` is a **map**, not a row: `root.scalar({"id": 7})` is refused
   (`expected struct sequence, got map`). Pass a list in declaration order, a
   dataclass instance, or `Scalar.from_struct({...})`. A JavaScript plain

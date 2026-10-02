@@ -212,6 +212,7 @@ values in sorted name order.
 - A wrapper is a storage decision: `kind()` is `nested`, and `is_nested()` follows the value it encodes.
 - Bare `variant` is [the semi-structured datatype](../variant.md), not a union; `variant(...)` with members is the dense-union sugar, and the parenthesis is what disambiguates them.
 - A nested datatype is hashable and totally ordered, children included, so it is a map key and a cache key as it stands.
+- A struct, serie or map cast into text or bytes is its compact JSON, and text cast back is read as the document it holds, at any depth: `map<utf8, struct<..>>` and `map<utf8, utf8>` are one cast apart ([Nested values as JSON](../cast.md#nested-values-as-json)).
 
 ## Commands
 

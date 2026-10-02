@@ -657,6 +657,26 @@ mod value {
     }
 }
 
+/// A record - what every JSON or YAML object reads as - holds no order, so a
+/// sorted map takes its entries in the order of the keys they name, not of
+/// the names' text: `10` after `2`.
+#[test]
+fn a_record_read_into_a_sorted_map_is_ordered_by_its_keys() {
+    use yggdryl::{DataType, Scalar};
+
+    let sorted = DataType::map_of(DataType::Int64, DataType::utf8(), true).unwrap();
+    let record =
+        Scalar::from_struct([("10", Scalar::from("b")), ("2", Scalar::from("a"))]).unwrap();
+    assert_eq!(
+        sorted.scalar(record).unwrap(),
+        Scalar::from_mapping([
+            (Scalar::from(2_i64), Scalar::from("a")),
+            (Scalar::from(10_i64), Scalar::from("b")),
+        ])
+        .unwrap()
+    );
+}
+
 #[test]
 fn a_value_of_a_bare_contract_leaf_is_answered_untouched() {
     // A value of the very leaf the datatype is, where the leaf carries no
@@ -692,4 +712,55 @@ fn a_value_of_a_bare_contract_leaf_is_answered_untouched() {
             .as_str(),
         Some("ok")
     );
+}
+
+#[test]
+fn an_integer_of_any_width_narrows_to_an_integer_leaf_exactly_at_its_range() {
+    // Every width meets every leaf at both ends of the leaf's range: in it,
+    // the value is the leaf's own at the leaf's width; one past it, refused
+    // by the check that names the leaf.
+    use yggdryl::{DataType, Scalar};
+    let widths = |value: i128| {
+        [
+            i8::try_from(value).ok().map(Scalar::from),
+            i16::try_from(value).ok().map(Scalar::from),
+            i32::try_from(value).ok().map(Scalar::from),
+            i64::try_from(value).ok().map(Scalar::from),
+            Some(Scalar::from(value)),
+            u8::try_from(value).ok().map(Scalar::from),
+            u16::try_from(value).ok().map(Scalar::from),
+            u32::try_from(value).ok().map(Scalar::from),
+            u64::try_from(value).ok().map(Scalar::from),
+            u128::try_from(value).ok().map(Scalar::from),
+        ]
+        .into_iter()
+        .flatten()
+    };
+    for (dtype, minimum, maximum) in [
+        (DataType::Int8, i128::from(i8::MIN), i128::from(i8::MAX)),
+        (DataType::Int16, i128::from(i16::MIN), i128::from(i16::MAX)),
+        (DataType::Int32, i128::from(i32::MIN), i128::from(i32::MAX)),
+        (DataType::Int64, i128::from(i64::MIN), i128::from(i64::MAX)),
+        (DataType::UInt8, 0, i128::from(u8::MAX)),
+        (DataType::UInt16, 0, i128::from(u16::MAX)),
+        (DataType::UInt32, 0, i128::from(u32::MAX)),
+        (DataType::UInt64, 0, i128::from(u64::MAX)),
+    ] {
+        for value in [minimum, maximum] {
+            for held in widths(value) {
+                let read = dtype.scalar(held.clone()).unwrap();
+                assert_eq!(read.dtype().unwrap(), dtype, "{held:?} into {dtype}");
+                assert_eq!(read.as_i128(), Some(value), "{held:?} into {dtype}");
+            }
+        }
+        for value in [minimum - 1, maximum + 1] {
+            for held in widths(value) {
+                let refused = dtype.scalar(held.clone()).unwrap_err().to_string();
+                assert!(
+                    refused.contains(dtype.name()),
+                    "{held:?} into {dtype}: {refused}"
+                );
+            }
+        }
+    }
 }

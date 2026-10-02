@@ -32,7 +32,7 @@ use super::bind::{Kind, Node, StepKind};
 use super::path::{FieldSegment, resolve_range, struct_values};
 use super::typing::{decimal_parts, is_binary, is_text, temporal_parts, unwrap_dictionary};
 use super::{Comparison, Function, Literal, Operator, Safety};
-use crate::cast::text::is_blank_text;
+use crate::cast::text::{encoded_value_of, is_blank_text};
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
 
 /// One row's worth of context: its column values.
@@ -262,7 +262,42 @@ impl Node {
             }
             Kind::Cast(inner, safety, _) => {
                 let held = inner.eval_ref(row)?;
-                match convert(self.field.dtype(), &held, *safety) {
+                // A nested value read off a column is positional, and the
+                // field its operand bound names it: it spells the JSON the
+                // batch tier writes before that text meets the target.
+                let target = self.field.dtype();
+                let source = encoded_value_of(inner.field.dtype());
+                let spelled = if held.is_container() && (is_text(target) || is_binary(target)) {
+                    // A union's value is a positional pair a column of them
+                    // has no text for, so the row refuses it as the batch does.
+                    if matches!(source, DataType::Union(..)) {
+                        return if matches!(safety, Safety::Safe) {
+                            Ok(Scalar::Null)
+                        } else {
+                            Err(Error::InvalidRecord {
+                                path: SmolStr::new_static("$"),
+                                reason: format_smolstr!(
+                                    "expected a value with a text form, got {}",
+                                    source.name()
+                                ),
+                            })
+                        };
+                    }
+                    let mut document = Vec::new();
+                    match crate::json::reads_json(source)
+                        .then(|| crate::json::into_field_vec(&held, source, &mut document))
+                    {
+                        Some(Ok(())) => Some(Scalar::from(
+                            String::from_utf8_lossy(&document).into_owned(),
+                        )),
+                        Some(Err(_)) if matches!(safety, Safety::Safe) => return Ok(Scalar::Null),
+                        Some(Err(error)) => return Err(error),
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+                match convert(target, spelled.as_ref().unwrap_or(&held), *safety) {
                     Ok(value) => Ok(value),
                     Err(error) if matches!(safety, Safety::Safe) => {
                         let _ = error;
@@ -1143,8 +1178,13 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
     // absence, decided before `safety` is asked. The one scalar door runs the
     // rule too, but the decimal, temporal, integer and UUID readings below
     // read a text spelling themselves before ever reaching it, so it is
-    // asked here first.
-    if value.is_null() || matches!(target, DataType::Null) || is_blank_text(target, value) {
+    // asked here first - and so is the JSON `null` document, which is
+    // absence to a nested target the way an empty cell is.
+    if value.is_null()
+        || matches!(target, DataType::Null)
+        || is_blank_text(target, value)
+        || crate::json::is_null_document(target, value)
+    {
         return Ok(Scalar::Null);
     }
     // Outside a variant column the bytes mean the value they encode. Decode
@@ -1299,6 +1339,13 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             if let Some(text) = value.as_str() {
                 return canonical(Scalar::from(SmolStr::new(text)));
             }
+            // A nested value spells its JSON in a cast, as its column does.
+            if value.is_container() {
+                return match crate::json::into_utf8(value) {
+                    Ok(text) => canonical(Scalar::from(text)),
+                    Err(_) => refuse("a nested value JSON can spell"),
+                };
+            }
             let inferred = value.dtype().unwrap_or(DataType::Null);
             match super::display::literal_text(&inferred, value) {
                 Some(text) => canonical(Scalar::from(text)),
@@ -1307,6 +1354,10 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         }
         other if is_binary(other) => match value {
             crate::bytes_scalars!(_) => canonical(value.clone()),
+            container if container.is_container() => match crate::json::into_bytes(container) {
+                Ok(bytes) => canonical(Scalar::from(bytes)),
+                Err(_) => refuse("a nested value JSON can spell"),
+            },
             other => match other.as_str() {
                 Some(text) => canonical(Scalar::from(text.as_bytes())),
                 None => refuse("bytes"),
@@ -1319,6 +1370,38 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             // to grow.
             if value.is_container() {
                 return Ok(value.clone());
+            }
+            // Text, or the bytes of it, is the JSON document a nested value
+            // spells in a cast, as its column reads: parsed once, then the
+            // natural value through the target's own contract. A cell with
+            // no byte holds no document, and a fixed slot's NUL padding is
+            // the slot's, not the document's.
+            if crate::json::reads_json(target)
+                && let Some(document) = value
+                    .as_string()
+                    .map(|text| text.as_str().as_bytes())
+                    .or_else(|| {
+                        value
+                            .as_binary()
+                            .map(|bytes| match value.bytes_parameters() {
+                                Some(leaf) if leaf.is_fixed() => {
+                                    crate::trim_padding(bytes.as_bytes())
+                                }
+                                _ => bytes.as_bytes(),
+                            })
+                    })
+            {
+                if document.is_empty() {
+                    return Ok(Scalar::Null);
+                }
+                return match crate::json::from_bytes_with_dtype(document, target) {
+                    Ok(natural) => canonical(natural),
+                    Err(error) if safety.is_safe() => {
+                        let _ = error;
+                        Ok(Scalar::Null)
+                    }
+                    Err(error) => Err(error),
+                };
             }
             refuse("a value the target datatype can hold")
         }

@@ -240,13 +240,37 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::Serie(child) => list_array::<i32>(child, arrow_type, values)?,
-        DataType::SerieView(child) => list_view_array::<i32>(child, arrow_type, values)?,
-        DataType::FixedSizeSerie(child, size) => {
-            fixed_size_list_array(child, arrow_type, *size, values)?
-        }
-        DataType::LargeSerie(child) => list_array::<i64>(child, arrow_type, values)?,
-        DataType::LargeSerieView(child) => list_view_array::<i64>(child, arrow_type, values)?,
+        DataType::Serie(child) => list_array::<i32>(
+            child,
+            arrow_type,
+            &list_items(child, values, "a sequence for a serie column")?,
+        )?,
+        DataType::SerieView(child) => list_view_array::<i32>(
+            child,
+            arrow_type,
+            &list_items(child, values, "a sequence for a serie column")?,
+        )?,
+        DataType::FixedSizeSerie(child, size) => fixed_size_list_array(
+            child,
+            arrow_type,
+            *size,
+            values.len(),
+            values
+                .iter()
+                .filter(|value| matches!(value, Scalar::Null))
+                .count(),
+            || list_items(child, values, "a sequence for a fixed-size-serie column"),
+        )?,
+        DataType::LargeSerie(child) => list_array::<i64>(
+            child,
+            arrow_type,
+            &list_items(child, values, "a sequence for a serie column")?,
+        )?,
+        DataType::LargeSerieView(child) => list_view_array::<i64>(
+            child,
+            arrow_type,
+            &list_items(child, values, "a sequence for a serie column")?,
+        )?,
         DataType::Struct(fields) => struct_array(fields, arrow_type, values)?,
         DataType::Union(fields, mode) => union_array(fields, *mode, values)?,
         DataType::Dictionary(dictionary) => dictionary_array(dictionary, values)?,
@@ -1130,13 +1154,12 @@ type ListParts<O> = (Vec<O>, Vec<O>, ArrayRef, Option<NullBuffer>);
 /// wants them - the child array and the validity of a list column.
 fn list_parts<O: Offset>(
     child: &Field,
-    values: &[&Scalar],
+    items: &[Option<Items<'_>>],
     with_sizes: bool,
 ) -> Result<ListParts<O>> {
-    let items = list_items(child, values, "a sequence for a serie column")?;
-    let mut offsets = Vec::with_capacity(values.len() + 1);
-    let mut sizes = Vec::with_capacity(if with_sizes { values.len() } else { 0 });
-    let mut validity = Vec::with_capacity(values.len());
+    let mut offsets = Vec::with_capacity(items.len() + 1);
+    let mut sizes = Vec::with_capacity(if with_sizes { items.len() } else { 0 });
+    let mut validity = Vec::with_capacity(items.len());
     let mut array = ItemsArray::new(child);
     // Every lent run is laid out from one vector, reserved once for all of
     // them rather than grown a doubling at a time.
@@ -1153,7 +1176,7 @@ fn list_parts<O: Offset>(
     offsets.push(
         O::try_from(0).map_err(|_| invalid_value("a list offset within the offset type", 0))?,
     );
-    for held in &items {
+    for held in items {
         let size = match held {
             None => {
                 validity.push(false);
@@ -1199,9 +1222,9 @@ fn list_item(arrow_type: &ArrowDataType) -> Result<&FieldRef> {
 fn list_array<O: Offset>(
     child: &Field,
     arrow_type: &ArrowDataType,
-    values: &[&Scalar],
+    items: &[Option<Items<'_>>],
 ) -> Result<ArrayRef> {
-    let (offsets, _, child_array, nulls) = list_parts::<O>(child, values, false)?;
+    let (offsets, _, child_array, nulls) = list_parts::<O>(child, items, false)?;
     // The offsets are already the layout's own width, refused where they
     // were computed if the width could not hold them.
     Ok(Arc::new(GenericListArray::<O>::try_new(
@@ -1215,10 +1238,10 @@ fn list_array<O: Offset>(
 fn list_view_array<O: Offset>(
     child: &Field,
     arrow_type: &ArrowDataType,
-    values: &[&Scalar],
+    items: &[Option<Items<'_>>],
 ) -> Result<ArrayRef> {
-    let (mut offsets, sizes, child_array, nulls) = list_parts::<O>(child, values, true)?;
-    offsets.truncate(values.len());
+    let (mut offsets, sizes, child_array, nulls) = list_parts::<O>(child, items, true)?;
+    offsets.truncate(items.len());
     Ok(Arc::new(GenericListViewArray::<O>::try_new(
         Arc::clone(list_item(arrow_type)?),
         ScalarBuffer::from(offsets),
@@ -1228,21 +1251,21 @@ fn list_view_array<O: Offset>(
     )?))
 }
 
-fn fixed_size_list_array(
+/// The fixed-size layout of `rows` rows, `null_rows` of them absent, whose
+/// items `items` gathers once the slots the absent rows hide are charged.
+fn fixed_size_list_array<'a>(
     child: &Field,
     arrow_type: &ArrowDataType,
     size: i32,
-    values: &[&Scalar],
+    rows: usize,
+    null_rows: usize,
+    items: impl FnOnce() -> Result<Vec<Option<Items<'a>>>>,
 ) -> Result<ArrayRef> {
     let size_usize = usize::try_from(size)
         .map_err(|_| invalid_value("a fixed serie size within usize", size))?;
-    let physical_len = values.len().checked_mul(size_usize).ok_or_else(|| {
-        physical_limit_error("fixed-size-serie slots", values.len(), MAX_PHYSICAL_SLOTS)
-    })?;
-    let null_rows = values
-        .iter()
-        .filter(|value| matches!(value, Scalar::Null))
-        .count();
+    let physical_len = rows
+        .checked_mul(size_usize)
+        .ok_or_else(|| physical_limit_error("fixed-size-serie slots", rows, MAX_PHYSICAL_SLOTS))?;
     let hidden_rows = checked_physical_mul(
         null_rows,
         size_usize,
@@ -1258,10 +1281,10 @@ fn fixed_size_list_array(
     let placeholder = has_parent_null
         .then(|| physical_placeholder_for_field(child))
         .transpose()?;
-    let items = list_items(child, values, "a sequence for a fixed-size-serie column")?;
+    let items = items()?;
     let mut array = ItemsArray::new(child);
     array.reserve(physical_len, "fixed-size-serie child slots")?;
-    let mut validity = Vec::with_capacity(values.len());
+    let mut validity = Vec::with_capacity(rows);
     for held in &items {
         let Some(held) = held else {
             validity.push(false);
@@ -1289,8 +1312,53 @@ fn fixed_size_list_array(
         size,
         child_array,
         nulls(validity),
-        values.len(),
+        rows,
     )?))
+}
+
+/// A serie column laid out from its rows' items, gathered into one run:
+/// `lengths[row]` the number of items row `row` holds, in order, or `None`
+/// where it is absent. It is the layout [`array_of_rows`] gives the rows
+/// those runs make, for a reader that never built the rows.
+pub(crate) fn serie_array_of_items(
+    field: &Field,
+    items: &[Scalar],
+    lengths: &[Option<usize>],
+) -> Result<ArrayRef> {
+    let arrow_type = field.as_arrow_field_ref()?.data_type();
+    if lengths.is_empty() {
+        return Ok(new_empty_array(arrow_type));
+    }
+    let mut start = 0_usize;
+    let rows = lengths
+        .iter()
+        .map(|length| {
+            length
+                .map(|length| {
+                    let held = items
+                        .get(start..start + length)
+                        .ok_or_else(|| Error::internal("serie_array_of_items::items"))?;
+                    start += length;
+                    Ok(Items::Rows(Cow::Borrowed(held)))
+                })
+                .transpose()
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(match field.dtype() {
+        DataType::Serie(child) => list_array::<i32>(child, arrow_type, &rows)?,
+        DataType::SerieView(child) => list_view_array::<i32>(child, arrow_type, &rows)?,
+        DataType::FixedSizeSerie(child, size) => fixed_size_list_array(
+            child,
+            arrow_type,
+            *size,
+            rows.len(),
+            rows.iter().filter(|row| row.is_none()).count(),
+            || Ok(rows),
+        )?,
+        DataType::LargeSerie(child) => list_array::<i64>(child, arrow_type, &rows)?,
+        DataType::LargeSerieView(child) => list_view_array::<i64>(child, arrow_type, &rows)?,
+        _ => return Err(Error::internal("serie_array_of_items::field")),
+    })
 }
 
 fn struct_array(
@@ -1298,37 +1366,103 @@ fn struct_array(
     arrow_type: &ArrowDataType,
     values: &[&Scalar],
 ) -> Result<ArrayRef> {
-    let ArrowDataType::Struct(arrow_fields) = arrow_type else {
-        return Err(Error::internal("struct_array::projection"));
-    };
-    let null_rows = values
-        .iter()
-        .filter(|value| matches!(value, Scalar::Null))
-        .count();
-    if null_rows != 0 {
-        let mut budget = MaterializationBudget::default();
-        for field in fields {
-            budget.add_array(field.dtype(), null_rows)?;
-        }
-    }
-    let has_parent_null = null_rows != 0;
+    charge_null_rows(
+        fields,
+        values
+            .iter()
+            .filter(|value| matches!(value, Scalar::Null))
+            .count(),
+    )?;
     let mut rows: Vec<Option<Cow<'_, [Scalar]>>> = Vec::with_capacity(values.len());
-    let mut validity = NullBufferBuilder::new(values.len());
     for value in values {
         if matches!(value, Scalar::Null) {
             rows.push(None);
-            validity.append_null();
             continue;
         }
         let row = value
             .sequence_rows()
             .ok_or_else(|| invalid_value_kind("a sequence for a struct column", value))?;
         rows.push(Some(row));
-        validity.append_non_null();
+    }
+    struct_of_cells(
+        fields,
+        arrow_type,
+        rows.len(),
+        |row| rows[row].is_some(),
+        |column, row| {
+            rows[row]
+                .as_ref()
+                .and_then(|cells| cells.get(column))
+                .ok_or_else(|| invalid_value_kind("a sequence for a struct column", values[row]))
+        },
+    )
+}
+
+/// A struct column laid out from its children's cells, gathered child by
+/// child: `cells[child][row]` the cell a row holds, a null where `present`
+/// says the row is absent. It is the layout [`array_of_rows`] gives the rows
+/// those cells make, for a reader that never built the rows.
+pub(crate) fn struct_array_of_cells(
+    field: &Field,
+    cells: &[Vec<Scalar>],
+    present: &[bool],
+) -> Result<ArrayRef> {
+    let DataType::Struct(fields) = field.dtype() else {
+        return Err(Error::internal("struct_array_of_cells::field"));
+    };
+    let arrow_type = field.as_arrow_field_ref()?.data_type();
+    if present.is_empty() {
+        return Ok(new_empty_array(arrow_type));
+    }
+    charge_null_rows(fields, present.iter().filter(|present| !**present).count())?;
+    struct_of_cells(
+        fields,
+        arrow_type,
+        present.len(),
+        |row| present[row],
+        |column, row| {
+            cells
+                .get(column)
+                .and_then(|cells| cells.get(row))
+                .ok_or_else(|| Error::internal("struct_array_of_cells::cells"))
+        },
+    )
+}
+
+/// Charge the slots a struct's absent rows hide in every child.
+fn charge_null_rows(fields: &crate::StructType, null_rows: usize) -> Result<()> {
+    if null_rows != 0 {
+        let mut budget = MaterializationBudget::default();
+        for field in fields {
+            budget.add_array(field.dtype(), null_rows)?;
+        }
+    }
+    Ok(())
+}
+
+/// The struct layout of `rows` rows once each row's presence is known:
+/// each child laid out from the cells `cell(child, row)` answers for the
+/// rows `present` says are there, and the validity beside them.
+fn struct_of_cells<'c>(
+    fields: &crate::StructType,
+    arrow_type: &ArrowDataType,
+    rows: usize,
+    present: impl Fn(usize) -> bool,
+    mut cell: impl FnMut(usize, usize) -> Result<&'c Scalar>,
+) -> Result<ArrayRef> {
+    let ArrowDataType::Struct(arrow_fields) = arrow_type else {
+        return Err(Error::internal("struct_array::projection"));
+    };
+    let mut validity = NullBufferBuilder::new(rows);
+    let mut has_absent = false;
+    for row in 0..rows {
+        let there = present(row);
+        has_absent |= !there;
+        validity.append(there);
     }
     if fields.is_empty() {
         return Ok(Arc::new(StructArray::new_empty_fields(
-            values.len(),
+            rows,
             validity.finish(),
         )));
     }
@@ -1336,7 +1470,7 @@ fn struct_array(
     // a bitmap; only a union and a run-end encoding, which own none, need
     // a physical filler built for them.
     let null = Scalar::Null;
-    let placeholders: Vec<Option<Scalar>> = if has_parent_null {
+    let placeholders: Vec<Option<Scalar>> = if has_absent {
         fields
             .iter()
             .map(|field| {
@@ -1352,7 +1486,7 @@ fn struct_array(
         Vec::new()
     };
     // One scratch of cell references, sized once and refilled per column.
-    let mut cells: Vec<&Scalar> = Vec::with_capacity(values.len());
+    let mut cells: Vec<&Scalar> = Vec::with_capacity(rows);
     let mut columns = Vec::with_capacity(fields.len());
     for (column, field) in fields.iter().enumerate() {
         cells.clear();
@@ -1360,12 +1494,11 @@ fn struct_array(
             .get(column)
             .and_then(Option::as_ref)
             .unwrap_or(&null);
-        for (row, value) in rows.iter().zip(values) {
-            cells.push(match row {
-                None => placeholder,
-                Some(row) => row
-                    .get(column)
-                    .ok_or_else(|| invalid_value_kind("a sequence for a struct column", value))?,
+        for row in 0..rows {
+            cells.push(if present(row) {
+                cell(column, row)?
+            } else {
+                placeholder
             });
         }
         columns.push(array_of_rows(field, &cells)?);
@@ -1374,7 +1507,7 @@ fn struct_array(
         arrow_fields.clone(),
         columns,
         validity.finish(),
-        values.len(),
+        rows,
     )?))
 }
 
@@ -1565,12 +1698,6 @@ fn map_array(
     arrow_type: &ArrowDataType,
     values: &[&Scalar],
 ) -> Result<ArrayRef> {
-    let ArrowDataType::Map(entries_field, keys_sorted) = arrow_type else {
-        return Err(Error::internal("map_array::projection"));
-    };
-    let ArrowDataType::Struct(entry_fields) = entries_field.data_type() else {
-        return Err(Error::internal("map_array::entries_projection"));
-    };
     let mut offsets = Vec::with_capacity(values.len() + 1);
     let mut validity = Vec::with_capacity(values.len());
     let mut entries = Vec::new();
@@ -1587,11 +1714,69 @@ fn map_array(
                     .iter(),
             );
         }
-        offsets.push(
-            i32::try_from(entries.len())
-                .map_err(|_| invalid_value("a map offset within int32", entries.len()))?,
-        );
+        offsets.push(map_offset(entries.len())?);
     }
+    map_of_entries(map, arrow_type, offsets, validity, &entries)
+}
+
+/// A map column laid out from its rows' entries, gathered into one run:
+/// `lengths[row]` the number of entries row `row` holds, in order, or `None`
+/// where it is absent. It is the layout [`array_of_rows`] gives the rows
+/// those runs make, for a reader that never built the rows.
+pub(crate) fn map_array_of_entries(
+    field: &Field,
+    entries: &[(Scalar, Scalar)],
+    lengths: &[Option<usize>],
+) -> Result<ArrayRef> {
+    let arrow_type = field.as_arrow_field_ref()?.data_type();
+    if lengths.is_empty() {
+        return Ok(new_empty_array(arrow_type));
+    }
+    let map = field
+        .dtype()
+        .as_mapping()
+        .ok_or_else(|| Error::internal("map_array_of_entries::field"))?;
+    let mut offsets = Vec::with_capacity(lengths.len() + 1);
+    let mut validity = Vec::with_capacity(lengths.len());
+    let mut total = 0_usize;
+    offsets.push(0_i32);
+    for length in lengths {
+        validity.push(length.is_some());
+        total += length.unwrap_or(0);
+        offsets.push(map_offset(total)?);
+    }
+    let held = entries
+        .get(..total)
+        .ok_or_else(|| Error::internal("map_array_of_entries::entries"))?;
+    map_of_entries(
+        &map,
+        arrow_type,
+        offsets,
+        validity,
+        &held.iter().collect::<Vec<_>>(),
+    )
+}
+
+/// One map offset, refused where `int32` cannot hold it.
+fn map_offset(entries: usize) -> Result<i32> {
+    i32::try_from(entries).map_err(|_| invalid_value("a map offset within int32", entries))
+}
+
+/// The map layout once its rows are cut: the entries the offsets cut, laid
+/// out as the entries struct, beside the rows' validity.
+fn map_of_entries(
+    map: &crate::MappingType,
+    arrow_type: &ArrowDataType,
+    offsets: Vec<i32>,
+    validity: Vec<bool>,
+    entries: &[&(Scalar, Scalar)],
+) -> Result<ArrayRef> {
+    let ArrowDataType::Map(entries_field, keys_sorted) = arrow_type else {
+        return Err(Error::internal("map_array::projection"));
+    };
+    let ArrowDataType::Struct(entry_fields) = entries_field.data_type() else {
+        return Err(Error::internal("map_array::entries_projection"));
+    };
     let fields = map
         .entries()
         .dtype()

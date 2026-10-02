@@ -54,7 +54,7 @@ Parse, bind once, ask a row.
     // The literal was converted once, into the column's own exact type.
     assert_eq!(
         bound.term().to_string(),
-        "ccy = 'EUR' and price > decimal32(9,2) '100.00'",
+        "ccy = 'EUR' and price > decimal32(9,2) '100'",
     );
 
     let row = Scalar::from_sequence([
@@ -88,7 +88,7 @@ Parse, bind once, ask a row.
     assert filter.columns() == ["ccy", "price"]
 
     bound = filter.bind(schema)
-    assert str(bound.term) == "ccy = 'EUR' and price > decimal32(9,2) '100.00'"
+    assert str(bound.term) == "ccy = 'EUR' and price > decimal32(9,2) '100'"
 
     # A row is a sequence in schema order, or a mapping of column to value.
     # The price is a `Decimal`, because the column is exact and so is the
@@ -119,7 +119,7 @@ Parse, bind once, ask a row.
     const bound = filter.bind(schema)
     assert.equal(
       bound.term.toString(),
-      "ccy = 'EUR' and price > decimal32(9,2) '100.00'",
+      "ccy = 'EUR' and price > decimal32(9,2) '100'",
     )
 
     // The price is an exact decimal, because the column is exact and so is

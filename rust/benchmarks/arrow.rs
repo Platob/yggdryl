@@ -956,6 +956,150 @@ fn memory_size_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// A nested column and its JSON text, both ways: the tape as one struct
+/// column and a basket of four sizes per row, written as text and read back.
+///
+/// The **baseline** beside the write is Arrow's own list-to-text kernel over
+/// the same basket, which renders a display form rather than JSON; beside
+/// each read it is serde_json parsing the same cells into its own value
+/// tree, with no column built.
+fn json_cast_benchmarks(criterion: &mut Criterion) {
+    let strict = ArrowCastOptions::new().with_safe(false);
+    let tape: DataType = "struct<symbol: utf8, price: decimal128(12, 4), size: int64>"
+        .parse()
+        .expect("the tape struct is valid");
+    let tape = Field::new("tick", tape, false);
+    let basket = Field::new(
+        "basket",
+        DataType::serie(DataType::Int64.nullable_field("item")),
+        false,
+    );
+    let marks = Field::new(
+        "marks",
+        DataType::map_of(DataType::utf8(), DataType::Int64, false).expect("a map of marks"),
+        false,
+    );
+    let text = Field::new("json", DataType::utf8(), false);
+    let mut group = criterion.benchmark_group("arrow_serie_json");
+    for count in ROWS {
+        let ticks = Serie::from_scalars(
+            tape.clone(),
+            (0..count).map(|row| {
+                Scalar::from_sequence([
+                    Scalar::from(SYMBOLS[row % SYMBOLS.len()]),
+                    Scalar::decimal128(i128::try_from(row).expect("a small row") * 125, 4),
+                    Scalar::from(i64::try_from(row).expect("a small row")),
+                ])
+            }),
+        )
+        .expect("the tape column");
+        let baskets = Serie::from_scalars(
+            basket.clone(),
+            (0..count).map(|row| {
+                let size = i64::try_from(row).expect("a small row");
+                Scalar::from_sequence((0..4).map(|lot| Scalar::from(size + lot)))
+            }),
+        )
+        .expect("the basket column");
+        // A plain map reads JSON back in its keys' text order, so the marks
+        // are held in that order and read back as written.
+        let mut symbols = SYMBOLS;
+        symbols.sort_unstable();
+        let book =
+            Serie::from_scalars(
+                marks.clone(),
+                (0..count).map(|row| {
+                    let mark = i64::try_from(row).expect("a small row");
+                    Scalar::from_mapping(symbols.iter().zip(0..).map(|(symbol, offset)| {
+                        (Scalar::from(*symbol), Scalar::from(mark + offset))
+                    }))
+                    .expect("distinct symbols")
+                }),
+            )
+            .expect("the marks column");
+        let tick_text = ticks.cast(&text, strict).expect("the tape spells JSON");
+        let basket_text = baskets.cast(&text, strict).expect("the baskets spell JSON");
+        let book_text = book.cast(&text, strict).expect("the marks spell JSON");
+        assert_eq!(
+            tick_text.cast(&tape, strict).expect("the JSON reads back"),
+            ticks,
+            "the tape reads back as written"
+        );
+        assert_eq!(
+            basket_text
+                .cast(&basket, strict)
+                .expect("the JSON reads back"),
+            baskets,
+            "the baskets read back as written"
+        );
+        assert_eq!(
+            book_text.cast(&marks, strict).expect("the JSON reads back"),
+            book,
+            "the marks read back as written"
+        );
+        let basket_array = baskets.require_arrow_array().expect("an Arrow list");
+        let documents = |text: &Serie| {
+            text.require_arrow_array()
+                .expect("an Arrow text column")
+                .as_any()
+                .downcast_ref::<arrow_array::StringArray>()
+                .expect("utf8 cells")
+                .clone()
+        };
+        let (tick_cells, basket_cells, book_cells) = (
+            documents(&tick_text),
+            documents(&basket_text),
+            documents(&book_text),
+        );
+        group.throughput(Throughput::Elements(count as u64));
+        group.bench_function(format!("write/struct/{count}"), |bencher| {
+            bencher.iter(|| black_box(&ticks).cast(&text, strict).expect("JSON"));
+        });
+        group.bench_function(format!("write/serie/{count}"), |bencher| {
+            bencher.iter(|| black_box(&baskets).cast(&text, strict).expect("JSON"));
+        });
+        group.bench_function(format!("write/map/{count}"), |bencher| {
+            bencher.iter(|| black_box(&book).cast(&text, strict).expect("JSON"));
+        });
+        group.bench_function(format!("write/kernel/{count}"), |bencher| {
+            bencher.iter(|| {
+                arrow_cast::cast(black_box(&basket_array), &arrow_schema::DataType::Utf8)
+                    .expect("Arrow's display text")
+            });
+        });
+        group.bench_function(format!("read/struct/{count}"), |bencher| {
+            bencher.iter(|| black_box(&tick_text).cast(&tape, strict).expect("a tape"));
+        });
+        group.bench_function(format!("read/serie/{count}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&basket_text)
+                    .cast(&basket, strict)
+                    .expect("baskets")
+            });
+        });
+        group.bench_function(format!("read/map/{count}"), |bencher| {
+            bencher.iter(|| black_box(&book_text).cast(&marks, strict).expect("marks"));
+        });
+        for (shape, cells) in [
+            ("struct", &tick_cells),
+            ("serie", &basket_cells),
+            ("map", &book_cells),
+        ] {
+            group.bench_function(format!("read/serde_json_{shape}/{count}"), |bencher| {
+                bencher.iter(|| {
+                    for cell in black_box(cells) {
+                        black_box(
+                            serde_json::from_str::<serde_json::Value>(cell.expect("a document"))
+                                .expect("JSON"),
+                        );
+                    }
+                });
+            });
+        }
+    }
+    group.finish();
+}
+
 criterion_group!(
     arrow_values,
     construction_benchmarks,
@@ -963,6 +1107,7 @@ criterion_group!(
     collect_benchmarks,
     chunked_benchmarks,
     cast_benchmarks,
+    json_cast_benchmarks,
     structured_benchmarks,
     null_visibility_benchmarks,
     memory_size_benchmarks,

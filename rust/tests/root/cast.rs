@@ -2448,7 +2448,7 @@ mod typed {
         use arrow_array::types::{Int8Type, Int16Type};
         use arrow_array::{
             Array, ArrayRef, BinaryArray, DictionaryArray, Int16Array, Int32Array,
-            LargeStringArray, ListArray, RunArray, StringArray, StringViewArray,
+            LargeStringArray, RunArray, StringArray, StringViewArray,
         };
 
         use super::cast_into;
@@ -2858,39 +2858,20 @@ mod typed {
             assert!(cast_into(&field, empty, conversion_error()).is_err());
         }
 
-        /// A serie target reads a scalar source into its item, so the item is
-        /// what answers: a text item keeps the empty cell, a numeric one does not.
+        /// A serie target reads text as the JSON document it holds, so an
+        /// empty cell holds none and is absence, whatever its item keeps.
         #[test]
-        fn a_serie_target_answers_for_its_item() {
+        fn a_serie_target_reads_an_empty_cell_as_no_document() {
             let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
-
-            let texts = Field::new(
-                "x",
-                DataType::serie(DataType::utf8().nullable_field("item")),
-                true,
-            );
-            let cast = cast_into(&texts, Arc::clone(&empty), conversion_error()).unwrap();
-            let list = cast.as_any().downcast_ref::<ListArray>().unwrap();
-            assert_eq!(list.value_length(0), 1);
-            assert!(!list.values().is_null(0));
-            assert_eq!(
-                list.values()
-                    .as_any()
-                    .downcast_ref::<StringArray>()
-                    .unwrap()
-                    .value(0),
-                ""
-            );
-
-            let counts = Field::new(
-                "x",
-                DataType::serie(DataType::Int32.nullable_field("item")),
-                true,
-            );
-            let cast = cast_into(&counts, empty, conversion_error()).unwrap();
-            let list = cast.as_any().downcast_ref::<ListArray>().unwrap();
-            assert_eq!(list.value_length(0), 1);
-            assert!(list.values().is_null(0));
+            for item in [DataType::utf8(), DataType::Int32] {
+                let field = Field::new(
+                    "x",
+                    DataType::serie(item.clone().nullable_field("item")),
+                    true,
+                );
+                let cast = cast_into(&field, Arc::clone(&empty), conversion_error()).unwrap();
+                assert!(cast.is_null(0), "{item}");
+            }
         }
     }
 }
@@ -3366,6 +3347,27 @@ mod certification {
     }
 
     #[test]
+    fn the_json_ingest_writes_only_what_the_nested_target_accepts() {
+        let documents = text(&[
+            Some(r#"{"a":1,"b":"x"}"#),
+            Some(r#"{"b":"x"}"#),
+            Some(r#"{"a":"one"}"#),
+            Some("[1, 2, 3]"),
+            Some("{"),
+            Some(""),
+            None,
+        ]);
+        for target in [
+            "struct<a: int64 not null, b: ascii>",
+            "map<utf8, sized_utf8(1)>",
+            "fixed_size_serie<int64, 2>",
+            "serie<struct<a: int64 not null>>",
+        ] {
+            certified(target.parse().unwrap(), Arc::clone(&documents));
+        }
+    }
+
+    #[test]
     fn the_string_ingest_writes_only_what_the_string_accepts() {
         let spellings = text(&[
             Some("ab"),
@@ -3510,14 +3512,14 @@ mod chunked {
     }
 }
 
-mod fixed_decimal_text {
-    //! A fixed decimal leaf spells one text, whether a column is cast or a
-    //! value is restated.
+mod decimal_text {
+    //! Every decimal leaf spells one text - the shortest that states its
+    //! number - whether a column is cast or a value is restated.
 
-    use yggdryl::{ArrowCastOptions, BigDecimal, DataType, Decimal, Field, Scalar, Serie};
+    use yggdryl::{ArrowCastOptions, BigDecimal, DataType, Decimal, Field, Scalar, Serie, i256};
 
     #[test]
-    fn a_fixed_leaf_renders_its_trimmed_text_in_a_batch_as_in_a_row() {
+    fn every_decimal_renders_its_shortest_text_in_a_batch_as_in_a_row() {
         let narrow = |text: &str| Scalar::Decimal(text.parse::<Decimal>().unwrap());
         let wide = |text: &str| Scalar::BigDecimal(text.parse::<BigDecimal>().unwrap());
         let cases = [
@@ -3529,6 +3531,41 @@ mod fixed_decimal_text {
                 DataType::BigDecimal,
                 wide("123456789012345678901234567890.5"),
                 "123456789012345678901234567890.5",
+            ),
+            (
+                DataType::decimal32(9, 2).unwrap(),
+                Scalar::decimal128(1_050, 2),
+                "10.5",
+            ),
+            (
+                DataType::decimal64(18, 4).unwrap(),
+                Scalar::decimal128(0, 4),
+                "0",
+            ),
+            (
+                DataType::DECIMAL,
+                Scalar::decimal128(1_125_000_000_000_000_000, 18),
+                "1.125",
+            ),
+            (
+                DataType::decimal128(12, 4).unwrap(),
+                Scalar::decimal128(-500, 4),
+                "-0.05",
+            ),
+            (
+                DataType::decimal128(10, 2).unwrap(),
+                Scalar::decimal128(10_000, 2),
+                "100",
+            ),
+            (
+                DataType::decimal128(10, -2).unwrap(),
+                Scalar::decimal128(12, -2),
+                "1200",
+            ),
+            (
+                DataType::decimal256(76, 4).unwrap(),
+                Scalar::decimal256(i256::from_i128(-1_234_500), 4),
+                "-123.45",
             ),
         ];
         for (dtype, value, spelled) in cases {
@@ -3552,25 +3589,87 @@ mod fixed_decimal_text {
                 assert_eq!(row.as_str(), Some(spelled), "{dtype} into {target}");
                 assert_eq!(cast.scalar(1).unwrap(), Scalar::Null);
             }
+            // The text reads back as the value, at the column's own scale.
+            let text = Field::new("x", DataType::utf8(), true);
+            let back = column
+                .cast(&text, ArrowCastOptions::new())
+                .unwrap()
+                .cast(column.field().unwrap(), ArrowCastOptions::new())
+                .unwrap();
+            assert_eq!(back, column, "{dtype} back from its text");
         }
-        // The parameterized width keeps its full-scale text on both paths.
-        let storage = Field::new("x", DataType::DECIMAL, true);
-        let value = Scalar::decimal128(1_125_000_000_000_000_000, 18);
-        let column = Serie::from_scalars(storage, [value.clone()]).unwrap();
-        let cast = column
+    }
+
+    /// The text a column renders is charged to the cast budget: a payload
+    /// past it is refused by name.
+    #[test]
+    fn a_text_payload_past_the_budget_is_refused() {
+        use std::sync::Arc;
+
+        use arrow_array::{ArrayRef, Decimal128Array};
+
+        // Thirty-eight digits at scale -90 spell 128 bytes a row: 600,000
+        // rows are 76.8 MB of text from 9.6 MB of storage.
+        let coefficient = 99_999_999_999_999_999_999_999_999_999_999_999_999_i128;
+        let storage: ArrayRef = Arc::new(
+            Decimal128Array::from(vec![coefficient; 600_000])
+                .with_precision_and_scale(38, -90)
+                .unwrap(),
+        );
+        let field = Field::new("x", DataType::decimal128(38, -90).unwrap(), true);
+        let column =
+            Serie::from_arrow_array(Some(&field), storage, ArrowCastOptions::new()).unwrap();
+        let refused = column
             .cast(
                 &Field::new("x", DataType::utf8(), true),
                 ArrowCastOptions::new(),
             )
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("fixed bytes"), "{refused}");
+    }
+
+    /// A column is charged once, for the layout it is built in: a decimal
+    /// enters `large_utf8` and `utf8_view` laid out as they store, and a
+    /// fixed leaf pays for its own slots beside the plain text it reads.
+    #[test]
+    fn a_text_column_is_charged_once_for_the_layout_it_is_built_in() {
+        use std::sync::Arc;
+
+        use arrow_array::{ArrayRef, Decimal128Array};
+
+        // 600,000 rows are within the million slots one cast expands, and
+        // would not be if a column were charged twice.
+        let storage: ArrayRef = Arc::new(
+            Decimal128Array::from(vec![150_i128; 600_000])
+                .with_precision_and_scale(10, 2)
+                .unwrap(),
+        );
+        let field = Field::new("x", DataType::decimal128(10, 2).unwrap(), true);
+        let column =
+            Serie::from_arrow_array(Some(&field), storage, ArrowCastOptions::new()).unwrap();
+        for target in [DataType::large_utf8(), DataType::utf8_view()] {
+            let spelled = column
+                .cast(
+                    &Field::new("x", target.clone(), true),
+                    ArrowCastOptions::new(),
+                )
+                .unwrap();
+            assert_eq!(spelled.len(), 600_000, "{target}");
+            assert_eq!(spelled.scalar(599_999).unwrap().as_str(), Some("1.5"));
+        }
+        // The plain text a fixed leaf reads is charged as plain text: 250,000
+        // rows into slots of a hundred bytes fit the 64 MiB bound, and would
+        // not with that text charged as a third run of slots.
+        let fixed = column
+            .slice(0, 250_000)
+            .unwrap()
+            .cast(
+                &Field::new("x", DataType::fixed_ascii(100).unwrap(), true),
+                ArrowCastOptions::new(),
+            )
             .unwrap();
-        assert_eq!(
-            cast.scalar(0).unwrap(),
-            Scalar::from("1.125000000000000000")
-        );
-        assert_eq!(
-            DataType::utf8().scalar(value).unwrap(),
-            cast.scalar(0).unwrap()
-        );
+        assert_eq!(fixed.scalar(249_999).unwrap().as_str(), Some("1.5"));
     }
 }
 
@@ -3675,6 +3774,476 @@ mod float_decimals {
         assert_eq!(
             cast.scalar(0).unwrap(),
             Scalar::Decimal("1.5".parse::<Decimal>().unwrap())
+        );
+    }
+}
+
+mod json {
+    use std::sync::Arc;
+
+    use arrow_array::types::Int32Type;
+    use arrow_array::{
+        ArrayRef, BinaryArray, DictionaryArray, FixedSizeBinaryArray, Int32Array, StringArray,
+        StructArray,
+    };
+    use arrow_buffer::NullBuffer;
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie};
+
+    fn dtype(expression: &str) -> DataType {
+        expression.parse().unwrap()
+    }
+
+    fn strict() -> ArrowCastOptions {
+        ArrowCastOptions::new().with_safe(false)
+    }
+
+    fn nullable(expression: &str) -> Field {
+        Field::new("v", dtype(expression), true)
+    }
+
+    fn column(expression: &str, rows: Vec<Scalar>) -> Serie {
+        Serie::from_scalars(nullable(expression), rows).unwrap()
+    }
+
+    fn record<'a>(cells: impl IntoIterator<Item = (&'a str, Scalar)>) -> Scalar {
+        Scalar::from_struct(cells).unwrap()
+    }
+
+    fn rows(serie: &Serie) -> Vec<Scalar> {
+        (0..serie.len())
+            .map(|row| serie.scalar(row).unwrap())
+            .collect()
+    }
+
+    fn texts(serie: &Serie) -> Vec<Option<String>> {
+        rows(serie)
+            .iter()
+            .map(|cell| cell.as_str().map(str::to_owned))
+            .collect()
+    }
+
+    fn documents(cells: &[Option<&str>]) -> ArrayRef {
+        Arc::new(StringArray::from(cells.to_vec()))
+    }
+
+    #[test]
+    fn a_struct_spells_an_object_keyed_by_its_fields_in_declaration_order() {
+        let source = column(
+            "struct<b: int64, a: utf8>",
+            vec![
+                record([("b", Scalar::from(1_i64)), ("a", Scalar::from("x"))]),
+                Scalar::Null,
+            ],
+        );
+        let text = source.cast(&nullable("utf8"), strict()).unwrap();
+        assert_eq!(texts(&text), [Some(r#"{"b":1,"a":"x"}"#.to_owned()), None]);
+        // The reading half takes the object back by name.
+        let back = text.cast(source.field().unwrap(), strict()).unwrap();
+        assert_eq!(rows(&back), rows(&source));
+    }
+
+    #[test]
+    fn every_serie_layout_spells_an_array_into_every_text_and_byte_layout() {
+        for layout in [
+            "serie<int64>",
+            "large_serie<int64>",
+            "serie_view<int64>",
+            "large_serie_view<int64>",
+            "fixed_size_serie<int64, 2>",
+        ] {
+            let source = column(
+                layout,
+                vec![
+                    Scalar::from_sequence([Scalar::from(1_i64), Scalar::Null]),
+                    Scalar::Null,
+                ],
+            );
+            for target in [
+                "utf8",
+                "large_utf8",
+                "utf8_view",
+                "binary",
+                "large_binary",
+                "binary_view",
+            ] {
+                let spelled = source.cast(&nullable(target), strict()).unwrap();
+                let first = spelled.scalar(0).unwrap();
+                let bytes = first
+                    .as_str()
+                    .map(str::as_bytes)
+                    .or_else(|| first.as_bytes())
+                    .unwrap_or_else(|| panic!("{layout} -> {target}: {first:?}"));
+                assert_eq!(bytes, b"[1,null]", "{layout} -> {target}");
+                assert!(spelled.is_null(1).unwrap(), "{layout} -> {target}");
+                let back = spelled.cast(source.field().unwrap(), strict()).unwrap();
+                assert_eq!(
+                    rows(&back),
+                    rows(&source),
+                    "{layout} -> {target} -> {layout}"
+                );
+            }
+        }
+    }
+
+    /// The case a nested cast exists for: a map of records and a map of the
+    /// records' text, one cast apart in either direction.
+    #[test]
+    fn a_map_of_structs_and_a_map_of_text_cast_into_one_another() {
+        let quote =
+            |px: &str, qty: i64| record([("px", Scalar::from(px)), ("qty", Scalar::from(qty))]);
+        let source = column(
+            "map<utf8, struct<px: decimal128(10, 2), qty: int64>>",
+            vec![
+                Scalar::from_mapping([
+                    (Scalar::from("AAPL"), quote("1.50", 3)),
+                    (Scalar::from("MSFT"), Scalar::Null),
+                ])
+                .unwrap(),
+                Scalar::Null,
+            ],
+        );
+        let text = source.cast(&nullable("map<utf8, utf8>"), strict()).unwrap();
+        assert_eq!(
+            text.scalar(0).unwrap(),
+            Scalar::from_mapping([
+                (
+                    Scalar::from("AAPL"),
+                    Scalar::from(r#"{"px":"1.5","qty":3}"#)
+                ),
+                (Scalar::from("MSFT"), Scalar::Null),
+            ])
+            .unwrap()
+        );
+        assert!(text.is_null(1).unwrap());
+        let back = text.cast(source.field().unwrap(), strict()).unwrap();
+        assert_eq!(rows(&back), rows(&source));
+    }
+
+    #[test]
+    fn a_serie_of_structs_and_a_struct_of_series_cast_through_their_children() {
+        let structs = column(
+            "serie<struct<a: int32>>",
+            vec![Scalar::from_sequence([record([(
+                "a",
+                Scalar::from(1_i32),
+            )])])],
+        );
+        let text = structs.cast(&nullable("serie<utf8>"), strict()).unwrap();
+        assert_eq!(
+            text.scalar(0).unwrap(),
+            Scalar::from_sequence([Scalar::from(r#"{"a":1}"#)])
+        );
+        assert_eq!(
+            rows(&text.cast(structs.field().unwrap(), strict()).unwrap()),
+            rows(&structs)
+        );
+
+        let series = column(
+            "struct<ids: serie<int64>, tag: utf8>",
+            vec![record([
+                ("ids", Scalar::from_sequence([Scalar::from(4_i64)])),
+                ("tag", Scalar::from("t")),
+            ])],
+        );
+        let text = series
+            .cast(&nullable("struct<ids: utf8, tag: utf8>"), strict())
+            .unwrap();
+        assert_eq!(
+            text.scalar(0).unwrap(),
+            Scalar::from_sequence([Scalar::from("[4]"), Scalar::from("t")])
+        );
+        assert_eq!(
+            rows(&text.cast(series.field().unwrap(), strict()).unwrap()),
+            rows(&series)
+        );
+    }
+
+    #[test]
+    fn every_leaf_keeps_the_json_spelling_it_reads_back_under_its_field() {
+        let source = column(
+            "struct<d: date32, b: binary, u: uuid, px: decimal128(10, 2), t: time64(us)>",
+            vec![record([
+                ("d", Scalar::from("1970-01-02")),
+                ("b", Scalar::from(b"ab".to_vec())),
+                ("u", Scalar::from("6ba7b810-9dad-11d1-80b4-00c04fd430c8")),
+                ("px", Scalar::from("1.50")),
+                ("t", Scalar::from("01:02:03.000004")),
+            ])],
+        );
+        let text = source.cast(&nullable("utf8"), strict()).unwrap();
+        assert_eq!(
+            texts(&text),
+            [Some(
+                r#"{"d":"1970-01-02","b":"YWI=","u":"6ba7b810-9dad-11d1-80b4-00c04fd430c8","px":"1.5","t":"01:02:03.000004"}"#
+                    .to_owned()
+            )]
+        );
+        assert_eq!(
+            rows(&text.cast(source.field().unwrap(), strict()).unwrap()),
+            rows(&source)
+        );
+    }
+
+    #[test]
+    fn a_map_key_spells_as_text_and_reads_back_as_its_own_datatype() {
+        let source = column(
+            "map<int64, utf8>",
+            vec![Scalar::from_mapping([(Scalar::from(1_i64), Scalar::from("a"))]).unwrap()],
+        );
+        let text = source.cast(&nullable("utf8"), strict()).unwrap();
+        assert_eq!(texts(&text), [Some(r#"{"1":"a"}"#.to_owned())]);
+        assert_eq!(
+            rows(&text.cast(source.field().unwrap(), strict()).unwrap()),
+            rows(&source)
+        );
+    }
+
+    /// A JSON object is a record, which holds no order of its own: a map
+    /// reads its entries back in the order of their keys' text, and a sorted
+    /// map in the order of the keys themselves, `10` after `2`.
+    #[test]
+    fn a_map_read_back_from_its_object_holds_its_entries_in_key_order() {
+        let entries = |pairs: [(i64, &str); 2]| {
+            Scalar::from_mapping(pairs.map(|(key, value)| (Scalar::from(key), Scalar::from(value))))
+                .unwrap()
+        };
+        let plain = column("map<int64, utf8>", vec![entries([(2, "a"), (10, "b")])]);
+        let text = plain.cast(&nullable("utf8"), strict()).unwrap();
+        assert_eq!(texts(&text), [Some(r#"{"2":"a","10":"b"}"#.to_owned())]);
+        assert_eq!(
+            text.cast(plain.field().unwrap(), strict())
+                .unwrap()
+                .scalar(0)
+                .unwrap(),
+            entries([(10, "b"), (2, "a")])
+        );
+        let sorted = Serie::from_scalars(
+            Field::new(
+                "v",
+                DataType::map_of(DataType::Int64, DataType::utf8(), true).unwrap(),
+                true,
+            ),
+            vec![entries([(2, "a"), (10, "b")])],
+        )
+        .unwrap();
+        let text = sorted.cast(&nullable("utf8"), strict()).unwrap();
+        assert_eq!(
+            rows(&text.cast(sorted.field().unwrap(), strict()).unwrap()),
+            rows(&sorted)
+        );
+        // A byte value is spelled in base64 and read back from it, in key order.
+        let payloads = Serie::from_scalars(
+            Field::new(
+                "v",
+                DataType::map_of(DataType::Int64, DataType::binary(), true).unwrap(),
+                true,
+            ),
+            vec![
+                Scalar::from_mapping([
+                    (Scalar::from(2_i64), Scalar::from(b"a".to_vec())),
+                    (Scalar::from(10_i64), Scalar::from(b"b".to_vec())),
+                ])
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        let text = payloads.cast(&nullable("utf8"), strict()).unwrap();
+        assert_eq!(
+            texts(&text),
+            [Some(r#"{"2":"YQ==","10":"Yg=="}"#.to_owned())]
+        );
+        assert_eq!(
+            rows(&text.cast(payloads.field().unwrap(), strict()).unwrap()),
+            rows(&payloads)
+        );
+    }
+
+    /// A key JSON can spell only as a quoted count no reader takes back for
+    /// an interval is refused, as a nested key is.
+    #[test]
+    fn a_map_key_json_cannot_spell_is_refused_by_row() {
+        let spans = column(
+            "map<interval(year_month), utf8>",
+            vec![
+                Scalar::from_mapping([(
+                    Scalar::interval(12, 0, 0, yggdryl::TimeUnit::YearMonth).unwrap(),
+                    Scalar::from("a"),
+                )])
+                .unwrap(),
+            ],
+        );
+        let refused = spans
+            .cast(&nullable("utf8"), strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("row 0"), "{refused}");
+        assert!(refused.contains("interval"), "{refused}");
+    }
+
+    #[test]
+    fn a_target_with_a_rule_of_its_own_runs_it_over_the_json() {
+        let source = column(
+            "serie<utf8>",
+            vec![Scalar::from_sequence([Scalar::from("é")])],
+        );
+        // US-ASCII holds no "é": refused by row, null where safe may null it.
+        let refused = source
+            .cast(&nullable("ascii"), strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("row 0"), "{refused}");
+        assert!(refused.contains("non-ASCII"), "{refused}");
+        let lenient = source
+            .cast(&nullable("ascii"), ArrowCastOptions::new())
+            .unwrap();
+        assert!(lenient.is_null(0).unwrap());
+        // windows-1252 spells it, and its bytes are decoded before they are read.
+        let cp1252 = source.cast(&nullable("cp1252"), strict()).unwrap();
+        assert_eq!(texts(&cp1252), [Some(r#"["é"]"#.to_owned())]);
+        assert_eq!(
+            rows(&cp1252.cast(source.field().unwrap(), strict()).unwrap()),
+            rows(&source)
+        );
+        // A bound counts the JSON's bytes; a fixed width must be met exactly.
+        let refused = source
+            .cast(&nullable("sized_utf8(4)"), strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("at most 4 bytes"), "{refused}");
+        let fixed = source.cast(&nullable("fixed_binary(6)"), strict()).unwrap();
+        assert_eq!(
+            fixed.scalar(0).unwrap().as_bytes(),
+            Some(r#"["é"]"#.as_bytes())
+        );
+        assert!(source.cast(&nullable("fixed_binary(8)"), strict()).is_err());
+    }
+
+    #[test]
+    fn text_that_is_not_a_document_of_the_target_is_null_where_safe_and_named_otherwise() {
+        let cells = documents(&[Some("[1, 2]"), Some("abc"), Some(r#"{"a":1}"#), None]);
+        let target = nullable("serie<int64>");
+        let lenient =
+            Serie::from_arrow_array(Some(&target), Arc::clone(&cells), ArrowCastOptions::new())
+                .unwrap();
+        assert_eq!(
+            rows(&lenient),
+            [
+                Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+            ]
+        );
+        let refused = Serie::from_arrow_array(Some(&target), Arc::clone(&cells), strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("row 1"), "{refused}");
+        assert!(refused.contains("\"abc\" does not read as"), "{refused}");
+        // A required column refuses the value whatever `safe` says.
+        let required = Field::new("v", dtype("serie<int64>"), false);
+        let present = documents(&[Some("[1]"), Some("abc")]);
+        let refused = Serie::from_arrow_array(Some(&required), present, ArrowCastOptions::new())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("row 1"), "{refused}");
+    }
+
+    #[test]
+    fn an_empty_cell_and_a_json_null_are_absence_the_field_answers_for() {
+        let cells = documents(&[Some(""), Some("null"), Some(" null\n")]);
+        let lenient = Serie::from_arrow_array(
+            Some(&nullable("struct<a: int64>")),
+            Arc::clone(&cells),
+            strict(),
+        )
+        .unwrap();
+        assert_eq!(rows(&lenient), [Scalar::Null, Scalar::Null, Scalar::Null]);
+        let required = Field::new("v", dtype("struct<a: int64>"), false);
+        assert!(Serie::from_arrow_array(Some(&required), cells, ArrowCastOptions::new()).is_err());
+        // The same for a column of bytes.
+        let bytes: ArrayRef =
+            Arc::new(BinaryArray::from(vec![Some(b"".as_slice()), Some(b"null")]));
+        let read =
+            Serie::from_arrow_array(Some(&nullable("serie<int64>")), bytes, strict()).unwrap();
+        assert_eq!(rows(&read), [Scalar::Null, Scalar::Null]);
+    }
+
+    #[test]
+    fn a_float_json_cannot_spell_is_null_where_safe_and_named_otherwise() {
+        let source = column(
+            "struct<x: float64>",
+            vec![
+                record([("x", Scalar::from(f64::INFINITY))]),
+                record([("x", Scalar::from(0.5_f64))]),
+            ],
+        );
+        let lenient = source
+            .cast(&nullable("utf8"), ArrowCastOptions::new())
+            .unwrap();
+        assert_eq!(texts(&lenient), [None, Some(r#"{"x":0.5}"#.to_owned())]);
+        let refused = source
+            .cast(&nullable("utf8"), strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("row 0"), "{refused}");
+        assert!(refused.contains("non-finite"), "{refused}");
+    }
+
+    #[test]
+    fn an_encoded_column_of_documents_is_read_as_the_text_it_holds() {
+        let values = documents(&[Some(r#"{"a":1}"#), Some(r#"{"a":2}"#)]);
+        let keys = Int32Array::from(vec![Some(1), None, Some(0), Some(1)]);
+        let encoded: ArrayRef =
+            Arc::new(DictionaryArray::<Int32Type>::try_new(keys, values).unwrap());
+        let read = Serie::from_arrow_array(Some(&nullable("struct<a: int64>")), encoded, strict())
+            .unwrap();
+        let a = |value: i64| Scalar::from_sequence([Scalar::from(value)]);
+        assert_eq!(rows(&read), [a(2), Scalar::Null, a(1), a(2)]);
+    }
+
+    #[test]
+    fn a_row_an_ancestor_hides_is_neither_read_nor_refused() {
+        let child: ArrayRef = documents(&[Some("not json"), Some(r#"{"a":1}"#)]);
+        let hidden: ArrayRef = Arc::new(
+            StructArray::try_new(
+                vec![ArrowField::new("s", ArrowDataType::Utf8, true)].into(),
+                vec![child],
+                Some(NullBuffer::from(vec![false, true])),
+            )
+            .unwrap(),
+        );
+        let read = Serie::from_arrow_array(
+            Some(&nullable("struct<s: struct<a: int64>>")),
+            hidden,
+            strict(),
+        )
+        .unwrap();
+        assert_eq!(
+            rows(&read),
+            [
+                Scalar::Null,
+                Scalar::from_sequence([Scalar::from_sequence([Scalar::from(1_i64)])]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_fixed_slot_document_is_read_without_its_padding() {
+        let slots: ArrayRef = Arc::new(
+            FixedSizeBinaryArray::try_from_iter(
+                [b"[1]\0\0".as_slice(), b"[1,2]".as_slice()].into_iter(),
+            )
+            .unwrap(),
+        );
+        let read =
+            Serie::from_arrow_array(Some(&nullable("serie<int64>")), slots, strict()).unwrap();
+        assert_eq!(
+            rows(&read),
+            [
+                Scalar::from_sequence([Scalar::from(1_i64)]),
+                Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
+            ]
         );
     }
 }

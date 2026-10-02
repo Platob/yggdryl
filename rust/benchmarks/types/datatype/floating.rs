@@ -56,16 +56,15 @@ pub(crate) fn decimal_benchmarks(criterion: &mut Criterion) {
     for dtype in &leaves {
         ingest_float(&mut group, dtype, &floats);
     }
-    // A fixed leaf renders its trimmed text; the `decimal128(38, 18)` it
-    // rides renders through Arrow's kernel at full scale, the baseline.
-    for dtype in [
-        DataType::Decimal,
-        DataType::BigDecimal,
-        DataType::decimal128(38, 18)
-            .expect("thirty-eight digits fit one hundred and twenty-eight bits"),
-    ] {
+    // Every decimal renders its shortest text through the crate's one
+    // writer; Arrow's kernel over the `decimal128(38, 18)` storage, which
+    // writes all eighteen places, is the baseline.
+    let storage = DataType::decimal128(38, 18)
+        .expect("thirty-eight digits fit one hundred and twenty-eight bits");
+    for dtype in [DataType::Decimal, DataType::BigDecimal, storage.clone()] {
         render_utf8(&mut group, &dtype, sample);
     }
+    render_utf8_arrow(&mut group, &storage, sample);
     group.finish();
 }
 
@@ -124,6 +123,27 @@ fn render_utf8(group: &mut BenchmarkGroup<'_, WallTime>, dtype: &DataType, sampl
             black_box(&column)
                 .cast(black_box(&text), options)
                 .expect("the column renders")
+        });
+    });
+}
+
+/// Arrow's own kernel over the same column, the baseline the crate's
+/// renderer is measured against.
+fn render_utf8_arrow(group: &mut BenchmarkGroup<'_, WallTime>, dtype: &DataType, sample: &str) {
+    let value = dtype
+        .scalar(Scalar::from(sample))
+        .expect("the sample is a value of the leaf");
+    let column = Serie::from_scalars(
+        Field::new("value", dtype.clone(), true),
+        std::iter::repeat_n(value, ROWS),
+    )
+    .expect("a column of the sample")
+    .into_arrow_array()
+    .expect("the column is an Arrow array");
+    group.bench_function(BenchmarkId::new("render_utf8", "arrow_kernel"), |bencher| {
+        bencher.iter(|| {
+            arrow_cast::cast(black_box(&column), &arrow_schema::DataType::Utf8)
+                .expect("Arrow renders a decimal")
         });
     });
 }

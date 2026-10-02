@@ -46,3 +46,25 @@ fn a_serie_column_writes_as_the_run_of_its_rows() {
         "[[1,2],[1,2]]"
     );
 }
+
+/// A map key is spelled as text, a number or a boolean quoted, and reads
+/// back under the key's datatype; an interval has no key JSON reads back.
+#[test]
+fn a_map_key_is_spelled_as_the_text_its_datatype_reads_back() {
+    let counts = Scalar::from_mapping([(Scalar::from(1_i64), Scalar::from("a"))]).unwrap();
+    let text = yggdryl::json::into_utf8(&counts).unwrap();
+    assert_eq!(text, r#"{"1":"a"}"#);
+    let field = Field::new("m", "map<int64, utf8>".parse().unwrap(), true);
+    assert_eq!(
+        yggdryl::json::from_utf8_with_field(&text, &field).unwrap(),
+        counts
+    );
+    let flags = Scalar::from_mapping([(Scalar::from(true), Scalar::from(1_i64))]).unwrap();
+    assert_eq!(yggdryl::json::into_utf8(&flags).unwrap(), r#"{"true":1}"#);
+    let spans = Scalar::from_mapping([(
+        Scalar::interval(12, 0, 0, yggdryl::TimeUnit::YearMonth).unwrap(),
+        Scalar::from("a"),
+    )])
+    .unwrap();
+    assert!(yggdryl::json::into_utf8(&spans).is_err());
+}

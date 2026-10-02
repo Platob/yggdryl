@@ -822,7 +822,7 @@ def test_natural_json_has_no_private_value_envelopes() -> None:
         }
     )
     assert json.loads(encoded) == {
-        "price": "1.50",
+        "price": "1.5",
         "at": "2026-08-15T12:03:04.000005",
     }
 

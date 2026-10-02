@@ -89,8 +89,10 @@ mod grammar {
         let schema = rows_schema();
         let bound = "d > 100".parse::<Term>().unwrap().bind(&schema).unwrap();
         // The bound term prints the literal in the column's own type, which is
-        // how a caller sees that the comparison is exact rather than floating.
-        assert_eq!(bound.term().to_string(), "d > decimal128(9,2) '100.00'");
+        // how a caller sees that the comparison is exact rather than floating;
+        // the type states the scale, so the text is the shortest that reads
+        // back as the value.
+        assert_eq!(bound.term().to_string(), "d > decimal128(9,2) '100'");
     }
 
     // ---------------------------------------------------------------------------

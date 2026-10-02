@@ -118,7 +118,7 @@ A literal holds a `Scalar` in one datatype. `literal` infers the datatype from t
 | `true`, `null` | `boolean`, the untyped null |
 | `int32 '5'`, `date32 '2024-01-01'`, `utf8 null` | that datatype, its text read strictly |
 
-At bind, a literal meets the column it is compared with and is converted once into that column's type: `price > 100` on a `decimal(9,2)` column becomes `price > decimal32(9,2) '100.00'`, and `i = '1'` on an `int64` column becomes `i = 1`. A constant subtree is folded by evaluating it, so `n > 2 * 1000` binds as `n > 2000`.
+At bind, a literal meets the column it is compared with and is converted once into that column's type: `price > 100` on a `decimal(9,2)` column becomes `price > decimal32(9,2) '100'`, and `i = '1'` on an `int64` column becomes `i = 1`. A constant subtree is folded by evaluating it, so `n > 2 * 1000` binds as `n > 2000`.
 
 ## Predicate segments
 

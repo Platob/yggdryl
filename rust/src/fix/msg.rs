@@ -2948,8 +2948,8 @@ impl FixMsg {
     /// `miscfees` holds `[{"miscfeeamt":"1.5","miscfeecurr":"EUR"}]` - a
     /// group an array of one object per occurrence, a component or a map one
     /// object, nested groups and components recursing, every leaf inside the
-    /// canonical text a root scalar spells, so a decimal keeps its stored
-    /// scale and no value is a JSON number. Null, skipped and counter
+    /// canonical text a root scalar spells, so a decimal is its shortest
+    /// exact text and no value is a JSON number. Null, skipped and counter
     /// members are left out, and a child left with nothing writes no key.
     /// Left out too are a child the [envelope](super::digest) holds, since
     /// the message's code leaves the same set out; a typed tag stated twice;
@@ -5184,8 +5184,8 @@ impl<'a> Planned<'a> {
 
 impl<'a> Shape<'a> {
     /// `value` rebuilt as named values: a leaf as the canonical text it
-    /// spells - the same text a root scalar lands as, decimals at their
-    /// stored scale and codes as their names, so no number is ever a JSON
+    /// spells - the same text a root scalar lands as, decimals as their
+    /// shortest exact text and codes as their names, so no number is ever a JSON
     /// number - a component or an occurrence as one record of its members
     /// under their names, a group or a list as the sequence of its
     /// occurrences, a map as one record of its text keys. A null, a skipped

@@ -364,8 +364,10 @@ storage it does not describe imports as that storage.
 A bounded variable byte target checks every cell's length (`BytesIngest`); the
 four plain leaves stay Arrow's own kernel. Under `safe` a failing cell becomes
 null where the column may hold one; under `safe = false`, or in a required
-column, an error names the row and the column. The whole cast tier
-is on [Cast](../cast.md).
+column, an error names the row and the column. A struct, serie or map source
+writes the UTF-8 bytes of its JSON, and a byte source cast into one is read as
+the JSON document it holds ([Nested values as JSON](../cast.md#nested-values-as-json)).
+The whole cast tier is on [Cast](../cast.md).
 
 === "Rust"
 

@@ -18,6 +18,7 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 | Empty text | A zero-length text cell entering a non-text column is null before `safe` is asked; the field's nullability decides the rest. A string, byte or interval column, and a code whose neutral member is the empty text, keep it as the value it is |
 | Validates | `validate_value`: right arity, no null in a required column, every scalar in its declared range |
 | One reading | A row and a column read the same spellings: text into a number, a boolean, a decimal or a temporal; any value with a spelling into text; any byte-carrying value into a byte layout |
+| Nested as JSON | A scalar cast and a column cast read a struct, serie or map into text or bytes as its JSON, and text or bytes back as the JSON document it holds; the value contract does not, a cast's reading rather than a value's ([Nested values as JSON](#nested-values-as-json)) |
 | Layouts | Every serie layout reads every other one, every byte framing reads every other one, and an encoding is a layout: a dictionary or run-end target runs its values' rule, and an encoded source is read as the column it holds |
 | Batch children | Target order, ASCII-case-insensitive names |
 | Proof | A landed column holds only rows its field accepts; an extension label is never proof of that ([What a landing proves](#what-a-landing-proves)) |
@@ -256,7 +257,8 @@ storage handle it was given, so the payload is never copied. `rust/tests/allocat
 both.
 
 `DataType::scalar` and `Field::scalar` are the one value contract, and they read every spelling
-the column tier reads. Text becomes the number, boolean, decimal or temporal a column declares -
+the column tier reads, but for a nested value and text, which meet only in a cast
+([Nested values as JSON](#nested-values-as-json)). Text becomes the number, boolean, decimal or temporal a column declares -
 through this crate's own readers, so a digit a scale cannot hold is refused rather than rounded.
 Any value that prints a spelling enters a text column as that spelling, a geometry included.
 Any value that carries bytes enters a byte column as that payload; a fixed string carries the
@@ -764,6 +766,120 @@ too.
     assert.throws(() => Serie.fromArrowArray(spaced, required), /Cannot cast string ' '/)
     ```
 
+## Nested values as JSON
+
+A nested column - a struct, any serie layout, a map - and a text or byte column cast into one
+another through JSON, at every depth. Each row writes the compact JSON its field names: a struct
+is an object keyed by its fields in declaration order, a serie an array, a map an object whose
+keys are spelled as text, a union beneath one its `[type_id, value]` pair, and every leaf the
+spelling the [JSON codec](../media/json.md) writes - a decimal as its text, a temporal in
+ISO 8601, bytes in base64. Each text or byte cell reads back as one JSON document under the
+target field, through the value contract a JSON document is read by, so a cast there and back
+is the identity - but for a map's entries, which a JSON object holds in no order of its own
+([Edges](#edges)). The cast recurses like every other: a struct beneath a map's values spells its
+own object where the map holds it, so `map<utf8, struct<..>>` and `map<utf8, utf8>` are one cast
+apart in either direction, and a list of records and a list of their text the same.
+
+The JSON is written straight into the column's one buffer from the column's own leaves - no
+value and no text built per row - and the rows of a column that already landed are not proven
+again. Reading, the target is planned once: each document is read along that plan through the
+one JSON grammar, every leaf through its datatype's own value door, a struct's cells into the
+columns its children are laid out from and a serie's items or a map's entries onto one run, so
+no row value is built either. A document the plan cannot answer for alone - a struct spelled as a positional
+array, a union or an encoding anywhere in the target, a refusal - is read by the field-directed
+door instead, which says what a refusal is. A target with a rule of its own - a
+charset, a bound, a fixed width - then runs it over the JSON, so `ascii` refuses a non-ASCII
+character by row. An empty cell and the document `null` are absence, for the field's
+nullability to answer; a cell that is not JSON, or not a value of the target, and a float JSON
+cannot spell are failed conversions ([Required columns](#required-columns)). A union reads text
+through the member that takes it, and a variant holds text as the string it is, so neither reads
+a document where a cast meets it.
+
+A scalar cast reads and writes the same JSON - `cast_scalar`, `try_cast_scalar` and an
+expression's `cast`, whose rows agree with a cast of their column. A value carries no field, so
+it spells the JSON its own shape is - a record an object in name order, a run an array - where a
+column's rows are keyed by their field. The value contract, `DataType::scalar` and
+`Field::scalar`, is not a cast: every document reader runs it, and there a nested value has no
+text spelling and text is no nested value, so a repeated field never lands in a text column as an
+array's JSON.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie};
+
+    let options = ArrowCastOptions::new();
+    let books = Field::new(
+        "books",
+        "map<utf8, struct<px: decimal128(10, 2), qty: int64>>".parse()?,
+        true,
+    );
+    let quote = Scalar::from_struct([("px", Scalar::from("1.50")), ("qty", Scalar::from(3_i64))])?;
+    let column = Serie::from_scalars(
+        books.clone(),
+        [Scalar::from_mapping([(Scalar::from("AAPL"), quote)])?, Scalar::Null],
+    )?;
+
+    // Each record beneath the map's values spells its own object.
+    let text = column.cast(&Field::new("books", "map<utf8, utf8>".parse()?, true), options)?;
+    assert_eq!(
+        text.scalar(0)?,
+        Scalar::from_mapping([(Scalar::from("AAPL"), Scalar::from(r#"{"px":"1.5","qty":3}"#))])?
+    );
+    assert!(text.is_null(1)?);
+    // And the text reads back under the records: the round trip is the identity.
+    assert_eq!(text.cast(&books, options)?, column);
+
+    // Text that is not a document of the target is a failed conversion.
+    let lists = Serie::from_scalars(
+        Field::new("lots", DataType::utf8(), true),
+        [Scalar::from("[1, 2]"), Scalar::from("abc"), Scalar::from("null")],
+    )?;
+    let lots = lists.cast(&Field::new("lots", "serie<int64>".parse()?, true), options)?;
+    assert_eq!(lots.scalar(0)?, Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]));
+    assert!(lots.is_null(1)? && lots.is_null(2)?);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import Field, Serie
+
+    quote = pa.struct([("px", pa.float64()), ("sym", pa.string())])
+    quotes = Serie.from_arrow_array(pa.array([{"px": 1.5, "sym": "AAPL"}, None], quote))
+
+    # A struct spells an object keyed in declaration order...
+    text = quotes.cast(Field("q", "utf8"))
+    assert text.as_py() == ['{"px":1.5,"sym":"AAPL"}', None]
+    # ...and the text reads back under the struct.
+    assert text.cast(Field("q", "struct<px: float64, sym: utf8>")).as_py() == [
+        {"px": 1.5, "sym": "AAPL"},
+        None,
+    ]
+
+    # Text that is not a document of the target is a failed conversion.
+    lots = Serie.from_arrow_array(pa.array(["[1, 2]", "abc", "null"]))
+    assert lots.cast(Field("lots", "serie<int64>")).as_py() == [[1, 2], None, None]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, Serie } = require('yggdryl')
+
+    const quote = Field.from('q: struct<px: float64, sym: utf8>')
+    const quotes = Serie.fromScalars(quote, [quote.dtype.scalar({ px: 1.5, sym: 'AAPL' }), null])
+
+    // A struct spells an object keyed in declaration order...
+    const text = quotes.cast(Field.from('q: utf8'))
+    assert.deepEqual(text.asJs(), ['{"px":1.5,"sym":"AAPL"}', null])
+    // ...and the text reads back under the struct.
+    assert.deepEqual(text.cast(quote).asJs(), [{ px: 1.5, sym: 'AAPL' }, null])
+    ```
+
 ## Compiled plans
 
 Everything a cast decides from two fields - which source child answers which target field, the
@@ -1246,9 +1362,9 @@ What each binding door accepts, each resolved once at the door:
 - `into_arrow_scalar` -> exactly one row; any other length is refused naming it, and a run is refused by name.
 - A scalar wider than the declared type -> accepted when the value fits, then canonicalized into it (`U64` -> `I64`).
 - Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../media/json.md#read) accepts, a duration included, which Arrow reads into none.
-- Text into a decimal -> read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer.
+- Text into a decimal -> every exact spelling - a sign, `.5` or `5.`, leading and trailing zeros, an exponent, `_` grouping - read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer, and a comma is no grouping ([Decimal text](numeric/decimal.md#text)).
 - A float into a decimal -> the number its shortest text names, rounded half away from zero at the declared scale, on both tiers: `0.125` into `decimal(10, 2)` is `0.13`, and `1.15` is `1.15` where Arrow's kernel would scale the binary fraction. A `nan`, an infinity or a float past the precision -> null under `safe`, refused by row under strict.
-- A `decimal` or `bigdecimal` column into text -> the leaf's trimmed text on both tiers, `1.125` and never the `1.125000000000000000` of its storage; a parameterized width keeps its declared scale on the column tier (`1.125000000000000000` for `decimal128(38,18)`), while the row tier renders the value at the scale it holds.
+- A decimal column into text -> the shortest exact text on both tiers, every width and both fixed leaves alike: `1.125` for `decimal128(38,18)` and for `decimal`, never the `1.125000000000000000` of the storage, and `100` for `100.00`; the scale stays in the datatype, and the text reads back at it.
 - Text into a boolean or a number at the row tier -> this crate's canonical spelling; a column keeps Arrow's wider vocabulary behind it, as it does for temporals.
 - Two fixed sizes, serie or binary -> a value change rather than a layout change, refused by name.
 - A string target declaring a bound, a fixed width or a charset other than UTF-8 -> `StringIngest`: every cell validated, a `yggdryl.string` source read under its own parameters first, bare binary storage read as bytes already in the target charset; a bounded variable byte target -> `BytesIngest`, every cell's length checked ([String](text/string.md#casts) and [Bytes](text/bytes.md#casts) casts). Under `safe` a refused cell is null in a nullable column; in a required one, or under `safe=False`, the row and column are named.
@@ -1262,6 +1378,9 @@ What each binding door accepts, each resolved once at the door:
 - A reading the declared unit or width cannot hold exactly -> a failed conversion, never a rounded value: null in a nullable column under `safe`, refused otherwise.
 - Twelve-hour clock, and a bare date into a zoned datetime -> Arrow's kernel; a bare date into a naive datetime is that day at midnight on both tiers, compact `YYYYMMDD` included.
 - Temporal to text -> the classic form, zoned instants included.
+- A struct, serie or map into text or bytes -> its compact JSON, a struct keyed in declaration order and every leaf the JSON codec's spelling; a NaN or an infinite float has no JSON and is a failed conversion ([Nested values as JSON](#nested-values-as-json)).
+- Text or bytes into a struct, serie or map -> each cell one JSON document under the target, never a one-item list wrapped around the cell; `""` and the document `null` are absence; a JSON object holds no order, so a map's entries come back in the order of their keys' text and a sorted map's in the order of its keys.
+- Text into a union or a variant -> the union's member that takes it, the variant's string; neither reads a document at the top of a cast.
 - `representation="bits"` over two different widths, or into a datatype with a value rule -> the ordinary conversion, range check and all.
 - A required `bits` target over source nulls -> refused by path, exactly as under `value`.
 - A foreign column carrying a `yggdryl.*` extension label -> its rows read once under the field's rule, a refused row named with its column and row under every option; a label is never a proof.
@@ -1317,6 +1436,39 @@ tests keep the row assertions without warm-up, samples or timing thresholds.
 
 ```bash
 cargo bench --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --bench types -- cast_plan
+```
+
+### Nested JSON text
+
+A nested column into JSON text and back, per row: the commodity tape as one
+`struct<symbol: utf8, price: decimal128(12, 4), size: int64>` column, a basket of four
+`int64` sizes per row as a `serie<int64>`, and four marks per row as a `map<utf8, int64>`. The
+baselines are Arrow's own list-to-text kernel over
+the same basket - a display form, not JSON - and serde_json parsing every cell into its own value
+tree with no column built. One containerized x86_64 Linux run: Intel Xeon @ 2.80 GHz, 4 cores,
+16 GiB; rustc 1.97.0 release with thin LTO. Criterion medians; the container's run-to-run spread
+is 10 to 20%.
+
+| Rows | Write struct | Write serie | Arrow list kernel | Read struct | serde_json struct | Read serie | serde_json serie |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,024 | 175 µs | 73.8 µs | 102 µs | 532 µs | 283 µs | 327 µs | 144 µs |
+| 16,384 | 2.96 ms | 1.19 ms | 1.70 ms | 9.13 ms | 4.49 ms | 4.95 ms | 2.29 ms |
+
+| Rows | Write map | Read map | serde_json map |
+| ---: | ---: | ---: | ---: |
+| 1,024 | 195 µs | 931 µs | 297 µs |
+| 16,384 | 3.07 ms | 15.5 ms | 5.08 ms |
+
+Writing is the JSON spelled from the column's leaves straight into its one buffer: the basket
+writes as JSON faster than Arrow's kernel writes its display text, which is no JSON at all.
+Reading is each document walked once along the target planned for it, its values landing in the
+buffers the column is laid out from; serde_json's parse of the same cells, which builds no
+column, is the baseline beside each, about half the read - a third for the map, whose every row
+also puts its entries in the order of their keys and holds them to one key each. Neither
+direction allocates per row.
+
+```bash
+cargo bench --manifest-path rust/Cargo.toml -p yggdryl --bench arrow -- arrow_serie_json
 ```
 
 ### Row canonicalization

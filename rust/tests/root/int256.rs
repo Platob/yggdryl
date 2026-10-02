@@ -143,6 +143,33 @@ fn the_signed_minimum_still_answers_an_unsigned_magnitude() {
 }
 
 #[test]
+fn every_power_of_ten_spells_and_reads_across_the_nineteen_digit_chunks() {
+    // A chunk below the leading one is zero-padded on the way out and read
+    // nineteen digits at a time on the way in, so every digit count - and a
+    // zero chunk between two others - crosses both directions.
+    let ten = u256::from_u128(10);
+    let mut power = u256::from_u128(1);
+    for zeros in 0..=77 {
+        let text = format!("1{}", "0".repeat(zeros));
+        assert_eq!(power.to_string(), text, "10^{zeros} spells");
+        assert_eq!(unsigned(&text), power, "10^{zeros} reads");
+        let past = format!("1{}7", "0".repeat(zeros.saturating_sub(1)));
+        if zeros > 0 {
+            let value = power.checked_add(u256::from_u128(7)).unwrap();
+            assert_eq!(value.to_string(), past, "10^{zeros} + 7 spells");
+            assert_eq!(unsigned(&past), value, "10^{zeros} + 7 reads");
+        }
+        let negative = format!("-{text}");
+        if zeros < 77 {
+            assert_eq!(signed(&negative).to_string(), negative, "-10^{zeros}");
+        }
+        if zeros < 77 {
+            power = power.checked_mul(ten).unwrap();
+        }
+    }
+}
+
+#[test]
 fn unsigned_boundaries_round_trip() {
     for text in [
         "0",

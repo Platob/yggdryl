@@ -2479,7 +2479,7 @@ fn shared_children<T>(
 /// The one duplicate-key rule a mapping is held to, naming the index of the
 /// first entry restating an earlier key: a scan for a short mapping, a set
 /// past sixteen entries.
-fn unique_keys(entries: &[(Scalar, Scalar)]) -> Result<()> {
+pub(crate) fn unique_keys(entries: &[(Scalar, Scalar)]) -> Result<()> {
     if entries.len() <= 16 {
         for (index, (key, _)) in entries.iter().enumerate() {
             if entries[..index].iter().any(|(existing, _)| existing == key) {

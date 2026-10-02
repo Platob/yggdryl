@@ -891,6 +891,27 @@ pub(crate) fn land_planned(resolved: &Resolved, array: ArrayRef, proof: &Proof) 
     .map_err(|refusal| located(&resolved.field, array.as_ref(), refusal))
 }
 
+/// [`land_planned`] beneath the rows a cast node exposes: a row an ancestor
+/// hid says nothing about the array, so it is judged - and read - only
+/// where `parent` is set. The landing draws on the node's own budget.
+pub(crate) fn land_planned_under(
+    resolved: &Resolved,
+    array: ArrayRef,
+    parent: Option<&NullBuffer>,
+    proof: &Proof,
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<Serie> {
+    child_of(
+        Arc::clone(&resolved.field),
+        Arc::clone(&array),
+        parent,
+        proof,
+        budget,
+        Some(resolved),
+    )
+    .map_err(|refusal| located(&resolved.field, array.as_ref(), refusal))
+}
+
 /// Land one child array beneath the validity of the record it sits in: a
 /// row the parent leaves absent says nothing about the child, so a required
 /// child is judged only where the parent is present.

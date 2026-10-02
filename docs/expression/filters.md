@@ -139,7 +139,7 @@ schema.set_dtype(yggdryl::DataType::from(yggdryl::StructType::from_fields(childr
 let bound = "year = 2024 and price > 100".parse::<Term>()?.bind(&schema)?;
 let residual = bound.partition_split();
 assert_eq!(residual.answerable().to_string(), "year = int32 '2024'");
-assert_eq!(residual.remaining().to_string(), "price > decimal32(9,2) '100.00'");
+assert_eq!(residual.remaining().to_string(), "price > decimal32(9,2) '100'");
 assert!(!residual.is_complete());
 ```
 

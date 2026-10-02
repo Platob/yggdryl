@@ -553,7 +553,7 @@ fn a_decimal_is_its_digits_and_other_leaves_are_their_text() {
         row(&sheet_part(&handle), 2),
         format!(
             "<row r=\"2\">{}{}{}</row>",
-            number("A2", "12.50"),
+            number("A2", "12.5"),
             text("B2", "123e4567-e89b-12d3-a456-426614174000"),
             text("C2", "AAFoaQ==")
         )
