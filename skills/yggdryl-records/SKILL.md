@@ -131,10 +131,13 @@ medium does the work before a byte is decoded.
    not defaulted - and cost the most (4,096 rows: about 0.1 ms as
     a batch, 3 ms as records, on the docs' reference machine). Keep rows for
     small or hand-built data, batches for everything else.
-14. **Plain text has a fixed shape.** A text read answers the fifteen event
-    columns (`currunix` first, `state` last), then `body`, then one column per
-    named `rowheader` capture - the row header is the only thing that lifts a
-    column out of a line. `autotype` settles each capture's datatype from the
+14. **Plain text has a fixed shape.** A text read answers the fifteen element
+    and event columns (`curruuid` first, `state` last), then `body`, then one
+    column per named `rowheader` capture that feeds no event fact - a capture
+    named `state`, `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`
+    or `prevuuid` fills that event column instead, and `mtime` fills
+    `currunix` - and the row header is the only thing that lifts a column out
+    of a line. `autotype` settles each capture's datatype from the
     regex before a byte is read. An object's lines are one chain: a line whose
     own `creaunix` capture states none takes the earliest `currunix` the read
     has dated a line of its object by so far; a `creaunix` capture stands. Each

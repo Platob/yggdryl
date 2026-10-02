@@ -141,7 +141,7 @@ Three facts about the file decide what a read answers. A number cell is a `float
 
 ## Write
 
-A write renders the part row by row as the batches arrive, with no row held past its batch: the first row names the columns, and each value is the cell its datatype spells - a date or an instant a serial under the number format that reads it back. A write into an opened package keeps every other part as it was, the sheets it does not touch included, and `sheet` naming one the workbook lacks adds it beside the others; it reads the package twice, once for the field the rows are shaped onto and once to carry the other parts across. A `.xlsx.gz` name is refused: the package is deflated inside, as Parquet is.
+A write renders the part row by row as the batches arrive, with no row held past its batch: the first row names the columns while `header` is on, and each value is the cell its datatype spells - a boolean as `t="b"`, a date, a time, a naive datetime or a duration as its serial under the number format that reads it back, a float that is not a number as `#NUM!`, text inline - while a zoned datetime, an interval, a decimal, a code or bytes is written as the text the XML codec spells, and a nested value as its JSON. A write into an opened package keeps every other part as it was, the sheets it does not touch included, and `sheet` naming one the workbook lacks adds it beside the others; it reads the package twice, once for the field the rows are shaped onto and once to carry the other parts across. A `.xlsx.gz` name is refused: the package is deflated inside, as Parquet is.
 
 === "Rust"
 

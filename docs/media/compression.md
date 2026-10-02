@@ -1,6 +1,6 @@
 # Compression
 
-Content codings over any handle - gzip, zlib, raw deflate and Zstandard - declared by a suffix on the name, and the one-shot codecs over bytes beside them.
+Content codings over any handle - gzip, zlib and Zstandard, each declared by a suffix on the name - and the one-shot codecs over bytes beside them, raw deflate among them.
 
 ## Overview
 
@@ -9,8 +9,8 @@ Content codings over any handle - gzip, zlib, raw deflate and Zstandard - declar
 | Declared by | a coding suffix after the medium's own: `.gz` gzip, `.zz` zlib, `.zst` Zstandard - `trades.arrows.gz`, `logs/*.log.zst` |
 | Build | default |
 | Rust | `Codec` - `Identity`, `Gzip`, `Zlib`, `Deflate`, `Zstd` - the one dispatcher, with `load`, `dump`, `dump_with_level`, `reader` and `writer`; `yggdryl::gzip`, `zlib` and `zstd` the same doors per codec beside a handle wrapper (`Gzip<H>`, `Zlib<H>`, `Zstd<H>`); `yggdryl::coding::Coded` a handle presenting the decoded bytes the name declares |
-| Python | coded `IOBase` handles by name; `yggdryl.gzip`, `zlib`, `zstd`: `loads`, `dumps`, and `loads_raw`, `dumps_raw` for raw deflate |
-| JavaScript | coded `IOBase` handles by name; `gzip`, `zlib`, `zstd`: `loads`, `dumps`, and `loadsRaw`, `dumpsRaw` for raw deflate |
+| Python | coded `IOBase` handles by name; `yggdryl.gzip`, `zlib`, `zstd`: `loads` and `dumps`, and `zlib.loads_raw`, `zlib.dumps_raw` for raw deflate |
+| JavaScript | coded `IOBase` handles by name; `gzip`, `zlib`, `zstd`: `loads` and `dumps`, and `zlib.loadsRaw`, `zlib.dumpsRaw` for raw deflate |
 | Settings | `level`, one 0-9 scale for every codec (`Level::FAST` 1, `DEFAULT` 6, `BEST` 9); a handle whose name declares no coding ignores it |
 | Refused | an outer coding over [Parquet](parquet.md), which compresses its pages inside the file |
 

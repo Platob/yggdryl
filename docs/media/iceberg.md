@@ -8,9 +8,9 @@ Apache Iceberg tables in a folder: `metadata/` and `data/`, no catalog required,
 | --- | --- |
 | Declared by | a table folder - `metadata/` and `data/` beneath it |
 | Build | the `iceberg` feature, which implies `parquet` |
-| Rust | `yggdryl::iceberg`: `Table` (`create`, `open`, `open_or_create`, `scan`, `scan_matching`, `plan_matching`, `commit_append`, `commit_overwrite`, `update_schema`), `PartitionSpec`, `PartitionField`, `Transform`, `SortOrder`, `SchemaUpdate`, `IcebergOptions` and the `Catalog` over folders of tables |
-| Python | `yggdryl.iceberg`: `Table` (`create`, `open`, `scan`, `scan_matching`, `plan_matching`, `append`, `overwrite`, `update_schema`), `PartitionSpec`, `SchemaUpdate`, `IcebergOptions`, `Catalog` |
-| JavaScript | `iceberg`: `Table` (`create`, `open`, `scan`, `scanMatching`, `planMatching`, `append`, `overwrite`, `merge`, `updateSchema`), `PartitionSpec`, `IcebergOptions`, `Catalog` |
+| Rust | `yggdryl::iceberg`: `Table` (`create`, `open`, `open_or_create`, `scan`, `scan_matching`, `plan_matching`, `commit_append`, `commit_overwrite`, `commit_merge`, `update_schema`, `compact`), `PartitionSpec`, `PartitionField`, `Transform`, `SortOrder`, `SchemaUpdate`, `IcebergOptions` and the `Catalog` over folders of tables |
+| Python | `yggdryl.iceberg`: `Table` (`create`, `open`, `scan`, `scan_matching`, `plan_matching`, `append`, `overwrite`, `merge`, `update_schema`, `compact`), `PartitionSpec`, `SchemaUpdate`, `IcebergOptions`, `Catalog` |
+| JavaScript | `iceberg`: `Table` (`create`, `open`, `scan`, `scanMatching`, `planMatching`, `append`, `overwrite`, `merge`, `updateSchema`, `compact`), `PartitionSpec`, `IcebergOptions`, `Catalog` |
 | Settings | `IcebergOptions`, each resolved from the call, then the table property, then the default: `read.parallelism`, `write.parallelism`, `write.target-file-size-bytes` and the commit retries among them |
 
 A table lives in one folder: `metadata/` and `data/`, no catalog required.
@@ -154,11 +154,11 @@ A table is opened from its folder - its newest metadata document, through the ve
 
 ## Write
 
-A write commits a snapshot: an append keeps every row the table holds, an overwrite replaces them, and a merge updates the rows its key matches and appends the rest. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row, writing one data file per partition the commit touches; a commit shares `write.parallelism` between its partitions and their columns. New data files are Parquet unless `data_mime_type` names another encoding, and a scan reads each file as its manifest entry records, so one table can mix them.
+A write commits a snapshot: an append keeps every row the table holds, an overwrite replaces them, and a merge updates the rows its key matches and appends the rest. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row, and cuts each partition's rows into data files of about the target file size (`write.target-file-size-bytes`) as `yggdryl::arrow::memory_size` measures them before encoding - one file for a partition under it; a commit shares `write.parallelism` between its partitions and their columns. New data files are Parquet unless `data_mime_type` names another encoding, and a scan reads each file as its manifest entry records, so one table can mix them.
 
 A streamed write with no `commit_batch_num` commits a snapshot each time the batches it holds reach the table's target file size (`write.target-file-size-bytes`, `IcebergOptions`' `target_file_size`) as `yggdryl::arrow::memory_size` measures them, then the remainder, so a stream of any length holds at most one target file of rows before each commit; `commit_batch_num = N` commits every `N` whole batches instead. An overwrite's first commit replaces and the rest append; an append or a merge keeps its intent in every commit.
 
-A commit beaten by another writer is retried: an append and a metadata-only commit rebase onto the winner, and an overwrite, a merge or a compaction restores the state it read; a failed commit may leave files no metadata names.
+A commit beaten by another writer rebases where that is safe: an append and a metadata-only commit reload the winner and re-apply their intent, with jittered backoff bounded by `commit_retries` and `commit_total_timeout_ms`. An overwrite, a merge or a compaction cannot - it planned against files the winner may have replaced, and its input is already consumed - so after the same bounded waits it fails with `CommitConflict` naming both versions, the table left as the winner made it, and the caller re-reads and retries. A failed commit changes nothing a reader sees; at worst it leaves data files no snapshot names.
 
 === "Rust"
 

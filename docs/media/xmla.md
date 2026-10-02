@@ -16,7 +16,7 @@ A `.xmla` handle holds one document and reads and writes it through the same cal
 
 ## Read
 
-A read takes the rowset inside a SOAP 1.1 `DiscoverResponse` or `ExecuteResponse`, or as the bare rowset `root` a client saved off the wire. Without a declaration, the document's own schema is what a read answers, and a `dateTime` column whose values spell a zone lands as `datetime64(us, UTC)`; a declared field types a document written without its schema, which a read without one refuses by name. An absent element is a null cell. The document is parsed whole - XML has no frame to read a prefix of - and answered in batches.
+A read takes the rowset inside a SOAP 1.1 `DiscoverResponse` or `ExecuteResponse`, or as the bare rowset `root` a client saved off the wire. Without a declaration, the document's own schema is what a read answers, and a `dateTime` column whose values spell a zone lands as `datetime64(us, UTC)`; a declared field types a document written without its schema, which a read without one refuses by name. An absent element is a null cell. The document is parsed whole - XML has no frame to read a prefix of - and answered as one batch, whatever `batch_row_size` says.
 
 === "Rust"
 

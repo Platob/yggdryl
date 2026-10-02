@@ -8,8 +8,8 @@ One whole HTTP/1.1 message - a request or a response, its head and its framed bo
 | --- | --- |
 | Declared by | `message/http`, `.http` |
 | Build | the `http` feature |
-| Rust | `yggdryl::http`: `Request` and `Response` (`from_bytes`, `into_bytes`, `into_scalar`), and the bare grammar - `parse_request`, `parse_response`, `render_request`, `render_response`, `decode_chunked`, `encode_chunked` |
-| JavaScript | `http.Request` and `http.Response`: `fromBytes`, `intoBytes`, `intoScalar` |
+| Rust | `yggdryl::http`: `Request` and `Response` (`from_bytes`, `into_bytes`; `Response::into_scalar`), and the bare grammar - `parse_request`, `parse_response`, `render_request`, `render_response`, `decode_chunked`, `encode_chunked` |
+| JavaScript | `http.Request` and `http.Response`: `fromBytes`, `intoBytes`; a response's `intoScalar` |
 | Python | none: the message doors are Rust and JavaScript only |
 
 `Request::from_bytes` and `Response::from_bytes` parse one message and `into_bytes` renders it back; a transfer the [HTTP backend](../holder/index.md#http) made is the same value. A server's trace folder ([Serving a handle](../holder/index.md#serving-a-handle)) is a folder of these documents, one request and one response per exchange.
@@ -90,7 +90,7 @@ A recipient reads what RFC 9112 lets it read, and refuses the rest as `Error::Pa
 
 ## Write
 
-`into_bytes` renders the head - a request's target from its URL's path and query, with a `host` field from the URL where the request states none - then the field lines, names lower case in lexical order, then a `content-length` where no framing is stated and there is a body to frame (never on a `1xx`, `204` or `304`), then the body under the framing the headers state. `encode_chunked` writes the chunked framing over any writer, and `decode_chunked` reads it back.
+`into_bytes` renders the head - a request's target from its URL's path and query, with a `host` field from the URL where the request states none - then the field lines, names lower case in lexical order, then a `content-length` where no framing is stated - on a request with a body or a `POST`, `PUT` or `PATCH`, an empty one included, and on every response but a `1xx`, `204` or `304`, so an empty `200` states `content-length: 0` - then the body under the framing the headers state. `encode_chunked` writes the chunked framing over any writer, and `decode_chunked` reads it back.
 
 === "Rust"
 

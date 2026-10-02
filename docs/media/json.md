@@ -10,7 +10,7 @@ JSON documents as one [`Scalar`](../types/scalar.md) each, and JSON Lines as one
 | Build | default |
 | Rust | `yggdryl::json`: `from_utf8`, `from_bytes`, `from_reader` and their `_with_field`, `_with_limits` and `_all` forms, `from_lines_*` for JSON Lines; `into_utf8`, `into_bytes`, `into_writer` and their `_with_formatting` and `_all` forms; `from_json_scalar`, `from_json_scalar_with_field` and `into_json_scalar` at the crate root |
 | Python | `yggdryl.json`: `loads`, `dumps`, `dump`; `loads_all`, `load_all`, `dumps_all`, `dump_all` for JSON Lines |
-| JavaScript | `json`: `loads`, `load`, `dumps`, `dump` and their stream forms; `loadsAll`, `loadAll`, `dumpAll` for JSON Lines |
+| JavaScript | `json`: `loads`, `load`, `dumps`, `dump`, and `loadStream`/`dumpStream` over a Node stream; `loadsAll`, `loadAll`, `dumpAll`, `loadAllStream`, `dumpAllStream` for JSON Lines |
 | Handle | a `.json` handle reads through `read_scalar` or `read_arrow` and writes whole through `write_scalar` or `write_arrow` - one value, so no `RecordOptions` ([Structured values](../holder/index.md#structured-values)) |
 | Refused | `{{ }}` placeholders: JSON is a data interchange format, so substitution is [YAML](yaml.md#read), [TOML](toml.md#read) and [XML](xml.md#read)'s alone |
 

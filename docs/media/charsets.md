@@ -6,7 +6,7 @@ Bytes become text once, at intake, in the charset a handle's media type declares
 
 | | |
 | --- | --- |
-| Declared by | the `charset` parameter of a media type - `text/csv;charset=windows-1252` - else a byte-order mark, else UTF-8 |
+| Declared by | the `charset` parameter of a media type - `text/csv;charset=windows-1252` - else UTF-8; where none is declared, a structured-text document (JSON, YAML, TOML, XML) also reads a byte-order mark, and XML its own declaration |
 | Build | default |
 | Charsets | thirteen, `Charset::ALL`: `utf-8`, `utf-16le`, `utf-16be`, `us-ascii`, `iso-8859-1`, `iso-8859-2`, `iso-8859-15`, `windows-1250`, `windows-1251`, `windows-1252`, `ibm437`, `ibm850`, `macintosh` - each spelled by its common aliases too, in any case |
 | Rust | `Charset`: `from_str`, `decode`, `decode_lossy`, `transcribe`, `encode`, `encoded_len`, `bom`, `from_bom`, `from_media_type`, `reader`, `writer` and `decoder`; `yggdryl::charset::Transcoded` a handle presenting decoded text |
@@ -18,7 +18,7 @@ A text column that keeps the charset it is written in - the US-ASCII and windows
 
 ## Read
 
-Where the caller did not say, an explicit argument wins, then the declared media type, then one bounded read of a byte-order mark - framing rather than content, so `from_bom` answers the charset and the mark's length, and the caller decides. `decode` refuses a byte the charset does not hold, naming the charset, the byte position and what it found there; `decode_lossy` marks each fault with U+FFFD, which is what a capture of arbitrary wire bytes needs; Rust's `transcribe` reads every byte it can, an unassigned one as its ISO 8859-1 scalar. Every charset but the UTF-16 pair agrees with US-ASCII below `0x80`, so an all-ASCII payload is borrowed rather than transcoded, and a line is split before anything is.
+Where the caller did not say, an explicit argument wins, then the charset the media type declares. Only a structured-text document reads further where none is declared: one bounded read of a byte-order mark, which it takes off, and for XML the encoding its declaration states. A record reader - CSV, plain text - takes off only the mark of the form it was declared in and reads any other mark as data, so it finds no UTF-16 file by its mark. A mark is framing rather than content, so `from_bom` answers the charset and the mark's length, and the caller decides. `decode` refuses a byte the charset does not hold, naming the charset, the byte position and what it found there; `decode_lossy` marks each fault with U+FFFD, which is what a capture of arbitrary wire bytes needs; Rust's `transcribe` reads every byte it can, an unassigned one as its ISO 8859-1 scalar. Every charset but the UTF-16 pair agrees with US-ASCII below `0x80`, so an all-ASCII payload is borrowed rather than transcoded, and a line is split before anything is.
 
 === "Rust"
 

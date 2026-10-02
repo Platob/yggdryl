@@ -10,7 +10,7 @@ YAML documents as one [`Scalar`](../types/scalar.md) each, and a `---` stream as
 | Build | default |
 | Rust | `yggdryl::yaml`: `from_utf8`, `from_bytes`, `from_reader` and their `_with_field`, `_with_limits` and `_all` forms; `into_utf8`, `into_bytes`, `into_writer` and their `_with_formatting` and `_all` forms; `from_yaml_scalar`, `from_yaml_scalar_with_field` and `into_yaml_scalar` at the crate root; placeholders through `yggdryl::text::from_utf8_with` and a `Loading` |
 | Python | `yggdryl.yaml`: `loads`, `dumps`, `dump`; `loads_all`, `load_all`, `dumps_all`, `dump_all` for `---` streams |
-| JavaScript | `yaml`: `loads`, `load`, `dumps`, `dump` and their stream forms; `loadsAll`, `loadAll`, `dumpAll` for `---` streams |
+| JavaScript | `yaml`: `loads`, `load`, `dumps`, `dump`, and `loadStream`/`dumpStream` over a Node stream; `loadsAll`, `loadAll`, `dumpAll`, `loadAllStream`, `dumpAllStream` for `---` streams |
 | Handle | a `.yaml` handle reads through `read_scalar` or `read_arrow` and writes whole through `write_scalar` or `write_arrow` ([Structured values](../holder/index.md#structured-values)) |
 
 ## Read

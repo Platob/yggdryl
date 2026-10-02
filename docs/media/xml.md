@@ -10,7 +10,7 @@ An XML document as one [`Scalar`](../types/scalar.md): the record naming its roo
 | Build | default |
 | Rust | `yggdryl::xml`: `from_utf8`, `from_bytes`, `from_reader` and their `_with_field`, `_with_limits` and `_all` forms; `into_utf8`, `into_bytes`, `into_writer` and their `_with_formatting` forms; `from_xml_scalar`, `from_xml_scalar_with_field` and `into_xml_scalar` at the crate root; `ATTRIBUTE_PREFIX` (`@`), `TEXT_KEY` (`#text`) and `DOCUMENT_ELEMENT` (`data`) name the mapping |
 | Python | `yggdryl.xml`: `loads`, `dumps`, `dump` |
-| JavaScript | `xml`: `loads`, `load`, `dumps`, `dump` and their stream forms |
+| JavaScript | `xml`: `loads`, `load`, `dumps`, `dump`, and `loadStream`/`dumpStream` - the one document over a Node stream |
 | Handle | a `.xml` handle reads through `read_scalar` or `read_arrow` and writes whole through `write_scalar` or `write_arrow`, its rows the elements under one `data` element ([Write](#write)) |
 | Refused | an entity a document type declaration would have defined, and on write what XML cannot spell |
 

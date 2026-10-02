@@ -15,7 +15,7 @@ The Apache Avro object container format: a header naming the writer schema and t
 
 ## Read
 
-A container carries its writer schema, so a record read needs no declaration and `read_arrow_field` answers the field that schema maps to. The raw codec reads the rows as plain values, and a reader schema resolves renames, promotions and defaults against the writer's: a writer field the reader does not name is jumped by its length rather than decoded. A container's blocks are independent once their headers are walked, so runs of whole blocks decompress and decode on every thread, batches returned in file order; a read under a row limit stays on one thread.
+A container carries its writer schema, so a record read needs no declaration and `read_arrow_field` answers the field that schema maps to. The raw codec reads the rows as plain values, and a reader schema resolves renames, promotions and defaults against the writer's: a writer field the reader does not name is skipped rather than decoded - a length-prefixed or fixed-width value jumped by its length, an array or map block written with its byte size jumped whole, and only what states no length walked. A container's blocks are independent once their headers are walked, so runs of whole blocks decompress and decode on every thread, batches returned in file order; a read under a row limit stays on one thread.
 
 === "Rust"
 
