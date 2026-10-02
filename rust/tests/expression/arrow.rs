@@ -790,4 +790,105 @@ mod null_rows {
             assert_eq!(ids(&out), kept, "{text}");
         }
     }
+    /// A dense union of an int64 `a` and a text `b`, every row a `b` and
+    /// no `a` held at all - so its first member's first value does not
+    /// exist.
+    fn texts(values: &[&str]) -> ArrayRef {
+        use arrow_array::UnionArray;
+        use arrow_buffer::ScalarBuffer;
+        use arrow_schema::UnionFields;
+
+        let members = UnionFields::try_new(
+            [0_i8, 1],
+            [
+                Field::new("a", DataType::Int64, true),
+                Field::new("b", DataType::Utf8, true),
+            ],
+        )
+        .unwrap();
+        let rows = i32::try_from(values.len()).unwrap();
+        Arc::new(
+            UnionArray::try_new(
+                members,
+                ScalarBuffer::from(vec![1_i8; values.len()]),
+                Some(ScalarBuffer::from((0..rows).collect::<Vec<i32>>())),
+                vec![
+                    Arc::new(Int64Array::from(Vec::<i64>::new())),
+                    Arc::new(StringArray::from(values.to_vec())),
+                ],
+            )
+            .unwrap(),
+        )
+    }
+
+    /// `values` as the dense union [`texts`] lays out, three ways: bare,
+    /// as the one child of a record, and as the one item of a fixed-size
+    /// serie - the three a take with an absent index reaches it through -
+    /// each a column of one record, `present` saying which rows are.
+    fn union_rows(values: &[&str], present: &[bool]) -> ArrayRef {
+        use arrow_array::FixedSizeListArray;
+
+        let union = texts(values);
+        let member = Arc::new(Field::new("u", union.data_type().clone(), true));
+        let nested: ArrayRef = Arc::new(
+            StructArray::try_new(
+                Fields::from(vec![Arc::clone(&member)]),
+                vec![Arc::clone(&union)],
+                None,
+            )
+            .unwrap(),
+        );
+        let listed: ArrayRef = Arc::new(
+            FixedSizeListArray::try_new(Arc::clone(&member), 1, Arc::clone(&union), None).unwrap(),
+        );
+        let ids: ArrayRef = Arc::new(Int64Array::from(
+            (0..values.len() as i64).collect::<Vec<_>>(),
+        ));
+        Arc::new(
+            StructArray::try_new(
+                Fields::from(vec![
+                    Field::new("id", DataType::Int64, false),
+                    Field::new("u", union.data_type().clone(), true),
+                    Field::new("s", nested.data_type().clone(), true),
+                    Field::new("l", listed.data_type().clone(), true),
+                ]),
+                vec![ids, union, nested, listed],
+                Some(NullBuffer::from(present.to_vec())),
+            )
+            .unwrap(),
+        )
+    }
+
+    #[test]
+    fn a_select_keeps_an_absent_row_absent_over_a_dense_union() {
+        // A dense union has no validity of its own, and its first member
+        // here holds nothing, so the rows a select lays back out at an
+        // absent record's place are taken from a row that exists - or laid
+        // out null where none does - and stay absent under the record's
+        // mask: never a read of a member's value that is not there.
+        let selector: Selector = "u, s, l".parse().unwrap();
+        for present in [vec![false, false], vec![false, true, false]] {
+            let values: Vec<&str> = ["x", "y", "z"][..present.len()].to_vec();
+            let out = selector
+                .apply_arrow_array(&union_rows(&values, &present))
+                .unwrap_or_else(|error| panic!("{present:?}: {error}"));
+            assert_eq!(out.len(), present.len());
+            for (row, present) in present.iter().enumerate() {
+                assert_eq!(out.is_valid(row), *present, "row {row}");
+            }
+            let fields = fields(&out);
+            assert_eq!(fields.num_columns(), 3);
+            if let Some(row) = present.iter().position(|present| *present) {
+                let union = fields
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<arrow_array::UnionArray>()
+                    .unwrap();
+                assert_eq!(union.type_id(row), 1);
+                let value = union.value(row);
+                let text = value.as_any().downcast_ref::<StringArray>().unwrap();
+                assert_eq!(text.value(0), values[row]);
+            }
+        }
+    }
 }

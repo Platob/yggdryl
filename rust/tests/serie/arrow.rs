@@ -2749,6 +2749,164 @@ fn a_window_sub_reader_casts_and_crosses_as_batches_lazily() {
     assert!(windows.next().is_none());
 }
 
+/// [`window_root`] with its price at `dtype`.
+fn window_root_priced(dtype: DataType) -> Field {
+    DataType::from(
+        StructType::from_fields([
+            DataType::utf8().required_field("venue"),
+            dtype.required_field("price"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            }
+            .required_field("ts"),
+        ])
+        .expect("three children"),
+    )
+    .required_field("quote")
+}
+
+/// Every row `reader` yields, piece after piece.
+fn reader_rows(reader: SerieReader) -> Vec<Scalar> {
+    reader
+        .flat_map(|piece| piece.expect("a piece").rows().into_owned())
+        .collect()
+}
+
+#[test]
+fn a_reader_cast_twice_lands_every_cast_in_order() {
+    // Each cast lands what the one before it cast: an int64 price widened
+    // to float64 reaches the second cast as float64 and leaves it as text -
+    // for a window's reader and for a stream opened under a real cast alike,
+    // exactly what a held reader cast the same two ways answers, and on the
+    // transport face too.
+    let float = window_root_priced(DataType::Float64);
+    let text = window_root_priced(DataType::utf8());
+    let twice = |reader: SerieReader| {
+        reader
+            .cast(&float, ArrowCastOptions::new())
+            .expect("int64 widens")
+            .cast(&text, ArrowCastOptions::new())
+            .expect("float64 renders")
+    };
+    let held = |quotes: &[(&str, i64, i64)]| {
+        SerieReader::from_serie(
+            Serie::from_scalars(
+                window_root(),
+                quotes
+                    .iter()
+                    .map(|(venue, price, day)| window_quote(venue, *price, *day)),
+            )
+            .expect("quotes"),
+        )
+        .expect("a held stream")
+    };
+    let expected = reader_rows(twice(held(&[
+        ("XNAS", 1, 0),
+        ("XNAS", 2, 0),
+        ("XNAS", 3, 0),
+    ])));
+    assert_eq!(
+        expected[0].sequence_rows().expect("a row")[1],
+        Scalar::from("1.0")
+    );
+
+    let probe = Probe::default();
+    let mut windows = probe
+        .reader(&[
+            &[("XNAS", 1, 0), ("XNAS", 2, 0)],
+            &[("XNAS", 3, 0), ("XNYS", 4, 0)],
+        ])
+        .window_by("venue", false)
+        .expect("a key");
+    let xnas = twice(windows.next().expect("a window").expect("XNAS"));
+    assert_eq!(xnas.field(), &text);
+    assert_eq!(reader_rows(xnas), expected);
+    let xnys = twice(windows.next().expect("a window").expect("XNYS"));
+    let batches: Vec<RecordBatch> = xnys.into_arrow_reader().map(Result::unwrap).collect();
+    assert_eq!(batches.len(), 1);
+    assert_eq!(batches[0].column(1).data_type(), &ArrowDataType::Utf8);
+    assert!(windows.next().is_none());
+
+    // A stream whose first plan widens int32 to int64, then cast twice.
+    let narrow = narrow_quote_batch();
+    let middle = quotes_root_with_id(DataType::Int64);
+    let float = quotes_root_with_id(DataType::Float64);
+    let text = quotes_root_with_id(DataType::utf8());
+    let twice = |reader: SerieReader| {
+        reader
+            .cast(&float, ArrowCastOptions::new())
+            .expect("int64 widens")
+            .cast(&text, ArrowCastOptions::new())
+            .expect("float64 renders")
+    };
+    let stream = || {
+        twice(
+            SerieReader::from_arrow_reader(
+                Some(&middle),
+                batch_reader(narrow.schema(), vec![narrow.clone(); 2]),
+                ArrowCastOptions::new(),
+            )
+            .expect("int32 widens to int64"),
+        )
+    };
+    let landed = Serie::from_arrow_batch(Some(&middle), &narrow, ArrowCastOptions::new())
+        .expect("int32 widens to int64");
+    let once = reader_rows(twice(
+        SerieReader::from_serie(landed).expect("a held stream"),
+    ));
+    assert_eq!(
+        once[0].sequence_rows().expect("a row")[0],
+        Scalar::from("1.0")
+    );
+    assert_eq!(reader_rows(stream()), [once.clone(), once].concat());
+    let batches: Vec<RecordBatch> = stream().into_arrow_reader().map(Result::unwrap).collect();
+    assert_eq!(batches.len(), 2);
+    assert_eq!(batches[0].column(0).data_type(), &ArrowDataType::Utf8);
+}
+
+#[test]
+fn a_rownum_stated_too_near_its_largest_is_refused_naming_the_root() {
+    // The first window numbers its first row at the stated rownum itself;
+    // the next would number its own past the largest uint64, so it is
+    // refused - sorted or not - and the walk ends, its stream dropped.
+    let part = DataType::from(
+        StructType::from_fields([DataType::UInt64.required_field("rownum")]).expect("one child"),
+    )
+    .required_field("part");
+    for sorted in [false, true] {
+        let probe = Probe::default();
+        let mut windows = probe
+            .reader(&[&[("XNAS", 1, 0), ("XNAS", 2, 0), ("XNYS", 3, 0)]])
+            .with_static_values(
+                FieldRecord::new(&part, Scalar::from_sequence([Scalar::from(u64::MAX)]))
+                    .expect("a row"),
+            )
+            .window_by("venue", sorted)
+            .expect("a key");
+        let xnas = windows.next().expect("a window").expect("XNAS");
+        assert_eq!(
+            static_cells(&xnas),
+            [
+                Scalar::from("XNAS"),
+                Scalar::from(0_u64),
+                Scalar::from(u64::MAX)
+            ]
+        );
+        assert_eq!(window_rows(xnas).len(), 2);
+        let (path, reason) = refusal(windows.next().expect("the refusal").unwrap_err());
+        assert_eq!(path, "quote");
+        assert!(
+            reason.contains("window 1")
+                && reason.contains("2 rows")
+                && reason.contains(&u64::MAX.to_string()),
+            "{reason}"
+        );
+        assert!(windows.next().is_none());
+        assert!(probe.dropped(), "the walk dropped its stream");
+    }
+}
+
 #[test]
 fn a_pull_that_panics_poisons_the_walk_into_one_internal_error() {
     let first = window_batch(&[("XNAS", 1, 0)]);

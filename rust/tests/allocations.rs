@@ -22,7 +22,7 @@ use std::fmt;
 use std::fmt::Write as _;
 use std::hint::black_box;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
@@ -46,11 +46,29 @@ use yggdryl::{
     Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructType, UncheckedFieldScalar, Uuid,
 };
 
-/// A pass-through allocator that counts allocations while armed.
+/// A pass-through allocator that counts allocations, and the bytes they
+/// hold, while armed.
 struct Counting;
 
 /// Allocations since the counter was armed.
 static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
+
+/// Bytes the armed thread allocated less the bytes it freed since it was
+/// armed - below zero where it frees what it held before - and the most
+/// that difference reached.
+static LIVE: AtomicIsize = AtomicIsize::new(0);
+static PEAK: AtomicIsize = AtomicIsize::new(0);
+
+/// Move the armed thread's live bytes by `delta`, keeping the peak.
+fn held(delta: isize) {
+    let live = LIVE.fetch_add(delta, Ordering::Relaxed) + delta;
+    PEAK.fetch_max(live, Ordering::Relaxed);
+}
+
+/// A size as a byte delta: an allocation never exceeds `isize::MAX`.
+fn signed(size: usize) -> isize {
+    isize::try_from(size).unwrap_or(isize::MAX)
+}
 
 // Armed *per thread*, and const-initialized so reading it inside the allocator
 // cannot itself allocate. Cargo runs the cases in this file concurrently, and a
@@ -70,12 +88,16 @@ unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         if ARMED.get() {
             ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+            held(signed(layout.size()));
         }
         // SAFETY: `layout` is forwarded unchanged to the system allocator.
         unsafe { System.alloc(layout) }
     }
 
     unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+        if ARMED.get() {
+            held(-signed(layout.size()));
+        }
         // SAFETY: the pointer came from `System.alloc` with this same layout.
         unsafe { System.dealloc(pointer, layout) };
     }
@@ -83,6 +105,7 @@ unsafe impl GlobalAlloc for Counting {
     unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
         if ARMED.get() {
             ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+            held(signed(size) - signed(layout.size()));
         }
         // SAFETY: the pointer and layout came from this allocator.
         unsafe { System.realloc(pointer, layout, size) }
@@ -94,6 +117,20 @@ static ALLOCATOR: Counting = Counting;
 
 /// Count the allocations `work` performs, and return them with its answer.
 fn counted<T>(work: impl FnOnce() -> T) -> (usize, T) {
+    let (counted, _, answer) = armed(work);
+    (counted, answer)
+}
+
+/// The most bytes `work` held at once beyond what its thread held before,
+/// with its answer.
+fn peaked<T>(work: impl FnOnce() -> T) -> (usize, T) {
+    let (_, peak, answer) = armed(work);
+    (peak, answer)
+}
+
+/// Run `work` armed: its allocations, the most bytes it held at once and
+/// its answer.
+fn armed<T>(work: impl FnOnce() -> T) -> (usize, usize, T) {
     let guard = COUNTING
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -101,12 +138,15 @@ fn counted<T>(work: impl FnOnce() -> T) -> (usize, T) {
     // first; read here, outside every count, it is never any one test's cost.
     black_box(yggdryl::HOSTNAME.len());
     ALLOCATIONS.store(0, Ordering::Relaxed);
+    LIVE.store(0, Ordering::Relaxed);
+    PEAK.store(0, Ordering::Relaxed);
     ARMED.set(true);
     let answer = work();
     ARMED.set(false);
     let counted = ALLOCATIONS.load(Ordering::Relaxed);
+    let peak = usize::try_from(PEAK.load(Ordering::Relaxed)).unwrap_or(0);
     drop(guard);
-    (counted, answer)
+    (counted, peak, answer)
 }
 
 /// Count `work` run once and run a thousand times.
@@ -4004,11 +4044,16 @@ fn a_chunked_sorted_window_by_copies_no_row() {
     // XNYS opens, the fourth whole - then XNYS and XPAR, one piece each. The
     // regrouping sorts the runs, never the rows, and every piece lends the
     // chunk it was cut from: one vector of runs and one of windows, one
-    // vector of pieces a window - XNAS's grown once for its second run - the
-    // two pieces cut inside a chunk, each window's chunk ends and the answer.
-    // Never a join, never a row: the same at 64 rows and at 4,096.
+    // vector of pieces a window - grown geometrically, so XNAS's second run
+    // fits the room its first reserved - the two pieces cut inside a chunk,
+    // each window's chunk ends and the answer. Never a join, never a row:
+    // the same at 64 rows and at 4,096. REGROUP moved from
+    // `1 + 1 + (3 + 1) + 2 + 3 + 1` when a window's pieces stopped being
+    // regrown by exactly each run's reach: XNAS's three pieces fit the four
+    // its first amortized reserve holds, so the regrowth for its second run
+    // is gone.
     const KEYS_BUILT: usize = 4;
-    const REGROUP: usize = 1 + 1 + (3 + 1) + 2 + 3 + 1;
+    const REGROUP: usize = 1 + 1 + 3 + 2 + 3 + 1;
     let venue: yggdryl::Selector = "venue".parse().expect("a selector");
     for rows in [64_usize, 4_096] {
         let chunked = chunked_venue_runs(rows);
@@ -4052,6 +4097,120 @@ fn a_chunked_sorted_window_by_copies_no_row() {
             CHUNKED_WINDOW_BY_BIND + 4 * CHUNKED_WINDOW_BY_PER_CHUNK + KEYS_BUILT + REGROUP,
             "window_by sorted over {rows} rows in four chunks: one bind, per chunk, per run"
         );
+    }
+}
+
+/// The allocations a vector makes growing from empty to `len` items by
+/// amortized doubling from the four a first push or reserve of a few
+/// reserves: none for no item, else one plus one per doubling.
+fn doubled(len: usize) -> usize {
+    match len {
+        0 => 0,
+        _ => 1 + len.div_ceil(4).next_power_of_two().trailing_zeros() as usize,
+    }
+}
+
+#[test]
+fn a_chunked_sorted_window_by_grows_each_window_by_doubling_never_per_run() {
+    // One chunk of venues alternating between XNAS and XNYS: every row a run
+    // and the third a descent, so `sorted` regroups `rows` runs into two
+    // windows of `rows / 2` pieces each. Each run costs its key and its piece
+    // - two - and the vectors that hold them grow by doubling: the runs to
+    // `rows`, each window's pieces to `rows / 2`. Never one regrowth a run,
+    // which at 4,096 rows would be 4,096 reallocations, each copying the
+    // window so far. Once a call: the windows' vector, the answer's and each
+    // window's chunk ends - and the stable sort's scratch, which the
+    // standard library keeps on its stack for 64 runs and allocates once
+    // for 4,096.
+    const ONCE: usize = 1 + 1 + 2;
+    const PER_RUN: usize = 1 + 1;
+    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+    for rows in [64_usize, 4_096] {
+        let chunked = ChunkedSerie::from_arrow_arrays(
+            Some(&Field::new("venue", DataType::utf8(), false)),
+            [Arc::new(arrow_array::StringArray::from(
+                (0..rows)
+                    .map(|row| if row % 2 == 0 { "XNAS" } else { "XNYS" })
+                    .collect::<Vec<_>>(),
+            )) as arrow_array::ArrayRef],
+            ArrowCastOptions::new(),
+        )
+        .expect("one chunk of venues");
+        // Once outside every count, so no process-wide first use is charged.
+        let windows = chunked.window_by(&venue, true).expect("windows");
+        assert_eq!(
+            windows
+                .iter()
+                .map(|(key, window)| (key.clone(), window.len(), window.num_chunks()))
+                .collect::<Vec<_>>(),
+            ["XNAS", "XNYS"].map(|venue| (
+                Scalar::from_sequence([Scalar::from(venue)]),
+                rows / 2,
+                rows / 2
+            ))
+        );
+        drop(windows);
+        let (cost, _) = counted(|| {
+            black_box(&chunked)
+                .window_by(&venue, true)
+                .expect("windows")
+        });
+        assert_eq!(
+            cost,
+            CHUNKED_WINDOW_BY_BIND
+                + CHUNKED_WINDOW_BY_PER_CHUNK
+                + ONCE
+                + usize::from(rows > 64)
+                + rows * PER_RUN
+                + doubled(rows)
+                + 2 * doubled(rows / 2),
+            "window_by sorted over {rows} alternating rows: per run, and doubling per window"
+        );
+    }
+}
+
+#[test]
+fn a_record_slice_costs_its_children_and_two_at_any_width() {
+    // A record slice is one vector of its children sized once, one leaf a
+    // child and the record's own: the same at three children as at
+    // forty-six, never a vector regrown past four.
+    use arrow_array::{ArrayRef, Int64Array, StructArray};
+    use arrow_schema::DataType as ArrowDataType;
+
+    for width in [3_usize, 4, 6, 18, 46] {
+        let fields: Vec<Field> = (0..width)
+            .map(|index| DataType::Int64.required_field(format!("c{index:02}")))
+            .collect();
+        let root = DataType::from(StructType::from_fields(fields).expect("named children"))
+            .required_field("wide");
+        let ArrowDataType::Struct(fields) = root
+            .clone()
+            .into_arrow_field()
+            .expect("a projection")
+            .data_type()
+            .clone()
+        else {
+            panic!("a record projects to a struct")
+        };
+        for rows in [64_usize, 4_096] {
+            let column: ArrayRef = Arc::new(Int64Array::from(
+                (0..rows)
+                    .map(|index| i64::try_from(index).expect("a row count"))
+                    .collect::<Vec<_>>(),
+            ));
+            let records = StructArray::try_new(fields.clone(), vec![column; width], None)
+                .expect("a record array");
+            let held =
+                Serie::from_arrow_array(Some(&root), Arc::new(records), ArrowCastOptions::new())
+                    .expect("records");
+            let (cost, slice) = counted(|| black_box(&held).slice(1, 10).expect("a slice"));
+            assert_eq!(slice.len(), 10);
+            assert_eq!(
+                cost,
+                width + 2,
+                "a slice of {rows} records of {width} children"
+            );
+        }
     }
 }
 
@@ -4164,6 +4323,93 @@ fn a_windowed_stream_costs_per_batch_and_per_window_never_per_row() {
                 );
                 assert!(window.all(|piece| piece.is_ok()));
             }
+        }
+    }
+}
+
+/// A stream of `batches` batches of `rows` records of two `int64` columns,
+/// `k` one value throughout and `v` the row's place, each batch built only
+/// as the reader pulls it: what a stream holds at once is what its reader
+/// keeps, never the batches still to come.
+fn lazy_stream(batches: usize, rows: usize) -> yggdryl::SerieReader {
+    let root = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("k"),
+            DataType::Int64.required_field("v"),
+        ])
+        .expect("two named children"),
+    )
+    .required_field("t");
+    let schema = root.clone().into_arrow_schema().expect("a schema");
+    let built = Arc::clone(&schema);
+    let width = i64::try_from(rows).expect("a row count");
+    yggdryl::SerieReader::from_arrow_reader(
+        Some(&root),
+        yggdryl::arrow::batch_reader(
+            schema,
+            (0..batches).map(move |_| {
+                arrow_array::RecordBatch::try_new(
+                    Arc::clone(&built),
+                    vec![
+                        Arc::new(arrow_array::Int64Array::from_iter_values(
+                            std::iter::repeat_n(1, rows),
+                        )) as arrow_array::ArrayRef,
+                        Arc::new(arrow_array::Int64Array::from_iter_values(0..width)),
+                    ],
+                )
+                .expect("a batch")
+            }),
+        ),
+        ArrowCastOptions::new(),
+    )
+    .expect("a lazy stream")
+}
+
+#[test]
+fn a_stream_walk_holds_one_batch_and_its_key_at_its_peak() {
+    // Six batches of one key, so the one window is served each batch whole:
+    // the walk drops the batch it spent before it pulls the next, so at its
+    // peak it holds what the plain drain does - one batch - plus the batch's
+    // key record and its bit a row, never two batches. A key of the record's
+    // own column is the batch's buffers and adds nothing a row; a computed
+    // key adds its one column - an `int32` cast, four bytes a row, whose
+    // evaluation needs no scratch beside it. The bound leaves a sixteenth of
+    // a batch for what is constant or a bit a row: the walk holding the spent
+    // batch while it pulls the next would be a whole batch over it, at every
+    // size.
+    const BATCHES: usize = 6;
+    for rows in [1_usize << 14, 1 << 16] {
+        let batch = rows * 2 * 8;
+        let slack = batch / 16;
+        // Once outside every count, so no process-wide first use is charged.
+        for key in ["k", "cast(k as int32)"] {
+            let key: yggdryl::Selector = key.parse().expect("a selector");
+            black_box(drain_windows(
+                lazy_stream(2, 64).window_by(&key, false).expect("windows"),
+            ));
+        }
+        let reader = lazy_stream(BATCHES, rows);
+        let (plain, drained) = peaked(|| {
+            reader
+                .map(|batch| black_box(batch.expect("a batch")).len())
+                .sum::<usize>()
+        });
+        assert_eq!(drained, BATCHES * rows);
+        assert!(
+            (batch..batch + slack).contains(&plain),
+            "a plain drain of {rows}-row batches holds one batch of {batch} bytes, held {plain}"
+        );
+        for (key, computed) in [("k", 0), ("cast(k as int32)", rows * 4)] {
+            let selector: yggdryl::Selector = key.parse().expect("a selector");
+            let reader = lazy_stream(BATCHES, rows);
+            let walk = reader.window_by(&selector, false).expect("windows");
+            let (peak, counts) = peaked(|| drain_windows(walk));
+            assert_eq!(counts, (1, BATCHES));
+            assert!(
+                peak < plain + computed + slack,
+                "the walk keyed by {key} over {rows}-row batches holds one batch ({plain} \
+                 bytes drained plain) and {computed} bytes of key, held {peak}"
+            );
         }
     }
 }

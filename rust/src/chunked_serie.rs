@@ -459,31 +459,39 @@ impl ChunkedSerie {
     /// reaches past the end.
     pub fn slice(&self, offset: usize, length: usize) -> crate::Result<Self> {
         require_window(self.field.name(), offset, length, self.len())?;
-        let mut chunks = Vec::new();
-        self.extend_pieces(offset, length, &mut chunks)?;
+        let chunks = match self.reach(offset, length) {
+            Some(reach) => {
+                let mut chunks = Vec::with_capacity(reach.1 - reach.0 + 1);
+                self.push_pieces(offset, length, reach, &mut chunks)?;
+                chunks
+            }
+            None => Vec::new(),
+        };
         Ok(Self::from_landed(Arc::clone(&self.field), chunks))
     }
 
-    /// Push the pieces of the chunks the window `offset..offset + length`
-    /// reaches onto `pieces`, in order, room for them reserved once: the
-    /// two at its edges sliced, every other one a pointer bump; a
-    /// zero-length window pushes none. The caller proved the window.
-    fn extend_pieces(
+    /// The first and the last chunk the window `offset..offset + length`
+    /// reaches, by two binary searches; `None` for a zero-length window.
+    /// The caller proved the window.
+    fn reach(&self, offset: usize, length: usize) -> Option<(usize, usize)> {
+        let last = length.checked_sub(1)?;
+        Some((self.locate(offset)?.0, self.locate(offset + last)?.0))
+    }
+
+    /// Push the pieces of the chunks `first..=last` the window
+    /// `offset..offset + length` reaches onto `pieces`, in order, its room
+    /// reserved once and amortized - none where the caller sized the vector:
+    /// the two at its edges sliced, every other one a pointer bump. The
+    /// caller found the reach with [`Self::reach`] or [`Self::located`].
+    fn push_pieces(
         &self,
         offset: usize,
         length: usize,
+        (first, last): (usize, usize),
         pieces: &mut Vec<Serie>,
     ) -> crate::Result<()> {
         let end = offset + length;
-        let (Some((first, _)), Some((last, _))) = (
-            length.checked_sub(1).and_then(|_| self.locate(offset)),
-            length
-                .checked_sub(1)
-                .and_then(|last| self.locate(offset + last)),
-        ) else {
-            return Ok(());
-        };
-        pieces.reserve_exact(last - first + 1);
+        pieces.reserve(last - first + 1);
         let mut start = if first == 0 { 0 } else { self.ends[first - 1] };
         for chunk in &self.chunks[first..=last] {
             let stop = start + chunk.len();
@@ -1141,19 +1149,24 @@ impl ChunkedSerie {
         }
         // Stable, so the runs of one key keep their arrival order.
         runs.sort_by(|left, right| compare_values(&left.0, &right.0, SortOptions::default()));
-        // Each window as its key - its first run's - and its runs' pieces.
+        // Each window as its key - its first run's - and its runs' pieces,
+        // in one vector a window grown geometrically, never once a run.
         let mut windows: Vec<(Scalar, Vec<Serie>)> = Vec::new();
         for (value, offset, length) in runs {
+            // A run is never empty, so its first and its last row locate.
+            let reach = (
+                self.located(offset)?.0,
+                self.located(offset + length - 1)?.0,
+            );
             match windows.last_mut() {
-                Some(last)
-                    if compare_values(&last.0, &value, SortOptions::default())
-                        == Ordering::Equal =>
+                Some((last, pieces))
+                    if compare_values(last, &value, SortOptions::default()) == Ordering::Equal =>
                 {
-                    self.extend_pieces(offset, length, &mut last.1)?;
+                    self.push_pieces(offset, length, reach, pieces)?;
                 }
                 _ => {
                     let mut pieces = Vec::new();
-                    self.extend_pieces(offset, length, &mut pieces)?;
+                    self.push_pieces(offset, length, reach, &mut pieces)?;
                     windows.push((value, pieces));
                 }
             }

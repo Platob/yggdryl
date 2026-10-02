@@ -12,8 +12,15 @@
 //! than the one a value reads - goes through Arrow's row format and
 //! comparator; any other column - a version, a windows-1252 text, a
 //! registered code, a URL, a union, a float holding a foreign NaN - and a run
-//! go through the values' own order, each row built once. Uniqueness is one
-//! hash set over the row format's bytes on the same rung, or over the values.
+//! go through the values' own order, each row built once. The verbs that
+//! order or group by one comparator - `sort_indices` and the sorts built on
+//! it, `partition_by`, `window_by` - take one rung more: a record whose
+//! stored bytes do not order as its values goes child by child, each child
+//! on its own rung, so only a child whose stored order is not its value
+//! order builds its values - once, never one run per row. `is_sorted`, the
+//! uniqueness verbs and a comparison across two series take the values' own
+//! order for such a record. Uniqueness is one hash set over the row format's
+//! bytes on the same rung, or over the values.
 //! So every leaf answers every verb, and the cost is the ladder's rung,
 //! stated on each.
 //!
@@ -671,9 +678,12 @@ impl Serie {
     /// primitive column sorts its native slice, every NaN one value; a
     /// column whose stored bytes order as its values sorts through Arrow's
     /// row format, one allocation beside the answer for the format's bytes;
-    /// a run and any other column (a version, windows-1252 text, a code, a
-    /// URL, a union, a float holding a foreign NaN payload) sort through
-    /// the values' own order, each row built once.
+    /// any other record compares child by child, each on its own rung, so
+    /// only a child whose stored order is not its value order builds its
+    /// values, once, and no run is built per row; a run and any other
+    /// column (a version, windows-1252 text, a code, a URL, a union, a float
+    /// holding a foreign NaN payload) sort through the values' own order,
+    /// each row built once.
     ///
     /// ```
     /// use yggdryl::{Scalar, Serie, SortOptions};

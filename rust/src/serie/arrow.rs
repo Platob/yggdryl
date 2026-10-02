@@ -1481,9 +1481,10 @@ struct Statics {
 enum Source {
     /// A stream: each batch cast by the plan the stream was opened under as
     /// it arrives, then - where the reader was [cast](SerieReader::cast)
-    /// again - by the plan that cast landed. A held source compiles no
-    /// plan at all, so the plans live here and not on the reader.
-    Stream(BatchReader, Box<ArrowCastPlan>, Option<Box<ArrowCastPlan>>),
+    /// again - by the plan each later cast landed, in the order they were
+    /// cast. A held source compiles no plan at all, so the plans live here
+    /// and not on the reader.
+    Stream(BatchReader, Box<ArrowCastPlan>, Vec<ArrowCastPlan>),
     /// Record columns already held, each yielded as it stands.
     Held(std::vec::IntoIter<Serie>),
     /// One window of a [`SerieReaderWindows`] walk: its rows served piece
@@ -1563,7 +1564,7 @@ impl SerieReader {
             ArrowCastPlan::compile_schema(schema.as_ref(), root, options, Deferred::default())?;
         let schema = Arc::clone(plan.target_schema()?);
         Ok(Self {
-            inner: Some(Source::Stream(reader, Box::new(plan), None)),
+            inner: Some(Source::Stream(reader, Box::new(plan), Vec::new())),
             root: Arc::new(root.clone()),
             schema,
             statics: None,
@@ -1628,10 +1629,11 @@ impl SerieReader {
     /// stands. Held records are cast here, once each. A stream's batches
     /// are cast by the plan the stream was opened under and then landed
     /// under `target`, so what the first plan repaired or nulled is what the
-    /// second reads - two plans in sequence, never one that skips the
+    /// second reads - every plan in sequence, never one that skips the
     /// middle - except over an identity first plan, where the one plan from
     /// the stream's own schema says exactly the same. A window's pieces are
-    /// cast as they are served, by one plan compiled here.
+    /// cast as they are served, by the plan compiled here after every plan
+    /// an earlier cast compiled, in order.
     ///
     /// The [static values](Self::static_values) are kept: they say where
     /// the rows come from, not a column the root declares.
@@ -1651,12 +1653,9 @@ impl SerieReader {
         let schema = arrow_schema_from_field(&root)?;
         let inner = match self.inner {
             Some(Source::Window(mut part)) => {
-                // A second cast lands what the first cast, as a stream's does.
-                let then = match part.then.take() {
-                    Some(then) => ArrowCastPlan::compile(then.as_target(), &root, options)?,
-                    None => plan,
-                };
-                part.then = Some(Box::new(then));
+                // Each cast lands what the one before it cast, as a
+                // stream's does: a piece stays typed by the window's root.
+                part.then.push(plan);
                 Some(Source::Window(part))
             }
             Some(Source::Held(records)) => {
@@ -1665,23 +1664,20 @@ impl SerieReader {
                     .collect::<Result<Vec<_>>>()?;
                 Some(Source::Held(cast.into_iter()))
             }
-            Some(Source::Stream(reader, first, None))
-                if first.is_identity() && first.source_schema().is_some() =>
+            Some(Source::Stream(reader, first, then))
+                if then.is_empty() && first.is_identity() && first.source_schema().is_some() =>
             {
                 let source = first
                     .source_schema()
                     .expect("the identity plan was compiled from a schema");
                 let direct =
                     ArrowCastPlan::compile_schema(source, &root, options, Deferred::default())?;
-                Some(Source::Stream(reader, Box::new(direct), None))
+                Some(Source::Stream(reader, Box::new(direct), then))
             }
-            Some(Source::Stream(reader, first, then)) => {
-                // A second cast lands what the first two cast, in order.
-                let then = match then {
-                    Some(then) => ArrowCastPlan::compile(then.as_target(), &root, options)?,
-                    None => plan,
-                };
-                Some(Source::Stream(reader, first, Some(Box::new(then))))
+            Some(Source::Stream(reader, first, mut then)) => {
+                // Each cast lands what every plan before it cast, in order.
+                then.push(plan);
+                Some(Source::Stream(reader, first, then))
             }
             None => None,
         };
@@ -1745,11 +1741,13 @@ impl SerieReader {
                 });
                 Box::new(RecordBatchIterator::new(batches, self.schema))
             }
-            Some(Source::Stream(inner, plan, None)) if plan.is_identity() => inner,
+            Some(Source::Stream(inner, plan, then)) if then.is_empty() && plan.is_identity() => {
+                inner
+            }
             Some(Source::Stream(inner, plan, then)) => Box::new(Reconciled {
                 inner: Some(inner),
                 plan: *plan,
-                then: then.map(|then| *then),
+                then,
                 schema: self.schema,
             }),
             Some(Source::Held(records)) => {
@@ -1892,17 +1890,19 @@ impl SerieReader {
     /// of windows. [`SerieReaderWindows::static_field`] names that record
     /// before the first pull.
     ///
-    /// The walk holds what this reader holds - at most one batch - plus one
-    /// bit per row of it and the open window's static row; no window is
-    /// ever held whole. A batch a window spans whole is served as the
-    /// landed batch itself, and only a batch a window opens or closes in is
-    /// sliced. So windows are read in order: taking the next window pulls
-    /// and drops the open one's unread rows, and a window read after its
-    /// walk passed rows of it refuses once, naming it, then ends - so
-    /// collecting the windows before reading them is loud, never a silent
-    /// loss. A window whose rows were all served ends, and one dropped
-    /// unread costs only the pull of its rows. A window may outlive its
-    /// walk and still reads to its end.
+    /// The walk holds what this reader holds - at most one batch, dropped
+    /// before the next is pulled - plus that batch's key record (the batch's
+    /// own children for a key of its columns, else one column per key cell,
+    /// each as long as the batch), one bit per row of it and the open
+    /// window's static row; no window is ever held whole. A batch a window
+    /// spans whole is served as the landed batch itself, and only a batch a
+    /// window opens or closes in is sliced. So windows are read in order:
+    /// taking the next window pulls and drops the open one's unread rows,
+    /// and a window read after its walk passed rows of it refuses once,
+    /// naming it, then ends - so collecting the windows before reading them
+    /// is loud, never a silent loss. A window whose rows were all served
+    /// ends, and one dropped unread costs only the pull of its rows. A
+    /// window may outlive its walk and still reads to its end.
     ///
     /// `sorted` asks for each key once, in key order - ascending, absent
     /// keys last - and a stream is never reordered: it verifies that the
@@ -1921,7 +1921,10 @@ impl SerieReader {
     /// whichever reader pulled it - the walk or a window - once; then the
     /// walk and every window end, and the stream is dropped. A window the
     /// walk was skipping when it failed refuses as passed, so a partial
-    /// window is never presented as complete.
+    /// window is never presented as complete. A window whose first row's
+    /// number leaves `uint64` - this reader's `rownum` stated too near its
+    /// largest - is the walk's refusal, naming this reader's root, and ends
+    /// the walk the same way.
     ///
     /// ```
     /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, FieldPath, Scalar, Serie, SerieReader, StructType};
@@ -2040,6 +2043,7 @@ impl SerieReader {
         let schema = Arc::clone(&self.schema);
         let walk = Walk {
             source: Some(self),
+            root: Arc::clone(&root),
             key,
             sorted,
             kept: kept.into(),
@@ -2065,7 +2069,7 @@ impl Iterator for SerieReader {
 
     fn next(&mut self) -> Option<Self::Item> {
         let (reader, plan, then) = match self.inner.as_mut()? {
-            Source::Stream(reader, plan, then) => (reader, &**plan, then.as_deref()),
+            Source::Stream(reader, plan, then) => (reader, &**plan, then.as_slice()),
             Source::Held(records) => {
                 let next = records.next();
                 if next.is_none() {
@@ -2083,9 +2087,9 @@ impl Iterator for SerieReader {
         };
         let pulled = reader.next();
         let landed = match pulled {
-            Some(Ok(batch)) => plan.cast_batch(batch).and_then(|landed| match then {
-                Some(then) => then.apply(&landed),
-                None => Ok(landed),
+            Some(Ok(batch)) => plan.cast_batch(batch).and_then(|landed| {
+                then.iter()
+                    .try_fold(landed, |landed, then| then.apply(&landed))
             }),
             Some(Err(error)) => Err(from_reader_error(error)),
             None => {
@@ -2118,10 +2122,12 @@ impl std::fmt::Debug for SerieReader {
 /// [`SerieReader::window_by`] answers, which states the rules.
 ///
 /// Every window is pulled through one walk the windows share, which holds
-/// at most one batch of the stream; a window's reader is `Send`, and this
-/// value is `Send + Sync`. A pull takes the walk's lock, and a window of a
-/// window takes its own walk's lock before its parent's - a fixed order,
-/// which cannot cycle.
+/// at most one batch of the stream, that batch's key record (the batch's
+/// own children for a key of its columns, else one column per key cell,
+/// each as long as the batch), one bit per row of it and the open window's
+/// static row; a window's reader is `Send`, and this value is `Send + Sync`.
+/// A pull takes the walk's lock, and a window of a window takes its own
+/// walk's lock before its parent's - a fixed order, which cannot cycle.
 ///
 /// ```
 /// use yggdryl::{DataType, Scalar, Serie, SerieReader, StructType};
@@ -2191,7 +2197,7 @@ impl Iterator for SerieReaderWindows {
                 walk: Arc::clone(&self.walk),
                 state,
                 index,
-                then: None,
+                then: Vec::new(),
             })),
             root: Arc::clone(&self.root),
             schema: Arc::clone(&self.schema),
@@ -2230,8 +2236,9 @@ struct WindowPart {
     state: Arc<AtomicU8>,
     /// The window's place, which a refusal names.
     index: u64,
-    /// The window reader's cast, applied to each piece out of the lock.
-    then: Option<Box<ArrowCastPlan>>,
+    /// The window reader's casts, applied to each piece in the order they
+    /// were cast, out of the lock.
+    then: Vec<ArrowCastPlan>,
 }
 
 impl WindowPart {
@@ -2241,9 +2248,10 @@ impl WindowPart {
             Ok(mut walk) => walk.serve(&self.state, self.index, root)?,
             Err(error) => return Some(Err(error)),
         };
-        Some(piece.and_then(|piece| match &self.then {
-            Some(then) => then.apply(&piece),
-            None => Ok(piece),
+        Some(piece.and_then(|piece| {
+            self.then
+                .iter()
+                .try_fold(piece, |piece, then| then.apply(&piece))
         }))
     }
 }
@@ -2274,6 +2282,8 @@ fn lock(walk: &Mutex<Walk>) -> Result<MutexGuard<'_, Walk>> {
 struct Walk {
     /// The windowed reader; dropped at its end and on any failure.
     source: Option<SerieReader>,
+    /// The windowed reader's root, which a refusal of the walk names.
+    root: Arc<Field>,
     key: BoundSelector,
     sorted: bool,
     /// The windowed reader's own static values, `windownum` and `rownum`
@@ -2354,8 +2364,14 @@ impl Walk {
     /// Pull the stream's next batch that holds a row: its key computed,
     /// its windows cut and its first row compared with the open window's
     /// key. `None` at the stream's end; the end and a failure end the walk.
+    ///
+    /// Every caller pulls once the held batch is spent, so it is dropped
+    /// before the stream is asked for the next: the walk never holds two.
     fn pull(&mut self) -> Option<Result<()>> {
         loop {
+            if let Some(cut) = self.held.take() {
+                self.before += cut.len() as u64;
+            }
             let record = match self.source.as_mut().and_then(Iterator::next) {
                 Some(Ok(record)) => record,
                 Some(Err(error)) => {
@@ -2368,9 +2384,6 @@ impl Walk {
                 }
             };
             self.batch += 1;
-            if let Some(cut) = self.held.take() {
-                self.before += cut.len() as u64;
-            }
             if record.is_empty() {
                 continue;
             }
@@ -2463,10 +2476,17 @@ impl Walk {
         }
         let cut = self.held.as_ref()?;
         let at = cut.at;
+        let rownum = match self.rownum(at) {
+            Ok(rownum) => rownum,
+            Err(error) => {
+                self.finish();
+                return Some(Err(error));
+            }
+        };
         // Every start is visited in order and a descent row is a start, so
         // the first descent is always met here.
         if self.sorted && ((at == 0 && cut.edge == Ordering::Greater) || cut.descent == Some(at)) {
-            let error = self.descent(cut);
+            let error = self.descent(cut, rownum);
             self.finish();
             return Some(Err(error));
         }
@@ -2483,10 +2503,7 @@ impl Walk {
                 .iter()
                 .cloned()
                 .chain(cells.iter().map(|cell| proven_row(cell, at)))
-                .chain([
-                    Scalar::from(index),
-                    Scalar::from(self.base + self.before + at as u64),
-                ]),
+                .chain([Scalar::from(index), Scalar::from(rownum)]),
         );
         let key = match &row {
             Scalar::Serie(Serie::Run(run)) => {
@@ -2507,8 +2524,31 @@ impl Walk {
         Some(Ok((index, row, state)))
     }
 
-    /// The refusal of a key ordering before the one it follows.
-    fn descent(&self, cut: &Cut) -> Error {
+    /// The number row `at` of the held batch has in the stream: the
+    /// windowed reader's own `rownum`, plus the rows it yielded before the
+    /// batch, plus `at` - refused, naming the root, where a stated `rownum`
+    /// leaves no `uint64` for it.
+    fn rownum(&self, at: usize) -> Result<u64> {
+        self.before
+            .checked_add(at as u64)
+            .and_then(|rows| self.base.checked_add(rows))
+            .ok_or_else(|| {
+                Error::Core(crate::Error::InvalidRecord {
+                    path: SmolStr::new(self.root.name()),
+                    reason: format_smolstr!(
+                        "window {} opens {} rows past the stated rownum {}, beyond the largest \
+                         uint64; state a smaller rownum",
+                        self.opened,
+                        u128::from(self.before) + at as u128,
+                        self.base
+                    ),
+                })
+            })
+    }
+
+    /// The refusal of a key ordering before the one it follows, at the
+    /// stream row `rownum`.
+    fn descent(&self, cut: &Cut, rownum: u64) -> Error {
         let at = cut.at;
         // A key is the run of its cells, which a serie writes, bounded as
         // every caller value a message names is.
@@ -2523,7 +2563,7 @@ impl Walk {
             _ => text(&proven_row(&cut.keys, at - 1)),
         };
         Error::Core(crate::Error::InvalidRecord {
-            path: format_smolstr!("$[{}]", self.base + self.before + at as u64),
+            path: format_smolstr!("$[{rownum}]"),
             reason: format_smolstr!(
                 "window by expects keys in order, ascending with absent keys last: batch {} row \
                  {at} keys {key} after {previous}; window it unsorted, or hold it \
@@ -2584,9 +2624,9 @@ impl Walk {
 struct Reconciled {
     inner: Option<BatchReader>,
     plan: ArrowCastPlan,
-    /// The plan a later [`SerieReader::cast`] landed the first's output
-    /// under, applied as transport after it.
-    then: Option<ArrowCastPlan>,
+    /// The plans each later [`SerieReader::cast`] landed the output before
+    /// it under, applied as transport after it in the order they were cast.
+    then: Vec<ArrowCastPlan>,
     schema: SchemaRef,
 }
 
@@ -2601,13 +2641,11 @@ impl Iterator for Reconciled {
                 return other;
             }
         };
-        let cast = self
-            .plan
-            .reconcile_batch(batch)
-            .and_then(|cast| match &self.then {
-                Some(then) => then.reconcile_batch(cast),
-                None => Ok(cast),
-            });
+        let cast = self.plan.reconcile_batch(batch).and_then(|cast| {
+            self.then
+                .iter()
+                .try_fold(cast, |cast, then| then.reconcile_batch(cast))
+        });
         match cast {
             Ok(cast) => Some(Ok(cast)),
             Err(error) => {
