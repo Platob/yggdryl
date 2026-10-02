@@ -145,6 +145,26 @@ const YELLOW_KEYS: [&str; 9] = [
 ];
 
 impl SymbolCode {
+    /// The security identifier this symbol names, as its type and code: an
+    /// instrument key's ISIN, else the code itself; a CFI code names a
+    /// classification and no identifier. What a ticker of this shape
+    /// derives ([`Market::fill_market`]), and what a view of that
+    /// derivation reads back as.
+    pub(crate) fn identifier(&self) -> Option<(IdType, &str)> {
+        match self {
+            Self::Instrument { isin, .. } => {
+                isin.as_ref().map(|isin| (IdType::Isin, isin.as_str()))
+            }
+            Self::Isin(isin) => Some((IdType::Isin, isin.as_str())),
+            Self::Figi(figi) => Some((IdType::Figi, figi.as_str())),
+            Self::Cusip(cusip) => Some((IdType::Cusip, cusip.as_str())),
+            Self::Sedol(sedol) => Some((IdType::Sedol, sedol.as_str())),
+            Self::Ric(ric) => Some((IdType::Ric, ric.as_str())),
+            Self::Bloomberg(bbg) => Some((IdType::Bloomberg, bbg.as_str())),
+            Self::Cfi(_) => None,
+        }
+    }
+
     /// What `symbol` is, by its length first and its type's check second,
     /// or `None` where it is no identifier this crate checks.
     #[must_use]

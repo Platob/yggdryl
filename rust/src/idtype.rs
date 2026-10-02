@@ -72,7 +72,9 @@ id_vocabulary! {
         /// A Common Code of Clearstream and Euroclear, code `G`.
         Common => "common" | "commoncode",
         /// A clearing house's or clearing organization's own code, code `H`.
-        ClearingHouse => "clearinghouse" | "clearingorganization" | "clearinghouseclearingorganization",
+        /// `clearingorganization` alone is the party role `PartyRole(452)`
+        /// `21` names.
+        ClearingHouse => "clearinghouse" | "clearinghouseclearingorganization",
         /// An ISDA FpML product specification, code `I`.
         FpmlSpec => "fpmlspec" | "isdafpmlspecification" | "isdafpmlproductspecification",
         /// An OPRA option symbol, code `J`.
@@ -194,6 +196,8 @@ id_vocabulary! {
         ExecutingSystem => "executingsystem",
         /// `PartyRole(452)` `17`.
         ContraFirm => "contrafirm",
+        /// `PartyRole(452)` `21`.
+        ClearingOrganization => "clearingorganization",
         /// `PartyRole(452)` `22`.
         Exchange => "exchange",
         /// `PartyRole(452)` `24`.
@@ -255,8 +259,9 @@ const FIX_SECURITY_SOURCES: [(IdType, char); 33] = [
     (IdType::Dti, 'Y'),
 ];
 
-/// The field-name prefixes that name another instrument's identifier, never
-/// this instrument's.
+/// The words that name another instrument's identifier, never this
+/// instrument's: a field name opening with one, and a key spelling one
+/// before a security type ([`IdType::from_key_end`]).
 const REFUSED_FIELD_PREFIXES: [&str; 5] = ["leg", "underlying", "contra", "related", "benchmark"];
 
 /// The field names that are a ticker, never a security type.
@@ -433,6 +438,7 @@ impl IdType {
                 | Self::OrderOriginationFirm
                 | Self::ExecutingSystem
                 | Self::ContraFirm
+                | Self::ClearingOrganization
                 | Self::Exchange
                 | Self::CustomerAccount
                 | Self::EnteringTrader
@@ -462,10 +468,12 @@ impl IdType {
     /// starts: the longest of `names` the key ends with, stepped back over a
     /// parentage word spelled before it - `parent`, `orig`, `origin`,
     /// `original` - which stays part of the type, so `firm.x.parentorderid`
-    /// ends with `parentorderid`. A security type is refused where the key
-    /// opens with another instrument's prefix - `leg`, `underlying`,
-    /// `contra`, `related`, `benchmark` - since it names that instrument's
-    /// code. `None` where the key ends with none of `names`.
+    /// ends with `parentorderid`. A security type is refused where another
+    /// instrument's word - `leg`, `underlying`, `contra`, `related`,
+    /// `benchmark` - opens the key or ends what is spelled before the type,
+    /// after any namespace (`omsunderlyingisin`, `fix.legisin`,
+    /// `firm.x.contracusip`), since it names that instrument's code. `None`
+    /// where the key ends with none of `names`.
     pub(crate) fn from_key_end<'name>(
         folded: &str,
         names: impl IntoIterator<Item = &'name str>,
@@ -485,9 +493,10 @@ impl IdType {
         let kind = folded[at..].parse::<Self>().ok()?;
         let security =
             kind.is_security() || kind.parent_of().is_some_and(|(base, _)| base.is_security());
+        let before = folded[..at].trim_end_matches('.');
         let other_instrument = REFUSED_FIELD_PREFIXES
             .iter()
-            .any(|prefix| folded.starts_with(prefix));
+            .any(|word| folded.starts_with(word) || before.ends_with(word));
         (!(security && other_instrument)).then_some((at, kind))
     }
 

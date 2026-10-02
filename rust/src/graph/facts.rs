@@ -1694,36 +1694,6 @@ pub(crate) struct OperationEventFacts {
 }
 
 impl OperationEventFacts {
-    /// Restates the security identifier of `kind` a crate column states -
-    /// `isincode`, `bloombergcode` - in place: a code an identifier of the
-    /// type already holds, whatever its source, is no new statement and
-    /// moves nothing - the column is a view of the set; any other replaces
-    /// every identifier of the type, under the source of the one
-    /// [`crate::Identifiers::get_identifier`] answers where a source stated it,
-    /// else [`IdSource::Base`]; an empty, null or refused code
-    /// removes them.
-    pub(crate) fn restate_securityid(&mut self, kind: &IdType, code: Option<&str>) {
-        let ids = &mut self.event.market.securityids;
-        let src = ids
-            .get_identifier(kind)
-            .filter(|held| held.src() != &IdSource::Derived)
-            .map_or(IdSource::Base, |held| held.src().clone());
-        let stated = code
-            .map(str::trim)
-            .filter(|code| !code.is_empty())
-            .and_then(|code| Identifier::new(src, kind.clone(), code).ok());
-        if stated
-            .as_ref()
-            .is_some_and(|id| ids.of_kind(kind).any(|held| held.value() == id.value()))
-        {
-            return;
-        }
-        ids.remove_kind(kind);
-        if let Some(id) = stated {
-            ids.insert(id);
-        }
-    }
-
     /// Each base a parent identifier names and the operation does not
     /// state, filled from it once it finalizes, after every enrichment.
     pub(crate) fn fill_parents(&mut self) {

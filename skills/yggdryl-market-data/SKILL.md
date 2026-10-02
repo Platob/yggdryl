@@ -79,7 +79,9 @@ Hold these facts:
   type, value)` - the value is checked by its type, so `Identifier("base",
   "isin", code)` closes on its check digit - or `Identifier.from_key(key, value)`,
   which reads a full `src:type` key or the identifier name a bridge's own
-  spelling ends with (`OMS_InstrumentID` is `oms:instrumentid`); Rust takes the
+  spelling ends with (`OMS_InstrumentID` is `oms:instrumentid`) - another
+  instrument's word before a security type, after any namespace, names none
+  (`OMS_UnderlyingISIN`, `FIX.LegISIN`); Rust takes the
   `IdSource` and `IdType` enums. Parentage is a relation between types, never a
   field of a value: when an `orderid` changes along a chain, a follower keeps
   the value it held as `parentorderid` and the chain's first as `origorderid`
@@ -242,9 +244,10 @@ Hold these facts:
   `identifiers['fix:clordid'].value`, never `['FIX:ClOrdID']` (that reads null).
   `securityids['base:isin'].value` reads the ISIN a leaf took without a source.
 - An identifier map is no dict: compare `str(id)` / `id.toString()`, or read
-  `get(type)` - a stated source before a derived one - and `get_from(src,
-  type)`. An `Identifier` is its source, type and value: `key` is `src:type`,
-  and `Identifier.from_key("fix:clordid", value)` reads a full key.
+  `get(type)` - the wire's `fix` first, then another named source, then
+  `base`, then `derived` - and `get_from(src, type)`. An `Identifier` is its
+  source, type and value: `key` is `src:type`, and
+  `Identifier.from_key("fix:clordid", value)` reads a full key.
 - `MarketData.kind` is `order_event` for a dated order; the leaf's own `kind`
   is `order`; both stand under `marketdatakind` `ORDR`.
 - An order's `price` is what it states, never its last execution and never a

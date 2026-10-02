@@ -73,3 +73,25 @@ id_vocabulary! {
         Spsaid => "spsaid",
     }
 }
+
+impl IdSource {
+    /// The source a namespace spelled before a name - a key's, or a
+    /// `{NAMESPACE}INSTRUMENTID` security source's - names, already folded:
+    /// its dots at either end dropped, and `None` where nothing is left or
+    /// where it folds to a source the crate reserves - `base`, `derived`,
+    /// `fix` - which names no venue, so the reader's own source stands.
+    ///
+    /// # Errors
+    ///
+    /// A namespace no word holds.
+    pub(crate) fn from_namespace(folded: &str) -> crate::Result<Option<Self>> {
+        let namespace = folded.trim_matches('.');
+        if namespace.is_empty() {
+            return Ok(None);
+        }
+        Ok(match namespace.parse()? {
+            Self::Base | Self::Derived | Self::Fix => None,
+            named => Some(named),
+        })
+    }
+}

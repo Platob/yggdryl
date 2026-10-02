@@ -2336,6 +2336,115 @@ mod identifier_maps {
         );
     }
 
+    /// `PartyRole(452)` `21` is `ClearingOrganization` in the code set: its
+    /// name folded is the party's type - a party role - and never
+    /// `SecurityIDSource(22)` `H`'s `clearinghouse`, a security type.
+    #[test]
+    fn a_clearing_organization_party_is_typed_by_its_roles_own_name_and_is_no_security() {
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|38=5|40=2|453=2|448=LCH|447=D|452=21|\
+             448=T1|447=D|452=12|10=0|",
+        );
+        assert_eq!(
+            shown(held.get_partyids()),
+            [
+                "proprietary:clearingorganization=LCH",
+                "proprietary:executingtrader=T1"
+            ]
+        );
+        assert!(
+            held.get_partyids()
+                .iter()
+                .all(|id| id.kind().is_party() && !id.kind().is_security()),
+            "{}",
+            held.get_partyids()
+        );
+        // A party's value is any text, whatever its role: a security type's
+        // printable-ASCII rule never reaches it.
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|38=5|40=2|453=1|448=Chambre\u{e9}|447=D|452=21|10=0|",
+        );
+        assert_eq!(
+            shown(held.get_partyids()),
+            ["proprietary:clearingorganization=Chambre\u{e9}"]
+        );
+    }
+
+    /// A source the set names nothing for is its own spelling where it is a
+    /// word; a bare wire code - one character, or digits - is prefixed by
+    /// its field, as a role is, so it never reads as a word of its own.
+    #[test]
+    fn a_party_or_account_source_the_set_names_nothing_for_is_its_spelling_or_its_prefixed_code() {
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|1=ACC|660=7|55=AAPL|54=1|40=2|453=2|448=T1|447=W|452=12|\
+             448=F1|447=MyVenue|452=1|10=0|",
+        );
+        assert_eq!(
+            shown(held.get_partyids()),
+            [
+                "acctidsource7:account=ACC",
+                "myvenue:executingfirm=F1",
+                "partyidsourcew:executingtrader=T1",
+            ]
+        );
+    }
+
+    /// `Account(1)` is a party typed `account`, sourced by its
+    /// `AcctIDSource(660)` code's name; each `RootPartyID(1117)` of
+    /// `NoRootPartyIDs(1116)` is typed by its `RootPartyRole(1119)` and
+    /// sourced by its `RootPartyIDSource(1118)`, `base` for none.
+    #[test]
+    fn an_account_is_sourced_by_its_acctidsource_name_and_root_parties_are_parties() {
+        for (source, expected) in [
+            ("1", "bic:account=ACC-1"),
+            ("6", "spsaid:account=ACC-1"),
+            ("99", "other:account=ACC-1"),
+        ] {
+            let held = parsed(&format!(
+                "8=FIX.4.4|35=D|11=C1|1=ACC-1|660={source}|55=AAPL|54=1|38=5|40=2|10=0|"
+            ));
+            assert_eq!(shown(held.get_partyids()), [expected], "660={source}");
+        }
+        let quoted = parsed(
+            "8=FIX.4.4|35=R|131=QR1|303=2|55=AAPL|1116=2|1117=R1|1118=D|1119=12|1117=R2|1119=3|10=0|",
+        );
+        assert_eq!(
+            shown(quoted.get_partyids()),
+            ["base:clientid=R2", "proprietary:executingtrader=R1"]
+        );
+    }
+
+    /// A regulatory trade identifier is typed by its
+    /// `RegulatoryTradeIDType(1906)` alone: neither its
+    /// `RegulatoryTradeIDSource(1905)` nor its
+    /// `RegulatoryTradeIDScope(2397)` reaches the identifier, so a second
+    /// current one - another scope's - is an anomaly and the first stands.
+    #[test]
+    fn a_regulatory_trade_id_is_typed_by_its_type_alone_and_a_second_scope_is_an_anomaly() {
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|40=2|1907=2|1903=UTI-1|1905=LEI-A|1906=0|2397=1|\
+             1903=UTI-2|1905=LEI-B|1906=0|2397=2|10=0|",
+        );
+        assert_eq!(
+            held.get_identifiers()
+                .get_from(&IdSource::Fix, &IdType::RegTradeId),
+            Some("UTI-1"),
+            "{}",
+            held.get_identifiers()
+        );
+        let dropped: Vec<_> = held
+            .anomalies()
+            .iter()
+            .filter(|anomaly| anomaly.field() == "regulatorytradeids")
+            .collect();
+        assert_eq!(dropped.len(), 1, "{:?}", held.anomalies());
+        assert!(
+            dropped[0].reason().contains("fix:regtradeid=UTI-2"),
+            "{}",
+            dropped[0].reason()
+        );
+    }
+
     #[test]
     fn a_following_operation_carries_what_the_dictionary_follows() {
         let held = parsed("8=FIX.4.4|35=8|17=E1|37=O1|10=0|");

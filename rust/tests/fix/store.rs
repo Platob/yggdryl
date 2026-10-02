@@ -3271,10 +3271,24 @@ mod committed {
     /// `exchangeclientorderid` on `SecondaryClOrdID(526)` and `omsuserid` on
     /// `Username(553)` - with the crate's dump written again. No count of the
     /// census below moved.
+    /// It last moved when the description of `exprunix` (65010) came to say
+    /// what the deadline is now read from - `ExpireTime`, else
+    /// `ValidUntilTime`, else the end of the day `ExpireDate` names, with
+    /// `MaturityDate` the instrument's and no deadline - the crate's field
+    /// shard written again over that one text. No count of the census below
+    /// moved.
+    /// It last moved when the description of `forexcode` (65046) came to say
+    /// how the view reads back - the pair `get` answered when the row was
+    /// written, which a row with no `securityids` column states nothing of
+    /// where the reading answers it, reads as the detection where it is the
+    /// pair the symbol names, and states from `base`, leading its type,
+    /// otherwise - in place of "row-stated when written", the crate's field
+    /// shard written again over that one text. No count of the census below
+    /// moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 9_043_431_446_917_212_413);
+        assert_eq!(registry.stable_hash(), 14_361_842_139_078_343_597);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

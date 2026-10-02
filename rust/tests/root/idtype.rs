@@ -886,6 +886,7 @@ fn a_type_is_a_security_a_party_or_neither() {
         IdType::ExecutingTrader,
         IdType::OrderOriginationTrader,
         IdType::ContraTrader,
+        IdType::ClearingOrganization,
         IdType::DeskId,
         IdType::Algorithm,
     ] {
@@ -927,7 +928,14 @@ fn a_type_is_a_security_a_party_or_neither() {
             .iter()
             .filter(|known| known.is_party())
             .count(),
-        3 + 20
+        3 + 21
+    );
+    // `PartyRole(452)` `21`'s name is the party role, never the security
+    // type `SecurityIDSource(22)` `H` names in full.
+    assert_eq!(kind("ClearingOrganization"), IdType::ClearingOrganization);
+    assert_eq!(
+        kind("Clearing House Clearing Organization"),
+        IdType::ClearingHouse
     );
 }
 
@@ -1029,7 +1037,13 @@ fn every_fix_security_source_reads_by_its_code_and_its_name() {
         );
     }
     // A member naming another kind of identifier is no source.
-    for other in ["ClOrdID", "Account", "Exchange", "Party"] {
+    for other in [
+        "ClOrdID",
+        "Account",
+        "Exchange",
+        "ClearingOrganization",
+        "Party",
+    ] {
         let (path, reason) = located(IdType::from_security_source(other));
         assert_eq!(path, other.to_ascii_lowercase(), "{other}");
         assert!(reason.contains("a security identifier type"), "{reason}");

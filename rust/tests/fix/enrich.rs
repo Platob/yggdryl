@@ -11,8 +11,8 @@ use std::sync::Arc;
 use yggdryl::graph::{Event, Market, Operation};
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
+use yggdryl::{Figi, IdSource, IdType, Isin, State};
 use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, Timezone, Url};
-use yggdryl::{IdSource, IdType, Isin, State};
 
 fn reader() -> FixCodec {
     super::fixed_codec(super::committed_registry())
@@ -389,6 +389,43 @@ fn a_figi_in_securityid_states_its_own_source_and_never_an_isin() {
 }
 
 #[test]
+fn an_isin_behind_bbg_that_no_figi_check_closes_states_an_isins_source() {
+    let reader = reader();
+    // Barbados is `BB`, so its ISINs may open `BBG`: a code no FIGI's check
+    // closes is the ISIN ISO 6166's digit closes.
+    assert!(Isin::new("BBGA00000004").is_ok());
+    assert!(Figi::new("BBGA00000004").is_err());
+    let barbados = settled(&reader, b"8=FIX.4.4|35=D|11=A|55=X|48=BBGA00000004|10=0|");
+    assert_eq!(text(&barbados, 22).as_deref(), Some("4"));
+    assert_eq!(isincode(&barbados).as_deref(), Some("BBGA00000004"));
+    assert_eq!(text(&barbados, 470).as_deref(), Some("BB"));
+    // A `SecurityID` filled from an ISIN alternate is an ISIN whatever its
+    // shape: the alternate's source names it, so a code a FIGI's check
+    // closes too is still the ISIN it was stated as.
+    let alternate = settled(
+        &reader,
+        b"8=FIX.4.4|35=D|11=A|55=MSFT|454=1|455=BBG000BPH459|456=4|10=0|",
+    );
+    assert_eq!(text(&alternate, 48).as_deref(), Some("BBG000BPH459"));
+    assert_eq!(text(&alternate, 22).as_deref(), Some("4"));
+    assert_eq!(
+        alternate.get_securityids().to_string(),
+        "[fix:isin=BBG000BPH459]"
+    );
+    // So is a `SecurityID` the message states that is the first ISIN
+    // alternate's code: the rule reads the code, not who put it there.
+    let stated = settled(
+        &reader,
+        b"8=FIX.4.4|35=D|11=A|55=MSFT|48=BBG000BPH459|454=1|455=BBG000BPH459|456=4|10=0|",
+    );
+    assert_eq!(text(&stated, 22).as_deref(), Some("4"));
+    assert_eq!(
+        stated.get_securityids().to_string(),
+        "[fix:isin=BBG000BPH459]"
+    );
+}
+
+#[test]
 fn an_isin_reaches_its_normalized_column_from_wherever_the_message_put_it() {
     let reader = reader();
     // The alternate identifier whose source says ISIN is the ISIN, and once
@@ -520,25 +557,47 @@ fn a_symbol_is_what_an_exchange_or_bloomberg_called_the_instrument() {
 #[test]
 fn a_symbol_a_rule_fills_names_its_currency_pair_as_a_stated_one_does() {
     let reader = reader();
-    let stated = settled(
-        &reader,
-        b"8=FIX.4.4|35=D|11=A|55=EUR/USD|22=8|48=EUR/USD|54=1|38=1000000|40=1|10=0|",
-    );
-    let filled = settled(
-        &reader,
-        b"8=FIX.4.4|35=D|11=A|22=8|48=EUR/USD|54=1|38=1000000|40=1|10=0|",
-    );
-    assert_eq!(text(&filled, 55).as_deref(), Some("EUR/USD"));
-    assert_eq!(
-        filled.get_securityids().to_string(),
-        "[derived:forex=EUR/USD, fix:exchsymb=EUR/USD]"
-    );
-    assert_eq!(filled.get_securityids(), stated.get_securityids());
-    for tag in [15, 120, 167, 460, 461, 2897] {
-        assert_eq!(filled.get_by_tag(tag), stated.get_by_tag(tag), "{tag}");
+    // Detected before any other rule reads the cells detection fills, as a
+    // stated symbol is: a currency the message states is one leg of the
+    // pair, never copied onto the other.
+    for currency in ["", "15=EUR|", "120=USD|"] {
+        let stated = settled(
+            &reader,
+            format!(
+                "8=FIX.4.4|35=D|11=A|55=EUR/USD|22=8|48=EUR/USD|{currency}54=1|38=1000000|40=1|10=0|"
+            )
+            .as_bytes(),
+        );
+        let filled = settled(
+            &reader,
+            format!("8=FIX.4.4|35=D|11=A|22=8|48=EUR/USD|{currency}54=1|38=1000000|40=1|10=0|")
+                .as_bytes(),
+        );
+        assert_eq!(text(&filled, 55).as_deref(), Some("EUR/USD"), "{currency}");
+        assert_eq!(
+            filled.get_securityids().to_string(),
+            "[derived:forex=EUR/USD, fix:exchsymb=EUR/USD]",
+            "{currency}"
+        );
+        assert_eq!(filled.get_securityids(), stated.get_securityids());
+        for tag in [15, 120, 167, 460, 461, 2897] {
+            assert_eq!(
+                filled.get_by_tag(tag),
+                stated.get_by_tag(tag),
+                "{currency}{tag}"
+            );
+        }
+        assert_eq!(text(&filled, 15).as_deref(), Some("EUR"), "{currency}");
+        assert_eq!(miccode(&filled).as_deref(), Some("XXXX"));
     }
-    assert_eq!(text(&filled, 15).as_deref(), Some("EUR"));
-    assert_eq!(miccode(&filled).as_deref(), Some("XXXX"));
+    for currency in ["15=EUR|", "120=USD|"] {
+        let filled = settled(
+            &reader,
+            format!("8=FIX.4.4|35=D|11=A|22=8|48=EUR/USD|{currency}54=1|38=1000000|40=1|10=0|")
+                .as_bytes(),
+        );
+        assert_eq!(text(&filled, 120).as_deref(), Some("USD"), "{currency}");
+    }
 }
 
 #[test]
@@ -1492,6 +1551,58 @@ fn an_acknowledgement_delivered_again_after_its_fill_adds_no_step() {
         once.iter()
             .map(|held| *held.get_state())
             .collect::<Vec<_>>()
+    );
+}
+
+/// An acknowledgement delivered again after the fill that ended its chain
+/// at the same instant is another statement of the acknowledgement, as it
+/// is after a fill that moved the chain on, and the fill delivered again is
+/// another statement of the fill: the order's chain is not started afresh,
+/// and the window yields each once.
+#[test]
+fn an_acknowledgement_delivered_again_after_the_fill_that_ended_its_chain_adds_no_step() {
+    use yggdryl::MarketDataKind;
+    use yggdryl::graph::Element;
+
+    let codec = super::fixed_codec(super::committed_registry());
+    let lines: [&[u8]; 5] = [
+        b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30.000|11=A1|55=AAPL|54=1|38=100|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=1|52=20260102-10:15:30.500|11=A1|37=O1|150=0|39=0|54=1|55=AAPL|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=2|52=20260102-10:15:30.500|11=A1|37=O1|17=E1|150=F|39=2|14=100|151=0|31=10|32=100|54=1|55=AAPL|10=0|",
+        // The acknowledgement delivered again, after the fill that ended
+        // its chain at its instant, then that fill.
+        b"8=FIX.4.4|35=8|49=T|56=S|34=3|52=20260102-10:15:30.500|11=A1|37=O1|150=0|39=0|54=1|55=AAPL|10=0|",
+        b"8=FIX.4.4|35=8|49=T|56=S|34=4|52=20260102-10:15:30.500|11=A1|37=O1|17=E1|150=F|39=2|14=100|151=0|31=10|32=100|54=1|55=AAPL|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the messages");
+    let orders = |codec: &FixCodec| {
+        codec
+            .lifecycle(parsed.clone())
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the walk")
+            .into_iter()
+            .filter(|held| held.msgcat() == MarketDataKind::Order)
+            .collect::<Vec<_>>()
+    };
+    let every = orders(&codec.clone().with_dedup_window_ms(0));
+    let [order, ack, fill, again, filled_again] = every.as_slice() else {
+        panic!("five order messages, not {}", every.len())
+    };
+    assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(*fill.get_state(), State::Filled);
+    assert_eq!(again.get_curruuid(), ack.get_curruuid());
+    assert_eq!(again.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(filled_again.get_curruuid(), fill.get_curruuid());
+    assert_eq!(filled_again.get_prevuuid(), Some(ack.get_curruuid()));
+    let once = orders(&codec);
+    assert_eq!(
+        once.iter().map(Element::get_curruuid).collect::<Vec<_>>(),
+        [order, ack, fill].map(Element::get_curruuid),
+        "the order, its acknowledgement and its fill's report"
     );
 }
 

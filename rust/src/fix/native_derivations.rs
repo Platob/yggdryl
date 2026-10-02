@@ -12,7 +12,7 @@
 //! | `AvgPx(6)` | `LastPx`, on a report whose `CumQty` equals a positive `LastQty` |
 //! | `CumQty(14)` | `OrderQty - LeavesQty` on a report, never negative |
 //! | `Currency(15)` / `SettlCurrency(120)` | each other, except on a currency product (`Product` 4) |
-//! | `SecurityIDSource(22)` | `S` where `SecurityID` is twelve bytes behind `BBG` a FIGI closes, else `4`, `1` or `2` where it closes as an ISIN, a CUSIP or a SEDOL |
+//! | `SecurityIDSource(22)` | `4` where `SecurityID` - stated, or filled by the next rule - is the first ISIN alternate's code, whatever its shape, else `S` where it is twelve bytes behind `BBG` a FIGI closes, else `4`, `1` or `2` where it closes as an ISIN, a CUSIP or a SEDOL |
 //! | `LastPx(31)`, `BidPx(132)`, `OfferPx(133)` | spot rate plus forward points |
 //! | `OrderQty(38)` | `CumQty + CxlQty` on a canceled report, else `CumQty + LeavesQty`, else `CumQty + CxlQty` |
 //! | `OrdStatus(39)` | the `ExecType` both spell alike, or a trade's filled or partial status |
@@ -58,13 +58,23 @@ const DECIMAL9: DataType = DataType::Decimal128 {
 const DECIMAL18: DataType = DataType::DECIMAL;
 
 /// Fill every derivation to a fixpoint and rebuild the message once.
+pub(super) fn fill_all(msg: &mut FixMsg) {
+    let landed = derive_all(msg);
+    land(msg, landed);
+}
+
+/// What every rule answers for `msg` at the fixpoint, for [`land`].
+pub(super) fn derive_all(msg: &FixMsg) -> Vec<(i32, Scalar)> {
+    NativeRow::new(msg).settle()
+}
+
+/// Lands the answers [`derive_all`] gave for `msg` with one rebuild.
 ///
 /// Where the rebuild refuses the answers together - which no single value
 /// causes - each lands on its own, and one the rebuild refuses alone is
 /// dropped beside a warning naming its tag, so the rest still land and the
 /// message keeps what it stated.
-pub(super) fn fill_all(msg: &mut FixMsg) {
-    let landed = NativeRow::new(msg).settle();
+pub(super) fn land(msg: &mut FixMsg, landed: Vec<(i32, Scalar)>) {
     if landed.is_empty() || msg.set_each(landed).is_ok() {
         return;
     }
@@ -85,7 +95,7 @@ pub(super) fn fill_all(msg: &mut FixMsg) {
 /// Whether any rule answers for `msg` anew: false where the fixpoint
 /// already stands, which one sweep proves.
 pub(super) fn lands_anything(msg: &FixMsg) -> bool {
-    !NativeRow::new(msg).settle().is_empty()
+    !derive_all(msg).is_empty()
 }
 
 /// The message plus answers landed during this pass. Reading landed answers
@@ -297,10 +307,15 @@ fn cumulative_quantity(row: &NativeRow<'_>) -> Option<Scalar> {
 fn security_id_source(row: &NativeRow<'_>) -> Option<Scalar> {
     let identifier = row.get(48)?;
     let text = identifier.as_str()?;
-    // A FIGI may close ISO 6166's digit too: twelve bytes behind `BBG` are
-    // a FIGI or nothing, as a symbol's shape reads them.
-    if text.len() == 12 && text.starts_with("BBG") {
-        return Figi::new(text).is_ok().then(|| Scalar::from("S"));
+    // A code that is the first ISIN alternate's - stated, or filled from
+    // it - names its source whatever its shape. Otherwise a FIGI may close ISO 6166's digit too, so twelve
+    // bytes behind `BBG` a FIGI's digit closes are a FIGI, as a symbol's
+    // shape reads them, and a Barbados ISIN behind `BBG` is still an ISIN.
+    if alternate_isin(row).is_some_and(|isin| isin.as_str() == text) {
+        return Some(Scalar::from("4"));
+    }
+    if text.len() == 12 && text.starts_with("BBG") && Figi::new(text).is_ok() {
+        return Some(Scalar::from("S"));
     }
     if Isin::new(text).is_ok() {
         Some(Scalar::from("4"))

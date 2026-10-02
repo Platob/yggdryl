@@ -77,7 +77,7 @@
 
 | Verb | Rule |
 | --- | --- |
-| `get_identifiers` | the map, in key order; `get(&IdType::ClOrdId)` the value a source stated, `get_from(&IdSource::Fix, &IdType::OrderId)` one source's |
+| `get_identifiers` | the map, in key order; `get(&IdType::ClOrdId)` the value the wire stated (`fix`), else another named source's in key order, else `base`'s, else the derived one ([Lookups](identifier.md#contract)), `get_from(&IdSource::Fix, &IdType::OrderId)` one source's |
 | `set_identifiers(ids, overwrite)` | with `overwrite`, replaces the map whole, `Identifiers::new()` unsaying it; without, fills the keys it lacks |
 | `insert_identifier(id)` | fills an absent key only; `false` for a held one - another source of one type is another identifier |
 | `remove_identifier(src, kind)` | removes one; returns whether one was held |

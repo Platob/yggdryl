@@ -52,7 +52,9 @@ impl JsIdentifier {
     /// `sedol` or `figi`, a parentage word (`parent`, `orig`, `origin`,
     /// `original`) right before it kept inside the type. The source is the
     /// rest of the folded key with its dots trimmed at both ends and kept
-    /// inside, `base` where nothing is left.
+    /// inside, `base` where nothing is left or where it folds to a source
+    /// the crate reserves - `base`, `derived`, `fix` - which names no
+    /// namespace: `Derived_ISIN` is `base:isin`.
     ///
     /// `firm.x.ParentOrderID` is `firm.x:parentorderid`, `OMS_InstrumentID`
     /// `oms:instrumentid`, `marketorderid` `market:orderid`, `ISINCode`
@@ -143,15 +145,18 @@ impl JsIdentifiers {
         }
     }
 
-    /// The value of the first identifier of `type`, a stated source before a
-    /// derived one; `null` where none.
+    /// The value of the identifier of `type` the wire stated (`fix`), else
+    /// the first another named source stated in key order, else the one
+    /// stated under no source (`base`), else the derived one; `null` where
+    /// none.
     #[napi]
     pub fn get(&self, kind: String) -> Result<Option<String>> {
         Ok(self.inner.get(&type_of(&kind)?).map(str::to_owned))
     }
 
-    /// The first identifier of `type`, a stated source before a derived one;
-    /// `null` where none.
+    /// The identifier of `type` the wire stated (`fix`), else the first
+    /// another named source stated in key order, else the one stated under
+    /// no source (`base`), else the derived one; `null` where none.
     #[napi]
     pub fn get_identifier(&self, kind: String) -> Result<Option<JsIdentifier>> {
         Ok(self

@@ -111,6 +111,40 @@ fn a_hand_edited_document_is_refused_where_it_stops() {
     }
 }
 
+/// A hand-edited word that is not what its key holds is refused naming the
+/// key, what it should be and the word it holds - a role that is no
+/// `PartyRole(452)` code as the writer refuses it.
+#[test]
+fn a_hand_edited_word_that_is_not_what_its_key_holds_is_refused_naming_the_key() {
+    for (stored, expected) in [
+        (
+            r#"[{"map":"identifiers","key":"executingtrader","role":"a role"}]"#,
+            r#"expected "role" to be a PartyRole code, got "a role""#,
+        ),
+        (
+            r#"[{"map":"trades","key":"orderid"}]"#,
+            r#"expected "map" to be an identifier map, got "trades""#,
+        ),
+        (
+            r#"[{"map":"identifiers","key":"isinnumber"}]"#,
+            r#"expected "key" to be the folded word of an identifier type, got "isinnumber""#,
+        ),
+    ] {
+        let mut field = DataType::utf8().nullable_field("partyid");
+        field.as_fix_mut().set_tag(448).expect("a tag");
+        field
+            .insert_metadata("FIX:idmap", stored)
+            .expect("inert text");
+        let refused = field
+            .as_fix()
+            .idmap()
+            .find_map(Result::err)
+            .expect("refused")
+            .to_string();
+        assert!(refused.contains(expected), "{stored}: {refused}");
+    }
+}
+
 #[test]
 fn a_registry_takes_a_role_on_partyid_alone() {
     let mut registry = FixRegistry::new();

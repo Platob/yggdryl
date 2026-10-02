@@ -413,8 +413,12 @@ pub const CONVERSATIONID_TAG_NAME: (i32, &str) = (65_045, "conversationid");
 
 /// The tag and name carrying the currency pair the message is about,
 /// canonical `CCY1/CCY2`: the `FOREX` entry of the message's security
-/// identifiers, a view of `get_securityids()`, detected off `Symbol(55)`
-/// where the message states no other class; row-stated when written.
+/// identifiers, a view of `get_securityids()` - the pair `get` answered
+/// when the row was written - detected off `Symbol(55)`, from `derived`,
+/// where the message states no other class. Read back from a row with no
+/// `securityids` column, a pair the message's reading answers states
+/// nothing, the pair its symbol names where nothing else names one is that
+/// detection, and any other is stated from `base`, leading its type.
 pub const FOREXCODE_TAG_NAME: (i32, &str) = (65_046, "forexcode");
 
 /// The tag and name carrying the part of the quantity an iceberg keeps from
@@ -904,7 +908,8 @@ const CRATED: [Crated; 49] = [
     ),
     Crated::event(EXPRUNIX_TAG_NAME, EventColumn::ExprUnix).saying(
         "When the message stops being good: ExpireTime, else \
-         ValidUntilTime, ExpireDate or MaturityDate; a newer explicit \
+         ValidUntilTime, else the end of the day ExpireDate names; \
+         MaturityDate is the instrument's, no deadline; a newer explicit \
          deadline replaces the one its chain carried.",
     ),
     Crated::event(PREVUNIX_TAG_NAME, EventColumn::PrevUnix),
@@ -1132,8 +1137,12 @@ const CRATED: [Crated; 49] = [
         "Forex Code",
         "The currency pair the message is about, canonical CCY1/CCY2: the \
          FOREX entry of the message's security identifiers, a view of \
-         get_securityids(); detected off Symbol(55) where the message states \
-         no other class; row-stated when written.",
+         get_securityids() - the pair get answered when the row was written - \
+         detected off Symbol(55), from derived, where the message states no \
+         other class. Read back from a row with no securityids column, a pair \
+         the message's reading answers states nothing, the pair its symbol \
+         names where nothing else names one is that detection, and any other \
+         is stated from base, leading its type.",
     ),
     Crated::own(
         BLOOMBERGCODE_TAG_NAME,

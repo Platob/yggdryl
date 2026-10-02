@@ -178,7 +178,7 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
 
 | Verb | Rule |
 | --- | --- |
-| `get_securityids` | the map, sorted by its key `src:type`; `get(&IdType::Isin)` the value a source stated before a derived one, `get_from(&IdSource::Fix, &IdType::Isin)` one source's |
+| `get_securityids` | the map, sorted by its key `src:type`; `get(&IdType::Isin)` the value the wire stated (`fix`), else another named source's in key order, else `base`'s, else the derived one ([Lookups](identifier.md#contract)), `get_from(&IdSource::Fix, &IdType::Isin)` one source's |
 | `get_isincode` | provided: `get_securityids().get(&IdType::Isin)`, borrowed - a projection of the set, never a second store; the `isincode` column writes it and a stated cell fills an absent `isin` from `base` ([Market data](market-data.md#arrow)) |
 | `set_securityids(ids, overwrite)` | with `overwrite`, replaces the whole map, derived identifiers included, `Identifiers::new()` unsaying it; without, each identifier fills an absent key as `insert_securityid` does |
 | `insert_securityid(id)` | fills an absent source and type, never a held one, and takes back a `derived` identifier of its type - a statement answers before a derivation; one from `derived` is a derivation; `ticker` is refused ([`IdType::check_security`](identifier.md#per-type-value-checks)); `true` if it added |

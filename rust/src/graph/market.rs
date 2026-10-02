@@ -954,14 +954,11 @@ fn merge_operation_event<E: Event + Operation>(
 /// as a derived one, and an instrument key's market and currency where
 /// the element states none; a CFI code as the classification.
 fn fill_symbol<E: Market + ?Sized>(this: &mut E, code: SymbolCode) {
-    let derive = |this: &mut E, kind: IdType, code: &str| {
-        this.derive_securityid(&kind, code);
-    };
+    if let Some((kind, id)) = code.identifier() {
+        this.derive_securityid(&kind, id);
+    }
     match code {
-        SymbolCode::Instrument { isin, mic, ccy } => {
-            if let Some(isin) = isin {
-                derive(this, IdType::Isin, isin.as_str());
-            }
+        SymbolCode::Instrument { mic, ccy, .. } => {
             if mic.is_some() {
                 this.set_miccode(mic, false);
             }
@@ -969,13 +966,8 @@ fn fill_symbol<E: Market + ?Sized>(this: &mut E, code: SymbolCode) {
                 this.set_currency(ccy, false);
             }
         }
-        SymbolCode::Isin(isin) => derive(this, IdType::Isin, isin.as_str()),
-        SymbolCode::Figi(figi) => derive(this, IdType::Figi, figi.as_str()),
-        SymbolCode::Cusip(cusip) => derive(this, IdType::Cusip, cusip.as_str()),
-        SymbolCode::Sedol(sedol) => derive(this, IdType::Sedol, sedol.as_str()),
-        SymbolCode::Ric(ric) => derive(this, IdType::Ric, ric.as_str()),
-        SymbolCode::Bloomberg(bbg) => derive(this, IdType::Bloomberg, bbg.as_str()),
         SymbolCode::Cfi(cfi) => this.set_cficode(Some(cfi), false),
+        _ => {}
     }
 }
 

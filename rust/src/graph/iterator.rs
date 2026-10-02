@@ -28,9 +28,9 @@ mod sealed {
     /// What a walk needs of an element beyond [`Element`]: sealed, so only
     /// `E: Event + Operation + Clone` and [`MarketData`] can name it. Every
     /// `E: Event + Operation + Clone` answers through its own traits; a
-    /// `MarketData` answers through its four operation-event variants and
-    /// is not walked otherwise, so any other variant is yielded as it came
-    /// and never enters the live map.
+    /// `MarketData` answers through its four operation-event variants and a
+    /// FIX message, and is not walked otherwise, so any other variant is
+    /// yielded as it came and never enters the live map.
     pub trait Walked: Element + Clone {
         /// [`Event::get_currunix`]; `None` for an element that states no
         /// instant, which the walk yields where it reads it.
@@ -242,9 +242,11 @@ mod sealed {
                 .parent_of(kind)
                 .map(|(base, _)| base)
         }
-        /// Restates through the leaf's own [`Event::restating`]: a chain
-        /// holds one category, so the live element is the same walked
-        /// variant; else this statement stands as it is.
+        /// Restates through the leaf's own [`Event::restating`] - a FIX
+        /// message through its own, as it follows through its own
+        /// `with_previous` - where the live element is the same walked
+        /// variant; a statement over another leaf of its category stands as
+        /// it is, as it does where it follows one.
         fn walked_restating(self, live: &Self) -> Self {
             match (self, live) {
                 (Self::OrderEvent(this), Self::OrderEvent(live)) => {
@@ -259,6 +261,7 @@ mod sealed {
                 (Self::TradeEvent(this), Self::TradeEvent(live)) => {
                     Self::TradeEvent(this.restating(live))
                 }
+                (Self::Fix(this), Self::Fix(live)) => Self::Fix(Box::new((*this).restating(live))),
                 (this, _) => this,
             }
         }
@@ -346,15 +349,20 @@ enum Source<E, I> {
 /// finalizes to the same identity, and the chain grows by nothing. One
 /// arriving under the identity a statement the chain moved past at the live
 /// element's own instant arrived under is yielded restating that statement,
-/// and the chain stays where it moved.
+/// and the chain stays where it moved. A chain a step ends keeps that step
+/// and the statements it moved past at the step's instant the same way, so
+/// one arriving under the identity one of them arrived under is yielded
+/// restating it and the chain stays ended, until the walk reads a later
+/// instant.
 ///
 /// Opened over elements the caller says are sorted, the walk reads them as
 /// they come and yields each as it is read; over elements the caller does
 /// not, it collects them first and sorts them by their own order, stably,
 /// so two neither after nor before one another keep the order they arrived
 /// in. Either way each source element is cloned twice at most: once to hold
-/// the live one, once to keep an element its predecessor refuses. Expiration
-/// and grid views are owned snapshots and necessarily clone their live event.
+/// the live one, or the step that ended its chain, once to keep an element
+/// its predecessor refuses. Expiration and grid views are owned snapshots
+/// and necessarily clone their live event.
 ///
 /// A live element with a finite expiration produces one final owned event at
 /// that exact instant in the `EXPIRED` state, then retires. Replacing or
@@ -383,9 +391,10 @@ enum Source<E, I> {
 /// The walk reads any `E: Event + Operation + Clone` - a typed event, a
 /// FIX lifecycle message - and [`MarketData`](super::MarketData): of a
 /// `MarketData`, the operation events (`OrderEvent`, `QuoteEvent`,
-/// `ExecutionEvent`, `TradeEvent`) chain, and every other variant is yielded
-/// unchanged where it stands - a dated one at its instant, an undated one
-/// where it is read - and never stands live.
+/// `ExecutionEvent`, `TradeEvent`) and a FIX message (`Fix`) chain, each
+/// following and restating through its own reading, and every other
+/// variant is yielded unchanged where it stands - a dated one at its
+/// instant, an undated one where it is read - and never stands live.
 ///
 /// ```
 /// use yggdryl::graph::{Element, EventIterator, Event, OrderEvent};
@@ -481,6 +490,14 @@ pub struct EventIterator<E, I> {
     /// The latest source or emitted deadline reached. It bounds a grid at
     /// EOF after the last finite deadline is removed from the schedule.
     watermark: Option<i64>,
+    /// The statements of the chains a step ended at `retired_at`, each under
+    /// the identity it arrived under and beside the chain it stood in: the
+    /// step that ended it and the statements the chain moved past at that
+    /// instant. A sorted walk reads another statement of one of them nowhere
+    /// but at that instant, so they are dropped once it reads a later one.
+    retired: Vec<(Uuid, Chain, E)>,
+    /// The instant the retired statements were stated at.
+    retired_at: Option<i64>,
     /// The places the walk gives at each instant: its expirations always,
     /// and where it places what it reads, every source element too.
     sequence: InstantSequence,
@@ -537,6 +554,8 @@ where
             bases: HashMap::new(),
             names_of: HashMap::new(),
             expirations: BTreeSet::new(),
+            retired: Vec::new(),
+            retired_at: None,
             snapshot_ns: 0,
             next_snapshot: None,
             snapshot_at: None,
@@ -686,8 +705,25 @@ where
             if let Some(deadline) = element.walked_exprunix() {
                 self.expirations.insert((deadline, identity));
             }
-        } else {
-            self.retire(identity);
+        } else if let Some(live) = self.retire(identity) {
+            // The step that ends the chain, and the statements it moved past
+            // at this instant, stay the chain's until the walk passes it.
+            let instant = element.walked_currunix();
+            if self.retired_at != instant {
+                self.retired.clear();
+                self.retired_at = instant;
+            }
+            if live.element.walked_currunix() == instant {
+                self.retired.extend(
+                    live.passed
+                        .into_iter()
+                        .map(|(held, statement)| (held, identity, statement)),
+                );
+                if live.arrived != arrived {
+                    self.retired.push((live.arrived, identity, live.element));
+                }
+            }
+            self.retired.push((arrived, identity, element.clone()));
         }
     }
 
@@ -822,23 +858,41 @@ where
 
     /// States one source element against the live generation it reaches.
     fn walk_source(&mut self, mut element: E) -> E {
+        if self
+            .retired_at
+            .is_some_and(|at| element.walked_currunix().is_some_and(|unix| unix > at))
+        {
+            self.retired.clear();
+            self.retired_at = None;
+        }
         if !element.is_walked() {
             return element;
         }
         let identity = self.identity_of(&element);
         let arrived = element.get_curruuid();
-        let passed = self.alive.get(&identity).and_then(|live| {
-            live.passed
-                .iter()
-                .find(|(held, _)| *held == arrived)
-                .map(|(_, statement)| statement)
-        });
-        if let Some(statement) = passed {
-            // A statement the chain moved past at this instant, logged
-            // again: another statement of that one, and the chain stays
-            // where it moved.
+        // A chain that ended at this instant goes by no name and no live
+        // identity, so its statements are found by the identity they
+        // arrived under alone.
+        let kind = element.walked_kind();
+        let passed = self
+            .retired
+            .iter()
+            .find(|(held, chain, _)| *held == arrived && chain.1 == kind)
+            .map(|(_, chain, statement)| (*chain, statement))
+            .or_else(|| {
+                self.alive.get(&identity).and_then(|live| {
+                    live.passed
+                        .iter()
+                        .find(|(held, _)| *held == arrived)
+                        .map(|(_, statement)| (identity, statement))
+                })
+            });
+        if let Some((chain, statement)) = passed {
+            // A statement the chain moved past at this instant - or the
+            // step that ended it - logged again: another statement of that
+            // one, and the chain stays where it moved.
             let mut element = element.walked_restating(statement);
-            joined(&mut element, identity);
+            joined(&mut element, chain);
             return element;
         }
         let mut element = match self.alive.get(&identity) {

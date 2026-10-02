@@ -58,7 +58,9 @@ impl PyIdentifier {
     /// `sedol` or `figi`, a parentage word (`parent`, `orig`, `origin`,
     /// `original`) right before it kept inside the type. The source is the
     /// rest of the folded key with its dots trimmed at both ends and kept
-    /// inside, `base` where nothing is left.
+    /// inside, `base` where nothing is left or where it folds to a source
+    /// the crate reserves - `base`, `derived`, `fix` - which names no
+    /// namespace: `Derived_ISIN` is `base:isin`.
     ///
     /// `firm.x.ParentOrderID` is `firm.x:parentorderid`, `OMS_InstrumentID`
     /// `oms:instrumentid`, `marketorderid` `market:orderid`, `ISINCode`
@@ -164,15 +166,18 @@ impl PyIdentifiers {
         }
     }
 
-    /// The value of the first identifier of `type`, a stated source before
-    /// a derived one; `None` where none.
+    /// The value of the identifier of `type` the wire stated (`fix`), else
+    /// the first another named source stated in key order, else the one
+    /// stated under no source (`base`), else the derived one; `None` where
+    /// none.
     #[pyo3(signature = (r#type))]
     fn get(&self, r#type: &str) -> PyResult<Option<&str>> {
         Ok(self.inner.get(&type_of(r#type)?))
     }
 
-    /// The first identifier of `type`, a stated source before a derived
-    /// one; `None` where none.
+    /// The identifier of `type` the wire stated (`fix`), else the first
+    /// another named source stated in key order, else the one stated under
+    /// no source (`base`), else the derived one; `None` where none.
     #[pyo3(signature = (r#type))]
     fn get_identifier(&self, r#type: &str) -> PyResult<Option<PyIdentifier>> {
         Ok(self

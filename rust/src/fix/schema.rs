@@ -1269,17 +1269,19 @@ fn entry_error(
 /// The residual entries one `fixentries` cell holds, in key order: the
 /// inverse of [`entries_map`]. A value opening the way JSON does is read as
 /// JSON, every other one as the text it states. A key is refused unless it is
-/// a resolved field's `tag:name`, since a key no dictionary resolved lives in
-/// `metadata`, and so is JSON that does not decode: a message rebuilt with a
-/// pair missing is a different message. The text is copied here, because a
-/// row is where a message stops being a range of a line.
+/// a resolved field's `tag:name` ([`is_field_key`]), since a key no
+/// dictionary resolved lives in `metadata`, and so is JSON that does not
+/// decode: a message rebuilt with a pair missing is a different message. The
+/// text is copied here, because a row is where a message stops being a range
+/// of a line.
 ///
 /// # Errors
 ///
 /// Returns [`crate::Error::InvalidRecord`] at the entry's path for a cell
-/// that is not a map of text, a key that is not `tag:name` with a positive
-/// tag, or a value that does not decode.
+/// that is not a map of text, a key [`is_field_key`] refuses, or a value
+/// that does not decode.
 fn entries_from_map(
+    registry: &FixRegistry,
     value: &crate::Scalar,
     path: &crate::path::Path<'_>,
 ) -> Result<Vec<super::FixEntry>> {
@@ -1296,7 +1298,7 @@ fn entries_from_map(
             .ok_or_else(|| entry_error(path, "a text key", key.kind()))?;
         let here = path.field(key);
         let (tag, name) = parse_key(key, &here)?;
-        if tag == 0 {
+        if !is_field_key(registry, tag, name) {
             return Err(entry_error(&here, "a resolved field's tag:name", key));
         }
         if text.is_null() {
@@ -1314,6 +1316,24 @@ fn entries_from_map(
         });
     }
     Ok(entries)
+}
+
+/// Whether a residual key's tag and name are one field: a positive tag, and
+/// the field its name reaches - which [`child_from_entry`] rebuilds the
+/// entry as - answering to that tag, as its own or an alternate one or as
+/// the counter heading the group it is. A name reaching no field is a tagged
+/// child's own, rebuilt under it. A tag beside another field's name would
+/// rebuild that field while the tag's own column stood aside for it.
+fn is_field_key(registry: &FixRegistry, tag: i32, name: &str) -> bool {
+    tag != 0
+        && registry.get_field_by_name(name).is_none_or(|named| {
+            let (own, counter) = tag_and_counter(registry, named);
+            own == Some(tag)
+                || counter == Some(tag)
+                || registry
+                    .get_field_by_tag(tag)
+                    .is_some_and(|tagged| std::ptr::eq(tagged, named))
+        })
 }
 
 /// The content row an arrival record rebuilds: one child per entry, typed
@@ -2112,8 +2132,13 @@ impl super::FixMsg {
     ///
     /// Returns the schema's refusal when the row does not fit, or
     /// [`crate::Error::InvalidRecord`] at the entry's path when the entries
-    /// column holds a key that is not a resolved field's `tag:name` or a value
-    /// whose JSON does not decode.
+    /// column holds a key that is not a resolved field's `tag:name` - a name
+    /// reaching a field its tag does not answer to, as its own or as the
+    /// counter heading the group it names - or a value whose JSON does not
+    /// decode,
+    /// and at the column's path when an identifier column - `securityids`,
+    /// `identifiers`, `partyids` - files an identifier under a key that is
+    /// not its `src:type`, or holds one its type refuses.
     pub fn from_row(
         registry: Arc<FixRegistry>,
         schema: &Field,
@@ -2150,7 +2175,11 @@ impl super::FixMsg {
         for ((column, planned), value) in schema.fields().iter().zip(plan.iter()).zip(held) {
             if column.name() == FIXENTRIES_COLUMN {
                 let root = crate::path::Path::root();
-                residual = Some(entries_from_map(value, &root.field(FIXENTRIES_COLUMN))?);
+                residual = Some(entries_from_map(
+                    &registry,
+                    value,
+                    &root.field(FIXENTRIES_COLUMN),
+                )?);
                 continue;
             }
             match planned.tag {

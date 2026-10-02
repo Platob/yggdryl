@@ -9,6 +9,9 @@
 
 use std::fmt;
 
+use smol_str::format_smolstr;
+
+use crate::Error;
 use crate::text::elide_to;
 
 /// Byte budget for one caller-supplied name inside a rendered path.
@@ -85,6 +88,18 @@ impl<'a> Path<'a> {
         let result = self.write_into(&mut rendered);
         debug_assert!(result.is_ok(), "writing into a String is infallible");
         rendered
+    }
+
+    /// A record refusal located under `$` - a leaf's own validation knows no
+    /// place above it - restated under this path; any other error as it was.
+    pub fn reroot(&self, error: Error) -> Error {
+        match error {
+            Error::InvalidRecord { path, reason } => Error::InvalidRecord {
+                path: format_smolstr!("{self}{}", path.strip_prefix('$').unwrap_or(&path)),
+                reason,
+            },
+            other => other,
+        }
     }
 
     /// Stream the steps below the root, outermost first, into `target`.

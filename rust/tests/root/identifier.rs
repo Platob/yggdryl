@@ -301,7 +301,7 @@ fn a_key_is_read_for_the_identifier_name_it_ends_with_and_the_source_before_it()
         "omsdealer:parentorderid=P-1"
     );
     assert_eq!(read("OMSUserID", "U-1"), "oms:userid=U-1");
-    assert_eq!(read("fix.ClOrdID", "C-1"), "fix:clordid=C-1");
+    assert_eq!(read("oms.ClOrdID", "C-1"), "oms:clordid=C-1");
     assert_eq!(read("OrderID", "O-1"), "base:orderid=O-1");
     assert_eq!(
         read(".OrderID", "O-1"),
@@ -324,9 +324,27 @@ fn a_key_is_read_for_the_identifier_name_it_ends_with_and_the_source_before_it()
     assert_eq!(read("firm.isin", "us0378331005"), "firm:isin=US0378331005");
     assert_eq!(read("OrigClOrdID", "C-0"), "base:origclordid=C-0");
     assert_eq!(read("firm.OrigClOrdID", "C-0"), "firm:origclordid=C-0");
-    // The longest name the key ends with answers: `origclordid` is a name of
-    // its own, so the source is `my` and not `myorig`.
+    // The longest name the key ends with answers: `secondaryorderid` before
+    // `orderid`, `prevregtradeid` before `regtradeid` before `tradeid`.
+    assert_eq!(
+        read("OMSSecondaryOrderID", "V-1"),
+        "oms:secondaryorderid=V-1"
+    );
+    assert_eq!(
+        read("VenuePrevRegTradeID", "V-1"),
+        "venue:prevregtradeid=V-1"
+    );
+    assert_eq!(read("VenueRegTradeID", "V-1"), "venue:regtradeid=V-1");
+    assert_eq!(
+        read("SecondaryFirmTradeID", "V-1"),
+        "base:secondaryfirmtradeid=V-1"
+    );
+    // `origclordid` is a name of its own, so the source is `my` and not
+    // `myorig`.
     assert_eq!(read("MyOrigClOrdID", "C-0"), "my:origclordid=C-0");
+    // Digits belong to the source, and case never matters.
+    assert_eq!(read("Desk7_ClOrdID", "V-1"), "desk7:clordid=V-1");
+    assert_eq!(read("oMs.ClOrDiD", "V-1"), "oms:clordid=V-1");
     // The identifier of a key a whole security name spells is that type from
     // `base`, with a leading # dropped and every alias of its name.
     assert_eq!(read("ISINCode", "US0378331005"), "base:isin=US0378331005");
@@ -342,6 +360,77 @@ fn a_key_is_read_for_the_identifier_name_it_ends_with_and_the_source_before_it()
         "fix:clordid=C-1",
         "an explicit key reads as itself"
     );
+}
+
+/// A source the crate reserves - `base`, `derived`, `fix` - spelled before
+/// the name a key ends with names no namespace: the key reads from `base`,
+/// as a whole security name does. An explicit `src:type` keeps the source it
+/// spells.
+#[test]
+fn a_reserved_source_before_the_name_a_key_ends_with_reads_as_none() {
+    let read = |key: &str, value: &str| Identifier::from_key(key, value).map(|id| id.to_string());
+    for key in [
+        "Derived_ISIN",
+        "DERIVED.ISIN",
+        "FIX.ISIN",
+        "fix_isin",
+        "base.isin",
+        ".derived.isin",
+    ] {
+        assert_eq!(
+            read(key, "US0378331005").as_deref(),
+            Some("base:isin=US0378331005"),
+            "{key}"
+        );
+    }
+    assert_eq!(
+        read("Derived.InstrumentID", "dbi;X").as_deref(),
+        Some("base:instrumentid=dbi;X")
+    );
+    assert_eq!(
+        read("fix.ClOrdID", "C-1").as_deref(),
+        Some("base:clordid=C-1")
+    );
+    // A source that only starts like a reserved one is a source of its own.
+    assert_eq!(
+        read("fixed.ClOrdID", "C-1").as_deref(),
+        Some("fixed:clordid=C-1")
+    );
+    assert_eq!(
+        read("derived:isin", "US0378331005").as_deref(),
+        Some("derived:isin=US0378331005")
+    );
+    assert_eq!(
+        read("fix:isin", "US0378331005").as_deref(),
+        Some("fix:isin=US0378331005")
+    );
+    assert_eq!(
+        read("fix:clordid", "C-1").as_deref(),
+        Some("fix:clordid=C-1")
+    );
+}
+
+/// A source and a type are each bounded as a word is, never the key they
+/// spell together: a key folding past one word's width names its identifier
+/// as its explicit spelling does.
+#[test]
+fn a_key_whose_source_and_type_each_fit_a_word_names_its_identifier() {
+    let key = "venue.desk.bridge.namespace.of.forty.bytes.SecondaryIndividualAllocID";
+    let read = Identifier::from_key(key, "A-1")
+        .expect("a 42-byte source and a 26-byte type, each within 64 bytes");
+    assert_eq!(
+        read.to_string(),
+        "venue.desk.bridge.namespace.of.forty.bytes:secondaryindividualallocid=A-1"
+    );
+    assert_eq!(Identifier::from_key(&read.key(), "A-1"), Some(read));
+    // The widest source a word holds, before an identifier name.
+    let widest = "s".repeat(64);
+    assert_eq!(
+        Identifier::from_key(&format!("{widest}.OrderID"), "O-1").map(|id| id.to_string()),
+        Some(format!("{widest}:orderid=O-1"))
+    );
+    // A source past a word's width names nothing.
+    assert!(Identifier::from_key(&format!("{widest}s.OrderID"), "O-1").is_none());
 }
 
 #[test]
@@ -387,8 +476,8 @@ fn a_parentage_word_before_the_name_stays_part_of_the_type() {
             Some((IdType::TradeId, 1)),
         ),
         (
-            "fix.OrigTradeID",
-            "fix:origtradeid=T-1",
+            "firm.OrigTradeID",
+            "firm:origtradeid=T-1",
             Some((IdType::TradeId, 1)),
         ),
         // A word that names no parent stays part of the type all the same.
@@ -426,7 +515,8 @@ fn a_parentage_word_before_the_name_stays_part_of_the_type() {
 #[test]
 fn a_key_that_names_no_identifier_or_another_instruments_security_is_none() {
     // Another instrument's code is no identifier of this one: a security type
-    // is refused where the key opens with the prefix of another instrument.
+    // is refused where another instrument's word opens the key or stands
+    // just before the type, a namespace in front of it or not.
     for key in [
         "underlyingisin",
         "UnderlyingISIN",
@@ -438,6 +528,10 @@ fn a_key_that_names_no_identifier_or_another_instruments_security_is_none() {
         "benchmark.isin",
         "underlying.instrumentid",
         "UnderlyingSecurityID",
+        "OMS_UnderlyingISIN",
+        "FIX.LegISIN",
+        "firm.x.ContraCUSIP",
+        "venue.benchmark.isin",
     ] {
         assert!(
             Identifier::from_key(key, "US0378331005").is_none(),
@@ -474,6 +568,9 @@ fn a_key_that_names_no_identifier_or_another_instruments_security_is_none() {
         "",
         "   ",
         "#",
+        // A byte no word holds names nothing.
+        "Ordre_Num\u{e9}ro_OrderID",
+        "OMS\tOrderID",
     ] {
         assert!(
             Identifier::from_key(key, "X-1").is_none(),

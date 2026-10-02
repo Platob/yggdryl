@@ -65,3 +65,34 @@ fn an_explicit_root_token_replaces_the_dollar() {
     let child = root.field("value");
     assert_eq!(child.render_from("record"), "record.value");
 }
+
+#[test]
+fn a_record_refusal_located_under_the_root_is_restated_under_a_path() {
+    let root = Path::root();
+    let column = root.field("securityids");
+    let restated = |path: &str| {
+        let error = yggdryl::Error::InvalidRecord {
+            path: path.into(),
+            reason: "expected the key base:isin".into(),
+        };
+        match column.reroot(error) {
+            yggdryl::Error::InvalidRecord { path, reason } => {
+                assert_eq!(reason, "expected the key base:isin");
+                path
+            }
+            other => panic!("expected a record refusal, got {other:?}"),
+        }
+    };
+    assert_eq!(restated("$['base:isin']"), "$.securityids['base:isin']");
+    assert_eq!(restated("$[2]"), "$.securityids[2]");
+    assert_eq!(restated("$"), "$.securityids");
+    // Any other refusal is passed on as it was.
+    let other = yggdryl::Error::InvalidDataType {
+        kind: "identifier",
+        reason: "expected a word".into(),
+    };
+    assert!(matches!(
+        column.reroot(other),
+        yggdryl::Error::InvalidDataType { kind: "identifier", reason } if reason == "expected a word"
+    ));
+}

@@ -2765,14 +2765,14 @@ impl FixCodec {
                 (None, None) => None,
             }
         };
-        let message = FixMsg::from_built(
+        let (message, viewed) = FixMsg::from_built(
             Arc::clone(&self.registry),
             built,
             carrier.as_ref().or(self.default_sending_time.as_ref()),
             extras.source,
             self.official_time_delay_ns(),
         )?;
-        Ok(super::enrich::enrich(&self.registry, message))
+        Ok(super::enrich::enrich(&self.registry, message, viewed))
     }
 
     /// Reads one row a data field carried into the line it arrived on.

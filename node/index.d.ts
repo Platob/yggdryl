@@ -4204,7 +4204,9 @@ export declare class Identifier {
    * `sedol` or `figi`, a parentage word (`parent`, `orig`, `origin`,
    * `original`) right before it kept inside the type. The source is the
    * rest of the folded key with its dots trimmed at both ends and kept
-   * inside, `base` where nothing is left.
+   * inside, `base` where nothing is left or where it folds to a source
+   * the crate reserves - `base`, `derived`, `fix` - which names no
+   * namespace: `Derived_ISIN` is `base:isin`.
    *
    * `firm.x.ParentOrderID` is `firm.x:parentorderid`, `OMS_InstrumentID`
    * `oms:instrumentid`, `marketorderid` `market:orderid`, `ISINCode`
@@ -4244,13 +4246,16 @@ export declare class Identifiers {
   /** The map `ids` fill, the first identifier of a key standing. */
   constructor(ids?: Array<Identifier> | undefined | null)
   /**
-   * The value of the first identifier of `type`, a stated source before a
-   * derived one; `null` where none.
+   * The value of the identifier of `type` the wire stated (`fix`), else
+   * the first another named source stated in key order, else the one
+   * stated under no source (`base`), else the derived one; `null` where
+   * none.
    */
   get(kind: string): string | null
   /**
-   * The first identifier of `type`, a stated source before a derived one;
-   * `null` where none.
+   * The identifier of `type` the wire stated (`fix`), else the first
+   * another named source stated in key order, else the one stated under
+   * no source (`base`), else the derived one; `null` where none.
    */
   getIdentifier(kind: string): Identifier | null
   /** The value of the identifier keyed `src:type`; `null` where none. */

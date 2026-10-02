@@ -583,6 +583,112 @@ fn a_statement_logged_again_after_its_chain_moved_on_at_its_instant_restates_it(
 }
 
 #[test]
+fn a_statement_logged_again_after_the_step_that_ended_its_chain_at_its_instant_restates_it() {
+    // An acknowledgement, the fill that ended its chain at the same
+    // instant, then each logged again: statements of the two, not a chain
+    // started afresh.
+    let mut ack = named("O-100", 20, &EXEC_ID, "E-1");
+    ack.set_state(State::New);
+    ack.finalize();
+    let mut fill = named("O-100", 20, &EXEC_ID, "E-2");
+    fill.set_state(State::Filled);
+    fill.finalize();
+    let arrived = vec![
+        incarnation("O-100", 10),
+        ack.clone(),
+        fill.clone(),
+        ack.clone(),
+        fill,
+        incarnation("O-100", 30),
+    ];
+    let walked: Vec<OrderEvent> = EventIterator::new(arrived, true).collect();
+    let [_, first, fill, again, filled_again, next] = walked.as_slice() else {
+        panic!("six statements, not {}", walked.len())
+    };
+    assert_eq!(fill.get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(again, first, "the acknowledgement's own identity and place");
+    assert_eq!(filled_again, fill, "the fill's own identity and place");
+    // The chain stays ended: the next statement starts one afresh.
+    assert_eq!(next.get_prevuuid(), None);
+
+    // The walk keeps them only while it reads that instant: one read after
+    // a later instant is out of order, and restates nothing.
+    let mut walk = EventIterator::new(
+        vec![
+            incarnation("O-100", 10),
+            ack.clone(),
+            stating("O-100", 20, State::Filled),
+            incarnation("O-200", 30),
+            ack,
+        ],
+        true,
+    );
+    let first = walk.nth(1).expect("the acknowledgement");
+    let late = walk.nth(2).expect("the acknowledgement, read late");
+    assert_eq!(late.get_prevuuid(), None);
+    assert_ne!(late.get_curruuid(), first.get_curruuid());
+}
+
+/// A FIX message held as market data walks as itself: a twin of the live
+/// message, and a statement logged again after its chain moved on at its
+/// instant, restate the message they repeat through its own reading.
+#[test]
+fn a_market_data_walk_restates_a_fix_twin_and_a_fix_statement_logged_again() {
+    use yggdryl::graph::MarketData;
+    use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind};
+
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let folder = yggdryl::local::LocalFolder::new(root).expect("the local seed path");
+    let codec = FixCodec::new(std::sync::Arc::new(
+        FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
+    ));
+    // Walked as market data, read back as the messages the walk yielded.
+    let walked = |lines: &[&str]| -> Vec<FixMsg> {
+        let arrived: Vec<MarketData> = lines
+            .iter()
+            .flat_map(|line| codec.parse_line(line.as_bytes()).expect("a readable line"))
+            .map(|message| MarketData::from(message.expect("every frame parses")))
+            .collect();
+        EventIterator::new(arrived, true)
+            .filter(|held| held.marketdatakind() == MarketDataKind::Order)
+            .map(|held| FixMsg::try_from(held).expect("a FIX message walks as itself"))
+            .collect()
+    };
+    let order =
+        "8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30.000|11=A1|55=AAPL|54=1|38=100|10=0|";
+    let ack = |sequence: u64| {
+        format!(
+            "8=FIX.4.4|35=8|49=T|56=S|34={sequence}|52=20260102-10:15:30.500|11=A1|37=O1|150=0|39=0|54=1|55=AAPL|10=0|"
+        )
+    };
+    let fill = "8=FIX.4.4|35=8|49=T|56=S|34=2|52=20260102-10:15:30.500|11=A1|37=O1|17=E1|150=F|39=1|14=10|151=90|31=10|32=10|54=1|55=AAPL|10=0|";
+
+    // The acknowledgement delivered again under another sequence: a twin.
+    let twin = walked(&[order, &ack(1), &ack(2)]);
+    let [order_walked, first, again] = twin.as_slice() else {
+        panic!("three order messages, not {}", twin.len())
+    };
+    assert_eq!(first.get_prevuuid(), Some(order_walked.get_curruuid()));
+    assert_eq!(
+        (again.get_curruuid(), again.get_prevuuid()),
+        (first.get_curruuid(), first.get_prevuuid()),
+        "the twin is the acknowledgement again"
+    );
+
+    // Delivered again after the fill that moved its chain on at its instant.
+    let passed = walked(&[order, &ack(1), fill, &ack(3)]);
+    let [_, first, fill, again] = passed.as_slice() else {
+        panic!("four order messages, not {}", passed.len())
+    };
+    assert_eq!(fill.get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(
+        (again.get_curruuid(), again.get_prevuuid()),
+        (first.get_curruuid(), first.get_prevuuid()),
+        "the acknowledgement again, not a step after the fill"
+    );
+}
+
+#[test]
 fn an_element_under_no_live_identity_follows_the_live_one_it_shares_a_name_with() {
     // An order placed under a `ClOrdID`, and a report of it that spells no
     // `OrderID` of its own: the report's cross element is its own identity,

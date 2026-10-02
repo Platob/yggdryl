@@ -1343,7 +1343,7 @@ fn validate_trade_for_write(trade: &TradeEvent, path: &Path<'_>) -> Result<()> {
         validate_operation_for_write(execution, &executions.child(Segment::Index(index)))?;
     }
     let canonical = TradeEvent::from_facts(trade.data().clone(), trade.executions().to_vec())
-        .map_err(|error| prefix_invalid(error, path))?;
+        .map_err(|error| path.reroot(error))?;
     if trade.data() == canonical.data() {
         return Ok(());
     }
@@ -1384,11 +1384,8 @@ fn validate_book_for_write(book: &BookEvent, path: &Path<'_>) -> Result<()> {
     for (index, execution) in book.executions().iter().enumerate() {
         validate_operation_for_write(execution, &executions.child(Segment::Index(index)))?;
     }
-    book.validate_parts()
-        .map_err(|error| prefix_invalid(error, path))?;
-    let canonical = book
-        .canonical_event()
-        .map_err(|error| prefix_invalid(error, path))?;
+    book.validate_parts().map_err(|error| path.reroot(error))?;
+    let canonical = book.canonical_event().map_err(|error| path.reroot(error))?;
     if book.event() == &canonical {
         return Ok(());
     }
@@ -2249,8 +2246,7 @@ impl Landed {
                 "expected the executions of a trade_event, got null",
             ));
         };
-        let trade = TradeEvent::from_facts(data, executions)
-            .map_err(|error| prefix_invalid(error, path))?;
+        let trade = TradeEvent::from_facts(data, executions).map_err(|error| path.reroot(error))?;
         self.check_operation_event(row, &trade, claims, path)?;
         Ok(trade)
     }
@@ -2300,7 +2296,7 @@ impl Landed {
         let deltas = Self::entries(self.deltas.as_ref(), DELTAS, row, path)?;
         let executions = self.executions(row, path)?.unwrap_or_default();
         let book = BookEvent::from_parts(event, alive, deltas, executions)
-            .map_err(|error| prefix_invalid(error, path))?;
+            .map_err(|error| path.reroot(error))?;
         claims.validate(&book, path)?;
         self.check_event(row, &book, path)?;
         self.check_market(row, &book, path)?;
@@ -2524,7 +2520,7 @@ impl Landed {
                 let Some(ids) = leaf.ids(row, path, column.name())? else {
                     continue;
                 };
-                let located = |error: Error| prefix_invalid(error, &path.field(column.name()));
+                let located = |error: Error| path.field(column.name()).reroot(error);
                 target.set_securityids(ids, true).map_err(located)?;
             } else if column == MarketColumn::IsinCode {
                 // A projection of `securityids`, read after it: it fills an
@@ -2631,7 +2627,7 @@ impl Landed {
                     let Some(ids) = leaf.ids(row, path, column.name())? else {
                         continue;
                     };
-                    let located = |error: Error| prefix_invalid(error, &path.field(column.name()));
+                    let located = |error: Error| path.field(column.name()).reroot(error);
                     if column == OperationColumn::Identifiers {
                         target.set_identifiers(ids, true).map_err(located)?;
                     } else {
@@ -3208,24 +3204,6 @@ impl FusedIterator for Rows {}
 /// `path`'s child `name`, rendered.
 fn at(path: &Path<'_>, name: &str) -> SmolStr {
     SmolStr::from(path.field(name).render())
-}
-
-/// An error a leaf's own validation located under `$`, restated under
-/// `path`.
-fn prefix_invalid(error: Error, path: &Path<'_>) -> Error {
-    match error {
-        Error::InvalidRecord {
-            path: inner,
-            reason,
-        } => {
-            let suffix = inner.strip_prefix('$').unwrap_or(inner.as_str());
-            Error::InvalidRecord {
-                path: format_smolstr!("{}{suffix}", path.render()),
-                reason,
-            }
-        }
-        other => other,
-    }
 }
 
 fn invalid(path: impl Into<SmolStr>, reason: impl Into<SmolStr>) -> Error {

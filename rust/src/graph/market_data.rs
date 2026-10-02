@@ -524,10 +524,10 @@ impl MarketData {
         }
     }
 
-    /// This value as an [`Event`] that is also an [`Operation`] - the four
+    /// This value as an [`Event`] that is also an [`Operation`] - the five
     /// kinds [`super::EventIterator`] walks: [`OrderEvent`], [`QuoteEvent`],
-    /// [`ExecutionEvent`] and [`TradeEvent`]. `None` for the other five,
-    /// which the walk yields unchanged, in place.
+    /// [`ExecutionEvent`], [`TradeEvent`] and a FIX message. `None` for the
+    /// other five, which the walk yields unchanged, in place.
     #[must_use]
     pub(crate) fn as_event_operation(&self) -> Option<&dyn EventOperation> {
         match self {
@@ -556,7 +556,7 @@ impl MarketData {
 
 /// An [`Event`](super::Event) that is also an [`Operation`](super::Operation):
 /// the seam [`EventIterator`](super::EventIterator) reads `MarketData`'s
-/// four walked kinds through.
+/// five walked kinds through.
 pub(crate) trait EventOperation: super::Event + super::Operation {}
 impl<T: super::Event + super::Operation + ?Sized> EventOperation for T {}
 

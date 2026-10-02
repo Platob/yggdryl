@@ -74,7 +74,7 @@ use crate::securityid::SecurityIdRegistry;
 use crate::warning::warned;
 use crate::{Error, Result, Scalar, Side, State, Uuid};
 
-use super::msg::FixMsg;
+use super::msg::{FixMsg, Viewed};
 use super::registry::FixRegistry;
 
 /// Fills what `msg` implies, leaving what it stated alone.
@@ -90,8 +90,11 @@ use super::registry::FixRegistry;
 /// refuses, such as an identifier whose check digit does not close, is
 /// dropped with a warning. A declared identifier that cannot spell text is
 /// left out rather than allowed to refuse the message. A step the rebuild
-/// refuses leaves the message as the step found it, beside a warning.
-pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
+/// refuses leaves the message as the step found it, beside a warning. The
+/// views of the security identifiers the line stated, `viewed`, are
+/// resolved once all of that is filled, before the one settle
+/// ([`FixMsg::resolve_views`]).
+pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> FixMsg {
     // Restatement first, and not as a step a caller may skip: every
     // derivation reads a child by its tag or its canonical name, and a child
     // stored under an alias is invisible until it has been canonicalized.
@@ -103,31 +106,37 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
             "{error}"
         );
     }
-    enrich_restated(registry, held)
+    enrich_restated(registry, held, viewed)
 }
 
 /// [`enrich`] past its restatement, for a message whose row is already
 /// restated: a message redated keeps the row it was built with, and what
 /// its new clock can move is a derivation and its identity - never a rule,
 /// which reads the row and not the clock.
-pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
+pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> FixMsg {
     let mut held = msg;
     // The currency pair a symbol names is detected first, so the rules read
     // the cells it fills.
     detect_forex(registry, &mut held);
-    enrich_detected(registry, held)
+    enrich_detected(registry, held, viewed)
 }
 
 /// [`enrich_restated`] past FX detection: the rules to their fixpoint, then
-/// the one settle. A `Symbol(55)` a rule filled is detected as a stated one
-/// is, and the rules run again over what its detection filled.
-fn enrich_detected(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
+/// the one settle. A `Symbol(55)` a rule fills is detected as a stated one
+/// is: landed alone and detected before any other rule reads the cells its
+/// detection fills, the rules then run over what detection filled.
+fn enrich_detected(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> FixMsg {
     let mut held = msg;
-    let symbol = held.states_indexed_tag(55);
-    super::native_derivations::fill_all(&mut held);
-    if !symbol && held.states_indexed_tag(55) && detect_forex(registry, &mut held) {
+    let landed = super::native_derivations::derive_all(&held);
+    if let Some(symbol) = landed.iter().find(|(tag, _)| *tag == 55).cloned()
+        && held.set_each([symbol]).is_ok()
+    {
+        detect_forex(registry, &mut held);
         super::native_derivations::fill_all(&mut held);
+    } else {
+        super::native_derivations::land(&mut held, landed);
     }
+    held.resolve_views(viewed, false);
     // Settled once, at the end: a built message arrives unsettled, a
     // restatement leaves it so and the writes above land unsettled - so
     // every message is settled here, once, after everything the pass wrote.
@@ -162,7 +171,7 @@ fn detect_forex(registry: &FixRegistry, msg: &mut FixMsg) -> bool {
 pub(super) fn redated(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
     let mut held = msg;
     if detect_forex(registry, &mut held) || super::native_derivations::lands_anything(&held) {
-        return enrich_detected(registry, held);
+        return enrich_detected(registry, held, Viewed::default());
     }
     held.settle_clock();
     held
@@ -1028,6 +1037,6 @@ pub mod internals {
             return msg;
         }
         let registry = Arc::clone(msg.registry());
-        super::enrich_restated(&registry, msg)
+        super::enrich_restated(&registry, msg, Default::default())
     }
 }

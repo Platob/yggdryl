@@ -44,6 +44,11 @@ pub const IDENTIFIER_KEY_WIDTH: usize = 64;
 /// The most bytes a value may be once trimmed.
 pub const IDENTIFIER_VALUE_WIDTH: usize = 64;
 
+/// The most bytes two words spell with one byte between them: a key's
+/// `src:type`, or a spelling folded whole before the word it ends with is
+/// split off it.
+pub(crate) const WORD_PAIR_WIDTH: usize = 2 * IDENTIFIER_KEY_WIDTH + 1;
+
 /// A word no [`IdType`] or [`IdSource`] member names, folded: lower-case
 /// ASCII letters, digits and `.`, one to [`IDENTIFIER_KEY_WIDTH`] bytes.
 /// Only a fold builds one, so a word a member names is never one.
@@ -65,16 +70,18 @@ const fn is_break(byte: u8) -> bool {
 
 /// `word` folded into `buffer`: trimmed, lower-cased and without the `_`,
 /// `-`, space and `#` a spelling breaks it with - `Executing Trader` and
-/// `executing_trader` are `executingtrader`.
+/// `executing_trader` are `executingtrader`. A word folds into
+/// [`IDENTIFIER_KEY_WIDTH`] bytes, a word pair into [`WORD_PAIR_WIDTH`].
 ///
 /// # Errors
 ///
-/// What the fold expected, where `word` folds to nothing, past
-/// [`IDENTIFIER_KEY_WIDTH`] bytes, or holds a byte other than an ASCII
-/// letter, a digit or `.`.
+/// What the fold expected, where `word` folds to nothing, past the
+/// buffer's bytes, or holds a byte other than an ASCII letter, a digit or
+/// `.`. The width the refusal names is a word's: a word pair's fold is read
+/// only for whether it held.
 pub(crate) fn fold_into<'buffer>(
     word: &str,
-    buffer: &'buffer mut [u8; IDENTIFIER_KEY_WIDTH],
+    buffer: &'buffer mut [u8],
 ) -> std::result::Result<&'buffer str, &'static str> {
     let mut len = 0;
     for byte in word.trim().bytes() {
@@ -349,10 +356,17 @@ impl Identifier {
 
     /// The identifier a key names: its unique key `src:type`, else the
     /// type an identifier name at the key's end spells under the source the
-    /// rest of the key names, [`IdSource::Base`] where nothing is left.
+    /// rest of the key names, [`IdSource::Base`] where nothing is left or
+    /// where that rest folds to a source the crate reserves - `base`,
+    /// `derived`, `fix` - which names no namespace: `Derived_ISIN` and
+    /// `FIX.ISIN` are `base:isin`, so a namespace spelled before the name
+    /// never files a code under `derived` or `fix`. An explicit `src:type`
+    /// keeps the source it spells, `derived:isin` and `fix:isin` included.
     ///
-    /// The key folds as a word does, so the source keeps its dots and loses
-    /// the separators at its ends: `firm.x.ParentOrderID` is
+    /// The key folds as a word does - the source and the type each held to
+    /// a word's width, never the key they spell together - so the source
+    /// keeps its dots and loses the separators at its ends:
+    /// `firm.x.ParentOrderID` is
     /// `firm.x:parentorderid`, `OMS_InstrumentID` `oms:instrumentid`,
     /// `marketorderid` `market:orderid`. An identifier name is a type the
     /// crate names whose spelling ends with `id`, the account, an ISIN, a
@@ -361,7 +375,10 @@ impl Identifier {
     /// `original` - stays part of the type. A whole name a security type is
     /// spelled by - `ISINCode`, `security_cusip` - is that type from
     /// [`IdSource::Base`], and a security type is never read off a key that
-    /// names another instrument's: `underlyingisin`, `legisin`. `None`
+    /// names another instrument's - `leg`, `underlying`, `contra`,
+    /// `related` or `benchmark` opening the key or spelled just before the
+    /// type, after any namespace: `underlyingisin`, `OMS_UnderlyingISIN`,
+    /// `FIX.LegISIN`. `None`
     /// where the key names no identifier, the value states nothing or the
     /// type refuses it.
     ///
@@ -373,8 +390,10 @@ impl Identifier {
     /// let bridged = Identifier::from_key("OMS_InstrumentID", "dbi;X").unwrap();
     /// assert_eq!(bridged.to_string(), "oms:instrumentid=dbi;X");
     /// assert_eq!(Identifier::from_key("fix:clordid", "C-1").unwrap().to_string(), "fix:clordid=C-1");
+    /// assert_eq!(Identifier::from_key("Derived_ISIN", "US0378331005").unwrap().to_string(), "base:isin=US0378331005");
     /// assert_eq!(Identifier::from_key("ISINCode", "US0378331005").unwrap().to_string(), "base:isin=US0378331005");
     /// assert!(Identifier::from_key("underlyingisin", "US0378331005").is_none());
+    /// assert!(Identifier::from_key("OMS_UnderlyingISIN", "US0378331005").is_none());
     /// assert!(Identifier::from_key("transversalkey", "K-1").is_none());
     /// ```
     #[must_use]
@@ -397,15 +416,14 @@ impl Identifier {
         if let Some(kind) = IdType::from_field_name(key) {
             return Some((IdSource::Base, kind));
         }
-        let mut buffer = [0_u8; IDENTIFIER_KEY_WIDTH];
+        // The source and the type are each bounded as a word where they are
+        // read, so the key folds as wide as the two together.
+        let mut buffer = [0_u8; WORD_PAIR_WIDTH];
         let folded = fold_into(key, &mut buffer).ok()?;
         let (at, kind) = IdType::from_key_end(folded, names)?;
-        let src = folded[..at].trim_matches('.');
-        let src = if src.is_empty() {
-            IdSource::Base
-        } else {
-            src.parse().ok()?
-        };
+        let src = IdSource::from_namespace(&folded[..at])
+            .ok()?
+            .unwrap_or(IdSource::Base);
         Some((src, kind))
     }
 
@@ -448,7 +466,7 @@ impl Identifier {
         // Two ASCII words of at most `IDENTIFIER_KEY_WIDTH` bytes each,
         // spelled on the stack and copied once: inline within `SmolStr`'s
         // width, one allocation past it.
-        let mut buffer = [0_u8; 2 * IDENTIFIER_KEY_WIDTH + 1];
+        let mut buffer = [0_u8; WORD_PAIR_WIDTH];
         let mut len = 0;
         for (slot, byte) in buffer.iter_mut().zip(spelled_key(&self.src, &self.kind)) {
             *slot = byte;

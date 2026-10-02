@@ -6042,7 +6042,10 @@ class Identifier:
         ``isin``, ``cusip``, ``sedol`` or ``figi``, a parentage word
         (``parent``, ``orig``, ``origin``, ``original``) right before it kept
         inside the type. The source is the rest of the folded key, its dots
-        trimmed at both ends and kept inside, ``base`` where nothing is left.
+        trimmed at both ends and kept inside, ``base`` where nothing is left
+        or where it folds to a source the crate reserves (``base``,
+        ``derived``, ``fix``), which names no namespace: ``Derived_ISIN`` is
+        ``base:isin``.
 
         ``firm.x.ParentOrderID`` is ``firm.x:parentorderid``,
         ``OMS_InstrumentID`` ``oms:instrumentid``, ``marketorderid``

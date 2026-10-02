@@ -780,6 +780,63 @@ fn a_residual_key_that_is_no_resolved_field_is_refused_by_name() {
         assert!(error.to_string().contains("fixentries"), "{key}: {error}");
     }
 }
+
+/// A residual key's tag and name are one field: the name a field is spelled
+/// by beside its own tag, a group's name beside the tag of the counter
+/// heading it, or a name no field has beside the tag of the child held under
+/// it. A tag beside another field's name is refused naming the key, never
+/// read as the field the name reaches while the tag's own column is dropped.
+#[test]
+fn a_residual_key_whose_tag_and_name_are_not_one_field_is_refused_by_name() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let row = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=C-1|55=AAPL|54=1|38=1|40=2|10=0|")
+        .unwrap()
+        .into_row(&schema)
+        .unwrap();
+    let at = schema.index_of("fixentries").unwrap();
+    let with_entry = |key: &str, value: &str| {
+        let mut cells = row.as_sequence().unwrap().to_vec();
+        cells[at] =
+            Scalar::from_mapping([(Scalar::from(key), Scalar::from(value))]).expect("a map");
+        yggdryl::FixMsg::from_row(
+            Arc::clone(&registry),
+            &schema,
+            &Scalar::from_sequence(cells),
+        )
+    };
+    // `55` is Symbol's tag and `securityid` SecurityID(48)'s name, and the
+    // other way round.
+    for key in ["55:securityid", "48:symbol"] {
+        let error = with_entry(key, "US0378331005").expect_err("two fields");
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("$.fixentries[\"{key}\"]")),
+            "{key}: {error}"
+        );
+    }
+    // A field under its own tag and name, a group under its counter's tag.
+    for (key, value, stated) in [
+        ("21:handlinst", "1", "|21=1|"),
+        ("9999:custom", "x", "|9999=x|"),
+        (
+            "453:parties",
+            r#"[{"448:partyid":"P1","452:partyrole":"1"}]"#,
+            "|453=1|448=P1|452=1|",
+        ),
+    ] {
+        let wire = with_entry(key, value)
+            .expect("one field")
+            .into_text('|')
+            .unwrap();
+        assert!(
+            wire.contains(stated) && wire.contains("|55=AAPL|"),
+            "{wire}"
+        );
+    }
+}
 /// The identifier columns are sorted maps from the key `src:type` to the
 /// identifier's `struct<src, type, value>`, one per set a market element
 /// states: its `securityids`, its `identifiers` and its `partyids`, the last
@@ -863,6 +920,57 @@ fn the_identifier_columns_are_sorted_maps_from_the_key_to_the_identifier_row() {
         Some("F-1")
     );
     assert_eq!(restored.get_identifiers(), &held);
+}
+
+/// A row's identifier map is its own word, so one that files an identifier
+/// under another key is refused on its column - by `FixMsg::from_row`, and
+/// by `FixCodec::messages`, which excludes the row - never read as the set
+/// the fields alone state.
+#[test]
+fn an_identifier_column_filing_a_row_under_another_key_is_refused_on_its_column() {
+    use yggdryl::{IdSource, IdType, Identifier};
+
+    let (registry, codec) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let row = codec
+        .sole_line(b"8=FIX.4.4|35=D|11=C-1|55=AAPL|48=US0378331005|22=4|54=1|38=1|40=2|10=0|")
+        .unwrap()
+        .into_row(&schema)
+        .unwrap();
+    for (name, key, held, filed) in [
+        ("securityids", "base:cusip", IdType::Ric, "AAPL.O"),
+        ("identifiers", "fix:orderid", IdType::ClOrdId, "C-1"),
+        ("partyids", "base:executingfirm", IdType::Account, "ACC"),
+    ] {
+        let id = Identifier::new(IdSource::Base, held, filed).unwrap();
+        let mut cells = row.as_sequence().unwrap().to_vec();
+        let Scalar::Map(entries) =
+            Scalar::from_mapping([(Scalar::from(key), id.clone().into_scalar())]).unwrap()
+        else {
+            panic!("a map")
+        };
+        cells[schema.index_of(name).unwrap()] = Scalar::SortedMap(entries);
+        let misfiled = Scalar::from_sequence(cells);
+
+        let refused = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &misfiled)
+            .expect_err("a key that is not its row's src:type");
+        let refused = refused.to_string();
+        assert!(refused.contains(&format!("$.{name}['{key}']")), "{refused}");
+        assert!(
+            refused.contains(&format!("expected the key {}", id.key())),
+            "{refused}"
+        );
+
+        let batch = yggdryl::Serie::from_scalars(schema.clone(), [row.clone(), misfiled])
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
+        let read = codec
+            .messages(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("an excluded row is no error");
+        assert_eq!(read.len(), 1, "{name}: the misfiled row is excluded");
+    }
 }
 
 /// The two documents a datatype writes name it the same way.

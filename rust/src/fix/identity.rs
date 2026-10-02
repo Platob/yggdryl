@@ -7,8 +7,8 @@ use crate::Decimal;
 use crate::graph::Market;
 use crate::graph::facts::OperationEventFacts;
 use crate::{
-    Bbg, DataType, Error, Field, Figi, Forex, IdType, Isin, Mic, Result, Scalar, TimeUnit,
-    Timezone, Value,
+    Bbg, DataType, Error, Field, Figi, Forex, IdType, Identifiers, Isin, Mic, Result, Scalar,
+    TimeUnit, Timezone, Value,
 };
 
 use super::schema::CLOCK_DATATYPE;
@@ -1004,39 +1004,38 @@ pub(super) fn record(
     record_event(event, tag, value)
 }
 
+/// Records one identifier map - `securityids`, `identifiers`, `partyids` -
+/// on the event, strictly: a row's map is its word, so one filing an
+/// identifier under a key that is not its `src:type`, or one its type
+/// refuses, is refused on `column` rather than passed over as the graph's
+/// lenient recorders pass it. Whether the tag is one of the three.
+pub(super) fn record_identifiers(
+    event: &mut OperationEventFacts,
+    tag: i32,
+    column: &str,
+    value: &Scalar,
+) -> Result<bool> {
+    use crate::graph::Operation;
+
+    let root = crate::path::Path::root();
+    let column = root.field(column);
+    let on_column = |error: Error| column.reroot(error);
+    let ids = || Identifiers::from_scalar(value).map_err(on_column);
+    match tag {
+        tag if tag == super::SECURITYIDS_TAG_NAME.0 => event.set_securityids(ids()?, true),
+        tag if tag == super::IDENTIFIERS_TAG_NAME.0 => event.set_identifiers(ids()?, true),
+        tag if tag == super::PARTYIDS_TAG_NAME.0 => event.set_partyids(ids()?, true),
+        _ => return Ok(false),
+    }
+    .map_err(on_column)?;
+    Ok(true)
+}
+
 /// Records what one event column states on the event, through the column
 /// it is: a value the fact's type refuses is silence and a null clears the
 /// fact. Whether the tag is one the event holds.
 pub(super) fn record_event(event: &mut OperationEventFacts, tag: i32, value: &Scalar) -> bool {
     match tag {
-        tag if tag == super::ISINCODE_TAG_NAME.0 => record_securityid(
-            event,
-            &IdType::Isin,
-            Isin::from_scalar(value)
-                .map(Isin::as_str)
-                .or_else(|| value.as_str()),
-        ),
-        tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => record_securityid(
-            event,
-            &IdType::Bloomberg,
-            Bbg::from_scalar(value)
-                .map(Bbg::as_str)
-                .or_else(|| value.as_str()),
-        ),
-        tag if tag == super::FIGICODE_TAG_NAME.0 => record_securityid(
-            event,
-            &IdType::Figi,
-            Figi::from_scalar(value)
-                .map(Figi::as_str)
-                .or_else(|| value.as_str()),
-        ),
-        tag if tag == super::FOREXCODE_TAG_NAME.0 => record_securityid(
-            event,
-            &IdType::Forex,
-            Forex::from_scalar(value)
-                .map(Forex::as_str)
-                .or_else(|| value.as_str()),
-        ),
         tag if tag == super::MICCODE_TAG_NAME.0 => event.set_miccode(
             Mic::from_scalar(value)
                 .cloned()
@@ -1108,10 +1107,21 @@ pub(super) fn event_fact(event: &OperationEventFacts, tag: i32) -> Option<Scalar
     }
 }
 
-/// Records one crated identifier column onto the security identifiers: a
-/// stated code replaces the entries of its type, a null removes them.
-fn record_securityid(event: &mut OperationEventFacts, kind: &IdType, code: Option<&str>) {
-    event.restate_securityid(kind, code);
+/// The code one crated view of the security identifiers states -
+/// `isincode`, `bloombergcode`, `figicode` or `forexcode`, viewing `kind` -
+/// the code its column types, else its text, trimmed; none for a null or
+/// an empty text.
+pub(super) fn view_code<'value>(kind: &IdType, value: &'value Scalar) -> Option<&'value str> {
+    match kind {
+        IdType::Isin => Isin::from_scalar(value).map(Isin::as_str),
+        IdType::Bloomberg => Bbg::from_scalar(value).map(Bbg::as_str),
+        IdType::Figi => Figi::from_scalar(value).map(Figi::as_str),
+        IdType::Forex => Forex::from_scalar(value).map(Forex::as_str),
+        _ => None,
+    }
+    .or_else(|| value.as_str())
+    .map(str::trim)
+    .filter(|code| !code.is_empty())
 }
 
 /// The exact clock the two FIX clocks a row types are held under.

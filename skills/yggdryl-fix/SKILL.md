@@ -31,7 +31,7 @@ capture, sorts it by event time, folds duplicate deliveries, places each
 message by content among the messages of its instant (a content repeated
 there keeps its place), chains it to the live one of its order within its own `msgcat` (`crossuuid`,
 `prevuuid`; an order and an execution under one cross code are two chains), takes every bridge `metadata` key of the chain it does not state
-and the ids its dictionary follows, and learns instrument associations.
+and the ids its dictionary follows, each with its parents, and learns instrument associations.
 Nothing chains unasked.
 
 The dictionary is data, not code: the committed FIX Latest dictionary
@@ -192,7 +192,11 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     component as JSON keyed the same way, a repeated key as the JSON array of
     its occurrences. A key the dictionary does not resolve is no field: it
     lands in the row's `metadata` under its own spelling, and a row read back
-    restores it, so the wire re-emits it. `write_arrow_reader` rebuilds each
+    restores it, so the wire re-emits it. `from_row` refuses a row that
+    disagrees with itself - a `fixentries` key naming another field than its
+    tag (`55:securityid`), an identifier map filing an identifier under a key
+    that is not its `src:type` - and `messages` leaves such a row out with a
+    warning. `write_arrow_reader` rebuilds each
     message from the row and refuses a batch with no `fixentries`. A group
     holding no occurrence is stated by its count alone: `802=0` is an entry
     and re-emits, while `[]` beside a null counter - what a table such as
@@ -274,17 +278,25 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   lower-case words: `securityids` (`SecurityID(48)` under its
   `SecurityIDSource(22)`'s type and each `SecAltIDGrp(454)` occurrence, from
   `fix` - a `{NAMESPACE}INSTRUMENTID` source an `instrumentid` from that
-  namespace, `ULLINK.INSTRUMENTID` `ullink`; an ISIN's embedded codes and a
+  namespace, `ULLINK.INSTRUMENTID` `ullink`, a reserved `base`, `derived` or
+  `fix` namespace none, so `fix`; an ISIN's embedded codes and a
   symbol's FX pair from `derived`; `get(type)` answers the wire's first),
   `identifiers` (each `FIX:idmap` field a type from `fix`; regulatory trade ids
   under `regtradeid`, `tvtic`, ...) and `partyids` - each `PartyID(448)` typed by its
-  `PartyRole(452)` code's name folded (`executingtrader`; an unnamed code
-  `partyrole{code}`, none `party`) from its `PartyIDSource(447)` code's name
-  (`D` `proprietary`, `C` `generalidentifier`, none `base`), the first of a
-  source and role standing, and `Account(1)` an `account` from its
-  `AcctIDSource(660)`. An entry no dictionary resolves - a bridge's
-  `FIRM.X.PARENTORDERID=`, `OMS_InstrumentID=` - names the identifier it ends
-  with and the source before it (`firm.x:parentorderid`, `base:instrumentid`).
+  `PartyRole(452)` code's name folded (`executingtrader`, `21`
+  `clearingorganization`; an unnamed code `partyrole{code}`, none `party`) from
+  its `PartyIDSource(447)` code's name (`D` `proprietary`, `C`
+  `generalidentifier`; an unnamed word itself, an unnamed bare code
+  `partyidsource{code}`; none `base`), the first of a source and role
+  standing, and `Account(1)` an `account` from its `AcctIDSource(660)` by the
+  same rule (`acctidsource{code}`). An entry no dictionary resolves - a
+  bridge's `FIRM.X.PARENTORDERID=`, `OMS_InstrumentID=` - names the identifier
+  it ends with and the source before it (`firm.x:parentorderid`,
+  `oms:instrumentid`), a reserved `base`, `derived` or `fix` namespace naming
+  none (`Derived_ISIN` is `base:isin`, an explicit `fix:isin` keeps `fix`), and
+  another instrument's word before a security type naming no identifier
+  (`OMS_UnderlyingISIN`, `FIX.LegISIN`); one naming an operation's or a party's
+  identifier whose value its type refuses stays on the wire, no anomaly.
   A field states `FIX:parents`, the types holding the parents of its identifier
   nearest first (`ClOrdID(11)` has `["origclordid"]`); a follower and every
   settle fill a base from its nearest stated parent (`orderid` from
@@ -307,7 +319,17 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   `marketMetadata: false` turns both off and moves the leaf's identity.
 - A `Symbol(55)` naming one currency pair - `EUR/USD`, `EURUSD`, `EUR-USD 1M`,
   a RIC's `EURUSD=` - states the derived security identifier `derived:forex=EUR/USD`
-  (the `forexcode` column); a pair a row states is stated, never re-derived.
+  (the `forexcode` column).
+  A row's `isincode`, `figicode`, `bloombergcode` and `forexcode` are views:
+  each the code `get` answered when the row was written, resolved once as
+  the row is read. The symbol's derivation reads back from `derived` (the
+  pair alone follows a written symbol, the cells detection wrote reading
+  back as the row's word). Without the `securityids` column a narrow row is
+  lossy: a code `get` over the reading (the wire's, a bridge key's) answers
+  states nothing, and any other is inserted from `base` and leads its type,
+  every code of its type the reading states set aside - its source and
+  whether it was derived lost (a lifecycle- or caller-derived code reads
+  back stated). Write `securityids` for a round trip that keeps sources.
 - A row header that stops matching silently changes lifecycle results: the
   line keeps its body but is dated by its file's modification time and
   carries no session context (no delivery folding); assert the matched-line
