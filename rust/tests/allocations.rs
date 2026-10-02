@@ -5736,17 +5736,26 @@ struct StageCosts {
 /// and each digest, which renders the decimals it holds, by eight (16), eight
 /// (16) and six (10).
 ///
+/// Every decimal then came to write one text, the shortest that states it,
+/// built on the stack whichever leaf holds it - the fixed leaves' text had
+/// built a heap string and trimmed it, and the wire and the digest spelled
+/// each `decimal128(38, 18)` field through it - and a float came to be read
+/// off a spelling on the stack: each digest renders its decimals with no
+/// allocation and stands at one, and each parse fell by the allocations its
+/// decimal spellings used to cost, four for the bridge row (581), two for a
+/// frame (232) and twenty for the packed frame (1114).
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 585,
+            parse: 581,
             into_row: 152,
             landing: 1589,
             batch: 224,
-            digest: 16,
+            digest: 1,
             lifecycle: 7,
         },
     ),
@@ -5754,11 +5763,11 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_pipe",
         72,
         StageCosts {
-            parse: 234,
+            parse: 232,
             into_row: 109,
             landing: 1571,
             batch: 224,
-            digest: 16,
+            digest: 1,
             lifecycle: 7,
         },
     ),
@@ -5766,11 +5775,11 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1134,
+            parse: 1114,
             into_row: 279,
             landing: 1608,
             batch: 224,
-            digest: 10,
+            digest: 1,
             lifecycle: 7,
         },
     ),

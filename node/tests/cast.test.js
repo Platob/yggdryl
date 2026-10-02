@@ -178,20 +178,21 @@ test('a float into a decimal rounds half away from zero at the declared scale', 
   ])
 })
 
-test('a fixed decimal leaf into text is its trimmed text', () => {
+test('every decimal into text is its shortest text', () => {
   const utf8 = fields.utf8('px')
   for (const [leaf, field] of [
     ['decimal', fields.decimal('px')],
     ['bigdecimal', fields.bigdecimal('px')],
+    ['decimal128(38,18)', fields.decimal128('px', 38, 18)],
+    ['decimal64(12,4)', fields.decimal64('px', 12, 4)],
   ]) {
     const rows = ['1.125', '-2', '0'].map((text) => field.dtype.scalar(text))
     const column = Serie.fromScalars(field, [...rows, null])
-    assert.deepEqual(column.cast(utf8).asJs(), ['1.125', '-2', '0', null], leaf)
+    const text = column.cast(utf8)
+    assert.deepEqual(text.asJs(), ['1.125', '-2', '0', null], leaf)
+    // The text reads back at the scale the column declares.
+    assert.deepEqual(text.cast(field).cast(utf8).asJs(), text.asJs(), leaf)
   }
-  // A parameterized width keeps the full scale it declares.
-  const width = fields.decimal128('px', 38, 18)
-  const column = Serie.fromScalars(width, [width.dtype.scalar('1.125'), null])
-  assert.deepEqual(column.cast(utf8).asJs(), ['1.125000000000000000', null])
 })
 
 test('a nested column and its json text are one cast apart', () => {

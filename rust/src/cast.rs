@@ -47,7 +47,7 @@ use crate::cast::columns::{
 };
 use crate::cast::text::{blank_text_as_null, holds_text, ingest_text_values, keeps_empty_text};
 use crate::decimal::casts::{
-    holds_decimal, ingest_float_values, is_float_arrow, render_fixed_text,
+    holds_decimal, ingest_float_values, is_float_arrow, render_decimal_text,
 };
 use crate::enums::{enum_refusal, ingest_enum_array};
 use crate::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
@@ -1389,6 +1389,9 @@ impl ArrayCastPlan {
             | ArrayCastKind::JsonText { .. }
             | ArrayCastKind::JsonIngest { .. }
             | ArrayCastKind::DeferredUnsupported { .. } => Proof::Proven,
+            // Decimal text is digits, a sign and a point, which every plain
+            // text leaf holds; any other leaf read it under its own rule.
+            ArrayCastKind::DecimalText { .. } => Proof::Proven,
             ArrayCastKind::Struct { columns, .. } => Proof::of_children(
                 columns
                     .iter()
@@ -1488,11 +1491,11 @@ enum ArrayCastKind {
     /// row spells - a zoned instant included, which Arrow's own formatter
     /// refuses without its timezone database.
     TemporalText,
-    /// A fixed decimal leaf rendering as the one text its value spells, with
-    /// no trailing zero behind the point, where Arrow's kernel would write
-    /// the storage's full scale. A target that is not plain text then reads
+    /// A decimal rendering as the one text its value spells - the shortest
+    /// that states its number - where Arrow's kernel would write every place
+    /// of the storage's scale. A target that is not plain text then reads
     /// that text under the string rule, as it reads bare text.
-    FixedDecimalText {
+    DecimalText {
         ingest: bool,
     },
     /// A nested column written as the compact natural JSON each row spells:
@@ -1949,20 +1952,17 @@ impl ArrayCastPlan {
             (crate::string_dtypes!(), source) if plain_text && is_temporal_arrow(source) => {
                 ArrayCastKind::TemporalText
             }
-            // A fixed decimal leaf spells the text its value does, in a batch
-            // as in a row, whichever string it enters.
+            // A decimal spells the text its value does, in a batch as in a
+            // row, whichever string it enters.
             (
                 crate::string_dtypes!(),
-                ArrowDataType::Decimal128(..) | ArrowDataType::Decimal256(..),
-            ) if matches!(
-                source_extension,
-                Some(RecognizedExtension::Decimal | RecognizedExtension::BigDecimal)
-            ) =>
-            {
-                ArrayCastKind::FixedDecimalText {
-                    ingest: !plain_text,
-                }
-            }
+                ArrowDataType::Decimal32(..)
+                | ArrowDataType::Decimal64(..)
+                | ArrowDataType::Decimal128(..)
+                | ArrowDataType::Decimal256(..),
+            ) => ArrayCastKind::DecimalText {
+                ingest: !plain_text,
+            },
             // A string reads its values, never its buffers: a recognized
             // string, code or UUID source is read under what it declares -
             // a UUID spelling its sixteen bytes as the identifier they name -
@@ -2742,8 +2742,15 @@ impl ArrayCastPlan {
             ArrayCastKind::TemporalText => {
                 render_temporal_text(&array, self.safe(), &self.field, exposure, budget)?
             }
-            ArrayCastKind::FixedDecimalText { ingest } => {
-                let spelled = render_fixed_text(&array, &self.field, exposure, budget)?;
+            ArrayCastKind::DecimalText { ingest } => {
+                // Text a target reads under its own rule is spelled as plain
+                // text first; any other target is laid out as it stores.
+                let layout = if *ingest {
+                    &ArrowDataType::Utf8
+                } else {
+                    &self.expected
+                };
+                let spelled = render_decimal_text(&array, layout, exposure, budget)?;
                 if *ingest {
                     ingest_string_array(
                         &spelled,

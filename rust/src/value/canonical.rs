@@ -842,9 +842,9 @@ fn temporal_matches(
 ///
 /// A decimal is restated at that scale. A whole number is a decimal of scale
 /// zero and is restated the same way, because that is what it is: one hundred
-/// written into `decimal(12, 2)` is `100.00`, which is already what the same
-/// value answers spelled as a decimal, spelled as text, and cast into that
-/// column by Arrow itself.
+/// written into `decimal(12, 2)` is the coefficient `10000` at scale two,
+/// which is already what the same value answers spelled as a decimal,
+/// spelled as text, and cast into that column by Arrow itself.
 ///
 /// `None` when no exact restatement exists, which every caller reports naming
 /// the width it was writing into.

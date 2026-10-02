@@ -692,7 +692,7 @@ mod fixed_leaves {
         let (by_row, by_batch) = both_tiers("cast(q as utf8) as t", &schema, &row);
         assert_eq!(
             by_row,
-            Scalar::from_sequence([Scalar::from(r#"{"px":"1.50","sym":"AAPL"}"#)])
+            Scalar::from_sequence([Scalar::from(r#"{"px":"1.5","sym":"AAPL"}"#)])
         );
         assert_eq!(by_batch, by_row);
         let (by_row, by_batch) = both_tiers(

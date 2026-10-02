@@ -824,7 +824,7 @@ array's JSON.
     let text = column.cast(&Field::new("books", "map<utf8, utf8>".parse()?, true), options)?;
     assert_eq!(
         text.scalar(0)?,
-        Scalar::from_mapping([(Scalar::from("AAPL"), Scalar::from(r#"{"px":"1.50","qty":3}"#))])?
+        Scalar::from_mapping([(Scalar::from("AAPL"), Scalar::from(r#"{"px":"1.5","qty":3}"#))])?
     );
     assert!(text.is_null(1)?);
     // And the text reads back under the records: the round trip is the identity.
@@ -1362,9 +1362,9 @@ What each binding door accepts, each resolved once at the door:
 - `into_arrow_scalar` -> exactly one row; any other length is refused naming it, and a run is refused by name.
 - A scalar wider than the declared type -> accepted when the value fits, then canonicalized into it (`U64` -> `I64`).
 - Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../media/json.md#read) accepts, a duration included, which Arrow reads into none.
-- Text into a decimal -> read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer.
+- Text into a decimal -> every exact spelling - a sign, `.5` or `5.`, leading and trailing zeros, an exponent, `_` grouping - read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer, and a comma is no grouping ([Decimal text](numeric/decimal.md#text)).
 - A float into a decimal -> the number its shortest text names, rounded half away from zero at the declared scale, on both tiers: `0.125` into `decimal(10, 2)` is `0.13`, and `1.15` is `1.15` where Arrow's kernel would scale the binary fraction. A `nan`, an infinity or a float past the precision -> null under `safe`, refused by row under strict.
-- A `decimal` or `bigdecimal` column into text -> the leaf's trimmed text on both tiers, `1.125` and never the `1.125000000000000000` of its storage; a parameterized width keeps its declared scale on the column tier (`1.125000000000000000` for `decimal128(38,18)`), while the row tier renders the value at the scale it holds.
+- A decimal column into text -> the shortest exact text on both tiers, every width and both fixed leaves alike: `1.125` for `decimal128(38,18)` and for `decimal`, never the `1.125000000000000000` of the storage, and `100` for `100.00`; the scale stays in the datatype, and the text reads back at it.
 - Text into a boolean or a number at the row tier -> this crate's canonical spelling; a column keeps Arrow's wider vocabulary behind it, as it does for temporals.
 - Two fixed sizes, serie or binary -> a value change rather than a layout change, refused by name.
 - A string target declaring a bound, a fixed width or a charset other than UTF-8 -> `StringIngest`: every cell validated, a `yggdryl.string` source read under its own parameters first, bare binary storage read as bytes already in the target charset; a bounded variable byte target -> `BytesIngest`, every cell's length checked ([String](text/string.md#casts) and [Bytes](text/bytes.md#casts) casts). Under `safe` a refused cell is null in a nullable column; in a required one, or under `safe=False`, the row and column are named.

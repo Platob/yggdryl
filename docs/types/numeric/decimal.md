@@ -12,6 +12,7 @@ One exact base-10 family: four parameterized backing widths - a precision, a sca
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field |
 | Refuses | A precision or scale outside the width, an inexact quotient, an overflow of the target width, and a merge with a float |
 | Normalizes | Equality, order and hashing strip trailing zeros first, so `10.50` and `10.5` are one value at one digest |
+| Text | One writer: every width and both fixed leaves write the shortest exact text, `10.5` for `10.50` at scale 2; one reader: every exact spelling reads at the declared scale - [Text](#text) |
 
 ## DataType
 
@@ -168,7 +169,7 @@ A decimal value is a coefficient and a scale - `Decimal32`, `Decimal64`, `Decima
     assert!(price.is_decimal());
     assert_eq!(price.as_decimal128(), Some((1_050, 2)));
     assert_eq!(price.as_decimal(), Some((i256::from_i128(1_050), 2)));
-    assert_eq!(price.into_decimal_utf8().as_deref(), Some("10.50"));
+    assert_eq!(price.into_decimal_utf8().as_deref(), Some("10.5"));
 
     // One number at two scales is one value, and reads at any scale asked for.
     assert_eq!(price, Scalar::decimal128(105, 1));
@@ -332,7 +333,7 @@ Addition, subtraction and remainder meet at the wider scale; multiplication adds
 
 ## Casts
 
-Text reads into a decimal without passing through a float, and an integer converts into one by rescaling its coefficient. A float reads as the number it names - its shortest decimal text, `1.15` and never the `1.149999999999999872` its binary fraction is - rounded half away from zero at the declared scale, in a column as in a row: `0.125` into `decimal(10, 2)` is `0.13`. A float is an inexact reading and is rounded; text is exact and is cut. The declared precision and scale are the target, and `safe` and the column's nullability decide what a failure becomes, on [Cast](../cast.md#required-columns).
+Text reads into a decimal without passing through a float, through the one reader in [Text](#text), and an integer converts into one by rescaling its coefficient. A float reads as the number it names - its shortest decimal text, `1.15` and never the `1.149999999999999872` its binary fraction is - rounded half away from zero at the declared scale, in a column as in a row: `0.125` into `decimal(10, 2)` is `0.13`. A float is an inexact reading and is rounded; text is exact, so a digit the scale cannot hold is refused, and only the fixed leaves' lenient `parse` cuts one. The declared precision and scale are the target, and `safe` and the column's nullability decide what a failure becomes, on [Cast](../cast.md#required-columns).
 
 === "Rust"
 
@@ -384,6 +385,89 @@ Text reads into a decimal without passing through a float, and an integer conver
     assert.equal(amounts.field.dtype.toString(), 'decimal128(38,4)')
     // Arrow JS renders the coefficient, at the declared scale of four.
     assert.equal(String(amounts.intoArrowArray().get(0)), '105000')
+    ```
+
+## Text
+
+A decimal writes one text and reads every exact one. The scale is the datatype's, never the text's: a column of `decimal(10, 2)` holds `10.50` and writes `10.5`, and the reader restates `10.5` at the scale the column declares, so nothing is lost by not writing the zeros.
+
+| Direction | Rule |
+| --- | --- |
+| Write | The shortest text that states the number exactly: no zero trails the point and no point trails the digits - `10.50` is `10.5`, `100.00` is `100`, zero at any scale is `0` - and a negative scale is the whole number it states, `12` at scale -2 is `1200`. Every door writes it: `Display`, `into_decimal_utf8`, JSON, YAML, TOML, XML, CSV, Excel, an expression literal, and a column cast into text, which a row restated as text answers alike. It is built on the stack and written once, so a column renders with no text built per row |
+| Read | The value door - `DataType::scalar`, `Field::scalar`, a column cast from text, a typed literal - reads surrounding whitespace, a sign, a leading or trailing point (`.5`, `5.`), any zeros leading the digits or trailing them, an exponent (`1e2`, `2E+20`) and `_` grouping ahead of the point, at any width. A digit the scale cannot hold is refused, never rounded or cut, and so is a number past the width. A comma is no grouping there: under a decimal comma `1,250` is one and a quarter |
+| Scale kept | Where a standard or a host states the scale itself: Iceberg's v3 `initial-default` and `write-default` (`"1.50"` for `decimal(10, 2)`), as the table spec's single-value form requires; a Hive partition path, as Spark and Iceberg lay one out, so directory pruning matches their lakes; and Python's `as_py()`, a `Decimal` at the column scale (`Decimal("10.50")`), as pyarrow's is |
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Decimal128Array};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie};
+
+    // One text: the shortest that states the number.
+    assert_eq!(Scalar::decimal128(1_050, 2).into_decimal_utf8().as_deref(), Some("10.5"));
+    assert_eq!(Scalar::decimal128(10_000, 2).into_decimal_utf8().as_deref(), Some("100"));
+    assert_eq!(Scalar::decimal128(12, -2).into_decimal_utf8().as_deref(), Some("1200"));
+
+    // A column writes the same text a row does.
+    let money = DataType::decimal128(10, 2)?;
+    let cells: ArrayRef = Arc::new(Decimal128Array::from(vec![1_050, 0]).with_precision_and_scale(10, 2)?);
+    let column = Serie::from_arrow_array(Some(&Field::new("px", money.clone(), true)), cells, ArrowCastOptions::new())?;
+    let text = column.cast(&Field::new("px", DataType::utf8(), true), ArrowCastOptions::new())?;
+    assert_eq!(text.scalar(0)?, Scalar::from("10.5"));
+    assert_eq!(text.scalar(1)?, Scalar::from("0"));
+
+    // Every exact spelling reads back at the declared scale.
+    for spelled in ["10.5", "10.50000", " +10.5 ", "1.05e1", "1_0.5"] {
+        assert_eq!(money.scalar(spelled)?, Scalar::decimal128(1_050, 2));
+    }
+    // A digit the scale cannot hold, and a comma, are refused.
+    assert!(money.scalar("10.505").is_err());
+    assert!(money.scalar("1,050").is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    from decimal import Decimal
+
+    import pyarrow as pa
+    import pytest
+
+    from yggdryl import DataType, Field, Scalar, Serie
+
+    assert Scalar.decimal(1050, 2).into_json() == '"10.5"'
+
+    # A column writes the same text a row does.
+    cells = pa.array([Decimal("10.50"), Decimal("0.00")], pa.decimal128(10, 2))
+    text = Serie.from_arrow_array(cells).cast(Field("px", "utf8"))
+    assert text.as_py() == ["10.5", "0"]
+
+    # Every exact spelling reads back at the declared scale.
+    money = DataType("decimal128(10,2)")
+    for spelled in ["10.5", "10.50000", " +10.5 ", "1.05e1", "1_0.5"]:
+        assert money.scalar(spelled) == Scalar.decimal(1050, 2)
+    for refused in ["10.505", "1,050"]:
+        with pytest.raises(ValueError):
+            money.scalar(refused)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, Scalar, json } = require('yggdryl')
+
+    assert.equal(json.dumps({ px: Scalar.decimal(1050n, 2) }).toString(), '{"px":"10.5"}')
+
+    // Every exact spelling reads back at the declared scale.
+    const money = DataType.from('decimal128(10,2)')
+    for (const spelled of ['10.5', '10.50000', ' +10.5 ', '1.05e1', '1_0.5']) {
+      assert.ok(money.scalar(spelled).equals(Scalar.decimal(1050n, 2)))
+    }
+    assert.throws(() => money.scalar('10.505'))
+    assert.throws(() => money.scalar('1,050'))
     ```
 
 ## The 256-bit pair

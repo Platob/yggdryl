@@ -3512,14 +3512,14 @@ mod chunked {
     }
 }
 
-mod fixed_decimal_text {
-    //! A fixed decimal leaf spells one text, whether a column is cast or a
-    //! value is restated.
+mod decimal_text {
+    //! Every decimal leaf spells one text - the shortest that states its
+    //! number - whether a column is cast or a value is restated.
 
-    use yggdryl::{ArrowCastOptions, BigDecimal, DataType, Decimal, Field, Scalar, Serie};
+    use yggdryl::{ArrowCastOptions, BigDecimal, DataType, Decimal, Field, Scalar, Serie, i256};
 
     #[test]
-    fn a_fixed_leaf_renders_its_trimmed_text_in_a_batch_as_in_a_row() {
+    fn every_decimal_renders_its_shortest_text_in_a_batch_as_in_a_row() {
         let narrow = |text: &str| Scalar::Decimal(text.parse::<Decimal>().unwrap());
         let wide = |text: &str| Scalar::BigDecimal(text.parse::<BigDecimal>().unwrap());
         let cases = [
@@ -3531,6 +3531,41 @@ mod fixed_decimal_text {
                 DataType::BigDecimal,
                 wide("123456789012345678901234567890.5"),
                 "123456789012345678901234567890.5",
+            ),
+            (
+                DataType::decimal32(9, 2).unwrap(),
+                Scalar::decimal128(1_050, 2),
+                "10.5",
+            ),
+            (
+                DataType::decimal64(18, 4).unwrap(),
+                Scalar::decimal128(0, 4),
+                "0",
+            ),
+            (
+                DataType::DECIMAL,
+                Scalar::decimal128(1_125_000_000_000_000_000, 18),
+                "1.125",
+            ),
+            (
+                DataType::decimal128(12, 4).unwrap(),
+                Scalar::decimal128(-500, 4),
+                "-0.05",
+            ),
+            (
+                DataType::decimal128(10, 2).unwrap(),
+                Scalar::decimal128(10_000, 2),
+                "100",
+            ),
+            (
+                DataType::decimal128(10, -2).unwrap(),
+                Scalar::decimal128(12, -2),
+                "1200",
+            ),
+            (
+                DataType::decimal256(76, 4).unwrap(),
+                Scalar::decimal256(i256::from_i128(-1_234_500), 4),
+                "-123.45",
             ),
         ];
         for (dtype, value, spelled) in cases {
@@ -3554,25 +3589,87 @@ mod fixed_decimal_text {
                 assert_eq!(row.as_str(), Some(spelled), "{dtype} into {target}");
                 assert_eq!(cast.scalar(1).unwrap(), Scalar::Null);
             }
+            // The text reads back as the value, at the column's own scale.
+            let text = Field::new("x", DataType::utf8(), true);
+            let back = column
+                .cast(&text, ArrowCastOptions::new())
+                .unwrap()
+                .cast(column.field().unwrap(), ArrowCastOptions::new())
+                .unwrap();
+            assert_eq!(back, column, "{dtype} back from its text");
         }
-        // The parameterized width keeps its full-scale text on both paths.
-        let storage = Field::new("x", DataType::DECIMAL, true);
-        let value = Scalar::decimal128(1_125_000_000_000_000_000, 18);
-        let column = Serie::from_scalars(storage, [value.clone()]).unwrap();
-        let cast = column
+    }
+
+    /// The text a column renders is counted and charged before a byte of it
+    /// is held: a payload past the budget is refused by name, never built.
+    #[test]
+    fn a_text_payload_past_the_budget_is_refused_before_it_is_built() {
+        use std::sync::Arc;
+
+        use arrow_array::{ArrayRef, Decimal128Array};
+
+        // Thirty-eight digits at scale -90 spell 128 bytes a row: 600,000
+        // rows are 76.8 MB of text from 9.6 MB of storage.
+        let coefficient = 99_999_999_999_999_999_999_999_999_999_999_999_999_i128;
+        let storage: ArrayRef = Arc::new(
+            Decimal128Array::from(vec![coefficient; 600_000])
+                .with_precision_and_scale(38, -90)
+                .unwrap(),
+        );
+        let field = Field::new("x", DataType::decimal128(38, -90).unwrap(), true);
+        let column =
+            Serie::from_arrow_array(Some(&field), storage, ArrowCastOptions::new()).unwrap();
+        let refused = column
             .cast(
                 &Field::new("x", DataType::utf8(), true),
                 ArrowCastOptions::new(),
             )
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("fixed bytes"), "{refused}");
+    }
+
+    /// A column is charged once, for the layout it is built in: a decimal
+    /// enters `large_utf8` and `utf8_view` laid out as they store, and a
+    /// fixed leaf pays for its own slots beside the plain text it reads.
+    #[test]
+    fn a_text_column_is_charged_once_for_the_layout_it_is_built_in() {
+        use std::sync::Arc;
+
+        use arrow_array::{ArrayRef, Decimal128Array};
+
+        // 600,000 rows are within the million slots one cast expands, and
+        // would not be if a column were charged twice.
+        let storage: ArrayRef = Arc::new(
+            Decimal128Array::from(vec![150_i128; 600_000])
+                .with_precision_and_scale(10, 2)
+                .unwrap(),
+        );
+        let field = Field::new("x", DataType::decimal128(10, 2).unwrap(), true);
+        let column =
+            Serie::from_arrow_array(Some(&field), storage, ArrowCastOptions::new()).unwrap();
+        for target in [DataType::large_utf8(), DataType::utf8_view()] {
+            let spelled = column
+                .cast(
+                    &Field::new("x", target.clone(), true),
+                    ArrowCastOptions::new(),
+                )
+                .unwrap();
+            assert_eq!(spelled.len(), 600_000, "{target}");
+            assert_eq!(spelled.scalar(599_999).unwrap().as_str(), Some("1.5"));
+        }
+        // The plain text a fixed leaf reads is charged as plain text: 250,000
+        // rows into slots of a hundred bytes fit the 64 MiB bound, and would
+        // not with that text charged as a third run of slots.
+        let fixed = column
+            .slice(0, 250_000)
+            .unwrap()
+            .cast(
+                &Field::new("x", DataType::fixed_ascii(100).unwrap(), true),
+                ArrowCastOptions::new(),
+            )
             .unwrap();
-        assert_eq!(
-            cast.scalar(0).unwrap(),
-            Scalar::from("1.125000000000000000")
-        );
-        assert_eq!(
-            DataType::utf8().scalar(value).unwrap(),
-            cast.scalar(0).unwrap()
-        );
+        assert_eq!(fixed.scalar(249_999).unwrap().as_str(), Some("1.5"));
     }
 }
 
@@ -3812,7 +3909,7 @@ mod json {
             Scalar::from_mapping([
                 (
                     Scalar::from("AAPL"),
-                    Scalar::from(r#"{"px":"1.50","qty":3}"#)
+                    Scalar::from(r#"{"px":"1.5","qty":3}"#)
                 ),
                 (Scalar::from("MSFT"), Scalar::Null),
             ])
@@ -3878,7 +3975,7 @@ mod json {
         assert_eq!(
             texts(&text),
             [Some(
-                r#"{"d":"1970-01-02","b":"YWI=","u":"6ba7b810-9dad-11d1-80b4-00c04fd430c8","px":"1.50","t":"01:02:03.000004"}"#
+                r#"{"d":"1970-01-02","b":"YWI=","u":"6ba7b810-9dad-11d1-80b4-00c04fd430c8","px":"1.5","t":"01:02:03.000004"}"#
                     .to_owned()
             )]
         );

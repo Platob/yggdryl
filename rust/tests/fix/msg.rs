@@ -2719,7 +2719,7 @@ mod settled_market {
                 .any(|(key, _)| key.starts_with("parties")),
             "no member keyed by its path"
         );
-        // A decimal keeps its stored scale inside the text, as a string.
+        // A decimal is its shortest exact text inside the text, as a string.
         let fees = parsed(
             "8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|54=1|55=AAPL|31=10|32=5|136=1|137=1.5|138=EUR|139=4|10=0|",
         );
@@ -2730,7 +2730,7 @@ mod settled_market {
         assert_eq!(key, "miscfees");
         assert_eq!(
             text,
-            r#"[{"miscfeeamt":"1.500000000000000000","miscfeecurr":"EUR","miscfeetype":"4"}]"#
+            r#"[{"miscfeeamt":"1.5","miscfeecurr":"EUR","miscfeetype":"4"}]"#
         );
     }
 

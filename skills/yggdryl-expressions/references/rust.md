@@ -23,7 +23,7 @@ assert_eq!(filter.columns(), vec!["ccy".to_owned(), "price".to_owned()]);
 
 let bound = filter.bind(&schema)?;
 // The literal was converted once, into the column's exact type.
-assert_eq!(bound.term().to_string(), "ccy = 'EUR' and price > decimal32(9,2) '100.00'");
+assert_eq!(bound.term().to_string(), "ccy = 'EUR' and price > decimal32(9,2) '100'");
 
 let row = Scalar::from_sequence([Scalar::from("EUR"), Scalar::decimal128(15_000, 2), Scalar::from(5_i64)]);
 assert!(bound.matches(&row)?);
@@ -238,7 +238,7 @@ schema.set_dtype(DataType::from(StructType::from_fields(children)?))?;
 
 let residual = "year = 2024 and price > 100".parse::<Term>()?.bind(&schema)?.partition_split();
 assert_eq!(residual.answerable().to_string(), "year = int32 '2024'");
-assert_eq!(residual.remaining().to_string(), "price > decimal32(9,2) '100.00'");
+assert_eq!(residual.remaining().to_string(), "price > decimal32(9,2) '100'");
 assert!(!residual.is_complete());
 ```
 

@@ -20,7 +20,7 @@ const filter = new Filter("ccy = 'EUR' and price > 100")
 assert.deepEqual(filter.columns, ['ccy', 'price'])
 
 const bound = filter.bind(schema)
-assert.equal(bound.term.toString(), "ccy = 'EUR' and price > decimal32(9,2) '100.00'")
+assert.equal(bound.term.toString(), "ccy = 'EUR' and price > decimal32(9,2) '100'")
 
 const price = Scalar.decimal(15000n, 2)
 assert.equal(bound.matches(['EUR', price, 5]), true)
@@ -179,7 +179,7 @@ const schema = new Field('trades', DataType.fromFields([year, new Field('price',
 
 const { answerable, remaining } = new Filter('year = 2024 and price > 100').bind(schema).partitionSplit()
 assert.equal(answerable.toString(), "year = int32 '2024'")
-assert.equal(remaining.toString(), "price > decimal32(9,2) '100.00'")
+assert.equal(remaining.toString(), "price > decimal32(9,2) '100'")
 ```
 
 ## Push the filter and projection into a read

@@ -53,7 +53,7 @@ use super::{
     Comparison, Expression, Filter, Function, Literal, Operator, RECURSION_LIMIT, Safety, Term,
     UserRef,
 };
-use crate::{DataType, Error, Result, Scalar, Url, i256};
+use crate::{DataType, Error, Result, Scalar, Url};
 
 impl FromStr for Term {
     type Err = Error;
@@ -1762,24 +1762,15 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         D::Float64 => {
             Scalar::from(float_from_text(text).ok_or_else(|| fail("a floating-point number"))?)
         }
-        D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
-            Scalar::decimal128(
-                decimal_from_text(text, *scale).ok_or_else(|| {
-                    fail("an exact decimal that fits the declared precision and scale")
-                })?,
-                *scale,
-            )
-        }
-        // The fixed leaves read through the crate's strict text door, which
-        // refuses a digit their scale cannot hold.
-        D::Decimal | D::BigDecimal => Scalar::from_decimal_text(dtype, text)
+        // A decimal reads through the crate's one decimal text door, which
+        // refuses a digit its scale cannot hold.
+        D::Decimal32 { .. }
+        | D::Decimal64 { .. }
+        | D::Decimal128 { .. }
+        | D::Decimal256 { .. }
+        | D::Decimal
+        | D::BigDecimal => Scalar::from_decimal_text(dtype, text)
             .map_err(|_| fail("an exact decimal that fits the declared precision and scale"))?,
-        D::Decimal256 { scale, .. } => Scalar::decimal256(
-            i256::from_i128(decimal_from_text(text, *scale).ok_or_else(|| {
-                fail("an exact decimal that fits the declared precision and scale")
-            })?),
-            *scale,
-        ),
         crate::string_dtypes!() | D::Uuid | D::Version => Scalar::from(SmolStr::new(text)),
         code if code.is_code() => Scalar::from(SmolStr::new(text)),
         // An enum literal is a spelling its leaf's value door reads.
@@ -1812,53 +1803,6 @@ fn float_from_text(text: &str) -> Option<f64> {
         "-inf" | "-infinity" => Some(f64::NEG_INFINITY),
         _ => text.parse::<f64>().ok(),
     }
-}
-
-/// Read an exact decimal at a declared scale, refusing a digit that would drop.
-fn decimal_from_text(text: &str, scale: i8) -> Option<i128> {
-    let (sign, digits) = match text.strip_prefix('-') {
-        Some(rest) => (-1_i128, rest),
-        None => (1_i128, text.strip_prefix('+').unwrap_or(text)),
-    };
-    let (whole, fraction) = match digits.split_once('.') {
-        Some((whole, fraction)) => (whole, fraction),
-        None => (digits, ""),
-    };
-    if whole.is_empty() && fraction.is_empty() {
-        return None;
-    }
-    if !whole.bytes().all(|byte| byte.is_ascii_digit())
-        || !fraction.bytes().all(|byte| byte.is_ascii_digit())
-    {
-        return None;
-    }
-    let mut unscaled = whole.parse::<i128>().unwrap_or_default();
-    for byte in fraction.bytes() {
-        unscaled = unscaled
-            .checked_mul(10)?
-            .checked_add(i128::from(byte - b'0'))?;
-    }
-    let written = i32::try_from(fraction.len()).ok()?;
-    let declared = i32::from(scale);
-    match declared.checked_sub(written)? {
-        // The literal has fewer places than the column: pad with zeros.
-        shift if shift > 0 => {
-            for _ in 0..shift {
-                unscaled = unscaled.checked_mul(10)?;
-            }
-        }
-        // The literal has more: only exact trailing zeros may be dropped.
-        shift if shift < 0 => {
-            for _ in 0..-shift {
-                if unscaled % 10 != 0 {
-                    return None;
-                }
-                unscaled /= 10;
-            }
-        }
-        _ => {}
-    }
-    Some(sign * unscaled)
 }
 
 /// Read lowercase or uppercase hex into bytes.

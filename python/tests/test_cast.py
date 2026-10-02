@@ -222,20 +222,15 @@ def test_a_float_into_a_decimal_rounds_half_away_from_zero_at_the_declared_scale
     assert ArrowCastPlan(batch.schema, target).apply(batch).child("v").as_py() == cents
 
 
-def test_a_fixed_decimal_leaf_into_text_is_its_trimmed_text() -> None:
+def test_every_decimal_into_text_is_its_shortest_text() -> None:
     rows = [Decimal("1.125"), Decimal("-2"), Decimal("0"), None]
     utf8 = Field("px", "utf8")
-    for leaf in ("decimal", "bigdecimal"):
+    for leaf in ("decimal", "bigdecimal", "decimal128(38,18)", "decimal64(12,4)"):
         column = Serie.from_scalars(Field("px", leaf), rows)
-        assert column.cast(utf8).as_py() == ["1.125", "-2", "0", None], leaf
-    # A parameterized width keeps the full scale it declares.
-    width = Serie.from_scalars(Field("px", "decimal128(38,18)"), rows)
-    assert width.cast(utf8).as_py() == [
-        "1.125000000000000000",
-        "-2.000000000000000000",
-        "0.000000000000000000",
-        None,
-    ]
+        text = column.cast(utf8)
+        assert text.as_py() == ["1.125", "-2", "0", None], leaf
+        # The text reads back at the scale the column declares.
+        assert text.cast(Field("px", leaf)).as_py() == column.as_py(), leaf
 
 
 def test_an_empty_text_cell_is_null_before_safe_is_asked() -> None:

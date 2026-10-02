@@ -61,13 +61,13 @@ def test_exact_scalars_use_toml_syntax_or_natural_text() -> None:
 
     assert isinstance(encoded, bytes)
     assert restored["payload"] == "AP8="
-    assert restored["decimal"] == "123.4500"
+    assert restored["decimal"] == "123.45"
     for name in ("date", "time", "datetime", "zoned"):
         assert restored[name] == value[name]
     assert b'"date" = 2026-08-15\n' in encoded
     assert b'"datetime" = 2026-08-15T12:03:04.000005\n' in encoded
     assert b'"zoned" = 2026-08-15T12:00:00Z\n' in encoded
-    assert b'"decimal" = "123.4500"\n' in encoded
+    assert b'"decimal" = "123.45"\n' in encoded
     assert b'"delta" = "-PT172796.999996S"\n' in encoded
     assert restored["delta"] == "-PT172796.999996S"
 
@@ -170,7 +170,7 @@ def test_nested_field_class_uses_shared_safe_caster() -> None:
     shallow = toml.loads(encoded, cls=Order, safe=False)
     assert shallow.order_id == value.order_id
     assert shallow.fill == {
-        "price": "12.50",
+        "price": "12.5",
         "observed_at": value.fill.observed_at,
     }
 

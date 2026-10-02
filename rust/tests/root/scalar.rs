@@ -238,7 +238,7 @@ mod internal {
         use yggdryl::{decimal, integer, serie};
 
         let decimal = Scalar::Decimal32(decimal::Decimal32::new(1_250, 2));
-        assert_eq!(leaf_display(&decimal).unwrap().to_string(), "12.50");
+        assert_eq!(leaf_display(&decimal).unwrap().to_string(), "12.5");
         assert_eq!(
             leaf_display(&Scalar::Int32(integer::Int32::new(7)))
                 .unwrap()
@@ -1436,7 +1436,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     let decimal = decimal::Decimal32::new(1_250, 2);
     assert_eq!(decimal.coefficient(), 1_250);
     assert_eq!(decimal.scale(), 2);
-    assert_eq!(decimal.to_string(), "12.50");
+    assert_eq!(decimal.to_string(), "12.5");
 
     let datetime = datetime::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
     assert_eq!(datetime.count(), 7);
