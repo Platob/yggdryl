@@ -16,6 +16,7 @@ Many [`Serie`](serie.md) columns under one [`Field`](field.md), in order and hel
 | Cast | `cast(target, options)` is one [`ArrowCastPlan`](cast.md#compiled-plans) compiled and applied to every chunk; a chunked serie already under the target is itself, its chunks shared |
 | Stream | `SerieReader::from_chunked` reads the chunks as a stream, one record column per chunk, nothing cast, copied or read |
 | Order, uniqueness, partitions | the [verbs a `Serie` answers](serie.md#sorting-uniqueness-and-partitions), across the chunks: `is_sorted` reads each chunk and every chunk edge with no join, an edge compared on the rung the chunks sort on; `into_reversed`, `into_filtered`, `partition_by` and `partition_by_chunked` work chunk by chunk and keep the chunks apart; `sort_indices`, `is_unique`, `unique_count`, `into_sorted`, `into_unique` and `into_taken` are the one join then the verb, answering a chunked serie of one chunk; `memory_size` sums the chunks; the `as_*` writes replace the chunks in place |
+| Windows by key | [`window_by(by, sorted)`](#windows-by-key) cuts the rows as `Serie::window_by` cuts the joined column, every window zero-copy pieces of the chunks, a run crossing an edge one window, `sorted` regrouping runs and never rows; no window states a record |
 | Bindings | Rust, Python and JavaScript. Python crosses the C Data Interface and shares buffers: a `pyarrow.ChunkedArray`'s chunks and a `pyarrow.Table`'s batches are kept as chunks, and go back out as a `ChunkedArray` and a `Table`. JavaScript crosses as copied IPC: an Apache Arrow JS `Vector`'s `Data` are the chunks, and so are a `Table`'s batches. The [ordering, uniqueness and grouping verbs](#sorting-uniqueness-and-partitions) are bound in both, `partition_by` taking chunked keys where Rust spells `partition_by_chunked`. `field_ref`, `from_serie_reader` (Python reaches it through `ChunkedSerie.from_`), the `ChunkedRows` iterator type and `Hash` are Rust only: the Python class is mutable and unhashable |
 
 One verb, three spellings, where the runtimes name the Arrow values differently:
@@ -424,6 +425,118 @@ A chunked serie answers what a [`Serie`](serie.md#sorting-uniqueness-and-partiti
 
 The options and the `indices`, `mask` and `keys` arguments cross as [a `Serie`'s do](serie.md#sorting-uniqueness-and-partitions). `partition_by` also takes keys held in chunks: in Python a `ChunkedSerie`, a `pyarrow.ChunkedArray` or a table, in JavaScript a `ChunkedSerie` or an Arrow JS vector of one chunk per `Data`.
 
+## Windows by key
+
+`window_by(by, sorted)` cuts the rows into windows of equal keys exactly as [`Serie::window_by`](serie.md#windows-by-key) cuts the joined column, `sorted` meaning what it means there, and answers one `(key, rows)` per window, every window a chunked serie. Without `sorted` - or with keys already in order - each window is a zero-copy [`slice`](#chunks-and-rows) keeping the chunks it reaches, so a run that crosses a chunk edge is one window over both. With `sorted` and keys out of order, the runs - never the rows - are sorted stably by key and the runs of one key merged, each window the zero-copy pieces of its runs in the order they arrived: no row is copied and the chunks are never joined.
+
+No window states a record of [static values](window-serie.md#static-values), as a held window `Serie::window_by` lends does: a window's key is the first half of its item, and its place among the windows - what a record calls `windownum` - is its place in the `Vec`. So a key cell named `windownum` or `rownum`, which `Serie::window_by` refuses because its record names both, is taken here.
+
+The key is bound once against the field and computed chunk by chunk; at each chunk edge the pending window's key, already built, is compared in place against the next chunk's first key row, so a run continuing across the edge builds no key, and an empty chunk adds no row and no edge. The cost is one bind, then one key column, comparator and bitmap per chunk holding a row, each on the terms `Serie::window_by` states, and per window its key and its slice. A key that changes on every row answers a piece per row, so there [`into_serie`](#chunks-and-rows) then `Serie::window_by` is the cheaper door.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, StringArray};
+    use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
+
+    let field = Field::new("venue", DataType::utf8(), false);
+    let chunked = |chunks: [Vec<&str>; 2]| {
+        ChunkedSerie::from_arrow_arrays(
+            Some(&field),
+            chunks.map(|rows| Arc::new(StringArray::from(rows)) as ArrayRef),
+            ArrowCastOptions::new(),
+        )
+    };
+    let key = |venue: &str| Scalar::from_sequence([Scalar::from(venue)]);
+
+    // A run crossing the chunk edge is one window over both chunks, zero copy.
+    let venues = chunked([vec!["XNAS", "XNAS"], vec!["XNAS", "XNYS"]])?;
+    let windows = venues.window_by("venue", false)?;
+    assert_eq!(windows.len(), 2);
+    assert_eq!(windows[0].0, key("XNAS"));
+    assert_eq!((windows[0].1.len(), windows[0].1.num_chunks()), (3, 2));
+    assert_eq!(windows[1].1.rows(), vec![Scalar::from("XNYS")]);
+
+    // Sorted over keys out of order: each key once, its runs regrouped as the
+    // zero-copy pieces of the chunks they lie in - no row copied, no join.
+    let mixed = chunked([vec!["XNYS", "XNAS"], vec!["XNAS", "XNYS"]])?;
+    let sorted = mixed.window_by("venue", true)?;
+    assert_eq!(sorted.iter().map(|(key, _)| key.clone()).collect::<Vec<_>>(), [key("XNAS"), key("XNYS")]);
+    assert_eq!((sorted[0].1.len(), sorted[0].1.num_chunks()), (2, 2));
+    assert_eq!(sorted[1].1.rows(), vec![Scalar::from("XNYS"); 2]);
+
+    // No record: a key cell named rownum, which the joined column's window_by refuses, is taken.
+    assert_eq!(venues.window_by("venue as rownum", false)?.len(), 2);
+    assert!(venues.into_serie()?.window_by("venue as rownum", false).is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import ChunkedSerie, Field
+
+    field = Field("venue", "utf8", nullable=False)
+
+    # A run crossing the chunk edge is one window over both chunks, zero copy.
+    venues = ChunkedSerie.from_arrow_chunked_array(
+        pa.chunked_array([["XNAS", "XNAS"], ["XNAS", "XNYS"]]), field
+    )
+    windows = venues.window_by("venue")
+    assert [(key.as_py(), len(window), window.num_chunks) for key, window in windows] == [
+        (["XNAS"], 3, 2),
+        (["XNYS"], 1, 1),
+    ]
+
+    # Sorted over keys out of order: each key once, its runs regrouped as the
+    # zero-copy pieces of the chunks they lie in - no row copied, no join.
+    mixed = ChunkedSerie.from_arrow_chunked_array(
+        pa.chunked_array([["XNYS", "XNAS"], ["XNAS", "XNYS"]]), field
+    )
+    ordered = mixed.window_by("venue", sorted=True)
+    assert [(key.as_py(), window.as_py(), window.num_chunks) for key, window in ordered] == [
+        (["XNAS"], ["XNAS", "XNAS"], 2),
+        (["XNYS"], ["XNYS", "XNYS"], 2),
+    ]
+
+    # No record: a key cell named rownum, which the joined column's window_by refuses, is taken.
+    assert len(venues.window_by("venue as rownum")) == 2
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { ChunkedSerie, Field } = require('yggdryl')
+
+    const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
+    const field = Field.from('venue: utf8 not null')
+
+    // A run crossing the chunk edge is one window over both chunks, zero copy.
+    const venues = ChunkedSerie.fromArrowArray(utf8(['XNAS', 'XNAS']).concat(utf8(['XNAS', 'XNYS'])), field)
+    assert.deepEqual(
+      venues.windowBy('venue').map(([key, window]) => [key.asJs(), window.length, window.numChunks]),
+      [[['XNAS'], 3, 2], [['XNYS'], 1, 1]],
+    )
+
+    // Sorted over keys out of order: each key once, its runs regrouped as the
+    // zero-copy pieces of the chunks they lie in - no row copied, no join.
+    const mixed = ChunkedSerie.fromArrowArray(utf8(['XNYS', 'XNAS']).concat(utf8(['XNAS', 'XNYS'])), field)
+    assert.deepEqual(
+      mixed.windowBy('venue', true).map(([key, window]) => [key.asJs(), window.asJs(), window.numChunks]),
+      [[['XNAS'], ['XNAS', 'XNAS'], 2], [['XNYS'], ['XNYS', 'XNYS'], 2]],
+    )
+
+    // No record: a key cell named rownum, which the joined column's windowBy refuses, is taken.
+    assert.equal(venues.windowBy('venue as rownum').length, 2)
+    ```
+
+Python answers a `list` of `(Scalar, ChunkedSerie)` pairs and JavaScript an `Array` of `[Scalar, ChunkedSerie]`; `sorted` defaults to false as on a `Serie`. The refusals are [`Serie::window_by`'s](serie.md#refusals) but the one for a key cell named `windownum` or `rownum`, naming the field, before any row is read - with no chunk at all as with many.
+
 ## Arrow: a chunked array and a table
 
 A chunked array is one layout in pieces, so every array must lay out as the first, and one plan compiled from that layout lands them all: the identity where the layout is the field's, sharing the buffers. With no field the arrays are the column of their own layout, named `item` and nullable where any array holds an absent row. A table is one chunk per batch - [`SerieReader::from_arrow_reader`](serie.md#arrow-an-array-a-batch-a-reader) collected, where `Serie::from_arrow_reader` joins the batches into one column - and goes back out as one batch per chunk under one schema built once.
@@ -777,6 +890,7 @@ A chunked array is one layout in pieces, so every array must lay out as the firs
     cargo test -p yggdryl --test root chunked_serie
     cargo test -p yggdryl --test serie arrow
     cargo test -p yggdryl --test allocations chunked
+    cargo test -p yggdryl --test allocations -- a_chunked_window_by a_chunked_sorted_window_by
     cargo bench -p yggdryl --bench arrow -- arrow_chunked_serie
     cargo bench -p yggdryl --bench types -- serie/chunked_
     ```

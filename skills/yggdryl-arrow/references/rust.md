@@ -503,6 +503,53 @@ assert_eq!(chunked.into_sorted(SortOptions::default())?.num_chunks(), 1);
 assert_eq!(chunked.into_reversed().num_chunks(), 2);
 ```
 
+## Cut rows into windows by key
+
+`window_by(by, sorted)` computes the key once and lends each window as a view
+with the record of its key cells, `windownum` and `rownum`. `sorted = true`
+asks for each key once in key order: keys already in order copy nothing, and
+only a descent gathers the rows once. A `ChunkedSerie` regroups its runs as
+zero-copy pieces and states no record; a stream yields one lazy reader per
+window, read in order. Contract and costs:
+[windows by key](https://platob.github.io/yggdryl/types/serie/#windows-by-key).
+
+```rust
+use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Scalar, Serie, SerieReader, StructType};
+
+let root = DataType::from(StructType::from_fields([
+    DataType::utf8().required_field("venue"),
+    DataType::Int64.required_field("qty"),
+])?)
+.required_field("fill");
+let fill = |venue: &str, qty: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(qty)]);
+let fills = Serie::from_scalars(root.clone(), [fill("XNAS", 5), fill("XNYS", 2), fill("XNAS", 3)])?;
+
+// Each key once, in key order; the record names the window's key.
+let mut totals = Vec::new();
+for (_, window) in &fills.window_by("venue", true)? {
+    let record = window.static_values().ok_or("a window window_by lent states its record")?;
+    let venue = record.get_key_str("venue").cloned();
+    let qty: i64 = window.into_serie().child("qty").and_then(Serie::as_int64).map_or(0, |qty| qty.values().iter().sum());
+    totals.push((venue, qty));
+}
+assert_eq!(totals, [(Some(Scalar::from("XNAS")), 8), (Some(Scalar::from("XNYS")), 2)]);
+
+// Across chunks: zero-copy pieces, no join, no record.
+let chunked = ChunkedSerie::from_series(Some(&root), [fills.slice(0, 2)?, fills.slice(2, 1)?], ArrowCastOptions::new())?;
+let sorted = chunked.window_by("venue", true)?;
+assert_eq!((sorted[0].1.len(), sorted[0].1.num_chunks()), (2, 2));
+
+// A stream: one lazy reader per window - read each before taking the next.
+let mut places = Vec::new();
+for window in SerieReader::from_serie(fills)?.window_by("venue", false)? {
+    let window = window?;
+    let rownum = window.static_values().and_then(|record| record.get_key_str("rownum").cloned());
+    let rows = window.map(|piece| piece.map(|piece| piece.len())).sum::<Result<usize, _>>()?;
+    places.push((rownum, rows));
+}
+assert_eq!(places, [(Some(Scalar::from(0_u64)), 1), (Some(Scalar::from(1_u64)), 1), (Some(Scalar::from(2_u64)), 1)]);
+```
+
 ## Keep chunks and batches apart
 
 `ChunkedSerie` holds arrays or batches without concatenating: a row is a

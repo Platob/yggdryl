@@ -390,6 +390,46 @@ assert.equal(chunked.intoSorted().numChunks, 1)
 assert.equal(chunked.intoReversed().numChunks, 2)
 ```
 
+## Cut rows into windows by key
+
+`windowBy(by, sorted?)` computes the key once and answers `[key, WindowSerie]`
+pairs, each window a view stating the record of its key cells, `windownum`
+and `rownum` as `staticValues`. `sorted: true` asks for each key once in key
+order: keys already in order copy nothing, and only a descent gathers the
+rows once. A `ChunkedSerie` regroups its runs as zero-copy pieces and states
+no record; a `SerieReader` yields one lazy reader per window, read in order.
+Contract and costs:
+[windows by key](https://platob.github.io/yggdryl/types/serie/#windows-by-key).
+
+```javascript
+const assert = require('node:assert/strict')
+const { ChunkedSerie, Field, Serie, SerieReader } = require('yggdryl')
+
+const root = Field.from('fill: struct<venue: utf8 not null, qty: int64 not null> not null')
+const fills = Serie.fromScalars(root, [['XNAS', 5n], ['XNYS', 2n], ['XNAS', 3n]])
+
+// Each key once, in key order; the record names the window's key.
+const totals = {}
+for (const [, window] of fills.windowBy('venue', true)) {
+  const venue = window.staticValues.get('venue').asJs()
+  totals[venue] = window.intoSerie().child('qty').asJs().reduce((sum, qty) => sum + qty, 0)
+}
+assert.deepEqual(totals, { XNAS: 8, XNYS: 2 })
+
+// Across chunks: zero-copy pieces, no join, no record.
+const chunked = ChunkedSerie.fromSeries([fills.slice(0, 2), fills.slice(2, 1)], root)
+const [[, xnas]] = chunked.windowBy('venue', true)
+assert.deepEqual([xnas.length, xnas.numChunks], [2, 2])
+
+// A stream: one lazy reader per window - read each before taking the next.
+const places = []
+for (const window of SerieReader.fromSerie(fills).windowBy('venue')) {
+  const rownum = window.staticValues.get('rownum').asJs()
+  places.push([rownum, [...window].reduce((rows, piece) => rows + piece.length, 0)])
+}
+assert.deepEqual(places, [[0, 1], [1, 1], [2, 1]])
+```
+
 ## Keep chunks and batches apart
 
 `ChunkedSerie` holds a vector's `Data` or a table's batches without

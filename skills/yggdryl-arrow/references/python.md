@@ -421,6 +421,45 @@ assert chunked.into_sorted().num_chunks == 1
 assert chunked.into_reversed().num_chunks == 2
 ```
 
+## Cut rows into windows by key
+
+`window_by(by, sorted=False)` computes the key once and answers
+`(key, WindowSerie)` pairs, each window a view stating the record of its key
+cells, `windownum` and `rownum` as `static_values`. `sorted=True` asks for
+each key once in key order: keys already in order copy nothing, and only a
+descent gathers the rows once. A `ChunkedSerie` regroups its runs as
+zero-copy pieces and states no record; a `SerieReader` yields one lazy reader
+per window, read in order. Contract and costs:
+[windows by key](https://platob.github.io/yggdryl/types/serie/#windows-by-key).
+
+```python
+from yggdryl import ChunkedSerie, Field, Serie, SerieReader
+
+root = Field("fill", "struct<venue: utf8 not null, qty: int64 not null>", nullable=False)
+fills = Serie.from_scalars(root, [["XNAS", 5], ["XNYS", 2], ["XNAS", 3]])
+
+# Each key once, in key order; the record names the window's key.
+totals = {}
+for _, window in fills.window_by("venue", sorted=True):
+    record = window.static_values
+    assert record is not None
+    totals[record["venue"].as_py()] = sum(row["qty"] for row in window.as_py())
+assert totals == {"XNAS": 8, "XNYS": 2}
+
+# Across chunks: zero-copy pieces, no join, no record.
+chunked = ChunkedSerie.from_series([fills.slice(0, 2), fills.slice(2, 1)], root)
+(_, xnas), _ = chunked.window_by("venue", sorted=True)
+assert (len(xnas), xnas.num_chunks) == (2, 2)
+
+# A stream: one lazy reader per window - read each before taking the next.
+places = []
+for window in SerieReader.from_serie(fills).window_by("venue"):
+    record = window.static_values
+    assert record is not None
+    places.append((record["rownum"].as_py(), sum(len(piece) for piece in window)))
+assert places == [(0, 1), (1, 1), (2, 1)]
+```
+
 ## Keep chunks and batches apart
 
 `ChunkedSerie` holds a chunked array or a table without concatenating;
