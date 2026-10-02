@@ -238,10 +238,38 @@ As a record medium, a `.xml` handle holds one document element, `data`, with one
 
 ## Performance
 
-XML is measured where the other formats are: `codec/xml` in the Rust `text` bench, the `XML` rows of `python/benchmarks/text.py`, the `xml/*` rows of `node/benchmarks/text.js`. A table is stated once a release run on the machine the [JSON](json.md#performance), [YAML](yaml.md#performance) and [TOML](toml.md#performance) tables name produces one, and not before.
+### Rust codec
+
+One release run of the `text` Criterion target's `codec/xml` group on one Linux x86_64 container - Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.97.0, release profile (thin LTO, one codegen unit) - medians of 100 samples, on 2026-10-02. The record is `{symbol: "MSFT", quantity: 120, price: 413.75, tags: ["closing", "auction"]}` under one `row` element; the typed one a `decimal256(76, 4)`, a `datetime64(s, UTC)` and three bytes, read back under its field. The [JSON](json.md#rust-codec), [YAML](yaml.md#rust-codec) and [TOML](toml.md#rust-codec) pages carry the same rows from the same run.
+
+| door | document | bytes | median | throughput |
+| --- | --- | ---: | ---: | ---: |
+| `into_bytes` | record | 117 | 1.055 us | 105.8 MiB/s |
+| `into_utf8` | record | 117 | 1.105 us | 101.0 MiB/s |
+| `into_xml_scalar` | record | 117 | 1.155 us | 96.6 MiB/s |
+| `into_writer` | record | 117 | 950.4 ns | 117.4 MiB/s |
+| `from_bytes` | record | 117 | 2.068 us | 54.0 MiB/s |
+| `from_xml_scalar` | record | 117 | 2.025 us | 55.1 MiB/s |
+| `from_utf8` | record | 117 | 2.063 us | 54.1 MiB/s |
+| `from_reader` | record | 117 | 2.121 us | 52.6 MiB/s |
+| `text::from_utf8_inferred`, the format read off the content | record | 117 | 2.046 us | 54.5 MiB/s |
+| `into_bytes` | typed | 88 | 1.394 us | 60.2 MiB/s |
+| `from_bytes_with_field` | typed | 88 | 3.762 us | 22.3 MiB/s |
+| `from_xml_scalar_with_field` | typed | 88 | 3.824 us | 21.9 MiB/s |
+| `from_bytes` | 49 levels deep | 348 | 17.57 us | 18.9 MiB/s |
+| `from_bytes` | 1,024 elements | 22,281 | 442.6 us | 48.0 MiB/s |
+| `from_bytes` | 1,000 `row` elements | 117,013 | 2.166 ms | 51.5 MiB/s |
+| `into_bytes` | 1,000 `row` elements | 117,013 | 951.6 us | 117.3 MiB/s |
 
 ```bash
-cargo bench -p yggdryl --bench text -- codec/xml
+cargo bench -p yggdryl --bench text -- codec/xml/
+```
+
+### Bindings
+
+The binding rows - the `XML` rows of `python/benchmarks/text.py` and the `xml/*` rows of `node/benchmarks/text.js` - are stated once a release run on the machine the [JSON](json.md#bindings), [YAML](yaml.md#bindings) and [TOML](toml.md#bindings) binding tables name produces them, so the four formats compare.
+
+```bash
 python/.venv/bin/python python/benchmarks/text.py --iterations 10000
 npm run --prefix node bench:text
 ```

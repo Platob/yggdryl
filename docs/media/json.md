@@ -181,6 +181,32 @@ A record writes its keys sorted - a parsed document's records, a Rust `Scalar::S
 
 ## Performance
 
+### Rust codec
+
+One release run of the `text` Criterion target's `codec/json` group on one Linux x86_64 container - Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.97.0, release profile (thin LTO, one codegen unit) - medians of 100 samples, on 2026-10-02. The record is `{symbol: "MSFT", quantity: 120, price: 413.75, tags: ["closing", "auction"]}`; the typed one a `decimal256(76, 4)`, a `datetime64(s, UTC)` and three bytes, read back under its field. The [YAML](yaml.md#rust-codec), [TOML](toml.md#rust-codec) and [XML](xml.md#rust-codec) pages carry the same rows from the same run.
+
+| door | document | bytes | median | throughput |
+| --- | --- | ---: | ---: | ---: |
+| `into_bytes` | record | 76 | 414.3 ns | 174.9 MiB/s |
+| `into_utf8` | record | 76 | 426.3 ns | 170.0 MiB/s |
+| `into_json_scalar` | record | 76 | 435.1 ns | 166.6 MiB/s |
+| `into_writer` | record | 76 | 251.0 ns | 288.7 MiB/s |
+| `from_bytes` | record | 76 | 1.416 us | 51.2 MiB/s |
+| `from_json_scalar` | record | 76 | 1.364 us | 53.1 MiB/s |
+| `from_utf8` | record | 76 | 1.416 us | 51.2 MiB/s |
+| `into_bytes` | typed | 66 | 1.056 us | 59.6 MiB/s |
+| `from_bytes_with_field` | typed | 66 | 2.926 us | 21.5 MiB/s |
+| `from_json_scalar_with_field` | typed | 66 | 2.889 us | 21.8 MiB/s |
+| `from_bytes` | 64 levels deep | 129 | 10.29 us | 12.0 MiB/s |
+| `from_lines_utf8` | 1,000 JSON lines | 3,890 | 61.93 us | 59.9 MiB/s |
+| `LinesReader`, one value at a time | 1,000 JSON lines | 3,890 | 67.21 us | 55.2 MiB/s |
+
+```bash
+cargo bench -p yggdryl --bench text -- codec/json/
+```
+
+### Bindings
+
 One Windows x86_64 release run, one fixture per runtime; compare routes within a runtime, never Python against Node.
 
 | operation | runtime | JSON |

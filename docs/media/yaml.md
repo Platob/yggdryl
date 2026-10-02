@@ -156,6 +156,33 @@ A document writes in block style unless no layout is asked for, which writes flo
 
 ## Performance
 
+### Rust codec
+
+One release run of the `text` Criterion target's `codec/yaml` group on one Linux x86_64 container - Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.97.0, release profile (thin LTO, one codegen unit) - medians of 100 samples, on 2026-10-02. The record is `{symbol: "MSFT", quantity: 120, price: 413.75, tags: ["closing", "auction"]}`; the typed one a `decimal256(76, 4)`, a `datetime64(s, UTC)` and three bytes, read back under its field. The [JSON](json.md#rust-codec), [TOML](toml.md#rust-codec) and [XML](xml.md#rust-codec) pages carry the same rows from the same run.
+
+| door | document | bytes | median | throughput |
+| --- | --- | ---: | ---: | ---: |
+| `into_bytes` | record | 71 | 7.592 us | 8.92 MiB/s |
+| `into_utf8` | record | 71 | 7.645 us | 8.86 MiB/s |
+| `into_yaml_scalar` | record | 71 | 7.824 us | 8.65 MiB/s |
+| `into_writer` | record | 71 | 7.252 us | 9.34 MiB/s |
+| `from_bytes` | record | 71 | 6.640 us | 10.2 MiB/s |
+| `from_yaml_scalar` | record | 71 | 6.953 us | 9.74 MiB/s |
+| `from_utf8` | record | 71 | 6.499 us | 10.4 MiB/s |
+| `into_bytes`, then `from_bytes` | record | 71 | 14.44 us | 4.69 MiB/s |
+| `into_bytes` | typed | 71 | 4.244 us | 16.0 MiB/s |
+| `from_bytes_with_field` | typed | 71 | 7.187 us | 9.42 MiB/s |
+| `from_yaml_scalar_with_field` | typed | 71 | 7.196 us | 9.41 MiB/s |
+| `from_bytes` | 64 levels deep | 130 | 34.47 us | 3.60 MiB/s |
+| `from_utf8_all` | 100 documents | 7,496 | 635.3 us | 11.3 MiB/s |
+| `from_reader_iter`, one document at a time | 100 documents | 7,496 | 580.9 us | 12.3 MiB/s |
+
+```bash
+cargo bench -p yggdryl --bench text -- codec/yaml/
+```
+
+### Bindings
+
 One Windows x86_64 release run, one fixture per runtime; compare routes within a runtime, never Python against Node.
 
 | operation | runtime | YAML |

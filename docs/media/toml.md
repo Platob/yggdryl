@@ -143,6 +143,33 @@ A record writes one quoted key per line, sorted - a Python `dict` crosses as a m
 
 ## Performance
 
+### Rust codec
+
+One release run of the `text` Criterion target's `codec/toml` group on one Linux x86_64 container - Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.97.0, release profile (thin LTO, one codegen unit) - medians of 100 samples, on 2026-10-02. The record is `{symbol: "MSFT", quantity: 120, price: 413.75, tags: ["closing", "auction"]}`; the typed one a `decimal256(76, 4)`, a `datetime64(s, UTC)` and three bytes, read back under its field. The [JSON](json.md#rust-codec), [YAML](yaml.md#rust-codec) and [XML](xml.md#rust-codec) pages carry the same rows from the same run.
+
+| door | document | bytes | median | throughput |
+| --- | --- | ---: | ---: | ---: |
+| `into_bytes` | record | 84 | 573.4 ns | 139.7 MiB/s |
+| `into_utf8` | record | 84 | 582.6 ns | 137.5 MiB/s |
+| `into_toml_scalar` | record | 84 | 570.0 ns | 140.5 MiB/s |
+| `into_writer` | record | 84 | 377.6 ns | 212.1 MiB/s |
+| `from_bytes` | record | 84 | 2.682 us | 29.9 MiB/s |
+| `from_toml_scalar` | record | 84 | 2.615 us | 30.6 MiB/s |
+| `from_utf8` | record | 84 | 2.493 us | 32.1 MiB/s |
+| `from_reader` | record | 84 | 2.630 us | 30.5 MiB/s |
+| `text::from_utf8_inferred`, the format read off the content | record | 84 | 2.915 us | 27.5 MiB/s |
+| `into_bytes` | typed | 69 | 973.0 ns | 67.6 MiB/s |
+| `from_bytes_with_field` | typed | 69 | 3.549 us | 18.5 MiB/s |
+| `from_toml_scalar_with_field` | typed | 69 | 3.430 us | 19.2 MiB/s |
+| `from_bytes` | 49 levels deep | 108 | 15.54 us | 6.63 MiB/s |
+| `from_bytes` | 1,024 keys | 16,212 | 543.0 us | 28.5 MiB/s |
+
+```bash
+cargo bench -p yggdryl --bench text -- codec/toml/
+```
+
+### Bindings
+
 One Windows x86_64 release run, one fixture per runtime; compare routes within a runtime, never Python against Node.
 
 | operation | runtime | TOML |

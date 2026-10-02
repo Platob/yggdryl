@@ -31,8 +31,12 @@ Results live beside the method they measure. Each page's Performance section nam
 | Media | [Parquet footer statistics](media/parquet.md#footer-statistics) | Local release-build spot-check of the Python and JavaScript binding boundary; fixtures differ, so rows are... |
 | Media | [Avro](media/avro.md#performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
 | Media | [Avro against polars and fastavro](media/avro.md#against-polars-and-fastavro) | `python/benchmarks/media/avro.py`: containers fastavro wrote in Java-default blocks, read three ways under every codec, and tables written three ways; one containerized x86_64 Linux run |
-| Media | [JSON](media/json.md#performance), [YAML](media/yaml.md#performance), [TOML](media/toml.md#performance), [XML](media/xml.md#performance) | One Windows x86_64 release run of `python/benchmarks/text.py` and `node/benchmarks/text.js`: the natural-codec boundary per format; XML measured, no table yet |
+| Media | [CSV](media/csv.md#performance) | `media/csv`: 10,000 rows written, read under a declared field and inferred, and counted, as plain, quoted and gzip documents; one containerized x86_64 Linux release run |
+| Media | [JSON](media/json.md#rust-codec), [YAML](media/yaml.md#rust-codec), [TOML](media/toml.md#rust-codec), [XML](media/xml.md#rust-codec) | The `codec/<format>` groups of the `text` target: a record and a typed record through every door, deep, wide and many-document inputs; one containerized x86_64 Linux release run |
+| Media | [JSON](media/json.md#bindings), [YAML](media/yaml.md#bindings), [TOML](media/toml.md#bindings) bindings | One Windows x86_64 release run of `python/benchmarks/text.py` and `node/benchmarks/text.js`: the natural-codec boundary per format; XML's binding rows wait for a run on that machine |
 | Media | [YAML placeholders](media/yaml.md#placeholders) | 256-entry YAML documents, feature off and on; containerized x86_64 Linux, Criterion medians with 95% intervals |
+| Media | [XML for Analysis](media/xmla.md#performance) | `media/xmla`: rowset documents written and read, `Discover` requests, and the provider's answers over a folder catalog of three IPC tables, on Windows x86_64; ADOMD.NET reading the served tables end to end |
+| Media | [Excel](media/excel.md#record-and-workbook-doors) | `media/excel`: 10,000 rows of five columns written and read as records, one cell through `Workbook`, a sheet into and from a `Serie`; one containerized x86_64 Linux release run |
 | Media | [Iceberg](media/iceberg.md#performance) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1 |
 | Media | [Iceberg against PyIceberg](media/iceberg.md#against-pyiceberg) | `python/benchmarks/media/iceberg.py`: appends, opens and four scans of a 1M-row table, unpartitioned and in eight partitions, beside PyIceberg's SQLite catalog; one containerized x86_64 Linux run |
 | Types | [Cast](types/cast.md) | One compiled `ArrowCastPlan` against planning per batch, over 1, 10 and 1,000 batches of 64 rows; one con... |
@@ -113,8 +117,8 @@ Results live beside the method they measure. Each page's Performance section nam
 | `holder` | byte streams, listings, buffering, and foreign-filesystem boundaries |
 | `charset` | the borrow an all-ASCII payload answers with, the transcode a mixed one pays for, and the three streaming doors |
 | `coding` | content codings beside their standard-library baselines on the same wire |
-| `media` | record round trips, text projection, Avro, Parquet, Iceberg, XML for Analysis, and pushdown |
-| `text` | natural whole-value and streaming codecs, field-directed parsing, and placeholders |
+| `media` | record round trips, text projection, Avro, Parquet, Iceberg, CSV, Excel, XML for Analysis, and pushdown |
+| `text` | natural whole-value and streaming codecs, field-directed parsing, placeholders, and plain-text records, lines and framing |
 | `uri` | URI parsing and component access |
 | `expression` | binding, row and Arrow evaluation, and statistics pushdown |
 | `fix` | registry lookup, mutation, storage, and binding crossings |
