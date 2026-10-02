@@ -4300,12 +4300,13 @@ pub struct WindowSerieMut<'a>  (the same window over a &mut Serie; every read of
   pub fn as_reversed(&mut self) -> Result<&mut Self>
   pub fn as_taken(&mut self, indices: &Serie) -> Result<&mut Self>  (exactly as many indices as the window, window-relative; refused by name otherwise)
 pub struct WindowSerieRows<'a>  (Iterator<Item = Cow<'a, Scalar>> over a window's rows, DoubleEndedIterator, ExactSizeIterator, FusedIterator)
-pub struct SerieWindows<'a>  (what window_by answers on a Serie, a WindowSerie and a WindowSerieMut: the owner of the windows - the serie they view, borrowed, or the one copy a sorted gather took where the keys descend; the key column computed once; one bit per row where a window opens, or the gathered windows' table; the record every window states, typed once; #[must_use]; Clone, Debug; IntoIterator for &SerieWindows)
+pub struct SerieWindows<'a>  (what window_by answers on a Serie, a WindowSerie and a WindowSerieMut: the owner of the windows - the serie they view, borrowed, or the one copy a sorted gather took where the keys descend; the key column computed once; one bit per row where a window opens, or the gathered windows' table; the record every window states, typed once; in row order, where each window opens, indexed on the first get; #[must_use]; Clone, Debug; IntoIterator for &SerieWindows)
   pub fn len(&self) -> usize  (how many windows)
   pub fn is_empty(&self) -> bool  (no row was windowed)
   pub fn serie(&self) -> &Serie  (the serie every window views: the windowed one, or the gathered copy)
   pub fn static_field(&self) -> &Field  (the record every window states, known before any window is walked: the kept cells, the key cells - nullable where the windowed rows hold an absent record row - windownum: uint64 and rownum: uint64, nullable)
   pub fn into_owned(self) -> SerieWindows<'static>  (a borrowed serie cloned, its buffers shared and no row copied, so the windows and their records outlive the borrow)
+  pub fn get(&self, index: usize) -> Option<(Scalar, WindowSerie<'_>)>  (the window index places from the first, as iter lends it, in constant time: in row order the first call indexes where every window opens - one allocation of a usize per window, kept - and every call after it reads that index; in key order the cuts are the index; None past the last)
   pub fn iter(&self) -> SerieWindowsIter<'_>  (the windows from the first, as often as asked)
 pub struct SerieWindowsIter<'s>  (Iterator<Item = (Scalar, WindowSerie<'s>)>, each the window's key - the key column's row at its first row - and the window stating its record; ExactSizeIterator, FusedIterator, Clone, Debug; nth skips windows with no key built - one walk of the set bits in row order, one read of the cuts in key order)
 

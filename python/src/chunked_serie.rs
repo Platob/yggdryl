@@ -23,6 +23,7 @@ use yggdryl::{ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, Sca
 use crate::datatype::{
     ArrayIntake, PyDataType, arrow_array_to_pyarrow, core_field_to_pyarrow, pyarrow,
 };
+use crate::expression::selector_from_value;
 use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{
     Frames, core_root_field_from_value, frame_from_reader, rooted_reader_to_pyarrow, type_name,
@@ -573,6 +574,26 @@ impl PyChunkedSerie {
             Self::detached(slf, move |chunked| chunked.partition_by(&keys))?
         };
         Ok(Self::groups(groups))
+    }
+
+    /// The windows of equal adjacent keys across the chunks, each
+    /// `(key, rows)`: a run crossing a chunk edge is one window, its pieces
+    /// kept apart, and `sorted` regroups the runs into key order with no row
+    /// copied. A window states no record: its key is the first half of the
+    /// pair and its place among the windows its place in the list, so a key
+    /// cell named `windownum` or `rownum` is taken. `sorted=None` is `False`.
+    #[pyo3(
+        signature = (by, sorted = Some(false)),
+        text_signature = "($self, by, sorted=False)"
+    )]
+    fn window_by(
+        slf: &Bound<'_, Self>,
+        by: &Bound<'_, PyAny>,
+        sorted: Option<bool>,
+    ) -> PyResult<Vec<(PyScalar, Self)>> {
+        let selector = selector_from_value(by)?;
+        let sorted = sorted.unwrap_or(false);
+        Self::detached(slf, move |chunked| chunked.window_by(selector, sorted)).map(Self::groups)
     }
 
     /// The bytes the rows occupy: every chunk's.

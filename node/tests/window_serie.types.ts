@@ -48,6 +48,21 @@ window.copyFrom(prices)
 window.splice(0, 1, [6])
 const chained: WindowSerie = window.asSorted().asReversed().asTaken([2, 1, 0])
 
+// The windows of a window, each stating its record; a plain window states none.
+const lent: Array<[Scalar, WindowSerie]> = window.windowBy('price')
+const lentSorted: Array<[Scalar, WindowSerie]> = window.windowBy(['price'], true)
+const lentCleared: Array<[Scalar, WindowSerie]> = window.windowBy('price', null)
+const record: Scalar | null = lent[0][1].staticValues
+const plainRecord: Scalar | null = window.staticValues
+
+// @ts-expect-error `sorted` is a boolean
+window.windowBy('price', 'yes')
+// @ts-expect-error a key is a Selector, a Term, a text or an array of them
+window.windowBy(7)
+// @ts-expect-error the record is a getter, not a mutable slot
+window.staticValues = null
+// @ts-expect-error the private windowing bridge is hidden
+window._windowByNative
 // @ts-expect-error a window has no public constructor
 new WindowSerie()
 // @ts-expect-error a window never shrinks what it views
@@ -61,4 +76,4 @@ window._setNative
 
 void [length, offset, parent, field, empty, nulls, absent, row, maybe, rows, values, bytes, text,
   ordered, unique, distinct, order, narrower, whole, sorted, deduplicated, reversed, taken,
-  filtered, groups, same, chained]
+  filtered, groups, same, chained, lent, lentSorted, lentCleared, record, plainRecord]

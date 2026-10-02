@@ -658,6 +658,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<serie::PyMapSerie>()?;
     module.add_class::<serie::PyStructSerie>()?;
     module.add_class::<serie::PySerieReader>()?;
+    module.add_class::<serie::PySerieReaderWindows>()?;
     module.add_class::<window_serie::PyWindowSerie>()?;
     module.add_class::<chunked_serie::PyChunkedSerie>()?;
     module.add_class::<scalar::PyScalarIterator>()?;

@@ -4568,7 +4568,7 @@ fn a_held_window_record_costs_one_row_only_when_read() {
 }
 
 #[test]
-fn a_window_reached_by_nth_costs_one_key_whatever_it_skips() {
+fn a_window_reached_by_nth_or_get_costs_one_key_whatever_it_skips() {
     // Skipping windows builds no key: in row order the walk counts set
     // bits, in key order it reads the cuts, and only the window lent is
     // keyed - what a binding holding owned windows pays to reach one.
@@ -4595,6 +4595,17 @@ fn a_window_reached_by_nth_costs_one_key_whatever_it_skips() {
                 "the last of {rows} windows in {cuts} order: its key alone"
             );
             assert!(windows.iter().nth(rows).is_none());
+            // Reached by its place: in row order the first call indexes
+            // where every window opens, once; every call after it, and every
+            // call in key order, keys the window lent alone.
+            let first = if sorted { 1 } else { 2 };
+            let (cost, _) = counted(|| windows.get(rows - 1).map(black_box));
+            assert_eq!(
+                cost, first,
+                "the first get of {rows} windows in {cuts} order"
+            );
+            let (cost, _) = counted(|| windows.get(rows / 2).map(black_box));
+            assert_eq!(cost, 1, "a next get of {rows} windows in {cuts} order");
         }
     }
 }

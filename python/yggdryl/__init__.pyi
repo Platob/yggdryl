@@ -230,6 +230,7 @@ from .serie import (
     Serie as Serie,
     SerieField as SerieField,
     SerieReader as SerieReader,
+    SerieReaderWindows as SerieReaderWindows,
     SerieSerie as SerieSerie,
     WindowSerie as WindowSerie,
     SerieViewField as SerieViewField,

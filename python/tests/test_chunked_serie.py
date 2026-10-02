@@ -723,3 +723,68 @@ class TestOrder:
         apart.as_reversed()
         assert apart.num_chunks == 2
         assert [row.as_py() for row in apart.rows()] == [3, 2, 1]
+
+    def test_window_by_merges_a_run_across_a_chunk_edge(self) -> None:
+        field = Field("venue", "utf8", nullable=False)
+        venues = ChunkedSerie.from_arrow_chunked_array(
+            pa.chunked_array([["XNAS", "XNAS"], ["XNAS", "XNYS"], [], ["XNYS"]]), field
+        )
+        windows = venues.window_by("venue")
+        assert [
+            (key.as_py(), [row.as_py() for row in rows.rows()], rows.num_chunks)
+            for key, rows in windows
+        ] == [(["XNAS"], ["XNAS"] * 3, 2), (["XNYS"], ["XNYS"] * 2, 3)]
+        # XNYS crosses the empty chunk, which the slice keeps.
+        for _, rows in windows:
+            assert isinstance(rows, ChunkedSerie)
+            assert rows.field == field
+        # `sorted` is positional or keyword, and `None` is its default.
+        expected = [(key.as_py(), len(rows)) for key, rows in windows]
+        for spelled in (
+            venues.window_by("venue", False),
+            venues.window_by("venue", None),
+            venues.window_by(by="venue", sorted=None),
+        ):
+            assert [(key.as_py(), len(rows)) for key, rows in spelled] == expected
+        # The keys and rows of the joined column, held apart.
+        joined = venues.into_serie().window_by("venue")
+        assert [(key.as_py(), len(window)) for key, window in joined] == expected
+        # No row, no window; an empty key is refused even with no chunk.
+        assert ChunkedSerie.empty(field).window_by("venue") == []
+        with pytest.raises(ValueError, match="empty match key"):
+            ChunkedSerie.empty(field).window_by("*")
+        with pytest.raises(TypeError):
+            venues.window_by("venue", 1)  # type: ignore[arg-type]
+
+    def test_window_by_sorted_regroups_runs_across_chunks_with_no_row_copied(self) -> None:
+        field = Field("venue", "utf8", nullable=False)
+        venues = ChunkedSerie.from_arrow_chunked_array(
+            pa.chunked_array([["XNYS", "XNAS"], ["XNAS", "XNYS"]]), field
+        )
+        windows = venues.window_by("venue", True)
+        assert [
+            (key.as_py(), [row.as_py() for row in rows.rows()], rows.num_chunks)
+            for key, rows in windows
+        ] == [(["XNAS"], ["XNAS"] * 2, 2), (["XNYS"], ["XNYS"] * 2, 2)]
+        # Every piece is a slice of a chunk it came from.
+        held = [chunk.into_arrow_array() for chunk in venues.chunks]
+        for _, rows in windows:
+            for piece in rows.chunks:
+                data = piece.into_arrow_array().buffers()[2]
+                assert any(
+                    chunk.buffers()[2].address <= data.address < chunk.buffers()[2].address
+                    + chunk.buffers()[2].size
+                    for chunk in held
+                )
+        assert [(key.as_py(), len(rows)) for key, rows in windows] == [
+            (key.as_py(), len(window)) for key, window in venues.into_serie().window_by("venue", True)
+        ]
+
+    def test_window_by_states_no_record_so_a_key_named_windownum_is_taken(self) -> None:
+        # The key is the first half of each pair and the place its place in
+        # the list: no record names `windownum`, so nothing collides with it.
+        prices = chunked([1, 1, 2], 2)
+        windows = prices.window_by("price as windownum")
+        assert [(key.as_py(), len(rows)) for key, rows in windows] == [([1], 2), ([2], 1)]
+        with pytest.raises(ValueError, match="collides with the static value"):
+            prices.into_serie().window_by("price as windownum")

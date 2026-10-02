@@ -1262,7 +1262,7 @@ fn the_record_is_read_through_the_generic_scalar_accessors() {
 }
 
 #[test]
-fn nth_lends_the_window_a_walk_reaches_and_fuses_past_the_last() {
+fn nth_and_get_lend_the_window_a_walk_reaches_and_end_past_the_last() {
     let quotes = quotes(&[
         ("XNYS", 1, 10),
         ("XNAS", 1, 11),
@@ -1285,6 +1285,15 @@ fn nth_lends_the_window_a_walk_reaches_and_fuses_past_the_last() {
                 reached.as_ref(),
                 walked.get(skip),
                 "sorted {sorted}, skip {skip}"
+            );
+            // Reached by its place, the same window and record.
+            let got = windows
+                .get(skip)
+                .map(|(key, window)| (key, window.offset(), window.len(), record(&window)));
+            assert_eq!(
+                got.as_ref(),
+                walked.get(skip),
+                "sorted {sorted}, get {skip}"
             );
         }
         // Skipping from a walk already under way, and the walk after it.

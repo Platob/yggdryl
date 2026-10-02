@@ -17,6 +17,7 @@ use serde_json::Value as JsonValue;
 use yggdryl::{ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, SerieReader};
 
 use crate::datatype::JsDataType;
+use crate::expression::{SelectorInput, selector_from_input};
 use crate::field::JsField;
 use crate::iomedia::JsBatchReader;
 use crate::napi_error;
@@ -546,6 +547,25 @@ impl JsChunkedSerie {
     ) -> Result<Vec<(JsScalar, Self)>> {
         self.inner
             .partition_by_chunked(&keys.inner)
+            .map(chunked_groups)
+            .map_err(napi_error)
+    }
+
+    /// The windows `by` cuts the rows into across the chunks: one
+    /// `[key, rows]` pair per run of equal adjacent keys - a run crossing a
+    /// chunk edge one window - or, `sorted`, each key once in key order,
+    /// its runs regrouped; each window's rows the pieces of the chunks it
+    /// spans, no row copied. A chunked window states no record: its key is
+    /// the pair's first half and its place the pair's index. `sorted`
+    /// absent or `null` is `false`.
+    #[napi(js_name = "_windowByNative", skip_typescript)]
+    pub fn window_by_native(
+        &self,
+        by: SelectorInput<'_>,
+        sorted: Option<bool>,
+    ) -> Result<Vec<(JsScalar, Self)>> {
+        self.inner
+            .window_by(selector_from_input(by)?, sorted.unwrap_or(false))
             .map(chunked_groups)
             .map_err(napi_error)
     }

@@ -445,8 +445,18 @@ test('equality and order are the rows alone, however they are cut', () => {
   assert.equal(cut.compare(ids([1n, 2n, 3n])), 0)
   assert.equal(cut.compare(ChunkedSerie.fromSerie(ids([1n, 3n]))), -1)
   assert.equal(cut.compare(ids([1n, 2n])), 1)
-  assert.throws(() => cut.equals([1n, 2n, 3n]), /ChunkedSerie\.equals takes a ChunkedSerie or a Serie/)
-  assert.throws(() => cut.compare(null), /ChunkedSerie\.compare takes a ChunkedSerie or a Serie/)
+  // A window compares as the serie of its rows.
+  const held = ids([0n, 1n, 2n, 3n])
+  assert.ok(cut.equals(held.window(1, 3)))
+  assert.equal(cut.compare(held.window(1, 2)), 1)
+  assert.throws(
+    () => cut.equals([1n, 2n, 3n]),
+    /ChunkedSerie\.equals takes a ChunkedSerie, a Serie or a WindowSerie/,
+  )
+  assert.throws(
+    () => cut.compare(null),
+    /ChunkedSerie\.compare takes a ChunkedSerie, a Serie or a WindowSerie/,
+  )
 
   // A clone shares the chunks, and appending to it leaves the original alone.
   const copy = cut.clone()
@@ -677,6 +687,7 @@ test('the chunked ordering natives stay outside the public surface', () => {
     '_intoFilteredNative',
     '_partitionByNative',
     '_partitionByChunkedNative',
+    '_windowByNative',
     '_asSortedNative',
     '_asUniqueNative',
     '_asReversedNative',
@@ -688,5 +699,98 @@ test('the chunked ordering natives stay outside the public surface', () => {
   assert.throws(
     () => chunked([1], 1).intoSorted({ nullsLast: true }),
     /ChunkedSerie.intoSorted options take descending and nullsFirst/,
+  )
+})
+
+// The venues of `chunks` as a chunked utf8 column, one chunk per array.
+const venueChunks = (chunks) => {
+  const field = new Field('venue', 'utf8', false)
+  return ChunkedSerie.fromSeries(
+    chunks.map((rows) => Serie.fromScalars(field, rows)),
+    field,
+  )
+}
+
+const windowRows = (windows) =>
+  windows.map(([key, rows]) => [key.asJs(), rows.asJs(), rows.numChunks])
+
+test('windowBy merges a run across a chunk edge', () => {
+  const venues = venueChunks([['XNAS', 'XNAS'], ['XNAS', 'XNYS'], [], ['XNYS']])
+  const windows = venues.windowBy('venue')
+  // XNYS crosses the empty chunk, which the slice keeps.
+  assert.deepEqual(windowRows(windows), [
+    [['XNAS'], ['XNAS', 'XNAS', 'XNAS'], 2],
+    [['XNYS'], ['XNYS', 'XNYS'], 3],
+  ])
+  for (const [, rows] of windows) {
+    assert.ok(rows instanceof ChunkedSerie)
+    assert.ok(rows.field.equals(venues.field))
+  }
+  // `sorted` absent, `undefined` and `null` are its default, `false`.
+  const expected = windows.map(([key, rows]) => [key.asJs(), rows.length])
+  for (const spelled of [
+    venues.windowBy('venue', false),
+    venues.windowBy('venue', undefined),
+    venues.windowBy('venue', null),
+  ]) {
+    assert.deepEqual(
+      spelled.map(([key, rows]) => [key.asJs(), rows.length]),
+      expected,
+    )
+  }
+  // The keys and rows of the joined column, held apart.
+  assert.deepEqual(
+    venues
+      .intoSerie()
+      .windowBy('venue')
+      .map(([key, window]) => [key.asJs(), window.length]),
+    expected,
+  )
+  // No row, no window; an empty key is refused even with no chunk.
+  const empty = ChunkedSerie.empty(venues.field)
+  assert.deepEqual(empty.windowBy('venue'), [])
+  assert.throws(() => empty.windowBy('*'), /empty match key/)
+  assert.throws(() => venues.windowBy('venue', 1), {
+    name: 'TypeError',
+    message: /ChunkedSerie\.windowBy sorted must be a boolean, got number/,
+  })
+})
+
+test('windowBy sorted regroups runs across chunks with no row copied', () => {
+  const venues = venueChunks([
+    ['XNYS', 'XNAS'],
+    ['XNAS', 'XNYS'],
+  ])
+  const windows = venues.windowBy('venue', true)
+  // Each key once, its runs regrouped as pieces of the chunks they lie in.
+  assert.deepEqual(windowRows(windows), [
+    [['XNAS'], ['XNAS', 'XNAS'], 2],
+    [['XNYS'], ['XNYS', 'XNYS'], 2],
+  ])
+  assert.deepEqual(
+    windows.map(([key, rows]) => [key.asJs(), rows.length]),
+    venues
+      .intoSerie()
+      .windowBy('venue', true)
+      .map(([key, window]) => [key.asJs(), window.length]),
+  )
+})
+
+test('windowBy states no record, so a key named windownum is taken', () => {
+  // The key is the first half of each pair and the place its place in the
+  // array: no record names `windownum`, so nothing collides with it.
+  const prices = chunked([1, 1, 2], 2)
+  const windows = prices.windowBy('price as windownum')
+  assert.deepEqual(
+    windows.map(([key, rows]) => [key.asJs(), rows.length]),
+    [
+      [[1], 2],
+      [[2], 1],
+    ],
+  )
+  assert.ok(windows.every(([, rows]) => !('staticValues' in rows)))
+  assert.throws(
+    () => prices.intoSerie().windowBy('price as windownum'),
+    /collides with the static value "windownum"/,
   )
 })

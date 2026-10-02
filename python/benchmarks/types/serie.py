@@ -1,6 +1,6 @@
 """The ordering, uniqueness, grouping and window doors of ``Serie``,
-``ChunkedSerie`` and ``WindowSerie``, each beside the PyArrow compute kernel
-that answers the same ask where one exists.
+``ChunkedSerie``, ``WindowSerie`` and ``SerieReader``, each beside the PyArrow
+compute kernel that answers the same ask where one exists.
 
 What a row measures is the boundary: reading the keyword options, the
 indices, mask or keys argument, the call off the GIL, and handing the answer
@@ -26,7 +26,7 @@ from collections.abc import Callable
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from yggdryl import ChunkedSerie, Field, Serie
+from yggdryl import ChunkedSerie, Field, Serie, SerieReader, SerieReaderWindows
 
 ROWS = 4_096
 VALUES = pa.array([(index * 7_919) % 1_024 for index in range(ROWS)], pa.int64())
@@ -56,12 +56,29 @@ WINDOW_SOURCE = Serie.from_arrow_array(
     VALUES[:WINDOW_ROWS], Field("price", "int64", nullable=False)
 )
 WINDOW_ROWS_PY = list(range(16))
+# Quotes a minute apart, their venues in sorted runs: the keys `window_by`
+# cuts by a period, by a column in order, and - over QUOTES - out of order.
+TICKS = pa.array([index * 60_000_000_000 for index in range(ROWS)], pa.timestamp("ns", "UTC"))
+TICKED_BATCH = pa.record_batch({"venue": SORTED_KEYS, "ts": TICKS})
+TICKED = Serie.from_(TICKED_BATCH)
+CHUNKED_TICKED = ChunkedSerie.from_(
+    pa.Table.from_batches([TICKED_BATCH.slice(0, ROWS // 2), TICKED_BATCH.slice(ROWS // 2)])
+)
+LENT = TICKED.window_by("venue")[1][1]
+# The last of the 274 windows a quarter hour cuts: its record skips every
+# window before it.
+LENT_LAST = TICKED.window_by("minutes(ts, 15)")[-1][1]
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
     samples = timeit.repeat(operation, number=iterations, repeat=7)
     nanoseconds = statistics.median(samples) * 1_000_000_000 / iterations
     print(f"{name:52} {nanoseconds:14.1f} ns/op")
+
+
+def _drained(windows: SerieReaderWindows) -> int:
+    """Every row of every window of a stream, each window read in turn."""
+    return sum(len(piece) for window in windows for piece in window)
 
 
 def _fresh() -> Serie:
@@ -165,6 +182,27 @@ def _cases() -> list[tuple[str, Callable[[], object]]]:
         ("WindowSerie.as_sorted, held alone", writable.as_sorted),
         ("WindowSerie.as_reversed, held alone", writable.as_reversed),
         ("WindowSerie.as_taken, held alone", lambda: writable.as_taken(WINDOW_INDICES)),
+        # window_by: held windows, their records, chunks and a stream.
+        ("Serie.window_by, minutes(ts, 15)", lambda: TICKED.window_by("minutes(ts, 15)")),
+        ("Serie.window_by, 16 keys in order", lambda: TICKED.window_by("venue")),
+        ("Serie.window_by sorted, 16 keys gathered", lambda: QUOTES.window_by("venue", True)),
+        (
+            "WindowSerie.window_by",
+            lambda: TICKED.window(WINDOW_OFFSET, WINDOW_ROWS).window_by("venue"),
+        ),
+        ("WindowSerie.window_by, a lent window", lambda: LENT.window_by("minutes(ts, 15)")),
+        ("WindowSerie.static_values", lambda: LENT.static_values),
+        ("WindowSerie.static_values, the last of 274", lambda: LENT_LAST.static_values),
+        ("ChunkedSerie.window_by", lambda: CHUNKED_TICKED.window_by("venue")),
+        ("ChunkedSerie.window_by sorted", lambda: CHUNKED_TICKED.window_by("venue", True)),
+        (
+            "SerieReader.window_by, drained",
+            lambda: _drained(SerieReader.from_serie(TICKED).window_by("venue")),
+        ),
+        (
+            "SerieReader.window_by sorted, drained",
+            lambda: _drained(SerieReader.from_serie(TICKED).window_by("venue", True)),
+        ),
     ]
 
 
@@ -181,6 +219,10 @@ def main() -> None:
     )
     assert PRICES.into_filtered(HELD_MASK).into_arrow_array().equals(pc.filter(VALUES, MASK))
     assert PRICES.unique_count() == pc.count_distinct(VALUES).as_py()
+    assert len(TICKED.window_by("venue")) == len(CHUNKED_TICKED.window_by("venue")) == 16
+    assert _drained(SerieReader.from_serie(TICKED).window_by("venue", True)) == ROWS
+    last = LENT_LAST.static_values
+    assert last is not None and last["windownum"].as_py() == 273
     gc.disable()
     try:
         for name, operation in _cases():

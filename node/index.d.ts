@@ -7928,12 +7928,44 @@ export declare class SerieReader {
   /** The record every yielded serie is typed by. */
   get field(): Field
   /**
+   * The values constant over every row this reader yields, where it is a
+   * window `windowBy` cut: one struct value, read with `Scalar`'s own
+   * accessors - the cells of the record the windowed reader states but
+   * `windownum` and `rownum`, the key cells, `windownum` (the window's
+   * place, from 0) and `rownum` (the number its first row has in the
+   * stream). `null` for every other reader. Kept once the reader is
+   * consumed; never a column, and dropped at the Arrow face.
+   */
+  get staticValues(): Scalar | null
+  /**
    * The stream's batches reconciled to the root as a native
    * `BatchReader`, never landed; the reader is consumed.
    */
   intoArrowReader(): BatchReader
 }
 export type JsSerieReader = SerieReader
+
+/**
+ * The windows of a stream, one lazy `SerieReader` per run of equal adjacent
+ * keys, in the order they arrive.
+ *
+ * Every window is pulled through one walk holding at most one batch of the
+ * stream, so windows are read in order: taking the next window drops the
+ * unread rows of the one before, and a window read after the walk passed
+ * rows of it refuses once, naming it. Each window states its record as its
+ * `staticValues`.
+ */
+export declare class SerieReaderWindows {
+  /** The record root every window yields: the windowed reader's own. */
+  get field(): Field
+  /**
+   * The record every window's `staticValues` is typed by, known before
+   * the first pull: the windowed reader's own but `windownum` and
+   * `rownum`, the key cells, `windownum` and `rownum`.
+   */
+  get staticField(): Field
+}
+export type JsSerieReaderWindows = SerieReaderWindows
 
 /**
  * An HTTP/1.1 server hosting `IOBase` handles and fixed answers, answering
@@ -10273,6 +10305,20 @@ export declare class WindowSerie {
    * `window` was called on.
    */
   get serie(): Serie
+  /**
+   * The values constant over this window's rows, where `windowBy` lent
+   * it: one struct value, read with `Scalar`'s own accessors - the cells
+   * of the record the windowed window states but `windownum` and
+   * `rownum`, the key cells as the key's projections name them,
+   * `windownum` (the window's place among the windows, from 0) and
+   * `rownum` (the number its first row has in what was windowed,
+   * absolute through windows of windows, `null` where `sorted` gathered
+   * the rows out of their order) - read off the rows as they stood when
+   * `windowBy` cut them. `null` for every other window: one `window`
+   * takes, and a narrower one. Never the window's identity, and never
+   * carried by `intoSerie` or an Arrow array of it.
+   */
+  get staticValues(): Scalar | null
   /** The field every row is typed by, or `null` for a window over a run. */
   get field(): Field | null
   /**

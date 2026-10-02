@@ -2,29 +2,48 @@
 //! that reads and writes through the serie's own implementation.
 //!
 //! [`PyWindowSerie`] holds the `Serie` object it was taken from, an offset
-//! and a length, and nothing else: every call borrows that serie when it is
-//! asked - shared for a read, mutably for a write - takes the core window
-//! over it again, and redirects. One class is therefore both the core's
-//! `WindowSerie` and its `WindowSerieMut`: Python has no borrow to tell them
-//! apart, so a write is checked when it is made rather than when the window
-//! is taken. A window taken before its serie shrank is refused naming the
-//! serie and both counts, as the core refuses a window past the end.
+//! and a length - and, for a window `window_by` lent, the core's windows of
+//! that call and its place among them: every call borrows that serie when
+//! it is asked - shared for a read, mutably for a write - takes the core
+//! window over it again, and redirects. One class is therefore both the
+//! core's `WindowSerie` and its `WindowSerieMut`: Python has no borrow to
+//! tell them apart, so a write is checked when it is made rather than when
+//! the window is taken. A window taken before its serie shrank is refused
+//! naming the serie and both counts, as the core refuses a window past the
+//! end.
+//!
+//! A window `window_by` lent states its static values. Every window of one
+//! call shares the core's [`SerieWindows`] of it, owned
+//! ([`SerieWindows::into_owned`]): the windowed serie cloned, its buffers
+//! shared and no row copied, so the windows outlive the call that cut them.
+//! The window's record is what the core window those windows lend at its
+//! place states ([`WindowSerie::static_values`]), built when it is read and
+//! answered as the struct value `Scalar` reads by name - the rows as
+//! `window_by` read them when it cut the windows - and its own `window_by`
+//! redirects through that core window, so the windows of it keep the
+//! record: the outer key cells first, the `rownum` absolute. Every other
+//! window states none, as in the core, and so does a narrower one.
 //!
 //! The window's rows are its identity, as a serie's are: it compares by them
 //! against a window or a `Serie`, and is unhashable because its serie is
 //! mutable.
+
+use std::sync::Arc;
 
 use pyo3::IntoPyObjectExt;
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PySlice};
-use yggdryl::{Scalar, Serie, WindowSerie, WindowSerieMut};
+use yggdryl::{Scalar, Serie, SerieWindows, WindowSerie, WindowSerieMut};
 
 use crate::datatype::PyDataType;
+use crate::expression::selector_from_value;
 use crate::field::PyField;
 use crate::scalar::{PyScalar, PyScalarIterator, from_py, from_py_under};
-use crate::serie::{PySerie, described, groups_to_py, rows_from_py, serie_argument, sort_options};
+use crate::serie::{
+    PySerie, described, groups_to_py, rows_from_py, serie_argument, sort_options, static_struct,
+};
 use crate::{compare, normalize_index, value_error};
 
 /// A window over a `Serie`, read and written through it, window-relative.
@@ -38,13 +57,106 @@ pub(crate) struct PyWindowSerie {
     serie: Py<PySerie>,
     offset: usize,
     len: usize,
+    /// Where `window_by` lent this window: the windows of that call, owned
+    /// and shared by every window of it, and this window's place among them
+    /// - its `windownum`. `None` for every other window.
+    lent: Option<(Arc<SerieWindows<'static>>, usize)>,
+}
+
+/// The invariant a lent window keeps: its place is one of the windows that
+/// lent it, which never change.
+const LENT: &str = "a lent window's place is among the windows that lent it";
+
+/// The windows one `window_by` call cut, read off the GIL into what
+/// outlives the core's borrow: the windows themselves, owned, whether
+/// `sorted` gathered the rows into key order - every window then views the
+/// gathered copy they hold - and per window its key, its offset and its
+/// length. No record is built here: a window builds its own when it is read.
+pub(crate) struct LentWindows {
+    windows: Arc<SerieWindows<'static>>,
+    gathered: bool,
+    cuts: Vec<(Scalar, usize, usize)>,
+}
+
+impl LentWindows {
+    /// Read every window `windows` lends over `windowed` - its key, its
+    /// offset and its length - and keep the windows, owned.
+    pub(crate) fn of(windowed: &Serie, windows: SerieWindows<'_>) -> Self {
+        let gathered = !std::ptr::eq(windows.serie(), windowed);
+        let cuts = windows
+            .iter()
+            .map(|(key, window)| (key, window.offset(), window.len()))
+            .collect();
+        Self {
+            windows: Arc::new(windows.into_owned()),
+            gathered,
+            cuts,
+        }
+    }
+
+    /// Hand the windows to Python as `(key, window)` pairs: each window over
+    /// `serie` - the windowed object itself - or, where `sorted` gathered the
+    /// rows, over one new `Serie` of the gathered copy every window shares;
+    /// each holding the windows and its place among them.
+    pub(crate) fn into_py(
+        self,
+        py: Python<'_>,
+        serie: Py<PySerie>,
+    ) -> PyResult<Vec<(PyScalar, PyWindowSerie)>> {
+        let serie = if self.gathered {
+            described(py, self.windows.serie().clone())?
+                .into_bound(py)
+                .cast_into::<PySerie>()?
+                .unbind()
+        } else {
+            serie
+        };
+        let windows = self.windows;
+        Ok(self
+            .cuts
+            .into_iter()
+            .enumerate()
+            .map(|(index, (key, offset, len))| {
+                let window = PyWindowSerie {
+                    serie: serie.clone_ref(py),
+                    offset,
+                    len,
+                    lent: Some((Arc::clone(&windows), index)),
+                };
+                (PyScalar::from_inner(key), window)
+            })
+            .collect())
+    }
 }
 
 impl PyWindowSerie {
     /// The window `offset..offset + len` over `serie`, which the caller has
-    /// proven against the serie's length.
+    /// proven against the serie's length; it states no record.
     pub(crate) const fn new(serie: Py<PySerie>, offset: usize, len: usize) -> Self {
-        Self { serie, offset, len }
+        Self {
+            serie,
+            offset,
+            len,
+            lent: None,
+        }
+    }
+
+    /// Answer `read` off the GIL through the core window `windows` lend at
+    /// `index` - the window stating its record - reached in constant time
+    /// ([`SerieWindows::get`]).
+    fn lent<T, F>(
+        py: Python<'_>,
+        (windows, index): (Arc<SerieWindows<'static>>, usize),
+        read: F,
+    ) -> PyResult<T>
+    where
+        T: Send,
+        F: for<'a> FnOnce(WindowSerie<'a>) -> PyResult<T> + Send,
+    {
+        py.detach(move || {
+            let (_, window) = windows.get(index).expect(LENT);
+            read(window)
+        })
     }
 
     /// Answer `read` through the core window over the serie as it is now,
@@ -240,7 +352,67 @@ impl PyWindowSerie {
         Ok(Self::new(self.serie.clone_ref(py), offset, len))
     }
 
-    /// The window as a serie of its own: zero copy for a column.
+    /// The values constant over this window's rows, where `window_by` lent
+    /// it: one struct value, its cells the kept cells of the window it was
+    /// cut from, the key cells, `windownum` and `rownum`, as `window_by`
+    /// read the rows when it cut the windows, read by name through
+    /// `Scalar`'s own accessors. Built when it is read. `None` for every
+    /// other window, a narrower one included.
+    #[getter]
+    fn static_values(&self, py: Python<'_>) -> PyResult<Option<PyScalar>> {
+        let Some(lent) = self.lent.clone() else {
+            return Ok(None);
+        };
+        let record = Self::lent(py, lent, |window| {
+            window
+                .static_values()
+                .map(|record| static_struct(record.field(), record.value()))
+                .transpose()
+        })?;
+        Ok(record.map(PyScalar::from_inner))
+    }
+
+    /// The windows of equal adjacent keys over this window's rows, each
+    /// `(key, window)`: over the same serie object at its offsets, unless
+    /// `sorted` gathered the rows into key order - then over one new `Serie`
+    /// of them, which every window shares. A window `window_by` lent is cut
+    /// through the core window that lent it, over the rows as they were when
+    /// it was cut, and its windows keep its record: its cells but
+    /// `windownum` and `rownum` ahead of the key cells, and an absolute
+    /// `rownum`. `sorted=None` is `False`.
+    #[pyo3(
+        signature = (by, sorted = Some(false)),
+        text_signature = "($self, by, sorted=False)"
+    )]
+    fn window_by(
+        &self,
+        py: Python<'_>,
+        by: &Bound<'_, PyAny>,
+        sorted: Option<bool>,
+    ) -> PyResult<Vec<(PyScalar, Self)>> {
+        let selector = selector_from_value(by)?;
+        let sorted = sorted.unwrap_or(false);
+        let cut = |window: WindowSerie<'_>| -> yggdryl::Result<LentWindows> {
+            Ok(LentWindows::of(
+                window.serie(),
+                window.window_by(selector, sorted)?,
+            ))
+        };
+        let lent = match self.lent.clone() {
+            // Proven against the serie as it is now, as every call is; the
+            // windows of it view the serie object at the offsets the windows
+            // that lent this one hold.
+            Some(lent) => {
+                self.read(py, |_| Ok(()))?;
+                Self::lent(py, lent, |window| cut(window).map_err(value_error))?
+            }
+            None => self.detached(py, cut)?,
+        };
+        lent.into_py(py, self.serie.clone_ref(py))
+    }
+
+    /// The window as a serie of its own: zero copy for a column; its
+    /// record stays with the window.
     fn into_serie(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let serie = self.read(py, |window| Ok(window.into_serie()))?;
         described(py, serie)

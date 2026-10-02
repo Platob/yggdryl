@@ -546,7 +546,7 @@ A `SortOptions` crosses as keywords in Python - `descending` and `nulls_first`, 
 | Key value | The run of the projected cells at a window's first row, in selector order, so one term keys a one-cell run. An absent record row keys `Scalar::Null`, and an absent cell is a null cell. Keys are equal as the [ordering verbs](#sorting-uniqueness-and-partitions) equate them: an absent key equals an absent key, every NaN is one value, a nested key compares item by item, and a period term such as `minutes(ts, 15)` keys the number of its period since the epoch, in UTC whatever zone the column states |
 | `sorted = false` | A window is a maximal run of adjacent rows whose keys are equal, in row order, over this serie at its offset in it: a key that comes back after another opens a window of its own, where `partition_by` gathers every row of a key into one group |
 | `sorted = true` | Each distinct key exactly once, in key order: ascending, an absent key last, as `SortOptions::default()` orders. Keys already in order answer exactly the `sorted = false` windows over this serie, at the same cost; any others have their runs - never their rows - sorted stably by key, the runs of one key merged, and the rows gathered once into key order, rows of one key in arrival order, into one serie the answer owns. Only ascending is offered: keys grouped in any other order already answer each key once with `sorted = false` |
-| The owner | `len()`, `is_empty()`, `serie()` - the serie every window views: this one, borrowed, or the gathered copy - and `iter()`, or `&windows` in a `for`, which lends the windows as often as asked. `SerieWindowsIter` is exact-size and fused, and its `nth` skips windows without building their keys. `into_owned()` clones a borrowed serie - its buffers shared, no row copied - so the windows outlive the borrow |
+| The owner | `len()`, `is_empty()`, `serie()` - the serie every window views: this one, borrowed, or the gathered copy - and `iter()`, or `&windows` in a `for`, which lends the windows as often as asked. `SerieWindowsIter` is exact-size and fused, and its `nth` skips windows without building their keys. `get(index)` lends one window by its place in constant time - in row order the first call indexes where every window opens, once. `into_owned()` clones a borrowed serie - its buffers shared, no row copied - so the windows outlive the borrow |
 | The record | Every window lent states its [static values](window-serie.md#static-values): the key cells, `windownum: uint64` - its place among the windows - and `rownum: uint64` - the number its first row has in this serie, null where `sorted` gathered the rows. `static_field()` types that record before any window is walked. It is never the window's identity and never crosses into a serie or an Arrow array |
 | Identity | A window is its rows, as a serie is: the key and the record are beside it |
 
@@ -576,7 +576,7 @@ A `SortOptions` crosses as keywords in Python - `descending` and `nulls_first`, 
     assert_eq!(cuts, [(key("XNYS"), 0, 1), (key("XNAS"), 1, 2), (key("XNYS"), 3, 1)]);
 
     // Every window lent states its record, read through FieldScalar's accessors.
-    let (_, xnas) = windows.iter().nth(1).expect("a second window");
+    let (_, xnas) = windows.get(1).expect("a second window");
     let record = xnas.static_values().expect("a window window_by lent");
     assert_eq!(record.name(), "quote");
     assert_eq!(record.get_key_str("venue"), Some(&Scalar::from("XNAS")));
@@ -688,7 +688,7 @@ A `SortOptions` crosses as keywords in Python - `descending` and `nulls_first`, 
     assert.throws(() => quotes.windowBy('price as rownum'), /collides with the static value/)
     ```
 
-`sorted` is `False` by default in Python, where `None` clears to it, and absent or `null` is `false` in JavaScript. Python answers a `list` of `(Scalar, WindowSerie)` pairs and JavaScript an `Array` of `[Scalar, WindowSerie]`, each window holding the serie object windowed - or, where `sorted` gathered, one new `Serie` every window shares - and each record a struct `Scalar` read by name. `SerieWindows`, its `iter`, `nth` and `into_owned` are Rust only.
+`sorted` is `False` by default in Python, where `None` clears to it, and absent or `null` is `false` in JavaScript. Python answers a `list` of `(Scalar, WindowSerie)` pairs and JavaScript an `Array` of `[Scalar, WindowSerie]`, each window holding the serie object windowed - or, where `sorted` gathered, one new `Serie` every window shares - and each record a struct `Scalar` read by name. `SerieWindows`, its `iter`, `get`, `nth` and `into_owned` are Rust only; a binding's window holds the owned windows of its call and reaches its record through `get`.
 
 ### Refusals
 

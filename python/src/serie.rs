@@ -42,7 +42,7 @@ use yggdryl::arrow::BatchReader;
 use yggdryl::media::RecordOptions;
 use yggdryl::{
     ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, MimeType, Scalar, Serie,
-    SerieReader, SortOptions,
+    SerieReader, SerieReaderWindows, SortOptions,
 };
 
 use crate::chunked_serie::{PyChunkedSerie, chunked_from_arrays};
@@ -50,6 +50,7 @@ use crate::datatype::{
     ArrayIntake, BatchIntake, PyDataType, array_capsule, arrow_array_to_pyarrow, pyarrow,
     schema_capsule,
 };
+use crate::expression::selector_from_value;
 use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{
     Frames, batch_reader_from_any, batch_reader_from_record_sequence, batch_reader_from_value,
@@ -61,7 +62,7 @@ use crate::scalar::{
     pyarrow_scalar_as_array,
 };
 use crate::text::line::{PyFieldPath, core_path_from_value};
-use crate::window_serie::PyWindowSerie;
+use crate::window_serie::{LentWindows, PyWindowSerie};
 use crate::{cast_options, compare, normalize_index, value_error};
 
 /// Many values: a schema-free run, or the Arrow buffers of one field.
@@ -221,6 +222,22 @@ pub(crate) fn groups_to_py(
         .into_iter()
         .map(|(key, rows)| Ok((PyScalar::from_inner(key), described(py, rows)?)))
         .collect()
+}
+
+/// A window's record of static values as the struct value Python reads by
+/// name: each cell of `row` filed under its child of `field`, so `get`,
+/// `[]`, `keys` and `as_py` reach it. The field states the order, which a
+/// struct value - sorted by name - does not keep.
+pub(crate) fn static_struct(field: &CoreField, row: &Scalar) -> PyResult<Scalar> {
+    let cells = row.sequence_rows().unwrap_or_default();
+    Scalar::from_struct(
+        field
+            .fields()
+            .iter()
+            .map(CoreField::name)
+            .zip(cells.iter().cloned()),
+    )
+    .map_err(value_error)
 }
 
 /// Resolve the paths a record partitions by, once: one path - a
@@ -1348,6 +1365,28 @@ impl PySerie {
         Ok(PyWindowSerie::new(slf.clone().unbind(), offset, length))
     }
 
+    /// The windows of equal adjacent keys, each `(key, window)`: over this
+    /// serie object at its offsets, unless `sorted` gathered the rows into
+    /// key order - then over one new `Serie` of them, which every window
+    /// shares. Every window states its record as `static_values`.
+    /// `sorted=None` is `False`.
+    #[pyo3(
+        signature = (by, sorted = Some(false)),
+        text_signature = "($self, by, sorted=False)"
+    )]
+    fn window_by(
+        slf: &Bound<'_, Self>,
+        by: &Bound<'_, PyAny>,
+        sorted: Option<bool>,
+    ) -> PyResult<Vec<(PyScalar, PyWindowSerie)>> {
+        let selector = selector_from_value(by)?;
+        let sorted = sorted.unwrap_or(false);
+        let lent = Self::detached(slf, move |serie| {
+            Ok(LentWindows::of(&serie, serie.window_by(selector, sorted)?))
+        })?;
+        lent.into_py(slf.py(), slf.clone().unbind())
+    }
+
     /// This column's one row as a `pyarrow.Scalar`, sharing its buffers.
     fn into_arrow_scalar<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let scalar = self.inner.into_arrow_scalar().map_err(value_error)?;
@@ -1538,12 +1577,20 @@ impl PySerie {
 pub(crate) struct PySerieReader {
     reader: Mutex<Option<SerieReader>>,
     field: CoreField,
+    /// The reader's static values - the record field and its row - read
+    /// once beside the field, so they stay readable once the reader is
+    /// handed over.
+    statics: Option<(CoreField, Scalar)>,
 }
 
 impl PySerieReader {
     fn from_inner(reader: SerieReader) -> Self {
         Self {
             field: reader.field().clone(),
+            statics: reader.static_values().map(|statics| {
+                let (field, row) = statics.into_parts();
+                (field.clone(), row)
+            }),
             reader: Mutex::new(Some(reader)),
         }
     }
@@ -1663,6 +1710,43 @@ impl PySerieReader {
         PyField::from_inner(self.field.clone())
     }
 
+    /// The values constant over every row this reader yields, where it is a
+    /// window `window_by` cut: one struct value named as the root, its cells
+    /// the windowed reader's own but `windownum` and `rownum`, the key
+    /// cells, `windownum` and `rownum`, read by name through `Scalar`'s own
+    /// accessors. `None` for every other reader. Kept by `cast`, readable
+    /// after `into_arrow_reader`, and never part of a batch.
+    #[getter]
+    fn static_values(&self) -> PyResult<Option<PyScalar>> {
+        self.statics
+            .as_ref()
+            .map(|(field, row)| static_struct(field, row).map(PyScalar::from_inner))
+            .transpose()
+    }
+
+    /// Cut the stream into windows of equal adjacent keys, one lazy
+    /// `SerieReader` each, in the order they arrive; this reader is spent.
+    /// The key is parsed before the reader is taken, so a text that does not
+    /// parse leaves it usable; a key the root refuses spends it, as a
+    /// refused cast does. `sorted=True` verifies the keys arrive in order
+    /// and refuses the first that does not; `sorted=None` is `False`.
+    #[pyo3(
+        signature = (by, sorted = Some(false)),
+        text_signature = "($self, by, sorted=False)"
+    )]
+    fn window_by(
+        &mut self,
+        by: &Bound<'_, PyAny>,
+        sorted: Option<bool>,
+    ) -> PyResult<PySerieReaderWindows> {
+        let selector = selector_from_value(by)?;
+        let reader = self.take()?;
+        reader
+            .window_by(selector, sorted.unwrap_or(false))
+            .map(|inner| PySerieReaderWindows { inner })
+            .map_err(value_error)
+    }
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -1702,6 +1786,60 @@ impl PySerieReader {
 
     fn __repr__(&self) -> String {
         format!("SerieReader(field={})", self.field)
+    }
+}
+
+/// The windows of a stream: one lazy `SerieReader` per run of equal
+/// adjacent keys, in the order they arrive - what `SerieReader.window_by`
+/// answers.
+///
+/// The core value is `Send + Sync`, so it is held as it is; every pull runs
+/// off the GIL. Windows are read in order: taking the next window pulls and
+/// drops the open one's unread rows, and a window read after its walk passed
+/// rows of it raises once, naming it, then ends.
+#[pyclass(name = "SerieReaderWindows", module = "yggdryl._native")]
+pub(crate) struct PySerieReaderWindows {
+    inner: SerieReaderWindows,
+}
+
+#[pymethods]
+impl PySerieReaderWindows {
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    /// The record root every window yields: the windowed reader's own.
+    #[getter]
+    fn field(&self) -> PyField {
+        PyField::from_inner(self.inner.field().clone())
+    }
+
+    /// The record every window's `static_values` are typed by, known before
+    /// the first pull.
+    #[getter]
+    fn static_field(&self) -> PyField {
+        PyField::from_inner(self.inner.static_field().clone())
+    }
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// The next window as its own `SerieReader`, or the end of the stream.
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PySerieReader>> {
+        let windows = &mut self.inner;
+        match py.detach(|| windows.next()) {
+            Some(Ok(window)) => Ok(Some(PySerieReader::from_inner(window))),
+            Some(Err(error)) => Err(value_error(error)),
+            None => Ok(None),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "SerieReaderWindows(field={}, static_field={})",
+            self.inner.field(),
+            self.inner.static_field()
+        )
     }
 }
 

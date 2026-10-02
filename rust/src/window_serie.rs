@@ -66,6 +66,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::iter::FusedIterator;
 use std::ops::Range;
+use std::sync::OnceLock;
 
 use arrow_buffer::BooleanBuffer;
 use arrow_buffer::bit_iterator::BitIndexIterator;
@@ -339,6 +340,10 @@ pub struct SerieWindows<'a> {
     cuts: Cuts,
     /// The record every window states.
     record: WindowRecord,
+    /// In row order, the key row each window opens at, indexed by the first
+    /// [`Self::get`] and kept for every next one: one `usize` per window,
+    /// so a window is reached in constant time however many there are.
+    opens: OnceLock<Box<[usize]>>,
 }
 
 /// Where the windows of a [`SerieWindows`] lie in its holder.
@@ -1432,6 +1437,7 @@ impl<'a> SerieWindows<'a> {
                 keys,
                 cuts: Cuts::Starts(cut.starts, count),
                 record,
+                opens: OnceLock::new(),
             });
         };
         require_indexable(holder)?;
@@ -1450,6 +1456,7 @@ impl<'a> SerieWindows<'a> {
             keys,
             cuts: Cuts::Gathered(regrouped.windows),
             record,
+            opens: OnceLock::new(),
         })
     }
 
@@ -1532,7 +1539,70 @@ impl<'a> SerieWindows<'a> {
             keys: self.keys,
             cuts: self.cuts,
             record: self.record,
+            opens: self.opens,
         }
+    }
+
+    /// The window `index` places from the first, as [`Self::iter`] lends it
+    /// - its key, and the window stating its [record](WindowSerie::static_values)
+    /// - or `None` past the last. Constant time: in row order the first call
+    /// indexes where every window opens, once, and every call after it reads
+    /// that index; in key order the cuts are the index.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Field, Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let days = Serie::from_scalars(
+    ///     Field::new("day", DataType::Int32, false),
+    ///     [1_i32, 1, 2, 3].map(Scalar::from),
+    /// )?;
+    /// let windows = days.window_by("day", false)?;
+    /// let (key, window) = windows.get(2).expect("a third window");
+    /// assert_eq!((key, window.offset(), window.len()), (Scalar::from_sequence([Scalar::from(3_i32)]), 3, 1));
+    /// let record = window.static_values().expect("a window window_by lent");
+    /// assert_eq!(record.get_key_str("windownum"), Some(&Scalar::from(2_u64)));
+    /// assert!(windows.get(3).is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn get(&self, index: usize) -> Option<(Scalar, WindowSerie<'_>)> {
+        let (key_row, offset, len) = match &self.cuts {
+            Cuts::Starts(starts, count) => {
+                if index >= *count {
+                    return None;
+                }
+                let opens = self.opens.get_or_init(|| {
+                    // Sized by the count: one allocation, never regrown.
+                    let mut opens = Vec::with_capacity(*count);
+                    opens.extend(starts.set_indices());
+                    opens.into_boxed_slice()
+                });
+                let start = *opens.get(index)?;
+                let end = opens.get(index + 1).copied().unwrap_or(starts.len());
+                (start, self.offset + start, end - start)
+            }
+            Cuts::Gathered(cuts) => {
+                let (key_row, end) = *cuts.get(index)?;
+                let start = index
+                    .checked_sub(1)
+                    .and_then(|before| cuts.get(before))
+                    .map_or(0, |&(_, end)| end as usize);
+                (key_row as usize, start, end as usize - start)
+            }
+        };
+        Some((
+            proven_row(&self.keys, key_row),
+            WindowSerie {
+                serie: &self.holder,
+                offset,
+                len,
+                origin: Some(Origin {
+                    windows: self,
+                    index,
+                }),
+            },
+        ))
     }
 
     /// Walk the windows from the first, each as its key and the window over

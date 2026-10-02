@@ -6,7 +6,8 @@ per batch, each cast by one plan; ``ChunkedSerie`` is many ``Serie`` columns
 under one field, held apart - a ``pyarrow.ChunkedArray``, or a
 ``pyarrow.Table`` of one batch per chunk; ``WindowSerie`` is a window over a
 ``Serie`` - ``serie.window(offset, length)`` - that reads and writes through
-it.
+it. ``window_by`` cuts any of them into windows of equal adjacent keys, and a
+stream's are ``SerieReaderWindows``: one lazy ``SerieReader`` each.
 
 A serie datatype is that column as a value: one item field repeated, in one
 of five layouts - ``serie`` and ``large_serie`` cut by 32- or 64-bit
@@ -34,6 +35,7 @@ from ._native import (
     MapSerie,
     Serie,
     SerieReader,
+    SerieReaderWindows,
     SerieSerie,
     WindowSerie,
     SerieViewSerie,
@@ -141,6 +143,7 @@ __all__ = [
     "Serie",
     "SerieField",
     "SerieReader",
+    "SerieReaderWindows",
     "SerieSerie",
     "WindowSerie",
     "SerieViewField",
