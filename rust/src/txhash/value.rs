@@ -289,10 +289,10 @@ impl TxHash {
     /// microsecond and all 64 digest bits agree.
     ///
     /// The digest is the only content this needs, because whatever else an
-    /// identity rests on is already inside it - a graph [`Event`] digests its
-    /// cross code, its names, its parents, its state, its sequence and its
-    /// predecessor into `currhashcode` before coupling it here, so rehashing
-    /// them into the identifier would only spend bits restating them.
+    /// identity rests on is already inside it - a graph [`Event`] digests what
+    /// it states, a text line its body, into `currhashcode` before coupling it
+    /// here, so rehashing them into the identifier would only spend bits
+    /// restating them.
     ///
     /// Neither the original unit nor the algorithm is encoded, and
     /// sub-microsecond time cannot be recovered, so this is a projection of

@@ -399,7 +399,7 @@ impl JsTextLine {
         self.inner.bodytype().as_str().to_owned()
     }
 
-    /// The line itself, its row header included.
+    /// The line past its row header: what `currhashcode` hashes.
     ///
     /// Text, always: what the constructor or the reader decoded.
     #[napi(getter)]
@@ -447,7 +447,7 @@ impl JsTextLine {
         self.inner.get_crosscode().to_owned()
     }
 
-    /// The XXH3-64 of the cross code, the row number and the line's bytes.
+    /// The XXH3-64 of `body` and nothing else.
     #[napi(getter)]
     pub fn currhashcode(&self) -> BigInt {
         BigInt::from(self.inner.get_currhashcode())

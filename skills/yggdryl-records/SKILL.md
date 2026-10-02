@@ -138,7 +138,10 @@ medium does the work before a byte is decoded.
     line also states, as `prevunix`, the `currunix` the read dated the line
     before it by - none for an object's first line or after an undated one, a
     `prevunix` capture standing, each object of a folder or glob starting
-    again - and never a `prevuuid`, so no line identity moves. A folder, a
+    again - and never a `prevuuid`. A line's `currhashcode` is the XXH3-64
+    of its `body` alone, so byte-identical bodies share it; the instant, the
+    row number and the cross code tell them apart through `curruuid`. A
+    folder, a
     path ending in `/` or a glob reads leaf by leaf through
     `read_text_lines`, `row_size` and the record reads alike: every text leaf,
     each its own cross code, time, coding and row numbers, a last line ending

@@ -19,8 +19,8 @@ use super::{TextBytes, TextEntries, TextEntry};
 ///
 /// A line holds what the reader cut and nothing it derived: its position in
 /// the object, the object, the handle's own modification time, the body -
-/// the whole line as cut, the row header included, made text where it is
-/// made - and one `Arc<TextOptions>` every line of a read shares. Every
+/// the line as cut past its row header, made text where it is made - and
+/// one `Arc<TextOptions>` every line of a read shares. Every
 /// other fact is a reading of those held inputs under the options, resolved
 /// on the first ask, once, into a slot of its own, so a caller that reads the
 /// body and the row number resolves nothing else:
@@ -40,19 +40,20 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// | `get_recdunix`, `get_exprunix`, `get_snapunix` | the capture of that name as an instant, else none |
 /// | `get_prevuuid` | a `prevuuid` capture, else none |
 /// | `get_crosscode` | the canonical text of the identifier the line was read under, else none |
-/// | `get_currhashcode` | the XXH3-64 of the cross code, the row number and the body |
+/// | `get_currhashcode` | the XXH3-64 of [`body`](Self::body), the line past its row header |
 /// | `get_crosshashcode` | the cross code's XXH3-64, zero where none |
 /// | `get_curruuid` | [`Event::time_uuid`] over the millisecond, sequence, code and cross-hash seed |
 /// | `get_crossuuid` | [`Element::cross_uuid`] |
 /// | `get_srcuuids` | none: a line is read from a handle |
 ///
-/// The identity orders by millisecond and row sequence, then fingerprints the
-/// code under the cross-hash seed. The code also tells two identical bodies
-/// apart: the source they were read under and the row they sat on are digested
-/// with the body, so two byte-identical lines of one handle that dates no row
-/// still answer two identities, and one line read from two objects answers
-/// two. A stated `crosshashcode` moves the UUID seed; a stated cross element
-/// or source identity moves neither the content code nor current identity.
+/// The code is the body's XXH3-64 and nothing else, so two byte-identical
+/// bodies share it wherever they were read, whatever header they came under. The identity orders by
+/// millisecond and row sequence, then fingerprints the code under the
+/// cross-hash seed, and that is what tells two such lines apart: two
+/// byte-identical lines of one handle that dates no row stand on two rows,
+/// and one line read from two objects is seeded by two cross codes. A stated
+/// `crosshashcode` moves the UUID seed; a stated cross element or source
+/// identity moves neither the content code nor current identity.
 ///
 /// A capture named for an [`Event`] fact that the line does not derive feeds
 /// that reading by its exact name, parsed at the fact's own datatype - an
@@ -294,17 +295,15 @@ struct Resolved {
     prevunix: OnceLock<Reading<Option<i64>>>,
     snapunix: OnceLock<Reading<Option<i64>>>,
     prevuuid: OnceLock<Reading<Option<Uuid>>>,
-    currhashcode: OnceLock<u64>,
     crosshashcode: OnceLock<u64>,
     curruuid: OnceLock<Uuid>,
     crossuuid: OnceLock<Uuid>,
 }
 
 impl Resolved {
-    /// Drops the four derived identity readings, so they resolve afresh from
+    /// Drops the three derived identity readings, so they resolve afresh from
     /// the body, instant and cross code as they now are.
     fn reset_identity(&mut self) {
-        self.currhashcode = OnceLock::new();
         self.crosshashcode = OnceLock::new();
         self.curruuid = OnceLock::new();
         self.crossuuid = OnceLock::new();
@@ -537,7 +536,6 @@ impl TextLine {
     pub(crate) fn state_source(&mut self, source: Option<LineSource>) {
         self.source = source;
         self.resolved.crosshashcode = OnceLock::new();
-        self.resolved.currhashcode = OnceLock::new();
         self.derive_uuids();
     }
 
@@ -1139,22 +1137,6 @@ impl TextLine {
         self.resolved.curruuid = OnceLock::new();
         self.resolved.crossuuid = OnceLock::new();
     }
-
-    /// Drops the *resolved* content code and the identities it derives, for a
-    /// fact the code digests: the names the line goes by, its parents, its
-    /// state and what it follows.
-    ///
-    /// Resolved and never stated: a code a caller set or a row carried is a
-    /// word, and a word stands until the one who said it takes it back -
-    /// which is what [`Element::finalize`] is for. A batch restores the
-    /// identity it stored before it restores the place, so dropping the
-    /// stated code here would lose the identity a message named as its
-    /// source on every line read back.
-    fn derive_content(&mut self) {
-        self.resolved.currhashcode = OnceLock::new();
-        self.resolved.curruuid = OnceLock::new();
-        self.resolved.crossuuid = OnceLock::new();
-    }
 }
 
 /// The row header matched over the body: where the match ends and the
@@ -1324,7 +1306,6 @@ impl TextLine {
     /// Records the named captures, replacing what the line matched.
     pub fn set_named_captures(&mut self, captures: BTreeMap<String, String>) {
         self.stated.identifiers = Some(captures);
-        self.derive_content();
     }
 }
 
@@ -1369,39 +1350,20 @@ impl Element for TextLine {
         // only their resolved slots would leave the restored values stale.
         self.stated.crosshashcode = None;
         self.resolved.crosshashcode = OnceLock::new();
-        self.resolved.currhashcode = OnceLock::new();
         self.derive_uuids();
     }
 
-    /// The XXH3-64 of what the line states: the facts every event digests -
-    /// the names it goes by, its parents, its state and what it follows -
-    /// and then the body, behind them.
+    /// The XXH3-64 of [`body`](TextLine::body), the line past its row header,
+    /// and nothing else.
     ///
-    /// The names a line goes by are its row header's captures, so a header
-    /// that lifts a level, an id or a symbol out of a line puts them in the
-    /// code: two lines whose bodies match but whose headers do not are two
-    /// events. The one capture left out is the one that dates the line,
-    /// because `currunix` is coupled with this code rather than fed into it -
-    /// the crate's time-ordered identity is the pair, and feeding the instant
-    /// here would state it twice.
+    /// The header's captures, the state, the predecessor and the cross code
+    /// stay out: the instant, the row and the cross hash reach the identity
+    /// beside this code, through [`Event::time_uuid`], so a line's code is
+    /// what anyone holding its `body` cell computes.
     fn get_currhashcode(&self) -> u64 {
-        if let Some(stated) = self.stated.currhashcode {
-            return stated;
-        }
-        *self.resolved.currhashcode.get_or_init(|| {
-            let mut state = crate::xxhash::Xxh3::new();
-            // The cross code is fed here, ahead of the facts that leave it
-            // out, in the order `digest_event` feeds it. The UUID also seeds
-            // its payload with the cross hash, but the content code remains a
-            // complete statement of the line on its own.
-            let crosscode = self.get_crosscode();
-            if !crosscode.is_empty() {
-                crate::graph::element::feed(&mut state, "crosscode", crosscode.as_bytes());
-            }
-            crate::graph::element::feed_event_facts(&mut state, self);
-            state.write(self.body.as_bytes());
-            state.as_u64()
-        })
+        self.stated
+            .currhashcode
+            .unwrap_or_else(|| crate::xxhash::xxh3(self.body.as_bytes()))
     }
 
     fn set_currhashcode(&mut self, hashcode: u64) {
@@ -1490,7 +1452,6 @@ impl Event for TextLine {
 
     fn set_state(&mut self, state: State) {
         self.stated.state = Some(state);
-        self.derive_content();
     }
 
     /// [`TextLine::seqnum`]; the physical line number over a refused row
@@ -1547,7 +1508,6 @@ impl Event for TextLine {
 
     fn set_prevuuid(&mut self, uuid: Option<Uuid>) {
         self.stated.prevuuid = Some(uuid);
-        self.derive_content();
     }
 
     /// [`TextLine::snapunix`]; none over a refused capture.
