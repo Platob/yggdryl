@@ -335,3 +335,19 @@ Framing costs nothing on one-line records and saves the rows a chain would other
 ```bash
 cargo bench -p yggdryl --bench text -- '^text_(records|record_framing|lines|batch)/'
 ```
+
+### Against Python `re`
+
+One run of `python/benchmarks/media/text.py --min-time 0.2 --repeat 7` on the same host: CPython 3.11.15, PyArrow 25.0.1, the release extension. The object is 5,000 lines `2026-08-14T00:05:SS [INFO] id=N event N`, 222 KiB, plain and gzip. This crate reads it with `into_text(options).read_arrow_reader()` under a row header capturing `stamp`, `level` and `id`, the edges stripped; the baseline decodes the file, matches each line with `re` and builds a PyArrow table of seven columns - the source URL, the row number, the file's time, the body and the three captures. Medians of seven samples:
+
+| 5,000 lines | `read_arrow_reader` | `re` and PyArrow |
+| --- | ---: | ---: |
+| plain | 33.70 ms | 27.65 ms |
+| gzip | 32.57 ms | 26.20 ms |
+
+The baseline is ahead - by a fifth in this run, and by two thirds in a shorter one before it - because it builds seven columns where this crate's read builds nineteen: the fifteen element and event columns of every line, its identity hashed and its UUIDs derived, then the body and the three captures.
+
+```bash
+VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop --release -m python/Cargo.toml
+python/.venv/bin/python python/benchmarks/media/text.py --min-time 0.2 --repeat 7
+```

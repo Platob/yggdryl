@@ -406,3 +406,24 @@ The inferred read passes the part twice - once for the field, once for the rows 
 ```bash
 cargo bench -p yggdryl --bench media -- media/excel
 ```
+
+### Against openpyxl
+
+One run of `python/benchmarks/media/excel.py --repeat 5` on the same host: CPython 3.11.15, PyArrow 25.0.1, openpyxl 3.1.5, the release extension. Every case reads or writes a workbook this crate wrote - 10,000 or 100,000 rows of an `int64` key, one of eight symbols, a price, a flag and a `date32` - after the rows openpyxl reads were compared with this crate's, value for value: openpyxl walks a read-only sheet, one Python object per cell, and writes a write-only one row by row. Each time is the best of five after a warm-up, and the ratio is openpyxl's over this crate's, so above one is in this crate's favor.
+
+| case | openpyxl | yggdryl | ratio |
+| --- | ---: | ---: | ---: |
+| read 100,000 rows, declared field | 6,791 ms | 563.1 ms | 12.1x |
+| read 100,000 rows, inferred field | 6,531 ms | 1,008 ms | 6.5x |
+| write 100,000 rows | 8,474 ms | 954.6 ms | 8.9x |
+| read 10,000 rows, declared field | 597.6 ms | 58.7 ms | 10.2x |
+| read 10,000 rows, inferred field | 635.9 ms | 99.3 ms | 6.4x |
+| write 10,000 rows | 843.3 ms | 87.9 ms | 9.6x |
+| open the workbook and read one cell | 205.6 ms | 57.5 ms | 3.6x |
+| a sheet of 10,000 rows from a `Serie` and back, against openpyxl reading every row | 699.3 ms | 37.7 ms | 18.5x |
+
+```bash
+VIRTUAL_ENV=python/.venv python/.venv/bin/python -m maturin develop --release -m python/Cargo.toml
+python/.venv/bin/python -m pip install openpyxl
+python/.venv/bin/python python/benchmarks/media/excel.py --repeat 5
+```
