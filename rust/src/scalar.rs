@@ -1816,10 +1816,9 @@ impl Scalar {
     /// `"false"`, `"no"`, `"off"` and `"0"` read as false, where Python calls
     /// every non-empty string true. Values arrive as text from CSV, FIX and
     /// query strings, and a column that spells false is not asking to be
-    /// read as true. The reading is ASCII case-insensitive and trims.
-    /// [`crate::Boolean`]'s own text reader stays strict - it is the
-    /// String-to-Boolean *cast*, and a cast that guessed this widely would
-    /// accept text no schema declared.
+    /// read as true. The reading is ASCII case-insensitive and trims. It is
+    /// a coercion of any text, so text the boolean value door refuses -
+    /// `"n/a"` - still answers here, as true.
     ///
     /// ```
     /// use yggdryl::Scalar;

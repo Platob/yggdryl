@@ -698,6 +698,14 @@ impl Candidates {
                 continue;
             }
             let read = match LADDER.get(rung) {
+                // A declared boolean reads `1` and `no`; a sampled one is
+                // proven only by what a boolean prints.
+                Some(DataType::Boolean)
+                    if !text.trim().is_empty() && !crate::boolean::prints_boolean(text) =>
+                {
+                    *fits = false;
+                    continue;
+                }
                 Some(dtype) => dtype.scalar(value.clone()),
                 None => zoned.scalar(value.clone()).or_else(|refusal| {
                     crate::text::arrow::parse_capture(text, zoned, None).map_err(|_| refusal)

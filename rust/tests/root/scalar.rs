@@ -1772,17 +1772,18 @@ fn truthiness_reads_the_text_a_column_spells_false_with() {
         );
     }
 
-    // The cast reader stays strict - this coercion does not widen it.
-    assert!(
-        yggdryl::DataType::Boolean
-            .scalar(Scalar::from("off"))
-            .is_err()
-    );
+    // The value door reads what a column cast reads, and refuses what no
+    // boolean spells; this coercion still answers for any text.
     assert_eq!(
         yggdryl::DataType::Boolean
-            .scalar(Scalar::from("false"))
+            .scalar(Scalar::from("off"))
             .unwrap(),
         Scalar::from(false)
+    );
+    assert!(
+        yggdryl::DataType::Boolean
+            .scalar(Scalar::from("n/a"))
+            .is_err()
     );
 }
 

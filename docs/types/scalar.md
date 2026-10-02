@@ -217,8 +217,8 @@ Text is the one place this is wider than Python. `false`, `no`, `off`, `f`,
 `n` and `0` read as false, case-insensitively and trimmed, where Python calls
 every non-empty string true. Values arrive as text from CSV, FIX and query
 strings, and a column that spells false is not asking to be read as true.
-[`Boolean`](numeric/boolean.md)'s own text reader stays strict, because that
-one is the String-to-Boolean *cast*, not a coercion.
+It is a coercion of any text, so text [`Boolean`](numeric/boolean.md)'s value
+door refuses - `n/a` - still answers here, as true.
 
 `len` counts a container's direct children and answers zero for everything
 else, so it is not a text or byte length and never a truthiness test.

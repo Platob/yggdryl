@@ -7,7 +7,7 @@ One bit of logic, and the `null` datatype beside it: the two variants that carry
 | Aspect | Rule |
 | --- | --- |
 | Owns | `boolean` and `null`, the `Boolean` value and the one `Null` value |
-| Validates | At the value door: a boolean is `true` or `false`, or the text that spells one of them |
+| Validates | At the value door: a boolean, or text a String-to-Boolean column cast reads - `true`/`false`, `yes`/`no`, `y`/`n`, `on`/`off`, `1`/`0` and their prefixes |
 | Lazy | Nothing - neither variant has a parameter, a child or a payload |
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field |
 | Refuses | Any text that is not `true` or `false` at the value door; a number, which is a coercion rather than a value |
@@ -212,9 +212,9 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
     assert.equal(DataType.from('null').fixedByteWidth, null)
     ```
 
-## The value door reads one spelling
+## The value door reads what a column cast reads
 
-`true` and `false` are what a boolean prints, so they are what it reads; the case is not part of the spelling and surrounding space is not part of the value. Anything else is refused, because this door is the String-to-Boolean *cast* rather than the wider [truthiness](../scalar.md#truthiness-and-length) coercion.
+A row and a column read one text alike: `true`, `t`, `yes`, `y`, `on`, `1` and the prefixes `tr`, `tru`, `ye` are true; `false`, `f`, `no`, `n`, `off`, `0` and the prefixes `fa`, `fal`, `fals`, `of` are false - Arrow's String-to-Boolean cast's vocabulary, the case not part of the spelling and surrounding space not part of the value. So FIX's `Y` and `N` and a bridge's `no` are readings wherever text enters a boolean. Text no boolean spells is refused, which is what separates this door from the [truthiness](../scalar.md#truthiness-and-length) coercion. Inference is narrower: a CSV column is inferred boolean only from `true` and `false`, because `1` already is an integer.
 
 === "Rust"
 
@@ -223,7 +223,9 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
 
     assert_eq!(DataType::Boolean.scalar("TRUE")?, Scalar::from(true));
     assert_eq!(DataType::Boolean.scalar(" false ")?, Scalar::from(false));
-    assert!(DataType::Boolean.scalar("off").is_err());
+    assert_eq!(DataType::Boolean.scalar("off")?, Scalar::from(false));
+    assert_eq!(DataType::Boolean.scalar("Y")?, Scalar::from(true));
+    assert!(DataType::Boolean.scalar("maybe").is_err());
     ```
 
 === "Python"
@@ -235,9 +237,11 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
 
     assert DataType("boolean").scalar("TRUE").as_bool() is True
     assert DataType("boolean").scalar(" false ").as_bool() is False
+    assert DataType("boolean").scalar("off").as_bool() is False
+    assert DataType("boolean").scalar("Y").as_bool() is True
 
     with pytest.raises(ValueError, match="expected boolean"):
-        DataType("boolean").scalar("off")
+        DataType("boolean").scalar("maybe")
     ```
 
 === "JavaScript"
@@ -248,7 +252,9 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
 
     assert.equal(DataType.from('boolean').scalar('TRUE').asJs(), true)
     assert.equal(DataType.from('boolean').scalar(' false ').asJs(), false)
-    assert.throws(() => DataType.from('boolean').scalar('off'), /expected boolean/)
+    assert.equal(DataType.from('boolean').scalar('off').asJs(), false)
+    assert.equal(DataType.from('boolean').scalar('Y').asJs(), true)
+    assert.throws(() => DataType.from('boolean').scalar('maybe'), /expected boolean/)
     ```
 
 ## Truthiness is the other question
@@ -290,7 +296,7 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
 
 ## Casts
 
-A column keeps Arrow's wider reading behind the strict value door: `yes`, `no`, `1` and `0` convert in a String-to-Boolean column cast, and text that names nothing becomes null under the default `safe`. A number column converts by whether the value is zero.
+A String-to-Boolean column cast reads the spellings the value door reads - `yes`, `no`, `1` and `0` among them - and text that names nothing becomes null under the default `safe`. A number column converts by whether the value is zero.
 
 === "Rust"
 

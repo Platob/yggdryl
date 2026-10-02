@@ -2521,7 +2521,9 @@ const EPOCH_DAY: &str = "1970-01-01";
 
 /// The value one FIX wire spelling states, where FIX spells it its own way.
 ///
-/// A boolean is `Y` or `N`. A temporal is a run of digits, and the crate's own
+/// A boolean is not one: `Y`, `N` and a bridge's `yes` or `no` are spellings
+/// the generic value contract reads, as a column cast does. A temporal is a
+/// run of digits, and the crate's own
 /// ISO reader takes the shape of one as it stands - `20260821-10:30:00.123456`
 /// and the bare `20260821` are both readings there - so what is supplied here
 /// is only what FIX leaves out of the reading: the zone a UTC column carries,
@@ -2546,11 +2548,6 @@ const EPOCH_DAY: &str = "1970-01-01";
 /// shape was read.
 pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
     match dtype {
-        DataType::Boolean => match text.as_bytes() {
-            [b'Y' | b'y'] => Some(Scalar::from(true)),
-            [b'N' | b'n'] => Some(Scalar::from(false)),
-            _ => None,
-        },
         leaf_dtype @ DataType::DateTime64 { .. } => {
             let leaf = &leaf_dtype
                 .datetime_type()
@@ -2719,15 +2716,11 @@ fn typed_translation(
     {
         return Ok(member);
     }
-    // Every wire value is text, and the generic value contract does not
-    // read text as a number, an instant or a flag. Two of those it can
-    // learn from the field alone, which is the crate's own coercion; the
-    // third is a FIX *spelling* and stays here, because the generic
-    // contract must not learn one.
-    // A FIX spelling is rewritten into the one the crate's coercion reads,
-    // and then coerced like any other text: `20240102-10:15:30` is a
-    // timestamp only after both steps, and the value contract reads
-    // neither a separator-free instant nor a bare `Y`.
+    // Every wire value is text, and the generic value contract reads it
+    // best effort - a number, a flag, an ISO instant - exactly as a column
+    // cast does. Only FIX's own temporal spellings are rewritten first,
+    // because the generic contract must not learn them:
+    // `20240102-10:15:30` is a timestamp only after both steps.
     let candidate =
         wire_spelling(field.dtype(), spelling).unwrap_or_else(|| Scalar::from(spelling));
     // The text contract reads the spelling and hands the value through

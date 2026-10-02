@@ -118,17 +118,43 @@ impl Value for Boolean {
     }
 }
 
-/// Read a boolean out of its canonical spelling.
+/// The spellings a boolean is read from: Arrow's string-to-boolean cast's,
+/// so a cell and a column read one text alike.
+const TRUE_SPELLINGS: [&str; 9] = ["true", "t", "tr", "tru", "yes", "y", "ye", "on", "1"];
+const FALSE_SPELLINGS: [&str; 10] = [
+    "false", "f", "fa", "fal", "fals", "no", "n", "off", "of", "0",
+];
+
+/// Read a boolean out of text, the way a column cast reads one.
 ///
-/// `true` and `false` are what a boolean prints, so they are what it reads;
-/// the case is not part of the spelling. A column keeps Arrow's wider reading
-/// behind this one, exactly as a temporal column does.
+/// A declared boolean takes every spelling Arrow's cast reads - `true`,
+/// `yes`, `y`, `on`, `1` and the prefixes of `true` and `yes`; `false`, `no`,
+/// `n`, `off`, `0` and the prefixes of `false` and `off` - ASCII
+/// case-insensitive and trimmed, so FIX's `Y` and `N` and a bridge's `no`
+/// are readings rather than refusals, and a row reads what its column's cast
+/// reads. Inference proves a boolean only from what one prints
+/// ([`prints_boolean`]).
 pub(crate) fn boolean_from_text(text: &str) -> Option<Scalar> {
-    match text.trim() {
-        value if value.eq_ignore_ascii_case("true") => Some(Scalar::from(true)),
-        value if value.eq_ignore_ascii_case("false") => Some(Scalar::from(false)),
-        _ => None,
+    let text = text.trim();
+    let spells = |spellings: &[&str]| spellings.iter().any(|held| text.eq_ignore_ascii_case(held));
+    if spells(&TRUE_SPELLINGS) {
+        Some(Scalar::from(true))
+    } else if spells(&FALSE_SPELLINGS) {
+        Some(Scalar::from(false))
+    } else {
+        None
     }
+}
+
+/// Whether `text` is a boolean as one prints: `true` or `false`, the case
+/// and the surrounding blanks not part of the spelling.
+///
+/// Inference reads what a value already is, so this - never the wider
+/// [`boolean_from_text`] - is what proves a column boolean: `1` already is
+/// an integer, and a column of them is not a column of flags.
+pub(crate) fn prints_boolean(text: &str) -> bool {
+    let text = text.trim();
+    text.eq_ignore_ascii_case("true") || text.eq_ignore_ascii_case("false")
 }
 
 // ------------------------------------------------------------------------

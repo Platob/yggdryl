@@ -1051,6 +1051,41 @@ fn a_set_is_what_the_entries_and_the_wire_re_emit() {
 }
 
 #[test]
+fn a_boolean_reads_every_spelling_a_column_cast_reads() {
+    // FIX spells a flag `Y` or `N`, and a bridge writes `yes` or `no`: each
+    // is the generic value door's reading, as a column cast's, never a
+    // refusal left null beside an anomaly.
+    let (_, reader) = reader();
+    for (spelling, flag) in [
+        ("Y", true),
+        ("yes", true),
+        ("1", true),
+        ("N", false),
+        ("no", false),
+        ("OFF", false),
+    ] {
+        let line = format!("8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|1028={spelling}|10=0|");
+        let message = reader.sole_line(line.as_bytes()).expect("a message");
+        assert_eq!(
+            message.get_by_tag(1028),
+            Some(Scalar::from(flag)),
+            "{spelling:?}"
+        );
+        assert!(
+            message.anomalies().is_empty(),
+            "{spelling:?}: {:?}",
+            message.anomalies()
+        );
+    }
+    // Text no boolean spells stays a named refusal, the entry kept.
+    let message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|1028=maybe|10=0|")
+        .expect("a message");
+    assert_eq!(message.get_by_tag(1028), Some(Scalar::Null));
+    assert_eq!(message.anomalies().len(), 1);
+}
+
+#[test]
 fn a_null_is_stored_as_a_stated_null() {
     let (_, reader) = reader();
     let mut message = reader.sole_line(ORDER).unwrap();
