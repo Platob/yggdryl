@@ -380,8 +380,8 @@ impl Identifier {
     /// `FIX.LegISIN`. `None` where the name names no identifier, the value
     /// states nothing or the type refuses it.
     ///
-    /// A key's own spelling is read exactly by [`IdKey::from_str`]
-    /// (`std::str::FromStr`); this reading is for the names a source gives
+    /// A key's own spelling is read exactly by [`IdKey`]'s
+    /// [`FromStr`](std::str::FromStr); this reading is for the names a source gives
     /// its fields.
     ///
     /// ```

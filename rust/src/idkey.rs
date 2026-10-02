@@ -6,7 +6,7 @@
 //! spelled: the base key of a type is the type alone, so `isin` is the key
 //! `base:isin` and `ullink:isin` the ISIN `ullink` stated. Every text and
 //! Arrow form writes that spelling, keys order by it, and a key reads back
-//! from it exactly ([`IdKey::from_str`]).
+//! from it exactly (its [`FromStr`](std::str::FromStr)).
 //!
 //! A key both of whose words the crate names is spelled once per process in
 //! one static table, so writing it is one borrowed string and reading its
