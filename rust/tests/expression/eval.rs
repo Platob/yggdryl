@@ -674,6 +674,185 @@ mod fixed_leaves {
             );
         }
     }
+
+    /// A struct read off a column is positional, and its field names it, so
+    /// a row and a batch spell the one object keyed in declaration order -
+    /// and read it back.
+    #[test]
+    fn a_nested_cast_to_text_and_back_spells_one_json_in_both_tiers() {
+        let schema = root([Field::new(
+            "q",
+            "struct<px: decimal128(10, 2), sym: utf8>".parse().unwrap(),
+            true,
+        )]);
+        let row = Scalar::from_sequence([Scalar::from_sequence([
+            Scalar::decimal128(150, 2),
+            Scalar::from("AAPL"),
+        ])]);
+        let (by_row, by_batch) = both_tiers("cast(q as utf8) as t", &schema, &row);
+        assert_eq!(
+            by_row,
+            Scalar::from_sequence([Scalar::from(r#"{"px":"1.5","sym":"AAPL"}"#)])
+        );
+        assert_eq!(by_batch, by_row);
+        let (by_row, by_batch) = both_tiers(
+            "cast(cast(q as utf8) as struct<px: decimal128(10, 2), sym: utf8>) as q",
+            &schema,
+            &row,
+        );
+        assert_eq!(by_row, row);
+        assert_eq!(by_batch, by_row);
+
+        // A dictionary of records spells the same object in both tiers.
+        let encoded = root([Field::new(
+            "q",
+            "dictionary(int32, struct<px: int64, sym: utf8>)"
+                .parse()
+                .unwrap(),
+            true,
+        )]);
+        let row = Scalar::from_sequence([Scalar::from_sequence([
+            Scalar::from(1_i64),
+            Scalar::from("AAPL"),
+        ])]);
+        let (by_row, by_batch) = both_tiers("cast(q as utf8) as t", &encoded, &row);
+        assert_eq!(
+            by_row,
+            Scalar::from_sequence([Scalar::from(r#"{"px":1,"sym":"AAPL"}"#)])
+        );
+        assert_eq!(by_batch, by_row);
+    }
+
+    /// A union's value is a positional pair with no text form, so neither
+    /// tier spells it as JSON: the row refuses it, and both null it where the
+    /// cast may.
+    #[test]
+    fn a_union_cast_into_text_spells_no_json_in_either_tier() {
+        let schema = root([Field::new(
+            "u",
+            "variant(number: int64, text: utf8)".parse().unwrap(),
+            true,
+        )]);
+        let row = schema
+            .scalar(Scalar::from_sequence([Scalar::from(5_i64)]))
+            .unwrap();
+        let selector = "cast(u as utf8) as t".parse::<Selector>().unwrap();
+        assert!(selector.apply_scalar(&schema, &row).is_err());
+        let (by_row, by_batch) = both_tiers("try_cast(u as utf8) as t", &schema, &row);
+        assert_eq!(by_row, Scalar::from_sequence([Scalar::Null]));
+        assert_eq!(by_batch, by_row);
+    }
+}
+
+/// A scalar cast meets a nested value and text through JSON, as a cast of
+/// their columns does; the value contract, which a document reader runs, is
+/// not a cast and keeps them apart.
+mod json_casts {
+    use yggdryl::{DataType, Field, Scalar};
+
+    fn dtype(expression: &str) -> DataType {
+        expression.parse().unwrap()
+    }
+
+    #[test]
+    fn a_nested_value_cast_into_text_or_bytes_spells_its_json() {
+        let record =
+            Scalar::from_struct([("b", Scalar::from(1_i64)), ("a", Scalar::from("x"))]).unwrap();
+        // A value carries no field: a record keys its object in name order,
+        // a run is an array.
+        assert_eq!(
+            DataType::utf8().cast_scalar(&record).unwrap(),
+            Scalar::from(r#"{"a":"x","b":1}"#)
+        );
+        assert_eq!(
+            DataType::large_utf8()
+                .cast_scalar(&Scalar::from_sequence([Scalar::from(1_i64), Scalar::Null]))
+                .unwrap()
+                .as_str(),
+            Some("[1,null]")
+        );
+        let entries = Scalar::from_mapping([(Scalar::from(2_i64), Scalar::from("y"))]).unwrap();
+        assert_eq!(
+            DataType::utf8().cast_scalar(&entries).unwrap(),
+            Scalar::from(r#"{"2":"y"}"#)
+        );
+        assert_eq!(
+            DataType::binary().cast_scalar(&record).unwrap().as_bytes(),
+            Some(br#"{"a":"x","b":1}"#.as_slice())
+        );
+        // The target's own rule runs over the JSON.
+        let long = Scalar::from_sequence([Scalar::from("long")]);
+        assert!(dtype("sized_utf8(4)").cast_scalar(&long).is_err());
+        assert_eq!(dtype("sized_utf8(4)").try_cast_scalar(&long), Scalar::Null);
+    }
+
+    #[test]
+    fn text_or_bytes_cast_into_a_nested_datatype_reads_the_document_it_holds() {
+        let quote = dtype("struct<px: decimal128(10, 2), sym: utf8>");
+        let read = Scalar::from_sequence([Scalar::decimal128(150, 2), Scalar::from("AAPL")]);
+        assert_eq!(
+            quote
+                .cast_scalar(&Scalar::from(r#"{"sym":"AAPL","px":"1.50"}"#))
+                .unwrap(),
+            read
+        );
+        assert_eq!(
+            quote
+                .cast_scalar(&Scalar::from(br#"{"sym":"AAPL","px":"1.5"}"#.to_vec()))
+                .unwrap(),
+            read
+        );
+        assert_eq!(
+            dtype("map<int64, serie<utf8>>")
+                .cast_scalar(&Scalar::from(r#"{"1":["a"]}"#))
+                .unwrap(),
+            Scalar::from_mapping([(
+                Scalar::from(1_i64),
+                Scalar::from_sequence([Scalar::from("a")])
+            )])
+            .unwrap()
+        );
+        // A fixed slot's padding is the slot's.
+        let slot = DataType::fixed_binary(5)
+            .unwrap()
+            .scalar(Scalar::from(b"[1]\0\0".to_vec()))
+            .unwrap();
+        assert_eq!(
+            dtype("serie<int64>").cast_scalar(&slot).unwrap(),
+            Scalar::from_sequence([Scalar::from(1_i64)])
+        );
+        // Absence: the empty cell and the document `null`.
+        for absent in ["", " null ", "null"] {
+            assert_eq!(
+                quote.cast_scalar(&Scalar::from(absent)).unwrap(),
+                Scalar::Null
+            );
+        }
+        // A cell that is no document of the target is refused, and null
+        // where the cast may null it.
+        for refused in ["{", "abc", r#""[1]""#, r#"{"px":"x"}"#] {
+            assert!(
+                quote.cast_scalar(&Scalar::from(refused)).is_err(),
+                "{refused}"
+            );
+            assert_eq!(quote.try_cast_scalar(&Scalar::from(refused)), Scalar::Null);
+        }
+    }
+
+    /// The value contract a document reader runs is not a cast: a nested
+    /// value has no text spelling there, and text is no nested value, so a
+    /// repeated tag never lands in a text column as an array's JSON.
+    #[test]
+    fn the_value_contract_keeps_a_nested_value_and_text_apart() {
+        let list = Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from("MSFT")]);
+        assert!(DataType::utf8().scalar(list.clone()).is_err());
+        assert!(
+            Field::new("symbol", DataType::utf8(), true)
+                .scalar(list)
+                .is_err()
+        );
+        assert!(dtype("struct<a: int64>").scalar(r#"{"a":1}"#).is_err());
+    }
 }
 
 /// The seven epoch functions floor a date and an instant to the period it

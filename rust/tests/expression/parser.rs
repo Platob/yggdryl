@@ -11,6 +11,32 @@ mod grammar {
 
     use yggdryl::expression::{Expression, Term};
 
+    /// A typed decimal literal reads through the one decimal text door:
+    /// every exact spelling at any width, printed as the shortest text, and
+    /// a whole part past the width refused rather than read as nothing.
+    #[test]
+    fn a_typed_decimal_literal_reads_every_exact_spelling() {
+        let printed = |text: &str| text.parse::<Term>().unwrap().to_string();
+        assert_eq!(printed("decimal128(9,2) '1e2'"), "decimal128(9,2) '100'");
+        assert_eq!(printed("decimal128(9,2) ' 1.50 '"), "decimal128(9,2) '1.5'");
+        assert_eq!(
+            printed("decimal128(9,2) '1_000.5'"),
+            "decimal128(9,2) '1000.5'"
+        );
+        let wide = format!("{}.5", "1".repeat(60));
+        assert_eq!(
+            printed(&format!("decimal256(76,2) '{wide}'")),
+            format!("decimal256(76,2) '{wide}'")
+        );
+        for refused in [
+            format!("decimal128(10,2) '{}.50'", "9".repeat(41)),
+            "decimal128(9,2) '1.005'".to_owned(),
+            "decimal128(9,2) '1,000'".to_owned(),
+        ] {
+            assert!(refused.parse::<Term>().is_err(), "{refused}");
+        }
+    }
+
     #[test]
     fn quoted_names_survive_every_encapsulator() {
         for text in ["\"odd name\" = 1", "`odd name` = 1"] {

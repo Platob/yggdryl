@@ -33,7 +33,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::Transform;
 use super::partition::{SOURCE_ID, SPEC_ID, TRANSFORM};
 use super::schema::{DOC, IDENTIFIER, INITIAL_DEFAULT, SCHEMA_ID, TYPE, UNKNOWN, WRITE_DEFAULT};
-use crate::{DataType, Error, IcebergField, IcebergFieldMut, Result, Scalar};
+use crate::{DataType, Error, Field, IcebergField, IcebergFieldMut, Result, Scalar};
 
 impl<'field> IcebergField<'field> {
     /// Parses the identifier of the schema this root is.
@@ -242,7 +242,8 @@ impl IcebergFieldMut<'_> {
     /// Returns an error when the value has no JSON representation, or when the
     /// property write fails. Both default writes fail the same way.
     pub fn set_initial_default(&mut self, value: &Scalar) -> Result<()> {
-        self.store(INITIAL_DEFAULT, crate::json::into_utf8(value)?)
+        let json = single_value_json(self, value)?;
+        self.store(INITIAL_DEFAULT, json)
     }
 
     /// Records a v3 `write-default` as encoded JSON.
@@ -251,7 +252,8 @@ impl IcebergFieldMut<'_> {
     ///
     /// [`Self::set_initial_default`] carries the rule.
     pub fn set_write_default(&mut self, value: &Scalar) -> Result<()> {
-        self.store(WRITE_DEFAULT, crate::json::into_utf8(value)?)
+        let json = single_value_json(self, value)?;
+        self.store(WRITE_DEFAULT, json)
     }
 
     /// Records the identifier of the spec a partition tuple belongs to.
@@ -286,4 +288,41 @@ impl IcebergFieldMut<'_> {
         self.insert(name, value)?;
         Ok(())
     }
+}
+
+/// The JSON a v3 default travels as: the Iceberg table spec's single-value
+/// form (Appendix D), in which a decimal states its scale by the digits
+/// behind its point - `"14.20"` for `decimal(4, 2)` - because a reader that
+/// checks the scale, as Java's `SingleValueParser` does, refuses any other.
+/// That is the one decimal text written at its scale rather than as the
+/// shortest exact one; a decimal default is first restated under the
+/// field, so it carries the field's scale. Every other value is its JSON.
+fn single_value_json(field: &Field, value: &Scalar) -> Result<String> {
+    if !value.is_decimal() {
+        return crate::json::into_utf8(value);
+    }
+    let restated;
+    let value = if field.dtype().id().is_decimal() {
+        restated = field.scalar(value.clone())?;
+        &restated
+    } else {
+        value
+    };
+    let Some((coefficient, scale)) = value.as_decimal() else {
+        return crate::json::into_utf8(value);
+    };
+    let mut text = crate::decimal::decimal_text(coefficient, scale);
+    if scale > 0 {
+        let places = text
+            .split_once('.')
+            .map_or(0, |(_, fraction)| fraction.len());
+        if places == 0 {
+            text.push('.');
+        }
+        text.extend(std::iter::repeat_n(
+            '0',
+            usize::from(scale.unsigned_abs()) - places,
+        ));
+    }
+    crate::json::into_utf8(&Scalar::from(text))
 }

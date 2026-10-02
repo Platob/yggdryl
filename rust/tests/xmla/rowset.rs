@@ -1108,7 +1108,7 @@ fn leaves() -> (Field, Scalar, &'static str) {
     ]);
     let text = "<row><flag>true</flag><i8>-8</i8><u8>200</u8><i16>-300</i16><u16>60000</u16>\
          <i32>-70000</i32><u32>4000000000</u32><i64>-9223372036854775808</i64>\
-         <u64>18446744073709551615</u64><f32>1.5</f32><f64>0.1</f64><amount>12.50</amount>\
+         <u64>18446744073709551615</u64><f32>1.5</f32><f64>0.1</f64><amount>12.5</amount>\
          <day>2024-01-01</day><clock>09:30:00.500000</clock>\
          <wall>2024-01-01T09:30:00.000000</wall><instant>2024-01-01T09:30:00.000000Z</instant>\
          <span>PT90.000000S</span><blob>AP9oaQ==</blob>\
@@ -2521,10 +2521,7 @@ fn a_decimal_column_reads_back_through_its_schema_as_its_exact_text() {
         .expect("the rowset reads back");
     let text = record([DataType::utf8().required_field("amount")]);
     assert_eq!(read.field(), &text, "the schema states no scale");
-    assert_eq!(
-        back,
-        rows(&text, [row([("amount", Scalar::from("12.50"))])])
-    );
+    assert_eq!(back, rows(&text, [row([("amount", Scalar::from("12.5"))])]));
 }
 
 #[test]

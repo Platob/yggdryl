@@ -178,7 +178,8 @@ enum CellWriter {
     Text,
     /// A byte leaf, as base64.
     Bytes,
-    /// A nested value, as compact JSON keyed by the field's names.
+    /// A nested value, as the compact JSON a cast into text writes: a
+    /// struct keyed by its field's names in declaration order.
     Json,
     /// Every other leaf, as its canonical text.
     Value,
@@ -243,10 +244,7 @@ impl CellWriter {
                     })?;
                 cell.truncate(written);
             }
-            Self::Json => {
-                let natural = crate::text::typed::into_natural(value, field)?;
-                cell.extend_from_slice(crate::into_json_scalar(&natural)?.as_bytes());
-            }
+            Self::Json => crate::json::into_field_vec(&value, field.dtype(), cell)?,
             Self::Value => {
                 let text = crate::string::str_from_value(&value).ok_or_else(|| {
                     Error::InvalidRecord {

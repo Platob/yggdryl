@@ -42,6 +42,67 @@ mod internal {
             let unread = from_decimal_text(&money(), "ten").unwrap_err();
             assert!(matches!(unread, yggdryl::Error::Parse { .. }), "{unread:?}");
         }
+
+        /// Every exact spelling of a number reads, and none needs the zeros
+        /// a scale states: a shorter text is restated at the declared scale,
+        /// and a longer one keeps every digit it wrote or is refused.
+        #[test]
+        fn every_exact_spelling_reads_at_the_declared_scale() {
+            for (text, coefficient) in [
+                ("10.5", 1_050),
+                ("10.500000", 1_050),
+                ("+10.5", 1_050),
+                (" 10.5\t", 1_050),
+                ("\u{a0}10.5\u{a0}", 1_050),
+                ("0010.5", 1_050),
+                ("1050E-2", 1_050),
+                ("1_0.5", 1_050),
+                (".5", 50),
+                ("5.", 500),
+                ("2E+2", 20_000),
+                ("-0", 0),
+                ("0e999999999999999999999", 0),
+            ] {
+                assert_eq!(
+                    from_decimal_text(&money(), text).unwrap(),
+                    Scalar::decimal128(coefficient, 2),
+                    "{text:?}"
+                );
+            }
+            // A comma is no grouping here: under a decimal comma `1,050` is
+            // one and a twentieth. A space is none either.
+            for unread in [
+                "1,050", "1,0.5", "1 050", "10.5.0", "1e", "_1", "NaN", "--1",
+            ] {
+                let refused = from_decimal_text(&money(), unread).unwrap_err();
+                assert!(
+                    matches!(refused, yggdryl::Error::Parse { .. }),
+                    "{unread:?}: {refused:?}"
+                );
+            }
+            // A digit cut past the scale or a number past the width was read.
+            for refused in [
+                "1.005",
+                "1e999999999999999999999",
+                "1234567890123456789012345678901234567890.5e-30",
+            ] {
+                let refused = from_decimal_text(&money(), refused).unwrap_err();
+                assert!(
+                    matches!(refused, yggdryl::Error::InvalidRecord { .. }),
+                    "{refused:?}"
+                );
+            }
+            // Thirty-nine digits are past every 128-bit width, whatever digit
+            // the reading would have cut below them.
+            let tenths: DataType = "decimal128(10, 1)".parse().unwrap();
+            for wide in [
+                "12345678901234567890123456789012345678.9",
+                "123456789012345678901234567890123456789",
+            ] {
+                let refused = from_decimal_text(&tenths, wide).unwrap_err().to_string();
+                assert!(refused.contains("exceeds 38 digits"), "{wide}: {refused}");
+            }
+        }
     }
 }
 
@@ -214,10 +275,22 @@ mod exact {
         }
 
         #[test]
-        fn one_renderer_restores_the_exact_plain_text() {
+        fn one_renderer_writes_the_shortest_exact_text() {
             assert_eq!(
                 Scalar::decimal128(1_050, 2).into_decimal_utf8().as_deref(),
-                Some("10.50")
+                Some("10.5")
+            );
+            assert_eq!(
+                Scalar::decimal128(10_000, 2).into_decimal_utf8().as_deref(),
+                Some("100")
+            );
+            assert_eq!(
+                Scalar::decimal128(0, 18).into_decimal_utf8().as_deref(),
+                Some("0")
+            );
+            assert_eq!(
+                Scalar::decimal128(0, -3).into_decimal_utf8().as_deref(),
+                Some("0")
             );
             assert_eq!(
                 Scalar::decimal128(-5, 3).into_decimal_utf8().as_deref(),
@@ -231,7 +304,7 @@ mod exact {
                 Scalar::decimal256(yggdryl::i256::from_i128(1_050), 2)
                     .into_decimal_utf8()
                     .as_deref(),
-                Some("10.50")
+                Some("10.5")
             );
         }
 
@@ -910,6 +983,14 @@ mod exact {
                     "99999999999999999999.999999999999999999",
                     "99999999999999999999.999999999999999999",
                 ),
+                // Whitespace is any the language trims, and a run of digits
+                // longer than the units hold is cut below them: the point an
+                // exponent moves back brings them into range.
+                ("\u{a0}1.5\u{a0}", "1.5"),
+                (
+                    "090293633924813269670312865403781063472970561.6e-38",
+                    "902936.339248132696703128",
+                ),
             ] {
                 assert_eq!(
                     Decimal::parse(text).unwrap().to_string(),
@@ -1063,5 +1144,89 @@ mod fields {
         // The value door is the family's, whichever width the column is.
         let held = field.to_field().scalar(Scalar::from("1.5")).unwrap();
         assert_eq!(held.id(), DataTypeId::Decimal128);
+    }
+}
+
+/// A decimal's text is joined and written on the stack: a spelling padded
+/// past what the stack holds still reads, and the widest coefficients write
+/// every digit around the point.
+mod spelling {
+    use std::str::FromStr as _;
+
+    use yggdryl::{DataType, Scalar, i256};
+
+    #[test]
+    fn a_spelling_padded_past_the_stack_reads_as_the_number_it_names() {
+        let money: DataType = "decimal128(10, 2)".parse().unwrap();
+        let padded = format!("-{}1.50{}", "0".repeat(90), "0".repeat(10));
+        assert_eq!(
+            money.scalar(padded.as_str()).unwrap(),
+            Scalar::decimal128(-150, 2)
+        );
+    }
+
+    #[test]
+    fn a_coefficient_reads_alike_either_side_of_thirty_eight_digits() {
+        // Thirty-eight digits read straight into 128 bits, thirty-nine
+        // through the 256-bit parse; the point may fall anywhere in them.
+        let wide: DataType = "decimal256(76, 19)".parse().unwrap();
+        for digits in [37, 38, 39, 40] {
+            for point in [0, 1, 10, 19] {
+                let all = "9".repeat(digits);
+                let spelled = format!("{}.{}", &all[..digits - point], &all[digits - point..]);
+                for sign in ["", "-"] {
+                    let text = format!("{sign}{spelled}");
+                    let unscaled = format!("{sign}{all}{}", "0".repeat(19 - point));
+                    assert_eq!(
+                        wide.scalar(text.as_str()).unwrap(),
+                        Scalar::decimal256(i256::from_str(&unscaled).unwrap(), 19),
+                        "{text}"
+                    );
+                }
+            }
+        }
+        let money: DataType = "decimal128(38, 0)".parse().unwrap();
+        let most = "9".repeat(38);
+        assert_eq!(
+            money.scalar(most.as_str()).unwrap(),
+            Scalar::decimal128(i128::from_str(&most).unwrap(), 0)
+        );
+        assert!(money.scalar("9".repeat(39).as_str()).is_err());
+    }
+
+    /// The text a decimal value spells, read through a cast into text.
+    fn text(value: &Scalar) -> String {
+        DataType::utf8()
+            .cast_scalar(value)
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    #[test]
+    fn the_widest_coefficients_write_every_digit_around_the_point() {
+        for spelled in [
+            "57896044618658097711785492504343953926634992332820282019728792003956564819967",
+            "-57896044618658097711785492504343953926634992332820282019728792003956564819968",
+        ] {
+            let coefficient = i256::from_str(spelled).unwrap();
+            let (sign, digits) = spelled
+                .strip_prefix('-')
+                .map_or(("", spelled), |digits| ("-", digits));
+            let split = digits.len() - 4;
+            assert_eq!(
+                text(&Scalar::decimal256(coefficient, 4)),
+                format!("{sign}{}.{}", &digits[..split], &digits[split..])
+            );
+        }
+        // A scale past the digits, a negative scale, and zero.
+        assert_eq!(text(&Scalar::decimal128(-5, 3)), "-0.005");
+        assert_eq!(text(&Scalar::decimal128(15, -2)), "1500");
+        assert_eq!(text(&Scalar::decimal128(0, 2)), "0");
+        assert_eq!(
+            text(&Scalar::decimal256(i256::from_str("-1234500").unwrap(), 4)),
+            "-123.45"
+        );
     }
 }

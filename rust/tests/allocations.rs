@@ -7407,17 +7407,34 @@ struct StageCosts {
 /// one side is that group itself, where the cut copied it, so its parse
 /// fell by that copy to 1152.
 ///
+/// A decimal came to read and to write its text with no heap string built on
+/// the way - the coefficient's spelling joined on the stack, the pointed text
+/// written straight to its sink - and nothing else moved: each parse fell by
+/// the allocations the decimals it reads used to cost, ten for the bridge row
+/// (585), seven for a frame (234) and nineteen for the packed frame (1134),
+/// and each digest, which renders the decimals it holds, by eight (16), eight
+/// (16) and six (10).
+///
+/// Every decimal then came to write one text, the shortest that states it,
+/// built on the stack whichever leaf holds it - the fixed leaves' text had
+/// built a heap string and trimmed it, and the wire and the digest spelled
+/// each `decimal128(38, 18)` field through it - and a float came to be read
+/// off a spelling on the stack: each digest renders its decimals with no
+/// allocation and stands at one, and each parse fell by the allocations its
+/// decimal spellings used to cost, four for the bridge row (581), two for a
+/// frame (232) and twenty for the packed frame (1114).
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 595,
+            parse: 581,
             into_row: 152,
             landing: 1589,
             batch: 224,
-            digest: 24,
+            digest: 1,
             lifecycle: 7,
         },
     ),
@@ -7425,11 +7442,11 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_pipe",
         72,
         StageCosts {
-            parse: 241,
+            parse: 232,
             into_row: 109,
             landing: 1571,
             batch: 224,
-            digest: 24,
+            digest: 1,
             lifecycle: 7,
         },
     ),
@@ -7437,11 +7454,11 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1152,
+            parse: 1113,
             into_row: 279,
             landing: 1608,
             batch: 224,
-            digest: 16,
+            digest: 1,
             lifecycle: 7,
         },
     ),
@@ -8333,5 +8350,104 @@ fn a_spelling_read_by_its_words_reads_again_without_allocating() {
         free(&format!("reading {spelling:?} again"), || {
             black_box(yggdryl::State::from_spelling(black_box(spelling)));
         });
+    }
+}
+
+/// A nested column of `rows` rows under `expression`, every row present.
+fn json_corpus(expression: &str, rows: usize) -> yggdryl::Serie {
+    let field = Field::new(
+        "v",
+        expression.parse::<DataType>().expect("a datatype"),
+        false,
+    );
+    let values = (0..rows).map(|row| {
+        let count = Scalar::from(i64::try_from(row).expect("a small row"));
+        match expression {
+            "serie<int64>" => Scalar::from_sequence([count.clone(), count]),
+            "struct<px: decimal128(12, 4), sym: utf8>" => Scalar::from_sequence([
+                Scalar::decimal128(i128::try_from(row).expect("a small row"), 4),
+                Scalar::from("BRENT"),
+            ]),
+            _ => Scalar::from_mapping([(Scalar::from("k"), Scalar::from_sequence([count]))])
+                .expect("a map row"),
+        }
+    });
+    yggdryl::Serie::from_scalars(field, values).expect("the corpus lays out")
+}
+
+/// Writing a nested column as JSON allocates nothing per row - only the
+/// payload's growth: the column's leaves are narrowed once and every row is
+/// written from their buffers straight into the column's one buffer, no
+/// row value, no text and no decimal's digits built on the way.
+#[test]
+fn a_nested_column_writes_its_json_with_no_allocation_per_row() {
+    let text = Field::new("json", DataType::utf8(), false);
+    let strict = ArrowCastOptions::new().with_safe(false);
+    for expression in [
+        "serie<int64>",
+        "struct<px: decimal128(12, 4), sym: utf8>",
+        "map<utf8, struct<k: int64>>",
+    ] {
+        let cost = |rows: usize| {
+            let column = json_corpus(expression, rows);
+            black_box(column.cast(&text, strict).expect("the column spells JSON"));
+            counted(|| black_box(column.cast(&text, strict).expect("JSON"))).0
+        };
+        for rows in [1_024, 4_096] {
+            let grown = cost(2 * rows) - cost(rows);
+            assert!(
+                grown <= 2,
+                "{expression}: {rows} more rows cost {grown} allocations, not the payload's \
+                 growth alone"
+            );
+        }
+        // One plan held answers every call alike.
+        let column = json_corpus(expression, 64);
+        let plan =
+            yggdryl::ArrowCastPlan::compile(column.field().expect("a column"), &text, strict)
+                .expect("a plan");
+        let (once, repeated) = counted_once_and_repeated(|| {
+            black_box(plan.apply(black_box(&column)).expect("JSON"));
+        });
+        assert_eq!(
+            repeated,
+            once * 1_000,
+            "{expression}: a held plan's call grew"
+        );
+    }
+}
+
+/// Reading JSON text into a nested column allocates nothing per row for the
+/// row itself - only the growth of the buffers the rows land in - and
+/// nothing per column: the target planned once reads each document straight
+/// into the buffers its column is laid out from, a struct's cells into one
+/// per child, a serie's items and a map's entries onto one run, no value tree
+/// built and no row checked a second time. A record nested below the root -
+/// the struct each map entry holds here - is still its own value, one
+/// allocation.
+#[test]
+fn a_column_of_documents_reads_into_a_nested_column_with_no_allocation_per_row() {
+    let text = Field::new("json", DataType::utf8(), false);
+    let strict = ArrowCastOptions::new().with_safe(false);
+    for (expression, per_row) in [
+        ("serie<int64>", 0),
+        ("struct<px: decimal128(12, 4), sym: utf8>", 0),
+        ("map<utf8, struct<k: int64>>", 1),
+    ] {
+        let cost = |rows: usize| {
+            let column = json_corpus(expression, rows);
+            let field = column.field().expect("a column").clone();
+            let documents = column.cast(&text, strict).expect("the column spells JSON");
+            black_box(documents.cast(&field, strict).expect("the JSON reads back"));
+            counted(|| black_box(documents.cast(&field, strict).expect("the JSON reads"))).0
+        };
+        for rows in [1_024, 4_096] {
+            let grown = cost(2 * rows) - cost(rows);
+            assert!(
+                (per_row * rows..=per_row * rows + 2).contains(&grown),
+                "{expression}: {rows} more documents cost {grown} allocations, not {per_row} \
+                 a row and the buffers' growth"
+            );
+        }
     }
 }

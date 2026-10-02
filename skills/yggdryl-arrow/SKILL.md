@@ -117,24 +117,31 @@ the record `row`.
    interval column is not given the null: it parses `""` and fails, so the
    empty cell is null only under `safe` in a nullable column and refused by
    value under `safe=false` or `not null`.
-8. **`representation="bits"` is a preference for same-width pairs** (`uint64`
+8. **A nested value and text meet through JSON.** A struct, serie or map
+   cast into text or bytes spells its compact JSON (struct keys in
+   declaration order) and text cast back reads it, at any depth -
+   `map<utf8, struct<..>>` and `map<utf8, utf8>` are one cast apart. It is a
+   cast's reading (`cast`, `cast_scalar`): `DataType.scalar` / `Field.scalar`
+   still refuse a nested value into text. Never hand-roll `json.dumps` per row
+   or a string column per struct field.
+9. **`representation="bits"` is a preference for same-width pairs** (`uint64`
    <-> `int64` <-> `float64` <-> `fixed_size_binary(8)`): the value buffer is
    shared, `u64::MAX` reads `-1`. Different widths or rule-governed targets
    (codes, UUIDs, fixed strings) convert as usual.
-9. **Missing required columns fail at compile time; nulls fail at the pull.**
+10. **Missing required columns fail at compile time; nulls fail at the pull.**
    `ArrowCastPlan` / `SerieReader` constructors refuse what the two schemas
    alone refuse; a batch's null or bad value surfaces when that batch is
    pulled, and the reader is fused after the first failure.
-10. **A stream is never a `Scalar`.** A held column becomes one value with
+11. **A stream is never a `Scalar`.** A held column becomes one value with
     `Scalar::from(serie)` / `into_scalar()` at no copy; `Scalar.from_(reader)`
     drains the stream. `SerieReader`s are one-shot: iterating,
     `into_arrow_reader` and `cast` each consume them.
-11. **Python is zero copy; JavaScript is copied IPC.** Python crosses the Arrow
+12. **Python is zero copy; JavaScript is copied IPC.** Python crosses the Arrow
     C Data Interface and PyCapsule interface, sharing buffers, and lands,
     joins and casts off the GIL; `into_numpy` copies (a null becomes `nan`).
     Every JavaScript door serializes one self-contained IPC stream per array,
     batch or table: cross whole tables or readers, never a row at a time.
-12. **Write in bulk.** `splice` is the one mutation and a refusal leaves the
+13. **Write in bulk.** `splice` is the one mutation and a refusal leaves the
     column unchanged. `from_scalars` / `extend` build in one pass; `push` on a
     schema-free run copies the run (quadratic). A byte-leaf `set` rebuilds
     from that row on. The first write to a shared or foreign buffer copies it
@@ -143,15 +150,15 @@ the record `row`.
     column is read row by row through `Field::scalar` (no cast options, no
     `safe`), so cast `other` onto the field first when its layout differs and
     you want the cast rules.
-13. **`into_serie` joins the chunks**: no chunk is the empty column (no
+14. **`into_serie` joins the chunks**: no chunk is the empty column (no
     buffers), one chunk is itself (shared, zero copy), and only two or more
     chunks are concatenated into new buffers. `into_arrow_batch`,
     `into_arrow_reader` and `SerieReader.from_serie` refuse a record column
     holding a null row, because a batch states no row validity.
-14. **Schema-changing loops compile one plan per distinct source schema.** A
+15. **Schema-changing loops compile one plan per distinct source schema.** A
     plan refuses an input of another layout by name; key your plans by the
     source schema rather than recompiling per batch.
-15. **One order for every leaf.** `sort_indices`, `into_sorted`, `into_unique`
+16. **One order for every leaf.** `sort_indices`, `into_sorted`, `into_unique`
     and `partition_by` answer `Scalar`'s total order: absent values go last
     (nulls first is an option, and the opposite of Arrow's own default), every
     NaN is one value above every number, and a column and the run of its rows

@@ -203,7 +203,7 @@ macro_rules! serie_leaf {
 pub(crate) mod arrow;
 pub(crate) use arrow::{
     Proof, Resolved, canonical_rows, default_array, default_dtype_array, from_canonical_rows, land,
-    land_batch, land_planned, land_resolved, land_under, proven_cell,
+    land_batch, land_planned, land_planned_under, land_resolved, land_under, proven_cell,
 };
 pub use arrow::{SerieReader, SerieReaderWindows};
 mod boolean;

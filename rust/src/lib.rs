@@ -439,6 +439,8 @@ pub mod internals {
     #[cfg(feature = "iceberg")]
     pub use crate::iceberg::value::internals as iceberg_value;
     pub use crate::ipc::internals as ipc;
+    pub use crate::json::column::internals as json_column;
+    pub use crate::json::field::internals as json_field;
     pub use crate::local::internals as local;
     pub use crate::media::merge::internals as media_merge;
     pub use crate::media::options::internals as media_options;

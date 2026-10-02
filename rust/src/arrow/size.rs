@@ -93,6 +93,31 @@ pub fn scalar_memory_size(value: &Scalar) -> usize {
     ROW_OVERHEAD + payload_bytes(value)
 }
 
+/// What [`scalar_memory_size`] answers for the run `cells` make - a struct
+/// row - for a producer holding the cells and not the run.
+pub(crate) fn run_memory_size<'a>(cells: impl IntoIterator<Item = &'a Scalar>) -> usize {
+    ROW_OVERHEAD + ROW_OVERHEAD + cells_payload(cells)
+}
+
+/// What [`scalar_memory_size`] answers for the mapping `entries` make, for a
+/// producer holding the entries and not the mapping.
+pub(crate) fn mapping_memory_size(entries: &[(Scalar, Scalar)]) -> usize {
+    ROW_OVERHEAD + ROW_OVERHEAD + entries_payload(entries)
+}
+
+/// The payload a mapping's entries carry, keys and values, summed.
+fn entries_payload(entries: &[(Scalar, Scalar)]) -> usize {
+    entries
+        .iter()
+        .map(|(key, held)| payload_bytes(key) + payload_bytes(held))
+        .sum::<usize>()
+}
+
+/// The payload a run's cells carry, summed.
+fn cells_payload<'a>(cells: impl IntoIterator<Item = &'a Scalar>) -> usize {
+    cells.into_iter().map(payload_bytes).sum::<usize>()
+}
+
 /// The leaf payload one value carries, summed through nesting.
 fn payload_bytes(value: &Scalar) -> usize {
     // A null costs a validity bit, not a value. Charging it a leaf's width
@@ -114,15 +139,11 @@ fn payload_bytes(value: &Scalar) -> usize {
                 // A column's cost is its buffers, and no row is built to
                 // count it.
                 Some(array) => array_memory_size(&array),
-                None => held.rows().iter().map(payload_bytes).sum::<usize>(),
+                None => cells_payload(held.rows().iter()),
             };
     }
     if let Some(held) = value.as_mapping() {
-        return held
-            .iter()
-            .map(|(key, held)| payload_bytes(key) + payload_bytes(held))
-            .sum::<usize>()
-            + ROW_OVERHEAD;
+        return entries_payload(held) + ROW_OVERHEAD;
     }
     if let Some(held) = value.as_struct() {
         return held

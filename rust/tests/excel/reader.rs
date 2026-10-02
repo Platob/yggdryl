@@ -503,7 +503,7 @@ fn a_declared_field_reads_numbers_through_its_own_value_contract() {
     ]));
     assert_eq!(
         records(&handle, &options),
-        ["[3,\"12.50\",0.25,\"7\"]", "[4,\"7.00\",1.0,\"1.5\"]"]
+        ["[3,\"12.5\",0.25,\"7\"]", "[4,\"7\",1.0,\"1.5\"]"]
     );
 }
 

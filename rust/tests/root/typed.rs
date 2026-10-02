@@ -315,7 +315,7 @@ mod pairing {
             (FieldScalar::infer(Scalar::from(true)).unwrap(), "true"),
             (
                 FieldScalar::infer(Scalar::decimal128(150, 2)).unwrap(),
-                "1.50",
+                "1.5",
             ),
             (
                 FieldScalar::infer(Scalar::date32(19_723)).unwrap(),
@@ -828,7 +828,7 @@ mod records {
     fn a_row_displays_its_named_cells() {
         let schema = schema();
         let record = FieldRecord::new(&schema, row()).unwrap();
-        assert_eq!(record.to_string(), "{id=7, symbol=AAPL, price=1.50}");
+        assert_eq!(record.to_string(), "{id=7, symbol=AAPL, price=1.5}");
         let absent = FieldRecord::new(
             &schema,
             Scalar::from_sequence([Scalar::from(1_i64), Scalar::Null, Scalar::Null]),

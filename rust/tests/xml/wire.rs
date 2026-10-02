@@ -198,7 +198,7 @@ fn leaves_write_their_interoperable_spellings() {
         "<whole>1.0</whole>",
         "<nan>NaN</nan>",
         "<inf>-INF</inf>",
-        "<decimal>12.50</decimal>",
+        "<decimal>12.5</decimal>",
         "<bytes>AP8=</bytes>",
         "<date>2024-06-02</date>",
         "<time>07:32:00.100</time>",

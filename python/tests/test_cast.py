@@ -222,20 +222,15 @@ def test_a_float_into_a_decimal_rounds_half_away_from_zero_at_the_declared_scale
     assert ArrowCastPlan(batch.schema, target).apply(batch).child("v").as_py() == cents
 
 
-def test_a_fixed_decimal_leaf_into_text_is_its_trimmed_text() -> None:
+def test_every_decimal_into_text_is_its_shortest_text() -> None:
     rows = [Decimal("1.125"), Decimal("-2"), Decimal("0"), None]
     utf8 = Field("px", "utf8")
-    for leaf in ("decimal", "bigdecimal"):
+    for leaf in ("decimal", "bigdecimal", "decimal128(38,18)", "decimal64(12,4)"):
         column = Serie.from_scalars(Field("px", leaf), rows)
-        assert column.cast(utf8).as_py() == ["1.125", "-2", "0", None], leaf
-    # A parameterized width keeps the full scale it declares.
-    width = Serie.from_scalars(Field("px", "decimal128(38,18)"), rows)
-    assert width.cast(utf8).as_py() == [
-        "1.125000000000000000",
-        "-2.000000000000000000",
-        "0.000000000000000000",
-        None,
-    ]
+        text = column.cast(utf8)
+        assert text.as_py() == ["1.125", "-2", "0", None], leaf
+        # The text reads back at the scale the column declares.
+        assert text.cast(Field("px", leaf)).as_py() == column.as_py(), leaf
 
 
 def test_an_empty_text_cell_is_null_before_safe_is_asked() -> None:
@@ -537,3 +532,32 @@ def test_apply_proves_foreign_data_before_a_row_is_read() -> None:
     for value in (array, pa.chunked_array([array])):
         with pytest.raises(ValueError, match="non-monotonic offset"):
             plan.apply(value)
+
+
+def test_a_nested_column_and_its_json_text_are_one_cast_apart() -> None:
+    entry = pa.struct([("px", pa.float64()), ("qty", pa.int64())])
+    books = Serie.from_arrow_array(
+        pa.array([[("AAPL", {"px": 1.5, "qty": 3})], None], pa.map_(pa.utf8(), entry))
+    )
+    text = books.cast(Field("books", "map<utf8, utf8>"))
+    assert text.cast(Field("v", "utf8")).as_py() == ['{"AAPL":"{\\"px\\":1.5,\\"qty\\":3}"}', None]
+    back = text.cast(Field("books", "map<utf8, struct<px: float64, qty: int64>>"))
+    assert back == books
+    # A struct is an object keyed in declaration order, and reads back by name.
+    quotes = Serie.from_arrow_array(
+        pa.array([{"sym": "AAPL", "px": 1.5}], pa.struct([("sym", pa.utf8()), ("px", pa.float64())]))
+    )
+    assert quotes.cast(Field("q", "utf8")).as_py() == ['{"sym":"AAPL","px":1.5}']
+    assert quotes.cast(Field("q", "binary")).as_py() == [b'{"sym":"AAPL","px":1.5}']
+    text = Serie.from_arrow_array(pa.array(['{"px":1.5,"sym":"AAPL"}']))
+    assert text.cast(Field("q", "struct<sym: utf8, px: float64>")).as_py() == [
+        {"sym": "AAPL", "px": 1.5}
+    ]
+
+
+def test_text_that_is_not_a_document_of_the_nested_target_follows_safe() -> None:
+    lots = pa.array(["[1, 2]", "abc", "", "null", None])
+    target = Field("lots", "serie<int64>")
+    assert Serie.from_arrow_array(lots, target).as_py() == [[1, 2], None, None, None, None]
+    with pytest.raises(ValueError, match="row 1"):
+        Serie.from_arrow_array(lots, target, safe=False)

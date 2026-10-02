@@ -123,7 +123,7 @@ def test_binding_resolves_and_folds() -> None:
     assert bound.is_predicate
     assert bound.columns == ["price", "size"]
     # The literal is converted once, into the column's own exact type.
-    assert str(bound.term) == "price > decimal128(9,2) '100.00' and size is not null"
+    assert str(bound.term) == "price > decimal128(9,2) '100' and size is not null"
     assert "column price" in bound.explain()
     with pytest.raises(TypeError, match="unhashable"):
         hash(bound)

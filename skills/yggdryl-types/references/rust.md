@@ -258,7 +258,7 @@ Arithmetic is `checked_*` (or the `Result` operator traits): exact or an error.
 use yggdryl::{DataType, Decimal, Field, Scalar, TimeUnit, Timezone, i256};
 
 let price = Scalar::decimal128(1_050, 2);
-assert_eq!(price.into_decimal_utf8().as_deref(), Some("10.50"));
+assert_eq!(price.into_decimal_utf8().as_deref(), Some("10.5"));
 assert_eq!(price, Scalar::decimal128(105, 1)); // normalized equality
 assert_eq!(Scalar::from_decimal(i256::from_i128(1_250), 2), Scalar::decimal128(1_250, 2));
 

@@ -253,14 +253,14 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.match(text, /"at" = 2026-08-15T12:30:00/)
     assert.match(text, /"on" = 2024-01-01/)
     assert.match(text, /"since" = 07:32:00/)
-    assert.match(text, /"price" = "-10\.50"/)
+    assert.match(text, /"price" = "-10\.5"/)
 
     const decoded = toml.loads(written)
     assert.ok(decoded.at instanceof Date)
     assert.equal(decoded.at.toISOString(), '2026-08-15T12:30:00.000Z')
     assert.ok(decoded.on.equals(new DataType('date32').scalar(19723)))
     assert.ok(decoded.since.equals(new DataType('time32(s)').scalar(27120)))
-    assert.equal(decoded.price, '-10.50')
+    assert.equal(decoded.price, '-10.5')
 
     const field = fields.struct('root', [
       fields.datetime64('at', 's', 'UTC', { nullable: false }),
@@ -753,12 +753,12 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
       assert.equal(decoded.on, '2024-01-01')
       assert.equal(decoded.sinceMidnight, '12:34:56.000000')
       assert.equal(decoded.took, 'PT90S')
-      assert.equal(decoded.price, '-10.50')
+      assert.equal(decoded.price, '-10.5')
     }
 
     assert.equal(
       json.dumps({ price: values.price }).toString(),
-      '{"price":"-10.50"}',
+      '{"price":"-10.5"}',
     )
     // One instant in two resolutions is one value, and so is one number in two
     // spellings, because the core compares what a value names.
@@ -2475,7 +2475,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.equal(
       written.toString(),
       '<row><at>2026-08-15T12:30:00.000Z</at><bytes>AP8=</bytes><flag>true</flag>' +
-        '<on>2024-01-01</on><price>-10.50</price><ratio>1.5</ratio><tags>a</tags><tags>b</tags></row>',
+        '<on>2024-01-01</on><price>-10.5</price><ratio>1.5</ratio><tags>a</tags><tags>b</tags></row>',
     )
     // XML proves text and nothing else.
     assert.deepEqual(xml.loads(written), {
@@ -2484,7 +2484,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
         bytes: 'AP8=',
         flag: 'true',
         on: '2024-01-01',
-        price: '-10.50',
+        price: '-10.5',
         ratio: '1.5',
         tags: ['a', 'b'],
       },

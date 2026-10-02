@@ -1391,7 +1391,7 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
     assert.equal(message.byTag(55).asJs(), 'AAPL')
     assert.equal(message.byId(registry.fieldByTag(55).fix.id).asJs(), 'AAPL')
     assert.equal(message.byName('SYMBOL').asJs(), 'AAPL')
-    assert.equal(message.byTag(38).toString(), '"100.000000000000000000"')
+    assert.equal(message.byTag(38).toString(), '"100"')
     assert.equal(message.byPath('parties[0].partyid').asJs(), 'BROKER')
     // An unknown tag is retained under its rendered name, never dropped.
     assert.equal(message.byTag(9999).asJs(), 'custom')
@@ -1877,7 +1877,7 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
       .parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|202=12.5|10=0|'))
       .intoRow(schema)
       .asJs()
-    assert.equal(String(row[schema.indexOf('strikeprice')]), '"12.500000000000000000"', 'a decimal128(38,18) cell')
+    assert.equal(String(row[schema.indexOf('strikeprice')]), '"12.5"', 'a decimal128(38,18) cell')
   })
 
   test('party ids are typed by role and sourced by their id source', () => {
@@ -2214,8 +2214,8 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
     ).next().value
     assert.ok(inferred.equals(bridge))
     assert.equal(bridge.byTag(55).toJSON(), 'TTF')
-    assert.equal(bridge.byTag(38).toJSON(), '1200.000000000000000000')
-    assert.equal(bridge.byTag(44).toJSON(), '41.250000000000000000')
+    assert.equal(bridge.byTag(38).toJSON(), '1200')
+    assert.equal(bridge.byTag(44).toJSON(), '41.25')
     assert.equal(bridge.side, 'BUYS')
     assert.equal(bridge.byPath('parties[0].partyid').asJs(), 'BUYSIDE')
     // The counter said two occurrences and one arrived: the group entry

@@ -19,7 +19,7 @@ filter = Filter("ccy = 'EUR' and price > 100")
 assert filter.columns() == ["ccy", "price"]
 
 bound = filter.bind(schema)
-assert str(bound.term) == "ccy = 'EUR' and price > decimal32(9,2) '100.00'"
+assert str(bound.term) == "ccy = 'EUR' and price > decimal32(9,2) '100'"
 
 assert bound.matches(["EUR", Decimal("150.00"), 5])
 assert bound.matches({"ccy": "EUR", "price": Decimal("150.00"), "size": 5})
@@ -182,7 +182,7 @@ schema = Field("trades", DataType.from_fields([year, Field("price", "decimal(9,2
 
 answerable, remaining = Term("year = 2024 and price > 100").bind(schema).partition_split()
 assert str(answerable) == "year = int32 '2024'"
-assert str(remaining) == "price > decimal32(9,2) '100.00'"
+assert str(remaining) == "price > decimal32(9,2) '100'"
 ```
 
 ## Push the filter and projection into a read

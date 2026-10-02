@@ -87,7 +87,7 @@ def test_leaves_write_their_text_spellings_and_read_back_as_text() -> None:
     # A Python mapping keeps its own order across the boundary; a record read
     # back is sorted, as every document here is.
     assert encoded == (
-        b"<row><payload>AP8=</payload><decimal>123.4500</decimal><date>2026-08-15</date>"
+        b"<row><payload>AP8=</payload><decimal>123.45</decimal><date>2026-08-15</date>"
         b"<datetime>2026-08-15T12:03:04.000005Z</datetime><flag>true</flag>"
         b"<count>3</count><ratio>1.5</ratio></row>"
     )
@@ -97,7 +97,7 @@ def test_leaves_write_their_text_spellings_and_read_back_as_text() -> None:
             "count": "3",
             "date": "2026-08-15",
             "datetime": "2026-08-15T12:03:04.000005Z",
-            "decimal": "123.4500",
+            "decimal": "123.45",
             "flag": "true",
             "payload": "AP8=",
             "ratio": "1.5",
@@ -114,7 +114,7 @@ def test_a_field_types_the_document_element_and_a_class_is_that_field() -> None:
     encoded = xml.dumps({"order": value})
     assert encoded == (
         b"<order><fill><observed_at>2026-08-15T08:00:00.000000Z</observed_at>"
-        b"<price>12.50</price></fill><labels>urgent</labels><labels>auction</labels>"
+        b"<price>12.5</price></fill><labels>urgent</labels><labels>auction</labels>"
         b"<order_id>7</order_id></order>"
     )
     assert xml.loads(encoded, cls=Order) == value
