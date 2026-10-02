@@ -3604,7 +3604,7 @@ pub struct TextLine  (one text row and the `Event` of the graph it is: what the 
   pub fn bodytype(&self) -> &MimeType  (the stated classification, else the payload's, read on the first ask)
   pub fn set_bodytype(&mut self, bodytype: Option<MimeType>)  (unsaid, it resolves afresh)
   pub fn with_bodytype(mut self, bodytype: MimeType) -> Self
-  pub fn body(&self) -> &str  (the whole line, row header included)
+  pub fn body(&self) -> &str  (the line past its row header)
   pub const fn body_bytes(&self) -> &TextBytes
   pub fn set_body(&mut self, body: TextBytes) -> Result<()>  (drops every resolved reading and the header the cut matched; captures a caller stated stand, the payload then the whole new body, and so does every other stated fact; an empty body is refused and leaves the line as it was)
   pub const fn decoded_byte_size(&self) -> u64

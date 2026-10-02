@@ -772,7 +772,7 @@ A nested column - a struct, any serie layout, a map - and a text or byte column 
 another through JSON, at every depth. Each row writes the compact JSON its field names: a struct
 is an object keyed by its fields in declaration order, a serie an array, a map an object whose
 keys are spelled as text, a union beneath one its `[type_id, value]` pair, and every leaf the
-spelling the [JSON codec](../media/index.md#json) writes - a decimal as its text, a temporal in
+spelling the [JSON codec](../media/json.md) writes - a decimal as its text, a temporal in
 ISO 8601, bytes in base64. Each text or byte cell reads back as one JSON document under the
 target field, through the value contract a JSON document is read by, so a cast there and back
 is the identity - but for a map's entries, which a JSON object holds in no order of its own
@@ -1361,7 +1361,7 @@ What each binding door accepts, each resolved once at the door:
 - A `DataType` target -> its required `value` field, so a refusal names `$.value`.
 - `into_arrow_scalar` -> exactly one row; any other length is refused naming it, and a run is refused by name.
 - A scalar wider than the declared type -> accepted when the value fits, then canonicalized into it (`U64` -> `I64`).
-- Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../media/index.md#json) accepts, a duration included, which Arrow reads into none.
+- Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../media/json.md#read) accepts, a duration included, which Arrow reads into none.
 - Text into a decimal -> read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer.
 - A float into a decimal -> the number its shortest text names, rounded half away from zero at the declared scale, on both tiers: `0.125` into `decimal(10, 2)` is `0.13`, and `1.15` is `1.15` where Arrow's kernel would scale the binary fraction. A `nan`, an infinity or a float past the precision -> null under `safe`, refused by row under strict.
 - A `decimal` or `bigdecimal` column into text -> the leaf's trimmed text on both tiers, `1.125` and never the `1.125000000000000000` of its storage; a parameterized width keeps its declared scale on the column tier (`1.125000000000000000` for `decimal128(38,18)`), while the row tier renders the value at the scale it holds.

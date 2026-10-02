@@ -169,10 +169,10 @@ field's columns, and refuses what does not fit with a located error.
 
 ## Deeper
 
-- JSON: https://platob.github.io/yggdryl/media/#json
-- YAML (and placeholder cost): https://platob.github.io/yggdryl/media/#yaml
-- TOML: https://platob.github.io/yggdryl/media/#toml
-- XML (mapping, record medium): https://platob.github.io/yggdryl/media/#xml
+- JSON: https://platob.github.io/yggdryl/media/json/
+- YAML (and placeholder cost): https://platob.github.io/yggdryl/media/yaml/
+- TOML: https://platob.github.io/yggdryl/media/toml/
+- XML (mapping, record medium): https://platob.github.io/yggdryl/media/xml/
 - Structured values on a handle: https://platob.github.io/yggdryl/holder/#structured-values
 - Values and fields: https://platob.github.io/yggdryl/types/scalar/, https://platob.github.io/yggdryl/types/field/
 - Sibling skills: `yggdryl-types` (fields, dataclasses, `Scalar`), `yggdryl-storage` (handles, `read_scalar`, codings, charsets), `yggdryl-records` (rows in Arrow IPC, Parquet, Avro, text, Iceberg; `write_arrow` for document rows).

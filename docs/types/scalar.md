@@ -427,7 +427,7 @@ Without a schema, `Scalar` exposes the inferred `Field`: `value`, `item`, or `ro
     assert.equal(Scalar.from([{ id: 1 }]).intoStructField().name, 'row')
     ```
 
-See [Field](field.md), [Serie: one row](serie.md#arrow-one-row), and [Structured documents](../media/index.md#json).
+See [Field](field.md), [Serie: one row](serie.md#arrow-one-row), and [Structured documents](../media/json.md).
 
 ## Edges
 
@@ -449,7 +449,7 @@ See [Field](field.md), [Serie: one row](serie.md#arrow-one-row), and [Structured
 - Empty or positional rows -> ambiguous; declare the `Field`.
 - Physical Arrow identity -> exact constructors, [Rust only](numeric/index.md).
 - `MimeType::PUFFIN` -> `application/vnd.apache.puffin`, `.puffin`, `PFA1`; the specification names no MIME type.
-- `MimeType::HTTP` -> `message/http`, `.http`: one whole HTTP/1.1 message, read by `Request::from_bytes` and `Response::from_bytes` ([HTTP messages](../media/index.md#http-messages)).
+- `MimeType::HTTP` -> `message/http`, `.http`: one whole HTTP/1.1 message, read by `Request::from_bytes` and `Response::from_bytes` ([HTTP messages](../media/http.md)).
 - Geospatial value across a binding -> WKB bytes; `wkb` reader [Rust only](geospatial/index.md).
 - [Code](codes/index.md) bases in `yggdryl.enums` -> Python only: the fixed US-ASCII widths `fixed_ascii(width)` builds, the four registered code bases `Country`, `Ccy`, `Mic`, `Cfi` and the vocabularies declared over them, `COUNTRY`, `CCY`, `MIC`, `CFI`, building the shared `StringEnum`.
 - Field inference -> `Scalar.into_field` in Python, beside the `into_field` a `@scalar` class caches for its own struct root; no binding reimplements it.

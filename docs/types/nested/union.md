@@ -480,7 +480,7 @@ union of declared members and a value that declares itself.
 - A union value is the pair `[type_id, payload]`; the id canonicalizes to `Int64`, and an id no member carries -> `unknown union type id <n>`.
 - A sequence under a union is always read as that pair, so a list payload is spelled as the pair naming its member; a bare value that two members accept -> `fits more than one union member`, and one no member takes -> `expected a value one union member accepts`.
 - A bare null enters the `null` member, else the one member that takes a null; members that all require a value -> `expected a value one union member accepts (...), got null`, and a required union field -> `non-nullable field received null`, exactly as the pair `[n, null]` is.
-- A union column crosses Arrow IPC; [Parquet](../../media/index.md#parquet) has no union layout and refuses it by name.
+- A union column crosses Arrow IPC; [Parquet](../../media/parquet.md) has no union layout and refuses it by name.
 - A union has one child per member, so `with_fields` takes exactly that many and keeps the declared ids and the mode.
 - A union member is a whole [`Field`](../field.md): it carries its own name, nullability and metadata, and those survive the Arrow round trip.
 
