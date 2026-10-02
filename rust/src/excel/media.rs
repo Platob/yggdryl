@@ -27,6 +27,9 @@ use super::workbook::Workbook;
 use super::writer::SheetXml;
 
 /// Open the workbook `handle` holds, over a handle of the package's own.
+///
+/// The owned handle carries the media type the copy took over, so
+/// [`Workbook::open`] refuses a coded name without asking `handle` again.
 fn open<H: IOBase + ?Sized>(handle: &H) -> Result<Workbook> {
     Workbook::open(crate::iobase::owned_handle(handle)?)
 }
@@ -91,8 +94,9 @@ fn inferred(workbook: &Workbook, name: &str, options: &ExcelOptions) -> Result<F
 ///
 /// # Errors
 ///
-/// Returns a read, package or sheet failure, or a refusal naming the first
-/// cell whose datatype disagrees with its column's.
+/// Returns a read, package or sheet failure, a refusal naming the first
+/// cell whose datatype disagrees with its column's, or a codec failure for a
+/// handle whose name declares a content coding (`trades.xlsx.gz`).
 pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ExcelOptions) -> Result<Field> {
     if let Some(field) = options.field() {
         return Ok(field);
@@ -163,7 +167,8 @@ pub(crate) fn stated_field<H: IOBase + ?Sized>(
 ///
 /// # Errors
 ///
-/// Returns a read, package, sheet or pairing failure.
+/// Returns a read, package, sheet or pairing failure, or a codec failure
+/// for a handle whose name declares a content coding.
 pub fn read_batch_reader<H: IOBase + ?Sized>(
     handle: &H,
     field: Option<&Field>,
@@ -207,13 +212,16 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
 ///
 /// # Errors
 ///
-/// Returns a schema, value, package or write failure, or a refusal naming
-/// the row that would leave the grid.
+/// Returns a schema, value, package or write failure, a refusal naming the
+/// row that would leave the grid, or a codec failure for a handle whose name
+/// declares a content coding - before a byte is written.
 pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
     handle: &mut H,
     batches: BatchReader,
     options: &ExcelOptions,
 ) -> Result<()> {
+    // Refused before the stream is read, an empty handle included.
+    super::reject_outer_coding(handle)?;
     let root = field_from_arrow_schema(options.name(), batches.schema().as_ref())?;
     let rows = SerieReader::from_arrow_reader(Some(&root), batches, ArrowCastOptions::default())?;
     let mut workbook = if handle.size() == 0 {

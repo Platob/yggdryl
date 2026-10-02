@@ -193,6 +193,9 @@ medium does the work before a byte is decoded.
   `{ mergeBy: ['id'] }` / `with_merge_by(["id"])?`.
 - Naming a file `trades.parquet.gz` - refused ("parquet compresses"); use
   `compression="zstd(3)"` on a plain `.parquet`.
+- Naming a workbook `trades.xlsx.gz` - refused ("expected an uncompressed xlsx
+  handle") by the write, the read and `Workbook.open`; the package is already
+  deflated inside, so name it `.xlsx`.
 - Skipping rows in the host after the read: `row_offset` (`rowOffset`,
   `with_row_offset`) skips leading rows before `max_row_size` counts, and a
   plan's `offset` lands there too (`options.plan`, `withPlan`, `with_plan`,

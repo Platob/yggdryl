@@ -538,6 +538,16 @@ b1
     }
 
     #[test]
+    fn a_coding_around_a_workbook_is_left_for_the_excel_doors_to_refuse() {
+        // A workbook is a ZIP package deflated inside: the same rule, so the
+        // name reaches the doors that refuse it rather than a decoded view.
+        let (handle, _) = named("trades.xlsx.gz", Vec::new());
+        let handle = handle.into_declared_media();
+        assert!(matches!(handle, Holder::Buffer(_)), "{handle:?}");
+        assert_eq!(handle.codec(), Codec::Gzip);
+    }
+
+    #[test]
     fn a_composed_absent_location_is_still_absent() {
         // Every wrapper reports the storage role of what it stands on, so a
         // composed handle for a location that is not there answers `Unknown` and

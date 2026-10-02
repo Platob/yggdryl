@@ -108,6 +108,7 @@ The last four own the `Holder` they wrap; `repr` renders that stack outermost fi
 | `trades.log` | `Text(LocalPath)` |
 | `trades.json`, `trades` | `LocalPath` |
 | `trades.parquet.gz` | `LocalPath`: Parquet compresses internally, so the writer refuses the name |
+| `trades.xlsx.gz` | `LocalPath`: a workbook is deflated inside, so the Excel doors refuse the name |
 | `logs/` | `LocalPath`: a folder names no encoding, so its records are found beneath it |
 | `logs/*.log.gz` | `Text(LocalPath)`: a pattern's suffix names each leaf's encoding, and each leaf takes off its own coding, so none goes over the stream of them |
 | `lake/**/*.parquet` | `Parquet(LocalPath)`, reading the `.parquet` leaves the pattern matches as one table |

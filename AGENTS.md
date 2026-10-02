@@ -1249,9 +1249,13 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   argument; generic `write_*` takes an `IOMode` and redirects to specialized core
   paths.
 - Plain-text rows are the fifteen element and event columns `ElementColumn::ALL` and `EventColumn::ALL` name -
-  the line as the event it is, `currunix` first and `state` last - then
-  required `body: utf8`, then one column per row-header capture, a capture
-  named `execunix` an ordinary one: a line is no market element. The event
+  the line as the event it is, the six element columns from `curruuid`
+  first, then the nine event columns from `currunix` to `state` last - then
+  required `body: utf8`, then one column per row-header capture that feeds
+  no event fact: a capture named `state`, `creaunix`, `recdunix`,
+  `exprunix`, `prevunix`, `snapunix` or `prevuuid`, or `mtime` under
+  `parse_mtime`, states that fact in the event's own column, and a capture
+  named `execunix` is an ordinary one: a line is no market element. The event
   states every fact a column used to repeat and no column repeats one: the
   object a line came from is `crosscode`, so `crosshashcode` is the XXH3-64 of
   that URL string and `crossuuid` derives from it; the row number under

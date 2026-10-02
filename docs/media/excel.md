@@ -12,6 +12,7 @@ An Office Open XML workbook (`.xlsx`): one worksheet of it read and written as r
 | Python | any `IOBase` whose name declares a workbook; `yggdryl.excel`: `Workbook`, `Sheet`, `Cell`, `CellRef`, `CellRange`, `Row` |
 | JavaScript | any `IOBase` whose name declares a workbook; `Workbook`, `Sheet`, `Cell`, `CellRef`, `CellRange` and the `excel` namespace |
 | Settings | [`ExcelOptions`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.ExcelOptions.html): `sheet`, `header` and `range`, beside the shared [`RecordOptions`](index.md#options) |
+| Refused | a coded name such as `.xlsx.gz` or `.xlsx.zst`: the package is deflated inside |
 
 An Office Open XML workbook (`.xlsx`) is a ZIP package of XML parts, and one worksheet of it is the record medium: the first row of the range names the columns, every cell below is a value, and a write renders the part row by row as the batches arrive. The whole workbook is the random-access side of the same medium - [`Workbook`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Workbook.html), [`Sheet`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Sheet.html) and [`Cell`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Cell.html) - any cell by its `A1` reference, a sheet's rows laid out from a `Serie` and read back as one.
 
@@ -141,7 +142,7 @@ Three facts about the file decide what a read answers. A number cell is a `float
 
 ## Write
 
-A write renders the part row by row as the batches arrive, with no row held past its batch: the first row names the columns while `header` is on, and each value is the cell its datatype spells - a boolean as `t="b"`, a date, a time, a naive datetime or a duration as its serial under the number format that reads it back, a float that is not a number as `#NUM!`, text inline - while a zoned datetime, an interval, a decimal, a code or bytes is written as the text the XML codec spells, and a nested value as its JSON. A write into an opened package keeps every other part as it was, the sheets it does not touch included, and `sheet` naming one the workbook lacks adds it beside the others; it reads the package twice, once for the field the rows are shaped onto and once to carry the other parts across. A `.xlsx.gz` name is refused: the package is deflated inside, as Parquet is.
+A write renders the part row by row as the batches arrive, with no row held past its batch: the first row names the columns while `header` is on, and each value is the cell its datatype spells - a boolean as `t="b"`, a date, a time, a naive datetime or a duration as its serial under the number format that reads it back, a float that is not a number as `#NUM!`, text inline - while a zoned datetime, an interval, a decimal, a code or bytes is written as the text the XML codec spells, and a nested value as its JSON. A write into an opened package keeps every other part as it was, the sheets it does not touch included, and `sheet` naming one the workbook lacks adds it beside the others; it reads the package twice, once for the field the rows are shaped onto and once to carry the other parts across. A coded name such as `.xlsx.gz` is refused before a byte is written - the package is deflated inside, as Parquet's pages are - and a read and `Workbook::open` refuse it too, naming the coding to drop.
 
 === "Rust"
 
@@ -149,7 +150,7 @@ A write renders the part row by row as the batches arrive, with no row held past
     use yggdryl::excel::Workbook;
     use yggdryl::holder::Buffer;
     use yggdryl::media::IORecordOptions;
-    use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructType};
+    use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructType, Url};
 
     let trades = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
@@ -182,6 +183,12 @@ A write renders the part row by row as the batches arrive, with no row held past
     assert_eq!(workbook.sheet_names(), ["Sheet1", "Notes"]);
     assert_eq!(workbook.sheet("Notes")?.scalar("A4".parse()?), Scalar::from("c"));
     assert_eq!(workbook.sheet("Sheet1")?.scalar("B2".parse()?), Scalar::from("AAPL"));
+
+    // A coding around the package is refused, and nothing is written.
+    let mut coded = Buffer::new().with_media_type(Url::from_str("file:///book.xlsx.gz")?.media_type());
+    let refused = coded.overwrite_records([note("d")], &on_notes).unwrap_err();
+    assert!(refused.to_string().contains("expected an uncompressed xlsx handle"), "{refused}");
+    assert_eq!(coded.size(), 0);
     ```
 
 === "Python"
@@ -191,11 +198,13 @@ A write renders the part row by row as the batches arrive, with no row held past
     import tempfile
 
     import pyarrow as pa
+    import pytest
 
     from yggdryl import IOBase
     from yggdryl.excel import Workbook
 
-    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "book.xlsx")
+    root = pathlib.Path(tempfile.mkdtemp())
+    handle = IOBase(root / "book.xlsx")
 
     # The first worksheet, unless `sheet` names another.
     handle.overwrite_arrow_table(pa.table({"id": pa.array([1, 2], pa.int64()), "symbol": ["AAPL", None]}))
@@ -209,6 +218,12 @@ A write renders the part row by row as the batches arrive, with no row held past
     assert workbook.sheet_names == ["Sheet1", "Notes"]
     assert workbook["Notes"]["A4"].as_py() == "c"
     assert workbook["Sheet1"]["B2"].as_py() == "AAPL"
+
+    # A coding around the package is refused, and nothing is written.
+    coded = IOBase(root / "book.xlsx.gz")
+    with pytest.raises(ValueError, match="expected an uncompressed xlsx handle"):
+        coded.overwrite_arrow_table(pa.table({"note": ["d"]}))
+    assert coded.size() == 0
     ```
 
 === "JavaScript"
@@ -242,6 +257,11 @@ A write renders the part row by row as the batches arrive, with no row held past
     assert.deepEqual(workbook.sheetNames, ['Sheet1', 'Notes'])
     assert.equal(workbook.sheet('Notes').cell('A4').value.asJs(), 'c')
     assert.equal(workbook.sheet('Sheet1').cell('B2').value.asJs(), 'AAPL')
+
+    // A coding around the package is refused, and nothing is written.
+    const coded = new IOBase(path.join(root, 'book.xlsx.gz'))
+    assert.throws(() => coded.overwriteArrowTable(notes(['d'])), /expected an uncompressed xlsx handle/)
+    assert.equal(coded.size(), 0)
 
     fs.rmSync(root, { recursive: true, force: true })
     ```

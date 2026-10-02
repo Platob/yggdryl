@@ -12,7 +12,7 @@ Content codings over any handle - gzip, zlib and Zstandard, each declared by a s
 | Python | coded `IOBase` handles by name; `yggdryl.gzip`, `zlib`, `zstd`: `loads` and `dumps`, and `zlib.loads_raw`, `zlib.dumps_raw` for raw deflate |
 | JavaScript | coded `IOBase` handles by name; `gzip`, `zlib`, `zstd`: `loads` and `dumps`, and `zlib.loadsRaw`, `zlib.dumpsRaw` for raw deflate |
 | Settings | `level`, one 0-9 scale for every codec (`Level::FAST` 1, `DEFAULT` 6, `BEST` 9); a handle whose name declares no coding ignores it |
-| Refused | an outer coding over [Parquet](parquet.md), which compresses its pages inside the file |
+| Refused | an outer coding over [Parquet](parquet.md), which compresses its pages inside the file, or over an [Excel](excel.md) workbook, a ZIP package deflated inside |
 
 A coding suffix on the name wraps the encoding: the same calls, compressed bytes underneath. `level` is the one setting.
 
