@@ -33,8 +33,7 @@ use crate::CodeValue;
 use crate::securityid::{SymbolCode, embedded};
 use crate::xxhash::Xxh3;
 use crate::{
-    Ccy, Cfi, Decimal, IdSource, IdType, Identifier, Identifiers, Mic, Result, Side, TimeInForce,
-    Unit,
+    Ccy, Cfi, Decimal, IdKey, IdType, Identifier, Identifiers, Mic, Result, Side, TimeInForce, Unit,
 };
 
 /// Free-form facts a market element carries beside its typed ones: never an
@@ -195,39 +194,42 @@ pub trait Market {
     /// Sets [`Self::get_marketdatatype`].
     fn set_marketdatatype(&mut self, mdtype: crate::MarketDataType, overwrite: bool);
     /// The security's identifiers - its ISIN, its CUSIP, a venue's own
-    /// instrument key - one value per key `src:type`, each held as its
-    /// [`IdType`] stores it.
+    /// instrument key - one value per [`IdKey`], each held as its
+    /// [`IdType`] stores it, and the base key of each type its answer
+    /// ([`Identifiers`]): `isin` is the ISIN whichever source stated it.
     fn get_securityids(&self) -> &Identifiers;
-    /// Replaces the stated security identifiers, or fills only the types
-    /// and sources they lack without `overwrite`.
+    /// Replaces the stated security identifiers, or fills only the keys
+    /// they lack without `overwrite`.
     ///
     /// # Errors
     ///
     /// Returns an error when the holder is a view of a store that refuses
     /// one of them.
     fn set_securityids(&mut self, ids: Identifiers, overwrite: bool) -> Result<()>;
-    /// States one security identifier, filling an absent type and source;
-    /// a derived identifier of its type is taken back, since a statement
-    /// answers before it. Whether it was added.
+    /// States one security identifier, filling an absent key and the base
+    /// key of its type where that is empty; a derived identifier of its type
+    /// is taken back, since a statement answers before it
+    /// ([`Identifiers::insert`]). Whether it was added.
     ///
     /// # Errors
     ///
     /// Returns an error when the holder is a view of a store that refuses
     /// it.
     fn insert_securityid(&mut self, id: Identifier) -> Result<bool>;
-    /// Removes the identifier keyed `src:kind`; whether one was held.
-    /// Removing the ISIN takes back every derived identifier, since each
-    /// hangs on it.
+    /// Removes what `key` holds ([`Identifiers::remove`]): a named
+    /// source's identifier alone, or, under a base key, every identifier of
+    /// its type; whether one was held. Once no ISIN is left, every derived
+    /// identifier is taken back, since each hangs on it.
     ///
     /// # Errors
     ///
     /// Returns an error when the holder is a view of a store that refuses
     /// the removal.
-    fn remove_securityid(&mut self, src: &IdSource, kind: &IdType) -> Result<bool>;
+    fn remove_securityid(&mut self, key: &IdKey) -> Result<bool>;
     /// Derives one security identifier - one the element implies rather
     /// than states: the national number its ISIN carries, what its ticker's
     /// shape names, what a lifecycle learned - under the
-    /// [`IdSource::Derived`] source, filling only a type
+    /// [`IdSource::Derived`](crate::IdSource::Derived) source, filling only a type
     /// the element holds none of; whether it was added. A derived
     /// identifier never reaches a store the holder is a view of.
     fn derive_securityid(&mut self, kind: &IdType, code: &str) -> bool;
@@ -704,21 +706,22 @@ pub trait Operation: Market {
     /// Returns an error when the holder is a view of a store that refuses
     /// one of them.
     fn set_identifiers(&mut self, ids: Identifiers, overwrite: bool) -> Result<()>;
-    /// States one identifier, filling only an absent type and source;
-    /// whether it was added.
+    /// States one identifier, filling only an absent key and the base key
+    /// of its type where that is empty; whether it was added.
     ///
     /// # Errors
     ///
     /// Returns an error when the holder is a view of a store that refuses
     /// it.
     fn insert_identifier(&mut self, id: Identifier) -> Result<bool>;
-    /// Removes the identifier keyed `src:kind`; whether one was held.
+    /// Removes what `key` holds - a base key every identifier of its type -
+    /// ([`Identifiers::remove`]); whether one was held.
     ///
     /// # Errors
     ///
     /// Returns an error when the holder is a view of a store that refuses
     /// the removal.
-    fn remove_identifier(&mut self, src: &IdSource, kind: &IdType) -> Result<bool>;
+    fn remove_identifier(&mut self, key: &IdKey) -> Result<bool>;
     /// The parties the operation names - its accounts, its traders, its
     /// firms, its users - each a value of a role (the type) from the source
     /// that issued it: a FIX party is its `PartyID` as its `PartyRole`'s
@@ -732,21 +735,22 @@ pub trait Operation: Market {
     /// Returns an error when the holder is a view of a store that refuses
     /// them.
     fn set_partyids(&mut self, partyids: Identifiers, overwrite: bool) -> Result<()>;
-    /// States one party, filling only an absent role and source; whether it
-    /// was added.
+    /// States one party, filling only an absent key and the base key of its
+    /// role where that is empty; whether it was added.
     ///
     /// # Errors
     ///
     /// Returns an error when the holder is a view of a store that refuses
     /// it.
     fn insert_partyid(&mut self, partyid: Identifier) -> Result<bool>;
-    /// Removes the party keyed `src:kind`; whether one was held.
+    /// Removes what `key` holds - a base key every party of its role -
+    /// ([`Identifiers::remove`]); whether one was held.
     ///
     /// # Errors
     ///
     /// Returns an error when the holder is a view of a store that refuses
     /// the removal.
-    fn remove_partyid(&mut self, src: &IdSource, kind: &IdType) -> Result<bool>;
+    fn remove_partyid(&mut self, key: &IdKey) -> Result<bool>;
     /// Whether an operation that follows another carries `id`, one of the
     /// predecessor's identifiers, where it states none of its key: every
     /// type but a book entry's [`IdType::MdEntryRefId`], the reference one
@@ -1203,24 +1207,32 @@ fn names_other_instrument<E: Market + ?Sized>(this: &E, other: &E) -> bool {
     )
 }
 
-/// A `ZZ` ISIN `this` states yields to a real one `other` states: taken
-/// out - and every identifier derived from it with it - and replaced, so
-/// what the real one carries derives afresh. Whether it moved.
+/// A `ZZ` ISIN `this` states yields to a real one `other` states: the type
+/// taken out - and every identifier derived from it with it - and replaced
+/// by `other`'s statements of it, its base key first, so what the real one
+/// carries derives afresh. Whether it moved.
 fn yield_unknown_isin<E: Market + ?Sized>(this: &mut E, other: &E) -> bool {
-    let (Some(mine), Some(theirs)) = (
-        this.get_securityids()
-            .get_identifier(&IdType::Isin)
-            .cloned(),
-        other.get_securityids().get_identifier(&IdType::Isin),
-    ) else {
+    let (Some(mine), Some(theirs)) = (this.get_isincode(), other.get_isincode()) else {
         return false;
     };
-    if !is_unknown_isin(mine.value()) || is_unknown_isin(theirs.value()) {
+    if !is_unknown_isin(mine) || is_unknown_isin(theirs) {
         return false;
     }
-    let theirs = theirs.clone();
-    let _ = this.remove_securityid(mine.src(), mine.kind());
-    this.insert_securityid(theirs).unwrap_or(false)
+    let ids = other.get_securityids();
+    let echoed = ids.is_derived(&IdType::Isin);
+    let mut theirs: Vec<Identifier> = ids
+        .of_kind(&IdType::Isin)
+        .filter(|id| !(echoed && id.key().is_base()))
+        .cloned()
+        .collect();
+    theirs.sort_by_key(|id| !id.key().is_base());
+    let mut moved = this
+        .remove_securityid(&IdKey::base(IdType::Isin))
+        .unwrap_or(false);
+    for id in theirs {
+        moved |= this.insert_securityid(id).unwrap_or(false);
+    }
+    moved
 }
 
 /// The market facts an element takes from another statement of itself:
@@ -1331,24 +1343,29 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
         }
     } else {
         changed |= yield_unknown_isin(this, other);
-        for id in other.get_securityids() {
-            match this.get_securityids().get_from(id.src(), id.kind()) {
-                Some(held) if held == id.value() => {}
-                // A `ZZ` ISIN never replaces a real one, whichever leads.
-                Some(held)
-                    if id.kind() == &IdType::Isin
-                        && is_unknown_isin(id.value())
-                        && !is_unknown_isin(held) => {}
-                Some(_) if later => {
-                    let _ = this.remove_securityid(id.src(), id.kind());
-                    changed |= this.insert_securityid(id.clone()).unwrap_or(false);
-                }
-                Some(_) => {}
-                None if id.src() == &IdSource::Derived => {
-                    changed |= this.derive_securityid(id.kind(), id.value());
-                }
-                None => changed |= this.insert_securityid(id.clone()).unwrap_or(false),
-            }
+        // Every key either statement holds, the leading one's value where
+        // both hold one; a `ZZ` ISIN never replaces a real one, whichever
+        // leads.
+        let theirs = other.get_securityids();
+        let guarded: Option<Identifiers> = (this
+            .get_isincode()
+            .is_some_and(|isin| !is_unknown_isin(isin))
+            && theirs
+                .of_kind(&IdType::Isin)
+                .any(|id| is_unknown_isin(id.value())))
+        .then(|| {
+            theirs
+                .iter()
+                .filter(|id| {
+                    !(id.key().is_base() && theirs.is_derived(id.kind()))
+                        && !(id.kind() == &IdType::Isin && is_unknown_isin(id.value()))
+                })
+                .cloned()
+                .collect()
+        });
+        let mut ids = this.get_securityids().clone();
+        if ids.merge(guarded.as_ref().unwrap_or(theirs), later) {
+            changed |= this.set_securityids(ids, true).is_ok();
         }
     }
     changed |= moved(
@@ -1477,32 +1494,17 @@ pub(crate) fn merge_operation<E: Operation + ?Sized>(this: &mut E, other: &E, la
         stated(this.get_tradable(), other.get_tradable(), later),
         |tradable| this.set_tradable(tradable, true),
     );
-    if !other.get_identifiers().is_empty() {
-        let mut merged = if later {
-            other.get_identifiers().clone()
-        } else {
-            this.get_identifiers().clone()
-        };
-        let supplement = if later {
-            this.get_identifiers()
-        } else {
-            other.get_identifiers()
-        };
-        merged.merge(supplement);
-        if &merged != this.get_identifiers() && this.set_identifiers(merged, true).is_ok() {
-            changed = true;
-        }
+    // Every key either statement holds, the leading one's value where both
+    // hold one.
+    let mut identifiers = this.get_identifiers().clone();
+    if identifiers.merge(other.get_identifiers(), later)
+        && this.set_identifiers(identifiers, true).is_ok()
+    {
+        changed = true;
     }
-    if !other.get_partyids().is_empty() {
-        let (mut merged, supplement) = if later {
-            (other.get_partyids().clone(), this.get_partyids())
-        } else {
-            (this.get_partyids().clone(), other.get_partyids())
-        };
-        merged.merge(supplement);
-        if &merged != this.get_partyids() && this.set_partyids(merged, true).is_ok() {
-            changed = true;
-        }
+    let mut partyids = this.get_partyids().clone();
+    if partyids.merge(other.get_partyids(), later) && this.set_partyids(partyids, true).is_ok() {
+        changed = true;
     }
     changed
 }

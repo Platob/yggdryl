@@ -118,7 +118,7 @@ test('a fact given as undefined is skipped and null clears', () => {
   assert.ok(new graph.OrderEvent(1, { crosscode: 'X', book: undefined }).equals(plain))
   assert.ok(new graph.OrderEvent(1, { crosscode: 'X', book: null }).equals(plain))
   const stated = {
-    crosscode: 'X', price: '1', ticker: 'T', timeinforce: '0', identifiers: [new yggdryl.Identifier('fix', 'orderid', 'X')],
+    crosscode: 'X', price: '1', ticker: 'T', timeinforce: '0', identifiers: [new yggdryl.Identifier('orderid', 'X')],
   }
   const cleared = new graph.OrderEvent(1, { ...stated, ticker: null, price: null, timeinforce: null, identifiers: null })
   assert.equal(cleared.ticker, null)
@@ -145,7 +145,7 @@ test('the market facts cross as plain values', () => {
   const event = new graph.OrderEvent(1, {
     crosscode: 'O-1',
     side: 'BUYS',
-    securityids: [new yggdryl.Identifier('base', 'isin', 'US0378331005')],
+    securityids: [new yggdryl.Identifier('isin', 'US0378331005')],
     bidpx: '100.5',
     bidqty: 3,
     bidccy: 'EUR',

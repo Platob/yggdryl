@@ -20,7 +20,7 @@ use crate::graph::{
 };
 use crate::warning::warned;
 use crate::{
-    DataType, Decimal, Error, IdSource, IdType, Identifier, Identifiers, MarketDataKind, Result,
+    DataType, Decimal, Error, IdKey, IdType, Identifier, Identifiers, MarketDataKind, Result,
     Scalar, Side, State, TimeUnit,
 };
 
@@ -699,7 +699,7 @@ fn lift_identifier(facts: &mut OperationEventFacts, id: Identifier) -> bool {
     } else {
         facts.get_identifiers()
     };
-    if let Some(held) = set.get_from(id.src(), kind) {
+    if let Some(held) = set.get_from(id.key()) {
         return held == id.value();
     }
     let inserted = if kind.is_security() {
@@ -1951,8 +1951,10 @@ fn build_book_operation(
         (IdType::OrderId, entry.facts.order_id.as_deref()),
     ] {
         if let Some(value) = value {
-            let _ = event.remove_identifier(&IdSource::Fix, &key);
-            if let Err(error) = Identifier::new(IdSource::Fix, key.clone(), value)
+            // The type's base key, so the entry's own value replaces the
+            // type: removing a base key removes every key of its type.
+            let _ = event.remove_identifier(&IdKey::base(key.clone()));
+            if let Err(error) = Identifier::new(IdKey::base(key.clone()), value)
                 .and_then(|id| event.insert_identifier(id))
             {
                 warned!(
@@ -1986,7 +1988,7 @@ fn build_book_operation(
     // The entry's own parties lead the message's, as a trade side's do.
     if !entry.accounts.is_empty() {
         let mut accounts = entry.accounts.clone();
-        accounts.merge(event.get_partyids());
+        accounts.merge(event.get_partyids(), false);
         let _ = event.set_partyids(accounts, true);
     }
     carry(&mut event, carried, true);

@@ -300,35 +300,9 @@
                   "metadata": {}
                 },
                 {
-                  "name": "securityid",
+                  "name": "value",
                   "dtype": {
-                    "type": "struct",
-                    "fields": [
-                      {
-                        "name": "src",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "type",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "value",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      }
-                    ]
+                    "type": "string"
                   },
                   "nullable": false,
                   "metadata": {}
@@ -704,35 +678,9 @@
                   "metadata": {}
                 },
                 {
-                  "name": "identifier",
+                  "name": "value",
                   "dtype": {
-                    "type": "struct",
-                    "fields": [
-                      {
-                        "name": "src",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "type",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "value",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      }
-                    ]
+                    "type": "string"
                   },
                   "nullable": false,
                   "metadata": {}
@@ -770,35 +718,9 @@
                   "metadata": {}
                 },
                 {
-                  "name": "partyid",
+                  "name": "value",
                   "dtype": {
-                    "type": "struct",
-                    "fields": [
-                      {
-                        "name": "src",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "type",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "value",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      }
-                    ]
+                    "type": "string"
                   },
                   "nullable": false,
                   "metadata": {}

@@ -2501,7 +2501,10 @@ where
             // The synthetic delete addresses the current generation, not
             // the reference a prior rename used to reach its predecessor.
             let mut identifiers = operation.operation_event().get_identifiers().clone();
-            if identifiers.remove_kind(&ENTRY_REF_ID) > 0 {
+            if identifiers
+                .remove(&crate::IdKey::base(ENTRY_REF_ID))
+                .is_some()
+            {
                 let _ = operation
                     .operation_event_mut()
                     .set_identifiers(identifiers, true);

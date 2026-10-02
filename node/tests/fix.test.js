@@ -7,10 +7,9 @@ let committedRegistry
 /** The identifiers of a map by type, each value under its type. */
 const kinds = (ids) => Object.fromEntries(ids.toArray().map((id) => [id.type, id.value]))
 /** An identifier column's cell - a map from `src:type` to its row - by type, each value under its type. */
-const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
-  require('node:assert/strict').equal(key, `${row.src}:${row.type}`, 'a key is its row\'s src:type')
-  return [row.type, row.value]
-}))
+// An identifier column's cell - a map from each key's text to its value - by
+// type: the base keys, each spelled as its type alone.
+const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.includes(':')))
 
 // The `fix` suite, in its own block: it brings its own
 // fixtures, and `const` is block-scoped.
@@ -1811,9 +1810,9 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
       assert.equal(byName.byTag(470).toJSON(), 'US')
     }
     const kept = parse('8=FIX.4.4|35=D|11=A|22=100|48=HOUSE-1|10=0|')
-    assert.equal(kept.securityids.getFrom('fix', '100'), 'HOUSE-1')
+    assert.equal(kept.securityids.getFrom('100'), 'HOUSE-1')
     const refused = parse('8=FIX.4.4|35=D|11=A|22=House/Key|48=HK-1|10=0|')
-    assert.equal(refused.securityids.getFrom('fix', 'housekey'), null)
+    assert.equal(refused.securityids.getFrom('housekey'), null)
     assert.ok(refused.anomalies.some((anomaly) => anomaly.field === 'securityid'))
   })
 
@@ -1825,10 +1824,12 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
       'UnderlyingISIN=CH0012214059|TransversalKey=K1|10=0|',
     ))
     // An identifier the key's source and type name, a party for a role, a
-    // security for a security type: each in its own map, keyed `src:type`.
-    assert.deepEqual(message.identifiers.toArray().map(String), ['fix:clordid=C1', 'venue:clordid=X1'])
-    assert.deepEqual(message.partyids.toArray().map(String), ['venue:userid=U1'])
-    assert.deepEqual(message.securityids.toArray().map(String), ['venue:instrumentid=dbi;X'])
+    // security for a security type: each in its own map, keyed `src:type`,
+    // filling its type's base key where nothing states it - the wire's
+    // `ClOrdID` answers `clordid`.
+    assert.deepEqual(message.identifiers.toArray().map(String), ['clordid=C1', 'venue:clordid=X1'])
+    assert.deepEqual(message.partyids.toArray().map(String), ['userid=U1', 'venue:userid=U1'])
+    assert.deepEqual(message.securityids.toArray().map(String), ['instrumentid=dbi;X', 'venue:instrumentid=dbi;X'])
     // Another instrument's security (`underlyingisin`) and a name that is no
     // identifier's (`transversalkey`) are lifted nowhere.
     assert.equal(message.isincode, null)
@@ -1840,15 +1841,15 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
     for (const entry of ['venueclordid=X1', 'underlyingisin=CH0012214059', 'transversalkey=K1']) {
       assert.ok(wire.includes(entry), entry)
     }
-    // A whole security name is that type from `base`, its value checked.
+    // A whole security name is that type from the base source, its value checked.
     const isin = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C1|security_isin=US0378331005|10=0|'))
-    assert.equal(isin.securityids.getFrom('base', 'isin'), 'US0378331005')
+    assert.equal(isin.securityids.getFrom('isin'), 'US0378331005')
     // The market leaf lifts the same keys and keeps the rest in its metadata.
     const [leaf] = message.marketData()
     const order = leaf.asOrderEvent()
-    assert.equal(order.identifiers.getFrom('venue', 'clordid'), 'X1')
-    assert.equal(order.partyids.getFrom('venue', 'userid'), 'U1')
-    assert.equal(order.securityids.getFrom('venue', 'instrumentid'), 'dbi;X')
+    assert.equal(order.identifiers.getFrom('venue:clordid'), 'X1')
+    assert.equal(order.partyids.getFrom('venue:userid'), 'U1')
+    assert.equal(order.securityids.getFrom('venue:instrumentid'), 'dbi;X')
     assert.deepEqual(order.metadata, { transversalkey: 'K1', underlyingisin: 'CH0012214059' })
   })
 
@@ -1888,34 +1889,38 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
     // The role's code-set name is the type, the source's name the source, and
     // `Account(1)` is the party `account`; a map is in the order of its keys.
     assert.deepEqual(message.partyids.toArray().map(String), [
-      'base:account=ACC9',
+      'account=ACC9',
+      'clientid=CL',
+      'executingfirm=BRK',
       'legalentityidentifier:clientid=CL',
       'proprietary:executingfirm=BRK',
     ])
     assert.equal(message.partyids.get('executingfirm'), 'BRK')
-    assert.equal(message.partyids.getFrom('proprietary', 'executingfirm'), 'BRK')
+    assert.equal(message.partyids.getFrom('proprietary:executingfirm'), 'BRK')
     // `OrigClOrdID(41)` is the `origclordid` of the `clordid` it replaced: its
     // own key beside the `clordid`'s, no lineage held on the identifier.
-    const replaced = message.identifiers.getIdentifier('clordid')
-    assert.deepEqual([replaced.src, replaced.value], ['fix', 'C-1'])
-    assert.equal(message.identifiers.getFrom('fix', 'origclordid'), 'C-0')
-    assert.deepEqual(message.identifiers.toArray().map((id) => id.key), ['fix:clordid', 'fix:origclordid'])
+    assert.equal(message.identifiers.get('clordid'), 'C-1')
+    assert.equal(message.identifiers.getFrom('origclordid'), 'C-0')
+    assert.deepEqual(message.identifiers.toArray().map((id) => id.key), ['clordid', 'origclordid'])
     // A party stating no role is typed `party`, a bare unknown role code is
-    // `partyrole<code>`, and a source stating none is `base`.
+    // `partyrole<code>`, and a source stating none is the base source.
     const bare = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C-2|453=2|448=P1|452=9999|448=P2|10=0|'))
-    assert.deepEqual(bare.partyids.toArray().map(String), ['base:party=P2', 'base:partyrole9999=P1'])
+    assert.deepEqual(bare.partyids.toArray().map(String), ['party=P2', 'partyrole9999=P1'])
   })
 
   test('security ids are keyed by the source that stated them and the one that derived them', () => {
     const codec = fixedCodec(seed())
     const message = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|'))
-    // A US ISIN embeds the CUSIP, derived beside it under its own source.
+    // A US ISIN embeds the CUSIP, derived beside it under its own source,
+    // which fills the CUSIP's base key; the wire states the ISIN's.
     assert.deepEqual(message.securityids.toArray().map(String), [
+      'cusip=037833100',
       'derived:cusip=037833100',
-      'fix:isin=US0378331005',
+      'isin=US0378331005',
     ])
-    assert.equal(message.securityids.getFrom('fix', 'isin'), 'US0378331005')
-    assert.equal(message.securityids.getFrom('base', 'isin'), null)
+    assert.equal(message.securityids.getFrom('isin'), 'US0378331005')
+    assert.equal(message.securityids.getFrom('fix:isin'), 'US0378331005', "the standard's word reads as the base")
+    assert.ok(message.securityids.isDerived('cusip'))
     assert.equal(message.isincode, 'US0378331005')
   })
 
@@ -3872,10 +3877,10 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
     const codec = reading(registry, { defaultSendingTime: SENDING })
     const schema = fix.schema(registry)
     // A message states the names it goes by as a typed fact: the set the
-    // event holds, each identifier keyed `src:type` - the source `fix`, the
-    // type a lower-case word - in the core's key order, built at every
-    // settle from `OrderID(37)`, `ClOrdID(11)`, `ExecID(17)` and the other
-    // source fields.
+    // event holds, each identifier under the base key of its type - spelled
+    // as the type alone, a lower-case word - in the core's key order, built
+    // at every settle from `OrderID(37)`, `ClOrdID(11)`, `ExecID(17)` and
+    // the other source fields.
     const lines = [
       '8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|',
       '8=FIX.4.4|35=D|10=0|',
@@ -3883,7 +3888,7 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
     const messages = lines.map((line) => one(codec, line))
     assert.deepEqual(kinds(messages[0].identifiers), { clordid: 'C-001', execid: 'E-09', orderid: 'O-01' })
     assert.deepEqual(messages[0].identifiers.toArray().map((id) => id.type), ['clordid', 'execid', 'orderid'])
-    assert.deepEqual(messages[0].identifiers.toArray().map((id) => id.src), ['fix', 'fix', 'fix'])
+    assert.deepEqual(messages[0].identifiers.toArray().map((id) => id.src), ['base', 'base', 'base'])
     assert.equal(messages[1].identifiers.length, 0)
     // A1: the identifiers are the one set of names a message goes by;
     // the party ids are the parties a message names, none here.
@@ -4224,7 +4229,7 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
     assert.ok(residual instanceof Map)
     assert.ok([...residual.keys()].every((key) => !key.startsWith('55:')))
     assert.ok(residual.has('453:parties'))
-    assert.equal(message.partyids.toString(), '[proprietary:executingfirm=BRK]')
+    assert.equal(message.partyids.toString(), '[executingfirm=BRK, proprietary:executingfirm=BRK]')
     // A9: a key no dictionary resolves lands in the metadata, as spelled.
     assert.equal(row.asJs()[schema.indexOf('metadata')].get('9999'), 'x')
 
@@ -4777,9 +4782,13 @@ const rowKinds = (cell) => new Map(Array.from(cell, ([key, row]) => {
     // `partyids` and `securityids`. It moved again with the stored cross
     // code (`3:0:2454`, kind and side before the base, which the cross hash
     // and every identity derive from) and the identifier maps (keyed
-    // `src:type`, the bridge's own keys inferred into them): the one value
+    // `src:type`, the bridge's own keys inferred into them). It moved again
+    // when every type took its base key, spelled as the type alone - the
+    // wire's identifiers digest under `base`, beside the base key a named
+    // source fills - and when the bridge's `DETAILEDCFICODE` became a name
+    // of `CFICode(461)`, folded into it: the one value
     // `rust/tests/fix/ulbridge.rs` and the Python binding pin for this log.
-    assert.equal(last.currhashcode, 1_642_488_774_851_967_775n)
+    assert.equal(last.currhashcode, 11_953_173_911_701_746_314n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {

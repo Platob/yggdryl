@@ -11,7 +11,7 @@ use super::SoleMessage;
 use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    DataType, FixCodec, FixDedup, FixMsg, FixRegistry, IdSource, IdType, Scalar, StructType,
+    DataType, FixCodec, FixDedup, FixMsg, FixRegistry, IdKey, IdSource, IdType, Scalar, StructType,
     fix_schema,
 };
 
@@ -1669,7 +1669,7 @@ fn lifecycle_inherits_the_client_order_and_the_parents_from_the_exact_predecesso
         assert_eq!(
             current
                 .get_identifiers()
-                .get_from(&IdSource::Fix, &parent.parse::<IdType>().unwrap()),
+                .get_from(&IdKey::base(parent.parse::<IdType>().unwrap())),
             Some("ORDER-A"),
             "{parent}"
         );
@@ -1860,7 +1860,7 @@ fn lifecycle_learns_in_event_order_and_fills_only_later_missing_instrument_codes
 }
 
 #[test]
-fn lifecycle_learns_figi_by_isin_and_keeps_a_conflicting_association_ambiguous() {
+fn lifecycle_learns_figi_by_isin_and_the_latest_statement_updates_it() {
     let codec = codec();
     let line = |seq: i32, body: &str| {
         format!(
@@ -1879,18 +1879,69 @@ fn lifecycle_learns_figi_by_isin_and_keeps_a_conflicting_association_ambiguous()
         Some("BBG000BLNQ16")
     );
 
-    let ambiguous: Vec<_> = codec
+    // Two statements of the instrument disagreeing: the later one in event
+    // order updates what the walk learned, whichever arrived first.
+    let updated: Vec<_> = codec
         .lifecycle([
             codec.parse_fix_line(line(3, "").as_bytes()),
-            codec.parse_fix_line(line(1, "figicode=BBG000BLNQ16").as_bytes()),
             codec.parse_fix_line(line(2, "figicode=BCG000000005").as_bytes()),
+            codec.parse_fix_line(line(1, "figicode=BBG000BLNQ16").as_bytes()),
         ])
         .collect::<yggdryl::Result<_>>()
         .unwrap();
-    assert!(
-        ambiguous[2].get_securityids().get(&IdType::Figi).is_none(),
-        "a conflicting association stays unknown"
+    assert_eq!(
+        updated[2].get_securityids().get(&IdType::Figi),
+        Some("BCG000000005"),
+        "the latest statement updates the association"
     );
+}
+
+#[test]
+fn a_shared_isin_registry_carries_what_one_walk_learned_into_the_next() {
+    use std::sync::Mutex;
+    use yggdryl::IsinRegistry;
+
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|isincode=US0378331005|{body}|10=0|"
+        )
+    };
+    let walk = |codec: &FixCodec, seq: i32, body: &str| {
+        let walked: Vec<_> = codec
+            .lifecycle([codec.parse_fix_line(line(seq, body).as_bytes())])
+            .collect::<yggdryl::Result<_>>()
+            .unwrap();
+        walked[0]
+            .get_securityids()
+            .get(&IdType::Figi)
+            .map(ToOwned::to_owned)
+    };
+    let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
+    let shared = codec().with_isin_registry(Arc::clone(&instruments));
+    assert_eq!(
+        walk(&shared, 1, "figicode=BBG000BLNQ16").as_deref(),
+        Some("BBG000BLNQ16")
+    );
+    assert_eq!(
+        walk(&shared, 2, "").as_deref(),
+        Some("BBG000BLNQ16"),
+        "the second walk starts from what the first learned"
+    );
+    assert_eq!(
+        instruments
+            .lock()
+            .unwrap()
+            .get("US0378331005")
+            .and_then(|entry| entry.get(&IdType::Figi)),
+        Some("BBG000BLNQ16")
+    );
+    // Without one, each walk learns into its own, starting empty.
+    let own = codec();
+    assert_eq!(
+        walk(&own, 1, "figicode=BBG000BLNQ16").as_deref(),
+        Some("BBG000BLNQ16")
+    );
+    assert_eq!(walk(&own, 2, ""), None);
 }
 
 #[test]
@@ -1919,9 +1970,10 @@ fn lifecycle_learns_no_listing_a_bridge_names_its_instrument_by() {
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     assert_eq!(
-        walked[0]
-            .get_securityids()
-            .get_from(&"oms".parse::<IdSource>().unwrap(), &IdType::InstrumentId),
+        walked[0].get_securityids().get_from(&IdKey::new(
+            "oms".parse::<IdSource>().unwrap(),
+            IdType::InstrumentId
+        )),
         Some("dbi;CH0012214059_XSWX_CHF"),
         "the message stating it keeps it"
     );
@@ -2914,7 +2966,10 @@ fn the_line_read_and_the_batch_read_agree_on_separatorless_group_inference() {
     for batch in [&row_batch, &column_batch] {
         let partyids = yggdryl::Identifiers::from_scalar(&first_value(batch, "partyids"))
             .expect("the partyids column");
-        assert_eq!(partyids.to_string(), "[proprietary:executingfirm=BUYSIDE]");
+        assert_eq!(
+            partyids.to_string(),
+            "[executingfirm=BUYSIDE, proprietary:executingfirm=BUYSIDE]"
+        );
         let entries = first_value(batch, yggdryl::fix::FIXENTRIES_COLUMN);
         let group = entries
             .mapping_iter()

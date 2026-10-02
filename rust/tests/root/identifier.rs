@@ -1,26 +1,28 @@
-//! `rust/src/identifier.rs`: one identifier - a value, the source that gave it
-//! and the type of name it is - keyed `src:type`, the sorted map of them laid
-//! out as an Arrow map from that key to its row, and the parents a chain gives
-//! the bases it states.
+//! `rust/src/identifier.rs`: one identifier - a value under its key, the
+//! source that gave it and the type of name it is - the sorted map of them,
+//! whose base key is each type's answer, laid out as an Arrow
+//! `map<utf8, utf8>` from the key as spelled to its value, and the parents a
+//! chain gives the types it states.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
 use arrow_array::Array;
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, IdSource, IdType, IdWord, Identifier, Identifiers, Scalar,
-    Serie,
+    ArrowCastOptions, DataType, Field, IdKey, IdSource, IdType, IdWord, Identifier, Identifiers,
+    Scalar, Serie,
 };
 
-/// The text of cell `at` of a row.
-fn cell(row: &Scalar, at: usize) -> String {
-    row.get(at)
-        .and_then(|cell| cell.as_str().map(str::to_owned))
-        .expect("a text cell")
+fn id(src: &str, kind: &str, value: &str) -> Identifier {
+    Identifier::new(
+        IdKey::new(src.parse().unwrap(), kind.parse().unwrap()),
+        value,
+    )
+    .unwrap()
 }
 
-fn id(src: &str, kind: &str, value: &str) -> Identifier {
-    Identifier::new(src.parse().unwrap(), kind.parse().unwrap(), value).unwrap()
+fn key(text: &str) -> IdKey {
+    text.parse().unwrap()
 }
 
 fn kind(text: &str) -> IdType {
@@ -31,11 +33,11 @@ fn source(text: &str) -> IdSource {
     text.parse().unwrap()
 }
 
-/// A set of `fix` identifiers, one per `(type, value)` pair.
-fn fix(pairs: &[(&str, &str)]) -> Identifiers {
+/// A map of base identifiers, one per `(type, value)` pair.
+fn base(pairs: &[(&str, &str)]) -> Identifiers {
     pairs
         .iter()
-        .map(|(kind, value)| id("fix", kind, value))
+        .map(|(kind, value)| id("base", kind, value))
         .collect()
 }
 
@@ -45,13 +47,13 @@ fn follow(next: &mut Identifiers, previous: &Identifiers) -> bool {
     next.follow_parents(previous, IdType::parents, IdType::parent_of)
 }
 
-/// The states of one chain, in order: each states one of `values` as the base
-/// `base` from `fix`, and takes its parents from the state before it as a
+/// The states of one chain, in order: each states one of `values` as the
+/// base key of `kind`, and takes its parents from the state before it as a
 /// lifecycle does.
-fn chain(base: &str, values: &[&str]) -> Vec<Identifiers> {
+fn chain(kind: &str, values: &[&str]) -> Vec<Identifiers> {
     let mut states: Vec<Identifiers> = Vec::new();
     for value in values {
-        let mut next = fix(&[(base, value)]);
+        let mut next = base(&[(kind, value)]);
         if let Some(previous) = states.last() {
             follow(&mut next, previous);
         }
@@ -60,22 +62,32 @@ fn chain(base: &str, values: &[&str]) -> Vec<Identifiers> {
     states
 }
 
-/// The types of `ids` as `src:type` keys, in the order the set holds them.
+/// The keys of `ids` as spelled, in the order the map holds them.
 fn keys(ids: &Identifiers) -> Vec<String> {
     ids.iter().map(|held| held.key().to_string()).collect()
 }
 
+/// A map of text keys to text values, in the order given.
+fn entries(pairs: &[(&str, &str)]) -> Scalar {
+    Scalar::from_mapping(
+        pairs
+            .iter()
+            .map(|(key, value)| (Scalar::from(*key), Scalar::from(*value))),
+    )
+    .unwrap()
+}
+
 /// A parents list of three, nearest first, for `orderid` alone: the
 /// vocabulary is the caller's, `IdType::parents` is one reading of it.
-fn three_parents(base: &IdType) -> Cow<'static, [IdType]> {
-    if base == &IdType::OrderId {
-        Cow::Owned(["near", "middle", "far"].map(kind).to_vec())
+fn three_parents(kind: &IdType) -> Cow<'static, [IdType]> {
+    if kind == &IdType::OrderId {
+        Cow::Owned(["near", "middle", "far"].map(self::kind).to_vec())
     } else {
         Cow::Borrowed(&[])
     }
 }
 
-/// The base and place of each of the three custom parents.
+/// The type and place each of the three custom parents is a parent of.
 fn three_parent_of(parent: &IdType) -> Option<(IdType, usize)> {
     ["near", "middle", "far"]
         .iter()
@@ -87,15 +99,15 @@ fn three_parent_of(parent: &IdType) -> Option<(IdType, usize)> {
 fn a_value_that_states_nothing_is_refused_and_a_word_that_is_not_one_is_too() {
     for value in ["", "  ", "null", "NULL", "N/A", "none", "[N/A]"] {
         assert!(
-            Identifier::new(IdSource::Fix, IdType::OrderId, value).is_err(),
+            Identifier::new(IdKey::base(IdType::OrderId), value).is_err(),
             "{value:?}"
         );
         assert!(
-            Identifier::new(IdSource::Fix, IdType::Isin, value).is_err(),
+            Identifier::new(IdKey::base(IdType::Isin), value).is_err(),
             "{value:?}"
         );
     }
-    let refused = Identifier::new(IdSource::Fix, IdType::OrderId, "n/a")
+    let refused = Identifier::new(IdKey::base(IdType::OrderId), "n/a")
         .unwrap_err()
         .to_string();
     assert!(refused.contains("text stating something"), "{refused}");
@@ -106,23 +118,25 @@ fn a_value_that_states_nothing_is_refused_and_a_word_that_is_not_one_is_too() {
     // A word holds the longest name a FIX code set gives a party role or an
     // identifier source, and no more; so does a value, trimmed.
     let longest = "X".repeat(64);
-    let long = Identifier::new(IdSource::Fix, longest.parse().unwrap(), &"v".repeat(64)).unwrap();
+    let long = Identifier::new(IdKey::base(longest.parse().unwrap()), &"v".repeat(64)).unwrap();
     assert_eq!(long.kind().as_str(), "x".repeat(64));
     assert_eq!(long.value().len(), 64);
     let refused = "X".repeat(65).parse::<IdType>().unwrap_err().to_string();
     assert!(refused.contains("at most 64 bytes"), "{refused}");
     assert!(
-        Identifier::new(IdSource::Fix, IdType::OrderId, &"9".repeat(65)).is_err(),
+        Identifier::new(IdKey::base(IdType::OrderId), &"9".repeat(65)).is_err(),
         "a value past 64 bytes"
     );
-    assert!(Identifier::new(IdSource::Fix, IdType::Isin, &"9".repeat(65)).is_err());
+    assert!(Identifier::new(IdKey::base(IdType::Isin), &"9".repeat(65)).is_err());
 }
 
 #[test]
 fn words_fold_to_lower_case_and_values_trim() {
     let party = Identifier::new(
-        "Proprietary".parse().unwrap(),
-        "Executing Trader".parse().unwrap(),
+        IdKey::new(
+            "Proprietary".parse().unwrap(),
+            "Executing Trader".parse().unwrap(),
+        ),
         " trader1 ",
     )
     .unwrap();
@@ -132,20 +146,27 @@ fn words_fold_to_lower_case_and_values_trim() {
     assert_eq!(party.src(), &IdSource::Proprietary);
     assert_eq!(party.value(), "trader1");
     assert_eq!(party.to_string(), "proprietary:executingtrader=trader1");
-    assert!(party.is_of(&IdSource::Proprietary, &IdType::ExecutingTrader));
-    assert!(!party.is_of(&IdSource::Base, &IdType::ExecutingTrader));
-    assert!(!party.is_of(&IdSource::Proprietary, &IdType::ClientId));
+    assert_eq!(
+        party.key(),
+        &IdKey::new(IdSource::Proprietary, IdType::ExecutingTrader)
+    );
+    assert_ne!(party.key(), &IdKey::base(IdType::ExecutingTrader));
 
     // A value keeps its case, except where its type is a code that folds.
     let order = id("fix", "orderid", "O-1a");
     assert_eq!(order.value(), "O-1a");
-    let isin = Identifier::new(IdSource::Base, IdType::Isin, " us0378331005 ").unwrap();
-    assert_eq!(isin.to_string(), "base:isin=US0378331005");
-    // Nothing upper case survives in a word, in a display or in a row.
-    let row = isin.clone().into_scalar();
-    assert_eq!(cell(&row, 0), "base");
-    assert_eq!(cell(&row, 1), "isin");
-    assert_eq!(cell(&row, 2), "US0378331005");
+    let isin = Identifier::new(IdKey::base(IdType::Isin), " us0378331005 ").unwrap();
+    assert_eq!(
+        isin.to_string(),
+        "isin=US0378331005",
+        "a key from the base source is its type alone"
+    );
+    // Nothing upper case survives in a word, in a display or in a map.
+    let held: Identifiers = [isin].into_iter().collect();
+    let scalar = held.into_scalar();
+    let entries = scalar.as_mapping().expect("a map");
+    assert_eq!(entries[0].0.as_str(), Some("isin"));
+    assert_eq!(entries[0].1.as_str(), Some("US0378331005"));
 }
 
 #[test]
@@ -161,7 +182,7 @@ fn a_word_no_member_names_is_an_other_word_and_never_a_member() {
     assert_eq!(word.as_str(), "housecode");
     // A word a member names is never an `Other`.
     assert!(matches!("ISIN".parse::<IdType>().unwrap(), IdType::Isin));
-    assert!(matches!("FIX".parse::<IdSource>().unwrap(), IdSource::Fix));
+    assert!(matches!("FIX".parse::<IdSource>().unwrap(), IdSource::Base));
     assert!(matches!(
         "firm".parse::<IdSource>().unwrap(),
         IdSource::Other(_)
@@ -176,14 +197,16 @@ fn a_word_no_member_names_is_an_other_word_and_never_a_member() {
 #[test]
 fn an_identifier_names_its_unique_key_src_type() {
     let held = id("Fix", "ClOrdID", "C-1");
-    assert_eq!(held.key(), "fix:clordid");
+    assert_eq!(held.key(), "clordid", "the standard is the base source");
+    assert_eq!(held.key(), &IdKey::base(IdType::ClOrdId));
+    let bridged = id("firm.x", "house code", "hc-1");
+    assert_eq!(bridged.key(), "firm.x:housecode");
     assert_eq!(
-        held.key().to_string(),
-        format!("{}:{}", held.src(), held.kind())
+        bridged.key().to_string(),
+        format!("{}:{}", bridged.src(), bridged.kind())
     );
-    assert_eq!(id("firm.x", "house code", "hc-1").key(), "firm.x:housecode");
-    let isin = Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").unwrap();
-    assert_eq!(isin.key(), "base:isin");
+    let isin = Identifier::new(IdKey::base(IdType::Isin), "US0378331005").unwrap();
+    assert_eq!(isin.key(), "isin");
     // The key is the identity of a name, never of a value: two values of one
     // name share it, and the same type from another source does not.
     assert_eq!(
@@ -200,7 +223,7 @@ fn an_identifier_names_its_unique_key_src_type() {
     );
     // It is what `from_key` reads back.
     assert_eq!(
-        Identifier::from_key(&held.key(), held.value()).unwrap(),
+        Identifier::from_key(&held.key().to_string(), held.value()).unwrap(),
         held
     );
 }
@@ -231,7 +254,11 @@ fn identifiers_order_by_their_key_as_it_is_spelled_then_by_value() {
     );
     // Equal keys order by value, and a key decides before any value does.
     assert!(id("fix", "orderid", "A") < id("fix", "orderid", "B"));
-    assert!(id("fix", "orderid", "Z") < id("oms", "clordid", "A"));
+    assert!(id("base", "clordid", "Z") < id("oms", "clordid", "A"));
+    assert!(
+        id("oms", "clordid", "Z") < id("base", "orderid", "A"),
+        "'oms:clordid' sorts before 'orderid'"
+    );
     assert_eq!(
         id("a.b", "c", "1").cmp(&id("a.b", "c", "1")),
         std::cmp::Ordering::Equal
@@ -255,7 +282,7 @@ fn identifiers_order_by_their_key_as_it_is_spelled_then_by_value() {
 #[test]
 fn an_explicit_key_names_its_source_and_its_type() {
     let explicit = Identifier::from_key("fix:clordid", "C-1").unwrap();
-    assert_eq!(explicit.to_string(), "fix:clordid=C-1");
+    assert_eq!(explicit.to_string(), "clordid=C-1", "fix is the base");
     assert_eq!(
         Identifier::from_key(" FIX:ClOrdID ", " C-1 ").unwrap(),
         explicit,
@@ -302,10 +329,10 @@ fn a_key_is_read_for_the_identifier_name_it_ends_with_and_the_source_before_it()
     );
     assert_eq!(read("OMSUserID", "U-1"), "oms:userid=U-1");
     assert_eq!(read("oms.ClOrdID", "C-1"), "oms:clordid=C-1");
-    assert_eq!(read("OrderID", "O-1"), "base:orderid=O-1");
+    assert_eq!(read("OrderID", "O-1"), "orderid=O-1");
     assert_eq!(
         read(".OrderID", "O-1"),
-        "base:orderid=O-1",
+        "orderid=O-1",
         "a dot at the end is trimmed"
     );
     assert_eq!(read("firm.x.OrderID", "O-1"), "firm.x:orderid=O-1");
@@ -322,7 +349,7 @@ fn a_key_is_read_for_the_identifier_name_it_ends_with_and_the_source_before_it()
     assert_eq!(read("oms.Account", "ACC-1"), "oms:account=ACC-1");
     assert_eq!(read("venue_cusip", "037833100"), "venue:cusip=037833100");
     assert_eq!(read("firm.isin", "us0378331005"), "firm:isin=US0378331005");
-    assert_eq!(read("OrigClOrdID", "C-0"), "base:origclordid=C-0");
+    assert_eq!(read("OrigClOrdID", "C-0"), "origclordid=C-0");
     assert_eq!(read("firm.OrigClOrdID", "C-0"), "firm:origclordid=C-0");
     // The longest name the key ends with answers: `secondaryorderid` before
     // `orderid`, `prevregtradeid` before `regtradeid` before `tradeid`.
@@ -337,7 +364,7 @@ fn a_key_is_read_for_the_identifier_name_it_ends_with_and_the_source_before_it()
     assert_eq!(read("VenueRegTradeID", "V-1"), "venue:regtradeid=V-1");
     assert_eq!(
         read("SecondaryFirmTradeID", "V-1"),
-        "base:secondaryfirmtradeid=V-1"
+        "secondaryfirmtradeid=V-1"
     );
     // `origclordid` is a name of its own, so the source is `my` and not
     // `myorig`.
@@ -347,22 +374,19 @@ fn a_key_is_read_for_the_identifier_name_it_ends_with_and_the_source_before_it()
     assert_eq!(read("oMs.ClOrDiD", "V-1"), "oms:clordid=V-1");
     // The identifier of a key a whole security name spells is that type from
     // `base`, with a leading # dropped and every alias of its name.
-    assert_eq!(read("ISINCode", "US0378331005"), "base:isin=US0378331005");
-    assert_eq!(read("#ISINCODE", "US0378331005"), "base:isin=US0378331005");
-    assert_eq!(
-        read("ISIN_Number", "US0378331005"),
-        "base:isin=US0378331005"
-    );
-    assert_eq!(read("security_cusip", "037833100"), "base:cusip=037833100");
-    assert_eq!(read("#isin", "US0378331005"), "base:isin=US0378331005");
+    assert_eq!(read("ISINCode", "US0378331005"), "isin=US0378331005");
+    assert_eq!(read("#ISINCODE", "US0378331005"), "isin=US0378331005");
+    assert_eq!(read("ISIN_Number", "US0378331005"), "isin=US0378331005");
+    assert_eq!(read("security_cusip", "037833100"), "cusip=037833100");
+    assert_eq!(read("#isin", "US0378331005"), "isin=US0378331005");
     assert_eq!(
         read("fix:clordid", "C-1"),
-        "fix:clordid=C-1",
-        "an explicit key reads as itself"
+        "clordid=C-1",
+        "an explicit key reads as itself, fix as the base"
     );
 }
 
-/// A source the crate reserves - `base`, `derived`, `fix` - spelled before
+/// A source the crate reserves - `base`, which `fix` spells, or `derived` - spelled before
 /// the name a key ends with names no namespace: the key reads from `base`,
 /// as a whole security name does. An explicit `src:type` keeps the source it
 /// spells.
@@ -379,18 +403,15 @@ fn a_reserved_source_before_the_name_a_key_ends_with_reads_as_none() {
     ] {
         assert_eq!(
             read(key, "US0378331005").as_deref(),
-            Some("base:isin=US0378331005"),
+            Some("isin=US0378331005"),
             "{key}"
         );
     }
     assert_eq!(
         read("Derived.InstrumentID", "dbi;X").as_deref(),
-        Some("base:instrumentid=dbi;X")
+        Some("instrumentid=dbi;X")
     );
-    assert_eq!(
-        read("fix.ClOrdID", "C-1").as_deref(),
-        Some("base:clordid=C-1")
-    );
+    assert_eq!(read("fix.ClOrdID", "C-1").as_deref(), Some("clordid=C-1"));
     // A source that only starts like a reserved one is a source of its own.
     assert_eq!(
         read("fixed.ClOrdID", "C-1").as_deref(),
@@ -402,12 +423,9 @@ fn a_reserved_source_before_the_name_a_key_ends_with_reads_as_none() {
     );
     assert_eq!(
         read("fix:isin", "US0378331005").as_deref(),
-        Some("fix:isin=US0378331005")
+        Some("isin=US0378331005")
     );
-    assert_eq!(
-        read("fix:clordid", "C-1").as_deref(),
-        Some("fix:clordid=C-1")
-    );
+    assert_eq!(read("fix:clordid", "C-1").as_deref(), Some("clordid=C-1"));
 }
 
 /// A source and a type are each bounded as a word is, never the key they
@@ -422,7 +440,10 @@ fn a_key_whose_source_and_type_each_fit_a_word_names_its_identifier() {
         read.to_string(),
         "venue.desk.bridge.namespace.of.forty.bytes:secondaryindividualallocid=A-1"
     );
-    assert_eq!(Identifier::from_key(&read.key(), "A-1"), Some(read));
+    assert_eq!(
+        Identifier::from_key(&read.key().to_string(), "A-1"),
+        Some(read)
+    );
     // The widest source a word holds, before an identifier name.
     let widest = "s".repeat(64);
     assert_eq!(
@@ -440,19 +461,11 @@ fn a_parentage_word_before_the_name_stays_part_of_the_type() {
     };
     // What each key reads as, and the base and place its type is a parent of.
     for (key, expected, parent) in [
-        (
-            "origclordid",
-            "base:origclordid=T-1",
-            Some((IdType::ClOrdId, 0)),
-        ),
-        (
-            "OrigClOrdID",
-            "base:origclordid=T-1",
-            Some((IdType::ClOrdId, 0)),
-        ),
+        ("origclordid", "origclordid=T-1", Some((IdType::ClOrdId, 0))),
+        ("OrigClOrdID", "origclordid=T-1", Some((IdType::ClOrdId, 0))),
         (
             "ParentOrderID",
-            "base:parentorderid=T-1",
+            "parentorderid=T-1",
             Some((IdType::OrderId, 0)),
         ),
         (
@@ -460,32 +473,20 @@ fn a_parentage_word_before_the_name_stays_part_of_the_type() {
             "firm.x:parentorderid=T-1",
             Some((IdType::OrderId, 0)),
         ),
-        (
-            "origorderid",
-            "base:origorderid=T-1",
-            Some((IdType::OrderId, 1)),
-        ),
-        (
-            "origtradeid",
-            "base:origtradeid=T-1",
-            Some((IdType::TradeId, 1)),
-        ),
-        (
-            "OrigTradeID",
-            "base:origtradeid=T-1",
-            Some((IdType::TradeId, 1)),
-        ),
+        ("origorderid", "origorderid=T-1", Some((IdType::OrderId, 1))),
+        ("origtradeid", "origtradeid=T-1", Some((IdType::TradeId, 1))),
+        ("OrigTradeID", "origtradeid=T-1", Some((IdType::TradeId, 1))),
         (
             "firm.OrigTradeID",
             "firm:origtradeid=T-1",
             Some((IdType::TradeId, 1)),
         ),
         // A word that names no parent stays part of the type all the same.
-        ("originalorderid", "base:originalorderid=T-1", None),
+        ("originalorderid", "originalorderid=T-1", None),
         ("oms.OriginalOrderID", "oms:originalorderid=T-1", None),
         ("omsoriginalorderid", "oms:originalorderid=T-1", None),
-        ("originorderid", "base:originorderid=T-1", None),
-        ("originclordid", "base:originclordid=T-1", None),
+        ("originorderid", "originorderid=T-1", None),
+        ("originclordid", "originclordid=T-1", None),
         // `parentclordid` is the other spelling of `clordid`'s one parent.
         (
             "firm.x.parentclordid",
@@ -609,81 +610,123 @@ fn a_key_that_names_no_identifier_or_another_instruments_security_is_none() {
         "past the width"
     );
 }
-
 #[test]
-fn a_set_holds_one_value_per_source_and_type_sorted_by_that_key() {
+fn a_map_holds_one_value_per_key_and_its_base_key_answers_the_type() {
     let mut ids = Identifiers::new();
-    assert!(ids.insert(id("fix", "isin", "US0378331005")));
-    assert!(!ids.insert(id("FIX", "ISIN", "CH0012214059")), "fill only");
+    assert!(ids.insert(id("base", "isin", "US0378331005")));
+    assert!(
+        !ids.insert(id("FIX", "ISIN", "CH0012214059")),
+        "fill only, fix being the base"
+    );
     assert!(
         ids.insert(id("venue", "isin", "CH0012214059")),
         "another source"
     );
     assert!(ids.insert(id("derived", "cusip", "037833100")));
-    assert_eq!(ids.len(), 3);
-    let keys: Vec<_> = ids
-        .iter()
-        .map(|held| (held.src().as_str(), held.kind().as_str()))
-        .collect();
+    assert_eq!(keys(&ids), ["cusip", "derived:cusip", "isin", "venue:isin"]);
     assert_eq!(
-        keys,
-        [("derived", "cusip"), ("fix", "isin"), ("venue", "isin")]
+        ids.get(&IdType::Isin),
+        Some("US0378331005"),
+        "the base key answers"
     );
-    assert_eq!(ids.get(&IdType::Isin), Some("US0378331005"));
-    let venue: IdSource = "venue".parse().unwrap();
-    assert_eq!(ids.get_from(&venue, &IdType::Isin), Some("CH0012214059"));
-    assert_eq!(ids.get_from(&"oms".parse().unwrap(), &IdType::Isin), None);
+    assert_eq!(ids.get_from(&key("venue:isin")), Some("CH0012214059"));
+    assert_eq!(ids.get_from(&key("oms:isin")), None);
     assert!(ids.contains_kind(&IdType::Cusip));
     assert!(!ids.contains_kind(&IdType::Sedol));
     assert_eq!(ids.of_kind(&IdType::Isin).count(), 2);
-    assert!(ids.set(id("fix", "isin", "CH0012221716")));
-    assert!(!ids.set(id("fix", "isin", "CH0012221716")), "no change");
+    assert!(ids.set(id("base", "isin", "CH0012221716")));
+    assert!(!ids.set(id("base", "isin", "CH0012221716")), "no change");
     assert_eq!(ids.get(&IdType::Isin), Some("CH0012221716"));
     assert_eq!(
-        ids.remove(&venue, &IdType::Isin)
+        ids.get_from(&key("venue:isin")),
+        Some("CH0012214059"),
+        "a base key set leaves the sources"
+    );
+    assert_eq!(
+        ids.remove(&key("venue:isin"))
             .map(|held| held.value().to_owned()),
         Some("CH0012214059".into())
     );
-    assert!(ids.remove(&venue, &IdType::Isin).is_none());
-    assert_eq!(ids.remove_kind(&IdType::Isin), 1);
-    assert_eq!(ids.len(), 1);
-    assert_eq!(ids.to_string(), "[derived:cusip=037833100]");
+    assert!(ids.remove(&key("venue:isin")).is_none());
+    assert_eq!(ids.get(&IdType::Isin), Some("CH0012221716"));
+    assert!(
+        ids.remove(&IdKey::base(IdType::Isin)).is_some(),
+        "the base key removes its type"
+    );
+    assert_eq!(ids.of_kind(&IdType::Isin).count(), 0);
+    assert_eq!(
+        ids.to_string(),
+        "[cusip=037833100, derived:cusip=037833100]"
+    );
     ids.clear();
     assert!(ids.is_empty());
     assert_eq!(ids.to_string(), "[]");
 }
 
 #[test]
-fn a_set_displays_and_sorts_by_its_keys_as_they_are_spelled() {
-    let ids: Identifiers = [
-        id("base", "isin", "US0378331005"),
-        id("venue", "instrumentid", "dbi;X"),
-        id("fix", "orderid", "O-1"),
-        id("fix", "clordid", "C-1"),
-        id("derived", "cusip", "037833100"),
-    ]
-    .into_iter()
-    .collect();
+fn a_named_source_fills_the_base_key_and_never_moves_it_after() {
+    let mut ids = Identifiers::new();
+    assert!(ids.insert(id("ullink", "isin", "US0378331005")));
+    assert_eq!(keys(&ids), ["isin", "ullink:isin"]);
+    assert_eq!(
+        ids.get(&IdType::Isin),
+        Some("US0378331005"),
+        "the source fills the base key"
+    );
+    assert!(ids.set(id("ullink", "isin", "CH0012214059")));
+    assert_eq!(
+        ids.get(&IdType::Isin),
+        Some("US0378331005"),
+        "a named source moving leaves the answer"
+    );
+    assert_eq!(ids.get_from(&key("ullink:isin")), Some("CH0012214059"));
+    assert!(ids.insert(id("oms", "isin", "CH0012221716")));
+    assert_eq!(ids.get(&IdType::Isin), Some("US0378331005"));
+    assert!(ids.remove(&key("ullink:isin")).is_some());
+    assert_eq!(
+        ids.get(&IdType::Isin),
+        Some("US0378331005"),
+        "nor does its removal"
+    );
+    assert!(ids.set(id("base", "isin", "CH0012214059")));
     assert_eq!(
         ids.to_string(),
-        "[base:isin=US0378331005, derived:cusip=037833100, fix:clordid=C-1, \
-         fix:orderid=O-1, venue:instrumentid=dbi;X]"
+        "[isin=CH0012214059, oms:isin=CH0012221716]",
+        "a base key set replaces the answer and leaves the sources"
     );
-    // The same set in any order is one value: equal, and one digest feed.
-    let reversed: Identifiers = ids.iter().rev().cloned().collect();
+    assert!(ids.remove(&IdKey::base(IdType::Isin)).is_some());
+    assert!(ids.is_empty(), "removing the base key removes the type");
+}
+
+#[test]
+fn a_map_displays_and_sorts_by_its_keys_as_they_are_spelled() {
+    let statements = [
+        id("base", "isin", "US0378331005"),
+        id("venue", "instrumentid", "dbi;X"),
+        id("base", "orderid", "O-1"),
+        id("base", "clordid", "C-1"),
+        id("derived", "cusip", "037833100"),
+    ];
+    let ids: Identifiers = statements.iter().cloned().collect();
+    assert_eq!(
+        ids.to_string(),
+        "[clordid=C-1, cusip=037833100, derived:cusip=037833100, instrumentid=dbi;X, \
+         isin=US0378331005, orderid=O-1, venue:instrumentid=dbi;X]"
+    );
+    // The same statements in any order are one map: equal, and one digest
+    // feed.
+    let reversed: Identifiers = statements.iter().rev().cloned().collect();
     assert_eq!(ids, reversed);
     assert_eq!(ids.as_slice(), reversed.as_slice());
-    // Identifiers order by key, then value, which is how the set holds them.
+    // Identifiers order by key, then value, which is how the map holds them.
     let mut loose: Vec<Identifier> = ids.iter().cloned().collect();
     loose.reverse();
     loose.sort();
     assert_eq!(loose.as_slice(), ids.as_slice());
-    assert!(id("fix", "orderid", "A") < id("fix", "orderid", "B"));
-    assert!(id("fix", "orderid", "Z") < id("oms", "clordid", "A"));
 }
 
 #[test]
-fn a_set_is_held_in_the_order_of_its_spelled_keys_and_every_lookup_finds_its_own() {
+fn a_map_is_held_in_the_order_of_its_spelled_keys_and_every_lookup_finds_its_own() {
     let spelled = [
         ("a", "z"),
         ("a1", "x"),
@@ -694,10 +737,12 @@ fn a_set_is_held_in_the_order_of_its_spelled_keys_and_every_lookup_finds_its_own
         ("a", "b"),
         ("a1", "a"),
     ];
+    // Each named source fills the base key of its type where it is empty.
     let held = [
-        "a.b:c", "a1:a", "a1:x", "a:b", "a:b.c", "a:x", "a:z", "ab:a",
+        "a", "a.b:c", "a1:a", "a1:x", "a:b", "a:b.c", "a:x", "a:z", "ab:a", "b", "b.c", "c", "x",
+        "z",
     ];
-    // Any insertion order lands one set, in the order of the text `src:type`.
+    // Any insertion order lands one map, in the order of the spelled keys.
     let mut forward = Identifiers::new();
     let mut backward = Identifiers::new();
     for (src, ty) in spelled {
@@ -712,81 +757,152 @@ fn a_set_is_held_in_the_order_of_its_spelled_keys_and_every_lookup_finds_its_own
     // a key between two held ones is not, and a key held under another
     // source is another key.
     for (src, ty) in spelled {
-        assert_eq!(
-            forward.get_from(&source(src), &kind(ty)),
-            Some("1"),
-            "{src}:{ty}"
-        );
+        let named = IdKey::new(source(src), kind(ty));
+        assert_eq!(forward.get_from(&named), Some("1"), "{src}:{ty}");
+        assert_eq!(forward.get(&kind(ty)), Some("1"), "{ty}");
     }
-    assert_eq!(forward.get_from(&source("a.b"), &kind("x")), None);
-    assert_eq!(forward.get_from(&source("a"), &kind("b.d")), None);
-    assert_eq!(forward.get_from(&source("a2"), &kind("x")), None);
-    assert_eq!(forward.get_from(&source("b"), &kind("a")), None);
-    // A removal keeps the rest in order and findable.
-    assert!(forward.remove(&source("a"), &kind("b")).is_some());
-    assert_eq!(
-        keys(&forward),
-        ["a.b:c", "a1:a", "a1:x", "a:b.c", "a:x", "a:z", "ab:a"]
-    );
-    assert_eq!(forward.get_from(&source("a"), &kind("b.c")), Some("1"));
-    assert_eq!(forward.get_from(&source("a"), &kind("b")), None);
+    assert_eq!(forward.get_from(&key("a.b:x")), None);
+    assert_eq!(forward.get_from(&key("a:b.d")), None);
+    assert_eq!(forward.get_from(&key("a2:x")), None);
+    assert_eq!(forward.get_from(&key("b:a")), None);
+    // A removal keeps the rest in order and findable, the base key it
+    // filled included.
+    assert!(forward.remove(&key("a:b")).is_some());
+    assert_eq!(forward.len(), held.len() - 1);
+    assert_eq!(forward.get_from(&key("a:b.c")), Some("1"));
+    assert_eq!(forward.get_from(&key("a:b")), None);
+    assert_eq!(forward.get(&kind("b")), Some("1"));
     // Another value under a held key is the same name: insert keeps the
     // first, set replaces it in place.
     assert!(!forward.insert(id("a1", "x", "2")));
     assert!(forward.set(id("a1", "x", "2")));
-    assert_eq!(forward.get_from(&source("a1"), &kind("x")), Some("2"));
-    assert_eq!(forward.len(), 7);
+    assert_eq!(forward.get_from(&key("a1:x")), Some("2"));
+    assert_eq!(forward.get(&kind("x")), Some("1"));
+    assert_eq!(forward.len(), held.len() - 1);
 }
 
 #[test]
-fn a_stated_source_answers_before_a_derived_one() {
+fn a_statement_takes_back_the_derivation_of_its_type() {
     let mut ids = Identifiers::new();
-    ids.insert(id("derived", "cusip", "037833100"));
+    assert!(ids.insert(id("derived", "cusip", "037833100")));
+    assert_eq!(keys(&ids), ["cusip", "derived:cusip"]);
     assert_eq!(ids.get(&IdType::Cusip), Some("037833100"));
-    ids.insert(id("fix", "cusip", "594918104"));
-    assert_eq!(ids.get(&IdType::Cusip), Some("594918104"));
-    assert_eq!(
-        ids.get_identifier(&IdType::Cusip)
-            .map(|held| held.src().as_str()),
-        Some("fix")
+    assert!(ids.is_derived(&IdType::Cusip));
+    assert!(
+        !ids.insert(id("derived", "cusip", "594918104")),
+        "a derivation lands only where nothing of its type is held"
     );
-    assert_eq!(
-        ids.get_from(&IdSource::Derived, &IdType::Cusip),
-        Some("037833100"),
-        "the derived one is still held, and answers by its own key"
+    assert!(
+        ids.insert(id("base", "cusip", "594918104")),
+        "a base key holding only a derivation is replaced"
     );
-    assert_eq!(ids.of_kind(&IdType::Cusip).count(), 2);
+    assert_eq!(ids.to_string(), "[cusip=594918104]");
+    assert!(!ids.is_derived(&IdType::Cusip));
+    // A statement of the same value takes the derivation back all the same.
+    let mut same: Identifiers = [id("derived", "isin", "US0378331005")]
+        .into_iter()
+        .collect();
+    assert!(same.set(id("base", "isin", "US0378331005")));
+    assert_eq!(same.to_string(), "[isin=US0378331005]");
+    // A named source takes it back too, and fills the base key it left.
+    let mut named: Identifiers = [id("derived", "cusip", "037833100")].into_iter().collect();
+    assert!(named.insert(id("venue", "cusip", "594918104")));
+    assert_eq!(
+        named.to_string(),
+        "[cusip=594918104, venue:cusip=594918104]"
+    );
+    // A derivation is refused where a statement of its type is held.
+    assert!(!named.insert(id("derived", "cusip", "037833100")));
+    assert!(!named.set(id("derived", "cusip", "037833100")));
+    assert!(!named.is_derived(&IdType::Cusip));
 }
 
 #[test]
-fn the_wire_answers_a_type_first_then_a_named_source_then_base_then_derived() {
-    let mut ids = Identifiers::new();
-    let answer = |ids: &Identifiers| {
-        ids.get_identifier(&IdType::Isin)
-            .map(|held| held.key().to_string())
-    };
-    ids.insert(id("derived", "isin", "US0378331005"));
-    assert_eq!(answer(&ids).as_deref(), Some("derived:isin"));
-    ids.insert(id("base", "isin", "US0378331005"));
-    assert_eq!(answer(&ids).as_deref(), Some("base:isin"));
-    // Named sources answer in key order, and every one sorting before `fix`
-    // or after it stands behind the wire's.
-    ids.insert(id("venue", "isin", "US0378331005"));
-    ids.insert(id("abc", "isin", "US5949181045"));
-    assert_eq!(answer(&ids).as_deref(), Some("abc:isin"));
-    ids.insert(id("fix", "isin", "CH0012221716"));
-    assert_eq!(answer(&ids).as_deref(), Some("fix:isin"));
-    assert_eq!(ids.get(&IdType::Isin), Some("CH0012221716"));
+fn a_derivations_echo_follows_it_and_leaves_with_it() {
+    let mut ids: Identifiers = [id("derived", "isin", "US0378331005")]
+        .into_iter()
+        .collect();
+    assert!(
+        ids.set(id("derived", "isin", "CH0012214059")),
+        "replacing a derivation moves its echo"
+    );
+    assert_eq!(
+        ids.to_string(),
+        "[derived:isin=CH0012214059, isin=CH0012214059]"
+    );
+    assert!(ids.is_derived(&IdType::Isin));
+    assert!(!ids.set(id("derived", "isin", "CH0012214059")), "no change");
+    assert!(ids.remove(&key("derived:isin")).is_some());
+    assert!(ids.is_empty(), "its echo leaves with it");
+    // Read beside a named source, the base key a derivation held passes to
+    // the first source left when the derivation goes.
+    let mut read = Identifiers::from_scalar(&entries(&[
+        ("isin", "US0378331005"),
+        ("derived:isin", "US0378331005"),
+        ("ullink:isin", "CH0012214059"),
+    ]))
+    .unwrap();
+    assert!(read.is_derived(&IdType::Isin));
+    assert!(
+        !read.set(id("derived", "isin", "CH0012221716")),
+        "a source states the type"
+    );
+    assert!(read.remove(&key("derived:isin")).is_some());
+    assert_eq!(
+        read.to_string(),
+        "[isin=CH0012214059, ullink:isin=CH0012214059]"
+    );
 }
 
 #[test]
-fn a_set_carries_what_it_admits_and_never_replaces_what_it_states() {
-    let previous = fix(&[
+fn a_map_merges_by_key_and_the_later_one_replaces_what_differs() {
+    let ids = base(&[("orderid", "O-1")]);
+    let other: Identifiers = [
+        id("base", "orderid", "O-2"),
+        id("base", "clordid", "C-1"),
+        id("venue", "orderid", "O-9"),
+    ]
+    .into_iter()
+    .collect();
+    let mut kept = ids.clone();
+    assert!(kept.merge(&other, false));
+    assert!(!kept.merge(&other, false), "nothing left to take");
+    assert_eq!(
+        kept.to_string(),
+        "[clordid=C-1, orderid=O-1, venue:orderid=O-9]"
+    );
+    let mut later = ids.clone();
+    assert!(later.merge(&other, true));
+    assert!(!later.merge(&other, true), "nothing left to move");
+    assert_eq!(
+        later.to_string(),
+        "[clordid=C-1, orderid=O-2, venue:orderid=O-9]"
+    );
+    // A derivation lands only where nothing of its type is held, later or
+    // not, and its echo comes with it rather than as a statement.
+    let derived: Identifiers = [
+        id("derived", "cusip", "037833100"),
+        id("derived", "valor", "3886335"),
+    ]
+    .into_iter()
+    .collect();
+    let mut merged = base(&[("cusip", "594918104")]);
+    assert!(merged.merge(&derived, true));
+    assert_eq!(
+        merged.to_string(),
+        "[cusip=594918104, derived:valor=3886335, valor=3886335]"
+    );
+    assert!(merged.is_derived(&IdType::Valor));
+}
+
+#[test]
+fn a_map_carries_what_it_admits_and_never_a_base_key_over_a_type_it_states() {
+    let previous = base(&[
         ("clordid", "A"),
         ("orderid", "O-1"),
         ("mdentryrefid", "R-1"),
     ]);
-    let mut next = fix(&[("clordid", "B")]);
+    let mut next = base(&[("clordid", "B")]);
     assert!(next.carry(&previous, |held| held.kind() != &IdType::MdEntryRefId));
     assert_eq!(next.get(&IdType::OrderId), Some("O-1"));
     assert_eq!(next.get(&IdType::MdEntryRefId), None, "not admitted");
@@ -810,18 +926,22 @@ fn a_set_carries_what_it_admits_and_never_replaces_what_it_states() {
         "in key order"
     );
     assert_eq!(empty, previous);
-    // A source states its own chain: the same type from another source is
-    // another identifier, so a set stating one carries the other's.
+    // A map stating a type under any source holds its base key, so the
+    // predecessor's base key of that type is not carried over it.
     let mut other: Identifiers = [id("oms", "clordid", "X")].into_iter().collect();
-    assert!(other.carry(&previous, |held| held.kind() == &IdType::ClOrdId));
-    assert_eq!(
-        other.get_from(&"oms".parse().unwrap(), &IdType::ClOrdId),
-        Some("X")
-    );
-    assert_eq!(other.get_from(&IdSource::Fix, &IdType::ClOrdId), Some("A"));
+    assert!(!other.carry(&previous, |held| held.kind() == &IdType::ClOrdId));
+    assert_eq!(other.get(&IdType::ClOrdId), Some("X"));
     assert_eq!(other.len(), 2);
+    // A derivation is carried with its echo, and never over a statement.
+    let derived: Identifiers = [id("derived", "cusip", "037833100")].into_iter().collect();
+    let mut follower = Identifiers::new();
+    assert!(follower.carry(&derived, |_| true));
+    assert_eq!(follower, derived);
+    let mut stated = base(&[("cusip", "594918104")]);
+    assert!(!stated.carry(&derived, |_| true));
+    assert_eq!(stated.to_string(), "[cusip=594918104]");
     // Nothing admitted, nothing moved.
-    let mut none = fix(&[("clordid", "B")]);
+    let mut none = base(&[("clordid", "B")]);
     assert!(!none.carry(&previous, |_| false));
     assert_eq!(none.len(), 1);
 }
@@ -833,20 +953,20 @@ fn a_follower_takes_the_parents_of_the_bases_it_states_down_a_chain() {
     let orders = chain("orderid", &["A", "B", "C", "D"]);
     assert_eq!(
         orders[0].to_string(),
-        "[fix:orderid=A]",
+        "[orderid=A]",
         "a first statement has no parent"
     );
     assert_eq!(
         orders[1].to_string(),
-        "[fix:orderid=B, fix:origorderid=A, fix:parentorderid=A]"
+        "[orderid=B, origorderid=A, parentorderid=A]"
     );
     assert_eq!(
         orders[2].to_string(),
-        "[fix:orderid=C, fix:origorderid=A, fix:parentorderid=B]"
+        "[orderid=C, origorderid=A, parentorderid=B]"
     );
     assert_eq!(
         orders[3].to_string(),
-        "[fix:orderid=D, fix:origorderid=A, fix:parentorderid=C]"
+        "[orderid=D, origorderid=A, parentorderid=C]"
     );
     let last = &orders[3];
     assert_eq!(
@@ -864,19 +984,19 @@ fn a_follower_takes_the_parents_of_the_bases_it_states_down_a_chain() {
     // `clordid` A, B, C: FIX's `OrigClOrdID(41)` alone, the value before the
     // last change - a list of one has no first-of-chain to add.
     let clients = chain("clordid", &["A", "B", "C"]);
-    assert_eq!(clients[0].to_string(), "[fix:clordid=A]");
-    assert_eq!(clients[1].to_string(), "[fix:clordid=B, fix:origclordid=A]");
-    assert_eq!(clients[2].to_string(), "[fix:clordid=C, fix:origclordid=B]");
+    assert_eq!(clients[0].to_string(), "[clordid=A]");
+    assert_eq!(clients[1].to_string(), "[clordid=B, origclordid=A]");
+    assert_eq!(clients[2].to_string(), "[clordid=C, origclordid=B]");
     assert_eq!(clients[2].get(&IdType::OrigClOrdId), Some("B"));
 
     // Every base an element states follows by its own parents, in one pass.
-    let previous = fix(&[("clordid", "A"), ("orderid", "O-1"), ("tradeid", "T-1")]);
-    let mut next = fix(&[("clordid", "B"), ("orderid", "O-2"), ("tradeid", "T-1")]);
+    let previous = base(&[("clordid", "A"), ("orderid", "O-1"), ("tradeid", "T-1")]);
+    let mut next = base(&[("clordid", "B"), ("orderid", "O-2"), ("tradeid", "T-1")]);
     assert!(follow(&mut next, &previous));
     assert_eq!(
         next.to_string(),
-        "[fix:clordid=B, fix:orderid=O-2, fix:origclordid=A, fix:origorderid=O-1, \
-         fix:parentorderid=O-1, fix:tradeid=T-1]",
+        "[clordid=B, orderid=O-2, origclordid=A, origorderid=O-1, \
+         parentorderid=O-1, tradeid=T-1]",
         "an unchanged base over no parents has none"
     );
 }
@@ -886,7 +1006,7 @@ fn an_unchanged_base_keeps_the_parents_of_the_step_before() {
     let orders = chain("orderid", &["A", "B", "C"]);
     // C again: each parent is the previous one, and a third statement is the
     // same set again.
-    let mut again = fix(&[("orderid", "C")]);
+    let mut again = base(&[("orderid", "C")]);
     assert!(follow(&mut again, &orders[2]));
     assert_eq!(again, orders[2]);
     assert_eq!(again.get(&kind("parentorderid")), Some("B"));
@@ -906,11 +1026,11 @@ fn an_unchanged_base_keeps_the_parents_of_the_step_before() {
 
     // Over a predecessor with no parents the base never changed: there is no
     // parent to inherit.
-    let mut same = fix(&[("orderid", "A")]);
-    assert!(!follow(&mut same, &fix(&[("orderid", "A")])));
+    let mut same = base(&[("orderid", "A")]);
+    assert!(!follow(&mut same, &base(&[("orderid", "A")])));
     assert_eq!(same.len(), 1);
-    let mut clients = fix(&[("clordid", "A")]);
-    assert!(!follow(&mut clients, &fix(&[("clordid", "A")])));
+    let mut clients = base(&[("clordid", "A")]);
+    assert!(!follow(&mut clients, &base(&[("clordid", "A")])));
     assert_eq!(clients.len(), 1);
 }
 
@@ -918,22 +1038,22 @@ fn an_unchanged_base_keeps_the_parents_of_the_step_before() {
 fn a_parent_the_follower_states_stands_and_only_an_absent_one_is_filled() {
     let orders = chain("orderid", &["A", "B", "C"]);
     // `parentorderid` stated: it stands, and the chain's first is filled.
-    let mut stated = fix(&[("orderid", "D"), ("parentorderid", "X")]);
+    let mut stated = base(&[("orderid", "D"), ("parentorderid", "X")]);
     assert!(follow(&mut stated, &orders[2]));
     assert_eq!(
         stated.to_string(),
-        "[fix:orderid=D, fix:origorderid=A, fix:parentorderid=X]"
+        "[orderid=D, origorderid=A, parentorderid=X]"
     );
     // `origorderid` stated: it stands, and the one before the last change is
     // filled.
-    let mut origin = fix(&[("orderid", "D"), ("origorderid", "Y")]);
+    let mut origin = base(&[("orderid", "D"), ("origorderid", "Y")]);
     assert!(follow(&mut origin, &orders[2]));
     assert_eq!(
         origin.to_string(),
-        "[fix:orderid=D, fix:origorderid=Y, fix:parentorderid=C]"
+        "[orderid=D, origorderid=Y, parentorderid=C]"
     );
     // Both stated: nothing is absent.
-    let mut both = fix(&[
+    let mut both = base(&[
         ("orderid", "D"),
         ("parentorderid", "X"),
         ("origorderid", "Y"),
@@ -945,8 +1065,8 @@ fn a_parent_the_follower_states_stands_and_only_an_absent_one_is_filled() {
 
     // FIX's `OrigClOrdID(41)` states where a client order identifier came
     // from: the only parent there is, so there is nothing to fill.
-    let first = fix(&[("clordid", "A")]);
-    let mut replaced = fix(&[("clordid", "B"), ("origclordid", "Z")]);
+    let first = base(&[("clordid", "A")]);
+    let mut replaced = base(&[("clordid", "B"), ("origclordid", "Z")]);
     assert!(!follow(&mut replaced, &first));
     assert_eq!(replaced.get(&IdType::OrigClOrdId), Some("Z"));
     assert_eq!(replaced.len(), 2);
@@ -955,43 +1075,48 @@ fn a_parent_the_follower_states_stands_and_only_an_absent_one_is_filled() {
 #[test]
 fn a_follower_takes_parents_only_from_its_own_source_and_never_for_a_parent_type() {
     let previous: Identifiers = [
-        id("fix", "orderid", "A"),
+        id("base", "orderid", "A"),
         id("venue", "orderid", "Q"),
-        id("fix", "clordid", "C-1"),
+        id("base", "clordid", "C-1"),
     ]
     .into_iter()
     .collect();
-    // Another source states another chain: the same type from a source the
-    // predecessor did not state follows nothing of the others.
+    // Another source states another chain: a source the predecessor did not
+    // state follows nothing, while the base keys it filled follow the
+    // predecessor's answers as every base key does.
     let mut other: Identifiers = [id("oms", "clordid", "X"), id("oms", "orderid", "Y")]
         .into_iter()
         .collect();
-    assert!(!follow(&mut other, &previous));
-    assert_eq!(other.len(), 2);
+    assert!(follow(&mut other, &previous));
+    assert_eq!(
+        other.to_string(),
+        "[clordid=X, oms:clordid=X, oms:orderid=Y, orderid=Y, origclordid=C-1, \
+         origorderid=A, parentorderid=A]"
+    );
     // Each source follows its own predecessor.
-    let mut next: Identifiers = [id("fix", "orderid", "B"), id("venue", "orderid", "R")]
+    let mut next: Identifiers = [id("base", "orderid", "B"), id("venue", "orderid", "R")]
         .into_iter()
         .collect();
     assert!(follow(&mut next, &previous));
     assert_eq!(
         next.to_string(),
-        "[fix:orderid=B, fix:origorderid=A, fix:parentorderid=A, \
+        "[orderid=B, origorderid=A, parentorderid=A, \
          venue:orderid=R, venue:origorderid=Q, venue:parentorderid=Q]"
     );
     // A base the predecessor did not state has nothing to take, and a parent
     // type is no base: it is never given parents of its own.
-    let mut quote = fix(&[("quoteid", "Q-2"), ("origclordid", "A")]);
+    let mut quote = base(&[("quoteid", "Q-2"), ("origclordid", "A")]);
     assert!(!follow(&mut quote, &previous));
     assert_eq!(quote.len(), 2);
-    let mut chained = fix(&[("origclordid", "B")]);
-    assert!(!follow(&mut chained, &fix(&[("origclordid", "A")])));
+    let mut chained = base(&[("origclordid", "B")]);
+    assert!(!follow(&mut chained, &base(&[("origclordid", "A")])));
     assert_eq!(chained.len(), 1);
-    let mut parented = fix(&[("parentorderid", "B")]);
-    assert!(!follow(&mut parented, &fix(&[("parentorderid", "A")])));
+    let mut parented = base(&[("parentorderid", "B")]);
+    assert!(!follow(&mut parented, &base(&[("parentorderid", "A")])));
     assert_eq!(parented.len(), 1);
     // An empty predecessor gives nothing, and an empty follower takes
     // nothing.
-    assert!(!follow(&mut fix(&[("clordid", "B")]), &Identifiers::new()));
+    assert!(!follow(&mut base(&[("clordid", "B")]), &Identifiers::new()));
     assert!(!follow(&mut Identifiers::new(), &previous));
 }
 
@@ -1001,48 +1126,39 @@ fn a_parents_list_of_three_shifts_the_middle_one_and_ends_with_the_chains_first_
     // first.
     let mut states: Vec<Identifiers> = Vec::new();
     for value in ["A", "B", "C", "D", "E"] {
-        let mut next = fix(&[("orderid", value)]);
+        let mut next = base(&[("orderid", value)]);
         if let Some(previous) = states.last() {
             assert!(next.follow_parents(previous, three_parents, three_parent_of));
         }
         states.push(next);
     }
     let held = |at: usize| states[at].to_string();
-    assert_eq!(held(0), "[fix:orderid=A]");
-    assert_eq!(held(1), "[fix:far=A, fix:near=A, fix:orderid=B]");
-    assert_eq!(
-        held(2),
-        "[fix:far=A, fix:middle=A, fix:near=B, fix:orderid=C]"
-    );
-    assert_eq!(
-        held(3),
-        "[fix:far=A, fix:middle=B, fix:near=C, fix:orderid=D]"
-    );
+    assert_eq!(held(0), "[orderid=A]");
+    assert_eq!(held(1), "[far=A, near=A, orderid=B]");
+    assert_eq!(held(2), "[far=A, middle=A, near=B, orderid=C]");
+    assert_eq!(held(3), "[far=A, middle=B, near=C, orderid=D]");
     assert_eq!(
         held(4),
-        "[fix:far=A, fix:middle=C, fix:near=D, fix:orderid=E]",
+        "[far=A, middle=C, near=D, orderid=E]",
         "the near one is the value before the change, each middle one the near one of the step before, the last the chain's first"
     );
 
     // An unchanged base takes each parent at its own place.
-    let mut again = fix(&[("orderid", "E")]);
+    let mut again = base(&[("orderid", "E")]);
     assert!(again.follow_parents(&states[4], three_parents, three_parent_of));
     assert_eq!(again, states[4]);
     assert!(!again.follow_parents(&states[4], three_parents, three_parent_of));
 
     // A parent the follower states stands, wherever it is in the list.
-    let mut stated = fix(&[("orderid", "D"), ("middle", "X")]);
+    let mut stated = base(&[("orderid", "D"), ("middle", "X")]);
     assert!(stated.follow_parents(&states[2], three_parents, three_parent_of));
-    assert_eq!(
-        stated.to_string(),
-        "[fix:far=A, fix:middle=X, fix:near=C, fix:orderid=D]"
-    );
+    assert_eq!(stated.to_string(), "[far=A, middle=X, near=C, orderid=D]");
 
     // The last parent is the previous last one, else the farthest the
     // previous statement made, else the previous value.
     let from_far = |previous: &[(&str, &str)]| {
-        let mut next = fix(&[("orderid", "C")]);
-        next.follow_parents(&fix(previous), three_parents, three_parent_of);
+        let mut next = base(&[("orderid", "C")]);
+        next.follow_parents(&base(previous), three_parents, three_parent_of);
         next.get(&kind("far")).map(str::to_owned)
     };
     assert_eq!(
@@ -1066,44 +1182,44 @@ fn a_parents_list_of_three_shifts_the_middle_one_and_ends_with_the_chains_first_
         "the previous value"
     );
     // The middle one is the previous near one, or nothing.
-    let mut next = fix(&[("orderid", "C")]);
+    let mut next = base(&[("orderid", "C")]);
     assert!(next.follow_parents(
-        &fix(&[("orderid", "B"), ("far", "F")]),
+        &base(&[("orderid", "B"), ("far", "F")]),
         three_parents,
         three_parent_of
     ));
-    assert_eq!(next.to_string(), "[fix:far=F, fix:near=B, fix:orderid=C]");
+    assert_eq!(next.to_string(), "[far=F, near=B, orderid=C]");
 
     // A base no list names has no parent, and a list of none fills nothing.
-    let mut quote = fix(&[("quoteid", "Q-2")]);
-    assert!(!quote.follow_parents(&fix(&[("quoteid", "Q-1")]), three_parents, three_parent_of));
-    let mut none = fix(&[("orderid", "B")]);
-    assert!(!none.follow_parents(&fix(&[("orderid", "A")]), |_| Cow::Borrowed(&[]), |_| None));
+    let mut quote = base(&[("quoteid", "Q-2")]);
+    assert!(!quote.follow_parents(&base(&[("quoteid", "Q-1")]), three_parents, three_parent_of));
+    let mut none = base(&[("orderid", "B")]);
+    assert!(!none.follow_parents(&base(&[("orderid", "A")]), |_| Cow::Borrowed(&[]), |_| None));
     assert_eq!(none.len(), 1);
 }
 
 #[test]
-fn an_element_stating_a_parent_but_not_its_base_takes_the_base_from_its_nearest_parent() {
+fn an_element_stating_a_parent_but_not_its_type_takes_the_type_from_its_nearest_parent() {
     // `OrigClOrdID(41)` without `ClOrdID(11)`: the element is what it came from.
-    let mut ids = fix(&[("origclordid", "A")]);
+    let mut ids = base(&[("origclordid", "A")]);
     assert!(ids.fill_parents(IdType::parent_of));
     assert_eq!(ids.get(&IdType::ClOrdId), Some("A"));
     assert_eq!(ids.len(), 2, "the parent stays beside the base it filled");
     assert!(!ids.fill_parents(IdType::parent_of), "nothing left to fill");
 
     // A stated base stands, whatever its parents say.
-    let mut stated = fix(&[("clordid", "B"), ("origclordid", "A")]);
+    let mut stated = base(&[("clordid", "B"), ("origclordid", "A")]);
     assert!(!stated.fill_parents(IdType::parent_of));
     assert_eq!(stated.get(&IdType::ClOrdId), Some("B"));
 
     // The nearest parent wins: `origorderid` sorts first in the set, and
     // `parentorderid`, which is nearer, still fills the base.
-    let mut both = fix(&[("origorderid", "O"), ("parentorderid", "P")]);
-    assert_eq!(keys(&both), ["fix:origorderid", "fix:parentorderid"]);
+    let mut both = base(&[("origorderid", "O"), ("parentorderid", "P")]);
+    assert_eq!(keys(&both), ["origorderid", "parentorderid"]);
     assert!(both.fill_parents(IdType::parent_of));
     assert_eq!(both.get(&IdType::OrderId), Some("P"));
     assert_eq!(both.len(), 3);
-    let mut origin = fix(&[("origorderid", "O")]);
+    let mut origin = base(&[("origorderid", "O")]);
     assert!(origin.fill_parents(IdType::parent_of));
     assert_eq!(
         origin.get(&IdType::OrderId),
@@ -1111,15 +1227,15 @@ fn an_element_stating_a_parent_but_not_its_base_takes_the_base_from_its_nearest_
         "the farthest alone fills it"
     );
     // The same over a list of three: the nearest stated, not the nearest named.
-    let mut custom = fix(&[("far", "F"), ("middle", "M")]);
+    let mut custom = base(&[("far", "F"), ("middle", "M")]);
     assert!(custom.fill_parents(three_parent_of));
     assert_eq!(custom.get(&IdType::OrderId), Some("M"));
-    let mut far = fix(&[("far", "F")]);
+    let mut far = base(&[("far", "F")]);
     assert!(far.fill_parents(three_parent_of));
     assert_eq!(far.get(&IdType::OrderId), Some("F"));
 
     // Each base is filled from its own parents, in one pass.
-    let mut many = fix(&[
+    let mut many = base(&[
         ("origorderid", "O"),
         ("origclordid", "C"),
         ("origtradeid", "T"),
@@ -1130,187 +1246,127 @@ fn an_element_stating_a_parent_but_not_its_base_takes_the_base_from_its_nearest_
     assert_eq!(many.get(&IdType::TradeId), Some("T"));
     assert_eq!(many.len(), 6);
 
-    // The base is filled under the parent's own source, so another source's
-    // base does not count as stated.
+    // A parent fills its type under its own source, and a base key another
+    // source filled already answers the type.
     let mut sources: Identifiers = [
-        id("fix", "origclordid", "A"),
+        id("base", "origclordid", "A"),
         id("venue", "clordid", "B"),
         id("oms", "parentorderid", "P"),
     ]
     .into_iter()
     .collect();
+    assert_eq!(
+        keys(&sources),
+        [
+            "clordid",
+            "oms:parentorderid",
+            "origclordid",
+            "parentorderid",
+            "venue:clordid"
+        ]
+    );
     assert!(sources.fill_parents(IdType::parent_of));
     assert_eq!(
-        sources.get_from(&IdSource::Fix, &IdType::ClOrdId),
-        Some("A")
+        sources.get(&IdType::ClOrdId),
+        Some("B"),
+        "venue's filled it first"
     );
-    assert_eq!(
-        sources.get_from(&source("venue"), &IdType::ClOrdId),
-        Some("B")
-    );
-    assert_eq!(
-        sources.get_from(&source("oms"), &IdType::OrderId),
-        Some("P")
-    );
-    assert_eq!(sources.len(), 5);
+    assert_eq!(sources.get_from(&key("oms:orderid")), Some("P"));
+    assert_eq!(sources.get(&IdType::OrderId), Some("P"));
+    assert_eq!(sources.len(), 7);
 
     // A parent value its base refuses fills nothing, and a closure naming no
     // parent fills nothing.
-    let mut refused = fix(&[("parentisin", "NOT-AN-ISIN")]);
+    let mut refused = base(&[("parentisin", "NOT-AN-ISIN")]);
     assert!(!refused.fill_parents(IdType::parent_of));
     assert_eq!(refused.len(), 1);
-    let mut none = fix(&[("origclordid", "A")]);
+    let mut none = base(&[("origclordid", "A")]);
     assert!(!none.fill_parents(|_| None));
     assert_eq!(none.len(), 1);
     assert!(!Identifiers::new().fill_parents(IdType::parent_of));
     // A base is no parent, so a set of bases fills nothing.
-    let mut bases = fix(&[("orderid", "O"), ("clordid", "C")]);
+    let mut bases = base(&[("orderid", "O"), ("clordid", "C")]);
     assert!(!bases.fill_parents(IdType::parent_of));
     assert_eq!(bases.len(), 2);
 }
 
 #[test]
 fn an_identifier_moves_to_another_type_of_its_source_as_that_type_stores_it() {
-    let held = id("fix", "origclordid", "A");
+    let held = id("base", "origclordid", "A");
     assert_eq!(
         held.with_kind(IdType::ClOrdId).unwrap().to_string(),
-        "fix:clordid=A"
+        "clordid=A"
     );
     let cusip = id("venue", "parentcusip", "037833100");
     assert_eq!(
         cusip.with_kind(IdType::Cusip).unwrap().to_string(),
         "venue:cusip=037833100"
     );
-    let lower = id("fix", "house", "us0378331005");
+    let lower = id("base", "house", "us0378331005");
     assert_eq!(
         lower.with_kind(IdType::Isin).unwrap().value(),
         "US0378331005"
     );
     assert!(
-        id("fix", "house", "US0378331006")
+        id("base", "house", "US0378331006")
             .with_kind(IdType::Isin)
             .is_err()
     );
     assert!(
-        id("fix", "house", "037833100")
+        id("base", "house", "037833100")
             .with_kind(IdType::Isin)
             .is_err()
     );
 }
 
 #[test]
-fn a_set_merges_what_it_does_not_state_and_leaves_what_it_does() {
-    let mut ids = Identifiers::new();
-    ids.insert(id("fix", "orderid", "O-1"));
-    let mut other = Identifiers::new();
-    other.insert(id("fix", "orderid", "O-2"));
-    other.insert(id("fix", "clordid", "C-1"));
-    other.insert(id("venue", "orderid", "O-9"));
-    assert!(ids.merge(&other));
-    assert!(!ids.merge(&other), "nothing left to take");
-    assert_eq!(ids.get_from(&IdSource::Fix, &IdType::OrderId), Some("O-1"));
-    assert_eq!(ids.get_from(&IdSource::Fix, &IdType::ClOrdId), Some("C-1"));
-    assert_eq!(
-        ids.get_from(&"venue".parse().unwrap(), &IdType::OrderId),
-        Some("O-9")
-    );
-    assert_eq!(ids.len(), 3);
-}
-
-#[test]
-fn an_identifier_is_a_row_of_its_source_its_type_and_its_value() {
-    let held = id("fix", "clordid", "B");
-    let row = held.clone().into_scalar();
-    let cells: Vec<_> = (0..3).map(|at| cell(&row, at)).collect();
-    assert_eq!(cells, ["fix", "clordid", "B"]);
-    assert!(row.get(3).is_none(), "three cells and no more");
-    assert_eq!(Identifier::from_scalar(&row).unwrap(), held);
-    // An upper-case word is read folded like any other, and the value as
-    // its type stores it.
-    let upper = Scalar::from_sequence([
-        Scalar::from("FIX"),
-        Scalar::from("ISIN"),
-        Scalar::from("us0378331005"),
-    ]);
-    assert_eq!(
-        Identifier::from_scalar(&upper).unwrap().to_string(),
-        "fix:isin=US0378331005"
-    );
-    // A row that is not three text cells, or whose cells are refused, is refused.
-    assert!(
-        Identifier::from_scalar(&Scalar::from_sequence([
-            Scalar::from("fix"),
-            Scalar::from("isin")
-        ]))
-        .is_err()
-    );
-    assert!(Identifier::from_scalar(&Scalar::from("fix:isin=US0378331005")).is_err());
-    assert!(
-        Identifier::from_scalar(&Scalar::from_sequence([
-            Scalar::from("fix"),
-            Scalar::from("isin"),
-            Scalar::from("US0378331006"),
-        ]))
-        .is_err(),
-        "a check digit"
-    );
-    assert!(
-        Identifier::from_scalar(&Scalar::from_sequence([
-            Scalar::from("fix"),
-            Scalar::from("clordid"),
-            Scalar::from("null"),
-        ]))
-        .is_err()
-    );
-
-    // Under its field the row crosses a column and back as the same value.
-    let field = yggdryl::Field::new("id", Identifier::dtype(), false);
-    let serie = yggdryl::Serie::from_scalars(std::sync::Arc::new(field), [row]).unwrap();
-    assert_eq!(
-        Identifier::from_scalar(&serie.scalar(0).unwrap()).unwrap(),
-        held
-    );
-}
-
-#[test]
-fn a_set_is_a_sorted_map_scalar_keyed_src_type_in_key_order() {
+fn a_map_is_a_sorted_map_scalar_of_its_spelled_keys_to_its_values() {
     let ids: Identifiers = [
-        id("fix", "isin", "US0378331005"),
-        id("fix", "clordid", "B"),
+        id("base", "isin", "US0378331005"),
+        id("base", "clordid", "B"),
         id("a", "z", "1"),
         id("a.b", "c", "2"),
         id("a1", "x", "3"),
     ]
     .into_iter()
     .collect();
+    assert_eq!(
+        keys(&ids),
+        ["a.b:c", "a1:x", "a:z", "c", "clordid", "isin", "x", "z"]
+    );
     let scalar = ids.into_scalar();
     assert!(matches!(scalar, Scalar::SortedMap(_)), "{}", scalar.kind());
-    let entries = scalar.as_mapping().expect("a map's entries");
-    let held: Vec<_> = entries
+    let held: Vec<(&str, &str)> = scalar
+        .as_mapping()
+        .expect("a map's entries")
         .iter()
-        .map(|(key, _)| key.as_str().expect("a text key"))
+        .map(|(key, value)| {
+            (
+                key.as_str().expect("a text key"),
+                value.as_str().expect("a text value"),
+            )
+        })
         .collect();
-    assert_eq!(held, ["a.b:c", "a1:x", "a:z", "fix:clordid", "fix:isin"]);
-    // Each key is the unique key of the row it names, and each row three text
-    // cells, `src`, `type` and `value`.
-    assert_eq!(entries.len(), ids.len());
-    for ((key, row), expected) in entries.iter().zip(&ids) {
-        assert_eq!(key.as_str(), Some(expected.key().as_str()));
-        assert_eq!(Identifier::from_scalar(row).unwrap(), *expected);
-        let cells: Vec<_> = (0..3).map(|at| cell(row, at)).collect();
-        assert_eq!(
-            cells,
-            [
-                expected.src().as_str(),
-                expected.kind().as_str(),
-                expected.value()
-            ]
-        );
-        assert!(row.get(3).is_none(), "three cells and no more");
-    }
-    assert_eq!(Identifiers::from_scalar(&scalar).unwrap(), ids);
+    assert_eq!(
+        held,
+        [
+            ("a.b:c", "2"),
+            ("a1:x", "3"),
+            ("a:z", "1"),
+            ("c", "2"),
+            ("clordid", "B"),
+            ("isin", "US0378331005"),
+            ("x", "3"),
+            ("z", "1"),
+        ]
+    );
+    assert_eq!(
+        Identifiers::from_scalar(&scalar).unwrap(),
+        ids,
+        "a map the crate wrote reads back unchanged"
+    );
 
-    // An empty set is an empty sorted map, not a null and not a run.
+    // An empty map is an empty sorted map, not a null and not a run.
     let empty = Identifiers::new().into_scalar();
     assert!(matches!(empty, Scalar::SortedMap(_)), "{}", empty.kind());
     assert_eq!(empty.as_mapping().map(<[_]>::len), Some(0));
@@ -1321,144 +1377,126 @@ fn a_set_is_a_sorted_map_scalar_keyed_src_type_in_key_order() {
 }
 
 #[test]
-fn a_set_reads_back_from_a_map_or_a_sorted_map_in_any_order() {
-    let ids: Identifiers = [
-        id("fix", "isin", "US0378331005"),
-        id("fix", "clordid", "B"),
-        id("a", "z", "1"),
-    ]
-    .into_iter()
-    .collect();
-    // Entries in an order of their own, under a plain map.
-    let plain = Scalar::from_mapping([
-        (
-            Scalar::from("fix:isin"),
-            id("fix", "isin", "US0378331005").into_scalar(),
-        ),
-        (Scalar::from("a:z"), id("a", "z", "1").into_scalar()),
-        (
-            Scalar::from("fix:clordid"),
-            id("fix", "clordid", "B").into_scalar(),
-        ),
-    ])
-    .unwrap();
-    assert!(matches!(plain, Scalar::Map(_)));
-    assert_eq!(Identifiers::from_scalar(&plain).unwrap(), ids);
+fn a_map_reads_back_from_text_entries_in_any_order_and_closes_by_the_base_rule() {
+    let pairs = [
+        ("ULLINK:ISIN", "us0378331005"),
+        ("a:z", "1"),
+        ("Base:ClOrdID", "B"),
+    ];
+    let read = Identifiers::from_scalar(&entries(&pairs)).unwrap();
     assert_eq!(
-        Identifiers::from_scalar(&plain).unwrap().to_string(),
-        "[a:z=1, fix:clordid=B, fix:isin=US0378331005]",
-        "the set sorts what it reads"
+        read.to_string(),
+        "[a:z=1, clordid=B, isin=US0378331005, ullink:isin=US0378331005, z=1]",
+        "each key read exactly, each value as its type stores it, each type closed"
     );
-    // The same entries as a sorted map, and an empty plain map.
-    let Scalar::Map(entries) = plain.clone() else {
+    let Scalar::Map(map) = entries(&pairs) else {
         panic!("a plain map");
     };
     assert_eq!(
-        Identifiers::from_scalar(&Scalar::SortedMap(entries)).unwrap(),
-        ids
+        Identifiers::from_scalar(&Scalar::SortedMap(map)).unwrap(),
+        read
     );
+    // The spellings written before the base key was bare read as it.
+    let old = Identifiers::from_scalar(&entries(&[
+        ("fix:clordid", "B"),
+        ("base:isin", "US0378331005"),
+    ]))
+    .unwrap();
+    assert_eq!(old.to_string(), "[clordid=B, isin=US0378331005]");
+    // A type with no base key takes its first named source's value in key
+    // order, else its derivation's; a stated base key stands.
+    let closed = Identifiers::from_scalar(&entries(&[
+        ("venue:isin", "CH0012214059"),
+        ("derived:isin", "US0378331005"),
+        ("abc:isin", "CH0012221716"),
+        ("derived:cusip", "037833100"),
+    ]))
+    .unwrap();
+    assert_eq!(closed.get(&IdType::Isin), Some("CH0012221716"));
+    assert!(!closed.is_derived(&IdType::Isin));
+    assert_eq!(closed.get(&IdType::Cusip), Some("037833100"));
+    assert!(closed.is_derived(&IdType::Cusip));
+    let stated = Identifiers::from_scalar(&entries(&[
+        ("isin", "US0378331005"),
+        ("ullink:isin", "CH0012214059"),
+    ]))
+    .unwrap();
+    assert_eq!(stated.get(&IdType::Isin), Some("US0378331005"));
+    assert_eq!(stated.len(), 2);
     assert_eq!(
         Identifiers::from_scalar(&Scalar::from_mapping([]).unwrap()).unwrap(),
         Identifiers::new()
     );
-    // A word is read folded, a value as its type stores it.
-    let upper = Scalar::from_mapping([(
-        Scalar::from("fix:isin"),
-        Scalar::from_sequence([
-            Scalar::from("FIX"),
-            Scalar::from("ISIN"),
-            Scalar::from("us0378331005"),
-        ]),
-    )])
-    .unwrap();
-    assert_eq!(
-        Identifiers::from_scalar(&upper).unwrap().to_string(),
-        "[fix:isin=US0378331005]"
-    );
 }
 
 #[test]
-fn a_map_keyed_other_than_its_rows_is_refused_on_that_key() {
-    let located = |entries: Vec<(Scalar, Scalar)>| {
-        Identifiers::from_scalar(&Scalar::from_mapping(entries).unwrap())
-            .unwrap_err()
-            .to_string()
-    };
-    let clordid = || id("fix", "clordid", "B").into_scalar();
-    // A key naming another identity than its row.
-    let refused = located(vec![(Scalar::from("fix:orderid"), clordid())]);
-    assert!(refused.contains("$['fix:orderid']"), "{refused}");
-    assert!(
-        refused.contains("expected the key fix:clordid"),
-        "{refused}"
-    );
-    // Only the folded spelling is the key: one identity has one key, so a
-    // second spelling of it is refused and never read as a second row.
-    let refused = located(vec![
-        (
-            Scalar::from("fix:isin"),
-            id("fix", "isin", "US0378331005").into_scalar(),
-        ),
-        (
-            Scalar::from("FIX:ISIN"),
-            id("fix", "isin", "CH0012214059").into_scalar(),
-        ),
-    ]);
-    assert!(refused.contains("$['FIX:ISIN']"), "{refused}");
-    assert!(refused.contains("expected the key fix:isin"), "{refused}");
-    let refused = located(vec![(Scalar::from("fix:clordid "), clordid())]);
-    assert!(refused.contains("$['fix:clordid ']"), "{refused}");
-    // A key that is no text names no row.
+fn a_map_entry_no_identifier_reads_is_refused_on_its_key() {
+    let refused = |scalar: Scalar| Identifiers::from_scalar(&scalar).unwrap_err().to_string();
+    // A key that reads as no key.
+    for text in ["fix:", ":isin", "a:b:c", "a/b", "transversal key!"] {
+        let error = refused(entries(&[(text, "K-1")]));
+        assert!(error.contains(&format!("$['{text}']")), "{error}");
+        assert!(
+            error.contains("expected an identifier key src:type or type"),
+            "{error}"
+        );
+    }
+    // A value that states nothing, or that its type refuses.
+    for (text, value) in [
+        ("isin", "US0378331006"),
+        ("clordid", "null"),
+        ("clordid", "  "),
+        ("ullink:isin", "037833100"),
+    ] {
+        let error = refused(entries(&[(text, value)]));
+        assert!(error.contains(&format!("$['{text}']")), "{error}");
+    }
+    // Two spellings of one key with two values; the same value twice is one
+    // identifier.
+    let error = refused(entries(&[
+        ("isin", "US0378331005"),
+        ("BASE:ISIN", "CH0012214059"),
+    ]));
+    assert!(error.contains("$['BASE:ISIN']"), "{error}");
+    assert!(error.contains("expected one value under isin"), "{error}");
+    let one = Identifiers::from_scalar(&entries(&[
+        ("isin", "US0378331005"),
+        ("BASE:ISIN", "us0378331005"),
+    ]))
+    .unwrap();
+    assert_eq!(one.to_string(), "[isin=US0378331005]");
+    // A key or a value that is no text, the retired struct row included.
     assert!(
         Identifiers::from_scalar(
-            &Scalar::from_mapping([(Scalar::from(1_i64), clordid())]).unwrap()
+            &Scalar::from_mapping([(Scalar::from(1_i64), Scalar::from("B"))]).unwrap()
         )
         .is_err()
     );
-
-    // A row an identifier refuses is located on its key: the check digit, a
-    // value that states nothing, a word that is none, a missing cell.
-    let row = |cells: &[&str]| Scalar::from_sequence(cells.iter().map(|text| Scalar::from(*text)));
-    for (key, cells) in [
-        ("fix:isin", row(&["fix", "isin", "US0378331006"])),
-        ("fix:clordid", row(&["fix", "clordid", "null"])),
-        ("fix:clordid", row(&["fix", "clordid", "  "])),
-        ("fix:clordid", row(&["fix", "cl/ordid", "B"])),
-        ("fix:clordid", row(&["fix", "clordid"])),
-    ] {
-        let refused = located(vec![(Scalar::from(key), cells)]);
-        assert!(refused.contains(&format!("$['{key}']")), "{refused}");
-    }
-
-    // Two rows under one key never reach a set: the map refuses them as it
-    // is built.
+    let error =
+        refused(Scalar::from_mapping([(Scalar::from("clordid"), Scalar::from(1_i64))]).unwrap());
+    assert!(error.contains("$['clordid']"), "{error}");
+    let row = Scalar::from_sequence(["fix", "clordid", "B"].map(Scalar::from));
+    let error = refused(Scalar::from_mapping([(Scalar::from("fix:clordid"), row)]).unwrap());
     assert!(
-        Scalar::from_mapping([
-            (
-                Scalar::from("fix:isin"),
-                id("fix", "isin", "US0378331005").into_scalar()
-            ),
-            (
-                Scalar::from("fix:isin"),
-                id("fix", "isin", "CH0012214059").into_scalar()
-            ),
-        ])
-        .is_err()
+        error.contains("$['fix:clordid']") && error.contains("a text value"),
+        "{error}"
     );
-    // What is neither a map nor a sequence of identifier rows is refused,
-    // one bare row included.
+    // Neither a map nor a sequence of maps.
     assert!(Identifiers::from_scalar(&Scalar::from("x")).is_err());
-    assert!(Identifiers::from_scalar(&clordid()).is_err());
 }
 
 #[test]
-fn a_sequence_of_identifier_rows_reads_as_the_map_it_makes() {
-    let clordid = || id("fix", "clordid", "B").into_scalar();
-    let isin = id("fix", "isin", "US0378331005");
-    let rows = Scalar::from_sequence([clordid(), isin.clone().into_scalar(), clordid()]);
-    let read = Identifiers::from_scalar(&rows).expect("a sequence of rows");
-    assert_eq!(read.len(), 2, "one identifier stated twice is one");
-    assert_eq!(read.get_from(isin.src(), isin.kind()), Some("US0378331005"));
+fn a_sequence_of_maps_reads_as_their_union() {
+    let rows = Scalar::from_sequence([
+        entries(&[("clordid", "B")]),
+        entries(&[("ullink:isin", "US0378331005")]),
+        entries(&[("clordid", "B")]),
+    ]);
+    let read = Identifiers::from_scalar(&rows).expect("a sequence of maps");
+    assert_eq!(
+        read.to_string(),
+        "[clordid=B, isin=US0378331005, ullink:isin=US0378331005]"
+    );
     assert_eq!(
         Identifiers::from_scalar(&Scalar::from_sequence([]))
             .unwrap()
@@ -1466,29 +1504,31 @@ fn a_sequence_of_identifier_rows_reads_as_the_map_it_makes() {
         0
     );
     // Two values under one key are two readings, refused at the second.
-    let other = Scalar::from_sequence([
-        isin.into_scalar(),
-        id("fix", "isin", "CH0012214059").into_scalar(),
-    ]);
-    let refused = Identifiers::from_scalar(&other).expect_err("one key, two values");
-    assert!(refused.to_string().contains("$[1]"), "{refused}");
-    // A cell that is no identifier row is refused at its place.
-    let refused = Identifiers::from_scalar(&Scalar::from_sequence([Scalar::from("x")]))
-        .expect_err("no identifier row");
-    assert!(refused.to_string().contains("$[0]"), "{refused}");
+    let error = Identifiers::from_scalar(&Scalar::from_sequence([
+        entries(&[("isin", "US0378331005")]),
+        entries(&[("isin", "CH0012214059")]),
+    ]))
+    .expect_err("one key, two values")
+    .to_string();
+    assert!(error.contains("$[1]['isin']"), "{error}");
+    // A cell that is no map is refused at its place.
+    let error = Identifiers::from_scalar(&Scalar::from_sequence([Scalar::from("x")]))
+        .expect_err("no map")
+        .to_string();
+    assert!(error.contains("$[0]"), "{error}");
 }
 
 #[test]
-fn a_set_crosses_a_column_under_its_dtype_and_back() {
+fn a_map_crosses_a_column_under_its_dtype_and_back() {
     let ids: Identifiers = [
-        id("fix", "isin", "US0378331005"),
-        id("fix", "clordid", "B"),
-        id("a.b", "c", "2"),
+        id("base", "isin", "US0378331005"),
+        id("ullink", "clordid", "B"),
+        id("derived", "cusip", "037833100"),
         id("a1", "x", "3"),
     ]
     .into_iter()
     .collect();
-    let field = Arc::new(Field::new("ids", Identifiers::dtype("identifier"), true));
+    let field = Arc::new(Field::new("ids", Identifiers::dtype(), true));
     let serie = Serie::from_scalars(
         Arc::clone(&field),
         [
@@ -1504,13 +1544,24 @@ fn a_set_crosses_a_column_under_its_dtype_and_back() {
         assert_eq!(&read, expected, "row {row}");
     }
 
-    // Through Arrow: a map whose keys are declared sorted, laid out as the
-    // field states it, and read back under the same field as the same rows.
+    // Through Arrow: a map of two text columns whose keys are declared
+    // sorted, read back under the same field as the same rows.
     let array = serie.clone().into_arrow_array().expect("a column");
+    let arrow_schema::DataType::Map(pair, true) = array.data_type() else {
+        panic!("a sorted map, got {:?}", array.data_type());
+    };
+    let arrow_schema::DataType::Struct(pair) = pair.data_type() else {
+        panic!("a struct of entries");
+    };
+    assert_eq!(
+        pair.iter()
+            .map(|field| field.name().as_str())
+            .collect::<Vec<_>>(),
+        ["key", "value"]
+    );
     assert!(
-        matches!(array.data_type(), arrow_schema::DataType::Map(_, true)),
-        "{:?}",
-        array.data_type()
+        pair.iter()
+            .all(|field| field.data_type() == &arrow_schema::DataType::Utf8 && !field.is_nullable())
     );
     let back = Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::new()).unwrap();
     for (row, expected) in [(0, &ids), (1, &Identifiers::new()), (2, &ids)] {
@@ -1520,40 +1571,18 @@ fn a_set_crosses_a_column_under_its_dtype_and_back() {
 }
 
 #[test]
-fn the_row_and_the_set_are_laid_out_as_the_columns_state_them() {
-    let row = Identifier::dtype();
-    let columns = row.as_fields().expect("a struct row");
-    let names: Vec<_> = columns.iter().map(Field::name).collect();
-    assert_eq!(
-        names,
-        ["src", "type", "value"],
-        "struct<src, type, value> and nothing else"
-    );
-    assert!(columns.iter().all(|field| !field.is_nullable()));
-    assert!(
-        columns
-            .iter()
-            .all(|field| field.dtype() == &DataType::utf8())
-    );
-    for item in ["securityid", "identifier", "partyid"] {
-        let set = Identifiers::dtype(item);
-        // A map whose keys are held sorted, from the key text to the row.
-        assert!(matches!(set, DataType::SortedMap(_)), "{set}");
-        assert!(set.as_mapping().expect("a map").keys_sorted());
-        let entries = set.map_entries().expect("a map's entries");
-        assert_eq!(entries.name(), "entries");
-        assert!(!entries.is_nullable());
-        let pair = entries.dtype().as_fields().expect("a struct of two");
-        let names: Vec<_> = pair.iter().map(Field::name).collect();
-        assert_eq!(names, ["key", item]);
-        assert!(!pair[0].is_nullable());
-        assert_eq!(pair[0].dtype(), &DataType::utf8());
-        assert!(!pair[1].is_nullable());
-        assert_eq!(pair[1].dtype(), &Identifier::dtype());
+fn a_map_is_laid_out_as_a_sorted_map_of_text_to_text() {
+    let map = Identifiers::dtype();
+    assert!(matches!(map, DataType::SortedMap(_)), "{map}");
+    assert!(map.as_mapping().expect("a map").keys_sorted());
+    let entries = map.map_entries().expect("a map's entries");
+    assert_eq!(entries.name(), "entries");
+    assert!(!entries.is_nullable());
+    let pair = entries.dtype().as_fields().expect("a struct of two");
+    let names: Vec<_> = pair.iter().map(Field::name).collect();
+    assert_eq!(names, ["key", "value"]);
+    for field in pair {
+        assert!(!field.is_nullable());
+        assert_eq!(field.dtype(), &DataType::utf8());
     }
-    assert_ne!(
-        Identifiers::dtype("securityid"),
-        Identifiers::dtype("partyid"),
-        "the item names the set"
-    );
 }

@@ -1,4 +1,4 @@
-"""Identifiers: the name a source gave a thing, and the sorted map keyed ``src:type`` an element states them in."""
+"""Identifiers: a value under a key ``src:type`` - the type alone for the base source - and the sorted map an element states them in."""
 
 from __future__ import annotations
 

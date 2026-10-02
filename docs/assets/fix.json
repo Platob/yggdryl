@@ -101,7 +101,7 @@
     "enumFields": 2029,
     "codesets": 738,
     "codes": 7934,
-    "aliases": 55,
+    "aliases": 56,
     "alternates": 0,
     "messages": 181,
     "components": 928,
@@ -6164,6 +6164,9 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:names": [
+            "detailedcficode"
+          ],
           "FIX:tag": "461",
           "description": "Indicates the type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values. ISO 10962 is maintained by ANNA (Association of National Numbering Agencies) acting as Registration Authority. See \"Appendix 6-B FIX Fields Based Upon Other Standards\". See also the Product (460) and SecurityType (167) fields. It is recommended that CFICode be used instead of SecurityType (167) for non-Fixed Income instruments.",
           "display": "CFICode"
@@ -79362,7 +79365,7 @@
         },
         "metadata": {
           "FIX:tag": "65046",
-          "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other is stated from base, leading its type.",
+          "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key.",
           "display": "Forex Code"
         },
         "name": "forexcode",
@@ -292071,7 +292074,7 @@
         "c": "securityids",
         "t": 65020,
         "n": "Security IDs",
-        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"securityid\",struct(field(\"src\",utf8,nullable=false,metadata={}),field(\"type\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
         "x": "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent. Derived from the message's fields; a row stating one is the row's word."
       },
       {
@@ -292260,14 +292263,14 @@
         "c": "identifiers",
         "t": 65038,
         "n": "Identifiers",
-        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"identifier\",struct(field(\"src\",utf8,nullable=false,metadata={}),field(\"type\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
         "x": "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap and the parties that name one. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
       },
       {
         "c": "partyids",
         "t": 65039,
         "n": "Party IDs",
-        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"partyid\",struct(field(\"src\",utf8,nullable=false,metadata={}),field(\"type\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
         "x": "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, and Account under AcctIDSource. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
       },
       {
@@ -292429,7 +292432,7 @@
         "t": 65046,
         "n": "Forex Code",
         "y": "forex",
-        "x": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other is stated from base, leading its type."
+        "x": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key."
       },
       {
         "c": "bloombergcode",
@@ -299047,6 +299050,7 @@
                 "type": "string"
               },
               "metadata": {
+                "FIX:names": "[\"detailedcficode\"]",
                 "FIX:tag": "461",
                 "description": "Indicates the type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values. ISO 10962 is maintained by ANNA (Association of National Numbering Agencies) acting as Registration Authority. See \"Appendix 6-B FIX Fields Based Upon Other Standards\". See also the Product (460) and SecurityType (167) fields. It is recommended that CFICode be used instead of SecurityType (167) for non-Fixed Income instruments.",
                 "display": "CFICode"

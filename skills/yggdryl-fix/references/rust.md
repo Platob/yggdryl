@@ -463,6 +463,41 @@ let chained: usize = codec.lifecycle_arrow_reader(rows)?.map(|batch| batch.map(|
 assert_eq!(chained, 4);
 ```
 
+## Share what lifecycles learn about instruments
+
+A lifecycle learns each message's ISIN - else its RIC, which only fills - its
+CFI code, market, ticker and security codes into an `IsinRegistry`, and fills
+what later messages of that instrument leave unsaid, as `derived` identifiers
+and the CFI and ticker facts, never the wire. A codec without one learns into
+a registry of each walk's own; `with_isin_registry` shares one across walks run
+one after another, and the record surface saves and loads it.
+
+```rust
+use std::sync::{Arc, Mutex};
+
+use yggdryl::graph::Market;
+use yggdryl::local::LocalFolder;
+use yggdryl::{FixCodec, FixMsg, FixRegistry, IsinRegistry};
+
+let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
+let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
+let codec = FixCodec::new(registry).with_isin_registry(Arc::clone(&instruments));
+
+// The first walk states Holcim's ISIN, RIC and CFI code.
+let stated = ["8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|10=0|"];
+let parsed: Vec<FixMsg> = codec.parse_lines(stated).collect::<yggdryl::Result<_>>()?;
+codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
+assert_eq!(instruments.lock().unwrap().get_by_ric("HOLN.S").map(|row| row.isin().as_str()), Some("CH0012214059"));
+
+// A later walk naming only the RIC is filled from what the first learned.
+let later = ["8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|"];
+let parsed: Vec<FixMsg> = codec.parse_lines(later).collect::<yggdryl::Result<_>>()?;
+let walked = codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
+assert_eq!(walked[0].get_isincode(), Some("CH0012214059"));
+assert_eq!(walked[0].get_cficode().map(|code| code.as_str()), Some("ESVUFR"));
+```
+
 ## Follow a replace chain's parents
 
 A message that states an identifier again under another value is a step in
@@ -477,7 +512,7 @@ use std::sync::Arc;
 
 use yggdryl::graph::{Element, Operation};
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, IdSource, IdType};
+use yggdryl::{FixCodec, FixMsg, FixRegistry, IdType};
 
 let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -494,7 +529,7 @@ let chained: Vec<FixMsg> = reader.lifecycle(parsed).collect::<yggdryl::Result<_>
 let held = |message: &FixMsg| -> [String; 5] {
     ["orderid", "parentorderid", "origorderid", "clordid", "origclordid"].map(|kind| {
         let kind: IdType = kind.parse().expect("a type");
-        message.get_identifiers().get_from(&IdSource::Fix, &kind).unwrap_or("-").to_owned()
+        message.get_identifiers().get(&kind).unwrap_or("-").to_owned()
     })
 };
 assert_eq!(held(&chained[0]), ["-", "-", "-", "C1", "-"]);

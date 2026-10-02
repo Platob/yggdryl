@@ -56,6 +56,7 @@ use crate::field::JsField;
 use crate::graph::{JsMarketData, JsMarketDataRowIterator};
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::iomedia::JsBatchReader;
+use crate::isin_registry::JsIsinRegistry;
 use crate::text::codec::JsScalar;
 use crate::text::line::{JsFieldPath, JsTextLine, path_from_input};
 use crate::{
@@ -1320,6 +1321,11 @@ impl JsFixMsg {
     pub(crate) const fn as_core(&self) -> &CoreFixMsg {
         &self.inner
     }
+
+    /// Borrow the message the core built to write it.
+    pub(crate) const fn as_core_mut(&mut self) -> &mut CoreFixMsg {
+        &mut self.inner
+    }
 }
 
 #[napi]
@@ -1599,12 +1605,13 @@ impl JsFixMsg {
             .collect()
     }
 
-    /// The security identifiers the instrument goes by, each a source, a
-    /// type and a code - `base:isin`, `derived:cusip`, `base:sedol`,
-    /// `base:figi` and any other source `SecurityIDSource(22)`, the
-    /// `SecurityAltID` group or an unmapped entry whose key names a security
-    /// type names - a map keyed `src:type`, in key order; empty where the
-    /// message states none.
+    /// The security identifiers the instrument goes by, each a code under a
+    /// key - `isin`, `sedol`, `figi` and any other type `SecurityIDSource(22)`
+    /// or the `SecurityAltID` group names under its base key, an unmapped
+    /// entry whose key names a security type under the source it names, and
+    /// the codes an ISIN embeds under `derived` (`derived:cusip`) - a map
+    /// keyed `src:type`, the type alone for the base source, in key order;
+    /// empty where the message states none.
     #[napi(getter, ts_return_type = "Identifiers")]
     pub fn securityids(&self) -> crate::identifier::JsIdentifiers {
         crate::identifier::JsIdentifiers::from_core(self.inner.get_securityids())
@@ -1673,10 +1680,12 @@ impl JsFixMsg {
 
     /// The names the operation goes by, each typed by the field that
     /// stated it - `orderid`, `clordid`, `execid`, `quoteid`, `tradeid` and
-    /// the rest the message states - from `fix` or the source an unmapped
-    /// entry's key names (`OMS_ClOrdID` is `oms:clordid`), with the parents
-    /// a chain gave them (`origclordid`, `parentorderid`, `origorderid`); a
-    /// map keyed `src:type`, in key order.
+    /// the rest the message states - under the base key of its type where a
+    /// FIX field stated it, or under the source an unmapped entry's key
+    /// names (`OMS_ClOrdID` is `oms:clordid`, which fills `clordid` where it
+    /// is empty), with the parents a chain gave them (`origclordid`,
+    /// `parentorderid`, `origorderid`); a map keyed `src:type`, the type
+    /// alone for the base source, in key order.
     #[napi(getter, ts_return_type = "Identifiers")]
     pub fn identifiers(&self) -> crate::identifier::JsIdentifiers {
         crate::identifier::JsIdentifiers::from_core(self.inner.get_identifiers())
@@ -1684,8 +1693,10 @@ impl JsFixMsg {
 
     /// The parties the message names - each `Parties` occurrence's
     /// `PartyID` typed by its `PartyRole`'s name, such as `executingtrader`,
-    /// from its `PartyIDSource`'s, and its `Account(1)` typed `account` - a
-    /// map keyed `src:type`, in key order.
+    /// from its `PartyIDSource`'s (the base source where it states none),
+    /// and its `Account(1)` typed `account` - a map keyed `src:type`, the
+    /// type alone for the base source, each named source filling its type's
+    /// base key, in key order.
     #[napi(getter, ts_return_type = "Identifiers")]
     pub fn partyids(&self) -> crate::identifier::JsIdentifiers {
         crate::identifier::JsIdentifiers::from_core(self.inner.get_partyids())
@@ -2421,6 +2432,9 @@ impl JsFixCodec {
     /// unmapped fields - its parties, `Account(1)` and regulatory trade
     /// identifiers stay its `partyids` and `identifiers` - and lifts the
     /// identifiers among them into the set their type belongs to, on when
+    /// unstated; `isinRegistry` is the `IsinRegistry` every `lifecycle`
+    /// learns into and fills from, shared so a walk run after another starts
+    /// from what the first learned, each walk learning into its own when
     /// unstated.
     #[napi(constructor)]
     pub fn new(
@@ -2512,6 +2526,9 @@ impl JsFixCodec {
                 .try_with_default_sending_time(Some(sending_time_from_js(held)?))
                 .map_err(napi_error)?;
         }
+        if let Some(held) = &options.isin_registry {
+            inner = inner.with_isin_registry(Arc::clone(&held.inner));
+        }
         if let Some(held) = options.market_metadata {
             inner = inner.with_market_metadata(held);
         }
@@ -2525,6 +2542,14 @@ impl JsFixCodec {
     #[napi(getter)]
     pub fn registry(&self) -> JsFixRegistry {
         JsFixRegistry::from_arc(Arc::clone(&self.registry))
+    }
+
+    /// The `IsinRegistry` every `lifecycle` this codec runs shares - the
+    /// same table the caller holds - or `null` where each walk learns into
+    /// its own.
+    #[napi(getter)]
+    pub fn isin_registry(&self) -> Option<JsIsinRegistry> {
+        self.inner.isin_registry().map(JsIsinRegistry::from_shared)
     }
 
     /// The byte a numeric frame splits on, or `null` where the line decides.
@@ -3226,6 +3251,11 @@ pub struct FixCodecOptions<'env> {
     /// into the set their type belongs to - part of the leaf's identity; the
     /// core's `true` when unstated.
     pub market_metadata: Option<bool>,
+    /// The `IsinRegistry` every `lifecycle` learns into and fills from,
+    /// shared so a walk run after another starts from what the first
+    /// learned; each walk learns into its own, starting empty, when unstated.
+    #[napi(ts_type = "IsinRegistry")]
+    pub isin_registry: Option<ClassInstance<'env, JsIsinRegistry>>,
 }
 
 /// The default sending time one codec option names, as the core takes it.

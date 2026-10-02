@@ -175,7 +175,7 @@ assert.equal(message.byName('symbol').asJs(), 'AAPL')
 // The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
 assert.equal(message.crosscode, '10:1:A1')
 // The names it goes by are identifiers: a source, a type and a value.
-assert.equal(message.identifiers.toString(), '[fix:clordid=A1]')
+assert.equal(message.identifiers.toString(), '[clordid=A1]')
 // Instants are bigint nanoseconds since the epoch, UTC.
 assert.equal(message.currunix, 1_767_348_930_000_000_000n)
 // The entries are the content row as a tree of { tag, name, value, entries }.
@@ -423,6 +423,36 @@ assert.equal(chained.numRows, 4)
 assert.equal(new Set([...chained.getChild('crossuuid')].map(String)).size, 2)
 ```
 
+## Share what lifecycles learn about instruments
+
+A lifecycle learns each message's ISIN - else its RIC, which only fills - its
+CFI code, market, ticker and security codes into an `IsinRegistry`, and fills
+what later messages of that instrument leave unsaid, as `derived` identifiers
+and the CFI and ticker facts, never the wire. A codec without one learns into
+a registry of each walk's own; `isinRegistry` shares one across walks run one
+after another, and any `IOBase` saves and loads it.
+
+```javascript
+const assert = require('node:assert/strict')
+const path = require('node:path')
+const { IsinRegistry, fix } = require('yggdryl')
+
+const instruments = new IsinRegistry()
+const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')), { isinRegistry: instruments })
+
+// The first walk states Holcim's ISIN, RIC and CFI code.
+const stated = '8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|10=0|'
+for (const _ of codec.lifecycle([...codec.parseLines([Buffer.from(stated)])])) void _
+assert.equal(instruments.getByRic('HOLN.S').isin, 'CH0012214059')
+
+// A later walk naming only the RIC is filled from what the first learned.
+const later = [...codec.lifecycle([...codec.parseLines([Buffer.from('8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|')])])]
+assert.equal(later[0].isincode, 'CH0012214059')
+assert.ok(later[0].securityids.isDerived('isin'))
+// The table is an Arrow stream: a golden file loads with `fromHandle`.
+assert.notEqual(IsinRegistry.fromArrowReader(instruments.intoArrowReader()).get('CH0012214059'), null)
+```
+
 ## Follow a replace chain's parents
 
 A message that states an identifier again under another value is a step in
@@ -448,7 +478,7 @@ const lines = [
 const chained = [...reader.lifecycle([...reader.parseLines(lines)])]
 
 // What a message holds under each type, '-' where it holds none.
-const held = (message) => KINDS.map((kind) => message.identifiers.getFrom('fix', kind) ?? '-')
+const held = (message) => KINDS.map((kind) => message.identifiers.get(kind) ?? '-')
 assert.deepEqual(held(chained[0]), ['-', '-', '-', 'C1', '-'])
 assert.deepEqual(held(chained[1]), ['O1', '-', '-', 'C1', '-'])
 // Each replace names the value before it and the chain's first.

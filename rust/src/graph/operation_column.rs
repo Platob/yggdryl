@@ -4,7 +4,8 @@
 //! One column per fact [`Operation`] adds, under one name and one
 //! datatype each: what it ordered, how long it stands, whether it can
 //! trade, and its alternate identifiers and the parties it names, each a
-//! serie of [`Identifier`](crate::Identifier) rows.
+//! sorted `map<utf8, utf8>` from an [`IdKey`](crate::IdKey)'s spelling to its
+//! value ([`Identifiers::dtype`]).
 
 use super::Operation;
 use crate::Identifiers;
@@ -67,8 +68,7 @@ impl OperationColumn {
             Self::OrdQty => DataType::Decimal,
             Self::TimeInForce => DataType::TimeInForce,
             Self::Tradable => DataType::Boolean,
-            Self::Identifiers => Identifiers::dtype("identifier"),
-            Self::PartyIds => Identifiers::dtype("partyid"),
+            Self::Identifiers | Self::PartyIds => Identifiers::dtype(),
         }
     }
 

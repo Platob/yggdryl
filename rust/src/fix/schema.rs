@@ -2137,8 +2137,8 @@ impl super::FixMsg {
     /// counter heading the group it names - or a value whose JSON does not
     /// decode,
     /// and at the column's path when an identifier column - `securityids`,
-    /// `identifiers`, `partyids` - files an identifier under a key that is
-    /// not its `src:type`, or holds one its type refuses.
+    /// `identifiers`, `partyids` - holds a key that reads as no key, a value
+    /// its type refuses, or two values under two spellings of one key.
     pub fn from_row(
         registry: Arc<FixRegistry>,
         schema: &Field,

@@ -418,7 +418,7 @@ pub const CONVERSATIONID_TAG_NAME: (i32, &str) = (65_045, "conversationid");
 /// where the message states no other class. Read back from a row with no
 /// `securityids` column, a pair the message's reading answers states
 /// nothing, the pair its symbol names where nothing else names one is that
-/// detection, and any other is stated from `base`, leading its type.
+/// detection, and any other replaces its type's answer, the base key.
 pub const FOREXCODE_TAG_NAME: (i32, &str) = (65_046, "forexcode");
 
 /// The tag and name carrying the part of the quantity an iceberg keeps from
@@ -1142,7 +1142,7 @@ const CRATED: [Crated; 49] = [
          other class. Read back from a row with no securityids column, a pair \
          the message's reading answers states nothing, the pair its symbol \
          names where nothing else names one is that detection, and any other \
-         is stated from base, leading its type.",
+         replaces its type's answer, the base key.",
     ),
     Crated::own(
         BLOOMBERGCODE_TAG_NAME,

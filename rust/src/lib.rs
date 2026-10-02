@@ -75,6 +75,7 @@ pub mod iceberg;
 #[path = "iceberg/types.rs"]
 pub mod iceberg;
 pub mod identifier;
+mod idkey;
 mod idsource;
 mod idtype;
 pub(crate) mod int256;
@@ -90,6 +91,7 @@ mod iomode;
 mod iopath;
 pub mod ipc;
 pub mod isin;
+mod isin_registry;
 pub mod json;
 pub mod limit;
 mod listing;
@@ -268,11 +270,13 @@ pub(crate) use geospatial::DEFAULT_CRS;
 pub(crate) use geospatial::GEOARROW_WKB_EXTENSION_NAME;
 pub use geospatial::*;
 pub use identifier::{IdWord, Identifier, Identifiers};
+pub use idkey::IdKey;
 pub use idsource::IdSource;
 pub use idtype::IdType;
 pub use integer::*;
 pub use interval::*;
 pub use isin::*;
+pub use isin_registry::{IsinEntry, IsinRegistry};
 pub use limit::Limit;
 pub use mapping::*;
 pub use marketdatakind::*;
@@ -431,6 +435,7 @@ pub mod internals {
     #[cfg(feature = "iceberg")]
     pub use crate::iceberg::value::internals as iceberg_value;
     pub use crate::ipc::internals as ipc;
+    pub use crate::isin_registry::internals as isin_registry;
     pub use crate::local::internals as local;
     pub use crate::media::merge::internals as media_merge;
     pub use crate::media::options::internals as media_options;
@@ -464,7 +469,6 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::xml::internals as s3_xml;
     pub use crate::scalar::internals as scalar;
-    pub use crate::securityid::internals as securityid;
     pub use crate::serie::arrow::internals as serie_arrow;
     pub use crate::serie::layout::internals as serie_layout;
     pub use crate::temporal::internals as temporal;

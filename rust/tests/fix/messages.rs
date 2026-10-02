@@ -210,7 +210,7 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
         yggdryl::Identifiers::from_scalar(at(&row, &schema, "partyids"))
             .expect("the partyids")
             .to_string(),
-        "[proprietary:executingfirm=P1, proprietary:orderoriginationtrader=P2]"
+        "[executingfirm=P1, orderoriginationtrader=P2, proprietary:executingfirm=P1, proprietary:orderoriginationtrader=P2]"
     );
 }
 

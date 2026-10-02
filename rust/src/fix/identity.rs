@@ -1005,10 +1005,12 @@ pub(super) fn record(
 }
 
 /// Records one identifier map - `securityids`, `identifiers`, `partyids` -
-/// on the event, strictly: a row's map is its word, so one filing an
-/// identifier under a key that is not its `src:type`, or one its type
-/// refuses, is refused on `column` rather than passed over as the graph's
-/// lenient recorders pass it. Whether the tag is one of the three.
+/// on the event, strictly: a row's map is its word, so one holding a key
+/// that reads as no key, a value its type refuses, or two values under two
+/// spellings of one key is refused on `column` rather than passed over as
+/// the graph's lenient recorders pass it, and a map read so is closed by
+/// the base rule ([`Identifiers::from_scalar`]). Whether the tag is one of
+/// the three.
 pub(super) fn record_identifiers(
     event: &mut OperationEventFacts,
     tag: i32,

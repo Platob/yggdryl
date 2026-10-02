@@ -391,9 +391,9 @@ export declare class BookEvent {
    */
   get side(): string
   /**
-   * The instrument's security identifiers, each a source, a type
-   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
-   * map keyed `src:type`, in key order.
+   * The instrument's security identifiers, each a code under a key
+   * - `isin`, `derived:cusip`, `ullink:isin` - a map keyed
+   * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
   /**
@@ -1627,9 +1627,9 @@ export declare class Execution {
    */
   get side(): string
   /**
-   * The instrument's security identifiers, each a source, a type
-   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
-   * map keyed `src:type`, in key order.
+   * The instrument's security identifiers, each a code under a key
+   * - `isin`, `derived:cusip`, `ullink:isin` - a map keyed
+   * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
   /**
@@ -1721,10 +1721,10 @@ export declare class Execution {
    */
   get tradable(): boolean | null
   /**
-   * The names the operation goes by - `fix:clordid`,
-   * `fix:orderid` - with the parents a chain gave them
-   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
-   * a map keyed `src:type`, in key order.
+   * The names the operation goes by - `clordid`, `orderid` - with
+   * the parents a chain gave them (`origclordid`,
+   * `parentorderid`, `origorderid`); a map keyed `src:type`, the
+   * type alone for the base source, in key order.
    */
   get identifiers(): Identifiers
   /**
@@ -1895,9 +1895,9 @@ export declare class ExecutionEvent {
    */
   get side(): string
   /**
-   * The instrument's security identifiers, each a source, a type
-   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
-   * map keyed `src:type`, in key order.
+   * The instrument's security identifiers, each a code under a key
+   * - `isin`, `derived:cusip`, `ullink:isin` - a map keyed
+   * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
   /**
@@ -1989,10 +1989,10 @@ export declare class ExecutionEvent {
    */
   get tradable(): boolean | null
   /**
-   * The names the operation goes by - `fix:clordid`,
-   * `fix:orderid` - with the parents a chain gave them
-   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
-   * a map keyed `src:type`, in key order.
+   * The names the operation goes by - `clordid`, `orderid` - with
+   * the parents a chain gave them (`origclordid`,
+   * `parentorderid`, `origorderid`); a map keyed `src:type`, the
+   * type alone for the base source, in key order.
    */
   get identifiers(): Identifiers
   /**
@@ -2743,6 +2743,9 @@ export declare class FixCodec {
    * unmapped fields - its parties, `Account(1)` and regulatory trade
    * identifiers stay its `partyids` and `identifiers` - and lifts the
    * identifiers among them into the set their type belongs to, on when
+   * unstated; `isinRegistry` is the `IsinRegistry` every `lifecycle`
+   * learns into and fills from, shared so a walk run after another starts
+   * from what the first learned, each walk learning into its own when
    * unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
@@ -2753,6 +2756,12 @@ export declare class FixCodec {
   static fromEnv(options?: FixCodecOptions | undefined | null): FixCodec
   /** The dictionary this codec resolves against, sharing it. */
   get registry(): FixRegistry
+  /**
+   * The `IsinRegistry` every `lifecycle` this codec runs shares - the
+   * same table the caller holds - or `null` where each walk learns into
+   * its own.
+   */
+  get isinRegistry(): JsIsinRegistry | null
   /** The byte a numeric frame splits on, or `null` where the line decides. */
   get separator(): number | null
   /** The record column a line is read from. */
@@ -3215,12 +3224,13 @@ export declare class FixMsg {
    */
   get carried(): Record<string, Scalar>
   /**
-   * The security identifiers the instrument goes by, each a source, a
-   * type and a code - `base:isin`, `derived:cusip`, `base:sedol`,
-   * `base:figi` and any other source `SecurityIDSource(22)`, the
-   * `SecurityAltID` group or an unmapped entry whose key names a security
-   * type names - a map keyed `src:type`, in key order; empty where the
-   * message states none.
+   * The security identifiers the instrument goes by, each a code under a
+   * key - `isin`, `sedol`, `figi` and any other type `SecurityIDSource(22)`
+   * or the `SecurityAltID` group names under its base key, an unmapped
+   * entry whose key names a security type under the source it names, and
+   * the codes an ISIN embeds under `derived` (`derived:cusip`) - a map
+   * keyed `src:type`, the type alone for the base source, in key order;
+   * empty where the message states none.
    */
   get securityids(): Identifiers
   /** The instrument's ISIN, borrowed from `securityids`, or `null`. */
@@ -3265,17 +3275,21 @@ export declare class FixMsg {
   /**
    * The names the operation goes by, each typed by the field that
    * stated it - `orderid`, `clordid`, `execid`, `quoteid`, `tradeid` and
-   * the rest the message states - from `fix` or the source an unmapped
-   * entry's key names (`OMS_ClOrdID` is `oms:clordid`), with the parents
-   * a chain gave them (`origclordid`, `parentorderid`, `origorderid`); a
-   * map keyed `src:type`, in key order.
+   * the rest the message states - under the base key of its type where a
+   * FIX field stated it, or under the source an unmapped entry's key
+   * names (`OMS_ClOrdID` is `oms:clordid`, which fills `clordid` where it
+   * is empty), with the parents a chain gave them (`origclordid`,
+   * `parentorderid`, `origorderid`); a map keyed `src:type`, the type
+   * alone for the base source, in key order.
    */
   get identifiers(): Identifiers
   /**
    * The parties the message names - each `Parties` occurrence's
    * `PartyID` typed by its `PartyRole`'s name, such as `executingtrader`,
-   * from its `PartyIDSource`'s, and its `Account(1)` typed `account` - a
-   * map keyed `src:type`, in key order.
+   * from its `PartyIDSource`'s (the base source where it states none),
+   * and its `Account(1)` typed `account` - a map keyed `src:type`, the
+   * type alone for the base source, each named source filling its type's
+   * base key, in key order.
    */
   get partyids(): Identifiers
   /**
@@ -4180,52 +4194,54 @@ export declare class IcebergOptions {
 export type JsIcebergOptions = IcebergOptions
 
 /**
- * One identifier: a source, a type and a value, unique by its key
- * `src:type`.
+ * One identifier: a value under a key, `src:type`, a key from the base
+ * source spelled as its type alone.
  */
 export declare class Identifier {
   /**
-   * A source and a type are words, folded to lower case without their
-   * breaks; the value is trimmed text that states something, held as its
-   * type stores it.
+   * `key` is read exactly - `src:type`, or a type alone for the base
+   * source, each word folded to lower case without its breaks - and
+   * `value` is trimmed text that states something, held as the key's type
+   * stores it.
    */
-  constructor(src: string, kind: string, value: string)
+  constructor(key: string, value: string)
   /**
-   * The identifier a key names, or `null` where it names none, the value
-   * states nothing or its type refuses the value.
+   * The identifier a name no key spells names, or `null` where it names
+   * none, the value states nothing or its type refuses the value.
    *
-   * An explicit `src:type` is read as it is. Otherwise a whole name a
+   * An explicit `src:type` keeps its source. Otherwise a whole name a
    * security type is spelled by - `ISINCode`, `security_cusip` - is that
-   * type from `base`, and a security type is never read off a key that
-   * names another instrument's (`underlyingisin`, `legisin`). Otherwise
-   * the key folds - lower case, no `_`, `-`, space or `#` - and the
-   * longest identifier name it ends with is the type: a type the crate
-   * names whose spelling ends with `id`, `account`, `isin`, `cusip`,
-   * `sedol` or `figi`, a parentage word (`parent`, `orig`, `origin`,
-   * `original`) right before it kept inside the type. The source is the
-   * rest of the folded key with its dots trimmed at both ends and kept
-   * inside, `base` where nothing is left or where it folds to a source
-   * the crate reserves - `base`, `derived`, `fix` - which names no
-   * namespace: `Derived_ISIN` is `base:isin`.
+   * type from the base source, and a security type is never read off a
+   * name that names another instrument's (`underlyingisin`, `legisin`).
+   * Otherwise the name folds - lower case, no `_`, `-`, space or `#` -
+   * and the longest identifier name it ends with is the type: a type the
+   * crate names whose spelling ends with `id`, `account`, `isin`,
+   * `cusip`, `sedol` or `figi`, a parentage word (`parent`, `orig`,
+   * `origin`, `original`) right before it kept inside the type. The
+   * source is the rest of the folded name with its dots trimmed at both
+   * ends and kept inside, the base source where nothing is left or where
+   * it folds to a source the crate reserves - `base`, `fix`, `derived` -
+   * which names no namespace: `Derived_ISIN` is `isin`.
    *
    * `firm.x.ParentOrderID` is `firm.x:parentorderid`, `OMS_InstrumentID`
    * `oms:instrumentid`, `marketorderid` `market:orderid`, `ISINCode`
-   * `base:isin`; `underlyingisin` and `transversalkey` name none.
+   * `isin`; `underlyingisin` and `transversalkey` name none.
    */
   static fromKey(key: string, value: string): Identifier | null
   /**
-   * Who gave the name: `fix`, `oms`, `derived`, `base` where no source
-   * is named.
+   * Who gave the value: `oms`, `proprietary`, `derived`, `base` where no
+   * source is named.
    */
   get src(): string
   /** The type of name this is: `isin`, `executingtrader`, `clordid`. */
   get type(): string
   /** The name itself. */
   get value(): string
-  /** The unique key, `src:type`, an `Identifiers` keys it by. */
+  /**
+   * The key as an `Identifiers` map spells it: `src:type`, the type
+   * alone for the base source.
+   */
   get key(): string
-  /** Whether this identifier's key is `src:type`, each folded. */
-  isOf(src: string, kind: string): boolean
   /** Compare the complete native values. */
   equals(other: Identifier): boolean
   /**
@@ -4233,36 +4249,56 @@ export declare class Identifier {
    * (`src:type`), then the value.
    */
   compare(other: Identifier): number
-  /** Render `src:type=value`. */
+  /** Render `key=value`. */
   toString(): string
 }
 export type JsIdentifier = Identifier
 
 /**
- * A sorted map of identifiers, one per unique key `src:type`, iterated in
- * key order.
+ * A sorted map from a key to its value, iterated in key order, whose base
+ * key of a type is the type's answer: a named source fills it where it is
+ * empty, so `ullink:isin` alone is also `isin`.
  */
 export declare class Identifiers {
-  /** The map `ids` fill, the first identifier of a key standing. */
+  /**
+   * The map `ids` fill, the first identifier of a key standing and each
+   * named source filling the base key of its type where it is empty.
+   */
   constructor(ids?: Array<Identifier> | undefined | null)
   /**
-   * The value of the identifier of `type` the wire stated (`fix`), else
-   * the first another named source stated in key order, else the one
-   * stated under no source (`base`), else the derived one; `null` where
-   * none.
+   * The map a plain object from each key's text to its value states -
+   * each key read exactly, `isin` the base key and `ullink:isin` a named
+   * one - closed so every type held has its base key: a type stating
+   * none takes its first named source's value, else its derivation's.
+   *
+   * A key that reads as no key, a value that states nothing or that its
+   * type refuses, and two spellings of one key with two values are each
+   * refused naming the key.
+   */
+  static fromObject(entries: Record<string, string>): Identifiers
+  /**
+   * The map as a plain object from each key's text to its value, in key
+   * order; `fromObject` reads it back unchanged.
+   */
+  intoObject(): Record<string, string>
+  /**
+   * The value of `type`'s base key: the type's answer, whichever source
+   * stated it; `null` where the map holds nothing of the type.
    */
   get(kind: string): string | null
   /**
-   * The identifier of `type` the wire stated (`fix`), else the first
-   * another named source stated in key order, else the one stated under
-   * no source (`base`), else the derived one; `null` where none.
+   * The value held under exactly `key` - `isin`, `ullink:isin`; `null`
+   * where none.
    */
-  getIdentifier(kind: string): Identifier | null
-  /** The value of the identifier keyed `src:type`; `null` where none. */
-  getFrom(src: string, kind: string): string | null
-  /** Whether the set holds an identifier of `type`. */
+  getFrom(key: string): string | null
+  /**
+   * Whether `type`'s base key holds only a derivation - the value of
+   * `derived:<type>`, which no named source states.
+   */
+  isDerived(kind: string): boolean
+  /** Whether the map holds anything of `type`. */
   containsKind(kind: string): boolean
-  /** Every identifier of `type`, one per source. */
+  /** Every identifier of `type`, its base key included, in key order. */
   ofKind(kind: string): Array<Identifier>
   /** Every identifier, in key order. */
   toArray(): Array<Identifier>
@@ -4270,7 +4306,7 @@ export declare class Identifiers {
   get length(): number
   /** Compare the complete native values. */
   equals(other: Identifiers): boolean
-  /** Render `[src:type=value, ...]`. */
+  /** Render `[key=value, ...]`. */
   toString(): string
 }
 export type JsIdentifiers = Identifiers
@@ -4774,6 +4810,98 @@ export declare class IOCursor {
 export type JsIOCursor = IOCursor
 
 /**
+ * A table of instruments keyed by ISIN - each row the instrument's CFI
+ * code, its market, its ticker and one code per `SecurityIDSource(22)`
+ * type - that a lifecycle learns into and fills from. Mutable and shared:
+ * equal only to itself; its rows cross out as an Arrow stream.
+ */
+export declare class IsinRegistry {
+  /**
+   * An empty registry holding at most `maxInstruments` instruments, the
+   * core's 16,384 when unstated; learning skips a new ISIN past the bound
+   * and loading refuses it.
+   */
+  constructor(maxInstruments?: number | undefined | null)
+  /**
+   * A registry read from `location` - an `IOBase` or anything a location
+   * is read from: an Arrow IPC file, Parquet, a folder of either, an
+   * object store - its columns named by the registry's own names or any
+   * spelling of an identifier type (`RIC`, `BloombergSymbol`,
+   * `ISINCode`), rows of one ISIN folded by `updunix`; a missing store is
+   * the empty registry.
+   */
+  static fromHandle(location: LocationInput, maxInstruments?: number | undefined | null): IsinRegistry
+  /**
+   * A registry read from a `BatchReader` - `BatchReader.from` widens an
+   * Arrow JS table, a batch or IPC bytes into one - as `fromHandle` reads
+   * a holder's rows.
+   */
+  static fromArrowReader(reader: BatchReader, maxInstruments?: number | undefined | null): IsinRegistry
+  /**
+   * Folds the rows `location` holds in, by the update rule; how many rows
+   * it read.
+   */
+  extendFromHandle(location: LocationInput): number
+  /**
+   * Folds an Arrow stream's rows in, by the update rule; how many rows it
+   * read.
+   */
+  extendFromArrowReader(reader: BatchReader): number
+  /**
+   * The rows as a `BatchReader` under the registry's row field, in ISIN
+   * order: a snapshot taken under the lock, which a learn while it
+   * streams does not move. Write it with an `IOBase`'s
+   * `writeArrowReader` - an overwrite saves a snapshot, a merge by `isin`
+   * upserts.
+   */
+  intoArrowReader(): BatchReader
+  /** The row of `isin` as a plain object of its columns, or `null`. */
+  get(isin: string): Record<string, unknown> | null
+  /**
+   * The row the RIC `ric` names, as a plain object of its columns, or
+   * `null`.
+   */
+  getByRic(ric: string): Record<string, unknown> | null
+  /**
+   * Folds one row - an object of column names to cells, `isin` required
+   * - into the row of its ISIN by the update rule: a column the row
+   * lacks is filled, one it holds is replaced by a statement at or after
+   * the row's `updunix` and kept against an older one, a refining CFI
+   * code refines whatever the time. Whether anything moved.
+   */
+  merge(entry: Record<string, unknown>): boolean
+  /** Removes the row of `isin`, answering it as a plain object, or `null`. */
+  remove(isin: string): Record<string, unknown> | null
+  /** Removes every row. */
+  clear(): void
+  /** How many instruments it holds. */
+  get length(): number
+  /** The most instruments it holds. */
+  get maxInstruments(): number
+  /**
+   * Learns what a message states about its instrument - keyed by its
+   * stated ISIN, else by its stated RIC, which only fills - dated at its
+   * `currunix`. Whether anything moved.
+   */
+  learn(message: FixMsg): boolean
+  /**
+   * Fills what a message leaves unsaid about its instrument from the row
+   * its ISIN, else its RIC, names - each equivalent as a `derived`
+   * identifier, the listing codes and the ticker on its own market, its
+   * CFI code where the row's refines it - never its wire. Whether
+   * anything moved.
+   */
+  fill(message: FixMsg): boolean
+  /** `learn`, then `fill`. Whether anything moved in either. */
+  enrich(message: FixMsg): boolean
+  /** Whether `other` is this registry - the same shared table. */
+  equals(other: IsinRegistry): boolean
+  /** Render `IsinRegistry(len=…, maxInstruments=…)`. */
+  toString(): string
+}
+export type JsIsinRegistry = IsinRegistry
+
+/**
  * The entries of one listing, one at a time.
  *
  * Built by `iterdir`, `ls`, `glob`, `rglob`, and `childrenWhere`. It wraps
@@ -4900,8 +5028,9 @@ export declare class MarketData {
    * `lifecycle` of the chain `crosscode` names - the stored cross code,
    * `10:1:ORD-1`, the exact code of the chain - the one view that takes
    * one - read ignoring ASCII case, with each lift, a `FieldPath` read
-   * once (`identifiers['fix:clordid'].value as clordid`: an identifier
-   * column is a map keyed `src:type`), appended as a projection after the
+   * once (`identifiers['clordid'] as clordid`: an identifier column is a
+   * map from the key's text - `src:type`, the type alone for the base
+   * source - to the value), appended as a projection after the
    * view's own columns. Built structurally; its text reads back as the
    * same plan.
    */
@@ -4963,9 +5092,9 @@ export declare class MarketData {
    */
   get side(): string
   /**
-   * The instrument's security identifiers, each a source, a type
-   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
-   * map keyed `src:type`, in key order.
+   * The instrument's security identifiers, each a code under a key
+   * - `isin`, `derived:cusip`, `ullink:isin` - a map keyed
+   * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
   /**
@@ -5488,9 +5617,9 @@ export declare class Order {
    */
   get side(): string
   /**
-   * The instrument's security identifiers, each a source, a type
-   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
-   * map keyed `src:type`, in key order.
+   * The instrument's security identifiers, each a code under a key
+   * - `isin`, `derived:cusip`, `ullink:isin` - a map keyed
+   * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
   /**
@@ -5582,10 +5711,10 @@ export declare class Order {
    */
   get tradable(): boolean | null
   /**
-   * The names the operation goes by - `fix:clordid`,
-   * `fix:orderid` - with the parents a chain gave them
-   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
-   * a map keyed `src:type`, in key order.
+   * The names the operation goes by - `clordid`, `orderid` - with
+   * the parents a chain gave them (`origclordid`,
+   * `parentorderid`, `origorderid`); a map keyed `src:type`, the
+   * type alone for the base source, in key order.
    */
   get identifiers(): Identifiers
   /**
@@ -5756,9 +5885,9 @@ export declare class OrderEvent {
    */
   get side(): string
   /**
-   * The instrument's security identifiers, each a source, a type
-   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
-   * map keyed `src:type`, in key order.
+   * The instrument's security identifiers, each a code under a key
+   * - `isin`, `derived:cusip`, `ullink:isin` - a map keyed
+   * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
   /**
@@ -5850,10 +5979,10 @@ export declare class OrderEvent {
    */
   get tradable(): boolean | null
   /**
-   * The names the operation goes by - `fix:clordid`,
-   * `fix:orderid` - with the parents a chain gave them
-   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
-   * a map keyed `src:type`, in key order.
+   * The names the operation goes by - `clordid`, `orderid` - with
+   * the parents a chain gave them (`origclordid`,
+   * `parentorderid`, `origorderid`); a map keyed `src:type`, the
+   * type alone for the base source, in key order.
    */
   get identifiers(): Identifiers
   /**
@@ -6452,9 +6581,9 @@ export declare class Quote {
    */
   get side(): string
   /**
-   * The instrument's security identifiers, each a source, a type
-   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
-   * map keyed `src:type`, in key order.
+   * The instrument's security identifiers, each a code under a key
+   * - `isin`, `derived:cusip`, `ullink:isin` - a map keyed
+   * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
   /**
@@ -6546,10 +6675,10 @@ export declare class Quote {
    */
   get tradable(): boolean | null
   /**
-   * The names the operation goes by - `fix:clordid`,
-   * `fix:orderid` - with the parents a chain gave them
-   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
-   * a map keyed `src:type`, in key order.
+   * The names the operation goes by - `clordid`, `orderid` - with
+   * the parents a chain gave them (`origclordid`,
+   * `parentorderid`, `origorderid`); a map keyed `src:type`, the
+   * type alone for the base source, in key order.
    */
   get identifiers(): Identifiers
   /**
@@ -6720,9 +6849,9 @@ export declare class QuoteEvent {
    */
   get side(): string
   /**
-   * The instrument's security identifiers, each a source, a type
-   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
-   * map keyed `src:type`, in key order.
+   * The instrument's security identifiers, each a code under a key
+   * - `isin`, `derived:cusip`, `ullink:isin` - a map keyed
+   * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
   /**
@@ -6814,10 +6943,10 @@ export declare class QuoteEvent {
    */
   get tradable(): boolean | null
   /**
-   * The names the operation goes by - `fix:clordid`,
-   * `fix:orderid` - with the parents a chain gave them
-   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
-   * a map keyed `src:type`, in key order.
+   * The names the operation goes by - `clordid`, `orderid` - with
+   * the parents a chain gave them (`origclordid`,
+   * `parentorderid`, `origorderid`); a map keyed `src:type`, the
+   * type alone for the base source, in key order.
    */
   get identifiers(): Identifiers
   /**
@@ -8129,9 +8258,9 @@ export declare class SnapshotEvent {
    */
   get side(): string
   /**
-   * The instrument's security identifiers, each a source, a type
-   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
-   * map keyed `src:type`, in key order.
+   * The instrument's security identifiers, each a code under a key
+   * - `isin`, `derived:cusip`, `ullink:isin` - a map keyed
+   * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
   /**
@@ -9410,9 +9539,9 @@ export declare class TradeEvent {
    */
   get side(): string
   /**
-   * The instrument's security identifiers, each a source, a type
-   * and a code - `base:isin`, `derived:cusip`, `base:figi` - a
-   * map keyed `src:type`, in key order.
+   * The instrument's security identifiers, each a code under a key
+   * - `isin`, `derived:cusip`, `ullink:isin` - a map keyed
+   * `src:type`, the type alone for the base source, in key order.
    */
   get securityids(): Identifiers
   /**
@@ -9504,10 +9633,10 @@ export declare class TradeEvent {
    */
   get tradable(): boolean | null
   /**
-   * The names the operation goes by - `fix:clordid`,
-   * `fix:orderid` - with the parents a chain gave them
-   * (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
-   * a map keyed `src:type`, in key order.
+   * The names the operation goes by - `clordid`, `orderid` - with
+   * the parents a chain gave them (`origclordid`,
+   * `parentorderid`, `origorderid`); a map keyed `src:type`, the
+   * type alone for the base source, in key order.
    */
   get identifiers(): Identifiers
   /**
@@ -10692,6 +10821,12 @@ export interface FixCodecOptions {
    * core's `true` when unstated.
    */
   marketMetadata?: boolean
+  /**
+   * The `IsinRegistry` every `lifecycle` learns into and fills from,
+   * shared so a walk run after another starts from what the first
+   * learned; each walk learns into its own, starting empty, when unstated.
+   */
+  isinRegistry?: IsinRegistry
 }
 
 /**

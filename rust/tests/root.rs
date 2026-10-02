@@ -87,6 +87,8 @@ mod gzip;
 mod hostname;
 #[path = "root/identifier.rs"]
 mod identifier;
+#[path = "root/idkey.rs"]
+mod idkey;
 #[path = "root/idsource.rs"]
 mod idsource;
 #[path = "root/idtype.rs"]
@@ -109,6 +111,8 @@ mod iomedia;
 mod iomode;
 #[path = "root/isin.rs"]
 mod isin;
+#[path = "root/isin_registry.rs"]
+mod isin_registry;
 #[path = "root/lib.rs"]
 mod lib;
 #[path = "root/limit.rs"]

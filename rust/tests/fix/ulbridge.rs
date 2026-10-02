@@ -1433,8 +1433,14 @@ mod dataset {
         // be held in the order of their keys as `src:type` spells them, the
         // bridge's own keys among them: each delta digests the identifiers
         // its `ParentOrderID`, `OMSUserID` and `OMSInstrumentID` keys state
-        // under the sources their names spell.
-        assert_eq!(last.get_currhashcode(), 1_642_488_774_851_967_775);
+        // under the sources their names spell. It moved again when every
+        // type took its base key, spelled as the type alone: the `fix`
+        // source became the base, so each delta digests the wire's
+        // identifiers under `base`, the base key a named source fills - a
+        // party's role under `proprietary`, the bridge's `oms` instrument -
+        // beside it, in the order the keys spell; and when the bridge's
+        // `DETAILEDCFICODE` became a name of `CFICode(461)`, folded into it.
+        assert_eq!(last.get_currhashcode(), 11_953_173_911_701_746_314);
 
         // No leaf keys a typed fact.
         for operation in &operations {
@@ -1501,7 +1507,7 @@ mod dataset {
                 } else {
                     identifiers
                 };
-                assert_eq!(set.get_from(id.src(), id.kind()), Some(id.value()), "{key}");
+                assert_eq!(set.get_from(id.key()), Some(id.value()), "{key}");
                 lifted += 1;
             }
         }
@@ -1520,10 +1526,10 @@ mod dataset {
             .find(|operation| operation.get_srcuuids().contains(&of_line(105)))
             .expect("the fill line 105 carries");
         assert_eq!(
-            sets(fill)[2].get_from(
-                &"tech".parse::<yggdryl::IdSource>().unwrap(),
-                &yggdryl::IdType::ClientId
-            ),
+            sets(fill)[2].get_from(&yggdryl::IdKey::new(
+                "tech".parse::<yggdryl::IdSource>().unwrap(),
+                yggdryl::IdType::ClientId
+            )),
             Some("OMSX1")
         );
         assert!(!fill.get_metadata().contains_key("tech.clientid"));

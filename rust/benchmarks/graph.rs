@@ -10,6 +10,8 @@ criterion_group!(
     graph,
     graph_benches::book::benchmarks,
     graph_benches::candle::benchmarks,
+    graph_benches::identifier::benchmarks,
+    graph_benches::isin_registry::benchmarks,
     graph_benches::view::benchmarks
 );
 criterion_main!(graph);

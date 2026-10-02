@@ -19,8 +19,8 @@ use crate::graph::facts::OperationEventFacts;
 use crate::graph::{Element, Event, FxRates, Market, Metadata, Operation};
 use crate::xxhash;
 use crate::{
-    Ccy, Cfi, Decimal, Forex, IdSource, IdType, Identifier, Identifiers, MarketDataKind, Mic, Side,
-    State, StructType, TimeInForce, Unit, Uuid,
+    Ccy, Cfi, Decimal, Forex, IdKey, IdSource, IdType, Identifier, Identifiers, MarketDataKind,
+    Mic, Side, State, StructType, TimeInForce, Unit, Uuid,
 };
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie};
 
@@ -38,17 +38,19 @@ const ROW_STATED_RECORDING: u64 = 1 << 9;
 /// `bloombergcode`, `figicode`, `forexcode` - each column's tag beside the
 /// type it views, in the order a row's are resolved
 /// ([`FixMsg::resolve_views`]).
-const SECURITY_VIEWS: [(i32, IdType); 4] = [
-    (super::ISINCODE_TAG_NAME.0, IdType::Isin),
-    (super::BLOOMBERGCODE_TAG_NAME.0, IdType::Bloomberg),
-    (super::FIGICODE_TAG_NAME.0, IdType::Figi),
-    (super::FOREXCODE_TAG_NAME.0, IdType::Forex),
+const SECURITY_VIEWS: [((i32, &str), IdType); 4] = [
+    (super::ISINCODE_TAG_NAME, IdType::Isin),
+    (super::BLOOMBERGCODE_TAG_NAME, IdType::Bloomberg),
+    (super::FIGICODE_TAG_NAME, IdType::Figi),
+    (super::FOREXCODE_TAG_NAME, IdType::Forex),
 ];
 
 /// Where the crated view under `tag` stands in [`SECURITY_VIEWS`], where
 /// `tag` is one.
 fn viewed_at(tag: i32) -> Option<usize> {
-    SECURITY_VIEWS.iter().position(|(held, _)| *held == tag)
+    SECURITY_VIEWS
+        .iter()
+        .position(|((held, _), _)| *held == tag)
 }
 
 /// The views of the security identifiers a row stated, as it stated them,
@@ -326,7 +328,7 @@ impl<'registry> PartyCodes<'registry> {
             Some(word) => word.parse().ok()?,
             None => IdSource::Base,
         };
-        Identifier::new(src, kind, value).ok()
+        Identifier::new(IdKey::new(src, kind), value).ok()
     }
 
     /// The party `Account(1)` states: an [`IdType::Account`] sourced by its
@@ -336,7 +338,7 @@ impl<'registry> PartyCodes<'registry> {
             Some(word) => word.parse().ok()?,
             None => IdSource::Base,
         };
-        Identifier::new(src, IdType::Account, value).ok()
+        Identifier::new(IdKey::new(src, IdType::Account), value).ok()
     }
 }
 
@@ -374,7 +376,9 @@ where
     }
     // Measured before it is spelled: a spelling no word is costs nothing.
     crate::identifier::folded_len(code)
-        .is_some_and(|len| len > 0 && prefix.len() + len <= crate::identifier::IDENTIFIER_KEY_WIDTH)
+        .is_some_and(|len| {
+            len > 0 && prefix.len() + len <= crate::identifier::IDENTIFIER_WORD_WIDTH
+        })
         .then(|| Cow::Owned(format!("{prefix}{code}")))
 }
 
@@ -496,7 +500,7 @@ fn admit_identifier(
     if crate::code::is_null_like(value) {
         return;
     }
-    let id = match kind.and_then(|kind| Identifier::new(src, kind, value)) {
+    let id = match kind.and_then(|kind| Identifier::new(IdKey::new(src, kind), value)) {
         Ok(id) => id,
         Err(error) => {
             dropped.push(super::FixAnomaly::new(
@@ -506,14 +510,10 @@ fn admit_identifier(
             return;
         }
     };
-    match ids.get_from(id.src(), id.kind()) {
+    match ids.get_from(id.key()) {
         Some(held) if held != id.value() => dropped.push(super::FixAnomaly::new(
             field,
-            format!(
-                "states {id} where {}:{}={held} is already stated",
-                id.src(),
-                id.kind()
-            ),
+            format!("states {id} where {}={held} is already stated", id.key()),
         )),
         Some(_) => {}
         None => {
@@ -765,8 +765,10 @@ pub struct FixMsg {
     /// national code an ISIN carries, what a lifecycle's registry learned. The
     /// derived overlay - never on the wire, never in the arrival record - kept
     /// across settles and filling only a type the stated set leaves absent,
-    /// each under the [`DERIVED`] source.
-    derived: Identifiers,
+    /// each a type and its code held under [`IdSource::Derived`]. A type and a
+    /// code rather than a map, so re-applying it never re-applies the base
+    /// key a derivation fills.
+    derived: SmallVec<[(IdType, SmolStr); 2]>,
     /// Which cells [FX detection](super::forex) wrote, one bit per cell:
     /// a later detection may rewrite or take back those and no other. A
     /// row read back, and a write of the cell, make it the row's word.
@@ -1378,7 +1380,7 @@ impl FixMsg {
             value: Scalar::from_sequence(values),
             entries: OnceLock::new(),
             carried: Vec::new(),
-            derived: Identifiers::new(),
+            derived: SmallVec::new(),
             detected_fx: 0,
             anomalies: Vec::new(),
             arrival_anomalies: 0,
@@ -2355,8 +2357,8 @@ impl FixMsg {
         let _ = self.event.set_securityids(securityids, overwrite);
         // The derived overlay goes back as derived, so a stated identifier
         // still answers before it and removing the ISIN still takes it back.
-        for id in self.derived.iter() {
-            self.event.derive_securityid(id.kind(), id.value());
+        for (kind, code) in &self.derived {
+            self.event.derive_securityid(kind, code);
         }
         // What this reading dropped replaces what the last one did, and the
         // identifier maps' tail behind it, which the next rebuild restates.
@@ -2391,23 +2393,21 @@ impl FixMsg {
     /// the ticker is [`Market::fill_market`]'s. Any other code the
     /// message's reading - the wire's `SecurityIDSource(22)`/`SecurityID(48)`
     /// and alternates, a keyed entry that lands, the ISIN a bridge's
-    /// instrument key names - does not already answer is a statement,
-    /// inserted from `base` as a caller's [`Market::insert_securityid`] of
-    /// it is, which states the set.
+    /// instrument key names - does not already answer is a statement of its
+    /// type's base key, which a view is.
     ///
     /// A row `read_back` with no `securityids` column says of the set only
     /// what its views say, each the code `get` answered for its type when
     /// the row was written: a code `get` over the reading answers states
-    /// nothing, and a statement is made to lead its type - every identifier
-    /// of its type the reading states set aside first, as
-    /// [`Market::remove_securityid`] sets it aside - having lost its source
-    /// and whether it was derived, which only that column carries. On a
-    /// parsed line, and beside the column, which is the row's word, a code
-    /// an identifier of its type already holds states nothing and a
-    /// statement stands beside the codes of its type, which rank before it.
-    /// Where nothing stated the set, a keyed entry's code under the
-    /// statement's own `base` key is dropped for it and kept as an anomaly,
-    /// as two codes of one key are.
+    /// nothing, and any other replaces its type's answer - the base key -
+    /// the type's named sources kept as evidence, a replaced ISIN taking
+    /// back every derivation but the pair. On a parsed line, and beside the
+    /// column, which is the row's word, a code an identifier of its type
+    /// already holds states nothing, a view fills only, and one its type's
+    /// answer already disagrees with is dropped beside an anomaly naming the
+    /// view's column. Where nothing stated the set, a keyed entry's code
+    /// under the base key a view stated is dropped for it and kept as an
+    /// anomaly, as two codes of one key are.
     pub(super) fn resolve_views(&mut self, viewed: Viewed, read_back: bool) {
         if viewed.iter().all(Option::is_none) {
             return;
@@ -2424,11 +2424,11 @@ impl FixMsg {
         let reading = self.stated_securityids().0;
         let mut statements = Identifiers::new();
         let mut moved = false;
-        for ((_, kind), value) in SECURITY_VIEWS.iter().zip(&viewed) {
+        for (((_, column), kind), value) in SECURITY_VIEWS.iter().zip(&viewed) {
             let Some(view) = value
                 .as_ref()
                 .and_then(|value| identity::view_code(kind, value))
-                .and_then(|code| Identifier::new(IdSource::Base, kind.clone(), code).ok())
+                .and_then(|code| Identifier::new(IdKey::base(kind.clone()), code).ok())
             else {
                 continue;
             };
@@ -2448,25 +2448,22 @@ impl FixMsg {
                 }
                 continue;
             }
-            if unstated {
-                let aside: SmallVec<[IdSource; 2]> = self
-                    .event
-                    .get_securityids()
-                    .of_kind(kind)
-                    .map(Identifier::src)
-                    .filter(|src| match src {
-                        IdSource::Derived => false,
-                        IdSource::Base => true,
-                        _ => leads,
-                    })
-                    .cloned()
-                    .collect();
-                for src in &aside {
-                    let _ = self.remove_securityid(src, kind);
-                }
-            }
-            if self.insert_securityid(view.clone()).unwrap_or(false) {
+            // Read back with nothing else stating the set, the view is the
+            // row's word and replaces its type's answer, the sources kept as
+            // evidence; otherwise it only fills, and a view another code of
+            // its type already answers is dropped beside an anomaly.
+            let landed = if leads {
+                self.restate_answer(view.clone())
+            } else {
+                self.insert_securityid(view.clone()).unwrap_or(false)
+            };
+            if landed {
                 statements.insert(view);
+            } else if let Some(held) = self.event.get_securityids().get(kind)
+                && held != view.value()
+            {
+                let anomaly = dropped_identifier(column, &view, held);
+                self.note_anomaly(anomaly);
             }
         }
         // What a security identifier reaches - the market, the currency -
@@ -2482,7 +2479,7 @@ impl FixMsg {
         }
         for (key, made) in self.keyed_securityids() {
             if let Ok(id) = made
-                && let Some(held) = statements.get_from(id.src(), id.kind())
+                && let Some(held) = statements.get_from(id.key())
                 && held != id.value()
             {
                 self.note_anomaly(dropped_identifier(&key, &id, held));
@@ -2491,28 +2488,62 @@ impl FixMsg {
     }
 
     /// What a view a caller recorded states - `isincode`, `bloombergcode`,
-    /// `figicode`, `forexcode`, viewing `kind` - through the verbs a caller
-    /// states the set by: a code an identifier of its type holds moves
-    /// nothing, any other replaces the identifiers of its type with one from
-    /// `base`, as [`Market::remove_securityid`] and
-    /// [`Market::insert_securityid`] would, and a null or a code its type
-    /// refuses removes them.
+    /// `figicode`, `forexcode`, viewing `kind` - over its type's base key: a
+    /// code an identifier of its type holds moves nothing, any other replaces
+    /// the type's answer, its named sources kept ([`Self::restate_answer`]),
+    /// and a null or a code its type refuses removes the type, as
+    /// [`Market::remove_securityid`] of its base key does.
     fn record_view(&mut self, kind: &IdType, value: &Scalar) {
         let code = identity::view_code(kind, value);
         let held = self.event.get_securityids();
         if code.is_some_and(|code| held.of_kind(kind).any(|id| id.value() == code)) {
             return;
         }
-        let replaced: SmallVec<[IdSource; 2]> =
-            held.of_kind(kind).map(|id| id.src().clone()).collect();
-        for src in &replaced {
-            let _ = self.remove_securityid(src, kind);
+        match code.and_then(|code| Identifier::new(IdKey::base(kind.clone()), code).ok()) {
+            Some(id) => {
+                self.restate_answer(id);
+            }
+            None => {
+                let _ = self.remove_securityid(&IdKey::base(kind.clone()));
+            }
         }
-        if let Some(id) =
-            code.and_then(|code| Identifier::new(IdSource::Base, kind.clone(), code).ok())
-        {
-            let _ = self.insert_securityid(id);
+    }
+
+    /// Replaces the answer of `id`'s type - its base key - with `id`, the
+    /// type's named sources kept as evidence, as [`Identifiers::set`] does:
+    /// the derivation of its type goes, and a replaced ISIN takes back every
+    /// derivation but the pair, which hangs on the symbol. Whether anything
+    /// moved.
+    fn restate_answer(&mut self, id: Identifier) -> bool {
+        let kind = id.kind().clone();
+        let mut ids = self.event.get_securityids().clone();
+        if !ids.set(id) {
+            return false;
         }
+        self.derived.retain(|(held, _)| *held != kind);
+        if kind == IdType::Isin {
+            self.derived.retain(|(held, _)| *held == IdType::Forex);
+            let taken: SmallVec<[IdKey; 4]> = ids
+                .iter()
+                .filter(|held| held.src() == &IdSource::Derived && held.kind() != &IdType::Forex)
+                .map(|held| held.key().clone())
+                .collect();
+            for key in &taken {
+                ids.remove(key);
+            }
+        }
+        self.stated |= fact::SECURITYIDS;
+        let _ = self.event.set_securityids(ids, true);
+        true
+    }
+
+    /// Keeps of the derived overlay what the event's set still holds under
+    /// [`IdSource::Derived`]: a statement took back the rest.
+    fn retain_derived(&mut self) {
+        let held = self.event.get_securityids();
+        self.derived.retain(|(kind, code)| {
+            held.get_from(&IdKey::new(IdSource::Derived, kind.clone())) == Some(code.as_str())
+        });
     }
 
     /// The identifier `Symbol(55)` derives for `view`'s type where it is
@@ -2547,7 +2578,7 @@ impl FixMsg {
         if code != view.value() || stated(self.event.get_securityids()) || stated(reading) {
             return None;
         }
-        Identifier::new(IdSource::Derived, kind.clone(), &code).ok()
+        Identifier::new(IdKey::new(IdSource::Derived, kind.clone()), &code).ok()
     }
 
     /// One field's exact decimal. A value stated but unreadable is none,
@@ -2649,7 +2680,7 @@ impl FixMsg {
                 self.event
                     .get_securityids()
                     .get(&IdType::Forex)
-                    .or_else(|| self.derived.get(&IdType::Forex))
+                    .or_else(|| self.derived_code(&IdType::Forex))
                     .and_then(|code| Forex::new(code).ok())
                     .map(|_| Mic::none())
             })
@@ -2815,7 +2846,7 @@ impl FixMsg {
         // staying on the wire as it arrived.
         let mut insert =
             |ids: &mut Identifiers, field: &str, made: crate::Result<Identifier>| match made {
-                Ok(id) => match ids.get_from(id.src(), id.kind()) {
+                Ok(id) => match ids.get_from(id.key()) {
                     Some(held) if held != id.value() => {
                         anomalies.push(dropped_identifier(field, &id, held));
                     }
@@ -2832,7 +2863,7 @@ impl FixMsg {
                     insert(
                         ids,
                         field,
-                        security_identifier(&source, IdSource::Fix, &code),
+                        security_identifier(&source, IdSource::Base, &code),
                     );
                 }
             };
@@ -2855,7 +2886,9 @@ impl FixMsg {
         let named = instrument_key(&ids)
             .and_then(|named| Some((named.isin?, named.src)))
             .filter(|_| !ids.contains_kind(&IdType::Isin))
-            .and_then(|(isin, src)| Identifier::new(src, IdType::Isin, isin.as_str()).ok());
+            .and_then(|(isin, src)| {
+                Identifier::new(IdKey::new(src, IdType::Isin), isin.as_str()).ok()
+            });
         if let Some(isin) = named {
             ids.insert(isin);
         }
@@ -3030,7 +3063,7 @@ impl FixMsg {
                     if let Some(value) = self.get_by_tag(*tag).as_ref().and_then(scalar_text) {
                         admit_identifier(
                             &mut identifiers,
-                            IdSource::Fix,
+                            IdSource::Base,
                             Ok(source.key().clone()),
                             &value,
                             field,
@@ -3044,7 +3077,7 @@ impl FixMsg {
                         {
                             admit_identifier(
                                 &mut identifiers,
-                                IdSource::Fix,
+                                IdSource::Base,
                                 Ok(source.key().clone()),
                                 &value,
                                 field,
@@ -3060,7 +3093,7 @@ impl FixMsg {
                 if let Some(value) = value {
                     admit_identifier(
                         &mut identifiers,
-                        IdSource::Fix,
+                        IdSource::Base,
                         regulatory_kind(kind.as_deref()),
                         &value,
                         "regulatorytradeids",
@@ -3113,22 +3146,20 @@ impl FixMsg {
         // `ClOrdID(11)` - fills it.
         // The held set is copied only where the fields name one it lacks.
         let lacks = |held: &Identifiers, stated: &Identifiers| {
-            stated
-                .iter()
-                .any(|id| held.get_from(id.src(), id.kind()).is_none())
+            stated.iter().any(|id| held.get_from(id.key()).is_none())
         };
         if self.stated & fact::IDENTIFIERS == 0 {
             let _ = self.event.set_identifiers(identifiers, true);
         } else if lacks(self.event.get_identifiers(), &identifiers) {
             let mut held = self.event.get_identifiers().clone();
-            held.merge(&identifiers);
+            held.merge(&identifiers, false);
             let _ = self.event.set_identifiers(held, true);
         }
         if self.stated & fact::PARTYIDS == 0 {
             let _ = self.event.set_partyids(partyids, true);
         } else if lacks(self.event.get_partyids(), &partyids) {
             let mut held = self.event.get_partyids().clone();
-            held.merge(&partyids);
+            held.merge(&partyids, false);
             let _ = self.event.set_partyids(held, true);
         }
     }
@@ -3238,11 +3269,6 @@ impl FixMsg {
         // The children a read reaches by name rather than by tag.
         let named: SmallVec<[usize; 6]> =
             std::iter::once(self.child_index(&self.field, EVENT_TIMESTAMP))
-                .chain(
-                    super::cfi::DETAILED_NAMES
-                        .iter()
-                        .map(|name| self.index_of_name(name)),
-                )
                 .chain(
                     BID_CURRENCY
                         .iter()
@@ -4836,8 +4862,15 @@ struct InstrumentKey {
 /// spells after its last `;` - `dbi;CH0012214059_XSWX_CHF` - read by
 /// [`SymbolCode::instrument`](crate::securityid::SymbolCode::instrument),
 /// the one reading of that shape a symbol is read by too.
+///
+/// A named source's key is read before the base key, which only echoes the
+/// first of them where nothing else stated it: the source that named the
+/// instrument is the one its ISIN is filed under.
 fn instrument_key(ids: &Identifiers) -> Option<InstrumentKey> {
-    ids.of_kind(&IdType::InstrumentId).find_map(|id| {
+    let keys = ids.of_kind(&IdType::InstrumentId);
+    let (named, base): (SmallVec<[&Identifier; 2]>, SmallVec<[&Identifier; 2]>) =
+        keys.partition(|id| !id.key().is_base());
+    named.into_iter().chain(base).find_map(|id| {
         match crate::securityid::SymbolCode::instrument(id.value().rsplit(';').next()?)? {
             crate::securityid::SymbolCode::Instrument { isin, mic, ccy } => Some(InstrumentKey {
                 isin,
@@ -4874,11 +4907,13 @@ pub(super) fn security_identifier(
         .and_then(|folded| folded.strip_suffix(INSTRUMENT_ID));
     match namespace {
         Some(namespace) => Identifier::new(
-            IdSource::from_namespace(namespace)?.unwrap_or(src),
-            IdType::InstrumentId,
+            IdKey::new(
+                IdSource::from_namespace(namespace)?.unwrap_or(src),
+                IdType::InstrumentId,
+            ),
             code,
         ),
-        None => Identifier::new(src, IdType::from_security_source(source)?, code),
+        None => Identifier::new(IdKey::new(src, IdType::from_security_source(source)?), code),
     }
 }
 
@@ -5233,11 +5268,7 @@ impl Holds<'_> {
 fn dropped_identifier(field: &str, id: &Identifier, held: &str) -> super::FixAnomaly {
     super::FixAnomaly::new(
         field,
-        format!(
-            "states {id} where {}:{}={held} is already stated",
-            id.src(),
-            id.kind()
-        ),
+        format!("states {id} where {}={held} is already stated", id.key()),
     )
 }
 
@@ -5265,8 +5296,8 @@ fn inferred_identifier(
                 .into_iter()
                 .flatten(),
         );
-    let (src, kind) = Identifier::key_parts(key, names)?;
-    wanted(&kind).then(|| Identifier::new(src, kind, value))
+    let key = IdKey::infer(key, names)?;
+    wanted(key.kind()).then(|| Identifier::new(key, value))
 }
 
 /// The `FIX:identifiers` a component - a message's definition, an
@@ -5957,53 +5988,66 @@ impl Market for FixMsg {
 
     /// The caller's word: the identifiers become the message's, which no
     /// settle restates from the fields, and the wire stays as the source
-    /// sent it. Under `overwrite` the derived overlay goes too.
+    /// sent it. The derived overlay becomes what the set now holds under
+    /// [`IdSource::Derived`], so a whole set handed over - a merge's - keeps
+    /// its derivations across the next settle.
     fn set_securityids(&mut self, ids: Identifiers, overwrite: bool) -> Result<()> {
         self.stated |= fact::SECURITYIDS;
-        if overwrite {
-            self.derived = Identifiers::new();
-        }
-        self.event.set_securityids(ids, overwrite)
+        self.event.set_securityids(ids, overwrite)?;
+        self.derived = self
+            .event
+            .get_securityids()
+            .iter()
+            .filter(|id| id.src() == &IdSource::Derived)
+            .map(|id| (id.kind().clone(), SmolStr::new(id.value())))
+            .collect();
+        Ok(())
     }
 
     fn insert_securityid(&mut self, id: Identifier) -> Result<bool> {
         if id.src() == &IdSource::Derived {
             return Ok(self.derive_securityid(id.kind(), id.value()));
         }
-        // A stated identifier answers before a derived one of its type.
-        self.derived.remove_kind(id.kind());
         self.stated |= fact::SECURITYIDS;
-        self.event.insert_securityid(id)
+        let landed = self.event.insert_securityid(id)?;
+        // A statement takes back the derivation of its type, in the overlay
+        // as in the set.
+        self.retain_derived();
+        Ok(landed)
     }
 
-    fn remove_securityid(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
-        self.derived.remove(src, kind);
-        if kind == &IdType::Isin {
+    fn remove_securityid(&mut self, key: &IdKey) -> Result<bool> {
+        self.stated |= fact::SECURITYIDS;
+        // What the key removes leaves the overlay too: a derivation's own
+        // key, or, a base key, every key of its type.
+        if key.is_base() || key.src() == &IdSource::Derived {
+            self.derived.retain(|(kind, _)| kind != key.kind());
+        }
+        let removed = self.event.remove_securityid(key)?;
+        if self.event.get_securityids().get(&IdType::Isin).is_none() {
             // Every derived identifier hangs on the ISIN but the pair, which
             // hangs on the symbol.
-            let pair = self.derived.get_identifier(&IdType::Forex).cloned();
-            self.derived = Identifiers::new();
-            if let Some(pair) = pair {
-                self.derived.insert(pair);
-            }
+            self.derived.retain(|(kind, _)| *kind == IdType::Forex);
         }
-        self.stated |= fact::SECURITYIDS;
-        let removed = self.event.remove_securityid(src, kind)?;
         // The event takes back every derived identifier with the ISIN; what
         // the overlay still holds goes back as derived.
-        for id in self.derived.iter() {
-            self.event.derive_securityid(id.kind(), id.value());
+        for (kind, code) in &self.derived {
+            self.event.derive_securityid(kind, code);
         }
         Ok(removed)
     }
 
     fn derive_securityid(&mut self, kind: &IdType, code: &str) -> bool {
         let added = self.event.derive_securityid(kind, code);
-        if let Some(id) = added
-            .then(|| self.event.get_securityids().get_identifier(kind))
-            .flatten()
+        if added
+            && let Some(code) = self
+                .event
+                .get_securityids()
+                .get_from(&IdKey::new(IdSource::Derived, kind.clone()))
         {
-            self.derived.insert(id.clone());
+            let code = SmolStr::new(code);
+            self.derived.retain(|(held, _)| held != kind);
+            self.derived.push((kind.clone(), code));
         }
         added
     }
@@ -6264,9 +6308,9 @@ impl Operation for FixMsg {
         self.event.insert_identifier(id)
     }
 
-    fn remove_identifier(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
+    fn remove_identifier(&mut self, key: &IdKey) -> Result<bool> {
         self.stated |= fact::IDENTIFIERS;
-        self.event.remove_identifier(src, kind)
+        self.event.remove_identifier(key)
     }
 
     fn get_partyids(&self) -> &Identifiers {
@@ -6284,9 +6328,9 @@ impl Operation for FixMsg {
         self.event.insert_partyid(partyid)
     }
 
-    fn remove_partyid(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
+    fn remove_partyid(&mut self, key: &IdKey) -> Result<bool> {
         self.stated |= fact::PARTYIDS;
-        self.event.remove_partyid(src, kind)
+        self.event.remove_partyid(key)
     }
 
     /// The registry's own answer: the `FIX:parents` its fields state, else
@@ -6328,7 +6372,8 @@ impl FixMsg {
         // A message stating every base its parents name - most of them -
         // copies no set to learn so.
         if !held.iter().any(|id| {
-            parent_of(id.kind()).is_some_and(|(base, _)| held.get_from(id.src(), &base).is_none())
+            parent_of(id.kind())
+                .is_some_and(|(base, _)| held.get_from(&id.key().with_kind(base)).is_none())
         }) {
             return;
         }
@@ -6348,14 +6393,22 @@ impl FixMsg {
         self.detected_fx = cells;
     }
 
+    /// The code the derived overlay holds for `kind`.
+    fn derived_code(&self, kind: &IdType) -> Option<&str> {
+        self.derived
+            .iter()
+            .find(|(held, _)| held == kind)
+            .map(|(_, code)| code.as_str())
+    }
+
     /// Whether the derived overlay holds a currency pair.
     pub(super) fn derives_pair(&self) -> bool {
-        self.derived.contains_kind(&IdType::Forex)
+        self.derived_code(&IdType::Forex).is_some()
     }
 
     /// Whether the derived overlay holds exactly the pair `code`.
     pub(super) fn derives_pair_of(&self, code: &str) -> bool {
-        self.derived.get(&IdType::Forex) == Some(code)
+        self.derived_code(&IdType::Forex) == Some(code)
     }
 
     /// Replaces the derived currency pair, or takes it back: in the overlay,
@@ -6365,10 +6418,10 @@ impl FixMsg {
         // What a pair implies - the identifiers, and no one market - is
         // stated again at the next settle.
         self.stale |= fact::SECURITYIDS | fact::MIC;
-        self.derived.remove_kind(&IdType::Forex);
+        self.derived.retain(|(kind, _)| *kind != IdType::Forex);
         let _ = self
             .event
-            .remove_securityid(&IdSource::Derived, &IdType::Forex);
+            .remove_securityid(&IdKey::new(IdSource::Derived, IdType::Forex));
         if let Some(pair) = pair {
             self.derive_securityid(&IdType::Forex, pair);
         }

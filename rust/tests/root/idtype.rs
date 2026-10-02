@@ -7,7 +7,7 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 
-use yggdryl::{Error, IdSource, IdType, Identifier, Scalar};
+use yggdryl::{DataType, Error, IdKey, IdType, Identifier, Scalar};
 
 fn located<T>(result: yggdryl::Result<T>) -> (String, String) {
     match result.err().expect("a refusal") {
@@ -22,7 +22,7 @@ fn kind(text: &str) -> IdType {
 
 /// One identifier of `text`'s type from `base`, validated by its type.
 fn id(text: &str, value: &str) -> yggdryl::Result<Identifier> {
-    Identifier::new(IdSource::Base, kind(text), value)
+    Identifier::new(IdKey::base(kind(text)), value)
 }
 
 /// The security types FIX names, each with its code, in the code set's order.
@@ -424,7 +424,7 @@ fn a_currency_pair_is_the_crates_own_type_and_its_value_lands_as_the_canonical_p
     }
     let pair = id("forex", "eurusd").unwrap();
     assert_eq!(pair.kind(), "forex");
-    assert_eq!(pair.to_string(), "base:forex=EUR/USD");
+    assert_eq!(pair.to_string(), "forex=EUR/USD");
     assert_eq!(pair, id("ccypair", " EUR/USD ").unwrap());
 
     // A symbol, a pair of one currency, a stranger and a null-like value are
@@ -579,13 +579,12 @@ fn a_ric_holds_its_value_to_the_ric_rule() {
     );
     assert_eq!(
         Identifier::new(
-            IdSource::Base,
-            IdType::from_security_source("5").unwrap(),
+            IdKey::base(IdType::from_security_source("5").unwrap()),
             "AAPL.OQ"
         )
         .unwrap()
         .to_string(),
-        "base:ric=AAPL.OQ"
+        "ric=AAPL.OQ"
     );
 
     // An inner space splits the token, which another type would hold.
@@ -604,58 +603,53 @@ fn a_ric_holds_its_value_to_the_ric_rule() {
 #[test]
 fn a_security_identifier_reads_its_type_and_holds_its_value_canonically() {
     let apple = id("isin", " us0378331005 ").unwrap();
-    assert_eq!(apple.to_string(), "base:isin=US0378331005");
+    assert_eq!(apple.to_string(), "isin=US0378331005");
     assert_eq!(apple.kind(), "isin");
     assert_eq!(apple.src(), "base");
     assert_eq!(apple.value(), "US0378331005");
     assert_eq!(
         apple,
         Identifier::new(
-            IdSource::Base,
-            IdType::from_security_source("4").unwrap(),
+            IdKey::base(IdType::from_security_source("4").unwrap()),
             "US0378331005"
         )
         .unwrap()
     );
     assert_eq!(apple, id("ISINNumber", "US0378331005").unwrap());
     assert_eq!(
-        Identifier::new(IdSource::Fix, IdType::Isin, "US0378331005")
-            .unwrap()
-            .src(),
-        "fix",
+        Identifier::new(
+            IdKey::new("ullink".parse().unwrap(), IdType::Isin),
+            "US0378331005"
+        )
+        .unwrap()
+        .src(),
+        "ullink",
         "the source is whoever stated it"
     );
     assert_eq!(
         id("cusip", "037833100").unwrap().to_string(),
-        "base:cusip=037833100"
+        "cusip=037833100"
     );
-    assert_eq!(
-        id("sedol", "b4bnmy3").unwrap().to_string(),
-        "base:sedol=B4BNMY3"
-    );
-    assert_eq!(
-        id("valor", "3886335").unwrap().to_string(),
-        "base:valor=3886335"
-    );
+    assert_eq!(id("sedol", "b4bnmy3").unwrap().to_string(), "sedol=B4BNMY3");
+    assert_eq!(id("valor", "3886335").unwrap().to_string(), "valor=3886335");
     assert_eq!(
         id("A", "aapl us Equity").unwrap().to_string(),
-        "base:a=aapl us Equity",
+        "a=aapl us Equity",
         "a bare letter is a word to a parse: a code is read by from_security_source"
     );
     assert_eq!(
         Identifier::new(
-            IdSource::Base,
-            IdType::from_security_source("A").unwrap(),
+            IdKey::base(IdType::from_security_source("A").unwrap()),
             "aapl us Equity"
         )
         .unwrap()
         .to_string(),
-        "base:bloomberg=aapl us Equity"
+        "bloomberg=aapl us Equity"
     );
 
     // A type no member names is kept, folded as every type is.
     let house = id("house-key", "hk-1").unwrap();
-    assert_eq!(house.to_string(), "base:housekey=hk-1");
+    assert_eq!(house.to_string(), "housekey=hk-1");
     assert_eq!(house.value(), "hk-1");
     assert_eq!(
         id(&"K".repeat(64), "c").unwrap().kind().as_str(),
@@ -1061,5 +1055,62 @@ fn every_fix_security_source_reads_by_its_code_and_its_name() {
             IdType::from_security_source(refused).is_err(),
             "{refused:?}"
         );
+    }
+}
+
+#[test]
+fn a_listing_type_and_the_datatype_a_column_of_each_type_declares() {
+    for listing in [
+        IdType::Ric,
+        IdType::Bloomberg,
+        IdType::ExchSymb,
+        IdType::Cta,
+        IdType::Sedol,
+        IdType::Figi,
+        IdType::MktAssigned,
+        IdType::Fim,
+        IdType::Umtf,
+        IdType::InstrumentId,
+    ] {
+        assert!(listing.is_listing(), "{listing}");
+    }
+    for instrument in [
+        IdType::Isin,
+        IdType::Cusip,
+        IdType::Valor,
+        IdType::Wkn,
+        IdType::Cfi,
+        IdType::ClOrdId,
+        kind("housecode"),
+    ] {
+        assert!(!instrument.is_listing(), "{instrument}");
+    }
+    for (known, dtype) in [
+        (IdType::Isin, DataType::isin()),
+        (IdType::Cusip, DataType::cusip()),
+        (IdType::Sedol, DataType::sedol()),
+        (IdType::Figi, DataType::figi()),
+        (IdType::Ric, DataType::ric()),
+        (IdType::Bloomberg, DataType::bbg()),
+        (IdType::IsoCcy, DataType::ccy()),
+        (IdType::IsoCtry, DataType::country()),
+        (IdType::Cfi, DataType::cfi()),
+        (IdType::Forex, DataType::forex()),
+        (IdType::Valor, DataType::utf8()),
+        (IdType::OrderId, DataType::utf8()),
+        (kind("housecode"), DataType::utf8()),
+    ] {
+        assert_eq!(known.value_dtype(), dtype, "{known}");
+    }
+    // A market view's column names its type.
+    for (column, expected) in [
+        ("isincode", IdType::Isin),
+        ("riccode", IdType::Ric),
+        ("cficode", IdType::Cfi),
+        ("forexcode", IdType::Forex),
+        ("bloombergcode", IdType::Bloomberg),
+        ("figicode", IdType::Figi),
+    ] {
+        assert_eq!(kind(column), expected, "{column}");
     }
 }

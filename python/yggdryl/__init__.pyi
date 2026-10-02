@@ -336,5 +336,8 @@ from .identifier import (
     Identifier as Identifier,
     Identifiers as Identifiers,
 )
+from .isin_registry import (
+    IsinRegistry as IsinRegistry,
+)
 
 __all__: list[str]

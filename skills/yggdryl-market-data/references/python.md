@@ -39,8 +39,8 @@ order = graph.OrderEvent(
     currency="USD",
     ticker="AAPL",
     # An identifier is a source, a type and a value, unique by `src:type`; a code is checked by its type.
-    securityids=[Identifier("base", "isin", "US0378331005")],
-    identifiers=[Identifier("fix", "orderid", "O-1001")],
+    securityids=[Identifier("isin", "US0378331005")],
+    identifiers=[Identifier("orderid", "O-1001")],
 )
 # A dated identity is a UUIDv7: its millisecond leads.
 assert order.curruuid.as_py().startswith("018bcfe5-6800-7")
@@ -48,7 +48,7 @@ assert order.curruuid.as_py().startswith("018bcfe5-6800-7")
 assert order.crosscode == "10:1:O-1001"
 assert order.crossuuid != order.curruuid, "the cross code names a chain"
 # Derived on construction: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
-assert [str(id) for id in order.securityids] == ["base:isin=US0378331005", "derived:cusip=037833100"]
+assert [str(id) for id in order.securityids] == ["cusip=037833100", "derived:cusip=037833100", "isin=US0378331005"]
 assert order.securityids.get("cusip") == "037833100"
 assert order.isincode == "US0378331005"
 assert order.lastpx is None, "a price is never a last execution"
@@ -440,7 +440,7 @@ from yggdryl import Identifier, Plan, enums, graph
 
 T = 1_700_000_000_000_000_000
 order = graph.OrderEvent(
-    T, crosscode="O-1001", side="BUYS", identifiers=[Identifier("fix", "clordid", "C-1")]
+    T, crosscode="O-1001", side="BUYS", identifiers=[Identifier("clordid", "C-1")]
 )
 root = graph.OrderEvent(T + 1_000_000_000, crosscode="T-1")
 trade = graph.TradeEvent.from_parts(
@@ -456,7 +456,7 @@ def stream():
 
 assert set(enums.MARKET_VIEWS) == {"orders", "quotes", "executions", "trades", "books", "lifecycle"}
 # A lift reaches one identifier of the map by its key.
-orders = graph.MarketData.apply_view("orders", stream(), ["identifiers['fix:clordid'].value as clordid"]).read_all()
+orders = graph.MarketData.apply_view("orders", stream(), ["identifiers['clordid'] as clordid"]).read_all()
 assert orders.schema.names[-1] == "clordid"
 assert orders.column("clordid").to_pylist() == ["C-1"]
 

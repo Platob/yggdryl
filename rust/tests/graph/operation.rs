@@ -7,18 +7,17 @@
 use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::graph::{
     BookRef, Element, Event, Execution, ExecutionEvent, ExecutionKind, Market, MarketKind,
     MdUpdateAction, Operation, OperationEvent, OperationKind, Order, OrderEvent, OrderKind, Quote,
     QuoteEvent, QuoteKind,
 };
-use yggdryl::{
-    Ccy, Cfi, Decimal, IdSource, IdType, Identifier, Side, State, TimeInForce, Unit, Uuid,
-};
+use yggdryl::{Ccy, Cfi, Decimal, IdType, Identifier, Side, State, TimeInForce, Unit, Uuid};
 
 /// One identifier of a plain holder: a value of `kind` from `fix`.
 fn identifier(kind: IdType, value: &str) -> Identifier {
-    Identifier::new(IdSource::Fix, kind, value).unwrap()
+    Identifier::new(IdKey::base(kind), value).unwrap()
 }
 
 /// One filled order as a foreign caller would state it, finalized.

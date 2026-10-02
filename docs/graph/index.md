@@ -14,7 +14,7 @@ Signatures with no storage: a FIX message, a text line or a book entry can each 
 | `Operation: Market` | [Operation](operation.md) | five more: the ordered quantity (`ordqty`), time in force, tradability, its own identifiers (`identifiers`), the parties it names (`partyids`) |
 
 - **Names.** Accessors `get_`, mutators `set_`, never bare; the three identifier maps and FX rates use fallible or filling `insert_`/`remove_`/`derive_` verbs instead: a view holder may refuse, a plain holder always answers `Ok` ([detail](market.md#security-identifiers)).
-- **Identifiers.** `securityids`, `identifiers` and `partyids` are each one [`Identifiers`](identifier.md) map - a source, a type and a value per identifier, unique by its key `src:type`, with the [parents](identifier.md#parentage) a chain gives a base - read, written, merged and digested alike.
+- **Identifiers.** `securityids`, `identifiers` and `partyids` are each one [`Identifiers`](identifier.md) map - a value per key `src:type`, the base source's key spelled as its type alone and holding the type's answer, which a named source fills - with the [parents](identifier.md#parentage) a chain gives a type, read, written, merged and digested alike; an [`IsinRegistry`](isin-registry.md) learns what elements state about their instruments and fills what later ones leave unsaid.
 - **Links.** Elements name a predecessor, source or cross element by identity, never reference; a caller resolves it via whatever holds the graph.
 - **Objects.** Object-safe except `is_after`, `is_before`, `with_previous`, `merge_with`, `following`, `restating`, `merging`, `fold_lifecycle`, the fills, and the market/operation digests and merges: `dyn Event`/`dyn Operation` walks read every fact through one reference.
 
@@ -60,7 +60,7 @@ An Apple buy order - 100 shares at 189.50 USD - built, finalized, written as one
     ```rust
     use yggdryl::arrow::batch_reader;
     use yggdryl::graph::{Element, Event, Market, MarketData, OrderEvent};
-    use yggdryl::{Ccy, Decimal, IdSource, IdType, Identifier, MarketDataKind, Side};
+    use yggdryl::{Ccy, Decimal, IdKey, IdType, Identifier, MarketDataKind, Side};
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_crosscode("O-1001".to_owned());
@@ -69,7 +69,7 @@ An Apple buy order - 100 shares at 189.50 USD - built, finalized, written as one
     order.set_quantity(Some(Decimal::from_int(100)), true);
     order.set_currency(Ccy::new("USD")?, true);
     order.set_ticker(Some("AAPL".into()), true);
-    order.insert_securityid(Identifier::new(IdSource::Base, IdType::Isin, "US0378331005")?)?;
+    order.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "US0378331005")?)?;
     order.finalize();
 
     // Finalizing derived the identity and what the facts imply: the CUSIP
@@ -77,7 +77,7 @@ An Apple buy order - 100 shares at 189.50 USD - built, finalized, written as one
     assert_eq!(order.get_curruuid(), order.time_uuid()?);
     assert_eq!(order.get_crosscode(), "10:1:O-1001");
     assert_eq!(order.get_isincode(), Some("US0378331005"));
-    assert_eq!(order.get_securityids().to_string(), "[base:isin=US0378331005, derived:cusip=037833100]");
+    assert_eq!(order.get_securityids().to_string(), "[cusip=037833100, derived:cusip=037833100, isin=US0378331005]");
 
     // One row out, one value back: the same order, filed under ORDR.
     let value = MarketData::from(order);
@@ -104,13 +104,13 @@ An Apple buy order - 100 shares at 189.50 USD - built, finalized, written as one
         quantity=100,
         currency="USD",
         ticker="AAPL",
-        securityids=[Identifier("base", "isin", "US0378331005")],
+        securityids=[Identifier("isin", "US0378331005")],
     )
 
     # Built finalized: the CUSIP the ISIN carries, the cross code under the side.
     assert order.side is Side.BUYS and order.crosscode == "10:1:O-1001"
     assert order.isincode == "US0378331005"
-    assert str(order.securityids) == "[base:isin=US0378331005, derived:cusip=037833100]"
+    assert str(order.securityids) == "[cusip=037833100, derived:cusip=037833100, isin=US0378331005]"
     assert order.price is not None and order.price.as_py() == Decimal("189.50")
 
     # One row out, one value back: the same order, filed under ORDR.
@@ -132,14 +132,14 @@ An Apple buy order - 100 shares at 189.50 USD - built, finalized, written as one
       quantity: 100,
       currency: 'USD',
       ticker: 'AAPL',
-      securityids: [new Identifier('base', 'isin', 'US0378331005')],
+      securityids: [new Identifier('isin', 'US0378331005')],
     })
 
     // Built finalized: the CUSIP the ISIN carries, the cross code under the side.
     assert.equal(order.side, 'BUYS')
     assert.equal(order.crosscode, '10:1:O-1001')
     assert.equal(order.isincode, 'US0378331005')
-    assert.equal(order.securityids.toString(), '[base:isin=US0378331005, derived:cusip=037833100]')
+    assert.equal(order.securityids.toString(), '[cusip=037833100, derived:cusip=037833100, isin=US0378331005]')
     assert.equal(order.price, '189.5')
 
     // One row out, one value back: the same order, filed under ORDR.

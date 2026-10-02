@@ -37,6 +37,7 @@ use crate::graph::{code_scalar, decimal_scalar, ellipsis, fxrates_dict, member, 
 use crate::iceberg::folder_holder_from_value;
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
+use crate::isin_registry::PyIsinRegistry;
 use crate::scalar::{PyScalar, from_py};
 use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::text::line::{PyTextLine, core_path_from_value};
@@ -81,7 +82,7 @@ fn merge_report(python: Python<'_>, merge: FixMerge) -> PyResult<Bound<'_, PyDic
 /// reads as its leaves end to end, which is no one dictionary. A handle
 /// crosses as itself rather than being rebuilt, so bytes held in memory are
 /// readable and no second mapping is opened.
-fn read_located<T>(
+pub(crate) fn read_located<T>(
     location: &Bound<'_, PyAny>,
     read: impl FnOnce(&dyn CoreIOBase) -> yggdryl::Result<T>,
 ) -> PyResult<T> {
@@ -1617,6 +1618,13 @@ impl PyFixMsg {
         &self.inner
     }
 
+    /// Borrow the message the core holds to write it, refused where
+    /// something hashed it.
+    pub(crate) fn as_inner_mut(&mut self) -> PyResult<&mut CoreFixMsg> {
+        self.require_mutable()?;
+        Ok(&mut self.inner)
+    }
+
     /// Wrap an answered value.
     fn answered(value: Option<Scalar>) -> Option<PyScalar> {
         value.map(PyScalar::from_inner)
@@ -2267,12 +2275,13 @@ impl PyFixMsg {
         member(py, self.inner.get_marketdatatype())
     }
 
-    /// The identifiers the instrument is stated under, each a source, a
-    /// type and a code - read off `SecurityID(48)` under
-    /// `SecurityIDSource(22)`, the `SecurityAltID` group and an unmapped
-    /// entry whose key names a security type, beside the codes an ISIN
-    /// embeds - a map keyed `src:type`, in key order; empty where the
-    /// message states none.
+    /// The identifiers the instrument is stated under, each a code under a
+    /// key - read off `SecurityID(48)` under `SecurityIDSource(22)` and the
+    /// `SecurityAltID` group as the base key of their type, and an unmapped
+    /// entry whose key names a security type under the source it names,
+    /// beside the codes an ISIN embeds under `derived` - a map keyed
+    /// `src:type`, the type alone for the base source, in key order; empty
+    /// where the message states none.
     #[getter]
     fn securityids(&self) -> crate::identifier::PyIdentifiers {
         crate::identifier::PyIdentifiers::from_core(self.inner.get_securityids())
@@ -2495,10 +2504,13 @@ impl PyFixMsg {
     }
 
     /// The names the message goes by - `orderid`, `clordid`, `execid`,
-    /// `quoteid` - each typed by the field that stated it, from `fix` or the
-    /// source an unmapped entry's key names (`OMS_ClOrdID` is `oms:clordid`),
-    /// with the parents a chain gave them (`origclordid`, `parentorderid`,
-    /// `origorderid`); a map keyed `src:type`, empty where it names none.
+    /// `quoteid` - each typed by the field that stated it, under the base
+    /// key of its type where a FIX field stated it or under the source an
+    /// unmapped entry's key names (`OMS_ClOrdID` is `oms:clordid`, which
+    /// fills `clordid` where it is empty), with the parents a chain gave
+    /// them (`origclordid`, `parentorderid`, `origorderid`); a map keyed
+    /// `src:type`, the type alone for the base source, empty where it names
+    /// none.
     #[getter]
     fn identifiers(&self) -> crate::identifier::PyIdentifiers {
         crate::identifier::PyIdentifiers::from_core(self.inner.get_identifiers())
@@ -2506,8 +2518,10 @@ impl PyFixMsg {
 
     /// The party ids the message names - each `Parties` occurrence's
     /// `PartyID` typed by its `PartyRole`'s name, such as `executingtrader`,
-    /// from its `PartyIDSource`'s, and its `Account(1)` typed `account` - a
-    /// map keyed `src:type`, empty where it names none.
+    /// from its `PartyIDSource`'s (the base source where it states none),
+    /// and its `Account(1)` typed `account` - a map keyed `src:type`, the
+    /// type alone for the base source, each named source filling its type's
+    /// base key, empty where it names none.
     #[getter]
     fn partyids(&self) -> crate::identifier::PyIdentifiers {
         crate::identifier::PyIdentifiers::from_core(self.inner.get_partyids())
@@ -2709,7 +2723,10 @@ impl PyFixCodec {
     /// how long, in milliseconds of event time, `lifecycle` remembers an
     /// identity it yielded so it yields that identity once - not given, the
     /// core's one minute, and `None`, zero or a negative window remembering
-    /// none; `market_metadata`
+    /// none; `isin_registry` is the `IsinRegistry` every `lifecycle` learns
+    /// into and fills from, shared so a walk run after another starts from
+    /// what the first learned - `None`, each walk learning into its own,
+    /// starting empty; `market_metadata`
     /// is whether a market operation the codec builds carries, in its
     /// metadata, what its message states that no typed column reads and no
     /// identifier map of the leaf holds - its parties, its `Account(1)` and
@@ -2736,6 +2753,7 @@ impl PyFixCodec {
         sorted_lifecycle=false,
         official_time_delay_ms=None,
         dedup_window_ms=ellipsis(),
+        isin_registry=None,
         market_metadata=true,
     ))]
     #[allow(clippy::too_many_arguments)]
@@ -2758,6 +2776,7 @@ impl PyFixCodec {
         sorted_lifecycle: bool,
         official_time_delay_ms: Option<i64>,
         dedup_window_ms: Py<PyAny>,
+        isin_registry: Option<PyRef<'_, PyIsinRegistry>>,
         market_metadata: bool,
     ) -> PyResult<Self> {
         let registry = registry_or_env(registry)?;
@@ -2807,6 +2826,9 @@ impl PyFixCodec {
             let window: Option<i64> = window.extract()?;
             inner = inner.with_dedup_window_ms(window.unwrap_or(0));
         }
+        if let Some(held) = isin_registry {
+            inner = inner.with_isin_registry(Arc::clone(&held.inner));
+        }
         inner = inner.with_market_metadata(market_metadata);
         Ok(Self { inner, registry })
     }
@@ -2815,6 +2837,14 @@ impl PyFixCodec {
     #[getter]
     fn registry(&self) -> PyFixRegistry {
         PyFixRegistry::from_arc(Arc::clone(&self.registry))
+    }
+
+    /// The `IsinRegistry` every `lifecycle` this codec runs shares, the same
+    /// table the caller holds, or `None` where each walk learns into its
+    /// own.
+    #[getter]
+    fn isin_registry(&self) -> Option<PyIsinRegistry> {
+        self.inner.isin_registry().map(PyIsinRegistry::from_shared)
     }
 
     /// The nanosecond UTC `SendingTime` an undated new message takes - one

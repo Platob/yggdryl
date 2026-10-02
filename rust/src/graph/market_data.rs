@@ -361,12 +361,8 @@ impl Market for MarketData {
     fn insert_securityid(&mut self, id: crate::Identifier) -> crate::Result<bool> {
         delegate_by_variant!(self, insert_securityid, id)
     }
-    fn remove_securityid(
-        &mut self,
-        src: &crate::IdSource,
-        kind: &crate::IdType,
-    ) -> crate::Result<bool> {
-        delegate_by_variant!(self, remove_securityid, src, kind)
+    fn remove_securityid(&mut self, key: &crate::IdKey) -> crate::Result<bool> {
+        delegate_by_variant!(self, remove_securityid, key)
     }
     fn derive_securityid(&mut self, kind: &crate::IdType, code: &str) -> bool {
         delegate_by_variant!(self, derive_securityid, kind, code)

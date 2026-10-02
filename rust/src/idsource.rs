@@ -1,16 +1,16 @@
 //! Who gave an identifier: the issuer or namespace of its value.
 //!
 //! [`IdSource`] holds the sources the crate names as members - `base` where
-//! nothing names one, `derived` where the crate derived the value, `fix`
-//! for what a FIX field or group states, and the sources FIX's
-//! `PartyIDSource(447)` and `AcctIDSource(660)` code sets commonly name -
-//! each a static word, and any other word, a venue's or a bridge's own
-//! prefix included, as [`IdSource::Other`].
+//! nothing names one, FIX's own fields included, `derived` where the crate
+//! derived the value, and the sources FIX's `PartyIDSource(447)` and
+//! `AcctIDSource(660)` code sets commonly name - each a static word, and any
+//! other word, a venue's or a bridge's own prefix included, as
+//! [`IdSource::Other`].
 
 use crate::identifier::id_vocabulary;
 
 id_vocabulary! {
-    /// Who gave an identifier: `fix`, `proprietary`, `base`, `firm.x`.
+    /// Who gave an identifier: `base`, `proprietary`, `firm.x`.
     ///
     /// A spelling folds as an [`IdType`](crate::IdType) does, to lower case
     /// without the `_`, `-`, space and `#` a spelling breaks it with. Any
@@ -20,21 +20,22 @@ id_vocabulary! {
     /// use yggdryl::IdSource;
     ///
     /// assert_eq!("BASE".parse::<IdSource>().unwrap(), IdSource::Base);
+    /// assert_eq!("FIX".parse::<IdSource>().unwrap(), IdSource::Base, "the standard is the base");
     /// assert_eq!("Proprietary".parse::<IdSource>().unwrap(), IdSource::Proprietary);
     /// assert_eq!(IdSource::Derived.as_str(), "derived");
     /// assert!(!"firm.x".parse::<IdSource>().unwrap().is_known());
     /// ```
     IdSource, "an identifier source" {
         /// Nothing names the source: the base an identifier stands on where
-        /// no issuer is stated.
-        Base => "base",
+        /// no issuer is stated - what a FIX field or group states, so `fix`
+        /// is read as this source and never written. A key from it is
+        /// spelled as its type alone ([`IdKey`](crate::IdKey)).
+        Base => "base" | "fix",
         /// The crate derived the value rather than read it - an ISIN's
         /// national number, what a ticker's shape names, a currency pair
         /// detected off a symbol, what a lifecycle learned. A lookup answers
         /// a stated source before it.
         Derived => "derived",
-        /// A FIX field or group states it.
-        Fix => "fix",
         /// A Bank Identifier Code, `PartyIDSource(447)` `B` and
         /// `AcctIDSource(660)` `1`.
         Bic => "bic",
@@ -78,8 +79,9 @@ impl IdSource {
     /// The source a namespace spelled before a name - a key's, or a
     /// `{NAMESPACE}INSTRUMENTID` security source's - names, already folded:
     /// its dots at either end dropped, and `None` where nothing is left or
-    /// where it folds to a source the crate reserves - `base`, `derived`,
-    /// `fix` - which names no venue, so the reader's own source stands.
+    /// where it folds to a source the crate reserves - `base`, which `fix`
+    /// spells too, or `derived` - which names no venue, so the reader's own
+    /// source stands.
     ///
     /// # Errors
     ///
@@ -90,7 +92,7 @@ impl IdSource {
             return Ok(None);
         }
         Ok(match namespace.parse()? {
-            Self::Base | Self::Derived | Self::Fix => None,
+            Self::Base | Self::Derived => None,
             named => Some(named),
         })
     }

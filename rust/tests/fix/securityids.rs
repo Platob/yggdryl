@@ -5,7 +5,7 @@
 
 use super::{committed_registry, fixed_codec};
 use yggdryl::graph::Market;
-use yggdryl::{FixMsg, IdType};
+use yggdryl::{FixMsg, IdKey, IdType};
 
 fn parsed(line: &[u8]) -> FixMsg {
     fixed_codec(committed_registry())
@@ -37,7 +37,11 @@ fn an_unmapped_field_named_after_a_source_states_an_entry_and_the_isin_derives_i
     );
     assert_eq!(
         ids(&held),
-        ["base:isin=CH0012221716", "derived:valor=1222171"]
+        [
+            "derived:valor=1222171",
+            "isin=CH0012221716",
+            "valor=1222171"
+        ]
     );
     assert!(anomalies(&held).is_empty(), "{:?}", anomalies(&held));
     // A `#`-marked key folds to its bare name, and `isincode` is the crated
@@ -53,7 +57,7 @@ fn an_unmapped_field_named_after_a_source_states_an_entry_and_the_isin_derives_i
 fn every_spelling_of_a_source_name_states_its_entry() {
     let held =
         parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|cusip_code=037833100|#SEDOLCODE=0263494|10=0|");
-    assert_eq!(ids(&held), ["base:cusip=037833100", "base:sedol=0263494"]);
+    assert_eq!(ids(&held), ["cusip=037833100", "sedol=0263494"]);
 }
 
 #[test]
@@ -148,9 +152,9 @@ fn the_wire_leads_and_an_unmapped_code_is_a_statement_of_its_own_source() {
     assert_eq!(
         ids(&held),
         [
-            "base:isin=US0378331005",
+            "cusip=037833100",
             "derived:cusip=037833100",
-            "fix:isin=US0378331005"
+            "isin=US0378331005"
         ]
     );
     assert!(anomalies(&held).is_empty());
@@ -164,12 +168,17 @@ fn the_wire_leads_and_an_unmapped_code_is_a_statement_of_its_own_source() {
         parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331005|#ISINCODE=US0378331005|10=0|");
     assert_eq!(
         ids(&viewed),
-        ["derived:cusip=037833100", "fix:isin=US0378331005"]
+        [
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "isin=US0378331005"
+        ]
     );
     assert!(anomalies(&viewed).is_empty());
 
-    // A different code under another source stands beside the wire's,
-    // which still answers the type: no source overrides another.
+    // A different code the view states under the wire's own key - the
+    // base key - is dropped beside an anomaly: the wire states the type's
+    // answer first, and the codes derived from it.
     let held =
         parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331005|#ISINCODE=US5949181045|10=0|");
     assert_eq!(
@@ -180,22 +189,29 @@ fn the_wire_leads_and_an_unmapped_code_is_a_statement_of_its_own_source() {
     assert_eq!(
         ids(&held),
         [
-            "base:isin=US5949181045",
+            "cusip=037833100",
             "derived:cusip=037833100",
-            "fix:isin=US0378331005"
+            "isin=US0378331005"
         ]
     );
-    assert!(anomalies(&held).is_empty(), "{:?}", anomalies(&held));
+    let dropped = anomalies(&held);
+    assert_eq!(dropped.len(), 1, "{dropped:?}");
+    assert!(dropped[0].1.contains("US5949181045"), "{dropped:?}");
 
-    // A bridge's namespace spelled before `fix` sorts ahead of the wire's
-    // key, and the wire's code still answers the type.
+    // A bridge's namespace stands beside the wire as a source of its own,
+    // and the wire's code still answers the type.
     for line in [
         &b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331005|ABC.ISIN=US5949181045|10=0|"[..],
         b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331005|DBI_ISIN=US5949181045|10=0|",
     ] {
         let held = parsed(line);
-        let bridge = ids(&held)[0].clone();
-        assert!(bridge.ends_with(":isin=US5949181045"), "{bridge}");
+        assert!(
+            ids(&held)
+                .iter()
+                .any(|id| id.ends_with(":isin=US5949181045")),
+            "{:?}",
+            ids(&held)
+        );
         assert_eq!(
             held.get_securityids().get(&IdType::Isin),
             Some("US0378331005"),
@@ -205,7 +221,7 @@ fn the_wire_leads_and_an_unmapped_code_is_a_statement_of_its_own_source() {
         assert_eq!(held.get_isincode(), Some("US0378331005"));
         assert_eq!(
             held.get_securityids()
-                .get_from(&yggdryl::IdSource::Derived, &IdType::Cusip),
+                .get_from(&IdKey::new(yggdryl::IdSource::Derived, IdType::Cusip)),
             Some("037833100"),
             "{:?}",
             ids(&held)
@@ -223,18 +239,22 @@ fn an_alternate_restating_the_primarys_type_fills_nothing_and_a_different_code_i
     );
     assert_eq!(
         ids(&held),
-        ["derived:cusip=037833100", "fix:isin=US0378331005"]
+        [
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "isin=US0378331005"
+        ]
     );
     assert_eq!(
         anomalies(&held),
         [
             (
                 "secaltids",
-                "states fix:isin=CH0012221716 where fix:isin=US0378331005 is already stated"
+                "states isin=CH0012221716 where isin=US0378331005 is already stated"
             ),
             (
                 "secaltids",
-                "states fix:isin=US5949181045 where fix:isin=US0378331005 is already stated"
+                "states isin=US5949181045 where isin=US0378331005 is already stated"
             )
         ]
     );
@@ -287,7 +307,11 @@ fn a_narrow_row_reads_the_isin_view_back_as_the_identifier_it_viewed() {
     let held = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=1|22=4|48=US0378331005|10=0|");
     assert_eq!(
         ids(&held),
-        ["derived:cusip=037833100", "fix:isin=US0378331005"]
+        [
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "isin=US0378331005"
+        ]
     );
     let back = narrow_round_trip(&held, &["isincode"]);
     assert_eq!(ids(&back), ids(&held));
@@ -302,14 +326,19 @@ fn a_narrow_row_reads_a_view_of_a_bridged_or_derived_code_back_as_that_code() {
     let bridged = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=1|DBI_ISIN=US0378331005|10=0|");
     assert_eq!(
         ids(&bridged),
-        ["dbi:isin=US0378331005", "derived:cusip=037833100"]
+        [
+            "cusip=037833100",
+            "dbi:isin=US0378331005",
+            "derived:cusip=037833100",
+            "isin=US0378331005"
+        ]
     );
     let back = narrow_round_trip(&bridged, &["isincode", "metadata"]);
     assert_eq!(ids(&back), ids(&bridged));
     assert!(anomalies(&back).is_empty(), "{:?}", anomalies(&back));
 
     let detected = parsed(b"8=FIX.4.4|35=D|11=A1|55=EUR/USD|54=1|38=1|10=0|");
-    assert_eq!(ids(&detected), ["derived:forex=EUR/USD"]);
+    assert_eq!(ids(&detected), ["derived:forex=EUR/USD", "forex=EUR/USD"]);
     let back = narrow_round_trip(&detected, &["forexcode"]);
     assert_eq!(ids(&back), ids(&detected));
     assert!(anomalies(&back).is_empty(), "{:?}", anomalies(&back));
@@ -324,22 +353,35 @@ fn a_narrow_row_reads_a_view_of_a_code_the_symbol_derives_back_as_derived() {
         (
             &b"8=FIX.4.4|35=D|11=A1|55=BBG000BLNNH6|54=1|38=1|10=0|"[..],
             "figicode",
-            &["derived:figi=BBG000BLNNH6"][..],
+            &["derived:figi=BBG000BLNNH6", "figi=BBG000BLNNH6"][..],
         ),
         (
             b"8=FIX.4.4|35=D|11=A1|55=US0378331005|54=1|38=1|10=0|",
             "isincode",
-            &["derived:cusip=037833100", "derived:isin=US0378331005"],
+            &[
+                "cusip=037833100",
+                "derived:cusip=037833100",
+                "derived:isin=US0378331005",
+                "isin=US0378331005",
+            ],
         ),
         (
             b"8=FIX.4.4|35=D|11=A1|55=CH0012214059_XSWX_CHF|54=1|38=1|10=0|",
             "isincode",
-            &["derived:isin=CH0012214059", "derived:valor=1221405"],
+            &[
+                "derived:isin=CH0012214059",
+                "derived:valor=1221405",
+                "isin=CH0012214059",
+                "valor=1221405",
+            ],
         ),
         (
             b"8=FIX.4.4|35=D|11=A1|55=HOLN SW Equity|54=1|38=1|10=0|",
             "bloombergcode",
-            &["derived:bloomberg=HOLN SW Equity"],
+            &[
+                "bloomberg=HOLN SW Equity",
+                "derived:bloomberg=HOLN SW Equity",
+            ],
         ),
     ] {
         let held = parsed(line);
@@ -354,73 +396,57 @@ fn a_narrow_row_reads_a_view_of_a_code_the_symbol_derives_back_as_derived() {
     }
 }
 
-/// A view is judged against what lands: a bridge's code under a key an
-/// earlier code of that key already fills is dropped, so it holds no view,
-/// and the code the view states reads back as the row's statement, leading
-/// its type - the bridge's other code, which ranks before `base`, set aside
-/// as `remove_securityid` sets it aside, with no new anomaly - so `get`
-/// answers the row's cell and a second row writes it again.
+/// A view a caller writes beside a bridge's code of its type replaces the
+/// type's answer and keeps the bridge's code as evidence: the narrow row
+/// reads it back as that answer, the bridge's key read from the metadata
+/// again beside it, so `get` answers the row's cell and a second row writes
+/// it again.
 #[test]
-fn a_view_only_a_dropped_bridge_code_names_is_stated_and_leads_its_type() {
-    let mut held = parsed(DROPPED_BRIDGE_ISIN);
+fn a_view_a_caller_writes_beside_a_bridges_code_replaces_the_answer_and_keeps_the_source() {
+    let dbi = IdKey::new("dbi".parse().expect("a word"), IdType::Isin);
+    let held = parsed(DROPPED_BRIDGE_ISIN);
+    assert_eq!(held.get_securityids().get_from(&dbi), Some("CH0012214059"));
     assert_eq!(
-        held.get_securityids()
-            .get_from(&"dbi".parse().expect("a word"), &IdType::Isin),
-        Some("CH0012214059")
+        held.get_isincode(),
+        Some("CH0012214059"),
+        "the bridge's code fills the answer"
     );
     assert_eq!(anomalies(&held).len(), 1, "{:?}", anomalies(&held));
-    assert!(
-        held.insert_securityid(
-            yggdryl::Identifier::new(yggdryl::IdSource::Fix, IdType::Isin, "US0378331005")
-                .expect("an ISIN")
-        )
-        .expect("inserts")
-    );
+    let held = viewed_by_a_caller(DROPPED_BRIDGE_ISIN);
     assert_eq!(held.get_isincode(), Some("US0378331005"));
+    assert_eq!(
+        held.get_securityids().get_from(&dbi),
+        Some("CH0012214059"),
+        "the source stays"
+    );
     let narrow = narrow_root(&["isincode", "metadata"]);
     let row = held.into_row(&narrow).expect("the narrow row");
     let back = FixMsg::from_row(committed_registry(), &narrow, &row).expect("the row reads");
     assert_eq!(
         ids(&back),
-        ["base:isin=US0378331005", "derived:cusip=037833100"]
+        [
+            "cusip=037833100",
+            "dbi:isin=CH0012214059",
+            "derived:cusip=037833100",
+            "isin=US0378331005"
+        ]
     );
+    assert_eq!(ids(&back), ids(&held));
     assert_eq!(back.get_isincode(), Some("US0378331005"));
     assert_eq!(back.into_row(&narrow).expect("the second row"), row);
     assert_eq!(anomalies(&back), anomalies(&held), "the same code dropped");
 }
 
-/// A view no reading holds is a statement the row made, inserted once as a
-/// caller's insert of its code is: it states the set, so a write reaching
-/// `SecurityIDSource(22)` keeps the statement and fills what the fields
-/// read beside it - the bridge's code the view set aside to lead included,
-/// which ranks before `base` and answers the type again - exactly as the
-/// same write does on the parse with the view's code stated from `base`.
+/// A view no reading holds is the row's statement of its type's answer: it
+/// reads back as the caller's write of it, and a write reaching
+/// `SecurityIDSource(22)` answers on the read-back as on the message it was
+/// written from - the statement stands and the fields fill beside it.
 #[test]
 fn a_view_no_reading_holds_is_stated_once_and_a_restatement_keeps_it() {
-    let held = inserted(DROPPED_BRIDGE_ISIN, "fix");
+    let held = viewed_by_a_caller(DROPPED_BRIDGE_ISIN);
     let mut back = narrow_round_trip(&held, &["isincode", "metadata"]);
-    assert_eq!(
-        ids(&back),
-        ["base:isin=US0378331005", "derived:cusip=037833100"]
-    );
+    assert_eq!(ids(&back), ids(&held));
     let mut stated = held.clone();
-    for (src, kind) in [("dbi", IdType::Isin), ("fix", IdType::Isin)] {
-        assert!(
-            stated
-                .remove_securityid(&src.parse().expect("a source"), &kind)
-                .expect("removes")
-        );
-    }
-    assert!(
-        stated
-            .insert_securityid(
-                yggdryl::Identifier::new(yggdryl::IdSource::Base, IdType::Isin, "US0378331005")
-                    .expect("an ISIN")
-            )
-            .expect("inserts")
-    );
-    let mut stated = settled(stated);
-    assert_eq!(ids(&stated), ids(&back));
     for message in [&mut stated, &mut back] {
         message
             .set(22, yggdryl::Scalar::from("4"))
@@ -428,16 +454,10 @@ fn a_view_no_reading_holds_is_stated_once_and_a_restatement_keeps_it() {
     }
     assert_eq!(
         ids(&back),
-        [
-            "base:isin=US0378331005",
-            "dbi:isin=CH0012214059",
-            "derived:cusip=037833100",
-            "derived:valor=1221405"
-        ],
+        ids(&stated),
         "the statement stands and the fields fill beside it"
     );
-    assert_eq!(ids(&back), ids(&stated));
-    assert_eq!(back.get_isincode(), Some("CH0012214059"));
+    assert_eq!(back.get_isincode(), Some("US0378331005"));
     assert_eq!(anomalies(&back), anomalies(&held), "the same code dropped");
 }
 
@@ -456,7 +476,7 @@ fn a_view_of_the_symbols_derivation_is_never_stated_beside_a_later_code_of_its_t
             ])
             .expect("the security writes");
     }
-    assert_eq!(ids(&held), ["fix:figi=BBG000BPH459"]);
+    assert_eq!(ids(&held), ["figi=BBG000BPH459"]);
     assert_eq!(ids(&back), ids(&held));
     assert!(anomalies(&back).is_empty(), "{:?}", anomalies(&back));
 }
@@ -492,7 +512,11 @@ fn a_derivation_a_view_read_back_as_follows_a_written_symbol() {
     }
     assert_eq!(
         ids(&held),
-        ["derived:cusip=037833100", "fix:isin=US0378331005"]
+        [
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "isin=US0378331005"
+        ]
     );
     assert_eq!(ids(&back), ids(&held));
 }
@@ -509,14 +533,10 @@ struct Viewed {
     message: fn() -> FixMsg,
     view: &'static str,
     /// Each identifier only a view carried, as the message holds it, which
-    /// reads back stated from `base`: its source and whether it was derived
-    /// are lost.
+    /// reads back as its type's answer: a named source's key is lost and the
+    /// base key it filled stays, and a derivation reads back as the
+    /// statement of its code.
     lost: &'static [&'static str],
-    /// Each identifier of the view's type the message held beside the view
-    /// under a source ranked after the view's own and before `base`, which
-    /// the view read back from `base` sets aside to lead its type - with
-    /// what that code derived, which `remove_securityid` takes with it.
-    set_aside: &'static [&'static str],
 }
 
 const WIRE_ISIN: &[u8] = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=1|22=4|48=US0378331005|10=0|";
@@ -539,11 +559,23 @@ fn inserted(line: &[u8], src: &str) -> FixMsg {
     let mut held = parsed(line);
     assert!(
         held.insert_securityid(
-            yggdryl::Identifier::new(src.parse().expect("a source"), IdType::Isin, "US0378331005")
-                .expect("an ISIN")
+            yggdryl::Identifier::new(
+                IdKey::new(src.parse().expect("a source"), IdType::Isin),
+                "US0378331005"
+            )
+            .expect("an ISIN")
         )
         .expect("inserts")
     );
+    settled(held)
+}
+
+/// The parse of `line` with `US0378331005` written to its `isincode` view,
+/// replacing the answer of its type.
+fn viewed_by_a_caller(line: &[u8]) -> FixMsg {
+    let mut held = parsed(line);
+    held.set("isincode", yggdryl::Scalar::from("US0378331005"))
+        .expect("the view writes");
     settled(held)
 }
 
@@ -566,7 +598,11 @@ fn walked_past_an_unknown_isin() -> FixMsg {
     let amend = walked.into_iter().last().expect("the amend");
     assert_eq!(
         ids(&amend),
-        ["derived:cusip=037833100", "fix:isin=US0378331005"],
+        [
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "isin=US0378331005"
+        ],
         "the walk replaced the unknown ISIN"
     );
     amend
@@ -577,13 +613,12 @@ fn walked_past_an_unknown_isin() -> FixMsg {
 fn replaced_by_a_caller() -> FixMsg {
     let mut held = parsed(WIRE_ISIN);
     assert!(
-        held.remove_securityid(&yggdryl::IdSource::Fix, &IdType::Isin)
+        held.remove_securityid(&IdKey::base(IdType::Isin))
             .expect("removes")
     );
     assert!(
         held.insert_securityid(
-            yggdryl::Identifier::new(yggdryl::IdSource::Fix, IdType::Isin, "CH0012214059")
-                .expect("an ISIN")
+            yggdryl::Identifier::new(IdKey::base(IdType::Isin), "CH0012214059").expect("an ISIN")
         )
         .expect("inserts")
     );
@@ -611,28 +646,24 @@ const VIEWED: [Viewed; 13] = [
         message: || parsed(WIRE_ISIN),
         view: "isincode",
         lost: &[],
-        set_aside: &[],
     },
     Viewed {
         name: "a FIGI symbol",
         message: || parsed(b"8=FIX.4.4|35=D|11=A1|55=BBG000BLNNH6|54=1|38=1|10=0|"),
         view: "figicode",
         lost: &[],
-        set_aside: &[],
     },
     Viewed {
         name: "an ISIN symbol",
         message: || parsed(b"8=FIX.4.4|35=D|11=A1|55=US0378331005|54=1|38=1|10=0|"),
         view: "isincode",
         lost: &[],
-        set_aside: &[],
     },
     Viewed {
         name: "a detected pair",
         message: || parsed(b"8=FIX.4.4|35=D|11=A1|55=EUR/USD|54=1|38=1|10=0|"),
         view: "forexcode",
         lost: &[],
-        set_aside: &[],
     },
     Viewed {
         name: "an instrument key on the wire",
@@ -641,7 +672,6 @@ const VIEWED: [Viewed; 13] = [
         },
         view: "isincode",
         lost: &[],
-        set_aside: &[],
     },
     Viewed {
         name: "an instrument key in a bridge's key",
@@ -650,56 +680,48 @@ const VIEWED: [Viewed; 13] = [
         },
         view: "isincode",
         lost: &[],
-        set_aside: &[],
     },
     Viewed {
         name: "a dropped bridge code",
         message: || parsed(DROPPED_BRIDGE_ISIN),
         view: "isincode",
         lost: &[],
-        set_aside: &[],
     },
     Viewed {
-        name: "a caller's ISIN from fix",
-        message: || inserted(NO_ISIN, "fix"),
+        name: "a caller's ISIN",
+        message: || inserted(NO_ISIN, "base"),
         view: "isincode",
-        lost: &["fix:isin=US0378331005"],
-        set_aside: &[],
+        lost: &[],
     },
     Viewed {
         name: "a caller's ISIN from dbi",
         message: || inserted(NO_ISIN, "dbi"),
         view: "isincode",
         lost: &["dbi:isin=US0378331005"],
-        set_aside: &[],
     },
     Viewed {
-        name: "a caller's ISIN from fix beside a bridge's",
-        message: || inserted(DROPPED_BRIDGE_ISIN, "fix"),
+        name: "a caller's ISIN beside a bridge's",
+        message: || viewed_by_a_caller(DROPPED_BRIDGE_ISIN),
         view: "isincode",
-        lost: &["fix:isin=US0378331005"],
-        set_aside: &["dbi:isin=CH0012214059", "derived:valor=1221405"],
+        lost: &[],
     },
     Viewed {
         name: "the wire's unknown ISIN replaced by a walk",
         message: walked_past_an_unknown_isin,
         view: "isincode",
-        lost: &["fix:isin=US0378331005"],
-        set_aside: &[],
+        lost: &[],
     },
     Viewed {
         name: "the wire's ISIN replaced by a caller",
         message: replaced_by_a_caller,
         view: "isincode",
-        lost: &["fix:isin=CH0012214059"],
-        set_aside: &[],
+        lost: &[],
     },
     Viewed {
         name: "a derived FIGI",
         message: derived_figi,
         view: "figicode",
         lost: &["derived:figi=BBG000B9XRY4"],
-        set_aside: &[],
     },
 ];
 
@@ -736,30 +758,22 @@ const WRITES: [Writes; 10] = [
             .expect("55 writes");
     }),
     ("the ISIN removed, then 22", false, |held| {
-        if let Some(isin) = held
-            .get_securityids()
-            .get_identifier(&IdType::Isin)
-            .cloned()
-        {
+        if held.get_securityids().contains_kind(&IdType::Isin) {
             assert!(
-                held.remove_securityid(isin.src(), isin.kind())
+                held.remove_securityid(&IdKey::base(IdType::Isin))
                     .expect("removes")
             );
         }
         held.set(22, yggdryl::Scalar::from("4")).expect("22 writes");
     }),
     ("the ISIN replaced, then 22", false, |held| {
-        if let Some(isin) = held
-            .get_securityids()
-            .get_identifier(&IdType::Isin)
-            .cloned()
-        {
+        if held.get_securityids().contains_kind(&IdType::Isin) {
             assert!(
-                held.remove_securityid(isin.src(), isin.kind())
+                held.remove_securityid(&IdKey::base(IdType::Isin))
                     .expect("removes")
             );
             held.insert_securityid(
-                yggdryl::Identifier::new(yggdryl::IdSource::Fix, IdType::Isin, "CH0012221716")
+                yggdryl::Identifier::new(IdKey::base(IdType::Isin), "CH0012221716")
                     .expect("an ISIN"),
             )
             .expect("inserts");
@@ -784,8 +798,10 @@ fn identifier(spelled: &str) -> yggdryl::Identifier {
     let (src, rest) = spelled.split_once(':').expect("src:type=value");
     let (kind, value) = rest.split_once('=').expect("type=value");
     yggdryl::Identifier::new(
-        src.parse().expect("a source"),
-        kind.parse().expect("a type"),
+        IdKey::new(
+            src.parse().expect("a source"),
+            kind.parse().expect("a type"),
+        ),
         value,
     )
     .expect("an identifier")
@@ -799,54 +815,39 @@ fn sorted_ids(held: &FixMsg) -> Vec<String> {
 }
 
 /// `held`'s identifiers sorted, as a narrow row of `viewed` reads them
-/// back: each one set aside gone, each one lost restated from `base`.
+/// back: each one lost gone, the base key it filled standing.
 fn read_back_ids(held: &FixMsg, viewed: &Viewed) -> Vec<String> {
     let mut read: Vec<String> = ids(held)
         .into_iter()
-        .filter(|id| !viewed.set_aside.contains(&id.as_str()))
-        .map(|id| {
-            if viewed.lost.contains(&id.as_str()) {
-                format!("base:{}", id.split_once(':').expect("src:type=value").1)
-            } else {
-                id
-            }
-        })
+        .filter(|id| !viewed.lost.contains(&id.as_str()))
         .collect();
     read.sort();
     read
 }
 
 /// `held` as its narrow row reads it back, stated through a caller's verbs:
-/// each identifier set aside removed as `remove_securityid` removes it,
-/// each lost one inserted from `base` - the derived one stated - and the
+/// each named source lost removed as `remove_securityid` removes it, the
+/// base key it filled staying, each derivation lost stated as its code -
+/// inserted under the base key, which takes the derivation back - and the
 /// message settled. What a write does to it is what the same write does to
 /// the read-back.
 fn as_read_back(held: &FixMsg, viewed: &Viewed) -> FixMsg {
     let mut held = held.clone();
-    if viewed.lost.is_empty() && viewed.set_aside.is_empty() {
+    if viewed.lost.is_empty() {
         return held;
     }
-    for id in viewed
-        .set_aside
-        .iter()
-        .chain(viewed.lost)
-        .map(|id| identifier(id))
-    {
-        if id.src() != &yggdryl::IdSource::Derived {
-            assert!(
-                held.remove_securityid(id.src(), id.kind())
-                    .expect("removes")
-            );
-        }
-    }
     for id in viewed.lost.iter().map(|id| identifier(id)) {
-        assert!(
-            held.insert_securityid(
-                yggdryl::Identifier::new(yggdryl::IdSource::Base, id.kind().clone(), id.value())
-                    .expect("an identifier")
-            )
-            .expect("inserts")
-        );
+        if id.src() == &yggdryl::IdSource::Derived {
+            assert!(
+                held.insert_securityid(
+                    yggdryl::Identifier::new(IdKey::base(id.kind().clone()), id.value())
+                        .expect("an identifier")
+                )
+                .expect("inserts")
+            );
+        } else {
+            assert!(held.remove_securityid(id.key()).expect("removes"));
+        }
     }
     settled(held)
 }
@@ -868,13 +869,12 @@ fn answered(held: &FixMsg, view: &str) -> Option<String> {
 /// and answers every write the parse answers alike: one view, every view,
 /// every view beside the `securityids` column, whichever comes first. A
 /// view the row's own reading answers, or its symbol derives, loses
-/// nothing; any other reads back as the row's statement, from `base`,
-/// leading its type - its source and whether it was derived lost, and a
-/// code of its type the parse held under a source ranked between the
-/// view's own and `base` set aside - so `get` answers every view cell
-/// after the round trip, a second row writes the same cells, and every
-/// write answers as on the parse with exactly those losses stated through
-/// a caller's verbs. A `securityids` column is a crate column the row
+/// nothing; any other reads back as the row's statement of its type's
+/// answer - a named source only the view carried lost, the base key it
+/// filled standing, and a derivation stated as its code - so `get` answers
+/// every view cell after the round trip, a second row writes the same
+/// cells, and every write answers as on the parse with exactly those
+/// losses stated through a caller's verbs. A `securityids` column is a crate column the row
 /// states, so the set it carries is the row's word, which no write of a
 /// field the identifiers are read off restates - the wire's security
 /// fields, the symbol: there the read-back keeps the set the parse held
@@ -980,15 +980,19 @@ fn a_narrow_row_answers_every_write_as_the_parse_it_was_written_from() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// A caller writing a view states the set through the verbs it states it
-/// by: a code the set holds moves nothing, another replaces the identifiers
-/// of its type with one from `base` - taking back what the replaced ISIN
-/// derived - and a removed view removes them, the set staying the caller's
-/// word, which a later write of the wire's fields only fills.
+/// A caller writing a view states the set through its type's base key: a
+/// code the set holds moves nothing, another replaces the type's answer -
+/// taking back what the replaced ISIN derived - and a removed view removes
+/// the type, the set staying the caller's word, which a later write of the
+/// wire's fields only fills where it states nothing.
 #[test]
 fn a_written_view_states_the_set_through_the_callers_verbs() {
     let mut held = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=1|22=4|48=US0378331005|10=0|");
-    let wire = ["derived:cusip=037833100", "fix:isin=US0378331005"];
+    let wire = [
+        "cusip=037833100",
+        "derived:cusip=037833100",
+        "isin=US0378331005",
+    ];
     held.set("isincode", yggdryl::Scalar::from("US0378331005"))
         .expect("the view writes");
     assert_eq!(ids(&held), wire, "a code the set holds moves nothing");
@@ -996,19 +1000,22 @@ fn a_written_view_states_the_set_through_the_callers_verbs() {
         .expect("the view writes");
     assert_eq!(
         ids(&held),
-        ["base:isin=CH0012214059", "derived:valor=1221405"]
+        [
+            "derived:valor=1221405",
+            "isin=CH0012214059",
+            "valor=1221405"
+        ]
     );
     held.set(48, yggdryl::Scalar::from("US5949181045"))
         .expect("48 writes");
     assert_eq!(
         ids(&held),
         [
-            "base:isin=CH0012214059",
-            "derived:cusip=594918104",
             "derived:valor=1221405",
-            "fix:isin=US5949181045"
+            "isin=CH0012214059",
+            "valor=1221405"
         ],
-        "the wire fills beside the caller's word"
+        "the wire's code under the key the caller stated fills nothing"
     );
     held.remove("isincode").expect("the view clears");
     assert!(ids(&held).is_empty(), "{:?}", ids(&held));
@@ -1061,7 +1068,7 @@ fn a_detected_pairs_cells_read_back_as_the_rows_word_and_only_the_pair_follows_t
             .set(55, yggdryl::Scalar::from("GBP/USD"))
             .expect("the symbol writes");
     }
-    assert_eq!(ids(&parse), ["derived:forex=GBP/USD"]);
+    assert_eq!(ids(&parse), ["derived:forex=GBP/USD", "forex=GBP/USD"]);
     assert_eq!(ids(&read), ids(&parse), "the pair follows the symbol");
     assert_eq!(
         cells(&parse),
@@ -1089,9 +1096,7 @@ fn a_namespaced_instrument_source_states_its_namespace_through_the_row_and_the_l
         assert_eq!(
             ids(&held),
             [
-                "derived:valor=1221405",
-                "ullink:instrumentid=dbi;CH0012214059_XSWX_CHF",
-                "ullink:isin=CH0012214059"
+                "derived:valor=1221405", "instrumentid=dbi;CH0012214059_XSWX_CHF", "isin=CH0012214059", "ullink:instrumentid=dbi;CH0012214059_XSWX_CHF", "ullink:isin=CH0012214059", "valor=1221405"
             ],
             "{}",
             String::from_utf8_lossy(line)
@@ -1107,7 +1112,7 @@ fn a_namespaced_instrument_source_states_its_namespace_through_the_row_and_the_l
         assert_eq!(
             order
                 .get_securityids()
-                .get_from(&ullink, &IdType::InstrumentId),
+                .get_from(&IdKey::new(ullink.clone(), IdType::InstrumentId)),
             Some("dbi;CH0012214059_XSWX_CHF")
         );
     }
@@ -1134,14 +1139,15 @@ fn a_namespaced_instrument_source_names_the_namespace_without_its_separator() {
             let held = parsed(line.as_bytes());
             assert_eq!(
                 held.get_securityids()
-                    .get_from(&ullink, &IdType::InstrumentId),
+                    .get_from(&IdKey::new(ullink.clone(), IdType::InstrumentId)),
                 Some("dbi;CH0012214059_XSWX_CHF"),
                 "{line}: {:?} {:?}",
                 ids(&held),
                 anomalies(&held)
             );
             assert_eq!(
-                held.get_securityids().get_from(&ullink, &IdType::Isin),
+                held.get_securityids()
+                    .get_from(&IdKey::new(ullink.clone(), IdType::Isin)),
                 Some("CH0012214059"),
                 "{line}"
             );
@@ -1166,7 +1172,7 @@ fn a_reserved_namespace_reads_as_no_namespace() {
             format!("8=FIX.4.4|35=D|11=A1|55=AAPL|454=1|455=dbi;X|456={source}|10=0|"),
         ] {
             let held = parsed(line.as_bytes());
-            assert_eq!(ids(&held), ["fix:instrumentid=dbi;X"], "{line}");
+            assert_eq!(ids(&held), ["instrumentid=dbi;X"], "{line}");
             assert!(
                 anomalies(&held).is_empty(),
                 "{line}: {:?}",
@@ -1178,20 +1184,28 @@ fn a_reserved_namespace_reads_as_no_namespace() {
 
 /// The same rule reads an unmapped key: a reserved source spelled before
 /// the name a key ends with names no namespace, so the entry is the wire's
-/// statement from `base` - never filed under `derived` as though the crate
-/// derived it, nor under `fix` as though a FIX field stated it.
+/// statement under its type's base key - never filed under `derived` as
+/// though the crate derived it, and `FIX` naming the base source itself.
 #[test]
 fn a_reserved_namespace_before_an_unmapped_keys_name_reads_as_no_namespace() {
     for (entry, expected) in [
         (
             "Derived_ISIN=US0378331005",
-            &["base:isin=US0378331005", "derived:cusip=037833100"][..],
+            &[
+                "cusip=037833100",
+                "derived:cusip=037833100",
+                "isin=US0378331005",
+            ][..],
         ),
         (
             "FIX.ISIN=US0378331005",
-            &["base:isin=US0378331005", "derived:cusip=037833100"],
+            &[
+                "cusip=037833100",
+                "derived:cusip=037833100",
+                "isin=US0378331005",
+            ],
         ),
-        ("DERIVED.INSTRUMENTID=dbi;X", &["base:instrumentid=dbi;X"]),
+        ("DERIVED.INSTRUMENTID=dbi;X", &["instrumentid=dbi;X"]),
     ] {
         let line = format!("8=FIX.4.4|35=D|11=A1|55=AAPL|{entry}|10=0|");
         let held = parsed(line.as_bytes());
@@ -1215,17 +1229,21 @@ fn a_namespaced_instrument_source_names_a_namespace_as_wide_as_a_source() {
     );
     assert_eq!(
         ids(&held),
-        [format!("{namespace}:instrumentid=dbi;X")],
+        [
+            "instrumentid=dbi;X".to_owned(),
+            format!("{namespace}:instrumentid=dbi;X")
+        ],
         "{:?}",
         anomalies(&held)
     );
 }
 
 #[test]
-fn a_crated_view_ranks_after_the_wire_and_before_an_unmapped_name() {
+fn a_crated_view_ranks_after_the_wire_and_an_unmapped_name() {
     // `ISINCODE` is the crated column and `ISIN` a name no dictionary holds:
-    // the crate's own statement fills the key whichever arrived first, and
-    // the bridge's differing code is dropped with an anomaly.
+    // the unmapped name is read with the fields, so it states the type's
+    // answer whichever arrived first, and the view's differing code is
+    // dropped with an anomaly naming the view.
     for line in [
         &b"8=FIX.4.4|35=D|11=A1|55=AAPL|ISIN=US5949181045|ISINCODE=US0378331005|10=0|"[..],
         b"8=FIX.4.4|35=D|11=A1|55=AAPL|ISINCODE=US0378331005|ISIN=US5949181045|10=0|",
@@ -1233,13 +1251,17 @@ fn a_crated_view_ranks_after_the_wire_and_before_an_unmapped_name() {
         let held = parsed(line);
         assert_eq!(
             ids(&held),
-            ["base:isin=US0378331005", "derived:cusip=037833100"],
+            [
+                "cusip=594918104",
+                "derived:cusip=594918104",
+                "isin=US5949181045"
+            ],
             "{line:?}"
         );
         let dropped = anomalies(&held);
         assert_eq!(dropped.len(), 1, "{line:?}: {dropped:?}");
-        assert_eq!(dropped[0].0, "isin", "{line:?}");
-        assert!(dropped[0].1.contains("US5949181045"), "{}", dropped[0].1);
+        assert_eq!(dropped[0].0, "isincode", "{line:?}");
+        assert!(dropped[0].1.contains("US0378331005"), "{}", dropped[0].1);
     }
 }
 
@@ -1254,7 +1276,11 @@ fn the_security_source_and_id_fields_state_an_entry_however_they_are_spelled() {
     let by_tag = parsed(WIRE);
     assert_eq!(
         ids(&by_tag),
-        ["derived:cusip=037833100", "fix:isin=US0378331005"]
+        [
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "isin=US0378331005"
+        ]
     );
     assert!(anomalies(&by_tag).is_empty(), "{:?}", anomalies(&by_tag));
     for line in [
@@ -1295,10 +1321,10 @@ fn the_security_source_and_id_fields_state_an_entry_however_they_are_spelled() {
 #[test]
 fn the_security_source_code_picks_the_type_of_the_entry() {
     let cusip = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=1|48=037833100|10=0|");
-    assert_eq!(ids(&cusip), ["fix:cusip=037833100"]);
+    assert_eq!(ids(&cusip), ["cusip=037833100"]);
     let bloomberg =
         parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|IDSource=A|SecurityID=AAPL US EQUITY|10=0|");
-    assert_eq!(ids(&bloomberg), ["fix:bloomberg=AAPL US EQUITY"]);
+    assert_eq!(ids(&bloomberg), ["bloomberg=AAPL US EQUITY"]);
     // A value the type refuses states nothing and is kept as an anomaly,
     // the field staying on the row as it arrived.
     let refused = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331006|10=0|");
@@ -1353,7 +1379,7 @@ fn every_fix_security_source_code_types_its_entry() {
         assert_eq!(
             primary
                 .get_securityids()
-                .get_from(&yggdryl::IdSource::Fix, &kind),
+                .get_from(&IdKey::base(kind.clone())),
             Some(value),
             "22={code}: {:?} {:?}",
             ids(&primary),
@@ -1365,7 +1391,7 @@ fn every_fix_security_source_code_types_its_entry() {
         assert_eq!(
             alternate
                 .get_securityids()
-                .get_from(&yggdryl::IdSource::Fix, &kind),
+                .get_from(&IdKey::base(kind.clone())),
             Some(value),
             "456={code}: {:?} {:?}",
             ids(&alternate),
@@ -1407,11 +1433,13 @@ fn a_source_named_in_full_types_its_entry_as_its_code_does() {
         ("Letter of Credit", 'L', "LC-2024-000123"),
     ] {
         let kind = IdType::from_fix_security_source(code).expect("a FIX code");
-        let fix = yggdryl::IdSource::Fix;
+        let fix = yggdryl::IdSource::Base;
         let primary =
             parsed(format!("8=FIX.4.4|35=D|11=A1|55=AAPL|22={name}|48={value}|10=0|").as_bytes());
         assert_eq!(
-            primary.get_securityids().get_from(&fix, &kind),
+            primary
+                .get_securityids()
+                .get_from(&IdKey::new(fix.clone(), kind.clone())),
             Some(value),
             "22={name}: {:?} {:?}",
             ids(&primary),
@@ -1421,7 +1449,9 @@ fn a_source_named_in_full_types_its_entry_as_its_code_does() {
             format!("8=FIX.4.4|35=D|11=A1|55=AAPL|454=1|455={value}|456={name}|10=0|").as_bytes(),
         );
         assert_eq!(
-            alternate.get_securityids().get_from(&fix, &kind),
+            alternate
+                .get_securityids()
+                .get_from(&IdKey::new(fix.clone(), kind.clone())),
             Some(value),
             "456={name}: {:?} {:?}",
             ids(&alternate),
@@ -1506,20 +1536,23 @@ fn a_source_naming_no_security_type_is_an_anomaly() {
 fn a_source_kept_as_stated_crosses_the_row_and_the_leaf() {
     let registry = committed_registry();
     let schema = yggdryl::fix_schema(&registry, "fix").expect("a schema");
-    let fix = yggdryl::IdSource::Fix;
+    let fix = yggdryl::IdSource::Base;
     for (source, word) in [("100", "100"), ("Z", "z")] {
         let kind: IdType = word.parse().expect("a word");
         let held =
             parsed(format!("8=FIX.4.4|35=D|11=A1|55=AAPL|22={source}|48=HOUSE-1|10=0|").as_bytes());
         assert_eq!(
-            held.get_securityids().get_from(&fix, &kind),
+            held.get_securityids()
+                .get_from(&IdKey::new(fix.clone(), kind.clone())),
             Some("HOUSE-1")
         );
         let row = held.into_row(&schema).expect("a row");
         let again = FixMsg::from_row(std::sync::Arc::clone(&registry), &schema, &row)
             .expect("the row's message");
         assert_eq!(
-            again.get_securityids().get_from(&fix, &kind),
+            again
+                .get_securityids()
+                .get_from(&IdKey::new(fix.clone(), kind.clone())),
             Some("HOUSE-1")
         );
         assert_eq!(
@@ -1535,7 +1568,9 @@ fn a_source_kept_as_stated_crosses_the_row_and_the_leaf() {
             panic!("one order event, got {}", leaves.len())
         };
         assert_eq!(
-            order.get_securityids().get_from(&fix, &kind),
+            order
+                .get_securityids()
+                .get_from(&IdKey::new(fix.clone(), kind.clone())),
             Some("HOUSE-1")
         );
     }
@@ -1575,7 +1610,7 @@ fn a_source_no_type_reads_is_an_anomaly_and_stays_on_the_wire() {
 #[test]
 fn an_iso_currency_or_country_source_reads_a_code_its_standard_names() {
     let lower = parsed(b"8=FIX.4.4|35=D|11=A1|55=EUR|22=6|48=eur|454=1|455=ch|456=7|10=0|");
-    assert_eq!(ids(&lower), ["fix:isoccy=EUR", "fix:isoctry=CH"]);
+    assert_eq!(ids(&lower), ["isoccy=EUR", "isoctry=CH"]);
     let refused = parsed(b"8=FIX.4.4|35=D|11=A1|55=EUR|22=6|48=EURO|10=0|");
     assert!(ids(&refused).is_empty(), "{:?}", ids(&refused));
     assert!(!anomalies(&refused).is_empty());

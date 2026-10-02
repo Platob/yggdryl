@@ -17,6 +17,7 @@ export {
   Filter,
   Identifier,
   Identifiers,
+  IsinRegistry,
   IOBase,
   IOCursor,
   Listing,

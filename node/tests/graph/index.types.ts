@@ -121,10 +121,10 @@ void new graph.CandleIterator(books)
 void new graph.CandleIterator(items, '1m')
 
 // A named view is one plan, applied to whatever `BatchReader.from` takes.
-const viewPlan: Plan = graph.MarketData.plan('orders', ["identifiers['fix:clordid'].value as clordid", new FieldPath('ticker')])
+const viewPlan: Plan = graph.MarketData.plan('orders', ["identifiers['clordid'] as clordid", new FieldPath('ticker')])
 const lifecyclePlan: Plan = graph.MarketData.plan('lifecycle', [], '10:1:C-1')
 const view: BatchReader = graph.MarketData.applyView('trades', reader)
-const liftedView: BatchReader = graph.MarketData.applyView('orders', new Uint8Array(), ["securityids['base:isin'].value as isin"])
+const liftedView: BatchReader = graph.MarketData.applyView('orders', new Uint8Array(), ["securityids['isin'] as isin"])
 const marketViews: readonly string[] = enums.marketViews
 // @ts-expect-error a lift is a path or its text
 graph.MarketData.plan('orders', [1])

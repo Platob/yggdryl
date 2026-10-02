@@ -11,7 +11,7 @@ use std::sync::Arc;
 use yggdryl::graph::{Event, Market, Operation};
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-use yggdryl::{Figi, IdSource, IdType, Isin, State};
+use yggdryl::{Figi, IdKey, IdType, Isin, State};
 use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, Timezone, Url};
 
 fn reader() -> FixCodec {
@@ -112,10 +112,7 @@ fn smarttrade_quote_and_mass_quote_ack_map_creation_time_and_quote_identifiers()
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>(),
-            [
-                "fix:quoteid=quote-20260814-1",
-                "fix:quotereqid=request-20260814-1",
-            ]
+            ["quoteid=quote-20260814-1", "quotereqid=request-20260814-1",]
         );
     }
 }
@@ -164,10 +161,7 @@ fn smarttrade_ulbridge_rows_keep_quote_and_mass_quote_ack_as_two_deliveries() {
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>(),
-        [
-            "fix:quoteid=quote-20260814-1",
-            "fix:quotereqid=request-20260814-1",
-        ]
+        ["quoteid=quote-20260814-1", "quotereqid=request-20260814-1",]
     );
     // The session event it was delivered as is the capture's, its four
     // values joined as stated.
@@ -375,8 +369,7 @@ fn a_figi_in_securityid_states_its_own_source_and_never_an_isin() {
     assert_eq!(text(&figi, 22).as_deref(), Some("S"));
     assert_eq!(isincode(&figi), None, "{}", figi.get_securityids());
     assert_eq!(
-        figi.get_securityids()
-            .get_from(&IdSource::Fix, &IdType::Figi),
+        figi.get_securityids().get_from(&IdKey::base(IdType::Figi)),
         Some("BBG000BPH459")
     );
     assert_eq!(figi.get_by_tag(470), None, "a FIGI names no country");
@@ -410,7 +403,7 @@ fn an_isin_behind_bbg_that_no_figi_check_closes_states_an_isins_source() {
     assert_eq!(text(&alternate, 22).as_deref(), Some("4"));
     assert_eq!(
         alternate.get_securityids().to_string(),
-        "[fix:isin=BBG000BPH459]"
+        "[isin=BBG000BPH459]"
     );
     // So is a `SecurityID` the message states that is the first ISIN
     // alternate's code: the rule reads the code, not who put it there.
@@ -419,10 +412,7 @@ fn an_isin_behind_bbg_that_no_figi_check_closes_states_an_isins_source() {
         b"8=FIX.4.4|35=D|11=A|55=MSFT|48=BBG000BPH459|454=1|455=BBG000BPH459|456=4|10=0|",
     );
     assert_eq!(text(&stated, 22).as_deref(), Some("4"));
-    assert_eq!(
-        stated.get_securityids().to_string(),
-        "[fix:isin=BBG000BPH459]"
-    );
+    assert_eq!(stated.get_securityids().to_string(), "[isin=BBG000BPH459]");
 }
 
 #[test]
@@ -513,7 +503,7 @@ fn an_alternate_isin_fills_securityid_only_under_no_source_or_an_isins() {
     assert_eq!(symbol.get_by_tag(55), None);
     assert_eq!(
         symbol.get_securityids().to_string(),
-        "[derived:cusip=037833100, fix:isin=US0378331005]"
+        "[cusip=037833100, derived:cusip=037833100, isin=US0378331005]"
     );
     // Under a CUSIP's source no `SecurityID` is made for the source to
     // refuse.
@@ -576,7 +566,7 @@ fn a_symbol_a_rule_fills_names_its_currency_pair_as_a_stated_one_does() {
         assert_eq!(text(&filled, 55).as_deref(), Some("EUR/USD"), "{currency}");
         assert_eq!(
             filled.get_securityids().to_string(),
-            "[derived:forex=EUR/USD, fix:exchsymb=EUR/USD]",
+            "[derived:forex=EUR/USD, exchsymb=EUR/USD, forex=EUR/USD]",
             "{currency}"
         );
         assert_eq!(filled.get_securityids(), stated.get_securityids());
@@ -1088,7 +1078,7 @@ fn normalized_market_codes_are_answered_and_columned_while_other_facts_are_not()
     assert_eq!(
         yggdryl::Identifiers::from_scalar(&column("securityids"))
             .expect("the security identifiers")
-            .get_from(&IdSource::Fix, &IdType::Isin),
+            .get_from(&IdKey::base(IdType::Isin)),
         Some("US0378331005")
     );
     assert_eq!(column("exdestination").as_str(), Some("XNAS"));
@@ -1913,11 +1903,11 @@ fn a_follower_stating_no_security_takes_its_chains_identifiers_and_another_isin_
     };
     let ids = order.get_securityids();
     assert_eq!(
-        ids.get_from(&IdSource::Fix, &IdType::Isin),
+        ids.get_from(&IdKey::base(IdType::Isin)),
         Some("US0378331005")
     );
     assert_eq!(
-        ids.get_from(&IdSource::Fix, &IdType::Figi),
+        ids.get_from(&IdKey::base(IdType::Figi)),
         Some("BBG000B9XRY4")
     );
     assert_eq!(ids.get(&IdType::Cusip), Some("037833100"));
@@ -1992,7 +1982,7 @@ mod parentage {
     use std::sync::Arc;
 
     use yggdryl::graph::{Element, Event, Operation};
-    use yggdryl::{FixCodec, FixMsg, IdSource, IdType};
+    use yggdryl::{FixCodec, FixMsg, IdType};
 
     use super::SoleMessage;
 
@@ -2016,7 +2006,7 @@ mod parentage {
     fn fix(message: &FixMsg, kind: &str) -> Option<String> {
         message
             .get_identifiers()
-            .get_from(&IdSource::Fix, &word(kind))
+            .get_from(&yggdryl::IdKey::base(word(kind)))
             .map(ToOwned::to_owned)
     }
 
@@ -2114,10 +2104,7 @@ mod parentage {
             .of_kind(&word("parentorderid"))
             .map(|id| id.key().to_string())
             .collect();
-        assert!(
-            sources.contains(&"fix:parentorderid".to_owned()),
-            "{sources:?}"
-        );
+        assert!(sources.contains(&"parentorderid".to_owned()), "{sources:?}");
     }
 
     /// A message that names no `OrderID(37)` carries the chain's, and the

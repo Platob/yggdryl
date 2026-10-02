@@ -250,32 +250,26 @@ test('a lifecycle-shaped batch reads into events', () => {
   assert.equal(execution.currunix, CLOCK + 1n)
 })
 
-test('an identifier column built in Arrow JS is a map keyed src:type and lands as the leaf\'s identifiers', () => {
-  // A sorted map from each key `src:type` to its three-text row; the entries
-  // are `key` and the item, which Arrow JS names `value` whatever it is told.
-  const row = new arrow.Struct(
-    ['src', 'type', 'value'].map((name) => new arrow.Field(name, new arrow.Utf8(), false)),
-  )
+test('an identifier column built in Arrow JS is a map of keys to values and lands as the leaf\'s identifiers', () => {
+  // A sorted map from each key's text - `src:type`, the type alone for the
+  // base source - to its value.
   const identifiers = new arrow.Map_(
     new arrow.Field('entries', new arrow.Struct([
       new arrow.Field('key', new arrow.Utf8(), false),
-      new arrow.Field('identifier', row, false),
+      new arrow.Field('value', new arrow.Utf8(), false),
     ]), false),
     true,
   )
   const table = new arrow.Table({
     marketdatakind: arrow.vectorFromArray(['ORDR', 'ORDR'], new arrow.Utf8()),
     currunix: arrow.vectorFromArray([CLOCK, CLOCK + 1n], new arrow.Int64()),
-    identifiers: arrow.vectorFromArray(
-      [new Map([['fix:orderid', { src: 'fix', type: 'orderid', value: 'O-1' }]]), null],
-      identifiers,
-    ),
+    identifiers: arrow.vectorFromArray([new Map([['ullink:orderid', 'O-1']]), null], identifiers),
   })
   const [first, second] = drain(graph.MarketData.fromArrowReader(BatchReader.from(table)))
     .map((data) => data.intoLeaf())
   assert.deepEqual(kinds(first.identifiers), { orderid: 'O-1' })
-  // The map's key is its row's `src:type`, which the identifier answers.
-  assert.deepEqual(first.identifiers.toArray().map((id) => [id.key, id.value]), [['fix:orderid', 'O-1']])
+  // A named source read back fills its type's base key: the map is closed.
+  assert.deepEqual(first.identifiers.intoObject(), { orderid: 'O-1', 'ullink:orderid': 'O-1' })
   assert.equal(second.identifiers.length, 0)
 })
 
@@ -331,7 +325,7 @@ function prefixed(nested, prefix) {
 // A stream of every leaf, with an order stating an ISIN and a chain of two.
 function viewStream() {
   const identified = new graph.OrderEvent(CLOCK + 5n, {
-    crosscode: 'O-5', side: 'BUYS', price: '100', ticker: 'ACME', securityids: [new Identifier('base', 'isin', ISIN)],
+    crosscode: 'O-5', side: 'BUYS', price: '100', ticker: 'ACME', securityids: [new Identifier('isin', ISIN)],
   })
   const first = new graph.OrderEvent(CLOCK + 10n, { crosscode: 'C-1', side: 'BUYS', price: '1' })
   const second = new graph.OrderEvent(CLOCK + 20n, { crosscode: 'C-1', side: 'BUYS', price: '2' }).withPrevious(first)
@@ -355,7 +349,7 @@ test('the market views are the enumeration the core lists', () => {
 
 test('every view is one plan whose text reads back', () => {
   const nested = NESTED.join(', ')
-  const lift = "identifiers['fix:clordid'].value as clordid"
+  const lift = "identifiers['clordid'] as clordid"
   assert.equal(
     graph.MarketData.plan('orders', [lift]).toString(),
     `select * exclude (${nested}), ${lift} where marketdatakind = 'ORDR'`,
@@ -434,17 +428,18 @@ test('each view keeps its own columns over a small stream', () => {
 })
 
 test('a lift reads one key of a root column and null where it is missing', () => {
-  // An identifier column is a map keyed `src:type`: one identifier by its key.
-  const lifts = ["securityids['base:isin'].value as isin", "securityids['base:wkn'].value as wkn"]
+  // An identifier column is a map from the key's text to its value: one
+  // value by its key, the base key spelled as its type alone.
+  const lifts = ["securityids['isin'] as isin", "securityids['wkn'] as wkn"]
   const table = viewed('orders', lifts)
   assert.deepEqual(names(table).slice(-2), ['isin', 'wkn'])
   const codes = [...table.getChild('crosscode')]
   const isins = [...table.getChild('isin')]
   codes.forEach((code, at) => assert.equal(isins[at], code === '10:1:O-5' ? ISIN : null, code))
   assert.equal(table.getChild('wkn').nullCount, table.numRows)
-  // The key is read as it is stored, a lower-case `src:type`: another case
-  // is another key.
-  assert.equal(viewed('orders', ["securityids['BASE:ISIN'].value as isin"]).getChild('isin').nullCount, 5)
+  // The key is read as it is stored, the lower-case text of a key: another
+  // spelling is another key.
+  assert.equal(viewed('orders', ["securityids['ISIN'] as isin"]).getChild('isin').nullCount, 5)
   // A lift naming a column the root does not hold is refused where the
   // plan binds.
   assert.throws(() => viewed('orders', ["nothing['ISIN'] as isin"]), /nothing/)

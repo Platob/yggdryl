@@ -2145,9 +2145,9 @@ graph_data_rows: graph.MarketDataRowIterator = graph.MarketData.from_arrow_reade
 )
 graph_data_rows_list: list[graph.MarketData] = list(graph_data_rows)
 graph_view_names: tuple[str, ...] = MARKET_VIEWS
-graph_view_plan: Plan = graph.MarketData.plan("orders", ["identifiers['fix:clordid'].value as clordid"])
+graph_view_plan: Plan = graph.MarketData.plan("orders", ["identifiers['clordid'] as clordid"])
 graph_view_plan_path: Plan = graph.MarketData.plan(
-    "trades", (yggdryl.FieldPath("identifiers['fix:orderid'].value as orderid"),)
+    "trades", (yggdryl.FieldPath("identifiers['orderid'] as orderid"),)
 )
 graph_view_plan_lifecycle: Plan = graph.MarketData.plan("lifecycle", crosscode="10:1:C-1")
 graph_view_rows: pa.RecordBatchReader = graph.MarketData.apply_view(
@@ -2473,8 +2473,8 @@ typed_record_options = RecordOptions("text/csv", separator=";", header=True)
 typed_text_options = TextOptions(rowheader="^(?<level>[A-Z]+) ", autotype=True)
 typed_absent_options = TextOptions(rowheader=...)
 
-identifier: yggdryl.Identifier = yggdryl.Identifier("fix", "orderid", "O-1")
-identifier_security: yggdryl.Identifier = yggdryl.Identifier("base", "isin", "US0378331005")
+identifier: yggdryl.Identifier = yggdryl.Identifier("orderid", "O-1")
+identifier_security: yggdryl.Identifier = yggdryl.Identifier("isin", "US0378331005")
 identifier_keyed: yggdryl.Identifier | None = yggdryl.Identifier.from_key("ullink.InstrumentId", "dbi;X")
 identifier_parts: tuple[str, str, str, str] = (
     identifier.src,
@@ -2484,9 +2484,23 @@ identifier_parts: tuple[str, str, str, str] = (
 )
 identifiers: yggdryl.Identifiers = yggdryl.Identifiers([identifier, identifier_security])
 identifiers_value: str | None = identifiers.get("isin")
-identifiers_from: str | None = identifiers.get_from("fix", "orderid")
+identifiers_from: str | None = identifiers.get_from("orderid")
 identifiers_of_kind: list[yggdryl.Identifier] = identifiers.of_kind("isin")
 identifiers_listed: list[yggdryl.Identifier] = list(identifiers)
 assert identifiers_value == "US0378331005" and identifiers_from == "O-1" and len(identifiers_listed) == 2
 assert identifier_keyed is not None and identifier_keyed.src == "ullink" and identifier_parts[1] == "orderid"
-assert identifier_parts[3] == "fix:orderid"
+assert identifier_parts[3] == "orderid"
+identifiers_dict: dict[str, str] = identifiers.into_dict()
+identifiers_from_dict: yggdryl.Identifiers = yggdryl.Identifiers.from_dict({"ullink:isin": "US0378331005"})
+identifiers_derived: bool = identifiers_from_dict.is_derived("isin")
+assert identifiers_dict == {"isin": "US0378331005", "orderid": "O-1"} and not identifiers_derived
+isin_registry: yggdryl.IsinRegistry = yggdryl.IsinRegistry(max_instruments=8)
+isin_registry_merged: bool = isin_registry.merge({"isin": "CH0012214059", "ric": "HOLN.S"})
+isin_registry_row: dict[str, Any] | None = isin_registry.get_by_ric("HOLN.S")
+isin_registry_bound: int = isin_registry.max_instruments
+isin_registry_reader: pa.RecordBatchReader = isin_registry.into_arrow_reader()
+isin_registry_loaded: int = yggdryl.IsinRegistry().extend_from_arrow_reader(isin_registry.into_arrow_reader())
+isin_registry_codec: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, isin_registry=isin_registry)
+isin_registry_shared: yggdryl.IsinRegistry | None = isin_registry_codec.isin_registry
+assert isin_registry_merged and isin_registry_row is not None and isin_registry_bound == 8
+assert isin_registry_loaded == 1 and isin_registry_shared == isin_registry and len(isin_registry) == 1

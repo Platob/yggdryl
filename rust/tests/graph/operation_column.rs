@@ -2,17 +2,19 @@
 //! on the market is stated in beside the market's thirty-four, each
 //! stating back exactly the fact it read.
 
+use yggdryl::IdKey;
+
 use yggdryl::graph::{Operation, OperationColumn, OrderEvent};
-use yggdryl::{DataType, IdSource, IdType, Identifier, Identifiers, Scalar, TimeInForce};
+use yggdryl::{DataType, IdType, Identifier, Identifiers, Scalar, TimeInForce};
 
 /// One identifier of a plain holder: a value of `kind` from `fix`.
 fn identifier(kind: IdType, value: &str) -> Identifier {
-    Identifier::new(IdSource::Fix, kind, value).unwrap()
+    Identifier::new(IdKey::base(kind), value).unwrap()
 }
 
 /// One party: a value of `role` from `base`.
 fn party(role: IdType, value: &str) -> Identifier {
-    Identifier::new(IdSource::Base, role, value).unwrap()
+    Identifier::new(IdKey::base(role), value).unwrap()
 }
 
 #[test]
@@ -110,7 +112,7 @@ fn operation_column_schema_has_one_owner_and_order() {
     );
     assert_eq!(
         OperationColumn::Identifiers.datatype(),
-        Identifiers::dtype("identifier"),
+        Identifiers::dtype(),
         "the identifiers are a sorted map from the key src:type to the source, type, value row"
     );
     assert_eq!(OperationColumn::Identifiers.name(), "identifiers");
@@ -123,10 +125,7 @@ fn operation_column_schema_has_one_owner_and_order() {
         OperationColumn::of_name("partyids"),
         Some(OperationColumn::PartyIds)
     );
-    assert_eq!(
-        OperationColumn::PartyIds.datatype(),
-        Identifiers::dtype("partyid")
-    );
+    assert_eq!(OperationColumn::PartyIds.datatype(), Identifiers::dtype());
     assert_eq!(OperationColumn::PartyIds.name(), "partyids");
     assert_eq!(OperationColumn::PartyIds.display(), "Party IDs");
     assert_eq!(OperationColumn::of_name("parties"), None);

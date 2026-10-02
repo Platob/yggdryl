@@ -28,8 +28,8 @@ def order_event(**facts: Any) -> graph.OrderEvent:
         "quantity": 5,
         "ticker": "ACME",
         "timeinforce": "0",
-        "identifiers": Identifiers([Identifier("fix", "orderid", "O-100")]),
-        "securityids": [Identifier("base", "isin", "US0378331005")],
+        "identifiers": Identifiers([Identifier("orderid", "O-100")]),
+        "securityids": [Identifier("isin", "US0378331005")],
         "fxrates": {"EUR": D("1.25")},
         "bidpx": D("100.5"),
         "bidqty": 7,
@@ -62,7 +62,11 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     assert event.unit == ""
     assert event.side is Side.BUYS
     # A US ISIN embeds its CUSIP, which the core derives beside it.
-    assert [str(id) for id in event.securityids] == ["base:isin=US0378331005", "derived:cusip=037833100"]
+    assert [str(id) for id in event.securityids] == [
+        "cusip=037833100",
+        "derived:cusip=037833100",
+        "isin=US0378331005",
+    ]
     assert event.securityids.get("isin") == "US0378331005"
     assert event.isincode == "US0378331005"
     assert {target: rate.as_py() for target, rate in event.fxrates.items()} == {"EUR": D("1.25")}
@@ -79,7 +83,7 @@ def test_an_order_event_reads_every_fact_back_typed() -> None:
     assert event.metadata == {}
     assert event.timeinforce is TimeInForce.DAY
     assert event.tradable is None
-    assert event.identifiers == Identifiers([Identifier("fix", "orderid", "O-100")])
+    assert event.identifiers == Identifiers([Identifier("orderid", "O-100")])
     # The party ids an operation names, by role and source: none stated here.
     assert len(event.partyids) == 0 and not event.partyids
     assert event.kind == "order"
@@ -116,16 +120,17 @@ def test_the_three_identifier_sets_are_one_name_each_on_every_leaf() -> None:
     event = graph.OrderEvent(
         CLOCK,
         crosscode="O-1",
-        securityids=[Identifier("base", "isin", "us0378331005")],
-        identifiers=[Identifier("fix", "orderid", "O-9"), Identifier("ullink", "instrumentid", "dbi;X")],
-        partyids=[Identifier("proprietary", "executingtrader", "T-1")],
+        securityids=[Identifier("isin", "us0378331005")],
+        identifiers=[Identifier("orderid", "O-9"), Identifier("ullink:instrumentid", "dbi;X")],
+        partyids=[Identifier("proprietary:executingtrader", "T-1")],
     )
     assert event.securityids.get("isin") == "US0378331005"
-    assert [str(id) for id in event.identifiers] == ["fix:orderid=O-9", "ullink:instrumentid=dbi;X"]
-    assert [str(id) for id in event.partyids] == ["proprietary:executingtrader=T-1"]
+    assert [str(id) for id in event.identifiers] == ["instrumentid=dbi;X", "orderid=O-9", "ullink:instrumentid=dbi;X"]
+    assert [str(id) for id in event.partyids] == ["executingtrader=T-1", "proprietary:executingtrader=T-1"]
     # A source and a type are keys: a set holds one value per `src:type`.
-    assert event.identifiers.get_from("ullink", "instrumentid") == "dbi;X"
-    assert event.identifiers.get_from("fix", "instrumentid") is None
+    assert event.identifiers.get_from("ullink:instrumentid") == "dbi;X"
+    assert event.identifiers.get_from("oms:instrumentid") is None
+    assert event.identifiers.get_from("instrumentid") == "dbi;X", "a named source fills the base key"
     # The retired spellings are no fact of any leaf.
     for retired in ("secaltids", "altids", "parties"):
         with pytest.raises(ValueError, match=f'OrderEvent states no fact "{retired}"'):
@@ -148,7 +153,7 @@ def test_ellipsis_is_skipped_and_none_clears() -> None:
         "price": 1,
         "ticker": "T",
         "timeinforce": "0",
-        "identifiers": [Identifier("fix", "orderid", "X")],
+        "identifiers": [Identifier("orderid", "X")],
     }
     cleared = graph.OrderEvent(CLOCK, **{**stated, "ticker": None, "price": None, "timeinforce": None, "identifiers": None})
     assert cleared.ticker is None and cleared.price is None and cleared.timeinforce is None
@@ -261,7 +266,7 @@ def test_following_crosses_no_kind() -> None:
         graph.QuoteEvent(CLOCK, book=graph.BookRef(scope="S")),
         graph.Order(crosscode="O", metadata={"k": "v"}),
         graph.Quote(),
-        graph.Execution(securityids=[Identifier("base", "isin", "US0378331005")]),
+        graph.Execution(securityids=[Identifier("isin", "US0378331005")]),
     ],
     ids=lambda leaf: type(leaf).__name__,
 )
@@ -335,19 +340,19 @@ def test_a_market_elements_cross_code_is_stored_as_its_kind_its_side_and_its_bas
 
 
 def test_a_sequence_of_identifiers_states_the_map_it_makes() -> None:
-    ids = [Identifier("fix", "orderid", "O-9"), Identifier("ullink", "instrumentid", "dbi;X"), Identifier("fix", "orderid", "O-9")]
+    ids = [Identifier("orderid", "O-9"), Identifier("ullink:instrumentid", "dbi;X"), Identifier("orderid", "O-9")]
     event = graph.OrderEvent(CLOCK, identifiers=ids)
     assert event.identifiers == Identifiers(ids), "one identifier stated twice is one"
-    assert [id.key for id in event.identifiers] == ["fix:orderid", "ullink:instrumentid"]
-    assert event.identifiers.get_from("fix", "orderid") == "O-9"
+    assert [id.key for id in event.identifiers] == ["instrumentid", "orderid", "ullink:instrumentid"]
+    assert event.identifiers.get_from("orderid") == "O-9"
     # Two values under one key are two readings, refused naming the place.
-    with pytest.raises(ValueError, match=r"\$\[1\].*fix:orderid"):
-        graph.OrderEvent(CLOCK, identifiers=[Identifier("fix", "orderid", "O-9"), Identifier("fix", "orderid", "O-10")])
+    with pytest.raises(ValueError, match=r"\$\[1\].*orderid"):
+        graph.OrderEvent(CLOCK, identifiers=[Identifier("orderid", "O-9"), Identifier("orderid", "O-10")])
     assert graph.OrderEvent(CLOCK, identifiers=tuple(ids)).identifiers == event.identifiers
     assert graph.OrderEvent(CLOCK, identifiers=Identifiers(ids)).identifiers == event.identifiers
     assert graph.OrderEvent(CLOCK, identifiers=[]).identifiers == Identifiers()
     # The three sets state alike, and a sequence of anything else is no map.
-    quote = graph.QuoteEvent(CLOCK, partyids=[Identifier("proprietary", "executingtrader", "T-1")])
-    assert quote.partyids.get_from("proprietary", "executingtrader") == "T-1"
+    quote = graph.QuoteEvent(CLOCK, partyids=[Identifier("proprietary:executingtrader", "T-1")])
+    assert quote.partyids.get_from("proprietary:executingtrader") == "T-1"
     with pytest.raises(ValueError):
         graph.OrderEvent(CLOCK, identifiers=[ids[0], 1])

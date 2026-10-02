@@ -698,14 +698,14 @@ pub(crate) mod casts {
 //
 // # Merging two statements
 //
-// [`Cfi::merged`] folds two codes for one instrument position by position,
+// [`Cfi::refined`] folds two codes for one instrument position by position,
 // and only when they agree on what the instrument *is*: same category, same
-// group. A stated attribute fills an unknown one, so `ESXXXX` merged with
-// `ESVUFR` is `ESVUFR`. Two different stated attributes are a conflict, and
-// this crate has one answer for two voices that disagree - ambiguity answers
-// nothing - so that position answers `X` rather than picking a winner. Two
-// different categories or groups are not a merge at all: they are two
-// statements about two different instruments, and the answer is `None`.
+// group, no attribute stated two ways. The code it leads with keeps every
+// letter it states and takes the other's where it states `X`, so `ESXXXX`
+// refined by `ESVUFR` is `ESVUFR`, and an unclassified code yields whole.
+// Two different stated attributes, or two different categories or groups,
+// are two statements about two different instruments, and the answer is
+// `None`: the caller keeps the statement it leads with.
 //
 // # Provenance
 //

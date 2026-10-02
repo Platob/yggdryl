@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use yggdryl::graph::{
     BookEvent, BookIterator, BookRef, Element, Event, ExecutionEvent, Market, MarketData,
@@ -19,11 +20,11 @@ use yggdryl::{
 const ORDER_ID: IdType = IdType::OrderId;
 
 /// The source the fixtures state their identifiers from.
-const SOURCE: IdSource = IdSource::Fix;
+const SOURCE: IdSource = IdSource::Base;
 
 /// One identifier of a plain holder: a value of `kind` from `fix`.
 fn identifier(kind: &IdType, value: &str) -> Identifier {
-    Identifier::new(SOURCE, kind.clone(), value).unwrap()
+    Identifier::new(IdKey::new(SOURCE, kind.clone()), value).unwrap()
 }
 
 /// One synthetic operation of `kind` - `order`, `quote` or `execution` -
@@ -123,7 +124,8 @@ fn with_book(mut operation: MarketData, book: BookRef) -> MarketData {
 fn with_identifiers(operation: MarketData, identifiers: &[(IdType, &str)]) -> MarketData {
     edited(operation, |held| {
         for (kind, value) in identifiers {
-            held.remove_identifier(&SOURCE, kind).unwrap();
+            held.remove_identifier(&IdKey::new(SOURCE, (kind).clone()))
+                .unwrap();
             held.insert_identifier(identifier(kind, value)).unwrap();
         }
     })
@@ -132,7 +134,8 @@ fn with_identifiers(operation: MarketData, identifiers: &[(IdType, &str)]) -> Ma
 /// `operation` without its `mdentryid`: an anonymous entry.
 fn anonymous(operation: MarketData) -> MarketData {
     edited(operation, |held| {
-        held.remove_identifier(&SOURCE, &ENTRY_ID).unwrap();
+        held.remove_identifier(&IdKey::new(SOURCE, ENTRY_ID))
+            .unwrap();
     })
 }
 
@@ -747,6 +750,52 @@ fn iterator_emits_one_book_per_symbol_and_timestamp() {
             .collect::<Vec<_>>(),
         [(1_000_000, "IBM"), (1_000_000, "MSFT"), (3_000_000, "IBM")]
     );
+}
+
+/// A ticker an ISIN registry filled moves the book an element without one
+/// stands in: unfilled, the second quote stands in the book of its market
+/// and classification; filled from the first quote's row, in the ticker's.
+#[test]
+fn a_ticker_a_registry_filled_files_the_element_under_the_ticker_s_book() {
+    let holcim = |value: MarketData, ticker: bool| {
+        edited(value, |operation| {
+            operation
+                .insert_securityid(identifier(&IdType::Isin, "CH0012214059"))
+                .unwrap();
+            if !ticker {
+                operation.set_ticker(None, true);
+            }
+        })
+    };
+    let first = holcim(
+        operation("quote", "HOLN", "Q-1", 1_000_000, "Buy", "100", 2, "New"),
+        true,
+    );
+    let second = holcim(
+        operation("quote", "HOLN", "Q-2", 1_000_000, "Sell", "101", 3, "New"),
+        false,
+    );
+    let books = |values: Vec<MarketData>| {
+        BookIterator::new(values.into_iter(), 0)
+            .unwrap()
+            .map(|book| book.unwrap().book_crosscode().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        books(vec![first.clone(), second.clone()]),
+        ["HOLN", "XXXX:XXXXXX"]
+    );
+
+    let mut registry = yggdryl::IsinRegistry::new();
+    let filled = [first, second]
+        .into_iter()
+        .map(|mut value| {
+            on_operation!(&mut value, operation => registry.enrich(operation));
+            value
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(op(&filled[1]).get_ticker(), Some("HOLN"));
+    assert_eq!(books(filled), ["HOLN"]);
 }
 
 #[test]

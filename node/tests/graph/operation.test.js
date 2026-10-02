@@ -26,7 +26,7 @@ function orderEvent(facts = {}) {
     quantity: 5,
     ticker: 'ACME',
     timeinforce: '0',
-    identifiers: new Identifiers([new Identifier('fix', 'orderid', 'O-100')]),
+    identifiers: new Identifiers([new Identifier('orderid', 'O-100')]),
     ...facts,
   })
 }
@@ -231,7 +231,7 @@ for (const [name, build] of [
   ['QuoteEvent with a book', () => new graph.QuoteEvent(CLOCK, { book: new graph.BookRef({ scope: 'S' }) })],
   ['Order', () => new graph.Order({ crosscode: 'O', metadata: { k: 'v' } })],
   ['Quote', () => new graph.Quote()],
-  ['Execution', () => new graph.Execution({ securityids: [new Identifier('base', 'isin', 'US0378331005')] })],
+  ['Execution', () => new graph.Execution({ securityids: [new Identifier('isin', 'US0378331005')] })],
 ]) {
   test(`${name}: equals, stableHash, toString, clone and toJSON round trip`, () => {
     const leaf = build()

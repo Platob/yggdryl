@@ -64,6 +64,13 @@ impl Isin {
         Ok(Self(SmolStr::new(folded)))
     }
 
+    /// A number a landed `isin` column already holds, adopted as it
+    /// stands: the landing read the cell under this type's rule, and a
+    /// column holds the canonical spelling.
+    pub(crate) fn from_proven(text: &str) -> Self {
+        Self(SmolStr::new(text))
+    }
+
     /// Borrow the validated number.
     #[must_use]
     pub fn as_str(&self) -> &str {

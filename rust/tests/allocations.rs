@@ -27,6 +27,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::SerieValue as _;
 use yggdryl::graph::{
     BookEvent, BookIterator, BookRef, CandleIterator, CandleOptions, Element, ElementColumn, Event,
@@ -944,7 +945,7 @@ fn allocation_candle_books(count: usize, exec: impl Fn(usize) -> String) -> Vec<
             fill.set_state(State::read("Filled").expect("the shipped filled state"));
             assert!(
                 fill.insert_identifier(
-                    Identifier::new(IdSource::Fix, IdType::ExecId, &exec(index)).unwrap()
+                    Identifier::new(IdKey::base(IdType::ExecId), &exec(index)).unwrap()
                 )
                 .unwrap()
             );
@@ -1180,22 +1181,17 @@ fn allocation_market_order(index: usize) -> MarketData {
     order.set_srcuuids(vec![Uuid::from_v8(7)]);
     order
         .insert_identifier(
-            Identifier::new(IdSource::Fix, IdType::OrderId, &format!("ORDER-{index:06}")).unwrap(),
+            Identifier::new(IdKey::base(IdType::OrderId), &format!("ORDER-{index:06}")).unwrap(),
         )
         .expect("an identifier");
     order
         .insert_identifier(
-            Identifier::new(
-                IdSource::Fix,
-                IdType::MdEntryId,
-                &format!("ENTRY-{index:06}"),
-            )
-            .unwrap(),
+            Identifier::new(IdKey::base(IdType::MdEntryId), &format!("ENTRY-{index:06}")).unwrap(),
         )
         .expect("an identifier");
     order
         .insert_identifier(
-            Identifier::new(IdSource::Fix, IdType::ClOrdId, &format!("CL-{index:06}")).unwrap(),
+            Identifier::new(IdKey::base(IdType::ClOrdId), &format!("CL-{index:06}")).unwrap(),
         )
         .expect("an identifier");
     order.set_metadata(
@@ -1265,7 +1261,7 @@ fn allocation_market_order_with_rates(index: usize) -> MarketData {
     };
     order
         .insert_securityid(
-            Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").expect("an ISIN"),
+            Identifier::new(IdKey::base(IdType::Isin), "US0378331005").expect("an ISIN"),
         )
         .expect("a plain holder");
     order.set_fxrates(
@@ -2892,9 +2888,7 @@ fn a_view_plan_is_compiled_once_per_stream() {
     use yggdryl::graph::MarketView;
 
     let batch = view_corpus();
-    let isin: FieldPath = "securityids['base:isin'].value as isin"
-        .parse()
-        .expect("a lift");
+    let isin: FieldPath = "securityids['isin'] as isin".parse().expect("a lift");
     for (view, lifts) in [
         (MarketView::Orders, vec![isin]),
         (MarketView::Trades, Vec::new()),
@@ -4944,30 +4938,62 @@ struct StageCosts {
 /// that column's sixteen bytes where it landed a validity bitmap and its
 /// buffer: 1589.
 ///
+/// Each identifier set then became one sorted `map<utf8, utf8>` from the key
+/// (a base key spelled as its type alone, a key of two words the crate
+/// names one static string) to the value, and every type a named source
+/// states came to hold its base key too. The bridge row measured a parse of
+/// 596 and a row of 151 before it, where this pin stated 595 and 152. Each
+/// batch fell by twelve to 212: an identifier column is a map node and its
+/// entries struct (four) over two texts (two), six arrays where ten were.
+/// Each landing fell by sixty-nine with the layout - twenty-three a column,
+/// the identifier struct and its three texts gone - and by two more for
+/// each set it lands, its entries three allocations where they were five:
+/// 1515, 1496 and 1533, the bridge row's eighteen party keys growing their
+/// text once more. `into_row` lost the record each identifier was and every
+/// key spelled past `SmolStr`'s inline width, a key of two words the crate
+/// names being a static string and only a key naming a source it does not -
+/// `omsdealer:account` among them - spelled: 151 to 116 for the bridge row's
+/// thirty identifiers, thirty records and eight texts past the inline width
+/// where its thirty-seven entries now spell three, 109 to 95 for a frame's
+/// eleven (eleven and three, none now) and 279 to 262 for the packed
+/// frame's thirteen (thirteen and five, one now). The parses moved by the
+/// sets the rule
+/// keeps: a frame's rose to 245, three for the base keys its three sourced
+/// parties fill growing its party map at its three settles and one for the
+/// base keys its two derivations fill growing its security identifiers;
+/// the bridge row's fell to 592, nine for the parent fills its
+/// `ParentOrderID` keys no longer make at its three settles - the base
+/// `orderid` is the wire's `OrderID(37)` - against three for its sourced
+/// parties' base keys, one for its security identifiers' and one for the
+/// `DETAILEDCFICODE` it states, now a name of `CFICode(461)` folded where
+/// the message is built; the packed frame's did not move. Each walk rose to
+/// 8: its instrument registry takes its own table on its first learn, the
+/// empty registry sharing one static table until then.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 595,
-            into_row: 152,
-            landing: 1589,
-            batch: 224,
+            parse: 592,
+            into_row: 116,
+            landing: 1515,
+            batch: 212,
             digest: 24,
-            lifecycle: 7,
+            lifecycle: 8,
         },
     ),
     (
         "frame_pipe",
         72,
         StageCosts {
-            parse: 241,
-            into_row: 109,
-            landing: 1571,
-            batch: 224,
+            parse: 245,
+            into_row: 95,
+            landing: 1496,
+            batch: 212,
             digest: 24,
-            lifecycle: 7,
+            lifecycle: 8,
         },
     ),
     (
@@ -4975,11 +5001,11 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         111,
         StageCosts {
             parse: 1153,
-            into_row: 279,
-            landing: 1608,
-            batch: 224,
+            into_row: 262,
+            landing: 1533,
+            batch: 212,
             digest: 16,
-            lifecycle: 7,
+            lifecycle: 8,
         },
     ),
 ];
@@ -5164,7 +5190,7 @@ fn instrument_codes_construct_and_classify_without_allocating() {
         assert!(Cfi::is_classified("ESVUFR"));
     });
     free("CFI merging", || {
-        assert_eq!(Cfi::merged("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
+        assert_eq!(Cfi::refined("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
     });
     free("CFI inference", || {
         assert_eq!(Cfi::coarse('E', Some('S')).as_deref(), Some("ESXXXX"));
@@ -5214,22 +5240,20 @@ fn a_forex_pair_and_an_fx_symbol_read_without_allocating() {
 #[test]
 fn identifier_reads_and_inline_inserts_allocate_nothing() {
     use yggdryl::Identifiers;
-    // A source, a type and a value, 24 bytes each: 72, where the retired
-    // `parent` and `orig` were two more 24-byte strings at 120.
+    // A key - a source and a type - and a value, 24 bytes each: 72, where
+    // the retired `parent` and `orig` were two more 24-byte strings at 120.
     assert_eq!(std::mem::size_of::<Identifier>(), 72);
     assert_eq!(std::mem::size_of::<Identifiers>(), IDENTIFIERS_SIZE);
     let mut ids = Identifiers::new();
-    ids.insert(Identifier::new(IdSource::Base, IdType::Account, "ACC-1").unwrap());
+    ids.insert(Identifier::new(IdKey::base(IdType::Account), "ACC-1").unwrap());
     let venue: IdSource = "venue".parse().unwrap();
-    ids.insert(Identifier::new(venue.clone(), IdType::UserId, "U-1").unwrap());
+    let user = IdKey::new(venue.clone(), IdType::UserId);
+    ids.insert(Identifier::new(user.clone(), "U-1").unwrap());
     free("an Identifiers read of a held type", || {
         assert_eq!(ids.get(black_box(&IdType::Account)), Some("ACC-1"));
     });
     free("an Identifiers read of a held type and source", || {
-        assert_eq!(
-            ids.get_from(black_box(&venue), black_box(&IdType::UserId)),
-            Some("U-1")
-        );
+        assert_eq!(ids.get_from(black_box(&user)), Some("U-1"));
     });
     free("an Identifiers read of an absent type", || {
         assert_eq!(ids.get(black_box(&IdType::DeskId)), None);
@@ -5258,24 +5282,212 @@ fn identifier_reads_and_inline_inserts_allocate_nothing() {
         );
     });
     // A codified type and source are static text and a 23-byte value is the
-    // widest SmolStr holds inline: two identifiers cost the set its one
-    // backing and nothing each.
+    // widest SmolStr holds inline: two identifiers cost the map its one
+    // backing and nothing each, the base key the named one fills included.
     costs("two identifiers into a new set", 1, || {
         let mut ids = Identifiers::new();
-        assert!(ids.insert(Identifier::new(IdSource::Fix, IdType::OrderId, "Z").unwrap()));
+        assert!(ids.insert(Identifier::new(IdKey::base(IdType::OrderId), "Z").unwrap()));
         assert!(
             ids.insert(
                 Identifier::new(
-                    black_box(IdSource::Bic),
-                    black_box(IdType::ExecutingTrader),
+                    IdKey::new(black_box(IdSource::Bic), black_box(IdType::ExecutingTrader)),
                     black_box("ABCDEFGHIJKLMNOPQRSTUVW")
                 )
                 .unwrap()
             )
         );
-        assert_eq!(ids.len(), 2);
+        assert_eq!(ids.len(), 3);
         black_box(&ids);
     });
+}
+
+/// An ISIN registry learns a statement of a known instrument that says
+/// nothing new, fills an element that leaves nothing unsaid and looks a row
+/// up by its ISIN or its RIC without allocating, whatever its size.
+#[test]
+fn an_isin_registry_reads_and_learns_a_known_instrument_without_allocating() {
+    use yggdryl::graph::{Market, OrderEvent};
+    use yggdryl::{Isin, IsinEntry, IsinRegistry};
+    let numbered = |number: usize| {
+        let body = format!("FR{number:09}");
+        let digit = Isin::closing_digit(&body).unwrap();
+        format!("{body}{digit}")
+    };
+    for size in [64, 4_096] {
+        let mut registry = IsinRegistry::new();
+        for number in 0..size {
+            registry
+                .merge(
+                    IsinEntry::new(Isin::new(numbered(number)).unwrap())
+                        .with_updunix(Some(1))
+                        .try_with_code(IdType::Common, &format!("C-{number}"))
+                        .unwrap()
+                        .try_with_code(IdType::Ric, &format!("R{number}.X"))
+                        .unwrap(),
+                )
+                .unwrap();
+        }
+        let isin = numbered(7);
+        let mut stated = OrderEvent::at(2);
+        for (kind, value) in [
+            (IdType::Isin, isin.as_str()),
+            (IdType::Common, "C-7"),
+            (IdType::Ric, "R7.X"),
+        ] {
+            stated
+                .insert_securityid(Identifier::new(IdKey::base(kind), value).unwrap())
+                .unwrap();
+        }
+        free(
+            &format!("learning nothing new at {size} instruments"),
+            || {
+                assert!(!registry.learn(black_box(&stated)));
+            },
+        );
+        free(&format!("filling nothing at {size} instruments"), || {
+            assert!(!registry.fill(black_box(&mut stated)));
+        });
+        free(&format!("a row by its ISIN at {size} instruments"), || {
+            assert!(registry.get(black_box(isin.as_str())).is_some());
+        });
+        free(&format!("a row by its RIC at {size} instruments"), || {
+            assert!(registry.get_by_ric(black_box("R7.X")).is_some());
+        });
+    }
+}
+
+/// `size` instruments numbered from zero, each with a CFI code, a market,
+/// a ticker, a common code and a RIC.
+fn isin_registry_of(size: usize) -> yggdryl::IsinRegistry {
+    use yggdryl::{Cfi, Isin, IsinEntry, IsinRegistry, Mic};
+    let mut registry = IsinRegistry::new();
+    for number in 0..size {
+        registry
+            .merge(
+                IsinEntry::new(Isin::new(numbered_isin("FR", number)).unwrap())
+                    .with_updunix(Some(1))
+                    .with_cficode(Some(Cfi::new("ESVUFR").unwrap()))
+                    .with_miccode(Some(Mic::new("XPAR").unwrap()))
+                    .with_ticker(Some(smol_str::SmolStr::new("T")))
+                    .try_with_code(IdType::Common, &format!("C-{number}"))
+                    .unwrap()
+                    .try_with_code(IdType::Ric, &format!("R{number}.PA"))
+                    .unwrap(),
+            )
+            .unwrap();
+    }
+    registry
+}
+
+/// The ISIN numbered `number` under the two-letter `prefix`.
+fn numbered_isin(prefix: &str, number: usize) -> String {
+    let body = format!("{prefix}{number:09}");
+    let digit = yggdryl::Isin::closing_digit(&body).unwrap();
+    format!("{body}{digit}")
+}
+
+/// Learning a new instrument builds its row in place - the ISIN, the CFI
+/// code, the market, the ticker and up to four codes inline - so the
+/// table's own slot is all it can cost: an ISIN sorting before every other
+/// lands in a leaf ascending inserts left with room, and learning it
+/// allocates nothing, whatever the registry holds.
+#[test]
+fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
+    use yggdryl::graph::{Market, OrderEvent};
+    use yggdryl::{Cfi, Mic};
+    for size in [64, 4_096] {
+        let mut registry = isin_registry_of(size);
+        let mut stated = OrderEvent::at(2);
+        for (kind, value) in [
+            (IdType::Isin, numbered_isin("BE", 1).as_str()),
+            (IdType::Common, "C-NEW"),
+            (IdType::Belgian, "B-NEW"),
+            (IdType::Valor, "1234567"),
+        ] {
+            stated
+                .insert_securityid(Identifier::new(IdKey::base(kind), value).unwrap())
+                .unwrap();
+        }
+        stated.set_cficode(Some(Cfi::new("ESVUFR").unwrap()), true);
+        stated.set_miccode(Some(Mic::new("XBRU").unwrap()), true);
+        stated.set_ticker(Some(smol_str::SmolStr::new("NEW")), true);
+        let (learning, learned) = counted(|| registry.learn(black_box(&stated)));
+        assert!(learned);
+        assert_eq!(
+            learning, 0,
+            "learning a new instrument at {size} instruments"
+        );
+    }
+}
+
+/// A snapshot stream shares the table rather than copying it: opening one
+/// costs the same five allocations at 64 instruments as at 4,096 - the
+/// reader, its schema and its field - and draining it lays each row out
+/// once, seven allocations a row (the named row and its canonical run) plus
+/// one doubling of the batch's row vector each time the rows double.
+#[test]
+fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
+    // The row's Arrow projection is built once per process, on first use.
+    drop(yggdryl::IsinRegistry::new().into_arrow_reader().unwrap());
+    for size in [64, 4_096] {
+        let registry = isin_registry_of(size);
+        let (opening, reader) = counted(|| registry.into_arrow_reader().unwrap());
+        drop(reader);
+        assert_eq!(opening, 5, "opening a snapshot of {size} instruments");
+    }
+    let drain = |size: usize| {
+        let reader = isin_registry_of(size).into_arrow_reader().unwrap();
+        let (draining, rows) =
+            counted(move || reader.map(|batch| batch.unwrap().num_rows()).sum::<usize>());
+        assert_eq!(rows, size);
+        draining
+    };
+    for size in [64, 256] {
+        assert_eq!(
+            drain(2 * size) - drain(size),
+            7 * size + 1,
+            "{size} more rows cost other than seven a row"
+        );
+    }
+}
+
+/// Reloading rows the registry already holds - a golden file read again -
+/// costs each batch the same whatever its rows: one cast plan for the
+/// stream, the landing per batch, and a code cell adopted as the landing
+/// proved it, so a row that moves nothing allocates nothing.
+#[test]
+fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
+    let mut each_at = Vec::new();
+    for size in [64, 512] {
+        let mut registry = isin_registry_of(size);
+        let batch = registry
+            .into_arrow_reader()
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        let mut load = |batches: usize| {
+            let reader = yggdryl::arrow::batch_reader(batch.schema(), vec![batch.clone(); batches]);
+            let (allocations, read) =
+                counted(|| registry.extend_from_arrow_reader(reader).unwrap());
+            assert_eq!(read, size * batches);
+            allocations
+        };
+        load(1);
+        let (one, two, four) = (load(1), load(2), load(4));
+        let each = two - one;
+        assert_eq!(
+            four - one,
+            3 * each,
+            "{size} rows: a batch after the first cost {each}, but four cost {four} and one {one}"
+        );
+        each_at.push(each);
+    }
+    assert_eq!(
+        each_at,
+        [47, 47],
+        "a batch of 64 and of 512 known rows: a cost per row"
+    );
 }
 
 /// The size of [`yggdryl::Identifiers`]: one vector, its pointer, length and
@@ -5295,8 +5507,7 @@ fn security_identifier_construction_is_inline_for_every_checked_code() {
     ] {
         free(&format!("constructing {kind}:{code}"), || {
             let id = Identifier::new(
-                black_box(IdSource::Base),
-                black_box(kind.clone()),
+                IdKey::new(black_box(IdSource::Base), black_box(kind.clone())),
                 black_box(code),
             )
             .unwrap();
@@ -5307,25 +5518,20 @@ fn security_identifier_construction_is_inline_for_every_checked_code() {
     let widest = "B".repeat(32);
     costs("constructing a 32-byte Bloomberg identifier", 1, || {
         black_box(
-            Identifier::new(
-                IdSource::Base,
-                IdType::Bloomberg,
-                black_box(widest.as_str()),
-            )
-            .unwrap(),
+            Identifier::new(IdKey::base(IdType::Bloomberg), black_box(widest.as_str())).unwrap(),
         );
     });
     assert!(
-        Identifier::new(IdSource::Base, IdType::Bloomberg, &"B".repeat(33)).is_err(),
+        Identifier::new(IdKey::base(IdType::Bloomberg), &"B".repeat(33)).is_err(),
         "33 bytes are refused"
     );
-    let heap = Identifier::new(IdSource::Base, IdType::Bloomberg, &widest).unwrap();
+    let heap = Identifier::new(IdKey::base(IdType::Bloomberg), &widest).unwrap();
     free("cloning a heap Bloomberg identifier", || {
         black_box(heap.clone());
     });
 
     let ids: yggdryl::Identifiers = [
-        Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").unwrap(),
+        Identifier::new(IdKey::base(IdType::Isin), "US0378331005").unwrap(),
         heap.clone(),
     ]
     .into_iter()

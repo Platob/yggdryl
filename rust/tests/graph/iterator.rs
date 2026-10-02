@@ -4,16 +4,18 @@
 //! alive set kept as the lifecycle moves, and the caller's word on the order
 //! taken or the order made.
 
+use yggdryl::IdKey;
+
 use yggdryl::graph::{
     Element, Event, EventIterator, ExecutionEvent, Market, Operation, OrderEvent,
 };
-use yggdryl::{IdSource, IdType, Identifier, State, Uuid};
+use yggdryl::{IdType, Identifier, State, Uuid};
 
 use super::element::filled;
 
 /// One identifier of a plain holder: a value of `kind` from `fix`.
 fn identifier(kind: &IdType, value: &str) -> Identifier {
-    Identifier::new(IdSource::Fix, kind.clone(), value).unwrap()
+    Identifier::new(IdKey::base(kind.clone()), value).unwrap()
 }
 
 /// One nanosecond count per millisecond: a derived identity opens with the
@@ -1595,7 +1597,7 @@ fn an_element_joins_a_live_chain_through_a_parent_identifiers_value() {
     let held = |event: &OrderEvent, kind: &str| {
         event
             .get_identifiers()
-            .get_from(&IdSource::Fix, &kind.parse().expect("a type"))
+            .get_from(&IdKey::base(kind.parse().expect("a type")))
             .map(str::to_owned)
     };
     assert_eq!(held(&walked[1], "orderid").as_deref(), Some("B"));
@@ -1638,7 +1640,7 @@ fn a_walk_carries_the_parents_of_each_identifier_along_its_chain() {
     let held = |event: &OrderEvent, kind: &str| {
         event
             .get_identifiers()
-            .get_from(&IdSource::Fix, &kind.parse().expect("a type"))
+            .get_from(&IdKey::base(kind.parse().expect("a type")))
             .map(str::to_owned)
     };
 

@@ -368,7 +368,7 @@
     "nullable": true,
     "metadata": {
       "FIX:tag": "65046",
-      "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other is stated from base, leading its type.",
+      "description": "The currency pair the message is about, canonical CCY1/CCY2: the FOREX entry of the message's security identifiers, a view of get_securityids() - the pair get answered when the row was written - detected off Symbol(55), from derived, where the message states no other class. Read back from a row with no securityids column, a pair the message's reading answers states nothing, the pair its symbol names where nothing else names one is that detection, and any other replaces its type's answer, the base key.",
       "display": "Forex Code"
     }
   },

@@ -242,21 +242,21 @@ for symbol in ["EUR=", "EUR1M=", "EUR/USD XYZ", "EURUSD 1Q", "AAPL"] {
 
 ## The `forex` security identifier { #the-forex-security-identifier }
 
-FIX gives a currency pair no `SecurityIDSource(22)` code, so the identifier type is the crate's own: `forex`, read by `forexcode`, `ccypair` and `currencypair` too, its code validated by `Forex::new` and stored as the canonical pair. It is one more [security identifier](../../graph/market.md#security-identifiers) of a market element, an [`Identifier`](../../graph/identifier.md) of its `securityids`. In a FIX capture the `forexcode` crate column is a view of that type - the pair `get` answered when the row was written - and one detected off `Symbol(55)` is derived, from `derived`, so a stated identifier replaces it. Read back from a row with no `securityids` column, the view is resolved once: a pair `get` over the message's reading answers states nothing; the pair its `Symbol(55)` names, where nothing else the row states names one, reads back from `derived` as the view of the detection, the pair alone following a written symbol as a detected pair does while the cells detection wrote read back as the row's word; and any other pair is the row's statement, from `base`, leading its type - its source [lost](../../fix/message.md#typed-tags).
+FIX gives a currency pair no `SecurityIDSource(22)` code, so the identifier type is the crate's own: `forex`, read by `forexcode`, `ccypair` and `currencypair` too, its code validated by `Forex::new` and stored as the canonical pair. It is one more [security identifier](../../graph/market.md#security-identifiers) of a market element, an [`Identifier`](../../graph/identifier.md) of its `securityids`. In a FIX capture the `forexcode` crate column is a view of that type - the pair `get` answered when the row was written - and one detected off `Symbol(55)` is derived, from `derived`, so a stated identifier replaces it. Read back from a row with no `securityids` column, the view is resolved once: a pair a key of its type in the message's reading holds states nothing; the pair its `Symbol(55)` names, where nothing else the row states names one, reads back from `derived` as the view of the detection, the pair alone following a written symbol as a detected pair does while the cells detection wrote read back as the row's word; and any other pair is the row's statement, replacing the `forex` base key - whether it was derived [lost](../../fix/message.md#typed-tags).
 
 === "Rust"
 
     ```rust
-    use yggdryl::{IdSource, IdType, Identifier};
+    use yggdryl::{IdKey, IdType, Identifier};
 
     let key = "ccypair".parse::<IdType>()?;
     assert_eq!(key, IdType::Forex);
     assert_eq!(key.as_str(), "forex");
     assert_eq!(key.fix_security_source(), None);
 
-    let pair = Identifier::new(IdSource::Base, IdType::Forex, "eurusd")?;
+    let pair = Identifier::new(IdKey::base(IdType::Forex), "eurusd")?;
     assert_eq!(pair.value(), "EUR/USD");
-    assert_eq!(pair.to_string(), "base:forex=EUR/USD");
+    assert_eq!(pair.to_string(), "forex=EUR/USD");
     ```
 
 === "Python"
@@ -267,9 +267,9 @@ FIX gives a currency pair no `SecurityIDSource(22)` code, so the identifier type
     order = graph.OrderEvent(
         1_700_000_000_000_000_000,
         crosscode="FX-1",
-        securityids=[Identifier("base", "forex", "eurusd")],
+        securityids=[Identifier("forex", "eurusd")],
     )
-    assert str(order.securityids) == "[base:forex=EUR/USD]"
+    assert str(order.securityids) == "[forex=EUR/USD]"
     ```
 
 === "JavaScript"
@@ -280,9 +280,9 @@ FIX gives a currency pair no `SecurityIDSource(22)` code, so the identifier type
 
     const order = new graph.OrderEvent(1_700_000_000_000_000_000n, {
       crosscode: 'FX-1',
-      securityids: [new Identifier('base', 'forex', 'eurusd')],
+      securityids: [new Identifier('forex', 'eurusd')],
     })
-    assert.equal(order.securityids.toString(), '[base:forex=EUR/USD]')
+    assert.equal(order.securityids.toString(), '[forex=EUR/USD]')
     ```
 
 ## The empty text names no pair

@@ -6019,39 +6019,41 @@ class Version:
     def __reduce__(self) -> tuple[object, tuple[int, int, str | None]]: ...
 
 class Identifier:
-    """One identifier: a source, a type and a value, unique by its key.
+    """One identifier: a value under a key, ``src:type``.
 
-    The source and the type are words folded to lower case without their
-    breaks; ``base`` names no source and ``derived`` one the crate derived.
-    Its key is ``src:type`` and it displays ``src:type=value``; identifiers
-    order by that key as spelled, then by value.
+    The key is read exactly: ``src:type`` with each word folded to lower case
+    without its breaks, or a type alone for the base source, whose key is
+    spelled as its type (``isin``); ``base:isin`` and ``fix:isin`` read as
+    ``isin`` too, and ``derived`` names a value the crate derived. It
+    displays ``key=value``; identifiers order by the key as spelled, then by
+    value.
     """
 
-    def __init__(self, src: str, type: str, value: str) -> None: ...
+    def __init__(self, key: str, value: str) -> None: ...
     @staticmethod
     def from_key(key: str, value: str) -> Identifier | None:
-        """The identifier a key names, or ``None`` where it names none.
+        """The identifier a name no key spells names, or ``None``.
 
-        An explicit ``src:type`` is read as it is. Otherwise a whole name a
+        An explicit ``src:type`` keeps its source. Otherwise a whole name a
         security type is spelled by (``ISINCode``, ``security_cusip``) is
-        that type from ``base``, and a security type is never read off a key
-        that names another instrument's (``underlyingisin``, ``legisin``).
-        Otherwise the key folds (lower case, no ``_``, ``-``, space or
-        ``#``) and the longest identifier name it ends with is the type: a
-        type the crate names whose spelling ends with ``id``, ``account``,
-        ``isin``, ``cusip``, ``sedol`` or ``figi``, a parentage word
-        (``parent``, ``orig``, ``origin``, ``original``) right before it kept
-        inside the type. The source is the rest of the folded key, its dots
-        trimmed at both ends and kept inside, ``base`` where nothing is left
-        or where it folds to a source the crate reserves (``base``,
-        ``derived``, ``fix``), which names no namespace: ``Derived_ISIN`` is
-        ``base:isin``.
+        that type from the base source, and a security type is never read
+        off a name that names another instrument's (``underlyingisin``,
+        ``legisin``). Otherwise the name folds (lower case, no ``_``, ``-``,
+        space or ``#``) and the longest identifier name it ends with is the
+        type: a type the crate names whose spelling ends with ``id``,
+        ``account``, ``isin``, ``cusip``, ``sedol`` or ``figi``, a parentage
+        word (``parent``, ``orig``, ``origin``, ``original``) right before it
+        kept inside the type. The source is the rest of the folded name, its
+        dots trimmed at both ends and kept inside, the base source where
+        nothing is left or where it folds to a source the crate reserves
+        (``base``, ``fix``, ``derived``), which names no namespace:
+        ``Derived_ISIN`` is ``isin``.
 
         ``firm.x.ParentOrderID`` is ``firm.x:parentorderid``,
         ``OMS_InstrumentID`` ``oms:instrumentid``, ``marketorderid``
-        ``market:orderid``, ``ISINCode`` ``base:isin``; ``underlyingisin``
-        and ``transversalkey`` name none. ``None`` as well where the value
-        states nothing or its type refuses it.
+        ``market:orderid``, ``ISINCode`` ``isin``; ``underlyingisin`` and
+        ``transversalkey`` name none. ``None`` as well where the value states
+        nothing or its type refuses it.
         """
         ...
     @property
@@ -6062,9 +6064,8 @@ class Identifier:
     def value(self) -> str: ...
     @property
     def key(self) -> str:
-        """The unique key, ``src:type``, an ``Identifiers`` keys it by."""
+        """The key as an ``Identifiers`` map spells it: ``src:type``, the type alone for the base source."""
         ...
-    def is_of(self, src: str, type: str) -> bool: ...
     def __str__(self) -> str: ...
     def __repr__(self) -> str: ...
     def __eq__(self, other: object, /) -> bool: ...
@@ -6076,22 +6077,38 @@ class Identifier:
     def __hash__(self) -> int: ...
     def __copy__(self) -> Identifier: ...
     def __deepcopy__(self, memo: Any) -> Identifier: ...
-    def __reduce__(self) -> tuple[object, tuple[str, str, str]]: ...
+    def __reduce__(self) -> tuple[object, tuple[str, str]]: ...
 
 class Identifiers:
-    """A sorted map of identifiers, one per unique key ``src:type``.
+    """A sorted map from a key to its value, iterated in key order.
 
-    Iterating yields the identifiers in key order, the key as spelled; a
-    second identifier under a key already held is a statement of the same
-    name and the first stands.
+    The base key of a type is the type's answer: a named source fills it
+    where it is empty, so ``ullink:isin`` alone is also ``isin``; a
+    statement takes back the type's derivation (``derived:<type>``); the
+    base key moves only through its own key, and removing it removes the
+    type. A second identifier under a key already held is a statement of the
+    same name and the first stands.
     """
 
     def __init__(self, ids: Iterable[Identifier] = ...) -> None: ...
-    def get(self, type: str) -> str | None: ...
-    def get_identifier(self, type: str) -> Identifier | None: ...
-    def get_from(self, src: str, type: str) -> str | None: ...
+    @staticmethod
+    def from_dict(entries: Mapping[str, str]) -> Identifiers:
+        """The map a ``dict`` from each key's text to its value states, closed by the base rule."""
+        ...
+    def into_dict(self) -> dict[str, str]:
+        """The map as a ``dict`` from each key's text to its value, in key order."""
+        ...
+    def get(self, type: str) -> str | None:
+        """The value of the type's base key: its answer, whichever source stated it."""
+        ...
+    def get_from(self, key: str) -> str | None:
+        """The value held under exactly ``key`` (``"isin"``, ``"ullink:isin"``)."""
+        ...
     def contains_kind(self, type: str) -> bool: ...
     def of_kind(self, type: str) -> list[Identifier]: ...
+    def is_derived(self, type: str) -> bool:
+        """Whether the type's base key holds only a derivation, which no named source states."""
+        ...
     def __iter__(self) -> Iterator[Identifier]: ...
     def __len__(self) -> int: ...
     def __bool__(self) -> bool: ...
@@ -6101,7 +6118,51 @@ class Identifiers:
     def __hash__(self) -> int: ...
     def __copy__(self) -> Identifiers: ...
     def __deepcopy__(self, memo: Any) -> Identifiers: ...
-    def __reduce__(self) -> tuple[object, tuple[list[Identifier]]]: ...
+    def __reduce__(self) -> tuple[object, tuple[dict[str, str]]]: ...
+
+class IsinRegistry:
+    """A table of instruments keyed by ISIN, shared behind one lock.
+
+    Each row holds the instrument's ``isin``, ``updunix`` (when the statement
+    that last moved it happened), detailed ``cficode``, the ``miccode`` its
+    listing facts belong to, its ``ticker`` and one code per
+    ``SecurityIDSource(22)`` type but the ISIN. A lifecycle learns into it -
+    keyed by a stated ISIN, else a stated RIC, which only fills - and fills
+    from it what a message leaves unsaid; the latest statement leads column
+    by column and an older one only fills. Equal only to itself; never
+    hashed or pickled: its rows cross out as an Arrow stream.
+    """
+
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+
+    def __init__(self, max_instruments: int = 16384) -> None: ...
+    @staticmethod
+    def from_handle(location: object, max_instruments: int = 16384) -> IsinRegistry:
+        """A registry read from a holder: an Arrow IPC file, Parquet, a folder of either, an object store."""
+        ...
+    @staticmethod
+    def from_arrow_reader(reader: object, max_instruments: int = 16384) -> IsinRegistry:
+        """A registry read from any Arrow stream."""
+        ...
+    def extend_from_handle(self, location: object) -> int: ...
+    def extend_from_arrow_reader(self, reader: object) -> int: ...
+    def into_arrow_reader(self) -> pyarrow.RecordBatchReader:
+        """The rows as a snapshot stream in ISIN order, under the registry's row field."""
+        ...
+    def get(self, isin: str) -> dict[str, Any] | None: ...
+    def get_by_ric(self, ric: str) -> dict[str, Any] | None: ...
+    def merge(self, entry: Mapping[str, object]) -> bool: ...
+    def remove(self, isin: str) -> dict[str, Any] | None: ...
+    def clear(self) -> None: ...
+    @property
+    def max_instruments(self) -> int: ...
+    def learn(self, message: FixMsg) -> bool: ...
+    def fill(self, message: FixMsg) -> bool: ...
+    def enrich(self, message: FixMsg) -> bool: ...
+    def __len__(self) -> int: ...
+    def __bool__(self) -> bool: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __repr__(self) -> str: ...
 
 class FixFieldIterator(Iterator[Field]):
     __hash__: ClassVar[None]  # type: ignore[assignment]
@@ -6712,6 +6773,7 @@ class FixCodec:
         sorted_lifecycle: bool = False,
         official_time_delay_ms: int | None = None,
         dedup_window_ms: int | None | EllipsisType = ...,
+        isin_registry: IsinRegistry | None = None,
         market_metadata: bool = True,
     ) -> None: ...
     @property
@@ -6744,6 +6806,10 @@ class FixCodec:
     def dedup_window_ms(self) -> int | None: ...
     def with_dedup_window_ms(self, dedup_window_ms: int | None) -> FixCodec: ...
     @property
+    def isin_registry(self) -> IsinRegistry | None:
+        """The registry every ``lifecycle`` shares, the caller's own table, or ``None``."""
+        ...
+    @property
     def market_metadata(self) -> bool: ...
     @property
     def include_msgtypes(self) -> list[str]: ...
@@ -6768,6 +6834,7 @@ class FixCodec:
         sorted_lifecycle: bool = False,
         official_time_delay_ms: int | None = None,
         dedup_window_ms: int | None | EllipsisType = ...,
+        isin_registry: IsinRegistry | None = None,
         market_metadata: bool = True,
     ) -> FixCodec: ...
     @staticmethod
@@ -8333,9 +8400,9 @@ class MarketData:
 
         ``view`` is one of ``enums.MARKET_VIEWS``, read ignoring ASCII case;
         each lift, a ``FieldPath`` or its text such as
-        ``"identifiers['fix:clordid'].value as clordid"`` (an identifier
-        column is a map keyed ``src:type``), is appended after the view's own
-        columns; ``None`` is no lifts. ``crosscode`` is the stored cross code
+        ``"identifiers['clordid'] as clordid"`` (an identifier column is a
+        map from the key's text, ``src:type`` or the type alone for the base
+        source, to the value), is appended after the view's own columns; ``None`` is no lifts. ``crosscode`` is the stored cross code
         (``"10:1:ORD-1"``, the exact code of the chain) ``lifecycle``
         follows: that view needs one and every other view refuses one.
         """

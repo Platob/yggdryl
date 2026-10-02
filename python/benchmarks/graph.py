@@ -5,7 +5,8 @@ Every case here is one crossing over the typed market leaves and
 typed, dating and undating an element, a book folding a stream of operations,
 a book's limits and imbalance, the lazy book and event walks, the lifted
 Arrow doors, the named views, and a FIX capture through the sorted market
-doors. Run after installing the release wheel with::
+doors, the identifier maps crossing as a ``dict`` and the instrument
+registry's reads. Run after installing the release wheel with::
 
     python benchmarks/graph.py --iterations 2000
 """
@@ -20,7 +21,7 @@ import statistics
 import timeit
 from collections.abc import Callable
 
-from yggdryl import DataType, Identifier, Side, graph
+from yggdryl import DataType, Identifier, Identifiers, IsinRegistry, Side, graph
 from yggdryl.fix import FixCodec, FixRegistry
 
 FOLD_OPERATION_COUNT = 512
@@ -36,7 +37,7 @@ def _order_event(clock: int = CLOCK, **facts: object) -> graph.OrderEvent:
         "price": decimal.Decimal("100.25"),
         "currency": "USD",
         "quantity": 10,
-        "securityids": [Identifier("base", "isin", "US0378331005")],
+        "securityids": [Identifier("isin", "US0378331005")],
         "fxrates": {"EUR": decimal.Decimal("1.1")},
     }
     base.update(facts)
@@ -162,8 +163,28 @@ def _book_imbalance() -> object:
     return FOLD_BOOK.imbalance(10)
 
 
+IDENTIFIERS = Identifiers.from_dict(
+    {f"oms:k{index}": f"V-{index}" for index in range(8)} | {"isin": "US0378331005", "ullink:isin": "US0378331005"}
+)
+IDENTIFIERS_DICT = IDENTIFIERS.into_dict()
+REGISTRY = IsinRegistry()
+REGISTRY.merge({"isin": "CH0012214059", "ric": "HOLN.S", "bloomberg": "HOLN SW Equity", "cficode": "ESVUFR"})
+
+
+def _identifiers_from_dict() -> object:
+    return Identifiers.from_dict(IDENTIFIERS_DICT)
+
+
+def _identifiers_into_dict() -> object:
+    return IDENTIFIERS.into_dict()
+
+
+def _registry_get_by_ric() -> object:
+    return REGISTRY.get_by_ric("HOLN.S")
+
+
 def _view_plan() -> object:
-    return graph.MarketData.plan("orders", ["securityids['base:isin'].value as isin"])
+    return graph.MarketData.plan("orders", ["securityids['isin'] as isin"])
 
 
 def _view_apply() -> int:
@@ -217,6 +238,9 @@ def main() -> None:
         _measure(f"book limits/{count}", _book_limits, folds)
         _measure("book depth/10", _book_depth, args.iterations)
         _measure("book imbalance/10", _book_imbalance, args.iterations)
+        _measure(f"identifiers from_dict/{len(IDENTIFIERS)}", _identifiers_from_dict, args.iterations)
+        _measure(f"identifiers into_dict/{len(IDENTIFIERS)}", _identifiers_into_dict, args.iterations)
+        _measure("isin registry get_by_ric", _registry_get_by_ric, args.iterations)
         _measure("view plan orders+lift", _view_plan, args.iterations)
         _measure(f"view apply orders/{count}", _view_apply, folds)
         _measure(f"fix market_data/{count}", _market_data, folds)

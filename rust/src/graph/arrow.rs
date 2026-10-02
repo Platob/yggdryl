@@ -30,6 +30,7 @@
 //! beside the `curruuid` a snapshot control derives: a table may store a
 //! null list as an empty one.
 
+use std::cell::RefCell;
 use std::iter::FusedIterator;
 use std::sync::Arc;
 
@@ -51,6 +52,7 @@ use super::{
 };
 use super::{FxRates, Metadata};
 use crate::arrow::BatchReader;
+use crate::idkey::KeyReader;
 use crate::path::{Path, Segment};
 use crate::serie::{
     BooleanSerie, DateTimeNanosecondSerie, Decimal128Serie, FixedBytesSerie, MapSerie, SerieSerie,
@@ -60,7 +62,7 @@ use crate::{
     ArrowCastOptions, Ccy, Cfi, CodeValue, DataType, Decimal, Error, Field, Limit, MarketDataKind,
     Mic, Result, Serie, SerieReader, Side, State, StructType, TimeInForce, Unit, Uuid,
 };
-use crate::{IdSource, IdType, Identifier, Identifiers};
+use crate::{IdKey, IdType, Identifier, Identifiers};
 
 // The column names the graph module shares: the root and its nested columns,
 // which a view names to exclude them and a book names its entries by.
@@ -350,8 +352,7 @@ impl Column {
                 | MarketColumn::AskQty => Storage::Decimal,
                 MarketColumn::Ticker => Storage::Text,
                 MarketColumn::ExecUnix => Storage::Clock,
-                MarketColumn::SecurityIds => Storage::Ids,
-                MarketColumn::Metadata => Storage::Pairs,
+                MarketColumn::SecurityIds | MarketColumn::Metadata => Storage::Pairs,
                 MarketColumn::Currency | MarketColumn::BidCcy | MarketColumn::AskCcy => {
                     Storage::Code(Code::Ccy)
                 }
@@ -366,7 +367,7 @@ impl Column {
                 OperationColumn::Tradable => Storage::Boolean,
                 OperationColumn::OrdQty => Storage::Decimal,
                 OperationColumn::TimeInForce => Storage::TimeInForce,
-                OperationColumn::Identifiers | OperationColumn::PartyIds => Storage::Ids,
+                OperationColumn::Identifiers | OperationColumn::PartyIds => Storage::Pairs,
             },
             Self::BookScope => Storage::Text,
             Self::Alive | Self::Deltas | Self::Executions => Storage::Nested,
@@ -719,23 +720,32 @@ impl<'a> Row<'a> {
         }
     }
 
-    /// Appends the entries a row states under a map column; whether it
-    /// states any.
+    /// Appends the entries a row states under a map of text to text - the
+    /// metadata, or an identifier map, each key spelled as its [`IdKey`]
+    /// spells it in the order the map holds them, which is that spelling's -
+    /// whether it states any.
     fn pairs(&self, column: Column, keys: &mut StringBuilder, values: &mut StringBuilder) -> bool {
-        let mut push = |key: &str, value: &str| {
-            keys.append_value(key);
-            values.append_value(value);
-        };
-        match column {
-            Column::Market(MarketColumn::Metadata) => {
-                let metadata = self.market.get_metadata();
-                for (key, value) in metadata {
-                    push(key, value);
-                }
-                !metadata.is_empty()
+        if column == Column::Market(MarketColumn::Metadata) {
+            let metadata = self.market.get_metadata();
+            for (key, value) in metadata {
+                keys.append_value(key);
+                values.append_value(value);
             }
-            _ => false,
+            return !metadata.is_empty();
         }
+        let Some(ids) = self.ids(column) else {
+            return false;
+        };
+        for id in ids {
+            // A key of two member words is one static string, any other at
+            // most three writes; none is spelled into a buffer of its own.
+            id.key()
+                .write_into(keys)
+                .expect("a string builder takes any text");
+            keys.append_value("");
+            values.append_value(id.value());
+        }
+        true
     }
 
     /// The identifiers a row states under an identifier column, none where
@@ -951,51 +961,6 @@ impl Slot {
                 let entries_array = StructArray::try_new(
                     children.clone(),
                     vec![Arc::new(keys.finish()), Arc::new(values.finish())],
-                    None,
-                )?;
-                Arc::new(MapArray::try_new(
-                    Arc::clone(entries),
-                    OffsetBuffer::new(ScalarBuffer::from(offsets)),
-                    entries_array,
-                    validity(&valid),
-                    sorted,
-                )?)
-            }
-            Storage::Ids => {
-                // A sorted map from each identifier's key `src:type` to its
-                // row, written in the order the set holds them, which is
-                // the key's.
-                let (entries, children, sorted) = map_parts(column, datatype, Storage::Ids)?;
-                let ArrowType::Struct(item) = children[1].data_type() else {
-                    return Err(unlanded(column, Storage::Ids));
-                };
-                let mut keys = StringBuilder::new();
-                let mut cells: [StringBuilder; 3] = std::array::from_fn(|_| StringBuilder::new());
-                let mut offsets = Vec::with_capacity(rows.len() + 1);
-                offsets.push(0_i32);
-                let mut valid = Vec::with_capacity(rows.len());
-                for row in rows {
-                    let ids = row.ids(column);
-                    for id in ids.into_iter().flatten() {
-                        keys.append_value(id.key());
-                        cells[0].append_value(id.src());
-                        cells[1].append_value(id.kind());
-                        cells[2].append_value(id.value());
-                    }
-                    valid.push(ids.is_some());
-                    offsets.push(offset(keys.len())?);
-                }
-                let items = StructArray::try_new(
-                    item.clone(),
-                    cells
-                        .iter_mut()
-                        .map(|cell| Arc::new(cell.finish()) as ArrayRef)
-                        .collect(),
-                    None,
-                )?;
-                let entries_array = StructArray::try_new(
-                    children.clone(),
-                    vec![Arc::new(keys.finish()), Arc::new(items)],
                     None,
                 )?;
                 Arc::new(MapArray::try_new(
@@ -1585,10 +1550,10 @@ enum Storage {
     /// A registered code: the text its storage holds, built into the
     /// code's value by the code's own constructor.
     Code(Code),
-    /// A `map<utf8, utf8>`: metadata.
+    /// A `map<utf8, utf8>`: metadata, and the three identifier maps -
+    /// securities, alternate identifiers, parties - keyed as an [`IdKey`]
+    /// is spelled.
     Pairs,
-    /// A `serie<identifier>`: securities, alternate identifiers, parties.
-    Ids,
     /// A `map<ccy, decimal>`: the FX rates, target to the rate to divide by.
     Rates,
     /// A `serie<limit>`: a book side's price levels.
@@ -1644,14 +1609,8 @@ enum Leaf {
     Text(Arc<Utf8StringSerie>),
     /// A code's text storage.
     Code(Arc<Utf8StringSerie>),
+    /// A map of text to text, its keys and its values.
     Pairs(Arc<MapSerie>, Arc<Utf8StringSerie>, Arc<Utf8StringSerie>),
-    /// An identifier map, its text keys and its rows' three text
-    /// children: source, type and value.
-    Ids(
-        Arc<MapSerie>,
-        Arc<Utf8StringSerie>,
-        Box<[Arc<Utf8StringSerie>; 3]>,
-    ),
     /// The rates map, its currency keys and its decimal rates.
     Rates(Arc<MapSerie>, Arc<Utf8StringSerie>, Arc<Decimal128Serie>),
 }
@@ -1688,23 +1647,6 @@ impl Leaf {
                     (Serie::Utf8String(keys), Serie::Utf8String(values)) => {
                         Self::Pairs(Arc::clone(map), Arc::clone(keys), Arc::clone(values))
                     }
-                    _ => return Err(unlanded(column, storage)),
-                }
-            }
-            (Storage::Ids, Serie::SortedMap(map) | Serie::Map(map)) => {
-                match (map.keys(), map.values().children()) {
-                    (
-                        Serie::Utf8String(keys),
-                        [
-                            Serie::Utf8String(src),
-                            Serie::Utf8String(kind),
-                            Serie::Utf8String(value),
-                        ],
-                    ) => Self::Ids(
-                        Arc::clone(map),
-                        Arc::clone(keys),
-                        Box::new([Arc::clone(src), Arc::clone(kind), Arc::clone(value)]),
-                    ),
                     _ => return Err(unlanded(column, storage)),
                 }
             }
@@ -1846,33 +1788,32 @@ impl Leaf {
         }
     }
 
-    /// The identifiers one identifier cell states; `None` for a null. An
-    /// identifier its type refuses, or a key that is not the `src:type` of
-    /// the row it keys, is refused naming the column.
-    fn ids(&self, row: usize, path: &Path<'_>, name: &str) -> Result<Option<Identifiers>> {
-        let Self::Ids(map, keys, cells) = self else {
+    /// The identifiers one identifier cell states, read raw and closed by
+    /// the base rule; `None` for a null. Each key is read through `keys`,
+    /// once per distinct text of a stream; a key no [`IdKey`] reads, a value
+    /// its type refuses and two values under one key are refused on the key,
+    /// below the column: `$[3].identifiers['k']`.
+    fn ids(
+        &self,
+        row: usize,
+        path: &Path<'_>,
+        name: &str,
+        keys: &mut KeyReader,
+    ) -> Result<Option<Identifiers>> {
+        let Self::Pairs(map, texts, values) = self else {
             return Ok(None);
         };
         let Some(range) = map.range(row) else {
             return Ok(None);
         };
-        let located = |error: Error| invalid(at(path, name), format_smolstr!("{error}"));
-        let mut ids = Identifiers::new();
+        let mut ids = Identifiers::with_capacity(2 * range.len());
         for item in range {
-            let text = |cell: usize| cells[cell].value(item).unwrap_or_default();
-            let id = text(0)
-                .parse()
-                .and_then(|src| Identifier::new(src, text(1).parse()?, text(2)))
-                .map_err(located)?;
-            let key = keys.value(item).unwrap_or_default();
-            if id.key() != key {
-                return Err(invalid(
-                    at(path, name),
-                    format_smolstr!("expected the key {}, got {key:?}", id.key()),
-                ));
-            }
-            ids.insert(id);
+            let text = texts.value(item).unwrap_or_default();
+            let value = values.value(item).unwrap_or_default();
+            ids.read_entry(text, keys.read(text), value)
+                .map_err(|error| path.field(name).reroot(error))?;
         }
+        ids.close();
         Ok(Some(ids))
     }
 
@@ -1982,6 +1923,9 @@ impl Layouts {
 /// One landed struct - a batch's root or a list's items - its columns
 /// narrowed once to their leaves.
 struct Landed {
+    /// What the identifier maps' keys read as, kept across a stream's
+    /// batches by the root.
+    keys: RefCell<KeyReader>,
     element: [Option<Leaf>; ElementColumn::ALL.len()],
     event: [Option<Leaf>; EventColumn::ALL.len()],
     market: [Option<Leaf>; MarketColumn::ALL.len()],
@@ -2014,6 +1958,7 @@ struct Limits {
 impl Landed {
     fn new(children: &[Serie], layout: &[(Column, usize)], layouts: &Layouts) -> Result<Self> {
         let mut landed = Self {
+            keys: RefCell::default(),
             element: std::array::from_fn(|_| None),
             event: std::array::from_fn(|_| None),
             market: std::array::from_fn(|_| None),
@@ -2517,7 +2462,8 @@ impl Landed {
             } else if column == MarketColumn::ExecUnix {
                 target.set_execunix(leaf.clock(row), true);
             } else if column == MarketColumn::SecurityIds {
-                let Some(ids) = leaf.ids(row, path, column.name())? else {
+                let Some(ids) = leaf.ids(row, path, column.name(), &mut self.keys.borrow_mut())?
+                else {
                     continue;
                 };
                 let located = |error: Error| path.field(column.name()).reroot(error);
@@ -2542,8 +2488,8 @@ impl Landed {
                         let located = |error: Error| {
                             invalid(at(path, column.name()), format_smolstr!("{error}"))
                         };
-                        let id = Identifier::new(IdSource::Base, IdType::Isin, stated)
-                            .map_err(located)?;
+                        let id =
+                            Identifier::new(IdKey::base(IdType::Isin), stated).map_err(located)?;
                         target.insert_securityid(id).map_err(located)?;
                     }
                 }
@@ -2624,7 +2570,9 @@ impl Landed {
             match column {
                 OperationColumn::Tradable => target.set_tradable(leaf.boolean(row), true),
                 OperationColumn::Identifiers | OperationColumn::PartyIds => {
-                    let Some(ids) = leaf.ids(row, path, column.name())? else {
+                    let Some(ids) =
+                        leaf.ids(row, path, column.name(), &mut self.keys.borrow_mut())?
+                    else {
                         continue;
                     };
                     let located = |error: Error| path.field(column.name()).reroot(error);
@@ -2782,7 +2730,14 @@ impl Landed {
                     _ => {}
                 }
             } else if column == MarketColumn::SecurityIds {
-                check_ids(leaf, row, canonical.get_securityids(), path, column.name())?;
+                check_ids(
+                    leaf,
+                    row,
+                    canonical.get_securityids(),
+                    path,
+                    column.name(),
+                    &mut self.keys.borrow_mut(),
+                )?;
             } else if column == MarketColumn::IsinCode {
                 match leaf.text(row) {
                     Some(stated) if Some(stated) != canonical.get_isincode() => {
@@ -2895,7 +2850,14 @@ impl Landed {
                     } else {
                         canonical.get_partyids()
                     };
-                    check_ids(leaf, row, derived, path, column.name())?;
+                    check_ids(
+                        leaf,
+                        row,
+                        derived,
+                        path,
+                        column.name(),
+                        &mut self.keys.borrow_mut(),
+                    )?;
                 }
                 OperationColumn::OrdQty => match leaf.decimal(row) {
                     Some(stated) if Some(stated) != canonical.get_ordqty() => {
@@ -2926,16 +2888,19 @@ impl Landed {
 }
 
 /// A stated identifier cell must name the identifiers its canonical leaf
-/// holds - each key, source, type and value - each stated entry looked up
-/// in place and matched once, so the check builds nothing.
+/// holds: each stated key and value held, matched once, and each held one
+/// stated - except a base key the row leaves out whose value a source the
+/// row does state holds, which closing the map filled. Each stated entry is
+/// looked up in place and marked, so the check builds nothing.
 fn check_ids(
     leaf: &Leaf,
     row: usize,
     held: &Identifiers,
     path: &Path<'_>,
     name: &str,
+    keys: &mut KeyReader,
 ) -> Result<()> {
-    let Leaf::Ids(map, keys, cells) = leaf else {
+    let Leaf::Pairs(map, texts, values) = leaf else {
         return Ok(());
     };
     let Some(range) = map.range(row) else {
@@ -2943,35 +2908,32 @@ fn check_ids(
     };
     // One bit per held identifier, inline up to sixty-four of them.
     let mut matched: smallvec::SmallVec<[u64; 1]> = smallvec::smallvec![0; held.len().div_ceil(64)];
-    let mut stated = 0_usize;
+    let is_marked = |matched: &[u64], at: usize| matched[at / 64] & (1 << (at % 64)) != 0;
     for item in range {
-        let text = |cell: usize| cells[cell].value(item).unwrap_or_default();
-        let (src, kind, value) = (text(0), text(1), text(2));
-        let key = keys.value(item).unwrap_or_default();
-        let found = held.iter().position(|id| {
-            id.src().is_spelled(src)
-                && id.kind().is_spelled(kind)
-                && key.split_once(':') == Some((id.src().as_str(), id.kind().as_str()))
-                && id.value() == value.trim()
-        });
-        let Some(at) = found.filter(|at| matched[at / 64] & (1 << (at % 64)) == 0) else {
-            return Err(differs(
-                path,
-                name,
-                held,
-                &format_args!("{src}:{kind}={value}"),
-            ));
+        let text = texts.value(item).unwrap_or_default();
+        let value = values.value(item).unwrap_or_default();
+        let found = keys
+            .read(text)
+            .and_then(|key| held.held_at(&key, value.trim()));
+        let Some(at) = found.filter(|at| !is_marked(&matched, *at)) else {
+            return Err(differs(path, name, held, &format_args!("{text}={value}")));
         };
         matched[at / 64] |= 1 << (at % 64);
-        stated += 1;
     }
-    if stated != held.len() {
-        return Err(differs(
-            path,
-            name,
-            held,
-            &format_args!("{stated} identifiers"),
-        ));
+    let ids = held.as_slice();
+    for (at, id) in ids.iter().enumerate() {
+        let filled = || {
+            id.key().is_base()
+                && ids.iter().enumerate().any(|(source, stated)| {
+                    is_marked(&matched, source)
+                        && !stated.key().is_base()
+                        && stated.kind() == id.kind()
+                        && stated.value() == id.value()
+                })
+        };
+        if !is_marked(&matched, at) && !filled() {
+            return Err(differs(path, name, held, &format_args!("no {}", id.key())));
+        }
     }
     Ok(())
 }
@@ -3172,7 +3134,11 @@ impl Iterator for Rows {
                 }
                 return Some(result);
             }
-            self.landed = None;
+            // The root's key reader goes on to the next batch.
+            let keys = self
+                .landed
+                .take()
+                .map(|(landed, _)| landed.keys.into_inner());
             self.row = 0;
             let batch = match self.batches.next() {
                 Some(Ok(batch)) => batch,
@@ -3189,7 +3155,12 @@ impl Iterator for Rows {
                 }
             };
             match Landed::new(batch.children(), &self.layouts.root, &self.layouts) {
-                Ok(landed) => self.landed = Some((landed, batch.len())),
+                Ok(landed) => {
+                    if let Some(keys) = keys {
+                        landed.keys.replace(keys);
+                    }
+                    self.landed = Some((landed, batch.len()));
+                }
                 Err(error) => {
                     self.done = true;
                     return Some(Err(error));

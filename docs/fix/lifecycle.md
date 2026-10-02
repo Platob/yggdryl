@@ -19,7 +19,7 @@ A message says what happened; it does not say which order's life it belongs to b
 | Dating | a message whose `SendingTime(52)` the parse supplied rather than read - a carrier row's, its line's `currunix`, the codec's default, the intake's clock - is dated by the `TransactTime(60)` it states with a clock before the walk, and a resend's `OrigSendingTime(122)` is its creation where earlier; a stated sending clock stands, because the parse has already dated the message by [the official clock](capture.md#the-official-clock-dates-the-message) standing within `official_time_delay_ms` of it. No delay bounds this one: a clock nobody stated is no reference to measure a distance from. `FixMsg::dated_by_transaction` is the reading, so a capture whose frames state no sending clock still orders, expires and folds by when its transactions happened. Independently, a report accepted by `FixMsg::is_execution` uses its directly parsed execution clock where present and otherwise its own `currunix`, which the parse fills in rather than the walk. That latest clock propagates to later lifecycle events and never moves backward; non-New/cancel/correct/reverse/status AE and `AD`, `AQ` or `AR` invent none. `recdunix` is only the precise carrier recording time or a directly stated value, never a sending, original-sending or hop clock |
 | Order | by default the entire finite capture is collected; capture-identical observations are merged, then the retained messages are stably sorted by event time before the walk. An item its source refused for what it states is left out with a [warning](capture.md#warnings), and a source failure ends the intake: the messages read before it are walked and yielded, then the failure, once. A codec whose [`sorted_lifecycle`](#a-sorted-source-is-walked-one-hour-at-a-time) pin is on reads a source already in instant order as it comes, one epoch hour at a time, and walks every hour still held before it yields a failure |
 | Deliveries | a complete nonempty `(msgtype, msgsessionid, msgctxid, msgseqnum)` is prebuilt as the capture's `msgsesseventid`: `<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>`, the values joined by `:` as stated and the sequence rendered as canonical `u64`. Equal values are one delivery before sorting, walking or ordinary with-previous following - where the two also agree on the category, the side and an execution's chain, so the messages a parse split off one delivery never merge into each other. The observations are ranked latest `recdunix` first - a stated one ahead of an absent one, the later `currunix` closing a tie - and a full FIX-content and graph merge folds every other observation into the first, the reference chosen once over all of them, so the delivery takes no predecessor and no second place. Reference scalar conflicts win, older values fill absences, and repeating groups merge recursively at equal occurrence indexes with members sorted by FIX tag and no duplicate key. The merged `recdunix` and `execunix` facts are their earliest values, and provenance sources form a sorted unique union whose positions carry no reference meaning. Separately, exact republications and true retransmissions are removed across the entire finite capture, however many distinct deliveries intervene; session, sequence, original time and content distinguish normal deliveries, and headerless bridge rows use their event identity and capture context. An absent or empty text part or absent sequence produces no `msgsesseventid`; distinct message types, sessions, contexts and sequences survive |
-| Instruments | after sorting, one lifecycle-local `SecurityIdRegistry` learns, under a valid ISIN, one association per security identifier type the crate names that the message states from a source - at most eight per instrument; a private source's code or a venue's own word (`100`, `z`) is held by the message that states it and never learned - and its detailed CFI, and fills only what a later message with the same ISIN leaves unstated, through `derive_securityid`, from `derived`, so a filled identifier never reaches a field or the wire. Coarse CFI is not learned, and neither is a derived identifier nor a bridge's `oms:instrumentid` or `ullink:instrumentid` (an unmapped entry whose key names an instrument): each names a listing - `dbi;CH0012214059_XSWX_CHF` is the ISIN with its market and currency - and one ISIN has as many listings as markets. Conflicting values make an association ambiguous and silent. Storage reserves 2 KiB for each first valid ISIN, at most 32 MiB or 16,384 ISINs and never more than 65,536; a known ISIN can keep learning at the cap |
+| Instruments | after sorting, every message is [enriched](#instruments-are-learned-in-instant-order) through an [`IsinRegistry`](../graph/isin-registry.md): its ISIN - else its RIC, which only fills - CFI code, market, ticker and security codes are learned, the latest statement leading column by column, and what a later message of that instrument leaves unsaid is filled from `derived`, never reaching a field or the wire. The registry is each walk's own, starting empty, unless the codec shares one (`with_isin_registry`) |
 | Ends | a terminal state retires the chain once yielded. A live finite deadline emits one owned `EXPIRED` message at that exact instant, following the live generation with `prevuuid`, handed over before anything the walk reads at its deadline and at the next place there - the higher of that and one past the live message's where the deadline is not after it - then purges it; replaced or terminal generations leave no stale expiry |
 | Grid | a positive codec `snapshot_ns` / `snapshotNs` enables an epoch-aligned grid; the default is off. Every crossed tick yields an owned view of every living chain: the live message as of that tick, dated at it - `currunix` the tick, `snapunix` the instant the live message it copies was stated at - so its `curruuid` is the identity that instant derives, while its content (`currhashcode`), `seqnum`, `prevuuid` and `crossuuid` are the live message's; a view does not advance the chain. Deadlines win ties, all source messages at the instant follow, and views come last. Output is proportional to crossed ticks times living identities; there is no implicit output cap |
 | Errors | the walk never fails on what a message states: an item its source refused is left out, and a message whose content merge, order links or side the rebuild refuses is walked as it stated itself, each beside a [warning](capture.md#warnings); only a source failure is an error, yielded once after the messages read before it, and exhaustion is fused |
@@ -297,7 +297,7 @@ A replace chain of one order - its identifiers under `fix`, `-` where a message 
 
     use yggdryl::graph::{Element, Operation};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, IdSource, IdType};
+    use yggdryl::{FixCodec, FixMsg, FixRegistry, IdType};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?));
@@ -314,7 +314,7 @@ A replace chain of one order - its identifiers under `fix`, `-` where a message 
     let held = |message: &FixMsg| -> [String; 5] {
         ["orderid", "parentorderid", "origorderid", "clordid", "origclordid"].map(|kind| {
             let kind: IdType = kind.parse().expect("a type");
-            message.get_identifiers().get_from(&IdSource::Fix, &kind).unwrap_or("-").to_owned()
+            message.get_identifiers().get(&kind).unwrap_or("-").to_owned()
         })
     };
     assert_eq!(held(&chained[0]), ["-", "-", "-", "C1", "-"]);
@@ -346,7 +346,7 @@ A replace chain of one order - its identifiers under `fix`, `-` where a message 
 
     def held(message):
         # What a message holds under each type, "-" where it holds none.
-        return tuple(message.identifiers.get_from("fix", kind) or "-" for kind in KINDS)
+        return tuple(message.identifiers.get(kind) or "-" for kind in KINDS)
 
 
     assert held(chained[0]) == ("-", "-", "-", "C1", "-")
@@ -376,7 +376,7 @@ A replace chain of one order - its identifiers under `fix`, `-` where a message 
     const chained = [...reader.lifecycle([...reader.parseLines(lines)])]
 
     // What a message holds under each type, '-' where it holds none.
-    const held = (message) => KINDS.map((kind) => message.identifiers.getFrom('fix', kind) ?? '-')
+    const held = (message) => KINDS.map((kind) => message.identifiers.get(kind) ?? '-')
     assert.deepEqual(held(chained[0]), ['-', '-', '-', 'C1', '-'])
     assert.deepEqual(held(chained[1]), ['O1', '-', '-', 'C1', '-'])
     // Each replace names the value before it and the chain's first.
@@ -501,13 +501,95 @@ The [parse](capture.md#every-message-is-dated) places by order: `parse_line` and
 
 Following keeps a message's own place unless its predecessor happened at the same instant or later, where it takes the higher of its own and one past the predecessor's; a merge keeps the higher of two places. The [market projection](arrow.md#fix-market-books) hands each leaf its message's place, so the entries of one book message share it; a book's place is the highest of its members' places at the book's own instant, and a [book](../graph/book.md#book-fold) fold trusts a chain step's place only where its predecessor stands at the same instant, folding in arrival order otherwise. A [text line](../media/index.md#plain-text)'s place is its row number instead, which orders the lines of one millisecond.
 
-## Instrument associations are lifecycle state
+## Instruments are learned in instant order
 
-Messages are sorted before one lifecycle-local `SecurityIdRegistry` reads them. A valid ISIN may teach its detailed CFI and every other security identifier the message states under it - a CUSIP, a SEDOL, a Bloomberg code, a FIGI, under any source, at most eight types per instrument, each a type the crate names; a private source's code (`100`) is the message's own and teaches nothing - to later messages that state the same ISIN and omit that type; what it fills is derived, `derive_securityid`, from `derived`, so it reaches no field and no wire - a row without the `securityids` column carries what it fills only through a [view](message.md#typed-tags), a Bloomberg code or a FIGI reading back stated from `base`. The registry never overwrites a stated fact. A coarse CFI such as `ESXXXX`, an invalid spelling and a null marker teach nothing; two valid conflicting values make that code family ambiguous and it stays silent.
+Messages are sorted before the walk enriches them, one at a time, through an [`IsinRegistry`](../graph/isin-registry.md): `learn` reads what a message states about its instrument - keyed by its stated ISIN, canonical and not `ZZ`, else by its stated RIC through the registry's inverse index, which only fills - its detailed CFI code, its market but `XXXX`, its ticker and every security code of a type the crate names that it states rather than derived, at its `currunix`; then `fill` gives it what the row of its ISIN, stated or derived, else its RIC, holds and it leaves unsaid. A filled code is derived, `derive_securityid`, from `derived`, so it reaches no field and no wire - a row without the `securityids` column carries it only through a [view](message.md#typed-tags), reading back stated; a registry-refined CFI code shows in the market `cficode` and in the fixed row only where `CFICode(461)` is unstated, and a filled ticker moves the book a message without `Symbol(55)` stands in. A private source's code (`100`), a venue's own word and an `instrumentid` - a listing key, `dbi;CH0012214059_XSWX_CHF` naming one market - are never learned, a coarse CFI such as `ESXXXX` is no statement, and a Bloomberg symbol is an equivalent the ISIN fills, never a key.
 
-The registry retains at most 32 MiB by reserving a conservative 2 KiB for each first valid ISIN, so at most 16,384 ISINs register, and never more than 65,536. Reaching the cap refuses unseen ISINs without eviction; an already registered ISIN can still learn another code because its full payload was reserved on first insertion. The registry belongs to this ordered lifecycle, never to the codec, so a second lifecycle starts empty.
+The latest statement leads: a column the row lacks is filled whatever the time, a held one is replaced by a statement at or after the row's `updunix` and kept against an older one, a refining CFI code refines whatever the time, and a newer statement of a listing fact on another market switches the listing whole ([the update rule](../graph/isin-registry.md#the-update-rule)). The registry holds at most `max_instruments` - 16,384 by default, at most 3 KiB each, 48 MiB - and a new ISIN past the bound is skipped with one warning while a known one keeps learning; nothing is evicted.
 
-A currency pair is no association the walk learns. The parse [detects](capture.md#a-currency-pair-is-read-off-the-symbol) it off `Symbol(55)` into the message's derived identifiers, remembered per registry for 4,096 symbols, a symbol naming no pair remembered as one: a detected pair is derived, so a stated `forex` identifier replaces it. A row's `forexcode` is a [view](message.md#typed-tags), resolved once as the row is read: the pair its symbol names reads back derived and follows the symbol, and, with no `securityids` column, any other pair the reading does not answer reads back stated from `base`, its source lost.
+Without a registry of its own the walk learns into one it makes, starting empty, so a second walk starts empty too. `FixCodec::with_isin_registry(Arc<Mutex<IsinRegistry>>)` - Python `FixCodec(..., isin_registry=registry)`, JavaScript `{ isinRegistry }` - shares one table with every walk the codec runs, one uncontended lock per message, so a walk run after another starts from what the first learned, and a registry loaded from a golden Arrow or Parquet file (`IsinRegistry::from_handle`) fills from the first message. Walks run at once on one shared registry interleave their learning: share it across walks run one after another.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::{Arc, Mutex};
+
+    use yggdryl::graph::Market;
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{FixCodec, FixMsg, FixRegistry, IsinRegistry};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
+    let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
+    let codec = FixCodec::new(Arc::clone(&registry)).with_isin_registry(Arc::clone(&instruments));
+    let walk = |line: &str| -> yggdryl::Result<Vec<FixMsg>> {
+        let parsed: Vec<FixMsg> = codec.parse_lines([line]).collect::<yggdryl::Result<_>>()?;
+        codec.lifecycle(parsed).collect()
+    };
+    walk("8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|10=0|")?;
+    // A later walk stating only the RIC starts from what the first learned.
+    let later = walk("8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|")?;
+    assert_eq!(later[0].get_isincode(), Some("CH0012214059"));
+    assert_eq!(later[0].get_ticker(), Some("HOLN"));
+    // A codec without one learns into each walk's own.
+    let alone = FixCodec::new(registry);
+    let parsed: Vec<FixMsg> = alone.parse_lines(["8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|"]).collect::<yggdryl::Result<_>>()?;
+    let walked: Vec<FixMsg> = alone.lifecycle(parsed).collect::<yggdryl::Result<_>>()?;
+    assert_eq!(walked[0].get_isincode(), None);
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl import IsinRegistry
+    from yggdryl.fix import FixCodec, FixRegistry
+
+    registry = FixRegistry.from_handle(Path("config/fix"))
+    instruments = IsinRegistry()
+    codec = FixCodec(registry, isin_registry=instruments)
+    assert codec.isin_registry == instruments
+
+
+    def walk(line: bytes) -> list:
+        return list(codec.lifecycle(codec.parse_lines([line])))
+
+
+    walk(b"8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|10=0|")
+    # A later walk stating only the RIC starts from what the first learned.
+    [later] = walk(b"8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|")
+    assert later.isincode == "CH0012214059" and later.ticker == "HOLN"
+    # A codec without one learns into each walk's own.
+    alone = FixCodec(registry)
+    [unfilled] = alone.lifecycle(alone.parse_lines([b"8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|"]))
+    assert unfilled.isincode is None
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { IsinRegistry, fix } = require('yggdryl')
+
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
+    const instruments = new IsinRegistry()
+    const codec = new fix.FixCodec(registry, { isinRegistry: instruments })
+    assert.ok(codec.isinRegistry.equals(instruments))
+    const walk = (reader, line) => [...reader.lifecycle([...reader.parseLines([Buffer.from(line)])])]
+
+    walk(codec, '8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|10=0|')
+    // A later walk stating only the RIC starts from what the first learned.
+    const [later] = walk(codec, '8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|')
+    assert.equal(later.isincode, 'CH0012214059')
+    assert.equal(later.ticker, 'HOLN')
+    // A codec without one learns into each walk's own.
+    const [unfilled] = walk(new fix.FixCodec(registry), '8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|')
+    assert.equal(unfilled.isincode, null)
+    ```
+
+A currency pair is no association the walk learns. The parse [detects](capture.md#a-currency-pair-is-read-off-the-symbol) it off `Symbol(55)` into the message's derived identifiers, remembered per registry for 4,096 symbols, a symbol naming no pair remembered as one: a detected pair is derived, so a stated `forex` identifier replaces it. A row's `forexcode` is a [view](message.md#typed-tags), resolved once as the row is read: the pair its symbol names reads back derived and follows the symbol, and, with no `securityids` column, any other pair the reading does not answer reads back stated under the `forex` base key, whether it was derived lost.
 
 ## Snapshots are a grid
 

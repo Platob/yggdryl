@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 use std::hash::Hasher;
 
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::graph::{Element, Event, Market, Operation, Order, OrderEvent};
 use yggdryl::xxhash::Xxh3;
 use yggdryl::{
@@ -291,8 +292,7 @@ fn unit(text: &str) -> Unit {
 /// stated from `base` and validated by its type.
 fn securityid(kind: &str, code: &str) -> Identifier {
     Identifier::new(
-        IdSource::Base,
-        IdType::from_security_source(kind).expect("a security type"),
+        IdKey::base(IdType::from_security_source(kind).expect("a security type")),
         code,
     )
     .expect("an identifier")
@@ -300,7 +300,7 @@ fn securityid(kind: &str, code: &str) -> Identifier {
 
 /// One identifier of a plain holder: a value of `kind` from `fix`.
 fn identifier(kind: &str, value: &str) -> Identifier {
-    Identifier::new(IdSource::Fix, kind.parse().expect("a type"), value).expect("an identifier")
+    Identifier::new(IdKey::base(kind.parse().expect("a type")), value).expect("an identifier")
 }
 
 /// Finalizes `this` the way a market event stating no operation of its own
@@ -435,12 +435,12 @@ fn an_operation_goes_by_the_names_it_was_given_each_under_its_scheme() {
     );
     assert!(
         operation
-            .remove_identifier(&IdSource::Fix, &IdType::OrderId)
+            .remove_identifier(&IdKey::base(IdType::OrderId))
             .expect("a plain holder")
     );
     assert!(
         !operation
-            .remove_identifier(&IdSource::Fix, &IdType::OrderId)
+            .remove_identifier(&IdKey::base(IdType::OrderId))
             .expect("nothing left to remove")
     );
     // The set is replaced whole, never merged.
@@ -850,17 +850,18 @@ fn a_first_seen_identifier_states_no_parent() {
         .insert_securityid(securityid("ISIN", "US0378331005"))
         .expect("a plain holder");
     event.finalize();
-    let keys = |ids: &Identifiers| ids.iter().map(Identifier::key).collect::<Vec<_>>();
-    assert_eq!(
-        keys(event.get_identifiers()),
-        ["fix:clordid", "fix:orderid"]
-    );
-    assert_eq!(keys(event.get_partyids()), ["fix:customeraccount"]);
+    let keys = |ids: &Identifiers| {
+        ids.iter()
+            .map(|id| id.key().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(keys(event.get_identifiers()), ["clordid", "orderid"]);
+    assert_eq!(keys(event.get_partyids()), ["customeraccount"]);
     // The ISIN implies the national number it carries, derived and stated by
     // no source; no security identifier has a parent.
     assert_eq!(
         keys(event.get_securityids()),
-        ["base:isin", "derived:cusip"]
+        ["cusip", "derived:cusip", "isin"]
     );
 
     let mut element = Order::new();
@@ -870,7 +871,7 @@ fn a_first_seen_identifier_states_no_parent() {
     element.finalize();
     assert_eq!(
         keys(element.get_securityids()),
-        ["base:isin", "derived:cusip"]
+        ["cusip", "derived:cusip", "isin"]
     );
 }
 
@@ -892,7 +893,7 @@ fn an_order_identifier_chain_ends_with_its_parent_and_origin() {
     let parentage = |event: &OrderEvent| {
         let ids = event.get_identifiers();
         let held = |kind: &str| {
-            ids.get_from(&IdSource::Fix, &kind.parse().expect("a type"))
+            ids.get_from(&IdKey::base(kind.parse().expect("a type")))
                 .map(str::to_owned)
         };
         (held("orderid"), held("parentorderid"), held("origorderid"))
@@ -933,7 +934,7 @@ fn a_client_order_identifier_chain_names_its_previous_value() {
     let orig = |event: &OrderEvent| {
         event
             .get_identifiers()
-            .get_from(&IdSource::Fix, &"origclordid".parse().expect("a type"))
+            .get_from(&IdKey::base("origclordid".parse().expect("a type")))
             .map(str::to_owned)
     };
     let first = named(10, "A");
@@ -972,7 +973,7 @@ fn a_follower_keeps_the_parents_it_states_and_follows_each_source_alone() {
     let held = |event: &OrderEvent, kind: &str| {
         event
             .get_identifiers()
-            .get_from(&IdSource::Fix, &kind.parse().expect("a type"))
+            .get_from(&IdKey::base(kind.parse().expect("a type")))
             .map(str::to_owned)
     };
     assert_eq!(held(&next, "parentorderid").as_deref(), Some("STATED"));
@@ -983,7 +984,8 @@ fn a_follower_keeps_the_parents_it_states_and_follows_each_source_alone() {
     other.set_crosscode("O-100".to_owned());
     other
         .insert_identifier(
-            Identifier::new(venue.clone(), IdType::OrderId, "Z").expect("an identifier"),
+            Identifier::new(IdKey::new(venue.clone(), IdType::OrderId), "Z")
+                .expect("an identifier"),
         )
         .expect("a plain holder");
     other.finalize();
@@ -991,7 +993,7 @@ fn a_follower_keeps_the_parents_it_states_and_follows_each_source_alone() {
     assert_eq!(
         other
             .get_identifiers()
-            .get_from(&venue, &"parentorderid".parse().expect("a type")),
+            .get_from(&IdKey::new(venue, "parentorderid".parse().expect("a type"))),
         None,
         "the venue's order identifier has no predecessor under the venue"
     );
@@ -1858,7 +1860,7 @@ fn a_market_element_names_its_instrument_the_way_the_market_does() {
     // Each is unsaid on its own; a stated identifier is never overwritten
     // by inserting, and a second statement under a held source fills nothing.
     assert!(
-        held.remove_securityid(&IdSource::Base, &IdType::Cusip)
+        held.remove_securityid(&IdKey::base(IdType::Cusip))
             .expect("a plain holder")
     );
     assert!(held.get_securityids().get(&IdType::Cusip).is_none());
@@ -1879,7 +1881,7 @@ fn a_market_element_names_its_instrument_the_way_the_market_does() {
         "a wrong check digit is no ISIN"
     );
     assert!(
-        Identifier::new(IdSource::Base, IdType::Isin, "US0378331006").is_err(),
+        Identifier::new(IdKey::base(IdType::Isin), "US0378331006").is_err(),
         "and no security identifier of the ISIN type either"
     );
     assert!(

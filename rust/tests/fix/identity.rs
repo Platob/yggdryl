@@ -10,7 +10,7 @@ use super::sequence;
 mod categories {
     use std::sync::Arc;
     use yggdryl::graph::Market;
-    use yggdryl::{Cfi, FixMsg, IdSource, IdType, Isin, Scalar};
+    use yggdryl::{Cfi, FixMsg, IdType, Isin, Scalar};
 
     #[test]
     fn committed_messages_publish_one_four_byte_category() {
@@ -125,7 +125,7 @@ mod categories {
         assert_eq!(
             primary
                 .get_securityids()
-                .get_from(&IdSource::Fix, &IdType::Cusip),
+                .get_from(&yggdryl::IdKey::base(IdType::Cusip)),
             Some("037833100")
         );
         // A type is a name, never the wire code that named it.
@@ -767,7 +767,7 @@ mod identifiers {
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>(),
-            ["fix:clordid=C-001", "fix:execid=E-09", "fix:orderid=O-01"]
+            ["clordid=C-001", "execid=E-09", "orderid=O-01"]
         );
         // Filling them is not an arrival: the identifiers are the event's own
         // fact, so the wire is the line's own pairs beside what the dictionary
@@ -811,7 +811,7 @@ mod identifiers {
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>(),
-            ["fix:clordid=C-1"]
+            ["clordid=C-1"]
         );
         let unnamed = codec.sole_line(b"8=FIX.4.4|35=ZZ|10=0|").unwrap();
         assert!(unnamed.get_identifiers().is_empty());

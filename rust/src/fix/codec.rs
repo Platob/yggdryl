@@ -65,7 +65,7 @@
 use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::ops::Range;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use quick_xml::events::Event;
 use smallvec::SmallVec;
@@ -75,7 +75,7 @@ use crate::graph::Element as _;
 use crate::mime_type::line;
 use crate::text::{TextBytes, TextEntries, TextEntry, TextLine, TextOptions};
 use crate::warning::warned;
-use crate::{Error, Field, Result, Scalar, Version};
+use crate::{Error, Field, IsinRegistry, Result, Scalar, Version};
 
 use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};
 use super::{FixMessages, FixMsg, FixRegistry};
@@ -515,6 +515,9 @@ pub struct FixCodec {
     /// Whether a market data element this codec builds carries what its
     /// message states that no typed column reads.
     market_metadata: bool,
+    /// The instrument registry every lifecycle this codec runs learns into
+    /// and fills from, shared; none gives each walk its own, starting empty.
+    isin_registry: Option<Arc<Mutex<IsinRegistry>>>,
     /// The `BeginString` child every built message carries, resolved once:
     /// a bridge row states no version, so every one of them would otherwise
     /// look the field up per line.
@@ -703,6 +706,7 @@ impl FixCodec {
             official_time_delay_ms: Self::DEFAULT_OFFICIAL_TIME_DELAY_MS,
             dedup_window_ms: Self::DEFAULT_DEDUP_WINDOW_MS,
             market_metadata: true,
+            isin_registry: None,
             beginstring,
         }
     }
@@ -983,6 +987,40 @@ impl FixCodec {
         } else {
             None
         }
+    }
+
+    /// Shares `registry` with every lifecycle this codec runs: each learns
+    /// what its messages state about their instruments into it and fills
+    /// what they leave unstated from it ([`IsinRegistry::enrich`]), so a
+    /// walk run after another starts from what the first learned. Walks run
+    /// one after another; walks run at once on one registry interleave
+    /// their learning. Without one, each walk learns into its own, starting
+    /// empty.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use std::sync::{Arc, Mutex};
+    /// # use yggdryl::local::LocalFolder;
+    /// # use yggdryl::{FixCodec, FixRegistry, IsinRegistry};
+    /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    /// # let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
+    /// let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
+    /// let codec = FixCodec::new(registry).with_isin_registry(Arc::clone(&instruments));
+    /// assert!(codec.isin_registry().is_some());
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_isin_registry(mut self, registry: Arc<Mutex<IsinRegistry>>) -> Self {
+        self.isin_registry = Some(registry);
+        self
+    }
+
+    /// The instrument registry every lifecycle this codec runs shares,
+    /// where one was given ([`Self::with_isin_registry`]).
+    #[must_use]
+    pub fn isin_registry(&self) -> Option<&Arc<Mutex<IsinRegistry>>> {
+        self.isin_registry.as_ref()
     }
 
     /// States whether the messages [`Self::lifecycle`] is handed arrive in
@@ -2506,9 +2544,10 @@ impl FixCodec {
     /// capture context, direction and sequence in its key. The
     /// set is bounded by the number of distinct deliveries in the finite
     /// capture. Distinct deliveries with equal business content remain
-    /// distinct. Missing instrument codes may be learned from earlier messages
-    /// of this lifecycle only, after sorting, and never overwrite a stated
-    /// fact. Finite expirations emit at their exact deadline. Where
+    /// distinct. Each message, in walk order, teaches the instrument registry
+    /// what it states about its instrument and takes what it leaves unstated
+    /// from it - derived, never stated ([`IsinRegistry::enrich`]): the walk's
+    /// own, starting empty, or the one [`Self::with_isin_registry`] shares. Finite expirations emit at their exact deadline. Where
     /// [`Self::snapshot_ns`] is set, separate owned views of every living
     /// identity are emitted on that epoch-aligned grid without advancing its
     /// chain.
@@ -2558,6 +2597,7 @@ impl FixCodec {
             self.snapshot_ns,
             self.sorted_lifecycle,
             self.dedup_window_ns(),
+            self.isin_registry.clone(),
         )
     }
 

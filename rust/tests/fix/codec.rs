@@ -456,10 +456,11 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
     let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
     // The `partyids` column is a sorted map keyed `src:type`: one entry per
-    // party the two occurrences name.
+    // party the two occurrences name, and the base key each one's source
+    // fills.
     let partyids = row.get(schema.index_of("partyids").unwrap()).unwrap();
     let partyids = yggdryl::Identifiers::from_scalar(partyids.as_ref()).unwrap();
-    assert_eq!(partyids.len(), 2, "projection retains parsed occurrences");
+    assert_eq!(partyids.len(), 4, "projection retains parsed occurrences");
 }
 
 #[test]
@@ -1593,7 +1594,7 @@ NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
             .expect("the partyids")
             .to_string()
     };
-    const OUTER: &str = "[proprietary:clientid=OUTER-B, proprietary:executingfirm=OUTER-A]";
+    const OUTER: &str = "[clientid=OUTER-B, executingfirm=OUTER-A, proprietary:clientid=OUTER-B, proprietary:executingfirm=OUTER-A]";
     let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
     outer(&message);
     let row = message.into_row(&schema).unwrap();

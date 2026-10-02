@@ -3,12 +3,14 @@
 //! its role. A caller reads their facts through the leaves, so what a
 //! holder answers on its own is pinned through `yggdryl::internals`.
 
+use yggdryl::IdKey;
+
 use yggdryl::graph::{Element, Market, Order, OrderEvent, Quote};
-use yggdryl::{IdSource, IdType, Identifier, Identifiers};
+use yggdryl::{IdType, Identifier, Identifiers};
 
 /// One security identifier of `kind` from `base`, validated by its type.
 fn id(kind: IdType, code: &str) -> Identifier {
-    Identifier::new(IdSource::Base, kind, code).unwrap()
+    Identifier::new(IdKey::base(kind), code).unwrap()
 }
 
 /// Every identifier an element holds, as `src:type=code`, in key order.
@@ -45,14 +47,14 @@ fn replacing_the_isin_takes_back_what_the_old_one_implied() {
     order.finalize();
     assert_eq!(
         ids(&order),
-        ["base:isin=US0378331005", "derived:cusip=037833100"]
+        [
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "isin=US0378331005"
+        ]
     );
 
-    assert!(
-        order
-            .remove_securityid(&IdSource::Base, &IdType::Isin)
-            .unwrap()
-    );
+    assert!(order.remove_securityid(&IdKey::base(IdType::Isin)).unwrap());
     assert!(ids(&order).is_empty());
     order
         .insert_securityid(id(IdType::Isin, "GB0002634946"))
@@ -60,7 +62,11 @@ fn replacing_the_isin_takes_back_what_the_old_one_implied() {
     order.finalize();
     assert_eq!(
         ids(&order),
-        ["base:isin=GB0002634946", "derived:sedol=0263494"]
+        [
+            "derived:sedol=0263494",
+            "isin=GB0002634946",
+            "sedol=0263494"
+        ]
     );
 
     // Replacing the whole set holds each identifier under the source it
@@ -77,11 +83,15 @@ fn replacing_the_isin_takes_back_what_the_old_one_implied() {
     replaced.finalize();
     assert_eq!(
         ids(&replaced),
-        ["base:isin=GB0002634946", "derived:sedol=0263494"]
+        [
+            "derived:sedol=0263494",
+            "isin=GB0002634946",
+            "sedol=0263494"
+        ]
     );
     assert!(
         replaced
-            .remove_securityid(&IdSource::Base, &IdType::Isin)
+            .remove_securityid(&IdKey::base(IdType::Isin))
             .unwrap()
     );
     assert!(ids(&replaced).is_empty());
@@ -94,16 +104,13 @@ fn replacing_the_isin_takes_back_what_the_old_one_implied() {
     .collect();
     replaced.set_securityids(stated, true).unwrap();
     replaced.finalize();
-    assert_eq!(
-        ids(&replaced),
-        ["base:isin=GB0002634946", "base:sedol=0263494"]
-    );
+    assert_eq!(ids(&replaced), ["isin=GB0002634946", "sedol=0263494"]);
     assert!(
         replaced
-            .remove_securityid(&IdSource::Base, &IdType::Isin)
+            .remove_securityid(&IdKey::base(IdType::Isin))
             .unwrap()
     );
-    assert_eq!(ids(&replaced), ["base:sedol=0263494"]);
+    assert_eq!(ids(&replaced), ["sedol=0263494"]);
 }
 
 /// A stated identifier replaces one the element only derived, and nothing
@@ -133,12 +140,8 @@ fn a_stated_identifier_replaces_a_derived_one_and_outlives_the_isin() {
     );
     assert!(!order.derive_securityid(&IdType::Cusip, "037833100"));
 
-    assert!(
-        order
-            .remove_securityid(&IdSource::Base, &IdType::Isin)
-            .unwrap()
-    );
-    assert_eq!(ids(&order), ["base:cusip=594918104"]);
+    assert!(order.remove_securityid(&IdKey::base(IdType::Isin)).unwrap());
+    assert_eq!(ids(&order), ["cusip=594918104"]);
 }
 
 /// A RIC is kept as it is written, case and all, under the type FIX's source
@@ -151,7 +154,7 @@ fn a_ric_is_held_as_written_and_derived_like_any_source() {
     quote.finalize();
     assert_eq!(quote.get_securityids().get(&IdType::Ric), Some("ESc1"));
     assert_eq!(IdType::from_security_source("5").unwrap(), IdType::Ric);
-    assert!(Identifier::new(IdSource::Base, IdType::Ric, "ESc 1").is_err());
+    assert!(Identifier::new(IdKey::base(IdType::Ric), "ESc 1").is_err());
 
     let mut order = Order::new();
     order
@@ -162,18 +165,16 @@ fn a_ric_is_held_as_written_and_derived_like_any_source() {
     assert_eq!(
         ids(&order),
         [
-            "base:isin=GB0002634946",
             "derived:ric=BAES.L",
-            "derived:sedol=0263494"
+            "derived:sedol=0263494",
+            "isin=GB0002634946",
+            "ric=BAES.L",
+            "sedol=0263494"
         ]
     );
     assert!(order.insert_securityid(id(IdType::Ric, "BAES.L")).unwrap());
-    assert!(
-        order
-            .remove_securityid(&IdSource::Base, &IdType::Isin)
-            .unwrap()
-    );
-    assert_eq!(ids(&order), ["base:ric=BAES.L"]);
+    assert!(order.remove_securityid(&IdKey::base(IdType::Isin)).unwrap());
+    assert_eq!(ids(&order), ["ric=BAES.L"]);
 }
 
 #[cfg(feature = "internals")]

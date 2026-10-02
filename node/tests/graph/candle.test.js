@@ -179,7 +179,7 @@ test('the volume counts each trade once at what it traded', () => {
   // The order's quantity; what the fill traded is its last quantity.
   const fill = (unix, code, side, lastqty, identifiers = {}) => new graph.ExecutionEvent(unix, {
     crosscode: code, ticker: 'ACME', side, price: '100', quantity: 600, lastqty, state: 'FILLED',
-    identifiers: Object.entries(identifiers).map(([kind, value]) => new Identifier('fix', kind, value)),
+    identifiers: Object.entries(identifiers).map(([kind, value]) => new Identifier(kind, value)),
   })
   // A fill delivered twice under one `execid`, the two sides of a trade
   // under one `tradeid`, and a fill stating no last quantity, which adds

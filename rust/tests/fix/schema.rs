@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use yggdryl::graph::{Element, Event, Market};
 use yggdryl::{
-    DataType, Field, FixCodec, FixRegistry, Scalar, StructType, fix_column_of, fix_schema,
+    DataType, Field, FixCodec, FixRegistry, IdKey, Scalar, StructType, fix_column_of, fix_schema,
 };
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
@@ -850,13 +850,9 @@ fn the_identifier_columns_are_sorted_maps_from_the_key_to_the_identifier_row() {
 
     let (registry, codec) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    for (name, item) in [
-        ("securityids", "securityid"),
-        ("identifiers", "identifier"),
-        ("partyids", "partyid"),
-    ] {
+    for name in ["securityids", "identifiers", "partyids"] {
         let column = &schema.fields()[schema.index_of(name).expect(name)];
-        assert_eq!(column.dtype(), &Identifiers::dtype(item), "{name}");
+        assert_eq!(column.dtype(), &Identifiers::dtype(), "{name}");
         assert!(column.is_nullable(), "{name}");
     }
     let message = codec
@@ -878,14 +874,11 @@ fn the_identifier_columns_are_sorted_maps_from_the_key_to_the_identifier_row() {
         let mut previous: Option<&str> = None;
         for (key, value) in entries {
             let key = key.as_str().expect("a text key");
-            // Each key is the `src:type` of the row it names, in key order.
-            assert_eq!(
-                Identifier::from_scalar(value)
-                    .expect("an identifier row")
-                    .key(),
-                key,
-                "{name}"
-            );
+            // Each key is an identifier key as it is spelled - a base key as
+            // its type alone - over its text value, in key order.
+            let read: IdKey = key.parse().expect("an identifier key");
+            assert_eq!(read.to_string(), key, "{name}");
+            assert!(value.as_str().is_some(), "{name}: {key} holds text");
             assert!(
                 previous.is_none_or(|before| before < key),
                 "{name}: {previous:?} {key}"
@@ -903,9 +896,7 @@ fn the_identifier_columns_are_sorted_maps_from_the_key_to_the_identifier_row() {
     let at = schema.index_of("identifiers").unwrap();
     let mut cells = row.as_sequence().unwrap().to_vec();
     let mut held = Identifiers::from_scalar(&cells[at]).unwrap();
-    held.insert(
-        Identifier::new(yggdryl::IdSource::Base, "foreignid".parse().unwrap(), "F-1").unwrap(),
-    );
+    held.insert(Identifier::new(IdKey::base("foreignid".parse().unwrap()), "F-1").unwrap());
     cells[at] = held.into_scalar();
     let restored = yggdryl::FixMsg::from_row(
         Arc::clone(&registry),
@@ -916,20 +907,19 @@ fn the_identifier_columns_are_sorted_maps_from_the_key_to_the_identifier_row() {
     assert_eq!(
         restored
             .get_identifiers()
-            .get_from(&yggdryl::IdSource::Base, &"foreignid".parse().unwrap()),
+            .get_from(&IdKey::base("foreignid".parse().unwrap())),
         Some("F-1")
     );
     assert_eq!(restored.get_identifiers(), &held);
 }
 
-/// A row's identifier map is its own word, so one that files an identifier
-/// under another key is refused on its column - by `FixMsg::from_row`, and
-/// by `FixCodec::messages`, which excludes the row - never read as the set
-/// the fields alone state.
+/// A row's identifier map is its own word, so one holding a key that reads
+/// as no key, a value its type refuses, or two values under two spellings of
+/// one key is refused on its column - by `FixMsg::from_row`, and by
+/// `FixCodec::messages`, which excludes the row - never read as the set the
+/// fields alone state.
 #[test]
-fn an_identifier_column_filing_a_row_under_another_key_is_refused_on_its_column() {
-    use yggdryl::{IdSource, IdType, Identifier};
-
+fn an_identifier_column_holding_what_no_map_holds_is_refused_on_its_column() {
     let (registry, codec) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = codec
@@ -937,31 +927,45 @@ fn an_identifier_column_filing_a_row_under_another_key_is_refused_on_its_column(
         .unwrap()
         .into_row(&schema)
         .unwrap();
-    for (name, key, held, filed) in [
-        ("securityids", "base:cusip", IdType::Ric, "AAPL.O"),
-        ("identifiers", "fix:orderid", IdType::ClOrdId, "C-1"),
-        ("partyids", "base:executingfirm", IdType::Account, "ACC"),
+    for (name, entries, key, reason) in [
+        (
+            "securityids",
+            &[("isin", "US0378331006")][..],
+            "isin",
+            "US0378331006",
+        ),
+        (
+            "identifiers",
+            &[("fix:", "C-1")][..],
+            "fix:",
+            "expected an identifier key src:type or type",
+        ),
+        (
+            "partyids",
+            &[("BASE:EXECUTINGFIRM", "B"), ("executingfirm", "A")][..],
+            "executingfirm",
+            "expected one value under executingfirm",
+        ),
     ] {
-        let id = Identifier::new(IdSource::Base, held, filed).unwrap();
         let mut cells = row.as_sequence().unwrap().to_vec();
-        let Scalar::Map(entries) =
-            Scalar::from_mapping([(Scalar::from(key), id.clone().into_scalar())]).unwrap()
-        else {
+        let Scalar::Map(entries) = Scalar::from_mapping(
+            entries
+                .iter()
+                .map(|(key, value)| (Scalar::from(*key), Scalar::from(*value))),
+        )
+        .unwrap() else {
             panic!("a map")
         };
         cells[schema.index_of(name).unwrap()] = Scalar::SortedMap(entries);
-        let misfiled = Scalar::from_sequence(cells);
+        let refused_row = Scalar::from_sequence(cells);
 
-        let refused = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &misfiled)
-            .expect_err("a key that is not its row's src:type");
+        let refused = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &refused_row)
+            .expect_err("no map holds it");
         let refused = refused.to_string();
         assert!(refused.contains(&format!("$.{name}['{key}']")), "{refused}");
-        assert!(
-            refused.contains(&format!("expected the key {}", id.key())),
-            "{refused}"
-        );
+        assert!(refused.contains(reason), "{refused}");
 
-        let batch = yggdryl::Serie::from_scalars(schema.clone(), [row.clone(), misfiled])
+        let batch = yggdryl::Serie::from_scalars(schema.clone(), [row.clone(), refused_row])
             .unwrap()
             .into_arrow_batch()
             .unwrap();
@@ -969,7 +973,7 @@ fn an_identifier_column_filing_a_row_under_another_key_is_refused_on_its_column(
             .messages(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .collect::<yggdryl::Result<Vec<_>>>()
             .expect("an excluded row is no error");
-        assert_eq!(read.len(), 1, "{name}: the misfiled row is excluded");
+        assert_eq!(read.len(), 1, "{name}: the refused row is excluded");
     }
 }
 

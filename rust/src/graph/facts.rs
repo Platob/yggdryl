@@ -27,8 +27,8 @@ use smol_str::SmolStr;
 use super::market::{FxRates, Metadata, empty_fxrates, empty_metadata, restating_operation};
 use super::{Element, Event, Market, Operation};
 use crate::{
-    Ccy, Cfi, Decimal, IdSource, IdType, Identifier, Identifiers, MarketDataKind, MarketDataType,
-    Mic, Result, Side, State, TimeInForce, Unit, Uuid,
+    Ccy, Cfi, Decimal, IdKey, IdSource, IdType, Identifier, Identifiers, MarketDataKind,
+    MarketDataType, Mic, Result, Side, State, TimeInForce, Unit, Uuid,
 };
 
 /// Every fact [`Element`] and [`Market`] name, as plain fields, with no
@@ -902,59 +902,53 @@ impl Market for MarketFacts {
     }
 
     /// Under `overwrite` the set replaces every identifier held, derived
-    /// ones included; else each of its identifiers fills an absent type and
-    /// source, a derived one as derived.
+    /// ones included; else it is merged in, filling only the keys held none
+    /// of ([`Identifiers::merge`]). Every type it holds is a security type,
+    /// or nothing moves.
     fn set_securityids(&mut self, ids: Identifiers, overwrite: bool) -> Result<()> {
         if overwrite {
             self.securityids = ids;
         } else {
-            for id in ids.iter() {
-                self.insert_securityid(id.clone())?;
+            for id in &ids {
+                id.kind().check_security()?;
             }
+            self.securityids.merge(&ids, false);
         }
         Ok(())
     }
 
-    /// A stated identifier fills an absent type and source, taking back a
-    /// derived one of its type, which a statement answers before.
+    /// A security identifier through [`Identifiers::insert`], which keeps
+    /// the base rule: it fills an absent key and its type's base key, and a
+    /// statement takes back a derived one of its type.
     fn insert_securityid(&mut self, id: Identifier) -> Result<bool> {
-        if id.src() == &IdSource::Derived {
-            return Ok(self.derive_securityid(id.kind(), id.value()));
-        }
         id.kind().check_security()?;
-        if self.securityids.get_from(id.src(), id.kind()).is_some() {
-            return Ok(false);
-        }
-        self.securityids.remove(&IdSource::Derived, id.kind());
         Ok(self.securityids.insert(id))
     }
 
-    fn remove_securityid(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
-        let Some(removed) = self.securityids.remove(src, kind) else {
+    fn remove_securityid(&mut self, key: &IdKey) -> Result<bool> {
+        if self.securityids.remove(key).is_none() {
             return Ok(false);
-        };
+        }
         // Every derived identifier hangs on the ISIN.
-        if removed.kind() == &IdType::Isin {
-            let derived: Vec<IdType> = self
+        if self.securityids.get(&IdType::Isin).is_none() {
+            let derived: Vec<IdKey> = self
                 .securityids
                 .iter()
                 .filter(|held| held.src() == &IdSource::Derived)
-                .map(|held| held.kind().clone())
+                .map(|held| held.key().clone())
                 .collect();
-            for kind in derived {
-                self.securityids.remove(&IdSource::Derived, &kind);
+            for key in derived {
+                self.securityids.remove(&key);
             }
         }
         Ok(true)
     }
 
     fn derive_securityid(&mut self, kind: &IdType, code: &str) -> bool {
-        if self.securityids.contains_kind(kind) || kind.check_security().is_err() {
-            return false;
-        }
         // A derived code its type refuses names nothing.
-        Identifier::new(IdSource::Derived, kind.clone(), code)
-            .is_ok_and(|id| self.securityids.insert(id))
+        kind.check_security().is_ok()
+            && Identifier::new(IdKey::new(IdSource::Derived, kind.clone()), code)
+                .is_ok_and(|id| self.securityids.insert(id))
     }
 
     fn get_cficode(&self) -> Option<&Cfi> {
@@ -1525,15 +1519,15 @@ macro_rules! operation_extras {
                 if overwrite {
                     self.$($field).+.identifiers = ids;
                 } else {
-                    self.$($field).+.identifiers.merge(&ids);
+                    self.$($field).+.identifiers.merge(&ids, false);
                 }
                 Ok(())
             }
             fn insert_identifier(&mut self, id: Identifier) -> Result<bool> {
                 Ok(self.$($field).+.identifiers.insert(id))
             }
-            fn remove_identifier(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
-                Ok(self.$($field).+.identifiers.remove(src, kind).is_some())
+            fn remove_identifier(&mut self, key: &IdKey) -> Result<bool> {
+                Ok(self.$($field).+.identifiers.remove(key).is_some())
             }
             fn get_partyids(&self) -> &Identifiers {
                 &self.$($field).+.partyids
@@ -1542,15 +1536,15 @@ macro_rules! operation_extras {
                 if overwrite {
                     self.$($field).+.partyids = partyids;
                 } else {
-                    self.$($field).+.partyids.merge(&partyids);
+                    self.$($field).+.partyids.merge(&partyids, false);
                 }
                 Ok(())
             }
             fn insert_partyid(&mut self, partyid: Identifier) -> Result<bool> {
                 Ok(self.$($field).+.partyids.insert(partyid))
             }
-            fn remove_partyid(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
-                Ok(self.$($field).+.partyids.remove(src, kind).is_some())
+            fn remove_partyid(&mut self, key: &IdKey) -> Result<bool> {
+                Ok(self.$($field).+.partyids.remove(key).is_some())
             }
         }
     };

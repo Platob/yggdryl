@@ -267,7 +267,7 @@ assert PARSED.msgcat is MarketDataKind.ORDR
 assert SNAPSHOT_CODEC.snapshot_ns == 1_000_000_000
 # A parse fills what the line implied, so the names the message goes by are
 # on the message the parse answered rather than behind a pass of its own.
-assert [str(id) for id in PARSED.identifiers] == ["fix:clordid=ORDER-000000"]
+assert [str(id) for id in PARSED.identifiers] == ["clordid=ORDER-000000"]
 assert [field.name for field, _ in ORDER_TYPE.identifier_values(PARSED)] == ["clordid"]
 WALKED = next(iter(CODEC.lifecycle([PARSED])))
 

@@ -59,14 +59,13 @@ from yggdryl.graph import BookEvent, MarketData, OrderEvent
 CLOCK_batch = DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000)
 
 def _kinds(ids: Identifiers) -> dict[str, str]:
-    """The identifiers of a set by type, each value under its type."""
-    return {id.type: id.value for id in ids}
+    """Each type a set holds, its base key's value: the type's answer."""
+    return {id.type: id.value for id in ids if id.src == "base"}
 
 
-def _row_kinds(cell: list[tuple[str, dict[str, str]]]) -> dict[str, str]:
-    """An identifier column's cell - a map from `src:type` to its row - by type."""
-    assert all(key == f"{row['src']}:{row['type']}" for key, row in cell), "a key is its row's src:type"
-    return {row["type"]: row["value"] for _, row in cell}
+def _row_kinds(cell: list[tuple[str, str]]) -> dict[str, str]:
+    """An identifier column's cell - a map from each key's text to its value - by type."""
+    return {key: value for key, value in cell if ":" not in key}
 
 
 
@@ -732,15 +731,19 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # `identifiers`, `partyids` and `securityids`. It moved again with the
     # stored cross code (`3:0:2454`, kind and side before the base, which the
     # cross hash and every identity derive from) and the identifier maps
-    # (keyed `src:type`, the bridge's own keys inferred into them), the one
-    # value `rust/tests/fix/ulbridge.rs` pins for the same log.
+    # (keyed `src:type`, the bridge's own keys inferred into them). It moved
+    # again when every type took its base key, spelled as the type alone -
+    # the wire's identifiers digest under `base`, beside the base key a named
+    # source fills - and when the bridge's `DETAILEDCFICODE` became a name of
+    # `CFICode(461)`, folded into it: the one value `rust/tests/fix/ulbridge.rs`
+    # pins for the same log.
     books = list(graph.BookIterator(operations))
     assert len(books) == 8
     last = books[-1]
     assert last.ticker == "2454"
     assert last.alive == []
     assert [delta.price for delta in last.deltas] == [None, None]
-    assert last.currhashcode == 1_642_488_774_851_967_775
+    assert last.currhashcode == 11_953_173_911_701_746_314
 
     # No leaf keys a typed fact - Account(1) is no typed fact since A1 - and
     # the fill line 105 carries states its bridge's own namespaced key, which
@@ -751,7 +754,7 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
             assert typed not in operation.metadata
         assert "tech.clientid" not in operation.metadata
     assert any(
-        getattr(operation.into_leaf(), "partyids", Identifiers()).get_from("tech", "clientid") == "OMSX1"
+        getattr(operation.into_leaf(), "partyids", Identifiers()).get_from("tech:clientid") == "OMSX1"
         for operation in operations
     )
 
@@ -958,7 +961,7 @@ def test_rows_prune_projected_scalars_and_complete_groups_from_residual_entries(
     residual = row.as_py()[schema.index_of("fixentries")]
     assert not any(key.split(":")[0] == "55" for key in residual)
     assert "453:parties" in residual
-    assert [str(id) for id in message.partyids] == ["proprietary:executingfirm=BRK"]
+    assert [str(id) for id in message.partyids] == ["executingfirm=BRK", "proprietary:executingfirm=BRK"]
     assert row.as_py()[schema.index_of("metadata")] == {"9999": "x"}
     rebuilt = FixMsg.from_row(schema, row, seed_batch)
     assert rebuilt.by_tag(55).as_py() == "AAPL"
@@ -1954,16 +1957,24 @@ def test_identifier_map_keys_cross_as_a_list(seed: FixRegistry) -> None:
         )
     )
     # A parent stated without its base is what it came from: `firm:orderid`
-    # is filled from `firm:parentorderid`, under the parent's own source.
+    # is filled from `firm:parentorderid`, under the parent's own source; a
+    # named source fills its type's base key where the wire stated none.
     assert [str(id) for id in message.identifiers] == [
+        "clordid=U1",
+        "execid=E1",
         "firm:orderid=P1",
         "firm:parentorderid=P1",
-        "fix:execid=E1",
-        "fix:orderid=O1",
+        "orderid=O1",
+        "parentorderid=P1",
         "shop:clordid=U1",
     ]
-    assert message.identifiers.get_from("firm", "parentorderid") == "P1"
-    assert [str(id) for id in message.partyids] == ["venue:account=ACC1", "venue:userid=trader1"]
+    assert message.identifiers.get_from("firm:parentorderid") == "P1"
+    assert [str(id) for id in message.partyids] == [
+        "account=ACC1",
+        "userid=trader1",
+        "venue:account=ACC1",
+        "venue:userid=trader1",
+    ]
     assert not message.securityids
 
 
@@ -3724,9 +3735,15 @@ def test_a_parse_fills_what_the_line_implied_and_leaves_the_wire_alone(seed: Fix
     line = b"8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|"
     filled = next(reader.parse_line(line))
     assert filled.by_tag(22).as_py() == "4"
-    # A US ISIN embeds the CUSIP, derived beside it under its own source.
+    # A US ISIN embeds the CUSIP, derived beside it under its own source,
+    # which fills the CUSIP's base key.
     assert _kinds(filled.securityids) == {"cusip": "037833100", "isin": "US0378331005"}
-    assert [str(id) for id in filled.securityids] == ["derived:cusip=037833100", "fix:isin=US0378331005"]
+    assert [str(id) for id in filled.securityids] == [
+        "cusip=037833100",
+        "derived:cusip=037833100",
+        "isin=US0378331005",
+    ]
+    assert filled.securityids.is_derived("cusip") and not filled.securityids.is_derived("isin")
     assert filled.by_tag(470).as_py() == "US"
     # An order stating no time in force is a day order.
     assert filled.by_tag(59).as_py() == "0"
@@ -3750,15 +3767,15 @@ def test_a_parse_fills_what_the_line_implied_and_leaves_the_wire_alone(seed: Fix
     unknown = reader.parse_fix_line(b"8=FIX.4.4|35=ZZ|11=C-1|10=0|")
     assert _kinds(unknown.identifiers) == {"clordid": "C-1"}
     assert unknown.header().msgtype == "ZZ"
-    # Each is keyed `src:type` - the source `fix` the field is the wire's
-    # own, the type the word its name folds to - and displays as such.
+    # Each is keyed by its type alone - a FIX field states the base key, the
+    # type the word its name folds to - and displays as such.
     assert [str(id) for id in report.identifiers] == [
-        "fix:clordid=C-001",
-        "fix:execid=E-09",
-        "fix:orderid=O-01",
+        "clordid=C-001",
+        "execid=E-09",
+        "orderid=O-01",
     ]
-    assert report.identifiers.get_from("fix", "orderid") == "O-01"
-    assert report.identifiers.get_from("base", "orderid") is None
+    assert report.identifiers.get_from("orderid") == "O-01"
+    assert report.identifiers.get_from("fix:orderid") == "O-01", "the standard's word reads as the base"
 
 
 def test_party_ids_are_typed_by_role_and_sourced_by_their_id_source(seed: FixRegistry) -> None:
@@ -3768,22 +3785,23 @@ def test_party_ids_are_typed_by_role_and_sourced_by_their_id_source(seed: FixReg
         b"8=FIX.4.4|35=D|11=C-1|41=C-0|1=ACC9|453=2|448=BRK|447=D|452=1|448=CL|447=N|452=3|10=0|"
     )
     assert [str(id) for id in message.partyids] == [
-        "base:account=ACC9",
+        "account=ACC9",
+        "clientid=CL",
+        "executingfirm=BRK",
         "legalentityidentifier:clientid=CL",
         "proprietary:executingfirm=BRK",
     ]
     assert message.partyids.get("executingfirm") == "BRK"
-    assert message.partyids.get_from("proprietary", "executingfirm") == "BRK"
+    assert message.partyids.get_from("proprietary:executingfirm") == "BRK"
     # `OrigClOrdID(41)` is the `origclordid` of the `clordid` it replaced: its
     # own key beside the `clordid`'s, no lineage held on the identifier.
-    replaced = message.identifiers.get_identifier("clordid")
-    assert replaced is not None and replaced.value == "C-1"
-    assert message.identifiers.get_from("fix", "origclordid") == "C-0"
-    assert [id.key for id in message.identifiers] == ["fix:clordid", "fix:origclordid"]
+    assert message.identifiers.get("clordid") == "C-1"
+    assert message.identifiers.get_from("origclordid") == "C-0"
+    assert [id.key for id in message.identifiers] == ["clordid", "origclordid"]
     # A party stating no role is typed `party`, a bare unknown role code is
-    # `partyrole<code>`, and a source stating none is `base`.
+    # `partyrole<code>`, and a source stating none is the base source.
     bare = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=C-2|453=2|448=P1|452=9999|448=P2|10=0|")
-    assert [str(id) for id in bare.partyids] == ["base:party=P2", "base:partyrole9999=P1"]
+    assert [str(id) for id in bare.partyids] == ["party=P2", "partyrole9999=P1"]
 
 
 def test_an_unmapped_key_naming_an_identifier_lands_in_the_set_its_type_belongs_to(seed: FixRegistry) -> None:
@@ -3795,9 +3813,11 @@ def test_an_unmapped_key_naming_an_identifier_lands_in_the_set_its_type_belongs_
     )
     # An identifier the key's source and type name, a party for a role, a
     # security for a security type: each in its own map, keyed `src:type`.
-    assert [str(id) for id in message.identifiers] == ["fix:clordid=C1", "venue:clordid=X1"]
-    assert [str(id) for id in message.partyids] == ["venue:userid=U1"]
-    assert [str(id) for id in message.securityids] == ["venue:instrumentid=dbi;X"]
+    # A named source fills its type's base key only where nothing states it:
+    # the wire's `ClOrdID` answers `clordid`.
+    assert [str(id) for id in message.identifiers] == ["clordid=C1", "venue:clordid=X1"]
+    assert [str(id) for id in message.partyids] == ["userid=U1", "venue:userid=U1"]
+    assert [str(id) for id in message.securityids] == ["instrumentid=dbi;X", "venue:instrumentid=dbi;X"]
     # Another instrument's security (`underlyingisin`) and a name that is no
     # identifier's (`transversalkey`) are lifted nowhere.
     assert message.isincode is None
@@ -3806,16 +3826,16 @@ def test_an_unmapped_key_naming_an_identifier_lands_in_the_set_its_type_belongs_
     # The entries stay on the wire as they arrived, folded.
     wire = message.into_text("|")
     assert "venueclordid=X1" in wire and "underlyingisin=CH0012214059" in wire and "transversalkey=K1" in wire
-    # A whole security name is that type from `base`, its value checked.
+    # A whole security name is that type from the base source, its value checked.
     isin = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=C1|security_isin=US0378331005|10=0|")
-    assert isin.securityids.get_from("base", "isin") == "US0378331005"
+    assert isin.securityids.get_from("isin") == "US0378331005"
     # The market leaf lifts the same keys and keeps the rest in its metadata.
     [leaf] = message.market_data()
     order = leaf.as_order_event()
     assert order is not None
-    assert order.identifiers.get_from("venue", "clordid") == "X1"
-    assert order.partyids.get_from("venue", "userid") == "U1"
-    assert order.securityids.get_from("venue", "instrumentid") == "dbi;X"
+    assert order.identifiers.get_from("venue:clordid") == "X1"
+    assert order.partyids.get_from("venue:userid") == "U1"
+    assert order.securityids.get_from("venue:instrumentid") == "dbi;X"
     assert order.metadata == {"transversalkey": "K1", "underlyingisin": "CH0012214059"}
 
 
@@ -4087,9 +4107,9 @@ def test_a_security_source_reads_by_its_name_and_an_unknown_one_is_kept(seed: Fi
         # A derivation reads the name as the code: the ISIN's country.
         assert by_name.get(470) == by_code.get(470)
     private = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=A|22=100|48=HOUSE-1|10=0|")
-    assert private.securityids.get_from("fix", "100") == "HOUSE-1"
+    assert private.securityids.get_from("100") == "HOUSE-1"
     refused = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=A|22=House/Key|48=HK-1|10=0|")
-    assert refused.securityids.get_from("fix", "housekey") is None
+    assert refused.securityids.get_from("housekey") is None
     assert "securityid" in [field for field, _ in refused.anomalies]
 
 

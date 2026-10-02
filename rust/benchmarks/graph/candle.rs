@@ -2,11 +2,12 @@ use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion, Throughput};
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::graph::{
     BookEvent, Candle, CandleIterator, CandleOptions, Element, Event, ExecutionEvent, Market,
     MarketData, Ohlc, Operation, QuoteEvent,
 };
-use yggdryl::{Decimal, IdSource, IdType, Identifier, Side, State, Timezone};
+use yggdryl::{Decimal, IdType, Identifier, Side, State, Timezone};
 
 /// Nanoseconds in one second.
 const SECOND: i64 = 1_000_000_000;
@@ -58,8 +59,7 @@ fn fill(unix: i64, index: usize) -> MarketData {
     event
         .insert_identifier(
             Identifier::new(
-                IdSource::Fix,
-                IdType::ExecId,
+                IdKey::base(IdType::ExecId),
                 &format!("BENCH-EXECUTION-IDENTIFIER-{index:08}"),
             )
             .expect("an identifier"),

@@ -15,9 +15,9 @@ use std::sync::LazyLock;
 use smol_str::format_smolstr;
 
 use crate::bbg::BBG_WIDTH;
-use crate::identifier::{IDENTIFIER_KEY_WIDTH, IDENTIFIER_VALUE_WIDTH, id_vocabulary};
+use crate::identifier::{IDENTIFIER_VALUE_WIDTH, IDENTIFIER_WORD_WIDTH, id_vocabulary};
 use crate::ric::RIC_WIDTH;
-use crate::{Ccy, Cfi, Country, Cusip, Error, Figi, Forex, Isin, Result, Ric, Sedol};
+use crate::{Ccy, Cfi, Country, Cusip, DataType, Error, Figi, Forex, Isin, Result, Ric, Sedol};
 
 id_vocabulary! {
     /// The type of name an identifier is: `isin`, `clordid`,
@@ -26,12 +26,14 @@ id_vocabulary! {
     /// A spelling folds to lower case without the `_`, `-`, space and `#` a
     /// spelling breaks it with, so `ISIN_Number` and `isinnumber` are both
     /// [`IdType::Isin`]; each member also reads by the code-set names FIX
-    /// gives it. Any other folded word is an [`IdType::Other`].
+    /// gives it, and by the column a market view names it by - `isincode`,
+    /// `riccode`, `cficode`. Any other folded word is an [`IdType::Other`].
     ///
     /// ```
     /// use yggdryl::IdType;
     ///
     /// assert_eq!("ISIN_Number".parse::<IdType>().unwrap(), IdType::Isin);
+    /// assert_eq!("isincode".parse::<IdType>().unwrap(), IdType::Isin);
     /// assert_eq!("bloombergsymbol".parse::<IdType>().unwrap(), IdType::Bloomberg);
     /// assert_eq!(IdType::ClOrdId.as_str(), "clordid");
     /// let house = "House Code".parse::<IdType>().unwrap();
@@ -46,7 +48,7 @@ id_vocabulary! {
         /// A QUIK code, code `3`.
         Quik => "quik",
         /// An ISIN, code `4`.
-        Isin => "isin" | "isinnumber",
+        Isin => "isin" | "isinnumber" | "isincode",
         /// A Reuters instrument code, code `5`.
         Ric => "ric" | "riccode",
         /// An ISO 4217 currency code, code `6`.
@@ -58,7 +60,7 @@ id_vocabulary! {
         /// A Consolidated Tape Association symbol, code `9`.
         Cta => "cta" | "consolidatedtapeassociation" | "ctasymbol" | "consolidatedtapeassociationsymbol",
         /// A Bloomberg symbol, code `A`.
-        Bloomberg => "bloomberg" | "bbgsymb" | "bloombergsymbol",
+        Bloomberg => "bloomberg" | "bbgsymb" | "bloombergsymbol" | "bloombergcode",
         /// A Wertpapierkennnummer, code `B`.
         Wkn => "wkn" | "wertpapier",
         /// A Dutch security code, code `C`.
@@ -94,7 +96,7 @@ id_vocabulary! {
         /// An ISDA commodity reference price, code `R`.
         IsdaCommodity => "isdacommodity" | "isdacommodityreferenceprice",
         /// A FIGI, code `S`.
-        Figi => "figi" | "financialinstrumentglobalidentifier",
+        Figi => "figi" | "financialinstrumentglobalidentifier" | "figicode",
         /// A legal entity identifier, code `T`.
         Lei => "lei" | "legalentityidentifier",
         /// A synthetic instrument, code `U`.
@@ -223,7 +225,7 @@ id_vocabulary! {
 
 /// The security types FIX's `SecurityIDSource(22)` code set names, each with
 /// its one-character code, in the code set's order.
-const FIX_SECURITY_SOURCES: [(IdType, char); 33] = [
+pub(crate) static FIX_SECURITY_SOURCES: [(IdType, char); 33] = [
     (IdType::Cusip, '1'),
     (IdType::Sedol, '2'),
     (IdType::Quik, '3'),
@@ -268,7 +270,7 @@ const REFUSED_FIELD_PREFIXES: [&str; 5] = ["leg", "underlying", "contra", "relat
 const REFUSED_FIELD_NAMES: [&str; 3] = ["ticker", "symbol", "symbolticker"];
 
 /// The words a type's spelling opens with to name a parent of the type
-/// after them, in the order a base's [`IdType::parents`] lists them: the
+/// after them, in the order a type's [`IdType::parents`] lists them: the
 /// value it held before it last changed, then its chain's first.
 const PARENT_PREFIXES: [&str; 2] = ["parent", "orig"];
 
@@ -315,7 +317,7 @@ impl IdType {
         }
     }
 
-    /// The base this type is a parent of, and its place among the base's
+    /// The type this type is a parent of, and its place among that type's
     /// [`Self::parents`]: `origclordid` is `clordid`'s first,
     /// `parentorderid` `orderid`'s first and `origorderid` its second. A
     /// word spelled `origin` or `original` before an identifier is no
@@ -362,7 +364,7 @@ impl IdType {
             .max()
             .unwrap_or(0);
         (self.is_known() || self.as_str().ends_with("id"))
-            && self.as_str().len() + longest <= IDENTIFIER_KEY_WIDTH
+            && self.as_str().len() + longest <= IDENTIFIER_WORD_WIDTH
             && self.parent_of().is_none()
     }
 
@@ -379,7 +381,7 @@ impl IdType {
         PARENT_PREFIXES
             .iter()
             .filter_map(|prefix| {
-                let mut buffer = [0_u8; IDENTIFIER_KEY_WIDTH];
+                let mut buffer = [0_u8; IDENTIFIER_WORD_WIDTH];
                 let spelled = buffer.get_mut(..prefix.len() + word.len())?;
                 spelled[..prefix.len()].copy_from_slice(prefix.as_bytes());
                 spelled[prefix.len()..].copy_from_slice(word.as_bytes());
@@ -450,6 +452,67 @@ impl IdType {
                 | Self::InvestmentDecisionMaker
                 | Self::Algorithm
         )
+    }
+
+    /// Whether a code of this type names one listing of an instrument - its
+    /// line on one market - rather than the instrument an ISIN numbers: a
+    /// RIC, a Bloomberg symbol, an exchange, CTA, Fidessa or uniform symbol,
+    /// a SEDOL, a FIGI, a marketplace's own identifier and an instrument
+    /// key. One instrument has as many as it has markets, so a code of this
+    /// type is never filled from one market onto another's.
+    ///
+    /// ```
+    /// use yggdryl::IdType;
+    ///
+    /// assert!(IdType::Ric.is_listing());
+    /// assert!(IdType::Bloomberg.is_listing());
+    /// assert!(!IdType::Isin.is_listing());
+    /// assert!(!IdType::Cusip.is_listing());
+    /// ```
+    #[must_use]
+    pub const fn is_listing(&self) -> bool {
+        matches!(
+            self,
+            Self::Ric
+                | Self::Bloomberg
+                | Self::ExchSymb
+                | Self::Cta
+                | Self::Sedol
+                | Self::Figi
+                | Self::MktAssigned
+                | Self::Fim
+                | Self::Umtf
+                | Self::InstrumentId
+        )
+    }
+
+    /// The datatype a column of this type's values declares: the registered
+    /// code a type is checked as - `isin`, `cusip`, `sedol`, `figi`, `ric`,
+    /// `bbg`, `ccy`, `country`, `cfi`, `forex` - and `utf8` for every other
+    /// type.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, IdType};
+    ///
+    /// assert_eq!(IdType::Isin.value_dtype(), DataType::isin());
+    /// assert_eq!(IdType::Bloomberg.value_dtype(), DataType::bbg());
+    /// assert_eq!(IdType::Valor.value_dtype(), DataType::utf8());
+    /// ```
+    #[must_use]
+    pub const fn value_dtype(&self) -> DataType {
+        match self {
+            Self::Isin => DataType::isin(),
+            Self::Cusip => DataType::cusip(),
+            Self::Sedol => DataType::sedol(),
+            Self::Figi => DataType::figi(),
+            Self::Ric => DataType::ric(),
+            Self::Bloomberg => DataType::bbg(),
+            Self::IsoCcy => DataType::ccy(),
+            Self::IsoCtry => DataType::country(),
+            Self::Cfi => DataType::cfi(),
+            Self::Forex => DataType::forex(),
+            _ => DataType::utf8(),
+        }
     }
 
     /// The spellings that name an identifier at the end of a key: each type
@@ -550,7 +613,7 @@ impl IdType {
     ///
     /// A value no word folds from - a byte other than an ASCII letter, a
     /// digit, `.` and the breaks a fold drops, or more than
-    /// [`IDENTIFIER_KEY_WIDTH`] of them - `ticker` in any spelling, which
+    /// [`IDENTIFIER_WORD_WIDTH`] of them - `ticker` in any spelling, which
     /// is the name a person knows an instrument by rather than a security
     /// type, and a member that names an operation's or a party's
     /// identifier.
@@ -589,7 +652,7 @@ impl IdType {
     /// where that names no member or the name holds a byte no member
     /// spells.
     fn from_security_source_name(name: &str) -> Option<Self> {
-        let mut buffer = [0_u8; IDENTIFIER_KEY_WIDTH];
+        let mut buffer = [0_u8; IDENTIFIER_WORD_WIDTH];
         let mut len = 0;
         let mut depth = 0_usize;
         for byte in name.bytes() {
@@ -648,7 +711,7 @@ impl IdType {
     #[must_use]
     pub fn from_field_name(name: &str) -> Option<Self> {
         let name = name.strip_prefix('#').unwrap_or(name);
-        let mut buffer = [0_u8; crate::identifier::IDENTIFIER_KEY_WIDTH];
+        let mut buffer = [0_u8; IDENTIFIER_WORD_WIDTH];
         let folded = crate::identifier::fold_into(name, &mut buffer).ok()?;
         let field_source = |text: &str| Self::from_folded(text).filter(Self::is_field_source);
         if let Some(kind) = field_source(folded) {

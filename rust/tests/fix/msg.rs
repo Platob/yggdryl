@@ -10,14 +10,14 @@ use yggdryl::fix::FIXENTRIES_COLUMN;
 use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    DataType, Decimal, Field, FixCodec, FixEntry, FixMsg, FixRegistry, IdSource, IdType,
+    DataType, Decimal, Field, FixCodec, FixEntry, FixMsg, FixRegistry, IdKey, IdSource, IdType,
     Identifier, Identifiers, Scalar, StructType, fix_schema, fix_schema_carrying,
 };
 
 /// One security identifier of `kind` a caller states, validated by its type
 /// and from no named source.
 fn securityid(kind: IdType, code: &str) -> Identifier {
-    Identifier::new(IdSource::Base, kind, code).expect("an identifier")
+    Identifier::new(IdKey::base(kind), code).expect("an identifier")
 }
 
 /// Every identifier of a set as `src:type=value`, in the set's order.
@@ -51,7 +51,7 @@ fn instrument_identifier_setters_state_securityids_and_leave_the_wire() {
     let mut message = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A1|454=1|455=AAPL.O|456=5|10=0|")
         .expect("an order with one unrelated alternate identifier");
-    assert_eq!(shown(message.get_securityids()), ["fix:ric=AAPL.O"]);
+    assert_eq!(shown(message.get_securityids()), ["ric=AAPL.O"]);
 
     for (kind, code) in [
         (IdType::Isin, "US0378331005"),
@@ -69,12 +69,12 @@ fn instrument_identifier_setters_state_securityids_and_leave_the_wire() {
     assert_eq!(
         shown(message.get_securityids()),
         [
-            "base:bloomberg=AAPL US EQUITY",
-            "base:cusip=037833100",
-            "base:figi=BBG000BLNQ16",
-            "base:isin=US0378331005",
-            "base:sedol=2046251",
-            "fix:ric=AAPL.O",
+            "bloomberg=AAPL US EQUITY",
+            "cusip=037833100",
+            "figi=BBG000BLNQ16",
+            "isin=US0378331005",
+            "ric=AAPL.O",
+            "sedol=2046251",
         ],
         "held in the order of their keys, as `src:type` spells them"
     );
@@ -97,7 +97,7 @@ fn instrument_identifier_setters_state_securityids_and_leave_the_wire() {
     );
     assert!(
         message
-            .remove_securityid(&IdSource::Base, &IdType::Isin)
+            .remove_securityid(&IdKey::base(IdType::Isin))
             .unwrap()
     );
     assert!(
@@ -107,12 +107,12 @@ fn instrument_identifier_setters_state_securityids_and_leave_the_wire() {
     );
     assert!(
         message
-            .remove_securityid(&IdSource::Base, &IdType::Bloomberg)
+            .remove_securityid(&IdKey::base(IdType::Bloomberg))
             .unwrap()
     );
     assert!(
         !message
-            .remove_securityid(&IdSource::Base, &IdType::Bloomberg)
+            .remove_securityid(&IdKey::base(IdType::Bloomberg))
             .unwrap()
     );
     assert_eq!(
@@ -122,9 +122,13 @@ fn instrument_identifier_setters_state_securityids_and_leave_the_wire() {
     assert_eq!(message.get_securityids().get(&IdType::Bloomberg), None);
 
     for kind in [IdType::Isin, IdType::Cusip, IdType::Sedol, IdType::Figi] {
-        assert!(message.remove_securityid(&IdSource::Base, &kind).unwrap());
+        assert!(
+            message
+                .remove_securityid(&IdKey::base(kind.clone()))
+                .unwrap()
+        );
     }
-    assert_eq!(shown(message.get_securityids()), ["fix:ric=AAPL.O"]);
+    assert_eq!(shown(message.get_securityids()), ["ric=AAPL.O"]);
     assert_eq!(wire_value(&message, 454).as_deref(), Some("1"));
 }
 
@@ -140,7 +144,11 @@ fn a_stated_identifier_replaces_a_derived_one() {
         .expect("an order stating its ISIN");
     assert_eq!(
         shown(message.get_securityids()),
-        ["derived:cusip=037833100", "fix:isin=US0378331005"]
+        [
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "isin=US0378331005"
+        ]
     );
 
     assert!(
@@ -151,13 +159,13 @@ fn a_stated_identifier_replaces_a_derived_one() {
     assert_eq!(
         message
             .get_securityids()
-            .get_from(&IdSource::Derived, &IdType::Cusip),
+            .get_from(&IdKey::new(IdSource::Derived, IdType::Cusip)),
         None
     );
     assert_eq!(
         message
             .get_securityids()
-            .get_from(&IdSource::Base, &IdType::Cusip),
+            .get_from(&IdKey::base(IdType::Cusip)),
         Some("037833100")
     );
     assert!(
@@ -171,14 +179,14 @@ fn a_stated_identifier_replaces_a_derived_one() {
         .expect("an order stating its ISIN");
     assert!(
         derived
-            .remove_securityid(&IdSource::Fix, &IdType::Isin)
+            .remove_securityid(&IdKey::base(IdType::Isin))
             .unwrap()
     );
     assert_eq!(derived.get_securityids().get(&IdType::Cusip), None);
     assert_eq!(wire_value(&derived, 48).as_deref(), Some("US0378331005"));
     assert!(
         message
-            .remove_securityid(&IdSource::Fix, &IdType::Isin)
+            .remove_securityid(&IdKey::base(IdType::Isin))
             .unwrap()
     );
     assert_eq!(
@@ -200,21 +208,26 @@ fn removing_the_isin_keeps_the_pair_the_symbol_names() {
     assert_eq!(
         shown(message.get_securityids()),
         [
+            "cusip=037833100",
             "derived:cusip=037833100",
             "derived:forex=EUR/USD",
-            "fix:isin=US0378331005"
+            "forex=EUR/USD",
+            "isin=US0378331005"
         ]
     );
     assert!(
         message
-            .remove_securityid(&IdSource::Fix, &IdType::Isin)
+            .remove_securityid(&IdKey::base(IdType::Isin))
             .unwrap()
     );
-    assert_eq!(shown(message.get_securityids()), ["derived:forex=EUR/USD"]);
+    assert_eq!(
+        shown(message.get_securityids()),
+        ["derived:forex=EUR/USD", "forex=EUR/USD"]
+    );
     message.finalize();
     assert_eq!(
         shown(message.get_securityids()),
-        ["derived:forex=EUR/USD"],
+        ["derived:forex=EUR/USD", "forex=EUR/USD"],
         "and a settle restates neither"
     );
 }
@@ -236,12 +249,12 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     assert_eq!(
         shown(message.get_identifiers()),
         [
-            "fix:clordid=CLIENT-1",
-            "fix:mdreqid=MARKET-1",
-            "fix:orderid=ORDER-1",
-            "fix:origclordid=CLIENT-0",
-            "fix:quoteid=QUOTE-1",
-            "fix:quotereqid=REQUEST-1",
+            "clordid=CLIENT-1",
+            "mdreqid=MARKET-1",
+            "orderid=ORDER-1",
+            "origclordid=CLIENT-0",
+            "quoteid=QUOTE-1",
+            "quotereqid=REQUEST-1",
         ],
         "every identifier a source field states stands, without the capture context"
     );
@@ -1858,7 +1871,7 @@ fn a_group_held_as_a_column_reads_as_its_run() {
     assert_eq!(
         message
             .get_identifiers()
-            .get_from(&IdSource::Fix, &IdType::RegTradeId),
+            .get_from(&IdKey::base(IdType::RegTradeId)),
         Some("RTID-1")
     );
     let group = message
@@ -2154,7 +2167,7 @@ mod identifier_maps {
     //! metadata.
 
     use yggdryl::graph::{Market, Operation};
-    use yggdryl::{FixMsg, IdSource, IdType, Identifier};
+    use yggdryl::{FixMsg, IdType, Identifier};
 
     fn parsed(line: &str) -> FixMsg {
         super::super::fixed_codec(super::super::committed_registry())
@@ -2169,7 +2182,8 @@ mod identifier_maps {
 
     /// An identifier of `kind` the wire's own fields state.
     fn fix_id(kind: &str, value: &str) -> Identifier {
-        Identifier::new(IdSource::Fix, kind.parse().expect("a type"), value).expect("an identifier")
+        Identifier::new(yggdryl::IdKey::base(kind.parse().expect("a type")), value)
+            .expect("an identifier")
     }
 
     /// The metadata of the first leaf the message expands to: what it
@@ -2199,15 +2213,14 @@ mod identifier_maps {
         assert_eq!(
             shown(held.get_identifiers()),
             [
-                "base:orderid=P1",
-                "base:parentorderid=P1",
-                "fix:clordid=U1",
-                "fix:execid=E1",
-                "fix:orderid=O1",
-                "fix:origclordid=PC1",
-                "fix:secondaryclordid=X1",
+                "clordid=U1",
+                "execid=E1",
                 "omsdealer:orderid=OP1",
                 "omsdealer:parentorderid=OP1",
+                "orderid=O1",
+                "origclordid=PC1",
+                "parentorderid=P1",
+                "secondaryclordid=X1",
             ]
         );
         let text = |tag: i32| {
@@ -2263,7 +2276,7 @@ mod identifier_maps {
         }
         assert_eq!(
             held.get_partyids().to_string(),
-            "[base:account=ACC, omsdealer:account=YNHD5]"
+            "[account=ACC, omsdealer:account=YNHD5]"
         );
         // The leaf holds what it read in its sets and drops it from its
         // metadata: only the key no identifier name ends is still there.
@@ -2318,7 +2331,7 @@ mod identifier_maps {
         // the leaf's metadata, since no map the leaf holds names it.
         assert_eq!(
             held.get_partyids().to_string(),
-            "[proprietary:customeraccount=C1, proprietary:enteringtrader=T1]"
+            "[customeraccount=C1, enteringtrader=T1, proprietary:customeraccount=C1, proprietary:enteringtrader=T1]"
         );
         let metadata = leaf_metadata(&held);
         assert_eq!(
@@ -2348,6 +2361,8 @@ mod identifier_maps {
         assert_eq!(
             shown(held.get_partyids()),
             [
+                "clearingorganization=LCH",
+                "executingtrader=T1",
                 "proprietary:clearingorganization=LCH",
                 "proprietary:executingtrader=T1"
             ]
@@ -2366,7 +2381,10 @@ mod identifier_maps {
         );
         assert_eq!(
             shown(held.get_partyids()),
-            ["proprietary:clearingorganization=Chambre\u{e9}"]
+            [
+                "clearingorganization=Chambre\u{e9}",
+                "proprietary:clearingorganization=Chambre\u{e9}"
+            ]
         );
     }
 
@@ -2382,7 +2400,10 @@ mod identifier_maps {
         assert_eq!(
             shown(held.get_partyids()),
             [
+                "account=ACC",
                 "acctidsource7:account=ACC",
+                "executingfirm=F1",
+                "executingtrader=T1",
                 "myvenue:executingfirm=F1",
                 "partyidsourcew:executingtrader=T1",
             ]
@@ -2403,14 +2424,23 @@ mod identifier_maps {
             let held = parsed(&format!(
                 "8=FIX.4.4|35=D|11=C1|1=ACC-1|660={source}|55=AAPL|54=1|38=5|40=2|10=0|"
             ));
-            assert_eq!(shown(held.get_partyids()), [expected], "660={source}");
+            // The source fills the base key, the account's answer.
+            assert_eq!(
+                shown(held.get_partyids()),
+                ["account=ACC-1", expected],
+                "660={source}"
+            );
         }
         let quoted = parsed(
             "8=FIX.4.4|35=R|131=QR1|303=2|55=AAPL|1116=2|1117=R1|1118=D|1119=12|1117=R2|1119=3|10=0|",
         );
         assert_eq!(
             shown(quoted.get_partyids()),
-            ["base:clientid=R2", "proprietary:executingtrader=R1"]
+            [
+                "clientid=R2",
+                "executingtrader=R1",
+                "proprietary:executingtrader=R1"
+            ]
         );
     }
 
@@ -2427,7 +2457,7 @@ mod identifier_maps {
         );
         assert_eq!(
             held.get_identifiers()
-                .get_from(&IdSource::Fix, &IdType::RegTradeId),
+                .get_from(&yggdryl::IdKey::base(IdType::RegTradeId)),
             Some("UTI-1"),
             "{}",
             held.get_identifiers()
@@ -2439,7 +2469,9 @@ mod identifier_maps {
             .collect();
         assert_eq!(dropped.len(), 1, "{:?}", held.anomalies());
         assert!(
-            dropped[0].reason().contains("fix:regtradeid=UTI-2"),
+            dropped[0]
+                .reason()
+                .contains("states regtradeid=UTI-2 where regtradeid=UTI-1"),
             "{}",
             dropped[0].reason()
         );
@@ -2480,55 +2512,57 @@ mod identifier_maps {
         assert_eq!(
             shown(both.get_identifiers()),
             [
-                "base:orderid=P1",
-                "base:origorderid=O0",
-                "base:parentorderid=P1",
-                "fix:clordid=C1",
+                "clordid=C1",
+                "orderid=P1",
+                "origorderid=O0",
+                "parentorderid=P1",
             ]
         );
         let farthest = parsed("8=FIX.4.4|35=D|11=C1|55=HOLN|54=1|40=2|OrigOrderID=O0|10=0|");
         assert_eq!(
             shown(farthest.get_identifiers()),
-            ["base:orderid=O0", "base:origorderid=O0", "fix:clordid=C1"]
+            ["clordid=C1", "orderid=O0", "origorderid=O0"]
         );
-        // Each source states its own: the wire's `OrderID(37)` is no base of
-        // the bridge's parent, which fills `base:orderid` beside it.
+        // The wire's `OrderID(37)` states the type's answer, so the
+        // bridge's parent fills no base the wire states.
         let beside =
             parsed("8=FIX.4.4|35=8|17=E1|37=O1|150=0|39=0|54=1|55=AAPL|ParentOrderID=P1|10=0|");
         assert_eq!(
             beside
                 .get_identifiers()
-                .get_from(&IdSource::Fix, &IdType::OrderId),
+                .get_from(&yggdryl::IdKey::base(IdType::OrderId)),
             Some("O1")
         );
         assert_eq!(
-            beside
-                .get_identifiers()
-                .get_from(&IdSource::Base, &IdType::OrderId),
+            beside.get_identifiers().get_from(&yggdryl::IdKey::base(
+                "parentorderid".parse().expect("a type")
+            )),
             Some("P1")
         );
         // An empty value states nothing, and fills nothing.
         let empty = parsed("8=FIX.4.4|35=D|11=C1|55=HOLN|54=1|40=2|ParentOrderID=|10=0|");
-        assert_eq!(shown(empty.get_identifiers()), ["fix:clordid=C1"]);
+        assert_eq!(shown(empty.get_identifiers()), ["clordid=C1"]);
         // A namespaced key names its own source, a dot inside kept: a parent
-        // there fills that source's base, however the wire states its own.
+        // there fills that source's base, however the wire states its own,
+        // and the base parent key it fills where nothing else states one.
         let stated = parsed(
             "8=FIX.4.4|35=D|11=C1|55=HOLN|54=1|40=2|firm.x.ParentOrderID=P1|OrderID=O9|10=0|",
         );
         assert_eq!(
             shown(stated.get_identifiers()),
             [
+                "clordid=C1",
                 "firm.x:orderid=P1",
                 "firm.x:parentorderid=P1",
-                "fix:clordid=C1",
-                "fix:orderid=O9",
+                "orderid=O9",
+                "parentorderid=P1",
             ]
         );
     }
 
     /// The registry's own list says which types are parents of a base: a
-    /// dictionary field stating `grandparentorderid` under the `fix` source
-    /// is a base of its own by the names alone, and the middle of the three
+    /// dictionary field stating `grandparentorderid` under its base key is a
+    /// base of its own by the names alone, and the middle of the three
     /// parents `OrderID(37)` states in the registry that lists them - which
     /// the base then takes before the farthest.
     #[test]
@@ -2569,10 +2603,10 @@ mod identifier_maps {
         assert_eq!(
             shown(named.get_identifiers()),
             [
-                "base:orderid=O0",
-                "base:origorderid=O0",
-                "fix:clordid=C1",
-                "fix:grandparentorderid=G1",
+                "clordid=C1",
+                "grandparentorderid=G1",
+                "orderid=O0",
+                "origorderid=O0",
             ],
             "by its name alone `grandparentorderid` is a base of its own"
         );
@@ -2580,11 +2614,10 @@ mod identifier_maps {
         assert_eq!(
             shown(listed.get_identifiers()),
             [
-                "base:orderid=O0",
-                "base:origorderid=O0",
-                "fix:clordid=C1",
-                "fix:grandparentorderid=G1",
-                "fix:orderid=G1",
+                "clordid=C1",
+                "grandparentorderid=G1",
+                "orderid=G1",
+                "origorderid=O0",
             ],
             "the list makes it a parent of `orderid`, and the nearer of the two stated"
         );

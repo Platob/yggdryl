@@ -3285,10 +3285,21 @@ mod committed {
     /// otherwise - in place of "row-stated when written", the crate's field
     /// shard written again over that one text. No count of the census below
     /// moved.
+    /// It last moved when `CFICode(461)` took the bridge spelling
+    /// `detailedcficode` among its `FIX:names`, a second statement of it
+    /// folded into it where the two describe one instrument; when the three
+    /// identifier columns of the fixed row - `securityids`, `identifiers`,
+    /// `partyids` - became one sorted `map<utf8, utf8>` from the identifier
+    /// key, a base key spelled as its type alone, to the value, in place of
+    /// a map onto a `struct<src, type, value>` named per column; and when
+    /// the description of `forexcode` (65046) came to say a code read back
+    /// replaces its type's answer, the base key, in place of being stated
+    /// from `base`, leading its type - the dictionary regenerated and the
+    /// crate's dump written again. No count of the census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 14_361_842_139_078_343_597);
+        assert_eq!(registry.stable_hash(), 9_939_505_428_669_861_230);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

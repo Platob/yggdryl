@@ -78,6 +78,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | batches back to the wire | `codec.write_arrow_reader(reader, &mut sink)?` | `codec.write_arrow_reader(reader, sink)` | `codec.writeArrowReader(reader, { write })` |
 | chain order lifecycles | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` |
 | chain rows already in Arrow | `codec.lifecycle_arrow_reader(reader)?` | `codec.lifecycle_arrow_reader(reader)` | `codec.lifecycleArrowReader(reader)` |
+| share what lifecycles learn about instruments | `codec.with_isin_registry(Arc::new(Mutex::new(IsinRegistry::from_handle(&file)?)))` | `FixCodec(registry, isin_registry=IsinRegistry.from_handle(path))` | `new fix.FixCodec(registry, { isinRegistry: IsinRegistry.fromHandle(path) })` |
 | one message as graph leaves | `msg.market_data()?`, `msg.into_market_data()?` | `msg.market_data()` | `msg.marketData()` |
 | sorted market data | `codec.market_data(messages)` | `codec.market_data(messages)` | `codec.marketData(messages)` |
 | books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0)?` | `codec.book_arrow_reader(msgs, snapshot_millis=0)` | `codec.bookArrowReader(msgs, 0)` |
@@ -194,8 +195,9 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     lands in the row's `metadata` under its own spelling, and a row read back
     restores it, so the wire re-emits it. `from_row` refuses a row that
     disagrees with itself - a `fixentries` key naming another field than its
-    tag (`55:securityid`), an identifier map filing an identifier under a key
-    that is not its `src:type` - and `messages` leaves such a row out with a
+    tag (`55:securityid`), an identifier map holding a key that reads as none
+    or two spellings of one key with two values - and `messages` leaves such a
+    row out with a
     warning. `write_arrow_reader` rebuilds each
     message from the row and refuses a batch with no `fixentries`. A group
     holding no occurrence is stated by its count alone: `802=0` is an entry
@@ -274,32 +276,34 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   `TradeID=<TradeID(1003)>`. Count messages after the parse, not lines: one
   filling report is two messages.
 - A message's identifiers are logical `Identifiers` maps keyed `src:type`, read
-  off its fields, the wire kept as sent, each identifier `src:type=value` in
-  lower-case words: `securityids` (`SecurityID(48)` under its
-  `SecurityIDSource(22)`'s type and each `SecAltIDGrp(454)` occurrence, from
-  `fix` - a `{NAMESPACE}INSTRUMENTID` source an `instrumentid` from that
-  namespace, `ULLINK.INSTRUMENTID` `ullink`, a reserved `base`, `derived` or
-  `fix` namespace none, so `fix`; an ISIN's embedded codes and a
-  symbol's FX pair from `derived`; `get(type)` answers the wire's first),
-  `identifiers` (each `FIX:idmap` field a type from `fix`; regulatory trade ids
-  under `regtradeid`, `tvtic`, ...) and `partyids` - each `PartyID(448)` typed by its
+  off its fields, the wire kept as sent, each identifier `key=value` in
+  lower-case words, a FIX field's under the base key spelled as its type alone
+  (`isin=US0378331005`, `clordid=C1`): `securityids` (`SecurityID(48)` under its
+  `SecurityIDSource(22)`'s type and each `SecAltIDGrp(454)` occurrence - a
+  `{NAMESPACE}INSTRUMENTID` source an `instrumentid` from that namespace,
+  `ULLINK.INSTRUMENTID` `ullink`, a reserved `base`, `derived` or `fix`
+  namespace none, so the base `instrumentid`; an ISIN's embedded codes and a
+  symbol's FX pair from `derived`; `get(type)` answers the base key, which a
+  named source fills where nothing states it), `identifiers` (each
+  `FIX:idmap` field its type's base key; regulatory trade ids under
+  `regtradeid`, `tvtic`, ...) and `partyids` - each `PartyID(448)` typed by its
   `PartyRole(452)` code's name folded (`executingtrader`, `21`
   `clearingorganization`; an unnamed code `partyrole{code}`, none `party`) from
   its `PartyIDSource(447)` code's name (`D` `proprietary`, `C`
   `generalidentifier`; an unnamed word itself, an unnamed bare code
-  `partyidsource{code}`; none `base`), the first of a source and role
-  standing, and `Account(1)` an `account` from its `AcctIDSource(660)` by the
+  `partyidsource{code}`; none the base source), the first of a source and
+  role standing, a named source filling the role's base key, and `Account(1)` an `account` from its `AcctIDSource(660)` by the
   same rule (`acctidsource{code}`). An entry no dictionary resolves - a
   bridge's `FIRM.X.PARENTORDERID=`, `OMS_InstrumentID=` - names the identifier
   it ends with and the source before it (`firm.x:parentorderid`,
   `oms:instrumentid`), a reserved `base`, `derived` or `fix` namespace naming
-  none (`Derived_ISIN` is `base:isin`, an explicit `fix:isin` keeps `fix`), and
+  none (`Derived_ISIN` is `isin`), and
   another instrument's word before a security type naming no identifier
   (`OMS_UnderlyingISIN`, `FIX.LegISIN`); one naming an operation's or a party's
   identifier whose value its type refuses stays on the wire, no anomaly.
   A field states `FIX:parents`, the types holding the parents of its identifier
   nearest first (`ClOrdID(11)` has `["origclordid"]`); a follower and every
-  settle fill a base from its nearest stated parent (`orderid` from
+  settle fill the parent's own type from its nearest stated parent (`orderid` from
   `parentorderid`, else `origorderid`); a follower whose `orderid` changed keeps
   the previous value as `parentorderid` and the chain's first as `origorderid`,
   and one naming no `orderid` carries the chain's with both. A caller's
@@ -322,14 +326,31 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   (the `forexcode` column).
   A row's `isincode`, `figicode`, `bloombergcode` and `forexcode` are views:
   each the code `get` answered when the row was written, resolved once as
-  the row is read. The symbol's derivation reads back from `derived` (the
-  pair alone follows a written symbol, the cells detection wrote reading
-  back as the row's word). Without the `securityids` column a narrow row is
-  lossy: a code `get` over the reading (the wire's, a bridge key's) answers
-  states nothing, and any other is inserted from `base` and leads its type,
-  every code of its type the reading states set aside - its source and
-  whether it was derived lost (a lifecycle- or caller-derived code reads
-  back stated). Write `securityids` for a round trip that keeps sources.
+  the row is read: a view is its type's base key. The symbol's derivation
+  reads back from `derived` (the pair alone follows a written symbol, the
+  cells detection wrote reading back as the row's word). Without the
+  `securityids` column a narrow row is lossy: a code any entry of its type in
+  the reading (the wire's, a bridge key's) holds states nothing; any other
+  replaces the type's base key, its named sources staying as evidence, and a
+  view disagreeing with a held base key it may not replace is dropped with an
+  anomaly naming the view column - whether a code was derived is lost (a
+  registry- or caller-derived code reads back stated). Write `securityids` for
+  a round trip that keeps sources.
+- Instrument enrichment is the lifecycle's, never the parse's: each walk learns
+  every message's ISIN (else its RIC, which only fills), CFI code, market,
+  ticker and security codes into an `IsinRegistry` and fills what later
+  messages of that instrument leave unsaid, as `derived` identifiers and the
+  CFI, ticker and market facts - never the wire or `CFICode(461)`. Without
+  `isin_registry=` each walk learns into its own, starting empty; pass one
+  registry (loaded from a golden Arrow or Parquet file with `from_handle`, saved
+  with an `IOBase`'s `write_arrow_reader(registry.into_arrow_reader())`) to
+  share it across walks run one after another. A Bloomberg symbol is an
+  equivalent, never a key.
+- `DETAILEDCFICODE`, the bridge's detailed classification, is a name of
+  `CFICode(461)`: one message stating both folds them into the one 461 value
+  through `Cfi::refined` - the leading code's letters kept, its `X` positions
+  filled from the other - and two codes that contradict keep the 461 value,
+  the other staying in `metadata` beside an anomaly.
 - A row header that stops matching silently changes lifecycle results: the
   line keeps its body but is dated by its file's modification time and
   carries no session context (no delivery folding); assert the matched-line

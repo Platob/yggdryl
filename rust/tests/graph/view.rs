@@ -6,14 +6,13 @@ use arrow_array::{
     TimestampNanosecondArray,
 };
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::arrow::BatchReader;
 use yggdryl::graph::{
     BookEvent, Element, Event, ExecutionEvent, Market, MarketData, MarketView, Operation,
     OperationEvent, OperationKind, OrderEvent, QuoteEvent, TradeEvent,
 };
-use yggdryl::{
-    Decimal, Field, FieldPath, IdSource, IdType, Identifier, MarketDataKind, Plan, Side, State,
-};
+use yggdryl::{Decimal, Field, FieldPath, IdType, Identifier, MarketDataKind, Plan, Side, State};
 
 /// The nested columns of the root row: what a flat view drops.
 const NESTED: [&str; 5] = ["alive", "deltas", "executions", "bidlimits", "asklimits"];
@@ -43,7 +42,7 @@ fn operation<K: OperationKind>(
 fn identified_order(unix: i64, code: &str) -> OrderEvent {
     let mut order: OrderEvent = operation(unix, code, "Buy", "New");
     order
-        .insert_securityid(Identifier::new(IdSource::Base, IdType::Isin, ISIN).unwrap())
+        .insert_securityid(Identifier::new(IdKey::base(IdType::Isin), ISIN).unwrap())
         .unwrap();
     order.finalize();
     order
@@ -290,7 +289,7 @@ fn a_view_is_read_by_its_spelling_and_only_the_lifecycle_takes_a_crosscode() {
 
 #[test]
 fn every_plan_is_built_as_its_text_reads_back() {
-    let lifts: Vec<FieldPath> = vec!["securityids['base:isin'].value as isin".parse().unwrap()];
+    let lifts: Vec<FieldPath> = vec!["securityids['isin'] as isin".parse().unwrap()];
     for spelling in MarketView::ALL {
         let view = MarketView::read(spelling, (spelling == "lifecycle").then_some("C-1")).unwrap();
         for lifted in [&[][..], &lifts[..]] {
@@ -307,7 +306,7 @@ fn every_plan_is_built_as_its_text_reads_back() {
             .unwrap()
             .to_string(),
         format!(
-            "select * exclude ({nested}), securityids['base:isin'].value as isin \
+            "select * exclude ({nested}), securityids['isin'] as isin \
              where marketdatakind = 'ORDR'"
         )
     );
@@ -534,11 +533,9 @@ fn a_lifecycle_keeps_the_leaves_that_share_an_instant_in_the_order_they_happened
 #[test]
 fn a_lift_reads_one_identifier_of_a_root_column_and_null_where_it_is_missing() {
     let lifts: Vec<FieldPath> = vec![
-        "securityids['base:isin'].value as isin".parse().unwrap(),
-        "securityids['derived:cusip'].value as cusip"
-            .parse()
-            .unwrap(),
-        "securityids['base:wkn'].value as wkn".parse().unwrap(),
+        "securityids['isin'] as isin".parse().unwrap(),
+        "securityids['derived:cusip'] as cusip".parse().unwrap(),
+        "securityids['wkn'] as wkn".parse().unwrap(),
     ];
     let out = view(&MarketView::Orders, &lifts);
     let mut expected = flat();
@@ -560,7 +557,7 @@ fn a_lift_reads_one_identifier_of_a_root_column_and_null_where_it_is_missing() {
     assert_eq!(column(&out, "wkn").null_count(), out.num_rows());
     // The key is read as it is stored, folded lower case: another case is
     // another key.
-    let upper: Vec<FieldPath> = vec!["securityids['base:ISIN'].value as isin".parse().unwrap()];
+    let upper: Vec<FieldPath> = vec!["securityids['ISIN'] as isin".parse().unwrap()];
     let out = view(&MarketView::Orders, &upper);
     assert_eq!(column(&out, "isin").null_count(), out.num_rows());
     // A lift reads the parent row beside a flattened one.
@@ -572,18 +569,14 @@ fn a_lift_reads_one_identifier_of_a_root_column_and_null_where_it_is_missing() {
 
     // A lift naming a column the root does not hold is refused where the
     // plan binds.
-    let missing: Vec<FieldPath> = vec!["nothing['base:isin'].value as isin".parse().unwrap()];
+    let missing: Vec<FieldPath> = vec!["nothing['isin'] as isin".parse().unwrap()];
     let error = MarketData::apply_view(&MarketView::Orders, &missing, stream())
         .and_then(drained)
         .unwrap_err()
         .to_string();
     assert!(error.contains("nothing"), "{error}");
     // Two columns of one name are refused, a lift over a kept column too.
-    let twice: Vec<FieldPath> = vec![
-        "securityids['base:isin'].value as marketdatakind"
-            .parse()
-            .unwrap(),
-    ];
+    let twice: Vec<FieldPath> = vec!["securityids['isin'] as marketdatakind".parse().unwrap()];
     let error = MarketData::apply_view(&MarketView::Orders, &twice, stream())
         .and_then(drained)
         .unwrap_err()
@@ -626,23 +619,21 @@ fn a_quote_leaf_is_a_quote_whatever_it_is_dated() {
     );
 }
 
-/// A lift reaches one identifier of an identifier map by its key
-/// `src:type`: the value where the row states it, null where it does not,
-/// whichever of the three maps holds it.
+/// A lift reaches one identifier of an identifier map by its key - `src:type`,
+/// a base key its type alone: the value where the row states it, null where
+/// it does not, whichever of the three maps holds it.
 #[test]
 fn a_lift_by_key_reads_an_identifier_a_party_and_null_where_one_is_absent() {
     let stated = |unix: i64, code: &str, clordid: Option<&str>, account: Option<&str>| {
         let mut order: OrderEvent = operation(unix, code, "Buy", "New");
         if let Some(clordid) = clordid {
             order
-                .insert_identifier(
-                    Identifier::new(IdSource::Fix, IdType::ClOrdId, clordid).unwrap(),
-                )
+                .insert_identifier(Identifier::new(IdKey::base(IdType::ClOrdId), clordid).unwrap())
                 .unwrap();
         }
         if let Some(account) = account {
             order
-                .insert_partyid(Identifier::new(IdSource::Fix, IdType::Account, account).unwrap())
+                .insert_partyid(Identifier::new(IdKey::base(IdType::Account), account).unwrap())
                 .unwrap();
         }
         order.finalize();
@@ -655,13 +646,9 @@ fn a_lift_by_key_reads_an_identifier_a_party_and_null_where_one_is_absent() {
         stated(4, "O-4", None, None),
     ];
     let lifts: Vec<FieldPath> = vec![
-        "identifiers['fix:clordid'].value as clordid"
-            .parse()
-            .unwrap(),
-        "partyids['fix:account'].value as account".parse().unwrap(),
-        "identifiers['fix:orderid'].value as orderid"
-            .parse()
-            .unwrap(),
+        "identifiers['clordid'] as clordid".parse().unwrap(),
+        "partyids['account'] as account".parse().unwrap(),
+        "identifiers['orderid'] as orderid".parse().unwrap(),
     ];
     let stream = MarketData::arrow_reader(leaves, None, None).unwrap();
     let out =
@@ -685,7 +672,7 @@ fn a_lift_by_key_reads_an_identifier_a_party_and_null_where_one_is_absent() {
 
     // The ISIN is a column of the row as well as a security identifier: the
     // lift by key and the column read the same value.
-    let isins: Vec<FieldPath> = vec!["securityids['base:isin'].value as isin".parse().unwrap()];
+    let isins: Vec<FieldPath> = vec!["securityids['isin'] as isin".parse().unwrap()];
     let stream = MarketData::arrow_reader(
         vec![
             MarketData::from(identified_order(5, "O-5")),

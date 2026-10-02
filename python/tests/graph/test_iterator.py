@@ -126,14 +126,14 @@ def test_the_walk_is_unhashable() -> None:
 
 
 def named(clock: int, kind: str, value: str, *parents: tuple[str, str], state: str = "NEW") -> graph.OrderEvent:
-    """An order stating one `fix` identifier of `kind` and its stated `parents`, under one cross code."""
-    ids = Identifiers([Identifier("fix", kind, value), *(Identifier("fix", p, v) for p, v in parents)])
+    """An order stating one identifier of `kind` and its stated `parents` under their base keys, under one cross code."""
+    ids = Identifiers([Identifier(kind, value), *(Identifier(p, v) for p, v in parents)])
     return graph.OrderEvent(clock, crosscode="O-100", side="BUYS", state=state, identifiers=ids)
 
 
 def held(event: graph.OrderEvent | None, *kinds: str) -> list[str | None]:
     assert event is not None
-    return [event.identifiers.get_from("fix", kind) for kind in kinds]
+    return [event.identifiers.get_from(kind) for kind in kinds]
 
 
 def test_a_walk_carries_the_parents_of_each_identifier_along_its_chain() -> None:
@@ -179,12 +179,12 @@ def test_an_element_joins_a_live_chain_through_a_parent_identifiers_value() -> N
     # A, whose code - and cross identity - it keeps.
     replacement = graph.OrderEvent(
         CLOCK + 1,
-        identifiers=Identifiers([Identifier("fix", "orderid", "B"), Identifier("fix", "parentorderid", "A")]),
+        identifiers=Identifiers([Identifier("orderid", "B"), Identifier("parentorderid", "A")]),
     )
     # An element stating only the parent is what it came from: its `orderid`
     # is filled from it, and it joins the chain going by A.
-    only = graph.OrderEvent(CLOCK + 1, identifiers=Identifiers([Identifier("fix", "parentorderid", "A")]))
-    assert only.identifiers.get_from("fix", "orderid") == "A"
+    only = graph.OrderEvent(CLOCK + 1, identifiers=Identifiers([Identifier("parentorderid", "A")]))
+    assert only.identifiers.get_from("orderid") == "A"
     [head, joined] = [data.as_order_event() for data in graph.EventIterator([first, replacement])]
     assert head is not None and joined is not None
     assert joined.prevuuid == head.curruuid and joined.crossuuid == head.crossuuid
@@ -195,7 +195,7 @@ def test_an_element_joins_a_live_chain_through_a_parent_identifiers_value() -> N
 
     # A parent no live chain goes by joins nothing: a chain of its own.
     stranger = graph.OrderEvent(
-        CLOCK + 1, identifiers=Identifiers([Identifier("fix", "orderid", "Y"), Identifier("fix", "parentorderid", "Z")])
+        CLOCK + 1, identifiers=Identifiers([Identifier("orderid", "Y"), Identifier("parentorderid", "Z")])
     )
     [_, alone] = [data.as_order_event() for data in graph.EventIterator([first, stranger])]
     assert alone is not None and alone.prevuuid is None

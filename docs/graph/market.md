@@ -174,19 +174,19 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
 
 ## Security identifiers
 
-`securityids` is an [`Identifiers`](identifier.md) map: the names the security goes by, one identifier per key `src:type`, each validated by its type where the crate knows it - `base:isin=US0378331005`, `derived:cusip=037833100`, `oms:instrumentid=dbi;CH0012214059_XSWX_CHF`.
+`securityids` is an [`Identifiers`](identifier.md) map: the names the security goes by, one value per key `src:type` - the base key spelled as its type alone and holding the type's answer ([The base key](identifier.md#the-base-key)) - each validated by its type where the crate knows it - `isin=US0378331005`, `derived:cusip=037833100`, `oms:instrumentid=dbi;CH0012214059_XSWX_CHF`.
 
 | Verb | Rule |
 | --- | --- |
-| `get_securityids` | the map, sorted by its key `src:type`; `get(&IdType::Isin)` the value the wire stated (`fix`), else another named source's in key order, else `base`'s, else the derived one ([Lookups](identifier.md#contract)), `get_from(&IdSource::Fix, &IdType::Isin)` one source's |
-| `get_isincode` | provided: `get_securityids().get(&IdType::Isin)`, borrowed - a projection of the set, never a second store; the `isincode` column writes it and a stated cell fills an absent `isin` from `base` ([Market data](market-data.md#arrow)) |
+| `get_securityids` | the map, sorted by its key's text; `get(&IdType::Isin)` the base key's value - the type's answer, whichever source stated it ([Lookups](identifier.md#contract)) - `get_from(&IdKey::new(src, IdType::Isin))` one source's |
+| `get_isincode` | provided: `get_securityids().get(&IdType::Isin)`, borrowed - a projection of the set, never a second store; the `isincode` column writes it and a stated cell fills an absent `isin` base key ([Market data](market-data.md#arrow)) |
 | `set_securityids(ids, overwrite)` | with `overwrite`, replaces the whole map, derived identifiers included, `Identifiers::new()` unsaying it; without, each identifier fills an absent key as `insert_securityid` does |
-| `insert_securityid(id)` | fills an absent source and type, never a held one, and takes back a `derived` identifier of its type - a statement answers before a derivation; one from `derived` is a derivation; `ticker` is refused ([`IdType::check_security`](identifier.md#per-type-value-checks)); `true` if it added |
+| `insert_securityid(id)` | `Identifiers::insert` after the security check: fills an absent key, never a held one, a named source filling its type's base key where it is empty, and takes back a `derived` identifier of its type - a statement answers before a derivation; one from `derived` is a derivation; `ticker` is refused ([`IdType::check_security`](identifier.md#per-type-value-checks)); `true` if it added |
 | `derive_securityid(kind, code)` | fills only a type the element holds none of, from `derived` - the code as `Identifier::new` stores it, a code its type refuses naming nothing - implication, not statement; never reaches a store the holder is a view of |
-| `remove_securityid(src, kind)` | removes the identifier of one type from one source; removing an `isin` takes back every `derived` identifier, since each hangs on it |
-| Building one | [`Identifier::new(src, kind, code)`](identifier.md#contract) checks the code by its type ([per-type checks](identifier.md#per-type-value-checks)) and holds a type the crate does not know as given; [`IdType::from_security_source`](identifier.md#vocabularies) reads FIX's `SecurityIDSource(22)` - `4`, `isin`, `ISINNumber` are `isin` - and refuses `ticker` |
+| `remove_securityid(&key)` | removes what an `IdKey` holds: a named source's key that identifier alone, the base key every key of its type; where no ISIN is left, every `derived` identifier is taken back too, since each hangs on it |
+| Building one | [`Identifier::new(key, code)`](identifier.md#contract) checks the code by its type ([per-type checks](identifier.md#per-type-value-checks)) and holds a type the crate does not know as given; [`IdType::from_security_source`](identifier.md#vocabularies) reads FIX's `SecurityIDSource(22)` - `4`, `isin`, `ISINNumber` are `isin` - and refuses `ticker` |
 | `forex` | the crate's own type, which FIX gives no source code: a [currency pair](../types/codes/forex.md) in any spelling `Forex::new` reads, stored canonical (`eurusd` is `EUR/USD`); `forexcode`, `ccypair` and `currencypair` read the type too |
-| Derived | an ISIN's embedded national number - CUSIP (`US`/`CA`), SEDOL (`GB`/`IE`/`GG`/`JE`/`IM`, behind `00`), WKN (`DE`, behind `000`), Valor (`CH`/`LI`) ([`securityid::embedded`](../types/codes/isin.md)) - plus lifecycle-learned entries, each from `derived`; all hang on the `isin`, so removing or replacing it revokes them |
+| Derived | an ISIN's embedded national number - CUSIP (`US`/`CA`), SEDOL (`GB`/`IE`/`GG`/`JE`/`IM`, behind `00`), WKN (`DE`, behind `000`), Valor (`CH`/`LI`) ([`securityid::embedded`](../types/codes/isin.md)) - plus what an [`IsinRegistry`](isin-registry.md) filled, each from `derived`; all hang on the `isin`, so removing it revokes them |
 | From the ticker | a ticker of an identifier's own shape names it, read by its length before any check - 21 characters `{ISIN}_{MIC}_{CCY}` an instrument key (its ISIN derived, its market and currency filled where none is stated, a part its type refuses skipped), 12 a FIGI behind `BBG` else an ISIN, 9 a CUSIP, 7 a SEDOL, 6 upper-case letters a detailed CFI code, `AAPL.OQ` a RIC, `HOLN SW Equity` a Bloomberg identifier - each closing on its own type's check, so a ticker only the length of one names nothing; derived, never over a stated identifier of its type. `securityid::SymbolCode::from_symbol` is the reading, Rust only |
 | Unit of a pair | an element trading a currency pair (a `forex` identifier) and stating no unit states its quantity in the currency dealt: its currency where that is a leg of the pair, else the pair's base (`EUR` for `EUR/USD`) |
 | Provenance | a derived identifier is one from `derived`: a row carries it, and equality and the digest read it as they read a stated one |
@@ -215,7 +215,7 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
     ```rust
     use smol_str::SmolStr;
     use yggdryl::graph::{Element, Market, Metadata, OrderEvent};
-    use yggdryl::{Ccy, Cfi, Decimal, IdSource, IdType, Identifier, Mic, Side};
+    use yggdryl::{Ccy, Cfi, Decimal, IdKey, IdSource, IdType, Identifier, Mic, Side};
 
     let mut order = OrderEvent::at(1_700_000_000_000_000_000);
     order.set_crosscode("O-1001".to_owned());
@@ -228,7 +228,7 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
     order.set_cficode(Some(Cfi::new("ESVUFR")?), true);
     // `4` is FIX's SecurityIDSource(22) code for an ISIN.
     let isin = IdType::from_security_source("4")?;
-    order.insert_securityid(Identifier::new(IdSource::Base, isin, "US0378331005")?)?;
+    order.insert_securityid(Identifier::new(IdKey::base(isin), "US0378331005")?)?;
     order.set_metadata(Some(Metadata::from([(SmolStr::new("ordtype"), SmolStr::new("2"))])), true);
     order.finalize();
 
@@ -242,7 +242,7 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
     // The ISIN is stated under its type, and carries a CUSIP the crate derived.
     assert_eq!(order.get_securityids().get(&IdType::Isin), Some("US0378331005"));
     assert_eq!(order.get_isincode(), Some("US0378331005"));
-    assert_eq!(order.get_securityids().get_from(&IdSource::Derived, &IdType::Cusip), Some("037833100"));
+    assert_eq!(order.get_securityids().get_from(&IdKey::new(IdSource::Derived, IdType::Cusip)), Some("037833100"));
     assert_eq!(order.get_metadata().get("ordtype").map(SmolStr::as_str), Some("2"));
     // The ticker names the book it stands in.
     assert_eq!(order.book_crosscode(), "AAPL");
@@ -265,7 +265,7 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
         ticker="AAPL",
         miccode="XNAS",
         cficode="ESVUFR",
-        securityids=[Identifier("base", "isin", "US0378331005")],
+        securityids=[Identifier("isin", "US0378331005")],
         metadata={"ordtype": "2"},
     )
 
@@ -278,7 +278,7 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
     assert order.lastpx is None
     assert order.bidpx is not None and order.bidpx.as_py() == Decimal("189.50")
     # The ISIN carries a CUSIP the crate derived.
-    assert [str(id) for id in order.securityids] == ["base:isin=US0378331005", "derived:cusip=037833100"]
+    assert [str(id) for id in order.securityids] == ["cusip=037833100", "derived:cusip=037833100", "isin=US0378331005"]
     assert order.isincode == "US0378331005"
     assert order.miccode is not None and order.miccode.as_py() == "XNAS"
     assert order.metadata == {"ordtype": "2"}
@@ -299,7 +299,7 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
       ticker: 'AAPL',
       miccode: 'XNAS',
       cficode: 'ESVUFR',
-      securityids: [new Identifier('base', 'isin', 'US0378331005')],
+      securityids: [new Identifier('isin', 'US0378331005')],
       metadata: { ordtype: '2' },
     })
 
@@ -312,7 +312,7 @@ Every fill is part of the element, so it is a column of the [`marketdata` row](s
     assert.equal(order.lastpx, null)
     assert.equal(order.bidpx, '189.5')
     // The ISIN carries a CUSIP the crate derived.
-    assert.equal(order.securityids.toString(), '[base:isin=US0378331005, derived:cusip=037833100]')
+    assert.equal(order.securityids.toString(), '[cusip=037833100, derived:cusip=037833100, isin=US0378331005]')
     assert.equal(order.isincode, 'US0378331005')
     assert.equal(order.miccode, 'XNAS')
     assert.deepEqual(order.metadata, { ordtype: '2' })
@@ -426,12 +426,12 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
 
     ```rust
     use yggdryl::graph::{Element, Market, QuoteEvent};
-    use yggdryl::{Ccy, IdSource, IdType, Identifier, Side};
+    use yggdryl::{Ccy, IdKey, IdType, Identifier, Side};
 
     let mut quote = QuoteEvent::at(1_700_000_000_000_000_000);
     quote.set_crosscode("Q-7".to_owned());
     quote.set_currency(Ccy::new("USD")?, true);
-    quote.insert_securityid(Identifier::new(IdSource::Base, IdType::Forex, "eurusd")?)?;
+    quote.insert_securityid(Identifier::new(IdKey::base(IdType::Forex), "eurusd")?)?;
     quote.set_bidpx(Some("1.0842".parse()?), true);
     quote.set_askpx(Some("1.0844".parse()?), true);
     quote.set_bidccy(Some(Ccy::new("USD")?), true);
@@ -442,7 +442,7 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
     quote.finalize();
 
     // The pair lands canonical under the crate's own type.
-    assert_eq!(quote.get_securityids().to_string(), "[base:forex=EUR/USD]");
+    assert_eq!(quote.get_securityids().to_string(), "[forex=EUR/USD]");
     // Two prices and no side: a bid and an ask are facts, not a side.
     assert_eq!(quote.get_side(), Side::Unknown);
     assert_eq!(quote.get_bidpx(), Some("1.0842".parse()?));
@@ -464,7 +464,7 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
         1_700_000_000_000_000_000,
         crosscode="Q-7",
         currency="USD",
-        securityids=[Identifier("base", "forex", "eurusd")],
+        securityids=[Identifier("forex", "eurusd")],
         bidpx=Decimal("1.0842"),
         askpx=Decimal("1.0844"),
         bidccy="USD",
@@ -474,7 +474,7 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
     )
 
     # The pair lands canonical under the crate's own type.
-    assert str(quote.securityids) == "[base:forex=EUR/USD]"
+    assert str(quote.securityids) == "[forex=EUR/USD]"
     # Two prices and no side: a bid and an ask are facts, not a side.
     assert quote.side is Side.UNKN
     assert quote.bidpx is not None and quote.bidpx.as_py() == Decimal("1.0842")
@@ -494,7 +494,7 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
     const quote = new graph.QuoteEvent(1_700_000_000_000_000_000n, {
       crosscode: 'Q-7',
       currency: 'USD',
-      securityids: [new Identifier('base', 'forex', 'eurusd')],
+      securityids: [new Identifier('forex', 'eurusd')],
       bidpx: '1.0842',
       askpx: '1.0844',
       bidccy: 'USD',
@@ -504,7 +504,7 @@ A two-sided EUR/USD quote in dollars, and the rate a dollar amount is divided by
     })
 
     // The pair lands canonical under the crate's own type.
-    assert.equal(quote.securityids.toString(), '[base:forex=EUR/USD]')
+    assert.equal(quote.securityids.toString(), '[forex=EUR/USD]')
     // Two prices and no side: a bid and an ask are facts, not a side.
     assert.equal(quote.side, 'UNKN')
     assert.equal(quote.bidpx, '1.0842')
@@ -595,9 +595,9 @@ Rust-only: a binding states identifiers when it builds a leaf.
 
 ```rust
 use yggdryl::graph::{Element, Market, OrderEvent};
-use yggdryl::{IdSource, IdType, Identifier};
+use yggdryl::{IdKey, IdType, Identifier};
 
-let isin = |code: &str| Identifier::new(IdSource::Base, IdType::Isin, code);
+let isin = |code: &str| Identifier::new(IdKey::base(IdType::Isin), code);
 let ids = |order: &OrderEvent| -> Vec<String> {
     order.get_securityids().iter().map(ToString::to_string).collect()
 };
@@ -605,27 +605,27 @@ let mut order = OrderEvent::at(1_700_000_000_000_000_000);
 order.set_crosscode("O-1001".to_owned());
 order.insert_securityid(isin("US0378331005")?)?;
 order.finalize();
-assert_eq!(ids(&order), ["base:isin=US0378331005", "derived:cusip=037833100"]);
+assert_eq!(ids(&order), ["cusip=037833100", "derived:cusip=037833100", "isin=US0378331005"]);
 
 // A derivation fills only a type the element holds none of, and a stated
 // identifier stands.
 assert!(!order.derive_securityid(&IdType::Cusip, "594918104"));
 assert!(!order.insert_securityid(isin("US5949181045")?)?);
 
-// Everything derived hangs on the isin: removing it takes the cusip back.
+// Everything derived hangs on the isin: removing its type takes the cusip back.
 let mut unlisted = order.clone();
-assert!(unlisted.remove_securityid(&IdSource::Base, &IdType::Isin)?);
+assert!(unlisted.remove_securityid(&IdKey::base(IdType::Isin))?);
 assert!(unlisted.get_securityids().is_empty());
 assert_eq!(unlisted.get_isincode(), None);
 
 // A stated identifier takes back a derived one of its type, and then
 // outlives the ISIN.
-assert!(order.insert_securityid(Identifier::new(IdSource::Base, IdType::Cusip, "037833100")?)?);
-assert!(order.remove_securityid(&IdSource::Base, &IdType::Isin)?);
-assert_eq!(ids(&order), ["base:cusip=037833100"]);
+assert!(order.insert_securityid(Identifier::new(IdKey::base(IdType::Cusip), "037833100")?)?);
+assert!(order.remove_securityid(&IdKey::base(IdType::Isin))?);
+assert_eq!(ids(&order), ["cusip=037833100"]);
 
 // A currency pair is refused where it names no pair.
-assert!(Identifier::new(IdSource::Base, IdType::Forex, "EUR/EUR").is_err());
+assert!(Identifier::new(IdKey::base(IdType::Forex), "EUR/EUR").is_err());
 ```
 
 ### Identifiers along a chain
@@ -636,13 +636,13 @@ An amendment to an Apple order, and one naming Microsoft's ISIN instead.
 
     ```rust
     use yggdryl::graph::{Element, Event, Market, OrderEvent};
-    use yggdryl::{IdSource, IdType, Identifier, Identifiers};
+    use yggdryl::{IdKey, IdType, Identifier, Identifiers};
 
     const T: i64 = 1_700_000_000_000_000_000;
     let order = |unix: i64, stated: &[(IdType, &str)]| -> yggdryl::Result<OrderEvent> {
         let ids = stated
             .iter()
-            .map(|(kind, code)| Identifier::new(IdSource::Base, kind.clone(), code))
+            .map(|(kind, code)| Identifier::new(IdKey::base(kind.clone()), code))
             .collect::<yggdryl::Result<Identifiers>>()?;
         let mut order = OrderEvent::at(unix);
         order.set_crosscode("O-1001".to_owned());
@@ -654,13 +654,16 @@ An amendment to an Apple order, and one naming Microsoft's ISIN instead.
         order.get_securityids().iter().map(ToString::to_string).collect()
     };
     let placed = order(T, &[(IdType::Isin, "US0378331005"), (IdType::Figi, "BBG000B9XRY4")])?;
-    assert_eq!(keys(&placed), ["base:figi=BBG000B9XRY4", "base:isin=US0378331005", "derived:cusip=037833100"]);
+    assert_eq!(
+        keys(&placed),
+        ["cusip=037833100", "derived:cusip=037833100", "figi=BBG000B9XRY4", "isin=US0378331005"]
+    );
 
     // A follower stating none takes the chain's whole.
     let amended = order(T + 1, &[])?.with_previous(&placed).expect("a later event follows");
     assert_eq!(amended.get_securityids(), placed.get_securityids());
     let other = order(T + 1, &[(IdType::Isin, "US5949181045")])?.with_previous(&placed).expect("it follows");
-    assert_eq!(keys(&other), ["base:isin=US5949181045", "derived:cusip=594918104"]);
+    assert_eq!(keys(&other), ["cusip=594918104", "derived:cusip=594918104", "isin=US5949181045"]);
 
     // Two statements naming different ISINs never mix: the leading
     // statement - here the later recording - keeps its identifiers whole.
@@ -668,7 +671,7 @@ An amendment to an Apple order, and one naming Microsoft's ISIN instead.
     restated.set_recdunix(Some(T + 5));
     restated.set_securityids(other.get_securityids().clone(), true)?;
     let merged = placed.clone().merge_with(&restated).expect("the later recording leads");
-    assert_eq!(keys(&merged), ["base:isin=US5949181045", "derived:cusip=594918104"]);
+    assert_eq!(keys(&merged), ["cusip=594918104", "derived:cusip=594918104", "isin=US5949181045"]);
     ```
 
 === "Python"
@@ -680,7 +683,7 @@ An amendment to an Apple order, and one naming Microsoft's ISIN instead.
 
 
     def order(unix: int, stated: dict[str, str]) -> graph.OrderEvent:
-        securityids = [Identifier("base", kind, code) for kind, code in stated.items()]
+        securityids = [Identifier(kind, code) for kind, code in stated.items()]
         return graph.OrderEvent(unix, crosscode="O-1001", securityids=securityids)
 
 
@@ -689,13 +692,13 @@ An amendment to an Apple order, and one naming Microsoft's ISIN instead.
 
 
     placed = order(T, {"figi": "BBG000B9XRY4", "isin": "US0378331005"})
-    assert keys(placed) == ["base:figi=BBG000B9XRY4", "base:isin=US0378331005", "derived:cusip=037833100"]
+    assert keys(placed) == ["cusip=037833100", "derived:cusip=037833100", "figi=BBG000B9XRY4", "isin=US0378331005"]
 
     # A follower stating none takes the chain's whole.
     amended = order(T + 1, {}).with_previous(placed)
     assert amended is not None and amended.securityids == placed.securityids
     other = order(T + 1, {"isin": "US5949181045"}).with_previous(placed)
-    assert other is not None and keys(other) == ["base:isin=US5949181045", "derived:cusip=594918104"]
+    assert other is not None and keys(other) == ["cusip=594918104", "derived:cusip=594918104", "isin=US5949181045"]
     assert other.isincode == "US5949181045"
     ```
 
@@ -708,17 +711,17 @@ An amendment to an Apple order, and one naming Microsoft's ISIN instead.
     const T = 1_700_000_000_000_000_000n
     const order = (unix, stated) => new graph.OrderEvent(unix, {
       crosscode: 'O-1001',
-      securityids: Object.entries(stated).map(([kind, code]) => new Identifier('base', kind, code)),
+      securityids: Object.entries(stated).map(([kind, code]) => new Identifier(kind, code)),
     })
 
     const placed = order(T, { figi: 'BBG000B9XRY4', isin: 'US0378331005' })
-    assert.equal(placed.securityids.toString(), '[base:figi=BBG000B9XRY4, base:isin=US0378331005, derived:cusip=037833100]')
+    assert.equal(placed.securityids.toString(), '[cusip=037833100, derived:cusip=037833100, figi=BBG000B9XRY4, isin=US0378331005]')
 
     // A follower stating none takes the chain's whole.
     const amended = order(T + 1n, {}).withPrevious(placed)
     assert.ok(amended.securityids.equals(placed.securityids))
     const other = order(T + 1n, { isin: 'US5949181045' }).withPrevious(placed)
-    assert.equal(other.securityids.toString(), '[base:isin=US5949181045, derived:cusip=594918104]')
+    assert.equal(other.securityids.toString(), '[cusip=594918104, derived:cusip=594918104, isin=US5949181045]')
     assert.equal(other.isincode, 'US5949181045')
     ```
 

@@ -6,14 +6,13 @@ use std::borrow::Cow;
 use std::hash::Hasher;
 
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::graph::{
     BookEvent, Element, Event, ExecutionEvent, FxRates, Market, Operation, Order, OrderEvent,
     QuoteEvent, SnapshotEvent, TradeEvent,
 };
 use yggdryl::xxhash::Xxh3;
-use yggdryl::{
-    Ccy, Cfi, Decimal, IdSource, IdType, Identifier, Identifiers, Mic, Side, TimeInForce, Uuid,
-};
+use yggdryl::{Ccy, Cfi, Decimal, IdType, Identifier, Identifiers, Mic, Side, TimeInForce, Uuid};
 
 /// The identifier set holding `ids`, each `(kind, code)` - a type's name or
 /// its FIX source code - validated by its type and stated from `base`.
@@ -21,8 +20,7 @@ fn securityids(ids: &[(&str, &str)]) -> Identifiers {
     ids.iter()
         .map(|(kind, code)| {
             Identifier::new(
-                IdSource::Base,
-                IdType::from_security_source(kind).unwrap(),
+                IdKey::base(IdType::from_security_source(kind).unwrap()),
                 code,
             )
             .unwrap()
@@ -153,9 +151,10 @@ fn following_carries_the_identifiers_only_of_the_same_instrument() {
     assert_eq!(
         ids(&previous),
         [
-            "base:isin=US0378331005",
-            "base:ric=AAPL.O",
-            "derived:cusip=037833100"
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "isin=US0378331005",
+            "ric=AAPL.O"
         ]
     );
 
@@ -175,7 +174,11 @@ fn following_carries_the_identifiers_only_of_the_same_instrument() {
         .expect("a later event follows");
     assert_eq!(
         ids(&followed),
-        ["base:isin=GB0002634946", "derived:sedol=0263494"]
+        [
+            "derived:sedol=0263494",
+            "isin=GB0002634946",
+            "sedol=0263494"
+        ]
     );
 }
 
@@ -222,7 +225,11 @@ fn merging_statements_naming_different_isins_keeps_the_leading_identifiers() {
         .expect("the later recording leads");
     assert_eq!(
         ids(&merged),
-        ["base:isin=GB0002634946", "derived:sedol=0263494"]
+        [
+            "derived:sedol=0263494",
+            "isin=GB0002634946",
+            "sedol=0263494"
+        ]
     );
 
     // The same instrument restated fills what this statement left open.
@@ -236,10 +243,11 @@ fn merging_statements_naming_different_isins_keeps_the_leading_identifiers() {
     assert_eq!(
         ids(&merged),
         [
-            "base:figi=BBG000BLNQ16",
-            "base:isin=US0378331005",
-            "base:ric=AAPL.O",
-            "derived:cusip=037833100"
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "figi=BBG000BLNQ16",
+            "isin=US0378331005",
+            "ric=AAPL.O"
         ]
     );
 }
@@ -958,7 +966,7 @@ fn a_currency_pair_fills_the_unit_its_quantity_is_dealt_in() {
     let pair = |currency: Option<&str>| {
         let mut order = OrderEvent::at(1);
         order
-            .insert_securityid(Identifier::new(IdSource::Base, IdType::Forex, "EURUSD").unwrap())
+            .insert_securityid(Identifier::new(IdKey::base(IdType::Forex), "EURUSD").unwrap())
             .unwrap();
         if let Some(currency) = currency {
             order.set_currency(Ccy::new(currency).unwrap(), true);
@@ -1019,7 +1027,7 @@ fn a_ticker_of_an_identifiers_shape_names_it() {
     // A stated identifier is never replaced by the ticker's.
     let mut stated = OrderEvent::at(1);
     stated
-        .insert_securityid(Identifier::new(IdSource::Base, IdType::Isin, "CH0012214059").unwrap())
+        .insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "CH0012214059").unwrap())
         .unwrap();
     stated.set_ticker(Some("US0378331005".into()), true);
     stated.finalize();

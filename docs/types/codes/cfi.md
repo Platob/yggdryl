@@ -249,25 +249,25 @@ assert!(!Cfi::is_detailed("XXXXXX"));
 
 ## Two statements of one instrument
 
-`Cfi::merged` folds two classifications position by position: within one `(category, group)` a stated attribute fills an unknown one, and two different stated attributes answer `X`, because ambiguity answers nothing. Two different categories or groups are two subjects rather than one disagreement, so they answer nothing at all. [`merge_with`](index.md#the-code-family-value) is that reading as the `CodeValue` leaf contract states it - an unclassified code, all `X` or a letter no group accepts, yields whole to a classified other; otherwise the merged code where the two describe one instrument, and this code as it is where they do not. Rust only.
+`Cfi::refined(lead, other)` is the one fold of two statements of a CFI code: `lead` keeps every letter it states and takes the other's where it states `X`, when the two describe one instrument - one `(category, group)` and no attribute position holding two different letters. An unclassified code - all `X`, or a letter no group accepts - states nothing, so it yields whole to a classified other; two unclassified codes answer `None`, and so do another category or group, which is another instrument, and a contradicted attribute, where the caller keeps the statement it leads with. [`merge_with`](index.md#the-code-family-value) is that fold as the `CodeValue` leaf contract states it - the refined code, else this code as it is. A FIX message folds `CFICode(461)` and its `DETAILEDCFICODE` alias through it ([FIX message](../../fix/message.md)), and an [`IsinRegistry`](../../graph/isin-registry.md) refines a learned code with it. Rust only.
 
 ```rust
 use yggdryl::{Cfi, CodeValue};
 
 // What one statement left unsaid, the other says.
-assert_eq!(Cfi::merged("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
-// Each fills the other's gaps.
-assert_eq!(Cfi::merged("ESVXXX", "ESXUFR").as_deref(), Some("ESVUFR"));
-// A disagreement inside one instrument is unknown, not a winner.
-assert_eq!(Cfi::merged("ESVUFR", "ESNUFR").as_deref(), Some("ESXUFR"));
-// Two different instruments are not one.
-assert_eq!(Cfi::merged("ESVUFR", "DBFNFB"), None);
-assert_eq!(Cfi::merged("ESVUFR", "EPVNFR"), None);
+assert_eq!(Cfi::refined("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
+assert_eq!(Cfi::refined("ESVXXX", "ESXUFR").as_deref(), Some("ESVUFR"));
+// An unclassified code yields whole.
+assert_eq!(Cfi::refined("XXXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
+// A contradicted attribute, and two different instruments, fold to none.
+assert_eq!(Cfi::refined("ESVUFR", "ESNUFR"), None);
+assert_eq!(Cfi::refined("ESVUFR", "DBFNFB"), None);
+assert_eq!(Cfi::refined("ESVUFR", "EPVNFR"), None);
 
-// The leaf contract reads the same rule, keeping this code where they do not,
-// and an unclassified code takes a classified one whole.
+// The leaf contract reads the same rule, keeping this code where they do not.
 assert_eq!(Cfi::new("XXXXXX")?.merge_with(&Cfi::new("ESVUFR")?).as_str(), "ESVUFR");
 assert_eq!(Cfi::new("ESVXXX")?.merge_with(&Cfi::new("ESXUFR")?).as_str(), "ESVUFR");
+assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("ESNUFR")?).as_str(), "ESVUFR");
 assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUFR");
 ```
 
@@ -276,10 +276,10 @@ assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUF
 - `at most 6 bytes` is the refusal, whatever the source: a scalar, a cast row, or `ascii_packed`.
 - The grid is a reading, not a gate: a six-byte value the grid does not classify is stored, and `is_classified` is what asks. That is why `CFICode(461)` from a dialect this build does not know still lands in a column.
 - The default value is the empty text, answered as a `cfi` scalar ([Cast](../cast.md#empty-text)).
-- `Cfi::merged` answers `None` for anything that is not two well-formed codes; `merge_with` turns that `None` back into this code.
+- `Cfi::refined` answers `None` for anything that is not two codes describing one instrument; `merge_with` turns that `None` back into this code, so the leading statement's letter stands on a contradicted attribute.
 - Python declares the vocabulary over the width as `yggdryl.enums.CFI`, over the `yggdryl.enums.Cfi` base a caller subclasses for a vocabulary of its own; `StringEnum::from_logical_name("cfi")` answers an enum of no members, because the grid is a rule rather than a listing.
 - `CFICode(461)` is the standard classification field, so no crate column carries one ([FIX message definitions](index.md#fix-message-definitions)).
-- A lifecycle may learn a missing CFI attribute only under an already-valid [ISIN](isin.md) in its own [graph walk](../../graph/event.md#lifecycle-walk).
+- A lifecycle learns a detailed CFI code only under a valid [ISIN](isin.md), or the RIC an [`IsinRegistry`](../../graph/isin-registry.md) names, and fills or refines it into a later message of that instrument - never into `CFICode(461)` on the wire.
 
 ## Commands
 

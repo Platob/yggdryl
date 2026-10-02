@@ -53,7 +53,7 @@ Hold these facts:
   (`FIX:parents` states the list a FIX field has). A FIX lifecycle message takes the `metadata` keys and
   only the ids its dictionary follows, each with its parents. `EventIterator` joins a stream by cross
   identity and by the type and value of an `identifiers` identifier a live element
-  went by (or the parent identifier it replaced, joined under its base),
+  went by (or the parent identifier it replaced, joined under the parent's own type),
   within one `marketdatakind` (an order and an execution under one cross code
   are two chains, so a fill never restates, follows or ends its order),
   folds twins, emits expiries, and leaves every element stating `creaunix`. A grid view is the live element
@@ -70,23 +70,31 @@ Hold these facts:
   (and the key's market and currency) where none is stated; a currency pair
   with no unit takes the currency dealt as its unit.
 - **Identifiers are typed maps.** `securityids`, `identifiers` and `partyids` are
-  each an `Identifiers` map keyed `src:type` of `Identifier { src, type, value }`
+  each an `Identifiers` map from a key to a value, `Identifier { key, value }`
   (`yggdryl::Identifier`, Python `from yggdryl import Identifier`, JavaScript
-  `require('yggdryl').Identifier`): one value per source and type, sorted by
-  that key, displayed `base:isin=US0378331005`, every word lower case; `key` is
-  `src:type`. `base` is no source stated, `derived` what the crate derived (an
-  ISIN's CUSIP, a ticker's shape, a FX pair). Build one with `Identifier(src,
-  type, value)` - the value is checked by its type, so `Identifier("base",
-  "isin", code)` closes on its check digit - or `Identifier.from_key(key, value)`,
-  which reads a full `src:type` key or the identifier name a bridge's own
-  spelling ends with (`OMS_InstrumentID` is `oms:instrumentid`) - another
-  instrument's word before a security type, after any namespace, names none
-  (`OMS_UnderlyingISIN`, `FIX.LegISIN`); Rust takes the
-  `IdSource` and `IdType` enums. Parentage is a relation between types, never a
-  field of a value: when an `orderid` changes along a chain, a follower keeps
-  the value it held as `parentorderid` and the chain's first as `origorderid`
-  (a `clordid` keeps only `origclordid`), and one stating only a parent takes
-  its base from it.
+  `require('yggdryl').Identifier`): the key is a source and a type, spelled
+  `src:type`, and the base source's key - what a FIX field states - is spelled
+  as its type alone (`isin`); one value per key, sorted by that spelling,
+  displayed `isin=US0378331005`, every word lower case; `derived` is what the
+  crate derived (an ISIN's CUSIP, a ticker's shape, a FX pair, a registry's
+  fill). The base key is the type's answer: a named source fills it where it
+  is empty (`ullink:isin=X` alone is also `isin=X`), a statement takes back
+  the type's derivation, and it moves only through its own key - removing it
+  removes the type. Build one with `Identifier(key, value)` - the key read
+  exactly (`"isin"`, `"ullink:isin"`, `"fix:isin"` is `isin`), the value
+  checked by its type, so `Identifier("isin", code)` closes on its check
+  digit - or `Identifier.from_key(name, value)`, which reads the identifier
+  name a bridge's own spelling ends with (`OMS_InstrumentID` is
+  `oms:instrumentid`) - another instrument's word before a security type,
+  after any namespace, names none (`OMS_UnderlyingISIN`, `FIX.LegISIN`); Rust
+  takes an `IdKey` (`IdKey::base(IdType::Isin)`, `"ullink:isin".parse()`). A map
+  crosses as a `dict` / plain object of key text to value
+  (`Identifiers.from_dict`, `into_dict`; `fromObject`, `intoObject`). Parentage
+  is a relation between types, never a field of a value: when an `orderid`
+  changes along a chain, a follower keeps the value it held as
+  `parentorderid` and the chain's first as `origorderid` (a `clordid` keeps
+  only `origclordid`), and one stating only a parent takes the parent's own
+  type from it.
 - **A setter fills, or overwrites when told.** Every Rust `Market` and
   `Operation` setter takes a trailing `overwrite: bool`: `false` lands only
   where the fact is unstated, `true` states it. A change carries what it
@@ -111,8 +119,9 @@ Hold these facts:
 | an undated leaf, dated later | `Order::new()`, `order.at(unix)`, `event.into_element()` | `graph.Order(**facts)`, `.at(unix)`, `.into_element()` | `new graph.Order(facts)`, `.at(unix)`, `.intoElement()` |
 | a two-sided quote | `set_bidpx`, `set_askpx`, `set_bidqty` ... | `graph.QuoteEvent(unix, bidpx=..., askpx=...)` | `new graph.QuoteEvent(unix, { bidpx, askpx })` |
 | a market-data entry's book control | `event.with_book(BookRef { .. })` | `event.with_book(graph.BookRef(action="new", position=1))` | `event.withBook(new graph.BookRef({ action: 'new', position: 1 }))` |
-| an identifier | `Identifier::new(IdSource::Base, IdType::Isin, value)?`, `Identifiers` | `Identifier(src, type, value)`, `Identifiers([...])` | `new Identifier(src, type, value)`, `new Identifiers([...])` |
-| security, own and party identifiers | `insert_securityid(id)?`, `insert_identifier(id)?`, `insert_partyid(id)?` (Rust-only verbs) | `securityids=[Identifier("base", "isin", ...)]`, `identifiers=[...]`, `partyids=[...]` at build | `securityids: [new Identifier('base', 'isin', ...)]`, `identifiers: [...]`, `partyids: [...]` at build |
+| an identifier | `Identifier::new(IdKey::base(IdType::Isin), value)?`, `"ullink:isin".parse::<IdKey>()?`, `Identifiers` | `Identifier(key, value)` - `"isin"`, `"ullink:isin"` - `Identifiers([...])`, `Identifiers.from_dict({...})`, `into_dict()` | `new Identifier(key, value)`, `new Identifiers([...])`, `Identifiers.fromObject({...})`, `intoObject()` |
+| what instruments are known by | `IsinRegistry::from_handle(&file)?`, `registry.enrich(&mut event)`, `get_by_ric("HOLN.S")` | `IsinRegistry.from_handle(path)`, `registry.get_by_ric("HOLN.S")` (a `dict`), `enrich(fix_msg)` | `IsinRegistry.fromHandle(path)`, `registry.getByRic('HOLN.S')` (a plain object), `enrich(fixMsg)` |
+| security, own and party identifiers | `insert_securityid(id)?`, `insert_identifier(id)?`, `insert_partyid(id)?` (Rust-only verbs) | `securityids=[Identifier("isin", ...)]`, `identifiers=[...]`, `partyids=[...]` at build | `securityids: [new Identifier('isin', ...)]`, `identifiers: [...]`, `partyids: [...]` at build |
 | read an identifier map | `get_securityids().get(&IdType::Isin)`, `get_from(&src, &kind)` | `order.securityids.get("isin")`, `get_from(src, type)`, iterate `Identifier`s | `order.securityids.get('isin')`, `getFrom(src, type)`, `toArray()` |
 | FX rates (nothing fills them) | `insert_fxrate(ccy, rate)`, `set_fxrates(map)` | `fxrates={"EUR": Decimal("1.1")}` at build | `fxrates: { EUR: '1.1' }` at build |
 | a composite trade | `TradeEvent::from_parts(&root, executions)?` | `graph.TradeEvent.from_parts(root, executions)` | `graph.TradeEvent.fromParts(root, executions)` |
@@ -154,7 +163,7 @@ Hold these facts:
    null, a snapshot control where it is.
 3. Views are `Plan`s run by the expression engine: `apply_view` binds once
    against the reader's schema and streams; `plan()` shows the text. Add a
-   nested fact as a column with a lift (`identifiers['fix:clordid'].value as clordid`,
+   nested fact as a column with a lift (`identifiers['clordid'] as clordid`,
    a map read by its `src:type` key) instead of post-processing rows. The `lifecycle` view collects (it orders).
 4. Feed `BookIterator` a **sorted** stream (by `snapunix`, else `currunix`); it
    leaves an operation dated before its book out with a warning, so an unsorted
@@ -241,13 +250,19 @@ Hold these facts:
   execution, each on any side - `UNKN` included - at the root's instant,
   one ticker, distinct cross codes.
 - A lift names an identifier by its key, and keys are lower case:
-  `identifiers['fix:clordid'].value`, never `['FIX:ClOrdID']` (that reads null).
-  `securityids['base:isin'].value` reads the ISIN a leaf took without a source.
-- An identifier map is no dict: compare `str(id)` / `id.toString()`, or read
-  `get(type)` - the wire's `fix` first, then another named source, then
-  `base`, then `derived` - and `get_from(src, type)`. An `Identifier` is its
-  source, type and value: `key` is `src:type`, and
-  `Identifier.from_key("fix:clordid", value)` reads a full key.
+  `identifiers['clordid']`, never `['FIX:ClOrdID']` (that reads null).
+  `securityids['isin']` reads the ISIN a leaf took without a source.
+- An identifier map is no dict: compare `str(id)` / `id.toString()`, read
+  `get(type)` - the base key's value, whichever source stated it - and
+  `get_from(key)` (`"ullink:isin"`), or cross it with `into_dict()` /
+  `intoObject()`. An `Identifier` is its key and value: `key` is `src:type`, the
+  type alone for the base source, and `Identifier("fix:clordid", value)` is the
+  base `clordid`.
+- An `IsinRegistry` fills what an element leaves unsaid about its instrument
+  from what earlier elements stated - keyed by the ISIN, a RIC leading to its
+  ISIN, a Bloomberg symbol only an equivalent - as `derived` identifiers, so a
+  filled code reads back `is_derived`; the bindings' `learn`/`fill`/`enrich`
+  take a `FixMsg`, and a FIX lifecycle runs it on every message.
 - `MarketData.kind` is `order_event` for a dated order; the leaf's own `kind`
   is `order`; both stand under `marketdatakind` `ORDR`.
 - An order's `price` is what it states, never its last execution and never a
@@ -258,7 +273,7 @@ Hold these facts:
 - A leaf read from a FIX message keeps its parties and `Account(1)` in
   `partyids`, not `metadata`, and its `identifiers` can hold more than the
   message's: an identifier-like `metadata` key (`marketorderid`) is lifted into
-  it (`base:marketorderid`); see the `yggdryl-fix` skill.
+  it (`market:orderid`); see the `yggdryl-fix` skill.
 - The lifecycle view needs its chain: `apply_view("lifecycle", source,
   crosscode="10:1:O-1")`; every other view refuses a `crosscode`.
 - Rust's `Limit` value type, the column enums' verbs (`EventColumn::fact`,

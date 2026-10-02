@@ -23,7 +23,7 @@ The fill of an Apple order a quarter second after it was placed.
 
     ```rust
     use yggdryl::graph::{Element, Event, ExecutionEvent, Market, MarketData, Operation, OrderEvent};
-    use yggdryl::{Ccy, Decimal, IdSource, IdType, Identifier, Side, State};
+    use yggdryl::{Ccy, Decimal, IdKey, IdType, Identifier, Side, State};
 
     const T: i64 = 1_700_000_000_000_000_000;
     let mut order = OrderEvent::at(T);
@@ -32,7 +32,7 @@ The fill of an Apple order a quarter second after it was placed.
     order.set_price(Some("189.50".parse()?), true);
     order.set_quantity(Some(Decimal::from_int(100)), true);
     order.set_currency(Ccy::new("USD")?, true);
-    order.insert_identifier(Identifier::new(IdSource::Fix, IdType::OrderId, "O-1001")?)?;
+    order.insert_identifier(Identifier::new(IdKey::base(IdType::OrderId), "O-1001")?)?;
     order.finalize();
 
     let mut fill = ExecutionEvent::at(T + 250_000_000);
@@ -43,7 +43,7 @@ The fill of an Apple order a quarter second after it was placed.
     fill.set_lastqty(Some(Decimal::from_int(100)), true);
     fill.set_cumqty(Some(Decimal::from_int(100)), true);
     fill.set_leavesqty(Some(Decimal::from_int(0)), true);
-    fill.insert_identifier(Identifier::new(IdSource::Fix, IdType::ExecId, "X-1")?)?;
+    fill.insert_identifier(Identifier::new(IdKey::base(IdType::ExecId), "X-1")?)?;
     fill.finalize();
     assert!(fill.is_execution());
     // What traded is never a price the execution states, and its quantity is
@@ -60,7 +60,7 @@ The fill of an Apple order a quarter second after it was placed.
     assert_eq!(fill.get_execunix(), Some(T + 250_000_000));
     assert_eq!(fill.get_prevpx(), Some("189.50".parse()?));
     assert_eq!(fill.get_currency().as_str(), "USD");
-    assert_eq!(fill.get_identifiers().to_string(), "[fix:execid=X-1, fix:orderid=O-1001]");
+    assert_eq!(fill.get_identifiers().to_string(), "[execid=X-1, orderid=O-1001]");
     assert_eq!(fill.get_state(), &State::Filled);
     ```
 
@@ -79,7 +79,7 @@ The fill of an Apple order a quarter second after it was placed.
         price=Decimal("189.50"),
         quantity=100,
         currency="USD",
-        identifiers=[Identifier("fix", "orderid", "O-1001")],
+        identifiers=[Identifier("orderid", "O-1001")],
     )
     fill = graph.ExecutionEvent(
         T + 250_000_000,
@@ -90,7 +90,7 @@ The fill of an Apple order a quarter second after it was placed.
         lastqty=100,
         cumqty=100,
         leavesqty=0,
-        identifiers=[Identifier("fix", "execid", "X-1")],
+        identifiers=[Identifier("execid", "X-1")],
     )
     assert fill.is_execution
     # What traded is never a price the execution states, and its quantity is
@@ -108,7 +108,7 @@ The fill of an Apple order a quarter second after it was placed.
     assert fill.execunix == T + 250_000_000
     assert fill.prevpx is not None and fill.prevpx.as_py() == Decimal("189.50")
     assert fill.currency.as_py() == "USD"
-    assert str(fill.identifiers) == "[fix:execid=X-1, fix:orderid=O-1001]"
+    assert str(fill.identifiers) == "[execid=X-1, orderid=O-1001]"
     assert fill.state is State.FILLED
     ```
 
@@ -125,7 +125,7 @@ The fill of an Apple order a quarter second after it was placed.
       price: '189.50',
       quantity: 100,
       currency: 'USD',
-      identifiers: [new Identifier('fix', 'orderid', 'O-1001')],
+      identifiers: [new Identifier('orderid', 'O-1001')],
     })
     let fill = new graph.ExecutionEvent(T + 250_000_000n, {
       crosscode: 'O-1001',
@@ -135,7 +135,7 @@ The fill of an Apple order a quarter second after it was placed.
       lastqty: 100,
       cumqty: 100,
       leavesqty: 0,
-      identifiers: [new Identifier('fix', 'execid', 'X-1')],
+      identifiers: [new Identifier('execid', 'X-1')],
     })
     assert.equal(fill.isExecution, true)
     // What traded is never a price the execution states, and its quantity is
@@ -153,6 +153,6 @@ The fill of an Apple order a quarter second after it was placed.
     assert.equal(fill.execunix, T + 250_000_000n)
     assert.equal(fill.prevpx, '189.5')
     assert.equal(fill.currency, 'USD')
-    assert.equal(fill.identifiers.toString(), '[fix:execid=X-1, fix:orderid=O-1001]')
+    assert.equal(fill.identifiers.toString(), '[execid=X-1, orderid=O-1001]')
     assert.equal(fill.state, 'FILLED')
     ```

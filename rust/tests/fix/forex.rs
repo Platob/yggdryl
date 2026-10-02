@@ -5,9 +5,7 @@ use std::sync::Arc;
 
 use super::SoleMessage;
 use yggdryl::graph::Market;
-use yggdryl::{
-    Cfi, FixCodec, FixMsg, FixRegistry, IdSource, IdType, Identifier, Scalar, fix_schema,
-};
+use yggdryl::{Cfi, FixCodec, FixMsg, FixRegistry, IdKey, IdType, Identifier, Scalar, fix_schema};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
@@ -25,7 +23,7 @@ fn cell(message: &FixMsg, tag: i32) -> Option<String> {
 }
 
 fn pair(code: &str) -> Identifier {
-    Identifier::new(IdSource::Base, IdType::Forex, code).expect("a pair")
+    Identifier::new(IdKey::base(IdType::Forex), code).expect("a pair")
 }
 
 /// The pair the message's identifiers hold under `forex`.
@@ -203,12 +201,7 @@ fn a_detected_row_reads_back_stating_its_pair() {
     assert_eq!(forex(&back).as_deref(), Some("EUR/USD"));
     // The row states where its pair came from: the identifier's source is
     // part of the row, so the pair detection derived reads back derived.
-    assert_eq!(
-        back.get_securityids()
-            .get_identifier(&IdType::Forex)
-            .map(Identifier::src),
-        Some(&IdSource::Derived)
-    );
+    assert!(back.get_securityids().is_derived(&IdType::Forex));
     // A changed symbol leaves a pair the row stated.
     back.set(55, Scalar::from("GBP/USD")).unwrap();
     assert_eq!(forex(&back).as_deref(), Some("EUR/USD"));
@@ -262,10 +255,12 @@ fn a_disagreeing_spelling_of_the_stated_pair_is_an_anomaly() {
     let message = reader
         .sole_line(b"MSGTYPE=D|CLORDID=A|SYMBOL=EUR/USD|FOREXCODE=EUR/USD|CCYPAIR=GBP/USD")
         .expect("a bridge row");
+    // The bridge's own pair is read with the fields, so it states the
+    // type's answer first; the view disagreeing with it is dropped.
     assert_eq!(
         forex(&message).as_deref(),
-        Some("EUR/USD"),
-        "the first wins"
+        Some("GBP/USD"),
+        "the fields' reading wins"
     );
     let anomalies: Vec<String> = message
         .anomalies()
@@ -275,7 +270,7 @@ fn a_disagreeing_spelling_of_the_stated_pair_is_an_anomaly() {
     assert!(
         anomalies
             .iter()
-            .any(|held| held.contains("states base:forex=GBP/USD where base:forex=EUR/USD")),
+            .any(|held| held.contains("states forex=EUR/USD where forex=GBP/USD")),
         "{anomalies:?}"
     );
 }

@@ -501,6 +501,12 @@ pub const CFI_CATEGORIES: [CfiCategory; 14] = [
 ];
 
 impl Cfi {
+    /// A code a landed `cfi` column already holds, adopted as it stands:
+    /// the landing read the cell under this type's rule.
+    pub(crate) fn from_proven(text: &str) -> Self {
+        Self(SmolStr::new(text))
+    }
+
     /// How many characters a CFI code has, in every edition of the standard.
     pub const LENGTH: usize = 6;
 
@@ -513,11 +519,8 @@ impl Cfi {
 
     /// The better of two classifications, as
     /// [`CodeValue::merge_with`](crate::CodeValue::merge_with)
-    /// answers it: an unclassified code - all `X`, or a letter no group
-    /// accepts - yields whole to a classified other; otherwise
-    /// [`Self::merged`] where the two describe one instrument - every `X`
-    /// filled from the other, a disagreement `X` - and this code as it is
-    /// where they do not.
+    /// answers it: [`Self::refined`] with this code leading, and this code as
+    /// it is where the two do not describe one instrument.
     ///
     /// ```
     /// use yggdryl::{Cfi, CodeValue};
@@ -525,16 +528,15 @@ impl Cfi {
     /// # fn main() -> yggdryl::Result<()> {
     /// assert_eq!(Cfi::new("XXXXXX")?.merge_with(&Cfi::new("ESVUFR")?).as_str(), "ESVUFR");
     /// assert_eq!(Cfi::new("ESVXXX")?.merge_with(&Cfi::new("ESXUFR")?).as_str(), "ESVUFR");
+    /// // A letter the other contradicts keeps this code as it is.
+    /// assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("ESNUFR")?).as_str(), "ESVUFR");
     /// // Two different instruments are not one: this code stands.
     /// assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUFR");
     /// # Ok(())
     /// # }
     /// ```
     pub(super) fn filled(self, other: &Self) -> Self {
-        if !Self::is_classified(self.as_str()) && Self::is_classified(other.as_str()) {
-            return other.clone();
-        }
-        Self::merged(self.as_str(), other.as_str())
+        Self::refined(self.as_str(), other.as_str())
             .and_then(|text| Self::new(text).ok())
             .unwrap_or(self)
     }
@@ -606,48 +608,58 @@ impl Cfi {
         Some((category, group, attributes))
     }
 
-    /// Two statements about one instrument as one, position by position.
+    /// `lead` with every `X` it states filled from `other`, where the two
+    /// describe one instrument: the one fold of two statements of a CFI code.
     ///
-    /// `None` when either is not a well-formed code, or when they name
-    /// different instruments - a different category or group is not a
-    /// disagreement to resolve but two subjects, and merging them would
-    /// invent an instrument neither statement described.
-    ///
-    /// Within one `(category, group)`, a stated attribute fills an unknown
-    /// one and two different stated attributes answer `X`: ambiguity answers
-    /// nothing.
+    /// An unclassified code - all `X`, or a letter no group accepts - states
+    /// nothing, so it yields whole to a classified other, and a classified
+    /// `lead` stands over an unclassified other; two unclassified codes
+    /// answer `None`. Two classified codes describe one instrument when they
+    /// share their category and group and no attribute position holds two
+    /// different letters: then `lead` keeps every letter it states and takes
+    /// the other's where it states `X`. Anything else - another category or
+    /// group, which is another instrument, or an attribute the two contradict
+    /// - answers `None`, and the caller keeps the statement it leads with.
     ///
     /// ```
     /// # use yggdryl::Cfi;
     /// // What one statement left unsaid, the other says.
-    /// assert_eq!(Cfi::merged("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
-    /// assert_eq!(Cfi::merged("ESVUFR", "ESXXXX").as_deref(), Some("ESVUFR"));
-    /// // Each fills the other's gaps.
-    /// assert_eq!(Cfi::merged("ESVXXX", "ESXUFR").as_deref(), Some("ESVUFR"));
-    /// // A disagreement inside one instrument is unknown, not a winner.
-    /// assert_eq!(Cfi::merged("ESVUFR", "ESNUFR").as_deref(), Some("ESXUFR"));
-    /// // Two different instruments are not one.
-    /// assert_eq!(Cfi::merged("ESVUFR", "DBFNFB"), None);
-    /// assert_eq!(Cfi::merged("ESVUFR", "EPVNFR"), None);
+    /// assert_eq!(Cfi::refined("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
+    /// assert_eq!(Cfi::refined("ESVUFR", "ESXXXX").as_deref(), Some("ESVUFR"));
+    /// assert_eq!(Cfi::refined("ESVXXX", "ESXUFR").as_deref(), Some("ESVUFR"));
+    /// // An unclassified code yields whole.
+    /// assert_eq!(Cfi::refined("XXXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
+    /// assert_eq!(Cfi::refined("ESVUFR", "XXXXXX").as_deref(), Some("ESVUFR"));
+    /// assert_eq!(Cfi::refined("XXXXXX", "XXXXXX"), None);
+    /// // A contradicted attribute, and two different instruments, fold to none.
+    /// assert_eq!(Cfi::refined("ESVUFR", "ESNUFR"), None);
+    /// assert_eq!(Cfi::refined("ESVUFR", "DBFNFB"), None);
+    /// assert_eq!(Cfi::refined("ESVUFR", "EPVNFR"), None);
     /// ```
     #[must_use]
-    pub fn merged(left: &str, right: &str) -> Option<SmolStr> {
-        let (category, group, mine) = Self::parsed(left)?;
-        let (other_category, other_group, theirs) = Self::parsed(right)?;
-        if category.letter != other_category.letter || group.letter != other_group.letter {
-            return None;
-        }
+    pub fn refined(lead: &str, other: &str) -> Option<SmolStr> {
+        let (category, group, mine) = match (Self::parsed(lead), Self::parsed(other)) {
+            (None, None) => return None,
+            (None, Some(_)) => return Some(SmolStr::new(other)),
+            (Some(_), None) => return Some(SmolStr::new(lead)),
+            (Some(mine), Some(theirs)) => {
+                if mine.0.letter != theirs.0.letter || mine.1.letter != theirs.1.letter {
+                    return None;
+                }
+                (mine.0, mine.1, mine.2.into_iter().zip(theirs.2))
+            }
+        };
         let mut held = [b'X'; Self::LENGTH];
         held[0] = u8::try_from(category.letter).expect("CFI is ASCII");
         held[1] = u8::try_from(group.letter).expect("CFI is ASCII");
-        for (target, (mine, theirs)) in held[2..].iter_mut().zip(mine.into_iter().zip(theirs)) {
-            *target = u8::try_from(match (mine, theirs) {
+        for (target, (mine, theirs)) in held[2..].iter_mut().zip(mine) {
+            let letter = match (mine, theirs) {
                 (Self::UNKNOWN, held) | (held, Self::UNKNOWN) => held,
                 (mine, theirs) if mine == theirs => mine,
-                // Two voices, two answers, and picking one is a guess.
-                _ => Self::UNKNOWN,
-            })
-            .expect("CFI is ASCII");
+                // Two different letters are two instruments' attributes.
+                _ => return None,
+            };
+            *target = u8::try_from(letter).expect("CFI is ASCII");
         }
         Some(SmolStr::new(
             std::str::from_utf8(&held).expect("CFI is ASCII"),

@@ -180,7 +180,7 @@ assert message.by_name("symbol").as_py() == "AAPL"
 # The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
 assert message.crosscode == "10:1:A1"
 # The names it goes by are identifiers: a source, a type and a value.
-assert str(message.identifiers) == "[fix:clordid=A1]"
+assert str(message.identifiers) == "[clordid=A1]"
 # Instants are int nanoseconds since the epoch, UTC.
 assert message.currunix == 1_767_348_930_000_000_000
 # The entries are the content row as (tag, name, value, children) tuples.
@@ -429,6 +429,37 @@ chained = codec.lifecycle_arrow_reader(rows).read_all()
 assert chained.num_rows == 4 and len(set(chained.column("crossuuid").to_pylist())) == 2
 ```
 
+## Share what lifecycles learn about instruments
+
+A lifecycle learns each message's ISIN - else its RIC, which only fills - its
+CFI code, market, ticker and security codes into an `IsinRegistry`, and fills
+what later messages of that instrument leave unsaid, as `derived` identifiers
+and the CFI and ticker facts, never the wire. A codec without one learns into
+a registry of each walk's own; `isin_registry=` shares one across walks run one
+after another, and any `IOBase` saves and loads it.
+
+```python
+from pathlib import Path
+
+from yggdryl import IsinRegistry
+from yggdryl.fix import FixCodec, FixRegistry
+
+instruments = IsinRegistry()
+codec = FixCodec(FixRegistry.from_handle(Path("config/fix")), isin_registry=instruments)
+
+# The first walk states Holcim's ISIN, RIC and CFI code.
+stated = [b"8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|10=0|"]
+list(codec.lifecycle(codec.parse_lines(stated)))
+assert instruments.get_by_ric("HOLN.S")["isin"] == "CH0012214059"
+
+# A later walk naming only the RIC is filled from what the first learned.
+[later] = codec.lifecycle(codec.parse_lines([b"8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|"]))
+assert later.isincode == "CH0012214059" and later.securityids.is_derived("isin")
+assert later.cficode is not None and later.cficode.as_py() == "ESVUFR"
+# The table is an Arrow stream: a golden file loads with `from_handle`.
+assert IsinRegistry.from_arrow_reader(instruments.into_arrow_reader()).get("CH0012214059") is not None
+```
+
 ## Follow a replace chain's parents
 
 A message that states an identifier again under another value is a step in
@@ -456,7 +487,7 @@ chained = list(reader.lifecycle(reader.parse_lines(lines)))
 
 def held(message):
     # What a message holds under each type, "-" where it holds none.
-    return tuple(message.identifiers.get_from("fix", kind) or "-" for kind in KINDS)
+    return tuple(message.identifiers.get(kind) or "-" for kind in KINDS)
 
 
 assert held(chained[0]) == ("-", "-", "-", "C1", "-")

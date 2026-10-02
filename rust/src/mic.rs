@@ -59,6 +59,12 @@ impl fmt::Display for DxFeedExchangeFeed {
 code_leaf!(Mic, MIC_WIDTH);
 
 impl Mic {
+    /// A code a landed `mic` column already holds, adopted as it stands:
+    /// the landing read the cell under this type's rule.
+    pub(crate) fn from_proven(text: &str) -> Self {
+        Self(SmolStr::new(text))
+    }
+
     /// ISO 10383's code for no market.
     pub(crate) const NONE: &str = "XXXX";
 

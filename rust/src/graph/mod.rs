@@ -203,8 +203,8 @@ macro_rules! delegate_market {
             fn insert_securityid(&mut self, id: $crate::Identifier) -> $crate::Result<bool> {
                 $crate::graph::Market::insert_securityid(&mut self.$($field).+, id)
             }
-            fn remove_securityid(&mut self, src: &$crate::IdSource, kind: &$crate::IdType) -> $crate::Result<bool> {
-                $crate::graph::Market::remove_securityid(&mut self.$($field).+, src, kind)
+            fn remove_securityid(&mut self, key: &$crate::IdKey) -> $crate::Result<bool> {
+                $crate::graph::Market::remove_securityid(&mut self.$($field).+, key)
             }
             fn derive_securityid(&mut self, kind: &$crate::IdType, code: &str) -> bool {
                 $crate::graph::Market::derive_securityid(&mut self.$($field).+, kind, code)
@@ -379,8 +379,8 @@ macro_rules! delegate_operation {
             fn insert_identifier(&mut self, id: $crate::Identifier) -> $crate::Result<bool> {
                 $crate::graph::Operation::insert_identifier(&mut self.$($field).+, id)
             }
-            fn remove_identifier(&mut self, src: &$crate::IdSource, kind: &$crate::IdType) -> $crate::Result<bool> {
-                $crate::graph::Operation::remove_identifier(&mut self.$($field).+, src, kind)
+            fn remove_identifier(&mut self, key: &$crate::IdKey) -> $crate::Result<bool> {
+                $crate::graph::Operation::remove_identifier(&mut self.$($field).+, key)
             }
             fn get_partyids(&self) -> &$crate::Identifiers {
                 $crate::graph::Operation::get_partyids(&self.$($field).+)
@@ -391,8 +391,8 @@ macro_rules! delegate_operation {
             fn insert_partyid(&mut self, partyid: $crate::Identifier) -> $crate::Result<bool> {
                 $crate::graph::Operation::insert_partyid(&mut self.$($field).+, partyid)
             }
-            fn remove_partyid(&mut self, src: &$crate::IdSource, kind: &$crate::IdType) -> $crate::Result<bool> {
-                $crate::graph::Operation::remove_partyid(&mut self.$($field).+, src, kind)
+            fn remove_partyid(&mut self, key: &$crate::IdKey) -> $crate::Result<bool> {
+                $crate::graph::Operation::remove_partyid(&mut self.$($field).+, key)
             }
             fn is_followed_identifier(&self, id: &$crate::Identifier) -> bool {
                 $crate::graph::Operation::is_followed_identifier(&self.$($field).+, id)

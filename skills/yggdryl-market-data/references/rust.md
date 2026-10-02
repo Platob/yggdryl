@@ -14,7 +14,7 @@ execution's cross code is stored under.
 
 ```rust
 use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
-use yggdryl::{Ccy, Decimal, IdSource, IdType, Identifier, MarketDataKind, Side, State};
+use yggdryl::{Ccy, Decimal, IdKey, IdType, Identifier, MarketDataKind, Side, State};
 
 // Instants are i64 nanoseconds since the Unix epoch, UTC.
 const T: i64 = 1_700_000_000_000_000_000;
@@ -26,8 +26,8 @@ order.set_quantity(Some(Decimal::from_int(100)), true);
 order.set_currency(Ccy::new("USD")?, true);
 order.set_ticker(Some("AAPL".into()), true);
 // An identifier is a source, a type and a value, unique by `src:type`; a code is checked by its type.
-order.insert_securityid(Identifier::new(IdSource::Base, IdType::Isin, "US0378331005")?)?;
-order.insert_identifier(Identifier::new(IdSource::Fix, IdType::OrderId, "O-1001")?)?;
+order.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "US0378331005")?)?;
+order.insert_identifier(Identifier::new(IdKey::base(IdType::OrderId), "O-1001")?)?;
 order.finalize();
 
 // A dated identity is a UUIDv7: its millisecond leads.
@@ -37,7 +37,7 @@ assert!(order.get_curruuid().to_string().starts_with("018bcfe5-6800-7"));
 assert_eq!(order.get_crosscode(), "10:1:O-1001");
 assert_ne!(order.get_crossuuid(), order.get_curruuid(), "the cross code names a chain");
 // Derived on finalize: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
-assert_eq!(order.get_securityids().to_string(), "[base:isin=US0378331005, derived:cusip=037833100]");
+assert_eq!(order.get_securityids().to_string(), "[cusip=037833100, derived:cusip=037833100, isin=US0378331005]");
 assert_eq!(order.get_isincode(), Some("US0378331005"));
 assert_eq!(order.get_lastpx(), None, "a price is never a last execution");
 assert_eq!(order.get_bidpx(), order.get_price(), "a buy's price is its bid");
@@ -531,13 +531,13 @@ columns.
 ```rust
 use arrow_array::RecordBatch;
 use yggdryl::graph::{Element, ExecutionEvent, Market, MarketData, MarketView, Operation, OrderEvent, TradeEvent};
-use yggdryl::{FieldPath, IdSource, IdType, Identifier, Plan, Side};
+use yggdryl::{FieldPath, IdKey, IdType, Identifier, Plan, Side};
 
 const T: i64 = 1_700_000_000_000_000_000;
 let mut order = OrderEvent::at(T);
 order.set_crosscode("O-1001".to_owned());
 order.set_side(Side::Buy, true);
-order.insert_identifier(Identifier::new(IdSource::Fix, IdType::ClOrdId, "C-1")?)?;
+order.insert_identifier(Identifier::new(IdKey::base(IdType::ClOrdId), "C-1")?)?;
 order.finalize();
 let fill = |code: &str, side: Side| {
     let mut execution = ExecutionEvent::at(T + 1_000_000_000);
@@ -552,7 +552,7 @@ let stream = || MarketData::arrow_reader([MarketData::from(order.clone()), Marke
 let rows = |batches: Vec<RecordBatch>| batches.iter().map(RecordBatch::num_rows).sum::<usize>();
 
 // A lift reaches one identifier of the map by its key.
-let lifts: Vec<FieldPath> = vec!["identifiers['fix:clordid'].value as clordid".parse()?];
+let lifts: Vec<FieldPath> = vec!["identifiers['clordid'] as clordid".parse()?];
 let orders = MarketData::apply_view(&MarketView::Orders, &lifts, stream()?)?;
 assert_eq!(orders.schema().fields().last().map(|column| column.name().as_str()), Some("clordid"));
 assert_eq!(rows(orders.collect::<Result<_, _>>()?), 1);
@@ -769,17 +769,18 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
 - `insert_securityid(id)` fills an absent source and type and takes back a
   `derived` identifier of its type (a CUSIP derived from the ISIN), answering
   whether it added; `insert_identifier`, `insert_partyid` and `insert_fxrate` fill
-  an absent source and type (a target) only; `set_securityids`, `set_identifiers`
-  and `set_partyids` replace the whole map under `overwrite` and fill without
-  it, `set_fxrates` replaces the map; `remove_securityid(&src, &kind)` of an
-  `isin` takes every `derived` identifier back. `Identifier::new(src, kind,
-  value)` takes an `IdSource` and an `IdType`, refuses a word that is none, a
-  value that states nothing and a code its type does not check, so a verb never
-  sees one; `Identifier::from_key("fix:clordid", value)` reads the full
-  `src:type` key.
+  an absent key (a target) only, a named source filling its type's base key;
+  `set_securityids`, `set_identifiers` and `set_partyids` replace the whole map
+  under `overwrite` and fill without it, `set_fxrates` replaces the map;
+  `remove_securityid(&IdKey::base(IdType::Isin))` removes the type and takes
+  every `derived` identifier back. `Identifier::new(key, value)` takes an
+  `IdKey` - `IdKey::base(kind)`, `"oms:clordid".parse()?` - and refuses a value
+  that states nothing and a code its type does not check, so a verb never sees
+  one; `Identifier::from_key(name, value)` infers the key a bridge's own name
+  spells (`OMS_ClOrdID` is `oms:clordid`).
 - A follower fills a parent identifier from the type it replaces - `orderid`
   into `parentorderid` into `origorderid`, `clordid` into `origclordid` - as
-  `Operation::parents_of(&base)` lists the parents nearest first
+  `Operation::parents_of(&kind)` lists the parents nearest first
   (`IdType::parents`, or the `FIX:parents` a FIX dictionary states);
   `Identifiers::fill_parents` and `follow_parents` are the verbs behind it.
 - The traits are object-safe except the verbs that take or return `Self`

@@ -18,7 +18,7 @@ A fact has one name and one datatype in every row, so a reader who knows one row
 | Text line | The 15 element and event columns, then `body`, then one column per row-header capture |
 | FIX row | The 54 prefix columns, then the message's own bands and `fixentries`: 152 columns and 149 tags under the committed dictionary. A fact FIX states in a field of its own is that field, typed as the dictionary types it (`price` is `Price(44)`, `timeinforce` the `TimeInForce(59)` wire text the message's [`TimeInForce`](../types/enum/timeinforce.md) member is read from) |
 | `marketdata` row | The 54 prefix columns, `bookscope`, then the book's nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits`: 60 columns |
-| Identifiers | `securityids`, `identifiers` and `partyids` are each a sorted `map<utf8, struct<src, type, value>>` from the identifier's key `src:type` to its row, in every row that carries them, the FIX row's included ([Identifier](identifier.md#arrow)) |
+| Identifiers | `securityids`, `identifiers` and `partyids` are each a sorted `map<utf8, utf8>` from the key's text - `src:type`, the type alone for the base source - to its value, in every row that carries them, the FIX row's included, closed on read so every type held has its base key ([Identifier](identifier.md#arrow)) |
 | Cross code | `crosscode` is the code as an element stores it - `{kind}:{side}:{base}` on a `marketdata` row and on a FIX row (`10:1:O-1001`, `3:0:AAPL`) - and as given on a text line, which is no market element ([Market](market.md#sides-and-cross-codes)) |
 | Persisted | Every [market fill](market.md#setting-fill-or-overwrite) a leaf answered is stored as a column value. A row read back through `MarketData::from_arrow_reader` or `FixMsg::from_row` answers the same facts without running the fills again |
 
@@ -276,7 +276,7 @@ A group column (`trdregtimestamps`, `regulatorytradeids`) is a `serie` of the gr
 
 This is `MarketData::field()`: the prefix, then the book.
 
-- `securityids`, `identifiers` and `partyids` are sorted maps keyed `src:type` to the identifier row (`securityid`, `identifier`, `partyid`: `struct<src, type, value>`).
+- `securityids`, `identifiers` and `partyids` are sorted `map<utf8, utf8>`s from the key's text - `src:type`, the type alone for the base source - to the value.
 - `alive`, `deltas` and `executions` are series of the prefix itself (`operationevent`).
 - `bidlimits` and `asklimits` are series of [`Limit`](book.md), best level first.
 
@@ -307,7 +307,7 @@ This is `MarketData::field()`: the prefix, then the book.
 | 22 | `hiddenqty` | `decimal` |  | Hidden Quantity | market |
 | 23 | `unit` | `unit` | yes | Unit | market |
 | 24 | `side` | `side` | yes | Side | market |
-| 25 | `securityids` | `map<utf8, securityid>` |  | Security IDs | market |
+| 25 | `securityids` | `map<utf8, utf8>` |  | Security IDs | market |
 | 26 | `isincode` | `isin` |  | ISIN Code | market |
 | 27 | `cficode` | `cfi` |  | CFI Code | market |
 | 28 | `miccode` | `mic` |  | MIC Code | market |
@@ -334,8 +334,8 @@ This is `MarketData::field()`: the prefix, then the book.
 | 49 | `ordqty` | `decimal` |  | Order Quantity | operation |
 | 50 | `timeinforce` | `timeinforce` |  | Time In Force | operation |
 | 51 | `tradable` | `boolean` |  | Tradable | operation |
-| 52 | `identifiers` | `map<utf8, identifier>` |  | Identifiers | operation |
-| 53 | `partyids` | `map<utf8, partyid>` |  | Party IDs | operation |
+| 52 | `identifiers` | `map<utf8, utf8>` |  | Identifiers | operation |
+| 53 | `partyids` | `map<utf8, utf8>` |  | Party IDs | operation |
 | 54 | `bookscope` | `utf8` |  | Book Scope | book |
 | 55 | `alive` | `serie<operationevent>` |  |  | book |
 | 56 | `deltas` | `serie<operationevent>` |  |  | book |

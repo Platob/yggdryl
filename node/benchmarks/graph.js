@@ -6,12 +6,13 @@
 // `MarketData`: building an order event from named facts, reading a fact back
 // typed, dating and undating an element, a book folding a group of
 // operations, its limits and two-sided readings, the lazy book and event
-// walks, the lifted Arrow doors and the named views over them. Run
+// walks, the lifted Arrow doors and the named views over them, the identifier
+// maps crossing as a plain object and the instrument registry's reads. Run
 // against the release addon with `npm run --prefix node bench:graph`.
 
 const { performance } = require('node:perf_hooks')
 
-const { graph } = require('yggdryl')
+const { Identifiers, IsinRegistry, graph } = require('yggdryl')
 
 const iterations = Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '5000', 10)
 if (!Number.isSafeInteger(iterations) || iterations <= 0) {
@@ -103,6 +104,17 @@ benchmark('book bid depth/10', () => FOLD_BOOK.depth('BUYS', 10))
 benchmarkStreams(`book alive/${FOLD_OPERATION_COUNT}`, () => FOLD_BOOK.alive())
 benchmark('book spread', () => FOLD_BOOK.spread)
 benchmark('book imbalance/10', () => FOLD_BOOK.imbalance(10))
-benchmark('market view plan', () => graph.MarketData.plan('orders', ["securityids['base:isin'].value as isin"]))
+const IDENTIFIERS_OBJECT = Object.fromEntries([
+  ...Array.from({ length: 8 }, (_, index) => [`oms:k${index}`, `V-${index}`]),
+  ['isin', 'US0378331005'],
+  ['ullink:isin', 'US0378331005'],
+])
+const IDENTIFIERS = Identifiers.fromObject(IDENTIFIERS_OBJECT)
+const REGISTRY = new IsinRegistry()
+REGISTRY.merge({ isin: 'CH0012214059', ric: 'HOLN.S', bloomberg: 'HOLN SW Equity', cficode: 'ESVUFR' })
+benchmark(`identifiers fromObject/${IDENTIFIERS.length}`, () => Identifiers.fromObject(IDENTIFIERS_OBJECT))
+benchmark(`identifiers intoObject/${IDENTIFIERS.length}`, () => IDENTIFIERS.intoObject())
+benchmark('isin registry getByRic', () => REGISTRY.getByRic('HOLN.S'))
+benchmark('market view plan', () => graph.MarketData.plan('orders', ["securityids['isin'] as isin"]))
 benchmarkStreams(`market view orders/${FOLD_OPERATION_COUNT}`, () =>
   graph.MarketData.applyView('orders', graph.MarketData.arrowReader(FOLD_OPERATIONS)).intoIpc())

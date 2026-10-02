@@ -9,8 +9,8 @@ use yggdryl::graph::{
     Operation,
 };
 use yggdryl::{
-    DataType, Decimal, Error, Field, FixCode, FixMsg, FixRegistry, IdSource, IdType, Identifier,
-    MarketDataKind, Scalar, Side, State, StructType,
+    DataType, Decimal, Error, Field, FixCode, FixMsg, FixRegistry, IdKey, IdSource, IdType,
+    Identifier, MarketDataKind, Scalar, Side, State, StructType,
 };
 
 fn message(line: &[u8]) -> FixMsg {
@@ -1364,7 +1364,8 @@ fn an_operation_names_its_entry_beside_the_message_identifiers() {
     // type and source it holds none of, whatever the dictionary maps, and
     // the wire stays as the source sent it.
     let id = |src: IdSource, kind: &str, value: &str| {
-        Identifier::new(src, kind.parse().expect("a type"), value).expect("an identifier")
+        Identifier::new(IdKey::new(src, kind.parse().expect("a type")), value)
+            .expect("an identifier")
     };
     assert!(
         source
@@ -1373,7 +1374,7 @@ fn an_operation_names_its_entry_beside_the_message_identifiers() {
     );
     assert!(
         source
-            .insert_identifier(id(IdSource::Fix, "mdreqid", "REQ-9"))
+            .insert_identifier(id(IdSource::Base, "mdreqid", "REQ-9"))
             .unwrap()
     );
     assert_eq!(source.get_by_tag(262), None, "no identifier is written");
@@ -1384,11 +1385,11 @@ fn an_operation_names_its_entry_beside_the_message_identifiers() {
     assert_eq!(identifiers.get(&ENTRY_ID), Some("B1"));
     assert_eq!(identifiers.get(&ENTRY_REF_ID), None);
     assert_eq!(
-        identifiers.get_from(&IdSource::Fix, &IdType::MdReqId),
+        identifiers.get_from(&IdKey::base(IdType::MdReqId)),
         Some("REQ-9")
     );
     assert_eq!(
-        identifiers.get_from(&IdSource::Base, &"foreign".parse::<IdType>().unwrap()),
+        identifiers.get_from(&IdKey::base("foreign".parse::<IdType>().unwrap())),
         Some("kept")
     );
     let book = input.book().expect("an entry states its control");
@@ -2373,7 +2374,7 @@ fn the_partyids_a_leaf_holds_leave_its_metadata_and_a_second_of_a_role_stays() {
     let order = operation_of(leaf);
     assert_eq!(
         order.get_partyids().to_string(),
-        "[proprietary:customeraccount=ACC9, proprietary:orderoriginationtrader=TRADER1]"
+        "[customeraccount=ACC9, orderoriginationtrader=TRADER1, proprietary:customeraccount=ACC9, proprietary:orderoriginationtrader=TRADER1]"
     );
     assert_eq!(
         metadata(leaf),
@@ -2424,10 +2425,10 @@ fn a_scalar_ending_with_one_of_its_messages_identifiers_is_lifted_into_the_leafs
             ("namespace.of.more.than.thirty.two.bytes", "orderid", "N-1"),
         ] {
             assert_eq!(
-                report.get_identifiers().get_from(
-                    &src.parse::<IdSource>().unwrap(),
-                    &kind.parse::<IdType>().unwrap()
-                ),
+                report.get_identifiers().get_from(&IdKey::new(
+                    src.parse::<IdSource>().unwrap(),
+                    kind.parse::<IdType>().unwrap()
+                )),
                 Some(value),
                 "{src}:{kind}: {}",
                 report.get_identifiers()
@@ -2490,10 +2491,10 @@ fn a_key_ending_with_no_identifier_its_message_declares_stays() {
         keys(leaf)
     );
     assert_eq!(
-        order.get_identifiers().get_from(
-            &"venue.x".parse::<IdSource>().unwrap(),
-            &"parentorderid".parse::<IdType>().unwrap()
-        ),
+        order.get_identifiers().get_from(&IdKey::new(
+            "venue.x".parse::<IdSource>().unwrap(),
+            "parentorderid".parse::<IdType>().unwrap()
+        )),
         Some("V-1")
     );
     assert!(
@@ -2534,9 +2535,10 @@ fn a_key_whose_set_holds_another_value_under_its_key_stays_in_the_leafs_metadata
     .expect("a fill");
     let leaf = &leaves[0];
     assert_eq!(
-        operation_of(leaf)
-            .get_identifiers()
-            .get_from(&"omsdealer".parse::<IdSource>().unwrap(), &IdType::OrderId),
+        operation_of(leaf).get_identifiers().get_from(&IdKey::new(
+            "omsdealer".parse::<IdSource>().unwrap(),
+            IdType::OrderId
+        )),
         Some("A")
     );
     assert_eq!(
@@ -2556,9 +2558,10 @@ fn a_key_whose_set_holds_another_value_under_its_key_stays_in_the_leafs_metadata
     .expect("a fill");
     let leaf = &leaves[0];
     assert_eq!(
-        operation_of(leaf)
-            .get_identifiers()
-            .get_from(&"omsdealer".parse::<IdSource>().unwrap(), &IdType::OrderId),
+        operation_of(leaf).get_identifiers().get_from(&IdKey::new(
+            "omsdealer".parse::<IdSource>().unwrap(),
+            IdType::OrderId
+        )),
         Some("A")
     );
     assert!(

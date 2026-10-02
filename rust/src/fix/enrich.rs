@@ -70,9 +70,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator, Market};
-use crate::securityid::SecurityIdRegistry;
 use crate::warning::warned;
-use crate::{Error, Result, Scalar, Side, State, Uuid};
+use crate::{Error, IsinRegistry, Result, Scalar, Side, State, Uuid};
 
 use super::msg::{FixMsg, Viewed};
 use super::registry::FixRegistry;
@@ -658,11 +657,38 @@ impl Event for LifecycleMessage {
     }
 }
 
+/// The instrument registry a walk learns into and fills from: its own,
+/// starting empty - a second walk learns nothing the first did - or one a
+/// codec shares across the walks it runs one after another, locked once per
+/// message.
+enum Codes {
+    Walk(IsinRegistry),
+    Shared(Arc<Mutex<IsinRegistry>>),
+}
+
+impl Codes {
+    /// Learns what `message` states about its instrument, then fills what
+    /// it left unstated ([`IsinRegistry::enrich`]).
+    fn enrich(&mut self, message: &mut FixMsg) {
+        match self {
+            Self::Walk(registry) => {
+                registry.enrich(message);
+            }
+            Self::Shared(registry) => {
+                registry
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .enrich(message);
+            }
+        }
+    }
+}
+
 /// Sorted messages prepared in lifecycle order: retransmissions removed and
 /// missing instrument codes learned only from messages already observed.
 struct Prepared<I> {
     source: Intake<I>,
-    codes: SecurityIdRegistry,
+    codes: Codes,
     /// At most one key per distinct delivery in this already collected finite
     /// capture. A late retransmission must remain a repeat after any number of
     /// intervening deliveries; retaining only a recent window loses that fact.
@@ -670,15 +696,13 @@ struct Prepared<I> {
 }
 
 impl<I> Prepared<I> {
-    fn new(source: Intake<I>) -> Self {
+    fn new(source: Intake<I>, registry: Option<Arc<Mutex<IsinRegistry>>>) -> Self {
         // Reserve a small capture once, without reserving a giant repeated
         // capture's upper bound. Growth beyond this hint follows unique keys.
         let capacity = source.len_hint().min(4_096);
-        // A bridge's instrument key states a listing - `dbi;ISIN_MIC_CCY` -
-        // and is no association of the ISIN alone.
         Self {
             source,
-            codes: SecurityIdRegistry::with_listings([crate::IdType::InstrumentId]),
+            codes: registry.map_or_else(|| Codes::Walk(IsinRegistry::new()), Codes::Shared),
             seen: HashSet::with_capacity(capacity),
         }
     }
@@ -693,7 +717,7 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Prepared<I> {
             if !self.seen.insert(delivery_key(&message)) {
                 continue;
             }
-            crate::securityid::enrich(&mut self.codes, &mut message);
+            self.codes.enrich(&mut message);
             return Some(message.into());
         }
     }
@@ -942,8 +966,16 @@ impl<I: Iterator<Item = Result<FixMsg>>> Walked<I> {
     /// The walk of `source`: collected and sorted whole, or, where `sorted`
     /// says the source is already in instant order, read as it comes and
     /// held one hour at a time ([`Hourly`]); a positive `window_ns` yields
-    /// each identity once within that span of event time ([`Window`]).
-    pub(super) fn new(source: I, snapshot_ns: i64, sorted: bool, window_ns: i64) -> Self {
+    /// each identity once within that span of event time ([`Window`]). The
+    /// instruments are learned into `registry` where one is shared, else
+    /// into the walk's own.
+    pub(super) fn new(
+        source: I,
+        snapshot_ns: i64,
+        sorted: bool,
+        window_ns: i64,
+        registry: Option<Arc<Mutex<IsinRegistry>>>,
+    ) -> Self {
         let mut failure = None;
         let mut reading = None;
         let intake = if sorted {
@@ -975,7 +1007,7 @@ impl<I: Iterator<Item = Result<FixMsg>>> Walked<I> {
             Intake::Whole(messages.into_iter())
         };
         Self {
-            walk: EventIterator::new(Prepared::new(intake), true)
+            walk: EventIterator::new(Prepared::new(intake, registry), true)
                 .with_snapshot_ns(snapshot_ns)
                 .with_placing(true),
             window: Window::new(window_ns),

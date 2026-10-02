@@ -2040,14 +2040,18 @@ impl<'env> JsEncoder<'env> {
         native_wrapper!(JsVersion, "Version", 7, |inner: &yggdryl::Version| {
             Scalar::from(inner.clone())
         });
-        // An identifier crosses as its three-text row and a map of them as
-        // the sorted map from each key `src:type` to its row, the shapes an
-        // identifier column holds.
+        // An identifier crosses as the one-entry map from its key's text to
+        // its value and a map of them as the sorted map of every entry, the
+        // shape an identifier column holds and `Identifiers::from_scalar`
+        // reads back.
         native_wrapper!(
             crate::identifier::JsIdentifier,
             "Identifier",
             8,
-            |inner: &yggdryl::Identifier| inner.clone().into_scalar()
+            |inner: &yggdryl::Identifier| Scalar::Map(yggdryl::Map::new(vec![(
+                Scalar::from(inner.key().to_string()),
+                Scalar::from(inner.value()),
+            )]))
         );
         native_wrapper!(
             crate::identifier::JsIdentifiers,

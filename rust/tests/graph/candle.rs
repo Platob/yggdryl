@@ -5,11 +5,12 @@
 use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::graph::{
     BookEvent, BookIterator, Candle, CandleIterator, CandleOptions, Element, Event, ExecutionEvent,
     Market, MarketData, Ohlc, Operation, OrderEvent, QuoteEvent, TradeEvent,
 };
-use yggdryl::{ArrowCastOptions, Decimal, IdSource, Identifier, Scalar, Serie, Timezone};
+use yggdryl::{ArrowCastOptions, Decimal, Identifier, Scalar, Serie, Timezone};
 
 /// Nanoseconds in one second.
 const SECOND: i64 = 1_000_000_000;
@@ -88,7 +89,7 @@ fn fill(
     for (kind, id) in identifiers {
         assert!(
             fill.insert_identifier(
-                Identifier::new(IdSource::Fix, kind.parse().unwrap(), id).unwrap()
+                Identifier::new(IdKey::base(kind.parse().unwrap()), id).unwrap()
             )
             .unwrap()
         );

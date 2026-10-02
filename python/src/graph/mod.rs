@@ -754,8 +754,9 @@ impl Fact {
     }
 
     /// Whether the column is one of the three identifier maps, which a
-    /// sequence of `Identifier` objects states as the map
-    /// `Identifiers::from_scalar` reads it into.
+    /// `dict` from each key's text to its value, an `Identifiers`, or a
+    /// sequence of `Identifier` objects - each the one-entry map of its key
+    /// - states as the map `Identifiers::from_scalar` reads it into.
     const fn is_identifier_map(self) -> bool {
         matches!(
             self,

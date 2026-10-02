@@ -4468,6 +4468,27 @@ binding.FixCodec.prototype.writeArrowReader = function writeArrowReader(source, 
   return nativeWriteArrowReader.call(this, BatchReader.from(source), sink)
 }
 
+// The instrument registry reads a row as whatever `Scalar.from` reads and
+// answers a row as the plain object its struct `Scalar` reads as: the native
+// half takes and answers the core's values and nothing else. A stream is a
+// native `BatchReader`, as every `fromArrowReader` takes one.
+{
+  const NativeIsinRegistry = binding.IsinRegistry
+  for (const name of ['get', 'getByRic', 'remove']) {
+    const native = NativeIsinRegistry.prototype[name]
+    NativeIsinRegistry.prototype[name] = {
+      [name](key) {
+        const row = native.call(this, key)
+        return row === null ? null : row.asJs()
+      },
+    }[name]
+  }
+  const nativeMerge = NativeIsinRegistry.prototype.merge
+  NativeIsinRegistry.prototype.merge = function merge(entry) {
+    return nativeMerge.call(this, asScalar(entry))
+  }
+}
+
 // A stage over an iterable pulls one item at a time: the iterable's own
 // protocol runs here, and the native stage asks for the next item only when
 // the stream is read that far, so nothing is collected on the way across.

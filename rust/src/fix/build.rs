@@ -1508,7 +1508,11 @@ impl<'registry> Builder<'registry> {
         {
             return;
         }
-        if self.shadowed(field.name()) {
+        // A row nested in a data field restating the classification folds
+        // into the line's, as a second statement of the line does, and
+        // replaces it only where the two contradict each other.
+        let classification = tag == super::cfi::CFICODE_TAG;
+        if !classification && self.shadowed(field.name()) {
             self.overshadow(field.name());
         }
         if raw.is_empty()
@@ -1521,6 +1525,20 @@ impl<'registry> Builder<'registry> {
         }
         let value = self.typed_root(&field, source, tag, raw, text);
         let known = source.is_some();
+        // A second statement of the classification - a bridge's
+        // `DETAILEDCFICODE` beside `CFICode(461)`, or 461 repeated - is
+        // folded into the one the slot holds where the two describe one
+        // instrument, and states nothing more; two that contradict each
+        // other stay under the rule below.
+        if classification {
+            if self.fold_cficode(&field, known, alias.as_ref(), &value) {
+                self.record(unresolved(0));
+                return;
+            }
+            if self.shadowed(field.name()) {
+                self.overshadow(field.name());
+            }
+        }
         // Which spelling stands: the canonical name or the tag over any
         // alias, the earlier alias in `FIX:names` over a later one, and two
         // arrivals of one spelling both, as a repeated tag stays two. What
@@ -1636,6 +1654,43 @@ impl<'registry> Builder<'registry> {
             // counter holds the tag, the group it heads does not.
             self.slot_for(group, counter, false).group = true;
         }
+    }
+
+    /// Folds `value`, a second statement of `CFICode(461)` under `alias` or
+    /// its own name, into the one statement its slot holds, through
+    /// [`super::cfi::merged_statement`]: the spelling that leads by the
+    /// alias rule - the canonical name or the tag over a name, the earlier
+    /// name over a later one, the first arrival over a repeat - keeps its
+    /// letters and fills its `X` from the other, which agrees with it and
+    /// states nothing more. Whether it folded; a slot holding no one value,
+    /// or two codes that contradict each other, does not.
+    fn fold_cficode(
+        &mut self,
+        field: &Field,
+        known: bool,
+        alias: Option<&(SmolStr, usize)>,
+        value: &Scalar,
+    ) -> bool {
+        let slot = self.slot_for(field.clone(), super::cfi::CFICODE_TAG, known);
+        let SlotValues::One(held) = &slot.values else {
+            return false;
+        };
+        let leads = match &slot.filler {
+            Some((_, rank)) => alias.is_none_or(|(_, newer)| newer < rank),
+            None => false,
+        };
+        let (lead, other) = if leads { (value, held) } else { (held, value) };
+        let Some(refined) = super::cfi::merged_statement(lead, other) else {
+            return false;
+        };
+        let lost = if leads {
+            std::mem::replace(&mut slot.filler, alias.cloned())
+        } else {
+            alias.cloned()
+        };
+        slot.values = SlotValues::One(refined);
+        slot.agreeing.extend(lost.map(|(spelling, _)| spelling));
+        true
     }
 
     /// The repeating group a flat key names, when it names one.

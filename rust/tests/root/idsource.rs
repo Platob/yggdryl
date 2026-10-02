@@ -2,7 +2,7 @@
 //! unique key `src:type` - a word folded to lower case, the sources the crate
 //! names held as members and any other as an `Other` word.
 
-use yggdryl::{IdSource, IdType, Identifier, Identifiers};
+use yggdryl::{IdKey, IdSource, IdType, Identifier, Identifiers};
 
 fn source(text: &str) -> IdSource {
     text.parse().unwrap()
@@ -15,8 +15,8 @@ fn a_source_folds_to_lower_case_and_reads_every_alias() {
         ("BASE", IdSource::Base),
         (" Base ", IdSource::Base),
         ("DERIVED", IdSource::Derived),
-        ("FIX", IdSource::Fix),
-        ("fix", IdSource::Fix),
+        ("FIX", IdSource::Base),
+        ("fix", IdSource::Base),
         ("BIC", IdSource::Bic),
         ("Proprietary", IdSource::Proprietary),
         ("ProprietaryCustomCode", IdSource::Proprietary),
@@ -37,7 +37,10 @@ fn a_source_folds_to_lower_case_and_reads_every_alias() {
     }
     assert_eq!(IdSource::Base.as_str(), "base");
     assert_eq!(IdSource::Derived.as_str(), "derived");
-    assert_eq!(IdSource::Fix.as_str(), "fix");
+    assert!(
+        IdSource::KNOWN.iter().all(|known| known.as_str() != "fix"),
+        "the standard's own fields are the base: fix is read and never written"
+    );
     assert_eq!(IdSource::Proprietary.as_str(), "proprietary");
     assert_eq!(IdSource::GeneralIdentifier.as_str(), "generalidentifier");
     assert_eq!(
@@ -83,7 +86,7 @@ fn any_other_word_is_kept_folded_and_is_not_a_member() {
     // Two spellings of one word are one source, a member or not.
     assert_eq!(source("Firm.X"), source("firm.x"));
     assert_eq!(source("VENUE"), source("venue"));
-    assert_ne!(source("firm"), IdSource::Fix);
+    assert_ne!(source("firm"), IdSource::Base);
     // A source and a type are two vocabularies: the same word is each in its
     // own, and a source never reads as a type.
     assert!(source("isin").as_str() == IdType::Isin.as_str());
@@ -124,11 +127,13 @@ fn sources_compare_with_text_and_order_by_their_spelling() {
     assert_eq!(IdSource::Base, "base");
     assert_eq!(IdSource::Base, *"base");
     assert!(IdSource::Base != "BASE", "a spelling is compared as folded");
-    assert!(IdSource::Fix != "oms");
+    assert!(
+        IdSource::Base != "fix",
+        "fix reads as the base and is never its spelling"
+    );
     let mut sorted = [
         IdSource::Base,
         source("venue"),
-        IdSource::Fix,
         IdSource::Derived,
         source("zzz"),
         IdSource::Bic,
@@ -137,9 +142,9 @@ fn sources_compare_with_text_and_order_by_their_spelling() {
     sorted.sort();
     assert_eq!(
         sorted.iter().map(IdSource::as_str).collect::<Vec<_>>(),
-        ["base", "bic", "derived", "fix", "oms", "venue", "zzz"]
+        ["base", "bic", "derived", "oms", "venue", "zzz"]
     );
-    assert_eq!(AsRef::<str>::as_ref(&IdSource::Fix), "fix");
+    assert_eq!(AsRef::<str>::as_ref(&IdSource::Bic), "bic");
     assert_eq!(smol_str::SmolStr::from(IdSource::Derived), "derived");
     assert_eq!(smol_str::SmolStr::from(source("firm")), "firm");
 }
@@ -171,7 +176,6 @@ fn the_known_sources_are_unique_folded_and_read_back_as_themselves() {
     for named in [
         IdSource::Base,
         IdSource::Derived,
-        IdSource::Fix,
         IdSource::Proprietary,
         IdSource::Bic,
     ] {
@@ -180,9 +184,12 @@ fn the_known_sources_are_unique_folded_and_read_back_as_themselves() {
 }
 
 #[test]
-fn a_source_is_the_first_half_of_an_identifiers_key_and_orders_before_its_type() {
-    let isin = |src: IdSource, value: &str| Identifier::new(src, IdType::Isin, value).unwrap();
-    let cusip = |src: IdSource, value: &str| Identifier::new(src, IdType::Cusip, value).unwrap();
+fn a_source_is_the_first_half_of_an_identifiers_key_and_the_base_source_is_never_spelled() {
+    let isin =
+        |src: IdSource, value: &str| Identifier::new(IdKey::new(src, IdType::Isin), value).unwrap();
+    let cusip = |src: IdSource, value: &str| {
+        Identifier::new(IdKey::new(src, IdType::Cusip), value).unwrap()
+    };
     let venue = source("venue");
     let mut ids = Identifiers::new();
     assert!(ids.insert(isin(IdSource::Base, "US0378331005")));
@@ -191,26 +198,37 @@ fn a_source_is_the_first_half_of_an_identifiers_key_and_orders_before_its_type()
     assert!(ids.insert(cusip(source("firm"), "037833100")));
     assert!(
         !ids.insert(isin(IdSource::Base, "CH0012214059")),
-        "one value per source and type"
+        "one value per key"
     );
     assert_eq!(
         ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
         [
-            "base:isin=US0378331005",
-            "derived:cusip=037833100",
+            "cusip=037833100",
             "firm:cusip=037833100",
+            "isin=US0378331005",
             "venue:isin=US0378331005",
         ],
-        "sorted by key, the text `src:type`"
+        "sorted by the key as spelled, the base source never spelled; the \
+         firm's statement took the derivation back"
     );
-    assert_eq!(ids.get_from(&venue, &IdType::Isin), Some("US0378331005"));
-    assert_eq!(ids.get_from(&IdSource::Fix, &IdType::Isin), None);
+    assert_eq!(
+        ids.get_from(&IdKey::new(venue, IdType::Isin)),
+        Some("US0378331005")
+    );
+    assert_eq!(
+        ids.get_from(&IdKey::new(IdSource::Proprietary, IdType::Isin)),
+        None
+    );
     // The source is the key's first half: the same type under two sources
     // is two identifiers, and one source under two types is two as well.
     assert_eq!(ids.of_kind(&IdType::Isin).count(), 2);
     assert_eq!(ids.of_kind(&IdType::Cusip).count(), 2);
-    assert_eq!(ids.remove_kind(&IdType::Cusip), 2);
-    assert!(ids.remove(&IdSource::Base, &IdType::Isin).is_some());
-    assert!(ids.remove(&IdSource::Base, &IdType::Isin).is_none());
-    assert_eq!(ids.len(), 1);
+    assert!(
+        ids.remove(&IdKey::base(IdType::Cusip)).is_some(),
+        "the base key removes its type"
+    );
+    assert_eq!(ids.of_kind(&IdType::Cusip).count(), 0);
+    assert!(ids.remove(&IdKey::base(IdType::Isin)).is_some());
+    assert!(ids.remove(&IdKey::base(IdType::Isin)).is_none());
+    assert!(ids.is_empty());
 }

@@ -782,12 +782,14 @@ def attach_parents(catalog: dict[str, list[dict[str, Any]]]) -> None:
 # an alias ranked after every spelling a version did: OrderID(37) arrives as a
 # bridge's market or OMS dealer order identifier, Account(1) as its OMS
 # dealer account, ClOrdID(11) as a trader's own client order identifier,
-# SecondaryClOrdID(526) as the one an exchange uses and Username(553) as the
-# OMS user.
+# CFICode(461) as the detailed classification a bridge states beside a coarse
+# one, SecondaryClOrdID(526) as the one an exchange uses and Username(553) as
+# the OMS user.
 CRATE_NAMES: tuple[tuple[int, list[str]], ...] = (
     (1, ["omsdealeraccount"]),
     (11, ["ultraderclordid"]),
     (37, ["marketorderid", "omsdealerorderid"]),
+    (461, ["detailedcficode"]),
     (526, ["exchangeclientorderid"]),
     (553, ["omsuserid"]),
 )

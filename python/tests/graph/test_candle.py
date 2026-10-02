@@ -269,7 +269,7 @@ class TestCandleIterator:
                 quantity=600,
                 lastqty=lastqty,
                 state="FILLED",
-                identifiers=[Identifier("fix", kind, value) for kind, value in identifiers.items()],
+                identifiers=[Identifier(kind, value) for kind, value in identifiers.items()],
             )
 
         # A fill delivered twice under one `execid`, the two sides of a trade

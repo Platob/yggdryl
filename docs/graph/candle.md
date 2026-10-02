@@ -254,7 +254,7 @@ Two fills of an order of 600 - `21`, then `57`, the `57` delivered again a secon
     use yggdryl::graph::{
         BookIterator, CandleIterator, CandleOptions, Element, Event, ExecutionEvent, Market, MarketData, Operation,
     };
-    use yggdryl::{Decimal, IdSource, IdType, Identifier, Side, State};
+    use yggdryl::{Decimal, IdKey, IdType, Identifier, Side, State};
 
     const SECOND: i64 = 1_000_000_000;
     let fill = |unix: i64, code: &str, side: Side, lastqty: i64, identifiers: &[(IdType, &str)]| -> yggdryl::Result<MarketData> {
@@ -268,7 +268,7 @@ Two fills of an order of 600 - `21`, then `57`, the `57` delivered again a secon
         fill.set_lastqty(Some(Decimal::from_int(lastqty)), true);
         fill.set_state(State::Filled);
         for (kind, id) in identifiers {
-            fill.insert_identifier(Identifier::new(IdSource::Fix, kind.clone(), id)?)?;
+            fill.insert_identifier(Identifier::new(IdKey::base(kind.clone()), id)?)?;
         }
         fill.finalize();
         Ok(MarketData::from(fill))
@@ -304,7 +304,7 @@ Two fills of an order of 600 - `21`, then `57`, the `57` delivered again a secon
         # The order's quantity; what the fill traded is its last quantity.
         return graph.ExecutionEvent(
             unix, crosscode=code, ticker="ACME", side=side, price=Decimal("100"), quantity=600, lastqty=lastqty,
-            state="FILLED", identifiers=[Identifier("fix", kind, value) for kind, value in identifiers.items()],
+            state="FILLED", identifiers=[Identifier(kind, value) for kind, value in identifiers.items()],
         )
 
     operations = [
@@ -337,7 +337,7 @@ Two fills of an order of 600 - `21`, then `57`, the `57` delivered again a secon
       quantity: 600,
       lastqty,
       state: 'FILLED',
-      identifiers: Object.entries(identifiers).map(([kind, value]) => new Identifier('fix', kind, value)),
+      identifiers: Object.entries(identifiers).map(([kind, value]) => new Identifier(kind, value)),
     })
     const operations = [
       fill(10n * SECOND, 'X-1', 'BUYS', 21, { execid: 'X-1' }),

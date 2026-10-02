@@ -31,8 +31,8 @@ const order = new graph.OrderEvent(T, {
   currency: 'USD',
   ticker: 'AAPL',
   // An identifier is a source, a type and a value, unique by `src:type`; a code is checked by its type.
-  securityids: [new Identifier('base', 'isin', 'US0378331005')],
-  identifiers: [new Identifier('fix', 'orderid', 'O-1001')],
+  securityids: [new Identifier('isin', 'US0378331005')],
+  identifiers: [new Identifier('orderid', 'O-1001')],
 })
 // A dated identity is a UUIDv7: its millisecond leads.
 assert.ok(order.curruuid.startsWith('018bcfe5-6800-7'))
@@ -40,7 +40,7 @@ assert.ok(order.curruuid.startsWith('018bcfe5-6800-7'))
 assert.equal(order.crosscode, '10:1:O-1001')
 assert.notEqual(order.crossuuid, order.curruuid, 'the cross code names a chain')
 // Derived on construction: the CUSIP inside the ISIN; the ISIN itself reads as `isincode`.
-assert.equal(order.securityids.toString(), '[base:isin=US0378331005, derived:cusip=037833100]')
+assert.equal(order.securityids.toString(), '[cusip=037833100, derived:cusip=037833100, isin=US0378331005]')
 assert.equal(order.securityids.get('cusip'), '037833100')
 assert.equal(order.isincode, 'US0378331005')
 assert.equal(order.lastpx, null, 'a price is never a last execution')
@@ -397,7 +397,7 @@ const { Identifier, Plan, enums, graph } = require('yggdryl')
 
 const T = 1_700_000_000_000_000_000n
 const order = new graph.OrderEvent(T, {
-  crosscode: 'O-1001', side: 'BUYS', identifiers: [new Identifier('fix', 'clordid', 'C-1')],
+  crosscode: 'O-1001', side: 'BUYS', identifiers: [new Identifier('clordid', 'C-1')],
 })
 const root = new graph.OrderEvent(T + 1_000_000_000n, { crosscode: 'T-1' })
 const trade = graph.TradeEvent.fromParts(root, [
@@ -408,7 +408,7 @@ const stream = () => graph.MarketData.arrowReader([order, trade])
 
 assert.deepEqual([...enums.marketViews].sort(), ['books', 'executions', 'lifecycle', 'orders', 'quotes', 'trades'])
 // A lift reaches one identifier of the map by its key.
-const orders = graph.MarketData.applyView('orders', stream(), ["identifiers['fix:clordid'].value as clordid"]).intoTable()
+const orders = graph.MarketData.applyView('orders', stream(), ["identifiers['clordid'] as clordid"]).intoTable()
 assert.equal(orders.schema.fields[orders.schema.fields.length - 1].name, 'clordid')
 assert.deepEqual([...orders.getChild('clordid')], ['C-1'])
 

@@ -64,7 +64,7 @@ An Apple order placed, then partly filled a second later.
 
     ```rust
     use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
-    use yggdryl::{Ccy, Decimal, IdSource, IdType, Identifier, Side, State};
+    use yggdryl::{Ccy, Decimal, IdKey, IdType, Identifier, Side, State};
 
     const T: i64 = 1_700_000_000_000_000_000;
     let event = |unix: i64, state: &str| -> yggdryl::Result<OrderEvent> {
@@ -75,7 +75,7 @@ An Apple order placed, then partly filled a second later.
         event.set_price(Some("189.50".parse()?), true);
         event.set_quantity(Some(Decimal::from_int(100)), true);
         event.set_currency(Ccy::new("USD")?, true);
-        event.insert_identifier(Identifier::new(IdSource::Fix, IdType::OrderId, "O-1001")?)?;
+        event.insert_identifier(Identifier::new(IdKey::base(IdType::OrderId), "O-1001")?)?;
         event.finalize();
         Ok(event)
     };
@@ -121,7 +121,7 @@ An Apple order placed, then partly filled a second later.
             price=Decimal("189.50"),
             quantity=100,
             currency="USD",
-            identifiers=[Identifier("fix", "orderid", "O-1001")],
+            identifiers=[Identifier("orderid", "O-1001")],
         )
 
     placed = event(T, "NEW")
@@ -159,7 +159,7 @@ An Apple order placed, then partly filled a second later.
       price: '189.50',
       quantity: 100,
       currency: 'USD',
-      identifiers: [new Identifier('fix', 'orderid', 'O-1001')],
+      identifiers: [new Identifier('orderid', 'O-1001')],
     })
 
     const placed = event(T, 'NEW')

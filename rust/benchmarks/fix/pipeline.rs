@@ -30,6 +30,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{BatchSize, Criterion, Throughput};
+use yggdryl::IdKey;
 use yggdryl::graph::book::ENTRY_ID;
 use yggdryl::graph::{
     BookEvent, BookIterator, Element, Event, ExecutionEvent, Market, MarketData, MdUpdateAction,
@@ -39,8 +40,8 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, IdSource,
-    Identifier, SerieReader, State, StructType, Timezone, Url, fix_schema,
+    ArrowCastOptions, DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, Identifier,
+    SerieReader, State, StructType, Timezone, Url, fix_schema,
 };
 
 use super::seed;
@@ -248,6 +249,32 @@ pub fn benchmarks(criterion: &mut Criterion) {
             || decoded.clone(),
             |held| {
                 whole
+                    .lifecycle(held)
+                    .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                        message.map(|_| read + 1)
+                    })
+                    .expect("a walked message")
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same walk learning into a registry the codec shares, as every
+    // walk of a shared codec does: what the one lock per message costs,
+    // beside the walk-local registry the default walk learns into.
+    group.bench_function("decoded_lifecycle_shared_registry", |bencher| {
+        bencher.iter_batched(
+            || {
+                (
+                    decoded.clone(),
+                    composed
+                        .clone()
+                        .with_isin_registry(Arc::new(std::sync::Mutex::new(
+                            yggdryl::IsinRegistry::new(),
+                        ))),
+                )
+            },
+            |(held, shared)| {
+                shared
                     .lifecycle(held)
                     .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
                         message.map(|_| read + 1)
@@ -669,10 +696,10 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         let mut operation = quote_of(&operations[0]);
         let identity = format!("DENSE-{index}");
         operation.set_crosscode(identity.clone());
-        let _ = operation.remove_identifier(&IdSource::Fix, &ENTRY_ID);
+        let _ = operation.remove_identifier(&IdKey::base(ENTRY_ID));
         operation
             .insert_identifier(
-                Identifier::new(IdSource::Fix, ENTRY_ID, &identity).expect("an identifier"),
+                Identifier::new(IdKey::base(ENTRY_ID), &identity).expect("an identifier"),
             )
             .expect("a plain holder takes every key");
         let mut book = operation.book().cloned().unwrap_or_default();

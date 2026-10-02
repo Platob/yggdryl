@@ -3,7 +3,7 @@
 //! operation carries it, and the `Parties` role stating it.
 
 use yggdryl::fix::{FixIdMapKind, FixIdSource};
-use yggdryl::{DataType, Field, FixRegistry, IdType};
+use yggdryl::{DataType, Field, FixRegistry, IdKey, IdType};
 
 fn order() -> Field {
     let mut order = DataType::utf8().nullable_field("orderid");
@@ -245,42 +245,41 @@ fn partyids_are_typed_by_role_and_regulatory_trade_ids_are_identifiers() {
         .expect("one order");
     let parties = message.get_partyids();
     assert_eq!(
-        parties.get_from(&IdSource::Proprietary, &IdType::ExecutingTrader),
+        parties.get_from(&IdKey::new(IdSource::Proprietary, IdType::ExecutingTrader)),
         Some("TRADER1")
     );
     assert_eq!(
-        parties.get_from(&IdSource::Proprietary, &IdType::CustomerAccount),
+        parties.get_from(&IdKey::new(IdSource::Proprietary, IdType::CustomerAccount)),
         Some("ACC-9")
     );
     // A role's name is its type whatever its length.
     assert_eq!(
-        parties.get_from(
-            &IdSource::Base,
-            &"competentauthoritytransactionvenue"
+        parties.get_from(&IdKey::base(
+            "competentauthoritytransactionvenue"
                 .parse::<IdType>()
                 .unwrap()
-        ),
+        )),
         Some("CA-1")
     );
     assert_eq!(
-        parties.get_from(&IdSource::Base, &"partyrole999".parse::<IdType>().unwrap()),
+        parties.get_from(&IdKey::base("partyrole999".parse::<IdType>().unwrap())),
         Some("X-1")
     );
     assert_eq!(
-        parties.get_from(&IdSource::Base, &IdType::Party),
+        parties.get_from(&IdKey::base(IdType::Party)),
         Some("NOROLE")
     );
     let identifiers = message.get_identifiers();
     assert_eq!(
-        identifiers.get_from(&IdSource::Fix, &IdType::RegTradeId),
+        identifiers.get_from(&IdKey::base(IdType::RegTradeId)),
         Some("UTI-1")
     );
     assert_eq!(
-        identifiers.get_from(&IdSource::Fix, &IdType::Tvtic),
+        identifiers.get_from(&IdKey::base(IdType::Tvtic)),
         Some("TVT-1")
     );
     assert_eq!(
-        identifiers.get_from(&IdSource::Fix, &IdType::ClOrdId),
+        identifiers.get_from(&IdKey::base(IdType::ClOrdId)),
         Some("C1")
     );
 
@@ -288,7 +287,7 @@ fn partyids_are_typed_by_role_and_regulatory_trade_ids_are_identifiers() {
     // holds none of, a held one stays, and the wire is kept as sent.
     let mut written = message.clone();
     let party = |src: IdSource, kind: IdType, value: &str| {
-        Identifier::new(src, kind, value).expect("a party")
+        Identifier::new(IdKey::new(src, kind), value).expect("a party")
     };
     assert!(
         written

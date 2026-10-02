@@ -10,7 +10,7 @@ afterwards.
 | --- | --- | --- |
 | child | `.name`, or a bare `name` at the start | a struct child, resolved ASCII case-insensitively |
 | position | `[0]`, `[-1]` | one serie element, 0-based, a negative index counting back from the end |
-| key | `['k']` | one map entry by text key - `identifiers['fix:clordid'].value` is the value of the identifier a market row's identifier map holds under that `src:type` |
+| key | `['k']` | one map entry by text key - `identifiers['clordid']` is the value a market row's identifier map holds under that key's text, `src:type` or the type alone for the base source |
 | range | `[1:3]`, `[:2]`, `[-2:]` | a run of serie elements, half-open, clipped rather than refused past either end |
 | predicate | `[quantity > 100]` | the elements of a serie of structs a predicate keeps, every name in it resolving against the element's own fields - `bidlimits[quantity > 100][0].price` is the price of a book's first bid level resting more than 100; an element it answers false or unknown for is dropped |
 | quoted child | `"a.b"` | a child whose name carries a dot, a bracket or a space |

@@ -11,10 +11,11 @@
 //! A *lift* is a [`FieldPath`] into the root row appended to the view's
 //! projections, so a fact kept inside a nested column - an identifier in
 //! `identifiers`, say - becomes a column of its own:
-//! `identifiers['fix:clordid'].value as clordid` reads the value under that
-//! key, the unique `src:type` the identifier map is keyed by, a row without
-//! one reads null, and a path naming a column the root does not hold is
-//! refused where the plan binds.
+//! `identifiers['clordid'] as clordid` reads the value under that key - the
+//! spelling of the [`IdKey`](crate::IdKey) the identifier map is keyed by,
+//! `src:type`, a base key its type alone - a row without one reads null, and
+//! a path naming a column the root does not hold is refused where the plan
+//! binds.
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -45,7 +46,7 @@ const NESTED: [&str; 5] = [ALIVE, DELTAS, EXECUTIONS, BIDLIMITS, ASKLIMITS];
 /// # fn main() -> yggdryl::Result<()> {
 /// let view = MarketView::read("Trades", None)?;
 /// assert_eq!(view, MarketView::Trades);
-/// let plan = MarketData::plan(&view, &["identifiers['fix:clordid'].value as clordid".parse()?])?;
+/// let plan = MarketData::plan(&view, &["identifiers['clordid'] as clordid".parse()?])?;
 /// assert!(plan
 ///     .to_string()
 ///     .starts_with("select * exclude (alive, deltas, executions, bidlimits, asklimits)"));
