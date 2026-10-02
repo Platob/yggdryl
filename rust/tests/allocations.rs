@@ -6729,17 +6729,23 @@ fn a_nested_column_writes_its_json_with_no_allocation_per_row() {
     }
 }
 
-/// Reading JSON text into a nested column allocates nothing per row - only
-/// the growth of the buffers the rows land in - and nothing per column: the
-/// target planned once reads each document straight into the buffers its
-/// column is laid out from, a struct's cells into one per child and a
-/// serie's items onto one run, no value tree built, no row built and no row
-/// checked a second time.
+/// Reading JSON text into a nested column allocates nothing per row for the
+/// row itself - only the growth of the buffers the rows land in - and
+/// nothing per column: the target planned once reads each document straight
+/// into the buffers its column is laid out from, a struct's cells into one
+/// per child, a serie's items and a map's entries onto one run, no value tree
+/// built and no row checked a second time. A record nested below the root -
+/// the struct each map entry holds here - is still its own value, one
+/// allocation.
 #[test]
 fn a_column_of_documents_reads_into_a_nested_column_with_no_allocation_per_row() {
     let text = Field::new("json", DataType::utf8(), false);
     let strict = ArrowCastOptions::new().with_safe(false);
-    for expression in ["serie<int64>", "struct<px: decimal128(12, 4), sym: utf8>"] {
+    for (expression, per_row) in [
+        ("serie<int64>", 0),
+        ("struct<px: decimal128(12, 4), sym: utf8>", 0),
+        ("map<utf8, struct<k: int64>>", 1),
+    ] {
         let cost = |rows: usize| {
             let column = json_corpus(expression, rows);
             let field = column.field().expect("a column").clone();
@@ -6750,9 +6756,9 @@ fn a_column_of_documents_reads_into_a_nested_column_with_no_allocation_per_row()
         for rows in [1_024, 4_096] {
             let grown = cost(2 * rows) - cost(rows);
             assert!(
-                grown <= 2,
-                "{expression}: {rows} more documents cost {grown} allocations, not the \
-                 buffers' growth alone"
+                (per_row * rows..=per_row * rows + 2).contains(&grown),
+                "{expression}: {rows} more documents cost {grown} allocations, not {per_row} \
+                 a row and the buffers' growth"
             );
         }
     }

@@ -966,6 +966,11 @@ pub(crate) mod casts {
         if let Some(reader) = reader.filter(|reader| reader.reads_items()) {
             return ingest_json_items(&cells, rows, target, reader, safe, field, exposure, budget);
         }
+        if let Some(reader) = reader.filter(|reader| reader.reads_entries()) {
+            return ingest_json_entries(
+                &cells, rows, target, reader, safe, field, exposure, budget,
+            );
+        }
         let mut values = Vec::new();
         values
             .try_reserve_exact(rows)
@@ -1138,6 +1143,66 @@ pub(crate) mod casts {
             }
         }
         crate::serie::value::serie_array_of_items(target, &items, &lengths)
+    }
+
+    /// [`ingest_json_array`] for a map target the reader plans: each
+    /// document's entries are read straight onto one run - the entries a map
+    /// column is laid out from, never built as rows - and a document the
+    /// reader leaves to the door is read there and its row's entries taken
+    /// apart. Each row is charged what its row value would be.
+    #[allow(clippy::too_many_arguments)]
+    fn ingest_json_entries(
+        cells: &Cells<'_>,
+        rows: usize,
+        target: &Field,
+        reader: &FieldReader,
+        safe: bool,
+        field: &Field,
+        exposure: Option<&BooleanBuffer>,
+        budget: &mut MaterializationBudget,
+    ) -> Result<ArrayRef> {
+        let mut entries = Vec::new();
+        let mut lengths = Vec::new();
+        lengths
+            .try_reserve_exact(rows)
+            .map_err(|error| allocation_failed(&error))?;
+        let mut pool = Pool::default();
+        for index in 0..rows {
+            let Some(document) = is_exposed(exposure, index)
+                .then(|| cells.get(index))
+                .flatten()
+                .filter(|document| !document.is_empty())
+            else {
+                lengths.push(None);
+                continue;
+            };
+            let held = entries.len();
+            match reader.read_entries(document, &mut pool, &mut entries) {
+                Some(Some(count)) => {
+                    budget.add_bytes(crate::arrow::size::mapping_memory_size(&entries[held..]))?;
+                    lengths.push(Some(count));
+                }
+                Some(None) => {
+                    budget.add_bytes(crate::arrow::scalar_memory_size(&Scalar::Null))?;
+                    lengths.push(None);
+                }
+                None => match super::from_bytes_with_field(document, target) {
+                    Ok(value) => {
+                        budget.add_bytes(crate::arrow::scalar_memory_size(&value))?;
+                        match value.as_mapping() {
+                            Some(row) => {
+                                entries.extend(row.iter().cloned());
+                                lengths.push(Some(row.len()));
+                            }
+                            None => lengths.push(None),
+                        }
+                    }
+                    Err(_) if safe => lengths.push(None),
+                    Err(error) => return Err(unread(field, index, document, error)),
+                },
+            }
+        }
+        crate::serie::value::map_array_of_entries(target, &entries, &lengths)
     }
 
     /// A document the target does not read, named by its row and its text.

@@ -1698,12 +1698,6 @@ fn map_array(
     arrow_type: &ArrowDataType,
     values: &[&Scalar],
 ) -> Result<ArrayRef> {
-    let ArrowDataType::Map(entries_field, keys_sorted) = arrow_type else {
-        return Err(Error::internal("map_array::projection"));
-    };
-    let ArrowDataType::Struct(entry_fields) = entries_field.data_type() else {
-        return Err(Error::internal("map_array::entries_projection"));
-    };
     let mut offsets = Vec::with_capacity(values.len() + 1);
     let mut validity = Vec::with_capacity(values.len());
     let mut entries = Vec::new();
@@ -1720,11 +1714,69 @@ fn map_array(
                     .iter(),
             );
         }
-        offsets.push(
-            i32::try_from(entries.len())
-                .map_err(|_| invalid_value("a map offset within int32", entries.len()))?,
-        );
+        offsets.push(map_offset(entries.len())?);
     }
+    map_of_entries(map, arrow_type, offsets, validity, &entries)
+}
+
+/// A map column laid out from its rows' entries, gathered into one run:
+/// `lengths[row]` the number of entries row `row` holds, in order, or `None`
+/// where it is absent. It is the layout [`array_of_rows`] gives the rows
+/// those runs make, for a reader that never built the rows.
+pub(crate) fn map_array_of_entries(
+    field: &Field,
+    entries: &[(Scalar, Scalar)],
+    lengths: &[Option<usize>],
+) -> Result<ArrayRef> {
+    let arrow_type = field.as_arrow_field_ref()?.data_type();
+    if lengths.is_empty() {
+        return Ok(new_empty_array(arrow_type));
+    }
+    let map = field
+        .dtype()
+        .as_mapping()
+        .ok_or_else(|| Error::internal("map_array_of_entries::field"))?;
+    let mut offsets = Vec::with_capacity(lengths.len() + 1);
+    let mut validity = Vec::with_capacity(lengths.len());
+    let mut total = 0_usize;
+    offsets.push(0_i32);
+    for length in lengths {
+        validity.push(length.is_some());
+        total += length.unwrap_or(0);
+        offsets.push(map_offset(total)?);
+    }
+    let held = entries
+        .get(..total)
+        .ok_or_else(|| Error::internal("map_array_of_entries::entries"))?;
+    map_of_entries(
+        &map,
+        arrow_type,
+        offsets,
+        validity,
+        &held.iter().collect::<Vec<_>>(),
+    )
+}
+
+/// One map offset, refused where `int32` cannot hold it.
+fn map_offset(entries: usize) -> Result<i32> {
+    i32::try_from(entries).map_err(|_| invalid_value("a map offset within int32", entries))
+}
+
+/// The map layout once its rows are cut: the entries the offsets cut, laid
+/// out as the entries struct, beside the rows' validity.
+fn map_of_entries(
+    map: &crate::MappingType,
+    arrow_type: &ArrowDataType,
+    offsets: Vec<i32>,
+    validity: Vec<bool>,
+    entries: &[&(Scalar, Scalar)],
+) -> Result<ArrayRef> {
+    let ArrowDataType::Map(entries_field, keys_sorted) = arrow_type else {
+        return Err(Error::internal("map_array::projection"));
+    };
+    let ArrowDataType::Struct(entry_fields) = entries_field.data_type() else {
+        return Err(Error::internal("map_array::entries_projection"));
+    };
     let fields = map
         .entries()
         .dtype()

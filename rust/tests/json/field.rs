@@ -119,6 +119,7 @@ fn corpus() -> Vec<(&'static str, Vec<&'static str>)> {
                 r#"{"BRENT":null}"#,
                 r#"{"BRENT":{"px":"81.5"}}"#,
                 r#"{"BRENT":{"bad":1}}"#,
+                r#"{"WTI":[81.5, 3],"BRENT":{"qty":1}}"#,
             ],
         ),
         (
@@ -374,6 +375,44 @@ mod internal {
                             items.len(),
                             1,
                             "{expression}: {document} left an item behind"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// A map document read onto a run of entries pushes the entries the
+    /// row read holds, in its order, and a document the reader leaves to the
+    /// door leaves the run as it was.
+    #[test]
+    fn a_map_read_onto_entries_pushes_the_entries_of_the_row_read() {
+        use yggdryl::Scalar;
+        use yggdryl::internals::json_field::read_entries;
+        for (expression, documents) in corpus() {
+            let field = target(expression);
+            if field.dtype().as_mapping().is_none() {
+                continue;
+            }
+            for document in documents {
+                let mut entries = vec![(Scalar::from("held"), Scalar::Null)];
+                let pushed = read_entries(&field, document.as_bytes(), &mut entries);
+                match read(&field, document.as_bytes()) {
+                    Some(Scalar::Null) => {
+                        assert_eq!(pushed, Some(None), "{expression}: {document}")
+                    }
+                    Some(row) => {
+                        let held = row.as_mapping().expect("a map row");
+                        assert_eq!(pushed, Some(Some(held.len())), "{expression}: {document}");
+                        assert_eq!(&entries[1..], held, "{expression}: {document}");
+                        assert_eq!(format!("{:?}", &entries[1..]), format!("{held:?}"));
+                    }
+                    None => {
+                        assert_eq!(pushed, None, "{expression}: {document}");
+                        assert_eq!(
+                            entries.len(),
+                            1,
+                            "{expression}: {document} left an entry behind"
                         );
                     }
                 }

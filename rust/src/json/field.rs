@@ -130,6 +130,54 @@ impl FieldReader {
         read
     }
 
+    /// Whether the planned root is a map, whose documents read into one run
+    /// of entries ([`Self::read_entries`]).
+    pub(crate) const fn reads_entries(&self) -> bool {
+        matches!(self.root, Node::Map { .. })
+    }
+
+    /// Read `document`, under a planned map root, straight onto `entries`:
+    /// `Some(Some(n))` for a row of `n` entries pushed, `Some(None)` for a
+    /// `null` one - nothing pushed - and `None` where the plan is not sure,
+    /// `entries` as it was.
+    pub(crate) fn read_entries(
+        &self,
+        document: &[u8],
+        pool: &mut Pool,
+        entries: &mut Vec<(Scalar, Scalar)>,
+    ) -> Option<Option<usize>> {
+        let Node::Map {
+            key, value, sorted, ..
+        } = &self.root
+        else {
+            return None;
+        };
+        if document.len() > self.limits.max_input_bytes() {
+            return None;
+        }
+        let held = entries.len();
+        let mut cursor = Cursor::new(document, self.limits);
+        let read = cursor.begin_document().ok().and_then(|()| {
+            let mut walk = Walk {
+                cursor: &mut cursor,
+                pool,
+            };
+            match walk.cursor.value(0).ok()? {
+                Token::Null => Some(None),
+                Token::Object => {
+                    read_entries(key, value, *sorted, &mut walk, 0, entries)?;
+                    Some(Some(entries.len() - held))
+                }
+                _ => None,
+            }
+        });
+        let read = read.filter(|_| cursor.end_document().is_ok());
+        if read.is_none() {
+            entries.truncate(held);
+        }
+        read
+    }
+
     /// Whether the planned root is one of the five serie layouts, whose
     /// documents read into one run of items ([`Self::read_items`]).
     pub(crate) const fn reads_items(&self) -> bool {
@@ -476,10 +524,8 @@ fn read_items(
     Some(())
 }
 
-/// A map from the object the cursor just opened: its entries in the order
-/// of their names' text - the order a record holds them in - or, where the
-/// map sorts its keys, of the keys they read as; keys that collide leave the
-/// map to the door.
+/// A map from the object the cursor just opened, its entries in the order
+/// [`read_entries`] gives them.
 fn read_map(
     dtype: &DataType,
     key: &DataType,
@@ -488,43 +534,63 @@ fn read_map(
     walk: &mut Walk<'_, '_>,
     depth: usize,
 ) -> Option<Scalar> {
-    let mut named = Vec::new();
-    let mut first = true;
-    while let Some((_, name)) = walk.cursor.next_key(first).ok()? {
-        first = false;
-        let token = walk.cursor.value(depth + 1).ok()?;
-        named.push((name, value.read(token, walk, depth + 1)?));
-    }
-    named.sort_by(|left, right| left.0.cmp(&right.0));
-    if named.windows(2).any(|pair| pair[0].0 == pair[1].0) {
-        return None;
-    }
-    let mut entries = named
-        .into_iter()
-        .map(|(name, held)| {
-            let name = Scalar::from(name.as_ref());
-            let key = if sorted {
-                // A sorted map orders its entries by the keys the names read
-                // as through the key's door, which read again as
-                // themselves.
-                let read = key.scalar(name).ok()?;
-                let again = crate::value::dtype_canonical(key, read.clone()).ok()?;
-                // Equal and of one leaf, so a restatement stores what this
-                // stores: equality alone spans leaves and widths.
-                (again.id() == read.id() && again == read).then_some(read)?
-            } else {
-                crate::value::dtype_canonical(key, name).ok()?
-            };
-            (!key.is_null()).then_some((key, held))
-        })
-        .collect::<Option<Vec<_>>>()?;
-    if sorted {
-        entries.sort_by(|left, right| left.0.cmp(&right.0));
-    }
+    let mut entries = Vec::new();
+    read_entries(key, value, sorted, walk, depth, &mut entries)?;
     // The one duplicate-key rule a mapping is held to.
     Scalar::from_mapping(entries)
         .ok()
         .map(|mapping| dtype.declared_layout(mapping))
+}
+
+/// The entries of the object the cursor just opened, pushed onto `entries`:
+/// in the order of their names' text - the order a record holds them in -
+/// or, where the map sorts its keys, of the keys they read as. Names or keys
+/// that collide leave the map to the door, as does anything else the plan is
+/// not sure of; what was pushed is the caller's to take back.
+fn read_entries(
+    key: &DataType,
+    value: &Slot,
+    sorted: bool,
+    walk: &mut Walk<'_, '_>,
+    depth: usize,
+    entries: &mut Vec<(Scalar, Scalar)>,
+) -> Option<()> {
+    let start = entries.len();
+    let mut first = true;
+    while let Some((_, name)) = walk.cursor.next_key(first).ok()? {
+        first = false;
+        let token = walk.cursor.value(depth + 1).ok()?;
+        let held = value.read(token, walk, depth + 1)?;
+        entries.push((Scalar::from(name.as_ref()), held));
+    }
+    let row = &mut entries[start..];
+    // A name is text, so the names order as their text does.
+    row.sort_by(|left, right| left.0.as_str().cmp(&right.0.as_str()));
+    if row.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+        return None;
+    }
+    for entry in row.iter_mut() {
+        let name = std::mem::replace(&mut entry.0, Scalar::Null);
+        entry.0 = if sorted {
+            // A sorted map orders its entries by the keys the names read
+            // as through the key's door, which read again as themselves.
+            let read = key.scalar(name).ok()?;
+            let again = crate::value::dtype_canonical(key, read.clone()).ok()?;
+            // Equal and of one leaf, so a restatement stores what this
+            // stores: equality alone spans leaves and widths.
+            (again.id() == read.id() && again == read).then_some(read)?
+        } else {
+            crate::value::dtype_canonical(key, name).ok()?
+        };
+        if entry.0.is_null() {
+            return None;
+        }
+    }
+    if sorted {
+        row.sort_by(|left, right| left.0.cmp(&right.0));
+    }
+    // The one duplicate-key rule a mapping is held to.
+    crate::scalar::unique_keys(row).ok()
 }
 
 /// A JSON number as the value the grammar types it as.
@@ -639,6 +705,21 @@ pub mod internals {
             return None;
         }
         reader.read_items(document, &mut super::Pool::default(), items)
+    }
+
+    /// What the reader planned for a map `field` pushes onto `entries`:
+    /// `Some(Some(n))` for `n` entries, `Some(None)` for a `null` row, `None`
+    /// where it leaves the document to the door.
+    pub fn read_entries(
+        field: &Field,
+        document: &[u8],
+        entries: &mut Vec<(Scalar, Scalar)>,
+    ) -> Option<Option<usize>> {
+        let reader = super::FieldReader::compile(field)?;
+        if !reader.reads_entries() {
+            return None;
+        }
+        reader.read_entries(document, &mut super::Pool::default(), entries)
     }
 
     /// What the reader planned for a struct `field` pushes onto `columns`

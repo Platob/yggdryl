@@ -974,6 +974,11 @@ fn json_cast_benchmarks(criterion: &mut Criterion) {
         DataType::serie(DataType::Int64.nullable_field("item")),
         false,
     );
+    let marks = Field::new(
+        "marks",
+        DataType::map_of(DataType::utf8(), DataType::Int64, false).expect("a map of marks"),
+        false,
+    );
     let text = Field::new("json", DataType::utf8(), false);
     let mut group = criterion.benchmark_group("arrow_serie_json");
     for count in ROWS {
@@ -996,8 +1001,25 @@ fn json_cast_benchmarks(criterion: &mut Criterion) {
             }),
         )
         .expect("the basket column");
+        // A plain map reads JSON back in its keys' text order, so the marks
+        // are held in that order and read back as written.
+        let mut symbols = SYMBOLS;
+        symbols.sort_unstable();
+        let book =
+            Serie::from_scalars(
+                marks.clone(),
+                (0..count).map(|row| {
+                    let mark = i64::try_from(row).expect("a small row");
+                    Scalar::from_mapping(symbols.iter().zip(0..).map(|(symbol, offset)| {
+                        (Scalar::from(*symbol), Scalar::from(mark + offset))
+                    }))
+                    .expect("distinct symbols")
+                }),
+            )
+            .expect("the marks column");
         let tick_text = ticks.cast(&text, strict).expect("the tape spells JSON");
         let basket_text = baskets.cast(&text, strict).expect("the baskets spell JSON");
+        let book_text = book.cast(&text, strict).expect("the marks spell JSON");
         assert_eq!(
             tick_text.cast(&tape, strict).expect("the JSON reads back"),
             ticks,
@@ -1010,6 +1032,11 @@ fn json_cast_benchmarks(criterion: &mut Criterion) {
             baskets,
             "the baskets read back as written"
         );
+        assert_eq!(
+            book_text.cast(&marks, strict).expect("the JSON reads back"),
+            book,
+            "the marks read back as written"
+        );
         let basket_array = baskets.require_arrow_array().expect("an Arrow list");
         let documents = |text: &Serie| {
             text.require_arrow_array()
@@ -1019,13 +1046,20 @@ fn json_cast_benchmarks(criterion: &mut Criterion) {
                 .expect("utf8 cells")
                 .clone()
         };
-        let (tick_cells, basket_cells) = (documents(&tick_text), documents(&basket_text));
+        let (tick_cells, basket_cells, book_cells) = (
+            documents(&tick_text),
+            documents(&basket_text),
+            documents(&book_text),
+        );
         group.throughput(Throughput::Elements(count as u64));
         group.bench_function(format!("write/struct/{count}"), |bencher| {
             bencher.iter(|| black_box(&ticks).cast(&text, strict).expect("JSON"));
         });
         group.bench_function(format!("write/serie/{count}"), |bencher| {
             bencher.iter(|| black_box(&baskets).cast(&text, strict).expect("JSON"));
+        });
+        group.bench_function(format!("write/map/{count}"), |bencher| {
+            bencher.iter(|| black_box(&book).cast(&text, strict).expect("JSON"));
         });
         group.bench_function(format!("write/kernel/{count}"), |bencher| {
             bencher.iter(|| {
@@ -1043,7 +1077,14 @@ fn json_cast_benchmarks(criterion: &mut Criterion) {
                     .expect("baskets")
             });
         });
-        for (shape, cells) in [("struct", &tick_cells), ("serie", &basket_cells)] {
+        group.bench_function(format!("read/map/{count}"), |bencher| {
+            bencher.iter(|| black_box(&book_text).cast(&marks, strict).expect("marks"));
+        });
+        for (shape, cells) in [
+            ("struct", &tick_cells),
+            ("serie", &basket_cells),
+            ("map", &book_cells),
+        ] {
             group.bench_function(format!("read/serde_json_{shape}/{count}"), |bencher| {
                 bencher.iter(|| {
                     for cell in black_box(cells) {

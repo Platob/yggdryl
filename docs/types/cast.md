@@ -784,8 +784,8 @@ The JSON is written straight into the column's one buffer from the column's own 
 value and no text built per row - and the rows of a column that already landed are not proven
 again. Reading, the target is planned once: each document is read along that plan through the
 one JSON grammar, every leaf through its datatype's own value door, a struct's cells into the
-columns its children are laid out from and a serie's items onto one run, so no value is built
-per row either. A document the plan cannot answer for alone - a struct spelled as a positional
+columns its children are laid out from and a serie's items or a map's entries onto one run, so
+no row value is built either. A document the plan cannot answer for alone - a struct spelled as a positional
 array, a union or an encoding anywhere in the target, a refusal - is read by the field-directed
 door instead, which says what a refusal is. A target with a rule of its own - a
 charset, a bound, a fixed width - then runs it over the JSON, so `ascii` refuses a non-ASCII
@@ -1441,8 +1441,9 @@ cargo bench --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggd
 ### Nested JSON text
 
 A nested column into JSON text and back, per row: the commodity tape as one
-`struct<symbol: utf8, price: decimal128(12, 4), size: int64>` column, and a basket of four
-`int64` sizes per row as a `serie<int64>`. The baselines are Arrow's own list-to-text kernel over
+`struct<symbol: utf8, price: decimal128(12, 4), size: int64>` column, a basket of four
+`int64` sizes per row as a `serie<int64>`, and four marks per row as a `map<utf8, int64>`. The
+baselines are Arrow's own list-to-text kernel over
 the same basket - a display form, not JSON - and serde_json parsing every cell into its own value
 tree with no column built. One containerized x86_64 Linux run: Intel Xeon @ 2.80 GHz, 4 cores,
 16 GiB; rustc 1.97.0 release with thin LTO. Criterion medians; the container's run-to-run spread
@@ -1450,14 +1451,21 @@ is 10 to 20%.
 
 | Rows | Write struct | Write serie | Arrow list kernel | Read struct | serde_json struct | Read serie | serde_json serie |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1,024 | 175 µs | 74.2 µs | 112 µs | 597 µs | 329 µs | 360 µs | 164 µs |
-| 16,384 | 2.87 ms | 1.26 ms | 1.77 ms | 10.0 ms | 5.64 ms | 5.70 ms | 2.46 ms |
+| 1,024 | 175 µs | 73.8 µs | 102 µs | 532 µs | 283 µs | 327 µs | 144 µs |
+| 16,384 | 2.96 ms | 1.19 ms | 1.70 ms | 9.13 ms | 4.49 ms | 4.95 ms | 2.29 ms |
+
+| Rows | Write map | Read map | serde_json map |
+| ---: | ---: | ---: | ---: |
+| 1,024 | 195 µs | 931 µs | 297 µs |
+| 16,384 | 3.07 ms | 15.5 ms | 5.08 ms |
 
 Writing is the JSON spelled from the column's leaves straight into its one buffer: the basket
 writes as JSON faster than Arrow's kernel writes its display text, which is no JSON at all.
 Reading is each document walked once along the target planned for it, its values landing in the
 buffers the column is laid out from; serde_json's parse of the same cells, which builds no
-column, is the baseline beside each, about half the read. Neither direction allocates per row.
+column, is the baseline beside each, about half the read - a third for the map, whose every row
+also puts its entries in the order of their keys and holds them to one key each. Neither
+direction allocates per row.
 
 ```bash
 cargo bench --manifest-path rust/Cargo.toml -p yggdryl --bench arrow -- arrow_serie_json

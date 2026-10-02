@@ -99,6 +99,20 @@ pub(crate) fn run_memory_size<'a>(cells: impl IntoIterator<Item = &'a Scalar>) -
     ROW_OVERHEAD + ROW_OVERHEAD + cells_payload(cells)
 }
 
+/// What [`scalar_memory_size`] answers for the mapping `entries` make, for a
+/// producer holding the entries and not the mapping.
+pub(crate) fn mapping_memory_size(entries: &[(Scalar, Scalar)]) -> usize {
+    ROW_OVERHEAD + ROW_OVERHEAD + entries_payload(entries)
+}
+
+/// The payload a mapping's entries carry, keys and values, summed.
+fn entries_payload(entries: &[(Scalar, Scalar)]) -> usize {
+    entries
+        .iter()
+        .map(|(key, held)| payload_bytes(key) + payload_bytes(held))
+        .sum::<usize>()
+}
+
 /// The payload a run's cells carry, summed.
 fn cells_payload<'a>(cells: impl IntoIterator<Item = &'a Scalar>) -> usize {
     cells.into_iter().map(payload_bytes).sum::<usize>()
@@ -129,11 +143,7 @@ fn payload_bytes(value: &Scalar) -> usize {
             };
     }
     if let Some(held) = value.as_mapping() {
-        return held
-            .iter()
-            .map(|(key, held)| payload_bytes(key) + payload_bytes(held))
-            .sum::<usize>()
-            + ROW_OVERHEAD;
+        return entries_payload(held) + ROW_OVERHEAD;
     }
     if let Some(held) = value.as_struct() {
         return held

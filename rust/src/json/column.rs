@@ -15,10 +15,11 @@ use std::ops::Range;
 use serde::Serializer as _;
 
 use crate::serie::{
-    BooleanSerie, Decimal128Serie, FixedSizeSerieSerie, Float32Serie, Float64Serie, Int8Serie,
-    Int16Serie, Int32Serie, Int64Serie, LargeSerieSerie, LargeSerieViewSerie, LargeUtf8StringSerie,
-    MapSerie, SerieSerie, SerieViewSerie, StructSerie, UInt8Serie, UInt16Serie, UInt32Serie,
-    UInt64Serie, Utf8StringSerie, Utf8ViewStringSerie,
+    BooleanSerie, Decimal32Serie, Decimal64Serie, Decimal128Serie, Decimal256Serie,
+    FixedSizeSerieSerie, Float32Serie, Float64Serie, Int8Serie, Int16Serie, Int32Serie, Int64Serie,
+    LargeSerieSerie, LargeSerieViewSerie, LargeUtf8StringSerie, MapSerie, SerieSerie,
+    SerieViewSerie, StructSerie, UInt8Serie, UInt16Serie, UInt32Serie, UInt64Serie,
+    Utf8StringSerie, Utf8ViewStringSerie,
 };
 use crate::{DataType, Result, Serie};
 
@@ -241,7 +242,7 @@ impl<'a> Cut<'a> {
 }
 
 /// A leaf column read as the native values its own datatype holds: an
-/// integer, a float, a boolean, a `decimal128` at its scale. Its storage is
+/// integer, a float, a boolean, an exact decimal at its scale. Its storage is
 /// paired with exactly that datatype, so a row's value is the native one
 /// and nothing a reading would restate.
 pub(crate) enum Native<'a> {
@@ -256,7 +257,10 @@ pub(crate) enum Native<'a> {
     UInt64(&'a UInt64Serie),
     Float32(&'a Float32Serie),
     Float64(&'a Float64Serie),
+    Decimal32(&'a Decimal32Serie, i8),
+    Decimal64(&'a Decimal64Serie, i8),
     Decimal128(&'a Decimal128Serie, i8),
+    Decimal256(&'a Decimal256Serie, i8),
 }
 
 impl<'a> Native<'a> {
@@ -273,7 +277,10 @@ impl<'a> Native<'a> {
             DataType::UInt64 => Self::UInt64(column.as_uint64()?),
             DataType::Float32 => Self::Float32(column.as_float32()?),
             DataType::Float64 => Self::Float64(column.as_float64()?),
+            DataType::Decimal32 { scale, .. } => Self::Decimal32(column.as_decimal32()?, *scale),
+            DataType::Decimal64 { scale, .. } => Self::Decimal64(column.as_decimal64()?, *scale),
             DataType::Decimal128 { scale, .. } => Self::Decimal128(column.as_decimal128()?, *scale),
+            DataType::Decimal256 { scale, .. } => Self::Decimal256(column.as_decimal256()?, *scale),
             _ => return None,
         })
     }
@@ -316,9 +323,23 @@ impl<'a> Native<'a> {
             Self::Float64(column) => column
                 .value(row)
                 .map(|value| super::wire::serialize_float(&mut serializer, value)),
+            Self::Decimal32(column, scale) => column
+                .value(row)
+                .map(|value| serializer.collect_str(&crate::Decimal32::new(value, *scale))),
+            Self::Decimal64(column, scale) => column
+                .value(row)
+                .map(|value| serializer.collect_str(&crate::Decimal64::new(value, *scale))),
             Self::Decimal128(column, scale) => column
                 .value(row)
                 .map(|value| serializer.collect_str(&crate::Decimal128::new(value, *scale))),
+            // The slot is Arrow's 256-bit integer; the value the reading
+            // builds holds the crate's, of the same bytes.
+            Self::Decimal256(column, scale) => column.value(row).map(|value| {
+                serializer.collect_str(&crate::Decimal256::new(
+                    crate::i256::from_le_bytes(value.to_le_bytes()),
+                    *scale,
+                ))
+            }),
         };
         written
             .unwrap_or_else(|| serializer.serialize_none())
