@@ -959,6 +959,34 @@ impl EpochPeriod {
         })
     }
 
+    /// Whether every value `dtype` holds floors to a period `int32` holds.
+    ///
+    /// The floor is monotone in the count, so the two ends of the source's
+    /// count decide: a `date32` and a count of nanoseconds always fit, a
+    /// count of seconds reaches every period past `int32`, a `date64` or a
+    /// count of milliseconds reaches months, and `hours` over microseconds
+    /// leaves it in the year 246,970. Where it does not fit,
+    /// [`epoch_value`] answers null, so the function's column is nullable
+    /// whatever its argument is.
+    pub(crate) fn fits_int32(self, dtype: &DataType) -> bool {
+        const DAY_MILLIS: i64 = 86_400_000;
+        let ends = match dtype {
+            DataType::Date32 => Some((
+                self.of_days(i64::from(i32::MIN)),
+                self.of_days(i64::from(i32::MAX)),
+            )),
+            DataType::Date64 => Some((
+                self.of_days(i64::MIN.div_euclid(DAY_MILLIS)),
+                self.of_days(i64::MAX.div_euclid(DAY_MILLIS)),
+            )),
+            DataType::DateTime64 { unit, .. } => self
+                .of_count(i64::MIN, *unit)
+                .zip(self.of_count(i64::MAX, *unit)),
+            _ => None,
+        };
+        ends.is_some_and(|(low, high)| i32::try_from(low).is_ok() && i32::try_from(high).is_ok())
+    }
+
     /// The first day of one period, for the periods a date floors to.
     ///
     /// `None` for a sub-day period, or a period past the calendar. The two

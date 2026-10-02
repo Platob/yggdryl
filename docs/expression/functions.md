@@ -155,7 +155,7 @@ Two families read a temporal, and they answer different questions. The four *cal
 | `hours(x)` | timestamp | `int32` hours since the epoch |
 | `minutes(x, n)` | timestamp, and a whole-number literal `n` | `int32` periods of `n` minutes since the epoch |
 
-A date has no clock, so a sub-day period over one is refused where it is typed; a null answers null, and so does a period past `int32`, which a count of seconds reaches - never a number wrapped back into range. A calendar unit is not a fixed length, so `truncate(x, 'month')` stays refused and `months(x)` is how a month is read.
+A date has no clock, so a sub-day period over one is refused where it is typed; a null answers null, and so does a period past `int32` - never a number wrapped back into range - so the column is nullable wherever its source's count reaches one, even over a required source: every period over seconds, `months` and finer over milliseconds or a `date64`, `hours` and `minutes(x, 1)` over microseconds, and none over a `date32` or nanoseconds. A calendar unit is not a fixed length, so `truncate(x, 'month')` stays refused and `months(x)` is how a month is read.
 
 === "Rust"
 

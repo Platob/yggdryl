@@ -367,6 +367,64 @@ mod epoch_functions {
         assert!(!typed("weeks(t)").unwrap().is_nullable());
     }
 
+    /// A period past `int32` answers null, so the column of a function over
+    /// a required source is nullable exactly where the source's count
+    /// reaches one: never over a `date32` or nanoseconds, from `hours` on
+    /// over microseconds, from `months` on over milliseconds and a `date64`,
+    /// and for every period over seconds.
+    #[test]
+    fn a_required_source_types_a_nullable_period_where_its_count_passes_int32() {
+        let instant = |unit| DataType::DateTime64 {
+            unit,
+            timezone: Timezone::UTC,
+        };
+        let root = StructType::from_fields([
+            DataType::date32().required_field("d32"),
+            DataType::date64().required_field("d64"),
+            instant(TimeUnit::Second).required_field("s"),
+            instant(TimeUnit::Millisecond).required_field("ms"),
+            instant(TimeUnit::Microsecond).required_field("us"),
+            instant(TimeUnit::Nanosecond).required_field("ns"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        let nullable = |text: &str| {
+            let selector: Selector = text.parse().unwrap();
+            selector.apply_field(&root).unwrap().fields()[0].is_nullable()
+        };
+        let periods = [
+            "years", "quarters", "months", "weeks", "days", "hours", "minutes",
+        ];
+        // Per source, the first period (in the order above) whose column is
+        // nullable; every coarser one is required.
+        for (column, first_nullable) in [
+            ("d32", None),
+            ("d64", Some("months")),
+            ("s", Some("years")),
+            ("ms", Some("months")),
+            ("us", Some("hours")),
+            ("ns", None),
+        ] {
+            let mut reached = false;
+            for period in periods {
+                if column.starts_with('d') && matches!(period, "hours" | "minutes") {
+                    continue;
+                }
+                reached |= Some(period) == first_nullable;
+                let text = if period == "minutes" {
+                    format!("minutes({column}, 1)")
+                } else {
+                    format!("{period}({column})")
+                };
+                assert_eq!(nullable(&text), reached, "{text}");
+            }
+        }
+        // A wider step brings a fine source back inside `int32`.
+        assert!(nullable("minutes(us, 1)"));
+        assert!(!nullable("minutes(us, 4294967295)"));
+    }
+
     #[test]
     fn a_sub_day_period_over_a_date_and_any_period_over_text_are_refused() {
         for (text, expected) in [

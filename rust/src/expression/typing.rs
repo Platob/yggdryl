@@ -809,10 +809,14 @@ fn function_field(
                     function.as_str()
                 )));
             }
-            match period {
+            let dtype = match period {
                 super::eval::EpochPeriod::Day => DataType::date32(),
                 _ => DataType::Int32,
-            }
+            };
+            // A period past `int32` answers null, so a source whose count
+            // reaches one types a nullable column even when it is required.
+            let nullable = nullable || !period.fits_int32(unwrap_dictionary(&first));
+            return Ok(named(expression, dtype, nullable));
         }
         Function::Truncate => first.clone(),
         Function::User(_) => unreachable!("a user function returned above"),
