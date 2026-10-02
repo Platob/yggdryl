@@ -266,9 +266,9 @@ Without a `Field`, a document answers only the types it proves; with one, the
 field types natural strings, orders records, and canonicalizes the value.
 Slice, reader, writer, JSON Lines, TOML document, YAML document, and XML
 document APIs apply explicit byte, depth, node, and document limits. See the
-[JSON](docs/media/index.md#json), [TOML](docs/media/index.md#toml),
-[YAML](docs/media/index.md#yaml), and [XML](docs/media/index.md#xml) sections
-of the media page.
+[JSON](docs/media/json.md), [TOML](docs/media/toml.md),
+[YAML](docs/media/yaml.md), and [XML](docs/media/xml.md) pages
+under Media.
 
 ## Native value behavior
 

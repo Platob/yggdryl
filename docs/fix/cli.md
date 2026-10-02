@@ -61,7 +61,7 @@ maturin build --manifest-path python/Cargo.toml --out dist
 | Namespace | Serves | Page |
 | --- | --- | --- |
 | `fix` | a FIX dictionary: read it, change it, ingest a counterparty's configuration, check what came out - and with no verb, all of that interactively | this page |
-| `xmla` | `yggdryl xmla serve`: folders of record media as XML for Analysis catalogs over HTTP | [Provider](../media/index.md#provider) |
+| `xmla` | `yggdryl xmla serve`: folders of record media as XML for Analysis catalogs over HTTP | [Provider](../media/xmla.md#provider) |
 | `market` | `yggdryl market serve`: tables of market data as the book display - bid and ask candles, books and audits over HTTP - each `--capture` folding a FIX bridge log into the first table before it serves | [Book display](../graph/serve.md) |
 
 ## Three category command trees

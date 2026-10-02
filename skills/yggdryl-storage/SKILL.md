@@ -226,8 +226,8 @@ Install and cross-language conventions are in `yggdryl`.
 - HTTP, HTTP/2 and HTTP/3: https://platob.github.io/yggdryl/holder/#http
 - Pagination and `Pages`: https://platob.github.io/yggdryl/holder/#pages
 - ZIP: https://platob.github.io/yggdryl/holder/#zip
-- Compression (gzip, zlib, zstd): https://platob.github.io/yggdryl/media/#compression
-- Charsets: https://platob.github.io/yggdryl/media/#charsets
+- Compression (gzip, zlib, zstd): https://platob.github.io/yggdryl/media/compression/
+- Charsets: https://platob.github.io/yggdryl/media/charsets/
 - Sibling skills: `yggdryl-records` (rows on a handle, partitions), `yggdryl-uri`
   (URLs, globs, Hive paths), `yggdryl-documents` (JSON/YAML/TOML/XML),
   `yggdryl-hashing` (digest values).

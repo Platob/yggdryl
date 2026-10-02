@@ -22,19 +22,19 @@ Results live beside the method they measure. Each page's Performance section nam
 | Holder | [Values](holder/index.md#values-performance) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |
 | Holder | [Call counts](holder/index.md#call-counts-performance) | One run of each operation over a 4 MiB in-memory value, wall clock beside the `IOBase` calls it makes |
 | Holder | [ZIP](holder/index.md#zip-performance) | `io_zip`: positional, whole and streamed member reads and writes, restart strides and a 2,000-member archive; one containerized x86_64 Linux release run |
-| Media | [gzip](media/index.md#gzip-performance) | One containerized x86_64 Linux run of the Python binding against the standard library's `gzip`, over 1,080,... |
-| Media | [zlib](media/index.md#zlib-performance) | `python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JS... |
-| Media | [zstd](media/index.md#zstd-performance) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |
-| Media | [Arrow IPC](media/index.md#arrow-ipc-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150, rustc 1.96.1 (2026..., and the `Media` enum over its IPC variant |
-| Media | [Parquet](media/index.md#parquet-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
-| Media | [Parquet against PyArrow](media/index.md#streaming-against-pyarrow) | `python/benchmarks/media/parquet.py`: files PyArrow wrote, read whole and streamed both ways, and tables written both ways, from 64K to 4M rows; one containerized x86_64 Linux run |
-| Media | [Parquet footer statistics](media/index.md#footer-statistics) | Local release-build spot-check of the Python and JavaScript binding boundary; fixtures differ, so rows are... |
-| Media | [Avro](media/index.md#avro-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
-| Media | [Avro against polars and fastavro](media/index.md#against-polars-and-fastavro) | `python/benchmarks/media/avro.py`: containers fastavro wrote in Java-default blocks, read three ways under every codec, and tables written three ways; one containerized x86_64 Linux run |
-| Media | [JSON](media/index.md#json-performance), [YAML](media/index.md#yaml-performance), [TOML](media/index.md#toml-performance), [XML](media/index.md#xml-performance) | One Windows x86_64 release run of `python/benchmarks/text.py` and `node/benchmarks/text.js`: the natural-codec boundary per format; XML measured, no table yet |
-| Media | [YAML placeholders](media/index.md#placeholders) | 256-entry YAML documents, feature off and on; containerized x86_64 Linux, Criterion medians with 95% intervals |
-| Media | [Iceberg](media/index.md#iceberg-performance) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1 |
-| Media | [Iceberg against PyIceberg](media/index.md#against-pyiceberg) | `python/benchmarks/media/iceberg.py`: appends, opens and four scans of a 1M-row table, unpartitioned and in eight partitions, beside PyIceberg's SQLite catalog; one containerized x86_64 Linux run |
+| Media | [gzip](media/compression.md#gzip-performance) | One containerized x86_64 Linux run of the Python binding against the standard library's `gzip`, over 1,080,... |
+| Media | [zlib](media/compression.md#zlib-performance) | `python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JS... |
+| Media | [zstd](media/compression.md#zstd-performance) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |
+| Media | [Arrow IPC](media/ipc.md#performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150, rustc 1.96.1 (2026..., and the `Media` enum over its IPC variant |
+| Media | [Parquet](media/parquet.md#performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
+| Media | [Parquet against PyArrow](media/parquet.md#streaming-against-pyarrow) | `python/benchmarks/media/parquet.py`: files PyArrow wrote, read whole and streamed both ways, and tables written both ways, from 64K to 4M rows; one containerized x86_64 Linux run |
+| Media | [Parquet footer statistics](media/parquet.md#footer-statistics) | Local release-build spot-check of the Python and JavaScript binding boundary; fixtures differ, so rows are... |
+| Media | [Avro](media/avro.md#performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
+| Media | [Avro against polars and fastavro](media/avro.md#against-polars-and-fastavro) | `python/benchmarks/media/avro.py`: containers fastavro wrote in Java-default blocks, read three ways under every codec, and tables written three ways; one containerized x86_64 Linux run |
+| Media | [JSON](media/json.md#performance), [YAML](media/yaml.md#performance), [TOML](media/toml.md#performance), [XML](media/xml.md#performance) | One Windows x86_64 release run of `python/benchmarks/text.py` and `node/benchmarks/text.js`: the natural-codec boundary per format; XML measured, no table yet |
+| Media | [YAML placeholders](media/yaml.md#placeholders) | 256-entry YAML documents, feature off and on; containerized x86_64 Linux, Criterion medians with 95% intervals |
+| Media | [Iceberg](media/iceberg.md#performance) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1 |
+| Media | [Iceberg against PyIceberg](media/iceberg.md#against-pyiceberg) | `python/benchmarks/media/iceberg.py`: appends, opens and four scans of a 1M-row table, unpartitioned and in eight partitions, beside PyIceberg's SQLite catalog; one containerized x86_64 Linux run |
 | Types | [Cast](types/cast.md) | One compiled `ArrowCastPlan` against planning per batch, over 1, 10 and 1,000 batches of 64 rows; one con... |
 | Types | [Field](types/field.md) | Rust times both consuming typed accessors, construction outside the timer; the bindings hold the cached val... |
 | Types | [Scalar](types/scalar.md) | The value model's own boundaries - enum, inference, and the `Scalar`/Arrow crossings - in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18... |

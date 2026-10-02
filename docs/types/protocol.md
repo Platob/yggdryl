@@ -299,12 +299,12 @@ depend on.
 | View | Vocabulary |
 | --- | --- |
 | `HttpField`, `HttpFieldMut` | `content_type`, `content_length`, `mime_type`, `media_type`, `location` |
-| [`IcebergField`, `IcebergFieldMut`](../media/index.md#iceberg) | `doc`, `schema_id`, `spec_id`, `transform` |
+| [`IcebergField`, `IcebergFieldMut`](../media/iceberg.md) | `doc`, `schema_id`, `spec_id`, `transform` |
 | [`FixField`, `FixFieldMut`](../fix/index.md) | `id` (derived from the tag and the name, never stored), `tag` and `tags` (positive only), `aliases`, `branches`, `identifiers` (a component's direct scalar members), `codeset` (the name of the vocabulary the dictionary holds its values under), `description` |
 | [`DigestField`, `DigestFieldMut`](../hashing.md) | `is_holder`, `algorithm`, `by`, `apply_arrow_batch`, and their setters; `time`, `unit`, `is_coupled` and their setters |
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `IDENTITY:` |
 | [`PartitionField`, `PartitionFieldMut`](#partition-columns) | `by`, `declares_partition`; `set_by`, `set_by_texts`, `remove_by`; [`Field::with_partition_by`](#partition-columns) is what marks the identity columns and materializes the derived ones, each a [transform](../expression/selectors.md#a-selector-declares-a-schema) column applied through `as_transform().apply_arrow_batch` |
-| [`SortField`, `SortFieldMut`](#sort-order) | `by`, `declares_order`; `set_by`, `set_by_texts`, `remove_by`; a [plan](../expression/plans.md) moves the keys into its `order by` and an [Iceberg table](../media/index.md#iceberg) into its default sort order |
+| [`SortField`, `SortFieldMut`](#sort-order) | `by`, `declares_order`; `set_by`, `set_by_texts`, `remove_by`; a [plan](../expression/plans.md) moves the keys into its `order by` and an [Iceberg table](../media/iceberg.md#declared-partitioning-and-sort-order) into its default sort order |
 | [`TransformField`, `TransformFieldMut`](../expression/selectors.md#a-selector-declares-a-schema) | `term`, `function`, `by`, `is_derived`, `declares_derivation`, `apply_arrow_batch`; `set_term`, `set_function`, `remove_term` |
 | `PythonField`, `PythonFieldMut` | `class`, `module`, `qualname`, `class_name`, `kind`, `import_path`, and their setters |
 
@@ -430,7 +430,7 @@ is marked `FIELD:partition`, and every derived entry is added as a marked column
 `with_partition_fields` is the same over bare columns. `partition_by` answers the declaration as canonical texts, else the marked columns; the `partition` view's `by` answers the declaration alone. A marked column the declaration does not
 name is refused naming both; a declared column may be unmarked or absent, because a leaf stores
 the rows minus the partition columns under the whole declaration, and an Iceberg table keeps a
-derived value in its manifest ([Iceberg](../media/index.md#iceberg)).
+derived value in its manifest ([Iceberg](../media/iceberg.md#declared-partitioning-and-sort-order)).
 
 === "Rust"
 
@@ -558,7 +558,7 @@ derived value in its manifest ([Iceberg](../media/index.md#iceberg)).
     ```
 
 Folder writes and reads read the marks and the derived columns' terms, and an Iceberg spec reads
-the declaration: [Partitions](../holder/index.md#partitions), [Iceberg](../media/index.md#iceberg).
+the declaration: [Partitions](../holder/index.md#partitions), [Iceberg](../media/iceberg.md#declared-partitioning-and-sort-order).
 
 ## Sort order
 

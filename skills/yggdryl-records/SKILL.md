@@ -253,8 +253,8 @@ medium does the work before a byte is decoded.
 
 - Records surface (signatures, pushdown, limits, append and merge, commit cadence, lazy scans): https://platob.github.io/yggdryl/holder/#records
 - Partitions (pruning, partition columns, derived columns): https://platob.github.io/yggdryl/holder/#partitions
-- Media overview and options: https://platob.github.io/yggdryl/media/#read-and-write
-- Per format: https://platob.github.io/yggdryl/media/#arrow-ipc, https://platob.github.io/yggdryl/media/#parquet, https://platob.github.io/yggdryl/media/#avro, https://platob.github.io/yggdryl/media/#excel, https://platob.github.io/yggdryl/media/#csv, https://platob.github.io/yggdryl/media/#plain-text, https://platob.github.io/yggdryl/media/#iceberg
+- Media overview and options: https://platob.github.io/yggdryl/media/
+- Per format: https://platob.github.io/yggdryl/media/ipc/, https://platob.github.io/yggdryl/media/parquet/, https://platob.github.io/yggdryl/media/avro/, https://platob.github.io/yggdryl/media/excel/, https://platob.github.io/yggdryl/media/csv/, https://platob.github.io/yggdryl/media/text/, https://platob.github.io/yggdryl/media/iceberg/
 - Required columns and the cast rule: https://platob.github.io/yggdryl/types/cast/
 - Plans and write verbs: https://platob.github.io/yggdryl/expression/plans/
 - Sibling skills: `yggdryl-storage` (handles, backends, codings), `yggdryl-arrow` (`Serie`, `SerieReader`, casts), `yggdryl-expressions` (filter/select grammar, `Plan`), `yggdryl-uri` (hive paths, globs), `yggdryl-types` (fields, dataclasses), `yggdryl-documents` (JSON/YAML/TOML/XML).

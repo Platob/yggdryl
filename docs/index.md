@@ -69,10 +69,10 @@ One tab per layer in the top bar; one page per family in that layer's sidebar.
 | --- | --- | --- |
 | Types | `DataType`, `Field`, `Scalar`, casting, and the datatype families | [types](types/index.md) |
 | Holder | `IOBase` handles: bytes, values, records, and the storage backends | [holder](holder/index.md) |
-| Coding | gzip, zlib/deflate, and Zstandard over any handle | [coding](media/index.md#compression) |
-| Charset | UTF-8, UTF-16, US-ASCII, and the ISO 8859, Windows, DOS and Mac code pages over any handle | [charset](media/index.md#charsets) |
+| Coding | gzip, zlib/deflate, and Zstandard over any handle | [compression](media/compression.md) |
+| Charset | UTF-8, UTF-16, US-ASCII, and the ISO 8859, Windows, DOS and Mac code pages over any handle | [charsets](media/charsets.md) |
 | Media | Arrow IPC, Parquet, Avro, CSV, plain-text records, XML for Analysis rowsets and their provider, and Iceberg tables | [media](media/index.md) |
-| Text | JSON, YAML, TOML, and XML over the shared `Scalar` | [text](media/index.md#json) |
+| Text | JSON, YAML, TOML, and XML over the shared `Scalar` | [JSON](media/json.md), [YAML](media/yaml.md), [TOML](media/toml.md), [XML](media/xml.md) |
 | URI | `Uri`, `Url`, `Urn`, `Arn`, paths, globs, and partitions | [uri](uri/index.md) |
 | Arrow | Scalars, schema projection, and batch readers at the Arrow boundary | [arrow](arrow/index.md) |
 | Expression | Predicates: parse, bind, evaluate, and push down | [expression](expression/index.md) |
