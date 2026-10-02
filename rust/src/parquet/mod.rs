@@ -1323,19 +1323,13 @@ fn extremes_bound(field: &Field) -> bool {
 /// The stored root column a filter column reads, with the field the filter
 /// reads it as - when it is stored as that type, and only then.
 ///
-/// A declared child that derives its value - a partition, digest or
-/// transform column - reads something other than what is stored under its
-/// name, so its statistics bound nothing the filter sees.
+/// A declared read only casts, so a child declaring a derivation or a digest
+/// holder reads what is stored under its name, and its statistics bound it.
 fn stored_column(root: &Field, stored: &Schema, name: &str) -> Option<(usize, Field)> {
     let declared = root
         .fields()
         .iter()
         .find(|child| child.name().eq_ignore_ascii_case(name))?;
-    if declared.metadata_iter().any(|(key, _)| {
-        key.starts_with("PARTITION:") || key.starts_with("DIGEST:") || key.starts_with("TRANSFORM:")
-    }) {
-        return None;
-    }
     let (index, column) = stored
         .fields()
         .iter()

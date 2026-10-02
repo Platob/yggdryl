@@ -291,10 +291,9 @@ Typed accessors parse and canonicalize both ways.
 
 ## Views
 
-Typed vocabulary lives on the view, never on `Field`. The one exception is
-[`Field::apply_arrow_batch`](field.md#applying-a-schemas-declarations), which owns no
-vocabulary of its own: it asks each declaring protocol in turn, in the order their answers
-depend on.
+Typed vocabulary lives on the view, never on `Field`;
+[`Field::apply_arrow_batch`](field.md#applying-a-schema) is the cast alone and fills no column a
+view's protocol declares - the `transform` and `digest` views' own `apply_arrow_batch` do.
 
 | View | Vocabulary |
 | --- | --- |
@@ -305,7 +304,7 @@ depend on.
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `IDENTITY:` |
 | [`PartitionField`, `PartitionFieldMut`](#partition-columns) | `by`, `declares_partition`; `set_by`, `set_by_texts`, `remove_by`; [`Field::with_partition_by`](#partition-columns) is what marks the identity columns and materializes the derived ones, each a [transform](../expression/selectors.md#a-selector-declares-a-schema) column applied through `as_transform().apply_arrow_batch` |
 | [`SortField`, `SortFieldMut`](#sort-order) | `by`, `declares_order`; `set_by`, `set_by_texts`, `remove_by`; a [plan](../expression/plans.md) moves the keys into its `order by` and an [Iceberg table](../media/iceberg.md#declared-partitioning-and-sort-order) into its default sort order |
-| [`TransformField`, `TransformFieldMut`](../expression/selectors.md#a-selector-declares-a-schema) | `term`, `function`, `by`, `is_derived`, `declares_derivation`, `apply_arrow_batch`; `set_term`, `set_function`, `remove_term` |
+| [`TransformField`, `TransformFieldMut`](../expression/selectors.md#a-selector-declares-a-schema) | `term`, `function`, `by`, `is_derived`, `apply_arrow_batch`; `set_term`, `set_function`, `remove_term` |
 | `PythonField`, `PythonFieldMut` | `class`, `module`, `qualname`, `class_name`, `kind`, `import_path`, and their setters |
 
 ## Digest holders and their by
@@ -557,8 +556,10 @@ derived value in its manifest ([Iceberg](../media/iceberg.md#declared-partitioni
     assert.deepEqual(derived.partition.by, derived.partitionBy())
     ```
 
-Folder writes and reads read the marks and the derived columns' terms, and an Iceberg spec reads
-the declaration: [Partitions](../holder/index.md#partitions), [Iceberg](../media/iceberg.md#declared-partitioning-and-sort-order).
+Folder writes and reads read the marks, and an Iceberg spec reads the declaration; a write only
+casts, so a derived column is filled through `as_transform().apply_arrow_batch` before it, else
+refused by path where required and written null where nullable:
+[Partitions](../holder/index.md#partitions), [Iceberg](../media/iceberg.md#declared-partitioning-and-sort-order).
 
 ## Sort order
 
@@ -680,7 +681,7 @@ from the schema takes them as its default sort order.
 - `SORT:by` -> the `order by` keys; `Plan::from_field` moves them out of the root's metadata into the section, and `field()` writes them back.
 - `TRANSFORM:function` -> a grammar function by name or alias, or a [user function](../expression/functions.md) `namespace.name`, canonicalized on write; `TRANSFORM:by` the terms it reads in argument order; `term` reads `function(by...)`, and refuses a function with no `by` beside it.
 - `TRANSFORM:expression` -> any other term; `set_term` writes the function and its `by` for a call over plain columns and the expression otherwise, and removes the spelling it did not write.
-- `apply_arrow_batch` -> the one verb both declaring protocols answer; each walks the Structs it declares and leaves a written value alone.
+- `apply_arrow_batch` -> the one verb the `transform` and `digest` views answer; each walks the Structs it declares and leaves a written value alone, and `Field::apply_arrow_batch` is the cast alone and fills neither.
 
 ## Commands
 

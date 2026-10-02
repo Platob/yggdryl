@@ -321,9 +321,9 @@ except ValueError as error:
 
 `into_field` writes a selector as the declaration it is, each computed column
 carrying `TRANSFORM:` metadata; `Selector.from_field` reads it back, and
-`Field.apply_arrow_batch` / `apply_arrow_reader` recomputes the derivations
-on a batch. Keep the source columns in the selector: the stored field is what
-the recompute reads.
+`field.transform.apply_arrow_batch` recomputes the derivations on a batch
+(`Field.apply_arrow_batch` is the cast alone). Keep the source columns in the
+selector: the stored field is what the recompute reads.
 
 ```python
 import pyarrow as pa
@@ -338,7 +338,7 @@ assert Selector.from_field(stored) == Selector("ccy utf8 null, size * 2 as doubl
 # Recompute: the derived column may arrive absent; the transform fills it.
 holder = Selector("ccy, size, size * 2 as doubled int32").into_field(root)
 batch = pa.record_batch({"ccy": ["EUR", "USD"], "size": pa.array([3, 4], pa.int64())})
-assert holder.apply_arrow_batch(batch).column("doubled").to_pylist() == [6, 8]
+assert holder.transform.apply_arrow_batch(batch).column("doubled").to_pylist() == [6, 8]
 ```
 
 ## Read the plan, the text and the document

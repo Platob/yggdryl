@@ -41,7 +41,7 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
 | value digest, any algorithm | `scalar.digest(alg)` | `scalar.digest("xxh64")` | `scalar.digest('xxh64')` |
 | feed a value into a state | `state.write_scalar(&v)` | `state.write_scalar(v)` | `state.writeScalar(v)` |
 | declare a holder column | `f.as_digest_mut().set_holder()?`, `set_by(["a"])?` | `f.digest.set_holder()`, `f.digest.by = ["a"]` | `f.digest.set('role', 'holder')`, `f.digest.by = ['a']` |
-| fill holders, seedless | `root.apply_arrow_batch(&b, true, true, true, opts)?`, `root.as_digest().apply_arrow_batch(&b)?` | `root.apply_arrow_batch(b)`, `root.digest.apply_arrow_batch(b)` | `new xxhash.Xxh3().applyArrowBatch(root, b)` |
+| fill holders, seedless | `root.as_digest().apply_arrow_batch(&b)?` | `root.digest.apply_arrow_batch(b)` | `new xxhash.Xxh3().applyArrowBatch(root, b)` |
 | fill holders, seeded / forced | `state.apply_arrow_batch(&root, b, force)?` | `state.apply_arrow_batch(root, b, force=True)` | `state.applyArrowBatch(root, b, true)` |
 | digest every row / cell | `xxhash::arrow::row_digests(&b, alg)?`, `column_digests(a, &f, alg)?` | `xxhash.row_digests(b)`, `column_digests(a, f)` | not bound |
 | couple an instant | `txhash::txh3(b, unix)`, `txhash::digest(b, unix, alg)` | `txhash.txh3(b, unix)` | `txhash.txh3(buf, unix)` |
@@ -88,11 +88,12 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
    holder` on the digest column; `DIGEST:by` (a JSON array of expression terms
    relative to its own Struct: a bare column feeds its buffers, any other term
    such as `lower(symbol)` is computed per batch) narrows the input, absent or
-   `["*"]` meaning every non-holder field. The schema pipeline fills holders
-   last, after cast and transform, and a written (non-default) cell is
+   `["*"]` meaning every non-holder field. The digest view's `apply_arrow_batch`
+   fills holders after the cast, and a written (non-default) cell is
    preserved unless forced - so re-filling is idempotent and cheap.
-9. **Seedless or seeded, decide once.** `Field.apply_arrow_batch` and the
-   `digest` view fill with the seedless `stable_hash`; a state's
+   `Field.apply_arrow_batch` is the cast alone and fills none.
+9. **Seedless or seeded, decide once.** The `digest` view fills
+   with the seedless `stable_hash`; a state's
    `apply_arrow_batch` applies its seed and secret. A seed changes every
    digest, so a seeded key is only comparable with the same seed.
 10. **Secrets are XXH3 only**: at least 136 bytes, refused below that, and
@@ -159,8 +160,8 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
 - The `digest` protocol view on a field: https://platob.github.io/yggdryl/types/protocol/
 - Sibling skills: `yggdryl-storage` (the `IOBase` handles `read_digest`
   streams), `yggdryl-types` (`Scalar`, `Field` metadata),
-  `yggdryl-expressions` (`Field.apply_arrow_batch`, the cast -> transform ->
-  digest pipeline),
+  `yggdryl-expressions` (`Field.apply_arrow_batch`, the cast; the `transform`
+  view, the derived columns a digest reads),
   `yggdryl-arrow` (batches and readers), `yggdryl-market-data` (event
   identities built on `TxHash` and UUIDv7), `yggdryl-expressions`
   (`stable_hash` of a plan as a cache key).

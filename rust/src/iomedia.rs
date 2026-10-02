@@ -458,8 +458,10 @@ pub trait IOMedia: Send {
     /// This is the required publication hook each handle implements. The
     /// workspace implementations use [`super::overwrite_arrow_reader_default`] for
     /// byte and folder handles; table formats override it so one call is one
-    /// native commit. A declared field is applied to the incoming rows exactly
-    /// once, followed by selection and completion onto the stored field.
+    /// native commit. A declared field is cast onto the incoming rows exactly
+    /// once, followed by selection and completion onto the stored field; a
+    /// `TRANSFORM:`, `PARTITION:` or `DIGEST:` declaration it carries fills no
+    /// column.
     ///
     /// A folder routes each row to the leaf its partition values name, creating
     /// the `column=value` directory when the layout has one and no leaf holds
