@@ -515,9 +515,10 @@ impl DataType {
     /// This is the one scalar conversion of the crate - the same one a
     /// `cast(...)` in an expression runs and a literal is coerced with - so
     /// a value converts one way wherever it is asked to. Text is read the
-    /// way the datatype reads it, a number widens or narrows when it fits,
-    /// and anything that would lose a digit, a character or a second is
-    /// refused rather than rounded.
+    /// way the datatype reads it. Integer narrowing refuses values that do
+    /// not fit; a Float target follows the numeric cast's IEEE rounding, as
+    /// the corresponding Arrow column cast does. Unsupported readings are
+    /// refused rather than guessed.
     ///
     /// ```
     /// use yggdryl::{DataType, Scalar};

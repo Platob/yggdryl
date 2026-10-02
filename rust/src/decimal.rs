@@ -1799,6 +1799,50 @@ impl Scalar {
         }
     }
 
+    /// The Float64 that Arrow's cast reads from this decimal's native width.
+    ///
+    /// Arrow converts the coefficient before applying the scale. Widening a
+    /// Decimal128 coefficient to i256 first can change its rounded Float64.
+    pub(crate) fn as_decimal_f64(&self) -> Option<f64> {
+        use arrow_array::types::{Decimal32Type, Decimal64Type, Decimal128Type, Decimal256Type};
+        use arrow_cast::cast::single_decimal_to_float_lossy;
+        use num_traits::ToPrimitive;
+
+        let wide = |coefficient: i256, scale: i8| {
+            let native = arrow_buffer::i256::from_le_bytes(coefficient.into_le_bytes());
+            single_decimal_to_float_lossy::<Decimal256Type, _>(
+                &|value| value.to_f64().expect("every i256 fits in Float64"),
+                native,
+                i32::from(scale),
+            )
+        };
+        Some(match self {
+            Self::Decimal32(value) => single_decimal_to_float_lossy::<Decimal32Type, _>(
+                &|native: i32| native as f64,
+                value.coefficient(),
+                i32::from(value.scale()),
+            ),
+            Self::Decimal64(value) => single_decimal_to_float_lossy::<Decimal64Type, _>(
+                &|native: i64| native as f64,
+                value.coefficient(),
+                i32::from(value.scale()),
+            ),
+            Self::Decimal128(value) => single_decimal_to_float_lossy::<Decimal128Type, _>(
+                &|native: i128| native as f64,
+                value.coefficient(),
+                i32::from(value.scale()),
+            ),
+            Self::Decimal256(value) => wide(value.coefficient(), value.scale()),
+            Self::Decimal(value) => single_decimal_to_float_lossy::<Decimal128Type, _>(
+                &|native: i128| native as f64,
+                value.units(),
+                i32::from(Decimal::SCALE),
+            ),
+            Self::BigDecimal(value) => wide(value.units(), BigDecimal::SCALE),
+            _ => return None,
+        })
+    }
+
     /// Return whether this value is an exact decimal.
     pub const fn is_decimal(&self) -> bool {
         crate::DataTypeKind::Decimal.contains(self.id())

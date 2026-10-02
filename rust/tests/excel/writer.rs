@@ -3,13 +3,14 @@
 //! as it was.
 
 use std::sync::Arc;
+use yggdryl::RecordHeader;
 
 use arrow_array::{Array, Float64Array, RecordBatch, RecordBatchIterator};
 use arrow_schema::{ArrowError, SchemaRef};
 use yggdryl::arrow::BatchReader;
 use yggdryl::excel::{
     CellKind, CellRef, DateSystem, Excel, ExcelOptions, NAMESPACE, NumberFormat,
-    RELATIONSHIPS_NAMESPACE, Workbook,
+    RELATIONSHIPS_NAMESPACE, StyleId, Workbook,
 };
 use yggdryl::holder::{Buffer, Holder};
 use yggdryl::media::IORecordOptions;
@@ -297,7 +298,7 @@ fn a_float_that_is_not_a_number_is_written_as_the_num_error() {
         .cell("C2".parse().unwrap())
         .unwrap();
     assert_eq!(cell.kind(), CellKind::Error);
-    assert_eq!(cell.error(), Some("#NUM!"));
+    assert_eq!(cell.error(), Some(yggdryl::excel::ExcelError::Num));
     assert!(cell.is_null());
 }
 
@@ -449,10 +450,27 @@ fn a_naive_temporal_is_its_serial_under_the_style_of_its_format() {
          <c r=\"C2\" s=\"3\"><v>45244.92592734953</v></c><c r=\"D2\" s=\"4\"><v>0.5</v></c>\
          <c r=\"E2\" s=\"5\"><v>1.0416666666666667</v></c><c r=\"F2\" s=\"1\"><v>25570</v></c></row>"
     );
-    assert_eq!(NumberFormat::Date.style_index(), 1);
-    assert_eq!(NumberFormat::DateTimeFraction.style_index(), 3);
-
     let workbook = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+    // Each format's style was interned as its column first needed it, in
+    // column order, into the one cell format a fresh package holds.
+    let styles = workbook.style_sheet().unwrap();
+    let code = |index: u16| {
+        styles
+            .style(StyleId::new(index))
+            .unwrap()
+            .number_format
+            .clone()
+    };
+    assert_eq!(styles.len(), 6);
+    for (index, format) in [
+        (1, NumberFormat::Date),
+        (2, NumberFormat::DateTime),
+        (3, NumberFormat::DateTimeFraction),
+        (4, NumberFormat::Time),
+        (5, NumberFormat::Duration),
+    ] {
+        assert_eq!(code(index), format.code().unwrap(), "{format}");
+    }
     let sheet = workbook.sheet("Sheet1").unwrap();
     let json = |reference: &str| {
         sheet
@@ -603,7 +621,7 @@ fn without_a_header_the_first_record_takes_the_anchor_cell() {
     let second = batch(&field, vec![trade(2, Some("b")), trade(3, Some("c"))]);
     let mut handle = xlsx();
     let options = ExcelOptions::new()
-        .with_header(false)
+        .with_header(RecordHeader::None)
         .with_range("C3:D9".parse().unwrap());
     yggdryl::excel::overwrite_arrow_reader(
         &mut handle,
@@ -696,7 +714,7 @@ fn the_last_grid_row_is_written_and_a_row_past_it_is_refused_naming_the_cell() {
     yggdryl::excel::overwrite_arrow_reader(
         &mut handle,
         stream(rows.schema(), vec![Ok(rows)]),
-        &last.clone().with_header(false),
+        &last.clone().with_header(RecordHeader::None),
     )
     .unwrap();
     assert_eq!(
@@ -829,7 +847,8 @@ fn a_write_into_a_named_sheet_replaces_that_sheet_alone() {
 #[test]
 fn a_joined_workbook_takes_its_serials_from_its_date_system_and_its_styles_after_its_own() {
     // The foreign package counts in the 1904 system and states three cell
-    // formats, so the crate's date style is the fourth after its own.
+    // formats, none reading `yyyy-mm-dd`, so the date style is appended as
+    // the fourth.
     let field = root([DataType::Date32.required_field("d")]);
     let rows = batch(
         &field,
@@ -846,7 +865,7 @@ fn a_joined_workbook_takes_its_serials_from_its_date_system_and_its_styles_after
     assert_eq!(
         sheet_data(&member(&after, "xl/worksheets/sheet2.xml")),
         format!(
-            "<sheetData><row r=\"1\">{}</row><row r=\"2\"><c r=\"A2\" s=\"4\"><v>43830</v></c></row></sheetData>",
+            "<sheetData><row r=\"1\">{}</row><row r=\"2\"><c r=\"A2\" s=\"3\"><v>43830</v></c></row></sheetData>",
             text("A1", "d")
         )
     );
@@ -1045,4 +1064,386 @@ fn a_value_refused_in_a_later_batch_keeps_its_type_and_leaves_the_handle_as_it_w
         "invalid record value at Sheet1!B3: expected at most 32767 characters in a cell, got 32768"
     );
     assert_eq!(handle.read_all_bytes().unwrap(), before);
+}
+
+#[test]
+fn every_temporal_leaf_is_written_under_the_format_its_serial_reads_back_as() {
+    // One column per temporal leaf and unit: the style a column is written
+    // under and the serial each value is written as are read by one rule,
+    // so every cell classifies as the format its column was styled for.
+    let naive = Timezone::NAIVE;
+    let leaves: Vec<(DataType, Scalar, NumberFormat)> = vec![
+        (DataType::Date32, Scalar::date32(19_723), NumberFormat::Date),
+        (
+            DataType::Date64,
+            Scalar::date64(86_400_000),
+            NumberFormat::Date,
+        ),
+        (
+            DataType::datetime64(TimeUnit::Second, naive).unwrap(),
+            Scalar::datetime64(1_700_000_000, TimeUnit::Second, naive).unwrap(),
+            NumberFormat::DateTime,
+        ),
+        (
+            DataType::datetime64(TimeUnit::Millisecond, naive).unwrap(),
+            Scalar::datetime64(1_700_000_000_123, TimeUnit::Millisecond, naive).unwrap(),
+            NumberFormat::DateTimeFraction,
+        ),
+        (
+            DataType::datetime64(TimeUnit::Microsecond, naive).unwrap(),
+            Scalar::datetime64(1_700_000_000_123_000, TimeUnit::Microsecond, naive).unwrap(),
+            NumberFormat::DateTimeFraction,
+        ),
+        (
+            DataType::datetime64(TimeUnit::Nanosecond, naive).unwrap(),
+            Scalar::datetime64(1_700_000_000_123_000_000, TimeUnit::Nanosecond, naive).unwrap(),
+            NumberFormat::DateTimeFraction,
+        ),
+        (
+            DataType::time32(TimeUnit::Second).unwrap(),
+            Scalar::time32(43_200, TimeUnit::Second, naive).unwrap(),
+            NumberFormat::Time,
+        ),
+        (
+            DataType::time32(TimeUnit::Millisecond).unwrap(),
+            Scalar::time32(43_200_500, TimeUnit::Millisecond, naive).unwrap(),
+            NumberFormat::Time,
+        ),
+        (
+            DataType::time64(TimeUnit::Microsecond).unwrap(),
+            Scalar::time64(43_200_000_000, TimeUnit::Microsecond, naive).unwrap(),
+            NumberFormat::Time,
+        ),
+        (
+            DataType::time64(TimeUnit::Nanosecond).unwrap(),
+            Scalar::time64(43_200_000_000_000, TimeUnit::Nanosecond, naive).unwrap(),
+            NumberFormat::Time,
+        ),
+        (
+            DataType::duration32(TimeUnit::Second).unwrap(),
+            Scalar::duration32(90_000, TimeUnit::Second).unwrap(),
+            NumberFormat::Duration,
+        ),
+        (
+            DataType::duration64(TimeUnit::Millisecond).unwrap(),
+            Scalar::duration64(90_000_000, TimeUnit::Millisecond).unwrap(),
+            NumberFormat::Duration,
+        ),
+        (
+            DataType::duration64(TimeUnit::Microsecond).unwrap(),
+            Scalar::duration64(90_000_000_000, TimeUnit::Microsecond).unwrap(),
+            NumberFormat::Duration,
+        ),
+        (
+            DataType::duration64(TimeUnit::Nanosecond).unwrap(),
+            Scalar::duration64(90_000_000_000_000, TimeUnit::Nanosecond).unwrap(),
+            NumberFormat::Duration,
+        ),
+    ];
+    let field = root(
+        leaves
+            .iter()
+            .enumerate()
+            .map(|(at, (dtype, _, _))| dtype.clone().required_field(format!("c{at}"))),
+    );
+    let handle = written(
+        &field,
+        vec![Scalar::from_sequence(
+            leaves.iter().map(|(_, value, _)| value.clone()),
+        )],
+    );
+    let workbook = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+    let sheet = workbook.sheet("Sheet1").unwrap();
+    let styles = workbook.style_sheet().unwrap();
+    for (at, (dtype, _, format)) in leaves.iter().enumerate() {
+        let cell = sheet
+            .cell(CellRef::new(1, u32::try_from(at).unwrap()))
+            .unwrap();
+        assert_eq!(cell.format(), *format, "{dtype}");
+        assert_eq!(
+            styles.style(cell.style()).unwrap().number_format,
+            format.code().unwrap(),
+            "{dtype}"
+        );
+    }
+}
+
+#[test]
+fn streamed_overwrite_keeps_the_workbook_namespace_family() {
+    use yggdryl::excel::{STRICT_NAMESPACE, STRICT_RELATIONSHIPS_NAMESPACE};
+
+    let archive = Arc::new(ZipArchive::new(Holder::buffer(Buffer::from_bytes(
+        foreign(),
+    ))));
+    let parts: Vec<(String, String)> = archive
+        .entries()
+        .unwrap()
+        .into_iter()
+        .map(|entry| {
+            let bytes = archive.read_member(entry.name()).unwrap();
+            let text = String::from_utf8(bytes)
+                .unwrap()
+                .replace(NAMESPACE, STRICT_NAMESPACE)
+                .replace(RELATIONSHIPS_NAMESPACE, STRICT_RELATIONSHIPS_NAMESPACE);
+            (entry.name().to_owned(), text)
+        })
+        .collect();
+    let parts: Vec<(&str, &str)> = parts
+        .iter()
+        .map(|(name, text)| (name.as_str(), text.as_str()))
+        .collect();
+    let original = package(&parts);
+    let field = root([
+        DataType::Date32.required_field("day"),
+        DataType::utf8().required_field("text"),
+    ]);
+    for (name, part) in [
+        ("Data", "xl/worksheets/sheet2.xml"),
+        ("Fresh", "xl/worksheets/sheet3.xml"),
+    ] {
+        let mut handle =
+            Buffer::from_bytes(original.clone()).with_media_type(MimeType::XLSX.into());
+        let rows: Vec<RecordBatch> = [(19_723, "first"), (19_724, "second")]
+            .into_iter()
+            .map(|(day, text)| {
+                batch(
+                    &field,
+                    vec![Scalar::from_sequence([
+                        Scalar::date32(day),
+                        Scalar::from(text),
+                    ])],
+                )
+            })
+            .collect();
+        yggdryl::excel::overwrite_arrow_reader(
+            &mut handle,
+            stream(rows[0].schema(), rows.into_iter().map(Ok).collect()),
+            &ExcelOptions::new().with_sheet(name),
+        )
+        .unwrap();
+        let bytes = handle.read_all_bytes().unwrap();
+        assert_eq!(member(&bytes, SHEET1), member(&original, SHEET1));
+        let written = member(&bytes, part);
+        let mut reader = quick_xml::NsReader::from_reader(written.as_bytes());
+        let mut elements = 0;
+        loop {
+            match reader.read_event().unwrap() {
+                quick_xml::events::Event::Start(start) | quick_xml::events::Event::Empty(start) => {
+                    let (namespace, _) = reader.resolver().resolve_element(start.name());
+                    let quick_xml::name::ResolveResult::Bound(namespace) = namespace else {
+                        panic!("unbound element in {written}")
+                    };
+                    assert_eq!(
+                        namespace.as_ref(),
+                        STRICT_NAMESPACE.as_bytes(),
+                        "{name}: {written}"
+                    );
+                    elements += 1;
+                }
+                quick_xml::events::Event::Eof => break,
+                _ => {}
+            }
+        }
+        assert!(elements > 10);
+        assert!(written.contains("<v>43830</v>"), "{written}");
+        assert!(written.contains("<v>43831</v>"), "{written}");
+        let reopened = Workbook::from_bytes(bytes).unwrap();
+        assert_eq!(reopened.date_system(), DateSystem::Year1904);
+        let sheet = reopened.sheet(name).unwrap();
+        assert_eq!(sheet.scalar("A2".parse().unwrap()), Scalar::date32(19_723));
+        assert_eq!(sheet.scalar("A3".parse().unwrap()), Scalar::date32(19_724));
+        assert_eq!(sheet.scalar("B2".parse().unwrap()), Scalar::from("first"));
+        assert_eq!(sheet.scalar("B3".parse().unwrap()), Scalar::from("second"));
+    }
+}
+
+#[test]
+fn rows_writer_sparse_header_only_vertical_merge_keeps_zero_records() {
+    let field = root([DataType::Float64.required_field("Count")]);
+    let empty = batch(&field, vec![]);
+    let mut handle = xlsx();
+    let options = ExcelOptions::new().with_header(RecordHeader::Rows(65));
+    yggdryl::excel::overwrite_arrow_reader(
+        &mut handle,
+        stream(empty.schema(), vec![Ok(empty)]),
+        &options,
+    )
+    .unwrap();
+    let xml = sheet_part(&handle);
+    assert!(xml.contains("<mergeCell ref=\"A1:A65\"/>"), "{xml}");
+    assert_eq!(xml.matches("<row ").count(), 1, "{xml}");
+    assert!(!xml.contains("<row r=\"66\">"), "{xml}");
+    let declared = yggdryl::excel::read_field(&handle, &options).unwrap();
+    assert_eq!(declared.fields()[0].name(), "Count");
+    assert_eq!(
+        yggdryl::excel::read_batch_reader(&handle, None, &options)
+            .unwrap()
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn rows_writer_two_batches_have_continuous_body_and_one_merge_block() {
+    let group = DataType::from(
+        StructType::from_fields([
+            DataType::Float64.required_field("Units"),
+            DataType::utf8().required_field("Note"),
+        ])
+        .unwrap(),
+    )
+    .required_field("Sales");
+    let field = root([group]);
+    let record = |units: f64, note: &str| {
+        Scalar::from_sequence([Scalar::from_sequence([
+            Scalar::from(units),
+            Scalar::from(note),
+        ])])
+    };
+    let first = batch(&field, vec![record(1.0, "first")]);
+    let second = batch(&field, vec![record(2.0, "second")]);
+    let mut handle = xlsx();
+    let options = ExcelOptions::new().with_header(RecordHeader::Rows(2));
+    yggdryl::excel::overwrite_arrow_reader(
+        &mut handle,
+        stream(first.schema(), vec![Ok(first), Ok(second)]),
+        &options,
+    )
+    .unwrap();
+    let xml = sheet_part(&handle);
+    assert_eq!(xml.matches("<mergeCells").count(), 1, "{xml}");
+    assert_eq!(
+        xml.matches("<mergeCell ref=\"A1:B1\"/>").count(),
+        1,
+        "{xml}"
+    );
+    assert!(row(&xml, 3).contains("first"), "{xml}");
+    assert!(row(&xml, 4).contains("second"), "{xml}");
+    let reopened = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+    let sheet = reopened.sheet("Sheet1").unwrap();
+    assert_eq!(sheet.scalar("A3".parse().unwrap()), Scalar::from(1.0));
+    assert_eq!(sheet.scalar("A4".parse().unwrap()), Scalar::from(2.0));
+}
+
+#[test]
+fn rows_writer_preserves_literal_lf_and_crlf_field_names() {
+    let field = root([
+        DataType::utf8().required_field("Line\nBreak"),
+        DataType::utf8().required_field("Return\r\nBreak"),
+    ]);
+    let mut handle = xlsx();
+    let options = ExcelOptions::new().with_header(RecordHeader::Rows(2));
+    yggdryl::excel::overwrite_arrow_reader(
+        &mut handle,
+        stream(
+            field.clone().into_arrow_schema().unwrap(),
+            vec![Ok(batch(
+                &field,
+                vec![Scalar::from_sequence([
+                    Scalar::from("x"),
+                    Scalar::from("y"),
+                ])],
+            ))],
+        ),
+        &options,
+    )
+    .unwrap();
+    let xml = sheet_part(&handle);
+    assert!(xml.contains("Line\nBreak"), "{xml}");
+    assert!(xml.contains("Return_x000D_\nBreak"), "{xml}");
+    let reopened = yggdryl::excel::read_field(&handle, &options).unwrap();
+    assert_eq!(reopened.fields()[0].name(), "Line\nBreak");
+    assert_eq!(reopened.fields()[1].name(), "Return\r\nBreak");
+}
+
+#[test]
+fn rows_stream_writer_late_bad_text_keeps_handle_bytes() {
+    let field = root([DataType::from(
+        StructType::from_fields([DataType::utf8().required_field("Label")]).unwrap(),
+    )
+    .required_field("Sales")]);
+    let long = "x".repeat(yggdryl::excel::MAX_CELL_TEXT + 1);
+    let rows = ["fine", long.as_str()]
+        .map(|text| Scalar::from_sequence([Scalar::from_sequence([Scalar::from(text)])]));
+    let batch = batch(&field, rows.to_vec());
+    let mut handle = xlsx();
+    let options = ExcelOptions::new().with_header(RecordHeader::Rows(2));
+    let error = yggdryl::excel::overwrite_arrow_reader(
+        &mut handle,
+        stream(batch.schema(), vec![Ok(batch)]),
+        &options,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("A4") || error.contains("maximum"), "{error}");
+    assert!(handle.read_all_bytes().unwrap().is_empty());
+}
+
+#[test]
+fn stream_writer_refuses_platform_maximum_length_without_overflow() {
+    let batch = RecordBatch::try_new_with_options(
+        Arc::new(arrow_schema::Schema::empty()),
+        Vec::new(),
+        &arrow_array::RecordBatchOptions::new().with_row_count(Some(usize::MAX)),
+    )
+    .unwrap();
+    let mut handle = xlsx();
+    let options = ExcelOptions::new().with_header(RecordHeader::Source);
+    let error = yggdryl::excel::overwrite_arrow_reader(
+        &mut handle,
+        stream(batch.schema(), vec![Ok(batch)]),
+        &options,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("rows"), "{error}");
+    assert!(handle.read_all_bytes().unwrap().is_empty());
+}
+
+#[test]
+fn rows_writer_sparse_headers_skip_covered_rows_but_keep_empty_body_records() {
+    let field = root([DataType::Float64.nullable_field("Count")]);
+    // Excel 16.0 build 20430.0 opens both A:A and A1:A1048576 without repair.
+    for (levels, count, reference) in [(65, 2, "A1:A65"), (yggdryl::excel::MAX_ROWS, 0, "A:A")] {
+        let values = vec![Scalar::from_sequence([Scalar::Null]); count];
+        let input = batch(&field, values.clone());
+        let mut handle = xlsx();
+        let options = ExcelOptions::new().with_header(RecordHeader::Rows(levels));
+        yggdryl::excel::overwrite_arrow_reader(
+            &mut handle,
+            stream(input.schema(), vec![Ok(input)]),
+            &options,
+        )
+        .unwrap();
+        let xml = sheet_part(&handle);
+        assert_eq!(
+            xml.matches("<row ").count(),
+            count + 1,
+            "covered header rows are represented by one merge; records stay physical"
+        );
+        assert!(
+            xml.contains(&format!("<mergeCell ref=\"{reference}\"/>")),
+            "{xml}"
+        );
+        assert!(
+            xml.len() < 1_024,
+            "one leaf and at most two records: {} bytes",
+            xml.len()
+        );
+        for offset in 1..=count {
+            assert_eq!(
+                row(&xml, levels + offset as u32),
+                format!("<row r=\"{}\"></row>", levels + offset as u32)
+            );
+        }
+        let mut restored = Vec::new();
+        for output in yggdryl::excel::read_batch_reader(&handle, Some(&field), &options).unwrap() {
+            let serie =
+                Serie::from_arrow_batch(None, &output.unwrap(), Default::default()).unwrap();
+            for index in 0..serie.len() {
+                restored.push(serie.scalar(index).unwrap());
+            }
+        }
+        assert_eq!(restored, values);
+    }
 }

@@ -923,8 +923,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         } else if self.handle.is_empty() {
             0
         } else {
-            let options = RecordOptions::Ipc(self.options.clone());
-            crate::IOMedia::read_arrow_field(self, &options)?.field_len()
+            read_field(&self.handle, &self.options)?.field_len()
         };
         if self.opened {
             let _ = self.cached_column_size.set(columns);
@@ -942,7 +941,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
     fn read_arrow_field(&self, options: &RecordOptions) -> crate::Result<Field> {
         let options = self.require_record_options(options)?;
         if let Some(field) = options.field() {
-            return Ok(field.clone());
+            return options.result_field(field);
         }
         // An explicit held Field makes the opened cache a logical declaration,
         // not the stored schema. A caller supplying different options must then
@@ -951,7 +950,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
             && self.options.field().is_none()
             && let Some(cached) = self.cached_schema.get()
         {
-            return Ok(cached.clone().with_name(options.name()));
+            return options.result_field(cached.clone().with_name(options.name()));
         }
         if self.handle.is_container() {
             return crate::iomedia::container_field(&self.handle, &options.clone().into());
@@ -961,7 +960,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
             let cached = field.clone().with_name(self.options.name());
             let _ = self.cached_schema.set(cached);
         }
-        Ok(field)
+        options.result_field(field)
     }
 
     fn overwrite_arrow_reader(

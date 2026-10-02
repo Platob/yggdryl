@@ -1684,26 +1684,34 @@ impl SerieReader {
     }
 }
 
-impl Iterator for SerieReader {
-    type Item = Result<Serie>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl SerieReader {
+    /// Check a raw batch's row count before its cast lands any values. A
+    /// medium with a physical row bound supplies it here; an ordinary reader
+    /// passes the no-op check through `Iterator::next`.
+    pub(crate) fn next_with_preflight(
+        &mut self,
+        check: impl FnOnce(usize) -> Result<()>,
+    ) -> Option<Result<Serie>> {
         let (reader, plan, then) = match self.inner.as_mut()? {
             Source::Stream(reader, plan, then) => (reader, &**plan, then.as_deref()),
             Source::Held(records) => {
-                let next = records.next();
-                if next.is_none() {
+                let next = records
+                    .next()
+                    .map(|record| check(record.len()).map(|_| record));
+                if next.as_ref().is_none_or(|result| result.is_err()) {
                     self.inner = None;
                 }
-                return next.map(Ok);
+                return next;
             }
         };
         let pulled = reader.next();
         let landed = match pulled {
-            Some(Ok(batch)) => plan.cast_batch(batch).and_then(|landed| match then {
-                Some(then) => then.apply(&landed),
-                None => Ok(landed),
-            }),
+            Some(Ok(batch)) => check(batch.num_rows())
+                .and_then(|()| plan.cast_batch(batch))
+                .and_then(|landed| match then {
+                    Some(then) => then.apply(&landed),
+                    None => Ok(landed),
+                }),
             Some(Err(error)) => Err(from_reader_error(error)),
             None => {
                 self.inner = None;
@@ -1714,6 +1722,14 @@ impl Iterator for SerieReader {
             self.inner = None;
         }
         Some(landed)
+    }
+}
+
+impl Iterator for SerieReader {
+    type Item = Result<Serie>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_with_preflight(|_| Ok(()))
     }
 }
 
@@ -1777,7 +1793,7 @@ impl RecordBatchReader for Reconciled {
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
-    //! What `rust/tests/allocations.rs` pins and a caller cannot reach.
+    //! Private landing and allocation pins a caller cannot reach.
 
     use std::sync::Arc;
 
@@ -1791,5 +1807,13 @@ pub mod internals {
     /// Returns the layout's refusal.
     pub fn from_canonical_rows(field: Arc<Field>, rows: &[&Scalar]) -> crate::Result<Serie> {
         super::from_canonical_rows(field, rows)
+    }
+
+    /// Exercise the crate-private pre-landing check from the mirrored test.
+    pub fn next_with_preflight(
+        reader: &mut crate::SerieReader,
+        check: impl FnOnce(usize) -> crate::arrow::Result<()>,
+    ) -> Option<crate::arrow::Result<crate::Serie>> {
+        reader.next_with_preflight(check)
     }
 }

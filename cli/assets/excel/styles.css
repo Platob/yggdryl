@@ -1,0 +1,746 @@
+/* The workbook UI. Every style is set here or through the CSSOM: the page's
+   Content-Security-Policy refuses inline `style` markup. */
+
+:root {
+  --accent: #1f6f8b;
+  --accent-strong: #154d61;
+  --accent-soft: #e2eff3;
+  --ui-bg: #f4f5f6;
+  --ui-panel: #ffffff;
+  --ui-border: #d5d9dd;
+  --ui-text: #1c2227;
+  --ui-muted: #5b6670;
+  --ui-hover: #e8ebee;
+  --danger: #b3261e;
+  --font-ui: "Segoe UI", system-ui, -apple-system, Carlito, Arial, sans-serif;
+
+  /* Canvas colours, read once through `.palette-*` probes. */
+  --sheet: #ffffff;
+  --grid: #e0e3e6;
+  --header: #f1f3f4;
+  --header-text: #46505a;
+  --header-line: #cdd2d7;
+  --header-active: #d8e8ee;
+  --header-active-text: #154d61;
+  --header-full: #b8d5e0;
+  --selection: rgba(31, 111, 139, 0.14);
+  --frozen: #8a949d;
+  --text: #000000;
+  --pending: rgba(31, 111, 139, 0.55);
+  /* A formula's references, in turn: its text and its frames on the grid. */
+  --ref-1: #1f5fbf;
+  --ref-2: #c0392b;
+  --ref-3: #7b3fa0;
+  --ref-4: #1e8449;
+  --ref-5: #b35900;
+  --ref-6: #0e7c86;
+  --ref-7: #b0287a;
+  --menu-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+}
+
+.palette-sheet { color: var(--sheet); }
+.palette-grid { color: var(--grid); }
+.palette-header { color: var(--header); }
+.palette-header-text { color: var(--header-text); }
+.palette-header-line { color: var(--header-line); }
+.palette-header-active { color: var(--header-active); }
+.palette-header-active-text { color: var(--header-active-text); }
+.palette-header-full { color: var(--header-full); }
+.palette-accent { color: var(--accent); }
+.palette-selection { color: var(--selection); }
+.palette-frozen { color: var(--frozen); }
+.palette-text { color: var(--text); }
+.palette-pending { color: var(--pending); }
+.palette-ref-1 { color: var(--ref-1); }
+.palette-ref-2 { color: var(--ref-2); }
+.palette-ref-3 { color: var(--ref-3); }
+.palette-ref-4 { color: var(--ref-4); }
+.palette-ref-5 { color: var(--ref-5); }
+.palette-ref-6 { color: var(--ref-6); }
+.palette-ref-7 { color: var(--ref-7); }
+/* Forced colours must not rewrite the probes: they report the system colours set below. */
+.palette-probe { position: absolute; visibility: hidden; forced-color-adjust: none; }
+
+@media (forced-colors: active) {
+  :root {
+    --sheet: Canvas;
+    --grid: GrayText;
+    --header: ButtonFace;
+    --header-text: ButtonText;
+    --header-line: ButtonText;
+    --header-active: Highlight;
+    --header-active-text: HighlightText;
+    --header-full: Highlight;
+    --accent: Highlight;
+    --selection: color-mix(in srgb, Highlight 30%, transparent);
+    --frozen: CanvasText;
+    --text: CanvasText;
+    --pending: Highlight;
+    --ref-1: Highlight;
+    --ref-2: Highlight;
+    --ref-3: Highlight;
+    --ref-4: Highlight;
+    --ref-5: Highlight;
+    --ref-6: Highlight;
+    --ref-7: Highlight;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font: 13px/1.3 var(--font-ui);
+}
+
+button, select, input { font: inherit; color: inherit; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  /* One column the window's width: no bar's content widens the page past
+     it; the ribbon scrolls and the status bar gives way instead. */
+  grid-template-columns: minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+}
+
+.icon { width: 16px; height: 16px; flex: none; vertical-align: middle; }
+.icon.chevron { width: 10px; height: 10px; }
+
+/* Title --------------------------------------------------------------- */
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  background: var(--accent);
+  color: #ffffff;
+}
+.titlebar .logo { width: 18px; height: 18px; }
+.title { margin: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.title-state { font-size: 12px; opacity: 0.85; }
+.quick { display: flex; gap: 2px; margin-right: 4px; }
+.quick button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.quick button:hover { background: rgba(255, 255, 255, 0.18); }
+.quick button[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+.quick button[aria-disabled="true"]:hover { background: none; }
+
+/* Ribbon -------------------------------------------------------------- */
+
+.ribbon-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px;
+  background: var(--ui-panel);
+  border-bottom: 1px solid var(--ui-border);
+}
+.tab {
+  border: 0;
+  background: none;
+  padding: 7px 12px 6px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.tab:hover { background: var(--ui-hover); }
+.tab[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--accent-strong); font-weight: 600; }
+.tab-file { color: var(--accent-strong); font-weight: 600; }
+
+.ribbon {
+  background: var(--ui-panel);
+  border-bottom: 1px solid var(--ui-border);
+  height: 104px;
+}
+.panel {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  height: 100%;
+  padding: 4px 6px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.panel[hidden] { display: none; }
+.backstage { gap: 6px; padding: 8px 12px; }
+
+.group {
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px;
+  border-right: 1px solid var(--ui-border);
+  flex: none;
+}
+.group-body { display: flex; align-items: flex-start; gap: 2px; flex: 1; }
+.group-body.rows { flex-direction: column; gap: 4px; }
+.group-label { text-align: center; color: var(--ui-muted); font-size: 11px; padding: 2px 0 3px; }
+.row { display: flex; align-items: center; gap: 2px; }
+.stack { display: flex; flex-direction: column; gap: 1px; }
+.sep { width: 1px; height: 18px; background: var(--ui-border); margin: 0 3px; }
+
+.ribbon button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ribbon button:hover { background: var(--ui-hover); }
+.ribbon button:active { background: var(--accent-soft); }
+.ribbon button[aria-pressed="true"] { background: var(--accent-soft); border-color: #a9cbd7; }
+.ribbon button.big {
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  height: 62px;
+  min-width: 48px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+.ribbon button.big .icon { width: 24px; height: 24px; }
+.ribbon button.drop { height: 62px; min-width: 14px; padding: 0 1px; margin-left: -4px; }
+.ribbon select {
+  height: 26px;
+  border: 1px solid var(--ui-border);
+  border-radius: 4px;
+  background: var(--ui-panel);
+  padding: 0 4px;
+}
+.font-name { width: 140px; }
+.font-size { width: 56px; }
+.number-format { width: 150px; }
+
+/* Formula row --------------------------------------------------------- */
+
+.formula-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--ui-panel);
+  border-bottom: 1px solid var(--ui-border);
+}
+.namebox, .formula {
+  height: 26px;
+  border: 1px solid var(--ui-border);
+  border-radius: 3px;
+  background: var(--ui-panel);
+  padding: 0 6px;
+}
+/* The formula bar is a one-line textarea, so Alt+Enter can break a line. */
+.formula { resize: none; overflow: hidden; line-height: 24px; white-space: pre; overflow-wrap: normal; }
+.namebox { width: 110px; flex: none; }
+.formula { position: relative; z-index: 1; flex: 1; min-width: 0; font-family: var(--font-ui); }
+.namebox:focus, .formula:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.fx {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  border-left: 1px solid var(--ui-border);
+  border-right: 1px solid var(--ui-border);
+  background: none;
+  color: var(--ui-muted);
+  cursor: pointer;
+}
+.fx:hover { background: var(--ui-hover); color: var(--ui-text); }
+
+/* A formula's references in colour: a backdrop under the text field draws
+   its text, and the field's own glyphs go transparent over it. */
+.editor-backdrop {
+  position: absolute;
+  margin: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-style: solid;
+  border-color: transparent;
+}
+.editor-backdrop[hidden] { display: none; }
+.cell-backdrop { z-index: 2; background: var(--sheet); color: var(--text); }
+.formula-backdrop { z-index: 0; background: var(--ui-panel); color: var(--ui-text); }
+.editor-backdrop .ref-1 { color: var(--ref-1); }
+.editor-backdrop .ref-2 { color: var(--ref-2); }
+.editor-backdrop .ref-3 { color: var(--ref-3); }
+.editor-backdrop .ref-4 { color: var(--ref-4); }
+.editor-backdrop .ref-5 { color: var(--ref-5); }
+.editor-backdrop .ref-6 { color: var(--ref-6); }
+.editor-backdrop .ref-7 { color: var(--ref-7); }
+.cell-editor.coloured, .formula.coloured { color: transparent !important; background-color: transparent !important; }
+.cell-editor.coloured { caret-color: var(--text); }
+.formula.coloured { caret-color: var(--ui-text); }
+.cell-editor.coloured::selection, .formula.coloured::selection { color: HighlightText; background-color: Highlight; }
+
+/* The names offered while a function's name is typed, and a call's arguments. */
+.function-list, .argument-tip {
+  position: fixed;
+  z-index: 40;
+  left: 0;
+  top: 0;
+  background: var(--ui-panel);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-border);
+  box-shadow: var(--menu-shadow);
+  font: 12px var(--font-ui);
+}
+.function-list { width: 280px; }
+.function-list[hidden], .argument-tip[hidden] { display: none; }
+.function-list ul { list-style: none; margin: 0; padding: 2px 0; max-height: 176px; overflow-y: auto; }
+.function-option { display: flex; align-items: center; gap: 6px; padding: 0 8px; line-height: 22px; cursor: default; white-space: nowrap; }
+.function-option:hover { background: var(--ui-hover); }
+.function-option[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-strong); }
+.function-kind { flex: none; width: 28px; color: var(--ui-muted); font-size: 10px; font-style: italic; }
+.function-note { margin: 0; padding: 4px 8px 6px; border-top: 1px solid var(--ui-border); color: var(--ui-muted); white-space: normal; }
+.function-note:empty { display: none; }
+.argument-tip { padding: 2px 6px; white-space: nowrap; }
+.argument-tip .current { font-weight: 700; }
+
+/* Grid ---------------------------------------------------------------- */
+
+.workspace { display: flex; flex-direction: column; min-height: 0; background: var(--sheet); }
+.grid { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.grid-canvas { position: absolute; left: 0; top: 0; display: block; touch-action: none; cursor: default; }
+.grid-canvas[data-cursor="cell"] { cursor: cell; }
+.grid-canvas[data-cursor="handle"] { cursor: crosshair; }
+.grid[data-fill="copy"] .grid-canvas { cursor: copy; }
+.grid:focus-within { outline: none; }
+
+/* The in-cell editor: placed, sized and given the cell's font through the CSSOM. */
+.cell-editor {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  margin: 0;
+  border: 2px solid var(--accent);
+  border-radius: 0;
+  background: var(--sheet);
+  color: var(--text);
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.cell-editor[hidden] { display: none; }
+
+.scrollbar { position: relative; background: var(--ui-bg); user-select: none; touch-action: none; }
+.scrollbar.vertical { position: absolute; top: 0; right: 0; bottom: 0; width: 14px; border-left: 1px solid var(--ui-border); }
+.scrollbar.horizontal { height: 14px; flex: 1 1 40%; min-width: 120px; align-self: center; border-left: 1px solid var(--ui-border); }
+.thumb { position: absolute; background: #b8bfc6; border-radius: 6px; }
+.scrollbar.vertical .thumb { left: 3px; right: 3px; top: 0; height: 24px; }
+.scrollbar.horizontal .thumb { top: 3px; bottom: 3px; left: 0; width: 24px; }
+.thumb:hover, .thumb.dragging { background: #8f99a3; }
+
+.sheetbar {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  height: 28px;
+  background: var(--ui-bg);
+  border-top: 1px solid var(--ui-border);
+}
+.sheetbar button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+}
+.sheetbar button:hover { background: var(--ui-hover); }
+.sheetbar button[aria-disabled="true"] { opacity: 0.4; cursor: default; }
+.sheetbar button[aria-disabled="true"]:hover { background: none; }
+.sheet-nav { display: flex; }
+.sheet-tabs {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 60px;
+  overflow: hidden;
+}
+.sheetbar .sheet-tab {
+  flex: none;
+  max-width: 200px;
+  padding: 0 14px;
+  border-right: 1px solid var(--ui-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ui-muted);
+}
+.sheetbar .sheet-tab[aria-selected="true"] {
+  background: var(--sheet);
+  color: var(--accent-strong);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.sheetbar .sheet-tab.chartsheet { font-style: italic; }
+.sheetbar .sheet-tab.dragging { opacity: 0.55; }
+.sheetbar[data-dragging] { cursor: grabbing; }
+/* Rename in place: the tab's own box, as a text field. */
+.sheetbar .sheet-rename {
+  flex: none;
+  align-self: center;
+  height: 22px;
+  margin: 0 2px;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  font: inherit;
+  color: var(--ui-text);
+  background: var(--sheet);
+}
+/* Where a dragged tab lands. */
+.sheet-drop {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  width: 3px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.sheet-drop[hidden] { display: none; }
+.sheet-add { border-right: 1px solid var(--ui-border); }
+
+/* Status bar ---------------------------------------------------------- */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 26px;
+  padding: 0 8px 0 12px;
+  background: var(--ui-panel);
+  border-top: 1px solid var(--ui-border);
+  color: var(--ui-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.status-mode { min-width: 40px; color: var(--ui-text); }
+.statusbar > * { flex: none; }
+.statusbar > .status-fill { flex: 1 1 0; }
+/* What gives way when the bar is short: the note, down to a few words,
+   then whole aggregates (status.js hides them from the left). */
+.statusbar > .status-note { flex: 0 1 auto; min-width: 96px; overflow: hidden; text-overflow: ellipsis; }
+.statusbar > .status-note:empty { min-width: 0; }
+.status-aggregates { display: flex; gap: 14px; color: var(--ui-text); }
+.status-aggregate[hidden] { display: none; }
+.status-button {
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  color: var(--ui-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.status-button:hover { background: var(--ui-hover); border-color: var(--ui-border); }
+.status-button[hidden] { display: none; }
+.status-circular { color: var(--danger); }
+.status-saved[data-state="unsaved"] { color: var(--accent-strong); font-weight: 600; }
+.status-zoom-group { display: flex; align-items: center; gap: 2px; }
+.status-zoom-group .status-button { width: 20px; padding: 0; font-size: 14px; line-height: 1; }
+.status-slider { width: 110px; height: 16px; margin: 0 2px; accent-color: var(--accent); cursor: pointer; }
+.status-zoom { min-width: 38px; text-align: right; color: var(--ui-text); }
+
+/* Menus --------------------------------------------------------------- */
+
+.menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 180px;
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
+  padding: 4px 0;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  box-shadow: var(--menu-shadow);
+  font-size: 13px;
+}
+.menu:focus { outline: none; }
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 12px 0 6px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.menu-item:focus { outline: none; background: var(--accent-soft); }
+.menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.menu-item[aria-disabled="true"] { color: var(--ui-muted); opacity: 0.6; cursor: default; }
+.menu-check { width: 14px; text-align: center; color: var(--accent-strong); }
+.menu-label { flex: 1; }
+.menu-shortcut { color: var(--ui-muted); font-size: 12px; margin-left: 16px; }
+.menu-arrow { color: var(--ui-muted); margin-left: 8px; }
+.menu-separator { height: 1px; margin: 4px 0; background: var(--ui-border); }
+.menu-heading { padding: 6px 12px 2px; color: var(--ui-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.menu-swatches {
+  display: grid;
+  grid-template-columns: repeat(10, 18px);
+  gap: 3px;
+  padding: 4px 12px 6px;
+}
+.menu-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 2px;
+  cursor: pointer;
+  forced-color-adjust: none;
+}
+.menu-swatch:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Dialogs ------------------------------------------------------------- */
+
+dialog.dialog {
+  max-width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-panel);
+  color: var(--ui-text);
+  box-shadow: var(--menu-shadow);
+  overflow: auto;
+}
+dialog.dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
+dialog.confirm { max-width: min(420px, calc(100vw - 32px)); }
+dialog.small { width: min(340px, calc(100vw - 32px)); }
+dialog.format-cells { width: min(620px, calc(100vw - 32px)); }
+dialog.find { width: min(520px, calc(100vw - 32px)); }
+dialog.sort { width: min(600px, calc(100vw - 32px)); }
+dialog.functions { width: min(480px, calc(100vw - 32px)); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 4px 20px; }
+.dialog-title { margin: 0; font-size: 15px; font-weight: 600; }
+.dialog-close { width: 28px; height: 28px; border: 0; border-radius: 4px; background: none; font-size: 18px; line-height: 1; cursor: pointer; }
+.dialog-close:hover { background: var(--ui-hover); }
+.dialog-body { padding: 8px 20px 4px; }
+.dialog-body p { margin: 0 0 12px; }
+.dialog-error { margin: 4px 20px 0; color: var(--danger); }
+.dialog-error[hidden] { display: none; }
+.dialog-buttons { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px 16px; }
+.dialog-buttons button, .dialog button.secondary {
+  min-width: 80px;
+  height: 30px;
+  border: 1px solid var(--ui-border);
+  border-radius: 4px;
+  background: var(--ui-panel);
+  cursor: pointer;
+}
+.dialog-buttons button.primary { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+.dialog-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--ui-border); margin-bottom: 12px; }
+.dialog-tab {
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+}
+.dialog-tab[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--accent-strong); font-weight: 600; }
+.dialog-panel { min-height: 280px; }
+.dialog-buttons button[hidden] { display: none; }
+.dialog button.secondary:disabled { opacity: 0.45; cursor: default; }
+/* Find and Replace. */
+.find-panel input[type="text"] { width: 100%; box-sizing: border-box; }
+.find-options { display: grid; grid-template-columns: 1fr 1fr 1.6fr; gap: 12px; align-items: start; }
+.find-status { min-height: 18px; margin: 4px 0 0; color: var(--ui-muted); }
+/* Custom Sort: one row per level. */
+.function-find { display: flex; gap: 6px; }
+.function-find input { flex: 1; min-width: 0; }
+#function-choices { width: 100%; }
+.dialog-body p.function-signature { margin: 4px 0 2px; }
+.dialog-body p.function-about { min-height: 3em; margin: 0 0 4px; color: var(--ui-muted); }
+.sort-head { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
+.sort-head .field { margin: 0; }
+.sort-levels { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow: auto; margin-bottom: 10px; }
+.sort-level { display: grid; grid-template-columns: 64px minmax(0, 1fr) 160px repeat(3, 28px); gap: 6px; align-items: center; }
+.sort-level-name { color: var(--ui-muted); font-size: 12px; }
+.dialog button.sort-move { min-width: 28px; width: 28px; height: 26px; padding: 0; }
+.dialog-panel[hidden] { display: none; }
+.dialog-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.dialog fieldset { margin: 0 0 10px; padding: 6px 10px 8px; border: 1px solid var(--ui-border); border-radius: 4px; }
+.dialog legend { padding: 0 4px; color: var(--ui-muted); font-size: 12px; }
+.field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+.field[hidden] { display: none; }
+.field.check { flex-direction: row; align-items: center; gap: 6px; }
+.field label, .field-label { color: var(--ui-muted); font-size: 12px; }
+.field.check label { color: var(--ui-text); font-size: 13px; }
+.field-hint { color: var(--ui-muted); font-size: 12px; margin: 0; }
+.dialog input[type="text"], .dialog input[type="number"], .dialog select {
+  min-height: 26px;
+  padding: 2px 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: 3px;
+  background: var(--ui-panel);
+}
+.dialog select[size] { padding: 2px; }
+.dialog input[type="color"] { width: 64px; height: 26px; padding: 1px; border: 1px solid var(--ui-border); border-radius: 3px; background: var(--ui-panel); }
+.number-tab { display: grid; grid-template-columns: 150px 1fr; gap: 16px; }
+.number-tab select[size] { width: 100%; }
+.number-right { min-width: 0; }
+.number-right select[size] { width: 100%; }
+/* The number sample as the service renders it; a `*x` fill fills the
+   room between its two halves, clipped. */
+.number-sample {
+  display: flex;
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: 3px;
+  background: var(--sheet);
+  color: var(--text);
+  white-space: pre;
+  overflow: hidden;
+}
+.number-sample[data-state="asking"] { opacity: 0.6; }
+.number-fill { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; }
+.sample-refused { margin-top: 4px; color: var(--danger); }
+.sample-refused[hidden] { display: none; }
+.font-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 64px;
+  overflow: hidden;
+  border: 1px solid var(--ui-border);
+  border-radius: 3px;
+  background: var(--sheet);
+  forced-color-adjust: none;
+}
+.presets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.preset { padding: 3px 8px; border: 1px solid var(--ui-border); border-radius: 3px; background: var(--ui-panel); cursor: pointer; }
+.preset:hover { background: var(--ui-hover); }
+.border-preview {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 180px;
+  height: 90px;
+  margin-bottom: 8px;
+  background: var(--sheet);
+  outline: 1px dashed var(--ui-border);
+  forced-color-adjust: none;
+}
+.border-cell { display: flex; align-items: center; justify-content: center; color: var(--ui-muted); font-size: 11px; }
+.dialog-swatches { display: grid; grid-template-columns: repeat(10, 18px); gap: 3px; margin: 10px 0; }
+.dialog-swatches .menu-swatch[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.fill-sample { height: 64px; margin: 4px 0 6px; border: 1px solid var(--ui-border); border-radius: 3px; forced-color-adjust: none; }
+
+/* Clipboard ------------------------------------------------------------- */
+
+/* The marquee round a copy, a cut or the Format Painter's source: marching
+   ants from four gradients, still under reduced motion. */
+.marquee-clip { position: absolute; z-index: 1; overflow: hidden; pointer-events: none; }
+.marquee-clip[hidden] { display: none; }
+.marquee {
+  position: absolute;
+  pointer-events: none;
+  --ant: var(--accent);
+  background-image:
+    linear-gradient(90deg, var(--ant) 50%, transparent 50%),
+    linear-gradient(90deg, var(--ant) 50%, transparent 50%),
+    linear-gradient(0deg, var(--ant) 50%, transparent 50%),
+    linear-gradient(0deg, var(--ant) 50%, transparent 50%);
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+  background-size: 8px 2px, 8px 2px, 2px 8px, 2px 8px;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  animation: marching-ants 0.6s linear infinite;
+}
+.marquee[data-kind="painter"] { --ant: var(--accent-strong); }
+@keyframes marching-ants {
+  to { background-position: 8px 0, -8px 100%, 0 -8px, 100% 8px; }
+}
+.grid[data-painter] .grid-canvas { cursor: copy; }
+
+/* Toasts -------------------------------------------------------------- */
+
+.toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+  max-width: min(480px, calc(100vw - 32px));
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-border);
+  border-left: 4px solid var(--accent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.toast-error { border-left-color: var(--danger); }
+.toast span { flex: 1; overflow-wrap: anywhere; }
+.toast-close { border: 0; background: none; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+@media (forced-colors: active) {
+  .thumb { background: ButtonText; }
+  .marquee { forced-color-adjust: none; --ant: Highlight; }
+  .ribbon button[aria-pressed="true"], .sheetbar .sheet-tab[aria-selected="true"] { outline: 2px solid Highlight; }
+  .menu-item:focus { outline: 2px solid Highlight; outline-offset: -2px; }
+  .cell-editor { border-color: Highlight; }
+  /* The system's colours for the text itself: no backdrop behind it. */
+  .editor-backdrop { display: none !important; }
+  .cell-editor.coloured, .formula.coloured { color: CanvasText !important; background-color: Canvas !important; }
+  .function-option[aria-selected="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .function-option[aria-selected="true"] .function-kind { color: HighlightText; }
+  .sheet-drop { forced-color-adjust: none; background: Highlight; }
+}

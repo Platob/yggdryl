@@ -323,6 +323,90 @@ fn scalar_benchmarks(criterion: &mut Criterion) {
             });
         });
     }
+    let decimal_to_float = "cast(price as float64)"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    group.bench_function("decimal_float64_cast", |bencher| {
+        bencher.iter(|| {
+            for row in &rows {
+                black_box(decimal_to_float.eval(black_box(row)).unwrap());
+            }
+        });
+    });
+    let trimmed = "trim(venue)"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    group.bench_function("trim_borrowed_text", |bencher| {
+        bencher.iter(|| {
+            for row in &rows {
+                black_box(trimmed.eval(black_box(row)).unwrap());
+            }
+        });
+    });
+    let magnitude = "abs(size)".parse::<Term>().unwrap().bind(&schema).unwrap();
+    let square_root = "sqrt(size)".parse::<Term>().unwrap().bind(&schema).unwrap();
+    group.bench_function("square_root_int64", |bencher| {
+        bencher.iter(|| {
+            for row in &rows {
+                black_box(square_root.eval(black_box(row)).unwrap());
+            }
+        });
+    });
+    group.bench_function("absolute_int64", |bencher| {
+        bencher.iter(|| {
+            for row in &rows {
+                black_box(magnitude.eval(black_box(row)).unwrap());
+            }
+        });
+    });
+    let temporal_schema = DataType::from(
+        StructType::from_fields([DataType::datetime64(
+            yggdryl::TimeUnit::Second,
+            yggdryl::Timezone::UTC,
+        )
+        .unwrap()
+        .required_field("stamp")])
+        .unwrap(),
+    )
+    .required_field("row");
+    let temporal_row = Scalar::from_sequence([Scalar::datetime64(
+        0,
+        yggdryl::TimeUnit::Second,
+        yggdryl::Timezone::UTC,
+    )
+    .unwrap()]);
+    let year = "year(stamp)"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&temporal_schema)
+        .unwrap();
+    group.bench_function("calendar_year", |bencher| {
+        bencher.iter(|| {
+            for _ in 0..rows.len() {
+                black_box(year.eval(black_box(&temporal_row)).unwrap());
+            }
+        });
+    });
+    let text_schema =
+        DataType::from(StructType::from_fields([DataType::utf8().required_field("s")]).unwrap())
+            .required_field("row");
+    let text_row = Scalar::from_sequence([Scalar::from("a😀e\u{301}z".repeat(64))]);
+    let substring = "substring(s, 2, 2)"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&text_schema)
+        .unwrap();
+    group.bench_function("substring_unicode", |bencher| {
+        bencher.iter(|| {
+            for _ in 0..rows.len() {
+                black_box(substring.eval(black_box(&text_row)).unwrap());
+            }
+        });
+    });
     group.finish();
 }
 

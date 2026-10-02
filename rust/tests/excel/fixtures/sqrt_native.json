@@ -1,0 +1,13 @@
+{
+  "excel_version": "16.0",
+  "excel_build": "20430.0",
+  "source_report": "rust/target/excel-desktop/p5-functions-active/results.json",
+  "source_manifest_sha256": "3a1b341d1e66691c04e2f33d6803aada608cbd7a648c94de03b411c63eabafc5",
+  "scope": "One stable SQRT observation; source run failed unrelated locale TEXT calibration and was not a full oracle pass.",
+  "formula": "SQRT(2)",
+  "cell": "B37",
+  "before_bits": "3ff6a09e667f3bcd",
+  "after_bits": "3ff6a09e667f3bcd",
+  "cache_type": "n",
+  "cache_text": "1.4142135623730951"
+}

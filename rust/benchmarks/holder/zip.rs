@@ -269,5 +269,32 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(many_members(MEMBERS)).archive().size());
     });
 
+    // A copy moves a member's encoded bytes as they are stored, so beside
+    // the decode-and-encode it replaces it costs the bytes and nothing more.
+    let source = one_member(Codec::Deflate);
+    group.throughput(Throughput::Bytes(MEMBER_LEN as u64));
+    group.bench_function("copy/raw", |bencher| {
+        bencher.iter(|| {
+            let target = ZipArchive::new(Holder::buffer(Buffer::new()));
+            target
+                .copy_member_from(black_box(source.archive()), "blob.bin")
+                .expect("the member copies")
+                .compressed_size()
+        });
+    });
+    group.bench_function("copy/reencoded", |bencher| {
+        bencher.iter(|| {
+            let target = ZipArchive::new(Holder::buffer(Buffer::new()));
+            let bytes = black_box(source.archive())
+                .read_member("blob.bin")
+                .expect("the member reads");
+            debug_assert_eq!(bytes.len(), MEMBER_LEN);
+            target
+                .write_member_with("blob.bin", &bytes, Codec::Deflate)
+                .expect("the member writes")
+                .compressed_size()
+        });
+    });
+
     group.finish();
 }

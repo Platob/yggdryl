@@ -405,3 +405,29 @@ mod grammar {
         assert_eq!(bound.term().to_string(), "s = 'a' and i = 1");
     }
 }
+
+mod absolute_function_statistics {
+    use yggdryl::expression::{Bounds, Term};
+    use yggdryl::{DataType, Scalar, StructType};
+
+    #[test]
+    fn abs_does_not_claim_a_range_bound_it_cannot_prove() {
+        let schema = StructType::from_fields([DataType::Int64.required_field("x")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        let bound = "abs(x) > 100"
+            .parse::<Term>()
+            .unwrap()
+            .bind(&schema)
+            .unwrap();
+        let bounds = Bounds::new(Some(10)).with_column(
+            "x",
+            Some(Scalar::from(-2_i64)),
+            Some(Scalar::from(2_i64)),
+            Some(0),
+        );
+        assert_eq!(bound.statistics_certainty(&bounds), None);
+        assert!(bound.statistics_prune(&bounds));
+    }
+}

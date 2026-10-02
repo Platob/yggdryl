@@ -1,0 +1,78 @@
+{
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "manifest_sha256": "3a1b341d1e66691c04e2f33d6803aada608cbd7a648c94de03b411c63eabafc5",
+  "individual_cases_observed": true,
+  "full_run_passed": false,
+  "unrelated_failure": "French-locale TEXT calibration",
+  "cases": [
+    {
+      "id": "function-mod",
+      "formula": "MOD(-7,3)",
+      "value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      }
+    },
+    {
+      "id": "mod--7--3",
+      "formula": "MOD(-7,-3)",
+      "value2": {
+        "variant": "float",
+        "value": -1.0,
+        "hex": "-0x1.0000000000000p+0",
+        "ieee754_hex": "bff0000000000000",
+        "classification": "finite"
+      }
+    },
+    {
+      "id": "mod--7-3",
+      "formula": "MOD(-7,3)",
+      "value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      }
+    },
+    {
+      "id": "mod-7--3",
+      "formula": "MOD(7,-3)",
+      "value2": {
+        "variant": "float",
+        "value": -2.0,
+        "hex": "-0x1.0000000000000p+1",
+        "ieee754_hex": "c000000000000000",
+        "classification": "finite"
+      }
+    },
+    {
+      "id": "mod-7-3",
+      "formula": "MOD(7,3)",
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      }
+    },
+    {
+      "id": "mod-zero",
+      "formula": "MOD(7,0)",
+      "value2": {
+        "variant": "int",
+        "value": -2146826281
+      }
+    }
+  ]
+}

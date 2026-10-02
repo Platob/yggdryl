@@ -312,3 +312,104 @@ mod fixed_leaves {
         }
     }
 }
+
+mod absolute_function_types {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Field, StructType, TimeUnit};
+
+    fn schema(dtype: DataType) -> Field {
+        StructType::from_fields([dtype.nullable_field("x")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row")
+    }
+
+    #[test]
+    fn abs_preserves_numeric_and_duration_type_and_refuses_other_families() {
+        for dtype in [
+            DataType::Int8,
+            DataType::UInt64,
+            DataType::Float64,
+            DataType::decimal128(9, 2).unwrap(),
+            DataType::Duration64(TimeUnit::Second),
+            DataType::Null,
+        ] {
+            let bound = "abs(x)"
+                .parse::<Term>()
+                .unwrap()
+                .bind(&schema(dtype.clone()))
+                .unwrap();
+            assert_eq!(bound.field().dtype(), &dtype);
+            assert!(bound.field().is_nullable());
+        }
+        for dtype in [DataType::Boolean, DataType::utf8()] {
+            let error = "abs(x)"
+                .parse::<Term>()
+                .unwrap()
+                .bind(&schema(dtype))
+                .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("expected a number or duration for abs")
+            );
+        }
+    }
+}
+
+#[test]
+fn abs_encoded_null_output_is_nullable() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Field, StructType};
+
+    let dictionary = DataType::dictionary(DataType::Int8, DataType::Null).unwrap();
+    let run_end = DataType::run_end_encoded(
+        Field::new("run_ends", DataType::Int16, false),
+        Field::new("values", DataType::Null, true),
+    )
+    .unwrap();
+    for dtype in [dictionary, run_end] {
+        let schema = StructType::from_fields([dtype.clone().required_field("x")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        let bound = "abs(x)".parse::<Term>().unwrap().bind(&schema).unwrap();
+        assert_eq!(bound.field().dtype(), &DataType::Null);
+        assert!(bound.field().is_nullable(), "{dtype}");
+    }
+}
+
+#[test]
+fn sqrt_resolves_numeric_and_encoded_null_to_float64() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, StructType};
+    let schema = |dtype| {
+        StructType::from_fields([dtype])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row")
+    };
+    for dtype in [
+        DataType::Int64,
+        DataType::Float32,
+        DataType::Null,
+        DataType::dictionary(DataType::Int8, DataType::Null).unwrap(),
+    ] {
+        let field = dtype.nullable_field("x");
+        let bound = "sqrt(x)"
+            .parse::<Term>()
+            .unwrap()
+            .bind(&schema(field))
+            .unwrap();
+        assert_eq!(bound.field().dtype(), &DataType::Float64);
+        assert!(bound.field().is_nullable());
+    }
+    for dtype in [DataType::Boolean, DataType::utf8()] {
+        let error = "sqrt(x)"
+            .parse::<Term>()
+            .unwrap()
+            .bind(&schema(dtype.required_field("x")))
+            .unwrap_err();
+        assert!(error.to_string().contains("expected a number for sqrt"));
+    }
+}

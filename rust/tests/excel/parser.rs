@@ -1,7 +1,8 @@
 //! `rust/src/excel/parser.rs`: the worksheet grammar - the running row and column cursors, every `t`, `<v>`, `<is>` and `<f>` spelling, what is skipped, and each refusal located by sheet, cell and byte.
 
 use arrow_array::RecordBatch;
-use yggdryl::excel::{CellKind, CellRef, STRICT_NAMESPACE, Workbook};
+use yggdryl::RecordHeader;
+use yggdryl::excel::{Cell, CellKind, CellRef, ExcelError, STRICT_NAMESPACE, Workbook};
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{DataType, Field, IOMedia, MimeType, Scalar, Serie, TimeUnit, Timezone};
@@ -9,6 +10,12 @@ use yggdryl::{DataType, Field, IOMedia, MimeType, Scalar, Serie, TimeUnit, Timez
 use crate::excel_package::{
     NS, content_types, package, root_relationships, workbook, workbook_relationships, worksheet,
 };
+
+/// The file spelling of a cell's formula, rendered at the cell.
+fn formula_of(cell: &Cell) -> Option<String> {
+    cell.formula()
+        .map(|formula| formula.at(cell.reference()).to_string())
+}
 
 /// A one-sheet package whose worksheet part is `part` exactly as spelled.
 fn package_with_part(part: &str) -> Vec<u8> {
@@ -59,7 +66,7 @@ fn handle(bytes: Vec<u8>) -> Buffer {
 }
 
 /// The handle's record options, the header row as `header` says.
-fn options(handle: &Buffer, header: bool) -> RecordOptions {
+fn options(handle: &Buffer, header: RecordHeader) -> RecordOptions {
     let mut options = handle.record_options().unwrap();
     options.set_header(header).unwrap();
     options
@@ -181,7 +188,7 @@ fn a_formula_string_cell_reads_its_cached_text_and_keeps_its_formula() {
     let cell = sheet.cell(at("A1")).unwrap();
     assert_eq!(cell.kind(), CellKind::FormulaString);
     assert_eq!(cell.value(), &Scalar::from("ab"));
-    assert_eq!(cell.formula(), Some("\"a\"&\"b\""));
+    assert_eq!(formula_of(cell).as_deref(), Some("\"a\"&\"b\""));
 }
 
 #[test]
@@ -192,11 +199,11 @@ fn a_number_cell_keeps_its_formula_beside_its_cached_value() {
     let cached = sheet.cell(at("A1")).unwrap();
     assert_eq!(cached.kind(), CellKind::Number);
     assert_eq!(cached.value(), &Scalar::from(2.0));
-    assert_eq!(cached.formula(), Some("1+1"));
+    assert_eq!(formula_of(cached).as_deref(), Some("1+1"));
     // A formula with no cached value states no value.
     let uncached = sheet.cell(at("B1")).unwrap();
     assert!(uncached.is_null());
-    assert_eq!(uncached.formula(), Some("NOW()"));
+    assert_eq!(formula_of(uncached).as_deref(), Some("NOW()"));
 }
 
 #[test]
@@ -240,10 +247,29 @@ fn an_error_cell_is_null_and_names_its_error() {
     let divided = sheet.cell(at("A1")).unwrap();
     assert_eq!(divided.kind(), CellKind::Error);
     assert_eq!(divided.value(), &Scalar::Null);
-    assert_eq!(divided.error(), Some("#DIV/0!"));
-    assert_eq!(divided.formula(), Some("1/0"));
-    assert_eq!(sheet.cell(at("B1")).unwrap().error(), Some("#N/A"));
+    assert_eq!(divided.error(), Some(ExcelError::Div0));
+    assert_eq!(divided.text(), "#DIV/0!");
+    assert_eq!(formula_of(divided).as_deref(), Some("1/0"));
+    assert_eq!(sheet.cell(at("B1")).unwrap().error(), Some(ExcelError::NA));
     assert_eq!(sheet.scalar(at("B1")), Scalar::Null);
+}
+
+#[test]
+fn an_error_cell_stating_no_error_is_a_cell_holding_nothing() {
+    let book = book(
+        "<row r=\"1\"><c r=\"A1\" t=\"e\"/><c r=\"B1\" t=\"e\"><v></v></c><c r=\"C1\" t=\"e\"><f>1/0</f></c></row>",
+    );
+    let sheet = book.sheet("Sheet1").unwrap();
+    for reference in ["A1", "B1", "C1"] {
+        let cell = sheet.cell(at(reference)).unwrap();
+        assert_eq!(cell.error(), None, "{reference}");
+        assert_eq!(cell.kind(), CellKind::Number, "{reference}");
+        assert!(cell.is_null(), "{reference}");
+    }
+    assert_eq!(
+        formula_of(sheet.cell(at("C1")).unwrap()).as_deref(),
+        Some("1/0")
+    );
 }
 
 #[test]
@@ -261,7 +287,7 @@ fn a_self_closed_row_is_a_row_with_no_cell_that_moves_the_cursor() {
     // own options take row 1 as the header, so two records remain there.
     let handle = handle(bytes);
     assert_eq!(handle.row_size().unwrap(), 2);
-    let options = options(&handle, false);
+    let options = options(&handle, RecordHeader::None);
     let field = handle.read_arrow_field(&options).unwrap();
     let batches: Vec<RecordBatch> = handle
         .read_arrow_reader(&options.clone().with_field(field.clone()))
@@ -287,7 +313,7 @@ fn an_empty_sheet_data_is_an_empty_sheet() {
     assert_eq!(sheet.dimension(), None);
 
     let handle = handle(package_with_part(&part));
-    let options = options(&handle, true);
+    let options = options(&handle, RecordHeader::Source);
     assert_eq!(handle.read_arrow_field(&options).unwrap().field_len(), 0);
 }
 
@@ -379,6 +405,88 @@ fn a_running_column_past_the_last_column_of_the_grid_is_refused() {
 }
 
 #[test]
+fn a_style_metadata_or_phonetic_attribute_the_schema_does_not_spell_is_refused_by_its_cell() {
+    for (attributes, reason) in [
+        (
+            "s=\"65536\"",
+            "expected a style index from 0 to 65535 in a cell's `s`, got \"65536\"",
+        ),
+        (
+            "s=\"bold\"",
+            "expected a style index from 0 to 65535 in a cell's `s`, got \"bold\"",
+        ),
+        (
+            "cm=\"x\"",
+            "expected a metadata index in a cell's `cm`, got \"x\"",
+        ),
+        (
+            "vm=\"-1\"",
+            "expected a metadata index in a cell's `vm`, got \"-1\"",
+        ),
+        (
+            "ph=\"maybe\"",
+            "expected 1, true, 0 or false in a cell's `ph`, got \"maybe\"",
+        ),
+    ] {
+        let opening = format!("<c r=\"B1\" {attributes}>");
+        let part = worksheet(&format!("<row r=\"1\">{opening}<v>1</v></c></row>"));
+        let byte = end_of(&part, &opening);
+        assert_eq!(
+            refusal(&part),
+            format!("invalid record value at Sheet1!B1: at byte {byte}: {reason}"),
+            "{attributes}"
+        );
+    }
+}
+
+#[test]
+fn model_capture_refuses_foreign_sheet_data_children_by_qname_without_losing_them() {
+    let part = worksheet("<row r=\"1\"><c r=\"A1\"><v>1</v></c></row>\
+                          <q:row r=\"2\"><q:c r=\"Z2\"><q:v>999</q:v></q:c></q:row>")
+        .replace("<worksheet ", "<worksheet xmlns:q=\"urn:foreign\" xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" mc:Ignorable=\"q\" ");
+    let message = refusal(&part);
+    assert!(
+        message.contains("Sheet1")
+            && message.contains("q:row")
+            && message.contains("urn:foreign")
+            && message.contains("byte"),
+        "{message}"
+    );
+}
+
+#[test]
+fn model_layout_ignores_main_pane_nested_under_foreign_sheet_view() {
+    let part = worksheet("<row r=\"1\"><c r=\"A1\"><v>1</v></c></row>")
+        .replace("<worksheet ", "<worksheet xmlns:q=\"urn:foreign\" xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" mc:Ignorable=\"q\" ")
+        .replace("<sheetData>", "<sheetViews><q:sheetView><pane ySplit=\"2\" topLeftCell=\"A3\" state=\"frozen\"/></q:sheetView></sheetViews><sheetData>");
+    let book = book_with_part(&part);
+    assert_eq!(book.sheet("Sheet1").unwrap().frozen(), None);
+}
+
+#[test]
+fn a_cell_reads_its_style_metadata_and_phonetic_attributes_in_one_pass() {
+    // Thirteen cell formats, so every index the cells state names one.
+    let book = Workbook::from_bytes(crate::excel_package::one_sheet(
+        "<row r=\"1\"><c ph=\"0\" vm=\"4\" cm=\"2\" s=\" 12 \" r=\"A1\"><v>1</v></c>\
+         <c r=\"B1\" s=\"3\" s=\"4\"><v>2</v></c></row>",
+        &[],
+        &[],
+        &[0; 13],
+    ))
+    .unwrap();
+    let sheet = book.sheet("Sheet1").unwrap();
+    assert_eq!(
+        sheet.cell(at("A1")).unwrap().style(),
+        yggdryl::excel::StyleId::new(12)
+    );
+    // The first attribute of a name is the one read.
+    assert_eq!(
+        sheet.cell(at("B1")).unwrap().style(),
+        yggdryl::excel::StyleId::new(3)
+    );
+}
+
+#[test]
 fn a_cell_type_the_schema_does_not_list_is_refused() {
     let part = worksheet("<row r=\"1\"><c r=\"A1\" t=\"x\"><v>1</v></c></row>");
     let byte = end_of(&part, "<c r=\"A1\" t=\"x\">");
@@ -400,7 +508,7 @@ fn a_number_cell_whose_text_is_no_number_is_refused_by_its_cell() {
     let refusals = [
         book.sheet("Sheet1").unwrap_err().to_string(),
         handle
-            .read_arrow_field(&options(&handle, false))
+            .read_arrow_field(&options(&handle, RecordHeader::None))
             .unwrap_err()
             .to_string(),
     ];
@@ -507,7 +615,10 @@ fn a_strict_namespace_part_with_prefixed_elements_is_parsed() {
     let sheet = book.sheet("Sheet1").unwrap();
     assert_eq!(sheet.scalar(at("A1")), Scalar::from("strict"));
     assert_eq!(sheet.scalar(at("B1")), Scalar::from(2.0));
-    assert_eq!(sheet.cell(at("B1")).unwrap().formula(), Some("1+1"));
+    assert_eq!(
+        formula_of(sheet.cell(at("B1")).unwrap()).as_deref(),
+        Some("1+1")
+    );
 }
 
 #[test]
@@ -538,4 +649,150 @@ fn three_thousand_rows_stream_as_three_batches_of_a_thousand() {
     assert_eq!(rows[0], "[0.0,\"r0\"]");
     assert_eq!(rows[1000], "[1000.0,\"r1000\"]");
     assert_eq!(rows[2999], "[2999.0,\"r2999\"]");
+}
+
+#[test]
+fn a_formula_stating_what_the_schema_does_not_spell_is_refused_naming_its_cell() {
+    for (formula, reason) in [
+        (
+            "<f t=\"sharde\">A1</f>",
+            "expected normal, shared, array or dataTable for a formula's `t`, got \"sharde\"",
+        ),
+        (
+            "<f t=\"shared\" si=\"first\"/>",
+            "expected a shared formula index in a formula's `si`, got \"first\"",
+        ),
+        (
+            "<f ca=\"yes\">NOW()</f>",
+            "expected 1, true, 0 or false in a formula's `ca`, got \"yes\"",
+        ),
+    ] {
+        let error = refusal(&worksheet(&format!(
+            "<row r=\"1\"><c r=\"B1\"><v>1</v></c><c r=\"C1\">{formula}<v>1</v></c></row>"
+        )));
+        assert!(error.contains("Sheet1!C1"), "{error}");
+        assert!(error.contains(reason), "{reason} in {error}");
+    }
+    // The record path reads the same grammar and refuses the same way.
+    let bytes = package_with_part(&worksheet(
+        "<row r=\"1\"><c r=\"A1\"><f t=\"sharde\">1</f><v>1</v></c></row>",
+    ));
+    let handle = handle(bytes);
+    let options = options(&handle, RecordHeader::None);
+    let error = match handle.read_arrow_reader(&options) {
+        Ok(reader) => reader
+            .collect::<Result<Vec<_>, _>>()
+            .expect_err("the refusal")
+            .to_string(),
+        Err(error) => error.to_string(),
+    };
+    assert!(error.contains("Sheet1!A1"), "{error}");
+}
+
+#[test]
+fn named_table_observation_keeps_only_membership_and_not_model_sidecars() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let part = &mut parts
+        .iter_mut()
+        .find(|(name, _)| *name == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    // Model-only malformed layout must not be consulted by a record read.
+    *part = part
+        .replace(
+            "<sheetData>",
+            "<cols><col min=\"not-a-column\" max=\"2\" width=\"bad\"/></cols><sheetData>",
+        )
+        .replace("<row r=\"2\">", "<row r=\"2\" ht=\"bad\">");
+    let bytes = named_table_package(&parts);
+    assert!(
+        Workbook::from_bytes(bytes.clone())
+            .unwrap()
+            .sheet("Data")
+            .is_err()
+    );
+    let handle = handle(bytes);
+    let options = RecordOptions::from(yggdryl::excel::ExcelOptions::new().with_table("Names"));
+    let field = handle.read_arrow_field(&options).unwrap();
+    let batches = handle
+        .read_arrow_reader(&options)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(
+        rows_json(&field, &batches),
+        ["[1.0,\"one\"]", "[2.0,\"two\"]"]
+    );
+}
+
+#[test]
+fn named_table_observer_refuses_truncated_root() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    use yggdryl::excel::{Excel, ExcelOptions};
+    use yggdryl::holder::Buffer;
+    use yggdryl::{Error, IOMedia, MimeType};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    assert!(sheet.ends_with("</worksheet>"));
+    sheet.truncate(sheet.len() - "</worksheet>".len());
+    let media = Excel::new(
+        Buffer::from_bytes(named_table_package(&parts)).with_media_type(MimeType::XLSX.into()),
+    )
+    .with_options(ExcelOptions::new().with_table("Names"));
+    match media
+        .column_size()
+        .expect_err("an unclosed worksheet must refuse")
+    {
+        Error::InvalidRecord { path, reason } => {
+            assert!(
+                path.contains("Data") || path.contains("sheet1.xml"),
+                "{path}"
+            );
+            assert!(
+                reason.contains("worksheet") || reason.contains("EOF"),
+                "{reason}"
+            );
+        }
+        error => panic!("expected a located truncated worksheet refusal, got {error:?}"),
+    }
+}
+
+#[test]
+fn source_reader_refuses_worksheet_envelope_truncation() {
+    let complete = worksheet("<row r=\"1\"><c r=\"A1\"><v>1</v></c></row>");
+    for removed in ["</worksheet>", "</sheetData></worksheet>"] {
+        let part = complete.strip_suffix(removed).unwrap();
+        let handle = handle(package_with_part(part));
+        let options = options(&handle, RecordHeader::None);
+        let error = match handle.read_arrow_field(&options) {
+            Ok(_) => match handle.read_arrow_reader(&options) {
+                Ok(reader) => reader
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap_err()
+                    .to_string(),
+                Err(error) => error.to_string(),
+            },
+            Err(error) => error.to_string(),
+        };
+        assert!(error.contains("Sheet1") && error.contains("EOF"), "{error}");
+    }
+}
+
+#[test]
+fn worksheet_model_refuses_truncated_or_second_root() {
+    let complete = worksheet("<row r=\"1\"><c r=\"A1\"><v>1</v></c></row>");
+    let truncated = complete.strip_suffix("</worksheet>").unwrap();
+    let second_root = format!("{complete}{complete}");
+    for part in [truncated, second_root.as_str()] {
+        let error = refusal(part);
+        assert!(
+            error.contains("Sheet1") && error.contains("worksheet"),
+            "{error}"
+        );
+    }
 }

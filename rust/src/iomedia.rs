@@ -22,6 +22,7 @@ enum Opened {
 }
 
 fn open(handle: &dyn IOBase, options: &RecordOptions) -> Result<Opened> {
+    options.require_read()?;
     if handle.is_container() {
         return open_container(handle, options);
     }
@@ -71,8 +72,9 @@ pub(crate) fn container_field(
 ) -> Result<crate::Field> {
     use crate::media::IORecordOptions;
 
+    options.require_read()?;
     if let Some(field) = options.field() {
-        return Ok(field.clone());
+        return options.result_field(field);
     }
     opened_field(open_container(handle, options)?, options)
 }
@@ -229,9 +231,9 @@ pub trait IOMedia: Send {
 
     /// Read the canonical non-null Struct root Field of this resource.
     ///
-    /// A declared schema is returned as it stands; otherwise this is the shape
-    /// [`Self::read_arrow_reader`] reports, so the schema a caller reads
-    /// and the batches a caller gets can never disagree.
+    /// The declared or inferred source schema is bound through the filter and
+    /// selector, returning the shape [`Self::read_arrow_reader`] reports. A
+    /// declared source requires no I/O to resolve its result field.
     ///
     /// # Errors
     ///
@@ -239,8 +241,9 @@ pub trait IOMedia: Send {
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {
         use crate::media::IORecordOptions;
 
+        options.require_read()?;
         if let Some(field) = options.field() {
-            return Ok(field.clone());
+            return options.result_field(field);
         }
         opened_field(open(self.as_io_base(), options)?, options)
     }
@@ -316,11 +319,10 @@ pub trait IOMedia: Send {
     /// frame to read a prefix of, and reads only the declared field off the
     /// options.
     ///
-    /// `options` absent is the handle's own encoding read whole: a record
-    /// encoding answers its stored schema, a document names the root its own
-    /// contents prove, and a container - a folder, a path ending in `/`, a
-    /// glob - reads as the table its leaves hold, under the encoding
-    /// [`record_options`](Self::record_options) finds beneath it.
+    /// With `options` absent, a record encoding uses the handle's
+    /// [`record_options`](Self::record_options), including its stored selection
+    /// and a container's resolved leaf encoding. A document names the root its
+    /// own contents prove.
     ///
     /// ```
     /// use yggdryl::{IOMedia, IOBase, Serie, Url, holder::Buffer};
@@ -378,6 +380,8 @@ pub trait IOMedia: Send {
     /// A structured text document is one frame around every row it holds,
     /// so it is replaced whole and only
     /// [`IOMode::Overwrite`](crate::IOMode::Overwrite) applies.
+    /// Omitted record options use [`Self::record_options`], preserving the
+    /// handle's settings and resolving a container through its leaves.
     ///
     /// # Errors
     ///
@@ -411,7 +415,7 @@ pub trait IOMedia: Send {
         let options = match options {
             Some(options) => options,
             None => {
-                own = RecordOptions::for_media_type(self.as_io_base().media_type())?;
+                own = self.record_options()?;
                 &own
             }
         };

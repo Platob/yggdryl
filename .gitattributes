@@ -1,2 +1,8 @@
 # Captured HTTP exchanges keep their CRLF framing on every checkout.
 rust/tests/xmla/fixtures/** -text
+
+# Native Excel package samples retain their authored (sometimes mixed) line endings.
+rust/tests/support/fixtures/rich_*.xml -text whitespace=cr-at-eol
+
+# The embedded browser assets are served byte for byte on every platform.
+cli/assets/** text eol=lf

@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "source": "Excel-authored VML anchors after native row-3 and column-A insertion; zero-based coordinates.",
+  "scope": "These four native saves started from the same CSS-only note. Their anchors pin owner-delta translation; repeated Excel saves may independently quantize pixel offsets.",
+  "initial": {
+    "anchor": [
+      0,
+      79,
+      0,
+      2,
+      2,
+      29,
+      3,
+      11
+    ],
+    "row": 3,
+    "column": 0
+  },
+  "cases": [
+    {
+      "id": "row",
+      "insert_row": 2,
+      "insert_column": null,
+      "anchor": [
+        0,
+        79,
+        1,
+        2,
+        2,
+        29,
+        4,
+        11
+      ],
+      "row": 4,
+      "column": 0
+    },
+    {
+      "id": "column",
+      "insert_row": null,
+      "insert_column": 0,
+      "anchor": [
+        1,
+        79,
+        0,
+        2,
+        3,
+        29,
+        3,
+        11
+      ],
+      "row": 3,
+      "column": 1
+    },
+    {
+      "id": "combined",
+      "insert_row": 2,
+      "insert_column": 0,
+      "anchor": [
+        1,
+        79,
+        1,
+        2,
+        3,
+        29,
+        4,
+        11
+      ],
+      "row": 4,
+      "column": 1
+    }
+  ],
+  "save_cycle_control": {
+    "excel": {
+      "version": "16.0",
+      "build": "20430.0",
+      "operating_system": "Windows (64-bit) NT 10.00",
+      "country_setting": 33.0,
+      "ui_language": 1036
+    },
+    "comparisons": {
+      "direct": {
+        "equal": true,
+        "difference": null
+      },
+      "equal_save_cycle": {
+        "equal": true,
+        "difference": null
+      }
+    },
+    "no_edit_cycles": 2,
+    "explanation": "Native edited and Rust first-open geometry are exactly equal; both remain exactly equal after one Excel SaveAs/reopen. A one-sided extra save changes all four offsets by one pixel in this environment."
+  }
+}

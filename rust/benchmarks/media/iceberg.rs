@@ -25,7 +25,8 @@ use yggdryl::iceberg::{
 };
 use yggdryl::local::LocalFolder;
 use yggdryl::media::partition::partition_text;
-use yggdryl::{DataType, Field, MediaType, MimeType, Scalar, StructType};
+use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::{DataType, Field, IOMedia, MediaType, MimeType, Scalar, StructType};
 
 use crate::bench_profile;
 
@@ -198,6 +199,102 @@ fn plan_benchmarks(criterion: &mut Criterion) {
                 .expect("the pruned plan reads")
         });
     });
+    group.finish();
+    // Reuse these already-built tables for the options-based read path.
+    options_filter_benchmarks(criterion, [(10, &small), (PLAN_LARGE_FILES, &large)]);
+}
+
+/// Drain the full options-driven reader so each measurement includes planning,
+/// file projection, residual filtering and declared conversion.
+fn options_filter_rows(table: &Table<LocalFolder>, options: &RecordOptions) -> usize {
+    table
+        .read_arrow_reader(options)
+        .expect("the options read plans")
+        .map(|batch| batch.expect("the options batch decodes").num_rows())
+        .sum()
+}
+
+/// Compare a declaration identical to stored metadata with one that casts the
+/// filtered id from Int64 to UTF8. Both bind `id > '10'`, but text ordering must
+/// retain ids 2..9, so the second path cannot prune with numeric file bounds.
+fn options_filter_benchmarks(criterion: &mut Criterion, tables: [(usize, &Table<LocalFolder>); 2]) {
+    let mut group = criterion.benchmark_group("read_options_filter");
+    group.sample_size(10);
+    for (files, table) in tables {
+        let stored = table.schema().expect("the table declares a schema").clone();
+        let mut declared_text = stored.clone();
+        let text_id = declared_text
+            .field_at(0)
+            .expect("the id column")
+            .clone()
+            .try_with_dtype(DataType::utf8())
+            .expect("id casts to text");
+        declared_text
+            .set_field_at(0, text_id)
+            .expect("the field is replaceable");
+        let base = table.record_options().expect("Parquet record options");
+        let numeric = base
+            .clone()
+            .with_field(stored)
+            .with_select("id")
+            .expect("id projects")
+            .with_filter("id > '10'")
+            .expect("numeric predicate parses");
+        let text = base
+            .with_field(declared_text)
+            .with_select("id")
+            .expect("id projects")
+            .with_filter("id > '10'")
+            .expect("text predicate parses");
+
+        // Check exact selected values outside Criterion, not just row counts.
+        let selected = |options: &RecordOptions, text_result: bool| {
+            let mut ids = Vec::new();
+            for batch in table.read_arrow_reader(options).expect("the read plans") {
+                let batch = batch.expect("the batch decodes");
+                let column = batch.column(0);
+                if text_result {
+                    let strings = column
+                        .as_any()
+                        .downcast_ref::<StringArray>()
+                        .expect("the declared text column");
+                    ids.extend(strings.iter().map(|value| {
+                        value
+                            .expect("an id")
+                            .parse::<i64>()
+                            .expect("a numeric id spelling")
+                    }));
+                } else {
+                    let integers = column
+                        .as_any()
+                        .downcast_ref::<Int64Array>()
+                        .expect("the stored integer column");
+                    ids.extend(integers.iter().map(|value| value.expect("an id")));
+                }
+            }
+            ids.sort_unstable();
+            ids
+        };
+        // Each four-row commit writes two files, hence two rows per file.
+        let total = i64::try_from(files * 2).expect("the corpus fits i64");
+        assert_eq!(selected(&numeric, false), (11..total).collect::<Vec<_>>());
+        assert_eq!(
+            selected(&text, true),
+            (0..total)
+                .filter(|id| id.to_string().as_str() > "10")
+                .collect::<Vec<_>>(),
+        );
+
+        group.throughput(Throughput::Elements(
+            u64::try_from(files * 2).expect("the corpus fits"),
+        ));
+        group.bench_function(format!("same_field/{files}_files"), |bencher| {
+            bencher.iter(|| black_box(options_filter_rows(black_box(table), black_box(&numeric))));
+        });
+        group.bench_function(format!("text_cast/{files}_files"), |bencher| {
+            bencher.iter(|| black_box(options_filter_rows(black_box(table), black_box(&text))));
+        });
+    }
     group.finish();
 }
 

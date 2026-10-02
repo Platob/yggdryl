@@ -721,6 +721,29 @@ fn function_field(
         .cloned()
         .unwrap_or(DataType::Null);
     let dtype = match function {
+        Function::Sqrt => {
+            let dtype = unwrap_dictionary(&first);
+            if !dtype.kind().is_numeric() && !matches!(dtype, DataType::Null) {
+                return Err(typing_error(format_smolstr!(
+                    "expected a number for sqrt, got {first}"
+                )));
+            }
+            DataType::Float64
+        }
+        Function::Abs => {
+            let dtype = unwrap_dictionary(&first);
+            if !dtype.kind().is_numeric()
+                && !matches!(
+                    dtype,
+                    DataType::Duration32(_) | DataType::Duration64(_) | DataType::Null
+                )
+            {
+                return Err(typing_error(format_smolstr!(
+                    "expected a number or duration for abs, got {first}"
+                )));
+            }
+            dtype.clone()
+        }
         Function::Lower | Function::Upper | Function::Trim | Function::Substring => {
             if !is_text(&first) {
                 return Err(typing_error(format_smolstr!(
@@ -841,6 +864,9 @@ fn function_field(
     // - the one that runs out of alternatives - can itself be null.
     let nullable = match function {
         Function::Coalesce | Function::IfNull => fields.last().is_none_or(Field::is_nullable),
+        Function::Abs | Function::Sqrt if matches!(unwrap_dictionary(&first), DataType::Null) => {
+            true
+        }
         _ => nullable,
     };
     Ok(named(expression, dtype, nullable))

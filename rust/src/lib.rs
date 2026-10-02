@@ -110,6 +110,7 @@ mod parser;
 mod path;
 mod pretty;
 pub mod protocol;
+mod record_header;
 mod regex;
 pub mod ric;
 pub mod runend;
@@ -223,6 +224,7 @@ pub use protocol::{
     PythonField, PythonFieldMut, PythonKind, PythonMetadata, S3Field, S3FieldMut, SparkField,
     SparkFieldMut, SqlField, SqlFieldMut, TransformField, TransformFieldMut, UrnField, UrnFieldMut,
 };
+pub use record_header::RecordHeader;
 pub use scheme::Scheme;
 pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
@@ -372,6 +374,23 @@ pub mod internals {
     pub use crate::decimal::internals as decimal;
     pub use crate::diff::internals as diff;
     pub use crate::error::internals as error;
+    pub use crate::excel::carried::internals as excel_carried;
+    pub use crate::excel::edit::internals as excel_edit;
+    pub use crate::excel::formula::aggregate::internals as excel_formula_aggregate;
+    pub use crate::excel::formula::criteria::internals as excel_formula_criteria;
+    pub use crate::excel::formula::eval::internals as excel_formula_eval;
+    pub use crate::excel::formula::functions::internals as excel_formula_functions;
+    pub use crate::excel::formula::graph::internals as excel_formula_graph;
+    pub use crate::excel::formula::internals as excel_formula;
+    pub use crate::excel::formula::number::internals as excel_formula_number;
+    pub use crate::excel::formula::reference::internals as excel_formula_reference;
+    pub use crate::excel::formula::value::internals as excel_formula_value;
+    pub use crate::excel::package::internals as excel_package;
+    pub use crate::excel::sheet::internals as excel_sheet;
+    pub use crate::excel::shift::internals as excel_shift;
+    pub use crate::excel::styles::internals as excel_styles;
+    pub use crate::excel::table::internals as excel_table;
+    pub use crate::excel::workbook::internals as excel_workbook;
     pub use crate::expression::eval::internals as expression_eval;
     pub use crate::fix::catalog::internals as fix_catalog;
     pub use crate::fix::codec::internals as fix_codec;
@@ -430,6 +449,7 @@ pub mod internals {
     pub use crate::iceberg::table::internals as iceberg_table;
     #[cfg(feature = "iceberg")]
     pub use crate::iceberg::value::internals as iceberg_value;
+    pub use crate::iobase::hierarchy::internals as iobase_hierarchy;
     pub use crate::ipc::internals as ipc;
     pub use crate::local::internals as local;
     pub use crate::media::merge::internals as media_merge;

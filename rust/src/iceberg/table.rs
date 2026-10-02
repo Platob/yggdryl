@@ -1148,10 +1148,11 @@ impl<H: IOBase> Table<H> {
     /// Read the rows the record options ask for, under one more predicate.
     ///
     /// This is the one door every options-driven read takes: the `where`
-    /// clause and `scope` - the partition a folder handle addresses - are
-    /// pushed into the scan plan whole, so a range, an `in` list or a null test
-    /// prunes manifests and files exactly as an equality does; the scan reads only the columns the clauses need; and
-    /// the selector and the limit wrap what comes back. A `where` that names
+    /// clause and `scope` - the partition a folder handle addresses - prune
+    /// manifests and files when stored metadata describes the values being
+    /// compared. A declared cast that changes a referenced field leaves the
+    /// user predicate on the resulting rows. The scan reads the columns the
+    /// clauses need; the selector and limit wrap what comes back. A `where` that names
     /// a column only the `select` publishes cannot prune - the scan does not
     /// know the name - so it runs after the projection, as DuckDB lets a
     /// `where` read an alias.
@@ -1163,19 +1164,50 @@ impl<H: IOBase> Table<H> {
         let stored = self.schema()?.clone();
         let filter = options.filter();
         let select = options.select();
+        let declared = options.field();
         let late = crate::expression::filter_after_select(
             filter,
             select,
-            stored.fields().iter().map(Field::name),
+            declared
+                .as_ref()
+                .unwrap_or(&stored)
+                .fields()
+                .iter()
+                .map(Field::name),
         );
-        let root = match options.field() {
+        // A declared cast can change comparison order. A filter may prune from
+        // stored metadata only when every column it reads is the same field
+        // the row predicate will see after declaration.
+        let source_filter_equivalent = match declared.as_ref() {
+            None => true,
+            Some(declared) => filter.columns().iter().all(|name| {
+                let mut stored_matches = stored
+                    .fields()
+                    .iter()
+                    .filter(|field| field.name().eq_ignore_ascii_case(name));
+                let mut declared_matches = declared
+                    .fields()
+                    .iter()
+                    .filter(|field| field.name().eq_ignore_ascii_case(name));
+                match (
+                    stored_matches.next(),
+                    stored_matches.next(),
+                    declared_matches.next(),
+                    declared_matches.next(),
+                ) {
+                    (Some(stored), None, Some(declared), None) => stored == declared,
+                    _ => false,
+                }
+            }),
+        };
+        let root = match declared {
             Some(field) => Some(field),
             None => options
                 .apply_columns()
                 .and_then(|columns| projected_root(&stored, &columns)),
         };
         let lazy = options.max_row_size().is_some();
-        if late {
+        if late || !source_filter_equivalent {
             let reader = self.scan_with(scope, root.as_ref(), lazy)?;
             return options.limit_arrow_reader(options.apply_arrow_expressions(reader)?);
         }
@@ -2537,18 +2569,16 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         Ok(RecordOptions::Parquet(crate::parquet::ParquetOptions::new()))
     }
 
-    /// The stored schema as the metadata declares it, no data file opened.
+    /// The result schema over this table's metadata, no data file opened.
     ///
-    /// A declared schema is returned as it stands, as on every handle.
-    /// Otherwise the answer is [`Table::schema`] renamed to the options' root
-    /// name - field identifiers and protocol metadata included - where the
-    /// base implementation would build a reader and take the shape off its
-    /// batches.
+    /// A declaration or the stored table field is the pre-expression root;
+    /// the shared options binder names the columns the reader publishes.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
-        if let Some(field) = options.field() {
-            return Ok(field);
-        }
-        Ok(self.schema()?.clone().with_name(options.name()))
+        let source = match options.field() {
+            Some(field) => field,
+            None => self.schema()?.clone().with_name(options.name()),
+        };
+        options.result_field(source)
     }
 
     /// Scan the current snapshot, the whole `where` clause answered by the plan.

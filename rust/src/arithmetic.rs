@@ -56,6 +56,22 @@ impl Arithmetic {
             Self::Rem => "remainder",
         }
     }
+
+    /// The native floating operation after a caller has settled its own
+    /// operand coercion, width, and result policy.
+    #[inline]
+    pub(crate) fn apply_float<T>(self, left: T, right: T) -> T
+    where
+        T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T> + Rem<Output = T>,
+    {
+        match self {
+            Self::Add => left + right,
+            Self::Sub => left - right,
+            Self::Mul => left * right,
+            Self::Div => left / right,
+            Self::Rem => left % right,
+        }
+    }
 }
 
 impl Scalar {
@@ -270,6 +286,19 @@ impl Scalar {
                 ));
             }
         })
+    }
+
+    /// The Float64-only native root after the expression binder has cast its input.
+    pub(crate) fn checked_sqrt(&self) -> Result<Self> {
+        match self {
+            Self::Null => Ok(Self::Null),
+            Self::Float64(value) => Ok(Self::from(value.as_f64().sqrt())),
+            _ => Err(invalid_unary(
+                "square root",
+                self,
+                "expected a bound Float64 operand",
+            )),
+        }
     }
 
     fn checked_arithmetic(&self, other: &Self, operation: Arithmetic) -> Result<Self> {
@@ -724,6 +753,11 @@ pub mod internals {
 
     pub use super::Arithmetic;
     use crate::{Result, Scalar};
+
+    /// Read the bound Float64 square-root kernel through the private test door.
+    pub fn checked_sqrt(value: &Scalar) -> Result<Scalar> {
+        value.checked_sqrt()
+    }
 
     /// Perform one binary operation over two values.
     pub fn checked_arithmetic(

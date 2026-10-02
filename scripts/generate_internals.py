@@ -83,7 +83,9 @@ def block() -> str:
             owners.append(path)
 
     body = []
-    for path in owners:
+    # A parent export sorts at its `internals` segment among child modules;
+    # filesystem order instead puts the parent's .rs file after its folder.
+    for path in sorted(owners, key=lambda path: module_path(path) + "::internals"):
         crate_path = module_path(path)
         alias = crate_path.replace("::", "_")
         for cfg in guards(path):
@@ -131,7 +133,7 @@ def main() -> int:
         print("yggdryl::internals is current")
         return 0
 
-    LIB.write_text(updated, encoding="utf-8")
+    LIB.write_text(updated, encoding="utf-8", newline="\n")
     print(f"lib.rs: internals re-exports {generated.count('pub use')} module(s)")
     return 0
 

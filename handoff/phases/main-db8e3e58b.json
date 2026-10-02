@@ -1,0 +1,23 @@
+{
+  "phase": "main merge during P5",
+  "incoming_main": "db8e3e58b",
+  "merge_commit": "e3d3f35c3",
+  "state": "Merged and pushed as e3d3f35c3. All four targeted runtime checks passed; P5 remains unfinished and uncommitted.",
+  "preservation": "All 78 in-progress files were restored from a scoped stash and verified against a SHA-256 backup. Only six files changed through the expected main overlap. The recovery stash and backup remain available. Unrelated attachments, wheel executable, logs and scratch files were not stashed or removed.",
+  "resolutions": [
+    "Excel reader retains the P4 FlatProbe/RecordHeader owner; main's let-chain edit targeted the replaced Boolean-header implementation.",
+    "Excel Sheet retains removal of the obsolete insert_rows/remove_rows methods; Workbook owns atomic structural edits and reference rewriting.",
+    "Avro, IPC and XMLA retain projected result_field behavior and unprojected source caches while adopting main's let-chain flow.",
+    "Allocation tests retain both main's cached spelling check and all Excel/shared-expression cost tests. No cost pin was changed."
+  ],
+  "contract": "Incoming main changes the workspace to edition 2024 and MSRV 1.94. Future gates follow the merged Cargo.toml and CI configuration, rather than the obsolete 1.85 lane in the original handoff.",
+  "checks": [
+    "cargo check --locked -p yggdryl --all-targets --keep-going --message-format=short: exit 0. Unfinished P5 consumers still emit dead-code warnings, so this is not a settled Clippy gate. Log handoff/local-main-db8e3e58b-build.log.",
+    "python scripts/generate_internals.py: regenerated 128 module exports.",
+    "handoff/local-main-db8e3e58b-smoke.log: Avro projected field 1 passed; XMLA projected field 1 passed; Excel reader 46 passed; IPC source-cache projection with internals 1 passed. Every step exit 0.",
+    "git merge-base --is-ancestor origin/main HEAD: exit 0. git push origin HEAD:ccr-a1679fa8-oczghl: a738374a8..e3d3f35c3 pushed."
+  ],
+  "remaining": [
+    "Continue P5; bindings, documentation, final PR and CI remain pending."
+  ]
+}

@@ -1,0 +1,227 @@
+{
+  "provenance": {
+    "source": [
+      "rust/target/excel-desktop/carried-scalar-disjoint/results.json"
+    ],
+    "excel": {
+      "version": "16.0",
+      "build": "20430.0",
+      "operating_system": "Windows (64-bit) NT 10.00",
+      "country_setting": 33.0,
+      "ui_language": 1036
+    },
+    "cleanup_completed": true,
+    "reopened_without_repair": true,
+    "input_note": "Native worksheet CF/DV source fragments and post-cut formula/range facts; prefixes are immaterial."
+  },
+  "cases": [
+    {
+      "id": "cf-same-single",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Data",
+      "target": "P10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>A1+$A$1&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "P10+$P$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-cross-single",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>A1+$A$1&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "Other!J10+Other!$J$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-same-multi",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Data",
+      "target": "P10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10 L8:N10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>A1+$A$1&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "P10+$P$10>0"
+            ]
+          },
+          {
+            "sqref": "L8:N10",
+            "formulas": [
+              "E1+$P$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "cf-cross-multi",
+      "kind": "cf",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:conditionalFormatting xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" sqref=\"H8:J10 L8:N10\"><ns0:cfRule type=\"expression\" priority=\"1\"><ns0:formula>A1+$A$1&gt;0</ns0:formula></ns0:cfRule></ns0:conditionalFormatting>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "Other!J10+Other!$J$10>0"
+            ]
+          },
+          {
+            "sqref": "L8:N10",
+            "formulas": [
+              "E1+Other!$J$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-same-single",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Data",
+      "target": "P10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>A1+$A$1&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "P10+$P$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-cross-single",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>A1+$A$1&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "Other!J10+Other!$J$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-same-multi",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Data",
+      "target": "P10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10 L8:N10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>A1+$A$1&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "P10+$P$10>0"
+            ]
+          },
+          {
+            "sqref": "L8:N10",
+            "formulas": [
+              "E1+$P$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    },
+    {
+      "id": "dv-cross-multi",
+      "kind": "dv",
+      "source": "Data",
+      "block": "A1:A3",
+      "destination": "Other",
+      "target": "J10",
+      "before": {
+        "Data": "<ns0:dataValidations xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:ns1=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\" count=\"1\"><ns0:dataValidation type=\"custom\" sqref=\"H8:J10 L8:N10\" ns1:uid=\"{00000000-0002-0000-0000-000000000000}\"><ns0:formula1>A1+$A$1&gt;0</ns0:formula1></ns0:dataValidation></ns0:dataValidations>",
+        "Other": ""
+      },
+      "after": {
+        "Data": [
+          {
+            "sqref": "H8:J10",
+            "formulas": [
+              "Other!J10+Other!$J$10>0"
+            ]
+          },
+          {
+            "sqref": "L8:N10",
+            "formulas": [
+              "E1+Other!$J$10>0"
+            ]
+          }
+        ],
+        "Other": []
+      }
+    }
+  ]
+}

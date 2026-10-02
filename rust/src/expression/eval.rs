@@ -634,9 +634,11 @@ fn call(
         return Ok(Scalar::Null);
     }
     Ok(match function {
+        Function::Abs => first.checked_abs()?,
+        Function::Sqrt => first.checked_sqrt()?,
         Function::Lower => text_value(first, str::to_lowercase),
         Function::Upper => text_value(first, str::to_uppercase),
-        Function::Trim => text_value(first, |text| text.trim().to_owned()),
+        Function::Trim => scalar_text(first).map_or(Scalar::Null, |text| Scalar::from(text.trim())),
         Function::Length => match first {
             crate::bytes_scalars!(bytes) => {
                 Scalar::from(i64::try_from(bytes.as_bytes().len()).unwrap_or(i64::MAX))
@@ -656,34 +658,26 @@ fn call(
             // characters that exist, which is why `substring(s, 0, 5)` yields
             // four characters and not five - the window starts before the
             // string and the part before it is not there to take.
-            let characters: Vec<char> = text.chars().collect();
-            let length = i64::try_from(characters.len()).unwrap_or(i64::MAX);
             let written = values.get(1).and_then(Scalar::as_i64).unwrap_or(1);
-            // A negative start counts back from the end before the window is
-            // taken, which is what a caller who writes one always means.
+            // Only a negative start needs the full character count. A positive
+            // bounded window scans no text after the selected end.
             let start = if written < 0 {
+                let length = i64::try_from(text.chars().count()).unwrap_or(i64::MAX);
                 length + written + 1
             } else {
                 written
             };
-            let end = match values.get(2).and_then(Scalar::as_i64) {
+            let until = match values.get(2).and_then(Scalar::as_i64) {
                 Some(count) if count < 0 => {
                     return Err(missing("a substring length that is not negative"));
                 }
-                Some(count) => start.saturating_add(count),
-                None => length.saturating_add(1),
+                Some(count) => {
+                    usize::try_from(start.saturating_add(count).max(1) - 1).unwrap_or(usize::MAX)
+                }
+                None => usize::MAX,
             };
-            let from = usize::try_from(start.max(1) - 1).unwrap_or(0);
-            let until = usize::try_from(end.max(1) - 1)
-                .unwrap_or(0)
-                .min(characters.len());
-            Scalar::from(SmolStr::new(
-                characters
-                    .get(from..until.max(from))
-                    .unwrap_or_default()
-                    .iter()
-                    .collect::<String>(),
-            ))
+            let from = usize::try_from(start.max(1) - 1).unwrap_or(usize::MAX);
+            Scalar::from(crate::Str::char_window(text.as_ref(), from, until))
         }
         Function::StartsWith => text_pair(values, |text, other| text.starts_with(other)),
         Function::EndsWith => text_pair(values, |text, other| text.ends_with(other)),
@@ -778,52 +772,19 @@ fn scalar_text(value: &Scalar) -> Option<Cow<'_, str>> {
     }
 }
 
-/// Read one calendar field off a temporal, through the one ISO formatter.
-///
-/// Rendering and slicing rather than reimplementing civil-from-days keeps this
-/// crate's calendar in exactly one place; the cost is a small allocation per
-/// row, which the vectorized tier does not pay.
+/// Read calendar fields through the temporal value's native civil parts.
 fn calendar_part(value: &Scalar, function: &Function) -> Scalar {
-    use crate::temporal as iso;
-
-    let text = match value {
-        Scalar::Date32(date) => iso::format_date(date.count()),
-        Scalar::Date64(date) => value
-            .temporal_count_at(TimeUnit::Day)
-            .and_then(|days| i32::try_from(days).ok())
-            .and_then(iso::format_date)
-            .or_else(|| iso::format_datetime(date.count(), date.unit())),
-        Scalar::DateTime64(datetime) if datetime.timezone().is_naive() => {
-            iso::format_datetime(datetime.count(), datetime.unit())
-        }
-        Scalar::DateTime64(datetime) => {
-            iso::format_timestamp(datetime.count(), datetime.unit(), &datetime.timezone())
-        }
-        _ => None,
-    };
-    let Some(text) = text else {
+    let Some(parts) = value.calendar_parts() else {
         return Scalar::Null;
     };
-    let bytes = text.as_bytes();
-    let read = |from: usize, to: usize| -> Option<i32> {
-        text.get(from..to)
-            .and_then(|slice| slice.parse::<i32>().ok())
+    let part = match function {
+        Function::Year => parts.year,
+        Function::Month => parts.month as i32,
+        Function::Day => parts.day as i32,
+        Function::Hour => parts.hour as i32,
+        _ => return Scalar::Null,
     };
-    let parsed = match function {
-        Function::Year => read(0, 4),
-        Function::Month => read(5, 7),
-        Function::Day => read(8, 10),
-        // A date has no clock, and midnight is the honest reading of one.
-        Function::Hour => {
-            if bytes.len() > 12 {
-                read(11, 13)
-            } else {
-                Some(0)
-            }
-        }
-        _ => None,
-    };
-    parsed.map_or(Scalar::Null, Scalar::from)
+    Scalar::from(part)
 }
 
 /// Floor a value to a unit or to a multiple.
@@ -880,12 +841,15 @@ fn truncate(value: &Scalar, unit: &Scalar, dtype: &DataType) -> Result<Scalar> {
 /// with. A constant coerces into the operand it meets, and the bind's
 /// round-trip check is what refuses a whole number a float cannot hold.
 fn floating(value: &Scalar) -> Option<f64> {
-    value.as_f64().or_else(|| {
-        value
-            .as_i128()
-            .or_else(|| value.as_u128().and_then(|held| i128::try_from(held).ok()))
-            .map(|held| held as f64)
-    })
+    value
+        .as_f64()
+        .or_else(|| value.as_decimal_f64())
+        .or_else(|| {
+            value
+                .as_i128()
+                .or_else(|| value.as_u128().and_then(|held| i128::try_from(held).ok()))
+                .map(|held| held as f64)
+        })
 }
 
 /// Convert one value into a datatype, logically rather than physically.
