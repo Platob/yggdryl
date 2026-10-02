@@ -305,3 +305,33 @@ A write consumes the `body` column alone - non-null, non-empty text - and writes
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
+
+## Performance
+
+### Records, lines and batches
+
+One release run of the `text` Criterion target on one Linux x86_64 container - Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.97.0, release profile (thin LTO, one codegen unit) - medians of 100 samples, on 2026-10-02. The object is 10,000 lines `[INFO] id=N message N` in a `.log` buffer; where a row header is stated it is `^\[(?<level>[A-Z]+)\] id=(?<id>\d+)`, `level` read as text and `id` as an integer.
+
+| 10,000 lines, 271 KiB | median | lines/s |
+| --- | ---: | ---: |
+| `regex` crate: split the lines and match the row header, building nothing (baseline) | 1.591 ms | 6.29M lines/s |
+| `read_arrow_reader`, no row header | 37.79 ms | 265k lines/s |
+| `read_arrow_reader`, the two captures typed | 44.67 ms | 224k lines/s |
+| `read_text_lines`, no row header: the lines alone, no Arrow | 4.181 ms | 2.39M lines/s |
+| `read_text_lines`, the row header taken off | 6.760 ms | 1.48M lines/s |
+| `into_arrow_batch` of the 10,000 decoded lines | 40.10 ms | 249k lines/s |
+| `from_arrow_batch`, the batch back to lines | 25.43 ms | 393k lines/s |
+
+The baseline finds the lines and matches the header and builds nothing, so the gap to a record read is the record itself: the lines decode in 4.181 ms, and laying them into a batch - the fifteen element and event columns of every line beside its body - is the rest. The row header costs about a quarter of a microsecond a line. Pinning `linesep` to `\n` or `\r\n` reads at the flexible scan's pace (4.126 ms and 4.275 ms against 4.056 ms), taking a `^(?<tag>\d+)=` header off 10,000 FIX-shaped lines costs 1.740 ms over reading them bare, and `from_arrow_reader` answers its first line in 36.22 us, before the rest of the batch is read.
+
+| `read_arrow_reader` under the row header | physical lines | `framing` |
+| --- | ---: | ---: |
+| 10,000 one-line records, 271 KiB | 43.67 ms | 44.60 ms |
+| 4,000 records of three lines each, 275 KiB | 50.30 ms | 19.12 ms |
+| one 2 MiB body over a 4 KiB `max_record_byte_size`, then one line | 4.449 ms | 4.148 ms |
+
+Framing costs nothing on one-line records and saves the rows a chain would otherwise split into; a record past `max_record_byte_size` is drained, not held, at 450 to 480 MiB/s.
+
+```bash
+cargo bench -p yggdryl --bench text -- '^text_(records|record_framing|lines|batch)/'
+```
