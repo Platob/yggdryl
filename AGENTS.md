@@ -1246,7 +1246,7 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   where it does not or the header does not match the line; the instant the read
   dated the line cut before it by is `prevunix` - none for an object's first
   line or after an undated one, a `prevunix` capture standing, each object read
-  starting again - and `prevuuid` is never filled, so no line identity moves.
+  starting again - and `prevuuid` is never filled.
   `body` is the line
   past what the header matched - the header comes off where the line is made,
   so the captures are the line's and the body is the payload, empty exactly
@@ -1256,12 +1256,12 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   decoded at the transport in the charset the handle's media type declares
   other than UTF-8 or US-ASCII, and otherwise once where the line is made,
   each byte that is not UTF-8 read as the Windows-1252 character it is,
-  `TextLine::decoded_byte_size` counting them. `currhashcode` is the shared
-  event digest - the captures a header lifted, the state and the
-  predecessor - and then the body, the row number reaching `curruuid`
-  alone as the line's place, with the capture that dates
-  the line left out, because `currunix` is coupled with the code rather than
-  fed into it. The row header is the only thing that lifts a column out of a
+  `TextLine::decoded_byte_size` counting them. `currhashcode` is the XXH3-64
+  of the body and nothing else - what anyone holding the `body` cell
+  computes - so two lines of byte-identical bodies share it wherever they
+  were read: the captures a header lifted, the state, the predecessor and the
+  cross code stay out of it, and the instant, the row number and the cross
+  hash reach `curruuid` beside it, through `Event::time_uuid`. The row header is the only thing that lifts a column out of a
   line. Flat `TextOptions` owns named `rowheader`
   captures, edge-only regex stripping, a line separator, and syntax-directed
   `autotype` via `DataType::from_regex`, so the full source field is known before

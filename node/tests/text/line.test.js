@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { FieldPath, IOBase, TextLine, TextOptions } = require('yggdryl')
+const { FieldPath, IOBase, TextLine, TextOptions, xxhash } = require('yggdryl')
 
 const CAPTURE = '8=FIX|55=AAPL|35=D\n35=D|55=MSFT\n'
 
@@ -63,6 +63,11 @@ test('a line is crossed by the identifier it was read under', () => {
   assert.equal(lines[1].sourceuri, lines[0].sourceuri)
   assert.equal(lines[1].crossuuid, lines[0].crossuuid)
   assert.notEqual(lines[1].curruuid, lines[0].curruuid)
+  // The identifier seeds the identity and stays out of the content code: the
+  // same body held under none is the same code and another identity.
+  const bare = new TextLine(lines[0].index, lines[0].body)
+  assert.equal(bare.currhashcode, lines[0].currhashcode)
+  assert.notEqual(bare.curruuid, lines[0].curruuid)
 })
 
 test('a line reads itself on the first ask', () => {
@@ -85,14 +90,18 @@ test('a line is an event under the options it reads itself by', () => {
   assert.equal(line.mtime, null)
   assert.equal(line.currunix, 0n)
   assert.equal(line.seqnum, 0n)
-  // Its identity derives from its instant, physical sequence and bytes.
+  // The content code is the body's XXH3-64 and nothing else - not the
+  // captures, the row or the source - and the identity derives from the
+  // instant, the row and that code, so one body on two rows is two.
+  assert.equal(line.currhashcode, xxhash.xxh3(Buffer.from('8=FIX|55=AAPL|35=D')))
   assert.match(line.curruuid, /^[0-9a-f-]{36}$/)
   const later = new TextLine(7n, '[INFO] 8=FIX|55=AAPL|35=D', null, options)
   assert.equal(later.index, 7n)
   assert.equal(later.seqnum, 7n)
+  assert.equal(later.currhashcode, line.currhashcode)
   assert.notEqual(line.curruuid, later.curruuid)
-  // A line read under no header states the whole text as its body and names
-  // nothing, so it is a different event from this one.
+  // A line read under no header holds the whole text as its body, so its
+  // code is another one.
   assert.notEqual(
     line.currhashcode,
     new TextLine(0n, '[INFO] 8=FIX|55=AAPL|35=D').currhashcode,
