@@ -29,9 +29,9 @@ use crate::metadata::{
     HTTP_CACHE_CONTROL_KEY, HTTP_CONTENT_DISPOSITION_KEY, HTTP_CONTENT_ENCODING_KEY,
     HTTP_CONTENT_LANGUAGE_KEY, HTTP_CONTENT_LENGTH_KEY, HTTP_CONTENT_LOCATION_KEY,
     HTTP_CONTENT_RANGE_KEY, HTTP_CONTENT_TYPE_KEY, HTTP_ETAG_KEY, HTTP_EXPIRES_KEY,
-    HTTP_LAST_MODIFIED_KEY, HTTP_LOCATION_KEY, HTTP_RANGE_KEY, HTTP_VARY_KEY, PropertyIter,
-    ProtocolMetadata, for_each_well_known_protocol, parse_content_length, property_key,
-    property_name, protocol_metadata_prefix,
+    HTTP_LAST_MODIFIED_KEY, HTTP_LOCATION_KEY, HTTP_RANGE_KEY, HTTP_VARY_KEY, PARTITION_BY_KEY,
+    PropertyIter, ProtocolMetadata, SORT_BY_KEY, for_each_well_known_protocol,
+    parse_content_length, property_key, property_name, protocol_metadata_prefix,
 };
 use crate::{Charset, Error, MediaType, Metadata, MimeType, Result, Scheme, Url};
 
@@ -656,12 +656,11 @@ impl<'field> PartitionField<'field> {
     /// Returns an error naming `PARTITION:by` when the stored text is not a
     /// JSON array of terms with optional aliases.
     pub fn by(&self) -> Result<Option<Vec<Projection>>> {
-        let key = self.key(BY);
         self.get(BY)
             .map(|stored| {
-                crate::metadata::parse_by_list(&key, stored)?
+                crate::metadata::parse_by_list(PARTITION_BY_KEY, stored)?
                     .iter()
-                    .map(|entry| crate::metadata::parse_by_projection(&key, entry))
+                    .map(|entry| crate::metadata::parse_by_projection(PARTITION_BY_KEY, entry))
                     .collect()
             })
             .transpose()
@@ -708,15 +707,17 @@ impl PartitionFieldMut<'_> {
         I: IntoIterator<Item = P>,
         P: AsRef<str>,
     {
-        let key = self.key(BY);
         let entries = by
             .into_iter()
             .map(|entry| {
-                crate::metadata::parse_by_projection(&key, entry.as_ref())
+                crate::metadata::parse_by_projection(PARTITION_BY_KEY, entry.as_ref())
                     .map(|projection| projection.to_string())
             })
             .collect::<Result<Vec<String>>>()?;
-        self.insert(BY, crate::metadata::render_by_list(&key, entries)?)?;
+        self.insert(
+            BY,
+            crate::metadata::render_by_list(PARTITION_BY_KEY, entries)?,
+        )?;
         Ok(())
     }
 
@@ -761,12 +762,11 @@ impl<'field> SortField<'field> {
     /// Returns an error naming `SORT:by` when the stored text is not a JSON
     /// array of `order by` keys.
     pub fn by(&self) -> Result<Option<Vec<Ordering>>> {
-        let key = self.key(BY);
         self.get(BY)
             .map(|stored| {
-                crate::metadata::parse_by_list(&key, stored)?
+                crate::metadata::parse_by_list(SORT_BY_KEY, stored)?
                     .iter()
-                    .map(|entry| crate::metadata::parse_by_ordering(&key, entry))
+                    .map(|entry| crate::metadata::parse_by_ordering(SORT_BY_KEY, entry))
                     .collect()
             })
             .transpose()
@@ -804,15 +804,14 @@ impl SortFieldMut<'_> {
         I: IntoIterator<Item = P>,
         P: AsRef<str>,
     {
-        let key = self.key(BY);
         let entries = by
             .into_iter()
             .map(|entry| {
-                crate::metadata::parse_by_ordering(&key, entry.as_ref())
+                crate::metadata::parse_by_ordering(SORT_BY_KEY, entry.as_ref())
                     .map(|ordering| ordering.to_string())
             })
             .collect::<Result<Vec<String>>>()?;
-        self.insert(BY, crate::metadata::render_by_list(&key, entries)?)?;
+        self.insert(BY, crate::metadata::render_by_list(SORT_BY_KEY, entries)?)?;
         Ok(())
     }
 
