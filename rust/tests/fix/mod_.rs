@@ -4320,7 +4320,7 @@ mod internal {
             )
             .expect("the partyids")
             .to_string(),
-            "[base:executingfirm=BUYSIDE]"
+            "[executingfirm=BUYSIDE]"
         );
         assert_eq!(
             columns[full.index_of("symbol").expect("the projected symbol")].as_str(),
