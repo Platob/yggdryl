@@ -153,3 +153,7 @@ A recipient reads what RFC 9112 lets it read, and refuses the rest as `Error::Pa
     )
     assert.equal(http.Response.fromBytes(response.intoBytes()).text(), '{"a":1}')
     ```
+
+## Performance
+
+No benchmark times the message grammar on its own: `from_bytes`, `into_bytes` and the chunked framing have no Criterion group, so this page states no number. The client and the server that speak it are measured with the [HTTP backend](../holder/index.md#http), which states what each operation costs in requests; its [performance](../holder/index.md#http-performance) section times `yggdryl.http` against `requests` on one origin.
