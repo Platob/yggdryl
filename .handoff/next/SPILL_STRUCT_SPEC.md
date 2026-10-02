@@ -328,11 +328,12 @@ Both bindings only coerce and redirect. The `folder` argument meets one boundary
 - **Off the GIL:** spill and resident run off the GIL, as the other I/O doors do.
 - **Zero-copy export:** a C Data / PyCapsule export of a spilled column is zero copy. A pyarrow array that outlives the `Serie` keeps the mapping alive.
 - **Rust-only in-place forms:** `as_struct_type` and `as_struct_scalar`. `DataType` and `Scalar` are bound as value objects whose hash must stay stable; this is documented.
-- **Renames**, with no alias:
-  - `Scalar.into_struct_field` → `inferred_struct_field`.
-  - `Scalar.into_array_field` → `inferred_array_field`.
-  - `Scalar.into_field` stays.
-  - Sweep `_native.pyi`, `typing_bindings.py`, `test_scalar.py`, `test_version.py`, `docs/types/scalar.md`, `docs/types/field.md`, `skills/yggdryl-types`, and `.api-bindings.txt:66`.
+- **No rename (the user's decision): `Scalar.into_struct_field` keeps its name and handles both readings transparently, with no ambiguity between them:**
+  - Rows of named records (today's domain, `Scalar::inferred_struct_field`) answer the inferred struct root, exactly as today.
+  - Any other value answers `inferred_scalar_field()?.into_struct_field()`: a struct value answers its own struct field, and anything else is wrapped as `struct<value: ...>` under the generic rule.
+  - Both arms are one core reading: a crate-level `Scalar::inferred_record_field` (or the body of `inferred_struct_field` widened the same way). The binding only redirects.
+  - `Scalar.into_array_field` and `Scalar.into_field` stay unchanged.
+  - Sweep `_native.pyi`, `typing_bindings.py`, `test_scalar.py`, `docs/types/scalar.md` and `.api-bindings.txt:66` for the widened contract, adding tests for a non-record value that is now wrapped.
 
 ### Node (§4)
 
@@ -348,9 +349,9 @@ Both bindings only coerce and redirect. The `folder` argument meets one boundary
 - **In-place wrappers** return `this`. They follow `asSorted`'s `_asSortedNative` pattern in `node/binding.js` / `binding.d.ts`.
 - **`folder` intake** is a path string or a `file:` URL string, resolved through `Holder::from_url` (`node/src/iobase.rs:112`) and required to be local. `undefined` is skipped; `null` clears. Both mean temporary.
 - **No zero-copy claim** for Node: the crossing is copied IPC.
-- **Renames:** the Scalar instance methods `intoStructField` and `intoArrayField` become `inferredStructField` and `inferredArrayField` (`node/src/text/codec.rs:503-520`, `.api-bindings.txt:532`).
-  - The record-class static getter `intoStructField` (`.api-bindings.txt:400`, `node/README.md:174`) keeps its name, since its meaning is the new verb's.
-  - The sweep classifies each hit by hand: `node/tests/{field,version,iobase,iceberg,index}.test.js`, `text/codec.test.js`, `*.types.ts`, `node/README.md`, `skills/yggdryl-types/references/javascript.md`.
+- **No rename (the user's decision):** the Scalar instance method `intoStructField` keeps its name and handles both readings, exactly as Python's does (named record rows answer the inferred root; any other value its own field through the generic rule). `intoArrayField` is unchanged.
+  - The record-class static getter `intoStructField` (`.api-bindings.txt:400`, `node/README.md:174`) keeps its name too, since its meaning is the new verb's.
+  - Tests in `text/codec.test.js` and `*.types.ts` cover the widened contract.
 - **Regenerate** `node/index.js` / `index.d.ts` with `npm run --prefix node build:debug`.
 
 ### Both
@@ -562,7 +563,7 @@ Worker rules: no worker runs `cargo fmt --all` while others edit, and all edits 
 5. **Already-struct nullability.** Default: answered as itself (nullable kept, absent rows kept). `root_of` alone forces required.
 6. **Wrap child.** Default: `value`, nullable, for DataType and Scalar; the field's own name for Field and Serie; a required `row` root for Field and Serie.
 7. **Scalar wrap shape.** Default: `Scalar::Struct({value: self})`, the named input shape, not an ordered run (a run is a struct only beside its field).
-8. **Binding inference doors.** Default: rename `into_struct_field` / `into_array_field` → `inferred_struct_field` / `inferred_array_field` (and the JS equivalents); keep `Scalar.into_field` and the JS static getter `intoStructField`.
+8. **Binding inference doors. DECIDED by the user ("Why inferred? Keep it and adapt transparently handling both"):** no rename. `Scalar.into_struct_field` / `intoStructField` keep their names and read both: named record rows answer the inferred struct root as today; any other value answers its inferred field through the generic `into_struct_field` (itself when a struct, else wrapped). `into_array_field` / `intoArrayField` and `into_field` are unchanged.
 9. **Folder.** Default: an explicit `&LocalFolder` in Rust, temporary in the bindings, no environment variable.
 10. **Format.** Default: IPC stream, one file per call. Rejected: the file format with a footer (refuses dictionary replacement) and one file per chunk (more mappings).
 11. **Crash safety.** Default: anonymous file (unlinked at create on Unix, delete-on-close on Windows). Rejected: a named file removed in `Drop`.
