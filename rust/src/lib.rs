@@ -227,7 +227,7 @@ pub use protocol::{
     TransformFieldMut, UrnField, UrnFieldMut,
 };
 pub use scheme::Scheme;
-pub use serie_slice::{SerieSlice, SerieSliceMut, SerieSliceRows, SerieWindows};
+pub use serie_slice::{SerieSlice, SerieSliceMut, SerieSliceRows, SerieWindows, SerieWindowsIter};
 pub use sort_options::SortOptions;
 pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;

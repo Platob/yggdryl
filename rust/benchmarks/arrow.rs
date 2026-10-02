@@ -956,6 +956,172 @@ fn memory_size_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// The record a windowed stream carries: a symbol in key order, the venue
+/// it trades on as a registered code, the order it fills - its symbol the
+/// tick's - a size and a second-spaced instant.
+fn window_root() -> Field {
+    StructType::from_fields([
+        DataType::utf8().required_field("symbol"),
+        DataType::Mic.required_field("venue"),
+        DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("symbol"),
+                DataType::Int64.required_field("id"),
+            ])
+            .expect("the order record is valid"),
+        )
+        .nullable_field("order"),
+        DataType::Int64.required_field("size"),
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::UTC,
+        }
+        .required_field("timestamp"),
+    ])
+    .map(DataType::from)
+    .expect("the window root is valid")
+    .required_field("row")
+}
+
+/// `count` rows under [`window_root`] as one batch: the symbol over a quarter
+/// of the rows each, in key order, the venue over an eighth each, one
+/// second between instants, so a fifteen-minute bucket holds 900 rows.
+fn window_batch(count: usize) -> RecordBatch {
+    use arrow_array::{Int64Array, StringArray, StructArray, TimestampMicrosecondArray};
+    use arrow_schema::DataType as ArrowDataType;
+
+    const SORTED: [&str; 4] = ["BRENT", "TTF", "WTI", "XAU"];
+    const VENUES: [&str; 2] = ["XLON", "XNYS"];
+    let root = window_root();
+    let schema = root.into_arrow_schema().expect("the window root projects");
+    let symbols: ArrayRef = Arc::new(StringArray::from(
+        (0..count)
+            .map(|row| SORTED[row * SORTED.len() / count])
+            .collect::<Vec<_>>(),
+    ));
+    let ids: ArrayRef = Arc::new(Int64Array::from(
+        (0..count)
+            .map(|row| i64::try_from(row).expect("the row index fits an i64"))
+            .collect::<Vec<_>>(),
+    ));
+    let ArrowDataType::Struct(order) = schema.field(2).data_type().clone() else {
+        panic!("an order record projects to a struct")
+    };
+    let orders: ArrayRef = Arc::new(
+        StructArray::try_new(order, vec![Arc::clone(&symbols), Arc::clone(&ids)], None)
+            .expect("the order record matches its fields"),
+    );
+    let venues: ArrayRef = Arc::new(StringArray::from(
+        (0..count)
+            .map(|row| VENUES[row * 8 / count % VENUES.len()])
+            .collect::<Vec<_>>(),
+    ));
+    let instants: ArrayRef = Arc::new(
+        TimestampMicrosecondArray::from(
+            (0..count)
+                .map(|row| {
+                    EPOCH + i64::try_from(row).expect("the row index fits an i64") * 1_000_000
+                })
+                .collect::<Vec<_>>(),
+        )
+        .with_data_type(schema.field(4).data_type().clone()),
+    );
+    RecordBatch::try_new(schema, vec![symbols, venues, orders, ids, instants])
+        .expect("the window batch matches its root")
+}
+
+/// Pull every window and every piece of it, each window read before the
+/// next is taken: the rows served.
+fn drain_windows(windows: yggdryl::SerieReaderWindows) -> usize {
+    windows
+        .map(|window| {
+            window
+                .expect("a window opens")
+                .map(|piece| piece.expect("a piece decodes").len())
+                .sum::<usize>()
+        })
+        .sum()
+}
+
+/// Windows of a stream: the walk over [`BATCHES`] batches, each cut where its
+/// key changes, against the stream drained alone as the baseline.
+///
+/// Each window is a lazy reader over the stream, holding one batch; the time
+/// to the first window is the bind, the first batch's landing and its cut,
+/// and the drain adds a key and a cut per batch and a slice per piece a
+/// window opens or closes inside a batch. A column, a record path and a code
+/// key cut the landed cells where they lie; a period term evaluates over a
+/// batch of the one column it reads, per row through the row tier; `sorted`
+/// reads the order verdict the cut already holds.
+fn window_benchmarks(criterion: &mut Criterion) {
+    let root = window_root();
+    let options = ArrowCastOptions::new();
+    let keys: [(&str, yggdryl::Selector, bool); 5] = [
+        ("column_key", "symbol".parse().expect("a column key"), false),
+        (
+            "path_key",
+            "order.symbol".parse().expect("a path key"),
+            false,
+        ),
+        ("code_key", "venue".parse().expect("a code key"), false),
+        (
+            "period_key",
+            "minutes(timestamp, 15)".parse().expect("a period key"),
+            false,
+        ),
+        ("sorted", "symbol".parse().expect("a column key"), true),
+    ];
+
+    let mut group = criterion.benchmark_group("serie_reader");
+    for count in ROWS {
+        let batch = window_batch(count);
+        let schema = batch.schema();
+        let parts = parts(&batch);
+        let stream = || {
+            SerieReader::from_arrow_reader(Some(&root), streamed(&schema, &parts), options)
+                .expect("the stream lands under its root")
+        };
+        group.throughput(Throughput::Elements(count as u64));
+        group.bench_function(format!("drain/{count}"), |bencher| {
+            bencher.iter_batched(
+                stream,
+                |reader| {
+                    reader
+                        .map(|batch| batch.expect("a batch lands").len())
+                        .sum::<usize>()
+                },
+                BatchSize::SmallInput,
+            );
+        });
+        for (name, key, sorted) in &keys {
+            group.bench_function(format!("window_by/{name}/first/{count}"), |bencher| {
+                bencher.iter_batched(
+                    stream,
+                    |reader| {
+                        reader
+                            .window_by(key, *sorted)
+                            .expect("the key binds")
+                            .next()
+                            .expect("a window")
+                            .expect("a window opens")
+                            .next()
+                            .map_or(0, |piece| piece.expect("a piece decodes").len())
+                    },
+                    BatchSize::SmallInput,
+                );
+            });
+            group.bench_function(format!("window_by/{name}/drain/{count}"), |bencher| {
+                bencher.iter_batched(
+                    stream,
+                    |reader| drain_windows(reader.window_by(key, *sorted).expect("the key binds")),
+                    BatchSize::SmallInput,
+                );
+            });
+        }
+    }
+    group.finish();
+}
+
 criterion_group!(
     arrow_values,
     construction_benchmarks,
@@ -966,5 +1132,6 @@ criterion_group!(
     structured_benchmarks,
     null_visibility_benchmarks,
     memory_size_benchmarks,
+    window_benchmarks,
 );
 criterion_main!(arrow_values);

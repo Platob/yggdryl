@@ -39,7 +39,7 @@
 //! a derived partition column be the projection it always was.
 
 use std::str::FromStr;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -656,7 +656,9 @@ impl Selector {
             });
         }
         self.refuse_unnest("in a key")?;
-        self.bind(root)
+        let mut bound = self.bind(root)?;
+        bound.key = Some(Arc::new(arrow::KeyPlan::of(&bound)?));
+        Ok(bound)
     }
 
     /// Return this selector with one more projection, appended after
@@ -922,7 +924,7 @@ impl Selector {
             projections,
             unnested,
             identity,
-            key_root: OnceLock::new(),
+            key: None,
         })
     }
 
@@ -1260,10 +1262,10 @@ pub struct BoundSelector {
     /// The projection that multiplies rows, when one does.
     unnested: Option<Unnested>,
     identity: bool,
-    /// The nullable record a key column lands under, built on the first
-    /// column [`Self::apply_serie`] keys and kept with its Arrow projection,
-    /// so keys computed chunk by chunk build their root once.
-    key_root: OnceLock<Arc<Field>>,
+    /// What keying a column costs once rather than per call: settled by
+    /// [`Selector::bind_key`] alone, read by [`Self::apply_serie`] for every
+    /// column, chunk or batch the key is computed over.
+    key: Option<Arc<arrow::KeyPlan>>,
 }
 
 impl BoundSelector {
@@ -1372,8 +1374,10 @@ pub(crate) fn require_present(field: &Field, null: bool) -> Result<()> {
 mod arrow {
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchReader, StructArray};
-    use arrow_schema::{ArrowError, DataType as ArrowDataType, SchemaRef};
+    use arrow_array::{
+        Array, ArrayRef, RecordBatch, RecordBatchOptions, RecordBatchReader, StructArray,
+    };
+    use arrow_schema::{ArrowError, FieldRef, Schema, SchemaRef};
 
     use super::{BoundSelector, ColumnCast, Selector};
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
@@ -1381,8 +1385,158 @@ mod arrow {
     use crate::expression::arrow::{
         StructRows, collected, one_batch, scattered, struct_children, struct_rows, unnest,
     };
-    use crate::serie::{Proof, land};
-    use crate::{Error, Field, Result, Serie};
+    use crate::expression::bind::published_as;
+    use crate::serie::{Proof, Resolved, land_planned};
+    use crate::{Error, Field, Result, Serie, SerieValue, StructSerie};
+
+    /// What keying a column by one bound selector settles once, at
+    /// [`Selector::bind_key`], so a key computed over every column, chunk or
+    /// batch of a stream resolves nothing per call.
+    ///
+    /// Each published cell either lies in the landed record as it stands -
+    /// a column, or a path through record children, published as the
+    /// datatype it reaches
+    /// ([`Bound::lies_where`](crate::expression::Bound::lies_where)) - or is
+    /// computed. A key whose every cell lies is the landed record's own
+    /// children under the key's root; any other evaluates over a batch of
+    /// only the columns its terms read.
+    pub(crate) struct KeyPlan {
+        /// The record every key lands under: the output, nullable, because
+        /// an absent row of the keyed record is an absent key.
+        root: Arc<Field>,
+        /// Per published cell, the positions it lies at in the landed
+        /// record - its column, then each record child below - or `None`
+        /// where it is computed.
+        lies: Box<[Option<Box<[usize]>>]>,
+        /// The evaluation, for a key that can need it: one computing a
+        /// cell, or one whose cell lies below a record step, which an absent
+        /// row of that record sends through the step kernel. A key of the
+        /// keyed record's own columns is always its landed cells, and
+        /// settles none.
+        engine: Option<KeyEngine>,
+    }
+
+    /// What a key evaluated over a batch settles once.
+    struct KeyEngine {
+        /// The output's Arrow schema, the projection kernel's target.
+        schema: SchemaRef,
+        /// The boxed fields every level of the key's root lands under.
+        resolved: Resolved,
+        /// The bound root's children any term reads, ascending.
+        reads: Box<[usize]>,
+        /// Those children's Arrow fields, in that order: the batch a key
+        /// evaluates over, whatever the record's width.
+        narrow: SchemaRef,
+        /// What a landing of the key may take on trust, cell by cell.
+        proof: Proof,
+    }
+
+    impl KeyPlan {
+        /// Settle the key plan of a selector just bound as a key.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when the output or a column a term reads has no
+        /// Arrow projection.
+        pub(super) fn of(bound: &BoundSelector) -> Result<Self> {
+            let published = bound.output.fields();
+            if published.len() != bound.projections.len() {
+                return Err(crate::arrow::Error::internal(
+                    "KeyPlan::of: a key publishes one cell per term",
+                )
+                .into());
+            }
+            let lies: Box<[Option<Box<[usize]>>]> = bound
+                .projections
+                .iter()
+                .zip(published)
+                .map(|(term, published)| term.lies_where(published))
+                .collect();
+            let root = Arc::new(bound.output.clone().with_nullable(true));
+            let engine = lies
+                .iter()
+                .any(|positions| {
+                    positions
+                        .as_ref()
+                        .is_none_or(|positions| positions.len() > 1)
+                })
+                .then(|| KeyEngine::of(bound, &root, &lies))
+                .transpose()?;
+            Ok(Self { root, lies, engine })
+        }
+
+        /// Whether a cell publishes where it lies.
+        #[cfg(feature = "internals")]
+        pub(super) fn lies(&self) -> &[Option<Box<[usize]>>] {
+            &self.lies
+        }
+    }
+
+    impl KeyEngine {
+        /// Settle the evaluation of a key whose cells `lies` names.
+        fn of(
+            bound: &BoundSelector,
+            root: &Arc<Field>,
+            lies: &[Option<Box<[usize]>>],
+        ) -> Result<Self> {
+            let mut reads: Vec<usize> = Vec::with_capacity(bound.projections.len());
+            for term in &bound.projections {
+                term.node().collect_columns(&mut reads);
+            }
+            reads.sort_unstable();
+            reads.dedup();
+            // Each read column's own projection, cached on the child the
+            // holder landed under, so the batch costs the key's width and
+            // never the record's.
+            let columns = bound.schema.fields();
+            let mut narrow: Vec<FieldRef> = Vec::with_capacity(reads.len());
+            for index in &reads {
+                let column = columns.get(*index).ok_or_else(|| {
+                    crate::arrow::Error::internal("KeyEngine::of: a term reads a bound column")
+                })?;
+                narrow.push(Arc::clone(column.as_arrow_field_ref()?));
+            }
+            // The one `Proof::Proven` site the key adds, reviewed: a lying
+            // cell is a selection of a column that already landed - its
+            // column handed on as is, or a record child the step kernel
+            // reaches, which folds the records' absence into it and changes
+            // no value - published as the very datatype it landed under, so
+            // no cast stands between the proof it had and the landing here.
+            // A computed cell is still read under its field's rule.
+            let proof = Proof::of_children(
+                lies.iter()
+                    .map(|positions| {
+                        if positions.is_some() {
+                            Proof::Proven
+                        } else {
+                            Proof::Unproven
+                        }
+                    })
+                    .collect(),
+            );
+            // The output's schema proves it bounded, which resolving the
+            // root it is the nullable twin of relies on.
+            let schema = arrow_schema_from_field(&bound.output)?;
+            Ok(Self {
+                schema,
+                resolved: Resolved::of(Arc::clone(root)),
+                reads: reads.into(),
+                narrow: Arc::new(Schema::new(narrow)),
+                proof,
+            })
+        }
+    }
+
+    /// A key plan is state settled once, not what the selector says.
+    impl std::fmt::Debug for KeyPlan {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter
+                .debug_struct("KeyPlan")
+                .field("lies", &self.lies)
+                .field("reads", &self.engine.as_ref().map(|engine| &engine.reads))
+                .finish_non_exhaustive()
+        }
+    }
 
     impl Selector {
         /// Wrap a reader so every batch it yields is what this selector
@@ -1540,41 +1694,214 @@ mod arrow {
         }
 
         /// The record column this selector computes from one column, bound
-        /// against [`SerieReader::root_of`](crate::SerieReader::root_of) its
-        /// field: a record column is its own rows, any other column the one
-        /// child of its record.
-        ///
-        /// The record's absent rows stay absent - the struct-null rule of
-        /// every expression - so the result's root is nullable whatever
-        /// `root_of` declared, and an absent row reads as null. That root is
-        /// built on the first column this selector keys and kept, its Arrow
-        /// projection with it, so every later column lands under it as is.
-        /// An identity selector hands the record's own array back, and a
-        /// bare column it projects is the column's own `ArrayRef`.
+        /// by [`Selector::bind_key`] against
+        /// [`SerieReader::root_of`](crate::SerieReader::root_of) its field: a
+        /// record column is its own rows, any other column the one child of
+        /// its record.
         ///
         /// # Errors
         ///
-        /// Returns an error for a run, for a column that does not lay out as
-        /// the bound root's child, and for what
-        /// [`Self::apply_arrow_array`] or the landing refuses.
+        /// [`Self::apply_serie_window`] carries the rule.
         pub(crate) fn apply_serie(&self, serie: &Serie) -> Result<Serie> {
-            let column = serie.require_arrow_array()?;
-            let records: ArrayRef = if serie.require_field()?.dtype().as_fields().is_some() {
-                column
-            } else {
-                let ArrowDataType::Struct(fields) = self.schema.as_arrow_field_ref()?.data_type()
-                else {
-                    return Err(crate::arrow::Error::internal("BoundSelector::apply_serie").into());
-                };
-                let records = StructArray::try_new(fields.clone(), vec![column], None)
+            self.apply_serie_window(serie, 0, serie.len())
+        }
+
+        /// The record column this selector computes from the rows
+        /// `offset..offset + length` of one column, each key row the row of
+        /// the window it stands at; rows outside the window are never read.
+        ///
+        /// The record's absent rows stay absent - the struct-null rule of
+        /// every expression - so the key's root is nullable whatever
+        /// `root_of` declared, and an absent row reads as null. Every key
+        /// lands under the one root the plan built at bind. One of three
+        /// arms answers, chosen per call:
+        ///
+        /// * **direct** - every cell lies in the landed record and no record
+        ///   between it and the keyed one holds an absent row: the key is the
+        ///   landed cells themselves, sliced to the window, under the key's
+        ///   root. No Arrow array is built, nothing is evaluated or landed,
+        ///   and a bare column keys as its own buffers;
+        /// * **narrow** - a cell is computed, or a path crosses a record
+        ///   holding absent rows, and the window holds no absent row of the
+        ///   keyed record: the terms evaluate over a batch of only the columns
+        ///   they read, so the cost is the key's and never the record's width;
+        /// * **whole** - the window holds absent rows of the keyed record:
+        ///   the same batch, its absent rows left out of the evaluation and
+        ///   laid back where they were, null.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error for a run, for a window reaching past the
+        /// column, for a column that does not lay out as the root the key
+        /// was bound against, and for what a term or the landing refuses.
+        pub(crate) fn apply_serie_window(
+            &self,
+            serie: &Serie,
+            offset: usize,
+            length: usize,
+        ) -> Result<Serie> {
+            let name = serie.require_field()?.name();
+            crate::serie::require_window(name, offset, length, serie.len())?;
+            let plan = self.key.as_deref().ok_or_else(|| {
+                crate::arrow::Error::internal(
+                    "BoundSelector::apply_serie: a key bound without its plan",
+                )
+            })?;
+            let record = serie.as_struct();
+            let whole = offset == 0 && length == serie.len();
+            // The keyed record's absent rows in the window: the key's own.
+            let nulls = record
+                .and_then(StructSerie::nulls)
+                .map(|nulls| {
+                    if whole {
+                        nulls.clone()
+                    } else {
+                        nulls.slice(offset, length)
+                    }
+                })
+                .filter(|nulls| nulls.null_count() > 0);
+            if self.lies_bare(plan, serie, record)? {
+                let mut cells = Vec::with_capacity(plan.lies.len());
+                for (positions, published) in plan.lies.iter().flatten().zip(self.output.fields()) {
+                    let cell = self
+                        .landed_cell(serie, record, positions)?
+                        .filter(|cell| {
+                            cell.field()
+                                .is_some_and(|landed| published_as(published, landed))
+                        })
+                        .ok_or_else(|| self.misfit(serie))?;
+                    cells.push(cell.slice(offset, length)?);
+                }
+                // The key names its cells through the plan's root while each
+                // keeps the field it landed under: the same datatype, and no
+                // absence the published field refuses (`published_as`), so
+                // its Arrow array is the root's projection over its cells'.
+                return Ok(
+                    StructSerie::new(Arc::clone(&plan.root), cells, nulls, length).into_serie(),
+                );
+            }
+            // A key of the record's own columns always took the arm above.
+            let engine = plan.engine.as_ref().ok_or_else(|| {
+                crate::arrow::Error::internal("BoundSelector::apply_serie: a bare key evaluated")
+            })?;
+            let mut columns = Vec::with_capacity(engine.reads.len());
+            for index in &engine.reads {
+                let array = self.child(serie, record, *index)?.require_arrow_array()?;
+                columns.push(if whole {
+                    array
+                } else {
+                    array.slice(offset, length)
+                });
+            }
+            let keys: ArrayRef = match nulls {
+                None => {
+                    let options = RecordBatchOptions::new().with_row_count(Some(length));
+                    let batch = RecordBatch::try_new_with_options(
+                        Arc::clone(&engine.narrow),
+                        columns,
+                        &options,
+                    )
                     .map_err(|error| Error::from(crate::arrow::Error::Arrow(error)))?;
-                Arc::new(records)
+                    Arc::new(StructArray::from(
+                        self.projected(&batch, Some(&engine.schema))?,
+                    ))
+                }
+                Some(nulls) => {
+                    let records: ArrayRef = Arc::new(
+                        StructArray::try_new_with_length(
+                            engine.narrow.fields().clone(),
+                            columns,
+                            Some(nulls),
+                            length,
+                        )
+                        .map_err(|error| Error::from(crate::arrow::Error::Arrow(error)))?,
+                    );
+                    let rows = struct_rows(&records, "key")?;
+                    let projected = self.projected(&rows.batch, Some(&engine.schema))?;
+                    rebuilt_struct(&rows, &projected, false)?
+                }
             };
-            let keys = self.apply_arrow_array(&records)?;
-            let root = self
-                .key_root
-                .get_or_init(|| Arc::new(self.output.clone().with_nullable(true)));
-            Ok(land(Arc::clone(root), keys, &Proof::Unproven)?)
+            Ok(land_planned(&engine.resolved, keys, &engine.proof)?)
+        }
+
+        /// Whether every cell of this key lies in `holder`'s landed record
+        /// with no record between holding an absent row: a child of an
+        /// absent record holds whatever Arrow left in its slot, which only
+        /// the step kernel's mask fold makes absent.
+        ///
+        /// Read off each record's null count, so a row absent anywhere in
+        /// the holder sends every window of it to the kernel.
+        fn lies_bare(
+            &self,
+            plan: &KeyPlan,
+            holder: &Serie,
+            record: Option<&StructSerie>,
+        ) -> Result<bool> {
+            for positions in plan.lies.iter() {
+                let Some(positions) = positions else {
+                    return Ok(false);
+                };
+                if self.landed_cell(holder, record, positions)?.is_none() {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+
+        /// The landed cell `positions` reach in `holder`, or `None` where a
+        /// record between holds an absent row.
+        fn landed_cell<'s>(
+            &self,
+            holder: &'s Serie,
+            record: Option<&'s StructSerie>,
+            positions: &[usize],
+        ) -> Result<Option<&'s Serie>> {
+            let Some((column, steps)) = positions.split_first() else {
+                return Err(self.misfit(holder));
+            };
+            let mut cell = self.child(holder, record, *column)?;
+            for position in steps {
+                if cell.null_count() > 0 {
+                    return Ok(None);
+                }
+                cell = cell
+                    .as_struct()
+                    .and_then(|record| record.child_at(*position))
+                    .ok_or_else(|| self.misfit(holder))?;
+            }
+            Ok(Some(cell))
+        }
+
+        /// Child `index` of the record `holder` is keyed as: a record's own,
+        /// and any other column its record's one child.
+        fn child<'s>(
+            &self,
+            holder: &'s Serie,
+            record: Option<&'s StructSerie>,
+            index: usize,
+        ) -> Result<&'s Serie> {
+            match record {
+                Some(record) => record.child_at(index),
+                None => (index == 0).then_some(holder),
+            }
+            .ok_or_else(|| self.misfit(holder))
+        }
+
+        /// The refusal of a column that does not lay out as the root this
+        /// key was bound against.
+        fn misfit(&self, holder: &Serie) -> Error {
+            let held = holder.field().map_or_else(
+                || smol_str::SmolStr::new_static("a run"),
+                |field| smol_str::format_smolstr!("{}", field.dtype()),
+            );
+            Error::InvalidRecord {
+                path: smol_str::SmolStr::new(holder.name()),
+                reason: smol_str::format_smolstr!(
+                    "expected a column laid out as the root its key was bound against, {}, \
+                     or as that root's one child, got {held}",
+                    self.schema.dtype()
+                ),
+            }
         }
 
         /// Wrap a reader so every batch it yields is what this selector
@@ -1725,8 +2052,9 @@ fn selector_shape_error(value: &Scalar) -> Error {
 pub mod internals {
     //! What `rust/tests/expression/selector.rs` pins and a caller cannot reach.
     //!
-    //! `bind_key` is the key rule a merge and a window share, and
-    //! `apply_serie` the key column a window cuts by; a caller reaches each
+    //! `bind_key` is the key rule a merge and a window share, `apply_serie`
+    //! and `apply_serie_window` the key column a window cuts by, and
+    //! `lying_cells` what the key plan settled at bind; a caller reaches each
     //! only through the verbs that key by them.
     use super::BoundSelector;
     use crate::{Field, Result, Selector, Serie};
@@ -1755,5 +2083,35 @@ pub mod internals {
     /// the bound root's child, and for what the projection refuses.
     pub fn apply_serie(selector: &BoundSelector, serie: &Serie) -> Result<Serie> {
         selector.apply_serie(serie)
+    }
+
+    /// The record column `selector` computes from the rows
+    /// `offset..offset + length` of `serie`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a run, for a window past the end, for a column
+    /// that does not lay out as the bound root's child, and for what the
+    /// projection refuses.
+    pub fn apply_serie_window(
+        selector: &BoundSelector,
+        serie: &Serie,
+        offset: usize,
+        length: usize,
+    ) -> Result<Serie> {
+        selector.apply_serie_window(serie, offset, length)
+    }
+
+    /// Per published cell, the positions it lies at in the landed record -
+    /// its column, then each record child below - or `None` where the key
+    /// computes it; `None` for a selector bound as no key.
+    #[must_use]
+    pub fn lying_cells(selector: &BoundSelector) -> Option<Vec<Option<Vec<usize>>>> {
+        selector.key.as_deref().map(|plan| {
+            plan.lies()
+                .iter()
+                .map(|positions| positions.as_deref().map(<[usize]>::to_vec))
+                .collect()
+        })
     }
 }

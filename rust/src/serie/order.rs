@@ -29,13 +29,13 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BooleanArray, UInt32Array};
-use arrow_buffer::BooleanBuffer;
+use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_data::ArrayData;
 use arrow_ord::ord::{DynComparator, make_comparator};
 use arrow_row::{RowConverter, Rows, SortField};
 use arrow_schema::DataType as ArrowDataType;
 
-use super::{Proof, Rows as _, Serie, land};
+use super::{Proof, Rows as _, Serie, land, proven_row};
 use crate::arrow::{array_memory_size, scalar_memory_size};
 use crate::expression::{BoundSelector, IntoSelector};
 use crate::{
@@ -55,7 +55,7 @@ fn refuse(serie: &Serie, reason: smol_str::SmolStr) -> Error {
 }
 
 /// Refuse a row count one `uint32` index column cannot address.
-fn require_indexable(serie: &Serie) -> Result<u32> {
+pub(crate) fn require_indexable(serie: &Serie) -> Result<u32> {
     u32::try_from(serie.len()).map_err(|_| {
         refuse(
             serie,
@@ -245,11 +245,21 @@ fn data_holds_foreign_nan(data: &ArrayData) -> bool {
 }
 
 /// How two rows of one serie compare under `options`: Arrow's comparator
-/// over the buffers where they order as the values, the values' own order
-/// over rows built once otherwise and for a run.
+/// over the buffers where they order as the values, a record's children
+/// each on its own rung where only some of them do, and the values' own
+/// order over rows built once otherwise and for a run.
 enum Compare<'a> {
     /// Arrow's comparator, which reads the buffers and builds no value.
     Buffers(DynComparator),
+    /// A record column whose buffers do not order as its values: its own
+    /// absent rows placed where `options` puts an absence, then each child
+    /// on its own rung, so only a child whose stored order is not its value
+    /// order builds its rows - one leaf's values, never one run per row.
+    Record {
+        nulls: Option<NullBuffer>,
+        children: Box<[Self]>,
+        options: SortOptions,
+    },
     /// The values' order over the rows: lent by a run, built once for a
     /// column.
     Values {
@@ -266,6 +276,19 @@ impl<'a> Compare<'a> {
         {
             return Self::Buffers(compare);
         }
+        if let Some(record) = serie.as_struct()
+            && !record.children().is_empty()
+        {
+            return Self::Record {
+                nulls: record.nulls().cloned(),
+                children: record
+                    .children()
+                    .iter()
+                    .map(|child| Self::new(child, options))
+                    .collect(),
+                options,
+            };
+        }
         Self::Values {
             rows: serie.rows(),
             options,
@@ -275,7 +298,39 @@ impl<'a> Compare<'a> {
     fn cmp(&self, left: usize, right: usize) -> Ordering {
         match self {
             Self::Buffers(compare) => compare(left, right),
+            // `compare_values`' sequence arm over two runs of one arity: an
+            // absent row where `options` puts an absence, then the first
+            // child step that is not equal - each child already directed by
+            // `options`, so the answer is not reversed again.
+            Self::Record {
+                nulls,
+                children,
+                options,
+            } => {
+                let absent = |row: usize| nulls.as_ref().is_some_and(|nulls| nulls.is_null(row));
+                match (absent(left), absent(right)) {
+                    (true, true) => Ordering::Equal,
+                    (true, false) => absent_against_present(*options),
+                    (false, true) => absent_against_present(*options).reverse(),
+                    (false, false) => children
+                        .iter()
+                        .map(|child| child.cmp(left, right))
+                        .find(|step| *step != Ordering::Equal)
+                        .unwrap_or(Ordering::Equal),
+                }
+            }
             Self::Values { rows, options } => compare_values(&rows[left], &rows[right], *options),
+        }
+    }
+
+    /// Row `index` against the row before it: `Less` for the first row,
+    /// which opens whatever comes, `Equal` where it continues its run and
+    /// `Greater` where it orders before the row it follows - a descent.
+    fn step(&self, index: usize) -> Ordering {
+        if index == 0 {
+            Ordering::Less
+        } else {
+            self.cmp(index - 1, index)
         }
     }
 
@@ -283,8 +338,67 @@ impl<'a> Compare<'a> {
     /// the row before it does not equal. The one boundary a sorted group
     /// and a window are both cut at.
     fn opens(&self, index: usize) -> bool {
-        index == 0 || self.cmp(index - 1, index) != Ordering::Equal
+        self.step(index) != Ordering::Equal
     }
+
+    /// The runs `starts` opens regrouped stably by key: the runs sorted by
+    /// the key at their first row, runs of one key kept in arrival order and
+    /// merged into one window, every row named once. `starts` has a set
+    /// first bit when it has any row, and its rows fit a `uint32`.
+    fn regroup(&self, starts: &BooleanBuffer) -> Regrouped {
+        let len = starts.len();
+        // Each run as the row it opens at and the row it ends before.
+        let mut runs: Vec<(u32, u32)> = Vec::with_capacity(starts.count_set_bits());
+        let mut opened = starts.set_indices();
+        if let Some(mut start) = opened.next() {
+            for next in opened {
+                runs.push((start as u32, next as u32));
+                start = next;
+            }
+            runs.push((start as u32, len as u32));
+        }
+        // Stable, so the runs of one key keep their arrival order.
+        runs.sort_by(|left, right| self.cmp(left.0 as usize, right.0 as usize));
+        let mut order: Vec<u32> = Vec::with_capacity(len);
+        // The windows are written over the runs already read, each as the
+        // row its key is read at and where it ends in `order`.
+        let mut kept = 0;
+        for index in 0..runs.len() {
+            let (start, end) = runs[index];
+            order.extend(start..end);
+            let ends = order.len() as u32;
+            if kept > 0 && self.cmp(runs[kept - 1].0 as usize, start as usize) == Ordering::Equal {
+                runs[kept - 1].1 = ends;
+            } else {
+                runs[kept] = (start, ends);
+                kept += 1;
+            }
+        }
+        Regrouped {
+            order,
+            windows: Box::from(&runs[..kept]),
+        }
+    }
+}
+
+/// Where the windows of equal adjacent rows open, and whether the rows are
+/// in key order: what [`Serie::window_starts`] answers.
+pub(crate) struct WindowCut {
+    /// One bit per row, set where a window opens.
+    pub(crate) starts: BooleanBuffer,
+    /// The first row whose key orders before its predecessor's under
+    /// `SortOptions::default()`: ascending, absent keys last.
+    pub(crate) descent: Option<usize>,
+    /// Asked for and needed: the windows in key order.
+    pub(crate) regrouped: Option<Regrouped>,
+}
+
+/// The windows of a serie whose keys hold a descent, in key order.
+pub(crate) struct Regrouped {
+    /// Every row, in key order, rows of one key in arrival order.
+    pub(crate) order: Vec<u32>,
+    /// Per window: the row its key is read at, and where it ends in `order`.
+    pub(crate) windows: Box<[(u32, u32)]>,
 }
 
 /// Where an absent value goes against a present one under `options`.
@@ -312,7 +426,7 @@ const fn directed(step: Ordering, options: SortOptions) -> Ordering {
 /// item under the same options, every nested absence placed as a top-level
 /// one is, then the shorter first, reversed when descending: Arrow's own
 /// reading of nested buffers, so a run and a column of the same rows agree.
-fn compare_values(left: &Scalar, right: &Scalar, options: SortOptions) -> Ordering {
+pub(crate) fn compare_values(left: &Scalar, right: &Scalar, options: SortOptions) -> Ordering {
     match (left.is_null(), right.is_null()) {
         (true, true) => Ordering::Equal,
         (true, false) => absent_against_present(options),
@@ -1143,13 +1257,28 @@ impl Serie {
         self.partition_by(&keys)
     }
 
-    /// The rows cut into windows of equal adjacent keys, the keys `by`
-    /// computes from each row: one `(key, window)` per maximal run of
-    /// adjacent rows whose keys are equal, in row order, every window a view
-    /// over this serie. The windows are never empty, never overlap, and
-    /// cover every row; a key that comes back after another opens a window
-    /// of its own, where [`Self::partition_by`] gathers every row of a key
-    /// into one group - over keys already in order the two agree.
+    /// The rows cut into windows of equal keys, the keys `by` computes from
+    /// each row: one `(key, window)` per window, every window a view. The
+    /// windows are never empty, never overlap, and cover every row.
+    ///
+    /// With `sorted` false, a window is a maximal run of adjacent rows whose
+    /// keys are equal, in row order, over this serie at its offset; a key
+    /// that comes back after another opens a window of its own, where
+    /// [`Self::partition_by`] gathers every row of a key into one group -
+    /// over keys already in order the two agree. With `sorted` true, each
+    /// distinct key is answered exactly once, in key order: ascending, an
+    /// absent key last, as [`SortOptions::ascending`] - the default, the
+    /// plan's `order by` default and DuckDB's - orders them. Here `sorted`
+    /// asks for each key once in key order, where
+    /// [`crate::graph::EventIterator::new`]'s says its input arrives sorted.
+    /// The windows are cut where `sorted` false cuts them, the order read in
+    /// the same pass: keys already in order answer exactly the `sorted`
+    /// false windows over this serie, at the same cost, and any others have
+    /// their runs - never their rows - sorted stably by key, the runs of one
+    /// key merged, and the rows gathered once into key order, rows of one
+    /// key in arrival order, into a serie the answer owns
+    /// ([`SerieWindows::serie`]). Only ascending is offered: keys grouped in
+    /// any other order already answer each key once with `sorted` false.
     ///
     /// `by` is a selector - a clause text such as `"venue, minutes(ts, 15)
     /// as bucket"`, or a [`Selector`], a projection, a term or a path -
@@ -1163,21 +1292,25 @@ impl Serie {
     /// selector order - one term keys a one-cell run. An absent record row
     /// keys [`Scalar::Null`], and an absent cell is a null cell. Keys are
     /// equal as the ordering verbs equate them: an absent key equals an
-    /// absent key, every NaN is one value, and a nested key compares item by
-    /// item. A period term such as `minutes(ts, 15)` keys the number of its
-    /// period since the epoch, in UTC whatever zone the column states.
+    /// absent key, every NaN is one value, and a nested key - a record, a
+    /// list or a map cell - compares item by item. A period term such as
+    /// `minutes(ts, 15)` keys the number of its period since the epoch, in
+    /// UTC whatever zone the column states.
     ///
     /// The cost is one plan per call and one key per window: the key column
     /// computed once, one comparator over it and one bitmap of where the
     /// windows open, then each window costs the run of its key and nothing
     /// else. No key row is built where the keys order as their buffers -
-    /// text, integers, temporals and records of them. Any other key - a
-    /// registered code, a windows-1252 text, a version, a URL, a union -
-    /// builds each of its rows once and holds them for the call, as
-    /// [`Self::partition_by`] builds them: an allocation and a value per
-    /// row. A period term such as `minutes(ts, 15)` is evaluated row by row
-    /// through the expression's row tier, so it costs a constant count of
-    /// allocations but time and a transient value per row.
+    /// text, integers, temporals and records of them; a key cell that does
+    /// not - a registered code, a windows-1252 text, a version, a URL -
+    /// builds its own rows once for the call, never a run per row, and a
+    /// list, map or union cell off the buffers builds each of its rows
+    /// once. A period term such as `minutes(ts, 15)` is evaluated row by
+    /// row through the expression's row tier, so it costs a constant count
+    /// of allocations but time and a transient value per row. With `sorted`
+    /// and keys out of order, the gather adds one stable sort of the runs,
+    /// the order the rows are taken in, and one take of every column - the
+    /// only rows this verb copies.
     ///
     /// ```
     /// use yggdryl::{DataType, Field, Scalar, Serie, StructType};
@@ -1191,13 +1324,15 @@ impl Serie {
     ///     ])?),
     ///     false,
     /// );
-    /// let quotes = Serie::from_scalars(root, [
-    ///     Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(1_i64)]),
-    ///     Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(2_i64)]),
-    ///     Scalar::from_sequence([Scalar::from("XNYS"), Scalar::from(3_i64)]),
-    ///     Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(4_i64)]),
+    /// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    /// let quotes = Serie::from_scalars(root.clone(), [
+    ///     quote("XNAS", 1),
+    ///     quote("XNAS", 2),
+    ///     quote("XNYS", 3),
+    ///     quote("XNAS", 4),
     /// ])?;
-    /// let windows: Vec<_> = quotes.window_by("venue")?.collect();
+    /// let windows = quotes.window_by("venue", false)?;
+    /// let windows: Vec<_> = windows.iter().collect();
     /// assert_eq!(windows.len(), 3);
     /// assert_eq!(windows[0].0, Scalar::from_sequence([Scalar::from("XNAS")]));
     /// assert_eq!((windows[0].1.offset(), windows[0].1.len()), (0, 2));
@@ -1205,6 +1340,22 @@ impl Serie {
     /// assert_eq!(windows[2].0, Scalar::from_sequence([Scalar::from("XNAS")]));
     /// assert_eq!((windows[2].1.offset(), windows[2].1.len()), (3, 1));
     /// assert!(std::ptr::eq(windows[2].1.serie(), &quotes));
+    ///
+    /// // Sorted, each key once and in key order: XNAS first, its rows in
+    /// // the order they arrived.
+    /// let mixed = Serie::from_scalars(root, [
+    ///     quote("XNYS", 1),
+    ///     quote("XNAS", 2),
+    ///     quote("XNYS", 3),
+    ///     quote("XNAS", 4),
+    /// ])?;
+    /// let sorted = mixed.window_by("venue", true)?;
+    /// assert_eq!(sorted.len(), 2);
+    /// let windows: Vec<_> = sorted.iter().collect();
+    /// assert_eq!(windows[0].0, Scalar::from_sequence([Scalar::from("XNAS")]));
+    /// assert_eq!(windows[0].1.rows().to_vec(), vec![quote("XNAS", 2), quote("XNAS", 4)]);
+    /// assert_eq!(windows[1].0, Scalar::from_sequence([Scalar::from("XNYS")]));
+    /// assert_eq!(windows[1].1.rows().to_vec(), vec![quote("XNYS", 1), quote("XNYS", 3)]);
     /// # Ok(())
     /// # }
     /// ```
@@ -1216,10 +1367,12 @@ impl Serie {
     /// a key stating no projection - an empty list, or a `*` alone - and for
     /// an `unnest`; and the binder's own refusal for a column the key
     /// reaches none of, or reaches two of, and for a period step that is not
-    /// a positive literal.
-    pub fn window_by(&self, by: impl IntoSelector) -> Result<SerieWindows<'_>> {
+    /// a positive literal. With `sorted` and keys out of order, it refuses a
+    /// serie past `u32::MAX` rows, which the gather cannot address, naming
+    /// it, once the keys are read.
+    pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> Result<SerieWindows<'_>> {
         let key = self.window_key(&by.into_selector()?)?;
-        Ok(SerieWindows::new(self, 0, key.apply_serie(self)?))
+        SerieWindows::new(self, 0, key.apply_serie(self)?, sorted)
     }
 
     /// `by` bound as the key this serie's rows are windowed by: refused
@@ -1232,20 +1385,77 @@ impl Serie {
         by.bind_key(&SerieReader::root_of(field)?, self.name(), "window by")
     }
 
-    /// Where the windows of equal adjacent rows open: one bit per row, set
-    /// where the row opens a run - one comparator over the rows and one
-    /// bitmap, whatever the run count.
-    pub(crate) fn window_starts(&self) -> BooleanBuffer {
+    /// Where the windows of equal adjacent rows open, the first row that
+    /// orders before the row it follows under [`SortOptions::ascending`],
+    /// and, when `regroup` asks and such a descent exists, the windows in
+    /// key order ([`Regrouped`]).
+    ///
+    /// One comparator over the rows and one bitmap, the descent read in the
+    /// same pass, whatever the run count; the regrouping reuses that
+    /// comparator over one entry per run - a stable sort of the runs, never
+    /// of the rows - and lays out one position per row.
+    ///
+    /// # Errors
+    ///
+    /// Only a regrouping refuses: rows past what one `uint32` position
+    /// addresses, naming this serie.
+    pub(crate) fn window_starts(&self, regroup: bool) -> Result<WindowCut> {
         let compare = Compare::new(self, SortOptions::default());
-        BooleanBuffer::collect_bool(self.len(), |index| compare.opens(index))
+        let mut descent = None;
+        let starts = BooleanBuffer::collect_bool(self.len(), |index| {
+            let step = compare.step(index);
+            if step == Ordering::Greater && descent.is_none() {
+                descent = Some(index);
+            }
+            step != Ordering::Equal
+        });
+        let regrouped = match descent {
+            Some(_) if regroup => {
+                require_indexable(self)?;
+                Some(compare.regroup(&starts))
+            }
+            _ => None,
+        };
+        Ok(WindowCut {
+            starts,
+            descent,
+            regrouped,
+        })
     }
 
-    /// Whether two keys are one key, as [`Self::window_starts`] equates
-    /// adjacent rows: the values' own order, which the comparator over
-    /// buffers is gated to agree with. A keyed walk across chunks asks it
-    /// at each edge, of two keys it already built.
-    pub(crate) fn same_key(left: &Scalar, right: &Scalar) -> bool {
-        compare_values(left, right, SortOptions::default()) == Ordering::Equal
+    /// `value`, a key already built, against row `row` of this key column
+    /// under `options`: what [`compare_values`] answers against that row,
+    /// read in place. A record column compares cell by cell - an absent row
+    /// reads as [`Scalar::Null`] - building each cell and never the row's
+    /// run, so inline cells cost nothing; any other column builds its row.
+    /// `row` is below the length.
+    pub(crate) fn compare_to_row(
+        &self,
+        value: &Scalar,
+        row: usize,
+        options: SortOptions,
+    ) -> Ordering {
+        let Some(record) = self.as_struct() else {
+            return compare_values(value, &proven_row(self, row), options);
+        };
+        let absent = record.nulls().is_some_and(|nulls| nulls.is_null(row));
+        match (value.is_null(), absent) {
+            (true, true) => return Ordering::Equal,
+            (true, false) => return absent_against_present(options),
+            (false, true) => return absent_against_present(options).reverse(),
+            (false, false) => {}
+        }
+        let Some(cells) = value.as_serie() else {
+            return compare_values(value, &proven_row(self, row), options);
+        };
+        let children = record.children();
+        for (index, child) in children.iter().enumerate().take(cells.len()) {
+            let step = compare_values(&cells.row_at(index), &proven_row(child, row), options);
+            if step != Ordering::Equal {
+                return step;
+            }
+        }
+        directed(cells.len().cmp(&children.len()), options)
     }
 
     /// The record column whose children are `children`, which the caller

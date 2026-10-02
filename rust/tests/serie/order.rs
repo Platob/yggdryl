@@ -2,6 +2,7 @@
 //! every leaf answers, the reads leaving the serie as it was and the
 //! `as_*` writes bringing it into the state in place.
 
+use std::cmp::Ordering;
 use std::sync::Arc;
 
 use arrow_array::types::Int8Type;
@@ -13,7 +14,7 @@ use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::expression::Selector;
 use yggdryl::{
-    ArrowCastOptions, DataType, Error, Field, FieldPath, Scalar, Serie, SerieReader, SerieSlice,
+    ArrowCastOptions, DataType, Error, Field, FieldPath, Scalar, Serie, SerieReader, SerieWindows,
     SortOptions, StructType, TimeUnit, Timezone,
 };
 
@@ -972,7 +973,7 @@ fn a_nested_absence_goes_where_the_options_put_a_top_level_one_on_every_rung() {
 }
 
 #[test]
-fn a_nested_leaf_that_orders_by_value_sends_its_whole_column_to_the_values_order() {
+fn a_record_with_a_value_ordered_leaf_compares_child_by_child_and_agrees_with_its_run() {
     let root = Field::new(
         "release",
         DataType::from(
@@ -1250,10 +1251,9 @@ fn venue_runs() -> Serie {
 }
 
 /// Each window as its key, its offset and its length.
-fn cuts<'a>(
-    windows: impl Iterator<Item = (Scalar, SerieSlice<'a>)>,
-) -> Vec<(Scalar, usize, usize)> {
+fn cuts(windows: &SerieWindows<'_>) -> Vec<(Scalar, usize, usize)> {
     windows
+        .iter()
         .map(|(key, window)| (key, window.offset(), window.len()))
         .collect()
 }
@@ -1270,23 +1270,24 @@ fn invalid_record(error: Error) -> (String, String) {
     }
 }
 
-#[test]
-fn window_by_refuses_a_run_an_empty_key_an_unnest_and_a_term_naming_no_column() {
+/// Pin every refusal `window_by` answers before a row is read, under
+/// `sorted`: a sorted window is refused exactly where an unsorted one is.
+fn window_by_refuses(sorted: bool) {
     let quotes = venue_runs();
     let empty = quote_column(Vec::new());
     for serie in [&quotes, &empty] {
-        let rows = serie.len();
+        let what = format!("{} rows, sorted {sorted}", serie.len());
         // The text's own parse error, before anything else.
         let parsed = "venue,".parse::<Selector>().unwrap_err().to_string();
         assert_eq!(
-            serie.window_by("venue,").unwrap_err().to_string(),
+            serie.window_by("venue,", sorted).unwrap_err().to_string(),
             parsed,
-            "{rows} rows"
+            "{what}"
         );
         // A key stating no column.
         for refused in [
-            serie.window_by("*"),
-            serie.window_by(Selector::new(Vec::new())),
+            serie.window_by("*", sorted),
+            serie.window_by(Selector::new(Vec::new()), sorted),
         ] {
             assert_eq!(
                 invalid_record(refused.unwrap_err()),
@@ -1294,26 +1295,29 @@ fn window_by_refuses_a_run_an_empty_key_an_unnest_and_a_term_naming_no_column() 
                     "quote".to_owned(),
                     "expected at least one column to window by, got an empty match key".to_owned()
                 ),
-                "{rows} rows"
+                "{what}"
             );
         }
         // An unnest is one row per element, never one key per row.
-        let refused = serie.window_by("unnest(items)").unwrap_err().to_string();
-        assert!(refused.contains("in a key"), "{rows} rows: {refused}");
+        let refused = serie
+            .window_by("unnest(items)", sorted)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("in a key"), "{what}: {refused}");
         // A column the record does not hold, named; the binder's own text.
         let root = SerieReader::root_of(serie.field().expect("a column")).expect("a root");
         let unknown = "tier".parse::<Selector>().expect("a selector");
-        let refused = serie.window_by(&unknown).unwrap_err().to_string();
+        let refused = serie.window_by(&unknown, sorted).unwrap_err().to_string();
         assert_eq!(refused, unknown.bind(&root).unwrap_err().to_string());
-        assert!(refused.contains("tier"), "{rows} rows: {refused}");
+        assert!(refused.contains("tier"), "{what}: {refused}");
         // A period's step is a positive literal.
         for text in ["minutes(ts, 0)", "minutes(ts, count)"] {
             let selector = text.parse::<Selector>().expect("a selector");
-            let refused = serie.window_by(&selector).unwrap_err().to_string();
+            let refused = serie.window_by(&selector, sorted).unwrap_err().to_string();
             assert_eq!(
                 refused,
                 selector.bind(&root).unwrap_err().to_string(),
-                "{rows} rows: {text}"
+                "{what}: {text}"
             );
         }
     }
@@ -1321,11 +1325,12 @@ fn window_by_refuses_a_run_an_empty_key_an_unnest_and_a_term_naming_no_column() 
     // A run has no field for a term to read.
     for run in [Serie::new(i64s(&[1, 2])), Serie::new(Vec::new())] {
         assert_eq!(
-            invalid_record(run.window_by("price").unwrap_err()),
+            invalid_record(run.window_by("price", sorted).unwrap_err()),
             (
                 "$".to_owned(),
                 "a schema-free run windows by no term".to_owned()
-            )
+            ),
+            "sorted {sorted}"
         );
     }
 
@@ -1347,7 +1352,7 @@ fn window_by_refuses_a_run_an_empty_key_an_unnest_and_a_term_naming_no_column() 
     .expect("a pair");
     let root = SerieReader::root_of(&field).expect("a root");
     let selector = "a".parse::<Selector>().expect("a selector");
-    let refused = pair.window_by(&selector).unwrap_err().to_string();
+    let refused = pair.window_by(&selector, sorted).unwrap_err().to_string();
     assert_eq!(refused, selector.bind(&root).unwrap_err().to_string());
     assert!(
         refused.contains("a and A; quote the one meant"),
@@ -1356,14 +1361,24 @@ fn window_by_refuses_a_run_an_empty_key_an_unnest_and_a_term_naming_no_column() 
 }
 
 #[test]
+fn window_by_refuses_a_run_an_empty_key_an_unnest_and_a_term_naming_no_column() {
+    window_by_refuses(false);
+}
+
+#[test]
+fn window_by_sorted_refuses_what_unsorted_refuses_before_any_row() {
+    window_by_refuses(true);
+}
+
+#[test]
 fn window_by_cuts_runs_of_equal_adjacent_keys_in_row_order() {
     let quotes = venue_runs();
-    let windows = quotes.window_by("venue").expect("windows");
+    let windows = quotes.window_by("venue", false).expect("windows");
     assert_eq!(windows.len(), 3);
-    let drained: Vec<_> = windows.collect();
+    let drained: Vec<_> = windows.iter().collect();
     assert_eq!(drained.len(), 3);
     assert_eq!(
-        cuts(drained.iter().cloned()),
+        cuts(&windows),
         vec![
             (one_cell("XNAS"), 0, 2),
             (one_cell("XNYS"), 2, 1),
@@ -1397,8 +1412,8 @@ fn window_by_cuts_runs_of_equal_adjacent_keys_in_row_order() {
     // second; a period keys its number since the epoch.
     assert_eq!(
         cuts(
-            quotes
-                .window_by("venue, minutes(ts, 15) as bucket")
+            &quotes
+                .window_by("venue, minutes(ts, 15) as bucket", false)
                 .expect("windows")
         ),
         vec![
@@ -1420,7 +1435,7 @@ fn window_by_cuts_runs_of_equal_adjacent_keys_in_row_order() {
         ]
     );
     assert_eq!(
-        cuts(quotes.window_by("minutes(ts, 15)").expect("windows")),
+        cuts(&quotes.window_by("minutes(ts, 15)", false).expect("windows")),
         vec![
             (one_cell(0_i32), 0, 2),
             (one_cell(1_i32), 2, 1),
@@ -1428,21 +1443,24 @@ fn window_by_cuts_runs_of_equal_adjacent_keys_in_row_order() {
         ]
     );
     assert_eq!(
-        cuts(quotes.window_by("days(ts)").expect("windows")),
+        cuts(&quotes.window_by("days(ts)", false).expect("windows")),
         vec![(one_cell(Scalar::date32(0)), 0, 4)]
     );
     // Names fold ASCII case.
     assert_eq!(
-        cuts(quotes.window_by("VENUE").expect("windows")),
-        cuts(quotes.window_by("venue").expect("windows"))
+        cuts(&quotes.window_by("VENUE", false).expect("windows")),
+        cuts(&quotes.window_by("venue", false).expect("windows"))
     );
     // One key on every row is one window; a key per row a window per row.
-    assert_eq!(quotes.window_by("days(ts)").expect("windows").len(), 1);
-    assert_eq!(quotes.window_by("count").expect("windows").len(), 4);
+    assert_eq!(
+        quotes.window_by("days(ts)", false).expect("windows").len(),
+        1
+    );
+    assert_eq!(quotes.window_by("count", false).expect("windows").len(), 4);
     // No row, no window.
     assert_eq!(
         quote_column(Vec::new())
-            .window_by("venue")
+            .window_by("venue", false)
             .expect("windows")
             .len(),
         0
@@ -1459,7 +1477,7 @@ fn window_by_keys_consecutive_absent_rows_as_one_null_window() {
         quote(None, 3, 2),
     ]);
     assert_eq!(
-        cuts(quotes.window_by("venue").expect("windows")),
+        cuts(&quotes.window_by("venue", false).expect("windows")),
         vec![
             (one_cell("XNAS"), 0, 1),
             (Scalar::Null, 1, 2),
@@ -1498,19 +1516,17 @@ fn window_by_keys_consecutive_absent_rows_as_one_null_window() {
     .expect("a struct array");
     let landed = Serie::from_arrow_array(Some(&field), Arc::new(records), ArrowCastOptions::new())
         .expect("a record column");
-    let identity = landed.window_by("venue, count, ts").expect("windows");
+    let identity = landed
+        .window_by("venue, count, ts", false)
+        .expect("windows");
     assert_eq!(
-        cuts(identity)
+        cuts(&identity)
             .into_iter()
             .map(|(_, offset, len)| (offset, len))
             .collect::<Vec<_>>(),
         vec![(0, 1), (1, 2), (3, 1)]
     );
-    let (key, _) = landed
-        .window_by("venue, count, ts")
-        .expect("windows")
-        .nth(1)
-        .expect("the absent window");
+    let (key, _) = identity.iter().nth(1).expect("the absent window");
     assert_eq!(key, Scalar::Null);
 }
 
@@ -1549,7 +1565,8 @@ fn window_by_over_sorted_keys_answers_what_partition_by_paths_answers() {
         "px".parse().expect("a path"),
     ];
     let groups = quotes.partition_by_paths(&paths).expect("groups");
-    let windows: Vec<_> = quotes.window_by("venue, px").expect("windows").collect();
+    let windows = quotes.window_by("venue, px", false).expect("windows");
+    let windows: Vec<_> = windows.iter().collect();
     // Three NaN payloads are one key, -0.0 and 0.0 two, the absent price
     // one of its own.
     assert_eq!(windows.len(), 6);
@@ -1560,10 +1577,10 @@ fn window_by_over_sorted_keys_answers_what_partition_by_paths_answers() {
     }
     // The whole serie keyed through the column alone agrees too.
     let px = quotes.child("px").expect("a child");
-    let by_column = px.window_by("px").expect("windows");
+    let by_column = px.window_by("px", false).expect("windows");
     let grouped = px.partition_by(px).expect("groups");
     assert_eq!(by_column.len(), grouped.len());
-    for ((group_key, group), (window_key, window)) in grouped.iter().zip(by_column) {
+    for ((group_key, group), (window_key, window)) in grouped.iter().zip(&by_column) {
         assert_eq!(&one_cell(group_key.clone()), &window_key);
         assert_eq!(*group, window.into_serie());
     }
@@ -1578,7 +1595,7 @@ fn a_non_record_column_windows_by_its_own_name() {
             .map(|nanos| utc_ns().scalar(Scalar::from(nanos)).expect("an instant")),
     )
     .expect("instants");
-    let windows = cuts(ts.window_by("days(ts)").expect("windows"));
+    let windows = cuts(&ts.window_by("days(ts)", false).expect("windows"));
     assert_eq!(
         windows,
         vec![
@@ -1601,9 +1618,9 @@ fn a_non_record_column_windows_by_its_own_name() {
         .collect();
     assert_eq!(carried, vec![i64s(&[0, 1]), i64s(&[2, 3]), i64s(&[4])]);
     // The column's own name is the one its key reads.
-    assert!(ts.window_by("price").is_err());
+    assert!(ts.window_by("price", false).is_err());
     let none = ts.slice(0, 0).expect("no row");
-    assert_eq!(none.window_by("days(ts)").expect("windows").len(), 0);
+    assert_eq!(none.window_by("days(ts)", false).expect("windows").len(), 0);
 }
 
 #[test]
@@ -1618,8 +1635,8 @@ fn a_star_beside_terms_keys_every_column_it_keeps() {
     ]);
     assert_eq!(
         cuts(
-            quotes
-                .window_by("* exclude (ts), days(ts)")
+            &quotes
+                .window_by("* exclude (ts), days(ts)", false)
                 .expect("windows")
         ),
         vec![
@@ -1651,12 +1668,622 @@ fn a_rust_list_of_texts_names_columns() {
     // written as one clause text.
     let quotes = venue_runs();
     let refused = quotes
-        .window_by(["minutes(ts, 15)"])
+        .window_by(["minutes(ts, 15)"], false)
         .unwrap_err()
         .to_string();
     assert!(refused.contains("minutes(ts, 15)"), "{refused}");
     assert_eq!(
-        cuts(quotes.window_by(["venue"]).expect("windows")),
-        cuts(quotes.window_by("venue").expect("windows"))
+        cuts(&quotes.window_by(["venue"], false).expect("windows")),
+        cuts(&quotes.window_by("venue", false).expect("windows"))
     );
+}
+
+// ---------------------------------------------------------------------------
+// window_by sorted: each key once, in key order
+// ---------------------------------------------------------------------------
+
+/// The values' order the ordering verbs read, ascending with every
+/// absence last, a row's and one nested in a sequence or a map alike: a
+/// sequence and a map compare item by item, then the shorter first. The
+/// reference a window cut is pinned against.
+fn value_order(left: &Scalar, right: &Scalar) -> Ordering {
+    match (left.is_null(), right.is_null()) {
+        (true, true) => Ordering::Equal,
+        (true, false) => Ordering::Greater,
+        (false, true) => Ordering::Less,
+        (false, false) => match (left.as_serie(), right.as_serie(), left, right) {
+            (Some(left), Some(right), ..) => {
+                let (left, right) = (left.rows(), right.rows());
+                left.iter()
+                    .zip(right.iter())
+                    .map(|(left, right)| value_order(left, right))
+                    .find(|step| *step != Ordering::Equal)
+                    .unwrap_or_else(|| left.len().cmp(&right.len()))
+            }
+            (
+                _,
+                _,
+                Scalar::Map(left) | Scalar::SortedMap(left),
+                Scalar::Map(right) | Scalar::SortedMap(right),
+            ) => {
+                let (left, right) = (left.as_slice(), right.as_slice());
+                left.iter()
+                    .zip(right)
+                    .map(|((left_key, left_value), (right_key, right_value))| {
+                        value_order(left_key, right_key)
+                            .then_with(|| value_order(left_value, right_value))
+                    })
+                    .find(|step| *step != Ordering::Equal)
+                    .unwrap_or_else(|| left.len().cmp(&right.len()))
+            }
+            _ => left.cmp(right),
+        },
+    }
+}
+
+/// The windows `keys` - one key per row - cut into under `sorted`, as
+/// `window_by` is pinned to cut them: maximal runs of equal adjacent keys in
+/// row order; or, sorted and out of order, those runs sorted stably by key
+/// and the runs of one key merged. Each window as its key, its offset and
+/// its length, beside the rows, in order, of the serie the windows view.
+fn reference_cuts(keys: &[Scalar], sorted: bool) -> (Vec<(Scalar, usize, usize)>, Vec<u32>) {
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    for (row, key) in keys.iter().enumerate() {
+        match runs.last_mut() {
+            Some(run) if value_order(&keys[run.0], key) == Ordering::Equal => run.1 = row + 1,
+            _ => runs.push((row, row + 1)),
+        }
+    }
+    let in_order = keys
+        .windows(2)
+        .all(|pair| value_order(&pair[0], &pair[1]) != Ordering::Greater);
+    if !sorted || in_order {
+        return (
+            runs.iter()
+                .map(|(start, end)| (keys[*start].clone(), *start, end - start))
+                .collect(),
+            (0..keys.len() as u32).collect(),
+        );
+    }
+    runs.sort_by(|left, right| value_order(&keys[left.0], &keys[right.0]));
+    let mut order: Vec<u32> = Vec::new();
+    let mut windows: Vec<(Scalar, usize, usize)> = Vec::new();
+    for (start, end) in runs {
+        let at = order.len();
+        order.extend(start as u32..end as u32);
+        match windows.last_mut() {
+            Some(window) if value_order(&window.0, &keys[start]) == Ordering::Equal => {
+                window.2 += end - start;
+            }
+            _ => windows.push((keys[start].clone(), at, end - start)),
+        }
+    }
+    (windows, order)
+}
+
+/// Pin `serie.window_by(by, sorted)` under both flags against the
+/// reference cut of `keys`, the key each row computes: the same keys,
+/// offsets and lengths, and the rows the windows' serie holds - the serie
+/// itself where nothing is gathered, else its rows taken once in key order.
+fn cuts_as_its_values_do(serie: &Serie, by: &str, keys: &[Scalar]) {
+    for sorted in [false, true] {
+        let what = format!("{by} over {serie}, sorted {sorted}");
+        let windows = serie.window_by(by, sorted).expect(&what);
+        let (expected, order) = reference_cuts(keys, sorted);
+        assert_eq!(cuts(&windows), expected, "{what}");
+        assert_eq!(windows.len(), expected.len(), "{what}");
+        let gathered = order.iter().enumerate().any(|(at, row)| at as u32 != *row);
+        assert_eq!(
+            std::ptr::eq(windows.serie(), serie),
+            !gathered,
+            "{what}: the serie is borrowed exactly when nothing is gathered"
+        );
+        assert_eq!(windows.serie().field(), serie.field(), "{what}");
+        let taken = serie
+            .into_taken(&Serie::new(u32s(&order)))
+            .expect("the reference order");
+        assert_eq!(windows.serie().rows(), taken.rows(), "{what}");
+        for (_, window) in &windows {
+            assert!(std::ptr::eq(window.serie(), windows.serie()), "{what}");
+        }
+    }
+}
+
+/// One key per row of a column keyed by its own name: the one-cell run of
+/// its row.
+fn own_keys(column: &Serie) -> Vec<Scalar> {
+    column.rows().iter().cloned().map(one_cell).collect()
+}
+
+/// One key per row of a record column keyed by the children at `cells`: the
+/// run of those cells, or [`Scalar::Null`] where the row is absent.
+fn record_keys(records: &Serie, cells: &[usize]) -> Vec<Scalar> {
+    records
+        .rows()
+        .iter()
+        .map(|row| match row.as_serie() {
+            None => Scalar::Null,
+            Some(run) => Scalar::from_sequence(
+                cells
+                    .iter()
+                    .map(|cell| run.scalar(*cell).expect("a cell"))
+                    .collect::<Vec<_>>(),
+            ),
+        })
+        .collect()
+}
+
+#[test]
+fn window_by_sorted_over_keys_in_order_answers_the_unsorted_windows_over_the_serie() {
+    // Present venues ascending, then an absent venue, then an absent row:
+    // already in key order.
+    let quotes = quote_column(vec![
+        quote(Some("XNAS"), 1, 0),
+        quote(Some("XNAS"), 2, 14),
+        quote(Some("XNYS"), 3, 15),
+        quote(None, 4, 31),
+        quote(None, 5, 32),
+        Scalar::Null,
+    ]);
+    for by in ["venue", "venue, count", "minutes(ts, 15)"] {
+        let unsorted = quotes.window_by(by, false).expect("windows");
+        let sorted = quotes.window_by(by, true).expect("windows");
+        assert_eq!(cuts(&sorted), cuts(&unsorted), "{by}");
+        assert!(std::ptr::eq(sorted.serie(), &quotes), "{by}");
+        for (_, window) in &sorted {
+            assert!(std::ptr::eq(window.serie(), &quotes), "{by}");
+        }
+    }
+    assert_eq!(
+        cuts(&quotes.window_by("venue", true).expect("windows")),
+        vec![
+            (one_cell("XNAS"), 0, 2),
+            (one_cell("XNYS"), 2, 1),
+            (one_cell(Scalar::Null), 3, 2),
+            (Scalar::Null, 5, 1),
+        ]
+    );
+
+    // NaN payloads are one key above every number, -0.0 orders before 0.0,
+    // the absent price last: in order, so nothing moves.
+    let negative_nan = f64::from_bits(f64::NAN.to_bits() | (1 << 63));
+    let payload_nan = f64::from_bits(f64::NAN.to_bits() | 1);
+    let venues: ArrayRef = Arc::new(StringArray::from(vec![
+        "XNAS", "XNAS", "XNAS", "XNAS", "XNAS", "XNAS", "XNAS", "XNAS", "XNYS",
+    ]));
+    let prices: ArrayRef = Arc::new(arrow_array::Float64Array::from(vec![
+        Some(-1.0),
+        Some(-0.0),
+        Some(0.0),
+        Some(0.0),
+        Some(f64::NAN),
+        Some(payload_nan),
+        Some(negative_nan),
+        None,
+        Some(1.0),
+    ]));
+    let records = arrow_array::StructArray::from(vec![
+        (
+            Arc::new(ArrowField::new("venue", ArrowDataType::Utf8, false)),
+            venues,
+        ),
+        (
+            Arc::new(ArrowField::new("px", ArrowDataType::Float64, true)),
+            prices,
+        ),
+    ]);
+    let quotes = Serie::from_arrow_array(None, Arc::new(records), ArrowCastOptions::new())
+        .expect("a record column");
+    let unsorted = quotes.window_by("venue, px", false).expect("windows");
+    let sorted = quotes.window_by("venue, px", true).expect("windows");
+    assert_eq!(sorted.len(), 6);
+    assert_eq!(cuts(&sorted), cuts(&unsorted));
+    assert!(std::ptr::eq(sorted.serie(), &quotes));
+    // The prices alone, before the XNYS row brings 1.0 after the absent one.
+    let px = quotes
+        .child("px")
+        .expect("a child")
+        .slice(0, 8)
+        .expect("eight rows");
+    let sorted = px.window_by("px", true).expect("windows");
+    assert_eq!(
+        cuts(&sorted),
+        cuts(&px.window_by("px", false).expect("windows"))
+    );
+    assert!(std::ptr::eq(sorted.serie(), &px));
+    assert_eq!(sorted.len(), 5);
+}
+
+#[test]
+fn window_by_sorted_gathers_the_rows_once_in_stable_key_order() {
+    let quotes = quote_column(vec![
+        quote(Some("XNYS"), 1, 0),
+        quote(Some("XNAS"), 2, 1),
+        quote(Some("XNYS"), 3, 2),
+        quote(None, 4, 3),
+        quote(Some("XNAS"), 5, 4),
+    ]);
+    let windows = quotes.window_by("venue", true).expect("windows");
+    assert_eq!(windows.len(), 3);
+    assert!(!windows.is_empty());
+    // XNAS first, its rows 1 and 4 in arrival order; XNYS; the absent venue
+    // last.
+    assert_eq!(
+        cuts(&windows),
+        vec![
+            (one_cell("XNAS"), 0, 2),
+            (one_cell("XNYS"), 2, 2),
+            (one_cell(Scalar::Null), 4, 1),
+        ]
+    );
+    // The rows are gathered once into a serie the windows own, under the
+    // same field; every window views it.
+    assert!(!std::ptr::eq(windows.serie(), &quotes));
+    let stable = Serie::new(u32s(&[1, 4, 0, 2, 3]));
+    let taken = quotes.into_taken(&stable).expect("taken");
+    assert_eq!(windows.serie().field(), quotes.field());
+    assert_eq!(windows.serie().rows(), taken.rows());
+    for (_, window) in &windows {
+        assert!(std::ptr::eq(window.serie(), windows.serie()));
+    }
+    let (_, xnas) = windows.iter().next().expect("a first window");
+    assert_eq!(
+        xnas.rows().to_vec(),
+        vec![
+            quotes.scalar(1).expect("a row"),
+            quotes.scalar(4).expect("a row")
+        ]
+    );
+    // It is the stable order taken, then cut in row order.
+    assert_eq!(
+        cuts(&windows),
+        cuts(&taken.window_by("venue", false).expect("windows"))
+    );
+    // The serie it was cut from is untouched.
+    assert_eq!(
+        quotes.scalar(0).expect("a row"),
+        quote_field()
+            .scalar(quote(Some("XNYS"), 1, 0))
+            .expect("a quote row")
+    );
+
+    // An absent row keys `Null`, after a present row with an absent venue.
+    let quotes = quote_column(vec![
+        Scalar::Null,
+        quote(Some("XNAS"), 1, 0),
+        Scalar::Null,
+        quote(None, 2, 1),
+    ]);
+    let windows = quotes.window_by("venue", true).expect("windows");
+    assert_eq!(
+        cuts(&windows),
+        vec![
+            (one_cell("XNAS"), 0, 1),
+            (one_cell(Scalar::Null), 1, 1),
+            (Scalar::Null, 2, 2),
+        ]
+    );
+
+    // Two cells key in selector order: the venue first, then the bucket.
+    let quotes = quote_column(vec![
+        quote(Some("XNYS"), 1, 0),
+        quote(Some("XNAS"), 2, 20),
+        quote(Some("XNAS"), 3, 0),
+        quote(Some("XNYS"), 4, 16),
+    ]);
+    let key = |venue: &str, bucket: i32| {
+        Scalar::from_sequence([Scalar::from(venue), Scalar::from(bucket)])
+    };
+    let windows = quotes
+        .window_by("venue, minutes(ts, 15) as bucket", true)
+        .expect("windows");
+    assert_eq!(
+        cuts(&windows),
+        vec![
+            (key("XNAS", 0), 0, 1),
+            (key("XNAS", 1), 1, 1),
+            (key("XNYS", 0), 2, 1),
+            (key("XNYS", 1), 3, 1),
+        ]
+    );
+    assert_eq!(
+        windows
+            .serie()
+            .rows()
+            .iter()
+            .map(|row| row.get(1).expect("count").into_owned())
+            .collect::<Vec<_>>(),
+        i64s(&[3, 2, 1, 4])
+    );
+}
+
+/// The record field `{venue: mic, px: float64?, qty: int64}`, nullable.
+fn coded_quote_field() -> Field {
+    StructType::from_fields([
+        DataType::Mic.required_field("venue"),
+        DataType::Float64.nullable_field("px"),
+        DataType::Int64.required_field("qty"),
+    ])
+    .map(DataType::from)
+    .expect("three children")
+    .nullable_field("quote")
+}
+
+/// [`coded_quote_field`] rows off Arrow buffers: a negative and a payload
+/// NaN beside the canonical one, -0.0 beside 0.0, an absent price and an
+/// absent row.
+fn coded_quotes() -> Serie {
+    let field = coded_quote_field();
+    let ArrowDataType::Struct(fields) = field
+        .as_arrow_field_ref()
+        .expect("a projection")
+        .data_type()
+        .clone()
+    else {
+        unreachable!("a record field projects to a struct")
+    };
+    let negative_nan = f64::from_bits(f64::NAN.to_bits() | (1 << 63));
+    let payload_nan = f64::from_bits(f64::NAN.to_bits() | 1);
+    let venues: ArrayRef = Arc::new(StringArray::from(vec![
+        "XNYS", "XNAS", "XNAS", "XNYS", "XNAS", "XNAS", "XNYS", "XNAS", "XNAS",
+    ]));
+    let prices: ArrayRef = Arc::new(arrow_array::Float64Array::from(vec![
+        Some(0.0),
+        Some(-0.0),
+        Some(0.0),
+        Some(f64::NAN),
+        Some(negative_nan),
+        Some(payload_nan),
+        None,
+        Some(1.0),
+        Some(1.0),
+    ]));
+    let quantities: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]));
+    let records = arrow_array::StructArray::try_new(
+        fields,
+        vec![venues, prices, quantities],
+        Some(NullBuffer::from(vec![
+            true, true, true, true, true, true, true, false, true,
+        ])),
+    )
+    .expect("a struct array");
+    Serie::from_arrow_array(Some(&field), Arc::new(records), ArrowCastOptions::new())
+        .expect("a record column")
+}
+
+/// The record field `{order: {venue: mic, px: float64?}?, qty: int64}`.
+fn ordered_quote_field() -> Field {
+    let order = StructType::from_fields([
+        DataType::Mic.required_field("venue"),
+        DataType::Float64.nullable_field("px"),
+    ])
+    .map(DataType::from)
+    .expect("two children")
+    .nullable_field("order");
+    StructType::from_fields([order, DataType::Int64.required_field("qty")])
+        .map(DataType::from)
+        .expect("two children")
+        .required_field("fill")
+}
+
+/// Rows under [`ordered_quote_field`], `order` absent in two of them.
+fn ordered_quotes() -> Serie {
+    let field = ordered_quote_field();
+    let order = |venue: &str, px: Option<f64>| {
+        Scalar::from_sequence([Scalar::from(venue), px.map_or(Scalar::Null, Scalar::from)])
+    };
+    let rows = [
+        (Some(order("XNYS", Some(2.0))), 1_i64),
+        (None, 2),
+        (Some(order("XNAS", None)), 3),
+        (Some(order("XNAS", Some(1.0))), 4),
+        (Some(order("XNAS", None)), 5),
+        (None, 6),
+        (Some(order("XNYS", Some(2.0))), 7),
+    ]
+    .into_iter()
+    .map(|(order, qty)| {
+        field
+            .scalar(Scalar::from_sequence([
+                order.unwrap_or(Scalar::Null),
+                Scalar::from(qty),
+            ]))
+            .expect("a fill row")
+    })
+    .collect::<Vec<_>>();
+    Serie::from_scalars(field, rows).expect("fill rows")
+}
+
+#[test]
+fn window_by_cuts_every_nested_key_as_its_values_do() {
+    for column in nested_columns() {
+        if column.as_struct().is_some() {
+            cuts_as_its_values_do(&column, "venue, price", &record_keys(&column, &[0, 1]));
+        } else {
+            let by = format!("\"{}\"", column.field().expect("a column").name());
+            cuts_as_its_values_do(&column, &by, &own_keys(&column));
+        }
+    }
+
+    // A union keys by its member and its payload.
+    let member =
+        |type_id: i64, payload: Scalar| Scalar::from_sequence([Scalar::from(type_id), payload]);
+    let unions = Serie::from_scalars(
+        Field::new(
+            "quote",
+            DataType::union(
+                [
+                    (0, Field::new("id", DataType::Int64, false)),
+                    (1, Field::new("symbol", DataType::utf8(), true)),
+                ],
+                yggdryl::UnionMode::Sparse,
+            )
+            .expect("two members"),
+            true,
+        ),
+        [
+            member(1, Scalar::from("AAPL")),
+            member(0, Scalar::from(2_i64)),
+            member(0, Scalar::from(2_i64)),
+            Scalar::Null,
+            member(1, Scalar::Null),
+            member(0, Scalar::from(1_i64)),
+            member(1, Scalar::from("AAPL")),
+        ],
+    )
+    .expect("union rows");
+    cuts_as_its_values_do(&unions, "quote", &own_keys(&unions));
+
+    // A map keys entry by entry, then the shorter first.
+    let entries = |pairs: &[(&str, Option<i64>)]| {
+        Scalar::from_mapping(
+            pairs
+                .iter()
+                .map(|(key, value)| (Scalar::from(*key), value.map_or(Scalar::Null, Scalar::from))),
+        )
+        .expect("a mapping")
+    };
+    let maps = Serie::from_scalars(
+        Field::new(
+            "tags",
+            DataType::map_of(DataType::utf8(), DataType::Int64, false).expect("a map"),
+            true,
+        ),
+        [
+            entries(&[("a", Some(1)), ("b", Some(2))]),
+            entries(&[("a", Some(1))]),
+            entries(&[("a", Some(1))]),
+            Scalar::Null,
+            entries(&[("a", None)]),
+            entries(&[("a", Some(1)), ("b", Some(2))]),
+        ],
+    )
+    .expect("map rows");
+    cuts_as_its_values_do(&maps, "tags", &own_keys(&maps));
+
+    // A run-end column keys by the values its runs hold.
+    let states_field = Field::new(
+        "state",
+        DataType::run_end_encoded(
+            Field::new("run_ends", DataType::Int32, false),
+            Field::new("values", DataType::utf8(), true),
+        )
+        .expect("a run-end datatype"),
+        true,
+    );
+    let states: ArrayRef = Arc::new(
+        arrow_array::RunArray::<arrow_array::types::Int32Type>::try_new(
+            &arrow_array::Int32Array::from(vec![2, 3, 5, 6]),
+            &StringArray::from(vec![Some("open"), None, Some("closed"), Some("open")]),
+        )
+        .expect("climbing run ends"),
+    );
+    let states = Serie::from_arrow_array(Some(&states_field), states, ArrowCastOptions::new())
+        .expect("a run-end column");
+    cuts_as_its_values_do(&states, "state", &own_keys(&states));
+
+    // A record holding a registered code and a float with foreign NaN
+    // payloads, keyed by each cell, by two and by all three.
+    let quotes = coded_quotes();
+    for (by, cells) in [
+        ("venue", &[0][..]),
+        ("px", &[1][..]),
+        ("venue, px", &[0, 1][..]),
+        ("px, venue", &[1, 0][..]),
+        ("venue, px, qty", &[0, 1, 2][..]),
+    ] {
+        cuts_as_its_values_do(&quotes, by, &record_keys(&quotes, cells));
+    }
+
+    // A whole record cell keys item by item, and a path reaches through it;
+    // an absent `order` keys a null cell either way.
+    let fills = ordered_quotes();
+    let orders: Vec<Scalar> = fills
+        .rows()
+        .iter()
+        .map(|row| row.get(0).expect("order").into_owned())
+        .collect();
+    cuts_as_its_values_do(
+        &fills,
+        "order",
+        &orders.iter().cloned().map(one_cell).collect::<Vec<_>>(),
+    );
+    let cell = |at: usize| -> Vec<Scalar> {
+        orders
+            .iter()
+            .map(|order| {
+                one_cell(match order.as_serie() {
+                    None => Scalar::Null,
+                    Some(run) => run.scalar(at).expect("a cell"),
+                })
+            })
+            .collect()
+    };
+    cuts_as_its_values_do(&fills, "order.venue", &cell(0));
+    cuts_as_its_values_do(&fills, "order.px", &cell(1));
+}
+
+#[test]
+fn the_record_rung_agrees_with_its_run_under_every_ordering() {
+    // A registered code beside an enum and an integer: the code alone is
+    // ordered by its value.
+    let field = StructType::from_fields([
+        DataType::Mic.required_field("venue"),
+        DataType::Side.required_field("side"),
+        DataType::Int64.required_field("count"),
+    ])
+    .map(DataType::from)
+    .expect("three children")
+    .required_field("quote");
+    let row = |venue: &str, side: &str, count: i64| {
+        field
+            .scalar(Scalar::from_sequence([
+                Scalar::from(venue),
+                Scalar::from(side),
+                Scalar::from(count),
+            ]))
+            .expect("a quote row")
+    };
+    let sided = Serie::from_scalars(
+        field.clone(),
+        [
+            row("XNYS", "SELL", 2),
+            row("XNAS", "BUYS", 1),
+            row("XNYS", "BUYS", 2),
+            row("XNAS", "BUYS", 1),
+            row("XNAS", "SELL", 3),
+        ],
+    )
+    .expect("quote rows");
+    agrees_with_its_run(&sided);
+    cuts_as_its_values_do(&sided, "venue, side", &record_keys(&sided, &[0, 1]));
+
+    // Absent rows and absent cells of a code and of a float, every NaN
+    // payload one value: placed where each ordering puts an absence.
+    let quotes = coded_quotes();
+    agrees_with_its_run(&quotes);
+    let sorted = quotes
+        .into_sorted(SortOptions::default())
+        .expect("sorted")
+        .rows()
+        .into_owned();
+    let qty = |row: &Scalar| row.get(2).map(|cell| cell.into_owned());
+    assert_eq!(
+        sorted.iter().map(qty).collect::<Vec<_>>(),
+        // XNAS -0.0, 0.0, 1.0, then its two NaN prices, one value, by
+        // quantity (2, 3, 9, 5, 6); XNYS 0.0, NaN, absent (1, 4, 7); then
+        // the absent row.
+        [2, 3, 9, 5, 6, 1, 4, 7]
+            .map(|count: i64| Some(Scalar::from(count)))
+            .into_iter()
+            .chain([None])
+            .collect::<Vec<_>>()
+    );
+
+    // A record nested in a record, absent in some rows: each level on its
+    // own rung.
+    let fills = ordered_quotes();
+    agrees_with_its_run(&fills);
+    let orders = fills.child("order").expect("a child");
+    agrees_with_its_run(orders);
 }

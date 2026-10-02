@@ -662,13 +662,39 @@ mod records {
         .expect("a batch")
     }
 
+    /// `rows` quotes of a venue and a price, the venue running through
+    /// three in key order, changing at a third and at two thirds of the rows.
+    fn quotes(rows: usize) -> RecordBatch {
+        let schema = Arc::new(Schema::new(vec![
+            ArrowField::new("venue", ArrowDataType::Utf8, false),
+            ArrowField::new("price", ArrowDataType::Int64, false),
+        ]));
+        RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(
+                    (0..rows)
+                        .map(|index| ["XNAS", "XNYS", "XPAR"][index * 3 / rows])
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(Int64Array::from((0..rows as i64).collect::<Vec<_>>())),
+            ],
+        )
+        .expect("a batch")
+    }
+
     /// A handle holding `rows` rows written in the encoding `url` names.
     fn written(url: &str, rows: usize) -> Counted<Buffer> {
+        written_batch(url, batch(rows))
+    }
+
+    /// A handle holding `batch` written in the encoding `url` names.
+    fn written_batch(url: &str, batch: RecordBatch) -> Counted<Buffer> {
         let media_type = Url::from_str(url).expect("a location").media_type();
         let mut sink = Buffer::new();
         sink.set_media_type(media_type.clone());
         let options = sink.record_options().expect("record options");
-        sink.overwrite_arrow_batch(batch(rows), &options)
+        sink.overwrite_arrow_batch(batch, &options)
             .expect("a write");
         let mut source = Buffer::from_bytes(sink.read_all_bytes().expect("the bytes"));
         source.set_media_type(media_type);
@@ -730,6 +756,41 @@ mod records {
             // it is one read per message rather than one transfer of the file.
             "pread=8 size=1 media_type=2 is_container=2",
         );
+    }
+
+    /// A stream's windows pull the stream they are cut from and ask the
+    /// handle for nothing of their own: a read windowed by its venue, sorted,
+    /// each window read before the next is taken, costs the calls the read
+    /// drained alone costs.
+    #[test]
+    fn windowing_a_read_adds_no_call() {
+        let handle = written_batch("file:///lake/quotes.arrow", quotes(64));
+        let calls = Arc::clone(handle.calls());
+        let read = "pstream_bytes=1 url=1 media_type=3 is_container=2 parent=1";
+        costs("ipc: a read drained", &calls, read, || {
+            let rows: usize = handle
+                .read_arrow(None)
+                .expect("a reader")
+                .map(|batch| batch.expect("a batch").len())
+                .sum();
+            assert_eq!(rows, 64);
+        });
+        costs("ipc: a read windowed by venue", &calls, read, || {
+            let mut windows = 0;
+            let mut rows = 0;
+            for window in handle
+                .read_arrow(None)
+                .expect("a reader")
+                .window_by("venue", true)
+                .expect("windows")
+            {
+                windows += 1;
+                for piece in window.expect("a window") {
+                    rows += piece.expect("a piece").len();
+                }
+            }
+            assert_eq!((windows, rows), (3, 64));
+        });
     }
 
     /// A Parquet file past a megabyte is read footer first: one read of its

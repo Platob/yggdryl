@@ -37,6 +37,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::arrow::child_position;
 use super::typing::{common_type, unwrap_dictionary};
 use super::{Literal, Term};
 use crate::{DataType, Error, Field, Result, Scalar};
@@ -449,10 +450,7 @@ fn struct_child(field: &Field, value: &Scalar, name: &str) -> Scalar {
     if let (Some(values), DataType::Struct(fields)) =
         (value.sequence_rows(), unwrap_dictionary(field.dtype()))
     {
-        return fields
-            .as_fields()
-            .iter()
-            .position(|child| child.name().eq_ignore_ascii_case(name))
+        return child_position(fields.as_fields().iter().map(Field::name), name)
             .and_then(|index| values.get(index))
             .cloned()
             .unwrap_or(Scalar::Null);
@@ -461,12 +459,10 @@ fn struct_child(field: &Field, value: &Scalar, name: &str) -> Scalar {
 }
 
 fn struct_child_field(field: &Field, name: &str) -> Result<Field> {
-    field
-        .fields()
-        .iter()
-        .find(|child| child.name().eq_ignore_ascii_case(name))
-        .cloned()
-        .map(|child| child.with_nullable(true))
+    let children = field.fields();
+    child_position(children.iter().map(Field::name), name)
+        .and_then(|position| children.get(position))
+        .map(|child| child.clone().with_nullable(true))
         .ok_or_else(|| {
             typing_error(format_smolstr!(
                 "expected a child of {}, got {name:?}",

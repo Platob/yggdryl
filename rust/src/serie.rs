@@ -201,11 +201,11 @@ macro_rules! serie_leaf {
 }
 
 pub(crate) mod arrow;
-pub use arrow::SerieReader;
 pub(crate) use arrow::{
     Proof, Resolved, canonical_rows, default_array, default_dtype_array, from_canonical_rows, land,
     land_batch, land_planned, land_resolved, land_under, proven_cell,
 };
+pub use arrow::{SerieReader, SerieReaderWindows};
 mod boolean;
 mod bytes;
 mod datatype;
@@ -214,6 +214,7 @@ pub(crate) mod layout;
 mod mapping;
 mod null;
 mod order;
+pub(crate) use order::{compare_values, require_indexable};
 mod primitive;
 mod runend;
 mod sequence;

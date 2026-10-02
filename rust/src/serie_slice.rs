@@ -18,7 +18,9 @@
 //! nothing nests: [`SerieSlice::window`] and [`SerieSliceMut::window_mut`]
 //! narrow onto the same serie, and [`SerieWindows`] - the windows of equal
 //! adjacent keys [`Serie::window_by`] and [`SerieSlice::window_by`] cut -
-//! are every one over the serie, at offsets in it.
+//! are every one over the serie, at offsets in it, unless `sorted` had to
+//! gather the rows into key order: then every window is over that one
+//! gathered copy, which the windows value owns.
 //!
 //! Identity is the window's rows alone, as a serie's is its rows: a window
 //! equals, orders as and hashes like the serie of the same rows.
@@ -63,7 +65,8 @@ use arrow_buffer::bit_iterator::BitIndexIterator;
 use crate::arrow::scalar_memory_size;
 use crate::expression::IntoSelector;
 use crate::serie::{
-    Rows, compare_rows, hash_rows, proven_row, require_range, require_row, require_window,
+    Rows, compare_rows, hash_rows, proven_row, require_indexable, require_range, require_row,
+    require_window,
 };
 use crate::{DataType, Field, Result, Scalar, Serie, SortOptions};
 
@@ -93,45 +96,97 @@ pub struct SerieSliceRows<'a> {
     back: usize,
 }
 
-/// The windows of equal adjacent keys over one serie, in row order: what
-/// [`Serie::window_by`] and [`SerieSlice::window_by`] answer.
+/// The windows of equal adjacent keys over one serie: what
+/// [`Serie::window_by`], [`SerieSlice::window_by`] and
+/// [`SerieSliceMut::window_by`] answer.
 ///
-/// It holds the key column and the bitmap of where each window opens, both
-/// computed once; each step finds the next set bit, builds the window's key,
-/// which is the key column's row at the window's first row, and lends the
-/// window over the serie at its offset in it, so a window costs its key and
-/// nothing else. Exact-size and fused.
+/// An owner, lending its windows as often as asked: [`Self::iter`] - or
+/// `&windows` in a `for` - walks them as `(key, window)` pairs, each window
+/// a [`SerieSlice`] over [`Self::serie`]. Without `sorted`, or with keys
+/// already in order, the windows are in row order over the windowed serie
+/// itself, borrowed, at their offsets in it; with `sorted` and keys out of
+/// order they are in key order over the one copy of the rows gathered in
+/// that order, which this value owns.
+///
+/// It holds the key column and where each window opens, both computed once;
+/// each step builds the window's key - the key column's row at the window's
+/// first row - and lends the window, so a window costs its key and nothing
+/// else.
 ///
 /// ```
-/// use yggdryl::{Scalar, Serie};
+/// use yggdryl::{DataType, Field, Scalar, Serie};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let days = Serie::from_scalars(
-///     yggdryl::Field::new("day", yggdryl::DataType::Int32, false),
-///     [1_i32, 1, 2].map(Scalar::from),
-/// )?;
-/// let mut windows = days.window_by("day")?;
+/// let day = Field::new("day", DataType::Int32, false);
+/// let days = Serie::from_scalars(day.clone(), [1_i32, 1, 2].map(Scalar::from))?;
+/// let windows = days.window_by("day", false)?;
 /// assert_eq!(windows.len(), 2);
-/// let (key, window) = windows.next().expect("a first window");
+/// assert!(std::ptr::eq(windows.serie(), &days));
+/// let mut walk = windows.iter();
+/// let (key, window) = walk.next().expect("a first window");
 /// assert_eq!(key, Scalar::from_sequence([Scalar::from(1_i32)]));
 /// assert_eq!((window.offset(), window.len()), (0, 2));
-/// assert_eq!(windows.next().map(|(_, window)| window.offset()), Some(2));
-/// assert!(windows.next().is_none());
+/// assert_eq!(walk.next().map(|(_, window)| window.offset()), Some(2));
+/// assert!(walk.next().is_none());
+///
+/// // Lent again, as often as asked.
+/// let mut lengths = Vec::new();
+/// for (_, window) in &windows {
+///     lengths.push(window.len());
+/// }
+/// assert_eq!(lengths, [2, 1]);
+///
+/// // Sorted over keys out of order: the rows gathered once, in key order.
+/// let mixed = Serie::from_scalars(day, [2_i32, 1, 2].map(Scalar::from))?;
+/// let sorted = mixed.window_by("day", true)?;
+/// assert!(!std::ptr::eq(sorted.serie(), &mixed));
+/// assert_eq!(sorted.serie().rows().to_vec(), [1_i32, 2, 2].map(Scalar::from));
+/// let cuts: Vec<_> = sorted
+///     .iter()
+///     .map(|(key, window)| (key, window.offset(), window.len()))
+///     .collect();
+/// assert_eq!(cuts, [
+///     (Scalar::from_sequence([Scalar::from(1_i32)]), 0, 1),
+///     (Scalar::from_sequence([Scalar::from(2_i32)]), 1, 2),
+/// ]);
 /// # Ok(())
 /// # }
 /// ```
-#[must_use = "the windows are cut only as the walk reaches them"]
+#[must_use = "the windows are lent only by walking them"]
 #[derive(Clone, Debug)]
 pub struct SerieWindows<'a> {
-    serie: &'a Serie,
-    /// The serie row the keys' first row stands for.
+    holder: Cow<'a, Serie>,
+    /// The holder row the keys' first row stands for: the window's offset
+    /// when borrowed, 0 when gathered.
     offset: usize,
-    /// One key row per row windowed.
+    /// One key row per row windowed, in arrival order.
     keys: Serie,
-    /// One bit per key row, set where a window opens.
-    starts: BooleanBuffer,
-    /// The key row the next window opens at.
+    cuts: Cuts,
+}
+
+/// Where the windows of a [`SerieWindows`] lie in its holder.
+#[derive(Clone, Debug)]
+enum Cuts {
+    /// Windows in row order: one bit per key row, set where a window opens,
+    /// and the number of set bits.
+    Starts(BooleanBuffer, usize),
+    /// Windows in key order over the gathered holder: per window, the key
+    /// row it is keyed by and where it ends in the holder, the first
+    /// starting at 0 and each next one where the one before it ends.
+    Gathered(Box<[(u32, u32)]>),
+}
+
+/// The walk over the windows a [`SerieWindows`] lends, from its first:
+/// [`SerieWindows::iter`]. Exact-size and fused.
+#[must_use = "the windows are lent only as the walk reaches them"]
+#[derive(Clone, Debug)]
+pub struct SerieWindowsIter<'s> {
+    windows: &'s SerieWindows<'s>,
+    /// The key row the next window opens at, in row order; the next
+    /// window's place, in key order.
     front: usize,
+    /// In key order, the holder row the next window starts at.
+    at: usize,
     remaining: usize,
 }
 
@@ -431,11 +486,14 @@ impl<'a> SerieSlice<'a> {
     }
 
     /// The window's rows cut into windows of equal adjacent keys, as
-    /// [`Serie::window_by`] cuts a serie's: the keys are computed over this
-    /// window's rows alone, so a row outside it never moves a cut, and every
-    /// window answered is over the same serie as this one, at its offset in
-    /// that serie. Costs what [`Serie::window_by`] costs over
-    /// [`Self::into_serie`], plus that serie - nothing for a whole window.
+    /// [`Serie::window_by`] cuts a serie's, `sorted` meaning what it means
+    /// there: the keys are computed over this window's rows alone, so a row
+    /// outside it never moves a cut, and every window answered is over the
+    /// same serie as this one, at its offset in that serie - unless `sorted`
+    /// gathers rows out of order, and then over the copy of this window's
+    /// rows alone, from offset 0. Costs what [`Serie::window_by`] costs, plus
+    /// one slice per key cell the key reads where it stands - never this
+    /// window as a serie of its own.
     ///
     /// ```
     /// use yggdryl::{DataType, Field, Scalar, Serie};
@@ -443,15 +501,26 @@ impl<'a> SerieSlice<'a> {
     /// # fn main() -> yggdryl::Result<()> {
     /// let days = Serie::from_scalars(
     ///     Field::new("day", DataType::Int32, false),
-    ///     [1_i32, 1, 1, 2, 2].map(Scalar::from),
+    ///     [1_i32, 1, 1, 2, 1].map(Scalar::from),
     /// )?;
-    /// let tail = days.window(1, 4)?;
-    /// let windows: Vec<_> = tail.window_by("day")?.collect();
+    /// let tail = days.window(1, 3)?;
+    /// let windows = tail.window_by("day", false)?;
+    /// let windows: Vec<_> = windows.iter().collect();
     /// assert_eq!(windows.len(), 2);
     /// // Offsets are the serie's: the first window starts where the tail does.
     /// assert_eq!((windows[0].1.offset(), windows[0].1.len()), (1, 2));
-    /// assert_eq!((windows[1].1.offset(), windows[1].1.len()), (3, 2));
+    /// assert_eq!((windows[1].1.offset(), windows[1].1.len()), (3, 1));
     /// assert!(std::ptr::eq(windows[1].1.serie(), &days));
+    ///
+    /// // Sorted over keys out of order, the gather takes this window's rows
+    /// // alone, from offset 0.
+    /// let sorted = days.window(2, 3)?.window_by("day", true)?;
+    /// assert_eq!(sorted.serie().rows().to_vec(), [1_i32, 1, 2].map(Scalar::from));
+    /// let cuts: Vec<_> = sorted
+    ///     .iter()
+    ///     .map(|(_, window)| (window.offset(), window.len()))
+    ///     .collect();
+    /// assert_eq!(cuts, [(0, 2), (2, 1)]);
     /// # Ok(())
     /// # }
     /// ```
@@ -459,11 +528,12 @@ impl<'a> SerieSlice<'a> {
     /// # Errors
     ///
     /// [`Serie::window_by`]'s refusals, naming the serie, before any row is
-    /// read.
-    pub fn window_by(&self, by: impl IntoSelector) -> Result<SerieWindows<'a>> {
+    /// read; with `sorted` and keys out of order, a serie past `u32::MAX`
+    /// rows, which the gather cannot address, naming it.
+    pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> Result<SerieWindows<'a>> {
         let key = self.serie.window_key(&by.into_selector()?)?;
-        let keys = key.apply_serie(&self.into_serie())?;
-        Ok(SerieWindows::new(self.serie, self.offset, keys))
+        let keys = key.apply_serie_window(self.serie, self.offset, self.len)?;
+        SerieWindows::new(self.serie, self.offset, keys, sorted)
     }
 }
 
@@ -609,7 +679,8 @@ impl<'a> SerieSliceMut<'a> {
     /// )?;
     /// let tail = days.window_mut(1, 4)?;
     /// let cuts: Vec<_> = tail
-    ///     .window_by("day")?
+    ///     .window_by("day", false)?
+    ///     .iter()
     ///     .map(|(key, window)| (key, window.offset(), window.len()))
     ///     .collect();
     /// // Offsets are the serie's: the first window starts where the tail does.
@@ -623,9 +694,9 @@ impl<'a> SerieSliceMut<'a> {
     ///
     /// # Errors
     ///
-    /// [`Serie::window_by`]'s refusals, naming the serie.
-    pub fn window_by(&self, by: impl IntoSelector) -> Result<SerieWindows<'_>> {
-        self.as_window().window_by(by)
+    /// [`SerieSlice::window_by`]'s refusals, naming the serie.
+    pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> Result<SerieWindows<'_>> {
+        self.as_window().window_by(by, sorted)
     }
 
     /// The window as a serie of its own.
@@ -1037,45 +1108,128 @@ impl ExactSizeIterator for SerieSliceRows<'_> {
 impl FusedIterator for SerieSliceRows<'_> {}
 
 impl<'a> SerieWindows<'a> {
-    /// The windows `keys` cuts, one key row per row of `serie` from
-    /// `offset`: where they open is read once, here.
-    pub(crate) fn new(serie: &'a Serie, offset: usize, keys: Serie) -> Self {
-        let starts = keys.window_starts();
-        Self {
-            serie,
-            offset,
-            remaining: starts.count_set_bits(),
+    /// The windows `keys` cuts, one key row per row of `holder` from
+    /// `offset`: where they open is read once, here, and with `sorted` and a
+    /// descent in the keys the rows are gathered into key order once, into
+    /// a holder this value owns.
+    ///
+    /// # Errors
+    ///
+    /// With `sorted` and a descent, rows past what one `uint32` position
+    /// addresses - in the keys or in `holder` - naming them.
+    pub(crate) fn new(holder: &'a Serie, offset: usize, keys: Serie, sorted: bool) -> Result<Self> {
+        let cut = keys.window_starts(sorted)?;
+        let Some(regrouped) = cut.regrouped else {
+            let count = cut.starts.count_set_bits();
+            return Ok(Self {
+                holder: Cow::Borrowed(holder),
+                offset,
+                keys,
+                cuts: Cuts::Starts(cut.starts, count),
+            });
+        };
+        require_indexable(holder)?;
+        let mut order = regrouped.order;
+        // `holder` addresses every row as a `uint32`, and the keys' rows lie
+        // in it from `offset`, so each shifted position is one of its rows.
+        let shift = offset as u32;
+        if shift != 0 {
+            for position in &mut order {
+                *position += shift;
+            }
+        }
+        Ok(Self {
+            holder: Cow::Owned(holder.taken(&order)?),
+            offset: 0,
             keys,
-            starts,
+            cuts: Cuts::Gathered(regrouped.windows),
+        })
+    }
+
+    /// How many windows there are.
+    pub fn len(&self) -> usize {
+        match &self.cuts {
+            Cuts::Starts(_, count) => *count,
+            Cuts::Gathered(windows) => windows.len(),
+        }
+    }
+
+    /// Whether there is no window: no row was windowed.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// The serie every window views: the windowed serie, unless `sorted`
+    /// gathered its rows into key order, then that gathered copy, which this
+    /// value owns.
+    pub fn serie(&self) -> &Serie {
+        &self.holder
+    }
+
+    /// Walk the windows from the first, each as its key and the window over
+    /// [`Self::serie`]; as often as asked.
+    pub fn iter(&self) -> SerieWindowsIter<'_> {
+        SerieWindowsIter {
+            windows: self,
             front: 0,
+            at: 0,
+            remaining: self.len(),
         }
     }
 }
 
-impl<'a> Iterator for SerieWindows<'a> {
-    type Item = (Scalar, SerieSlice<'a>);
+impl<'s, 'a: 's> IntoIterator for &'s SerieWindows<'a> {
+    type Item = (Scalar, SerieSlice<'s>);
+    type IntoIter = SerieWindowsIter<'s>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// The row the window opening at `start` ends before: the next row `starts`
+/// opens a window at, else its length. `start` is below the length.
+pub(crate) fn window_end(starts: &BooleanBuffer, start: usize) -> usize {
+    let len = starts.len();
+    BitIndexIterator::new(
+        starts.values(),
+        starts.offset() + start + 1,
+        len - start - 1,
+    )
+    .next()
+    .map_or(len, |next| start + 1 + next)
+}
+
+impl<'s> Iterator for SerieWindowsIter<'s> {
+    type Item = (Scalar, SerieSlice<'s>);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining == 0 {
             return None;
         }
-        let start = self.front;
-        let len = self.starts.len();
-        let end = BitIndexIterator::new(
-            self.starts.values(),
-            self.starts.offset() + start + 1,
-            len - start - 1,
-        )
-        .next()
-        .map_or(len, |next| start + 1 + next);
-        self.front = end;
+        let windows = self.windows;
+        let (key_row, offset, len) = match &windows.cuts {
+            Cuts::Starts(starts, _) => {
+                let start = self.front;
+                let end = window_end(starts, start);
+                self.front = end;
+                (start, windows.offset + start, end - start)
+            }
+            Cuts::Gathered(cuts) => {
+                let (key_row, end) = *cuts.get(self.front)?;
+                let (start, end) = (self.at, end as usize);
+                self.front += 1;
+                self.at = end;
+                (key_row as usize, start, end - start)
+            }
+        };
         self.remaining -= 1;
         Some((
-            proven_row(&self.keys, start),
+            proven_row(&windows.keys, key_row),
             SerieSlice {
-                serie: self.serie,
-                offset: self.offset + start,
-                len: end - start,
+                serie: &windows.holder,
+                offset,
+                len,
             },
         ))
     }
@@ -1085,10 +1239,10 @@ impl<'a> Iterator for SerieWindows<'a> {
     }
 }
 
-impl ExactSizeIterator for SerieWindows<'_> {
+impl ExactSizeIterator for SerieWindowsIter<'_> {
     fn len(&self) -> usize {
         self.remaining
     }
 }
 
-impl FusedIterator for SerieWindows<'_> {}
+impl FusedIterator for SerieWindowsIter<'_> {}

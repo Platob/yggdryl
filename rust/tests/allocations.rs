@@ -3021,12 +3021,13 @@ fn a_run_slice_shares_its_values_and_merges_onto_its_holder() {
 /// third and at two thirds of the rows, and four fifteen-minute buckets,
 /// changing at every quarter, whatever the row count.
 fn quote_buckets(rows: usize) -> Serie {
-    use arrow_array::{Int64Array, StringArray, TimestampNanosecondArray};
+    quotes_over(rows, &["XNAS", "XNYS", "XPAR"])
+}
 
-    // 2024-01-01T00:00:00Z, on a fifteen-minute boundary since the epoch.
-    const MIDNIGHT_NS: i64 = 1_704_067_200_000_000_000;
-    const QUARTER_HOUR_NS: i64 = 900_000_000_000;
-    let root = Field::new(
+/// The record root of [`quotes_over`]: a venue, a count and a nanosecond
+/// UTC instant, none of them absent.
+fn quote_root() -> Field {
+    Field::new(
         "quote",
         DataType::from(
             StructType::from_fields([
@@ -3044,8 +3045,29 @@ fn quote_buckets(rows: usize) -> Serie {
             .expect("three children"),
         ),
         false,
-    );
-    let schema = root.clone().into_arrow_schema().expect("a schema");
+    )
+}
+
+/// `rows` quotes under [`quote_root`], the venue running through `venues`
+/// in runs of equal length and the instant through four fifteen-minute
+/// buckets, changing at every quarter, whatever the row count.
+fn quotes_over(rows: usize, venues: &[&str]) -> Serie {
+    Serie::from_arrow_batch(
+        Some(&quote_root()),
+        &quote_batch(rows, venues),
+        ArrowCastOptions::new(),
+    )
+    .expect("quotes")
+}
+
+/// The batch [`quotes_over`] lands.
+fn quote_batch(rows: usize, venues: &[&str]) -> arrow_array::RecordBatch {
+    use arrow_array::{Int64Array, StringArray, TimestampNanosecondArray};
+
+    // 2024-01-01T00:00:00Z, on a fifteen-minute boundary since the epoch.
+    const MIDNIGHT_NS: i64 = 1_704_067_200_000_000_000;
+    const QUARTER_HOUR_NS: i64 = 900_000_000_000;
+    let schema = quote_root().into_arrow_schema().expect("a schema");
     let instants = TimestampNanosecondArray::from(
         (0..rows)
             .map(|index| {
@@ -3056,12 +3078,12 @@ fn quote_buckets(rows: usize) -> Serie {
             .collect::<Vec<_>>(),
     )
     .with_data_type(schema.field(2).data_type().clone());
-    let batch = arrow_array::RecordBatch::try_new(
+    arrow_array::RecordBatch::try_new(
         schema,
         vec![
             Arc::new(StringArray::from(
                 (0..rows)
-                    .map(|index| ["XNAS", "XNYS", "XPAR"][index * 3 / rows])
+                    .map(|index| venues[index * venues.len() / rows])
                     .collect::<Vec<_>>(),
             )),
             Arc::new(Int64Array::from(
@@ -3072,8 +3094,7 @@ fn quote_buckets(rows: usize) -> Serie {
             Arc::new(instants),
         ],
     )
-    .expect("a batch");
-    Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("quotes")
+    .expect("a batch")
 }
 
 #[test]
@@ -3109,58 +3130,82 @@ fn a_slice_of_the_whole_serie_is_the_serie() {
 }
 
 /// What [`Serie::window_by`] costs a call over [`quote_buckets`] keyed by its
-/// venue: thirteen to bind the key against the root, five for the record's
-/// own array, twelve to project the venue out of it, ten to land the key
-/// record under its nullable root, six for the comparator over its one text
-/// child and two for the bitmap of a bit per row.
-const WINDOW_BY_COLUMN_KEY: usize = 13 + 5 + 12 + 10 + 6 + 2;
+/// venue: thirteen to bind the key against the root, four for the key plan
+/// the bind settles beside it - the nullable root every key lands under and
+/// where each cell lies - two for the direct arm, the record's own landed
+/// venue under that root, four for the root's Arrow projection, which the
+/// first cut builds and the plan keeps, six for the comparator over its one
+/// text child and two for the bitmap of a bit per row.
+///
+/// It moved from `13 + 5 + 12 + 10 + 6 + 2` (48) when the key plan was
+/// hoisted into the bind: the record's array, the projection and the
+/// landing of every call (twenty-seven) became the direct arm (two), the key
+/// plan (four) and its root's projection (four).
+const WINDOW_BY_COLUMN_KEY: usize = 13 + 4 + 2 + 4 + 6 + 2;
 
 /// The same keyed by `minutes(ts, 15)`: thirty-eight to bind and type the
-/// period term, five for the record's array, thirty-two to evaluate the
-/// term - per call through the row tier, never per row - and the same
-/// landing, comparator and bitmap.
-const WINDOW_BY_PERIOD_KEY: usize = 38 + 5 + 32 + 10 + 6 + 2;
-
-/// A window over a record column of three children as a serie of its own:
-/// the children's vector, one leaf per child and the root's.
-const RECORD_WINDOW_AS_SERIE: usize = 1 + 3 + 1;
+/// period term, eighteen for its key plan - the nullable root, and the
+/// engine a computed cell needs: the output's schema, the fields it lands
+/// under, the one column it reads and that column's schema, and what the
+/// landing takes on trust - twenty-seven for the narrow arm, the instant
+/// column alone as a batch, the term evaluated over it per call through the
+/// row tier, never per row, and the key landed, then the same projection,
+/// comparator and bitmap.
+///
+/// It moved from `38 + 5 + 32 + 10 + 6 + 2` (93) when the key plan was
+/// hoisted into the bind: the record's own array (five) is gone, and the
+/// plan, the narrow arm and the projection (forty-nine) stand where the
+/// evaluation and the landing of every call stood (forty-two).
+const WINDOW_BY_PERIOD_KEY: usize = 38 + 18 + 27 + 4 + 6 + 2;
 
 #[test]
 fn window_by_over_buffer_ordered_keys_costs_one_plan_per_call_one_key_per_window_and_nothing_per_row()
  {
     // The key is a selector parsed once, here, so a call parses nothing: it
-    // binds the key once, lands it once and builds one comparator and one
-    // bitmap over it, so the call costs the same at 64 rows and at 4,096. A
-    // window is then two indices over the serie and its key the one run of
-    // its cells - one allocation a window, an inline venue or a period
-    // number holding no handle. A window's own windowing keys the window as
-    // a serie of its own, and costs that serie more than the serie's.
+    // binds the key once, keys the rows once and builds one comparator and
+    // one bitmap over the key, so the call costs the same at 64 rows and at
+    // 4,096. A window is then two indices over the serie and its key the one
+    // run of its cells - one allocation a window, an inline venue or a
+    // period number holding no handle. A window's own windowing keys the
+    // window's rows where they stand, each key cell sliced to it: one more
+    // than the serie's, where it once keyed the window as a serie of its own
+    // (`direct + 1 + 3 + 1`, the record's children's vector, one leaf per
+    // child and the root's).
     let venue: yggdryl::Selector = "venue".parse().expect("a selector");
     let bucket: yggdryl::Selector = "minutes(ts, 15)".parse().expect("a selector");
     for rows in [64_usize, 4_096] {
         let quotes = quote_buckets(rows);
         // Once outside every count, so no process-wide first use is charged.
-        assert_eq!(quotes.window_by(&venue).expect("windows").count(), 3);
-        assert_eq!(quotes.window_by(&bucket).expect("windows").count(), 4);
-        let (build, windows) = counted(|| black_box(&quotes).window_by(&venue).expect("windows"));
+        assert_eq!(quotes.window_by(&venue, false).expect("windows").len(), 3);
+        assert_eq!(quotes.window_by(&bucket, false).expect("windows").len(), 4);
+        let (build, windows) = counted(|| {
+            black_box(&quotes)
+                .window_by(&venue, false)
+                .expect("windows")
+        });
         assert_eq!(windows.len(), 3);
         drop(windows);
         let (walk, count) = counted(|| {
             black_box(&quotes)
-                .window_by(&venue)
+                .window_by(&venue, false)
                 .expect("windows")
+                .iter()
                 .map(black_box)
                 .count()
         });
         assert_eq!(count, 3);
-        let (bucket_build, windows) =
-            counted(|| black_box(&quotes).window_by(&bucket).expect("windows"));
+        let (bucket_build, windows) = counted(|| {
+            black_box(&quotes)
+                .window_by(&bucket, false)
+                .expect("windows")
+        });
         assert_eq!(windows.len(), 4);
         drop(windows);
         let (bucket_walk, count) = counted(|| {
             black_box(&quotes)
-                .window_by(&bucket)
+                .window_by(&bucket, false)
                 .expect("windows")
+                .iter()
                 .map(black_box)
                 .count()
         });
@@ -3168,19 +3213,20 @@ fn window_by_over_buffer_ordered_keys_costs_one_plan_per_call_one_key_per_window
 
         let window = quotes.window(1, rows - 2).expect("a window");
         let sliced = window.into_serie();
-        let (as_serie, _) = counted(|| black_box(&window).into_serie());
         let (through, count) = counted(|| {
             black_box(&window)
-                .window_by(&venue)
+                .window_by(&venue, false)
                 .expect("windows")
+                .iter()
                 .map(black_box)
                 .count()
         });
         assert_eq!(count, 3);
         let (direct, count) = counted(|| {
             black_box(&sliced)
-                .window_by(&venue)
+                .window_by(&venue, false)
                 .expect("windows")
+                .iter()
                 .map(black_box)
                 .count()
         });
@@ -3197,9 +3243,9 @@ fn window_by_over_buffer_ordered_keys_costs_one_plan_per_call_one_key_per_window
             "window_by a period over {rows} records: one plan a call, one key a window"
         );
         assert_eq!(
-            (as_serie, through),
-            (RECORD_WINDOW_AS_SERIE, direct + RECORD_WINDOW_AS_SERIE),
-            "window_by through a window of {rows} records: the window as a serie, then the serie's"
+            through,
+            direct + 1,
+            "window_by through a window of {rows} records: the serie's, its one key cell sliced"
         );
 
         let mut held = quotes.clone();
@@ -3227,42 +3273,55 @@ fn currency_runs(rows: usize) -> Serie {
     .expect("currencies")
 }
 
-/// What [`Serie::window_by`] costs a call over [`currency_runs`] beside its
-/// key rows: two for the `row` root the column binds under, thirteen to
-/// bind the key against it, seventeen to wrap the column as the root's one
-/// child and land the key record under its nullable root - the root's
-/// projection and the landing root built once, the rest the column's - one
-/// for the vector the key rows are built into and two for the bitmap.
-const WINDOW_BY_VALUES_KEY: usize = 2 + 13 + 17 + 1 + 2;
+/// What [`Serie::window_by`] costs a call over [`currency_runs`]: two for
+/// the `row` root the column binds under, thirteen to bind the key against
+/// it, four for its key plan, two for the direct arm - the column itself the
+/// key's one cell - two for the comparator, the record rung boxing its one
+/// child's, which builds the currencies' values once into one vector and
+/// nothing a row for an inline code, and two for the bitmap.
+///
+/// It moved from `2 + 13 + 17 + 1 + 2` and one key row a row when the
+/// record rung came: one leaf's values built, not one run per row - the
+/// vector of key rows and a run a row became the rung's box and the leaf's
+/// one vector of values (two) - and when the key plan was hoisted into the
+/// bind: the column wrapped and landed every call (seventeen) became the key
+/// plan (four) and the direct arm (two).
+const WINDOW_BY_VALUES_KEY: usize = 2 + 13 + 4 + 2 + 2 + 2;
 
 #[test]
-fn window_by_over_value_ordered_keys_builds_each_key_row_once() {
+fn window_by_over_a_value_ordered_key_builds_its_values_once_and_nothing_per_row() {
     // A registered code is no key Arrow's comparator may equate - a foreign
-    // column may pad it - so its windows are cut as the values compare, over
-    // key rows built once each and held for the call, as `partition_by`
-    // builds them: one allocation a row beside the call's constant, the one
-    // cost of `window_by` that follows the rows. A window is still two
-    // indices over the serie and its key the one run of its cell.
+    // column may pad it - so its windows are cut as the values compare: the
+    // record rung compares the key's one cell on its own, over the
+    // currencies' values built once for the call, an inline code holding no
+    // handle, so the call costs the same at 64 rows and at 4,096. A window
+    // is still two indices over the serie and its key the one run of its
+    // cell.
     let ccy: yggdryl::Selector = "ccy".parse().expect("a selector");
     for rows in [64_usize, 4_096] {
         let currencies = currency_runs(rows);
         // Once outside every count, so no process-wide first use is charged.
-        assert_eq!(currencies.window_by(&ccy).expect("windows").count(), 3);
-        let (build, windows) = counted(|| black_box(&currencies).window_by(&ccy).expect("windows"));
+        assert_eq!(currencies.window_by(&ccy, false).expect("windows").len(), 3);
+        let (build, windows) = counted(|| {
+            black_box(&currencies)
+                .window_by(&ccy, false)
+                .expect("windows")
+        });
         assert_eq!(windows.len(), 3);
         drop(windows);
         let (walk, count) = counted(|| {
             black_box(&currencies)
-                .window_by(&ccy)
+                .window_by(&ccy, false)
                 .expect("windows")
+                .iter()
                 .map(black_box)
                 .count()
         });
         assert_eq!(count, 3);
         assert_eq!(
             (build, walk),
-            (WINDOW_BY_VALUES_KEY + rows, WINDOW_BY_VALUES_KEY + rows + 3),
-            "window_by a currency over {rows} rows: one plan a call, one key row a row, one key a window"
+            (WINDOW_BY_VALUES_KEY, WINDOW_BY_VALUES_KEY + 3),
+            "window_by a currency over {rows} rows: one plan a call, one key a window"
         );
     }
 }
@@ -3425,29 +3484,46 @@ fn chunked_venue_runs(rows: usize) -> ChunkedSerie {
     .expect("four chunks of venues")
 }
 
+/// What [`ChunkedSerie::window_by`] settles once a call over a text column:
+/// the `row` root the column binds under (two), the key bound against it
+/// (thirteen), its key plan (four), and the plan root's Arrow projection,
+/// built on the first chunk and kept (four).
+///
+/// It moved from `2 + 13 + 4 + 5` when the key plan was hoisted into the
+/// bind: the nullable record the key lands under, once built on the first
+/// chunk (five), is the key plan settled at bind (four).
+const CHUNKED_WINDOW_BY_BIND: usize = 2 + 13 + 4 + 4;
+
+/// What [`ChunkedSerie::window_by`] costs a chunk holding a row over a text
+/// column: the direct arm, the chunk itself the key's one cell (two), the
+/// comparator (six) and the bitmap (two).
+///
+/// It moved from sixteen when the key plan was hoisted into the bind: the
+/// chunk wrapped as the root's one child and landed as the key (eight) is
+/// the direct arm (two).
+const CHUNKED_WINDOW_BY_PER_CHUNK: usize = 2 + 6 + 2;
+
 #[test]
 fn a_chunked_window_by_costs_one_bind_per_call_and_the_pinned_slice_per_window() {
-    // One bind a call: the `row` root a text column binds under, the key
-    // bound against it, and the root's Arrow projection and the nullable
-    // record the key lands under with its own, both built on the first
-    // chunk and kept on the bound key. Then each chunk holding a row is its
-    // array wrapped as the root's one child and landed as the key - the
-    // identity projection reusing it - a comparator and a bitmap; each
-    // window a chunk opens builds its key, the one opened across the first
-    // edge matched and dropped; and each window is the pinned `slice`,
-    // three where it cuts a chunk and two where it keeps whole ones, the
-    // windows gathered in two vectors. Never a join, never a row: the same
-    // at 64 rows and at 4,096.
-    const BIND: usize = 2 + 13 + 4 + 5;
-    const PER_CHUNK: usize = 16;
-    const KEYS_BUILT: usize = 4 + 1;
+    // One bind a call. Then each chunk holding a row keys as its own
+    // buffers, with a comparator and a bitmap; each window a chunk opens
+    // builds its key, the one continuing across the first edge compared in
+    // place against the pending window's key and never built; and each
+    // window is the pinned `slice`, three where it cuts a chunk and two where
+    // it keeps whole ones, the windows gathered in two vectors. Never a join,
+    // never a row: the same at 64 rows and at 4,096. The keys built moved
+    // from `4 + 1` when the edge stopped building the continuing key to
+    // compare it.
+    const BIND: usize = CHUNKED_WINDOW_BY_BIND;
+    const PER_CHUNK: usize = CHUNKED_WINDOW_BY_PER_CHUNK;
+    const KEYS_BUILT: usize = 4;
     const SLICES: usize = 3 + 3 + 2 + 2;
     const VECTORS: usize = 2;
     let venue: yggdryl::Selector = "venue".parse().expect("a selector");
     for rows in [64_usize, 4_096] {
         let chunked = chunked_venue_runs(rows);
         // Once outside every count, so no process-wide first use is charged.
-        let windows = chunked.window_by(&venue).expect("windows");
+        let windows = chunked.window_by(&venue, false).expect("windows");
         assert_eq!(
             windows
                 .iter()
@@ -3465,12 +3541,742 @@ fn a_chunked_window_by_costs_one_bind_per_call_and_the_pinned_slice_per_window()
                 chunks
             ))
         );
-        let (cost, _) = counted(|| black_box(&chunked).window_by(&venue).expect("windows"));
+        let (cost, _) = counted(|| {
+            black_box(&chunked)
+                .window_by(&venue, false)
+                .expect("windows")
+        });
         assert_eq!(
             cost,
             BIND + 4 * PER_CHUNK + KEYS_BUILT + SLICES + VECTORS,
             "window_by over {rows} rows in four chunks: one bind, per chunk, per window"
         );
+    }
+}
+
+/// The record root of [`order_quotes`]: [`quote_root`]'s venue, count and
+/// instant, then the order the quote fills, `order: struct<venue, mic,
+/// ts>`, which may be absent; and where `wide` asks, `legs:
+/// serie<struct<px, qty>>`, `tag: dictionary<int32, utf8>` and forty int64
+/// columns - forty-two columns no key below reads.
+fn order_quote_root(wide: bool) -> Field {
+    let mut fields = quote_root().fields().to_vec();
+    let instant = fields[2].dtype().clone();
+    fields.push(
+        DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("venue"),
+                DataType::Mic.required_field("mic"),
+                instant.required_field("ts"),
+            ])
+            .expect("three children"),
+        )
+        .nullable_field("order"),
+    );
+    if wide {
+        fields.push(
+            "serie<struct<px: float64, qty: int64>>"
+                .parse::<DataType>()
+                .expect("a serie of legs")
+                .required_field("legs"),
+        );
+        fields.push(
+            DataType::dictionary(DataType::Int32, DataType::utf8())
+                .expect("a dictionary")
+                .required_field("tag"),
+        );
+        fields.extend((0..40).map(|index| DataType::Int64.required_field(format!("c{index:02}"))));
+    }
+    DataType::from(StructType::from_fields(fields).expect("named children")).required_field("quote")
+}
+
+/// `rows` quotes under [`order_quote_root`]: [`quote_buckets`]' columns,
+/// the order's venue, code and instant the quote's venue and instant, row
+/// 1's order absent where `absent` asks, two legs a row and a tag
+/// alternating between two words.
+fn order_quotes(rows: usize, wide: bool, absent: bool) -> Serie {
+    use arrow_array::types::Int32Type;
+    use arrow_array::{
+        ArrayRef, DictionaryArray, Float64Array, Int32Array, Int64Array, ListArray, StringArray,
+        StructArray,
+    };
+    use arrow_buffer::{NullBuffer, OffsetBuffer};
+    use arrow_schema::DataType as ArrowDataType;
+
+    let root = order_quote_root(wide);
+    let schema = root.clone().into_arrow_schema().expect("a schema");
+    let mut columns: Vec<ArrayRef> = quote_batch(rows, &["XNAS", "XNYS", "XPAR"])
+        .columns()
+        .to_vec();
+    let ArrowDataType::Struct(order) = schema.field(3).data_type().clone() else {
+        panic!("an order record projects to a struct")
+    };
+    let absence =
+        absent.then(|| NullBuffer::from((0..rows).map(|index| index != 1).collect::<Vec<_>>()));
+    columns.push(Arc::new(
+        StructArray::try_new(
+            order,
+            vec![
+                Arc::clone(&columns[0]),
+                Arc::clone(&columns[0]),
+                Arc::clone(&columns[2]),
+            ],
+            absence,
+        )
+        .expect("an order record"),
+    ));
+    if wide {
+        let ArrowDataType::List(item) = schema.field(4).data_type().clone() else {
+            panic!("a serie of legs projects to a list")
+        };
+        let ArrowDataType::Struct(leg) = item.data_type().clone() else {
+            panic!("a leg projects to a struct")
+        };
+        let counts = || {
+            Int64Array::from(
+                (0..2 * rows)
+                    .map(|index| i64::try_from(index).expect("a leg count"))
+                    .collect::<Vec<_>>(),
+            )
+        };
+        let legs = StructArray::try_new(
+            leg,
+            vec![
+                Arc::new(Float64Array::from(
+                    (0..2 * rows).map(|index| index as f64).collect::<Vec<_>>(),
+                )),
+                Arc::new(counts()),
+            ],
+            None,
+        )
+        .expect("legs");
+        columns.push(Arc::new(
+            ListArray::try_new(
+                item,
+                OffsetBuffer::from_lengths(std::iter::repeat_n(2, rows)),
+                Arc::new(legs),
+                None,
+            )
+            .expect("two legs a row"),
+        ));
+        columns.push(Arc::new(
+            DictionaryArray::<Int32Type>::try_new(
+                Int32Array::from(
+                    (0..rows)
+                        .map(|index| i32::from(index % 2 == 1))
+                        .collect::<Vec<_>>(),
+                ),
+                Arc::new(StringArray::from(vec!["bid", "ask"])),
+            )
+            .expect("tags"),
+        ));
+        columns.extend((0..40).map(|_| {
+            Arc::new(Int64Array::from(
+                (0..rows)
+                    .map(|index| i64::try_from(index).expect("a row count"))
+                    .collect::<Vec<_>>(),
+            )) as ArrayRef
+        }));
+    }
+    let batch = arrow_array::RecordBatch::try_new(schema, columns).expect("a batch");
+    Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new())
+        .expect("quotes beside their orders")
+}
+
+/// `rows` orders as one record column of a registered venue code, a side
+/// and a count: three venue runs, changing at a third and at two thirds
+/// of the rows, and the side buying over the first half and selling over
+/// the second, so keyed by both they cut four windows at any row count.
+fn coded_orders(rows: usize) -> Serie {
+    use arrow_array::{Int64Array, StringArray, StructArray, UInt8Array};
+    use arrow_schema::DataType as ArrowDataType;
+
+    let root = DataType::from(
+        StructType::from_fields([
+            DataType::Mic.required_field("venue"),
+            DataType::Side.required_field("side"),
+            DataType::Int64.required_field("count"),
+        ])
+        .expect("three children"),
+    )
+    .required_field("order");
+    let ArrowDataType::Struct(fields) = root
+        .clone()
+        .into_arrow_field()
+        .expect("a projection")
+        .data_type()
+        .clone()
+    else {
+        panic!("a record projects to a struct")
+    };
+    let records = StructArray::try_new(
+        fields,
+        vec![
+            Arc::new(StringArray::from(
+                (0..rows)
+                    .map(|index| ["XNAS", "XNYS", "XPAR"][index * 3 / rows])
+                    .collect::<Vec<_>>(),
+            )),
+            Arc::new(UInt8Array::from(
+                (0..rows)
+                    .map(|index| if index < rows / 2 { 1 } else { 2 })
+                    .collect::<Vec<_>>(),
+            )),
+            Arc::new(Int64Array::from(
+                (0..rows)
+                    .map(|index| i64::try_from(index).expect("a row count"))
+                    .collect::<Vec<_>>(),
+            )),
+        ],
+        None,
+    )
+    .expect("an order record");
+    Serie::from_arrow_array(Some(&root), Arc::new(records), ArrowCastOptions::new())
+        .expect("orders")
+}
+
+/// A stream of [`quote_root`] records, one batch of `size` rows per entry of
+/// `batches`, each batch's venues running through its entry in runs of
+/// equal length, every batch landing as the reader pulls it.
+fn quote_stream(size: usize, batches: &[Vec<String>]) -> yggdryl::SerieReader {
+    let batches: Vec<arrow_array::RecordBatch> = batches
+        .iter()
+        .map(|venues| {
+            let venues: Vec<&str> = venues.iter().map(String::as_str).collect();
+            quote_batch(size, &venues)
+        })
+        .collect();
+    let root = quote_root();
+    let schema = root.clone().into_arrow_schema().expect("a schema");
+    yggdryl::SerieReader::from_arrow_reader(
+        Some(&root),
+        yggdryl::arrow::batch_reader(schema, batches),
+        ArrowCastOptions::new(),
+    )
+    .expect("a stream of quotes")
+}
+
+/// The venue named `index`, inline and in the order of its index.
+fn venue_named(index: usize) -> String {
+    format!("V{index:03}")
+}
+
+#[test]
+fn window_by_sorted_over_keys_in_order_costs_what_unsorted_costs() {
+    // Keys already in key order hold no descent, so `sorted` cuts exactly
+    // what the unsorted call cuts, over the caller's own serie: the order
+    // verdict is read in the comparator's one pass and gathers nothing.
+    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+    let bucket: yggdryl::Selector = "minutes(ts, 15)".parse().expect("a selector");
+    for rows in [64_usize, 4_096] {
+        let quotes = quote_buckets(rows);
+        for (what, key, count, constant) in [
+            ("a column", &venue, 3, WINDOW_BY_COLUMN_KEY),
+            ("a period", &bucket, 4, WINDOW_BY_PERIOD_KEY),
+        ] {
+            // Once outside every count, so no process-wide first use is
+            // charged.
+            assert_eq!(quotes.window_by(key, true).expect("windows").len(), count);
+            for sorted in [false, true] {
+                let (build, windows) =
+                    counted(|| black_box(&quotes).window_by(key, sorted).expect("windows"));
+                assert!(
+                    std::ptr::eq(windows.serie(), &quotes),
+                    "window_by {what} sorted={sorted} over {rows} records in key order views them"
+                );
+                assert_eq!(windows.len(), count);
+                drop(windows);
+                let (walk, walked) = counted(|| {
+                    black_box(&quotes)
+                        .window_by(key, sorted)
+                        .expect("windows")
+                        .iter()
+                        .map(black_box)
+                        .count()
+                });
+                assert_eq!(walked, count);
+                assert_eq!(
+                    (build, walk),
+                    (constant, constant + count),
+                    "window_by {what} sorted={sorted} over {rows} records in key order"
+                );
+            }
+        }
+    }
+}
+
+/// What `sorted` adds to a call over six runs of three venues out of key
+/// order: one for the runs, none for the stable sort's scratch over six of
+/// them, one for the order the rows are taken in and one for the window
+/// table, then the one take of the rows into that order - the record's own
+/// array (five), the order copied into an index array (two), Arrow's take of
+/// the three children (nineteen) and the taken record landed on trust
+/// (nine).
+const WINDOW_BY_GATHER: usize = 1 + 1 + 1 + 5 + 2 + 19 + 9;
+
+#[test]
+fn window_by_sorted_gathers_the_rows_once_in_key_order() {
+    // Keys out of order regroup their runs, never their rows: the runs
+    // sorted stably by key, those of one key merged, and the rows taken
+    // once into the order that names - a cost that follows the run count and
+    // the record's width, never the rows. The windows view the gathered copy
+    // the value owns, each keyed by its first row and costing that key.
+    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+    for rows in [64_usize, 4_096] {
+        let runs = ["XNYS", "XNAS", "XPAR", "XNAS", "XNYS", "XPAR"];
+        let quotes = quotes_over(rows, &runs);
+        let rows_of = |venue: &str| {
+            (0..rows)
+                .filter(|index| runs[index * runs.len() / rows] == venue)
+                .count()
+        };
+        // Once outside every count, so no process-wide first use is charged.
+        let windows = quotes.window_by(&venue, true).expect("windows");
+        assert!(!std::ptr::eq(windows.serie(), &quotes));
+        assert_eq!(
+            windows
+                .iter()
+                .map(|(key, window)| (key, window.len()))
+                .collect::<Vec<_>>(),
+            ["XNAS", "XNYS", "XPAR"]
+                .map(|venue| (Scalar::from_sequence([Scalar::from(venue)]), rows_of(venue)))
+        );
+        drop(windows);
+        let (unsorted, windows) = counted(|| {
+            black_box(&quotes)
+                .window_by(&venue, false)
+                .expect("windows")
+        });
+        assert_eq!(windows.len(), 6);
+        drop(windows);
+        let (build, windows) =
+            counted(|| black_box(&quotes).window_by(&venue, true).expect("windows"));
+        assert_eq!(windows.len(), 3);
+        drop(windows);
+        let (walk, walked) = counted(|| {
+            black_box(&quotes)
+                .window_by(&venue, true)
+                .expect("windows")
+                .iter()
+                .map(black_box)
+                .count()
+        });
+        assert_eq!(walked, 3);
+        assert_eq!(
+            (unsorted, build, walk),
+            (
+                WINDOW_BY_COLUMN_KEY,
+                WINDOW_BY_COLUMN_KEY + WINDOW_BY_GATHER,
+                WINDOW_BY_COLUMN_KEY + WINDOW_BY_GATHER + 3
+            ),
+            "window_by sorted over six runs of {rows} records: the call, one gather, one key a window"
+        );
+    }
+}
+
+/// What [`Serie::window_by`] costs keyed by `order.venue`, a path through
+/// the nullable `order` record of [`order_quotes`]: twenty-one to bind the
+/// path, nineteen for its key plan - the path's positions, and the engine a
+/// window holding an absent order evaluates through - two for the direct
+/// arm, the venue the order's own landed child, then the projection, the
+/// comparator and the bitmap of a column key.
+const WINDOW_BY_PATH_KEY: usize = 21 + 19 + 2 + 4 + 6 + 2;
+
+/// What an absent order adds to [`WINDOW_BY_PATH_KEY`]: the narrow arm in
+/// place of the direct one - the order column alone as a batch, the step
+/// kernel folding the order's absence into its venue and the key landed
+/// (sixteen) - less the direct arm (two).
+const WINDOW_BY_MASK_FOLD: usize = 16 - 2;
+
+#[test]
+fn window_by_costs_the_same_whatever_the_record_is_wide() {
+    // A key reads the columns it names and no other: a column and a record
+    // path key as the landed cells they reach, and a computed term evaluates
+    // over a batch of the one column it reads, so forty-two more columns -
+    // a serie of records, a dictionary and forty integers - cost nothing.
+    // An absent order sends its path through the step kernel, a constant
+    // more, and leaves the other two keys where they were.
+    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+    let order_venue: yggdryl::Selector = "order.venue".parse().expect("a selector");
+    let bucket: yggdryl::Selector = "minutes(ts, 15)".parse().expect("a selector");
+    for rows in [64_usize, 4_096] {
+        for absent in [false, true] {
+            let narrow = order_quotes(rows, false, absent);
+            let wide = order_quotes(rows, true, absent);
+            assert_eq!(
+                (
+                    narrow.field().expect("a column").field_len(),
+                    wide.field().expect("a column").field_len()
+                ),
+                (4, 46),
+                "four columns against forty-six"
+            );
+            for (what, key, constant) in [
+                ("venue", &venue, WINDOW_BY_COLUMN_KEY),
+                (
+                    "order.venue",
+                    &order_venue,
+                    WINDOW_BY_PATH_KEY + if absent { WINDOW_BY_MASK_FOLD } else { 0 },
+                ),
+                ("minutes(ts, 15)", &bucket, WINDOW_BY_PERIOD_KEY),
+            ] {
+                for (width, quotes) in [("4", &narrow), ("46", &wide)] {
+                    // Once outside every count, so no process-wide first use
+                    // is charged.
+                    black_box(quotes.window_by(key, false).expect("windows").len());
+                    let (build, windows) =
+                        counted(|| black_box(quotes).window_by(key, false).expect("windows"));
+                    drop(windows);
+                    assert_eq!(
+                        build, constant,
+                        "window_by {what} over {rows} records of {width} columns, an absent order: {absent}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// What [`Serie::window_by`] costs keyed by `venue, side` over
+/// [`coded_orders`]: twenty-one to bind the two terms, five for the key
+/// plan, two for the direct arm, then four for the comparator - the record
+/// rung boxing its two children's, the venue's values built once into one
+/// vector and nothing a row for an inline code, and the side's over its
+/// buffers, an array handle and Arrow's comparator - and two for the bitmap.
+/// No Arrow array of the key is built, so its root's projection is never
+/// asked for.
+const WINDOW_BY_CODED_KEY: usize = 21 + 5 + 2 + (1 + 1 + 2) + 2;
+
+#[test]
+fn a_record_key_with_a_code_child_cuts_with_a_constant_count() {
+    // One code cell once sent the whole key to the values' order, one run
+    // built a row; the record rung compares each cell on its own rung, so
+    // only the code builds its values, once, and the call costs the same at
+    // 64 rows and at 4,096.
+    let venue_side: yggdryl::Selector = "venue, side".parse().expect("a selector");
+    for rows in [64_usize, 4_096] {
+        let orders = coded_orders(rows);
+        // Once outside every count, so no process-wide first use is charged.
+        assert_eq!(
+            orders.window_by(&venue_side, false).expect("windows").len(),
+            4
+        );
+        let (build, windows) = counted(|| {
+            black_box(&orders)
+                .window_by(&venue_side, false)
+                .expect("windows")
+        });
+        assert_eq!(windows.len(), 4);
+        drop(windows);
+        let (walk, walked) = counted(|| {
+            black_box(&orders)
+                .window_by(&venue_side, false)
+                .expect("windows")
+                .iter()
+                .map(black_box)
+                .count()
+        });
+        assert_eq!(walked, 4);
+        assert_eq!(
+            (build, walk),
+            (WINDOW_BY_CODED_KEY, WINDOW_BY_CODED_KEY + 4),
+            "window_by a venue code and a side over {rows} records: one plan a call, one key a window"
+        );
+    }
+}
+
+/// The venue bytes a text column lends: its Arrow array's values buffer,
+/// which a slice keeps whole.
+fn venue_bytes(serie: &Serie) -> arrow_buffer::Buffer {
+    serie
+        .into_arrow_array()
+        .expect("a column")
+        .to_data()
+        .buffers()[1]
+        .clone()
+}
+
+#[test]
+fn a_chunked_sorted_window_by_copies_no_row() {
+    // XNAS comes back after XPAR across the last edge, a descent, so
+    // `sorted` regroups the four runs by key, stably: XNAS is one window of
+    // its two runs' pieces - the first chunk whole, the second cut where
+    // XNYS opens, the fourth whole - then XNYS and XPAR, one piece each. The
+    // regrouping sorts the runs, never the rows, and every piece lends the
+    // chunk it was cut from: one vector of runs and one of windows, one
+    // vector of pieces a window - XNAS's grown once for its second run - the
+    // two pieces cut inside a chunk, each window's chunk ends and the answer.
+    // Never a join, never a row: the same at 64 rows and at 4,096.
+    const KEYS_BUILT: usize = 4;
+    const REGROUP: usize = 1 + 1 + (3 + 1) + 2 + 3 + 1;
+    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+    for rows in [64_usize, 4_096] {
+        let chunked = chunked_venue_runs(rows);
+        // Once outside every count, so no process-wide first use is charged.
+        let windows = chunked.window_by(&venue, true).expect("windows");
+        assert_eq!(
+            windows
+                .iter()
+                .map(|(key, window)| (key.clone(), window.len(), window.num_chunks()))
+                .collect::<Vec<_>>(),
+            [
+                ("XNAS", 3 * rows / 8 + rows / 4, 3),
+                ("XNYS", rows / 8, 1),
+                ("XPAR", rows / 4, 1),
+            ]
+            .map(|(venue, len, chunks)| (
+                Scalar::from_sequence([Scalar::from(venue)]),
+                len,
+                chunks
+            ))
+        );
+        let sources: Vec<arrow_buffer::Buffer> = chunked.chunks().iter().map(venue_bytes).collect();
+        for (key, window) in &windows {
+            for piece in window.chunks() {
+                assert!(
+                    sources
+                        .iter()
+                        .any(|source| source.ptr_eq(&venue_bytes(piece))),
+                    "a piece of {key:?} lends a source chunk's venues"
+                );
+            }
+        }
+        drop(windows);
+        let (cost, _) = counted(|| {
+            black_box(&chunked)
+                .window_by(&venue, true)
+                .expect("windows")
+        });
+        assert_eq!(
+            cost,
+            CHUNKED_WINDOW_BY_BIND + 4 * CHUNKED_WINDOW_BY_PER_CHUNK + KEYS_BUILT + REGROUP,
+            "window_by sorted over {rows} rows in four chunks: one bind, per chunk, per run"
+        );
+    }
+}
+
+/// What [`SerieReader::window_by`](yggdryl::SerieReader::window_by) costs
+/// before a batch is pulled, keyed by a venue: thirteen to bind the key,
+/// four for its key plan, then the windows' static record typed and the walk
+/// shared - its fields' vector, the record's children, the field every
+/// window shares and the walk's cell.
+const WINDOW_STREAM_BUILD: usize = 13 + 4 + 1 + 1 + 1 + 1;
+
+/// What a walk costs once: its key root's Arrow projection, built by the
+/// first batch's cut and kept by the plan.
+const WINDOW_STREAM_FIRST: usize = 4;
+
+/// What a walk costs per batch holding a row, beyond the stream's own
+/// landing of it: the direct arm, the batch's venue under the key's root
+/// (two), the comparator (six) and the bitmap (two).
+const WINDOW_STREAM_PER_BATCH: usize = 2 + 6 + 2;
+
+/// What a walk costs per window: its static row, one run built at its
+/// length, and the cell its state is shared through.
+const WINDOW_STREAM_PER_WINDOW: usize = 1 + 1;
+
+/// What a piece costs where a window opens or closes inside a batch: one
+/// record slice - the children's vector, one leaf per child and the root's.
+/// A piece that is a whole batch is the batch as it landed, and costs none.
+const WINDOW_STREAM_PER_PIECE: usize = 1 + 3 + 1;
+
+/// Every window of `windows` drained, each read before the next is taken:
+/// the windows opened and the pieces served.
+fn drain_windows(windows: yggdryl::SerieReaderWindows) -> (usize, usize) {
+    let mut opened = 0;
+    let mut served = 0;
+    for window in windows {
+        opened += 1;
+        for piece in window.expect("a window") {
+            black_box(piece.expect("a piece"));
+            served += 1;
+        }
+    }
+    (opened, served)
+}
+
+/// What draining `size`-row batches of `batches` costs the stream alone.
+fn stream_cost(size: usize, batches: &[Vec<String>]) -> usize {
+    let reader = quote_stream(size, batches);
+    counted(|| {
+        reader
+            .map(|batch| black_box(batch.expect("a batch")).len())
+            .sum::<usize>()
+    })
+    .0
+}
+
+#[test]
+fn a_windowed_stream_costs_per_batch_and_per_window_never_per_row() {
+    // A walk holds one batch and a bit a row, never a window: beyond the
+    // stream's own cost and a constant, each batch costs its key and its cut,
+    // each window its static row and its state, and each piece a window opens
+    // or closes inside a batch one record slice - eight batches cost eight
+    // times one, and a batch of 4,096 rows what a batch of 64 does. `sorted`
+    // only reads the verdict the cut already holds. A whole batch is handed
+    // on as it landed, for nothing.
+    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+    for size in [64_usize, 4_096] {
+        for batches in [1_usize, 8] {
+            let two: Vec<Vec<String>> = (0..batches)
+                .map(|batch| vec![venue_named(2 * batch), venue_named(2 * batch + 1)])
+                .collect();
+            let one: Vec<Vec<String>> =
+                (0..batches).map(|batch| vec![venue_named(batch)]).collect();
+            for (shape, plan, windows, pieces, cut) in [
+                (
+                    "two windows a batch",
+                    &two,
+                    2 * batches,
+                    2 * batches,
+                    2 * batches,
+                ),
+                ("one window a batch", &one, batches, batches, 0),
+            ] {
+                let stream = stream_cost(size, plan);
+                for sorted in [false, true] {
+                    let reader = quote_stream(size, plan);
+                    let (build, walk) =
+                        counted(|| reader.window_by(&venue, sorted).expect("windows"));
+                    let (drain, counts) = counted(|| drain_windows(walk));
+                    assert_eq!(counts, (windows, pieces));
+                    assert_eq!(
+                        (build, drain - stream),
+                        (
+                            WINDOW_STREAM_BUILD,
+                            WINDOW_STREAM_FIRST
+                                + batches * WINDOW_STREAM_PER_BATCH
+                                + windows * WINDOW_STREAM_PER_WINDOW
+                                + cut * WINDOW_STREAM_PER_PIECE
+                        ),
+                        "window_by sorted={sorted}, {shape}, over {batches} batches of {size} rows"
+                    );
+                }
+            }
+            let reader = quote_stream(size, &one);
+            for window in reader.window_by(&venue, false).expect("windows") {
+                let mut window = window.expect("a window");
+                let (cost, piece) = counted(|| window.next());
+                assert_eq!(
+                    (cost, piece.map(|piece| piece.expect("a piece").len())),
+                    (0, Some(size)),
+                    "a whole batch of {size} rows handed on as a window's piece"
+                );
+                assert!(window.all(|piece| piece.is_ok()));
+            }
+        }
+    }
+}
+
+#[test]
+fn a_continuing_window_edge_builds_no_key() {
+    // A window that carries across an edge is told so by its key compared in
+    // place against the next rows' first, an inline venue built for neither
+    // side: the stream's walk costs its batches and its one window, and the
+    // chunked cut its chunks, its one key and its one slice - no term for
+    // the edges at all.
+    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+    for size in [64_usize, 4_096] {
+        for batches in [1_usize, 8] {
+            let span: Vec<Vec<String>> = (0..batches).map(|_| vec![venue_named(0)]).collect();
+            let stream = stream_cost(size, &span);
+            let reader = quote_stream(size, &span);
+            let walk = reader.window_by(&venue, true).expect("windows");
+            let (drain, counts) = counted(|| drain_windows(walk));
+            assert_eq!(counts, (1, batches));
+            assert_eq!(
+                drain - stream,
+                WINDOW_STREAM_FIRST + batches * WINDOW_STREAM_PER_BATCH + WINDOW_STREAM_PER_WINDOW,
+                "one window over {batches} batches of {size} rows: no edge costs a key"
+            );
+        }
+        let chunked = ChunkedSerie::from_arrow_arrays(
+            Some(&Field::new("venue", DataType::utf8(), false)),
+            (0..2).map(|_| {
+                Arc::new(arrow_array::StringArray::from(vec!["XNAS"; size]))
+                    as arrow_array::ArrayRef
+            }),
+            ArrowCastOptions::new(),
+        )
+        .expect("two chunks of one venue");
+        // Once outside every count, so no process-wide first use is charged.
+        let windows = chunked.window_by(&venue, false).expect("windows");
+        assert_eq!(
+            windows
+                .iter()
+                .map(|(key, window)| (key.clone(), window.len(), window.num_chunks()))
+                .collect::<Vec<_>>(),
+            [(Scalar::from_sequence([Scalar::from("XNAS")]), 2 * size, 2)]
+        );
+        let (cost, _) = counted(|| {
+            black_box(&chunked)
+                .window_by(&venue, false)
+                .expect("windows")
+        });
+        assert_eq!(
+            cost,
+            CHUNKED_WINDOW_BY_BIND + 2 * CHUNKED_WINDOW_BY_PER_CHUNK + 1 + 2 + 2,
+            "one window over two chunks of {size} rows: one key, one slice keeping both, two vectors"
+        );
+    }
+}
+
+#[test]
+fn static_values_are_lent_free() {
+    // A reader's static values are one record row beside its root, lent as
+    // they stand: the whole record, or one value reached by its name, holds
+    // no handle - a stated record and a window's alike, whatever the rows.
+    let part = DataType::from(
+        StructType::from_fields([
+            DataType::utf8().required_field("venue"),
+            DataType::Int32.required_field("day"),
+        ])
+        .expect("two children"),
+    )
+    .required_field("part");
+    let day: FieldPath = "day".parse().expect("a path");
+    let rownum: FieldPath = "rownum".parse().expect("a path");
+    let key: FieldPath = "venue".parse().expect("a path");
+    let venue: yggdryl::Selector = "venue".parse().expect("a selector");
+    for rows in [64_usize, 4_096] {
+        let values = FieldRecord::new(
+            &part,
+            Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(3_i32)]),
+        )
+        .expect("a part");
+        let reader = yggdryl::SerieReader::from_serie(quote_buckets(rows))
+            .expect("a reader")
+            .with_static_values(values);
+        free(
+            &format!("a reader's static values over {rows} rows"),
+            || {
+                black_box(black_box(&reader).static_values());
+            },
+        );
+        free(
+            &format!("a reader's static value by name over {rows} rows"),
+            || {
+                black_box(black_box(&reader).get_static_value(&day));
+            },
+        );
+
+        let mut windows = yggdryl::SerieReader::from_serie(quote_buckets(rows))
+            .expect("a reader")
+            .window_by(&venue, false)
+            .expect("windows");
+        let window = windows.next().expect("a window").expect("a window");
+        free(
+            &format!("a window's static values over {rows} rows"),
+            || {
+                black_box(black_box(&window).static_values());
+            },
+        );
+        free(&format!("a window's key cell over {rows} rows"), || {
+            black_box(black_box(&window).get_static_value(&key));
+        });
+        free(&format!("a window's row number over {rows} rows"), || {
+            black_box(black_box(&window).get_static_value(&rownum));
+        });
     }
 }
 
