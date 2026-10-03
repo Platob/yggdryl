@@ -1328,7 +1328,7 @@ test('a write refuses a run, a value it cannot read and a mode it does not name'
   for (const value of [undefined, null, 7, 'trades', { id: 1 }]) {
     assert.throws(() => handle.overwriteSerie(value), /value must be a Serie, a ChunkedSerie, a SerieReader/)
   }
-  assert.throws(() => handle.writeSerie(tradesSerie(), 'readonly'), /unknown write mode "readonly"/)
+  assert.throws(() => handle.writeSerie(tradesSerie(), 'readonly'), /expected a write mode - overwrite, append, merge - got readonly/)
   assert.throws(() => handle.writeSerie(tradesSerie(), null), /mode must be overwrite, append, or merge/)
   // A merge names its keys, and the refusal comes before the stream is taken.
   const stream = SerieReader.fromSerie(tradesSerie())
