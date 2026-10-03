@@ -6913,9 +6913,8 @@ fn located_lines_render_and_project_one_shared_crosscode() {
 /// reader's: the reader's own cost is what is left, and that is linear.
 ///
 /// It last moved, by five, when the staging location's URL stopped being
-/// formatted and parsed as text: it is built from its parts, the machine's
-/// host shared rather than copied, so the count is the same on every machine
-/// whatever its name's length.
+/// formatted and parsed as text: it is built from its parts under the static
+/// host `localhost`, so the count is the same on every machine.
 const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 18), (1_024, 21)];
 
 /// What the read itself costs past the copy: nine, and nothing a line.
@@ -9583,3 +9582,79 @@ fn a_lit_column_costs_its_one_row_and_nothing_per_row() {
 /// one-row text column, the leaf and its `Arc` - and the lit leaf's own
 /// `Arc`; thirteen in all, and none of them a row.
 const LIT_BUILD: usize = 13;
+#[test]
+fn a_log_record_allocates_nothing_disabled_or_spelled_into_a_reused_line() {
+    use std::sync::Arc;
+
+    use yggdryl::logging::{self, Formatter, Handler, Level, StreamHandler};
+
+    logging::install().expect("the tree is this process's logger");
+    let quiet = logging::get_logger("allocations.quiet");
+    free("a disabled record on a logger", || {
+        quiet.debug(black_box(format_args!("{} fills", 3)));
+    });
+    free("a disabled record through the facade", || {
+        log::debug!(target: "allocations::quiet", "{} fills", black_box(3));
+    });
+    free("asking a level", || {
+        black_box(quiet.is_enabled_for(black_box(Level::INFO)));
+    });
+    free("asking for a logger that exists", || {
+        black_box(logging::get_logger(black_box("allocations.quiet")));
+    });
+
+    let loud = logging::get_logger("allocations.loud");
+    loud.set_level(Level::DEBUG);
+    let sink = StreamHandler::new(std::io::sink());
+    sink.set_formatter(
+        Formatter::from_str("%(asctime)s %(levelname)-8s %(name)s:%(lineno)d %(message)s")
+            .expect("a format"),
+    );
+    loud.add_handler(Arc::new(sink));
+    loud.set_propagating(false);
+    free("an enabled record spelled on a logger", || {
+        loud.info(black_box(format_args!("{} fills", 3)));
+    });
+    free("an enabled record spelled through the facade", || {
+        log::info!(target: "allocations::loud", "{} fills", black_box(3));
+    });
+
+    // The default terminal line, coloured: timestamp, glyph, level, thread,
+    // logger, caller and message spelled into the reused line, nothing held.
+    let terminal = logging::get_logger("allocations.terminal");
+    terminal.set_level(Level::DEBUG);
+    terminal.set_propagating(false);
+    let colored = StreamHandler::new(std::io::sink());
+    colored.set_formatter(Formatter::terminal());
+    colored.set_colored(true);
+    terminal.add_handler(Arc::new(colored));
+    free("an enabled record in the coloured terminal format", || {
+        terminal.info(black_box(format_args!("{} fills", 3)));
+    });
+    // A message of several lines hangs under its first as it is rendered.
+    free("a multi-line record in the terminal format", || {
+        terminal.info(black_box(format_args!("{} fills\nat 101.5\nby 2 lots", 3)));
+    });
+
+    // A quoted field re-spells through a buffer the thread reuses.
+    let quoted = logging::get_logger("allocations.quoted");
+    quoted.set_level(Level::DEBUG);
+    quoted.set_propagating(false);
+    let repr = StreamHandler::new(std::io::sink());
+    repr.set_formatter(Formatter::from_str("%(name)r %(message)r %(message)a").expect("a format"));
+    quoted.add_handler(Arc::new(repr));
+    free("an enabled record with quoted fields", || {
+        quoted.info(black_box(format_args!("{} fills €", 3)));
+    });
+
+    // A repeat is hashed - its message rendered into the hash, never into
+    // text - counted in the lock-free table and dropped before any handler.
+    let repeated = logging::get_logger("allocations.repeated");
+    repeated.set_level(Level::DEBUG);
+    repeated.set_propagating(false);
+    repeated.add_handler(Arc::new(StreamHandler::new(std::io::sink())));
+    repeated.set_deduplicating(Some(true));
+    free("a repeated record on a deduplicating logger", || {
+        repeated.info(black_box(format_args!("{} fills", 3)));
+    });
+}

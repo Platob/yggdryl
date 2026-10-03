@@ -17,6 +17,7 @@ from . import (
     iceberg as iceberg,
     integer as integer,
     json as json,
+    logging as logging,
     media as media,
     nested as nested,
     temporal as temporal,
@@ -54,7 +55,6 @@ from ._native import (
     UnknownPropertyWarning as UnknownPropertyWarning,
     __version__ as __version__,
     combined as combined,
-    refresh_logging as refresh_logging,
 )
 from .expression import (
     Bound as Bound,

@@ -5,8 +5,8 @@ use std::sync::Arc;
 use super::build::RowStamp;
 use super::{FixCodec, FixMsg};
 use crate::graph::element::InstantSequence;
+use crate::logging::warning::warned;
 use crate::text::TextEntries;
-use crate::warning::warned;
 use crate::{Error, Result};
 
 enum Source {

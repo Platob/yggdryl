@@ -3129,6 +3129,7 @@ pub fn dtype(&self) -> Result<DataType>
   pub fn inferred_scalar_field(&self) -> Result<Field>
   pub fn inferred_array_field(&self) -> Result<Field>
   pub fn inferred_struct_field(&self) -> Result<Field>
+  pub fn inferred_record_field(&self) -> Result<Field>  (rows of named records as inferred_struct_field; any other value its inferred field through into_struct_field)
 
 ### yggdryl::ipc  [rust/src/ipc/mod.rs]
 pub const DEFAULT_ROOT_NAME: &str = "row";
@@ -3346,6 +3347,7 @@ pub struct Workbook
   pub fn into_bytes(&self) -> Result<Vec<u8>>
 
 ### yggdryl::media  [rust/src/media/mod.rs]
+  pub const DEFAULT_VALUE_NAME: &str = "value"  (the child name a value wraps into a struct under when none is declared)
 pub enum Media
   pub fn open(handle: Holder) -> Result<Self>
   pub fn open_as(handle: Holder, base: &MimeType) -> Result<Self>
@@ -5302,6 +5304,10 @@ pub trait EnumRepr: ArrowNativeType + Copy + Default + Into<u16> + Into<i64> + T
   pub fn as_fields(&self) -> Option<&[Field]>
   pub fn with_fields<I>(&self, fields: I) -> Result<Self>
   pub fn is_struct(&self) -> bool
+  pub fn is_struct(&self) -> bool  (DataType: the Struct shape at any nullability)
+  pub fn into_struct_type(&self) -> Result<DataType>  (DataType: itself when a struct, else struct<value: self> with the child nullable, bounded)
+  pub fn into_struct_field(&self) -> Result<Field>  (Field: itself at any nullability with metadata kept, else a required DEFAULT_ROOT_NAME root whose one child is self unchanged, bounded)
+  pub fn into_struct_scalar(&self) -> Scalar  (Scalar: a Struct as is, else Struct({DEFAULT_VALUE_NAME: self}); infallible)
   pub fn fields(&self) -> &[Field]
   pub fn field_len(&self) -> usize
   pub fn get_field_at(&self, index: usize) -> Option<&Field>
@@ -6535,6 +6541,185 @@ pub struct Limit { pub price: Option<Decimal>, pub quantity: Decimal, pub uuids:
   pub fn field() -> Field  (the required item `limit` of a `limits` column)
   pub fn into_scalar(&self) -> Scalar  (the named `Scalar::Struct` of the four cells, a missing price `Null`)
   pub fn from_scalar(value: &Scalar) -> Result<Self>  (the named struct - a name it lacks a null, so a missing quantity, uuids or tradable is refused as a stated null is, never the door's default - or the ordered row of four cells; read through `field()`'s value door first, the one value contract, and refused exactly as it refuses, located under `$.limit` - `$.limit.price`, `$.limit.quantity`, `$.limit.uuids[i]`, `$.limit.tradable`; an empty text, a float or a 19th fractional digit is refused, never read as zero)
+
+### yggdryl::logging  [rust/src/logging/mod.rs]  (Python's `logging` owned by the core: a tree of named loggers in dotted names, numeric levels on Python's scale, handlers and `%`-style formatters, behind the `log` facade every crate in the build already logs through; the module doc carries the Python-to-Rust table. `warning.rs` is crate-private: the deduplicated data warnings are still `WARN` records on the facade, target and module path the raising module's, file and line the `warned!` call's, so the terminal line names the raising site - `yggdryl.fix.build build:<line>`)
+  pub fn disable(level: Level)  (drops every record at or below level on every logger, whatever its own level, the host's included - a hosted logger's threshold is raised past it; NOTSET lifts it - Python's logging.disable)
+  pub fn last_resort() -> Option<Arc<dyn Handler>>  (StreamHandler::stderr() at WARNING with no formatter set - the terminal format, coloured where is_color_enabled says - until replaced, None once removed; never used under a host, which has its own)
+  pub fn set_last_resort(handler: Option<Arc<dyn Handler>>)  (None drops a record no handler takes)
+  pub fn shutdown()  (publishes and closes every handler attached anywhere in the tree, and the last resort - Python's logging.shutdown; a handler that fails says so on standard error and the others still close; a handler logged to again reopens; the process ends without dropping what a static holds, so a Rust application calls it before returning)
+  pub fn basic_config(config: BasicConfig) -> Result<()>  (installs; then, when the root has no handler - or force removed them - attaches the configured handlers (standard error when none), gives each without a formatter the configured one (Formatter::terminal() when none) and states the level; Err only for install's Error::Conflict, with nothing configured)
+  pub use facade::{foreign_level, install, is_installed, set_foreign_level}; file::{FileHandler, HandleGuard};
+      formatter::{Formatter, set_thread_name}; handler::{Filter, Handler, HandlerState, NullHandler, StreamHandler};
+      host::{Host, has_host, invalidate, set_host}; level::Level; logger::{Logger, get_logger}; record::Record;
+      repeats::{Counted, Repeat, Repeats}; terminal::is_color_enabled
+pub struct BasicConfig  (Clone, Default, Debug; Python's basicConfig arguments, each set once and applied by basic_config)
+  pub fn new() -> Self  (no level, Formatter::terminal(), standard error, a root that already has handlers left alone)
+  pub const fn with_level(self, level: Level) -> Self  (states the level on the root)
+  pub fn with_formatter(self, formatter: Formatter) -> Self  (spells records on every handler that has no formatter)
+  pub fn with_handler(self, handler: Arc<dyn Handler>) -> Self  (attached to the root in place of standard error; each call adds one)
+  pub const fn with_force(self, force: bool) -> Self  (closes and removes the root's handlers first)
+
+### yggdryl::logging::level  [rust/src/logging/level.rs]  (the level a record is logged at and a logger or handler handles from: Python's numbers)
+pub struct Level(u8)  (Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd; any number 0..=255 is a level, so a record at 15 is handled by a logger at DEBUG and not by one at INFO; Display is the name or `Level N` for a number no level is named at - Python's getLevelName)
+  pub const NOTSET: Self  (0: on a logger, the nearest ancestor's level; on a handler, every record)
+  pub const TRACE: Self  (5: what a log::Level::Trace record arrives at; Python names no level there)
+  pub const DEBUG: Self  (10: an operation starting)
+  pub const INFO: Self  (20: an operation done, carrying the counts a monitor watches)
+  pub const WARNING: Self  (30: something passed over or done instead of what was asked; the level the root states until set)
+  pub const ERROR: Self  (40: an operation that failed)
+  pub const CRITICAL: Self  (50: a failure the process may not survive)
+  pub const ALL: [Self; 7]  (every named level, least severe first)
+  pub const fn new(value: u8) -> Self
+  pub const fn get(self) -> u8
+  pub const fn name(self) -> Option<&'static str>  (None for a number no level is named at)
+  pub fn from_str(value: &str) -> Result<Self>  (a name in any case - WARN for WARNING and FATAL for CRITICAL among them - or a number from 0 to 255; Error::Parse naming every accepted name for anything else, a number past 255 included)
+  pub const fn glyph(self) -> &'static str  (the one character a terminal marks the level with, the command line's own: `·` below INFO, `•` INFO, `!` WARNING, `✗` ERROR, `‼` from CRITICAL - a number between two named levels takes the lower one's; what `%(levelglyph)s` spells)
+  impl FromStr, Display for Level; From<log::Level> for Level  (Error and Warn arrive at ERROR and WARNING, Trace at TRACE)
+
+### yggdryl::logging::record  [rust/src/logging/record.rs]  (one logged event, as every handler and host reads it: it borrows everything it holds, and the message is rendered only by a handler that writes it, so a record no handler takes costs no text)
+pub struct Record<'a>  (Clone, Copy, Debug; Python's LogRecord; a record from the log facade carries the Rust target, module path, file and line, and its logger's name is the target with `::` spelled `.`)
+  pub fn new(name: &'a str, level: Level, message: &'a dyn fmt::Display) -> Self  (created now, the target the logger's name, the location unknown)
+  pub const fn with_level_name(self, name: &'a str) -> Self  (the name a binding states for the level when its runtime names levels its own way - Python's addLevelName, its `Level 5` where the tree says TRACE: levelname and the terminal line spell it)
+  pub const fn with_location(self, file: &'a str, line: u32) -> Self
+  pub const fn with_function(self, function: &'a str) -> Self  (the function or method a binding states from its own runtime's call site: funcName, and the place `%(caller)s` names first)
+  pub const fn with_thread(self, thread: &'a str) -> Self  (the thread a binding names its own way: threadName, in place of the emitting thread's)
+  pub const fn with_target(self, target: &'a str, module_path: Option<&'a str>) -> Self
+  pub const fn with_message(self, message: &'a dyn fmt::Display) -> Self
+  pub const fn with_created(self, created: i64) -> Self  (nanoseconds since the Unix epoch)
+  pub const fn name(&self) -> &'a str  (the logger the record was logged on: yggdryl.fix.build)
+  pub const fn level(&self) -> Level
+  pub const fn level_name(&self) -> Option<&'a str>  (None unless stated; a formatter spells the Level's own name otherwise, `Level N` for an unnamed one)
+  pub const fn message(&self) -> &'a dyn fmt::Display
+  pub const fn target(&self) -> &'a str  (the Rust target, yggdryl::fix::build, or the logger's name for a record logged on a Logger)
+  pub const fn module_path(&self) -> Option<&'a str>
+  pub const fn file(&self) -> Option<&'a str>
+  pub const fn line(&self) -> Option<u32>
+  pub const fn function(&self) -> Option<&'a str>  (None unless stated: a Rust record names no function)
+  pub const fn thread(&self) -> Option<&'a str>  (None unless stated; a formatter reads the emitting thread's name otherwise)
+  pub const fn created(&self) -> i64  (nanoseconds since the Unix epoch, UTC)
+
+### yggdryl::logging::formatter  [rust/src/logging/formatter.rs]  (how a handler spells a record: Python's `%`-style format over the record's attributes and its strftime date format, each parsed once at construction)
+pub struct Formatter  (Clone, Debug, Display, Default, PartialEq, Eq, FromStr; a clone shares the parsed format; Default is `%(message)s`, Python's default Formatter(); levelname the name a record states (Record::with_level_name), else the level's own, else `Level N`; instants render in UTC unless with_timezone names a zone; funcName the function a record states, else `(unknown function)`; an unlocated record's pathname, filename and module `(unknown file)` and its lineno 0; thread the emitting thread's number, from 1 per process; threadName the thread a record states, else the name set_thread_name gave the emitting thread, else the one it was spawned with, else `Thread-N` (N its thread number); processName `MainProcess`)
+  pub const BASIC_FORMAT: &'static str  (`%(levelname)s:%(name)s:%(message)s`, Python's BASIC_FORMAT, for a handler that should read as Python's basicConfig writes: `WARNING:trades.book:crossed`)
+  pub const TERMINAL_FORMAT: &'static str  (`%(dim)s%(asctime)s%(reset)s %(levelcolor)s%(levelglyph)s %(levelname)-8s%(reset)s %(dim)s[%(threadName)s]%(reset)s %(bold)s%(name)s%(reset)s %(dim)s%(caller)s ›%(reset)s %(message)s`: `2026-10-03 14:05:09,123 • INFO     [main] trades.feed open:42 › opened 3 venues`)
+  pub fn terminal() -> Self  (the prebuilt terminal formatter over TERMINAL_FORMAT, built once per process: a message's later lines start under its first column, counted in terminal columns - an East Asian wide or fullwidth character or an emoji two, a combining mark, a zero-width character or an escape none - and indented as the message renders, copying nothing and leaving no indent after a final newline, so a multi-line message or a traceback stays one block - kept by with_datefmt and with_timezone, and not by from_str(TERMINAL_FORMAT); what Handler::formatter, basic_config and the last resort spell when no formatter is stated)
+  pub fn from_str(format: &str) -> Result<Self>  (keys name, levelno, levelname, message, asctime, created, msecs, relativeCreated, pathname, filename, module, lineno, funcName, thread, threadName, process, processName, and the terminal's: caller - `function:line` when the record states a function, else the Rust module path's last segment or the file's stem and the line (`open:42`, `table:227`), the place alone with no line, `-` when nothing is known - levelglyph, and the styles levelcolor, dim, bold, reset; Python's conversion specs - the flags `-`, `0`, `+`, space and `#` (`0x`/`0X`/`0o` before x, X and o, zero padding after the prefix - `%(levelno)#06X` is `0X001E` - and `%g`'s trailing zeros kept), a width and a precision of at most 4096, the length modifiers h, l and L read and ignored, and the conversions s, r and a for any key, d, i, u, f, F, e, E, g and G for a number, x, X, o and c for a whole number (levelno, lineno, thread, process): `%(levelname)-8s`, `%(msecs)03d`, `%(created).3f`, `%(created)g` (`1.7e+09`), `%(name)r` and `%%`; Error::Parse at the byte for an unknown key, an unclosed `%(`, a `%` naming no key, a conversion a key's kind cannot take (`%(name)d`: `name is text and takes the s, r or a conversion`; `%(msecs)x`: `msecs is a fraction and takes the s, r, a, d, i, u, f, F, e, E, g or G conversion`), a conversion outside that list, a width or a precision past 4096 (`expected a width of at most 4096, got 99999`) or a format naming no key - `invalid log format expression at byte N: ...`)
+  pub fn with_datefmt(self, datefmt: &str) -> Result<Self>  (asctime spelled in strftime directives %Y %y %C %G %g %m %d %e %j %U %W %V %H %k %I %l %p %P %M %S %f %a %A %u %w %b %B %h %z %Z %s %c %x %X %F %T %D %R %r %n %t %% - %U and %W the week counted from the year's first Sunday or Monday, %V, %G and %g the ISO 8601 week and its year, %c, %x, %X and %r the C locale's spellings Python's time.strftime writes - no milliseconds appended; any other directive (%Q) refused at its byte, `invalid log date format expression at byte N: expected one of the directives ...`; the default asctime is `2026-10-03 14:05:09,123`)
+  pub fn with_timezone(self, timezone: Timezone) -> Self  (a zone with no rules renders as UTC)
+  pub fn as_str(&self) -> &str  (the format, as it was spelled)
+  pub fn datefmt(&self) -> Option<&str>  (None for the default)
+  pub fn timezone(&self) -> Timezone
+  pub fn format(&self, record: &Record<'_>) -> String
+  pub fn format_into(&self, record: &Record<'_>, line: &mut String)  (appends to line, allocating only what it must grow by; the style keys spell nothing)
+  pub fn format_colored_into(&self, record: &Record<'_>, line: &mut String)  (appends as a colour terminal shows it: dim turns faint on, bold turns bold on, reset turns every style off, levelcolor the record level's colour - faint below DEBUG, cyan DEBUG, green INFO, yellow WARNING, red ERROR, bold red from CRITICAL; what a handler that is_colored calls)
+pub fn set_thread_name(name: &str)  (names the calling thread in every record logged from it that states none - threadName and the terminal format's `[thread]` - in place of the name it was spawned with or `Thread-N`; an empty name forgets it; the Node.js addon calls it once per isolate, `main` on the main thread and `worker-N` in a worker)
+
+### yggdryl::logging::handler  [rust/src/logging/handler.rs]  (what a logger hands its records to: Python's Handler, its stream and null handlers, and the state every handler shares)
+pub type Filter = Arc<dyn Fn(&Record<'_>) -> bool + Send + Sync>  (a predicate a record must pass: on a logger, to be handled at all; on a handler, to be emitted by it - Python's filter callables)
+pub struct HandlerState  (Debug, Default; the level, formatter and filters every handler holds, each changed through &self because a handler is shared by every logger it is attached to)
+  pub fn new() -> Self  (NOTSET, no formatter, no filter)
+pub trait Handler: Send + Sync  (an implementation owns its HandlerState and writes one formatted record in emit; every other method is provided)
+  fn state(&self) -> &HandlerState
+  fn emit(&self, record: &Record<'_>, line: &str) -> Result<()>  (line is the record spelled, without a line ending)
+  fn flush(&self) -> Result<()>  (publishes what the handler holds back; provided as Ok)
+  fn close(&self) -> Result<()>  (provided as flush; a handler emitting after it reopens its destination)
+  fn level(&self) -> Level
+  fn set_level(&self, level: Level)
+  fn formatter(&self) -> Formatter  (Formatter::terminal() when none was set, so every handler spells the terminal line unless told otherwise)
+  fn has_formatter(&self) -> bool  (which basic_config leaves alone)
+  fn set_formatter(&self, formatter: Formatter)
+  fn add_filter(&self, filter: Filter)
+  fn remove_filter(&self, filter: &Filter) -> bool  (the very one added; answers whether it was there)
+  fn filter(&self, record: &Record<'_>) -> bool  (whether the record passes every filter)
+  fn is_colored(&self) -> bool  (whether the handler writes to a colour terminal, so its formatter's styles are spelled; provided as false)
+  fn format(&self, record: &Record<'_>, line: &mut String)  (the handler's formatter - the terminal format when none was set - through format_colored_into when is_colored, else format_into; taken out of its lock before rendering, so a message whose Display logs cannot deadlock against set_formatter)
+  fn handle(&self, record: &Record<'_>) -> bool  (filters, spells the record into a line buffer the thread reuses, and emits it; answers whether the filters let it through; the level is the logger's to check; a failed emit goes to handle_error and never reaches the caller)
+  fn handle_error(&self, record: &Record<'_>, error: &Error)  (says on standard error that the record could not be emitted, as Python's handleError - `--- Logging error ---`; a standard error that cannot be written, closed, full or its reader gone, is left alone, never a panic)
+pub struct StreamHandler  (Debug; Handler, its is_colored the colour it holds; Python's StreamHandler, one line per record, flushing after each)
+  pub fn stderr() -> Self  (coloured when is_color_enabled says of standard error, decided once at construction)
+  pub fn stdout() -> Self  (coloured when is_color_enabled says of standard output, decided once at construction)
+  pub fn new(writer: impl Write + Send + 'static) -> Self  (not coloured; a writer that logs into this handler while it writes has that line written after the one being written - one round, what writing those logs waits for the next line - and a flush it asks for while writing is a no-op; standard error and standard output lock re-entrantly anyway)
+  pub fn set_colored(&self, colored: bool)  (spells the formatter's styles, or stops spelling them, whatever the stream decided)
+pub struct NullHandler  (Debug, Default; Handler; Python's NullHandler: takes every record without spelling it and writes none, keeping the last resort from speaking for a library's logger)
+  pub fn new() -> Self
+
+### yggdryl::logging::file  [rust/src/logging/file.rs]  (a handler writing through any storage handle - Holder, Buffer, LocalFile, S3, a ZIP member: Python's FileHandler with MemoryHandler's batching folded in)
+pub struct FileHandler<H: IOBase>  (Debug, Handler; Drop publishes what is held. Calls on the handle, pinned in rust/tests/iobase_calls.rs: construction and a held record none; the first publish `open` + `append_bytes`, or `write_all_bytes` under IOMode::Overwrite; each later publish one `append_bytes`; `flush` holding nothing none; `close` the publish of what is held - and one more for what that publish raised - then `close`. An append is a whole publish on every backend, so a handler over a remote store states a capacity; a failed publish loses the records it carried and says so on standard error. A record never waits on a publish in flight: one logged on another thread meanwhile - a store's own runtime driving the request, another handler's publish - is held, and the publishing thread takes it in before it lets go of the handle, at most eight publishes per call, what remains going with the next record, flush or close; a record the publishing thread logs itself - a credential refresh or a retry its publish raises, or one logged under io()'s guard - is set aside and rides with the next publish, never starting one. flush publishes everything held, waiting on a publish in flight, then what came due; close publishes everything held and once more for the lines that publish raised, then closes the handle - lines that second publish or the handle's close raise wait for the next publish, which reopens it. A flush or close on the thread already holding the handle - under io()'s guard or inside its own publish - is refused with Error::Io of kind std::io::ErrorKind::Deadlock rather than waiting on itself, which shutdown says on standard error before closing the others. Debug never waits: the url is None while the handle is held)
+  pub fn new(handle: H) -> Self  (appends each record as it arrives: mode Append, capacity 0, flush level ERROR)
+  pub fn with_mode(self, mode: IOMode) -> Result<Self>  (Append keeps what the handle holds, Overwrite replaces it with the first publish, once per handler; any other mode Error::InvalidRecord)
+  pub const fn with_capacity(self, capacity: usize) -> Self  (holds records until that many bytes are held; 0, the default, publishes each as it arrives)
+  pub const fn with_flush_level(self, level: Level) -> Self  (publishes what is held as soon as a record at or above level arrives; ERROR by default, as Python's MemoryHandler)
+  pub const fn mode(&self) -> IOMode
+  pub const fn capacity(&self) -> usize
+  pub const fn flush_level(&self) -> Level
+  pub fn io(&self) -> HandleGuard<'_, H>  (the handle, locked: a record another thread logs meanwhile is held, and what came due is published once the guard drops; one this thread logs under the guard is set aside for the next publish; taking it again on the thread holding it waits on itself)
+  pub fn write(&self, line: &str, level: Level) -> Result<()>  (holds one line a host already spelled, publishing when the capacity or the flush level says so - unless another thread is publishing, which takes it in; never waits on a publish in flight)
+pub struct HandleGuard<'a, H: IOBase>  (Deref and DerefMut to H; the lock a FileHandler holds its handle under; dropping it publishes what came due while it was held)
+
+### yggdryl::logging::logger  [rust/src/logging/logger.rs]  (the tree of named loggers: Python's Logger and getLogger)
+pub fn get_logger(name: &str) -> Logger  (made the first time it is asked for; "" and "root" are the root; asking again for one that exists allocates nothing)
+pub struct Logger  (Clone, Debug, Display, PartialEq, Eq; loggers hang from their nearest ancestor by dotted name whatever order they were first asked for in, and every one descends from the root, which states WARNING; a disabled record costs a few atomic loads, takes no lock and allocates nothing; an enabled one spelled into a handler allocates nothing once its thread's line buffer is warm)
+  pub fn name(&self) -> &str  (dotted; `root` for the root)
+  pub fn parent(&self) -> Option<Self>  (None for the root)
+  pub fn child(&self, suffix: &str) -> Self  (Python's getChild)
+  pub fn level(&self) -> Level  (the level stated here; NOTSET takes the ancestors')
+  pub fn set_level(&self, level: Level)
+  pub fn effective_level(&self) -> Level
+  pub fn is_enabled_for(&self, level: Level) -> bool  (whether the tree's handlers or the host would handle it - false on a disabled logger and at or below disable's level, the host included; cached per logger and dropped by any level change, disable, host change or handler attach and detach, as Python's own cache is)
+  pub fn is_propagating(&self) -> bool
+  pub fn set_propagating(&self, propagating: bool)
+  pub fn is_disabled(&self) -> bool
+  pub fn set_disabled(&self, disabled: bool)  (a disabled logger reaches neither the tree's handlers nor the host)
+  pub fn deduplicating(&self) -> Option<bool>  (Some(true) drops repeated records, Some(false) passes every record, None takes the nearest ancestor's; off at the root unless set)
+  pub fn set_deduplicating(&self, deduplicating: Option<bool>)  (a deduplicating logger counts each record by Record::stable_hash: the first goes on as logged, the 10th, 100th and 1000th as `message (seen N times)`, every other reaches no handler and no host)
+  pub fn is_deduplicating(&self) -> bool
+  pub fn handlers(&self) -> Vec<Arc<dyn Handler>>  (in the order they were added)
+  pub fn add_handler(&self, handler: Arc<dyn Handler>)  (once: a handler already attached stays where it is)
+  pub fn remove_handler(&self, handler: &Arc<dyn Handler>) -> bool  (the very one added; not closed)
+  pub fn has_handlers(&self) -> bool  (this logger or an ancestor its records propagate to)
+  pub fn add_filter(&self, filter: Filter)  (a record it refuses reaches none of the tree's handlers)
+  pub fn remove_filter(&self, filter: &Filter) -> bool
+  pub fn log(&self, level: Level, message: impl fmt::Display)  (#[track_caller]; dated now and located at the caller, when the level is enabled)
+  pub fn debug(&self, message: impl fmt::Display)
+  pub fn info(&self, message: impl fmt::Display)
+  pub fn warning(&self, message: impl fmt::Display)
+  pub fn error(&self, message: impl fmt::Display)
+  pub fn critical(&self, message: impl fmt::Display)
+  pub fn handle(&self, record: &Record<'_>)  (to this logger's handlers, its ancestors' and the host, whatever the logger's level - Python's Logger.handle, for a record a caller built and checked itself; the logger's `disabled` - a disabled logger hands nothing over, to the host included - its filters, each handler's own level and filters, and its deduplication still apply)
+
+### yggdryl::logging::host  [rust/src/logging/host.rs]  (a host's own logging, mirrored by the tree: what a binding attaches so records reach the runtime's loggers of the same names; no lock is held while the host is asked or handed a record)
+pub trait Host: Send + Sync  (the Python binding's `logging`; the tree asks a logger's threshold once per change and caches it, so a logger is enabled for a level its own tree or the host handles, and under a host the last resort is silent)
+  fn threshold(&self, name: &str) -> Option<Level>  (the lowest level the host's logger of that name handles, raised past any level the host disables; None when it handles none)
+  fn lowest_threshold(&self) -> Option<Level>  (the lowest across all the host's loggers: the log facade's ceiling)
+  fn handle(&self, record: &Record<'_>)  (hands the record to the host's logger of the record's name)
+pub fn set_host(host: Option<Arc<dyn Host>>)  (attaches host, replacing any other; None detaches it; every cached threshold is dropped)
+pub fn has_host() -> bool
+pub fn invalidate()  (drops every cached threshold and reads the facade's ceiling again: what a host calls whenever its own levels change)
+
+### yggdryl::logging::facade  [rust/src/logging/facade.rs]  (the tree as the backend of the `log` facade every crate in the build logs through)
+pub fn install() -> Result<()>  (a record's target `yggdryl::iceberg::table` is the logger `yggdryl.iceberg.table`, made and remembered for at most 4096 distinct targets - past that a new target makes no logger, so the tree stays bounded, and its records go, under their own name, to the nearest logger the tree has: its own once made with get_logger, else its nearest existing ancestor, else the root; a static module path never reaches the bound; the facade's ceiling (log::max_level) follows the most verbose level any logger handles, so a record nothing handles is refused before its message is built; twice is one installation; Error::Conflict when another log backend is installed; basic_config installs)
+pub fn is_installed() -> bool
+pub fn set_foreign_level(level: Level)  (admits a facade record whose target is outside the yggdryl crate only at level and above, whatever its logger's level; NOTSET, the default, admits what the tree enables; the Python binding and the Node addon state WARNING, so a dependency of the build reaches logging only at warning and above)
+pub fn foreign_level() -> Level
+
+### yggdryl::logging::terminal  [rust/src/logging/terminal.rs]  (what a terminal shows of a record: the colour rule StreamHandler::stderr and stdout - the Node StreamHandler's too - the Python TerminalHandler and the command line share; the module is crate-private, the rule re-exported at yggdryl::logging)
+pub fn is_color_enabled(is_terminal: bool) -> bool  (NO_COLOR set non-empty turns colour off; else FORCE_COLOR or CLICOLOR_FORCE set non-empty and not `0` or `false` turns it on; else TERM=dumb turns it off; else is_terminal - a terminal coloured, a file or a pipe not; the yggdryl command colours standard output by it, and draws box characters and its spinner only on a terminal it colours, so a forced colour brings escapes into a pipe and never frames)
+
+### yggdryl::logging::repeats  [rust/src/logging/repeats.rs]  (repeated records counted by hash: the one deduplication every deduplicating logger, every data warning and every binding filter counts through)
+pub enum Repeat { First, Tenfold(u64), Repeated, Untracked }  (Clone, Copy, Debug, Eq, Hash, PartialEq; the first occurrence, the 10th, 100th, 1000th with its count, any other, and a key a full table had no room left to count - a deduplicating logger says it in full, uncounted; the crate's data warnings count such keys together and say how many there were, at the first and each tenfold one)
+  pub const fn is_said(self) -> bool  (false only for Repeated)
+pub struct Repeats  (Debug, Default; lock-free: a count is two atomic operations on a fixed array of slots allocated on the first count, bounded at exactly CAPACITY keys however threads race - room is reserved before a slot is claimed - so a stream of messages that never repeat cannot grow memory)
+  pub const CAPACITY: usize  (4096 distinct keys)
+  pub const fn new() -> Self
+  pub fn count(&self, key: u64) -> Repeat
+  pub fn count_record(&self, record: &Record<'_>) -> Repeat  (counts the record by its stable_hash)
+  pub fn seen(&self, key: u64) -> u64  (0 for a key never counted)
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+pub struct Counted<'a>  (Clone, Copy, Debug, Display: `message (seen N times)`)
+  pub fn new(count: u64, message: &'a dyn fmt::Display) -> Self
+impl Record<'_>
+  pub fn stable_hash(&self) -> u64  (XXH3-64 of the logger's name, the level and the rendered message, each framed; the message is rendered into the hash, never into text)
 
 ### yggdryl::side  [rust/src/side.rs]
   pub enum Side  (#[repr(u8)], one byte; an Enum-family leaf, `DataTypeId::Side = 0xc3`, stored as the `uint8` code of its member under `yggdryl.side` over Arrow UInt8: `Unknown = 0`, then `Buy = 1`, `Sell`, `BuyMinus`, `SellPlus`, `SShort`, `SShortEx`, `Undisc`, `Cross`, `CrossSh`, `CrossShX`, `AsDef`, `Opposite`, `Subscr`, `Redeem`, `Lend`, `Borrow`, `SellUnd = 17` in FIX `Side(54)` code order; Copy, Default (Unknown), total Ord by code; Display and serde as the stored four-letter code, deserialized from a code or a spelling; `SideType` marks its field, `SideField` is `FieldOf<SideType>`)

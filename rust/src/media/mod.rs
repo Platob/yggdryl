@@ -55,6 +55,8 @@ pub(crate) mod structured;
 pub use magic::MAGIC_PROBE_LEN;
 /// The root Field name a record surface uses when none is declared.
 pub const DEFAULT_ROOT_NAME: &str = "row";
+/// The child name a value wraps into a struct under when none is declared.
+pub const DEFAULT_VALUE_NAME: &str = "value";
 /// How a partition directory spells an absent value.
 pub const NULL_PARTITION: &str = "null";
 pub(crate) use options::{Cadence, CommitBuffer, Shaping, WriteLimitState};

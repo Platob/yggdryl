@@ -24,8 +24,57 @@ _T = TypeVar("_T")
 
 __version__: str
 
-# Drops the cached Python log levels, so a level changed after import applies.
-def refresh_logging() -> None: ...
+# States the core logger's deduplication; `None` takes the ancestors' again.
+def log_deduplicate(name: str, enabled: bool | None = True) -> None: ...
+
+# Whether the core logger deduplicates, as stated or inherited.
+def log_is_deduplicating(name: str) -> bool: ...
+
+# One record as the core's terminal format spells it.
+def log_terminal(
+    name: str,
+    level: int,
+    levelname: str | None,
+    message: str,
+    created: int,
+    pathname: str | None = None,
+    lineno: int | None = None,
+    function: str | None = None,
+    thread: str | None = None,
+    colored: bool = False,
+) -> str: ...
+
+# Whether a stream answering `is_terminal` is written in colour, by the core's rule.
+def log_is_color_enabled(is_terminal: bool) -> bool: ...
+
+# The native half of `yggdryl.logging.Deduplicate`: one table of repeated
+# records, counted by the core's hash.
+class LogRepeats:
+    def __init__(self) -> None: ...
+    def said(self, name: str, level: int, message: str) -> str | None: ...
+    def __len__(self) -> int: ...
+
+# The native half of `yggdryl.logging.FileHandler`: lines held and published
+# through a location's handle.
+class LogFile:
+    def __init__(
+        self,
+        location: str | PathLike[str] | Url | IOBase,
+        mode: str = "append",
+        capacity: int = 0,
+        flush_level: int | str | None = None,
+    ) -> None: ...
+    def write(self, line: str, level: int) -> None: ...
+    def flush(self) -> None: ...
+    def close(self) -> None: ...
+    @property
+    def url(self) -> str | None: ...
+    @property
+    def mode(self) -> str: ...
+    @property
+    def capacity(self) -> int: ...
+    @property
+    def flush_level(self) -> int: ...
 
 CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
@@ -9064,8 +9113,9 @@ DEFAULT_FETCH_BYTE_SIZE: int
 # The bound one column stays resident under before it spills, unless the
 # process environment states another (`SpillOptions.from_env`).
 DEFAULT_SPILL_BYTE_SIZE: int
-# The machine this process runs on, read once: the host an in-process
-# location and a buffer's identity name.
+# The machine this process runs on, read once by the core: intake reads
+# `file://<HOSTNAME>/x` as the local path, and no URL the core writes
+# names it - in-process storage names `localhost`.
 HOSTNAME: str
 NULL_PARTITION: str
 DEFAULT_RECORD_BATCH_ROW_SIZE: int

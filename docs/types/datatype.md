@@ -13,7 +13,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
 | Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
-| Rust only | the enum itself |
+| Rust only | the enum itself; [`is_struct` and `into_struct_type`](#as-a-struct) |
 | JavaScript | the model as JSON only: no YAML, TOML or `pretty` |
 | Serializes strings, bytes | one `string` tag and one `binary` tag with `layout` naming the leaf and `fixed` or `max` beside it ([String](text/string.md#serialized-shape), [Bytes](text/bytes.md#serialized-shape)) |
 
@@ -293,6 +293,54 @@ The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifie
     ```
 
 Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take and a placeholder no leaf takes but for the null family's, and `DataTypeKind::last` its end - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [value stream](value-stream.md) and the [digest feed](../hashing.md#encoding) write that byte. `DataTypeKind::range`, `last`, `contains` and `DataTypeId::temporal_family` are Rust only.
+
+## As a struct
+
+`is_struct` reports the Struct shape alone: a serie of records, a map and a union are not one. `into_struct_type` answers the datatype a record is under - a struct as it is, a clone sharing its children with nothing checked, and any other datatype as the one-child `struct<value: self>`, the child named `media::DEFAULT_VALUE_NAME` (`value`) and nullable so that a null value wraps too. The wrap adds one level, so it is refused naming `$` where the result would nest past the recursion limit of 64 (`DataType::PARSE_RECURSION_LIMIT`) or take a schema walk past its 1,000,000-node budget - which a subtree shared through one `Arc` per level reaches long before the depth limit. A [field](field.md#as-a-struct) and a [value](scalar.md#as-a-struct) wrap the same way.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::media::DEFAULT_VALUE_NAME;
+    use yggdryl::{DataType, StructType};
+
+    // A leaf is the nullable `value` child of a one-child struct.
+    let wrapped = DataType::Int64.into_struct_type()?;
+    assert!(wrapped.is_struct());
+    assert_eq!(
+        wrapped,
+        DataType::from(StructType::from_fields([DataType::Int64.nullable_field(DEFAULT_VALUE_NAME)])?),
+    );
+    assert_eq!(DEFAULT_VALUE_NAME, "value");
+
+    // A struct is answered as it is.
+    assert_eq!(wrapped.into_struct_type()?, wrapped);
+
+    // The shape alone: a serie of records is no struct.
+    assert!(!DataType::Int64.is_struct());
+    assert!(!DataType::serie(wrapped.clone().required_field("item")).is_struct());
+
+    // The wrap adds a level, so a datatype one short of the limit is refused at `$`.
+    let mut deep = DataType::Int64;
+    for _ in 0..62 {
+        deep = DataType::from(StructType::from_fields([deep.required_field("x")])?);
+    }
+    let deepest = DataType::serie(deep.required_field("item"));
+    let refusal = deepest.into_struct_type().unwrap_err().to_string();
+    assert!(refusal.contains("$: schema nesting exceeds the hard limit of 64"), "{refusal}");
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only: no binding reaches DataType::is_struct or DataType::into_struct_type.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only: no binding reaches DataType::is_struct or DataType::into_struct_type.
+    ```
 
 ## Arrow projection
 
@@ -740,7 +788,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 
 - `Time32(Nanosecond)` built directly -> `validate`, `into_arrow`, `into_arrow_ffi` fail; `DataType::time32` refuses.
 - `fixed_size_binary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; a `fixed_size_serie` default over that byte limit fails the same way.
-- nesting past 64 -> error, in parsing, default construction, and compatibility walks alike.
+- nesting past 64 -> error, in parsing, default construction, and compatibility walks alike; `into_struct_type` counts the level its wrap adds.
 - `into_scheme_compat("duckdb")` -> refused by name, listing the accepted targets.
 - `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.
 - `DataType.fromArrow({})` -> `TypeError`: only a `DataType`, datatype text or an Apache Arrow JS type is read, and an arbitrary object is never stringified.
@@ -770,10 +818,11 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- budget compatibility datatype::arrow datatype_id datatype_kind::names default::datatypes default::scalars parser::aliases parser::grammar serde::datatypes string::listings vocabulary::logical vocabulary::rows
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- budget compatibility datatype::arrow datatype_id datatype_kind::names default::datatypes default::scalars parser::aliases parser::grammar serde::datatypes string::listings structure::struct_pair vocabulary::logical vocabulary::rows
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/(scalar_sql|nested_sql_hive|near_limit_nested|logical_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^datatype_(default|compatibility)/'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^arrow/datatype_'
+    cargo bench --manifest-path rust/Cargo.toml --bench types -- '^typed/struct/(is_struct|into_struct_type)'
     ```
 
 === "Python"

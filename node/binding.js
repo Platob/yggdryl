@@ -7164,9 +7164,134 @@ binding.yaml = yaml
   )
 }
 
-// The machine this process runs on, read once by the core: the host an
-// in-process location and a buffer's identity name.
+// The machine this process runs on, read once by the core: intake reads
+// `file://<HOSTNAME>/x` as the local path, and no URL the core writes names
+// it - in-process storage names `localhost`.
 binding.HOSTNAME = binding._hostnameNative()
 delete binding._hostnameNative
+
+// --- Logging: the core's tree, Python's `logging` in camelCase -------------
+//
+// The addon makes the core's logging tree the process's logger when it loads;
+// these are its doors. The classes are reached through the namespace and
+// nowhere else, as the core reaches them through `yggdryl::logging`, and the
+// level numbers are the core's own table.
+{
+  const nativeGetLogger = binding._loggingGetLogger
+  const nativeBasicConfig = binding._loggingBasicConfig
+  const nativeDisable = binding._loggingDisable
+  const nativeShutdown = binding._loggingShutdown
+  // Least severe first, as the core lists them.
+  const levels = Object.fromEntries(
+    Object.entries(binding._loggingLevels()).sort(([, one], [, other]) => one - other),
+  )
+  for (const name of [
+    '_loggingGetLogger',
+    '_loggingBasicConfig',
+    '_loggingDisable',
+    '_loggingShutdown',
+    '_loggingLevels',
+  ]) {
+    delete binding[name]
+  }
+  const classes = {
+    Logger: binding.Logger,
+    Formatter: binding.Formatter,
+    StreamHandler: binding.StreamHandler,
+    FileHandler: binding.FileHandler,
+    NullHandler: binding.NullHandler,
+  }
+  for (const name of Object.keys(classes)) {
+    delete binding[name]
+    delete binding[`Js${name}`]
+  }
+  // Every record logged on this isolate's thread - the core's own warnings
+  // included - names it as Node.js does.
+  const { isMainThread, threadId } = require('node:worker_threads')
+  binding._nameThread(isMainThread ? 'main' : `worker-${threadId}`)
+  delete binding._nameThread
+  // A record carries its JavaScript call site - the function, the file, the
+  // line - read only once its level is known to be wanted, so a disabled
+  // record never walks the stack.
+  const callSite = (above) => {
+    const prepare = Error.prepareStackTrace
+    const limit = Error.stackTraceLimit
+    // Restored whatever happens - a stack overflowing as it is read - so
+    // the process's own stack traces never stay rewired.
+    try {
+      Error.prepareStackTrace = (_, stack) => stack
+      Error.stackTraceLimit = 1
+      const held = {}
+      Error.captureStackTrace(held, above)
+      return held.stack[0]
+    } finally {
+      Error.prepareStackTrace = prepare
+      Error.stackTraceLimit = limit
+    }
+  }
+  const NativeLogger = classes.Logger
+  const record = NativeLogger.prototype._record
+  delete NativeLogger.prototype._record
+  const located = (logger, level, message, above) => {
+    if (!logger.isEnabledFor(level)) return
+    const site = callSite(above)
+    record.call(
+      logger,
+      level,
+      message,
+      site?.getFunctionName() ?? site?.getMethodName() ?? undefined,
+      site?.getFileName() ?? undefined,
+      site?.getLineNumber() ?? undefined,
+    )
+  }
+  Object.defineProperty(NativeLogger.prototype, 'log', {
+    configurable: true,
+    writable: true,
+    value: function log(level, message) {
+      located(this, level, message, log)
+    },
+  })
+  for (const [name, level] of [
+    ['debug', levels.DEBUG],
+    ['info', levels.INFO],
+    ['warning', levels.WARNING],
+    ['error', levels.ERROR],
+    ['critical', levels.CRITICAL],
+  ]) {
+    const method = {
+      [name](message) {
+        located(this, level, message, method)
+      },
+    }[name]
+    Object.defineProperty(NativeLogger.prototype, name, {
+      configurable: true,
+      writable: true,
+      value: method,
+    })
+  }
+
+  binding.logging = Object.freeze({
+    ...levels,
+    ...classes,
+    getLogger(name) {
+      return nativeGetLogger(name)
+    },
+    basicConfig({ level, format, datefmt, handlers, force } = {}) {
+      nativeBasicConfig(level, format, datefmt, handlers, force)
+    },
+    disable(level) {
+      nativeDisable(level)
+    },
+    shutdown() {
+      nativeShutdown()
+    },
+  })
+  // What a handler holds back is published before the process exits, as
+  // Python's `logging` does at exit. The tree is the process's, so only the
+  // main thread's exit shuts it down: a worker ending closes nothing.
+  if (isMainThread) {
+    process.on('exit', () => nativeShutdown())
+  }
+}
 
 module.exports = binding

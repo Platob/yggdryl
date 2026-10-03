@@ -174,6 +174,11 @@ import {
   Candle,
   CandleOptions,
   CandleIterator,
+  Logger,
+  Formatter,
+  StreamHandler,
+  FileHandler,
+  NullHandler,
 } from './index'
 import type {
   DataType as ArrowDataType,
@@ -190,8 +195,9 @@ import type { URL as NodeURL } from 'node:url'
 export type Serie = NativeSerie
 /** The public constructor converts each JavaScript row through Scalar. */
 /**
- * The machine this process runs on, read once by the core: the host an
- * in-process location and a buffer's identity name.
+ * The machine this process runs on, read once by the core: intake reads
+ * `file://<HOSTNAME>/x` as the local path, and no URL the core writes names
+ * it - in-process storage names `localhost`.
  */
 export declare const HOSTNAME: string
 
@@ -331,6 +337,11 @@ export type {
   Candle,
   CandleOptions,
   CandleIterator,
+  Logger,
+  Formatter,
+  StreamHandler,
+  FileHandler,
+  NullHandler,
 }
 
 /** A native MIME wrapper or canonical MIME/extension string. */
@@ -4222,6 +4233,10 @@ declare module './index' {
 
   /** A native handle, any identifier naming a location, or location text. */
   type LocationInput = IOBase | Url | Uri | Urn | Arn | string
+  /** A level: its number, or its name in any case. */
+  type LoggingLevelInput = number | string
+  /** Any handler a logger takes. */
+  type LoggingHandlerInput = StreamHandler | FileHandler | NullHandler
   /** A cell reference: a `CellRef`, its `A1` text, or a `[row, column]` pair. */
   type CellRefInput = CellRef | string | [number, number]
   /** A cell range: a `CellRange`, its `A1:C3` text, or a pair of references. */
@@ -4852,6 +4867,60 @@ export interface Iceberg {
 }
 
 export declare const iceberg: Iceberg
+
+/** A level: its number, or its name in any case (`warn`, `WARNING`, `30`). */
+export type LoggingLevelInput = number | string
+
+/** Any handler a logger takes. */
+export type LoggingHandlerInput = StreamHandler | FileHandler | NullHandler
+
+/** What `logging.basicConfig` gives the root, Python's `basicConfig` arguments. */
+export interface LoggingBasicConfig {
+  /** The level stated on the root. */
+  readonly level?: LoggingLevelInput
+  /** The `%`-style format every handler without a formatter takes. */
+  readonly format?: string
+  /** The `strftime` date format `asctime` is spelled in. */
+  readonly datefmt?: string
+  /** The handlers attached to the root, standard error when none is given. */
+  readonly handlers?: readonly LoggingHandlerInput[]
+  /** Close and remove the root's handlers first. */
+  readonly force?: boolean
+}
+
+/**
+ * The core's logging tree, the process's logger since the addon loaded:
+ * Python's `logging` in camelCase, its level numbers the core's own.
+ */
+export interface Logging {
+  readonly NOTSET: number
+  readonly TRACE: number
+  readonly DEBUG: number
+  readonly INFO: number
+  readonly WARNING: number
+  readonly ERROR: number
+  readonly CRITICAL: number
+  /** A named logger of the tree. */
+  readonly Logger: typeof Logger
+  /** A `%`-style format and the date format `asctime` takes. */
+  readonly Formatter: typeof Formatter
+  /** Writes each record as one line to standard error or standard output. */
+  readonly StreamHandler: typeof StreamHandler
+  /** Writes each record as one line through a location, one append per publish. */
+  readonly FileHandler: typeof FileHandler
+  /** Takes every record and writes none. */
+  readonly NullHandler: typeof NullHandler
+  /** The logger named `name`, the root when absent. */
+  getLogger(name?: string): Logger
+  /** Give a root with no handler its handlers, format and level. */
+  basicConfig(config?: LoggingBasicConfig): void
+  /** Drop every record at or below `level`, `CRITICAL` when absent; `NOTSET` lifts it. */
+  disable(level?: LoggingLevelInput): void
+  /** Publish and close every handler of the tree; also run at process exit. */
+  shutdown(): void
+}
+
+export declare const logging: Logging
 
 /** One header, query or form value: text, or a number or boolean spelled as text. */
 export type HttpTextInput = string | number | bigint | boolean

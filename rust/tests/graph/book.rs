@@ -2308,7 +2308,7 @@ fn a_categorized_entry_expires_in_its_own_book() {
 #[cfg(feature = "internals")]
 mod internal {
     use yggdryl::graph::BookIterator;
-    use yggdryl::internals::warning::count;
+    use yggdryl::internals::logging_warning::count;
 
     use super::operation;
 

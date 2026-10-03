@@ -1375,3 +1375,86 @@ mod provider {
         );
     }
 }
+
+#[test]
+fn a_log_handler_publishes_with_one_append_and_holds_back_nothing_it_owes() {
+    use yggdryl::IOMode;
+    use yggdryl::logging::{FileHandler, Handler, Level, Record};
+
+    let handle = source(b"", "file:///logs/feed.log");
+    let calls = Arc::clone(handle.calls());
+    let handler = FileHandler::new(handle);
+    costs("building a handler", &calls, "none", || {});
+    costs("the first record", &calls, "append_bytes=1 open=1", || {
+        handler.handle(&Record::new("feed", Level::INFO, &"opened"));
+    });
+    costs("each later record", &calls, "append_bytes=1", || {
+        handler.handle(&Record::new("feed", Level::INFO, &"tick"));
+    });
+    costs("a flush holding nothing", &calls, "none", || {
+        handler.flush().expect("a flush");
+    });
+    costs("a close", &calls, "close=1", || {
+        handler.close().expect("a close");
+    });
+
+    let handle = source(b"", "file:///logs/batched.log");
+    let calls = Arc::clone(handle.calls());
+    let handler = FileHandler::new(handle).with_capacity(64);
+    // Each line its message alone, `tick\n`: five bytes against the capacity.
+    handler.set_formatter(yggdryl::logging::Formatter::default());
+    costs("records held under the capacity", &calls, "none", || {
+        for _ in 0..5 {
+            handler.handle(&Record::new("feed", Level::INFO, &"tick"));
+        }
+    });
+    costs(
+        "the record reaching the capacity",
+        &calls,
+        "append_bytes=1 open=1",
+        || {
+            for _ in 0..12 {
+                handler.handle(&Record::new("feed", Level::INFO, &"tick"));
+            }
+        },
+    );
+    costs(
+        "a record at the flush level",
+        &calls,
+        "append_bytes=1",
+        || {
+            handler.handle(&Record::new("feed", Level::ERROR, &"rejected"));
+        },
+    );
+    costs(
+        "a close holding records",
+        &calls,
+        "append_bytes=1 close=1",
+        || {
+            handler.handle(&Record::new("feed", Level::INFO, &"held"));
+            handler.close().expect("a close");
+        },
+    );
+
+    let handle = source(b"yesterday\n", "file:///logs/replaced.log");
+    let calls = Arc::clone(handle.calls());
+    let handler = FileHandler::new(handle)
+        .with_mode(IOMode::Overwrite)
+        .expect("an overwrite");
+    costs(
+        "an overwrite's first publish",
+        &calls,
+        "write_all_bytes=1 open=1",
+        || {
+            handler.handle(&Record::new("feed", Level::INFO, &"today"));
+        },
+    );
+    costs(
+        "an overwrite's later publish",
+        &calls,
+        "append_bytes=1",
+        || {
+            handler.handle(&Record::new("feed", Level::INFO, &"later"));
+        },
+    );
+}

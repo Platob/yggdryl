@@ -2343,7 +2343,7 @@ mod write {
 }
 
 mod record_columns {
-    //! `read_arrow` and `write_arrow` over the record encodings: a stream of
+    //! `read_serie` and `write_serie` over the record encodings: a stream of
     //! record columns in, and the same rows back out, under the stored
     //! schema or a declared root.
 

@@ -585,8 +585,10 @@ pub fn combined_as(
 pub fn combined(left: BatchReader, right: BatchReader) -> Result<BatchReader> {
     // Both schemas are answered without pulling a batch, so the merge costs no
     // rows and the result stays lazy.
-    let left_root = field_from_arrow_schema("row", left.schema().as_ref())?;
-    let right_root = field_from_arrow_schema("row", right.schema().as_ref())?;
+    let left_root =
+        field_from_arrow_schema(crate::media::DEFAULT_ROOT_NAME, left.schema().as_ref())?;
+    let right_root =
+        field_from_arrow_schema(crate::media::DEFAULT_ROOT_NAME, right.schema().as_ref())?;
     let merged = merged_root(&left_root, &right_root)?;
     // Safe casting: a merge never widens, so a value that will not fit is a
     // disagreement worth raising rather than a null worth inventing.

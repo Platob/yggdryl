@@ -14,7 +14,7 @@ use super::market::merge_market_event_into_reference;
 use super::market_data::MarketData;
 use super::operation::{BookRef, ExecutionEvent, MdUpdateAction, OrderKind, QuoteKind};
 use super::{Element, Event, Market, Operation};
-use crate::warning::warned;
+use crate::logging::warning::warned;
 use crate::xxhash::Xxh3;
 use crate::{Ccy, Decimal, Error, IdType, Limit, Result, Side, State, Unit, Uuid};
 

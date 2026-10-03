@@ -63,9 +63,9 @@ use crate::arrow::BatchReader;
 use crate::arrow::rows::{Closing, canonical_closing_reader};
 use crate::arrow::scalar_memory_size;
 use crate::graph::{ElementColumn, EventColumn};
+use crate::logging::warning::warned;
 use crate::serie::{Proof, Resolved, land_batch};
 use crate::text::TextOptions;
-use crate::warning::warned;
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, Serie, Utf8StringSerie};
 
 use super::build::{BEGINSTRING_COLUMN, DIRECTION_COLUMN, version_of};

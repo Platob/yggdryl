@@ -36,7 +36,7 @@ page per family in that layer, so the site tree and source tree agree:
 | Storage handles and backends | [holder](docs/holder/index.md) |
 | Record encodings, tables, documents, codings, charsets | [media](docs/media/index.md) |
 | Identifiers | [uri](docs/uri/index.md) |
-| Arrow, expressions, hashing, graph, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [hashing](docs/hashing.md), [graph](docs/graph/index.md), [fix](docs/fix/index.md) |
+| Arrow, expressions, hashing, logging, graph, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [hashing](docs/hashing.md), [logging](docs/logging.md), [graph](docs/graph/index.md), [fix](docs/fix/index.md) |
 
 Cross-runtime examples use linked tabs: choose Rust, Python, or JavaScript once
 and the site keeps that context while you move between pages.
@@ -85,6 +85,8 @@ rust/                    The core crate
                          book display's HTTP service - FIX
   src/hashing/           The private stable-hash adapters; xxhash/ and
                          txhash/ are one folder each
+  src/logging/           Python's logging owned by the core: loggers, levels,
+                         handlers and formatters behind the log facade
   tests/                 One test file per source file, at the mirrored path
   benchmarks/            Criterion targets, grouped by theme
 python/                  The Python extension

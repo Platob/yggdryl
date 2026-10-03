@@ -72,9 +72,9 @@ use smallvec::SmallVec;
 use smol_str::SmolStr;
 
 use crate::graph::Element as _;
+use crate::logging::warning::warned;
 use crate::mime_type::line;
 use crate::text::{TextBytes, TextEntries, TextEntry, TextLine, TextOptions};
-use crate::warning::warned;
 use crate::{Error, Field, Result, Scalar, Version};
 
 use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};

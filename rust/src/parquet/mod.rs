@@ -613,7 +613,8 @@ where
     // data and is still refused, because a cast would invent the columns it is
     // missing. The plan is built once per layout the batches carry, and an
     // exact batch never reaches it.
-    let root = crate::arrow::field_from_arrow_schema("row", schema.as_ref())?;
+    let root =
+        crate::arrow::field_from_arrow_schema(crate::media::DEFAULT_ROOT_NAME, schema.as_ref())?;
     let options = crate::ArrowCastOptions::new().with_safe(false);
     let mut plans = crate::cast::PlanCache::new();
     for (index, batch) in batches.enumerate() {

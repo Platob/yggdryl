@@ -52,6 +52,7 @@ Install and cross-language conventions are in `yggdryl`.
 | scope (cache metadata) | `open()?` ... `close()?` | `with IOBase(p) as h:` | `h.open()` ... `h.close()` |
 | page cache | `h.buffered(BufferedOptions::default())` | `h.buffered(page_size=, max_bytes=, ttl=)` (spends `h`) | `h.buffered({ pageSize, maxBytes, ttlMs })` (returns `h`) |
 | count calls | `Counted::new(h)`, `calls().get(Call::Pread)`, `counts()` | Rust only | Rust only |
+| write a log through a handle | `yggdryl::logging::FileHandler::new(h)`: one `append_bytes` per publish, `with_capacity(n)` over a remote store, `logging::shutdown()` before exit | `yggdryl.logging.FileHandler(location, capacity=0)`, a `logging.Handler` | `new logging.FileHandler(location, { capacity })` |
 | object store (`s3` feature) | `s3::file(url)?`, `s3::file_with(url, S3Options)?`, `s3::file_at(Provider::Aws, bucket, key)?` | `IOBase("gs://b/k")`, `S3File(url)`, `S3File(bucket, key, provider="s3", options={...})` | `new IOBase('az://c@acct.blob.core.windows.net/k')` |
 | HTTP resource (`http` feature) | `Session::new().get(url)?.send()?`, `http::get(url)?`, `Holder::from_url(&url, props)?` (a leaf) | `http.Session(base).get(path)`, `http.get(url)`, `IOBase(url)` | `new http.Session(base).get(path)`, `http.get(url)`, `new IOBase(url)` |
 | many HTTP requests | `session.send_all(requests, Some(n))` (lazy, ordered) | `session.send_all(items, concurrency=n)` | `session.sendAll(items, n)` |
@@ -174,14 +175,17 @@ Install and cross-language conventions are in `yggdryl`.
     `.send()`'s answer has none. Every page lays out as one Arrow batch
     through `Pages::into_arrow_reader`, `.intoArrowReader`, or Python's
     `.read_serie()`.
-18. **No host is made up.** `HOSTNAME` (Rust `yggdryl::HOSTNAME`, Python
-    `yggdryl.HOSTNAME`, JavaScript `HOSTNAME`) is the machine's name, read
-    once. A buffer (`mem://<host>/<pid>/<address>`) and a filesystem
-    answering in this process (`memory://<host>/...`) name it; a local file
-    names none (`file:///path`, and `file://localhost/path` is that path);
-    a store names its bucket or endpoint, never this machine. Children,
-    `ls` and `glob` keep their parent's host - compare against `HOSTNAME`,
-    never a literal, since every machine answers its own.
+18. **No host is made up.** A local file names none (`file:///path`; no
+    host is added where none was given, since Windows reads a named one as
+    a share, and on Unix `file://localhost/path` and `file://<HOSTNAME>/path`
+    read as that same path). A buffer (`mem://localhost/<pid>/<address>`)
+    and a filesystem answering in this process (`memory://localhost/...`)
+    name `localhost`, the one name the crate writes for this machine; a
+    store names its bucket or endpoint, never this machine. Children, `ls`
+    and `glob` keep their parent's host. `HOSTNAME` (Rust
+    `yggdryl::HOSTNAME`, Python `yggdryl.HOSTNAME`, JavaScript `HOSTNAME`)
+    is the machine's own name, read once: intake reads it as this machine,
+    and no URL names it.
 
 ## Pitfalls
 
@@ -227,6 +231,7 @@ Install and cross-language conventions are in `yggdryl`.
 - Pagination and `Pages`: https://platob.github.io/yggdryl/holder/#pages
 - ZIP: https://platob.github.io/yggdryl/holder/#zip
 - Compression (gzip, zlib, zstd): https://platob.github.io/yggdryl/media/compression/
+- Logging through any handle: https://platob.github.io/yggdryl/logging/
 - Charsets: https://platob.github.io/yggdryl/media/charsets/
 - Sibling skills: `yggdryl-records` (rows on a handle, partitions), `yggdryl-uri`
   (URLs, globs, Hive paths), `yggdryl-documents` (JSON/YAML/TOML/XML),

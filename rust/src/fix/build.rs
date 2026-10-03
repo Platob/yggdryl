@@ -37,8 +37,8 @@ use smol_str::{SmolStr, format_smolstr};
 use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
+use crate::logging::warning::warned;
 use crate::text::TextBytes;
-use crate::warning::warned;
 use crate::{DataType, Error, Field, Result, Scalar, StructType, Version};
 
 /// What a key resolved to, before any field is built.

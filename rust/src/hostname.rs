@@ -8,24 +8,28 @@ use smol_str::{SmolStr, SmolStrBuilder};
 /// operating system reports, read once on first use and kept for the life of
 /// the process.
 ///
-/// Every identity the crate makes up for storage that lives in this process -
-/// a [`Buffer`](crate::holder::Buffer), a location bound to an in-process
-/// [filesystem](crate::fs::FileSystem) - names this host, so one machine's
-/// identity is never another's. The system's name is lower-cased, and a byte
-/// no host spells is written as `-`; a system that answers nothing a host can
-/// spell is `localhost`, the one name every resolver reads as this machine.
-///
-/// A `file:` URL names no host - an empty authority is this machine by
-/// RFC 8089, and a named one is a share on another - and a remote store's
-/// host is the one its location, its environment or its published endpoint
-/// names, never this one.
+/// It is the one spelling of this machine intake reads beside `localhost`
+/// ([`Authority::is_this_machine`](crate::Authority::is_this_machine)): on
+/// Unix, `file://<HOSTNAME>/x` is the local path `/x`, as `file://localhost/x`
+/// is. No URL the crate makes up names it: a
+/// [`Buffer`](crate::holder::Buffer) and a location bound to an in-process
+/// [filesystem](crate::fs::FileSystem) name `localhost`; a local file names no
+/// host at all, `file:///x`, because an empty authority is this machine by
+/// RFC 8089 on every platform, where Windows reads a named one as a share; and
+/// a remote store's host is the one its location, its environment or its
+/// published endpoint names. The system's name is lower-cased, and a byte no
+/// host spells is written as `-`; a system that answers nothing a host can
+/// spell is `localhost`.
 ///
 /// ```
 /// use yggdryl::{Url, HOSTNAME};
 ///
 /// assert!(!HOSTNAME.is_empty());
-/// let url = Url::from_str(&format!("memory://{}/trades.parquet", HOSTNAME.as_str()))?;
+/// let url = Url::from_str(&format!("file://{}/lake/trades.parquet", HOSTNAME.as_str()))?;
 /// assert_eq!(url.hostname(), Some(HOSTNAME.as_str()));
+/// // Read as this machine, the way `localhost` is: the local path itself.
+/// #[cfg(unix)]
+/// assert_eq!(url.into_path()?, std::path::PathBuf::from("/lake/trades.parquet"));
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
 pub static HOSTNAME: LazyLock<SmolStr> =
@@ -54,31 +58,6 @@ fn host(raw: &str) -> SmolStr {
         _ if trimmed.len() == spelled.len() => spelled,
         _ => SmolStr::new(trimmed),
     }
-}
-
-/// The `mem:` identity of bytes held at `address` by process `pid` on this
-/// machine: `mem://<host>/<pid>/<address>`, what a buffer answers for a
-/// location it does not have.
-///
-/// Built from its parts rather than parsed from text, the host shared with
-/// [`HOSTNAME`] rather than copied, so what an identity costs is the same on
-/// every machine whatever its name's length.
-pub(crate) fn memory_identity<T>(pid: u32, address: *const T) -> crate::Url {
-    let path = smol_str::format_smolstr!("/{pid}/{address:p}");
-    crate::UriPath::from_str(&path)
-        .and_then(|path| {
-            crate::Uri::from_parts(
-                crate::Scheme::from_str("mem")?,
-                crate::Authority::this_machine(),
-                path,
-                None,
-                None,
-            )
-        })
-        .and_then(crate::Url::from_uri)
-        // The host is spelled to parse and the path is digits, so this holds;
-        // a diagnostic accessor still never panics.
-        .unwrap_or_else(|_| unreachable!("a digit path under this machine's host is a URL"))
 }
 
 #[cfg(feature = "internals")]

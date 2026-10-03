@@ -10,6 +10,7 @@ pub mod buffered;
 pub mod counted;
 
 pub use buffer::Buffer;
+pub(crate) use buffer::memory_identity;
 
 use crate::coding::Coded;
 use crate::holder::buffered::{Buffered, BufferedOptions};
