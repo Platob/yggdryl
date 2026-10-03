@@ -274,8 +274,9 @@ enum Token {
     /// A single-quoted text literal, already unescaped.
     Text(SmolStr),
     /// An unquoted location after a word that takes one - `from`, `into`,
-    /// `to`, a write verb, `create`: raw text opening as a URL or a path,
-    /// running to the first whitespace, `,`, `;` or `)`.
+    /// `to`, a write verb, `create` (with or without `table` or `view`),
+    /// `join`: raw text opening as a URL or a path, running to the first
+    /// whitespace, `,`, `;` or `)`.
     Location(SmolStr),
     /// One punctuation token.
     Symbol(&'static str),
@@ -318,7 +319,7 @@ fn tokenize(input: &str) -> Result<Vec<Spanned>> {
             continue;
         }
         let start = cursor;
-        if let Some(end) = location_end(input, cursor, tokens.last()) {
+        if let Some(end) = location_end(input, cursor, &tokens) {
             tokens.push(Spanned {
                 token: Token::Location(SmolStr::new(&input[cursor..end])),
                 position: start,
@@ -391,38 +392,32 @@ fn folded(text: &str) -> SmolStr {
     text.chars().map(|held| held.to_ascii_lowercase()).collect()
 }
 
-/// Whether an unquoted location may follow `previous`: the words that
-/// introduce a target, so `price / size` after a column stays a division.
-fn takes_location(previous: Option<&Spanned>) -> bool {
-    let Some(Spanned {
-        token: Token::Word(word),
-        ..
-    }) = previous
-    else {
+/// Whether an unquoted location may follow the tokens read so far: after
+/// a word that introduces a target, so `price / size` after a column stays
+/// a division. `table` and `view` take one only straight after `create`,
+/// because either may name a column anywhere else.
+fn takes_location(tokens: &[Spanned]) -> bool {
+    let word = |back: usize| match tokens.len().checked_sub(back).map(|at| &tokens[at].token) {
+        Some(Token::Word(word)) => Some(folded(word)),
+        _ => None,
+    };
+    let Some(previous) = word(1) else {
         return false;
     };
-    matches!(
-        folded(word).as_str(),
-        "from"
-            | "into"
-            | "to"
-            | "insert"
-            | "append"
-            | "overwrite"
-            | "replace"
-            | "upsert"
-            | "merge"
-            | "delete"
-            | "create"
-    )
+    match previous.as_str() {
+        "from" | "into" | "to" | "insert" | "append" | "overwrite" | "replace" | "upsert"
+        | "merge" | "delete" | "create" | "join" => true,
+        "table" | "view" => word(2).as_deref() == Some("create"),
+        _ => false,
+    }
 }
 
 /// Where the unquoted location starting at `start` ends, when one starts
 /// there: after a word that takes one, raw text opening with `<scheme>://`,
 /// `/`, `./`, `../`, `~/` or a drive letter, running to the first
 /// whitespace, `,`, `;` or `)`.
-fn location_end(input: &str, start: usize, previous: Option<&Spanned>) -> Option<usize> {
-    if !takes_location(previous) {
+fn location_end(input: &str, start: usize, tokens: &[Spanned]) -> Option<usize> {
+    if !takes_location(tokens) {
         return None;
     }
     let rest = &input[start..];

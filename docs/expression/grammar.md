@@ -31,7 +31,7 @@ verb        := "insert" ["into"] | "insert" "overwrite" ["into"] | "append" ["in
              | "overwrite" ["into"] | "replace" ["into"] | "upsert" ["into"] | "merge" ["into"]
              | "delete" ["from"]
 target      := location ["with" properties]
-location    := "'url'" | part ("." part)*
+location    := "'url'" | raw | part ("." part)*   -- raw: an unquoted URL or path, after from/into/to/a write verb/create [table|view]/join
 part        := identifier | "\"quoted\"" | "`quoted`" | "[bracketed]" | number
 properties  := "(" name "=" "'value'" ("," ...)* ")"
 source      := target | "(" plan ")"
@@ -83,7 +83,7 @@ Inside `[...]` a whole number is a position, a text constant a key, a `:` form a
 | exclusion | `* exclude (secret)`, `* except (secret)`, and a star appending: `*, upper(name) as name`, `* exclude (secret), upper(name) as name` |
 | row-multiplying projection | `unnest(legs) as leg`, `explode(legs)`, `unnest([bid, ask]) as side` |
 | write verb | `insert into`, `insert overwrite`, `upsert into ... by (...)`, `delete from`; aliases `append to`, `overwrite`, `replace into`, `merge into ... on (...)` |
-| location | `'file:///lake/trades.parquet'`, `catalog.schema.table`, `catalog."odd schema".[odd.table]` |
+| location | `'file:///lake/trades.parquet'`, `catalog.schema.table`, `catalog."odd schema".[odd.table]`; unquoted after a word that takes a target - `from /lake/trades.csv`, `into s3://bucket/trades`, `join ./venues.csv` - read to the first whitespace, `,`, `;` or `)` and printed back quoted |
 | target properties | `t with (media_type = 'text/csv', batch_row_size = '1024')` |
 | comment | `-- to end of line` |
 

@@ -25,7 +25,7 @@
 //! let table = IcebergTable::create(folder, FormatVersion::V2, schema, spec)?;
 //!
 //! // A table with no snapshot yet reads as no rows, never as a failure.
-//! assert!(table.current_snapshot().is_none());
+//! assert!(table.current_snapshot()?.is_none());
 //! assert_eq!(table.scan(None)?.count(), 0);
 //! # Ok(())
 //! # }

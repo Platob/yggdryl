@@ -477,6 +477,50 @@ fn a_join_source_resolves_against_the_catalog_as_from_does() {
 }
 
 #[test]
+fn a_url_beside_a_served_catalog_is_outside_it() {
+    // A folder whose name only begins with the catalog's is a sibling, not a
+    // child: the catalog holds a URL on a path boundary or not at all.
+    let root = catalog_root("sibling");
+    seed(&root);
+    let service = Service::new(ServiceOptions::new()).with_catalog(FolderCatalog::bound(
+        "market",
+        Holder::folder(&root).expect("the catalog holds"),
+    ));
+    let mut sibling = root.clone().into_os_string();
+    sibling.push("-evil");
+    let sibling = PathBuf::from(sibling);
+    let _ = std::fs::remove_dir_all(&sibling);
+    let mut leaf = Holder::folder(&sibling)
+        .expect("the sibling holds")
+        .child_by_path("secrets.arrows")
+        .expect("a child path");
+    let batch = trades_batch();
+    leaf.overwrite_arrow_reader(
+        yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+        &RecordOptions::for_mime_type(&MimeType::ARROW_STREAM).expect("IPC options"),
+    )
+    .expect("the sibling's leaf is written");
+    let url = yggdryl::Url::from_path(sibling.join("secrets.arrows")).expect("a URL");
+    for statement in [
+        format!("select * from '{url}'"),
+        format!("select * from trades join '{url}' using (symbol)"),
+    ] {
+        let outside = fault(
+            &service,
+            Execute::statement(statement.as_str())
+                .with_properties(PropertyList::new().with("Catalog", "market")),
+        );
+        assert!(
+            outside.string().contains("-evil"),
+            "{statement}: {}",
+            outside.string()
+        );
+    }
+    let _ = std::fs::remove_dir_all(&sibling);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn execute_refuses_what_it_cannot_run_by_name() {
     let service = service("refusals");
     let unknown = fault(

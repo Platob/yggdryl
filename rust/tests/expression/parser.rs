@@ -99,15 +99,35 @@ mod grammar {
                     "{verb} {text}"
                 );
             }
-            let plan: Plan = format!("create {text} (id int64 not null)")
-                .parse()
-                .unwrap();
-            assert_eq!(
-                plan.create_target().unwrap().location(),
-                &Location::Url(url.clone()),
-                "create {text}"
-            );
+            for create in ["create", "create table", "create view"] {
+                let plan: Plan = format!("{create} {text} (id int64 not null)")
+                    .parse()
+                    .unwrap();
+                assert_eq!(
+                    plan.create_target().unwrap().location(),
+                    &Location::Url(url.clone()),
+                    "{create} {text}"
+                );
+            }
+            // A join's source is a target too, whatever the kind.
+            for join in ["join", "left join", "full outer join", "anti join"] {
+                let plan: Plan = format!("select * from lake.trades {join} {text} using (id)")
+                    .parse()
+                    .unwrap();
+                let Source::Target(target) = plan.joins()[0].source() else {
+                    panic!("expected a target join source in {join} {text}");
+                };
+                assert_eq!(
+                    target.location(),
+                    &Location::Url(url.clone()),
+                    "{join} {text}"
+                );
+            }
         }
+        // `table` and `view` take a location only after `create`: anywhere
+        // else they may name a column, and a slash after one divides.
+        let plan: Plan = "select table / 2 from lake.trades".parse().unwrap();
+        assert_eq!(plan.to_string(), "select table / 2 from lake.trades");
         // A location ends at whitespace, `,`, `;` or `)`.
         let steps: Expression = "delete from /tmp/a.csv; select * from (select * from ./b.csv)"
             .parse()

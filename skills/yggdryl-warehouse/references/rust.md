@@ -4,7 +4,7 @@ Every name is at the crate root: `use yggdryl::{Warehouse, FolderCatalog,
 MediaTable, ...};`. The traits must be in scope for their verbs -
 `ObjectValue` (`name`, `path`, `kind`, `properties`), `NamespaceValue`
 (`children`, `get`), `CatalogValue` (`namespace_levels`), `TableValue`
-(`field`, `storage`), `IOMedia` (`row_size`, `read_arrow`,
+(`field`, `storage`), `IOMedia` (`row_size`, `read_serie`,
 `read_arrow_reader`). Everything is a default-feature build; a table laid out
 as a table format reads its rows under `iceberg`.
 

@@ -5229,25 +5229,6 @@ Object.defineProperty(binding.IcebergTable.prototype, 'updateSchema', {
   },
 })
 
-// A catalog write takes exactly what a table write takes, through the one
-// Iceberg inference point: Arrow shapes and IPC bytes name their own reader,
-// and rows are typed by the table the write lands in - which a create-on-write
-// does not have yet, so the rows declare it.
-for (const name of ['append', 'overwrite']) {
-  const native = binding.IcebergCatalog.prototype[name]
-  Object.defineProperty(binding.IcebergCatalog.prototype, name, {
-    configurable: true,
-    value(tableName, data, options, properties) {
-      const tables = this.tables
-      const stored = tables.has(tableName) ? tables.get(tableName) : null
-      return native.call(
-        this,
-        tableName,
-        icebergBatchReader(stored, data),
-        icebergCallOptions(null, options, properties),
-      )
-    },
-  })
 }
 
 // `yggdryl::iceberg` is a module in the core, so it is one here too: a table
@@ -5536,7 +5517,13 @@ const warehouse = (() => {
           options = undefined
         }
         if (properties !== undefined && properties !== null) {
-          const base = options ?? IOBase.from(this.get(tableName)).recordOptions()
+          // A table that is not there yet has no options of its own: the
+          // rows arrive as the Arrow stream they are read into, as in Python.
+          const base =
+            options ??
+            (this.has(tableName)
+              ? IOBase.from(this.get(tableName)).recordOptions()
+              : RecordOptions.forMimeType('application/vnd.apache.arrow.stream'))
           options = optionProperties.withProperties(base, RecordOptions, 'RecordOptions', properties)
         }
         return native.call(this, tableName, BatchReader.from(data), options)

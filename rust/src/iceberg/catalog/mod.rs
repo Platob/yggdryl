@@ -27,7 +27,7 @@
 //! ```no_run
 //! use yggdryl::iceberg::IcebergCatalog;
 //! use yggdryl::local::LocalFolder;
-//! use yggdryl::{DataType, NamespaceValue, StructType, Warehouse};
+//! use yggdryl::{DataType, NamespaceValue, ObjectValue, StructType, Warehouse};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let folder = LocalFolder::new(LocalFolder::temporary()?.path()?.join("warehouse"))?;

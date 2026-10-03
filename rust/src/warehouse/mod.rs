@@ -388,8 +388,8 @@ impl Warehouse {
 }
 
 /// Whether `prefix` holds `url` on a path boundary, and how long the match
-/// is.
-fn holds(prefix: &str, url: &str) -> Option<usize> {
+/// is: the one containment rule every location check reads.
+pub(crate) fn holds(prefix: &str, url: &str) -> Option<usize> {
     let prefix = prefix.trim_end_matches('/');
     let rest = url.strip_prefix(prefix)?;
     (rest.is_empty() || rest.starts_with(['/', '?', '#'])).then_some(prefix.len())

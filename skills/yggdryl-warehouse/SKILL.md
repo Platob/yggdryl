@@ -118,7 +118,7 @@ cross-language conventions are in `yggdryl`.
 12. **Rust: bring the trait in scope, and name it when two define a verb.**
     `ObjectValue` for `name`/`path`/`kind`/`properties`, `NamespaceValue` for
     `children`/`get`, `CatalogValue` for `namespace_levels`, `TableValue` for
-    `field`/`storage`, `IOMedia` for `row_size`/`read_arrow`. `IOBase` and
+    `field`/`storage`, `IOMedia` for `row_size`/`read_serie`. `IOBase` and
     `ObjectValue` both define `kind` and `url` on `Catalog`, `Namespace` and
     `Table`, so with both in scope write `ObjectValue::kind(&table)`.
 

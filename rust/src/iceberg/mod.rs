@@ -33,11 +33,11 @@
 //! let mut table = IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec)?;
 //!
 //! // A table that has never been written to has no current snapshot.
-//! assert!(table.current_snapshot().is_none());
+//! assert!(table.current_snapshot()?.is_none());
 //!
 //! let rows = yggdryl::arrow::batch_reader(schema.into_arrow_schema()?, []);
 //! table.commit_append(rows)?;
-//! assert!(table.current_snapshot().is_some());
+//! assert!(table.current_snapshot()?.is_some());
 //! # Ok(())
 //! # }
 //! ```

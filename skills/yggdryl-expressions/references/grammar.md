@@ -28,7 +28,7 @@ write       := verb [target] [("by" | "on") "(" selector ")"]  -- keys only afte
 target      := location ["with" "(" name "=" "'value'", ... ")"]
 location    := "'url'" | raw | part ("." part)*                -- part: ident, "quoted", `quoted`, [bracketed], number
                                                                  -- raw: an unquoted URL or path (<scheme>://, /, ./, ../, ~/, C:\) to the first whitespace , ; or ),
-                                                                 --      only after from/into/to/a write verb/create; printed back as 'url'
+                                                                 --      only after from/into/to/a write verb/create [table|view]/join; printed back as 'url'
 source      := target | "(" plan ")"
 selector    := "*" [("exclude" | "except") "(" ident, ... ")"] ("," projection)*
              | projection ("," projection)*

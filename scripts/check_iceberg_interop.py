@@ -12,7 +12,7 @@ two halves of a real exchange:
    the ones its column statistics said it never had to read.
 2. PyIceberg writes the same rows into ``target/iceberg-interop/from-pyiceberg``.
    The same cargo target is run again; its second test opens that table with
-   ``yggdryl::iceberg::Table`` and asserts the same rows come back.
+   ``yggdryl::iceberg::IcebergTable`` and asserts the same rows come back.
 
 The second cargo run is checked for the word ``SKIPPED``: if the external table
 is missing, the Rust test says so on stdout rather than passing quietly, and

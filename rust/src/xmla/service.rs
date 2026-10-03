@@ -33,7 +33,7 @@ use super::vocabulary::{
 };
 use crate::expression::{Location, Plan, Source, Target};
 use crate::soap::{Fault, FaultCode, Fragment};
-use crate::warehouse::{no_catalog, path_text};
+use crate::warehouse::{holds, no_catalog, path_text};
 use crate::{
     ArrowCastOptions, Catalog, CatalogValue, DataType, Error, Field, Namespace, NamespaceValue,
     Object, ObjectValue, Result, Scalar, Serie, SerieReader, Table, TableValue, Uuid, Warehouse,
@@ -955,10 +955,12 @@ impl Service {
         match target.location() {
             Location::Url(url) => {
                 let text = url.to_string();
+                // On a path boundary: a sibling folder whose name begins
+                // with the catalog's is outside it.
                 let inside = self.catalogs().iter().any(|catalog| {
-                    catalog.url().is_some_and(|root| {
-                        text.starts_with(root.to_string().trim_end_matches('/'))
-                    })
+                    catalog
+                        .url()
+                        .is_some_and(|root| holds(&root.to_string(), &text).is_some())
                 });
                 if !inside {
                     return Err(Error::absent("table", format_smolstr!("{url}")));

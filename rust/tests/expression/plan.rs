@@ -715,6 +715,45 @@ mod streams {
     }
 
     #[test]
+    fn a_join_source_resolves_through_the_warehouse_like_a_from() {
+        let scratch = Scratch::new("joins");
+        std::fs::write(scratch.0.join("trades.csv"), b"id,name\n1,a\n2,b\n3,c\n").unwrap();
+        std::fs::write(scratch.0.join("venues.csv"), b"id,venue\n1,XNAS\n3,XLON\n").unwrap();
+        let mut warehouse = Warehouse::new();
+        for name in ["trades", "venues"] {
+            let url: Url = scratch.url(&format!("{name}.csv")).parse().unwrap();
+            warehouse
+                .register(MediaTable::new(format!("lake.eu.{name}").as_str(), url).unwrap())
+                .unwrap();
+        }
+        // The probe and the build side are both registered tables, read
+        // through the warehouse the plan runs in.
+        let joined: Plan =
+            "select id, venue from lake.eu.trades join lake.eu.venues using (id) order by id"
+                .parse()
+                .unwrap();
+        assert_eq!(
+            ids(&collected(joined.execute_in(&warehouse).unwrap()).unwrap()),
+            [1, 3]
+        );
+        // A join source with no table registered at its path is reported at
+        // that location, as a `from` is.
+        let absent: Plan = "select * from lake.eu.trades join lake.eu.nowhere using (id)"
+            .parse()
+            .unwrap();
+        let error = absent
+            .execute_in(&warehouse)
+            .err()
+            .expect("refused")
+            .to_string();
+        assert!(error.contains("$.lake.eu.nowhere"), "{error}");
+        assert!(
+            error.contains("expected a table at \"lake.eu.nowhere\", got nothing"),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn execute_resolves_against_the_system_warehouse() {
         let scratch = Scratch::new("system");
         std::fs::write(scratch.0.join("trades.csv"), b"id,name\n1,a\n2,b\n3,c\n").unwrap();

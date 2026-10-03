@@ -656,7 +656,7 @@ let _ = std::fs::remove_dir_all(&path);
 
 ## Evolve an Iceberg schema
 
-`SchemaUpdate` records column operations; `Table::update_schema` replays them onto the schema each commit attempt reads - so a commit beaten by another writer rebases rather than overwrites - keeps field IDs, never reuses a dropped one, and answers the schema id it made current. `evolve_schema(field)` replaces the schema whole.
+`SchemaUpdate` records column operations; `IcebergTable::update_schema` replays them onto the schema each commit attempt reads - so a commit beaten by another writer rebases rather than overwrites - keeps field IDs, never reuses a dropped one, and answers the schema id it made current. `evolve_schema(field)` replaces the schema whole.
 
 ```rust
 use std::sync::Arc;

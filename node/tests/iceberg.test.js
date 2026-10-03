@@ -1456,6 +1456,13 @@ test('the tables view creates on first write and its tables take the per-call op
   // A write through the view creates the table from the rows' own schema;
   // the table's own writes forward the trailing options.
   const orders = iceberg.IcebergTable.from(tables.append('orders', rows([1n], ['XNAS'])))
+  // A property bag on a write that creates its table sets each property on
+  // the Arrow-stream options the rows arrive in, as Python's does.
+  const fills = iceberg.IcebergTable.from(tables.append('fills', rows([5n], ['XNAS']), { commitBatchNum: 1 }))
+  assert.equal(fills.scan().intoTable().numRows, 1)
+  // The catalog itself writes nothing: rows go through its tables view.
+  assert.equal(catalog.append, undefined)
+  assert.equal(catalog.overwrite, undefined)
   orders.append(rows([2n], ['XNYS']), new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }))
   assert.deepEqual(
     dataMimeTypes(iceberg.IcebergTable.from(tables.get('orders'))),
@@ -1465,8 +1472,8 @@ test('the tables view creates on first write and its tables take the per-call op
   const replaced = iceberg.IcebergTable.from(tables.overwrite('orders', rows([3n], ['XASE'])))
   assert.deepEqual(dataMimeTypes(replaced), [MimeType.PARQUET.toString()])
   assert.equal(replaced.scan().intoTable().numRows, 1)
-  assert.deepEqual([...tables.keys()], ['orders', 'quotes'])
-  assert.equal(tables.size, 2)
+  assert.deepEqual([...tables.keys()], ['fills', 'orders', 'quotes'])
+  assert.equal(tables.size, 3)
 })
 
 test('a dotted name descends through existing namespaces', (t) => {
