@@ -140,9 +140,7 @@ import {
   Session,
   IcebergCatalog,
   IcebergNamespace,
-  IcebergNamespaces,
   IcebergTable,
-  IcebergTables,
   Catalog,
   Namespace,
   Namespaces,
@@ -305,9 +303,7 @@ export type {
   Session,
   IcebergCatalog,
   IcebergNamespace,
-  IcebergNamespaces,
   IcebergTable,
-  IcebergTables,
   Catalog,
   Namespace,
   Namespaces,
@@ -4367,27 +4363,6 @@ declare module './index' {
   }
 
   /**
-   * The catalog's names iterator is a JS iterable and iterator at once, so
-   * `for...of` walks it and `[...keys]` drains it - nothing is collected on
-   * the way across the boundary.
-   */
-  interface IcebergNames extends Iterable<string> {}
-
-  /**
-   * The collection views are Map-like: `for...of` yields the names lazily,
-   * and `values`/`entries` open each named resource through `get`, one at a
-   * time.
-   */
-  interface IcebergNamespaces extends Iterable<string> {
-    values(): IterableIterator<IcebergNamespace>
-    entries(): IterableIterator<readonly [string, IcebergNamespace]>
-  }
-  interface IcebergTables extends Iterable<string> {
-    values(): IterableIterator<IcebergTable>
-    entries(): IterableIterator<readonly [string, IcebergTable]>
-  }
-
-  /**
    * The warehouse's names iterator and children iterator are a JS iterable
    * and iterator at once, so `for...of` walks them and spreading drains them
    * - nothing is collected on the way across the boundary.
@@ -4475,23 +4450,6 @@ declare module './index' {
     updateSchema(): SchemaUpdateBuilder
   }
 
-  interface IcebergTables {
-    /** Append rows to the named table, creating it on first write. */
-    append(
-      name: string,
-      rows: IcebergSource,
-      options?: IcebergOptions | IcebergProperties | null,
-      properties?: IcebergProperties | null,
-    ): IcebergTable
-    /** Replace the named table's rows, creating it on first write. */
-    overwrite(
-      name: string,
-      rows: IcebergSource,
-      options?: IcebergOptions | IcebergProperties | null,
-      properties?: IcebergProperties | null,
-    ): IcebergTable
-  }
-
   /**
    * Beside the named keys, every other key is an `HttpOptions` property -
    * `maxAttempts`, `followRedirects`, `header.X-Api-Key` - read by the core
@@ -4500,23 +4458,6 @@ declare module './index' {
    */
   interface HttpSessionInit {
     readonly [property: string]: unknown
-  }
-
-  interface IcebergCatalog {
-    /** Append rows to the named table, creating it on first write. */
-    append(
-      name: string,
-      rows: IcebergSource,
-      options?: IcebergOptions | IcebergProperties | null,
-      properties?: IcebergProperties | null,
-    ): IcebergTable
-    /** Replace the named table's rows, creating it on first write. */
-    overwrite(
-      name: string,
-      rows: IcebergSource,
-      options?: IcebergOptions | IcebergProperties | null,
-      properties?: IcebergProperties | null,
-    ): IcebergTable
   }
 
   namespace Timezone {
@@ -4663,8 +4604,13 @@ type SchemaUpdateBuilder = SchemaUpdate
 
 /** `yggdryl::iceberg`: the table format, over the record encodings. */
 export interface Iceberg {
-  /** A warehouse folder of namespaces of Iceberg tables. */
-  readonly Catalog: typeof IcebergCatalog
+  /**
+   * A warehouse folder of namespaces of Iceberg tables: the implementation
+   * a warehouse `Catalog` holds when it is one.
+   */
+  readonly IcebergCatalog: typeof IcebergCatalog
+  /** One namespace of an Iceberg catalog: a folder under the warehouse. */
+  readonly IcebergNamespace: typeof IcebergNamespace
   /** A bounded report of a completed compaction. */
   readonly Compaction: typeof Compaction
   /** Per-call Iceberg commit, scan, and compaction settings. */
@@ -4674,7 +4620,7 @@ export interface Iceberg {
   /** One immutable field of a partition spec. */
   readonly PartitionField: typeof PartitionField
   /** An Iceberg table reached entirely through one container handle. */
-  readonly Table: typeof IcebergTable
+  readonly IcebergTable: typeof IcebergTable
   /** How a table turns column values into the directories it writes. */
   readonly PartitionSpec: typeof PartitionSpec
   /** One live data file of a snapshot, with the spec that placed it. */

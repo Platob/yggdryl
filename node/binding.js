@@ -4576,10 +4576,8 @@ const { icebergBatchReader, icebergCallOptions, intoField } = installRecords({
   IcebergOptions: binding.IcebergOptions,
   IOBase,
   RecordOptions,
-  SerieReader,
   TextOptions,
   Table: binding.IcebergTable,
-  Tables: binding.IcebergTables,
 })
 binding.intoField = intoField
 
@@ -4926,15 +4924,15 @@ for (const name of ['append', 'overwrite']) {
 
 // `yggdryl::iceberg` is a module in the core, so it is one here too: a table
 // format sits on top of the record encodings rather than beside them. The
-// native classes carry the `Iceberg` prefix, so the plain names are the
-// warehouse's; under this namespace they keep the names they always had.
+// classes carry the names the core gives them - `IcebergCatalog`,
+// `IcebergNamespace`, `IcebergTable` - the implementations the warehouse's
+// `Catalog`, `Namespace` and `Table` hold when they are Iceberg's; the
+// collection views are the warehouse's own.
 const nativeSchemaFromJson = binding.icebergSchemaFromJsonNative
 const iceberg = Object.freeze({
-  Catalog: binding.IcebergCatalog,
-  Namespace: binding.IcebergNamespace,
-  Namespaces: binding.IcebergNamespaces,
-  Tables: binding.IcebergTables,
-  Table: binding.IcebergTable,
+  IcebergCatalog: binding.IcebergCatalog,
+  IcebergNamespace: binding.IcebergNamespace,
+  IcebergTable: binding.IcebergTable,
   Compaction: binding.Compaction,
   IcebergOptions: binding.IcebergOptions,
   ManifestFile: binding.ManifestFile,
@@ -4965,10 +4963,8 @@ for (const name of [
   'DifferenceIterator',
   'IcebergCatalog',
   'IcebergNamespace',
-  'IcebergNamespaces',
   'IcebergOptions',
   'IcebergTable',
-  'IcebergTables',
   'JsCatalog',
   'JsCompaction',
   'JsDataFile',
@@ -4976,7 +4972,6 @@ for (const name of [
   'JsIcebergOptions',
   'JsManifestFile',
   'JsNamespace',
-  'JsNamespaces',
   'JsPartitionSpec',
   'JsPartitionField',
   'JsScanPlan',
@@ -4984,7 +4979,6 @@ for (const name of [
   'JsSnapshot',
   'JsSnapshotRef',
   'JsTable',
-  'JsTables',
   'ManifestFile',
   'PartitionField',
   'PartitionSpec',
@@ -5140,50 +5134,6 @@ for (const [Stream, methods, reads] of [
       }
     }
   }
-}
-
-// The catalog collections are Map-like: `keys()` is a lazy native iterator,
-// and the loader supplies the protocol plus `values()` and `entries()` so
-// `for...of namespaces.keys()` and spreading both work. `values` and
-// `entries` open each named resource through `get`, one at a time.
-if (binding.IcebergNames) {
-  const nativeNext = binding.IcebergNames.prototype.next
-  binding.IcebergNames.prototype.next = function next() {
-    const name = nativeNext.call(this)
-    return name === null
-      ? { value: undefined, done: true }
-      : { value: name, done: false }
-  }
-  Object.defineProperty(binding.IcebergNames.prototype, Symbol.iterator, {
-    configurable: true,
-    value: function names() {
-      return this
-    },
-  })
-}
-// The classes live under the frozen `iceberg` namespace by the time this
-// runs - the raw exports above were deleted - so the wiring reaches them
-// through the namespace, which holds the same prototypes.
-for (const collection of [iceberg.Namespaces, iceberg.Tables]) {
-  if (!collection) continue
-  Object.defineProperty(collection.prototype, Symbol.iterator, {
-    configurable: true,
-    value: function keys() {
-      return this.keys()[Symbol.iterator]()
-    },
-  })
-  Object.defineProperty(collection.prototype, 'values', {
-    configurable: true,
-    value: function* values() {
-      for (const name of this.keys()) yield this.get(name)
-    },
-  })
-  Object.defineProperty(collection.prototype, 'entries', {
-    configurable: true,
-    value: function* entries() {
-      for (const name of this.keys()) yield [name, this.get(name)]
-    },
-  })
 }
 
 // `yggdryl::warehouse` is a module in the core, so it is one here too: the

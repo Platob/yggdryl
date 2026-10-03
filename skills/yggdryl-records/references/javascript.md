@@ -522,7 +522,7 @@ const rows = (ids, venues, prices) =>
     px: arrow.vectorFromArray(prices, new arrow.Float64()),
   })
 
-const table = iceberg.Table.create(root, schema, ['venue'])
+const table = iceberg.IcebergTable.create(root, schema, ['venue'])
 assert.equal(table.currentSnapshot, null)
 table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS'], [1, 2, 3]))
 const first = table.currentSnapshot.snapshotId
@@ -553,7 +553,7 @@ const arrow = require('apache-arrow')
 const { Field, fields, iceberg } = require('yggdryl')
 
 const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-')), 'trades')
-const table = iceberg.Table.create(root, fields.struct('row', [new Field('id', 'int32', false)], { nullable: false }))
+const table = iceberg.IcebergTable.create(root, fields.struct('row', [new Field('id', 'int32', false)], { nullable: false }))
 table.append(new arrow.Table({ id: arrow.vectorFromArray([1], new arrow.Int32()) }))
 
 const schemaId = table.updateSchema().addColumn('', Field.from('note: utf8')).updateType('id', 'int64').commit()

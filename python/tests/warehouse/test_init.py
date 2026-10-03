@@ -61,16 +61,13 @@ def test_the_kinds_are_handles_and_the_implementations_their_subclasses() -> Non
         assert not issubclass(other, IOBase)
 
 
-def test_the_iceberg_names_keep_their_public_spelling() -> None:
-    # The native classes moved to `Iceberg*` so the generic kinds could take
-    # the plain names; `yggdryl.iceberg` still answers the names it always did,
-    # and they are not the warehouse's.
+def test_the_iceberg_classes_are_subclasses_of_the_generic_kinds() -> None:
+    # The Iceberg implementation is a subclass of each kind, named as the
+    # core names it, and the generic views are the one collection type.
     from yggdryl import iceberg
 
-    assert iceberg.Catalog.__name__ == "IcebergCatalog"
-    assert iceberg.Namespace.__name__ == "IcebergNamespace"
-    assert iceberg.Namespaces.__name__ == "IcebergNamespaces"
-    assert iceberg.Table.__name__ == "IcebergTable"
-    assert iceberg.Tables.__name__ == "IcebergTables"
-    assert iceberg.Catalog is not Catalog
-    assert iceberg.Table is not Table
+    assert issubclass(iceberg.IcebergCatalog, Catalog)
+    assert issubclass(iceberg.IcebergNamespace, Namespace)
+    assert issubclass(iceberg.IcebergTable, Table)
+    for retired in ("Catalog", "Namespace", "Namespaces", "Table", "Tables"):
+        assert not hasattr(iceberg, retired), retired

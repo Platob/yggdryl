@@ -35,6 +35,12 @@ pub enum Table {
     /// Boxed: a media table carries its identifier, its location, two
     /// property bags and a declared field.
     Media(Box<MediaTable>),
+    /// An Iceberg table, rooted on the handle its catalog keeps.
+    ///
+    /// Boxed: the table carries its description and, once it has read one,
+    /// the current metadata document.
+    #[cfg(feature = "iceberg")]
+    Iceberg(Box<crate::iceberg::IcebergTable<super::Handle>>),
 }
 
 impl Table {
@@ -42,6 +48,8 @@ impl Table {
     pub fn as_table(&self) -> &dyn TableValue {
         match self {
             Self::Media(table) => table.as_ref(),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(table) => table.as_ref(),
         }
     }
 
@@ -49,6 +57,8 @@ impl Table {
     pub fn as_io(&self) -> &dyn IOBase {
         match self {
             Self::Media(table) => table.as_ref(),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(table) => table.as_ref(),
         }
     }
 
@@ -56,6 +66,8 @@ impl Table {
     pub fn as_io_mut(&mut self) -> &mut dyn IOBase {
         match self {
             Self::Media(table) => table.as_mut(),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(table) => table.as_mut(),
         }
     }
 
@@ -66,25 +78,33 @@ impl Table {
     pub fn with_properties(self, properties: Properties) -> Self {
         match self {
             Self::Media(table) => Self::Media(Box::new(table.with_properties(properties))),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(table) => Self::Iceberg(Box::new(table.with_properties(properties))),
         }
     }
 
     fn as_media(&self) -> &dyn IOMedia {
         match self {
             Self::Media(table) => table.as_ref(),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(table) => table.as_ref(),
         }
     }
 
     fn as_media_mut(&mut self) -> &mut dyn IOMedia {
         match self {
             Self::Media(table) => table.as_mut(),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(table) => table.as_mut(),
         }
     }
 
-    /// The implementation's own name: `MediaTable`.
+    /// The implementation's own name: `MediaTable` or `IcebergTable`.
     pub(crate) const fn implementation_name(&self) -> &'static str {
         match self {
             Self::Media(_) => "MediaTable",
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(_) => "IcebergTable",
         }
     }
 
@@ -92,6 +112,8 @@ impl Table {
     pub(crate) fn exists(&self) -> bool {
         match self {
             Self::Media(table) => table.exists(),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(table) => table.exists(),
         }
     }
 
@@ -99,6 +121,8 @@ impl Table {
     pub(crate) fn inheriting(self, parent: &Properties) -> Self {
         match self {
             Self::Media(table) => Self::Media(Box::new(table.inheriting(parent))),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(table) => Self::Iceberg(Box::new(table.inheriting(parent))),
         }
     }
 }
@@ -156,6 +180,13 @@ impl fmt::Display for Table {
 impl From<MediaTable> for Table {
     fn from(table: MediaTable) -> Self {
         Self::Media(Box::new(table))
+    }
+}
+
+#[cfg(feature = "iceberg")]
+impl From<crate::iceberg::IcebergTable<super::Handle>> for Table {
+    fn from(table: crate::iceberg::IcebergTable<super::Handle>) -> Self {
+        Self::Iceberg(Box::new(table))
     }
 }
 

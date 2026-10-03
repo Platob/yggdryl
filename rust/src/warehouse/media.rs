@@ -48,9 +48,9 @@ impl MediaTable {
         let uri = uri.into();
         let url = uri.locator()?;
         Ok(Self {
+            handle: Handle::at(Site::Url(url), true, &path, Properties::new()),
             path,
             uri: Some(uri),
-            handle: Handle::at(Site::Url(url), true),
             stated: Properties::new(),
             inherited: Properties::new(),
             description: None,
@@ -78,9 +78,9 @@ impl MediaTable {
             FolderLayout::Leaf
         };
         Ok(Self {
+            handle: Handle::bound(holder, true, &path, Properties::new()),
             path,
             uri,
-            handle: Handle::bound(holder, true),
             stated: Properties::new(),
             inherited: Properties::new(),
             description: None,
@@ -94,9 +94,9 @@ impl MediaTable {
     pub(crate) fn listed(path: Vec<SmolStr>, holder: Holder, layout: FolderLayout) -> Self {
         let uri = holder.uri().cloned();
         Self {
+            handle: Handle::bound(holder, true, &path, Properties::new()),
             path,
             uri,
-            handle: Handle::bound(holder, true),
             stated: Properties::new(),
             inherited: Properties::new(),
             description: None,
@@ -148,6 +148,7 @@ impl MediaTable {
     #[must_use]
     pub fn with_properties(mut self, properties: Properties) -> Self {
         self.stated = properties;
+        self.handle.set_properties(self.effective());
         self
     }
 
@@ -183,23 +184,22 @@ impl MediaTable {
 
     /// The handle, opened on the first call.
     fn handle(&self) -> Result<&Holder> {
-        self.handle.get(&self.effective(), &path_text(&self.path))
+        self.handle.get()
     }
 
     /// The handle, mutably, opened on the first call.
     fn handle_mut(&mut self) -> Result<&mut Holder> {
-        let effective = self.effective();
-        let what = path_text(&self.path);
-        self.handle.get_mut(&effective, &what)
+        self.handle.get_mut()
     }
 
     /// Whether anything is at the table's location now.
     pub(crate) fn exists(&self) -> bool {
-        self.handle().is_ok_and(Holder::exists)
+        self.handle.exists()
     }
 
     pub(crate) fn inheriting(mut self, parent: &Properties) -> Self {
         self.inherited = parent.clone();
+        self.handle.set_properties(self.effective());
         self
     }
 
@@ -309,9 +309,6 @@ impl fmt::Display for MediaTable {
     }
 }
 
-/// What a handle that resolves to nothing declares: no representation.
-static UNRESOLVED: std::sync::LazyLock<MediaType> = std::sync::LazyLock::new(MediaType::default);
-
 impl IOBase for MediaTable {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.handle()?.pread(offset, buffer)
@@ -387,7 +384,8 @@ impl IOBase for MediaTable {
     }
 
     fn media_type(&self) -> &MediaType {
-        self.handle().map_or(&UNRESOLVED, IOBase::media_type)
+        self.handle()
+            .map_or(&crate::iobase::UNRESOLVED_MEDIA_TYPE, IOBase::media_type)
     }
 
     fn applied_codec(&self) -> crate::Codec {
@@ -410,11 +408,11 @@ impl IOBase for MediaTable {
     }
 
     fn opened(&self) -> bool {
-        self.handle.opened().is_some_and(IOBase::opened)
+        self.handle.held().is_some_and(IOBase::opened)
     }
 
     fn close(&mut self) -> Result<()> {
-        match self.handle.opened().map(IOBase::opened) {
+        match self.handle.held().map(IOBase::opened) {
             Some(true) => self.handle_mut()?.close(),
             // Nothing was resolved or opened, so there is nothing to close.
             _ => Ok(()),

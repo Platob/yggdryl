@@ -717,15 +717,10 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<iobase::PyIOBaseIterator>()?;
     module.add_class::<iomedia::PyRecordOptions>()?;
     module.add_class::<iomedia::PyTextOptions>()?;
-    module.add_class::<iceberg::PyCatalog>()?;
-    module.add_class::<iceberg::PyNamespace>()?;
-    module.add_class::<iceberg::PyNamespaces>()?;
-    module.add_class::<iceberg::PyTables>()?;
-    module.add_class::<iceberg::PyNames>()?;
-    module.add_class::<iceberg::PyNamespaceIterator>()?;
-    module.add_class::<iceberg::PyTableIterator>()?;
+    module.add_class::<iceberg::PyIcebergCatalog>()?;
+    module.add_class::<iceberg::PyIcebergNamespace>()?;
     module.add_class::<iceberg::PyIcebergOptions>()?;
-    module.add_class::<iceberg::PyTable>()?;
+    module.add_class::<iceberg::PyIcebergTable>()?;
     module.add_class::<iceberg::PySchemaUpdate>()?;
     module.add_class::<iceberg::PyScanPlan>()?;
     module.add_class::<iceberg::PyCompaction>()?;

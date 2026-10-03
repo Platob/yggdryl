@@ -4082,193 +4082,177 @@ export declare class Headers {
 export type JsHeaders = Headers
 
 /**
- * A warehouse folder of namespaces of Iceberg tables.
+ * A warehouse folder of namespaces of Iceberg tables: the implementation a
+ * warehouse `Catalog` holds when it is one.
  *
- * The catalog is storage and nothing else: a dotted name like `"nyc.taxis"`
- * names the folder `nyc/taxis` under the warehouse handle, and constructing
- * one touches nothing at all. There is no service in between, so two catalogs
- * over the same folder see the same tables.
+ * Namespaces nest to any depth, each a folder; `metadata/catalog.json` and
+ * `metadata/namespace.json` keep the stored properties; a table is a folder
+ * laid out as one. The catalog is a description - constructing one touches
+ * nothing - and every question is asked of the store when it is asked,
+ * through the members every `Catalog` has: `namespaces()`, `tables()`,
+ * `children()`, `get`, `resolve`, `table`, `namespace`, `createNamespace`
+ * and `createTable` here redirect to the same object [`intoCatalog`](Self::into_catalog)
+ * answers.
  */
 export declare class IcebergCatalog {
   /**
-   * Describe a catalog over a warehouse folder, touching nothing.
-   *
-   * `warehouse` accepts whatever names a location - location text, a native
-   * `Url` or any other identifier naming one, or a handle - the same inputs
-   * `Table.create`'s root takes.
+   * The catalog `name` over the warehouse folder `location` names,
+   * touching nothing: a handle binds the folder, a location or an
+   * identifier names what opens on first use. `options.description` and
+   * `options.properties` are what the catalog states, which its folder
+   * and every object under it open with.
    */
-  constructor(warehouse: LocationInput)
+  constructor(name: string, location: LocationInput, options?: ObjectOptions | undefined | null)
   /**
-   * Open the table a dotted name addresses - the one-call spelling of
-   * `catalog.tables.get(name)`.
+   * Create the catalog `name` in the folder `location` names, writing its
+   * `metadata/catalog.json`; the write is what creates the folder, and a
+   * folder already holding anything is a conflict.
    */
-  table(name: string): IcebergTable
+  static create(name: string, location: LocationInput): IcebergCatalog
   /**
-   * Append `data` to the named table, creating it on first write.
-   *
-   * A table that is not there yet takes its schema from the reader, so a
-   * caller who only has rows and a name needs nothing else. Returns the
-   * table so the caller can keep going.
+   * The catalog `name` over the folder `location` names, created when the
+   * folder is not there yet; a table or a file in its place is refused by
+   * name.
    */
-  append(name: string, data: JsBatchReader, options?: IcebergOptions | undefined | null): IcebergTable
+  static openOrCreate(name: string, location: LocationInput): IcebergCatalog
   /**
-   * Replace the named table's rows with `data`, creating it on first write.
-   *
-   * An existing table keeps its previous snapshot readable; only the
-   * current pointer moves. `options` configures this one write. Returns the
-   * table so the caller can keep going.
+   * The Iceberg catalog a warehouse `Catalog` holds, refused by name when
+   * its implementation is another.
    */
-  overwrite(name: string, data: JsBatchReader, options?: IcebergOptions | undefined | null): IcebergTable
+  static from(catalog: JsWarehouseCatalog): IcebergCatalog
   /**
-   * One namespace as a view: `catalog.namespace('analytics')`.
-   *
-   * The view exists whether or not the folder does, exactly as a handle
-   * describes a location without proof, so asking for one never fails.
+   * This catalog as the warehouse `Catalog` it is: what a warehouse
+   * registers and a plan resolves against.
    */
-  namespace(name: string): JsNamespace
+  intoCatalog(): JsWarehouseCatalog
+  /** The catalog's name, the first part of every path under it. */
+  get name(): string
+  /** The path: the name alone. */
+  get path(): Array<string>
+  /** What the store says this catalog is, when it says anything. */
+  get description(): string | null
+  /** The warehouse folder's location. */
+  get url(): JsUrl | null
   /**
-   * The catalog's namespaces, as a lazy map-like view.
-   *
-   * Building the view performs no I/O: `get`, `has`, `names`, and `size`
-   * each consult storage at the moment they are asked, which is why two
-   * views over one catalog observe each other's writes and why a view stays
-   * valid across a creation or a deletion. This is the one collection
-   * spelling - `catalog.namespaces.get('sales').tables.get('orders')`
-   * chains all the way to a table.
+   * The effective properties: what `metadata/catalog.json` keeps, then
+   * what was stated, a later entry replacing an earlier one by name.
    */
-  get namespaces(): JsNamespaces
+  get properties(): Record<string, string>
   /**
-   * The catalog's tables, as the same lazy view over dotted names.
-   *
-   * `catalog.tables.get('sales.eu.orders')` descends; an un-dotted name
-   * addresses a table directly under the warehouse root, and the listing
-   * questions answer exactly those.
-   */
-  get tables(): JsTables
-  /**
-   * The catalog's own properties, from `metadata/catalog.json`.
-   *
-   * Absent means empty - never an error a caller has to catch.
-   */
-  properties(): Record<string, string>
-  /**
-   * Set and remove catalog properties as one transactional write.
+   * Set and remove the properties `metadata/catalog.json` keeps, as one
+   * write.
    *
    * `updates` is a mapping of properties to set and `removes` lists the
    * keys to drop, in that order. Passing neither writes nothing at all.
    * Keys under the reserved `ICEBERG:` prefix are refused by name.
    */
   updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
+  /**
+   * How many namespace levels sit under the catalog: none stated, since
+   * namespaces nest to any depth.
+   */
+  get namespaceLevels(): number | null
+  /**
+   * The namespaces one level down, as the lazy map-like view every
+   * catalog answers.
+   */
+  namespaces(): JsWarehouseNamespaces
+  /**
+   * The tables one level down, as the lazy map-like view every catalog
+   * answers.
+   */
+  tables(): JsWarehouseTables
+  /** Its children, one at a time in the store's order. */
+  children(): JsObjectIterator
+  /** The child called `name`, one level down. */
+  get(name: string): ObjectOutput
+  /** The object a path below the catalog names, descending through `get`. */
+  resolve(path: ObjectPathInput): ObjectOutput
+  /** The table a path below the catalog names, or its absence. */
+  table(path: ObjectPathInput): JsWarehouseTable
+  /** The namespace a path below the catalog names, or its absence. */
+  namespace(path: ObjectPathInput): JsWarehouseNamespace
+  /**
+   * Create the namespace `name` under the catalog, writing its
+   * `metadata/namespace.json` with `properties`.
+   */
+  createNamespace(name: string, properties?: Record<string, string | number | boolean> | null): JsWarehouseNamespace
+  /**
+   * Create the table `name` under the catalog, `field` its row schema,
+   * numbered where it is not, its partition spec read from the schema's
+   * own `PARTITION:by` declaration.
+   */
+  createTable(name: string, field: Field | string, properties?: Record<string, string | number | boolean> | null): JsWarehouseTable
+  /**
+   * Whether both describe the same catalog: the name, the location, what
+   * was stated.
+   */
+  equals(other: IcebergCatalog): boolean
+  /** The name, as the dotted path of every object under it starts. */
+  toString(): string
 }
 export type JsCatalog = IcebergCatalog
 
 /**
- * The names of one collection level, one at a time.
- *
- * Built by `keys()` on `Namespaces` and `Tables`. It wraps the core names
- * iterator directly, so nothing is collected on the way across the boundary;
- * `next()` is the native half of the iteration protocol and the loader wraps
- * it so `for...of` yields strings. A failure throws at the entry it happened
- * on, after which the iterator is exhausted.
- */
-export declare class IcebergNames {
-  /** The next name, or `null` when the level is exhausted. */
-  next(): string | null
-}
-export type JsIcebergNames = IcebergNames
-
-/**
- * One namespace of a catalog: identity, plus its two collection views.
- *
- * The namespace holds only its dotted name. Its tables are
- * [`tables`](Self::tables) and its child namespaces are
- * [`namespaces`](Self::namespaces), so access chains -
- * `catalog.namespaces.get('sales').tables.get('orders')` - and every
- * collection question has exactly one home: a namespace is a resource, and
- * the map verbs live on its collections, never on it.
+ * One namespace of an Iceberg catalog - a folder under the warehouse, its
+ * `metadata/namespace.json` the stored properties - as the implementation a
+ * warehouse `Namespace` holds when it is one.
  */
 export declare class IcebergNamespace {
-  /** The namespace's dotted name. */
+  /**
+   * The namespace at `path` - dotted text or parts, its catalog's name
+   * first - over the folder `location` names, touching nothing: a handle
+   * binds the folder, a location or an identifier names what opens on
+   * first use. `options.properties` is what the namespace states.
+   */
+  constructor(path: ObjectPathInput, location: LocationInput, options?: ObjectOptions | undefined | null)
+  /**
+   * The Iceberg namespace a warehouse `Namespace` holds, refused by name
+   * when its implementation is another.
+   */
+  static from(namespace: JsWarehouseNamespace): IcebergNamespace
+  /** This namespace as the warehouse `Namespace` it is. */
+  intoNamespace(): JsWarehouseNamespace
+  /** The last part of the path. */
   get name(): string
-  /** This namespace's tables, as a lazy map-like view. */
-  get tables(): JsTables
+  /** The parts, from the catalog's name down to this namespace's own. */
+  get path(): Array<string>
+  /** The folder's location. */
+  get url(): JsUrl | null
   /**
-   * The namespaces one level below this one, as the same view shape the
-   * catalog itself answers - the cascade that reaches a nested namespace.
+   * The effective properties: the parent's, then what
+   * `metadata/namespace.json` keeps, then what was stated.
    */
-  get namespaces(): JsNamespaces
+  get properties(): Record<string, string>
   /**
-   * The namespace's properties, from `metadata/namespace.json`.
-   *
-   * Absent means empty - a namespace a table write brought into being
-   * carries no document and answers no properties, and that is not a
-   * failure.
-   */
-  properties(): Record<string, string>
-  /**
-   * Set and remove namespace properties as one transactional write.
-   *
-   * `updates` is a mapping of properties to set and `removes` lists the
-   * keys to drop, in that order. Passing neither writes nothing at all.
-   * Keys under the reserved `ICEBERG:` prefix are refused by name.
+   * Set and remove the properties `metadata/namespace.json` keeps, as one
+   * write; keys under the reserved `ICEBERG:` prefix are refused by name.
    */
   updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
+  /** The namespaces one level down, as the lazy map-like view. */
+  namespaces(): JsWarehouseNamespaces
+  /** The tables one level down, as the lazy map-like view. */
+  tables(): JsWarehouseTables
+  /** Its children, one at a time in the store's order. */
+  children(): JsObjectIterator
+  /** The child called `name`, one level down. */
+  get(name: string): ObjectOutput
+  /** The object a path below the namespace names, descending through `get`. */
+  resolve(path: ObjectPathInput): ObjectOutput
+  /** The table a path below the namespace names, or its absence. */
+  table(path: ObjectPathInput): JsWarehouseTable
+  /** The namespace a path below this one names, or its absence. */
+  namespace(path: ObjectPathInput): JsWarehouseNamespace
+  /** Create the namespace `name` under this one, writing its document. */
+  createNamespace(name: string, properties?: Record<string, string | number | boolean> | null): JsWarehouseNamespace
+  /** Create the table `name` under this namespace, `field` its row schema. */
+  createTable(name: string, field: Field | string, properties?: Record<string, string | number | boolean> | null): JsWarehouseTable
+  /** Whether both describe the same namespace. */
+  equals(other: IcebergNamespace): boolean
+  /** The dotted path, as the plan grammar spells it. */
+  toString(): string
 }
 export type JsNamespace = IcebergNamespace
-
-/**
- * The namespaces one level below a catalog or a namespace, as a lazy view.
- *
- * JavaScript has no indexing hook a native class can answer, so the map
- * questions are spelled out: `get` and `has` for membership, `names` and
- * `size` for the whole collection, `create` and `openOrCreate` to add one.
- * None of it is cached - every answer is storage's, asked when the question
- * is - so a view built before a namespace existed finds it afterwards.
- */
-export declare class IcebergNamespaces {
-  /**
-   * Open the named namespace.
-   *
-   * # Errors
-   *
-   * Throws naming the namespace when nothing is there, or when the name
-   * addresses a table instead - the two ways a chained lookup goes wrong,
-   * told apart rather than collapsed into "not found".
-   */
-  get(name: string): IcebergNamespace
-  /**
-   * Return whether the named namespace exists, asked of storage now.
-   *
-   * A namespace is a folder that is not a table, so a table's name answers
-   * `false` here, and so does a location nothing occupies yet.
-   */
-  has(name: string): boolean
-  /**
-   * The names one level down, lazily - the loader wires `Symbol.iterator`,
-   * `keys`, `values`, and `entries` over this, so `for...of` walks it.
-   */
-  keys(): JsIcebergNames
-  /** The namespaces one level down, as sorted bare names. */
-  names(): Array<string>
-  /**
-   * How many namespaces are one level down, right now.
-   *
-   * This drains the level's listing, so it costs the full listing.
-   */
-  size(): number
-  /**
-   * Create the named namespace, as the folder it is.
-   *
-   * # Errors
-   *
-   * Throws naming the namespace when one - or a table - is already there;
-   * [`openOrCreate`](Self::open_or_create) is the spelling that tolerates it.
-   */
-  create(name: string): IcebergNamespace
-  /** Open the named namespace, creating its folder when absent. */
-  openOrCreate(name: string): IcebergNamespace
-}
-export type JsNamespaces = IcebergNamespaces
 
 /**
  * Configuration for one table's commits, writes, and reads.
@@ -4464,6 +4448,28 @@ export declare class IcebergTable {
    */
   static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null): IcebergTable
   /**
+   * The Iceberg table a warehouse `Table` holds, refused by name when its
+   * implementation is another.
+   */
+  static from(table: JsWarehouseTable): IcebergTable
+  /**
+   * This table as the warehouse `Table` it is: what a warehouse registers
+   * and a plan reads.
+   */
+  intoTable(): JsWarehouseTable
+  /** The last part of the path: the table's own name. */
+  get name(): string
+  /**
+   * The parts, from the catalog's name down to the table's own; a table
+   * opened by its location alone stands under its folder's name.
+   */
+  get path(): Array<string>
+  /**
+   * Whether both describe the same table: the path, the location, what
+   * was stated - never what was read.
+   */
+  equals(other: IcebergTable): boolean
+  /**
    * The folder the table lives in.
    *
    * Taken from the table's own root handle rather than from its recorded
@@ -4480,7 +4486,11 @@ export declare class IcebergTable {
   get formatVersion(): number
   /** The version number of the current metadata document. */
   get version(): number
-  /** Free-form table properties. */
+  /**
+   * The effective properties: the parent's, then the free-form table
+   * properties the metadata document carries, then what was stated for
+   * the table, a later entry replacing an earlier one by name.
+   */
   get properties(): Record<string, string>
   /** The name of the current metadata document. */
   get metadataFileName(): string
@@ -4754,87 +4764,13 @@ export declare class IcebergTable {
    * commit that changes no property would still cost a metadata document.
    */
   updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
-  /** Return where the table lives, so a table prints as its location. */
+  /**
+   * The dotted path, as the plan grammar spells it and as every
+   * warehouse object prints.
+   */
   toString(): string
 }
 export type JsTable = IcebergTable
-
-/**
- * The tables of one namespace - or of the warehouse root - as a lazy view.
- *
- * The same shape as [`Namespaces`](JsNamespaces), one level down: `get` opens
- * a [`Table`](JsTable) and the write conveniences that take a name create the
- * table on first write, from the incoming rows' own schema. At the root,
- * names may be fully dotted - `catalog.tables.get('sales.eu.orders')`
- * descends. Every answer comes from storage at call time, so the view is
- * never stale.
- */
-export declare class IcebergTables {
-  /**
-   * Open the named table.
-   *
-   * # Errors
-   *
-   * Throws naming the table when no table is there, and the metadata
-   * failure when its current document cannot be read.
-   */
-  get(name: string): IcebergTable
-  /** Return whether the named table exists, asked of storage now. */
-  has(name: string): boolean
-  /**
-   * The names one level down, lazily - the loader wires `Symbol.iterator`,
-   * `keys`, `values`, and `entries` over this, so `for...of` walks it.
-   */
-  keys(): IcebergNames
-  /** This namespace's tables, as sorted bare names. */
-  names(): Array<string>
-  /**
-   * How many tables the namespace holds, right now.
-   *
-   * This drains the level's listing, so it costs the full listing.
-   */
-  size(): number
-  /**
-   * Create the named table, writing its first metadata document.
-   *
-   * `schema` is a root `Field`, a field expression, or an array of child
-   * `Field`s assembled under a root named `row`. Unnumbered columns are
-   * numbered, and the partition spec is derived from the columns the schema
-   * itself marks - a schema that marks none produces an unpartitioned table.
-   *
-   * # Errors
-   *
-   * Throws naming the table when one is already there.
-   */
-  create(name: string, schema: TableSchemaInput): IcebergTable
-  /**
-   * Open the named table if it exists, creating it otherwise.
-   *
-   * An existing table is opened as it is - `schema` describes only the table
-   * this call would create.
-   */
-  openOrCreate(name: string, schema: TableSchemaInput): IcebergTable
-  /**
-   * Append `batches` to the named table, creating it on first write.
-   *
-   * A table that is not there yet takes its schema from the rows: partition
-   * marks riding the Arrow fields' metadata become the spec, so a marked
-   * schema lays its files out partitioned from the very first append.
-   * `options` configures this one write. Returns the table so the caller can
-   * keep going.
-   */
-  append(name: string, batches: JsBatchReader, options?: IcebergOptions | undefined | null): IcebergTable
-  /**
-   * Replace the named table's rows with `batches`, creating it on first
-   * write.
-   *
-   * An existing table keeps its previous snapshot readable, which is what
-   * makes the overwrite reversible. `options` configures this one write.
-   * Returns the table so the caller can keep going.
-   */
-  overwrite(name: string, batches: JsBatchReader, options?: IcebergOptions | undefined | null): IcebergTable
-}
-export type JsTables = IcebergTables
 
 /**
  * One identifier: a source, a type and a value, unique by its key

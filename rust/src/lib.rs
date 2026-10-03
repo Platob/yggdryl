@@ -238,7 +238,7 @@ pub use uri::{
 };
 pub(crate) use uri::{URL_EXTENSION_NAME, URN_EXTENSION_NAME};
 pub use warehouse::{
-    Catalog, CatalogValue, FolderCatalog, FolderLayout, FolderNamespace, IntoObjectPath,
+    Catalog, CatalogValue, FolderCatalog, FolderLayout, FolderNamespace, Handle, IntoObjectPath,
     MediaTable, MemoryCatalog, MemoryNamespace, Names, Namespace, NamespaceValue, Namespaces,
     Object, ObjectValue, Objects, Properties, SystemWarehouse, Table, TableValue, Tables,
     Warehouse,

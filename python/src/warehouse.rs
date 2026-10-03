@@ -40,13 +40,16 @@ use crate::{python_hash, value_error};
 pub(crate) enum Implementation {
     MemoryCatalog,
     FolderCatalog,
+    IcebergCatalog,
     /// A catalog this build has no subclass for.
     Catalog,
     MemoryNamespace,
     FolderNamespace,
+    IcebergNamespace,
     /// A namespace this build has no subclass for.
     Namespace,
     MediaTable,
+    IcebergTable,
     /// A table this build has no subclass for.
     Table,
 }
@@ -56,6 +59,7 @@ impl Implementation {
         match catalog {
             Catalog::Memory(_) => Self::MemoryCatalog,
             Catalog::Folder(_) => Self::FolderCatalog,
+            Catalog::Iceberg(_) => Self::IcebergCatalog,
             _ => Self::Catalog,
         }
     }
@@ -64,6 +68,7 @@ impl Implementation {
         match namespace {
             Namespace::Memory(_) => Self::MemoryNamespace,
             Namespace::Folder(_) => Self::FolderNamespace,
+            Namespace::Iceberg(_) => Self::IcebergNamespace,
             _ => Self::Namespace,
         }
     }
@@ -71,6 +76,7 @@ impl Implementation {
     pub(crate) fn of_table(table: &Table) -> Self {
         match table {
             Table::Media(_) => Self::MediaTable,
+            Table::Iceberg(_) => Self::IcebergTable,
             _ => Self::Table,
         }
     }
@@ -90,11 +96,14 @@ impl Implementation {
         match self {
             Self::MemoryCatalog => "MemoryCatalog",
             Self::FolderCatalog => "FolderCatalog",
+            Self::IcebergCatalog => "IcebergCatalog",
             Self::Catalog => "Catalog",
             Self::MemoryNamespace => "MemoryNamespace",
             Self::FolderNamespace => "FolderNamespace",
+            Self::IcebergNamespace => "IcebergNamespace",
             Self::Namespace => "Namespace",
             Self::MediaTable => "MediaTable",
+            Self::IcebergTable => "IcebergTable",
             Self::Table => "Table",
         }
     }
@@ -118,6 +127,12 @@ pub(crate) fn describe_object(
             base.add_subclass(PyCatalog).add_subclass(PyFolderCatalog),
         )?
         .into_any(),
+        Implementation::IcebergCatalog => Py::new(
+            py,
+            base.add_subclass(PyCatalog)
+                .add_subclass(crate::iceberg::PyIcebergCatalog),
+        )?
+        .into_any(),
         Implementation::Catalog => Py::new(py, base.add_subclass(PyCatalog))?.into_any(),
         Implementation::MemoryNamespace => Py::new(
             py,
@@ -131,10 +146,22 @@ pub(crate) fn describe_object(
                 .add_subclass(PyFolderNamespace),
         )?
         .into_any(),
+        Implementation::IcebergNamespace => Py::new(
+            py,
+            base.add_subclass(PyNamespace)
+                .add_subclass(crate::iceberg::PyIcebergNamespace),
+        )?
+        .into_any(),
         Implementation::Namespace => Py::new(py, base.add_subclass(PyNamespace))?.into_any(),
         Implementation::MediaTable => {
             Py::new(py, base.add_subclass(PyTable).add_subclass(PyMediaTable))?.into_any()
         }
+        Implementation::IcebergTable => Py::new(
+            py,
+            base.add_subclass(PyTable)
+                .add_subclass(crate::iceberg::PyIcebergTable),
+        )?
+        .into_any(),
         Implementation::Table => Py::new(py, base.add_subclass(PyTable))?.into_any(),
     })
 }
@@ -197,7 +224,7 @@ fn described(py: Python<'_>, object: Object) -> PyResult<Py<PyAny>> {
 /// A value is its text, a `bool` spelled `true` or `false`; `...` is an
 /// argument not given, and `None` clears the name - a bag holds a property or
 /// it does not, so there is no property with no value.
-fn properties_from_args(
+pub(crate) fn properties_from_args(
     mapping: Option<&Bound<'_, PyAny>>,
     keywords: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Properties> {
@@ -259,7 +286,9 @@ fn properties_into_py<'py>(
 
 /// A path as Python spells one: dotted text read through the plan's location
 /// grammar, or the parts themselves.
-fn object_path_from_value(value: &Bound<'_, PyAny>) -> PyResult<impl IntoObjectPath + use<>> {
+pub(crate) fn object_path_from_value(
+    value: &Bound<'_, PyAny>,
+) -> PyResult<impl IntoObjectPath + use<>> {
     if let Ok(text) = value.cast::<PyString>() {
         return text.to_str()?.into_object_path().map_err(value_error);
     }
@@ -321,12 +350,12 @@ fn objects_from_value(value: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<Object>>
 
 /// Where an object's storage is, as a constructor takes it: a handle binds,
 /// a location names.
-enum Located {
+pub(crate) enum Located {
     Handle(Box<Holder>),
     Url(yggdryl::Url),
 }
 
-fn located_from_value(value: &Bound<'_, PyAny>) -> PyResult<Located> {
+pub(crate) fn located_from_value(value: &Bound<'_, PyAny>) -> PyResult<Located> {
     if let Ok(handle) = value.extract::<PyRef<'_, PyIOBase>>() {
         let inner = handle.inner()?;
         if inner.kind() != IOKind::Memory {
@@ -344,15 +373,15 @@ fn located_from_value(value: &Bound<'_, PyAny>) -> PyResult<Located> {
 }
 
 /// The initializer every catalog class builds on.
-fn catalog_base(catalog: Catalog) -> PyClassInitializer<PyCatalog> {
+pub(crate) fn catalog_base(catalog: Catalog) -> PyClassInitializer<PyCatalog> {
     PyClassInitializer::from(PyIOBase::from_core(Holder::from(catalog))).add_subclass(PyCatalog)
 }
 
-fn namespace_base(namespace: Namespace) -> PyClassInitializer<PyNamespace> {
+pub(crate) fn namespace_base(namespace: Namespace) -> PyClassInitializer<PyNamespace> {
     PyClassInitializer::from(PyIOBase::from_core(Holder::from(namespace))).add_subclass(PyNamespace)
 }
 
-fn table_base(table: Table) -> PyClassInitializer<PyTable> {
+pub(crate) fn table_base(table: Table) -> PyClassInitializer<PyTable> {
     PyClassInitializer::from(PyIOBase::from_core(Holder::from(table))).add_subclass(PyTable)
 }
 

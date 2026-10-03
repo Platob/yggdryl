@@ -236,7 +236,7 @@ const expressionJson: unknown = expression.toJSON()
 const expressionOrder: number = expression.compare(expression.clone())
 const expressionHash: bigint = expression.stableHash()
 
-const table: IcebergTable = iceberg.Table.create('file:///lake/trades', schema, ['ccy'])
+const table: IcebergTable = iceberg.IcebergTable.create('file:///lake/trades', schema, ['ccy'])
 const rows: BatchReader = table.scanMatching(filter)
 const projectedRows: BatchReader = table.scanMatching("ccy = 'EUR'", schema)
 const counts: ScanPlanCounts = table.planMatching(term)

@@ -1,6 +1,6 @@
 # yggdryl-records in Python
 
-`from yggdryl import IOBase, RecordOptions, TextOptions`; Iceberg is `from yggdryl.iceberg import Table`. Every record method takes keyword-only `options=` plus the option properties by name (`select=`, `filter=`, `field=`, `merge_by=`, `max_row_size=`, `row_offset=`, `commit_batch_num=`, `compression=`, `rowheader=`, ...), each set on a copy.
+`from yggdryl import IOBase, RecordOptions, TextOptions`; Iceberg is `from yggdryl.iceberg import IcebergTable`. Every record method takes keyword-only `options=` plus the option properties by name (`select=`, `filter=`, `field=`, `merge_by=`, `max_row_size=`, `row_offset=`, `commit_batch_num=`, `compression=`, `rowheader=`, ...), each set on a copy.
 
 ## Which encoding will this handle use?
 
@@ -472,7 +472,7 @@ import tempfile
 import pyarrow as pa
 
 from yggdryl import IOBase
-from yggdryl.iceberg import Table
+from yggdryl.iceberg import IcebergTable
 
 schema = pa.schema([
     pa.field("id", pa.int64(), nullable=False),
@@ -480,7 +480,7 @@ schema = pa.schema([
     pa.field("px", pa.float64()),
 ])
 root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
-table = Table.create(root, schema, ["venue"])
+table = IcebergTable.create(root, schema, ["venue"])
 assert table.current_snapshot is None
 
 table.append(pa.table({"id": [1, 2, 3], "venue": ["XNAS", "XNYS", "XNAS"], "px": [1.0, 2.0, 3.0]}, schema=schema))
@@ -508,10 +508,10 @@ import tempfile
 import pyarrow as pa
 
 from yggdryl import Field, IOBase
-from yggdryl.iceberg import Table
+from yggdryl.iceberg import IcebergTable
 
 root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
-table = Table.create(root, pa.schema([pa.field("id", pa.int32(), nullable=False)]))
+table = IcebergTable.create(root, pa.schema([pa.field("id", pa.int32(), nullable=False)]))
 table.append(pa.table({"id": pa.array([1], pa.int32())}))
 
 schema_id = table.update_schema().add_column("", Field("note", "utf8")).update_type("id", "int64").commit()
@@ -599,4 +599,4 @@ assert read.execute().read_all().column("name").to_pylist() == ["b"]
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; pass `safe=False` to have it refused.
 - A folder's partition columns come from the path: a leaf read alone does not carry them.
 - A CSV byte role (`separator`, `quote`, `escape`, `comment`) is a one-character `str` or one byte, and `null_values` a list - a bare `str` is a `TypeError`; the role itself (ASCII, no line break, no byte another role holds) is judged by the core, and a CSV property on another encoding's options is `None` to read and a `ValueError` to set.
-- `Table` objects cache their metadata; after writing through another handle, `Table.open(...)` again.
+- `IcebergTable` objects cache their metadata; after writing through another handle, open the table again - `IcebergTable(root)` is the open.

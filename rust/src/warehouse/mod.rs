@@ -66,6 +66,7 @@ mod table;
 
 pub use catalog::{Catalog, CatalogValue};
 pub use folder::{FolderCatalog, FolderLayout, FolderNamespace};
+pub use handle::Handle;
 pub use media::MediaTable;
 pub use memory::{MemoryCatalog, MemoryNamespace};
 pub use namespace::{Names, Namespace, NamespaceValue, Namespaces, Tables};
@@ -75,7 +76,13 @@ pub use system::SystemWarehouse;
 pub use table::{Table, TableValue};
 
 pub(crate) use catalog::no_catalog;
+#[cfg(feature = "iceberg")]
+pub(crate) use folder::{entry_name, table_layout};
+#[cfg(feature = "iceberg")]
+pub(crate) use handle::Site;
 pub(crate) use namespace::no_table;
+#[cfg(feature = "iceberg")]
+pub(crate) use object::extended;
 pub(crate) use object::path_text;
 
 use smol_str::{SmolStr, format_smolstr};

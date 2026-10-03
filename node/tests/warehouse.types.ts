@@ -171,8 +171,8 @@ const systemNamespace: Namespace = system.namespace(['local', 'temporary'])
 const systemProperties: Record<string, string> = system.propertiesFor('/tmp/x')
 
 // The Iceberg classes keep their names under the iceberg namespace.
-const icebergCatalog: IcebergCatalog = new iceberg.Catalog('/lake')
-const icebergTable: IcebergTable = iceberg.Table.open('/lake/trades')
+const icebergCatalog: IcebergCatalog = new iceberg.IcebergCatalog('lake', '/lake')
+const icebergTable: IcebergTable = iceberg.IcebergTable.open('/lake/trades')
 
 void bound
 void fromUrl

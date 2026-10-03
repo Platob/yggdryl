@@ -58,7 +58,7 @@ const JS_MAX_SAFE_INTEGER: usize = 9_007_199_254_740_991;
 /// The parts cross as the core's own path type, which this crate never names:
 /// text goes through the grammar, and parts arrive as they are. The failure
 /// is the core's, so a caller deciding on its kind still can.
-fn object_path(value: ObjectPathInput) -> yggdryl::Result<impl IntoObjectPath> {
+pub(crate) fn object_path(value: ObjectPathInput) -> yggdryl::Result<impl IntoObjectPath> {
     match value {
         Either::A(text) => text.into_object_path(),
         Either::B(parts) => parts
@@ -201,9 +201,9 @@ pub struct ObjectOptions<'env> {
 }
 
 /// The options read, each field taken once.
-struct Stated {
-    description: Option<String>,
-    properties: Properties,
+pub(crate) struct Stated {
+    pub(crate) description: Option<String>,
+    pub(crate) properties: Properties,
     levels: Option<usize>,
     field: Option<yggdryl::Field>,
     dtype: Option<yggdryl::DataType>,
@@ -212,7 +212,7 @@ struct Stated {
 }
 
 impl Stated {
-    fn read(options: Option<ObjectOptions<'_>>) -> Result<Self> {
+    pub(crate) fn read(options: Option<ObjectOptions<'_>>) -> Result<Self> {
         let Some(options) = options else {
             return Ok(Self {
                 description: None,
@@ -241,7 +241,13 @@ impl Stated {
     }
 
     /// Refuse the options an implementation has no use for, by name.
-    fn only(&self, implementation: &str, levels: bool, table: bool, objects: bool) -> Result<()> {
+    pub(crate) fn only(
+        &self,
+        implementation: &str,
+        levels: bool,
+        table: bool,
+        objects: bool,
+    ) -> Result<()> {
         let unused = [
             (!levels && self.levels.is_some(), "levels"),
             (!table && self.field.is_some(), "field"),
@@ -374,6 +380,7 @@ impl JsWarehouseCatalog {
         match &self.inner {
             CoreCatalog::Memory(_) => "MemoryCatalog",
             CoreCatalog::Folder(_) => "FolderCatalog",
+            CoreCatalog::Iceberg(_) => "IcebergCatalog",
             _ => "Catalog",
         }
         .to_owned()
@@ -628,6 +635,7 @@ impl JsWarehouseNamespace {
         match &self.inner {
             CoreNamespace::Memory(_) => "MemoryNamespace",
             CoreNamespace::Folder(_) => "FolderNamespace",
+            CoreNamespace::Iceberg(_) => "IcebergNamespace",
             _ => "Namespace",
         }
         .to_owned()
@@ -861,6 +869,7 @@ impl JsWarehouseTable {
     pub fn implementation(&self) -> String {
         match &self.inner {
             CoreTable::Media(_) => "MediaTable",
+            CoreTable::Iceberg(_) => "IcebergTable",
             _ => "Table",
         }
         .to_owned()

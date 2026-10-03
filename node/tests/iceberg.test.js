@@ -58,7 +58,7 @@ test('creating a table numbers a plain schema itself, partitioning included', (t
   const plain = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
     nullable: false,
   })
-  const table = iceberg.Table.create(path.join(root, 'trades'), plain, ['venue'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), plain, ['venue'])
 
   // Depth-first from 1, and the spec resolved 'venue' against the numbering.
   assert.equal(table.schema.dtype.getFieldAt(0).parquetFieldId, 1)
@@ -73,7 +73,7 @@ test('creating a table numbers a plain schema itself, partitioning included', (t
 test('a commit takes the rows the record surface takes', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const table = iceberg.Table.create(
+  const table = iceberg.IcebergTable.create(
     path.join(root, 'trades'),
     schema(),
     iceberg.PartitionSpec.unpartitioned(),
@@ -105,21 +105,28 @@ test('a commit takes the rows the record surface takes', (t) => {
 test('a create-on-write commit lets the rows name the schema', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
+  const catalog = new iceberg.IcebergCatalog('lake', path.join(root, 'warehouse'))
+  const nyc = catalog.namespaces().create('nyc')
 
   // Nothing declares a schema here, so the rows do - and Arrow JS
-  // dictionary-encodes a JavaScript string, which Iceberg cannot express, so
-  // the inferred schema is widened before the table is created.
-  const created = catalog.append('nyc.trades', [{ id: 1n, venue: 'XNAS' }])
+  // dictionary-encodes a JavaScript string, a layout Iceberg does not state,
+  // so the catalog creates the table over the string it encodes and casts the
+  // rows to it on the way in.
+  const encoded = arrow.tableFromArrays({ id: BigInt64Array.from([1n]), venue: ['XNAS'] })
+  assert.ok(arrow.DataType.isDictionary(encoded.getChild('venue').type))
+  const created = iceberg.IcebergTable.from(nyc.tables().append('trades', encoded))
   assert.equal(created.scan().intoTable().numRows, 1)
   assert.equal(created.schema.dtype.getFieldAt(1).dtype.toString(), 'utf8')
 
-  // The second write types against the schema the first one created.
-  catalog.tables.append('nyc.trades', [{ id: 2n, venue: 'XNYS' }])
-  assert.equal(catalog.table('nyc.trades').scan().intoTable().numRows, 2)
+  // The second write types against the schema the first one created, through
+  // the view or through the table a fresh open answers - whose own writes
+  // take rows, typed by the stored schema.
+  nyc.tables().append('trades', arrow.tableFromArrays({ id: BigInt64Array.from([2n]), venue: ['XNYS'] }))
+  iceberg.IcebergTable.from(catalog.table('nyc.trades')).append([{ id: 3n, venue: 'XASE' }])
+  assert.equal(iceberg.IcebergTable.from(catalog.table('nyc.trades')).scan().intoTable().numRows, 3)
 
-  // A field class names the schema its rows are typed by, and the created
-  // table carries that class's own types rather than Arrow JS's inference.
+  // A field class names the schema its rows are typed by; the stored schema
+  // is what they are checked against.
   class Trade {
     static get intoStructField() {
       return fields.struct(
@@ -133,9 +140,8 @@ test('a create-on-write commit lets the rows name the schema', (t) => {
       this.venue = venue
     }
   }
-  const classed = catalog.append('nyc.classed', [new Trade(1n, 'XNAS')])
-  assert.equal(classed.scan().intoTable().numRows, 1)
-  assert.equal(String(classed.schema.dtype.getFieldAt(1).dtype), 'utf8')
+  iceberg.IcebergTable.from(catalog.table('nyc.trades')).append([new Trade(4n, 'XNAS')])
+  assert.equal(iceberg.IcebergTable.from(catalog.table('nyc.trades')).scan().intoTable().numRows, 4)
 })
 
 test('a table is a folder, and a new one has no current snapshot', (t) => {
@@ -143,7 +149,7 @@ test('a table is a folder, and a new one has no current snapshot', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const location = path.join(root, 'trades')
 
-  const table = iceberg.Table.create(location, schema(), iceberg.PartitionSpec.unpartitioned())
+  const table = iceberg.IcebergTable.create(location, schema(), iceberg.PartitionSpec.unpartitioned())
   assert.ok(table.root.isDir())
   assert.equal(table.schemas.length, 1)
   assert.ok(table.spec.isUnpartitioned())
@@ -151,7 +157,8 @@ test('a table is a folder, and a new one has no current snapshot', (t) => {
   assert.equal(table.version, 1)
   assert.equal(table.metadataFileName, 'v1.metadata.json')
   assert.ok(table.metadataLocation.endsWith(`/metadata/${table.metadataFileName}`))
-  assert.ok(table.toString().startsWith('file:///'))
+  assert.equal(String(table), 'trades', 'a table on its own is named after its folder')
+  assert.ok(table.location.startsWith('file:///'))
 
   // Everything is a child of the one handle the table was built from.
   const handle = new IOBase(location)
@@ -173,7 +180,7 @@ test('an append commits a snapshot, one data file per partition', (t) => {
 
   const declared = schema()
   // A list of column names is the short spelling of an identity spec.
-  const table = iceberg.Table.create(path.join(root, 'trades'), declared, ['venue'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), declared, ['venue'])
   table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
 
   const snapshot = table.currentSnapshot
@@ -249,7 +256,7 @@ test('v3 snapshot lineage stays exact at the JavaScript boundary', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), undefined, 3)
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema(), undefined, 3)
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
 
   assert.equal(table.formatVersion, 3)
@@ -263,7 +270,7 @@ test('a scan pushes columns down and casts what each file gives back', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
   const declared = schema()
-  const table = iceberg.Table.create(path.join(root, 'trades'), declared)
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), declared)
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
 
   const wanted = fields.struct('row', [declared.dtype.getFieldAt(0)], { nullable: false })
@@ -277,7 +284,7 @@ test('an overwrite keeps the previous snapshot readable', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   const first = table.currentSnapshot.snapshotId
 
@@ -295,7 +302,7 @@ test('a schema evolves, and files written before a column read null for it', (t)
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   table.append(rows([1n], ['XNAS']))
 
   const evolved = iceberg.assignFieldIds(
@@ -318,19 +325,19 @@ test('a table is found again with no catalog in between', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const location = path.join(root, 'trades')
 
-  const created = iceberg.Table.create(location, schema())
+  const created = iceberg.IcebergTable.create(location, schema())
   created.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   const uuid = created.tableUuid
 
-  const reopened = iceberg.Table.open(location)
+  const reopened = iceberg.IcebergTable.open(location)
   assert.equal(reopened.tableUuid, uuid)
   assert.equal(reopened.version, created.version)
   assert.equal(reopened.scan().intoTable().numRows, 2)
 
   // Opening what is there and creating what is not is one call.
-  const either = iceberg.Table.openOrCreate(location, schema())
+  const either = iceberg.IcebergTable.openOrCreate(location, schema())
   assert.equal(either.tableUuid, uuid)
-  assert.throws(() => iceberg.Table.open(path.join(root, 'absent')), /metadata/)
+  assert.throws(() => iceberg.IcebergTable.open(path.join(root, 'absent')), /metadata/)
 })
 
 test('a transform that cannot place a row is refused by name', (t) => {
@@ -407,47 +414,44 @@ test('a catalog maps a dotted name onto folders and creates on first write', (t)
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const catalog = new iceberg.Catalog(root)
-  assert.equal(catalog.tables.has('nyc.taxis'), false)
+  const catalog = new iceberg.IcebergCatalog('lake', root)
+  assert.equal(catalog.tables().has('nyc.taxis'), false)
+  catalog.namespaces().create('nyc')
 
   // The first append creates the table from the reader's own schema.
-  const table = catalog.append('nyc.taxis', rows([1n, 2n], ['XNAS', 'XNYS']))
-  assert.ok(catalog.tables.has('nyc.taxis'))
+  const table = iceberg.IcebergTable.from(catalog.tables().append('nyc.taxis', rows([1n, 2n], ['XNAS', 'XNYS'])))
+  assert.ok(catalog.tables().has('nyc.taxis'))
   assert.equal(table.schema.name, 'row')
   assert.equal(table.schema.dtype.getFieldAt(0).parquetFieldId, 1)
   assert.equal(table.scan().intoTable().numRows, 2)
+  assert.deepEqual(table.path, ['lake', 'nyc', 'taxis'])
+  assert.equal(String(table), 'lake.nyc.taxis')
 
   // The dotted name is the folder nyc/taxis, one level per dot.
   const handle = new IOBase(path.join(root, 'nyc', 'taxis'))
   assert.ok(handle.isDir())
-  assert.deepEqual(catalog.namespaces.names(), ['nyc'])
-  assert.deepEqual(catalog.namespace('nyc').tables.names(), ['taxis'])
+  assert.deepEqual([...catalog.namespaces().keys()], ['nyc'])
+  assert.deepEqual([...catalog.namespace('nyc').tables().keys()], ['taxis'])
 
   // A second append accumulates rather than replacing.
-  const again = catalog.append('nyc.taxis', rows([3n], ['XASE']))
+  const again = iceberg.IcebergTable.from(catalog.tables().append('nyc.taxis', rows([3n], ['XASE'])))
   assert.equal(again.scan().intoTable().numRows, 3)
-  assert.equal(catalog.table('nyc.taxis').scan().intoTable().numRows, 3)
+  assert.equal(iceberg.IcebergTable.from(catalog.table('nyc.taxis')).scan().intoTable().numRows, 3)
 
-  // A schema is a Field, a string expression, or an array of child Fields.
-  const rides = catalog.tables.create('nyc.rides', [
-    Field.from('id: int64'),
-    Field.from('city: utf8'),
-  ])
-  assert.equal(rides.schema.name, 'row')
-  assert.deepEqual(
-    Array.from(rides.schema.dtype, (child) => child.name),
-    ['id', 'city'],
-  )
-  catalog.tables.create('nyc.zones', 'row: struct<id int64, zone utf8> not null')
-  assert.deepEqual(catalog.namespace('nyc').tables.names(), ['rides', 'taxis', 'zones'])
+  // A schema is a Field or a string expression.
+  const rides = catalog.tables().create('nyc.rides', 'row: struct<id int64, city utf8> not null')
+  assert.equal(rides.implementation, 'IcebergTable')
+  assert.deepEqual(Array.from(rides.field().dtype, (child) => child.name), ['id', 'city'])
+  catalog.tables().create('nyc.zones', 'row: struct<id int64, zone utf8> not null')
+  assert.deepEqual([...catalog.namespace('nyc').tables().keys()], ['rides', 'taxis', 'zones'])
 
   // Creating what exists is refused; opening-or-creating is one call.
-  assert.throws(() => catalog.tables.create('nyc.taxis', schema()), /nyc\.taxis/)
-  const either = catalog.tables.openOrCreate('nyc.taxis', schema())
+  assert.throws(() => catalog.tables().create('nyc.taxis', schema()), /nyc\.taxis/)
+  const either = iceberg.IcebergTable.from(catalog.tables().openOrCreate('nyc.taxis', schema()))
   assert.equal(either.tableUuid, table.tableUuid)
 
-  // An overwrite through the catalog keeps the previous snapshot readable.
-  const replaced = catalog.overwrite('nyc.taxis', rows([9n], ['XNAS']))
+  // An overwrite through the view keeps the previous snapshot readable.
+  const replaced = iceberg.IcebergTable.from(catalog.tables().overwrite('nyc.taxis', rows([9n], ['XNAS'])))
   assert.equal(replaced.scan().intoTable().numRows, 1)
   assert.equal(replaced.snapshots.length, 3)
 })
@@ -456,7 +460,7 @@ test('scanAt reads a retained snapshot after an overwrite', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   const first = table.currentSnapshot.snapshotId
   table.overwrite(rows([3n], ['XASE']))
@@ -485,7 +489,7 @@ test('a v1 direct-manifest snapshot scans and stays available for time travel', 
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const location = path.join(root, 'v1')
-  const table = iceberg.Table.create(location, schema(), undefined, 1)
+  const table = iceberg.IcebergTable.create(location, schema(), undefined, 1)
   table.append(rows([1n], ['XNAS']))
   const snapshotId = table.currentSnapshot.snapshotId
   const direct = table.manifests().map((manifest) => manifest.manifestPath)
@@ -500,7 +504,7 @@ test('a v1 direct-manifest snapshot scans and stays available for time travel', 
   // Editing the JSON as a JavaScript object would round 64-bit snapshot ids.
   fs.writeFileSync(metadataPath, v1)
 
-  const reopened = iceberg.Table.open(location)
+  const reopened = iceberg.IcebergTable.open(location)
   assert.equal(reopened.currentSnapshot.manifestList, '')
   assert.deepEqual(reopened.currentSnapshot.manifests, direct)
   assert.equal(reopened.manifests().length, 1)
@@ -524,7 +528,7 @@ test('a schema evolves through one recorded chain, committed once', (t) => {
       nullable: false,
     }),
   )
-  const table = iceberg.Table.create(path.join(root, 'trades'), declared)
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), declared)
   table.append(
     new arrow.Table({
       id: arrow.vectorFromArray([1], new arrow.Int32()),
@@ -576,8 +580,8 @@ test('a schema update replays onto the schema a rival committed', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const location = path.join(root, 'trades')
 
-  const first = iceberg.Table.create(location, schema())
-  const second = iceberg.Table.open(location)
+  const first = iceberg.IcebergTable.create(location, schema())
+  const second = iceberg.IcebergTable.open(location)
   const version = first.version
   const current = first.schemas.length - 1
 
@@ -598,7 +602,7 @@ test('a schema update replays onto the schema a rival committed', (t) => {
     ['id', 'venue', 'early', 'late'],
   )
   assert.deepEqual(
-    Array.from(iceberg.Table.open(location).schema.dtype, (child) => child.name),
+    Array.from(iceberg.IcebergTable.open(location).schema.dtype, (child) => child.name),
     ['id', 'venue', 'early', 'late'],
   )
 })
@@ -608,7 +612,7 @@ test('updateProperties commits once, and nothing when there is nothing', (t) => 
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const location = path.join(root, 'trades')
 
-  const table = iceberg.Table.create(location, schema())
+  const table = iceberg.IcebergTable.create(location, schema())
   const version = table.version
 
   table.updateProperties({ 'commit.retry.num-retries': '4' })
@@ -629,16 +633,16 @@ test('updateProperties commits once, and nothing when there is nothing', (t) => 
   assert.equal(table.version, version + 2)
 
   // The properties are in the document, not in this wrapper.
-  const reopened = iceberg.Table.open(location)
+  const reopened = iceberg.IcebergTable.open(location)
   assert.equal(reopened.properties['write.target-file-size-bytes'], '1024')
-  assert.equal(iceberg.Table.open(location).targetFileSize, 1024)
+  assert.equal(iceberg.IcebergTable.open(location).targetFileSize, 1024)
 })
 
 test('compact merges undersized files and reports what it rewrote', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   table.append(rows([3n], ['XASE']))
   const before = table.currentSnapshot.snapshotId
@@ -712,7 +716,7 @@ test('a ref names a snapshot, and a missing one names the refs the table has', (
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   table.append(rows([1n], ['XNAS']))
 
   // Every commit moves the main branch, so a fresh append is reachable by ref.
@@ -770,25 +774,32 @@ test('a namespace is a resource whose collections carry the verbs', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const catalog = new iceberg.Catalog(root)
-  const analytics = catalog.namespace('analytics')
+  const catalog = new iceberg.IcebergCatalog('lake', root)
+  const analytics = catalog.namespaces().create('analytics')
   assert.equal(analytics.name, 'analytics')
+  assert.equal(analytics.implementation, 'IcebergNamespace')
+  assert.equal(String(analytics), 'lake.analytics')
 
   // Table access goes through the `tables` collection: open-or-create gets
   // or creates, and doing it again is the same table.
   const schema = new Field('row', 'struct<id: int64, venue: utf8>', false)
-  const first = analytics.tables.openOrCreate('trades', schema)
-  const same = analytics.tables.openOrCreate('trades', schema)
+  const first = iceberg.IcebergTable.from(analytics.tables().openOrCreate('trades', schema))
+  const same = iceberg.IcebergTable.from(analytics.tables().openOrCreate('trades', schema))
   assert.equal(same.tableUuid, first.tableUuid)
-  assert.ok(analytics.tables.has('trades'))
-  assert.deepEqual(analytics.tables.names(), ['trades'])
+  assert.ok(analytics.tables().has('trades'))
+  assert.deepEqual([...analytics.tables().keys()], ['trades'])
 
   // Writing rows through the view replaces the table's rows, creating a
   // table the namespace never had from the rows' own schema.
-  analytics.tables.overwrite('quotes', rows([1n, 2n], ['XNAS', 'XNYS']))
-  assert.equal(analytics.tables.get('quotes').scan().intoTable().numRows, 2)
-  assert.deepEqual(analytics.tables.names().sort(), ['quotes', 'trades'])
-  assert.deepEqual(catalog.namespaces.names(), ['analytics'])
+  analytics.tables().overwrite('quotes', rows([1n, 2n], ['XNAS', 'XNYS']))
+  assert.equal(iceberg.IcebergTable.from(analytics.tables().get('quotes')).scan().intoTable().numRows, 2)
+  assert.deepEqual([...analytics.tables().keys()].sort(), ['quotes', 'trades'])
+  assert.deepEqual([...catalog.namespaces().keys()], ['analytics'])
+
+  // The Iceberg class and the generic one describe the same namespace.
+  const standalone = new iceberg.IcebergNamespace(['lake', 'analytics'], path.join(root, 'analytics'))
+  assert.equal(String(standalone), 'lake.analytics')
+  assert.ok(iceberg.IcebergNamespace.from(analytics).intoNamespace().equals(analytics))
 })
 
 // The options value is a recording of what a caller set, never a snapshot of
@@ -871,7 +882,7 @@ test('an options value answers the fields it was given and defaults the rest', (
 test('property-derived option integers never round at the JavaScript boundary', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const table = iceberg.Table.create(root, fields.struct('row', [Field.from('id: int64')], { nullable: false }))
+  const table = iceberg.IcebergTable.create(root, fields.struct('row', [Field.from('id: int64')], { nullable: false }))
   table.updateProperties({ 'commit.retry.total-timeout-ms': String(2 ** 54) })
   const options = table.options()
   assert.throws(() => options.commitTotalTimeoutMs, /cannot be represented exactly/)
@@ -891,7 +902,7 @@ test('a data MIME type accepts native/parser input and rejects unsupported types
   )
   const puffin = new iceberg.IcebergOptions({ dataMimeType: MimeType.PUFFIN })
   assert.ok(puffin.dataMimeType.equals(MimeType.PUFFIN))
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   assert.throws(
     () => table.append(rows([1n], ['XNAS']), puffin),
     /write\.format\.default.*puffin/i,
@@ -959,7 +970,7 @@ test('a per-call data MIME type writes AVRO files beside the PARQUET ones', (t) 
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   table.append(rows([3n], ['XASE']), new iceberg.IcebergOptions({ dataMimeType: 'avro' }))
 
@@ -987,7 +998,7 @@ test('setOptions is what later calls resolve, and a per-call option outlives onl
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   table.setOptions(new iceberg.IcebergOptions({ targetFileSize: 4096, dataMimeType: MimeType.AVRO }))
   assert.ok(table.options().dataMimeType.equals(MimeType.AVRO))
   // The override shadows the table property the getter would otherwise read.
@@ -1018,25 +1029,25 @@ test('every write that takes a per-call data MIME type actually writes it', (t) 
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const avro = () => new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO })
 
-  const overwritten = iceberg.Table.create(path.join(root, 'ow'), schema(), ['venue'])
+  const overwritten = iceberg.IcebergTable.create(path.join(root, 'ow'), schema(), ['venue'])
   overwritten.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   overwritten.overwriteWhere({ venue: 'XNAS' }, rows([9n], ['XNAS']), avro())
   // XNYS is carried forward as the PARQUET file it already was; only the
   // partition this call rewrote is AVRO.
   assert.deepEqual(dataMimeTypes(overwritten), [MimeType.AVRO.toString(), MimeType.PARQUET.toString()])
 
-  const merged = iceberg.Table.create(path.join(root, 'mg'), schema())
+  const merged = iceberg.IcebergTable.create(path.join(root, 'mg'), schema())
   merged.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   merged.merge(rows([2n, 3n], ['XLON', 'XASE']), ['id'], true, avro())
   assert.deepEqual(dataMimeTypes(merged), [MimeType.AVRO.toString()])
   assert.equal(merged.scan().intoTable().numRows, 3)
 
-  const mergedWhere = iceberg.Table.create(path.join(root, 'mw'), schema(), ['venue'])
+  const mergedWhere = iceberg.IcebergTable.create(path.join(root, 'mw'), schema(), ['venue'])
   mergedWhere.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   mergedWhere.mergeWhere({ venue: 'XNAS' }, rows([1n], ['XNAS']), ['id'], true, avro())
   assert.deepEqual(dataMimeTypes(mergedWhere), [MimeType.AVRO.toString(), MimeType.PARQUET.toString()])
 
-  const replaced = iceberg.Table.create(path.join(root, 'ov'), schema())
+  const replaced = iceberg.IcebergTable.create(path.join(root, 'ov'), schema())
   replaced.append(rows([1n], ['XNAS']))
   replaced.overwrite(rows([2n], ['XNYS']), avro())
   assert.deepEqual(dataMimeTypes(replaced), [MimeType.AVRO.toString()])
@@ -1047,26 +1058,25 @@ test('every write that takes a per-call data MIME type actually writes it', (t) 
   }
 })
 
-test('the catalog write shorthands honour a per-call data format', (t) => {
+test('a table a catalog answers takes the per-call data format its own writes take', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  // `catalog.append(name, rows)` and `namespace.tables.append(name, rows)` are
-  // two spellings of one operation. One of them honoured the option and the
-  // other wrote PARQUET and returned a table, which is the divergence a caller
-  // has no way to see without opening the manifest.
-  const catalog = new iceberg.Catalog(root)
-  catalog.tables.create('sales.orders', schema())
-  catalog.append('sales.orders', rows([1n], ['XNAS']), new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }))
-  assert.deepEqual(dataMimeTypes(catalog.table('sales.orders')), [MimeType.AVRO.toString()])
+  // The generic views hand back Iceberg tables, whose own writes take the
+  // per-call options every other Iceberg write takes; the view's own write
+  // runs under the table's stored settings.
+  const catalog = new iceberg.IcebergCatalog('lake', root)
+  catalog.namespaces().create('sales')
+  const orders = iceberg.IcebergTable.from(catalog.tables().create('sales.orders', schema()))
+  orders.append(rows([1n], ['XNAS']), new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }))
+  assert.deepEqual(dataMimeTypes(iceberg.IcebergTable.from(catalog.table('sales.orders'))), [MimeType.AVRO.toString()])
 
-  catalog.overwrite('sales.orders', rows([2n], ['XNYS']), new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }))
-  assert.deepEqual(dataMimeTypes(catalog.table('sales.orders')), [MimeType.AVRO.toString()])
+  orders.overwrite(rows([2n], ['XNYS']), new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }))
+  assert.deepEqual(dataMimeTypes(iceberg.IcebergTable.from(catalog.table('sales.orders'))), [MimeType.AVRO.toString()])
 
-  // The view spelling agrees, which is the whole point of there being two.
-  catalog.namespaces.get('sales').tables.append('orders', rows([3n], ['XLON']))
+  catalog.namespaces().get('sales').tables().append('orders', rows([3n], ['XLON']))
   assert.deepEqual(
-    dataMimeTypes(catalog.table('sales.orders')),
+    dataMimeTypes(iceberg.IcebergTable.from(catalog.table('sales.orders'))),
     [MimeType.AVRO.toString(), MimeType.PARQUET.toString()],
   )
 })
@@ -1075,7 +1085,7 @@ test('the filtered reads take the per-call options the plain scan does', (t) => 
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema(), ['venue'])
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   table.createTag('release', table.currentSnapshot.snapshotId)
 
@@ -1093,7 +1103,7 @@ test('a tag and a branch name a snapshot, and removing one reports what it held'
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema(), ['venue'])
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   const first = table.currentSnapshot.snapshotId
   table.append(rows([3n], ['XASE']))
@@ -1132,7 +1142,7 @@ test('fastForward moves a branch onto a descendant and refuses to walk back', (t
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   table.append(rows([1n], ['XNAS']))
   const first = table.currentSnapshot.snapshotId
   table.append(rows([2n], ['XNYS']))
@@ -1156,7 +1166,7 @@ test('a plan counts what a scan would read without reading any of it', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema(), ['venue'])
   table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
   const first = table.currentSnapshot.snapshotId
   table.append(rows([4n], ['XASE']))
@@ -1190,7 +1200,7 @@ test('a plan counts what a scan would read without reading any of it', (t) => {
   // ScanPlan is deliberately the bounded public report, not an exposed task
   // list. An equivalent plan over different physical paths therefore has the
   // same value identity even though its hidden scan tasks cannot be equal.
-  const mirror = iceberg.Table.create(path.join(root, 'mirror'), schema(), ['venue'])
+  const mirror = iceberg.IcebergTable.create(path.join(root, 'mirror'), schema(), ['venue'])
   mirror.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
   mirror.append(rows([4n], ['XASE']))
   assert.notEqual(table.dataFiles()[0].filePath, mirror.dataFiles()[0].filePath)
@@ -1220,7 +1230,7 @@ test('manifestsAt answers for a retained snapshot what manifests answers for now
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   table.append(rows([1n], ['XNAS']))
   const first = table.currentSnapshot.snapshotId
   table.append(rows([2n], ['XNYS']))
@@ -1241,7 +1251,7 @@ test('scanWhere reads only the partition it names and projects as scan does', (t
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema(), ['venue'])
   table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
 
   const matched = table.scanWhere({ venue: 'XNAS' }).intoTable()
@@ -1269,7 +1279,7 @@ test('overwriteWhere replaces one partition and carries the others as they were'
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema(), ['venue'])
   table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
   const first = table.currentSnapshot.snapshotId
   const kept = table
@@ -1301,7 +1311,7 @@ test('merge updates the rows whose key is stored and appends the rest', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   table.append(rows([1n, 2n], ['XNAS', 'XNYS']))
   table.merge(rows([2n, 3n], ['XASE', 'XLON']), ['id'])
 
@@ -1325,7 +1335,7 @@ test('mergeWhere narrows a merge to the files its filters admit', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema(), ['venue'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema(), ['venue'])
   table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS']))
   const kept = table
     .dataFiles()
@@ -1350,7 +1360,7 @@ test('expireSnapshots supports defaults, retain overrides, and explicit ids', (t
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const table = iceberg.Table.create(path.join(root, 'trades'), schema())
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema())
   table.append(rows([1n], ['XNAS']))
   const first = table.currentSnapshot.snapshotId
   table.append(rows([2n], ['XNYS']))
@@ -1386,171 +1396,203 @@ test('the collection views do no I/O until a question is asked of them', (t) => 
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const catalog = new iceberg.Catalog(root)
-  const namespaces = catalog.namespaces
-  const orders = catalog.namespace('sales').tables
+  const catalog = new iceberg.IcebergCatalog('lake', root)
+  const namespaces = catalog.namespaces()
 
-  // A view describes a question, not an answer: both exist for a warehouse
-  // that holds nothing, and building them wrote nothing to it.
+  // A view describes a question, not an answer: it exists for a warehouse
+  // that holds nothing, and building it wrote nothing to it.
   assert.deepEqual(fs.readdirSync(root), [])
-  assert.deepEqual(namespaces.names(), [])
-  assert.equal(namespaces.size(), 0)
+  assert.deepEqual([...namespaces.keys()], [])
+  assert.equal(namespaces.size, 0)
   assert.equal(namespaces.has('sales'), false)
-  assert.deepEqual(orders.names(), [])
-  assert.equal(orders.size(), 0)
+  assert.deepEqual(fs.readdirSync(root), [])
+  assert.throws(() => namespaces.get('sales'), /expected a table at "lake\.sales", got nothing/)
+
+  // A create descends through existing namespaces only: the write under a
+  // namespace that is not there is its absence, and writes nothing.
+  assert.throws(
+    () => catalog.tables().append('sales.orders', rows([1n], ['XNAS'])),
+    /expected a table at "lake\.sales", got nothing/,
+  )
   assert.deepEqual(fs.readdirSync(root), [])
 
-  assert.throws(() => namespaces.get('sales'), /expected a namespace at "sales", got nothing/)
-
-  // Both views were built before the write and answer storage at call time, so
-  // both see it without being rebuilt.
-  catalog.append('sales.orders', rows([1n], ['XNAS']))
-  assert.deepEqual(namespaces.names(), ['sales'])
-  assert.equal(namespaces.size(), 1)
-  assert.deepEqual(orders.names(), ['orders'])
-  assert.equal(orders.size(), 1)
+  // A view built before the write answers storage at call time, so it sees
+  // the write without being rebuilt.
+  const orders = namespaces.create('sales').tables()
+  assert.deepEqual([...orders.keys()], [])
+  catalog.tables().append('sales.orders', rows([1n], ['XNAS']))
+  assert.deepEqual([...namespaces.keys()], ['sales'])
+  assert.equal(namespaces.size, 1)
+  assert.deepEqual([...orders.keys()], ['orders'])
+  assert.equal(orders.size, 1)
   assert.equal(orders.has('orders'), true)
-  assert.throws(() => orders.get('ledger'), /expected a table at "sales\.ledger", got nothing/)
+  assert.throws(() => orders.get('ledger'), /expected a table at "lake\.sales\.ledger", got nothing/)
 
   // One spelling chains from the catalog to the rows.
-  assert.equal(catalog.namespaces.get('sales').tables.get('orders').scan().intoTable().numRows, 1)
+  assert.equal(
+    iceberg.IcebergTable.from(catalog.namespaces().get('sales').tables().get('orders')).scan().intoTable().numRows,
+    1,
+  )
   // A namespace is a folder that is not a table, so a table answers false here
   // rather than being reported as a namespace nobody can open.
-  assert.equal(catalog.namespaces.get('sales').namespaces.has('orders'), false)
+  assert.equal(catalog.namespaces().get('sales').namespaces().has('orders'), false)
 })
 
-test('the tables view creates on first write and takes the same per-call options', (t) => {
+test('the tables view creates on first write and its tables take the per-call options', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const catalog = new iceberg.Catalog(root)
-  const tables = catalog.namespaces.openOrCreate('sales').tables
+  const catalog = new iceberg.IcebergCatalog('lake', root)
+  const tables = catalog.namespaces().openOrCreate('sales').tables()
 
-  const created = tables.create('quotes', schema())
-  assert.deepEqual(tables.names(), ['quotes'])
-  assert.equal(tables.openOrCreate('quotes', schema()).tableUuid, created.tableUuid)
+  const created = iceberg.IcebergTable.from(tables.create('quotes', schema()))
+  assert.deepEqual([...tables.keys()], ['quotes'])
+  assert.equal(iceberg.IcebergTable.from(tables.openOrCreate('quotes', schema())).tableUuid, created.tableUuid)
   assert.throws(
     () => tables.create('quotes', schema()),
-    /expected to create a table at "sales\.quotes", got an existing table/,
+    /expected to create a table at "lake\.sales\.quotes", got an existing table/,
   )
 
-  // A write through the view creates the table from the rows' own schema, and
-  // forwards the trailing options the way the table's own writes do.
-  tables.append('orders', rows([1n], ['XNAS']), new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }))
-  tables.append('orders', rows([2n], ['XNYS']))
+  // A write through the view creates the table from the rows' own schema;
+  // the table's own writes forward the trailing options.
+  const orders = iceberg.IcebergTable.from(tables.append('orders', rows([1n], ['XNAS'])))
+  orders.append(rows([2n], ['XNYS']), new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }))
   assert.deepEqual(
-    dataMimeTypes(tables.get('orders')),
+    dataMimeTypes(iceberg.IcebergTable.from(tables.get('orders'))),
     [MimeType.AVRO.toString(), MimeType.PARQUET.toString()],
   )
 
-  const replaced = tables.overwrite(
-    'orders',
-    rows([3n], ['XASE']),
-    new iceberg.IcebergOptions({ dataMimeType: MimeType.AVRO }),
-  )
-  assert.deepEqual(dataMimeTypes(replaced), [MimeType.AVRO.toString()])
+  const replaced = iceberg.IcebergTable.from(tables.overwrite('orders', rows([3n], ['XASE'])))
+  assert.deepEqual(dataMimeTypes(replaced), [MimeType.PARQUET.toString()])
   assert.equal(replaced.scan().intoTable().numRows, 1)
-  assert.deepEqual(tables.names(), ['orders', 'quotes'])
-  assert.equal(tables.size(), 2)
+  assert.deepEqual([...tables.keys()], ['orders', 'quotes'])
+  assert.equal(tables.size, 2)
 })
 
-test('a dotted create into an empty warehouse is one call', (t) => {
+test('a dotted name descends through existing namespaces', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const catalog = new iceberg.Catalog(root)
+  const catalog = new iceberg.IcebergCatalog('lake', root)
 
-  // The namespace view exists before its folder does, so the chain writes
-  // into an empty warehouse: the table's first metadata document is what
-  // brings every ancestor namespace into being.
-  const created = catalog.namespace('sales.eu').tables.create('orders', schema())
+  // A create descends through existing namespaces only, so the levels are
+  // made first; each one is one create.
+  assert.throws(
+    () => catalog.tables().create('sales.eu.orders', schema()),
+    /expected a table at "lake\.sales", got nothing/,
+  )
+  const eu = catalog.namespaces().create('sales').namespaces().create('eu')
+  const created = iceberg.IcebergTable.from(eu.tables().create('orders', schema()))
 
   // The same table, every spelling: the catalog's dotted entry point, the
   // root tables view, and the chained Map lookups.
-  assert.equal(catalog.table('sales.eu.orders').tableUuid, created.tableUuid)
-  assert.equal(catalog.tables.get('sales.eu.orders').tableUuid, created.tableUuid)
-  assert.ok(catalog.tables.has('sales.eu.orders'))
-  const chained = catalog.namespaces.get('sales.eu').tables.get('orders')
-  assert.equal(chained.tableUuid, created.tableUuid)
+  assert.equal(iceberg.IcebergTable.from(catalog.table('sales.eu.orders')).tableUuid, created.tableUuid)
+  assert.equal(iceberg.IcebergTable.from(catalog.tables().get('sales.eu.orders')).tableUuid, created.tableUuid)
+  assert.ok(catalog.tables().has('sales.eu.orders'))
+  const chained = catalog.namespaces().get('sales.eu').tables().get('orders')
+  assert.ok(chained.equals(created.intoTable()))
+  assert.equal(String(chained), 'lake.sales.eu.orders')
 
   // The root tables view lists tables directly under the warehouse, so a
   // table two namespaces down is reached by name, not by listing.
-  assert.deepEqual(catalog.tables.names(), [])
+  assert.deepEqual([...catalog.tables().keys()], [])
 })
 
 test('the views speak the whole Map vocabulary, lazily', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const catalog = new iceberg.Catalog(root)
-  const sales = catalog.namespaces.create('sales')
-  sales.tables.create('orders', schema())
-  sales.tables.create('returns', schema())
-  sales.namespaces.create('eu')
+  const catalog = new iceberg.IcebergCatalog('lake', root)
+  const sales = catalog.namespaces().create('sales')
+  sales.tables().create('orders', schema())
+  sales.tables().create('returns', schema())
+  sales.namespaces().create('eu')
 
   // has, size, keys, values, entries, and for...of - the Map verbs are the
   // spelling, because JavaScript has no indexing hook a native class can
   // answer, and the docs say so instead of emulating operator sugar.
-  assert.ok(catalog.namespaces.has('sales'))
-  assert.equal(catalog.namespaces.size(), 1)
-  assert.deepEqual([...catalog.namespaces.keys()], ['sales'])
-  assert.deepEqual([...catalog.namespaces.values()].map((view) => view.name), ['sales'])
+  assert.ok(catalog.namespaces().has('sales'))
+  assert.equal(catalog.namespaces().size, 1)
+  assert.deepEqual([...catalog.namespaces().keys()], ['sales'])
+  assert.deepEqual([...catalog.namespaces().values()].map((view) => view.name), ['sales'])
   assert.deepEqual(
-    [...catalog.namespaces.entries()].map(([name, view]) => [name, view.name]),
+    [...catalog.namespaces().entries()].map(([name, view]) => [name, view.name]),
     [['sales', 'sales']],
   )
   const walked = []
-  for (const name of catalog.namespaces) walked.push(name)
+  for (const name of catalog.namespaces()) walked.push(name)
   assert.deepEqual(walked, ['sales'])
 
-  assert.ok(sales.tables.has('orders'))
-  assert.equal(sales.tables.size(), 2)
-  assert.deepEqual([...sales.tables.keys()], ['orders', 'returns'])
+  assert.ok(sales.tables().has('orders'))
+  assert.equal(sales.tables().size, 2)
+  assert.deepEqual([...sales.tables().keys()], ['orders', 'returns'])
   assert.deepEqual(
-    [...sales.tables.entries()].map(([name, table]) => [name, table.location]),
+    [...sales.tables().entries()].map(([name, table]) => [name, String(table)]),
     [
-      ['orders', sales.tables.get('orders').location],
-      ['returns', sales.tables.get('returns').location],
+      ['orders', 'lake.sales.orders'],
+      ['returns', 'lake.sales.returns'],
     ],
   )
-  for (const name of sales.tables) walked.push(name)
+  for (const name of sales.tables()) walked.push(name)
   assert.deepEqual(walked, ['sales', 'orders', 'returns'])
 
-  // values() opens one table per step: a sibling whose metadata document is
-  // broken poisons the drain, never the first value.
+  // A table is read when it is asked: a sibling whose metadata document is
+  // broken is listed and described, and refuses by name only when read.
   const poisoned = path.join(root, 'sales', 'zzz', 'metadata')
   fs.mkdirSync(poisoned, { recursive: true })
   fs.writeFileSync(path.join(poisoned, 'v1.metadata.json'), '{}')
-  const values = sales.tables.values()
-  assert.equal(values.next().value.root.name, 'orders')
-  assert.throws(() => [...values])
+  const values = sales.tables().values()
+  assert.equal(values.next().value.name, 'orders')
+  assert.equal(values.next().value.name, 'returns')
+  const broken = values.next().value
+  assert.equal(broken.name, 'zzz')
+  assert.throws(() => broken.field())
+  assert.throws(() => iceberg.IcebergTable.from(broken).location)
 })
 
 test('a catalog and a namespace carry properties, transactionally', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
+  const catalog = new iceberg.IcebergCatalog('lake', path.join(root, 'warehouse'))
 
   // Absent means empty, and a call given nothing writes nothing.
-  assert.deepEqual(catalog.properties(), {})
+  assert.deepEqual(catalog.properties, {})
   catalog.updateProperties()
   assert.ok(!fs.existsSync(path.join(root, 'warehouse')))
 
   catalog.updateProperties({ owner: 'finance' })
-  assert.deepEqual(catalog.properties(), { owner: 'finance' })
+  assert.deepEqual(catalog.properties, { owner: 'finance' })
   catalog.updateProperties(new Map([['region', 'eu']]), ['owner'])
-  assert.deepEqual(catalog.properties(), { region: 'eu' })
+  assert.deepEqual(catalog.properties, { region: 'eu' })
 
   // The reserved prefix is refused with the core's own message.
   assert.throws(() => catalog.updateProperties({ 'ICEBERG:x': '1' }), /reserved "ICEBERG:"/)
 
-  const sales = catalog.namespaces.create('sales')
-  assert.deepEqual(sales.properties(), {})
+  // A namespace's stored properties sit over the catalog's, which it
+  // inherits, and a table's over both.
+  const sales = catalog.namespaces().create('sales')
+  assert.deepEqual(sales.properties, { region: 'eu' })
   sales.updateProperties({ team: 'emea' })
-  assert.deepEqual(sales.properties(), { team: 'emea' })
-  assert.deepEqual(catalog.namespaces.get('sales').properties(), { team: 'emea' })
+  assert.deepEqual(sales.properties, { region: 'eu', team: 'emea' })
+  assert.deepEqual(catalog.namespaces().get('sales').properties, { region: 'eu', team: 'emea' })
   assert.throws(() => sales.updateProperties({ 'ICEBERG:x': '1' }), /reserved "ICEBERG:"/)
+  const orders = sales.tables().create('orders', schema())
+  assert.deepEqual(orders.properties, { region: 'eu', team: 'emea' })
+  assert.deepEqual(iceberg.IcebergTable.from(orders).properties, { region: 'eu', team: 'emea' })
+
+  // What is stated on a catalog reaches everything under it and is written
+  // nowhere.
+  const stated = new iceberg.IcebergCatalog('lake', path.join(root, 'warehouse'), {
+    description: 'the lake',
+    properties: { owner: 'ops' },
+  })
+  assert.equal(stated.description, 'the lake')
+  assert.deepEqual(stated.properties, { region: 'eu', owner: 'ops' })
+  assert.deepEqual(stated.namespace('sales').properties, { region: 'eu', owner: 'ops', team: 'emea' })
+  assert.ok(!fs.readFileSync(path.join(root, 'warehouse/metadata/catalog.json'), 'utf8').includes('ops'))
+  assert.ok(iceberg.IcebergCatalog.from(stated.intoCatalog()).equals(stated))
+  assert.equal(stated.intoCatalog().implementation, 'IcebergCatalog')
 })
 
 // ---------------------------------------------------------------------------
@@ -1573,7 +1615,7 @@ const at = (day, hour, minute = 0, second = 0) =>
 test('a bare column partitions by identity, as the short spelling always did', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const table = iceberg.Table.create(path.join(root, 'trades'), timed(), ['venue'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), timed(), ['venue'])
   assert.deepEqual(
     table.spec.fields.map((field) => [field.name, field.transform, field.sourceId]),
     [['venue', 'identity', 3]],
@@ -1584,7 +1626,7 @@ test('a bare column partitions by identity, as the short spelling always did', (
 test('a day partition writes one data file per UTC day and reads every row back', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const table = iceberg.Table.create(path.join(root, 'daily'), timed(), ['days(ts)'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'daily'), timed(), ['days(ts)'])
   assert.deepEqual(
     table.spec.fields.map((field) => [field.name, field.transform, field.sourceId]),
     [['ts_day', 'day', 2]],
@@ -1616,21 +1658,21 @@ test('a day partition writes one data file per UTC day and reads every row back'
   // whatever the schema declares.
   const declared = timed()
   declared.partition.by = ['days(ts)']
-  const fromSchema = iceberg.Table.create(path.join(root, 'declared'), declared)
+  const fromSchema = iceberg.IcebergTable.create(path.join(root, 'declared'), declared)
   assert.ok(fromSchema.spec.equals(table.spec))
-  const explicit = iceberg.Table.openOrCreate(path.join(root, 'explicit'), declared, undefined, 2)
+  const explicit = iceberg.IcebergTable.openOrCreate(path.join(root, 'explicit'), declared, undefined, 2)
   assert.ok(explicit.spec.equals(table.spec))
-  assert.ok(iceberg.Table.create(path.join(root, 'plain'), timed()).spec.isUnpartitioned())
-  assert.ok(iceberg.Table.create(path.join(root, 'none'), declared, null).spec.isUnpartitioned())
+  assert.ok(iceberg.IcebergTable.create(path.join(root, 'plain'), timed()).spec.isUnpartitioned())
+  assert.ok(iceberg.IcebergTable.create(path.join(root, 'none'), declared, null).spec.isUnpartitioned())
   assert.ok(
-    iceberg.Table.openOrCreate(path.join(root, 'none-either'), declared, null).spec.isUnpartitioned(),
+    iceberg.IcebergTable.openOrCreate(path.join(root, 'none-either'), declared, null).spec.isUnpartitioned(),
   )
 })
 
 test('a minutes(ts, 15) partition cuts the rows into quarter hours', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const table = iceberg.Table.create(path.join(root, 'quarters'), timed(), [
+  const table = iceberg.IcebergTable.create(path.join(root, 'quarters'), timed(), [
     'minutes(ts, 15)',
     'venue',
   ])
@@ -1669,16 +1711,16 @@ test('an entry no spec can hold is refused, naming it', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const location = path.join(root, 'refused')
   assert.throws(
-    () => iceberg.Table.create(location, timed(), ['lower(venue)']),
+    () => iceberg.IcebergTable.create(location, timed(), ['lower(venue)']),
     /expected an Iceberg partition transform .* got `lower\(venue\)`/,
   )
   assert.throws(
-    () => iceberg.Table.create(location, timed(), ['tier']),
+    () => iceberg.IcebergTable.create(location, timed(), ['tier']),
     /got `tier`: no column "tier" to partition on/,
   )
   // An entry the grammar cannot read is refused by the declaration itself.
   assert.throws(
-    () => iceberg.Table.openOrCreate(location, timed(), ['venue int64']),
+    () => iceberg.IcebergTable.openOrCreate(location, timed(), ['venue int64']),
     /PARTITION:by.*venue int64/,
   )
   // Nothing was created.

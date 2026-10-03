@@ -68,6 +68,9 @@ pub enum Namespace {
     /// Boxed: a located namespace carries its location and two property
     /// bags, several times the size of a memory one.
     Folder(Box<FolderNamespace>),
+    /// A folder of an Iceberg warehouse, nested to any depth.
+    #[cfg(feature = "iceberg")]
+    Iceberg(Box<crate::iceberg::IcebergNamespace>),
 }
 
 impl Namespace {
@@ -77,6 +80,8 @@ impl Namespace {
         match self {
             Self::Memory(namespace) => namespace,
             Self::Folder(namespace) => namespace.as_ref(),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(namespace) => namespace.as_ref(),
         }
     }
 
@@ -106,11 +111,14 @@ impl Namespace {
         Tables::of(self)
     }
 
-    /// The implementation's own name: `MemoryNamespace`, `FolderNamespace`.
+    /// The implementation's own name: `MemoryNamespace`, `FolderNamespace`,
+    /// `IcebergNamespace`.
     pub(crate) const fn implementation_name(&self) -> &'static str {
         match self {
             Self::Memory(_) => "MemoryNamespace",
             Self::Folder(_) => "FolderNamespace",
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(_) => "IcebergNamespace",
         }
     }
 
@@ -119,6 +127,8 @@ impl Namespace {
         match self {
             Self::Memory(namespace) => Self::Memory(namespace.inheriting(parent)),
             Self::Folder(namespace) => Self::Folder(Box::new(namespace.inheriting(parent))),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(namespace) => Self::Iceberg(Box::new(namespace.inheriting(parent))),
         }
     }
 }
@@ -212,6 +222,13 @@ impl From<MemoryNamespace> for Namespace {
 impl From<FolderNamespace> for Namespace {
     fn from(namespace: FolderNamespace) -> Self {
         Self::Folder(Box::new(namespace))
+    }
+}
+
+#[cfg(feature = "iceberg")]
+impl From<crate::iceberg::IcebergNamespace> for Namespace {
+    fn from(namespace: crate::iceberg::IcebergNamespace) -> Self {
+        Self::Iceberg(Box::new(namespace))
     }
 }
 

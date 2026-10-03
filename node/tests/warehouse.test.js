@@ -61,16 +61,19 @@ test('the warehouse namespace holds one class per kind and a constructor per imp
   }
 })
 
-test('the iceberg namespace keeps its names under the renamed native classes', () => {
-  for (const name of ['Catalog', 'Namespace', 'Namespaces', 'Tables', 'Table']) {
+test('the iceberg namespace holds the Iceberg implementations under their own names', () => {
+  for (const name of ['IcebergCatalog', 'IcebergNamespace', 'IcebergTable']) {
     assert.equal(typeof iceberg[name], 'function', name)
-    assert.notEqual(iceberg[name], warehouse[name], name)
+    assert.equal(iceberg[name].name, name)
   }
-  assert.equal(iceberg.Catalog.name, 'IcebergCatalog')
-  assert.equal(iceberg.Table.name, 'IcebergTable')
-  assert.equal(typeof iceberg.Table.create, 'function')
-  assert.equal(typeof iceberg.Namespaces.prototype.values, 'function')
-  assert.equal(typeof iceberg.Tables.prototype.entries, 'function')
+  // The generic kinds and the views are the warehouse's alone.
+  for (const retired of ['Catalog', 'Namespace', 'Namespaces', 'Tables', 'Table']) {
+    assert.equal(iceberg[retired], undefined, retired)
+  }
+  assert.equal(typeof iceberg.IcebergTable.create, 'function')
+  assert.equal(typeof iceberg.IcebergTable.from, 'function')
+  assert.equal(typeof iceberg.IcebergCatalog.from, 'function')
+  assert.equal(typeof iceberg.IcebergNamespace.from, 'function')
 })
 
 test('a memory catalog describes itself and touches nothing', () => {

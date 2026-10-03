@@ -11,12 +11,12 @@
 //! `fixed[16]`.
 //!
 //! A table is one container: `metadata/` holds metadata and manifests, and
-//! `data/` holds record files. [`Table`] reaches both through its supplied
+//! `data/` holds record files. [`IcebergTable`] reaches both through its supplied
 //! handle and implements [`IOBase`], so [`crate::IOMedia`] operations use
 //! the same storage path.
 //!
 //! ```no_run
-//! use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+//! use yggdryl::iceberg::{FormatVersion, PartitionSpec, IcebergTable, assign_field_ids};
 //! use yggdryl::local::LocalFolder;
 //! use yggdryl::{DataType, Field, StructType};
 //!
@@ -30,7 +30,7 @@
 //!
 //! let folder = LocalFolder::new(LocalFolder::temporary()?.path()?.join("yggdryl-trades"))?;
 //! let spec = PartitionSpec::identity(0, &schema, &["venue"])?;
-//! let mut table = Table::create(folder, FormatVersion::V2, schema.clone(), spec)?;
+//! let mut table = IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec)?;
 //!
 //! // A table that has never been written to has no current snapshot.
 //! assert!(table.current_snapshot().is_none());
@@ -74,7 +74,7 @@
 //! # Scope
 //!
 //! Yggdryl supplies storage and publication, not a remote catalog client.
-//! [`Table::open`] resolves `metadata/version-hint.text`, then falls back to the
+//! [`IcebergTable::open`] resolves `metadata/version-hint.text`, then falls back to the
 //! highest-numbered metadata document.
 //!
 //! Writes support `bucket`, `truncate`, `year`, `month`, `day`, `hour`,
@@ -99,7 +99,7 @@ pub(crate) mod table;
 mod types;
 pub(crate) mod value;
 
-pub use catalog::{Catalog, Catalogs, Names, Namespace, Namespaces, Tables};
+pub use catalog::{IcebergCatalog, IcebergNamespace};
 pub use evolve::{SchemaUpdate, can_promote};
 pub use manifest::{
     DataFile, EntryStatus, FieldSummary, ManifestContent, ManifestEntry, ManifestFile,
@@ -113,7 +113,7 @@ pub use scan::{ScanPlan, ScanTask};
 pub use schema::{assign_field_ids, last_column_id, schema_from_json, schema_into_json};
 pub use snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
 pub(crate) use table::ReplacedPartitions;
-pub use table::{CommitConflict, Compaction, Table};
+pub use table::{CommitConflict, Compaction, IcebergTable};
 pub use types::PrimitiveType;
 
 use crate::holder::Holder;
@@ -133,7 +133,7 @@ const DATA_DIR: &str = "data";
 /// the same call as reading and upserting one partition of a plain folder.
 pub(crate) struct Located {
     /// The table itself, opened from whichever ancestor holds its metadata.
-    table: Table<Holder>,
+    table: IcebergTable<Holder>,
     /// The `column=value` pairs the addressed location spells below the table.
     filters: Vec<(String, String)>,
 }
@@ -173,7 +173,7 @@ impl Located {
     /// `replaced` is the one write's accumulator of the partitions its
     /// earlier cadences replaced, so a merge keyed by the partition alone
     /// replaces each partition once and appends to it after; see
-    /// [`Table::commit_merge_cadence`].
+    /// [`IcebergTable::commit_merge_cadence`].
     pub(crate) fn merge_prepared(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -216,7 +216,7 @@ impl Located {
             } else {
                 vec![".."; climbed].join("/")
             };
-            if let Some(table) = Table::locate(handle.child_by_path(&relative)?)? {
+            if let Some(table) = IcebergTable::locate(handle.child_by_path(&relative)?)? {
                 filters.reverse();
                 return Ok(Some(Self { table, filters }));
             }
@@ -264,7 +264,7 @@ impl Located {
     ///
     /// With no [`commit_batch_num`](crate::media::IORecordOptions::commit_batch_num)
     /// the cadence is the table's own - a commit each time the held batches
-    /// reach [`Table::target_file_size_bytes`], then the remainder - the
+    /// reach [`IcebergTable::target_file_size_bytes`], then the remainder - the
     /// first commit overwriting and every later one appending, and the
     /// commits before a failure stay published.
     ///
@@ -305,7 +305,7 @@ impl Located {
     /// every stored file.
     ///
     /// The cadence is the table's own where none is stated - a commit per
-    /// [`Table::target_file_size_bytes`] of held batches, then the
+    /// [`IcebergTable::target_file_size_bytes`] of held batches, then the
     /// remainder - and the commits before a failure stay published.
     ///
     /// # Errors
@@ -345,8 +345,8 @@ impl Located {
     ///
     /// The partition columns lead the match key, so a `merge_by` naming
     /// nothing beyond them replaces the partitions the rows fall in; see
-    /// [`Table::commit_merge_where`]. The cadence is the table's own where
-    /// none is stated - a commit per [`Table::target_file_size_bytes`] of
+    /// [`IcebergTable::commit_merge_where`]. The cadence is the table's own where
+    /// none is stated - a commit per [`IcebergTable::target_file_size_bytes`] of
     /// held batches, then the remainder - and every commit merges by the
     /// key: a keyed merge upserts per commit, and a merge keyed by the
     /// partition alone replaces a partition on the first commit of the

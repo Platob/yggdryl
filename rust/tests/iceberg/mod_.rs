@@ -21,8 +21,8 @@ use yggdryl::fs::{
 };
 use yggdryl::iceberg::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
-    ManifestContent, ManifestEntry, ManifestFile, PartitionField, PartitionSpec, ScanPlan,
-    ScanTask, Snapshot, SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform,
+    IcebergTable, ManifestContent, ManifestEntry, ManifestFile, PartitionField, PartitionSpec,
+    ScanPlan, ScanTask, Snapshot, SnapshotRef, SortField, SortOrder, TableMetadata, Transform,
     assign_field_ids, schema_from_json, schema_into_json,
 };
 use yggdryl::local::LocalFolder;
@@ -2376,8 +2376,8 @@ mod tables {
     use arrow_schema::DataType as ArrowDataType;
 
     use super::{
-        FormatVersion, IOBase, IcebergOptions, LocalFolder, PartitionField, PartitionSpec, Table,
-        Transform, assign_field_ids, collect, root, trade_schema, trades,
+        FormatVersion, IOBase, IcebergOptions, IcebergTable, LocalFolder, PartitionField,
+        PartitionSpec, Transform, assign_field_ids, collect, root, trade_schema, trades,
     };
 
     use yggdryl::IOMedia;
@@ -2397,7 +2397,7 @@ mod tables {
         .unwrap()
         .required_field("row");
 
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -2413,14 +2413,14 @@ mod tables {
             .map(|child| child.parquet_field_id().unwrap().unwrap())
             .collect();
         assert_eq!(ids, [1, 2]);
-        assert_eq!(table.metadata().last_column_id(), 2);
+        assert_eq!(table.metadata().unwrap().last_column_id(), 2);
 
         // The numbered table is a working table, not merely a written one.
         let batch = trades(&[7], &[None], &[Some("X")]);
         table
             .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(collect(reopened.scan(None).unwrap()).len(), 1);
     }
 
@@ -2434,7 +2434,7 @@ mod tables {
             .unwrap()
             .required_field("row");
 
-        let table = Table::create(
+        let table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -2450,14 +2450,14 @@ mod tables {
             .map(|child| child.parquet_field_id().unwrap().unwrap())
             .collect();
         assert_eq!(ids, [7, 8]);
-        assert_eq!(table.metadata().last_column_id(), 8);
+        assert_eq!(table.metadata().unwrap().last_column_id(), 8);
     }
 
     #[test]
     fn an_empty_table_has_no_snapshot_and_reads_as_no_rows() {
         let path = root("empty");
         let schema = trade_schema();
-        let table = Table::create(
+        let table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -2465,7 +2465,7 @@ mod tables {
         )
         .unwrap();
 
-        assert!(table.current_snapshot().is_none());
+        assert!(table.current_snapshot().unwrap().is_none());
         assert!(table.manifests().unwrap().is_empty());
         assert!(table.data_files().unwrap().is_empty());
         assert_eq!(table.row_size().unwrap(), 0);
@@ -2473,22 +2473,22 @@ mod tables {
         assert_eq!(collect(table.scan(None).unwrap()).len(), 0);
 
         // The document is on disk and reopening finds it.
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.metadata_version(), 1);
-        assert!(reopened.current_snapshot().is_none());
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata_version().unwrap(), 1);
+        assert!(reopened.current_snapshot().unwrap().is_none());
     }
 
     #[test]
     fn open_preserves_an_official_uuid_metadata_name_in_history() {
         let path = root("official-metadata-name");
-        let table = Table::create(
+        let table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        let generated_name = table.metadata_file_name();
+        let generated_name = table.metadata_file_name().unwrap();
         drop(table);
 
         let official_name = "00001-123e4567-e89b-12d3-a456-426614174000.metadata.json";
@@ -2498,8 +2498,8 @@ mod tables {
         )
         .unwrap();
 
-        let mut reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.metadata_file_name(), official_name);
+        let mut reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata_file_name().unwrap(), official_name);
         reopened
             .commit_metadata_changes(|metadata| {
                 metadata.set_property("owner", "interop")?;
@@ -2509,6 +2509,7 @@ mod tables {
         assert!(
             reopened
                 .metadata()
+                .unwrap()
                 .metadata_log()
                 .iter()
                 .any(|(_, location)| location.ends_with(official_name))
@@ -2518,21 +2519,21 @@ mod tables {
     #[test]
     fn a_commit_publishes_the_name_a_version_hint_resolves() {
         let path = root("hint-resolvable-metadata-name");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        assert_eq!(table.metadata_file_name(), "v1.metadata.json");
+        assert_eq!(table.metadata_file_name().unwrap(), "v1.metadata.json");
         table
             .commit_metadata_changes(|metadata| {
                 metadata.set_property("owner", "interop")?;
                 Ok(())
             })
             .unwrap();
-        assert_eq!(table.metadata_file_name(), "v2.metadata.json");
+        assert_eq!(table.metadata_file_name().unwrap(), "v2.metadata.json");
 
         // `v{version}` is the only spelling a numeric hint resolves, so it is
         // the only one a catalog-free reader - Spark's Hadoop tables among
@@ -2556,7 +2557,7 @@ mod tables {
     #[test]
     fn metadata_compression_uses_the_official_property_and_gzip_magic() {
         let path = root("gzip-metadata");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
@@ -2570,28 +2571,34 @@ mod tables {
             })
             .unwrap();
 
-        assert_eq!(table.metadata_file_name(), "v2.gz.metadata.json");
+        assert_eq!(table.metadata_file_name().unwrap(), "v2.gz.metadata.json");
         assert!(
-            std::fs::read(path.join("metadata").join(table.metadata_file_name()))
-                .unwrap()
-                .starts_with(&[0x1f, 0x8b])
+            std::fs::read(
+                path.join("metadata")
+                    .join(table.metadata_file_name().unwrap())
+            )
+            .unwrap()
+            .starts_with(&[0x1f, 0x8b])
         );
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.metadata_file_name(), table.metadata_file_name());
-        assert_eq!(reopened.metadata().property("owner"), None);
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(
+            reopened.metadata_file_name().unwrap(),
+            table.metadata_file_name().unwrap()
+        );
+        assert_eq!(reopened.metadata().unwrap().property("owner"), None);
     }
 
     #[test]
     fn direct_create_refuses_to_replace_an_existing_table() {
         let path = root("create-conflict");
-        Table::create(
+        IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        let error = Table::create(
+        let error = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
@@ -2600,9 +2607,10 @@ mod tables {
         .unwrap_err();
         assert!(error.is_conflict(), "{error}");
         assert_eq!(
-            Table::open(LocalFolder::new(&path).unwrap())
+            IcebergTable::open(LocalFolder::new(&path).unwrap())
                 .unwrap()
-                .metadata_version(),
+                .metadata_version()
+                .unwrap(),
             1
         );
     }
@@ -2610,14 +2618,17 @@ mod tables {
     #[test]
     fn child_locations_require_a_table_path_boundary() {
         let path = root("location-boundary");
-        let table = Table::create(
+        let table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        let sibling = format!("{}2/data/file.parquet", table.metadata().location());
+        let sibling = format!(
+            "{}2/data/file.parquet",
+            table.metadata().unwrap().location()
+        );
         assert!(child_at(&table, &sibling).is_err());
     }
 
@@ -2625,7 +2636,7 @@ mod tables {
     fn an_unpartitioned_table_round_trips_its_rows() {
         let path = root("unpartitioned");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -2642,7 +2653,7 @@ mod tables {
             .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
-        let snapshot = table.current_snapshot().expect("a snapshot");
+        let snapshot = table.current_snapshot().unwrap().expect("a snapshot");
         assert_eq!(snapshot.operation(), "append");
         assert_eq!(snapshot.summary_value("added-records"), Some("3"));
         assert_eq!(table.row_size().unwrap(), 3);
@@ -2655,14 +2666,14 @@ mod tables {
         assert_eq!(rows[0].1.as_deref(), Some("AAPL"));
 
         // And a reopened table sees exactly the same thing.
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(collect(reopened.scan(None).unwrap()), rows);
     }
 
     #[test]
     fn a_v1_snapshot_with_direct_manifests_scans_and_time_travels() {
         let path = root("v1-direct-manifests");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V1,
             trade_schema(),
@@ -2673,7 +2684,7 @@ mod tables {
         table
             .commit_append(yggdryl::arrow::batch_reader(first.schema(), [first]))
             .unwrap();
-        let snapshot_id = table.current_snapshot().unwrap().snapshot_id;
+        let snapshot_id = table.current_snapshot().unwrap().unwrap().snapshot_id;
         let manifest_paths: Vec<Scalar> = table
             .manifests()
             .unwrap()
@@ -2683,7 +2694,7 @@ mod tables {
 
         // This is the original v1 snapshot fixture: manifests were embedded
         // directly in metadata before manifest lists became universal.
-        let mut document = table.metadata().clone().into_json().unwrap();
+        let mut document = table.metadata().unwrap().clone().into_json().unwrap();
         let snapshots = document
             .get_key_str("snapshots")
             .unwrap()
@@ -2699,11 +2710,13 @@ mod tables {
         document = document
             .with_key("snapshots", Scalar::from_sequence(snapshots))
             .unwrap();
-        let metadata_path = path.join("metadata").join(table.metadata_file_name());
+        let metadata_path = path
+            .join("metadata")
+            .join(table.metadata_file_name().unwrap());
         std::fs::write(metadata_path, yggdryl::json::into_bytes(&document).unwrap()).unwrap();
 
-        let mut reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        let v1 = reopened.current_snapshot().unwrap();
+        let mut reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let v1 = reopened.current_snapshot().unwrap().unwrap();
         assert_eq!(v1.snapshot_id, snapshot_id);
         assert!(v1.manifest_list.is_empty());
         assert_eq!(v1.manifests.as_ref().map(Vec::len), Some(1));
@@ -2727,6 +2740,7 @@ mod tables {
         assert!(
             reopened
                 .metadata()
+                .unwrap()
                 .snapshot_by_id(snapshot_id)
                 .unwrap()
                 .manifests
@@ -2739,7 +2753,7 @@ mod tables {
         let path = root("partitioned");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -2839,7 +2853,7 @@ mod tables {
                 })
                 .collect(),
         };
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -2933,7 +2947,7 @@ mod tables {
                 transform: Transform::Truncate(2),
             }],
         };
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -2996,7 +3010,7 @@ mod tables {
                 },
             ],
         };
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -3093,7 +3107,7 @@ mod tables {
                     },
                 ],
             };
-            let mut table = Table::create(
+            let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
                 FormatVersion::V2,
                 schema.clone(),
@@ -3145,7 +3159,7 @@ mod tables {
         .unwrap()
         .required_field("row");
         assign_field_ids(&mut schema, 1).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -3210,7 +3224,7 @@ mod tables {
                 .unwrap()
                 .required_field("row");
             assign_field_ids(&mut schema, 1).unwrap();
-            let mut table = Table::create(
+            let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
                 FormatVersion::V2,
                 schema.clone(),
@@ -3265,7 +3279,7 @@ mod tables {
                 transform: Transform::Identity,
             }],
         };
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -3312,7 +3326,7 @@ mod tables {
         let path = root("null-partition");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -3351,7 +3365,7 @@ mod tables {
     fn appending_keeps_what_is_stored_and_overwriting_replaces_it() {
         let path = root("append-overwrite");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -3383,10 +3397,11 @@ mod tables {
 
         // The previous snapshot is still recorded, which is what makes the
         // overwrite reversible.
-        assert_eq!(table.metadata().snapshots().len(), 3);
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 3);
         assert!(
             table
                 .current_snapshot()
+                .unwrap()
                 .and_then(|snapshot| snapshot.parent_snapshot_id)
                 .is_some()
         );
@@ -3396,7 +3411,7 @@ mod tables {
     fn a_scan_pushes_the_requested_columns_down_to_each_file() {
         let path = root("pushdown");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -3444,7 +3459,7 @@ mod tables {
     fn a_required_column_with_an_initial_default_reads_it_in_files_that_predate_it() {
         let path = root("evolution-initial-default");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V3,
             schema.clone(),
@@ -3511,7 +3526,7 @@ mod tables {
     fn a_table_whose_schema_evolved_reads_old_files_with_the_new_column_null() {
         let path = root("evolution");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -3567,7 +3582,7 @@ mod tables {
     fn a_manifest_naming_a_file_that_is_not_there_fails_the_scan_not_the_metadata() {
         let path = root("missing-file");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -3585,7 +3600,7 @@ mod tables {
 
         // The metadata still reads: a manifest is metadata, and it still says
         // what it always said.
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(reopened.data_files().unwrap().len(), 1);
 
         // The read is where absence shows up, and a missing resource is empty
@@ -3597,7 +3612,7 @@ mod tables {
     fn a_v1_table_writes_and_reads_without_sequence_numbers() {
         let path = root("v1");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V1,
             schema,
@@ -3610,12 +3625,15 @@ mod tables {
             .unwrap();
 
         assert_eq!(
-            table.current_snapshot().unwrap().sequence_number,
+            table.current_snapshot().unwrap().unwrap().sequence_number,
             None,
             "v1 snapshots carry no sequence number"
         );
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.metadata().format_version(), FormatVersion::V1);
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(
+            reopened.metadata().unwrap().format_version(),
+            FormatVersion::V1
+        );
         assert_eq!(collect(reopened.scan(None).unwrap()).len(), 2);
     }
 
@@ -3623,22 +3641,28 @@ mod tables {
     fn a_v3_table_tracks_row_lineage_across_commits() {
         let path = root("v3");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V3,
             schema,
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        assert_eq!(table.metadata().next_row_id(), Some(0));
+        assert_eq!(table.metadata().unwrap().next_row_id(), Some(0));
 
         let first = trades(&[1, 2], &[Some("AAPL"), Some("MSFT")], &[Some("XNAS"); 2]);
         table
             .commit_append(yggdryl::arrow::batch_reader(first.schema(), [first]))
             .unwrap();
-        assert_eq!(table.current_snapshot().unwrap().first_row_id, Some(0));
-        assert_eq!(table.current_snapshot().unwrap().added_rows, Some(2));
-        assert_eq!(table.metadata().next_row_id(), Some(2));
+        assert_eq!(
+            table.current_snapshot().unwrap().unwrap().first_row_id,
+            Some(0)
+        );
+        assert_eq!(
+            table.current_snapshot().unwrap().unwrap().added_rows,
+            Some(2)
+        );
+        assert_eq!(table.metadata().unwrap().next_row_id(), Some(2));
         assert_eq!(table.manifests().unwrap()[0].first_row_id, Some(0));
         assert_eq!(table.data_files().unwrap()[0].0.first_row_id, Some(0));
 
@@ -3646,9 +3670,15 @@ mod tables {
         table
             .commit_append(yggdryl::arrow::batch_reader(second.schema(), [second]))
             .unwrap();
-        assert_eq!(table.current_snapshot().unwrap().first_row_id, Some(2));
-        assert_eq!(table.current_snapshot().unwrap().added_rows, Some(1));
-        assert_eq!(table.metadata().next_row_id(), Some(3));
+        assert_eq!(
+            table.current_snapshot().unwrap().unwrap().first_row_id,
+            Some(2)
+        );
+        assert_eq!(
+            table.current_snapshot().unwrap().unwrap().added_rows,
+            Some(1)
+        );
+        assert_eq!(table.metadata().unwrap().next_row_id(), Some(3));
         let manifests = table.manifests().unwrap();
         assert_eq!(manifests[0].first_row_id, Some(0));
         assert_eq!(manifests[1].first_row_id, Some(2));
@@ -3661,15 +3691,15 @@ mod tables {
         row_ids.sort_unstable();
         assert_eq!(row_ids, [0, 2]);
 
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.metadata().next_row_id(), Some(3));
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata().unwrap().next_row_id(), Some(3));
         assert_eq!(collect(reopened.scan(None).unwrap()).len(), 3);
     }
 
     #[test]
     fn v3_rewrites_are_rejected_before_reader_or_storage_mutation() {
         let path = root("v3-rewrite-lineage");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V3,
             trade_schema(),
@@ -3688,6 +3718,7 @@ mod tables {
         assert!(
             table
                 .metadata()
+                .unwrap()
                 .snapshots()
                 .iter()
                 .all(|snapshot| snapshot.operation() == "append"),
@@ -3702,8 +3733,8 @@ mod tables {
             paths.sort();
             paths
         };
-        let version = table.metadata_version();
-        let metadata_hash = table.metadata().stable_hash();
+        let version = table.metadata_version().unwrap();
+        let metadata_hash = table.metadata().unwrap().stable_hash();
         let data_files = children("data");
         let metadata_files = children("metadata");
 
@@ -3746,8 +3777,8 @@ mod tables {
             "{compact_error}"
         );
 
-        assert_eq!(table.metadata_version(), version);
-        assert_eq!(table.metadata().stable_hash(), metadata_hash);
+        assert_eq!(table.metadata_version().unwrap(), version);
+        assert_eq!(table.metadata().unwrap().stable_hash(), metadata_hash);
         assert_eq!(children("data"), data_files);
         assert_eq!(children("metadata"), metadata_files);
     }
@@ -3755,7 +3786,7 @@ mod tables {
     #[test]
     fn v2_still_permits_keyed_merge_and_compaction() {
         let path = root("v2-rewrite-lineage");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
@@ -3797,7 +3828,7 @@ mod tables {
     fn the_first_v3_commit_after_upgrade_assigns_retained_rows() {
         let path = root("v3-upgrade-lineage");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -3811,16 +3842,16 @@ mod tables {
         table
             .commit_metadata_changes(|metadata| metadata.upgrade_format_version(FormatVersion::V3))
             .unwrap();
-        assert_eq!(table.metadata().next_row_id(), Some(0));
+        assert_eq!(table.metadata().unwrap().next_row_id(), Some(0));
 
         let added = trades(&[3], &[Some("NVDA")], &[Some("XNYS")]);
         table
             .commit_append(yggdryl::arrow::batch_reader(added.schema(), [added]))
             .unwrap();
-        let snapshot = table.current_snapshot().unwrap();
+        let snapshot = table.current_snapshot().unwrap().unwrap();
         assert_eq!(snapshot.first_row_id, Some(0));
         assert_eq!(snapshot.added_rows, Some(3));
-        assert_eq!(table.metadata().next_row_id(), Some(3));
+        assert_eq!(table.metadata().unwrap().next_row_id(), Some(3));
         let manifests = table.manifests().unwrap();
         assert_eq!(manifests[0].first_row_id, Some(0));
         assert_eq!(manifests[1].first_row_id, Some(2));
@@ -3840,7 +3871,7 @@ mod tables {
         let schema = trade_schema();
         let mut spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
         spec.fields[0].transform = super::Transform::Bucket(8);
-        let message = Table::create(
+        let message = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -3856,7 +3887,7 @@ mod tables {
     fn a_folder_with_no_metadata_says_so_rather_than_pretending_to_be_a_table() {
         let path = root("not-a-table");
         std::fs::create_dir_all(&path).unwrap();
-        let message = Table::open(LocalFolder::new(&path).unwrap())
+        let message = IcebergTable::open(LocalFolder::new(&path).unwrap())
             .unwrap_err()
             .to_string();
         assert!(message.contains("metadata document"), "{message}");
@@ -3867,7 +3898,7 @@ mod tables {
         let path = root("self-describing");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -3917,7 +3948,8 @@ mod planning {
     use arrow_array::{Int64Array, RecordBatch, StringArray};
 
     use super::{
-        Field, FormatVersion, IOBase, PartitionSpec, Table, collect, root, trade_schema, trades,
+        Field, FormatVersion, IOBase, IcebergTable, PartitionSpec, collect, root, trade_schema,
+        trades,
     };
     use yggdryl::DataType;
     use yggdryl::iceberg::assign_field_ids;
@@ -3927,11 +3959,11 @@ mod planning {
     ///
     /// One commit is one manifest, so this is also the smallest table whose
     /// manifest list has something to prune.
-    fn venues(label: &str) -> (std::path::PathBuf, Table<LocalFolder>) {
+    fn venues(label: &str) -> (std::path::PathBuf, IcebergTable<LocalFolder>) {
         let path = root(label);
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -4070,7 +4102,7 @@ mod planning {
     fn a_filter_on_a_stored_column_prunes_by_statistics_and_then_by_row() {
         let path = root("plan-statistics");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -4124,7 +4156,7 @@ mod planning {
         let path = root("plan-null");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -4208,7 +4240,7 @@ mod planning {
         assign_field_ids(&mut schema, 1).unwrap();
         schema.insert_metadata("ICEBERG:schema-id", "0").unwrap();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -4293,8 +4325,8 @@ mod handles {
     use arrow_schema::{ArrowError, SchemaRef};
 
     use super::{
-        FormatVersion, IOBase, PartitionSpec, Table, assign_field_ids, collect, root, trade_schema,
-        trades,
+        FormatVersion, IOBase, IcebergTable, PartitionSpec, assign_field_ids, collect, root,
+        trade_schema, trades,
     };
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
@@ -4307,7 +4339,7 @@ mod handles {
         let path = root(label);
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        Table::create(
+        IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -4411,9 +4443,12 @@ mod handles {
         );
 
         // Every write was a snapshot, so the table has one commit per call.
-        let table = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        assert_eq!(table.metadata().snapshots().len(), 3);
-        assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
+        let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 3);
+        assert_eq!(
+            table.current_snapshot().unwrap().unwrap().operation(),
+            "overwrite"
+        );
     }
 
     #[test]
@@ -4461,7 +4496,7 @@ mod handles {
     fn a_merge_reads_only_the_files_whose_statistics_can_hold_a_key() {
         let path = root("handle-merge-plan");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -4585,7 +4620,7 @@ mod handles {
         let path = root("handle-table-value");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -4638,8 +4673,11 @@ mod handles {
                 &options,
             )
             .unwrap();
-        assert_eq!(table.metadata().snapshots().len(), 2);
-        assert_eq!(table.current_snapshot().unwrap().operation(), "append");
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 2);
+        assert_eq!(
+            table.current_snapshot().unwrap().unwrap().operation(),
+            "append"
+        );
         assert_eq!(collect(table.read_arrow_reader(&options).unwrap()).len(), 3);
 
         // A partition filter is answered by the plan - the other partitions'
@@ -4682,7 +4720,7 @@ mod handles {
         let path = root("handle-table-write");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -4702,8 +4740,8 @@ mod handles {
                 &options,
             )
             .unwrap();
-        let past = table.current_snapshot().unwrap().snapshot_id;
-        let version = table.metadata_version();
+        let past = table.current_snapshot().unwrap().unwrap().snapshot_id;
+        let version = table.metadata_version().unwrap();
 
         // No match key replaces every row; the snapshot it replaced is
         // retained and still reads exactly as it was written.
@@ -4714,8 +4752,11 @@ mod handles {
                 &options,
             )
             .unwrap();
-        assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
-        assert_eq!(table.metadata_version(), version + 1);
+        assert_eq!(
+            table.current_snapshot().unwrap().unwrap().operation(),
+            "overwrite"
+        );
+        assert_eq!(table.metadata_version().unwrap(), version + 1);
         assert_eq!(
             collect(table.read_arrow_reader(&options).unwrap()),
             vec![(9, Some("BP".to_owned()), Some("XLON".to_owned()))]
@@ -4744,9 +4785,12 @@ mod handles {
         );
 
         // Reopening reads the same history this value already reports.
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.metadata_version(), table.metadata_version());
-        assert_eq!(reopened.metadata().snapshots().len(), 3);
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(
+            reopened.metadata_version().unwrap(),
+            table.metadata_version().unwrap()
+        );
+        assert_eq!(reopened.metadata().unwrap().snapshots().len(), 3);
     }
 
     #[test]
@@ -4754,7 +4798,7 @@ mod handles {
         let path = root("handle-table-limit");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -4805,7 +4849,7 @@ mod handles {
     fn table_write_limit_preflight_does_not_pull_the_source() {
         let path = root("handle-table-limit-preflight");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -4853,7 +4897,7 @@ mod handles {
         .unwrap();
 
         let path = root("handle-table-stored-completion");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             stored.clone(),
@@ -4930,7 +4974,7 @@ mod handles {
     fn table_commit_batch_num_publishes_each_intent_at_the_requested_cadence() {
         let path = root("handle-table-commit-cadence");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -4950,7 +4994,7 @@ mod handles {
         table
             .overwrite_arrow_reader(one_row_batches(&batch), &options)
             .unwrap();
-        assert_eq!(table.metadata().snapshots().len(), 3);
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 3);
         assert_eq!(collect(table.read_arrow_reader(&options).unwrap()).len(), 3);
 
         let batch = trades(
@@ -4961,7 +5005,7 @@ mod handles {
         table
             .append_arrow_reader(one_row_batches(&batch), &options)
             .unwrap();
-        assert_eq!(table.metadata().snapshots().len(), 5);
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 5);
 
         let merging = options.clone().with_merge_by(["id"]).unwrap();
         let batch = trades(
@@ -4972,7 +5016,7 @@ mod handles {
         table
             .merge_arrow_reader(one_row_batches(&batch), &merging)
             .unwrap();
-        assert_eq!(table.metadata().snapshots().len(), 7);
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 7);
         assert_eq!(collect(table.read_arrow_reader(&options).unwrap()).len(), 6);
     }
 
@@ -4990,8 +5034,8 @@ mod handles {
             .overwrite_arrow_reader(one_row_batches(&batch), &options)
             .unwrap();
 
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.metadata().snapshots().len(), 3);
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata().unwrap().snapshots().len(), 3);
         assert_eq!(
             collect(reopened.read_arrow_reader(&options).unwrap()).len(),
             3
@@ -5017,7 +5061,7 @@ mod handles {
         ] {
             let path = root(&format!("handle-table-byte-cadence-{label}"));
             let schema = trade_schema();
-            let mut table = Table::create(
+            let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
                 FormatVersion::V2,
                 schema.clone(),
@@ -5035,7 +5079,11 @@ mod handles {
             assert_eq!(options.commit_batch_num(), None, "{label}");
 
             table.append_arrow_reader(rows(), &options).unwrap();
-            assert_eq!(table.metadata().snapshots().len(), commits, "{label}");
+            assert_eq!(
+                table.metadata().unwrap().snapshots().len(),
+                commits,
+                "{label}"
+            );
             assert_eq!(
                 collect(table.read_arrow_reader(&options).unwrap()).len(),
                 3,
@@ -5044,7 +5092,11 @@ mod handles {
 
             // The first cadence overwrites, every later one appends.
             table.overwrite_arrow_reader(rows(), &options).unwrap();
-            assert_eq!(table.metadata().snapshots().len(), 2 * commits, "{label}");
+            assert_eq!(
+                table.metadata().unwrap().snapshots().len(),
+                2 * commits,
+                "{label}"
+            );
             assert_eq!(
                 collect(table.read_arrow_reader(&options).unwrap()).len(),
                 3,
@@ -5058,7 +5110,7 @@ mod handles {
     /// that opens it - a held [`Table`] or a folder addressing it - reads
     /// the same cadence.
     fn set_target_file_size(path: &std::path::Path, target: u64) {
-        Table::open(LocalFolder::new(path).unwrap())
+        IcebergTable::open(LocalFolder::new(path).unwrap())
             .unwrap()
             .commit_metadata_changes(|metadata| {
                 metadata.set_property("write.target-file-size-bytes", target.to_string())?;
@@ -5069,9 +5121,10 @@ mod handles {
 
     /// The snapshots the table at `path` holds, read afresh.
     fn snapshots(path: &std::path::Path) -> usize {
-        Table::open(LocalFolder::new(path).unwrap())
+        IcebergTable::open(LocalFolder::new(path).unwrap())
             .unwrap()
             .metadata()
+            .unwrap()
             .snapshots()
             .len()
     }
@@ -5151,7 +5204,7 @@ mod handles {
         let path = root("handle-table-merge-byte-cadence");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -5177,7 +5230,7 @@ mod handles {
                 &options,
             )
             .unwrap();
-        assert_eq!(table.metadata().snapshots().len(), 1);
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 1);
 
         // Keyed: a commit per one-row batch, each upserting by the key.
         let keyed = options.clone().with_merge_by(["id"]).unwrap();
@@ -5189,7 +5242,7 @@ mod handles {
         table
             .merge_arrow_reader(one_row_batches(&batch), &keyed)
             .unwrap();
-        assert_eq!(table.metadata().snapshots().len(), 3);
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 3);
         assert_eq!(
             collect(table.read_arrow_reader(&options).unwrap()),
             triples(&[
@@ -5212,7 +5265,7 @@ mod handles {
         table
             .merge_arrow_reader(one_row_batches(&batch), &options)
             .unwrap();
-        assert_eq!(table.metadata().snapshots().len(), 7);
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 7);
         assert_eq!(
             collect(table.read_arrow_reader(&options).unwrap()),
             triples(&[
@@ -5262,7 +5315,7 @@ mod handles {
             let by_partition = options.clone().with_merge_by(["venue"]).unwrap();
             match door {
                 "table" => {
-                    let mut table = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+                    let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
                     table
                         .merge_arrow_reader(one_row_batches(&incoming), &options)
                         .unwrap();
@@ -5297,7 +5350,7 @@ mod handles {
     fn a_table_source_failure_leaves_the_committed_prefix_visible() {
         let path = root("handle-table-partial-commit");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -5328,20 +5381,20 @@ mod handles {
             message.contains("later Iceberg source failure"),
             "{message}"
         );
-        assert_eq!(table.metadata().snapshots().len(), 1);
+        assert_eq!(table.metadata().unwrap().snapshots().len(), 1);
         assert_eq!(
             collect(table.read_arrow_reader(&options).unwrap()),
             vec![(7, Some("NVDA".to_owned()), Some("XNAS".to_owned()))]
         );
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.metadata().snapshots().len(), 1);
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata().unwrap().snapshots().len(), 1);
     }
 
     #[test]
     fn empty_append_and_merge_create_no_table_commit() {
         let path = root("handle-table-empty-write");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -5352,8 +5405,8 @@ mod handles {
             .unwrap()
             .with_field(schema.clone());
         let arrow = schema.clone().into_arrow_schema().unwrap();
-        let version = table.metadata_version();
-        let snapshots = table.metadata().snapshots().len();
+        let version = table.metadata_version().unwrap();
+        let snapshots = table.metadata().unwrap().snapshots().len();
 
         table
             .append_arrow_reader(
@@ -5369,15 +5422,15 @@ mod handles {
             )
             .unwrap();
 
-        assert_eq!(table.metadata_version(), version);
-        assert_eq!(table.metadata().snapshots().len(), snapshots);
+        assert_eq!(table.metadata_version().unwrap(), version);
+        assert_eq!(table.metadata().unwrap().snapshots().len(), snapshots);
     }
 }
 
 #[test]
 fn time_travel_reads_a_previous_snapshot_by_id_and_by_ref() {
     let path = root("time-travel");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -5389,7 +5442,7 @@ fn time_travel_reads_a_previous_snapshot_by_id_and_by_ref() {
     table
         .commit_append(yggdryl::arrow::batch_reader(first.schema(), [first]))
         .unwrap();
-    let past = table.current_snapshot().unwrap().snapshot_id;
+    let past = table.current_snapshot().unwrap().unwrap().snapshot_id;
     let second = trades(&[9], &[Some("NVDA")], &[Some("XNAS")]);
     table
         .commit_overwrite(yggdryl::arrow::batch_reader(second.schema(), [second]))
@@ -5429,14 +5482,14 @@ fn time_travel_reads_a_previous_snapshot_by_id_and_by_ref() {
 #[test]
 fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
     let path = root("metadata-commit");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let version = table.metadata_version();
+    let version = table.metadata_version().unwrap();
 
     table
         .commit_metadata_changes(|metadata| {
@@ -5444,8 +5497,8 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
             Ok(())
         })
         .unwrap();
-    assert_eq!(table.metadata_version(), version + 1);
-    assert_eq!(table.metadata().property("owner"), Some("desk"));
+    assert_eq!(table.metadata_version().unwrap(), version + 1);
+    assert_eq!(table.metadata().unwrap().property("owner"), Some("desk"));
 
     // A rejected change is a commit that never happened.
     let failed: yggdryl::Result<()> = table.commit_metadata_changes(|_| {
@@ -5456,12 +5509,12 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
         })
     });
     assert!(failed.is_err());
-    assert_eq!(table.metadata_version(), version + 1);
+    assert_eq!(table.metadata_version().unwrap(), version + 1);
 
     // The written document reads back with the change applied.
-    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-    assert_eq!(reopened.metadata().property("owner"), Some("desk"));
-    assert_eq!(reopened.metadata_version(), version + 1);
+    let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+    assert_eq!(reopened.metadata().unwrap().property("owner"), Some("desk"));
+    assert_eq!(reopened.metadata_version().unwrap(), version + 1);
 
     let _ = std::fs::remove_dir_all(&path);
 }
@@ -5471,14 +5524,14 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
     let filesystem = Arc::new(PublishedHintFailure::default());
     let folder =
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         folder.clone(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let version = table.metadata_version();
+    let version = table.metadata_version().unwrap();
 
     filesystem.arm();
     let error = table
@@ -5495,11 +5548,14 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
     // The error remains the backend's own answer, but in-memory state follows
     // the same discovery result any fresh handle observes. Keeping the prior
     // version here would make one object contradict the published table.
-    assert_eq!(table.metadata_version(), version + 1);
-    assert_eq!(table.metadata().property("owner"), Some("desk"));
-    let reopened = Table::open(folder).unwrap();
-    assert_eq!(reopened.metadata_version(), table.metadata_version());
-    assert_eq!(reopened.metadata().property("owner"), Some("desk"));
+    assert_eq!(table.metadata_version().unwrap(), version + 1);
+    assert_eq!(table.metadata().unwrap().property("owner"), Some("desk"));
+    let reopened = IcebergTable::open(folder).unwrap();
+    assert_eq!(
+        reopened.metadata_version().unwrap(),
+        table.metadata_version().unwrap()
+    );
+    assert_eq!(reopened.metadata().unwrap().property("owner"), Some("desk"));
 }
 
 #[test]
@@ -5509,8 +5565,8 @@ fn a_reported_hint_failure_keeps_the_data_files_the_published_document_names() {
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let schema = trade_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-    let mut table = Table::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
-    let version = table.metadata_version();
+    let mut table = IcebergTable::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
+    let version = table.metadata_version().unwrap();
 
     filesystem.arm();
     let batch = trades(
@@ -5530,7 +5586,7 @@ fn a_reported_hint_failure_keeps_the_data_files_the_published_document_names() {
     // data files, the manifest and the list: from that point nothing is
     // rolled back, whatever the hint write reports, because every fresh
     // handle resolves the version to that document.
-    assert_eq!(table.metadata_version(), version + 1);
+    assert_eq!(table.metadata_version().unwrap(), version + 1);
     let files = table.data_files().unwrap();
     assert_eq!(files.len(), 2, "both data files stay");
     let paths = listed_paths(&folder);
@@ -5544,8 +5600,8 @@ fn a_reported_hint_failure_keeps_the_data_files_the_published_document_names() {
         2,
         "the manifest and the list stay: {paths:?}"
     );
-    let reopened = Table::open(folder).unwrap();
-    assert_eq!(reopened.metadata_version(), version + 1);
+    let reopened = IcebergTable::open(folder).unwrap();
+    assert_eq!(reopened.metadata_version().unwrap(), version + 1);
     assert_eq!(
         collect(reopened.scan(None).unwrap())
             .iter()
@@ -5563,8 +5619,8 @@ fn a_refused_document_write_rolls_the_commit_back_with_its_attempt() {
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let schema = trade_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-    let mut table = Table::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
-    let version = table.metadata_version();
+    let mut table = IcebergTable::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
+    let version = table.metadata_version().unwrap();
 
     filesystem.arm();
     let batch = trades(
@@ -5581,8 +5637,8 @@ fn a_refused_document_write_rolls_the_commit_back_with_its_attempt() {
     // data files, the manifest, the list - and so did the attempt that
     // named them, which left in place would have claimed the version for
     // good.
-    assert_eq!(table.metadata_version(), version);
-    assert!(table.current_snapshot().is_none());
+    assert_eq!(table.metadata_version().unwrap(), version);
+    assert!(table.current_snapshot().unwrap().is_none());
     let paths = listed_paths(&folder);
     assert!(
         paths.iter().all(|path| !path.contains("/data/")),
@@ -5602,9 +5658,9 @@ fn a_refused_document_write_rolls_the_commit_back_with_its_attempt() {
     table
         .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
         .unwrap();
-    assert_eq!(table.metadata_version(), version + 1);
-    let reopened = Table::open(folder).unwrap();
-    assert_eq!(reopened.metadata_version(), version + 1);
+    assert_eq!(table.metadata_version().unwrap(), version + 1);
+    let reopened = IcebergTable::open(folder).unwrap();
+    assert_eq!(reopened.metadata_version().unwrap(), version + 1);
     assert_eq!(
         collect(reopened.scan(None).unwrap())
             .iter()
@@ -5619,7 +5675,7 @@ fn a_commit_beaten_on_write_withdraws_the_list_of_the_attempt_it_replaces() {
     let filesystem = Arc::new(MetadataOnlyWinner::default());
     let folder =
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         folder.clone(),
         FormatVersion::V2,
         trade_schema(),
@@ -5639,11 +5695,14 @@ fn a_commit_beaten_on_write_withdraws_the_list_of_the_attempt_it_replaces() {
         .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
         .unwrap();
     assert_eq!(
-        table.metadata_version(),
+        table.metadata_version().unwrap(),
         3,
         "the rebase adopted the winner's version and committed after it"
     );
-    assert_eq!(table.metadata().property("winner"), Some("visible"));
+    assert_eq!(
+        table.metadata().unwrap().property("winner"),
+        Some("visible")
+    );
 
     // The first attempt's list was withdrawn when the retry published its
     // own: one removal, and the metadata directory holds one list - the one
@@ -5660,7 +5719,12 @@ fn a_commit_beaten_on_write_withdraws_the_list_of_the_attempt_it_replaces() {
         .filter(|path| path.contains("/metadata/snap-"))
         .collect();
     assert_eq!(lists.len(), 1, "one list is left: {lists:?}");
-    let named = table.current_snapshot().unwrap().manifest_list.clone();
+    let named = table
+        .current_snapshot()
+        .unwrap()
+        .unwrap()
+        .manifest_list
+        .clone();
     let named = named.rsplit('/').next().unwrap();
     assert!(
         lists[0].ends_with(named),
@@ -5670,7 +5734,7 @@ fn a_commit_beaten_on_write_withdraws_the_list_of_the_attempt_it_replaces() {
         !removed[0].ends_with(named),
         "the list removed is the other one: {removed:?}"
     );
-    let reopened = Table::open(folder).unwrap();
+    let reopened = IcebergTable::open(folder).unwrap();
     assert_eq!(
         collect(reopened.scan(None).unwrap())
             .iter()
@@ -5685,7 +5749,7 @@ fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
     let filesystem = Arc::new(SameVersionWinner::default());
     let folder =
         yggdryl::fs::FsFolder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         folder.clone(),
         FormatVersion::V2,
         trade_schema(),
@@ -5715,20 +5779,29 @@ fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
         2,
         "the change must be reapplied to the competing winner"
     );
-    assert_eq!(table.metadata_version(), 3);
-    assert_eq!(table.metadata().property("winner"), Some("visible"));
-    assert_eq!(table.metadata().property("loser"), Some("visible"));
+    assert_eq!(table.metadata_version().unwrap(), 3);
+    assert_eq!(
+        table.metadata().unwrap().property("winner"),
+        Some("visible")
+    );
+    assert_eq!(table.metadata().unwrap().property("loser"), Some("visible"));
 
-    let reopened = Table::open(folder).unwrap();
-    assert_eq!(reopened.metadata_version(), 3);
-    assert_eq!(reopened.metadata().property("winner"), Some("visible"));
-    assert_eq!(reopened.metadata().property("loser"), Some("visible"));
+    let reopened = IcebergTable::open(folder).unwrap();
+    assert_eq!(reopened.metadata_version().unwrap(), 3);
+    assert_eq!(
+        reopened.metadata().unwrap().property("winner"),
+        Some("visible")
+    );
+    assert_eq!(
+        reopened.metadata().unwrap().property("loser"),
+        Some("visible")
+    );
 }
 
 #[test]
 fn the_inspection_tables_report_history_snapshots_and_files() {
     let path = root("inspect");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -5804,14 +5877,14 @@ fn the_inspection_tables_report_history_snapshots_and_files() {
 #[test]
 fn a_commit_refuses_metadata_that_does_not_hold_together() {
     let path = root("invalid-commit");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let version = table.metadata_version();
+    let version = table.metadata_version().unwrap();
 
     // A change that leaves the metadata inconsistent never becomes a document.
     let failed = table.commit_metadata_changes(|metadata| {
@@ -5820,7 +5893,7 @@ fn a_commit_refuses_metadata_that_does_not_hold_together() {
     });
     let message = failed.unwrap_err().to_string();
     assert!(message.contains("999"), "{message}");
-    assert_eq!(table.metadata_version(), version);
+    assert_eq!(table.metadata_version().unwrap(), version);
     assert!(table.schema().is_ok());
 
     let _ = std::fs::remove_dir_all(&path);
@@ -5829,7 +5902,7 @@ fn a_commit_refuses_metadata_that_does_not_hold_together() {
 #[test]
 fn a_zero_row_append_commits_a_snapshot_that_reads_as_nothing() {
     let path = root("zero-row");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -5843,7 +5916,7 @@ fn a_zero_row_append_commits_a_snapshot_that_reads_as_nothing() {
         .unwrap();
 
     // The commit is real - it has a snapshot - and the table stays empty.
-    assert!(table.current_snapshot().is_some());
+    assert!(table.current_snapshot().unwrap().is_some());
     assert_eq!(collect(table.scan(None).unwrap()).len(), 0);
     assert_eq!(table.plan(&[]).unwrap().tasks.len(), 0);
 
@@ -5861,7 +5934,7 @@ fn a_nan_value_neither_poisons_a_bound_nor_hides_a_row() {
     .unwrap()
     .required_field("row");
     assign_field_ids(&mut schema, 1).unwrap();
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         schema.clone(),
@@ -5911,7 +5984,7 @@ fn a_nan_value_neither_poisons_a_bound_nor_hides_a_row() {
 #[test]
 fn a_truncated_manifest_is_a_typed_error_and_not_a_panic() {
     let path = root("corrupt-manifest");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -5935,7 +6008,7 @@ fn a_truncated_manifest_is_a_typed_error_and_not_a_panic() {
         }
     }
 
-    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+    let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
     let message = reopened.plan(&[]).unwrap_err().to_string();
     assert!(!message.is_empty());
 
@@ -5945,7 +6018,7 @@ fn a_truncated_manifest_is_a_typed_error_and_not_a_panic() {
 #[test]
 fn a_tiny_write_target_rolls_one_append_into_multiple_data_files() {
     let path = root("target-size");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -5987,7 +6060,7 @@ fn a_tiny_write_target_rolls_one_append_into_multiple_data_files() {
     // One running index numbers the files of a partition group - the whole
     // commit, on an unpartitioned table: the rolled commit wrote 00000,
     // 00001, and 00002.
-    let snapshot = table.current_snapshot().unwrap().snapshot_id;
+    let snapshot = table.current_snapshot().unwrap().unwrap().snapshot_id;
     let mut indices: Vec<String> = files
         .iter()
         .filter_map(|(file, _)| {
@@ -6013,7 +6086,7 @@ fn the_schema_root_write_target_is_honored_when_the_table_property_is_absent() {
         .as_iceberg_mut()
         .insert("write.target-file-size-bytes", "1")
         .unwrap();
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         schema,
@@ -6051,7 +6124,7 @@ fn the_schema_root_write_target_is_honored_when_the_table_property_is_absent() {
 #[test]
 fn an_unparseable_write_target_is_a_typed_error_naming_the_key() {
     let path = root("target-unparseable");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -6097,7 +6170,7 @@ fn an_unparseable_write_target_is_a_typed_error_naming_the_key() {
 #[test]
 fn compaction_merges_small_files_and_the_old_snapshot_still_time_travels() {
     let path = root("compact");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -6112,8 +6185,8 @@ fn compaction_merges_small_files_and_the_old_snapshot_still_time_travels() {
     }
     let before_rows = collect(table.scan(None).unwrap());
     assert_eq!(table.data_files().unwrap().len(), 5);
-    let past = table.current_snapshot().unwrap().snapshot_id;
-    let snapshots_before = table.metadata().snapshots().len();
+    let past = table.current_snapshot().unwrap().unwrap().snapshot_id;
+    let snapshots_before = table.metadata().unwrap().snapshots().len();
 
     let compaction = table.compact().unwrap();
     assert_eq!(compaction.files_before, 5);
@@ -6123,10 +6196,22 @@ fn compaction_merges_small_files_and_the_old_snapshot_still_time_travels() {
     // Fewer files, identical rows, one `replace` snapshot.
     assert_eq!(table.data_files().unwrap().len(), 1);
     assert_eq!(collect(table.scan(None).unwrap()), before_rows);
-    assert_eq!(table.metadata().snapshots().len(), snapshots_before + 1);
-    assert_eq!(table.current_snapshot().unwrap().operation(), "replace");
     assert_eq!(
-        table.metadata().snapshots().last().unwrap().operation(),
+        table.metadata().unwrap().snapshots().len(),
+        snapshots_before + 1
+    );
+    assert_eq!(
+        table.current_snapshot().unwrap().unwrap().operation(),
+        "replace"
+    );
+    assert_eq!(
+        table
+            .metadata()
+            .unwrap()
+            .snapshots()
+            .last()
+            .unwrap()
+            .operation(),
         "replace",
         "the retained snapshot view stays oldest first after official map normalization"
     );
@@ -6152,10 +6237,13 @@ fn compaction_merges_small_files_and_the_old_snapshot_still_time_travels() {
     assert_eq!(table.plan_at(past, &[]).unwrap().tasks.len(), 5);
 
     // A second compaction has nothing to do: zeros, and no new snapshot.
-    let version = table.metadata_version();
+    let version = table.metadata_version().unwrap();
     assert_eq!(table.compact().unwrap(), Compaction::default());
-    assert_eq!(table.metadata_version(), version);
-    assert_eq!(table.metadata().snapshots().len(), snapshots_before + 1);
+    assert_eq!(table.metadata_version().unwrap(), version);
+    assert_eq!(
+        table.metadata().unwrap().snapshots().len(),
+        snapshots_before + 1
+    );
 
     let _ = std::fs::remove_dir_all(&path);
 }
@@ -6165,7 +6253,7 @@ fn compaction_respects_partitions_and_pruning_still_prunes_after_it() {
     let path = root("compact-partitions");
     let schema = trade_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         schema,
@@ -6255,7 +6343,7 @@ fn a_wide_schema_round_trips_with_every_field_numbered() {
     assign_field_ids(&mut schema, 1).unwrap();
     assert_eq!(schema.max_parquet_field_id().unwrap(), Some(300));
 
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         schema.clone(),
@@ -6272,7 +6360,7 @@ fn a_wide_schema_round_trips_with_every_field_numbered() {
         .unwrap();
 
     // Reopening parses the wide schema back and reads every column.
-    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+    let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
     assert_eq!(reopened.schema().unwrap().field_len(), 300);
     let read = reopened.scan(None).unwrap().next().unwrap().unwrap();
     assert_eq!(read.num_columns(), 300);
@@ -6328,7 +6416,7 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
     use yggdryl::iceberg::IcebergOptions;
 
     let path = root("options-layers");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -6380,14 +6468,14 @@ fn zero_total_retry_budget_allows_a_zero_wait_rebase() {
     use yggdryl::iceberg::IcebergOptions;
 
     let path = root("commit-total-timeout");
-    let mut winner = Table::create(
+    let mut winner = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let mut stale = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+    let mut stale = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
     winner.set_options(IcebergOptions::new().with_commit_total_timeout_ms(0));
     stale.set_options(
         IcebergOptions::new()
@@ -6408,11 +6496,17 @@ fn zero_total_retry_budget_allows_a_zero_wait_rebase() {
             Ok(())
         })
         .unwrap();
-    assert_eq!(stale.metadata_version(), 3);
+    assert_eq!(stale.metadata_version().unwrap(), 3);
 
-    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-    assert_eq!(reopened.metadata().property("winner"), Some("visible"));
-    assert_eq!(reopened.metadata().property("loser"), Some("hidden"));
+    let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+    assert_eq!(
+        reopened.metadata().unwrap().property("winner"),
+        Some("visible")
+    );
+    assert_eq!(
+        reopened.metadata().unwrap().property("loser"),
+        Some("hidden")
+    );
 
     let _ = std::fs::remove_dir_all(&path);
 }
@@ -6422,7 +6516,7 @@ fn an_unparseable_option_property_is_typed_and_an_explicit_option_shadows_it() {
     use yggdryl::iceberg::IcebergOptions;
 
     let path = root("options-unparseable");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -6467,20 +6561,20 @@ fn a_beaten_append_rebases_and_keeps_both_writers_rows() {
     use yggdryl::iceberg::IcebergOptions;
 
     let path = root("append-conflict");
-    let mut first = Table::create(
+    let mut first = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let mut second = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+    let mut second = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
     second.set_options(
         IcebergOptions::new()
             .with_commit_min_backoff_ms(1)
             .with_commit_max_backoff_ms(2),
     );
-    assert_eq!(second.metadata_version(), 1);
+    assert_eq!(second.metadata_version().unwrap(), 1);
 
     let winner = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
     first
@@ -6493,20 +6587,20 @@ fn a_beaten_append_rebases_and_keeps_both_writers_rows() {
         .commit_append(yggdryl::arrow::batch_reader(beaten.schema(), [beaten]))
         .unwrap();
     assert_eq!(
-        second.metadata_version(),
+        second.metadata_version().unwrap(),
         3,
         "the rebase adopted the winner's version"
     );
 
     // Both rows, two snapshots, and the loser's snapshot parents the winner's.
-    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-    assert_eq!(reopened.metadata_version(), 3);
+    let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+    assert_eq!(reopened.metadata_version().unwrap(), 3);
     let rows = collect(reopened.scan(None).unwrap());
     assert_eq!(rows.iter().map(|row| row.0).collect::<Vec<_>>(), [1, 2]);
-    assert_eq!(reopened.metadata().snapshots().len(), 2);
-    let current = reopened.current_snapshot().unwrap();
+    assert_eq!(reopened.metadata().unwrap().snapshots().len(), 2);
+    let current = reopened.current_snapshot().unwrap().unwrap();
     let parent = current.parent_snapshot_id.unwrap();
-    let winner_snapshot = reopened.metadata().snapshot_by_id(parent).unwrap();
+    let winner_snapshot = reopened.metadata().unwrap().snapshot_by_id(parent).unwrap();
     assert_eq!(winner_snapshot.parent_snapshot_id, None);
     assert!(
         current.sequence_number.unwrap() > winner_snapshot.sequence_number.unwrap(),
@@ -6521,14 +6615,14 @@ fn concurrent_metadata_commits_rebase_and_both_changes_survive() {
     use yggdryl::iceberg::IcebergOptions;
 
     let path = root("changes-conflict");
-    let mut first = Table::create(
+    let mut first = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
-    let mut second = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+    let mut second = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
     second.set_options(
         IcebergOptions::new()
             .with_commit_min_backoff_ms(1)
@@ -6550,10 +6644,13 @@ fn concurrent_metadata_commits_rebase_and_both_changes_survive() {
         })
         .unwrap();
 
-    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-    assert_eq!(reopened.metadata_version(), 3);
-    assert_eq!(reopened.metadata().property("owner"), Some("alpha"));
-    assert_eq!(reopened.metadata().property("team"), Some("beta"));
+    let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+    assert_eq!(reopened.metadata_version().unwrap(), 3);
+    assert_eq!(
+        reopened.metadata().unwrap().property("owner"),
+        Some("alpha")
+    );
+    assert_eq!(reopened.metadata().unwrap().property("team"), Some("beta"));
 
     let _ = std::fs::remove_dir_all(&path);
 }
@@ -6563,7 +6660,7 @@ fn a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions() {
     use yggdryl::iceberg::IcebergOptions;
 
     let path = root("overwrite-conflict");
-    let mut first = Table::create(
+    let mut first = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -6577,7 +6674,7 @@ fn a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions() {
 
     // The second handle plans against version 2; the first then commits twice
     // more, so the overwrite's plan is two commits stale.
-    let mut second = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+    let mut second = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
     second.set_options(
         IcebergOptions::new()
             .with_commit_retries(1)
@@ -6605,9 +6702,9 @@ fn a_beaten_overwrite_exhausts_its_retries_into_a_conflict_naming_versions() {
     assert!(message.contains("last saw version 4"), "{message}");
 
     // The failed overwrite restored its handle and left no visible change.
-    assert_eq!(second.metadata_version(), 2);
-    let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-    assert_eq!(reopened.metadata_version(), 4);
+    assert_eq!(second.metadata_version().unwrap(), 2);
+    let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+    assert_eq!(reopened.metadata_version().unwrap(), 4);
     assert_eq!(
         collect(reopened.scan(None).unwrap())
             .iter()
@@ -6625,7 +6722,7 @@ fn a_parallel_read_yields_the_sequential_rows_in_the_sequential_order() {
     use yggdryl::iceberg::IcebergOptions;
 
     let path = root("parallel-read");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -6705,7 +6802,7 @@ fn a_parallel_read_yields_the_sequential_rows_in_the_sequential_order() {
 #[test]
 fn branches_and_tags_round_trip_through_table_level_commits() {
     let path = root("table-refs");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         trade_schema(),
@@ -6716,21 +6813,21 @@ fn branches_and_tags_round_trip_through_table_level_commits() {
     table
         .commit_append(yggdryl::arrow::batch_reader(first.schema(), [first]))
         .unwrap();
-    let past = table.current_snapshot().unwrap().snapshot_id;
+    let past = table.current_snapshot().unwrap().unwrap().snapshot_id;
 
     table.create_branch("audit", past).unwrap();
     table.create_tag("v1", past).unwrap();
-    let version = table.metadata_version();
+    let version = table.metadata_version().unwrap();
 
     // A taken name is refused and the refusal commits nothing.
     assert!(table.create_branch("audit", past).is_err());
-    assert_eq!(table.metadata_version(), version);
+    assert_eq!(table.metadata_version().unwrap(), version);
 
     let second = trades(&[2], &[Some("MSFT")], &[Some("XNYS")]);
     table
         .commit_append(yggdryl::arrow::batch_reader(second.schema(), [second]))
         .unwrap();
-    let head = table.current_snapshot().unwrap().snapshot_id;
+    let head = table.current_snapshot().unwrap().unwrap().snapshot_id;
 
     // The branch and the tag still read the past; main reads the present.
     assert_eq!(
@@ -6757,20 +6854,20 @@ fn branches_and_tags_round_trip_through_table_level_commits() {
 
     // With nothing anchoring the first snapshot, expiring everything older
     // than the near future removes exactly it - and the table still reads.
-    let cutoff = table.metadata().last_updated_ms() + 10_000;
+    let cutoff = table.metadata().unwrap().last_updated_ms() + 10_000;
     let expired = table.expire_snapshots(Some(cutoff), None, &[]).unwrap();
     assert_eq!(expired, vec![past]);
-    assert_eq!(table.metadata().snapshots().len(), 1);
+    assert_eq!(table.metadata().unwrap().snapshots().len(), 1);
     assert_eq!(collect(table.scan(None).unwrap()).len(), 2);
     assert!(table.scan_at(past, &[], None).is_err());
 
     // Nothing left to expire commits nothing: no new version is written.
-    let version = table.metadata_version();
+    let version = table.metadata_version().unwrap();
     assert_eq!(
         table.expire_snapshots(Some(i64::MAX), None, &[]).unwrap(),
         Vec::<i64>::new()
     );
-    assert_eq!(table.metadata_version(), version);
+    assert_eq!(table.metadata_version().unwrap(), version);
 
     let _ = std::fs::remove_dir_all(&path);
 }
@@ -6791,7 +6888,7 @@ mod datatype_coverage {
             .map(DataType::from)
             .unwrap()
             .required_field("row");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -6813,7 +6910,7 @@ mod datatype_coverage {
             .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
 
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         let mut records = Vec::new();
         for batch in reopened.scan(None).unwrap() {
             let landed = yggdryl::Serie::from_arrow_batch(
@@ -6977,7 +7074,7 @@ mod datatype_coverage {
             .map(DataType::from)
             .unwrap()
             .required_field("row");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -7055,7 +7152,7 @@ mod concurrency_and_compaction {
     fn stale_threads_rebase_and_every_writer_lands() {
         let path = root("threads");
         let schema = trade_schema();
-        Table::create(
+        IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -7077,7 +7174,7 @@ mod concurrency_and_compaction {
                 let gate = std::sync::Arc::clone(&gate);
                 let opened = std::sync::Arc::clone(&opened);
                 std::thread::spawn(move || {
-                    let mut table = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+                    let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
                     opened.wait();
                     let batch = trades(
                         &[writer * 10, writer * 10 + 1],
@@ -7095,7 +7192,7 @@ mod concurrency_and_compaction {
             handle.join().unwrap();
         }
 
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         let mut ids: Vec<i64> = collect(reopened.scan(None).unwrap())
             .into_iter()
             .map(|(id, _, _)| id)
@@ -7103,14 +7200,14 @@ mod concurrency_and_compaction {
         ids.sort_unstable();
         assert_eq!(ids, [0, 1, 10, 11, 20, 21, 30, 31]);
         // Four commits landed on top of the created table.
-        assert_eq!(reopened.metadata_version(), 5);
+        assert_eq!(reopened.metadata_version().unwrap(), 5);
     }
 
     #[test]
     fn a_beaten_merge_reports_the_conflict_rather_than_rebasing() {
         let path = root("beaten-merge");
         let schema = trade_schema();
-        let mut writer = Table::create(
+        let mut writer = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -7123,7 +7220,7 @@ mod concurrency_and_compaction {
             .unwrap();
 
         // A second handle grows stale the moment the first commits again.
-        let mut stale = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let mut stale = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         stale.set_options(yggdryl::iceberg::IcebergOptions::default().with_commit_retries(1));
         let win = trades(&[3], &[Some("C")], &[Some("V")]);
         writer
@@ -7148,7 +7245,7 @@ mod concurrency_and_compaction {
     fn the_cadence_compacts_after_every_n_data_commits_by_itself() {
         let path = root("auto-compact");
         let schema = trade_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -7169,6 +7266,7 @@ mod concurrency_and_compaction {
         // and the live file count shrank below one-per-append.
         let operations: Vec<String> = table
             .metadata()
+            .unwrap()
             .snapshots()
             .iter()
             .map(|snapshot| snapshot.operation().to_owned())
@@ -7234,19 +7332,31 @@ mod line_projection {
         );
         schema.assign_parquet_field_ids(1).unwrap();
 
-        let catalog =
-            yggdryl::iceberg::Catalog::new(LocalFolder::new(path.join("warehouse")).unwrap());
-        catalog.tables().create("logs.events", schema).unwrap();
+        let catalog = yggdryl::Catalog::from(yggdryl::iceberg::IcebergCatalog::bound(
+            "warehouse",
+            yggdryl::holder::Holder::LocalFolder(LocalFolder::new(path.join("warehouse")).unwrap()),
+        ));
+        // A create descends through existing namespaces only.
+        catalog
+            .namespaces()
+            .create("logs", &yggdryl::Properties::new())
+            .unwrap();
+        catalog
+            .tables()
+            .create("logs.events", &schema, &yggdryl::Properties::new())
+            .unwrap();
         let table = catalog
             .tables()
             .append_arrow_reader("logs.events", source.read_arrow_reader(&options).unwrap())
             .unwrap();
 
-        let batches = table
-            .scan(None)
-            .unwrap()
-            .collect::<std::result::Result<Vec<RecordBatch>, _>>()
-            .unwrap();
+        let batches = yggdryl::IOMedia::read_arrow_reader(
+            &table,
+            &yggdryl::IOMedia::record_options(&table).unwrap(),
+        )
+        .unwrap()
+        .collect::<std::result::Result<Vec<RecordBatch>, _>>()
+        .unwrap();
         assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 2);
         let batch = &batches[0];
         let ids = batch
@@ -7278,9 +7388,13 @@ mod line_projection {
             bodies.iter().collect::<Vec<_>>(),
             [Some("first"), Some("second")]
         );
+        let yggdryl::Table::Iceberg(table) = table else {
+            panic!("expected an Iceberg table, got {table:?}");
+        };
         assert_eq!(
             table
                 .current_snapshot()
+                .unwrap()
                 .unwrap()
                 .summary_value("added-records"),
             Some("2")
@@ -7445,7 +7559,7 @@ mod data_mime_type {
     use yggdryl::iceberg::IcebergOptions;
 
     /// The manifests' `(mime_type, path)` pairs of the current snapshot.
-    fn formats(table: &Table<LocalFolder>) -> Vec<(MimeType, String)> {
+    fn formats(table: &IcebergTable<LocalFolder>) -> Vec<(MimeType, String)> {
         table
             .data_files()
             .unwrap()
@@ -7470,7 +7584,7 @@ mod data_mime_type {
     #[test]
     fn the_default_mime_type_is_parquet_and_the_option_layers_resolve() {
         let path = root("format-layers");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
@@ -7504,7 +7618,7 @@ mod data_mime_type {
     #[test]
     fn an_unparseable_format_property_is_a_typed_error_naming_the_key() {
         let path = root("format-unparseable");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
@@ -7550,7 +7664,7 @@ mod data_mime_type {
         for mime_type in [MimeType::ORC, MimeType::PUFFIN] {
             let name = mime_type.extension().unwrap();
             let path = root(&format!("format-{}", name.to_ascii_lowercase()));
-            let mut table = Table::create(
+            let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
                 FormatVersion::V2,
                 trade_schema(),
@@ -7570,7 +7684,7 @@ mod data_mime_type {
                 .to_string();
             assert!(message.contains(mime_type.as_str()), "{message}");
             assert!(message.contains("application/avro"), "{message}");
-            assert!(table.current_snapshot().is_none());
+            assert!(table.current_snapshot().unwrap().is_none());
             assert!(!path.join("data").exists());
         }
     }
@@ -7578,7 +7692,7 @@ mod data_mime_type {
     #[test]
     fn a_table_whose_files_mix_formats_writes_and_scans_as_one_shape() {
         let path = root("format-mixed");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
@@ -7644,7 +7758,7 @@ mod data_mime_type {
     #[test]
     fn an_avro_format_table_property_writes_avro_files_and_reads_back() {
         let path = root("format-avro-property");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
@@ -7672,7 +7786,7 @@ mod data_mime_type {
             "{recorded:?}"
         );
         // A fresh open reads the mixed chain from storage alone.
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         assert_eq!(collect(reopened.scan(None).unwrap()).len(), 2);
     }
 }
@@ -7688,7 +7802,7 @@ mod interop_regressions {
     #[test]
     fn a_scan_resolves_renamed_columns_by_field_id() {
         let path = root("rename-by-id");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
@@ -7841,8 +7955,9 @@ mod isolation {
     };
 
     use super::{
-        FormatVersion, IcebergOptions, PartitionSpec, SortField, SortOrder, Table, Transform,
-        assign_field_ids, collect, root, schema_from_json, schema_into_json, trade_schema, trades,
+        FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, SortField, SortOrder,
+        Transform, assign_field_ids, collect, root, schema_from_json, schema_into_json,
+        trade_schema, trades,
     };
 
     use yggdryl::holder::{Buffer, Holder};
@@ -7928,11 +8043,11 @@ mod isolation {
     }
 
     /// One row per venue, one commit per row: three partitions, three files.
-    fn venues(label: &str) -> (std::path::PathBuf, Table<LocalFolder>) {
+    fn venues(label: &str) -> (std::path::PathBuf, IcebergTable<LocalFolder>) {
         let path = root(label);
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -7952,7 +8067,7 @@ mod isolation {
         (path, table)
     }
 
-    fn file_paths(table: &Table<impl IOBase>) -> Vec<String> {
+    fn file_paths(table: &IcebergTable<impl IOBase>) -> Vec<String> {
         let mut paths: Vec<String> = table
             .data_files()
             .unwrap()
@@ -8036,7 +8151,8 @@ mod isolation {
         .required_field("row");
         assign_field_ids(&mut schema, 1).unwrap();
         let spec = PartitionSpec::identity(1, &schema, &["timepartition"]).unwrap();
-        let mut table = Table::create(folder, FormatVersion::V2, schema.clone(), spec).unwrap();
+        let mut table =
+            IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec).unwrap();
         table.set_options(
             IcebergOptions::new()
                 .try_with_write_staging(yggdryl::iceberg::WriteStaging::Off)
@@ -8087,7 +8203,7 @@ mod isolation {
     fn a_record_read_pushes_the_whole_where_into_the_plan_and_opens_only_survivors() {
         let (path, _) = venues("isolation-record-read");
         let recording = Recording::new(&path);
-        let table = Table::open(recording).unwrap();
+        let table = IcebergTable::open(recording).unwrap();
         let options = IOMedia::record_options(&table)
             .unwrap()
             .with_filter("venue in ('XNAS', 'XLON') and id >= 1")
@@ -8143,7 +8259,7 @@ mod isolation {
     #[test]
     fn a_merge_into_one_partition_reads_no_other_partition_and_carries_their_files() {
         let (path, _) = venues("isolation-merge");
-        let mut table = Table::open(Recording::new(&path)).unwrap();
+        let mut table = IcebergTable::open(Recording::new(&path)).unwrap();
         let before = file_paths(&table);
         assert_eq!(before.len(), 3);
 
@@ -8245,7 +8361,7 @@ mod isolation {
 
         // An unpartitioned table has no key at all without one named.
         let flat = root("isolation-keyless-flat");
-        let mut flat_table = Table::create(
+        let mut flat_table = IcebergTable::create(
             LocalFolder::new(&flat).unwrap(),
             FormatVersion::V2,
             trade_schema(),
@@ -8262,7 +8378,7 @@ mod isolation {
             .unwrap_err()
             .to_string();
         assert!(message.contains("empty match key"), "{message}");
-        assert!(flat_table.current_snapshot().is_none());
+        assert!(flat_table.current_snapshot().unwrap().is_none());
         let _ = std::fs::remove_dir_all(&path);
         let _ = std::fs::remove_dir_all(&flat);
     }
@@ -8298,7 +8414,7 @@ mod isolation {
         let path = root("isolation-sorted");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -8306,14 +8422,14 @@ mod isolation {
         )
         .unwrap();
         // The default order is the partition's source column.
-        let order = table.metadata().default_sort_order().unwrap();
+        let order = table.metadata().unwrap().default_sort_order().unwrap();
         assert_eq!(order.order_id, 1);
         assert_eq!(order.fields.len(), 1);
         assert_eq!(order.fields[0].source_id, 3);
         assert_eq!(order.fields[0].transform, Transform::Identity);
         assert_eq!(order.fields[0].direction, "asc");
         assert_eq!(order.fields[0].null_order, "nulls-first");
-        assert_eq!(table.metadata().default_sort_order_id(), 1);
+        assert_eq!(table.metadata().unwrap().default_sort_order_id(), 1);
 
         // Written unsorted, in one commit, under a tiny target: one file per
         // row, each file's rows in venue order and the files monotone.
@@ -8339,7 +8455,7 @@ mod isolation {
         // Explicit: a second commit sorted by symbol lays symbols out
         // ascending across the files it writes.
         let sorted = root("isolation-sorted-explicit");
-        let mut by_symbol = Table::create_sorted(
+        let mut by_symbol = IcebergTable::create_sorted(
             LocalFolder::new(&sorted).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -8402,13 +8518,13 @@ mod isolation {
 
         // The order round-trips through the metadata document and the
         // official validation of a reopened table.
-        let document = by_symbol.metadata().clone().into_json().unwrap();
+        let document = by_symbol.metadata().unwrap().clone().into_json().unwrap();
         let reread = super::TableMetadata::from_json(&document).unwrap();
         assert_eq!(reread.default_sort_order_id(), 1);
         assert_eq!(reread.default_sort_order().unwrap().fields[0].source_id, 2);
-        let reopened = Table::open(LocalFolder::new(&sorted).unwrap()).unwrap();
-        assert_eq!(reopened.metadata().default_sort_order_id(), 1);
-        reopened.metadata().validate().unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&sorted).unwrap()).unwrap();
+        assert_eq!(reopened.metadata().unwrap().default_sort_order_id(), 1);
+        reopened.metadata().unwrap().validate().unwrap();
 
         let _ = std::fs::remove_dir_all(&path);
         let _ = std::fs::remove_dir_all(&sorted);
@@ -8419,7 +8535,7 @@ mod isolation {
         let path = root("isolation-unsorted");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create_sorted(
+        let mut table = IcebergTable::create_sorted(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -8427,8 +8543,8 @@ mod isolation {
             SortOrder::unsorted(),
         )
         .unwrap();
-        assert_eq!(table.metadata().default_sort_order_id(), 0);
-        assert_eq!(table.metadata().sort_orders().len(), 1);
+        assert_eq!(table.metadata().unwrap().default_sort_order_id(), 0);
+        assert_eq!(table.metadata().unwrap().sort_orders().len(), 1);
         let batch = trades(
             &[3, 1, 2],
             &[Some("c"), Some("a"), Some("b")],
@@ -8441,14 +8557,14 @@ mod isolation {
         assert_eq!(table.data_files().unwrap()[0].0.sort_order_id, None);
         // An unpartitioned table's default is the unsorted order too.
         let flat = root("isolation-unsorted-flat");
-        let flat_table = Table::create(
+        let flat_table = IcebergTable::create(
             LocalFolder::new(&flat).unwrap(),
             FormatVersion::V2,
             trade_schema(),
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        assert_eq!(flat_table.metadata().default_sort_order_id(), 0);
+        assert_eq!(flat_table.metadata().unwrap().default_sort_order_id(), 0);
         let _ = std::fs::remove_dir_all(&path);
         let _ = std::fs::remove_dir_all(&flat);
     }
@@ -8475,7 +8591,7 @@ mod isolation {
         );
 
         let path = root("isolation-write-parallelism");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             trade_schema(),
@@ -8535,7 +8651,7 @@ mod isolation {
             let path = root(&format!("isolation-parallel-{parallelism}"));
             let schema = trade_schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-            let mut table = Table::create(
+            let mut table = IcebergTable::create(
                 LocalFolder::new(&path).unwrap(),
                 FormatVersion::V2,
                 schema,
@@ -8573,7 +8689,7 @@ mod isolation {
         let path = root("isolation-worker-failure");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        Table::create(
+        IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -8583,9 +8699,9 @@ mod isolation {
         let mut recording = Recording::new(&path);
         // The third partition group's writer gets a root it cannot write through.
         recording.fail_after = Some(2);
-        let mut table = Table::open(recording).unwrap();
+        let mut table = IcebergTable::open(recording).unwrap();
         table.set_options(IcebergOptions::new().try_with_write_parallelism(4).unwrap());
-        let version = table.metadata_version();
+        let version = table.metadata_version().unwrap();
         let batch = trades(
             &[1, 2, 3, 4],
             &[Some("a"); 4],
@@ -8596,11 +8712,11 @@ mod isolation {
             .unwrap_err()
             .to_string();
         assert!(error.contains("container"), "{error}");
-        assert_eq!(table.metadata_version(), version);
-        assert!(table.current_snapshot().is_none());
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.metadata_version(), version);
-        assert!(reopened.current_snapshot().is_none());
+        assert_eq!(table.metadata_version().unwrap(), version);
+        assert!(table.current_snapshot().unwrap().is_none());
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata_version().unwrap(), version);
+        assert!(reopened.current_snapshot().unwrap().is_none());
         let _ = std::fs::remove_dir_all(&path);
     }
 
@@ -8659,7 +8775,7 @@ mod isolation {
 
         // A v2 table refuses the type by name; a v3 table takes it.
         let v2 = root("isolation-unknown-v2");
-        let message = Table::create(
+        let message = IcebergTable::create(
             LocalFolder::new(&v2).unwrap(),
             FormatVersion::V2,
             unknown_schema(),
@@ -8674,7 +8790,7 @@ mod isolation {
 
         let v3 = root("isolation-unknown-v3");
         let schema = unknown_schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&v3).unwrap(),
             FormatVersion::V3,
             schema.clone(),
@@ -8727,7 +8843,7 @@ mod isolation {
 
         // The metadata document spells it and reads back through the
         // official validation of a reopened table.
-        let reopened = Table::open(LocalFolder::new(&v3).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&v3).unwrap()).unwrap();
         assert_eq!(
             reopened.schema().unwrap().fields()[1].dtype(),
             &DataType::Variant
@@ -8737,9 +8853,10 @@ mod isolation {
                 .as_iceberg()
                 .is_unknown()
         );
-        reopened.metadata().validate().unwrap();
+        reopened.metadata().unwrap().validate().unwrap();
         let text =
-            yggdryl::json::into_utf8(&reopened.metadata().clone().into_json().unwrap()).unwrap();
+            yggdryl::json::into_utf8(&reopened.metadata().unwrap().clone().into_json().unwrap())
+                .unwrap();
         assert!(text.contains("\"unknown\""), "{text}");
 
         let _ = std::fs::remove_dir_all(&v2);
@@ -8749,7 +8866,7 @@ mod isolation {
     #[test]
     fn an_unknown_column_promotes_to_any_type_in_v3() {
         let v3 = root("isolation-unknown-promotion");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&v3).unwrap(),
             FormatVersion::V3,
             unknown_schema(),
@@ -8783,7 +8900,7 @@ mod isolation {
         .unwrap();
         let schema = schema_from_json("row", &document).unwrap();
         let v3 = root("isolation-nested-unknown");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&v3).unwrap(),
             FormatVersion::V3,
             schema.clone(),
@@ -8860,7 +8977,8 @@ mod isolation {
         }
 
         // Promoted, the slot reads the old file's nulls as its new type.
-        let mut update = yggdryl::iceberg::SchemaUpdate::from_metadata(table.metadata()).unwrap();
+        let mut update =
+            yggdryl::iceberg::SchemaUpdate::from_metadata(table.metadata().unwrap()).unwrap();
         update.update_type("s.later", DataType::Int64);
         table.update_schema(&update).unwrap();
         let mut promoted = 0;
@@ -8948,7 +9066,7 @@ mod isolation {
         assert_eq!(schema_into_json(&schema).unwrap(), document);
 
         let v2 = root("isolation-variant-v2");
-        let message = Table::create(
+        let message = IcebergTable::create(
             LocalFolder::new(&v2).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -8962,7 +9080,7 @@ mod isolation {
         );
 
         let v3 = root("isolation-variant-v3");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&v3).unwrap(),
             FormatVersion::V3,
             schema.clone(),
@@ -8996,12 +9114,12 @@ mod isolation {
                 .map(String::as_str),
             Some(yggdryl::VARIANT_EXTENSION_NAME)
         );
-        let reopened = Table::open(LocalFolder::new(&v3).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&v3).unwrap()).unwrap();
         assert_eq!(
             reopened.schema().unwrap().fields()[1].dtype(),
             &DataType::Variant
         );
-        reopened.metadata().validate().unwrap();
+        reopened.metadata().unwrap().validate().unwrap();
 
         let _ = std::fs::remove_dir_all(&v2);
         let _ = std::fs::remove_dir_all(&v3);
@@ -9010,7 +9128,7 @@ mod isolation {
     #[test]
     fn the_record_surface_keys_a_merge_by_the_partition_and_the_options_key() {
         let (path, _) = venues("isolation-record-merge");
-        let mut table = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         let options: RecordOptions = IOMedia::record_options(&table)
             .unwrap()
             .with_field(trade_schema());
@@ -9060,7 +9178,9 @@ mod isolation {
 mod staging_transaction {
     use std::path::{Path, PathBuf};
 
-    use super::{FormatVersion, IcebergOptions, PartitionSpec, Table, root, trade_schema, trades};
+    use super::{
+        FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, root, trade_schema, trades,
+    };
     use yggdryl::holder::Holder;
     use yggdryl::iceberg::WriteStaging;
     use yggdryl::internals::iceberg_staging::Staging;
@@ -9194,7 +9314,7 @@ mod staging_transaction {
         let path = root("staging-rollback-table");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -9213,7 +9333,7 @@ mod staging_transaction {
                 .try_with_write_parallelism(1)
                 .unwrap(),
         );
-        let version = table.metadata_version();
+        let version = table.metadata_version().unwrap();
 
         // XLON's file is staged and published first; XNAS's publication
         // fails, and XNYS's is never attempted.
@@ -9225,8 +9345,8 @@ mod staging_transaction {
         table
             .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap_err();
-        assert_eq!(table.metadata_version(), version);
-        assert!(table.current_snapshot().is_none());
+        assert_eq!(table.metadata_version().unwrap(), version);
+        assert!(table.current_snapshot().unwrap().is_none());
         assert_eq!(
             files_under(&path.join("data")),
             [blocker],
@@ -9239,9 +9359,9 @@ mod staging_transaction {
             "no manifest and no manifest list were published"
         );
         assert!(is_empty_dir(&base), "no staged file survives");
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        assert_eq!(reopened.metadata_version(), version);
-        assert!(reopened.current_snapshot().is_none());
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata_version().unwrap(), version);
+        assert!(reopened.current_snapshot().unwrap().is_none());
         let _ = std::fs::remove_dir_all(&base);
         let _ = std::fs::remove_dir_all(&path);
     }
@@ -9257,7 +9377,7 @@ mod time_partitions {
     use arrow_array::{ArrayRef, Int64Array, RecordBatch, TimestampMicrosecondArray};
 
     use super::{
-        FormatVersion, LocalFolder, PartitionField, PartitionSpec, Table, Transform,
+        FormatVersion, IcebergTable, LocalFolder, PartitionField, PartitionSpec, Transform,
         assign_field_ids, root,
     };
     use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
@@ -9301,7 +9421,11 @@ mod time_partitions {
 
     /// A table at `path` partitioned by `minutes[step]` of `ts`, in a field
     /// named `ts_minutes`.
-    fn minutes_table(path: &std::path::Path, schema: &Field, step: u32) -> Table<LocalFolder> {
+    fn minutes_table(
+        path: &std::path::Path,
+        schema: &Field,
+        step: u32,
+    ) -> IcebergTable<LocalFolder> {
         let spec = PartitionSpec {
             spec_id: 0,
             fields: vec![PartitionField {
@@ -9311,7 +9435,7 @@ mod time_partitions {
                 transform: Transform::Minutes(step),
             }],
         };
-        Table::create(
+        IcebergTable::create(
             LocalFolder::new(path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -9335,7 +9459,7 @@ mod time_partitions {
     /// The on-disk files of a reopened table: partition tuple, row count,
     /// path, sorted.
     fn data_files(
-        table: &Table<LocalFolder>,
+        table: &IcebergTable<LocalFolder>,
         transform: Transform,
     ) -> Vec<(Vec<Scalar>, i64, String)> {
         let mut files: Vec<(Vec<Scalar>, i64, String)> = table
@@ -9381,7 +9505,7 @@ mod time_partitions {
             assert!(!text.contains("\"bucket[21474"), "{text}");
         }
 
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         let files = data_files(&reopened, Transform::Minutes(15));
         assert_eq!(files.len(), 4, "one data file per quarter hour: {files:?}");
         for ((partition, count, file_path), (expected, expected_count)) in
@@ -9469,7 +9593,7 @@ mod time_partitions {
             assert!(!text.contains("\"bucket[21474"), "{text}");
         }
 
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         let files = data_files(&reopened, Transform::Minutes(30));
         assert_eq!(files.len(), 3, "one data file per half hour: {files:?}");
         for ((partition, count, file_path), (expected, expected_count)) in
@@ -9502,7 +9626,7 @@ mod declared_schema {
 
     use arrow_array::{Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray};
 
-    use super::{FormatVersion, LocalFolder, PartitionSpec, Table, Transform, root};
+    use super::{FormatVersion, IcebergTable, LocalFolder, PartitionSpec, Transform, root};
     use yggdryl::iceberg::IcebergOptions;
     use yggdryl::{DataType, Field, StructType, TimeUnit, Timezone};
 
@@ -9559,7 +9683,7 @@ mod declared_schema {
         let mut numbered = schema.clone();
         yggdryl::iceberg::assign_field_ids(&mut numbered, 1).unwrap();
         let spec = PartitionSpec::from_schema(1, &numbered).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -9571,7 +9695,7 @@ mod declared_schema {
         // A derived partition column is the manifest's, not the schema's.
         assert_eq!(table.schema().unwrap().field_len(), 3);
 
-        let order = table.metadata().default_sort_order().unwrap();
+        let order = table.metadata().unwrap().default_sort_order().unwrap();
         assert_eq!(order.fields.len(), 2);
         assert_eq!(order.fields[0].source_id, 3);
         assert_eq!(order.fields[0].direction, "desc");
@@ -9646,7 +9770,7 @@ mod declared_schema {
         assert_eq!(ids.len(), 4);
 
         // Reopening reads both declarations off the document.
-        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         let reported = reopened.schema().unwrap();
         assert_eq!(
             reported.get_metadata("PARTITION:by"),
@@ -9658,7 +9782,7 @@ mod declared_schema {
         );
         assert_eq!(
             PartitionSpec::from_schema(1, reported).unwrap(),
-            *reopened.metadata().default_spec().unwrap()
+            *reopened.metadata().unwrap().default_spec().unwrap()
         );
         let _ = std::fs::remove_dir_all(&path);
     }
@@ -9671,7 +9795,7 @@ mod declared_schema {
         let mut numbered = schema.clone();
         yggdryl::iceberg::assign_field_ids(&mut numbered, 1).unwrap();
         let spec = PartitionSpec::from_schema(1, &numbered).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,

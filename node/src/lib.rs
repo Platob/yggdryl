@@ -104,10 +104,9 @@ pub use http::{
 };
 pub use iceberg::{
     FieldBound, FieldCount, FieldSummaryView, IcebergOptionsInput, JsCatalog, JsCompaction,
-    JsDataFile, JsIcebergOptions, JsManifestFile, JsNamespace, JsNamespaces, JsPartitionField,
-    JsPartitionSpec, JsScanPlan, JsSchemaUpdate, JsSnapshot, JsSnapshotRef, JsTable, JsTables,
-    iceberg_assign_field_ids, iceberg_can_promote, iceberg_schema_from_json,
-    iceberg_schema_into_json,
+    JsDataFile, JsIcebergOptions, JsManifestFile, JsNamespace, JsPartitionField, JsPartitionSpec,
+    JsScanPlan, JsSchemaUpdate, JsSnapshot, JsSnapshotRef, JsTable, iceberg_assign_field_ids,
+    iceberg_can_promote, iceberg_schema_from_json, iceberg_schema_into_json,
 };
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};
 pub use iomedia::JsBatchReader;

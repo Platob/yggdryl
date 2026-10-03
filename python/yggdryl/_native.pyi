@@ -5578,141 +5578,52 @@ class SystemWarehouse:
     @staticmethod
     def properties_for(url: Url | str | PathLike[str]) -> dict[str, str]: ...
 
-class IcebergNames:
-    __hash__: ClassVar[None]  # type: ignore[assignment]
+class IcebergCatalog(Catalog):
+    """A warehouse folder of namespaces of Iceberg tables: the ``Catalog``
+    subclass the Iceberg implementation answers.
 
-    """The lazy names iterator every catalog collection view walks.
-
-    Nothing is collected crossing the boundary; wrap it in ``list()`` when a
-    sequence is wanted, and that costs the whole listing.
+    Namespaces nest to any depth, each a folder; ``metadata/catalog.json`` and
+    ``metadata/namespace.json`` keep the stored properties; a table is a folder
+    laid out as one. Constructing one touches nothing, and every question - the
+    views, the children, a dotted path - is asked of the store when it is asked.
     """
 
-    def __iter__(self) -> IcebergNames: ...
-    def __next__(self) -> str: ...
-
-class IcebergNamespace:
-    __hash__: ClassVar[None]  # type: ignore[assignment]
-
-    """One namespace of a catalog: identity, properties, plus its two
-    collection views."""
-
-    @property
-    def name(self) -> str: ...
-    @property
-    def tables(self) -> IcebergTables: ...
-    @property
-    def namespaces(self) -> IcebergNamespaces: ...
-    @property
-    def properties(self) -> dict[str, str]: ...
-    def update_properties(
+    def __init__(
         self,
-        updates: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
-        removes: Iterable[str] | None = None,
+        name: str,
+        warehouse: IOBase | Url | str | PathLike[str],
+        *,
+        description: str | None = None,
+        properties: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        **keywords: str,
     ) -> None: ...
-    def __repr__(self) -> str: ...
-
-class IcebergNamespaces:
-    __hash__: ClassVar[None]  # type: ignore[assignment]
-
-    """The namespaces one level below a catalog or a namespace, as a lazy view.
-
-    Membership, iteration, and length consult storage when asked; indexing
-    answers a ``Namespace``, and a missing name is a ``KeyError`` naming it.
-    """
-
-    def __getitem__(self, name: str) -> IcebergNamespace: ...
-    def __contains__(self, name: str) -> bool: ...
-    def __iter__(self) -> IcebergNames: ...
-    def __len__(self) -> int: ...
-    def keys(self) -> IcebergNames: ...
-    def values(self) -> Iterator[IcebergNamespace]: ...
-    def items(self) -> Iterator[tuple[str, IcebergNamespace]]: ...
-    def create(self, name: str) -> IcebergNamespace: ...
-    def open_or_create(self, name: str) -> IcebergNamespace: ...
-    def __repr__(self) -> str: ...
-
-class IcebergTables:
-    __hash__: ClassVar[None]  # type: ignore[assignment]
-
-    """The tables of one namespace, as a lazy map-oriented view.
-
-    The same shape as ``Namespaces`` one level down: indexing opens a
-    ``Table``, a missing name is a ``KeyError`` naming it, and the write
-    conveniences create the table on first write.
-    """
-
-    def __getitem__(self, name: str) -> IcebergTable: ...
-    def __contains__(self, name: str) -> bool: ...
-    def __iter__(self) -> IcebergNames: ...
-    def __len__(self) -> int: ...
-    def keys(self) -> IcebergNames: ...
-    def values(self) -> Iterator[IcebergTable]: ...
-    def items(self) -> Iterator[tuple[str, IcebergTable]]: ...
-    def create(self, name: str, schema: FieldLike | Iterable[Field]) -> IcebergTable: ...
+    @classmethod
+    def create(
+        cls, name: str, warehouse: IOBase | Url | str | PathLike[str]
+    ) -> IcebergCatalog: ...
+    @classmethod
     def open_or_create(
-        self, name: str, schema: FieldLike | Iterable[Field]
-    ) -> IcebergTable: ...
-    def append(
+        cls, name: str, warehouse: IOBase | Url | str | PathLike[str]
+    ) -> IcebergCatalog: ...
+
+class IcebergNamespace(Namespace):
+    """One namespace of an Iceberg catalog - a folder under the warehouse, its
+    ``metadata/namespace.json`` the stored properties - as the ``Namespace``
+    subclass the Iceberg implementation answers."""
+
+    def __init__(
         self,
-        name: str,
-        data: IcebergRows,
+        path: WarehousePath,
+        location: IOBase | Url | str | PathLike[str],
         *,
-        options: IcebergOptions | None = None,
-        **properties: Unpack[IcebergProperties],
-    ) -> IcebergTable: ...
-    def overwrite(
-        self,
-        name: str,
-        data: IcebergRows,
-        *,
-        options: IcebergOptions | None = None,
-        **properties: Unpack[IcebergProperties],
-    ) -> IcebergTable: ...
-    def __repr__(self) -> str: ...
-
-class IcebergCatalog:
-    __hash__: ClassVar[None]  # type: ignore[assignment]
-
-    """A warehouse folder of namespaces of Iceberg tables."""
-
-    def __init__(self, warehouse: IOBase | Url | str | PathLike[str]) -> None: ...
-    @property
-    def warehouse(self) -> IOBase: ...
-    @property
-    def namespaces(self) -> IcebergNamespaces: ...
-    @property
-    def tables(self) -> IcebergTables: ...
-    @property
-    def properties(self) -> dict[str, str]: ...
-    def update_properties(
-        self,
-        updates: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
-        removes: Iterable[str] | None = None,
+        properties: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        **keywords: str,
     ) -> None: ...
-    def table(self, name: str) -> IcebergTable: ...
-    def namespace(self, name: str) -> IcebergNamespace: ...
-    def append(
-        self,
-        name: str,
-        data: IcebergRows,
-        *,
-        options: IcebergOptions | None = None,
-        **properties: Unpack[IcebergProperties],
-    ) -> IcebergTable: ...
-    def overwrite(
-        self,
-        name: str,
-        data: IcebergRows,
-        *,
-        options: IcebergOptions | None = None,
-        **properties: Unpack[IcebergProperties],
-    ) -> IcebergTable: ...
-    def __repr__(self) -> str: ...
 
-class IcebergTable:
-    __hash__: ClassVar[None]  # type: ignore[assignment]
-
-    """An Iceberg table reached entirely through one container handle."""
+class IcebergTable(Table):
+    """An Iceberg table reached entirely through one container handle: the
+    ``Table`` subclass the Iceberg implementation answers, so every member of
+    a warehouse table is here beside the table's own."""
 
     # `partition_by` is a `PartitionSpec`, or the `PARTITION:by` entries the
     # core reads into one: a bare column an identity field, `days(ts)`,
@@ -5732,8 +5643,7 @@ class IcebergTable:
         *,
         format_version: int | None = None,
     ) -> IcebergTable: ...
-    @classmethod
-    def open(cls, root: IOBase) -> IcebergTable: ...
+    def __init__(self, root: IOBase) -> None: ...
     @classmethod
     def open_or_create(
         cls,
@@ -5768,8 +5678,6 @@ class IcebergTable:
     def current_snapshot(self) -> Snapshot | None: ...
     @property
     def snapshots(self) -> list[Snapshot]: ...
-    @property
-    def properties(self) -> dict[str, str]: ...
     @property
     def schemas(self) -> list[Field]: ...
     def manifests(self) -> list[ManifestFile]: ...
@@ -5835,7 +5743,7 @@ class IcebergTable:
     ) -> list[int]: ...
     @property
     def target_file_size(self) -> int: ...
-    def append(
+    def append(  # type: ignore[override]  # a table appends rows, never bytes
         self,
         batches: IcebergRows,
         *,
@@ -5885,7 +5793,7 @@ class IcebergTable:
     def inspect_files(self) -> pyarrow.RecordBatchReader: ...
     def update_properties(
         self,
-        updates: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        updates: Mapping[str, object] | Iterable[tuple[str, object]] | None = None,
         removes: Iterable[str] | None = None,
     ) -> None: ...
     def update_schema(self) -> SchemaUpdate: ...

@@ -99,7 +99,7 @@ class TestDescribeAnswersTheImplementation:
         memory = Catalog.from_url(root, type="memory", name="m")
         assert type(memory) is MemoryCatalog
         assert memory.name == "m"
-        with pytest.raises(ValueError, match="expected `memory` or `folder`"):
+        with pytest.raises(ValueError, match="expected `memory`, `folder` or `hadoop`"):
             Catalog.from_url(root, {"type": "rest"})
 
     def test_the_kinds_are_never_built_directly(self) -> None:

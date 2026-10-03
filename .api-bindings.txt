@@ -266,7 +266,7 @@
     protocol: Iterator[Candle], unhashable
   graph.candles
     candles(books: Iterable[BookEvent | MarketData], interval: CandleOptions | int | str, timezone: Timezone | str | Any | None = None) -> list[Candle]: list(CandleIterator(books, CandleOptions(interval, timezone)))
-  iceberg: Catalog, Compaction, DataFile, IcebergOptions, ManifestFile, Namespace, Namespaces, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table, Tables, assign_field_ids, can_promote, schema_from_json, schema_into_json
+  iceberg: Compaction, DataFile, IcebergCatalog, IcebergNamespace, IcebergOptions, IcebergTable, ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, assign_field_ids, can_promote, schema_from_json, schema_into_json
   scalar: decorator installing cached static into_field()
   warehouse: Catalog, FolderCatalog, FolderNamespace, MediaTable, MemoryCatalog, MemoryNamespace, Namespace, Namespaces, SystemWarehouse, Table, Tables, Warehouse; every name re-exported at the package root
     the catalog abstraction over yggdryl::warehouse: Catalog, Namespace and Table are IOBase subclasses over Holder::Catalog, Holder::Namespace and Holder::Table, type(object) the implementation doing the work; a path is a WarehousePath - a dotted text the plan grammar reads (`lake."eu west".trades`), or a sequence of parts taken as spelled; properties are WarehouseProperties - a mapping of str to str, int, float or bool - and every constructor and creator taking properties=None takes **keywords too, each one more entry of that bag
@@ -348,6 +348,20 @@
     per call: every Catalog, Tables and Table method taking options=None takes **properties too, set on a copy of the given options - else of the table's own override, else of nothing set - for that call alone
     instance: commit_max_backoff_ms, commit_min_backoff_ms, commit_retries, compact_after_commits, data_mime_type, read_parallel_min_file_size, read_parallel_min_files, read_parallelism, stable_hash, target_file_size, write_parallelism, write_staging
     protocol: native equality/order; hashing freezes all setters; copy/pickle unlock
+  iceberg.IcebergCatalog
+    constructor: IcebergCatalog(name, warehouse, *, description=None, properties=None, **keywords) - warehouse an IOBase, a Url, a str or a path; touches nothing; the keywords more stated properties, which reach every object under the catalog and are written nowhere
+    statics: create(name, warehouse) - writes metadata/catalog.json, a folder already there a conflict; open_or_create(name, warehouse) - the conflict absorbed
+    instance: as warehouse.Catalog - namespace_levels is None, namespaces nest to any depth; namespaces.create and open_or_create write metadata/namespace.json; tables.create, open_or_create, append and overwrite create through existing namespaces only, over the schema as Iceberg expresses it (a dictionary layout stored as the string it encodes, float16 widened, an interval refused by path); update_properties writes metadata/catalog.json, the ICEBERG: prefix refused; properties the stated over the stored
+    protocol: a Catalog subclass - isinstance(catalog, Catalog) and type(catalog) is IcebergCatalog; equality and hash over the description
+  iceberg.IcebergNamespace
+    constructor: IcebergNamespace(path, location, *, properties=None, **keywords) - path at least two parts, the catalog's name first
+    instance: as warehouse.Namespace; children classified by one listing of each entry's metadata/ and no read; properties metadata/namespace.json beneath the parent's; update_properties writes it
+    protocol: a Namespace subclass; the object every Iceberg catalog answers for a namespace
+  iceberg.IcebergTable
+    constructor: IcebergTable(root) - the table the container handle addresses, opened: its current metadata document is read, since open() is the scope every handle has
+    statics: create(root, schema, partition_by=..., *, format_version=None), open_or_create(root, schema, partition_by=..., *, format_version=None) - partition_by a PartitionSpec or the PARTITION:by entries PartitionSpec::from_schema reads, omitted the schema's own declaration, None unpartitioned; unnumbered columns numbered
+    instance: as warehouse.Table (field(), storage "table", properties the stated over the metadata's, update_properties refused - a table's properties commit through its metadata), then root, location, format_version, table_uuid, version, metadata_file_name, metadata_location, schema, spec, current_snapshot, snapshots, schemas, manifests, manifests_at, data_files, scan, scan_where, scan_ref, scan_matching, plan_matching, scan_at, plan, plan_at, snapshot_by_ref, create_branch, create_tag, remove_ref, fast_forward, expire_snapshots, target_file_size, append, overwrite, overwrite_where, merge, merge_where, set_options, options, evolve_schema, compact, inspect_history, inspect_snapshots, inspect_files, update_schema
+    protocol: a Table subclass; str is the dotted path, a table on its own named after its folder; the object every Iceberg catalog answers for a table
   iceberg.Compaction
     instance: bytes_rewritten, files_after, files_before, stable_hash
   iceberg.PartitionField
@@ -811,20 +825,20 @@
     types: ServeTable (string | { name?: string | null, location: string }), ServeArgumentsOptions (tables, capture and args each one item, a list or null; bind; path), ServeOptions (those, then bin, env: NodeJS.ProcessEnv, signal: AbortSignal), Serving, ServeExit
     book/: the ES modules the served page runs, each importable under Node with no document - theme.js (THEMES, STORAGE_KEY, resolveTheme, applyTheme, toggleTheme, readTheme, writeTheme, systemPrefersDark, nextTheme, themeLabel), api.js (AUDIT_SUFFIXES, ApiError, queryString, normalizeBase, apiUrl, candleParams, bookParams, eventParams, auditParams, fetchJson, fetchTables, fetchTimezones, fetchTickers, fetchCandles, fetchBook, fetchEvents, auditUrl), chart.js (DEFAULT_PADDING, SPREAD_SHARE, PANE_GAP, MAX_BODY_WIDTH, scaleLinear, tickStep, niceTicks, parseNumber, parseInstant, padDomain, layoutCandles, nearestCandle, formatTick, timeTicks, describeCandle, readColors, drawCandles), audit.js (EVENT_COLUMNS, AUDIT_TYPES, instantParts, instantNanos, instantText, formatInstant, formatDecimal, compareCells, sortRows, downloadLink, renderSummary, renderEvents), app.js (INTERVALS, EVENT_LIMIT, HASH_KEYS, REFRESH_DELAY, readHash, writeHash, timezoneChoices, apiBase, debounce, start)
   iceberg
-    statics: Table, Catalog, Compaction, IcebergOptions, ManifestFile, PartitionField, PartitionSpec, DataFile, ScanPlan, Snapshot, SnapshotRef, assignFieldIds, canPromote, schemaFromJson, schemaIntoJson
+    statics: IcebergCatalog, IcebergNamespace, IcebergTable, Compaction, IcebergOptions, ManifestFile, PartitionField, PartitionSpec, DataFile, ScanPlan, Snapshot, SnapshotRef, assignFieldIds, canPromote, schemaFromJson, schemaIntoJson
   iceberg.IcebergOptions
     instance: clone, compactAfterCommits, commitMaxBackoffMs, commitMinBackoffMs, commitRetries, compare, dataMimeType, equals, readParallelism, readParallelMinFileSize, readParallelMinFiles, stableHash, targetFileSize, writeParallelism, writeStaging
-  iceberg.Catalog
-    instance: append, namespace, namespaces, overwrite, properties, table, tables, updateProperties
-  iceberg.Namespace
-    instance: name, namespaces, properties, tables, updateProperties
-  iceberg.Namespaces
-    instance: create, entries, get, has, keys, names, openOrCreate, size, values
-  iceberg.Tables
-    instance: append, create, entries, get, has, keys, names, openOrCreate, overwrite, size, values
-  iceberg.Table
-    statics: create, open, openOrCreate
-    instance: append, compact, createBranch, createTag, currentSnapshot, dataFiles, evolveSchema, expireSnapshots, fastForward, formatVersion, inspectFiles, inspectHistory, inspectSnapshots, location, manifests, manifestsAt, merge, mergeWhere, metadataFileName, metadataLocation, options, overwrite, overwriteWhere, plan, planAt, planMatching, properties, removeRef, root, scan, scanAt, scanMatching, scanRef, scanWhere, schema, schemas, setOptions, snapshotByRef, snapshots, spec, tableUuid, targetFileSize, toString, updateProperties, updateSchema, version
+  iceberg.IcebergCatalog
+    constructor: new IcebergCatalog(name, location, { description, properties }?) - location an IOBase, a Url, a string or a path; touches nothing; the properties stated, reaching every object under the catalog and written nowhere
+    statics: create(name, location) - writes metadata/catalog.json, a folder already there a conflict; openOrCreate(name, location); from(catalog) - the Iceberg catalog a warehouse.Catalog holds, refused by implementation name otherwise
+    instance: intoCatalog (the warehouse.Catalog, what a Warehouse registers), name, path, description, url, properties (effective), updateProperties(properties?, removes?) - a plain object or a Map, the ICEBERG: prefix refused - namespaceLevels (null: namespaces nest to any depth), namespaces(), tables(), children(), get(name), resolve(path), table(path), namespace(path), createNamespace(name, properties?), createTable(name, field, properties?) - the generic views and objects, creating through existing namespaces only over the schema as Iceberg expresses it - equals, toString (the dotted path)
+  iceberg.IcebergNamespace
+    constructor: new IcebergNamespace(path, location, { properties }?) - path at least two parts, the catalog's name first
+    statics: from(namespace)
+    instance: intoNamespace, name, path, url, properties, updateProperties - metadata/namespace.json - namespaces(), tables(), children(), get, resolve, table, namespace, createNamespace, createTable, equals, toString
+  iceberg.IcebergTable
+    statics: create, open, openOrCreate, from(table) - the Iceberg table a warehouse.Table holds
+    instance: intoTable, name, path, equals, append, compact, createBranch, createTag, currentSnapshot, dataFiles, evolveSchema, expireSnapshots, fastForward, formatVersion, inspectFiles, inspectHistory, inspectSnapshots, location, manifests, manifestsAt, merge, mergeWhere, metadataFileName, metadataLocation, options, overwrite, overwriteWhere, plan, planAt, planMatching, properties, removeRef, root, scan, scanAt, scanMatching, scanRef, scanWhere, schema, schemas, setOptions, snapshotByRef, snapshots, spec, tableUuid, targetFileSize, toString (the dotted path; a table on its own is named after its folder), updateProperties, updateSchema, version; properties the stated over the metadata's
     create/openOrCreate(root, schema, partitionBy?, version?): partitionBy is a PartitionSpec, or the PARTITION:by entries the core's PartitionSpec::from_schema reads (a bare column identity; days(ts), hours(ts), minutes(ts, 15), weeks(ts), quarters(ts), truncate(name, 4) derived, as alias naming one), refused naming the entry; omitted reads the schema's own declaration (none declared is unpartitioned); null is unpartitioned
   iceberg.SchemaUpdate (via table.updateSchema())
     instance: addColumn, commit, dropColumn, makeNullable, renameColumn, updateDoc, updateType

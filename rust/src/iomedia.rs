@@ -1127,6 +1127,125 @@ macro_rules! __delegate_iomedia_parquet {
     ($handle:ident) => {};
 }
 
+/// Every [`IOMedia`] verb forwarded to a handle resolved on the first call
+/// that needs one, as `__delegate_resolved_iobase!` forwards the byte verbs;
+/// the two `as_io_base` doors answer `self`.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __delegate_resolved_iomedia {
+    ($get:ident, $get_mut:ident) => {
+        fn as_io_base(&self) -> &dyn $crate::IOBase {
+            self
+        }
+
+        fn as_io_base_mut(&mut self) -> &mut dyn $crate::IOBase {
+            self
+        }
+
+        fn row_size(&self) -> $crate::Result<u64> {
+            $crate::IOMedia::row_size(self.$get()?)
+        }
+
+        fn column_size(&self) -> $crate::Result<usize> {
+            $crate::IOMedia::column_size(self.$get()?)
+        }
+
+        fn record_options(&self) -> $crate::Result<$crate::media::RecordOptions> {
+            $crate::IOMedia::record_options(self.$get()?)
+        }
+
+        #[cfg(feature = "parquet")]
+        fn read_parquet_statistics(&self) -> $crate::Result<$crate::parquet::FileStatistics> {
+            $crate::IOMedia::read_parquet_statistics(self.$get()?)
+        }
+
+        #[cfg(feature = "parquet")]
+        fn read_parquet_geospatial_statistics(
+            &self,
+            column: &str,
+        ) -> $crate::Result<$crate::parquet::GeospatialStatistics> {
+            $crate::IOMedia::read_parquet_geospatial_statistics(self.$get()?, column)
+        }
+
+        fn read_arrow_field(
+            &self,
+            options: &$crate::media::RecordOptions,
+        ) -> $crate::Result<$crate::Field> {
+            $crate::IOMedia::read_arrow_field(self.$get()?, options)
+        }
+
+        fn read_arrow_reader(
+            &self,
+            options: &$crate::media::RecordOptions,
+        ) -> $crate::Result<$crate::arrow::BatchReader> {
+            $crate::IOMedia::read_arrow_reader(self.$get()?, options)
+        }
+
+        fn read_arrow(
+            &self,
+            options: Option<&$crate::media::RecordOptions>,
+        ) -> $crate::Result<$crate::SerieReader> {
+            $crate::IOMedia::read_arrow(self.$get()?, options)
+        }
+
+        fn overwrite_arrow_reader(
+            &mut self,
+            batches: $crate::arrow::BatchReader,
+            options: &$crate::media::RecordOptions,
+        ) -> $crate::Result<()> {
+            $crate::IOMedia::overwrite_arrow_reader(self.$get_mut()?, batches, options)
+        }
+
+        fn overwrite_prepared_arrow_reader(
+            &mut self,
+            batches: $crate::arrow::BatchReader,
+            options: &$crate::media::RecordOptions,
+        ) -> $crate::Result<()> {
+            $crate::IOMedia::overwrite_prepared_arrow_reader(self.$get_mut()?, batches, options)
+        }
+
+        fn overwrite_arrow_batch(
+            &mut self,
+            batch: arrow_array::RecordBatch,
+            options: &$crate::media::RecordOptions,
+        ) -> $crate::Result<()> {
+            $crate::IOMedia::overwrite_arrow_batch(self.$get_mut()?, batch, options)
+        }
+
+        fn append_arrow_reader(
+            &mut self,
+            batches: $crate::arrow::BatchReader,
+            options: &$crate::media::RecordOptions,
+        ) -> $crate::Result<()> {
+            $crate::IOMedia::append_arrow_reader(self.$get_mut()?, batches, options)
+        }
+
+        fn append_arrow_batch(
+            &mut self,
+            batch: arrow_array::RecordBatch,
+            options: &$crate::media::RecordOptions,
+        ) -> $crate::Result<()> {
+            $crate::IOMedia::append_arrow_batch(self.$get_mut()?, batch, options)
+        }
+
+        fn merge_arrow_reader(
+            &mut self,
+            batches: $crate::arrow::BatchReader,
+            options: &$crate::media::RecordOptions,
+        ) -> $crate::Result<()> {
+            $crate::IOMedia::merge_arrow_reader(self.$get_mut()?, batches, options)
+        }
+
+        fn merge_arrow_batch(
+            &mut self,
+            batch: arrow_array::RecordBatch,
+            options: &$crate::media::RecordOptions,
+        ) -> $crate::Result<()> {
+            $crate::IOMedia::merge_arrow_batch(self.$get_mut()?, batch, options)
+        }
+    };
+}
+
 /// Implement [`IOMedia`] by forwarding its whole contract to an inner handle.
 ///
 /// Use this independently from `delegate_iobase!`: storage delegation and

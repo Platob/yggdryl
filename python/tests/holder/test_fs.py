@@ -577,7 +577,7 @@ class TestCustomFilesystems:
 
         handler = MemoryHandler()
         warehouse = IOBase.from_fs(pafs.PyFileSystem(handler), "warehouse/trades")
-        stored = iceberg.Table.create(warehouse, table().schema)
+        stored = iceberg.IcebergTable.create(warehouse, table().schema)
         stored.append(table())
 
         # The root is the folder the table actually lives in, not the local
@@ -659,7 +659,7 @@ class TestTables:
         handler = MemoryHandler()
         warehouse = IOBase.from_fs(pafs.PyFileSystem(handler), "warehouse/trades")
 
-        table_handle = iceberg.Table.create(warehouse, table().schema)
+        table_handle = iceberg.IcebergTable.create(warehouse, table().schema)
         table_handle.append(table())
 
         rows = table_handle.scan().read_all()

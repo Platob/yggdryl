@@ -85,6 +85,7 @@ from yggdryl import (
 from yggdryl._native import (
     ByteIterator,
     BytesParameters,
+    Catalog,
     FieldMetadata,
     FixCode,
     FixDirection,
@@ -92,13 +93,16 @@ from yggdryl._native import (
     FixMessages,
     FixParentSource,
     IOCursor,
-    IcebergNames,
     Listing,
     MarketLeaf,
+    Namespace,
+    Namespaces,
     ScalarEntryIterator,
     ScalarIterator,
     StringEnum,
     StringParameters,
+    Table,
+    Tables,
 )
 from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
 from yggdryl.enums import MARKET_VIEWS, AsciiCode, Ccy, fixed_ascii
@@ -198,16 +202,10 @@ byte_iterator_hash: None = ByteIterator.__hash__
 listing_hash: None = Listing.__hash__
 value_iterator_hash: None = ScalarIterator.__hash__
 value_entry_iterator_hash: None = ScalarEntryIterator.__hash__
-iceberg_names_hash: None = IcebergNames.__hash__
 fix_messages_hash: None = FixMessages.__hash__
 fix_codec_hash: None = fix.FixCodec.__hash__
 bound_hash: None = Bound.__hash__
 bound_selector_hash: None = BoundSelector.__hash__
-catalog_hash: None = iceberg.Catalog.__hash__
-namespace_hash: None = iceberg.Namespace.__hash__
-namespaces_hash: None = iceberg.Namespaces.__hash__
-tables_hash: None = iceberg.Tables.__hash__
-table_hash: None = iceberg.Table.__hash__
 schema_update_hash: None = iceberg.SchemaUpdate.__hash__
 
 field.set_alias("payload")
@@ -963,7 +961,7 @@ iceberg_schema: Field = iceberg.assign_field_ids(
     pa.schema([pa.field("id", pa.int64(), nullable=False)])
 )
 iceberg_spec: iceberg.PartitionSpec = iceberg.PartitionSpec.unpartitioned()
-iceberg_table: iceberg.Table = iceberg.Table.create(
+iceberg_table: iceberg.IcebergTable = iceberg.IcebergTable.create(
     IOBase(Path("trades")), iceberg_schema, iceberg_spec
 )
 iceberg_scan: pa.RecordBatchReader = iceberg_table.scan(iceberg_schema)
@@ -1071,29 +1069,22 @@ assert iceberg_puffin_options
 assert iceberg_resolved
 assert iceberg_options_scan
 
-# The catalog chains through its views: namespaces, then tables, then a table.
-catalog: iceberg.Catalog = iceberg.Catalog(Path("warehouse"))
-catalog_namespaces: iceberg.Namespaces = catalog.namespaces
-namespace: iceberg.Namespace = catalog_namespaces["sales"]
+# The Iceberg classes are the generic kinds, so the chain is the generic one:
+# namespaces, then tables, then a table.
+catalog: iceberg.IcebergCatalog = iceberg.IcebergCatalog("lake", Path("warehouse"))
+catalog_as_kind: Catalog = catalog
+catalog_namespaces: Namespaces = catalog.namespaces
+namespace: Namespace = catalog_namespaces["sales"]
 namespace_names: list[str] = list(catalog_namespaces)
 namespace_count: int = len(catalog_namespaces)
 namespace_known: bool = "sales" in catalog_namespaces
-nested: iceberg.Namespace = namespace.namespaces.open_or_create("eu")
-namespace_tables: iceberg.Tables = namespace.tables
-chained_table: iceberg.Table = catalog.namespaces["sales"].tables["orders"]
+nested: Namespace = namespace.namespaces.open_or_create("eu")
+namespace_tables: Tables = namespace.tables
+chained_table: Table = catalog.namespaces["sales"].tables["orders"]
 table_names: list[str] = list(namespace_tables)
-table_known: bool = "orders" in namespace_tables
-created_table: iceberg.Table = namespace_tables.create("fills", iceberg_schema)
-opened_table: iceberg.Table = namespace_tables.open_or_create(
-    "fills", iceberg_schema
-)
-appended_table: iceberg.Table = namespace_tables.append(
-    "orders",
-    pa.table({"id": [1]}),
-    options=iceberg.IcebergOptions(data_mime_type="avro"),
-)
-overwritten_table: iceberg.Table = namespace_tables.overwrite(
-    "orders", pa.table({"id": [1]}), options=iceberg_options
+created_catalog: iceberg.IcebergCatalog = iceberg.IcebergCatalog.create("lake", Path("warehouse"))
+standalone_namespace: iceberg.IcebergNamespace = iceberg.IcebergNamespace(
+    "lake.sales", Path("warehouse/sales")
 )
 
 assert namespace.name
@@ -1103,6 +1094,11 @@ assert namespace_count >= 0
 assert namespace_known or not namespace_known
 assert chained_table
 assert table_names == [] or table_names
+table_known: bool = "orders" in namespace_tables
+created_table: Table = namespace_tables.create("orders", chained_table.field())
+opened_table: Table = namespace_tables.open_or_create("orders", chained_table.field())
+appended_table: Table = namespace_tables.append("orders", pa.table({"id": [1]}))
+overwritten_table: Table = namespace_tables.overwrite("orders", pa.table({"id": [1]}))
 assert table_known or not table_known
 assert created_table and opened_table and appended_table and overwritten_table
 

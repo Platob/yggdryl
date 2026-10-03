@@ -34,14 +34,19 @@ pub enum Catalog {
     /// Boxed: a located catalog carries its location and its stated
     /// properties, several times the size of a memory one.
     Folder(Box<FolderCatalog>),
+    /// An Iceberg warehouse folder, read as namespaces nested to any depth
+    /// and tables laid out as the format lays them out.
+    #[cfg(feature = "iceberg")]
+    Iceberg(Box<crate::iceberg::IcebergCatalog>),
 }
 
 impl Catalog {
     /// The catalog a URL names, under `properties`, touching no storage.
     ///
-    /// The explicit `type` property decides first - `memory`, or `folder` -
-    /// and otherwise the scheme does: every location a byte backend holds is
-    /// a folder catalog over the container it names. The catalog is called
+    /// The explicit `type` property decides first - `memory`, `folder`, or
+    /// `hadoop`, an Iceberg warehouse folder, PyIceberg's spelling - and
+    /// otherwise the scheme does: every location a byte backend holds is a
+    /// folder catalog over the container it names. The catalog is called
     /// what the `name` property says, else the location's last segment. A
     /// property this door does not read travels on to every handle under
     /// the catalog.
@@ -51,22 +56,30 @@ impl Catalog {
     /// Returns [`Error::InvalidRecord`] at `$.with.type` naming a type this
     /// build does not answer, and at `$.with.name` when no name can be read.
     pub fn from_url(url: &Url, properties: &Properties) -> Result<Self> {
+        /// The types this build answers, as a refusal lists them.
+        #[cfg(feature = "iceberg")]
+        const TYPES: &str = "`memory`, `folder` or `hadoop`";
+        #[cfg(not(feature = "iceberg"))]
+        const TYPES: &str = "`memory` or `folder`";
         let kind = properties.get("type").map(str::trim);
+        let not_built = |other: &str| Error::InvalidRecord {
+            path: SmolStr::new_static("$.with.type"),
+            reason: format_smolstr!(
+                "expected {TYPES}, got `{other}`; this build has no catalog of that type"
+            ),
+        };
         match kind {
             None | Some("folder" | "memory") => {}
-            Some(other @ ("hadoop" | "rest" | "xmla")) => {
-                return Err(Error::InvalidRecord {
-                    path: SmolStr::new_static("$.with.type"),
-                    reason: format_smolstr!(
-                        "expected `memory` or `folder`, got `{other}`; this build has no \
-                         catalog of that type"
-                    ),
-                });
-            }
+            #[cfg(feature = "iceberg")]
+            Some("hadoop") => {}
+            #[cfg(feature = "iceberg")]
+            Some(other @ ("rest" | "xmla")) => return Err(not_built(other)),
+            #[cfg(not(feature = "iceberg"))]
+            Some(other @ ("hadoop" | "rest" | "xmla")) => return Err(not_built(other)),
             Some(other) => {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.with.type"),
-                    reason: format_smolstr!("expected `memory` or `folder`, got {other:?}"),
+                    reason: format_smolstr!("expected {TYPES}, got {other:?}"),
                 });
             }
         }
@@ -85,16 +98,26 @@ impl Catalog {
                 MemoryCatalog::new(name).with_properties(properties.clone()),
             ));
         }
+        #[cfg(feature = "iceberg")]
+        if kind == Some("hadoop") {
+            return Ok(Self::Iceberg(Box::new(
+                crate::iceberg::IcebergCatalog::new(name, url.clone())?
+                    .with_properties(properties.clone()),
+            )));
+        }
         Ok(Self::Folder(Box::new(
             FolderCatalog::new(name, url.clone())?.with_properties(properties.clone()),
         )))
     }
 
-    /// The implementation's own name: `MemoryCatalog`, `FolderCatalog`.
+    /// The implementation's own name: `MemoryCatalog`, `FolderCatalog`,
+    /// `IcebergCatalog`.
     pub(crate) const fn implementation_name(&self) -> &'static str {
         match self {
             Self::Memory(_) => "MemoryCatalog",
             Self::Folder(_) => "FolderCatalog",
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(_) => "IcebergCatalog",
         }
     }
 
@@ -103,6 +126,8 @@ impl Catalog {
         match self {
             Self::Memory(catalog) => catalog,
             Self::Folder(catalog) => catalog.as_ref(),
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg(catalog) => catalog.as_ref(),
         }
     }
 
@@ -222,6 +247,13 @@ impl From<MemoryCatalog> for Catalog {
 impl From<FolderCatalog> for Catalog {
     fn from(catalog: FolderCatalog) -> Self {
         Self::Folder(Box::new(catalog))
+    }
+}
+
+#[cfg(feature = "iceberg")]
+impl From<crate::iceberg::IcebergCatalog> for Catalog {
+    fn from(catalog: crate::iceberg::IcebergCatalog) -> Self {
+        Self::Iceberg(Box::new(catalog))
     }
 }
 

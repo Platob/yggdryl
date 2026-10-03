@@ -88,9 +88,10 @@ impl FolderCatalog {
     /// Returns the identifier's own refusal when it names no location.
     pub fn new(name: impl Into<SmolStr>, url: impl Into<crate::Uri>) -> Result<Self> {
         let url = url.into().locator()?;
+        let path = vec![name.into()];
         Ok(Self {
-            path: vec![name.into()],
-            handle: Handle::at(Site::Url(url), false),
+            handle: Handle::at(Site::Url(url), false, &path, Properties::new()),
+            path,
             description: None,
             stated: Properties::new(),
             levels: Self::DEFAULT_LEVELS,
@@ -99,9 +100,10 @@ impl FolderCatalog {
 
     /// The catalog `name` over a container handle already in hand.
     pub fn bound(name: impl Into<SmolStr>, holder: Holder) -> Self {
+        let path = vec![name.into()];
         Self {
-            path: vec![name.into()],
-            handle: Handle::bound(holder, false),
+            handle: Handle::bound(holder, false, &path, Properties::new()),
+            path,
             description: None,
             stated: Properties::new(),
             levels: Self::DEFAULT_LEVELS,
@@ -120,6 +122,7 @@ impl FolderCatalog {
     #[must_use]
     pub fn with_properties(mut self, properties: Properties) -> Self {
         self.stated = properties;
+        self.handle.set_properties(self.stated.clone());
         self
     }
 
@@ -139,7 +142,7 @@ impl FolderCatalog {
 
     /// The container handle, opened on the first call.
     fn handle(&self) -> Result<&Holder> {
-        self.handle.get(&self.stated, &path_text(&self.path))
+        self.handle.get()
     }
 }
 
@@ -216,8 +219,8 @@ impl FolderNamespace {
         let path = namespace_path(path)?;
         let url = url.into().locator()?;
         Ok(Self {
+            handle: Handle::at(Site::Url(url), false, &path, Properties::new()),
             path,
-            handle: Handle::at(Site::Url(url), false),
             description: None,
             stated: Properties::new(),
             inherited: Properties::new(),
@@ -232,9 +235,10 @@ impl FolderNamespace {
     /// Returns [`Error::InvalidRecord`] when the path has fewer than two
     /// parts.
     pub fn bound(path: impl IntoObjectPath, holder: Holder) -> Result<Self> {
+        let path = namespace_path(path)?;
         Ok(Self {
-            path: namespace_path(path)?,
-            handle: Handle::bound(holder, false),
+            handle: Handle::bound(holder, false, &path, Properties::new()),
+            path,
             description: None,
             stated: Properties::new(),
             inherited: Properties::new(),
@@ -253,6 +257,7 @@ impl FolderNamespace {
     #[must_use]
     pub fn with_properties(mut self, properties: Properties) -> Self {
         self.stated = properties;
+        self.handle.set_properties(self.effective());
         self
     }
 
@@ -274,11 +279,12 @@ impl FolderNamespace {
     }
 
     fn handle(&self) -> Result<&Holder> {
-        self.handle.get(&self.effective(), &path_text(&self.path))
+        self.handle.get()
     }
 
     pub(crate) fn inheriting(mut self, parent: &Properties) -> Self {
         self.inherited = parent.clone();
+        self.handle.set_properties(self.effective());
         self
     }
 }
@@ -391,14 +397,21 @@ fn object_of(
     match Entry::of(&entry, container, levels) {
         Entry::Namespace => Some(Object::Namespace(Namespace::Folder(Box::new(
             FolderNamespace {
+                handle: Handle::bound(entry, false, &path, effective.clone()),
                 path,
-                handle: Handle::bound(entry, false),
                 description: None,
                 stated: Properties::new(),
                 inherited: effective.clone(),
                 levels: levels - 1,
             },
         )))),
+        #[cfg(feature = "iceberg")]
+        Entry::Table(FolderLayout::Format) => {
+            let root = Handle::bound(entry, false, &path, Properties::new());
+            Some(Object::Table(Table::Iceberg(Box::new(
+                crate::iceberg::IcebergTable::at(path, root).inheriting(effective),
+            ))))
+        }
         Entry::Table(layout) => Some(Object::Table(Table::Media(Box::new(
             MediaTable::listed(path, entry, layout).inheriting(effective),
         )))),
@@ -474,28 +487,40 @@ fn is_format(folder: &Holder) -> bool {
     folder.kind() == IOKind::Table || is_table_format(folder)
 }
 
+/// Whether a folder is laid out as an Iceberg table, a listing failure read
+/// as no: a folder catalog lists what it can read.
+fn is_table_format(folder: &Holder) -> bool {
+    table_layout(folder).unwrap_or(false)
+}
+
 /// Whether a folder is laid out as an Iceberg table: its `metadata/` holds
 /// the `version-hint.text` a catalog-less table keeps, or a metadata
 /// document - one listing of `metadata/` and no read. The layout is the
 /// fact, so a build without the `iceberg` feature lists the table too and
-/// refuses to read it by name.
-fn is_table_format(folder: &Holder) -> bool {
-    let Ok(metadata) = folder.child_by_path("metadata") else {
-        return false;
-    };
-    metadata.ls(false, false).any(|entry| {
-        entry
-            .ok()
-            .and_then(|entry| entry_name(&entry))
+/// refuses to read it by name. A `metadata/` that is not there is no
+/// layout; any other listing failure is the store's own.
+pub(crate) fn table_layout(folder: &Holder) -> Result<bool> {
+    let metadata = folder.child_by_path("metadata")?;
+    for entry in metadata.ls(false, false) {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) if error.is_absent() => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        if entry_name(&entry)
             .is_some_and(|name| name == "version-hint.text" || name.ends_with(".metadata.json"))
-    })
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// The name of an entry as its store spells it - the last segment of a
 /// member's name inside an archive, never the archive's file name, else the
 /// location's file or folder name with its URI escapes decoded exactly once
 /// (`order%20book` is `order book`).
-fn entry_name(holder: &Holder) -> Option<SmolStr> {
+pub(crate) fn entry_name(holder: &Holder) -> Option<SmolStr> {
     if let Some(member) = crate::zip::member_name(holder) {
         let member = member.trim_end_matches('/');
         return Some(SmolStr::new(member.rsplit('/').next().unwrap_or(member)));

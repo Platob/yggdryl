@@ -269,6 +269,27 @@ impl From<super::MediaTable> for Object {
     }
 }
 
+#[cfg(feature = "iceberg")]
+impl From<crate::iceberg::IcebergCatalog> for Object {
+    fn from(catalog: crate::iceberg::IcebergCatalog) -> Self {
+        Self::Catalog(Catalog::Iceberg(Box::new(catalog)))
+    }
+}
+
+#[cfg(feature = "iceberg")]
+impl From<crate::iceberg::IcebergNamespace> for Object {
+    fn from(namespace: crate::iceberg::IcebergNamespace) -> Self {
+        Self::Namespace(Namespace::Iceberg(Box::new(namespace)))
+    }
+}
+
+#[cfg(feature = "iceberg")]
+impl From<crate::iceberg::IcebergTable<super::Handle>> for Object {
+    fn from(table: crate::iceberg::IcebergTable<super::Handle>) -> Self {
+        Self::Table(Table::Iceberg(Box::new(table)))
+    }
+}
+
 /// Write a path as the plan grammar spells it: parts joined by `.`, each
 /// quoted only where the grammar needs it.
 pub(crate) fn write_path(formatter: &mut fmt::Formatter<'_>, parts: &[SmolStr]) -> fmt::Result {

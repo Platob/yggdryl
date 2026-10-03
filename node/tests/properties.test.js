@@ -121,9 +121,10 @@ test('Iceberg options take their fields by name, per value and per call', async 
 
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const catalog = new iceberg.Catalog(root)
+  const catalog = new iceberg.IcebergCatalog('lake', root)
   const rows = [{ id: 1n }, { id: 2n }]
-  const table = catalog.append('nyc.trades', rows, { dataMimeType: 'avro' })
+  const table = iceberg.IcebergTable.from(catalog.namespaces().create('nyc').tables().create('trades', 'row: struct<id int64> not null'))
+  table.append(rows, { dataMimeType: 'avro' })
   const formats = table.dataFiles().map((file) => file.mimeType.toString())
   assert.deepEqual(formats, ['application/avro'])
   assert.equal((await warnings(() => table.append(rows, { dataFromat: 'avro' }))).length, 1)

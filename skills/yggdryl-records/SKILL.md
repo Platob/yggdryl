@@ -52,7 +52,8 @@ medium does the work before a byte is decoded.
 | write a partitioned folder | `Holder::folder(&root)?.overwrite_arrow_reader(r, &options)?` | `IOBase(dir).overwrite_arrow_batch(b, options=o)` | `new IOBase(dir).overwriteArrowTable(t, options)` |
 | leaves of one partition | `children_where(&[("year", "2024")], false)?` | `children_where({"year": "2024"})` | `childrenWhere({ year: '2024' })` |
 | derived partition column | `root.with_partition_by(["year(event) as year".parse()?])?`, `root.as_transform().apply_arrow_batch(&b)?` | `root.with_partition_by(["year(event) as year"])`, `root.transform.apply_arrow_batch(b)` | `root.withPartitionBy(['year(event) as year'])`, `Selector.fromField(root).applyArrowBatch(b)` |
-| Iceberg table | `Table::create(LocalFolder::new(p)?, FormatVersion::V2, schema, PartitionSpec::from_schema(1, &schema)?)?` | `Table.create(IOBase(p), schema, ["venue", "minutes(ts, 15)"])` | `iceberg.Table.create(p, schema, ['venue', 'minutes(ts, 15)'])` |
+| Iceberg table | `IcebergTable::create(LocalFolder::new(p)?, FormatVersion::V2, schema, PartitionSpec::from_schema(1, &schema)?)?` | `IcebergTable.create(IOBase(p), schema, ["venue", "minutes(ts, 15)"])` | `iceberg.IcebergTable.create(p, schema, ['venue', 'minutes(ts, 15)'])` |
+| Iceberg catalog (a warehouse folder) | `IcebergCatalog::bound("lake", holder)`, `catalog.namespaces().create("nyc", &props)?`, `catalog.tables().create("nyc.taxis", &schema, &props)?` | `IcebergCatalog("lake", root)`, `catalog.namespaces.create("nyc")`, `catalog.tables.create("nyc.taxis", schema)` | `new iceberg.IcebergCatalog('lake', root)`, `catalog.namespaces().create('nyc')`, `catalog.tables().create('nyc.taxis', schema)` |
 | Iceberg write | `commit_append(r)?`, `commit_overwrite`, `commit_merge(r, &sel, safe)?` | `append(t)`, `overwrite`, `merge(t, ["id"])` | `append(t)`, `overwrite`, `merge(t, ['id'])` |
 | Iceberg filtered scan | `scan_matching("px > 1", None)?`, `plan_matching(..)?` | `scan_matching("px > 1")`, `plan_matching(..)` | `scanMatching('px > 1')`, `planMatching(..)` |
 | Iceberg time travel | `scan_at(snapshot_id, &[], None)?` | `scan_at(snapshot_id)` | `scanAt(snapshotId)` |
@@ -229,7 +230,7 @@ medium does the work before a byte is decoded.
   are keyword-only (`options=`).
 - Reading one leaf of a partitioned folder and expecting the partition
   columns: they live in the path; read the folder.
-- Reusing an Iceberg `Table` object after writing through another handle: it
+- Reusing an `IcebergTable` object after writing through another handle: it
   caches metadata; open the table again.
 - Collecting a Parquet read to count rows or learn the schema: `row_size`
   and `read_arrow_field` answer from the footer.
@@ -254,7 +255,7 @@ medium does the work before a byte is decoded.
 
 ## Language references
 
-- `references/rust.md` - read for Rust: traits to import, `RecordOptions` builders, batch readers, Iceberg `Table`.
+- `references/rust.md` - read for Rust: traits to import, `RecordOptions` builders, batch readers, `IcebergTable`.
 - `references/python.md` - read for Python: keyword properties, pyarrow readers, dataclass rows, lazy scans.
 - `references/javascript.md` - read for Node.js: property objects, Arrow JS tables, `bigint`, copied IPC.
 - `references/formats.md` - per-encoding table: media type and suffix, settings, pushdown, feature gate, limits.

@@ -1611,10 +1611,17 @@ fn a_root_folder_laid_out_as_an_iceberg_table_is_a_table_in_every_build() {
         assert_eq!(table.storage(), "table", "the layout says table format");
         assert!(yggdryl::IOBase::is_container(&table));
         assert_eq!(yggdryl::IOBase::kind(&table), IOKind::Table);
-        let Table::Media(media) = &table else {
-            unreachable!()
-        };
-        assert_eq!(media.layout(), FolderLayout::Format);
+        // A build that reads Iceberg holds the table as the Iceberg table it
+        // is; any other describes the layout and refuses to read it.
+        #[cfg(feature = "iceberg")]
+        assert!(matches!(table, Table::Iceberg(_)), "{table:?}");
+        #[cfg(not(feature = "iceberg"))]
+        {
+            let Table::Media(media) = &table else {
+                unreachable!()
+            };
+            assert_eq!(media.layout(), FolderLayout::Format);
+        }
         assert_eq!(table.to_string(), format!("market.{name}"));
     }
     assert!(
@@ -1716,7 +1723,7 @@ fn an_iceberg_table_at_the_root_is_a_table_rather_than_a_schema() {
     seed(&root);
     let mut schema = trades_field();
     assign_field_ids(&mut schema, 1).expect("field ids");
-    let mut table = yggdryl::iceberg::Table::create(
+    let mut table = yggdryl::iceberg::IcebergTable::create(
         LocalFolder::new(root.join("ledger")).expect("a folder"),
         FormatVersion::V2,
         schema,

@@ -1,16 +1,16 @@
 //! The storage handle an object resolves once and keeps beside its
-//! description: what the folder, media and remote implementations share.
+//! description: what the folder, media and Iceberg implementations share.
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::OnceLock;
 
-use smol_str::format_smolstr;
+use smol_str::{SmolStr, format_smolstr};
 
-use super::Properties;
+use super::{Properties, path_text};
 use crate::fs::BoundLocation;
 use crate::holder::Holder;
-use crate::{Error, IOBase, Result, Url};
+use crate::{Error, IOBase, IOMedia, Result, Uri, Url};
 
 /// Where an object's storage is, as it was given: a location every backend
 /// is reached by, or a binding to a foreign filesystem a caller supplied.
@@ -79,31 +79,59 @@ impl Hash for Site {
     }
 }
 
-/// A handle resolved on first use from its site, kept for the object's life.
+/// The storage of a warehouse object: where it is and what it opens with,
+/// resolved to the [`Holder`] it names on the first verb that needs one and
+/// kept for the object's life.
 ///
-/// A clone starts unresolved and rebuilds from the site; an object bound to
-/// a handle with no site cannot be rebuilt after a clone, and says so by name
-/// when its handle is next needed.
-pub(crate) struct Handle {
+/// Every object holds one beside its description, and an
+/// [`IcebergTable`](crate::iceberg::IcebergTable) held by a [`Table`](crate::Table)
+/// is rooted on one - which is why the type is public: a holder in hand is
+/// not clonable, and an object is. It answers every [`IOBase`] and
+/// [`IOMedia`] verb as the handle it resolves to - a verb that returns a
+/// `Result` carrying the resolution's failure, an accessor that cannot
+/// answering the empty value - so a property stated on the object reaches
+/// its storage and nothing is opened before it is needed. A clone starts
+/// unresolved and rebuilds from the site under the same properties; an
+/// object bound to a handle with no site cannot be rebuilt after a clone,
+/// and says so by name when its handle is next needed. Equality and the
+/// hash read the site, never what was resolved. The warehouse builds its
+/// own; a caller with a holder in hand roots an Iceberg table on it through
+/// `Handle::from(holder)`, and [`get`](Self::get) is the holder it resolves
+/// to.
+pub struct Handle {
     site: Option<Site>,
     /// Whether the resolved handle composes what its name declares - the
     /// content coding and the record implementation - as a table's does.
     declared: bool,
+    /// The object the handle belongs to, as a refusal names it.
+    what: SmolStr,
+    /// What an unresolved handle opens with: the object's effective
+    /// properties, as last stated.
+    properties: Properties,
     held: OnceLock<Box<Holder>>,
 }
 
 impl Handle {
-    /// A handle resolved from `site` when first needed.
-    pub(crate) const fn at(site: Site, declared: bool) -> Self {
+    /// A handle resolved from `site` when first needed, under `properties`,
+    /// belonging to the object at `what`.
+    pub(crate) fn at(site: Site, declared: bool, what: &[SmolStr], properties: Properties) -> Self {
         Self {
             site: Some(site),
             declared,
+            what: SmolStr::from(path_text(what)),
+            properties,
             held: OnceLock::new(),
         }
     }
 
-    /// A handle already in hand, its site read off it for a clone.
-    pub(crate) fn bound(holder: Holder, declared: bool) -> Self {
+    /// A handle already in hand, its site read off it for a clone, which
+    /// opens under `properties`.
+    pub(crate) fn bound(
+        holder: Holder,
+        declared: bool,
+        what: &[SmolStr],
+        properties: Properties,
+    ) -> Self {
         let site = Site::of(&holder);
         let holder = if declared {
             holder.into_declared_media()
@@ -113,8 +141,16 @@ impl Handle {
         Self {
             site,
             declared,
+            what: SmolStr::from(path_text(what)),
+            properties,
             held: OnceLock::from(Box::new(holder)),
         }
+    }
+
+    /// State what the handle opens with from now on; a handle already in
+    /// hand was opened by whoever handed it over and is kept.
+    pub(crate) fn set_properties(&mut self, properties: Properties) {
+        self.properties = properties;
     }
 
     /// The location, when the site is one.
@@ -123,23 +159,34 @@ impl Handle {
     }
 
     /// The handle already resolved, without resolving one.
-    pub(crate) fn opened(&self) -> Option<&Holder> {
+    pub(crate) fn held(&self) -> Option<&Holder> {
         self.held.get().map(Box::as_ref)
     }
 
-    /// The handle, resolved on the first call with `properties`.
-    pub(crate) fn get(&self, properties: &Properties, what: &str) -> Result<&Holder> {
+    /// The holder the handle resolves to, resolved on the first call and
+    /// kept.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusal of a handle with no site to rebuild from, and the
+    /// backend's own failure to open the location.
+    pub fn get(&self) -> Result<&Holder> {
         if let Some(held) = self.held.get() {
             return Ok(held.as_ref());
         }
-        let resolved = self.resolve(properties, what)?;
+        let resolved = self.resolve()?;
         Ok(self.held.get_or_init(|| Box::new(resolved)).as_ref())
     }
 
-    /// The handle, mutably, resolved on the first call with `properties`.
-    pub(crate) fn get_mut(&mut self, properties: &Properties, what: &str) -> Result<&mut Holder> {
+    /// The holder the handle resolves to, mutably, resolved on the first
+    /// call and kept.
+    ///
+    /// # Errors
+    ///
+    /// As [`get`](Self::get).
+    pub fn get_mut(&mut self) -> Result<&mut Holder> {
         if self.held.get().is_none() {
-            self.held = OnceLock::from(Box::new(self.resolve(properties, what)?));
+            self.held = OnceLock::from(Box::new(self.resolve()?));
         }
         match self.held.get_mut() {
             Some(held) => Ok(held.as_mut()),
@@ -147,17 +194,23 @@ impl Handle {
         }
     }
 
-    fn resolve(&self, properties: &Properties, what: &str) -> Result<Holder> {
+    /// Whether anything is at the location now.
+    pub(crate) fn exists(&self) -> bool {
+        self.get().is_ok_and(Holder::exists)
+    }
+
+    fn resolve(&self) -> Result<Holder> {
         let Some(site) = &self.site else {
             return Err(Error::InvalidRecord {
-                path: format_smolstr!("$.{what}"),
+                path: format_smolstr!("$.{}", self.what),
                 reason: format_smolstr!(
-                    "expected a located handle to rebuild `{what}` from, got one with no URL; \
-                     a clone of an object bound to an unlocated handle has nothing to open"
+                    "expected a located handle to rebuild `{}` from, got one with no URL; \
+                     a clone of an object bound to an unlocated handle has nothing to open",
+                    self.what
                 ),
             });
         };
-        let holder = site.resolve(properties)?;
+        let holder = site.resolve(&self.properties)?;
         Ok(if self.declared {
             holder.into_declared_media()
         } else {
@@ -166,11 +219,27 @@ impl Handle {
     }
 }
 
+impl From<Holder> for Handle {
+    /// A holder in hand, its site read off it for a clone, which opens under
+    /// no properties: how a caller roots an
+    /// [`IcebergTable`](crate::iceberg::IcebergTable) on a handle it built.
+    fn from(holder: Holder) -> Self {
+        let what = holder
+            .url()
+            .and_then(Url::file_name)
+            .filter(|name| !name.is_empty())
+            .map_or_else(|| SmolStr::new_static("handle"), SmolStr::new);
+        Self::bound(holder, false, &[what], Properties::new())
+    }
+}
+
 impl Clone for Handle {
     fn clone(&self) -> Self {
         Self {
             site: self.site.clone(),
             declared: self.declared,
+            what: self.what.clone(),
+            properties: self.properties.clone(),
             held: OnceLock::new(),
         }
     }
@@ -199,4 +268,21 @@ impl Hash for Handle {
         self.site.hash(state);
         self.declared.hash(state);
     }
+}
+
+impl IOBase for Handle {
+    crate::__delegate_resolved_iobase!(get, get_mut, held);
+
+    fn uri(&self) -> Option<&Uri> {
+        self.get().ok()?.uri()
+    }
+
+    /// The site's location, resolving nothing.
+    fn url(&self) -> Option<&Url> {
+        Handle::url(self)
+    }
+}
+
+impl IOMedia for Handle {
+    crate::__delegate_resolved_iomedia!(get, get_mut);
 }

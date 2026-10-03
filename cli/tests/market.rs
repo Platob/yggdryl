@@ -787,12 +787,12 @@ fn capture_served(root: &std::path::Path) -> Vec<String> {
 #[ignore = "hosts a live server, which races the runner's socket readiness; run with --ignored"]
 fn serve_folds_a_capture_into_an_iceberg_table_and_serves_its_books() {
     use yggdryl::Scheme;
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec};
 
     let root = isolated("iceberg");
     std::fs::create_dir_all(&root).expect("isolated test folder");
     // The row as Iceberg states it: the `uint64` codes as `decimal(20, 0)`.
-    Table::create(
+    IcebergTable::create(
         Holder::folder(&root).expect("the root holds"),
         FormatVersion::V2,
         MarketData::field()
@@ -816,17 +816,17 @@ fn serve_folds_a_capture_into_an_iceberg_table_and_serves_its_books() {
 #[cfg(feature = "iceberg")]
 #[ignore = "hosts a live server, which races the runner's socket readiness; run with --ignored"]
 fn serve_makes_an_absent_folder_the_table_a_capture_lands_in() {
-    use yggdryl::iceberg::Table;
+    use yggdryl::iceberg::IcebergTable;
 
     // Nothing is there, so one command creates the table and serves it.
     let root = isolated("created");
     let notes = capture_served(&root);
     assert!(notes[0].ends_with(", created"), "{notes:?}");
-    let table = Table::locate(Holder::folder(&root).expect("the root holds"))
+    let table = IcebergTable::locate(Holder::folder(&root).expect("the root holds"))
         .expect("the folder reads")
         .expect("a table was created");
     assert!(
-        table.metadata().current_snapshot().is_some(),
+        table.metadata().unwrap().current_snapshot().is_some(),
         "the capture was committed"
     );
     let _ = std::fs::remove_dir_all(&root);

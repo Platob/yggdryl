@@ -6,7 +6,7 @@ Application over every target: the streamed Arrow tier, native records, the boun
 
 | Key | Value |
 | --- | --- |
-| Owns | the Arrow tier, `apply_arrow_reader` / `apply_arrow_batch` / `apply_arrow_array` on every layer, `apply_records`, `Bound::evaluate` / `filter` / `filter_reader`, `Bound::statistics_prune` / `statistics_certainty` over `Bounds`, `Table::plan_matching` / `scan_matching` |
+| Owns | the Arrow tier, `apply_arrow_reader` / `apply_arrow_batch` / `apply_arrow_array` on every layer, `apply_records`, `Bound::evaluate` / `filter` / `filter_reader`, `Bound::statistics_prune` / `statistics_certainty` over `Bounds`, `IcebergTable::plan_matching` / `scan_matching` |
 | Reader first | `apply_arrow_reader` binds once and wraps the stream; `apply_arrow_batch` is one batch through that same reader, so nothing is collected and one batch returned unchanged is the caller's own |
 | Arrow tier | An optimization of the row tier, never a second definition; a property test asserts equality on every operator, nulls and `nan` included |
 | Kernels | Comparisons run `arrow-ord`, null tests read the validity buffer, `and` / `or` / `not` are three-valued buffer arithmetic; all else lands each column the node reads once as a [`Serie`](../types/serie.md), runs the row evaluator over its rows and lays the answers out as one column, which is slower |
@@ -245,15 +245,15 @@ Rust and Python; JavaScript has no `Bounds`.
 
 ## Iceberg: one predicate, every level of the metadata
 
-The scan is planned by the filter that keeps the rows: a manifest-list summary answers first, then a manifest entry's partition tuple and column bounds. A `where` on a record read of a table is that filter, pushed down whole - a range, an `in` list or a null test prunes with the whole expression language, exactly as an equality does - and the `select` is the read's projection. The levels a conjunct is pushed through are on [Filters](filters.md#pushdown), the projection on [Column pushdown](../holder/index.md#column-pushdown). Time travel is a scan of one retained snapshot - `Table::scan_at(snapshot_id, filters, field)`, or `scan_ref(name, ...)` for a branch or tag (Python `scan_at`/`scan_ref`, JavaScript `scanAt`/`scanRef`) - whose `filters` are `(column, value)` equality pairs rather than an expression; no page here shows it yet.
+The scan is planned by the filter that keeps the rows: a manifest-list summary answers first, then a manifest entry's partition tuple and column bounds. A `where` on a record read of a table is that filter, pushed down whole - a range, an `in` list or a null test prunes with the whole expression language, exactly as an equality does - and the `select` is the read's projection. The levels a conjunct is pushed through are on [Filters](filters.md#pushdown), the projection on [Column pushdown](../holder/index.md#column-pushdown). Time travel is a scan of one retained snapshot - `IcebergTable::scan_at(snapshot_id, filters, field)`, or `scan_ref(name, ...)` for a branch or tag (Python `scan_at`/`scan_ref`, JavaScript `scanAt`/`scanRef`) - whose `filters` are `(column, value)` equality pairs rather than an expression; no page here shows it yet.
 
 === "Rust"
 
     ```{ .rust .ignore }
-    use yggdryl::iceberg::Table;
+    use yggdryl::iceberg::IcebergTable;
     use yggdryl::local::LocalFolder;
 
-    let table = Table::open(LocalFolder::new("/lake/trades")?)?;
+    let table = IcebergTable::open(LocalFolder::new("/lake/trades")?)?;
 
     let plan = table.plan_matching("year = 2024")?;
     println!("{} manifests never opened", plan.manifests_skipped());
@@ -264,9 +264,10 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 === "Python"
 
     ```{ .python .ignore }
-    from yggdryl.iceberg import Table
+    from yggdryl import IOBase
+    from yggdryl.iceberg import IcebergTable
 
-    table = Table("/lake/trades")
+    table = IcebergTable(IOBase("/lake/trades"))
 
     plan = table.plan_matching("year = 2024")
     print(plan["manifests_skipped"], "manifests never opened")
@@ -279,7 +280,7 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
     ```{ .javascript .ignore }
     const { iceberg } = require('yggdryl')
 
-    const table = iceberg.Table.open('/lake/trades')
+    const table = iceberg.IcebergTable.open('/lake/trades')
 
     const plan = table.planMatching('year = 2024')
     console.log(plan.manifestsSkipped, 'manifests never opened')

@@ -211,8 +211,8 @@ pub(crate) mod hierarchy;
 mod lifecycle;
 mod transfer;
 
-pub(crate) use bytes::rest_of;
 pub use bytes::{Reader, Writer};
+pub(crate) use bytes::{UNRESOLVED_MEDIA_TYPE, rest_of};
 pub(crate) use hierarchy::{container_is_tabular, owned_handle};
 use hierarchy::{descend, no_children};
 pub(crate) use lifecycle::{coding_mime, not_atomic, oversized, reject_container};

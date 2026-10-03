@@ -4,10 +4,10 @@
 //! first:
 //!
 //! 1. an **explicit option** set on the value itself - or stored on a table
-//!    with [`Table::set_options`](super::Table::set_options);
+//!    with [`IcebergTable::set_options`](super::IcebergTable::set_options);
 //! 2. the **table property** of the same name, falling back to the schema
 //!    root's `ICEBERG:`-prefixed protocol property, exactly as
-//!    [`Table::target_file_size_bytes`](super::Table::target_file_size_bytes) has always
+//!    [`IcebergTable::target_file_size_bytes`](super::IcebergTable::target_file_size_bytes) has always
 //!    resolved its one key;
 //! 3. the documented **default**.
 //!
@@ -115,7 +115,7 @@ impl std::fmt::Display for WriteStaging {
 ///
 /// The value records only what was set on it; every getter answers with the
 /// field's documented default when nothing was. [`Self::from_metadata`] reads
-/// the property layer of one table, and [`Table::options`](super::Table::options)
+/// the property layer of one table, and [`IcebergTable::options`](super::IcebergTable::options)
 /// resolves all three layers at once.
 ///
 /// ```
@@ -381,7 +381,7 @@ impl IcebergOptions {
     /// root is remote - an object store, a foreign filesystem - and
     /// [`WriteStaging::Off`] when it is local, where a staging file would be
     /// a second copy of a file already on the same disk.
-    /// [`Table::write_staging`](super::Table::write_staging) answers the
+    /// [`IcebergTable::write_staging`](super::IcebergTable::write_staging) answers the
     /// resolved value for one table.
     pub const fn write_staging(&self) -> Option<&WriteStaging> {
         self.write_staging.as_ref()

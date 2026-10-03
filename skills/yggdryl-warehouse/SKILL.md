@@ -27,6 +27,7 @@ cross-language conventions are in `yggdryl`.
 | a folder as a catalog, a handle in hand | `FolderCatalog::bound(name, holder)` | `FolderCatalog(name, IOBase(p))` | `warehouse.Catalog.folder(name, new IOBase(p))` |
 | a folder as a catalog, by location | `FolderCatalog::new(name, url)?` (`.with_levels(n)`, `.with_properties(bag)`) | `FolderCatalog(name, path_or_url, levels=1, **properties)` | `warehouse.Catalog.folder(name, location, { levels, properties })`, `new warehouse.FolderCatalog(...)` |
 | a catalog from a URL and a property bag | `Catalog::from_url(&url, &properties)?` | `Catalog.from_url(url, type="memory", name="m")` | `warehouse.Catalog.fromUrl(url, { type, name })` |
+| an Iceberg warehouse folder as a catalog - the one implementation that creates | `IcebergCatalog::bound(name, holder)`, `::new(name, url)?`, `Catalog::from_url` with `type = hadoop` (`iceberg` feature) | `IcebergCatalog(name, location, **properties)` from `yggdryl.iceberg` | `new iceberg.IcebergCatalog(name, location, { description, properties })`, `.intoCatalog()` to register |
 | a namespace of registered objects | `MemoryNamespace::new("lake.eu")?.with_object(t)?` | `MemoryNamespace("lake.eu", objects=[t])` | `warehouse.Namespace.memory('lake.eu', { objects: [t] })` |
 | a folder as a standalone namespace | `FolderNamespace::new("lake.eu", url)?`, `::bound(path, holder)?` | `FolderNamespace("lake.eu", location, levels=0)` | `warehouse.Namespace.folder('lake.eu', location)` |
 | a table at any location | `MediaTable::new("lake.eu.trades", url)?` (`.with_field`, `.with_dtype`, `.with_layout`) | `MediaTable(path, location, field=, dtype=, layout="leaf", **properties)` | `warehouse.Table.media(path, location, { field, dtype, layout, properties })` |
@@ -72,13 +73,16 @@ cross-language conventions are in `yggdryl`.
    catalog and every table's storage under it opens with them; a `codec` or
    `media_type` stated on a table types an extensionless location.
    `update_properties` persists only where the store keeps something - the
-   memory, folder and media implementations keep nothing and refuse by name.
+   memory, folder and media implementations keep nothing and refuse by name;
+   an Iceberg catalog and namespace keep theirs in their own document.
 5. **Memory lists what was registered; a folder lists its store; neither
    creates.** `create`, `open_or_create` and the append/overwrite helpers
    refuse a name nothing holds by implementation name
    (`filesystem "FolderCatalog" does not support creating a table`). Write to
    an existing table, or register a `MediaTable` at the path first and write
-   through it - the handle creates the leaf.
+   through it - the handle creates the leaf. An Iceberg catalog creates,
+   through existing namespaces only: make `sales` before `sales.orders`, or
+   `tables.create("sales.orders", ..)` is the absence of `sales`.
 6. **Registration builds memory levels only.** A table registered at
    `lake.eu.trades` creates the memory catalog `lake` and namespace `eu` as
    needed; a path under a folder catalog, a folder namespace or a table is
@@ -91,7 +95,7 @@ cross-language conventions are in `yggdryl`.
    (`storage == "directory"`); a folder whose store says `IOKind::Table` or
    whose `metadata/` holds a version hint or a metadata document is a table
    format at any depth (`storage == "table"`, rows need the `iceberg`
-   feature); a leaf is a table when a record medium reads its name's media
+   feature, which answers it as `Table::Iceberg` - Python `IcebergTable`); a leaf is a table when a record medium reads its name's media
    type, named less every extension a media type claims (`trades.arrows.gz`
    is `trades`); a dot-prefixed entry is private; two entries of one name are
    both listed and asking for the name is a conflict.
@@ -134,7 +138,7 @@ cross-language conventions are in `yggdryl`.
 | `new warehouse.Catalog(...)` in JavaScript | `warehouse.Catalog.memory(...)`, `.folder(...)`, `.fromUrl(...)`, or `new warehouse.MemoryCatalog(...)` |
 | `table.kind()` on a Rust `Table` with `IOBase` and `ObjectValue` both imported | `ObjectValue::kind(&table)` or `IOBase::kind(&table)` |
 | cloning a `MediaTable::bound(path, Holder::buffer(..))` and reading the clone | keep the original; a buffer has no location to rebuild from |
-| `Catalog::from_url` with `type = 'rest'` | this build has only `memory` and `folder` catalogs; the refusal names it |
+| `Catalog::from_url` with `type = 'rest'` | this build has `memory` and `folder` catalogs, and `hadoop` under `iceberg`; the refusal names them |
 | registering `lake` on `SystemWarehouse` in a test | a name unique to the process (`format!("test_{}", std::process::id())`), unregistered after |
 
 ## Language references

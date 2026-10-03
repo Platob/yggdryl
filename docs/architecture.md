@@ -89,7 +89,7 @@ this project and nothing else.
     import pyarrow as pa
 
     from yggdryl import IOBase, refresh_logging
-    from yggdryl.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import IcebergTable, assign_field_ids
 
     said: list[str] = []
 
@@ -108,7 +108,7 @@ this project and nothing else.
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     with tempfile.TemporaryDirectory() as folder:
-        table = Table.create(IOBase(Path(folder) / "trades"), assign_field_ids(schema))
+        table = IcebergTable.create(IOBase(Path(folder) / "trades"), assign_field_ids(schema))
         table.append(pa.record_batch({"id": [1, 2, 3]}, schema=schema))
         assert sum(batch.num_rows for batch in table.scan()) == 3
 

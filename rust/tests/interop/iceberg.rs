@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::IOMedia;
-use yggdryl::iceberg::{EntryStatus, FormatVersion, PartitionSpec, Table, assign_field_ids};
+use yggdryl::iceberg::{EntryStatus, FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
 use yggdryl::local::LocalFolder;
 use yggdryl::media::IORecordOptions;
 use yggdryl::{DataType, Field, StructType};
@@ -158,7 +158,7 @@ fn a_table_written_here_is_left_for_an_external_reader() {
 
     let schema = schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("a partition spec");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).expect("a folder"),
         FormatVersion::V2,
         schema,
@@ -191,7 +191,8 @@ fn a_table_written_here_is_left_for_an_external_reader() {
         .expect("a merged snapshot");
 
     // Reading it back here is the floor, not the proof.
-    let table = Table::open(LocalFolder::new(&path).expect("a folder")).expect("the merged table");
+    let table =
+        IcebergTable::open(LocalFolder::new(&path).expect("a folder")).expect("the merged table");
     assert_eq!(collect(table.scan(None).expect("a scan")), expected());
     let plan = table.plan(&[]).expect("a plan");
     assert_eq!(
@@ -221,14 +222,16 @@ fn a_table_written_by_pyiceberg_reads_here() {
         return;
     }
 
-    let table = Table::open(LocalFolder::new(&path).expect("a folder")).expect("an external table");
-    let metadata = table.metadata();
+    let table =
+        IcebergTable::open(LocalFolder::new(&path).expect("a folder")).expect("an external table");
+    let metadata = table.metadata().unwrap();
     assert!(
         metadata.format_version() >= FormatVersion::V1,
         "an external table declares a format version"
     );
     let snapshot = table
         .current_snapshot()
+        .unwrap()
         .expect("an external table with a snapshot");
     assert!(!snapshot.manifest_list.is_empty());
 
@@ -301,7 +304,7 @@ fn tables_of_the_other_format_versions_are_left_for_an_external_reader() {
         let _ = std::fs::remove_dir_all(&path);
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("a partition spec");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).expect("a folder"),
             version,
             schema,
@@ -327,8 +330,8 @@ fn tables_written_by_pyiceberg_at_other_versions_read_here() {
             println!("iceberg-interop: absent {name}");
             continue;
         }
-        let table =
-            Table::open(LocalFolder::new(&path).expect("a folder")).expect("an external table");
+        let table = IcebergTable::open(LocalFolder::new(&path).expect("a folder"))
+            .expect("an external table");
         // The rows come back through this crate's manifest reader, so the
         // exchange covers the per-version manifest schemas both ways.
         assert_eq!(collect(table.scan(None).expect("a scan")), appended());

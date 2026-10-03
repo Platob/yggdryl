@@ -10,6 +10,12 @@ import {
   Scalar,
   iceberg,
   type IcebergCatalog as Catalog,
+  type IcebergNamespace as Namespace,
+  type Catalog as WarehouseCatalog,
+  type Namespace as WarehouseNamespace,
+  type Table as WarehouseTable,
+  type Namespaces,
+  type Tables,
   type Compaction,
   type PartitionInput,
   type DataFile,
@@ -63,16 +69,16 @@ void partitionFieldClass
 void snapshotClass
 void snapshotRefClass
 
-const created: Table = iceberg.Table.create('file:///lake/trades', numbered, spec)
+const created: Table = iceberg.IcebergTable.create('file:///lake/trades', numbered, spec)
 // The entries a schema's `PARTITION:by` declares: identity and derived alike.
-const derived: Table = iceberg.Table.create('file:///lake/daily', numbered, [
+const derived: Table = iceberg.IcebergTable.create('file:///lake/daily', numbered, [
   'venue',
   'days(ts)',
   'minutes(ts, 15) as quarter',
 ])
 void derived
-const opened: Table = iceberg.Table.open(new IOBase('file:///lake/trades'))
-const either: Table = iceberg.Table.openOrCreate(
+const opened: Table = iceberg.IcebergTable.open(new IOBase('file:///lake/trades'))
+const either: Table = iceberg.IcebergTable.openOrCreate(
   Url.fromString('file:///lake/trades'),
   numbered,
   byName,
@@ -175,30 +181,53 @@ const equalPartitionField: boolean = partitionField.equals(clonedPartitionField)
 const partitionFieldOrder: number = partitionField.compare(clonedPartitionField)
 const partitionFieldHash: bigint = partitionField.stableHash()
 
-const catalog: Catalog = new iceberg.Catalog('file:///lake/warehouse')
-const fromHandle: Catalog = new iceberg.Catalog(new IOBase('file:///lake/warehouse'))
-const rootTables = catalog.tables
-const fromField: Table = rootTables.create('nyc.taxis', numbered)
-const fromExpression: Table = rootTables.create(
+const catalog: Catalog = new iceberg.IcebergCatalog('lake', 'file:///lake/warehouse')
+const fromHandle: Catalog = new iceberg.IcebergCatalog('lake', new IOBase('file:///lake/warehouse'), {
+  description: 'the lake',
+  properties: { owner: 'ops' },
+})
+const createdCatalog: Catalog = iceberg.IcebergCatalog.create('lake', 'file:///lake/warehouse')
+const openedCatalog: Catalog = iceberg.IcebergCatalog.openOrCreate('lake', 'file:///lake/warehouse')
+const generic: WarehouseCatalog = catalog.intoCatalog()
+const back: Catalog = iceberg.IcebergCatalog.from(generic)
+const catalogName: string = catalog.name
+const catalogPath: string[] = catalog.path
+const catalogDescription: string | null = catalog.description
+const catalogUrl: Url | null = catalog.url
+const catalogLevels: number | null = catalog.namespaceLevels
+const rootTables: Tables = catalog.tables()
+const fromField: WarehouseTable = rootTables.create('nyc.taxis', numbered)
+const fromExpression: WarehouseTable = rootTables.create(
   'nyc.taxis',
   'row: struct<id int64, venue utf8> not null',
 )
-const fromChildren: Table = rootTables.create('nyc.taxis', [schema, schema])
-const openedByName: Table = catalog.table('nyc.taxis')
+const openedByName: WarehouseTable = catalog.table('nyc.taxis')
+const asIceberg: Table = iceberg.IcebergTable.from(openedByName)
+const asGeneric: WarehouseTable = asIceberg.intoTable()
+const tableName: string = asIceberg.name
+const tablePath: string[] = asIceberg.path
+const sameTable: boolean = asIceberg.equals(asIceberg)
 const present: boolean = rootTables.has('nyc.taxis')
-const openedOrCreated: Table = rootTables.openOrCreate('nyc.taxis', numbered)
-const appended: Table = catalog.append('nyc.taxis', arrowTable)
-const replaced: Table = catalog.overwrite('nyc.taxis', BatchReader.from(arrowTable))
-const namespaces: string[] = catalog.namespaces.names()
-const nested: string[] = catalog.namespace('nyc').namespaces.names()
-const tables: string[] = catalog.namespace('nyc').tables.names()
-const catalogProperties: Record<string, string> = catalog.properties()
+const openedOrCreated: WarehouseTable = rootTables.openOrCreate('nyc.taxis', numbered)
+const appended: WarehouseTable = rootTables.append('nyc.taxis', arrowTable)
+const replaced: WarehouseTable = rootTables.overwrite('nyc.taxis', BatchReader.from(arrowTable))
+const namespaces: string[] = [...catalog.namespaces().keys()]
+const nested: string[] = [...catalog.namespace('nyc').namespaces().keys()]
+const tables: string[] = [...catalog.namespace('nyc').tables().keys()]
+const catalogProperties: Record<string, string> = catalog.properties
 catalog.updateProperties({ owner: 'finance' })
 catalog.updateProperties(new Map([['a', 'b']]), ['c'])
 catalog.updateProperties()
-const salesNamespace = catalog.namespace('sales')
-const namespaceProperties: Record<string, string> = salesNamespace.properties()
+const salesNamespace: WarehouseNamespace = catalog.namespace('sales')
+const namespaceProperties: Record<string, string> = salesNamespace.properties
 salesNamespace.updateProperties({ team: 'emea' }, ['old'])
+const standalone: Namespace = new iceberg.IcebergNamespace('lake.sales', 'file:///lake/warehouse/sales')
+const standaloneFromParts: Namespace = new iceberg.IcebergNamespace(['lake', 'sales'], new IOBase('/lake/warehouse/sales'), {
+  properties: { team: 'emea' },
+})
+const standaloneGeneric: WarehouseNamespace = standalone.intoNamespace()
+const standaloneBack: Namespace = iceberg.IcebergNamespace.from(standaloneGeneric)
+const standaloneTables: Tables = standalone.tables()
 
 const atBigint: BatchReader = created.scanAt(1n)
 const atNumber: BatchReader = created.scanAt(1)
@@ -345,40 +374,40 @@ const droppedEqual: boolean = dropped.equals(droppedClone)
 const droppedOrder: number = dropped.compare(droppedClone)
 const droppedHash: bigint = dropped.stableHash()
 
-const namespacesView = catalog.namespaces
-const namespaceNames: string[] = namespacesView.names()
-const namespaceCount: number = namespacesView.size()
+// The generic views an Iceberg catalog answers: Map-like, keys lazily, each
+// value opened through `get` one at a time.
+const namespacesView: Namespaces = catalog.namespaces()
+const namespaceCount: number = namespacesView.size
 const hasNamespace: boolean = namespacesView.has('sales')
-const sales = namespacesView.get('sales')
+const sales: WarehouseNamespace = namespacesView.get('sales')
 const salesName: string = sales.name
-const madeNamespace = namespacesView.create('emea')
-const eitherNamespace = namespacesView.openOrCreate('emea')
-const nestedNamespaces = sales.namespaces
-// The Map-like surface: lazy keys, values and entries opened one at a time.
+const madeNamespace: WarehouseNamespace = namespacesView.create('emea')
+const eitherNamespace: WarehouseNamespace = namespacesView.openOrCreate('emea', { region: 'emea' })
+const nestedNamespaces: Namespaces = sales.namespaces()
 const namespaceKeys: string[] = [...namespacesView.keys()]
-const namespaceValues = [...namespacesView.values()]
-const namespaceEntries: (readonly [string, unknown])[] = [...namespacesView.entries()]
+const namespaceValues: WarehouseNamespace[] = [...namespacesView.values()]
+const namespaceEntries: (readonly [string, WarehouseNamespace])[] = [...namespacesView.entries()]
 const namespaceForOf: string[] = [...namespacesView]
+const salesAsIceberg: Namespace = iceberg.IcebergNamespace.from(sales)
 
-const tablesView = sales.tables
-const tableNames: string[] = tablesView.names()
-const tableCount: number = tablesView.size()
+const tablesView: Tables = sales.tables()
+const tableCount: number = tablesView.size
 const hasOrders: boolean = tablesView.has('orders')
-const openedOrders: Table = tablesView.get('orders')
-const madeTable: Table = tablesView.create('orders', numbered)
-const eitherTable: Table = tablesView.openOrCreate(
+const openedOrders: Table = iceberg.IcebergTable.from(tablesView.get('orders'))
+const madeTable: WarehouseTable = tablesView.create('orders', numbered)
+const eitherTable: WarehouseTable = tablesView.openOrCreate(
   'orders',
   'row: struct<id int64> not null',
 )
-const appendedThroughView: Table = tablesView.append(
+const appendedThroughView: WarehouseTable = tablesView.append(
   'orders',
   BatchReader.from(arrowTable),
-  options,
+  { commitBatchNum: 1 },
 )
-const replacedThroughView: Table = tablesView.overwrite(
+const replacedThroughView: WarehouseTable = tablesView.overwrite(
   'orders',
   BatchReader.from(arrowTable),
 )
 const tableKeys: string[] = [...tablesView.keys()]
-const tableValues: Table[] = [...tablesView.values()]
-const tableEntries: (readonly [string, Table])[] = [...tablesView.entries()]
+const tableValues: WarehouseTable[] = [...tablesView.values()]
+const tableEntries: (readonly [string, WarehouseTable])[] = [...tablesView.entries()]

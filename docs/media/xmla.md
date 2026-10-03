@@ -453,14 +453,14 @@ http://127.0.0.1:8080/xmla
 
 Each layer's warehouse is its own catalog. Serving `/lake` as one catalog would make the layers schemas and read `record_keeping` as a folder table, its Iceberg folders the files of that table. A layer with no table yet - gold above, an empty folder, or a folder that does not exist - is still a cube of no tables, so a dashboard can name it before the first table lands.
 
-What a client then sees is what the [provider](#provider) answers over the same folders, here in one process with no socket between, over tables the crate's own `Table::create` lays out the way PyIceberg does:
+What a client then sees is what the [provider](#provider) answers over the same folders, here in one process with no socket between, over tables the crate's own `IcebergTable::create` lays out the way PyIceberg does:
 
 ```rust
 use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::Holder;
-use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+use yggdryl::iceberg::{FormatVersion, PartitionSpec, IcebergTable, assign_field_ids};
 use yggdryl::local::LocalFolder;
 use yggdryl::xmla::{
     Discover, Execute, PropertyList, Request, RequestType, Response, Service, ServiceOptions,
@@ -480,7 +480,7 @@ let mut orders = DataType::from(StructType::from_fields([
 assign_field_ids(&mut orders, 1)?;
 let folder = LocalFolder::new(lake.join("silver/record_keeping/orders"))?;
 let spec = PartitionSpec::identity(0, &orders, &[])?;
-let mut table = Table::create(folder, FormatVersion::V2, orders.clone(), spec)?;
+let mut table = IcebergTable::create(folder, FormatVersion::V2, orders.clone(), spec)?;
 let batch = RecordBatch::try_new(
     orders.into_arrow_schema()?,
     vec![
@@ -498,7 +498,7 @@ let mut log_messages = DataType::from(StructType::from_fields([
 assign_field_ids(&mut log_messages, 1)?;
 let folder = LocalFolder::new(lake.join("bronze/record_keeping/log_messages"))?;
 let spec = PartitionSpec::identity(0, &log_messages, &[])?;
-Table::create(folder, FormatVersion::V2, log_messages, spec)?;
+IcebergTable::create(folder, FormatVersion::V2, log_messages, spec)?;
 std::fs::create_dir_all(lake.join("gold"))?;
 
 // One catalog per layer, as `yggdryl xmla serve bronze=... silver=... gold=...`.

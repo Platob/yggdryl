@@ -6,15 +6,15 @@ One abstraction for every place that answers "which tables are there, and how do
 
 | | |
 | --- | --- |
-| Owns | the four traits `ObjectValue`, `NamespaceValue`, `CatalogValue`, `TableValue` and the four enums `Object`, `Catalog`, `Namespace`, `Table`; `Properties`; `IntoObjectPath`; the lazy views `Namespaces`, `Tables`, `Names`, `Objects`; `Warehouse` and `SystemWarehouse`; the generic implementations `MemoryCatalog`, `MemoryNamespace`, `FolderCatalog`, `FolderNamespace`, `MediaTable` with `FolderLayout`; the `Holder::Catalog`, `Holder::Namespace` and `Holder::Table` [handle variants](../holder/index.md#variants) |
+| Owns | the four traits `ObjectValue`, `NamespaceValue`, `CatalogValue`, `TableValue` and the four enums `Object`, `Catalog`, `Namespace`, `Table`; `Properties`; `IntoObjectPath`; the lazy views `Namespaces`, `Tables`, `Names`, `Objects`; `Warehouse` and `SystemWarehouse`; the generic implementations `MemoryCatalog`, `MemoryNamespace`, `FolderCatalog`, `FolderNamespace`, `MediaTable` with `FolderLayout`; `Handle`, the handle an object opens once on first use under its effective properties and a clone rebuilds; the `Holder::Catalog`, `Holder::Namespace` and `Holder::Table` [handle variants](../holder/index.md#variants). The `iceberg` feature adds the `Iceberg` variant of each enum, [`IcebergCatalog`, `IcebergNamespace` and `IcebergTable`](../media/iceberg.md#catalog) |
 | Rust | `yggdryl::warehouse`, every name re-exported as `yggdryl::<Name>` |
-| Python | `yggdryl.warehouse` (also `yggdryl`): `Catalog`, `Namespace`, `Table` are `IOBase` subclasses and `type(object)` is the implementation - `MemoryCatalog`, `FolderCatalog`, `MemoryNamespace`, `FolderNamespace`, `MediaTable`; `Namespaces` and `Tables` are mappings; `Warehouse`, `SystemWarehouse` |
-| JavaScript | the frozen `warehouse` namespace: one class per kind - `Catalog`, `Namespace`, `Table` - with a static constructor per implementation (`Catalog.memory`, `Catalog.folder`, `Catalog.fromUrl`, `Namespace.memory`, `Namespace.folder`, `Table.media`) and `implementation` naming it; `MemoryCatalog`, `FolderCatalog`, `MemoryNamespace`, `FolderNamespace`, `MediaTable` as constructors over those statics; `Namespaces`, `Tables` are Map-like; `Warehouse`, `SystemWarehouse`; `IOBase.from(object)` holds an object as the handle it is |
-| Validated | a path at its intake, through the plan's [location grammar](../expression/plans.md#locations-and-targets); a namespace path of at least two parts and a table path of at least one; a registration exactly one level below its parent, under a name free at that level; a `type` property of `memory` or `folder` |
+| Python | `yggdryl.warehouse` (also `yggdryl`): `Catalog`, `Namespace`, `Table` are `IOBase` subclasses and `type(object)` is the implementation - `MemoryCatalog`, `FolderCatalog`, `MemoryNamespace`, `FolderNamespace`, `MediaTable`, and `yggdryl.iceberg`'s `IcebergCatalog`, `IcebergNamespace`, `IcebergTable`; `Namespaces` and `Tables` are mappings; `Warehouse`, `SystemWarehouse` |
+| JavaScript | the frozen `warehouse` namespace: one class per kind - `Catalog`, `Namespace`, `Table` - with a static constructor per implementation (`Catalog.memory`, `Catalog.folder`, `Catalog.fromUrl`, `Namespace.memory`, `Namespace.folder`, `Table.media`) and `implementation` naming it; `MemoryCatalog`, `FolderCatalog`, `MemoryNamespace`, `FolderNamespace`, `MediaTable` as constructors over those statics, `iceberg.IcebergCatalog`, `iceberg.IcebergNamespace` and `iceberg.IcebergTable` the Iceberg ones, each with `from(object)` and `intoCatalog`/`intoNamespace`/`intoTable` to cross; `Namespaces`, `Tables` are Map-like; `Warehouse`, `SystemWarehouse`; `IOBase.from(object)` holds an object as the handle it is |
+| Validated | a path at its intake, through the plan's [location grammar](../expression/plans.md#locations-and-targets); a namespace path of at least two parts and a table path of at least one; a registration exactly one level below its parent, under a name free at that level; a `type` property of `memory`, `folder` or, under `iceberg`, `hadoop` |
 | Lazy | construction touches nothing; an object's handle is opened on the first verb that needs it; a folder is listed when it is asked, so a table written a moment ago is found on the next ask; `children`, `Names`, `Namespaces` and `Tables` walk as they are drained |
 | Cached | nothing but the resolved handle, kept for the object's life; a clone starts unresolved and rebuilds from its location |
-| Refused | a URL or a `with (...)` clause where a path is expected, at `$.path`; creating under a memory or a folder object, by implementation name; registering under an object that lists its own store; the byte verbs of a catalog or a namespace (`NotAtomic`) and its record verbs (name a table under it); a `type` this build has no catalog for |
-| Build | default; a table laid out as a table format needs `iceberg` to read its rows |
+| Refused | a URL or a `with (...)` clause where a path is expected, at `$.path`; creating under a memory or a folder object, by implementation name - an Iceberg catalog creates; registering under an object that lists its own store; the byte verbs of a catalog or a namespace (`NotAtomic`) and its record verbs (name a table under it); a `type` this build has no catalog for |
+| Build | default; a table laid out as a table format needs `iceberg` to read its rows, and is `Table::Iceberg` there |
 
 ## Use
 
@@ -129,16 +129,16 @@ CatalogValue:   namespace_levels                                   // + Namespac
 TableValue:     field, storage                                     // + ObjectValue + IOBase
 
 Object    { Catalog, Namespace, Table }   as_catalog, as_namespace, as_table, into_table, into_namespace, into_holder
-Catalog   { Memory, Folder }              from_url, resolve, table, namespace, namespaces(), tables()
-Namespace { Memory, Folder }              resolve, namespaces(), tables()
-Table     { Media }                       every IOBase and IOMedia verb, delegated
+Catalog   { Memory, Folder, Iceberg }     from_url, resolve, table, namespace, namespaces(), tables()
+Namespace { Memory, Folder, Iceberg }     resolve, namespaces(), tables()
+Table     { Media, Iceberg }              every IOBase and IOMedia verb, delegated
 ```
 
 | Kind | `IOKind` | Enum | Python class | JavaScript |
 | --- | --- | --- | --- | --- |
-| the first namespace layer, registered by name | `Catalog` (`catalog`) | `Catalog` | `Catalog`, as `MemoryCatalog` or `FolderCatalog` | `warehouse.Catalog`, `implementation` `'MemoryCatalog'` or `'FolderCatalog'` |
-| a container of namespaces and tables | `Namespace` (`namespace`) | `Namespace` | `Namespace`, as `MemoryNamespace` or `FolderNamespace` | `warehouse.Namespace` |
-| rows every record read and write reaches | `Table` (`table`) | `Table` | `Table`, as `MediaTable` | `warehouse.Table` |
+| the first namespace layer, registered by name | `Catalog` (`catalog`) | `Catalog` | `Catalog`, as `MemoryCatalog`, `FolderCatalog` or `IcebergCatalog` | `warehouse.Catalog`, `implementation` `'MemoryCatalog'`, `'FolderCatalog'` or `'IcebergCatalog'` |
+| a container of namespaces and tables | `Namespace` (`namespace`) | `Namespace` | `Namespace`, as `MemoryNamespace`, `FolderNamespace` or `IcebergNamespace` | `warehouse.Namespace` |
+| rows every record read and write reaches | `Table` (`table`) | `Table` | `Table`, as `MediaTable` or `IcebergTable` | `warehouse.Table` |
 
 An object displays as its dotted path, quoted only where the grammar needs it; equality and hash are the description - path, location, stated properties - never the store's contents.
 
@@ -638,7 +638,7 @@ An object displays as its dotted path, quoted only where the grammar needs it; e
     let error = Catalog::from_url(&url, &Properties::new().with_property("type", "rest")).unwrap_err();
     assert_eq!(
         error.to_string(),
-        "invalid record value at $.with.type: expected `memory` or `folder`, got `rest`; this build has no catalog of that type",
+        "invalid record value at $.with.type: expected `memory`, `folder` or `hadoop`, got `rest`; this build has no catalog of that type",
     );
     std::fs::remove_dir_all(&root)?;
     ```
@@ -1054,12 +1054,12 @@ Every object is a [handle](../holder/index.md#handles): `Object::into_holder` an
 - A memory level names an `object` in its absence, a folder level a `table`, whichever view asked.
 - A taken name is a conflict naming what is there: `expected to create a table at "lake.eu", got an existing namespace`; two store entries of one name are both listed and asking for the name conflicts.
 - Registering under a folder catalog, a folder namespace or a table is refused by name: ``filesystem "FolderCatalog `market`" does not support registering under an object that lists its own store``.
-- Memory and folder objects create nothing: `filesystem "MemoryCatalog" does not support creating a table`; `open_or_create`, the append and overwrite helpers refuse the same way for a name nothing holds, and `open_or_create` opens an existing table as it is - `field` describes only the table the call would create.
-- `update_properties` persists only where the store keeps something; every implementation here keeps nothing and refuses by name. Stated properties - credentials included - are never written into a document.
+- Memory and folder objects create nothing - an [Iceberg catalog](../media/iceberg.md#catalog) creates namespaces and tables, through existing namespaces only: `filesystem "MemoryCatalog" does not support creating a table`; `open_or_create`, the append and overwrite helpers refuse the same way for a name nothing holds, and `open_or_create` opens an existing table as it is - `field` describes only the table the call would create.
+- `update_properties` persists only where the store keeps something; the memory, folder and media implementations keep nothing and refuse by name, an Iceberg catalog and namespace keep theirs in their own document, and an Iceberg table's ride its metadata, written through `commit_metadata_changes`. Stated properties - credentials included - are never written into a document.
 - A clone starts unresolved and rebuilds its handle from its location; a clone of an object bound to a handle with no location - an in-memory `Buffer` - refuses its next verb naming the path: ``expected a located handle to rebuild `memory.trades` from, got one with no URL``.
-- A table laid out as a table format is listed in every build and read only under `iceberg`; without it, its record verbs are refused at `$.encoding` naming the feature.
+- A table laid out as a table format is listed in every build and read only under `iceberg`, where a folder catalog answers it as `Table::Iceberg`; without it, its record verbs are refused at `$.encoding` naming the feature.
 - A catalog's or a namespace's `clear` and `remove` are refused: an object is unregistered or its store changed, never emptied through its handle; a table's reach its storage.
-- `Catalog::from_url` refuses `hadoop`, `rest` and `xmla` as types this build has no catalog for, any other unknown type at `$.with.type`, an `s3tables://` location, and a URL with no segment to name the catalog by when no `name` property is stated.
+- `Catalog::from_url` refuses `rest` and `xmla` - and `hadoop` without the `iceberg` feature - as types this build has no catalog for, any other unknown type at `$.with.type`, an `s3tables://` location, and a URL with no segment to name the catalog by when no `name` property is stated.
 - `Names::len` and the views' `len` drain a listing; `is_empty` costs the listing up to the first entry of that kind.
 - A name in a view that would have to be quoted - `eu west` - is quoted in dotted text or passed as one part; JavaScript's `values()` and `entries()` open each name as one part for that reason.
 

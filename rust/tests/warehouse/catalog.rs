@@ -94,14 +94,21 @@ fn from_url_reads_the_name_and_the_type_properties_and_passes_the_rest_on() {
 fn from_url_refuses_a_type_this_build_has_no_catalog_for_and_a_nameless_url() {
     let root = root("refused");
     let url = Url::from_path(&root).expect("a URL");
-    for kind in ["hadoop", "rest", "xmla"] {
-        let error = Catalog::from_url(&url, &Properties::new().with_property("type", kind))
+    // A build that reads Iceberg answers `hadoop`; every other build refuses
+    // it with the rest, and the refusal lists what the build answers.
+    let (refused, expected): (&[&str], &str) = if cfg!(feature = "iceberg") {
+        (&["rest", "xmla"], "`memory`, `folder` or `hadoop`")
+    } else {
+        (&["hadoop", "rest", "xmla"], "`memory` or `folder`")
+    };
+    for kind in refused {
+        let error = Catalog::from_url(&url, &Properties::new().with_property("type", *kind))
             .expect_err(kind);
         assert_eq!(
             error.to_string(),
             format!(
-                "invalid record value at $.with.type: expected `memory` or `folder`, got \
-                 `{kind}`; this build has no catalog of that type"
+                "invalid record value at $.with.type: expected {expected}, got `{kind}`; this \
+                 build has no catalog of that type"
             )
         );
     }
@@ -109,7 +116,7 @@ fn from_url_refuses_a_type_this_build_has_no_catalog_for_and_a_nameless_url() {
         .expect_err("unknown");
     assert_eq!(
         error.to_string(),
-        "invalid record value at $.with.type: expected `memory` or `folder`, got \"glue\""
+        format!("invalid record value at $.with.type: expected {expected}, got \"glue\"")
     );
     let error = Catalog::from_url(
         &Url::from_str("s3tables://lake").expect("a URL"),

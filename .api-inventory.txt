@@ -2580,7 +2580,7 @@ pub trait ObjectValue: std::fmt::Debug + Send + Sync  (what every object a wareh
   fn modified(&self) -> Option<i64>
   fn properties(&self) -> Result<Properties>  (effective: the parent's, then the store's, then the stated)
   fn update_properties(&self, updates: &Properties, removes: &[SmolStr]) -> Result<()>  (the default refuses, naming the implementation)
-pub enum Object  (Catalog(Catalog), Namespace(Namespace), Table(Table); non_exhaustive; Clone, Eq, Hash over the description, Display the dotted path; From each enum and each generic implementation; ObjectValue by delegation)
+pub enum Object  (Catalog(Catalog), Namespace(Namespace), Table(Table); non_exhaustive; Clone, Eq, Hash over the description, Display the dotted path; From each enum, each generic implementation and, under `iceberg`, `IcebergCatalog`, `IcebergNamespace` and `IcebergTable<Handle>`; ObjectValue by delegation)
   pub fn as_object(&self) -> &dyn ObjectValue
   pub fn as_catalog(&self) -> Option<&Catalog>
   pub fn as_namespace(&self) -> Option<&Namespace>
@@ -2599,8 +2599,8 @@ pub struct Objects  (the children of a namespace, one at a time, fused after the
 ### yggdryl::warehouse::catalog  [rust/src/warehouse/catalog.rs]
 pub trait CatalogValue: NamespaceValue  (the first namespace layer)
   fn namespace_levels(&self) -> Option<usize>
-pub enum Catalog  (Memory(MemoryCatalog), Folder(Box<FolderCatalog>); non_exhaustive; ObjectValue, NamespaceValue, CatalogValue by delegation; IOBase and IOMedia as a container of handles; Display the name)
-  pub fn from_url(url: &Url, properties: &Properties) -> Result<Self>  (the `type` property first - `memory`, `folder` - then the scheme; named by the `name` property else the location's last segment)
+pub enum Catalog  (Memory(MemoryCatalog), Folder(Box<FolderCatalog>), Iceberg(Box<IcebergCatalog>) under `iceberg`; non_exhaustive; ObjectValue, NamespaceValue, CatalogValue by delegation; IOBase and IOMedia as a container of handles; Display the name)
+  pub fn from_url(url: &Url, properties: &Properties) -> Result<Self>  (the `type` property first - `memory`, `folder`, or `hadoop` under `iceberg` - then the scheme; named by the `name` property else the location's last segment)
   pub fn as_catalog(&self) -> &dyn CatalogValue
   pub fn resolve(&self, path: impl IntoObjectPath) -> Result<Object>
   pub fn table(&self, path: impl IntoObjectPath) -> Result<Table>
@@ -2614,7 +2614,7 @@ pub trait NamespaceValue: ObjectValue  (a container of namespaces and tables)
   fn get(&self, name: &str) -> Result<Object>
   fn create_namespace(&self, name: &str, properties: &Properties) -> Result<Namespace>  (the default refuses by name)
   fn create_table(&self, name: &str, field: &Field, properties: &Properties) -> Result<Table>  (the default refuses by name)
-pub enum Namespace  (Memory(MemoryNamespace), Folder(Box<FolderNamespace>); non_exhaustive; ObjectValue and NamespaceValue by delegation; IOBase and IOMedia as a container of handles; Display the dotted path)
+pub enum Namespace  (Memory(MemoryNamespace), Folder(Box<FolderNamespace>), Iceberg(Box<IcebergNamespace>) under `iceberg`; non_exhaustive; ObjectValue and NamespaceValue by delegation; IOBase and IOMedia as a container of handles; Display the dotted path)
   pub fn as_namespace(&self) -> &dyn NamespaceValue
   pub fn resolve(&self, path: impl IntoObjectPath) -> Result<Object>
   pub fn namespaces(&self) -> Namespaces<'_>
@@ -2649,7 +2649,7 @@ pub struct Tables<'a>  (the tables one level below, the same shape; the write he
 pub trait TableValue: ObjectValue + IOBase  (a table: rows any record read and write reaches)
   fn field(&self) -> Result<Field>
   fn storage(&self) -> String
-pub enum Table  (Media(Box<MediaTable>); non_exhaustive; ObjectValue and TableValue by delegation; IOBase and IOMedia delegated whole; Display the dotted path)
+pub enum Table  (Media(Box<MediaTable>), Iceberg(Box<IcebergTable<Handle>>) under `iceberg`; non_exhaustive; ObjectValue and TableValue by delegation; IOBase and IOMedia delegated whole; Display the dotted path)
   pub fn as_table(&self) -> &dyn TableValue
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
@@ -2669,6 +2669,12 @@ pub struct Properties  (the ordered name/value bag every object, target and hand
   pub fn is_empty(&self) -> bool
   pub fn knob<T: FromStr>(&self, name: &str, expected: &str) -> Result<Option<T>>
   pub fn inherit(&self, parent: &Self) -> Self  (the parent's entries with this bag's own replacing them by name)
+
+### yggdryl::warehouse::handle  [rust/src/warehouse/handle.rs]
+pub struct Handle  (opaque: the `Holder` an object resolves once on first use, under the properties it was given, and keeps; IOBase and IOMedia over it, each verb resolving first; Clone starts unresolved; Eq, Hash over the site; Debug; one bound to an unlocated handle refuses its next verb by name; the root an `IcebergTable<Handle>` sits on)
+  pub fn get(&self) -> Result<&Holder>
+  pub fn get_mut(&mut self) -> Result<&mut Holder>
+  impl From<Holder> for Handle  (bound to the handle in hand, resolved)
 
 ### yggdryl::warehouse::system  [rust/src/warehouse/system.rs]
 pub struct SystemWarehouse  (the process's one `Warehouse` under a lock taken per call, a poisoned lock recovered; starts with the memory catalog `local` of the folder namespaces `temporary`, `home` and `config`)
@@ -2984,27 +2990,20 @@ pub struct CsvOptions  (the shared record sections - `name`, `field`, `filter`, 
   pub fn with_linesep(mut self, linesep: LineSep) -> Self
   impl IORecordOptions for CsvOptions  (`record_options_fields!`)
 
-### yggdryl::iceberg::catalog  [rust/src/iceberg/catalog/catalogs.rs]
-pub struct Catalog<H: IOBase>
-  pub const fn new(warehouse: H) -> Self
-  pub const fn warehouse(&self) -> &H
-  pub fn name(&self) -> Option<&str>
-  pub const fn kind(&self) -> IOKind
-  pub const fn namespaces(&self) -> Namespaces<'_, H>
-  pub const fn tables(&self) -> Tables<'_, H>
-  pub fn table(&self, name: &str) -> Result<Table<Holder>>
-  pub fn namespace(&self, name: &str) -> Result<Namespace<'_, H>>
+### yggdryl::iceberg::catalog  [rust/src/iceberg/catalog/mod.rs]  (a warehouse folder as a catalog of namespaces of Iceberg tables, laid out as `HadoopCatalog` lays one out; the warehouse traits answered, the views, the dotted descent and the registry the generic ones; cost pinned in `rust/tests/iceberg/catalog/mod_.rs` `mod call_counts`)
+pub struct IcebergCatalog  (Clone, Eq, Hash over the description; ObjectValue - `properties` the stated over `metadata/catalog.json`, `update_properties` writing it with the `ICEBERG:` prefix refused; NamespaceValue - `children` one listing plus one listing of each entry's `metadata/` and no read, `create_namespace` writing `metadata/namespace.json`, `create_table` `IcebergTable::create` under `PartitionSpec::from_schema` over the schema as Iceberg expresses it, both through existing namespaces only; CatalogValue - `namespace_levels` None, namespaces nest to any depth)
+  pub fn new(name: impl Into<SmolStr>, url: impl Into<crate::Uri>) -> Result<Self>  (touches nothing)
+  pub fn bound(name: impl Into<SmolStr>, warehouse: Holder) -> Self
+  pub fn create(name: impl Into<SmolStr>, warehouse: Holder) -> Result<Self>  (writes the catalog document, which creates the folder; a folder already there is `Error::Conflict`)
+  pub fn open_or_create(name: impl Into<SmolStr>, warehouse: Holder) -> Result<Self>  (the conflict absorbed; a table or a file at the folder refused)
+  pub fn with_description(mut self, description: impl Into<String>) -> Self
+  pub fn with_properties(mut self, properties: Properties) -> Self  (stated: what every handle under the catalog opens with, written nowhere)
 
-### yggdryl::iceberg::catalog::tables  [rust/src/iceberg/catalog/tables.rs]
-pub fn get(&self, name: &str) -> Result<Table<Holder>>
-  pub fn create(&self, name: &str, schema: Field) -> Result<Table<Holder>>
-  pub fn open_or_create(&self, name: &str, schema: Field) -> Result<Table<Holder>>
-  pub fn open_or_create_from_arrow_reader(&self, name: &str, batches: &BatchReader) -> Result<Table<Holder>>
-  pub fn contains(&self, name: &str) -> Result<bool>
-  pub fn append_arrow_reader(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>>
-  pub fn append_arrow_reader_with_options(&self, name: &str, batches: BatchReader, options: Option<IcebergOptions>) -> Result<Table<Holder>>
-  pub fn overwrite_arrow_reader(&self, name: &str, batches: BatchReader) -> Result<Table<Holder>>
-  pub fn overwrite_arrow_reader_with_options(&self, name: &str, batches: BatchReader, options: Option<IcebergOptions>) -> Result<Table<Holder>>
+### yggdryl::iceberg::catalog::namespace  [rust/src/iceberg/catalog/namespace.rs]
+pub struct IcebergNamespace  (one namespace of an Iceberg catalog - a folder under the warehouse, `metadata/namespace.json` its stored properties; Clone, Eq, Hash; ObjectValue and NamespaceValue as the catalog's)
+  pub fn new(path: impl IntoObjectPath, url: impl Into<crate::Uri>) -> Result<Self>  (a path of at least two parts, the catalog's name first)
+  pub fn bound(path: impl IntoObjectPath, folder: Holder) -> Result<Self>
+  pub fn with_properties(mut self, properties: Properties) -> Self
 
 ### yggdryl::iceberg::evolve  [rust/src/iceberg/evolve.rs]
 pub fn can_promote(from: &DataType, to: &DataType) -> Result<()>
@@ -3243,23 +3242,34 @@ pub fn tag(snapshot_id: i64) -> Self
   pub fn with_max_ref_age_ms(mut self, age_ms: i64) -> Result<Self>
 
 ### yggdryl::iceberg::table  [rust/src/iceberg/table.rs]
-pub struct Table<H: IOBase>
+pub struct IcebergTable<H: IOBase>  (the root eager, the current metadata document read on the first verb that needs it; Clone where H: Clone, opening afresh; Eq, Hash over the path; ObjectValue, TableValue, IOBase, IOMedia, so a warehouse `Table::Iceberg` holds one over a `Handle`)
   pub fn create(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec) -> Result<Self>
   pub fn create_sorted(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec, order: SortOrder) -> Result<Self>
   pub fn open(root: H) -> Result<Self>
+  pub fn locate(root: H) -> Result<Option<Self>>  (None where no metadata document is there)
   pub fn open_or_create(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec) -> Result<Self>
+  pub fn at(path: impl IntoObjectPath, root: H) -> Self  (described at its warehouse path, nothing read; an empty path is the root's last segment)
+  pub fn with_description(mut self, description: impl Into<String>) -> Self
+  pub fn with_properties(mut self, properties: Properties) -> Self  (`IcebergTable<Handle>` only: the stated properties the handle opens with and `ObjectValue::properties` answers over the stored ones)
   pub const fn root(&self) -> &H
-  pub const fn metadata(&self) -> &TableMetadata
-  pub const fn metadata_version(&self) -> u32
-  pub fn metadata_file_name(&self) -> String
+  pub fn metadata(&self) -> Result<&TableMetadata>
+  pub fn metadata_version(&self) -> Result<u32>
+  pub fn metadata_file_name(&self) -> Result<String>
   pub fn metadata_location(&self) -> Result<String>
   pub fn schema(&self) -> Result<&Field>
-  pub fn current_snapshot(&self) -> Option<&Snapshot>
+  pub fn current_snapshot(&self) -> Result<Option<&Snapshot>>
   pub fn manifests(&self) -> Result<Vec<ManifestFile>>
   pub fn data_files(&self) -> Result<Vec<(DataFile, PartitionSpec)>>
   pub fn scan(&self, field: Option<&Field>) -> Result<BatchReader>
+  pub fn scan_where(&self, filters: &[(&str, &str)], field: Option<&Field>) -> Result<BatchReader>
+  pub fn scan_matching(&self, filter: impl crate::expression::IntoFilter, field: Option<&Field>) -> Result<BatchReader>
+  pub fn plan(&self, filters: &[(&str, &str)]) -> Result<ScanPlan>
+  pub fn plan_matching(&self, filter: impl crate::expression::IntoFilter) -> Result<ScanPlan>
   pub fn commit_append(&mut self, batches: BatchReader) -> Result<()>
   pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()>
+  pub fn commit_overwrite_where(&mut self, filters: &[(&str, &str)], batches: BatchReader) -> Result<()>
+  pub fn commit_merge(&mut self, batches: BatchReader, merge_by: &crate::Selector, safe: bool) -> Result<()>
+  pub fn commit_merge_where(&mut self, filters: &[(&str, &str)], batches: BatchReader, merge_by: &crate::Selector, safe: bool) -> Result<()>
   pub fn evolve_schema(&mut self, schema: Field) -> Result<i32>
   pub fn update_schema(&mut self, update: &crate::iceberg::SchemaUpdate) -> Result<i32>  (rebase-safe; nothing recorded commits nothing)
 
@@ -3275,6 +3285,8 @@ pub fn manifests_at(&self, snapshot: &Snapshot) -> Result<Vec<ManifestFile>>
 
 ### yggdryl::iceberg::table (options, refs, concurrency)  [rust/src/iceberg/table.rs]
 pub fn set_options(&mut self, options: IcebergOptions)
+  pub fn explicit_options(&self) -> Option<&IcebergOptions>
+  pub fn clear_options(&mut self) -> Option<IcebergOptions>
   pub fn options(&self) -> Result<IcebergOptions>
   pub fn write_staging(&self) -> Result<WriteStaging>
   pub fn create_branch(&mut self, name: &str, snapshot_id: i64) -> Result<()>

@@ -13,7 +13,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import IOBase, refresh_logging
-from yggdryl.iceberg import Table, assign_field_ids
+from yggdryl.iceberg import IcebergTable, assign_field_ids
 
 SCHEMA = pa.schema(
     [
@@ -25,7 +25,7 @@ SCHEMA = pa.schema(
 
 def _round_trip(root: pathlib.Path, rows: int) -> int:
     """Create a table, append `rows` rows, and read them all back."""
-    table = Table.create(IOBase(root), assign_field_ids(SCHEMA), ["venue"])
+    table = IcebergTable.create(IOBase(root), assign_field_ids(SCHEMA), ["venue"])
     table.append(
         pa.record_batch(
             {"id": list(range(rows)), "venue": ["XNAS"] * rows},
