@@ -750,6 +750,10 @@ fn call(
             None => Scalar::Null,
         },
         Function::Truncate => truncate(first, values.get(1).unwrap_or(&Scalar::Null), dtype)?,
+        // The width is a literal typing already proved; a row re-reads its
+        // few bytes, and the batch tier reads it once per batch.
+        Function::TimeBucket => TimeBucket::new(first, dtype)?
+            .floor_value(values.get(1).unwrap_or(&Scalar::Null), dtype)?,
         Function::Coalesce | Function::IfNull => values
             .iter()
             .find(|value| !value.is_null())
@@ -1089,6 +1093,211 @@ pub(crate) fn epoch_value(period: EpochPeriod, value: &Scalar) -> Scalar {
         EpochPeriod::Day => Scalar::date32(number),
         _ => Scalar::from(number),
     }
+}
+
+/// Nanoseconds in a day, the unit a date counts in.
+const NANOS_PER_DAY: i128 = 86_400_000_000_000;
+
+/// DuckDB's default `time_bucket` origin, Monday 2000-01-03, in days since
+/// the Unix epoch.
+const BUCKET_ORIGIN_DAYS: i128 = 10_959;
+
+/// What every refusal of a `time_bucket` width names.
+const BUCKET_WIDTHS: &str = "a positive fixed-length width: a count and a unit of ns, us, ms, s, \
+     min, h, d or w ('15 minutes', '1.5h'), an ISO 8601 duration ('PT15M'), a clock \
+     ('00:15:00') or a duration literal";
+
+/// One `time_bucket(width, x)` floor, resolved once against `x`'s datatype.
+///
+/// The one place the bucket rule lives: the row tier, the batch tier and the
+/// statistics evaluator all floor through [`Self::floor`], so a computed
+/// column and a filter on it cannot disagree about which bucket an instant
+/// falls in. The width and DuckDB's origin are both counted in `x`'s own
+/// unit, and the origin is held reduced modulo the width, so a floor is two
+/// remainders and a subtraction with no `i128` per value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct TimeBucket {
+    /// The width in `unit`, at least one.
+    step: i64,
+    /// The origin modulo the width, in `[0, step)`.
+    offset: i64,
+    /// The unit `x` counts in: a day for `date32`, a millisecond for
+    /// `date64`, the timestamp's own otherwise.
+    unit: TimeUnit,
+}
+
+impl TimeBucket {
+    /// Resolve a constant width against the datatype it floors.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a width that is not one of [`BUCKET_WIDTHS`], that is not a
+    /// whole number of `x`'s unit or - for a date - of days, or that is
+    /// wider than a count of that unit reaches; and an `x` that is neither a
+    /// date nor a timestamp.
+    pub(crate) fn new(width: &Scalar, dtype: &DataType) -> Result<Self> {
+        let nanos = bucket_width_nanos(width)?;
+        let (unit, date) = match unwrap_dictionary(dtype) {
+            DataType::Date32 => (TimeUnit::Day, true),
+            DataType::Date64 => (TimeUnit::Millisecond, true),
+            DataType::DateTime64 { unit, .. } => (*unit, false),
+            other => {
+                return Err(bucket_error(format_smolstr!(
+                    "expected x of time_bucket(width, x) to be a date or a timestamp, got {other}"
+                )));
+            }
+        };
+        let per_unit = crate::temporal::scalars::nanoseconds_per(unit)
+            .ok_or_else(|| bucket_error(format_smolstr!("expected a fixed unit, got {unit}")))?;
+        let spelled = spelled_width(width);
+        if date && nanos % NANOS_PER_DAY != 0 {
+            return Err(bucket_error(format_smolstr!(
+                "expected the width of time_bucket(width, x) over a date to be whole days, \
+                 got {spelled}: a date has no clock"
+            )));
+        }
+        if nanos % per_unit != 0 {
+            return Err(bucket_error(format_smolstr!(
+                "expected the width of time_bucket(width, x) to be a whole number of {unit}, \
+                 the unit of {dtype}, got {spelled}"
+            )));
+        }
+        let step = i64::try_from(nanos / per_unit).map_err(|_| {
+            bucket_error(format_smolstr!(
+                "expected the width of time_bucket(width, x) to be at most what {dtype} counts, \
+                 got {spelled}"
+            ))
+        })?;
+        let origin = BUCKET_ORIGIN_DAYS * NANOS_PER_DAY / per_unit;
+        let offset = i64::try_from(origin.rem_euclid(i128::from(step)))
+            .expect("a remainder of an i64 step fits an i64");
+        Ok(Self { step, offset, unit })
+    }
+
+    /// The first count of the bucket `count` falls in, or `None` where that
+    /// count is below what an `i64` holds.
+    #[inline]
+    pub(crate) const fn floor(self, count: i64) -> Option<i64> {
+        // Both remainders are in `[0, step)`, so neither the difference nor
+        // the second remainder can overflow.
+        let past = (count.rem_euclid(self.step) - self.offset).rem_euclid(self.step);
+        count.checked_sub(past)
+    }
+
+    /// The bucket one value falls in, as a value of `dtype`; null for null.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a value whose bucket starts before the first count `dtype`
+    /// holds, naming the value.
+    pub(crate) fn floor_value(self, value: &Scalar, dtype: &DataType) -> Result<Scalar> {
+        let Some(count) = value.temporal_count_at(self.unit) else {
+            return Ok(Scalar::Null);
+        };
+        let floored = self.floor(count).ok_or_else(|| {
+            bucket_error(format_smolstr!(
+                "expected time_bucket(width, x) to start the bucket of count {count} at a \
+                 count {dtype} holds"
+            ))
+        })?;
+        temporal_value(unwrap_dictionary(dtype), floored, self.unit)
+    }
+
+    /// The unit the floored counts are in.
+    pub(crate) const fn unit(self) -> TimeUnit {
+        self.unit
+    }
+}
+
+fn bucket_error(reason: SmolStr) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason,
+    }
+}
+
+/// A width as the grammar spells it, so `'15m'` reads as the text it was.
+fn spelled_width(width: &Scalar) -> SmolStr {
+    Literal::infer(width.clone()).map_or_else(
+        |_| SmolStr::new(width.kind()),
+        |literal| format_smolstr!("{literal}"),
+    )
+}
+
+/// A `time_bucket` width in nanoseconds, refused unless it is positive.
+fn bucket_width_nanos(width: &Scalar) -> Result<i128> {
+    let nanos = match width {
+        Scalar::Duration32(_) | Scalar::Duration64(_) => width
+            .temporal_count()
+            .zip(width.temporal_unit())
+            .and_then(|(count, unit)| {
+                crate::temporal::scalars::nanoseconds_per(unit).map(|per| i128::from(count) * per)
+            }),
+        _ => scalar_text(width).and_then(|text| text_width_nanos(&text)),
+    };
+    match nanos {
+        Some(nanos) if nanos > 0 => Ok(nanos),
+        _ => Err(bucket_error(format_smolstr!(
+            "expected the width of time_bucket(width, x) to be {BUCKET_WIDTHS}, got {}",
+            spelled_width(width)
+        ))),
+    }
+}
+
+/// Read a width out of text: a count and a unit, else the crate's one
+/// elapsed-duration reader, which takes ISO 8601 and a clock.
+fn text_width_nanos(text: &str) -> Option<i128> {
+    let text = text.trim();
+    let split = text
+        .bytes()
+        .position(|byte| !matches!(byte, b'0'..=b'9' | b'.'))
+        .unwrap_or(text.len());
+    let (number, unit) = text.split_at(split);
+    if let Some(per) = bucket_unit_nanos(unit.trim_start())
+        && !number.is_empty()
+    {
+        let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
+        let whole: i128 = if whole.is_empty() {
+            0
+        } else {
+            whole.parse().ok()?
+        };
+        let mut nanos = whole.checked_mul(per)?;
+        if !fraction.is_empty() {
+            // A fraction is exact or refused: `1.5h` is ninety minutes,
+            // and a part of a nanosecond is no width.
+            let scale = 10_i128.checked_pow(u32::try_from(fraction.len()).ok()?)?;
+            let part = fraction.parse::<i128>().ok()?.checked_mul(per)?;
+            if part % scale != 0 {
+                return None;
+            }
+            nanos = nanos.checked_add(part / scale)?;
+        }
+        return Some(nanos);
+    }
+    let (count, unit) = crate::temporal::parse_duration(text).ok()?;
+    Some(i128::from(count) * crate::temporal::scalars::nanoseconds_per(unit)?)
+}
+
+/// The nanoseconds in one unit a width names; `m` is none, because a
+/// minute and a month share it.
+fn bucket_unit_nanos(unit: &str) -> Option<i128> {
+    const UNITS: [(&[&str], i128); 8] = [
+        (&["ns", "nanosecond", "nanoseconds"], 1),
+        (&["us", "microsecond", "microseconds"], 1_000),
+        (&["ms", "millisecond", "milliseconds"], 1_000_000),
+        (&["s", "sec", "secs", "second", "seconds"], 1_000_000_000),
+        (&["min", "mins", "minute", "minutes"], 60_000_000_000),
+        (&["h", "hr", "hrs", "hour", "hours"], 3_600_000_000_000),
+        (&["d", "day", "days"], NANOS_PER_DAY),
+        (&["w", "week", "weeks"], 7 * NANOS_PER_DAY),
+    ];
+    UNITS.iter().find_map(|(spellings, nanos)| {
+        spellings
+            .iter()
+            .any(|spelling| spelling.eq_ignore_ascii_case(unit))
+            .then_some(*nanos)
+    })
 }
 
 /// Floor a value to a unit or to a multiple.

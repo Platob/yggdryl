@@ -528,3 +528,67 @@ mod epoch_functions {
         assert_eq!(certainty("years(t) >= 31688738"), None);
     }
 }
+
+/// `time_bucket` floors monotonically too, so a predicate on the bucket
+/// prunes by the argument's statistics mapped through the same floor.
+mod time_bucket {
+    use yggdryl::expression::Bounds;
+    use yggdryl::{DataType, Field, Scalar, StructType, Term, TimeUnit, Timezone};
+
+    fn schema() -> Field {
+        StructType::from_fields([DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC,
+        }
+        .nullable_field("currunix")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    }
+
+    #[test]
+    fn a_predicate_on_the_bucket_prunes_by_the_instants_range() {
+        let nanos =
+            |count: i64| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+        // 2024-01-01T00:00 through 00:29:59.999999999: quarter hours 00:00
+        // and 00:15.
+        let start = 1_704_067_200_000_000_000_i64;
+        let bounds = Bounds::new(Some(10)).with_column(
+            "currunix",
+            Some(nanos(start)),
+            Some(nanos(start + 1_799_999_999_999)),
+            Some(0),
+        );
+        let certainty = |text: &str| {
+            text.parse::<Term>()
+                .unwrap()
+                .bind(&schema())
+                .unwrap()
+                .statistics_certainty(&bounds)
+        };
+        let bucket = "time_bucket('15 minutes', currunix)";
+        assert_eq!(
+            certainty(&format!("{bucket} = '2024-01-01T00:15:00Z'")),
+            None
+        );
+        assert_eq!(
+            certainty(&format!("{bucket} = '2024-01-01T00:30:00Z'")),
+            Some(false)
+        );
+        assert_eq!(
+            certainty(&format!("{bucket} >= '2024-01-01T00:00:00Z'")),
+            Some(true)
+        );
+        assert_eq!(
+            certainty(&format!("{bucket} < '2024-01-01T00:00:00Z'")),
+            Some(false)
+        );
+        assert_eq!(
+            certainty(&format!(
+                "{bucket} between '2024-01-01T00:00:00Z' and '2024-01-01T00:15:00Z'"
+            )),
+            Some(true)
+        );
+        assert_eq!(certainty(&format!("{bucket} is null")), Some(false));
+    }
+}

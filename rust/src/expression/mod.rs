@@ -426,6 +426,53 @@ pub enum Function {
     /// `truncate(value, unit_or_width)` - a temporal floored to a unit, or a
     /// number floored to a multiple.
     Truncate,
+    /// `time_bucket(width, x)` - DuckDB's name and argument order: a date or
+    /// a timestamp floored to a multiple of a fixed-length width, answered
+    /// in `x`'s own datatype, its unit and zone kept.
+    ///
+    /// `width` is a constant, written as text - a count and a unit, `'15
+    /// minutes'`, `'1 hour'`, `'30s'`, `'1.5h'`, `'2 days'`, `'1 week'`;
+    /// an ISO 8601 duration, `'PT15M'`; or a clock, `'00:15:00'` - or as a
+    /// `duration` literal. The units are `ns`, `us`, `ms`, `s`/`sec`,
+    /// `min`, `h`/`hr`, `d` and `w` with their long spellings; `m` names no
+    /// unit, because a minute and a month share it, and a month, a quarter
+    /// or a year is no fixed length. A width that is zero, negative, not a
+    /// constant, not a whole number of `x`'s unit, or - for a date - not a
+    /// whole number of days is refused naming the argument.
+    ///
+    /// Buckets start at DuckDB's origin, Monday 2000-01-03 00:00:00, read
+    /// in UTC for a zoned value and as the wall clock for a naive one, and
+    /// the floor is Euclidean, so an instant before the origin lands in the
+    /// bucket below it. The origin is a whole number of days after the Unix
+    /// epoch, so every width that divides a day - `'15 minutes'`, `'1
+    /// hour'` - starts its buckets at the epoch as well; a week starts on a
+    /// Monday. A null `x` answers null. The floor is monotone in `x`, so a
+    /// range on `x` prunes through it.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Selector, StructType, TimeUnit, Timezone};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let ns = DataType::DateTime64 {
+    ///     unit: TimeUnit::Nanosecond,
+    ///     timezone: Timezone::UTC,
+    /// };
+    /// let schema = StructType::from_fields([ns.clone().required_field("currunix")])
+    ///     .map(DataType::from)?
+    ///     .required_field("row");
+    /// let selector: Selector = "time_bucket('15 minutes', currunix) as partunix".parse()?;
+    /// assert_eq!(selector.to_string(), "time_bucket('15 minutes', currunix) as partunix");
+    /// assert_eq!(selector.apply_field(&schema)?.fields()[0].dtype(), &ns);
+    /// // 00:14:59.999999999 floors to midnight.
+    /// let at = |count| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC);
+    /// let row = Scalar::from_sequence([at(899_999_999_999)?]);
+    /// let floored = selector.apply_scalar(&schema, &row)?;
+    /// assert_eq!(floored.as_sequence().unwrap()[0], at(0)?);
+    /// assert!("time_bucket('15m', currunix)".parse::<Selector>()?.apply_field(&schema).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    TimeBucket,
     /// The first argument that is not null.
     Coalesce,
     /// `if_null(value, fallback)` - two-argument [`Self::Coalesce`], the
@@ -461,7 +508,7 @@ pub enum Function {
 
 impl Function {
     /// Every function this grammar knows, in canonical spelling.
-    pub const ALL: [Self; 27] = [
+    pub const ALL: [Self; 28] = [
         Self::Lower,
         Self::Upper,
         Self::Length,
@@ -483,6 +530,7 @@ impl Function {
         Self::Hours,
         Self::Minutes,
         Self::Truncate,
+        Self::TimeBucket,
         Self::Coalesce,
         Self::IfNull,
         Self::Size,
@@ -517,6 +565,7 @@ impl Function {
             Self::Hours => "hours",
             Self::Minutes => "minutes",
             Self::Truncate => "truncate",
+            Self::TimeBucket => "time_bucket",
             Self::Coalesce => "coalesce",
             Self::IfNull => "if_null",
             Self::Size => "size",
@@ -556,6 +605,7 @@ impl Function {
             "hours" => Self::Hours,
             "minutes" => Self::Minutes,
             "truncate" | "trunc" | "date_trunc" => Self::Truncate,
+            "time_bucket" => Self::TimeBucket,
             "coalesce" => Self::Coalesce,
             "if_null" | "ifnull" | "nvl" | "isnull" => Self::IfNull,
             "size" | "cardinality" => Self::Size,
@@ -582,6 +632,7 @@ impl Function {
             | Self::EndsWith
             | Self::Contains
             | Self::Truncate
+            | Self::TimeBucket
             | Self::IfNull
             | Self::Get
             | Self::Minutes => (2, 2),

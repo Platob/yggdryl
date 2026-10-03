@@ -29,7 +29,7 @@ use std::borrow::Cow;
 use smol_str::SmolStr;
 
 use super::bind::{Bound, Kind, Node};
-use super::eval::{compare as compare_values, epoch_value, order};
+use super::eval::{EpochPeriod, TimeBucket, compare as compare_values, epoch_value, order};
 use super::{Comparison, Filter, Function};
 use crate::{Field, Scalar};
 
@@ -437,8 +437,9 @@ fn oriented<'node>(
 
 /// The statistics of the column a node reads, when it reads exactly one.
 ///
-/// An epoch function over a column - `minutes(ts, 15)`, `years(day)` - reads
-/// one column too, and it is monotone over it: every instant of a range
+/// An epoch function over a column - `minutes(ts, 15)`, `years(day)` - or a
+/// `time_bucket('15 minutes', ts)` reads one column too, and it is monotone
+/// over it: every instant of a range
 /// floors into the range of its ends' periods, and a null floors to null. So
 /// its statistics are the column's mapped through the function, and a
 /// predicate on the function prunes by the same rules as one on the column.
@@ -452,14 +453,11 @@ fn column_bounds<'bounds>(
     schema: &Field,
     bounds: &'bounds Bounds,
 ) -> Option<Cow<'bounds, ColumnBounds>> {
-    if let Kind::Function(function, arguments) = &node.kind
-        && let Ok(Some(period)) = function.epoch_period(arguments.iter().map(Node::as_literal))
-        && let Some(argument) = arguments.first()
-    {
+    if let Some((floor, argument)) = Monotone::of(node) {
         let column = column_bounds(argument, schema, bounds)?;
         let mapped = |held: &Option<Scalar>| {
             held.as_ref()
-                .map(|value| epoch_value(period, value))
+                .map(|value| floor.apply(value, argument))
                 .filter(|value| !value.is_null())
         };
         let minimum = mapped(&column.minimum);
@@ -480,6 +478,44 @@ fn column_bounds<'bounds>(
     let index = node.as_column()?;
     let field = schema.get_field(index)?;
     bounds.column(field.name()).map(Cow::Borrowed)
+}
+
+/// A floor monotone non-decreasing in the one column it reads, which maps the
+/// column's range onto its own: an epoch function, or `time_bucket` under
+/// its constant width.
+enum Monotone {
+    Epoch(EpochPeriod),
+    Bucket(TimeBucket),
+}
+
+impl Monotone {
+    /// The floor a node applies and the argument it floors, when it is one.
+    fn of(node: &Node) -> Option<(Self, &Node)> {
+        let Kind::Function(function, arguments) = &node.kind else {
+            return None;
+        };
+        if let Function::TimeBucket = function {
+            let [width, argument] = arguments.as_slice() else {
+                return None;
+            };
+            let bucket = TimeBucket::new(width.as_literal()?, argument.field.dtype()).ok()?;
+            return Some((Self::Bucket(bucket), argument));
+        }
+        let period = function
+            .epoch_period(arguments.iter().map(Node::as_literal))
+            .ok()??;
+        Some((Self::Epoch(period), arguments.first()?))
+    }
+
+    /// The floor of one bound; null where it has none.
+    fn apply(&self, value: &Scalar, argument: &Node) -> Scalar {
+        match self {
+            Self::Epoch(period) => epoch_value(*period, value),
+            Self::Bucket(bucket) => bucket
+                .floor_value(value, argument.field.dtype())
+                .unwrap_or(Scalar::Null),
+        }
+    }
 }
 
 /// Settle one `column op literal` against the column's statistics.

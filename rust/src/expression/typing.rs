@@ -819,6 +819,24 @@ fn function_field(
             return Ok(named(expression, dtype, nullable));
         }
         Function::Truncate => first.clone(),
+        Function::TimeBucket => {
+            // The width is a constant, resolved here against `x` once, so a
+            // width finer than its unit or a clock under a date is refused
+            // before any row is read.
+            let width = arguments
+                .first()
+                .and_then(Term::as_literal)
+                .filter(|literal| !literal.is_null())
+                .ok_or_else(|| {
+                    typing_error(format_smolstr!(
+                        "expected the width of time_bucket(width, x) to be a constant, got {}",
+                        arguments[0]
+                    ))
+                })?;
+            let value = fields.get(1).map_or(&DataType::Null, Field::dtype);
+            super::eval::TimeBucket::new(width.value(), value)?;
+            value.clone()
+        }
         Function::User(_) => unreachable!("a user function returned above"),
         Function::Unnest => unreachable!("an unnest returned above"),
         Function::Coalesce | Function::IfNull => {

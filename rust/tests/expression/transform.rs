@@ -402,4 +402,105 @@ mod grammar {
             );
         }
     }
+
+    /// The partition instant a table root declares: `partunix` derived from
+    /// `currunix` by `time_bucket`, filled where it arrives absent or wholly
+    /// null and left alone where any row of it was written.
+    #[test]
+    fn a_time_bucket_term_fills_the_partition_instant_from_currunix() {
+        use yggdryl::{ArrowCastOptions, Serie};
+
+        let ns = DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC,
+        };
+        let term = "time_bucket('15 minutes', currunix)";
+        let mut partunix = ns.clone().nullable_field("partunix");
+        partunix
+            .as_transform_mut()
+            .set_term(&term.parse().unwrap())
+            .unwrap();
+        // A literal argument keeps the whole term under `expression`.
+        assert_eq!(partunix.get_metadata("TRANSFORM:expression"), Some(term));
+        assert_eq!(partunix.get_metadata("TRANSFORM:function"), None);
+        let root = DataType::from(
+            StructType::from_fields([ns.clone().required_field("currunix"), partunix]).unwrap(),
+        )
+        .required_field("row");
+        let rows_only = DataType::from(
+            StructType::from_fields([ns.clone().required_field("currunix")]).unwrap(),
+        )
+        .required_field("row");
+
+        let nanos =
+            |count: i64| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+        let instants = [
+            899_999_999_999_i64,
+            900_000_000_000,
+            -1,
+            1_704_067_200_000_000_001,
+        ];
+        let floored = [
+            0_i64,
+            900_000_000_000,
+            -900_000_000_000,
+            1_704_067_200_000_000_000,
+        ];
+        let partunix_of = |batch: &arrow_array::RecordBatch| -> Vec<Scalar> {
+            let filled = root.as_transform().apply_arrow_batch(batch).unwrap();
+            let read =
+                Serie::from_arrow_batch(Some(&root), &filled, ArrowCastOptions::new()).unwrap();
+            (0..read.len())
+                .map(|position| read.scalar(position).unwrap().as_sequence().unwrap()[1].clone())
+                .collect()
+        };
+        let expected: Vec<Scalar> = floored.iter().map(|count| nanos(*count)).collect();
+
+        // Absent: the rows carry `currunix` alone.
+        let absent = Serie::from_scalars(
+            rows_only.clone(),
+            instants
+                .iter()
+                .map(|count| Scalar::from_sequence([nanos(*count)])),
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
+        assert_eq!(partunix_of(&absent), expected);
+
+        // Present and null in every row: the declaration's default, filled.
+        let nulls = Serie::from_scalars(
+            root.clone(),
+            instants
+                .iter()
+                .map(|count| Scalar::from_sequence([nanos(*count), Scalar::Null])),
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
+        assert_eq!(partunix_of(&nulls), expected);
+
+        // Written in any row: the column is the caller's, left as it came,
+        // its null rows included.
+        let written = Serie::from_scalars(
+            root.clone(),
+            instants.iter().enumerate().map(|(position, count)| {
+                Scalar::from_sequence([
+                    nanos(*count),
+                    if position == 0 {
+                        nanos(7)
+                    } else {
+                        Scalar::Null
+                    },
+                ])
+            }),
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
+        assert_eq!(
+            partunix_of(&written),
+            vec![nanos(7), Scalar::Null, Scalar::Null, Scalar::Null]
+        );
+    }
 }

@@ -9,7 +9,14 @@
 //! A variant column takes the same treatment: the format states it as a
 //! group of two `BYTE_ARRAY` children, `metadata` and `value`, annotated
 //! `VARIANT(1)`, and the walk attaches that annotation wherever the Arrow
-//! field declares the canonical `arrow.parquet.variant` extension.
+//! field declares the canonical `arrow.parquet.variant` extension. A `uuid`
+//! column takes it too: its storage is `FIXED_LEN_BYTE_ARRAY(16)` either
+//! way, and the walk annotates it `UUID` wherever the Arrow field declares
+//! the canonical `arrow.uuid` extension, which the pinned crate maps only
+//! behind its `arrow_canonical_extension_types` feature - a feature that
+//! would also re-type every JSON column it reads. Without the annotation a
+//! reader outside this crate sees sixteen opaque bytes where an identifier
+//! is.
 //!
 //! Attaching `GEOMETRY`/`GEOGRAPHY` is also what turns the format's
 //! statistics contract on: the Parquet writer refuses min/max value bounds
@@ -42,8 +49,8 @@ use crate::IOBase;
 use crate::arrow::{Error, Result, from_reader_error};
 use crate::wkb;
 use crate::{
-    DEFAULT_CRS, GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, VARIANT_VERSION,
-    is_variant_storage,
+    DEFAULT_CRS, GEOARROW_WKB_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME,
+    VARIANT_VERSION, is_variant_storage,
 };
 
 /// Bounds and geometry types of one geospatial column, in WKB vocabulary.
@@ -285,7 +292,7 @@ pub(super) fn install_wkb_statistics() {
     });
 }
 
-/// Convert an Arrow schema whose fields declare geospatial or variant
+/// Convert an Arrow schema whose fields declare geospatial, variant or uuid
 /// extensions into a Parquet schema carrying the matching logical types.
 ///
 /// Returns `None` when no field in the schema declares one, which is the
@@ -315,19 +322,20 @@ pub(super) fn extension_schema(schema: &Schema) -> Result<Option<SchemaDescripto
 }
 
 /// The Arrow schema a file's columns declare, with the variant extension
-/// attached wherever the Parquet schema says `VARIANT`.
+/// attached wherever the Parquet schema says `VARIANT` and the uuid
+/// extension wherever it says `UUID`.
 ///
 /// Reading is the writing walk inverted, and it is needed for one reason:
-/// the pinned parquet crate maps `VARIANT` to a plain struct, its own
-/// mapping being behind a feature that pulls a Variant crate in. A file
+/// the pinned parquet crate maps `VARIANT` to a plain struct and `UUID` to
+/// plain sixteen-byte binary, its own mappings being behind features. A file
 /// written here carries its Arrow schema in the footer and already declares
-/// the extension, so this answers `None` for it; a file another writer
-/// produced is where it pays, and the column reads back as the variant the
-/// annotation says it is.
+/// the extensions, so this answers `None` for it; a file another writer
+/// produced is where it pays, and the column reads back as the variant or
+/// the uuid the annotation says it is.
 ///
 /// Answers `None` when no column needs it, which is the writer's signal to
 /// read with the schema it already has.
-pub(super) fn variant_schema(parquet: &SchemaDescriptor, arrow: &Schema) -> Option<Schema> {
+pub(super) fn annotated_schema(parquet: &SchemaDescriptor, arrow: &Schema) -> Option<Schema> {
     let root = parquet.root_schema_ptr();
     let nodes = root.get_fields();
     if nodes.len() != arrow.fields().len() {
@@ -336,30 +344,41 @@ pub(super) fn variant_schema(parquet: &SchemaDescriptor, arrow: &Schema) -> Opti
     let mut fields = Vec::with_capacity(nodes.len());
     let mut attached = false;
     for (field, node) in arrow.fields().iter().zip(nodes) {
-        let (field, found) = with_variant(field, node);
+        let (field, found) = with_extension(field, node);
         attached |= found;
         fields.push(field);
     }
     attached.then(|| Schema::new_with_metadata(fields, arrow.metadata().clone()))
 }
 
-/// Attach the variant extension to one field, walking into the containers
-/// the writer walks so a variant nested in a struct is found too.
-fn with_variant(field: &FieldRef, node: &TypePtr) -> (FieldRef, bool) {
+/// The extension a node's logical type declares over a field's storage:
+/// a `VARIANT(1)` group of the variant children, or a `UUID` over sixteen
+/// bytes.
+fn declared_extension(field: &ArrowField, node: &TypePtr) -> Option<&'static str> {
+    match node.get_basic_info().logical_type_ref() {
+        Some(LogicalType::Variant(version))
+            if matches!(version.specification_version, None | Some(1))
+                && is_variant_storage(field.data_type()) =>
+        {
+            Some(VARIANT_EXTENSION_NAME)
+        }
+        Some(LogicalType::Uuid) if field.data_type() == &ArrowDataType::FixedSizeBinary(16) => {
+            Some(UUID_EXTENSION_NAME)
+        }
+        _ => None,
+    }
+}
+
+/// Attach the extension a node's logical type declares to one field, walking
+/// into the containers the writer walks so one nested in a struct is found
+/// too.
+fn with_extension(field: &FieldRef, node: &TypePtr) -> (FieldRef, bool) {
     if field.metadata().contains_key(EXTENSION_TYPE_NAME_KEY) {
         return (Arc::clone(field), false);
     }
-    if matches!(
-        node.get_basic_info().logical_type_ref(),
-        Some(LogicalType::Variant(version))
-            if matches!(version.specification_version, None | Some(1))
-    ) && is_variant_storage(field.data_type())
-    {
+    if let Some(extension) = declared_extension(field, node) {
         let mut metadata = field.metadata().clone();
-        metadata.insert(
-            EXTENSION_TYPE_NAME_KEY.to_owned(),
-            VARIANT_EXTENSION_NAME.to_owned(),
-        );
+        metadata.insert(EXTENSION_TYPE_NAME_KEY.to_owned(), extension.to_owned());
         metadata.insert(EXTENSION_TYPE_METADATA_KEY.to_owned(), String::new());
         return (
             Arc::new(field.as_ref().clone().with_metadata(metadata)),
@@ -378,7 +397,7 @@ fn with_variant(field: &FieldRef, node: &TypePtr) -> (FieldRef, bool) {
             let mut fields = Vec::with_capacity(children.len());
             let mut attached = false;
             for (child, child_node) in children.iter().zip(nodes) {
-                let (child, found) = with_variant(child, child_node);
+                let (child, found) = with_extension(child, child_node);
                 attached |= found;
                 fields.push(child);
             }
@@ -403,7 +422,7 @@ fn with_variant(field: &FieldRef, node: &TypePtr) -> (FieldRef, bool) {
             let [element] = middle.get_fields() else {
                 return (Arc::clone(field), false);
             };
-            let (child, found) = with_variant(child, element);
+            let (child, found) = with_extension(child, element);
             if !found {
                 return (Arc::clone(field), false);
             }
@@ -434,7 +453,7 @@ fn with_variant(field: &FieldRef, node: &TypePtr) -> (FieldRef, bool) {
             let mut fields = Vec::with_capacity(children.len());
             let mut attached = false;
             for (child, child_node) in children.iter().zip(nodes) {
-                let (child, found) = with_variant(child, child_node);
+                let (child, found) = with_extension(child, child_node);
                 attached |= found;
                 fields.push(child);
             }
@@ -462,7 +481,7 @@ fn subtree_has_extension(field: &ArrowField) -> bool {
             .metadata()
             .get(EXTENSION_TYPE_NAME_KEY)
             .map(String::as_str),
-        Some(GEOARROW_WKB_EXTENSION_NAME | VARIANT_EXTENSION_NAME)
+        Some(GEOARROW_WKB_EXTENSION_NAME | VARIANT_EXTENSION_NAME | UUID_EXTENSION_NAME)
     ) {
         return true;
     }
@@ -488,6 +507,7 @@ fn annotated(field: &ArrowField, ty: &TypePtr, path: &str) -> Result<TypePtr> {
     {
         Some(GEOARROW_WKB_EXTENSION_NAME) => Ok(Arc::new(geospatial_primitive(field, ty, path)?)),
         Some(VARIANT_EXTENSION_NAME) => Ok(Arc::new(variant_group(field, ty, path)?)),
+        Some(UUID_EXTENSION_NAME) => Ok(Arc::new(uuid_primitive(ty, path)?)),
         _ => descend(field, ty, path),
     }
 }
@@ -560,6 +580,34 @@ fn geospatial_primitive(field: &ArrowField, ty: &Type, path: &str) -> Result<Typ
     let info = ty.get_basic_info();
     let mut builder = Type::primitive_type_builder(ty.name(), PhysicalType::BYTE_ARRAY)
         .with_logical_type(Some(logical))
+        .with_id(info.has_id().then(|| info.id()));
+    if info.has_repetition() {
+        builder = builder.with_repetition(info.repetition());
+    }
+    Ok(builder.build()?)
+}
+
+/// Rebuild one `arrow.uuid` primitive with the `UUID` logical type, its
+/// sixteen-byte storage, repetition and field id kept.
+fn uuid_primitive(ty: &Type, path: &str) -> Result<Type> {
+    if !matches!(
+        ty,
+        Type::PrimitiveType {
+            physical_type: PhysicalType::FIXED_LEN_BYTE_ARRAY,
+            type_length: 16,
+            ..
+        }
+    ) {
+        return Err(invalid(
+            path,
+            "FIXED_LEN_BYTE_ARRAY(16) storage for an arrow.uuid column",
+            storage_name(ty),
+        ));
+    }
+    let info = ty.get_basic_info();
+    let mut builder = Type::primitive_type_builder(ty.name(), PhysicalType::FIXED_LEN_BYTE_ARRAY)
+        .with_length(16)
+        .with_logical_type(Some(LogicalType::Uuid))
         .with_id(info.has_id().then(|| info.id()));
     if info.has_repetition() {
         builder = builder.with_repetition(info.repetition());
@@ -713,8 +761,8 @@ fn invalid(path: &str, expected: &str, actual: impl std::fmt::Display) -> Error 
 pub mod internals {
     //! What `rust/tests/parquet/mod_.rs` pins and a caller cannot reach.
     //!
-    //! A Parquet schema descriptor is what carries the geometry and variant
-    //! annotations a foreign Arrow footer does not spell, so both directions -
+    //! A Parquet schema descriptor is what carries the geometry, variant and
+    //! uuid annotations a foreign Arrow footer does not spell, so both directions -
     //! deriving the descriptor from a declared schema, and restoring the
     //! extensions from a foreign one - are file-private steps of one public
     //! read. Each item here forwards to the real one.
@@ -734,9 +782,10 @@ pub mod internals {
         super::extension_schema(schema)
     }
 
-    /// The Arrow schema a descriptor's variant annotations restore, if any.
+    /// The Arrow schema a descriptor's variant and uuid annotations
+    /// restore, if any.
     #[must_use]
-    pub fn variant_schema(parquet: &SchemaDescriptor, arrow: &Schema) -> Option<Schema> {
-        super::variant_schema(parquet, arrow)
+    pub fn annotated_schema(parquet: &SchemaDescriptor, arrow: &Schema) -> Option<Schema> {
+        super::annotated_schema(parquet, arrow)
     }
 }
