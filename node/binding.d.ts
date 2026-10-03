@@ -72,6 +72,7 @@ export {
   type HttpStats,
   type JoinOptionsInput,
   type MetadataEntry,
+  type ObjectOptions,
   type PartitionEntry,
   type SpillOptionsInit,
   type StringParameters,
@@ -134,8 +135,9 @@ import type {
   Xxh32,
   Xxh64,
 } from './index'
-// The Iceberg, FIX and HTTP values are reached through their namespaces, so
-// they are imported here as values to type those and re-exported as types only.
+// The Iceberg, FIX, HTTP and warehouse values are reached through their
+// namespaces, so they are imported here as values to type those and
+// re-exported as types only.
 import {
   Headers,
   Pages,
@@ -143,7 +145,16 @@ import {
   Response,
   Server,
   Session,
+  IcebergCatalog,
+  IcebergNamespace,
+  IcebergTable,
   Catalog,
+  Namespace,
+  Namespaces,
+  Table,
+  Tables,
+  Warehouse,
+  SystemWarehouse,
   Compaction,
   DataFile,
   FixMsg,
@@ -158,7 +169,6 @@ import {
   ScanPlan,
   Snapshot,
   SnapshotRef,
-  Table,
   BookRef,
   Order,
   Quote,
@@ -182,6 +192,7 @@ import {
   FileHandler,
   NullHandler,
 } from './index'
+import type { ObjectIterator, ObjectNames, ObjectOptions } from './index'
 import type {
   DataType as ArrowDataType,
   Field as ArrowField,
@@ -306,7 +317,18 @@ export type {
   Response,
   Server,
   Session,
+  IcebergCatalog,
+  IcebergNamespace,
+  IcebergTable,
   Catalog,
+  Namespace,
+  Namespaces,
+  Table,
+  Tables,
+  Warehouse,
+  SystemWarehouse,
+  ObjectIterator,
+  ObjectNames,
   Compaction,
   DataFile,
   FixMsg,
@@ -321,7 +343,6 @@ export type {
   ScanPlan,
   Snapshot,
   SnapshotRef,
-  Table,
   BookRef,
   Order,
   Quote,
@@ -352,6 +373,25 @@ export type MimeTypeInput = MimeType | string
 export type MediaTypeInput = MediaType | MimeType | string
 /** A native handle, any identifier naming a location, or location text. */
 export type LocationInput = IOBase | Url | Uri | Urn | Arn | string
+/** Anything a warehouse path reaches: a catalog, a namespace or a table. */
+export type WarehouseObject = Catalog | Namespace | Table
+/**
+ * What `IOBase.from` and `new IOBase` build a handle from: a location, or a
+ * warehouse object held as the handle it is - a catalog or a namespace the
+ * container of its children, a table the handle its implementation holds.
+ */
+export type HandleInput = LocationInput | WarehouseObject
+/**
+ * A path into a warehouse: dotted text read through the plan's location
+ * grammar - `lake."eu west".fills`, backticks or `[...]` quoting a part - or
+ * the parts as they are.
+ */
+export type ObjectPathInput = string | readonly string[]
+/**
+ * A properties bag as it is given: an ordered plain object, each value text
+ * or a number or boolean spelled as text; an `undefined` value is skipped.
+ */
+export type ObjectProperties = Record<string, string | number | boolean>
 /**
  * A class exposing its native struct shape through an actual static getter.
  *
@@ -4255,7 +4295,17 @@ declare module './index' {
   /** A caller-supplied Arrow-compatible file system as a plain object. */
   type FileSystemInput = FileSystemHandler
   /** A location, or the file system one of its locations sits on. */
-  type LocationOrFileSystemInput = LocationInput | FileSystemHandler
+  type LocationOrFileSystemInput = HandleInput | FileSystemHandler
+  /** A location, or a warehouse object held as the handle it is. */
+  type HandleInput = LocationInput | Catalog | Namespace | Table
+  /** A warehouse path: dotted text through the grammar, or its parts. */
+  type ObjectPathInput = string | readonly string[]
+  /** A warehouse object given: a catalog, a namespace or a table. */
+  type ObjectInput = Catalog | Namespace | Table
+  /** A warehouse object answered: the class its kind is. */
+  type ObjectOutput = Catalog | Namespace | Table
+  /** A location: a native `Url`, or text read as one. */
+  type UrlInput = Url | string
   /**
    * A partition spec, or the `PARTITION:by` entries one is read from: a bare
    * column, `days(ts)`, `minutes(ts, 15)`, `truncate(name, 4) as prefix`.
@@ -4536,16 +4586,17 @@ declare module './index' {
   }
 
   /**
-   * The catalog's names iterator is a JS iterable and iterator at once, so
-   * `for...of` walks it and `[...keys]` drains it - nothing is collected on
-   * the way across the boundary.
+   * The warehouse's names iterator and children iterator are a JS iterable
+   * and iterator at once, so `for...of` walks them and spreading drains them
+   * - nothing is collected on the way across the boundary.
    */
-  interface IcebergNames extends Iterable<string> {}
+  interface ObjectNames extends Iterable<string> {}
+  interface ObjectIterator extends Iterable<WarehouseObject> {}
 
   /**
-   * The collection views are Map-like: `for...of` yields the names lazily,
-   * and `values`/`entries` open each named resource through `get`, one at a
-   * time.
+   * The warehouse collection views are Map-like: `for...of` yields the names
+   * lazily, and `values`/`entries` open each named object through `get`,
+   * one at a time.
    */
   interface Namespaces extends Iterable<string> {
     values(): IterableIterator<Namespace>
@@ -4554,9 +4605,27 @@ declare module './index' {
   interface Tables extends Iterable<string> {
     values(): IterableIterator<Table>
     entries(): IterableIterator<readonly [string, Table]>
+    /**
+     * Append rows to the named table - anything `BatchReader.from` reads -
+     * under `options`, a property bag set on a copy of the options given,
+     * else of the table's own; the table is answered.
+     */
+    append(
+      name: string,
+      rows: BatchSource,
+      options?: RecordOptions | RecordProperties | null,
+      properties?: RecordProperties | null,
+    ): Table
+    /** Replace the named table's rows, as `append` takes them. */
+    overwrite(
+      name: string,
+      rows: BatchSource,
+      options?: RecordOptions | RecordProperties | null,
+      properties?: RecordProperties | null,
+    ): Table
   }
 
-  interface Table {
+  interface IcebergTable {
     /** Append rows as a new snapshot, keeping everything already stored. */
     append(rows: IcebergSource, options?: IcebergOptions | IcebergProperties | null, properties?: IcebergProperties | null): void
     /** Replace every row with `rows` as a new snapshot. */
@@ -4604,23 +4673,6 @@ declare module './index' {
     updateSchema(): SchemaUpdateBuilder
   }
 
-  interface Tables {
-    /** Append rows to the named table, creating it on first write. */
-    append(
-      name: string,
-      rows: IcebergSource,
-      options?: IcebergOptions | IcebergProperties | null,
-      properties?: IcebergProperties | null,
-    ): Table
-    /** Replace the named table's rows, creating it on first write. */
-    overwrite(
-      name: string,
-      rows: IcebergSource,
-      options?: IcebergOptions | IcebergProperties | null,
-      properties?: IcebergProperties | null,
-    ): Table
-  }
-
   /**
    * Beside the named keys, every other key is an `HttpOptions` property -
    * `maxAttempts`, `followRedirects`, `header.X-Api-Key` - read by the core
@@ -4629,23 +4681,6 @@ declare module './index' {
    */
   interface HttpSessionInit {
     readonly [property: string]: unknown
-  }
-
-  interface Catalog {
-    /** Append rows to the named table, creating it on first write. */
-    append(
-      name: string,
-      rows: IcebergSource,
-      options?: IcebergOptions | IcebergProperties | null,
-      properties?: IcebergProperties | null,
-    ): Table
-    /** Replace the named table's rows, creating it on first write. */
-    overwrite(
-      name: string,
-      rows: IcebergSource,
-      options?: IcebergOptions | IcebergProperties | null,
-      properties?: IcebergProperties | null,
-    ): Table
   }
 
   namespace Timezone {
@@ -4843,8 +4878,13 @@ type SchemaUpdateBuilder = SchemaUpdate
 
 /** `yggdryl::iceberg`: the table format, over the record encodings. */
 export interface Iceberg {
-  /** A warehouse folder of namespaces of Iceberg tables. */
-  readonly Catalog: typeof Catalog
+  /**
+   * A warehouse folder of namespaces of Iceberg tables: the implementation
+   * a warehouse `Catalog` holds when it is one.
+   */
+  readonly IcebergCatalog: typeof IcebergCatalog
+  /** One namespace of an Iceberg catalog: a folder under the warehouse. */
+  readonly IcebergNamespace: typeof IcebergNamespace
   /** A bounded report of a completed compaction. */
   readonly Compaction: typeof Compaction
   /** Per-call Iceberg commit, scan, and compaction settings. */
@@ -4854,7 +4894,7 @@ export interface Iceberg {
   /** One immutable field of a partition spec. */
   readonly PartitionField: typeof PartitionField
   /** An Iceberg table reached entirely through one container handle. */
-  readonly Table: typeof Table
+  readonly IcebergTable: typeof IcebergTable
   /** How a table turns column values into the directories it writes. */
   readonly PartitionSpec: typeof PartitionSpec
   /** One live data file of a snapshot, with the spec that placed it. */
@@ -4876,6 +4916,68 @@ export interface Iceberg {
 }
 
 export declare const iceberg: Iceberg
+
+/**
+ * An implementation's name as a constructor over the kind's static
+ * constructor - `new warehouse.FolderCatalog(name, location)` is
+ * `Catalog.folder(name, location)` - callable with or without `new`,
+ * answering the kind's class; `implementation` on the object names it.
+ */
+export interface ImplementationConstructor<Args extends readonly unknown[], T> {
+  (...args: Args): T
+  new (...args: Args): T
+  readonly name: string
+}
+
+/**
+ * `yggdryl::warehouse`: one abstraction for every place that answers "which
+ * tables are there, and how do I read one" - the objects a path reaches, the
+ * views over one level of them, the registry a path resolves against and the
+ * process's one registry.
+ */
+export interface WarehouseNamespace {
+  /** The registry of catalogs a path resolves against. */
+  readonly Warehouse: typeof Warehouse
+  /** The process's one warehouse, the same verbs as static methods. */
+  readonly SystemWarehouse: typeof SystemWarehouse
+  /** The first namespace layer, what a warehouse registers by name. */
+  readonly Catalog: typeof Catalog
+  /** A container of namespaces and tables. */
+  readonly Namespace: typeof Namespace
+  /** An object whose rows any record read and write reaches. */
+  readonly Table: typeof Table
+  /** The namespaces one level below a catalog or a namespace, lazily. */
+  readonly Namespaces: typeof Namespaces
+  /** The tables one level below a catalog or a namespace, lazily. */
+  readonly Tables: typeof Tables
+  /** `Catalog.memory`: registered objects, in order, with no storage. */
+  readonly MemoryCatalog: ImplementationConstructor<
+    [name: string, options?: ObjectOptions | null],
+    Catalog
+  >
+  /** `Catalog.folder`: a container read as namespaces and tables. */
+  readonly FolderCatalog: ImplementationConstructor<
+    [name: string, location: LocationInput, options?: ObjectOptions | null],
+    Catalog
+  >
+  /** `Namespace.memory`: registered objects, in order, with no storage. */
+  readonly MemoryNamespace: ImplementationConstructor<
+    [path: ObjectPathInput, options?: ObjectOptions | null],
+    Namespace
+  >
+  /** `Namespace.folder`: a folder read as tables and, under `levels`, namespaces. */
+  readonly FolderNamespace: ImplementationConstructor<
+    [path: ObjectPathInput, location: LocationInput, options?: ObjectOptions | null],
+    Namespace
+  >
+  /** `Table.media`: a table over any location a record medium reads. */
+  readonly MediaTable: ImplementationConstructor<
+    [path: ObjectPathInput, location: LocationInput, options?: ObjectOptions | null],
+    Table
+  >
+}
+
+export declare const warehouse: WarehouseNamespace
 
 /** A level: its number, or its name in any case (`warn`, `WARNING`, `30`). */
 export type LoggingLevelInput = number | string

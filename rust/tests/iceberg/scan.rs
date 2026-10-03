@@ -1300,7 +1300,9 @@ mod iceberg {
     use std::sync::{Arc, Mutex};
     use yggdryl::arrow::BatchReader;
     use yggdryl::holder::Holder;
-    use yggdryl::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{
+        FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, assign_field_ids,
+    };
     use yggdryl::local::LocalFolder;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{DataType, Field, IOBase, IOMedia, StructType};
@@ -1435,7 +1437,7 @@ mod iceberg {
         let path = root(label);
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -1457,7 +1459,7 @@ mod iceberg {
     #[test]
     fn a_where_on_a_record_read_prunes_with_the_whole_expression_language() {
         let path = venues("where-pushdown");
-        let table = Table::open(Recording::new(&path)).unwrap();
+        let table = IcebergTable::open(Recording::new(&path)).unwrap();
 
         // The plan is what a read runs: a membership and a range skip manifests
         // exactly as an equality does.
@@ -1547,7 +1549,7 @@ mod iceberg {
     #[test]
     fn files_decoding_to_different_layouts_each_cast_and_project_in_one_scan() {
         let path = root("scan_layouts");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema(),

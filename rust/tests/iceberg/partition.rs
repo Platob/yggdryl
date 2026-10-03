@@ -68,7 +68,7 @@ mod iceberg {
     use std::sync::{Arc, Mutex};
     use yggdryl::arrow::BatchReader;
     use yggdryl::holder::Holder;
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
     use yggdryl::local::LocalFolder;
     use yggdryl::media::IORecordOptions;
     use yggdryl::{DataType, Field, IOBase, IOMedia, Selector, StructType};
@@ -198,7 +198,7 @@ mod iceberg {
         out
     }
 
-    fn file_paths(table: &Table<impl IOBase>) -> Vec<String> {
+    fn file_paths(table: &IcebergTable<impl IOBase>) -> Vec<String> {
         let mut paths: Vec<String> = table
             .data_files()
             .unwrap()
@@ -214,7 +214,7 @@ mod iceberg {
         let path = root(label);
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -236,7 +236,7 @@ mod iceberg {
     #[test]
     fn partition_keys_are_the_primary_keys_of_a_merge() {
         let path = venues("primary-keys");
-        let mut table = Table::open(Recording::new(&path)).unwrap();
+        let mut table = IcebergTable::open(Recording::new(&path)).unwrap();
         let before = file_paths(&table);
 
         // Keyed: (venue, id). Id 1 updates in XNAS, id 4 appends there, and no
@@ -308,7 +308,7 @@ mod iceberg {
     #[test]
     fn an_unpartitioned_table_still_needs_a_key_and_merges_as_before() {
         let path = root("flat-merge");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema(),

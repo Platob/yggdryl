@@ -6,12 +6,12 @@
 
 | Key | Value |
 | --- | --- |
-| Owns | `Plan`, `Write`, `Verb`, `Ordering`, `Source`, `Target`, `Location`, `IntoPlan`, `Expression::Sequence`, `Holder::from_url` |
+| Owns | `Plan`, `Write`, `Verb`, `Ordering`, `Source`, `Target`, `Location`, `IntoPlan`, `Expression::Sequence`, `Plan::execute_in`, `Target::holder`, `Holder::from_url` |
 | Sections | `create [target] (schema) [with (...)]`, a write verb with an optional target and `by (keys)`, `select`, `from target \| (plan)`, zero or more `join` clauses, `where`, `order by`, `limit`, `offset` |
 | Verbs | `insert into` (append), `insert overwrite` (replace), `upsert into ... by (keys)` (merge), `delete from ... where`; every common alias reads and prints canonically |
-| Location | a quoted URL, or a catalog path `catalog.schema.table` whose parts may be quoted with `"`, backticks, or `[...]`; parts resolve against a base URL, a URL stands alone |
-| Target | a location and `with (name = 'value', ...)` properties: `media_type`, `codec`, `safe`, `batch_row_size`, `batch_byte_size`, `commit_batch_num`, `num_threads`, `max_row_size`, `row_offset`, `max_byte_size`, and whatever a holder reads; `safe = 'false'` refuses what a nullable declared column would otherwise take as null. `safe` reads the [boolean table](../types/numeric/boolean.md#the-one-text-reader) (`no`, `off`, `0` alike) and the counts the integer grammar, each refused at `$.with.<name>` naming the text when it does not read |
-| Execute | `execute()` reads the source through its holder with the read sections pushed down, runs a nested plan first, joins each `join` source in turn - the source read whole and hashed, the stream probed batch by batch, the first join's distinct keys pushed into the probe's read where the kind lets them - and writes where the plan says; a plan with no source starts from the empty stream, which is what `create` alone needs |
+| Location | a quoted URL, or a catalog path `catalog.schema.table` whose parts may be quoted with `"`, backticks, or `[...]`; after `from`, `into`, `to`, a write verb, `create` (with or without `table` or `view`) or `join` a URL or a path also stands unquoted - `from /lake/trades.csv`, `into s3://bucket/trades` - read to the first whitespace, `,`, `;` or `)` and printed back quoted; a path resolves through the [warehouse](#sources), or against a base URL where a media is given one |
+| Target | a location and its `with (name = 'value', ...)` clause, held as one ordered `Properties` bag (`target.properties()`) - the same bag a [warehouse](../warehouse/index.md#properties) object states and `Holder::from_url` reads: `media_type`, `codec`, `safe`, `batch_row_size`, `batch_byte_size`, `commit_batch_num`, `num_threads`, `max_row_size`, `row_offset`, `max_byte_size`, and whatever a holder reads; `safe = 'false'` refuses what a nullable declared column would otherwise take as null. `safe` reads the [boolean table](../types/numeric/boolean.md#the-one-text-reader) (`no`, `off`, `0` alike) and the counts the integer grammar, each refused at `$.with.<name>` naming the text when it does not read |
+| Execute | `execute()` reads the source through its holder with the read sections pushed down, runs a nested plan first, joins each `join` source in turn - the source read whole and hashed, the stream probed batch by batch, the first join's distinct keys pushed into the probe's read where the kind lets them - and writes where the plan says; a plan with no source starts from the empty stream, which is what `create` alone needs. Its locations - the source's, each join source's and the target's - resolve against the process's `SystemWarehouse`; `execute_in(&warehouse)` resolves them against a warehouse it is given |
 | Apply | `apply_arrow_reader(reader)` shapes a stream it is given, source or not; `where` and `select` stream, `order by` collects, `offset` and `limit` slice views |
 | Field | `Plan::from_field(field)` is `create name (columns)`; `field()` reads a `create` section back; `field_from(root)` types the read sections against a root |
 | Bindings | Python and JavaScript `Plan` and `Expression`; `execute` and every application in all three |
@@ -215,9 +215,104 @@ A plan joins the way a [`Serie`](../types/serie.md#joins) does, under `JoinOptio
 | `'file:///lake/trades.parquet'` | a URL, held as it is |
 | `lake.raw.trades` | the parts `lake`, `raw`, `trades`, joined onto the base URL a media resolves them against |
 | `catalog."my schema".[tbl.x].` `` `odd-one` `` | the same parts, each quoted a way an engine quotes it |
+| `from /lake/trades.csv`, `into s3://bucket/trades`, `from ./today.csv`, `into C:\data\out.parquet` | an unquoted URL or path after a word that takes a target - `join` among them, and `table` or `view` straight after `create` - read with `Url::from_location` to the first whitespace, `,`, `;` or `)`; `price / size` after a column stays a division |
 | `t with (media_type = 'application/vnd.apache.arrow.stream', batch_row_size = '1024')` | a target with properties: the holder is opened with them, and the read or write knobs are read from them |
 
-`Holder::from_url(url, properties)` is the one builder every target goes through: a `file:` URL is a local path or, with a fragment, a ZIP member; an object-store scheme needs the `s3` feature and reads its credentials from the properties; `media_type` and `codec` type an extensionless resource.
+`Holder::from_url(url, properties)` is the one builder every URL target goes through: a `file:` URL is a local path or, with a fragment, a ZIP member; an object-store scheme needs the `s3` feature and reads its credentials from the properties; `media_type` and `codec` type an extensionless resource.
+
+## Sources
+
+`Target::holder(&warehouse, base)` is the one resolution, in this order: a URL opens through `Holder::from_url` with the target's properties over those the warehouse states for it (`Warehouse::properties_for`); parts with a base URL join it, which is how a media resolves `lake.trades` under its own location; parts without one resolve through the warehouse to a registered table, held as `Holder::Table` with the target's `with (...)` properties stated on it. A namespace or a catalog in a `from` is refused naming its kind, and absence reads `expected a table at "lake.eu.trades", got nothing; register the table or name a URL`. A write to a path whose last part is absent asks the namespace above it to create the table from the stream's root, as a write to a URL creates its file; a namespace that creates no table - a memory or a folder one - refuses by its implementation's name. `execute()` resolves against the process's [`SystemWarehouse`](../warehouse/index.md#the-system-warehouse), `execute_in(&warehouse)` against the warehouse it is given, each taking the registry's lock for the resolution alone.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::expression::Plan;
+    use yggdryl::{MediaTable, Url, Warehouse};
+
+    let root = std::env::temp_dir().join(format!("yggdryl-docs-plan-sources-{}", std::process::id()));
+    std::fs::create_dir_all(&root)?;
+    std::fs::write(root.join("trades.csv"), "symbol,price\nAAPL,187.5\nMSFT,410.25\n")?;
+    let url = Url::from_path(root.join("trades.csv"))?;
+
+    // A registered table is the path a plan reads, in the warehouse it is given.
+    let mut warehouse = Warehouse::new();
+    warehouse.register(MediaTable::new("lake.eu.trades", url.clone())?)?;
+    let read: Plan = "select symbol from lake.eu.trades where price > 200".parse()?;
+    let rows = read
+        .execute_in(&warehouse)?
+        .map(|batch| batch.map(|batch| batch.num_rows()))
+        .sum::<Result<usize, _>>()?;
+    assert_eq!(rows, 1);
+
+    // `execute` reads the process's warehouse, where nothing is registered here.
+    let error = read.execute().err().expect("nothing registered").to_string();
+    assert!(error.contains("register the table or name a URL"), "{error}");
+
+    // A URL stands unquoted after `from`, and prints back quoted.
+    let unquoted: Plan = format!("select * from {}", root.join("trades.csv").display()).parse()?;
+    assert_eq!(unquoted.to_string(), format!("select * from '{url}'"));
+    std::fs::remove_dir_all(&root)?;
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import Plan, Url, Warehouse
+    from yggdryl.warehouse import MediaTable
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    (root / "trades.csv").write_text("symbol,price\nAAPL,187.5\nMSFT,410.25\n", encoding="utf-8")
+
+    # A registered table is the path a plan reads, in the warehouse it is given.
+    warehouse = Warehouse()
+    warehouse.register(MediaTable("lake.eu.trades", root / "trades.csv"))
+    read = Plan("select symbol from lake.eu.trades where price > 200")
+    assert read.execute_in(warehouse).read_all().column("symbol").to_pylist() == ["MSFT"]
+
+    # `execute` reads the process's SystemWarehouse, where nothing is registered here.
+    try:
+        read.execute()
+    except ValueError as error:
+        assert "register the table or name a URL" in str(error)
+    else:
+        raise AssertionError("an unregistered path is refused")
+
+    # A URL stands unquoted after `from`, and prints back quoted.
+    unquoted = Plan(f"select * from {(root / 'trades.csv').as_posix()}")
+    assert str(unquoted) == f"select * from '{Url.from_path(root / 'trades.csv')}'"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { Plan, Url, warehouse } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-plan-sources-'))
+    const csv = path.join(root, 'trades.csv')
+    fs.writeFileSync(csv, 'symbol,price\nAAPL,187.5\nMSFT,410.25\n')
+
+    // A registered table is the path a plan reads, in the warehouse it is given.
+    const registry = new warehouse.Warehouse()
+    registry.register(warehouse.Table.media('lake.eu.trades', csv))
+    const read = new Plan('select symbol from lake.eu.trades where price > 200')
+    assert.deepEqual([...read.executeIn(registry).intoTable().getChild('symbol')], ['MSFT'])
+
+    // `execute` reads the process's SystemWarehouse, where nothing is registered here.
+    assert.throws(() => read.execute(), /register the table or name a URL/)
+
+    // A URL stands unquoted after `from`, and prints back quoted.
+    const unquoted = new Plan(`select * from ${csv}`)
+    assert.equal(unquoted.toString(), `select * from '${Url.fromPath(csv)}'`)
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
 
 ## Verbs and their aliases
 
@@ -240,8 +335,9 @@ A plan joins the way a [`Serie`](../types/serie.md#joins) does, under `JoinOptio
 - `from (plan)` nested past the shared depth limit -> refused at parse.
 - `join` -> `on` takes equalities only: ``got `px > 1` `` names the conjunct refused, with its byte position; `using ()` and a missing `on`/`using` are refused; a key binding on neither side is refused naming it; an `on` conjunct that is one equality shared by both sides prints as `(a = b) = (a = b)`, which reads back as one key.
 - `join` over a target left source -> the left holder is opened twice, once for its field and once for its rows, and every join source is read whole into a `ChunkedSerie`; a left-only `where` is pushed down unless a join is `right` or `full`; a pushed key filter never drops a row the kind would keep.
-- An unresolvable join source -> reported at `$.from` (the location's error path), not `$.join`.
-- A section word as a bare location -> refused; a URL stands alone only quoted.
+- An unresolvable join source -> reported at its location as written, as a `from` is, never at `$.join` or `$.from`: a path with no table registered at it reads `invalid record value at $.lake.eu.venues: expected a table at "lake.eu.venues", got nothing; register the table or name a URL`.
+- A section word as a bare location -> refused; a URL stands alone quoted, or unquoted after a word that takes a target.
+- A path with no table registered at it -> `expected a table at "<path>", got nothing; register the table or name a URL`; a namespace or a catalog there -> refused naming its kind.
 - `Plan::from_field` -> spells every column with its nullability, so `create trades (id int64 not null, ccy utf8 null)`.
 
 ## Commands

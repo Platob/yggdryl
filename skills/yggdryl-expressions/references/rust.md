@@ -286,9 +286,12 @@ assert_eq!(rows, 2);
 
 ## Run a plan against storage
 
-`execute` reads the `from` target through `Holder::from_url` with the read
-sections pushed down, and a write verb sends the shaped stream to its target.
-A store that is not there yet reads as the empty stream.
+`execute` reads the `from` target through its holder with the read sections
+pushed down, and a write verb sends the shaped stream to its target. A URL
+opens through `Holder::from_url`; a dotted path is the table registered at it
+in the process's `SystemWarehouse` - `execute_in(&warehouse)` reads another -
+absence saying to register the table or name a URL. A store that is not
+there yet reads as the empty stream.
 
 ```rust
 use std::sync::Arc;

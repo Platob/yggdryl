@@ -35,6 +35,7 @@ and let it follow the links. Every skill is plain Markdown with a `name` and
 | [`yggdryl-types`](yggdryl-types/SKILL.md) | datatype expressions, fields and metadata, the value door, every datatype family, record classes |
 | [`yggdryl-arrow`](yggdryl-arrow/SKILL.md) | `Serie`, `ChunkedSerie`, `SerieReader`, `ArrowCastPlan`; pyarrow, pandas, polars, NumPy and Arrow JS in and out |
 | [`yggdryl-storage`](yggdryl-storage/SKILL.md) | `IOBase` handles and bytes, local, ZIP and object-store backends, compression, charsets, call counts |
+| [`yggdryl-warehouse`](yggdryl-warehouse/SKILL.md) | catalogs, namespaces and tables: `Warehouse`, `SystemWarehouse`, folder and memory catalogs, `MediaTable`, dotted paths, properties, the views |
 | [`yggdryl-uri`](yggdryl-uri/SKILL.md) | `Uri`, `Url`, `Urn`, `Arn`, paths, globs, hive partitions |
 | [`yggdryl-records`](yggdryl-records/SKILL.md) | record reads and writes, `RecordOptions`, Arrow IPC, Parquet, Avro, CSV, text, Iceberg, partitions |
 | [`yggdryl-documents`](yggdryl-documents/SKILL.md) | JSON, JSON Lines, YAML, TOML and XML over `Scalar` |

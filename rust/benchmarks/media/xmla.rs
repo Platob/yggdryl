@@ -12,7 +12,7 @@ use yggdryl::xmla::{
     Content, Discover, Method, PropertyList, Request, RequestType, Response, Restrictions, Rowset,
     write_rowset,
 };
-use yggdryl::{DataType, Field, Scalar, Serie, StructType};
+use yggdryl::{DataType, Field, FolderCatalog, Scalar, Serie, StructType};
 
 use crate::bench_profile::corpus;
 
@@ -132,7 +132,7 @@ pub(crate) fn xmla_benchmarks(criterion: &mut Criterion) {
 fn service_benchmarks(criterion: &mut Criterion, field: &Field) {
     use yggdryl::holder::Holder;
     use yggdryl::media::RecordOptions;
-    use yggdryl::xmla::{Catalog, Execute, Service, ServiceOptions};
+    use yggdryl::xmla::{Execute, Service, ServiceOptions};
     use yggdryl::{IOBase, IOMedia, MimeType};
 
     let root = std::env::temp_dir().join(format!("yggdryl-bench-xmla-{}", std::process::id()));
@@ -155,7 +155,7 @@ fn service_benchmarks(criterion: &mut Criterion, field: &Field) {
         )
         .expect("the table is written");
     }
-    let service = Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
+    let service = Service::new(ServiceOptions::new()).with_catalog(FolderCatalog::bound(
         "market",
         Holder::folder(&root).expect("holds"),
     ));

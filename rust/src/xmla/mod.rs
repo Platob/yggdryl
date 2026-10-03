@@ -19,22 +19,20 @@
 //! | [`dbtype`] | OLE DB's `DBTYPE_*` indicators, what `DBSCHEMA_COLUMNS` states a column as |
 //! | [`options`], [`media`] | the `.xmla` record medium: [`XmlaOptions`] and [`Xmla`] |
 //! | [`definitions`] | the rowsets this crate's provider answers, each as a `Field` with its restriction columns |
-//! | [`catalog`] | a catalog over a folder: its schemas and tables as the leaves and table folders under it |
-//! | [`service`] | the provider: every Discover answered from the catalogs, every Execute run through the expression grammar's `Plan`; under the `http` feature, `Service::route` answers it on an `http::Server` |
+//! | [`service`] | the provider over a [`Warehouse`](crate::Warehouse): every Discover answered from the catalogs it serves through the warehouse traits, every Execute run through the expression grammar's `Plan` against that warehouse; under the `http` feature, `Service::route` answers it on an `http::Server` |
 //!
 //! The SOAP envelope and fault are XML's own, in [`crate::soap`], and the
 //! HTTP it travels over is the crate's `http` server and
 //! client; this module speaks XMLA over them.
 //!
-//! The provider is a *tabular* one: its data sources are catalogs of tables,
-//! a table being any leaf a record medium reads or any folder that reads as
-//! one - a partitioned tree, an Iceberg table - and a statement is the
+//! The provider is a *tabular* one: its data sources are the catalogs of a
+//! [`Warehouse`](crate::Warehouse) - any [`Catalog`](crate::Catalog), a
+//! folder read as namespaces and tables among them - and a statement is the
 //! expression grammar's plan, such as `select symbol, price from trades
-//! where price is not null limit 10`, run against the catalog. The
+//! where price is not null limit 10`, run against that warehouse. The
 //! multidimensional rowsets and the MDX a multidimensional provider answers
 //! are read and refused by name, never answered.
 
-pub mod catalog;
 pub mod dbtype;
 pub mod definitions;
 pub mod media;
@@ -47,7 +45,6 @@ mod server;
 pub mod service;
 pub mod vocabulary;
 
-pub use catalog::{Catalog, Table};
 pub use dbtype::DbType;
 pub(crate) use media::row_size;
 pub use media::{Xmla, overwrite_arrow_reader, read_batch_reader, read_field};

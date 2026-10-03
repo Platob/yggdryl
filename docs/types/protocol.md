@@ -574,7 +574,7 @@ sorts write it, the verbs that keep the order keep it, a write that breaks it cl
 door landing foreign rows under a declaring root reads them once and refuses the first row out
 of order by name. A table's `SORT:by` is how its writers lay each data file out - an Iceberg
 write sorts each partition's rows as a whole by it, and writes a stream whose root proves it
-as it arrived - so an Iceberg scan's root drops it while `Table::schema()` keeps reporting it.
+as it arrived - so an Iceberg scan's root drops it while `IcebergTable::schema()` keeps reporting it.
 
 === "Rust"
 

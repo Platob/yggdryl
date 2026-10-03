@@ -28,7 +28,7 @@ from yggdryl import (
     Uri,
     _native,
 )
-from yggdryl.iceberg import Catalog, PartitionSpec, Table
+from yggdryl.iceberg import IcebergCatalog, PartitionSpec, IcebergTable
 from yggdryl.excel import CellRange
 
 
@@ -274,8 +274,8 @@ def test_operational_handles_views_and_iterators_are_explicitly_unhashable(
 ) -> None:
     handle = IOBase.from_bytes(b"one\ntwo\n")
     field = Field("row", DataType.from_fields([Field("id", "int64")]))
-    catalog = Catalog(tmp_path)
-    namespace = catalog.namespace("sales")
+    catalog = IcebergCatalog("lake", tmp_path)
+    namespace = catalog.namespaces.create("sales")
     operational = [
         handle,
         handle.cursor(),
@@ -292,8 +292,6 @@ def test_operational_handles_views_and_iterators_are_explicitly_unhashable(
         field.iceberg,
         field.iceberg.keys(),
         _native._codec_decode_iter(io.BytesIO(b"1 2"), "json"),
-        catalog,
-        namespace,
         catalog.namespaces,
         namespace.tables,
         catalog.namespaces.keys(),
@@ -305,7 +303,7 @@ def test_operational_handles_views_and_iterators_are_explicitly_unhashable(
         assert_unhashable(value)
 
 
-def test_table_and_schema_update_are_live_and_unhashable(
+def test_a_table_hashes_as_its_description_and_a_schema_update_is_unhashable(
     tmp_path: pathlib.Path,
 ) -> None:
     schema = Field(
@@ -313,7 +311,11 @@ def test_table_and_schema_update_are_live_and_unhashable(
         DataType.from_fields([Field("id", "int64", nullable=False)]),
         nullable=False,
     )
-    table = Table.create(IOBase(tmp_path), schema)
+    table = IcebergTable.create(IOBase(tmp_path), schema)
 
-    assert_unhashable(table)
+    # A warehouse object is a description - its path, its location, what was
+    # stated - so an Iceberg table is one value however it was reached, while
+    # a transactional update changes until it commits or is discarded.
+    assert hash(table) == hash(IcebergTable(IOBase(tmp_path)))
+    assert table == IcebergTable(IOBase(tmp_path))
     assert_unhashable(table.update_schema())

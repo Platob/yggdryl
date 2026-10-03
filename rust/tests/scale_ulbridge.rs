@@ -66,7 +66,7 @@ use yggdryl::arrow::BatchReader;
 use yggdryl::fix::FixMarketIterator;
 use yggdryl::fs::{FsFile, LocalFileSystem};
 use yggdryl::graph::MarketData;
-use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec};
 use yggdryl::local::LocalFolder;
 use yggdryl::media::IORecordOptions;
 use yggdryl::text::{TextOptions, read_text_lines};
@@ -1024,7 +1024,7 @@ fn run(shape: &Run) -> Outcome {
                     }
                 } else {
                     let row = MarketData::field().expect("the marketdata row");
-                    let mut table = Table::create(
+                    let mut table = IcebergTable::create(
                         LocalFolder::new(table_root.clone()).expect("the table folder"),
                         FormatVersion::V3,
                         row.clone()
@@ -1044,7 +1044,7 @@ fn run(shape: &Run) -> Outcome {
                     table
                         .append_serie(SerieSource::from(reader), Some(&writing))
                         .expect("the rows append");
-                    let reopened = Table::open(
+                    let reopened = IcebergTable::open(
                         LocalFolder::new(table_root.clone()).expect("the table folder"),
                     )
                     .expect("the table reopens");

@@ -50,7 +50,8 @@ reader, statistics, or media pushdown).
 | skip a file by statistics | `bound.statistics_prune(&Bounds::new(..).with_column(..))` | `bound.statistics_prune(Bounds(rows=..).with_column(..))` | not bound |
 | split partition / row halves | `bound.partition_split()` -> `Residual` | `bound.partition_split()` -> `(answerable, remaining)` | `bound.partitionSplit()` -> `{ answerable, remaining }` |
 | push into a record read | `options.with_filter(f)?.with_select(s)?` + `read_arrow_reader(&options)` | `read_arrow_reader(filter=f, select=s)` | `readArrowReader({ filter: f, select: s })` |
-| run a plan on storage | `plan.execute()?` | `plan.execute()` | `plan.execute()` |
+| run a plan on storage | `plan.execute()?` (paths resolve in `SystemWarehouse`), `plan.execute_in(&warehouse)?` | `plan.execute()`, `plan.execute_in(warehouse)` | `plan.execute()`, `plan.executeIn(warehouse)` |
+| name a source | `from 'file:///x.csv'`, `from /lake/x.csv` (unquoted after `from`/`into`), `from lake.eu.trades` (a registered table) | the same text | the same text |
 | resolve a path | `FieldPath::from_str(p)?`, `apply_scalar(&root, &v)` | `FieldPath(p)` | `new FieldPath(p)` |
 | register a function | `register_function(Arc::new(f))?` | `@user_defined_function(namespace=...)` | not bound (parses, bind refuses) |
 | store a derivation on a schema | `sel.into_field(&root)?`, `Selector::from_field(&f)` | `sel.into_field(root)`, `Selector.from_field(f)` | `sel.intoField(root)`, `Selector.fromField(f)` |

@@ -153,6 +153,7 @@ mod valuestream;
 mod variant;
 pub mod version;
 mod vocabulary;
+pub mod warehouse;
 mod window_serie;
 pub mod wkb;
 pub mod xml;
@@ -244,6 +245,12 @@ pub use uri::{
     UriType, Url, UrlParents, Urn,
 };
 pub(crate) use uri::{URL_EXTENSION_NAME, URN_EXTENSION_NAME};
+pub use warehouse::{
+    Catalog, CatalogValue, FolderCatalog, FolderLayout, FolderNamespace, Handle, IntoObjectPath,
+    MediaTable, MemoryCatalog, MemoryNamespace, Names, Namespace, NamespaceValue, Namespaces,
+    Object, ObjectValue, Objects, Properties, SystemWarehouse, Table, TableValue, Tables,
+    Warehouse,
+};
 pub use window_serie::{
     SerieWindows, SerieWindowsIter, WindowSerie, WindowSerieMut, WindowSerieRows,
 };

@@ -217,7 +217,9 @@ with tempfile.TemporaryDirectory() as root:
 ## Run a plan against storage
 
 `execute` reads the `from` target through its holder with the read sections
-pushed down; a write verb sends the shaped stream to its target.
+pushed down; a write verb sends the shaped stream to its target. A dotted
+path is the table registered at it in `SystemWarehouse`, and
+`execute_in(warehouse)` reads a `Warehouse` of your own.
 
 ```python
 import pathlib

@@ -1,48 +1,38 @@
-//! A hierarchy of catalogs, namespaces, and tables, one shape at every level.
+//! Iceberg catalogs over folders: a warehouse folder read as a catalog of
+//! namespaces of tables, laid out the way `HadoopCatalog` lays one out.
 //!
-//! A catalog here is storage and nothing else, the way `HadoopCatalog` is: a
-//! warehouse is one container handle, a namespace is a folder under it, a
-//! table is a folder [`Table::locate`] recognizes, and a dotted name like
-//! `"nyc.taxis"` is the folder `nyc/taxis` spelled the way a catalog spells
-//! it. Every lookup runs through [`IOBase::child_by_path`] and [`IOBase::ls`]
-//! against that one handle - no path is opened, no network is reached - and
-//! every value in this module is only a description of where things live, so
-//! constructing one touches nothing at all.
+//! A catalog here is storage and nothing else: a warehouse is one container
+//! handle, a namespace is a folder under it, a table is a folder laid out as
+//! an Iceberg table, and `lake.nyc.taxis` is the folder `nyc/taxis` under the
+//! warehouse registered as `lake`. Every value is a description of where
+//! things live - constructing one touches nothing - and every verb runs
+//! against the handle at the moment it is asked, so two catalogs over one
+//! folder see the same tables.
 //!
-//! # Three levels, one shape
+//! [`IcebergCatalog`] and [`IcebergNamespace`] answer the warehouse traits
+//! ([`CatalogValue`], [`NamespaceValue`], [`ObjectValue`]); the collection
+//! views, the dotted descent and registration are the generic ones -
+//! [`Namespaces`](crate::Namespaces), [`Tables`](crate::Tables),
+//! [`Catalog::resolve`](crate::Catalog::resolve), [`Warehouse`](crate::Warehouse).
+//! Namespaces nest to any depth, so a catalog states no
+//! [`namespace_levels`](CatalogValue::namespace_levels).
 //!
-//! A *collection* is a lazy map-oriented view whose construction touches
-//! nothing, and it has exactly this vocabulary at every level - no level
-//! invents a verb:
-//!
-//! ```text
-//! collection.get(name)                 // open, absence raised
-//! collection.create(name, ...)        // create, conflict raised
-//! collection.open_or_create(name, ...) // both absorbed - same attempt, one path
-//! collection.contains(name)           // the answer a caller asked for
-//! collection.iter()                   // the names, one at a time
-//! collection.len() / .is_empty()      // drain the iterator; they cost the listing
-//! ```
-//!
-//! A *resource* is one addressed thing, and it has exactly this one:
-//!
-//! ```text
-//! resource.name()          // its dotted identity
-//! resource.kind()          // the role it plays
-//! resource.properties()    // its metadata document, absent means empty
-//! resource.update_properties(updates, removes)
-//! ```
-//!
-//! So the cascade reads the same at every depth, and a namespace nests:
+//! A listing classifies each folder entry with one listing of its `metadata/`
+//! and no read: a folder holding a `version-hint.text` or a `*.metadata.json`
+//! is a table, every other folder a namespace, and the reserved `metadata`
+//! name - where each level keeps its own document - is skipped. A table
+//! answered is an [`IcebergTable`] described at its folder, its current
+//! document read on the first verb that needs it.
 //!
 //! ```no_run
-//! use yggdryl::DataType;
-//! use yggdryl::StructType;
-//! use yggdryl::iceberg::Catalog;
+//! use yggdryl::iceberg::IcebergCatalog;
 //! use yggdryl::local::LocalFolder;
+//! use yggdryl::{DataType, NamespaceValue, ObjectValue, StructType, Warehouse};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let catalog = Catalog::new(LocalFolder::new(LocalFolder::temporary()?.path()?.join("warehouse"))?);
+//! let folder = LocalFolder::new(LocalFolder::temporary()?.path()?.join("warehouse"))?;
+//! let mut warehouse = Warehouse::new();
+//! warehouse.register(IcebergCatalog::bound("lake", folder.into()))?;
 //!
 //! let schema = DataType::from(StructType::from_fields([
 //!     DataType::Int64.required_field("id"),
@@ -50,58 +40,44 @@
 //! ])?)
 //! .required_field("row");
 //!
-//! // The namespaces come into being because the metadata document was
-//! // written, not because anything checked for them first.
-//! let table = catalog.tables().create("nyc.taxis", schema)?;
-//! assert!(table.current_snapshot().is_none());
-//!
-//! // The same table through the cascade, and through the dotted entry point.
-//! let nyc = catalog.namespaces().get("nyc")?;
-//! assert!(nyc.tables().contains("taxis")?);
-//! let _same = catalog.table("nyc.taxis")?;
+//! // A create descends through existing namespaces only, so the namespace is
+//! // made before what goes under it; nothing is probed first either way.
+//! let nyc = warehouse.catalog("lake")?.namespaces().open_or_create("nyc", &Default::default())?;
+//! let taxis = nyc.tables().create("taxis", &schema, &Default::default())?;
+//! assert_eq!(taxis.to_string(), "lake.nyc.taxis");
+//! assert_eq!(warehouse.table("lake.nyc.taxis")?.path(), taxis.path());
 //! # Ok(())
 //! # }
 //! ```
-//!
-//! Dotted names are resolved in one place: a collection's [`Tables::get`],
-//! [`Tables::create`], and their namespace siblings accept a dotted
-//! identifier and descend - `namespaces.get("sales.eu")`,
-//! `tables.get("sales.eu.orders")` - so the resolution rule lives in the
-//! collection and not in five call sites.
-//!
-//! [`get`](Tables::get) returns `Result` and nothing implements `Index`:
-//! panic-on-missing is normal for an in-memory child lookup and is not normal
-//! for a storage lookup. The bindings give Python and JavaScript the map
-//! spelling their readers expect instead.
 //!
 //! # What is not here
 //!
 //! - No `drop_table` and no namespace removal: a catalog's folders hold data
 //!   files, and a recursive delete is the operation that turns one wrong URL
 //!   into a lost warehouse. [`IOBase::remove`] removes a *leaf* or an empty
-//!   container; emptying a table's history is [`Table`] maintenance work.
+//!   container; emptying a table's history is [`IcebergTable`] maintenance
+//!   work.
 //! - No `rename_table`: the storage contract has no move primitive, and a
 //!   rename that re-copied every data file would be a copy wearing a rename's
 //!   name.
-//! - No catalog service client: a REST or Hive catalog is a network client
-//!   and this module holds no network code, so a table is found from its own
-//!   metadata documents, the way [`Table::locate`] finds one.
+//! - No catalog service here: a REST catalog is a network client, and it is
+//!   its own implementation.
 
-mod catalogs;
-mod namespaces;
-mod tables;
+mod namespace;
 
-pub use catalogs::{Catalog, Catalogs};
-pub use namespaces::{Namespace, Namespaces};
-pub use tables::Tables;
+pub use namespace::IcebergNamespace;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::Table;
-use crate::IOBase;
+use super::IcebergTable;
+use super::metadata::FormatVersion;
+use super::partition::PartitionSpec;
 use crate::holder::Holder;
-use crate::metadata::Metadata;
-use crate::{Error, IOKind, Result, Scalar};
+use crate::warehouse::{Handle, Site, entry_name, extended, path_text, table_layout};
+use crate::{
+    CatalogValue, Error, Field, IOBase, IOKind, Namespace, NamespaceValue, Object, ObjectValue,
+    Objects, Properties, Result, Table, Url,
+};
 
 /// The reserved folder every level keeps its own document in.
 ///
@@ -125,79 +101,210 @@ const CATALOG_DOCUMENT: &str = "metadata/catalog.json";
 /// what the format later reads, so the update path refuses it by name.
 const RESERVED_PREFIX: &str = "ICEBERG:";
 
-/// The names of one collection level, yielded one at a time.
+/// A warehouse folder read as a catalog of namespaces of Iceberg tables.
 ///
-/// The walk runs as the iterator is drained - listing a warehouse of a
-/// hundred thousand namespaces and taking three costs three entries' worth of
-/// backend calls. The item is a [`Result`], so a listing fails *at* the
-/// failing entry, naming it, and the iterator is fused afterwards. Order is
-/// the storage listing's, which is sorted, so the same collection over the
-/// same state yields the same sequence twice.
-pub struct Names {
-    /// The walk still running. `None` once the listing is spent.
-    entries: Option<Box<dyn Iterator<Item = Result<String>> + Send + Sync>>,
+/// The catalog is a description of where tables live, not proof that any do:
+/// constructing one touches nothing, its folder opens on the first verb that
+/// needs it under its stated properties, and every verb resolves against the
+/// folder at the moment it runs. Its stored properties are the
+/// `metadata/catalog.json` document, read as [`ObjectValue::properties`]
+/// beneath what was stated and written by
+/// [`ObjectValue::update_properties`].
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct IcebergCatalog {
+    path: Vec<SmolStr>,
+    handle: Handle,
+    description: Option<String>,
+    stated: Properties,
 }
 
-impl Names {
-    /// A listing of nothing, which a missing parent answers with.
-    #[must_use]
-    pub fn empty() -> Self {
-        Self::new(std::iter::empty())
+impl IcebergCatalog {
+    /// The catalog `name` over the warehouse folder `url` names, touching
+    /// nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns the identifier's own refusal when it names no location.
+    pub fn new(name: impl Into<SmolStr>, url: impl Into<crate::Uri>) -> Result<Self> {
+        let url = url.into().locator()?;
+        let path = vec![name.into()];
+        Ok(Self {
+            handle: Handle::at(Site::Url(url), false, &path, Properties::new()),
+            path,
+            description: None,
+            stated: Properties::new(),
+        })
     }
 
-    /// Wrap a walk that is already lazy.
-    fn new(entries: impl Iterator<Item = Result<String>> + Send + Sync + 'static) -> Self {
+    /// The catalog `name` over a warehouse folder already in hand.
+    pub fn bound(name: impl Into<SmolStr>, warehouse: Holder) -> Self {
+        let path = vec![name.into()];
         Self {
-            entries: Some(Box::new(entries)),
+            handle: Handle::bound(warehouse, false, &path, Properties::new()),
+            path,
+            description: None,
+            stated: Properties::new(),
         }
     }
 
-    /// A listing that reports one failure and then ends.
-    fn failing(error: Error) -> Self {
-        Self::new(std::iter::once(Err(error)))
-    }
-}
-
-impl Iterator for Names {
-    type Item = Result<String>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let entries = self.entries.as_mut()?;
-        match entries.next() {
-            Some(Ok(entry)) => Some(Ok(entry)),
-            Some(Err(error)) => {
-                self.entries = None;
-                Some(Err(error))
+    /// Create the catalog `name` in `warehouse`, writing its
+    /// `metadata/catalog.json`.
+    ///
+    /// The write is what creates the folder and its ancestry - nothing walks
+    /// or prepares anything first.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Conflict`] when the folder is already there - a
+    /// catalog, a table or a file - and the write failure otherwise.
+    pub fn create(name: impl Into<SmolStr>, warehouse: Holder) -> Result<Self> {
+        let name = name.into();
+        match classify(warehouse)? {
+            Occupant::Nothing(folder) => {
+                write_document(&folder, CATALOG_DOCUMENT, &Properties::new())?;
+                Ok(Self::bound(name, folder))
             }
-            None => {
-                self.entries = None;
-                None
-            }
+            Occupant::Namespace(_) => Err(Error::conflict("catalog", "catalog", name)),
+            Occupant::Table(_) => Err(Error::conflict("catalog", "table", name)),
+            Occupant::File => Err(Error::conflict("catalog", "file", name)),
         }
     }
-}
 
-impl std::iter::FusedIterator for Names {}
+    /// The catalog `name` over `warehouse`, created when the folder is not
+    /// there yet: [`Self::create`] with the conflict absorbed.
+    ///
+    /// # Errors
+    ///
+    /// Returns a refusal when a table or a file occupies the folder.
+    pub fn open_or_create(name: impl Into<SmolStr>, warehouse: Holder) -> Result<Self> {
+        let name = name.into();
+        match classify(warehouse)? {
+            Occupant::Namespace(folder) => Ok(Self::bound(name, folder)),
+            Occupant::Nothing(folder) => {
+                write_document(&folder, CATALOG_DOCUMENT, &Properties::new())?;
+                Ok(Self::bound(name, folder))
+            }
+            Occupant::Table(_) => Err(invalid(format_smolstr!(
+                "expected a catalog folder at {name:?}, got a table"
+            ))),
+            Occupant::File => Err(invalid(format_smolstr!(
+                "expected a catalog folder at {name:?}, got a file"
+            ))),
+        }
+    }
 
-impl std::fmt::Debug for Names {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Names")
-            .field("spent", &self.entries.is_none())
-            .finish()
+    /// Return this catalog with a description.
+    #[must_use]
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    /// Return this catalog with stated properties, which its folder and
+    /// every object under it open with.
+    #[must_use]
+    pub fn with_properties(mut self, properties: Properties) -> Self {
+        self.stated = properties;
+        self.handle.set_properties(self.stated.clone());
+        self
+    }
+
+    /// The warehouse folder, opened on the first call.
+    fn handle(&self) -> Result<&Holder> {
+        self.handle.get()
+    }
+
+    /// The effective properties: what the document keeps, then what was
+    /// stated.
+    fn effective(&self) -> Result<Properties> {
+        let stored = read_document(self.handle()?, CATALOG_DOCUMENT)?;
+        Ok(self.stated.inherit(&stored))
     }
 }
 
-/// What one classification found at a resolved location.
-///
-/// The classification *is* the act, per the existence contract: one listing
-/// probe answers emptiness, and one [`Table::locate`] both distinguishes a
-/// table from a namespace and opens the table when it is one - so a `get`
-/// that finds a table has already paid for opening it, and nothing is asked
-/// twice.
+impl ObjectValue for IcebergCatalog {
+    fn name(&self) -> &str {
+        &self.path[0]
+    }
+
+    fn path(&self) -> &[SmolStr] {
+        &self.path
+    }
+
+    fn kind(&self) -> IOKind {
+        IOKind::Catalog
+    }
+
+    fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    fn url(&self) -> Option<&Url> {
+        self.handle.url()
+    }
+
+    fn modified(&self) -> Option<i64> {
+        self.handle().ok()?.mtime()
+    }
+
+    fn properties(&self) -> Result<Properties> {
+        self.effective()
+    }
+
+    fn update_properties(&self, updates: &Properties, removes: &[SmolStr]) -> Result<()> {
+        update_document(self.handle()?, CATALOG_DOCUMENT, updates, removes)
+    }
+}
+
+impl NamespaceValue for IcebergCatalog {
+    fn children(&self) -> Objects {
+        match self
+            .handle()
+            .and_then(|handle| Ok((handle, self.effective()?)))
+        {
+            Ok((handle, effective)) => level(handle, &self.path, effective),
+            Err(error) => Objects::failing(error),
+        }
+    }
+
+    fn get(&self, name: &str) -> Result<Object> {
+        child(self.handle()?, &self.path, &self.effective()?, name)
+    }
+
+    fn create_namespace(&self, name: &str, properties: &Properties) -> Result<Namespace> {
+        create_namespace(
+            self.handle()?,
+            &self.path,
+            &self.effective()?,
+            name,
+            properties,
+        )
+    }
+
+    fn create_table(&self, name: &str, field: &Field, properties: &Properties) -> Result<Table> {
+        create_table(
+            self.handle()?,
+            &self.path,
+            &self.effective()?,
+            name,
+            field,
+            properties,
+        )
+    }
+}
+
+impl CatalogValue for IcebergCatalog {
+    fn namespace_levels(&self) -> Option<usize> {
+        None
+    }
+}
+
+/// What occupies a resolved folder, classified in one pass and without a
+/// read: presence costs one call, and only a present folder pays for the
+/// listing of its `metadata/` that tells a table from a namespace.
 enum Occupant {
-    /// A folder holding a current table metadata document, opened.
-    Table(Box<Table<Holder>>),
+    /// A folder laid out as an Iceberg table, handed back.
+    Table(Holder),
     /// A folder that exists and is not a table, handed back.
     Namespace(Holder),
     /// Nothing at all, handed back so a create needs no second resolution.
@@ -206,21 +313,14 @@ enum Occupant {
     File,
 }
 
-/// Classify what occupies `folder`, in one pass, cheapest evidence first.
-///
-/// Presence costs one backend call, so a miss - the common case on a create
-/// path - costs exactly that one call. Only a present folder pays for
-/// [`Table::locate`], which is also what *opens* the table when the metadata
-/// is there - so a `get` that finds a table has already parsed its document.
-/// A location an actual file occupies answers [`Occupant::File`] from the
-/// act's own `NotADirectory` failure - nothing probes twice.
+/// Classify what occupies `folder`, cheapest evidence first.
 fn classify(folder: Holder) -> Result<Occupant> {
     if !folder_present(&folder)? {
         return Ok(Occupant::Nothing(folder));
     }
-    match Table::locate_keeping(folder) {
-        Ok(Ok(table)) => Ok(Occupant::Table(Box::new(table))),
-        Ok(Err(folder)) => Ok(Occupant::Namespace(folder)),
+    match table_layout(&folder) {
+        Ok(true) => Ok(Occupant::Table(folder)),
+        Ok(false) => Ok(Occupant::Namespace(folder)),
         Err(error) if is_not_a_directory(&error) => Ok(Occupant::File),
         Err(error) => Err(error),
     }
@@ -252,18 +352,6 @@ fn folder_present(folder: &Holder) -> Result<bool> {
 /// Return whether a failure says a file sat where a folder was addressed.
 fn is_not_a_directory(error: &Error) -> bool {
     matches!(error, Error::Io(error) if error.kind() == std::io::ErrorKind::NotADirectory)
-}
-
-/// Resolve the folder a dotted name addresses, touching nothing.
-///
-/// A dotted name addresses a container by definition - a namespace is a
-/// folder and a table is a folder - so the location is described in the
-/// folder role outright, per backend, without asking what is actually there.
-/// The act that follows is what answers: listing a file's path fails with the
-/// backend's own `NotADirectory`, which [`classify`] turns into the refusal.
-fn resolve(warehouse: &(impl IOBase + ?Sized), name: &str) -> Result<Holder> {
-    let path = segments(name)?.join("/");
-    folder_role(warehouse.child_by_path(&path)?)
 }
 
 /// Re-describe a resolved child in the folder role, touching nothing.
@@ -303,41 +391,170 @@ fn folder_role(child: Holder) -> Result<Holder> {
     }
 }
 
-/// Split a dotted table or namespace name into its folder segments.
+/// Check one part of a path as a folder name under a catalog.
 ///
-/// `"nyc.taxis"` names the folder `nyc/taxis`: every dot is one namespace
-/// level, at any depth. Each segment must be usable as one folder name, so an
-/// empty segment, a path separator, a `column=value` spelling, and the
-/// reserved `metadata` name are refused by name rather than resolved into a
-/// layout they would collide with.
-fn segments(name: &str) -> Result<Vec<&str>> {
-    let parts: Vec<&str> = name.split('.').collect();
-    for segment in &parts {
-        if segment.is_empty() {
-            return Err(invalid(format_smolstr!(
-                "expected non-empty dot-separated segments in the name {name:?}, got an empty one"
-            )));
-        }
-        if segment.contains('/') {
-            return Err(invalid(format_smolstr!(
-                "expected a segment without '/' in the name {name:?}, got {segment:?}; \
-                 a namespace nests with dots, not path separators"
-            )));
-        }
-        if segment.contains('=') {
-            return Err(invalid(format_smolstr!(
-                "expected a segment without '=' in the name {name:?}, got {segment:?}; \
-                 a column=value folder is a partition directory, not a name"
-            )));
-        }
-        if *segment == METADATA_DIR {
-            return Err(invalid(format_smolstr!(
-                "expected a segment other than {METADATA_DIR:?} in the name {name:?}; \
-                 that folder is where each level keeps its own metadata document"
-            )));
-        }
+/// A part must be usable as one folder name, so an empty part, a path
+/// separator, a `column=value` spelling and the reserved `metadata` name are
+/// refused by name rather than resolved into a layout they would collide
+/// with.
+fn segment(parent: &[SmolStr], name: &str) -> Result<()> {
+    let refusal =
+        |reason: SmolStr| invalid(format_smolstr!("{reason} under {}", path_text(parent)));
+    if name.is_empty() {
+        return Err(refusal(SmolStr::new_static(
+            "expected a non-empty name, got an empty one",
+        )));
     }
-    Ok(parts)
+    if name.contains('/') {
+        return Err(refusal(format_smolstr!(
+            "expected a name without '/', got {name:?}; a namespace nests as a path's parts, \
+             not with separators"
+        )));
+    }
+    if name.contains('=') {
+        return Err(refusal(format_smolstr!(
+            "expected a name without '=', got {name:?}; a column=value folder is a partition \
+             directory, not a name"
+        )));
+    }
+    if name == METADATA_DIR {
+        return Err(refusal(format_smolstr!(
+            "expected a name other than {METADATA_DIR:?}; that folder is where each level keeps \
+             its own metadata document"
+        )));
+    }
+    Ok(())
+}
+
+/// The folder `name` resolves to under `folder`, touching nothing.
+fn resolve(folder: &Holder, parent: &[SmolStr], name: &str) -> Result<Holder> {
+    segment(parent, name)?;
+    folder_role(folder.child_by_path(name)?)
+}
+
+/// The object a present folder is, at `path`, carrying `effective`.
+fn object_of(folder: Holder, table: bool, path: Vec<SmolStr>, effective: &Properties) -> Object {
+    if table {
+        let root = Handle::bound(folder, false, &path, Properties::new());
+        Object::Table(Table::Iceberg(Box::new(
+            IcebergTable::at(path, root).inheriting(effective),
+        )))
+    } else {
+        Object::Namespace(Namespace::Iceberg(Box::new(IcebergNamespace::listed(
+            path,
+            folder,
+            effective.clone(),
+        ))))
+    }
+}
+
+/// The children of `folder`, lazily: one listing, and one listing of
+/// `metadata/` per folder entry as its turn comes.
+fn level(folder: &Holder, path: &[SmolStr], effective: Properties) -> Objects {
+    let path = path.to_vec();
+    Objects::new(folder.ls(false, false).filter_map(move |entry| {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => return Some(Err(error)),
+        };
+        if !entry.is_container() {
+            return None;
+        }
+        let name = entry_name(&entry)?;
+        if name == METADATA_DIR || name.starts_with('.') {
+            return None;
+        }
+        let table = match table_layout(&entry) {
+            Ok(table) => table,
+            Err(error) => return Some(Err(error)),
+        };
+        Some(Ok(object_of(
+            entry,
+            table,
+            extended(&path, &name),
+            &effective,
+        )))
+    }))
+}
+
+/// The child of `folder` called `name`: one resolution and one
+/// classification.
+fn child(folder: &Holder, path: &[SmolStr], effective: &Properties, name: &str) -> Result<Object> {
+    let below = extended(path, name);
+    match classify(resolve(folder, path, name)?)? {
+        Occupant::Table(child) => Ok(object_of(child, true, below, effective)),
+        Occupant::Namespace(child) => Ok(object_of(child, false, below, effective)),
+        Occupant::Nothing(_) => Err(Error::absent("table", path_text(&below))),
+        Occupant::File => Err(invalid(format_smolstr!(
+            "expected a namespace or table folder at {}, got a file",
+            path_text(&below)
+        ))),
+    }
+}
+
+/// Create the namespace `name` under `folder`, writing its
+/// `metadata/namespace.json` with `properties`.
+fn create_namespace(
+    folder: &Holder,
+    path: &[SmolStr],
+    effective: &Properties,
+    name: &str,
+    properties: &Properties,
+) -> Result<Namespace> {
+    let below = extended(path, name);
+    match classify(resolve(folder, path, name)?)? {
+        Occupant::Nothing(child) => {
+            write_document(&child, NAMESPACE_DOCUMENT, properties)?;
+            Ok(Namespace::Iceberg(Box::new(
+                IcebergNamespace::listed(below, child, effective.clone())
+                    .with_properties(properties.clone()),
+            )))
+        }
+        Occupant::Namespace(_) => Err(Error::conflict("namespace", "namespace", path_text(&below))),
+        Occupant::Table(_) => Err(Error::conflict("namespace", "table", path_text(&below))),
+        Occupant::File => Err(Error::conflict("namespace", "file", path_text(&below))),
+    }
+}
+
+/// Create the table `name` under `folder`, writing its first metadata
+/// document: the schema numbered above the highest identifier it carries,
+/// the partition spec derived from the columns it marks, format version 2.
+///
+/// Writing the first metadata document is what creates every missing
+/// ancestor folder - nothing checks for them and nothing makes them in
+/// advance. Storage has no compare-and-swap, so two creators of one table
+/// converge on one document or one of them gets the typed conflict; neither
+/// replaces the other's table.
+fn create_table(
+    folder: &Holder,
+    path: &[SmolStr],
+    effective: &Properties,
+    name: &str,
+    field: &Field,
+    properties: &Properties,
+) -> Result<Table> {
+    let below = extended(path, name);
+    match classify(resolve(folder, path, name)?)? {
+        Occupant::Nothing(child) => {
+            // The schema as Iceberg expresses it: a layout the format does
+            // not state - a dictionary, a view string - is rewritten to the
+            // one it does, and a column no type of its holds is refused by
+            // path. The rows an append brings are cast to it once.
+            let mut schema = field.clone().into_scheme_compat(&crate::Scheme::ICEBERG)?;
+            let start = super::last_column_id(&schema)?.saturating_add(1);
+            super::assign_field_ids(&mut schema, start)?;
+            let spec = PartitionSpec::from_schema(0, &schema)?;
+            let table = IcebergTable::create(child, FormatVersion::V2, schema, spec)?
+                .map_root(|root| Handle::bound(root, false, &below, Properties::new()))
+                .placed(below)
+                .with_properties(properties.clone())
+                .inheriting(effective);
+            Ok(Table::Iceberg(Box::new(table)))
+        }
+        Occupant::Namespace(_) => Err(Error::conflict("table", "namespace", path_text(&below))),
+        Occupant::Table(_) => Err(Error::conflict("table", "table", path_text(&below))),
+        Occupant::File => Err(Error::conflict("table", "file", path_text(&below))),
+    }
 }
 
 /// Read the properties document under `folder`, absent meaning empty.
@@ -346,17 +563,13 @@ fn segments(name: &str) -> Result<Vec<&str>> {
 /// answers empty properties - never a missing-file failure a caller has to
 /// catch. A document that is there but is not the expected shape is an error
 /// naming what was found.
-fn read_properties(folder: &Holder, document: &str) -> Result<Metadata> {
-    read_properties_from(&folder.child_by_path(document)?)
-}
-
-/// [`read_properties`], from the document handle itself.
-fn read_properties_from(document: &Holder) -> Result<Metadata> {
-    let bytes = document.read_all_bytes()?;
+fn read_document(folder: &Holder, document: &str) -> Result<Properties> {
+    let handle = folder.child_by_path(document)?;
+    let bytes = handle.read_all_bytes()?;
     if bytes.is_empty() {
-        return Ok(Metadata::new());
+        return Ok(Properties::new());
     }
-    let described = document
+    let described = handle
         .url()
         .map_or_else(|| "<memory>".to_owned(), ToString::to_string);
     let value = crate::json::from_bytes(&bytes)?;
@@ -365,7 +578,7 @@ fn read_properties_from(document: &Holder) -> Result<Metadata> {
             "expected a {{\"properties\": ...}} document at {described}, got one without the key"
         )));
     };
-    let mut pairs = Vec::with_capacity(entries.len());
+    let mut properties = Properties::new();
     if let Some(record) = entries.as_struct() {
         for (key, value) in record {
             let Some(value) = value.as_str() else {
@@ -373,7 +586,7 @@ fn read_properties_from(document: &Holder) -> Result<Metadata> {
                     "expected string property pairs at {described}, got {key:?}: {value:?}"
                 )));
             };
-            pairs.push((key.clone(), SmolStr::new(value)));
+            properties.set(key.clone(), value);
         }
     } else if let Some(mapping) = entries.as_mapping() {
         for (key, value) in mapping {
@@ -382,7 +595,7 @@ fn read_properties_from(document: &Holder) -> Result<Metadata> {
                     "expected string property pairs at {described}, got {key:?}: {value:?}"
                 )));
             };
-            pairs.push((SmolStr::new(key), SmolStr::new(value)));
+            properties.set(key, value);
         }
     } else {
         return Err(invalid(format_smolstr!(
@@ -390,70 +603,51 @@ fn read_properties_from(document: &Holder) -> Result<Metadata> {
              (a record or mapping value), got {entries:?}"
         )));
     }
-    Metadata::from_entries(pairs)
+    Ok(properties)
 }
 
-/// Apply property updates and removals to `folder`'s document, transactionally.
+/// Write `properties` as the document under `folder`, which is also what
+/// creates the folder and its ancestry.
+fn write_document(folder: &Holder, document: &str, properties: &Properties) -> Result<()> {
+    let entries = crate::Scalar::from_mapping(
+        properties
+            .iter()
+            .map(|(key, value)| (crate::Scalar::from(key), crate::Scalar::from(value))),
+    )?;
+    let body = crate::Scalar::from_mapping([(crate::Scalar::from("properties"), entries)])?;
+    let bytes = crate::json::into_bytes(&body)?;
+    folder.child_by_path(document)?.write_all_bytes(&bytes)?;
+    Ok(())
+}
+
+/// Apply property updates and removals to the document under `folder`,
+/// transactionally.
 ///
-/// The whole new document is built and validated before a byte is written, so
-/// a failure leaves the stored value unchanged; the write itself is a
+/// The whole new document is built and validated before a byte is written,
+/// so a failure leaves the stored value unchanged; the write itself is a
 /// whole-value replacement, which every backend publishes atomically or not
 /// at all. Writing the document is also what creates the folder and its
 /// ancestry, which is exactly how an empty namespace becomes durable.
-fn update_properties(
+fn update_document(
     folder: &Holder,
     document: &str,
-    updates: impl IntoIterator<Item = (String, String)>,
-    removes: impl IntoIterator<Item = String>,
+    updates: &Properties,
+    removes: &[SmolStr],
 ) -> Result<()> {
-    update_properties_at(&mut folder.child_by_path(document)?, updates, removes)
-}
-
-/// [`update_properties`], on the document handle itself.
-fn update_properties_at(
-    document: &mut Holder,
-    updates: impl IntoIterator<Item = (String, String)>,
-    removes: impl IntoIterator<Item = String>,
-) -> Result<()> {
-    let current = read_properties_from(document)?;
-    let mut pairs: Vec<(SmolStr, SmolStr)> = current
-        .iter()
-        .map(|(key, value)| (SmolStr::new(key), SmolStr::new(value)))
-        .collect();
-    for (key, value) in updates {
+    let mut current = read_document(folder, document)?;
+    for (key, value) in updates.iter() {
         if key.starts_with(RESERVED_PREFIX) {
             return Err(invalid(format_smolstr!(
                 "expected a property key outside the reserved {RESERVED_PREFIX:?} prefix, \
                  got {key:?}"
             )));
         }
-        match pairs.iter_mut().find(|(existing, _)| *existing == key) {
-            Some((_, existing)) => *existing = SmolStr::new(&value),
-            None => pairs.push((SmolStr::new(&key), SmolStr::new(&value))),
-        }
+        current.set(key, value);
     }
     for key in removes {
-        pairs.retain(|(existing, _)| *existing != key);
+        current.remove(key);
     }
-    write_properties_at(document, pairs)
-}
-
-/// Write `pairs` as the properties document under `folder`.
-fn write_properties(folder: &Holder, document: &str, pairs: Vec<(SmolStr, SmolStr)>) -> Result<()> {
-    write_properties_at(&mut folder.child_by_path(document)?, pairs)
-}
-
-/// [`write_properties`], on the document handle itself.
-fn write_properties_at(document: &mut Holder, pairs: Vec<(SmolStr, SmolStr)>) -> Result<()> {
-    let properties = Scalar::from_mapping(
-        pairs
-            .into_iter()
-            .map(|(key, value)| (Scalar::from(key.as_str()), Scalar::from(value.as_str()))),
-    )?;
-    let body = Scalar::from_mapping([(Scalar::from("properties"), properties)])?;
-    let bytes = crate::json::into_bytes(&body)?;
-    document.write_all_bytes(&bytes)?;
-    Ok(())
+    write_document(folder, document, &current)
 }
 
 /// Report a name or a folder this catalog cannot accept.

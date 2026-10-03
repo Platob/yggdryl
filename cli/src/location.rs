@@ -31,16 +31,6 @@ pub fn split(spelled: &str) -> (String, &str) {
     }
 }
 
-/// [`split`], with the location resolved to the folder it names.
-///
-/// # Errors
-///
-/// Returns what [`folder`] refuses.
-pub fn named_folder(spelled: &str) -> Result<(String, Holder)> {
-    let (name, location) = split(spelled);
-    Ok((name, folder(location)?))
-}
-
 /// The last segment of a path or a URL, which names a bare location.
 #[must_use]
 pub fn last_segment(location: &str) -> String {

@@ -867,85 +867,104 @@ export declare class CandleOptions {
 export type JsCandleOptions = CandleOptions
 
 /**
- * A warehouse folder of namespaces of Iceberg tables.
+ * A warehouse catalog: the first namespace layer, what a warehouse registers
+ * by name.
  *
- * The catalog is storage and nothing else: a dotted name like `"nyc.taxis"`
- * names the folder `nyc/taxis` under the warehouse handle, and constructing
- * one touches nothing at all. There is no service in between, so two catalogs
- * over the same folder see the same tables.
+ * Built by [`memory`](Self::memory) over registered objects, by
+ * [`folder`](Self::folder) over a container read as namespaces and tables,
+ * or by [`fromUrl`](Self::from_url) under a property bag; `implementation`
+ * says which. `IOBase.from(catalog)` holds it as the container of handles
+ * it is.
  */
 export declare class Catalog {
   /**
-   * Describe a catalog over a warehouse folder, touching nothing.
-   *
-   * `warehouse` accepts whatever names a location - location text, a native
-   * `Url` or any other identifier naming one, or a handle - the same inputs
-   * `Table.create`'s root takes.
+   * A catalog called `name` of registered objects, in order, with no
+   * storage behind it: `options.objects` registers each, one level below.
    */
-  constructor(warehouse: LocationInput)
+  static memory(name: string, options?: ObjectOptions | undefined | null): Catalog
   /**
-   * Open the table a dotted name addresses - the one-call spelling of
-   * `catalog.tables.get(name)`.
+   * A catalog called `name` over the container `location` names, read as
+   * namespaces and tables, touching nothing: a handle binds, a location
+   * or an identifier names what opens on first use. `options.levels` is
+   * how many namespace levels sit under it, one by default.
    */
-  table(name: string): Table
+  static folder(name: string, location: LocationInput, options?: ObjectOptions | undefined | null): Catalog
   /**
-   * Append `data` to the named table, creating it on first write.
-   *
-   * A table that is not there yet takes its schema from the reader, so a
-   * caller who only has rows and a name needs nothing else. Returns the
-   * table so the caller can keep going.
+   * The catalog a URL names, under `properties`, touching no storage: the
+   * `type` property decides - `memory`, or `folder` - and otherwise every
+   * location is a folder catalog; the `name` property names it, else the
+   * location's last segment.
    */
-  append(name: string, data: JsBatchReader, options?: IcebergOptions | undefined | null): Table
+  static fromUrl(url: Url | string, properties?: Record<string, string | number | boolean> | null): Catalog
+  /** The catalog's name, the one part of its path. */
+  get name(): string
+  /** Its path: its name alone. */
+  get path(): Array<string>
+  /** `catalog`. */
+  get kind(): string
+  /** The implementation answering it: `MemoryCatalog` or `FolderCatalog`. */
+  get implementation(): string
+  /** What its store says it is, when it says anything. */
+  get description(): string | null
+  /** Where its storage is, when it has a location. */
+  get url(): Url | null
   /**
-   * Replace the named table's rows with `data`, creating it on first write.
-   *
-   * An existing table keeps its previous snapshot readable; only the
-   * current pointer moves. `options` configures this one write. Returns the
-   * table so the caller can keep going.
+   * When it last changed, in UTC nanoseconds since the epoch, when the
+   * store keeps that fact.
    */
-  overwrite(name: string, data: JsBatchReader, options?: IcebergOptions | undefined | null): Table
+  get modified(): bigint | null
   /**
-   * One namespace as a view: `catalog.namespace('analytics')`.
-   *
-   * The view exists whether or not the folder does, exactly as a handle
-   * describes a location without proof, so asking for one never fails.
+   * Its effective properties, in order: what it states, which every
+   * object under it inherits.
    */
-  namespace(name: string): JsNamespace
+  get properties(): Record<string, string>
   /**
-   * The catalog's namespaces, as a lazy map-like view.
-   *
-   * Building the view performs no I/O: `get`, `has`, `names`, and `size`
-   * each consult storage at the moment they are asked, which is why two
-   * views over one catalog observe each other's writes and why a view stays
-   * valid across a creation or a deletion. This is the one collection
-   * spelling - `catalog.namespaces.get('sales').tables.get('orders')`
-   * chains all the way to a table.
+   * Persist updates and removals of what its store keeps for it; an
+   * implementation that keeps nothing refuses by name.
    */
-  get namespaces(): JsNamespaces
+  updateProperties(updates?: Record<string, string | number | boolean> | null, removes?: readonly string[] | null): void
   /**
-   * The catalog's tables, as the same lazy view over dotted names.
-   *
-   * `catalog.tables.get('sales.eu.orders')` descends; an un-dotted name
-   * addresses a table directly under the warehouse root, and the listing
-   * questions answer exactly those.
+   * How many namespace levels may sit under it: a number for a folder
+   * catalog, `null` where namespaces nest to any depth.
    */
-  get tables(): JsTables
+  get namespaceLevels(): number | null
+  /** The namespaces one level down, as a lazy map-like view. */
+  namespaces(): JsWarehouseNamespaces
+  /** The tables one level down, as a lazy map-like view. */
+  tables(): JsWarehouseTables
   /**
-   * The catalog's own properties, from `metadata/catalog.json`.
-   *
-   * Absent means empty - never an error a caller has to catch.
+   * Its children, one at a time in the store's order, each carrying its
+   * effective properties; the loader wires `Symbol.iterator`, so
+   * `for...of` walks it.
    */
-  properties(): Record<string, string>
+  children(): JsObjectIterator
+  /** The child called `name`, one level down. */
+  get(name: string): ObjectOutput
+  /** The object a path below this catalog names, one `get` per part. */
+  resolve(path: ObjectPathInput): ObjectOutput
+  /** The table a path below this catalog names. */
+  table(path: ObjectPathInput): JsWarehouseTable
+  /** The namespace a path below this catalog names. */
+  namespace(path: ObjectPathInput): JsWarehouseNamespace
   /**
-   * Set and remove catalog properties as one transactional write.
-   *
-   * `updates` is a mapping of properties to set and `removes` lists the
-   * keys to drop, in that order. Passing neither writes nothing at all.
-   * Keys under the reserved `ICEBERG:` prefix are refused by name.
+   * Create the namespace `name` under it; an implementation that creates
+   * nothing refuses by name.
    */
-  updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
+  createNamespace(name: string, properties?: Record<string, string | number | boolean> | null): JsWarehouseNamespace
+  /**
+   * Create the table `name` under it, `field` its row schema; an
+   * implementation that creates nothing refuses by name.
+   */
+  createTable(name: string, field: Field | string, properties?: Record<string, string | number | boolean> | null): JsWarehouseTable
+  /**
+   * Whether both describe the same catalog: the same implementation, path,
+   * location, statement and registered objects.
+   */
+  equals(other: Catalog): boolean
+  /** The dotted path, as the plan grammar spells it. */
+  toString(): string
 }
-export type JsCatalog = Catalog
+export type JsWarehouseCatalog = Catalog
 
 /**
  * One cell: its reference, what kind of content it states, the number
@@ -4175,19 +4194,177 @@ export declare class Headers {
 export type JsHeaders = Headers
 
 /**
- * The names of one collection level, one at a time.
+ * A warehouse folder of namespaces of Iceberg tables: the implementation a
+ * warehouse `Catalog` holds when it is one.
  *
- * Built by `keys()` on `Namespaces` and `Tables`. It wraps the core names
- * iterator directly, so nothing is collected on the way across the boundary;
- * `next()` is the native half of the iteration protocol and the loader wraps
- * it so `for...of` yields strings. A failure throws at the entry it happened
- * on, after which the iterator is exhausted.
+ * Namespaces nest to any depth, each a folder; `metadata/catalog.json` and
+ * `metadata/namespace.json` keep the stored properties; a table is a folder
+ * laid out as one. The catalog is a description - constructing one touches
+ * nothing - and every question is asked of the store when it is asked,
+ * through the members every `Catalog` has: `namespaces()`, `tables()`,
+ * `children()`, `get`, `resolve`, `table`, `namespace`, `createNamespace`
+ * and `createTable` here redirect to the same object [`intoCatalog`](Self::into_catalog)
+ * answers.
  */
-export declare class IcebergNames {
-  /** The next name, or `null` when the level is exhausted. */
-  next(): string | null
+export declare class IcebergCatalog {
+  /**
+   * The catalog `name` over the warehouse folder `location` names,
+   * touching nothing: a handle binds the folder, a location or an
+   * identifier names what opens on first use. `options.description` and
+   * `options.properties` are what the catalog states, which its folder
+   * and every object under it open with.
+   */
+  constructor(name: string, location: LocationInput, options?: ObjectOptions | undefined | null)
+  /**
+   * Create the catalog `name` in the folder `location` names, writing its
+   * `metadata/catalog.json`; the write is what creates the folder, and a
+   * folder already holding anything is a conflict.
+   */
+  static create(name: string, location: LocationInput): IcebergCatalog
+  /**
+   * The catalog `name` over the folder `location` names, created when the
+   * folder is not there yet; a table or a file in its place is refused by
+   * name.
+   */
+  static openOrCreate(name: string, location: LocationInput): IcebergCatalog
+  /**
+   * The Iceberg catalog a warehouse `Catalog` holds, refused by name when
+   * its implementation is another.
+   */
+  static from(catalog: JsWarehouseCatalog): IcebergCatalog
+  /**
+   * This catalog as the warehouse `Catalog` it is: what a warehouse
+   * registers and a plan resolves against.
+   */
+  intoCatalog(): JsWarehouseCatalog
+  /** The catalog's name, the first part of every path under it. */
+  get name(): string
+  /** The path: the name alone. */
+  get path(): Array<string>
+  /** What the store says this catalog is, when it says anything. */
+  get description(): string | null
+  /** The warehouse folder's location. */
+  get url(): JsUrl | null
+  /**
+   * The effective properties: what `metadata/catalog.json` keeps, then
+   * what was stated, a later entry replacing an earlier one by name.
+   */
+  get properties(): Record<string, string>
+  /**
+   * Set and remove the properties `metadata/catalog.json` keeps, as one
+   * write.
+   *
+   * `updates` is a mapping of properties to set and `removes` lists the
+   * keys to drop, in that order. Passing neither writes nothing at all.
+   * Keys under the reserved `ICEBERG:` prefix are refused by name.
+   */
+  updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
+  /**
+   * How many namespace levels sit under the catalog: none stated, since
+   * namespaces nest to any depth.
+   */
+  get namespaceLevels(): number | null
+  /**
+   * The namespaces one level down, as the lazy map-like view every
+   * catalog answers.
+   */
+  namespaces(): JsWarehouseNamespaces
+  /**
+   * The tables one level down, as the lazy map-like view every catalog
+   * answers.
+   */
+  tables(): JsWarehouseTables
+  /** Its children, one at a time in the store's order. */
+  children(): JsObjectIterator
+  /** The child called `name`, one level down. */
+  get(name: string): ObjectOutput
+  /** The object a path below the catalog names, descending through `get`. */
+  resolve(path: ObjectPathInput): ObjectOutput
+  /** The table a path below the catalog names, or its absence. */
+  table(path: ObjectPathInput): JsWarehouseTable
+  /** The namespace a path below the catalog names, or its absence. */
+  namespace(path: ObjectPathInput): JsWarehouseNamespace
+  /**
+   * Create the namespace `name` under the catalog, writing its
+   * `metadata/namespace.json` with `properties`.
+   */
+  createNamespace(name: string, properties?: Record<string, string | number | boolean> | null): JsWarehouseNamespace
+  /**
+   * Create the table `name` under the catalog, `field` its row schema,
+   * numbered where it is not, its partition spec read from the schema's
+   * own `PARTITION:by` declaration.
+   */
+  createTable(name: string, field: Field | string, properties?: Record<string, string | number | boolean> | null): JsWarehouseTable
+  /**
+   * Whether both describe the same catalog: the name, the location, what
+   * was stated.
+   */
+  equals(other: IcebergCatalog): boolean
+  /** The name, as the dotted path of every object under it starts. */
+  toString(): string
 }
-export type JsIcebergNames = IcebergNames
+export type JsCatalog = IcebergCatalog
+
+/**
+ * One namespace of an Iceberg catalog - a folder under the warehouse, its
+ * `metadata/namespace.json` the stored properties - as the implementation a
+ * warehouse `Namespace` holds when it is one.
+ */
+export declare class IcebergNamespace {
+  /**
+   * The namespace at `path` - dotted text or parts, its catalog's name
+   * first - over the folder `location` names, touching nothing: a handle
+   * binds the folder, a location or an identifier names what opens on
+   * first use. `options.properties` is what the namespace states.
+   */
+  constructor(path: ObjectPathInput, location: LocationInput, options?: ObjectOptions | undefined | null)
+  /**
+   * The Iceberg namespace a warehouse `Namespace` holds, refused by name
+   * when its implementation is another.
+   */
+  static from(namespace: JsWarehouseNamespace): IcebergNamespace
+  /** This namespace as the warehouse `Namespace` it is. */
+  intoNamespace(): JsWarehouseNamespace
+  /** The last part of the path. */
+  get name(): string
+  /** The parts, from the catalog's name down to this namespace's own. */
+  get path(): Array<string>
+  /** The folder's location. */
+  get url(): JsUrl | null
+  /**
+   * The effective properties: the parent's, then what
+   * `metadata/namespace.json` keeps, then what was stated.
+   */
+  get properties(): Record<string, string>
+  /**
+   * Set and remove the properties `metadata/namespace.json` keeps, as one
+   * write; keys under the reserved `ICEBERG:` prefix are refused by name.
+   */
+  updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
+  /** The namespaces one level down, as the lazy map-like view. */
+  namespaces(): JsWarehouseNamespaces
+  /** The tables one level down, as the lazy map-like view. */
+  tables(): JsWarehouseTables
+  /** Its children, one at a time in the store's order. */
+  children(): JsObjectIterator
+  /** The child called `name`, one level down. */
+  get(name: string): ObjectOutput
+  /** The object a path below the namespace names, descending through `get`. */
+  resolve(path: ObjectPathInput): ObjectOutput
+  /** The table a path below the namespace names, or its absence. */
+  table(path: ObjectPathInput): JsWarehouseTable
+  /** The namespace a path below this one names, or its absence. */
+  namespace(path: ObjectPathInput): JsWarehouseNamespace
+  /** Create the namespace `name` under this one, writing its document. */
+  createNamespace(name: string, properties?: Record<string, string | number | boolean> | null): JsWarehouseNamespace
+  /** Create the table `name` under this namespace, `field` its row schema. */
+  createTable(name: string, field: Field | string, properties?: Record<string, string | number | boolean> | null): JsWarehouseTable
+  /** Whether both describe the same namespace. */
+  equals(other: IcebergNamespace): boolean
+  /** The dotted path, as the plan grammar spells it. */
+  toString(): string
+}
+export type JsNamespace = IcebergNamespace
 
 /**
  * Configuration for one table's commits, writes, and reads.
@@ -4351,6 +4528,362 @@ export declare class IcebergOptions {
 }
 export type JsIcebergOptions = IcebergOptions
 
+/** An Iceberg table reached entirely through one container handle. */
+export declare class IcebergTable {
+  /**
+   * Create a table, writing its first metadata document.
+   *
+   * `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the
+   * `PARTITION:by` entries to partition on: a bare column - `venue` - is an
+   * identity partition, and an epoch function over a column - `days(ts)`,
+   * `hours(ts)`, `minutes(ts, 15)`, `weeks(ts)`, `quarters(ts)` - or
+   * `truncate(name, 4)` is a derived one, named by its alias
+   * (`days(ts) as day`) or `{source}_{function}` (`ts_day`). An entry no
+   * spec can hold is refused, naming it. Omitted, the schema's own
+   * `PARTITION:by` declaration is read the same way - a schema declaring
+   * nothing is unpartitioned - and `null` is unpartitioned whatever the
+   * schema declares. Unnumbered schema columns are numbered automatically,
+   * so a plain schema works as it is; a schema that already carries field
+   * identifiers keeps every one of them.
+   */
+  static create(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null): IcebergTable
+  /** Open the table a container handle addresses. */
+  static open(root: LocationInput): IcebergTable
+  /**
+   * Open the table if it exists, creating it otherwise.
+   *
+   * Like [`create`](Self::create), `partitionBy` is a spec, the
+   * `PARTITION:by` entries one is read from, `null` for none, or - omitted -
+   * the schema's own declaration, and unnumbered schema columns are
+   * numbered automatically; an existing table is opened as it is and
+   * `schema` describes only the table this call would create.
+   */
+  static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null): IcebergTable
+  /**
+   * The Iceberg table a warehouse `Table` holds, refused by name when its
+   * implementation is another.
+   */
+  static from(table: JsWarehouseTable): IcebergTable
+  /**
+   * This table as the warehouse `Table` it is: what a warehouse registers
+   * and a plan reads.
+   */
+  intoTable(): JsWarehouseTable
+  /** The last part of the path: the table's own name. */
+  get name(): string
+  /**
+   * The parts, from the catalog's name down to the table's own; a table
+   * opened by its location alone stands under its folder's name.
+   */
+  get path(): Array<string>
+  /**
+   * Whether both describe the same table: the path, the location, what
+   * was stated - never what was read.
+   */
+  equals(other: IcebergTable): boolean
+  /**
+   * The folder the table lives in.
+   *
+   * Taken from the table's own root handle rather than from its recorded
+   * location, because a location does not say which backend it belongs to:
+   * a table on a foreign Arrow file system must hand back a folder on that
+   * file system, not the local path its URL happens to spell.
+   */
+  get root(): JsIOBase
+  /** The table's base location, as a URI. */
+  get location(): string
+  /** A stable identifier for the table itself, not for any one version. */
+  get tableUuid(): string
+  /** Which revision of the specification the metadata is written to. */
+  get formatVersion(): number
+  /** The version number of the current metadata document. */
+  get version(): number
+  /**
+   * The effective properties: the parent's, then the free-form table
+   * properties the metadata document carries, then what was stated for
+   * the table, a later entry replacing an earlier one by name.
+   */
+  get properties(): Record<string, string>
+  /** The name of the current metadata document. */
+  get metadataFileName(): string
+  /** The location of the current metadata document, as a URI. */
+  get metadataLocation(): string
+  /** The schema new data is written against. */
+  get schema(): Field
+  /** The partition spec new data is written against. */
+  get spec(): PartitionSpec
+  /**
+   * The snapshot a reader sees, or `null` when the table has none.
+   *
+   * A freshly created or rolled-back table has snapshots but no current one,
+   * and reading it yields no rows rather than failing.
+   */
+  get currentSnapshot(): Snapshot | null
+  /** Every schema the table has had, oldest first. */
+  get schemas(): Array<Field>
+  /** Every retained snapshot, oldest first. */
+  get snapshots(): Array<Snapshot>
+  /** Every manifest the current snapshot points at. */
+  manifests(): Array<ManifestFile>
+  /**
+   * Every manifest one retained snapshot points at.
+   *
+   * The manifest half of time travel: what
+   * [`manifests`](Self::manifests) answers for the present, this answers
+   * for any snapshot the table still retains.
+   */
+  manifestsAt(snapshotId: SnapshotIdInput): Array<ManifestFile>
+  /** Every live data file of the current snapshot. */
+  dataFiles(): Array<DataFile>
+  /**
+   * Read every row of the current snapshot, keeping the columns `field` names.
+   *
+   * Unlike a plain handle read, a scan *casts* each file to the root it is
+   * given after pushing the columns down, which is what makes a table whose
+   * schema evolved readable as one shape. `options` configures this one
+   * call and is put back afterwards, so the handle's own override survives.
+   */
+  scan(field?: Field | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
+  /**
+   * Read the rows matching one predicate as a `BatchReader`.
+   *
+   * `filter` is a `Filter`, a `Term`, or the text of a predicate, which
+   * parses. It is the whole expression language rather than equality
+   * pairs: ranges, null tests, `in` lists, and nested paths. Planning
+   * prunes with the metadata chain, and only the conjuncts it could not
+   * settle are tested against the rows.
+   */
+  scanMatching(filter: Filter | Term | string, field?: Field | undefined | null): JsBatchReader
+  /** Report what one predicate lets the scan leave alone. */
+  planMatching(filter: Filter | Term | string): ScanPlanCounts
+  /**
+   * Read the rows matching `filters`, keeping the columns `field` names.
+   *
+   * A filter on a partition column is answered by [`plan`](Self::plan)
+   * alone - every row of a file whose tuple matches holds that value - and a
+   * filter on any other column is applied to the rows the surviving files
+   * hold, because statistics bound a file rather than select a row. Either
+   * way the result is the same rows; what differs is how many files were
+   * opened to find them.
+   */
+  scanWhere(filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
+  /**
+   * Read the rows a branch or tag names, as of the snapshot it points at.
+   *
+   * This is [`snapshotByRef`](Self::snapshot_by_ref) and
+   * [`scanAt`](Self::scan_at) in one call, with the same `filters` and
+   * `field` meanings. A name the table does not have is refused naming the
+   * refs it does.
+   */
+  scanRef(name: string, filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
+  /**
+   * Decide which data files `filters` would have a read open, and no more.
+   *
+   * Nothing here lists a directory and nothing opens a data file: the
+   * snapshot names a manifest list, whose summaries rule out whole
+   * manifests, whose entries carry the partition tuples and statistics that
+   * rule out single files. The returned [`ScanPlan`](JsScanPlan) reports
+   * what it skipped, so how much a filter actually saves is a number rather
+   * than a promise.
+   */
+  plan(filters?: ScanFilters | undefined | null): ScanPlan
+  /**
+   * Plan a scan of one retained snapshot rather than the current one.
+   *
+   * The planning half of time travel: the same three levels of pruning are
+   * walked over the snapshot's own manifest list, so a filtered read of
+   * history skips exactly what a filtered read of the present skips.
+   */
+  planAt(snapshotId: SnapshotIdInput, filters?: ScanFilters | undefined | null): ScanPlan
+  /**
+   * Append `batches` as a new snapshot, keeping everything already stored.
+   *
+   * `options` configures this one write - `targetFileSize`,
+   * `commitRetries`, `dataMimeType`, and the rest - and the handle's own
+   * configuration is untouched.
+   */
+  append(batches: JsBatchReader, options?: IcebergOptions | undefined | null): void
+  /**
+   * Replace every row with `batches` as a new snapshot.
+   *
+   * The previous snapshot stays readable; only the current pointer moves.
+   * `options` configures this one write, exactly as on
+   * [`append`](Self::append).
+   */
+  overwrite(batches: JsBatchReader, options?: IcebergOptions | undefined | null): void
+  /**
+   * Replace only the rows `filters` selects, keeping every other file.
+   *
+   * A file the filters exclude is carried into the new snapshot exactly as
+   * it is - same location, same statistics, same commit order - so
+   * overwriting one partition of a thousand rewrites one partition.
+   *
+   * An overwrite beaten by a concurrent commit does not rebase: what it
+   * keeps was planned against a snapshot the winner may have replaced, and
+   * `batches` is already consumed, so it throws a commit conflict naming
+   * both versions rather than risk losing rows.
+   *
+   * `options` configures this one write, exactly as on
+   * [`append`](Self::append).
+   */
+  overwriteWhere(filters: ScanFilters | undefined | null, batches: JsBatchReader, options?: IcebergOptions | undefined | null): void
+  /**
+   * Merge `batches` into the stored rows, matching on `mergeBy`: a
+   * `Selector`, the text of one, or the key column names.
+   *
+   * A row whose key is already stored updates it and a row whose key is not
+   * appends. Only the files whose recorded bounds could hold an incoming key
+   * are read and rewritten - the rest are carried into the new snapshot
+   * untouched - so an upsert costs the files it can actually change. A
+   * non-empty `mergeBy` is required because nothing else identifies a
+   * row.
+   *
+   * `safe` decides what a cast that cannot convert a value does: the
+   * default nulls it, and `false` throws instead. `options` configures this
+   * one write, exactly as on [`append`](Self::append).
+   */
+  merge(batches: JsBatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  /**
+   * Merge `batches` into the rows `filters` selects, on `mergeBy`.
+   *
+   * [`merge`](Self::merge) narrowed to a part of the table first: the
+   * filters decide which files are candidates at all, and the match-key
+   * statistics then decide which of those are actually read. `options`
+   * configures this one write, exactly as on [`append`](Self::append).
+   */
+  mergeWhere(filters: ScanFilters | undefined | null, batches: JsBatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  /** Add a schema, make it current, and write a new metadata document. */
+  evolveSchema(schema: Field): number
+  /**
+   * Read one retained snapshot's rows: time travel as an ordinary scan.
+   *
+   * `snapshotId` is the identifier a snapshot reports, as a `bigint` or as
+   * a number no larger than 2^53. `filters` is the same `(column, value)`
+   * pair vocabulary `childrenWhere` uses, and `schema` keeps the columns it
+   * names, exactly as on [`scan`](Self::scan). The rows are read as the
+   * schema the snapshot was written under.
+   */
+  scanAt(snapshotId: SnapshotIdInput, filters?: ScanFilters | undefined | null, schema?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
+  /**
+   * Return the retained snapshot a branch or tag names.
+   *
+   * A name the table does not have is refused naming the refs it does.
+   */
+  snapshotByRef(name: string): Snapshot
+  /**
+   * Create a branch at one retained snapshot, as one metadata commit.
+   *
+   * Writing *to* a branch other than `main` remains future work; a branch is
+   * read with [`scanRef`](Self::scan_ref) and moved with
+   * [`fastForward`](Self::fast_forward).
+   */
+  createBranch(name: string, snapshotId: SnapshotIdInput): void
+  /**
+   * Create a tag at one retained snapshot, as one metadata commit.
+   *
+   * A tag never moves, so it is what pins a snapshot against expiration.
+   */
+  createTag(name: string, snapshotId: SnapshotIdInput): void
+  /**
+   * Remove one branch or tag, returning what it pointed at.
+   *
+   * A name the table does not have is refused naming the refs it does,
+   * rather than committing nothing: dropping a ref that was never there is
+   * far more often a typo than a no-op.
+   */
+  removeRef(name: string): SnapshotRef
+  /**
+   * Move a branch forward to a descendant snapshot, as one metadata commit.
+   *
+   * The target must be retained and must reach the branch's head by walking
+   * parent ids, which is what makes a fast-forward unable to lose history.
+   */
+  fastForward(name: string, snapshotId: SnapshotIdInput): void
+  /**
+   * Expire the snapshots retention no longer keeps, returning their ids.
+   *
+   * Omitted cutoff and retain count use table properties. Explicit snapshot
+   * ids join age-based selection; retained heads cannot be removed.
+   * Statistics metadata is removed, while physical files remain.
+   */
+  expireSnapshots(olderThanMs?: number | undefined | null, retainLast?: number | undefined | null, snapshotIds?: Array<SnapshotIdInput> | undefined | null): Array<bigint>
+  /**
+   * Store an explicit options override every later call resolves first.
+   *
+   * A field the override sets shadows the table property of the same name,
+   * and a field it leaves unset still resolves property-then-default. The
+   * override lives on this handle alone - it is never written to the table;
+   * [`updateProperties`](Self::update_properties) is what stores a setting
+   * on the table itself.
+   */
+  setOptions(options: IcebergOptions): void
+  /**
+   * Resolve this table's effective options, field by field.
+   *
+   * Each field takes the nearest of three layers: the explicit override,
+   * then the table property of the same name, then the documented default.
+   *
+   * # Errors
+   *
+   * Throws naming the key and the value when a property no override shadows
+   * is present but does not parse - a configured setting is never silently
+   * replaced by the default.
+   */
+  options(): IcebergOptions
+  /**
+   * The size a data file aims for, in bytes.
+   *
+   * The table property `write.target-file-size-bytes` decides, falling back
+   * to the schema root's protocol property of the same name, then to
+   * Iceberg's own 512 MiB default. A present-but-unparseable value throws
+   * naming the key and the value rather than silently using the default.
+   */
+  get targetFileSize(): number
+  /**
+   * Merge the current snapshot's undersized data files, per partition.
+   *
+   * The commit is one `replace` snapshot, so the pre-compaction snapshot
+   * stays readable through [`scanAt`](Self::scan_at). A table with nothing
+   * to compact commits nothing and reports zeros.
+   */
+  compact(): JsCompaction
+  /**
+   * Render when each snapshot became current, oldest first.
+   *
+   * The columns are `made_current_at`, `snapshot_id`, `parent_id`, and
+   * `is_current_ancestor`, the names `PyIceberg`'s `history` table uses.
+   */
+  inspectHistory(): JsBatchReader
+  /**
+   * Render every retained snapshot with its operation and summary.
+   *
+   * The columns are `committed_at`, `snapshot_id`, `parent_id`,
+   * `operation`, `manifest_list`, and the free-form `summary` map.
+   */
+  inspectSnapshots(): JsBatchReader
+  /**
+   * Render the live data files of the current snapshot.
+   *
+   * The columns are `file_path`, `file_format`, `spec_id`, the rendered
+   * `partition` chain, `record_count`, and `file_size_in_bytes`.
+   */
+  inspectFiles(): JsBatchReader
+  /**
+   * Set and remove table properties as one metadata-only commit.
+   *
+   * `updates` is a mapping of properties to set and `removes` lists the
+   * keys to drop, in that order. Passing neither commits nothing at all: a
+   * commit that changes no property would still cost a metadata document.
+   */
+  updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
+  /**
+   * The dotted path, as the plan grammar spells it and as every
+   * warehouse object prints.
+   */
+  toString(): string
+}
+export type JsTable = IcebergTable
+
 /**
  * One identifier: a value under a key, `src:type`, a key from the base
  * source spelled as its type alone.
@@ -4489,9 +5022,11 @@ export declare class IOBase {
   constructor(value: LocationOrFileSystemInput, path?: string | undefined | null)
   /**
    * Infer a handle from a native handle, any identifier naming a location,
-   * or location text.
+   * location text, or a warehouse object - a catalog, a namespace or a
+   * table - held as the handle it is, so `kind()` answers `catalog`,
+   * `namespace` or `table` and `ls()` a container's children.
    */
-  static from(value: LocationInput): IOBase
+  static from(value: HandleInput): IOBase
   /**
    * Describe a resource on any Arrow file system a caller supplies.
    *
@@ -5681,97 +6216,131 @@ export declare class MsgType {
 export type JsMsgType = MsgType
 
 /**
- * One namespace of a catalog: identity, plus its two collection views.
+ * A warehouse namespace: a container of namespaces and tables.
  *
- * The namespace holds only its dotted name. Its tables are
- * [`tables`](Self::tables) and its child namespaces are
- * [`namespaces`](Self::namespaces), so access chains -
- * `catalog.namespaces.get('sales').tables.get('orders')` - and every
- * collection question has exactly one home: a namespace is a resource, and
- * the map verbs live on its collections, never on it.
+ * Built by [`memory`](Self::memory) over registered objects or by
+ * [`folder`](Self::folder) over a container, and answered by every catalog
+ * or namespace listing one; `implementation` says which.
+ * `IOBase.from(namespace)` holds it as the container of handles it is.
  */
 export declare class Namespace {
-  /** The namespace's dotted name. */
+  /**
+   * A namespace at `path` - its catalog's name first - of registered
+   * objects, in order, with no storage behind it: `options.objects`
+   * registers each, one level below.
+   */
+  static memory(path: ObjectPathInput, options?: ObjectOptions | undefined | null): Namespace
+  /**
+   * A namespace at `path` - its catalog's name first - over the container
+   * `location` names, read as tables and, under `options.levels` (none by
+   * default), namespaces: a handle binds, a location or an identifier
+   * names what opens on first use.
+   */
+  static folder(path: ObjectPathInput, location: LocationInput, options?: ObjectOptions | undefined | null): Namespace
+  /** The last part of its path. */
   get name(): string
-  /** This namespace's tables, as a lazy map-like view. */
-  get tables(): JsTables
+  /** Its parts, from its catalog's name down to its own. */
+  get path(): Array<string>
+  /** `namespace`. */
+  get kind(): string
   /**
-   * The namespaces one level below this one, as the same view shape the
-   * catalog itself answers - the cascade that reaches a nested namespace.
+   * The implementation answering it: `MemoryNamespace` or
+   * `FolderNamespace`.
    */
-  get namespaces(): JsNamespaces
+  get implementation(): string
+  /** What its store says it is, when it says anything. */
+  get description(): string | null
+  /** Where its storage is, when it has a location. */
+  get url(): Url | null
   /**
-   * The namespace's properties, from `metadata/namespace.json`.
-   *
-   * Absent means empty - a namespace a table write brought into being
-   * carries no document and answers no properties, and that is not a
-   * failure.
+   * When it last changed, in UTC nanoseconds since the epoch, when the
+   * store keeps that fact.
    */
-  properties(): Record<string, string>
+  get modified(): bigint | null
   /**
-   * Set and remove namespace properties as one transactional write.
-   *
-   * `updates` is a mapping of properties to set and `removes` lists the
-   * keys to drop, in that order. Passing neither writes nothing at all.
-   * Keys under the reserved `ICEBERG:` prefix are refused by name.
+   * Its effective properties, in order: its parent's, then what it
+   * states, a later entry replacing an earlier one by name.
    */
-  updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
+  get properties(): Record<string, string>
+  /**
+   * Persist updates and removals of what its store keeps for it; an
+   * implementation that keeps nothing refuses by name.
+   */
+  updateProperties(updates?: Record<string, string | number | boolean> | null, removes?: readonly string[] | null): void
+  /** The namespaces one level down, as a lazy map-like view. */
+  namespaces(): JsWarehouseNamespaces
+  /** The tables one level down, as a lazy map-like view. */
+  tables(): JsWarehouseTables
+  /**
+   * Its children, one at a time in the store's order, each carrying its
+   * effective properties; the loader wires `Symbol.iterator`, so
+   * `for...of` walks it.
+   */
+  children(): JsObjectIterator
+  /** The child called `name`, one level down. */
+  get(name: string): ObjectOutput
+  /** The object a path below this namespace names, one `get` per part. */
+  resolve(path: ObjectPathInput): ObjectOutput
+  /** The table a path below this namespace names. */
+  table(path: ObjectPathInput): JsWarehouseTable
+  /** The namespace a path below this namespace names. */
+  namespace(path: ObjectPathInput): Namespace
+  /**
+   * Create the namespace `name` under it; an implementation that creates
+   * nothing refuses by name.
+   */
+  createNamespace(name: string, properties?: Record<string, string | number | boolean> | null): Namespace
+  /**
+   * Create the table `name` under it, `field` its row schema; an
+   * implementation that creates nothing refuses by name.
+   */
+  createTable(name: string, field: Field | string, properties?: Record<string, string | number | boolean> | null): JsWarehouseTable
+  /** Whether both describe the same namespace. */
+  equals(other: Namespace): boolean
+  /** The dotted path, as the plan grammar spells it. */
+  toString(): string
 }
-export type JsNamespace = Namespace
+export type JsWarehouseNamespace = Namespace
 
 /**
- * The namespaces one level below a catalog or a namespace, as a lazy view.
+ * The namespaces one level below a catalog or a namespace, as a lazy
+ * map-like view.
  *
  * JavaScript has no indexing hook a native class can answer, so the map
- * questions are spelled out: `get` and `has` for membership, `names` and
- * `size` for the whole collection, `create` and `openOrCreate` to add one.
- * None of it is cached - every answer is storage's, asked when the question
- * is - so a view built before a namespace existed finds it afterwards.
+ * questions are spelled out: `get` and `has` for membership, `keys` and
+ * `size` for the whole level - the loader wires `Symbol.iterator`, `values`
+ * and `entries` over `keys` and `get` - and `create` and `openOrCreate` to
+ * add one. Nothing is cached: every answer is the store's, asked when the
+ * question is. A name may be dotted: `namespaces.get('sales.eu')` descends.
  */
 export declare class Namespaces {
   /**
-   * Open the named namespace.
-   *
-   * # Errors
-   *
-   * Throws naming the namespace when nothing is there, or when the name
-   * addresses a table instead - the two ways a chained lookup goes wrong,
-   * told apart rather than collapsed into "not found".
+   * Open the named namespace: dotted text descending through the grammar,
+   * or the parts as they are.
    */
-  get(name: string): Namespace
+  get(name: ObjectPathInput): Namespace
   /**
-   * Return whether the named namespace exists, asked of storage now.
-   *
-   * A namespace is a folder that is not a table, so a table's name answers
-   * `false` here, and so does a location nothing occupies yet.
+   * Whether the named namespace exists, asked of the store now; a table's
+   * name answers `false`.
    */
-  has(name: string): boolean
+  has(name: ObjectPathInput): boolean
+  /** The names one level down, lazily. */
+  keys(): JsObjectNames
   /**
-   * The names one level down, lazily - the loader wires `Symbol.iterator`,
-   * `keys`, `values`, and `entries` over this, so `for...of` walks it.
+   * How many namespaces are one level down, right now; it drains the
+   * level's listing.
    */
-  keys(): JsIcebergNames
-  /** The namespaces one level down, as sorted bare names. */
-  names(): Array<string>
+  get size(): number
   /**
-   * How many namespaces are one level down, right now.
-   *
-   * This drains the level's listing, so it costs the full listing.
+   * Create the named namespace, a dotted name descending to the parent it
+   * is created under; an implementation that creates nothing refuses by
+   * name.
    */
-  size(): number
-  /**
-   * Create the named namespace, as the folder it is.
-   *
-   * # Errors
-   *
-   * Throws naming the namespace when one - or a table - is already there;
-   * [`openOrCreate`](Self::open_or_create) is the spelling that tolerates it.
-   */
-  create(name: string): Namespace
-  /** Open the named namespace, creating its folder when absent. */
-  openOrCreate(name: string): Namespace
+  create(name: string, properties?: Record<string, string | number | boolean> | null): Namespace
+  /** Open the named namespace, creating it when absent. */
+  openOrCreate(name: string, properties?: Record<string, string | number | boolean> | null): Namespace
 }
-export type JsNamespaces = Namespaces
+export type JsWarehouseNamespaces = Namespaces
 
 /** Takes every record and writes none. */
 export declare class NullHandler {
@@ -5782,6 +6351,36 @@ export declare class NullHandler {
   setLevel(level: LoggingLevelInput): void
 }
 export type JsNullHandler = NullHandler
+
+/**
+ * The children of a catalog or a namespace, one at a time.
+ *
+ * Built by `children()`. It wraps the core walk directly, so a caller that
+ * takes three children of a hundred thousand pays for three; `next()` is
+ * the native half of the iteration protocol and the loader wraps it so
+ * `for...of` yields objects. A failure throws at the child it happened on,
+ * after which the iterator is exhausted.
+ */
+export declare class ObjectIterator {
+  /** The next child, or `null` when the listing is exhausted. */
+  next(): ObjectOutput | null
+}
+export type JsObjectIterator = ObjectIterator
+
+/**
+ * The names of one collection level, one at a time.
+ *
+ * Built by `keys()` on `Namespaces` and `Tables`. It wraps the core names
+ * iterator directly, so nothing is collected on the way across the
+ * boundary; `next()` is the native half of the iteration protocol and the
+ * loader wraps it so `for...of` yields strings. A failure throws at the
+ * entry it happened on, after which the iterator is exhausted.
+ */
+export declare class ObjectNames {
+  /** The next name, or `null` when the level is exhausted. */
+  next(): string | null
+}
+export type JsObjectNames = ObjectNames
 
 /**
  * An undated order: the element, market and operation facts of one order
@@ -6468,6 +7067,11 @@ export declare class Plan {
    * stream under the schema it wrote.
    */
   execute(): JsBatchReader
+  /**
+   * `execute`, its locations resolved against `warehouse` instead of the
+   * process's own `SystemWarehouse`.
+   */
+  executeIn(warehouse: JsWarehouse): JsBatchReader
   /** The tree of this plan, one branch per section in the order they run. */
   explain(): string
   /** Write this plan as a structural JSON document. */
@@ -8971,409 +9575,169 @@ export declare class StringEnum {
 }
 export type JsStringEnum = StringEnum
 
-/** An Iceberg table reached entirely through one container handle. */
-export declare class Table {
+/**
+ * The process's one warehouse, which a plan's `from catalog.namespace.table`
+ * resolves against when it is given no other: the same verbs as
+ * [`Warehouse`](JsWarehouse), as static methods.
+ *
+ * It starts with the memory catalog `local`, holding the folder namespaces
+ * `temporary`, `home` and `config` over the platform's temporary directory,
+ * the user's home and its `.config`.
+ */
+export declare class SystemWarehouse {
+  /** Register an object on the system warehouse. */
+  static register(object: ObjectInput): void
   /**
-   * Create a table, writing its first metadata document.
-   *
-   * `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the
-   * `PARTITION:by` entries to partition on: a bare column - `venue` - is an
-   * identity partition, and an epoch function over a column - `days(ts)`,
-   * `hours(ts)`, `minutes(ts, 15)`, `weeks(ts)`, `quarters(ts)` - or
-   * `truncate(name, 4)` is a derived one, named by its alias
-   * (`days(ts) as day`) or `{source}_{function}` (`ts_day`). An entry no
-   * spec can hold is refused, naming it. Omitted, the schema's own
-   * `PARTITION:by` declaration is read the same way - a schema declaring
-   * nothing is unpartitioned - and `null` is unpartitioned whatever the
-   * schema declares. Unnumbered schema columns are numbered automatically,
-   * so a plain schema works as it is; a schema that already carries field
-   * identifiers keeps every one of them.
+   * Register an object on the system warehouse, replacing the one of its
+   * name at that level and answering what was replaced, or `null`.
    */
-  static create(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null): Table
-  /** Open the table a container handle addresses. */
-  static open(root: LocationInput): Table
+  static replace(object: ObjectInput): ObjectOutput | null
   /**
-   * Open the table if it exists, creating it otherwise.
-   *
-   * Like [`create`](Self::create), `partitionBy` is a spec, the
-   * `PARTITION:by` entries one is read from, `null` for none, or - omitted -
-   * the schema's own declaration, and unnumbered schema columns are
-   * numbered automatically; an existing table is opened as it is and
-   * `schema` describes only the table this call would create.
+   * Remove the object registered at `path` from the system warehouse,
+   * answering it.
    */
-  static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null): Table
+  static unregister(path: ObjectPathInput): ObjectOutput
+  /** The registered catalogs, in order. */
+  static catalogs(): Array<Catalog>
+  /** The catalog called `name`. */
+  static catalog(name: string): Catalog
+  /** The object a path names. */
+  static get(path: ObjectPathInput): ObjectOutput
+  /** The table a path names. */
+  static table(path: ObjectPathInput): Table
+  /** The namespace a path names. */
+  static namespace(path: ObjectPathInput): Namespace
   /**
-   * The folder the table lives in.
-   *
-   * Taken from the table's own root handle rather than from its recorded
-   * location, because a location does not say which backend it belongs to:
-   * a table on a foreign Arrow file system must hand back a folder on that
-   * file system, not the local path its URL happens to spell.
+   * The effective properties of the deepest registered object whose URL
+   * holds `url`, or the empty bag.
    */
-  get root(): JsIOBase
-  /** The table's base location, as a URI. */
-  get location(): string
-  /** A stable identifier for the table itself, not for any one version. */
-  get tableUuid(): string
-  /** Which revision of the specification the metadata is written to. */
-  get formatVersion(): number
-  /** The version number of the current metadata document. */
-  get version(): number
-  /** Free-form table properties. */
-  get properties(): Record<string, string>
-  /** The name of the current metadata document. */
-  get metadataFileName(): string
-  /** The location of the current metadata document, as a URI. */
-  get metadataLocation(): string
-  /** The schema new data is written against. */
-  get schema(): Field
-  /** The partition spec new data is written against. */
-  get spec(): PartitionSpec
-  /**
-   * The snapshot a reader sees, or `null` when the table has none.
-   *
-   * A freshly created or rolled-back table has snapshots but no current one,
-   * and reading it yields no rows rather than failing.
-   */
-  get currentSnapshot(): Snapshot | null
-  /** Every schema the table has had, oldest first. */
-  get schemas(): Array<Field>
-  /** Every retained snapshot, oldest first. */
-  get snapshots(): Array<Snapshot>
-  /** Every manifest the current snapshot points at. */
-  manifests(): Array<ManifestFile>
-  /**
-   * Every manifest one retained snapshot points at.
-   *
-   * The manifest half of time travel: what
-   * [`manifests`](Self::manifests) answers for the present, this answers
-   * for any snapshot the table still retains.
-   */
-  manifestsAt(snapshotId: SnapshotIdInput): Array<ManifestFile>
-  /** Every live data file of the current snapshot. */
-  dataFiles(): Array<DataFile>
-  /**
-   * Read every row of the current snapshot, keeping the columns `field` names.
-   *
-   * Unlike a plain handle read, a scan *casts* each file to the root it is
-   * given after pushing the columns down, which is what makes a table whose
-   * schema evolved readable as one shape. `options` configures this one
-   * call and is put back afterwards, so the handle's own override survives.
-   */
-  scan(field?: Field | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
-  /**
-   * Read the rows matching one predicate as a `BatchReader`.
-   *
-   * `filter` is a `Filter`, a `Term`, or the text of a predicate, which
-   * parses. It is the whole expression language rather than equality
-   * pairs: ranges, null tests, `in` lists, and nested paths. Planning
-   * prunes with the metadata chain, and only the conjuncts it could not
-   * settle are tested against the rows.
-   */
-  scanMatching(filter: Filter | Term | string, field?: Field | undefined | null): JsBatchReader
-  /** Report what one predicate lets the scan leave alone. */
-  planMatching(filter: Filter | Term | string): ScanPlanCounts
-  /**
-   * Read the rows matching `filters`, keeping the columns `field` names.
-   *
-   * A filter on a partition column is answered by [`plan`](Self::plan)
-   * alone - every row of a file whose tuple matches holds that value - and a
-   * filter on any other column is applied to the rows the surviving files
-   * hold, because statistics bound a file rather than select a row. Either
-   * way the result is the same rows; what differs is how many files were
-   * opened to find them.
-   */
-  scanWhere(filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
-  /**
-   * Read the rows a branch or tag names, as of the snapshot it points at.
-   *
-   * This is [`snapshotByRef`](Self::snapshot_by_ref) and
-   * [`scanAt`](Self::scan_at) in one call, with the same `filters` and
-   * `field` meanings. A name the table does not have is refused naming the
-   * refs it does.
-   */
-  scanRef(name: string, filters?: ScanFilters | undefined | null, field?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
-  /**
-   * Decide which data files `filters` would have a read open, and no more.
-   *
-   * Nothing here lists a directory and nothing opens a data file: the
-   * snapshot names a manifest list, whose summaries rule out whole
-   * manifests, whose entries carry the partition tuples and statistics that
-   * rule out single files. The returned [`ScanPlan`](JsScanPlan) reports
-   * what it skipped, so how much a filter actually saves is a number rather
-   * than a promise.
-   */
-  plan(filters?: ScanFilters | undefined | null): ScanPlan
-  /**
-   * Plan a scan of one retained snapshot rather than the current one.
-   *
-   * The planning half of time travel: the same three levels of pruning are
-   * walked over the snapshot's own manifest list, so a filtered read of
-   * history skips exactly what a filtered read of the present skips.
-   */
-  planAt(snapshotId: SnapshotIdInput, filters?: ScanFilters | undefined | null): ScanPlan
-  /**
-   * Append `batches` as a new snapshot, keeping everything already stored.
-   *
-   * `options` configures this one write - `targetFileSize`,
-   * `commitRetries`, `dataMimeType`, and the rest - and the handle's own
-   * configuration is untouched.
-   */
-  append(batches: JsBatchReader, options?: IcebergOptions | undefined | null): void
-  /**
-   * Replace every row with `batches` as a new snapshot.
-   *
-   * The previous snapshot stays readable; only the current pointer moves.
-   * `options` configures this one write, exactly as on
-   * [`append`](Self::append).
-   */
-  overwrite(batches: JsBatchReader, options?: IcebergOptions | undefined | null): void
-  /**
-   * Replace only the rows `filters` selects, keeping every other file.
-   *
-   * A file the filters exclude is carried into the new snapshot exactly as
-   * it is - same location, same statistics, same commit order - so
-   * overwriting one partition of a thousand rewrites one partition.
-   *
-   * An overwrite beaten by a concurrent commit does not rebase: what it
-   * keeps was planned against a snapshot the winner may have replaced, and
-   * `batches` is already consumed, so it throws a commit conflict naming
-   * both versions rather than risk losing rows.
-   *
-   * `options` configures this one write, exactly as on
-   * [`append`](Self::append).
-   */
-  overwriteWhere(filters: ScanFilters | undefined | null, batches: JsBatchReader, options?: IcebergOptions | undefined | null): void
-  /**
-   * Merge `batches` into the stored rows, matching on `mergeBy`: a
-   * `Selector`, the text of one, or the key column names.
-   *
-   * A row whose key is already stored updates it and a row whose key is not
-   * appends. Only the files whose recorded bounds could hold an incoming key
-   * are read and rewritten - the rest are carried into the new snapshot
-   * untouched - so an upsert costs the files it can actually change. A
-   * non-empty `mergeBy` is required because nothing else identifies a
-   * row.
-   *
-   * `safe` decides what a cast that cannot convert a value does: the
-   * default nulls it, and `false` throws instead. `options` configures this
-   * one write, exactly as on [`append`](Self::append).
-   */
-  merge(batches: JsBatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
-  /**
-   * Merge `batches` into the rows `filters` selects, on `mergeBy`.
-   *
-   * [`merge`](Self::merge) narrowed to a part of the table first: the
-   * filters decide which files are candidates at all, and the match-key
-   * statistics then decide which of those are actually read. `options`
-   * configures this one write, exactly as on [`append`](Self::append).
-   */
-  mergeWhere(filters: ScanFilters | undefined | null, batches: JsBatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
-  /** Add a schema, make it current, and write a new metadata document. */
-  evolveSchema(schema: Field): number
-  /**
-   * Read one retained snapshot's rows: time travel as an ordinary scan.
-   *
-   * `snapshotId` is the identifier a snapshot reports, as a `bigint` or as
-   * a number no larger than 2^53. `filters` is the same `(column, value)`
-   * pair vocabulary `childrenWhere` uses, and `schema` keeps the columns it
-   * names, exactly as on [`scan`](Self::scan). The rows are read as the
-   * schema the snapshot was written under.
-   */
-  scanAt(snapshotId: SnapshotIdInput, filters?: ScanFilters | undefined | null, schema?: FieldInput | undefined | null, options?: IcebergOptions | undefined | null): JsBatchReader
-  /**
-   * Return the retained snapshot a branch or tag names.
-   *
-   * A name the table does not have is refused naming the refs it does.
-   */
-  snapshotByRef(name: string): Snapshot
-  /**
-   * Create a branch at one retained snapshot, as one metadata commit.
-   *
-   * Writing *to* a branch other than `main` remains future work; a branch is
-   * read with [`scanRef`](Self::scan_ref) and moved with
-   * [`fastForward`](Self::fast_forward).
-   */
-  createBranch(name: string, snapshotId: SnapshotIdInput): void
-  /**
-   * Create a tag at one retained snapshot, as one metadata commit.
-   *
-   * A tag never moves, so it is what pins a snapshot against expiration.
-   */
-  createTag(name: string, snapshotId: SnapshotIdInput): void
-  /**
-   * Remove one branch or tag, returning what it pointed at.
-   *
-   * A name the table does not have is refused naming the refs it does,
-   * rather than committing nothing: dropping a ref that was never there is
-   * far more often a typo than a no-op.
-   */
-  removeRef(name: string): SnapshotRef
-  /**
-   * Move a branch forward to a descendant snapshot, as one metadata commit.
-   *
-   * The target must be retained and must reach the branch's head by walking
-   * parent ids, which is what makes a fast-forward unable to lose history.
-   */
-  fastForward(name: string, snapshotId: SnapshotIdInput): void
-  /**
-   * Expire the snapshots retention no longer keeps, returning their ids.
-   *
-   * Omitted cutoff and retain count use table properties. Explicit snapshot
-   * ids join age-based selection; retained heads cannot be removed.
-   * Statistics metadata is removed, while physical files remain.
-   */
-  expireSnapshots(olderThanMs?: number | undefined | null, retainLast?: number | undefined | null, snapshotIds?: Array<SnapshotIdInput> | undefined | null): Array<bigint>
-  /**
-   * Store an explicit options override every later call resolves first.
-   *
-   * A field the override sets shadows the table property of the same name,
-   * and a field it leaves unset still resolves property-then-default. The
-   * override lives on this handle alone - it is never written to the table;
-   * [`updateProperties`](Self::update_properties) is what stores a setting
-   * on the table itself.
-   */
-  setOptions(options: IcebergOptions): void
-  /**
-   * Resolve this table's effective options, field by field.
-   *
-   * Each field takes the nearest of three layers: the explicit override,
-   * then the table property of the same name, then the documented default.
-   *
-   * # Errors
-   *
-   * Throws naming the key and the value when a property no override shadows
-   * is present but does not parse - a configured setting is never silently
-   * replaced by the default.
-   */
-  options(): IcebergOptions
-  /**
-   * The size a data file aims for, in bytes.
-   *
-   * The table property `write.target-file-size-bytes` decides, falling back
-   * to the schema root's protocol property of the same name, then to
-   * Iceberg's own 512 MiB default. A present-but-unparseable value throws
-   * naming the key and the value rather than silently using the default.
-   */
-  get targetFileSize(): number
-  /**
-   * Merge the current snapshot's undersized data files, per partition.
-   *
-   * The commit is one `replace` snapshot, so the pre-compaction snapshot
-   * stays readable through [`scanAt`](Self::scan_at). A table with nothing
-   * to compact commits nothing and reports zeros.
-   */
-  compact(): JsCompaction
-  /**
-   * Render when each snapshot became current, oldest first.
-   *
-   * The columns are `made_current_at`, `snapshot_id`, `parent_id`, and
-   * `is_current_ancestor`, the names `PyIceberg`'s `history` table uses.
-   */
-  inspectHistory(): JsBatchReader
-  /**
-   * Render every retained snapshot with its operation and summary.
-   *
-   * The columns are `committed_at`, `snapshot_id`, `parent_id`,
-   * `operation`, `manifest_list`, and the free-form `summary` map.
-   */
-  inspectSnapshots(): JsBatchReader
-  /**
-   * Render the live data files of the current snapshot.
-   *
-   * The columns are `file_path`, `file_format`, `spec_id`, the rendered
-   * `partition` chain, `record_count`, and `file_size_in_bytes`.
-   */
-  inspectFiles(): JsBatchReader
-  /**
-   * Set and remove table properties as one metadata-only commit.
-   *
-   * `updates` is a mapping of properties to set and `removes` lists the
-   * keys to drop, in that order. Passing neither commits nothing at all: a
-   * commit that changes no property would still cost a metadata document.
-   */
-  updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
-  /** Return where the table lives, so a table prints as its location. */
-  toString(): string
+  static propertiesFor(url: UrlInput): Record<string, string>
 }
-export type JsTable = Table
+export type JsSystemWarehouse = SystemWarehouse
 
 /**
- * The tables of one namespace - or of the warehouse root - as a lazy view.
+ * A warehouse table: an object whose rows any record read and write
+ * reaches.
  *
- * The same shape as [`Namespaces`](JsNamespaces), one level down: `get` opens
- * a [`Table`](JsTable) and the write conveniences that take a name create the
- * table on first write, from the incoming rows' own schema. At the root,
- * names may be fully dotted - `catalog.tables.get('sales.eu.orders')`
- * descends. Every answer comes from storage at call time, so the view is
- * never stale.
+ * Built by [`media`](Self::media) over any location a record medium reads,
+ * and answered by every catalog or namespace listing one. Its rows are read
+ * and written through `IOBase.from(table)`, which holds it as the handle its
+ * implementation is: every record verb is `IOBase`'s.
+ */
+export declare class Table {
+  /**
+   * A table at `path` over the storage `location` names - a leaf a record
+   * medium reads, a folder read as the rows beneath it, or a folder laid
+   * out as a table format, said by `options.layout` - touching nothing: a
+   * handle binds, a location or an identifier names what opens on first
+   * use. `options.field` or `options.dtype` declares its row schema.
+   */
+  static media(path: ObjectPathInput, location: LocationInput, options?: ObjectOptions | undefined | null): Table
+  /** The last part of its path. */
+  get name(): string
+  /** Its parts, from its catalog's name down to its own. */
+  get path(): Array<string>
+  /** `table`. */
+  get kind(): string
+  /** The implementation holding it: `MediaTable`. */
+  get implementation(): string
+  /** What its store says it is, when it says anything. */
+  get description(): string | null
+  /** Where its storage is, when it has a location. */
+  get url(): Url | null
+  /**
+   * When it last changed, in UTC nanoseconds since the epoch, when the
+   * store keeps that fact.
+   */
+  get modified(): bigint | null
+  /**
+   * Its effective properties, in order: its parent's, then what its store
+   * keeps for it, then what it states.
+   */
+  get properties(): Record<string, string>
+  /**
+   * Persist updates and removals of what its store keeps for it; an
+   * implementation that keeps nothing refuses by name.
+   */
+  updateProperties(updates?: Record<string, string | number | boolean> | null, removes?: readonly string[] | null): void
+  /**
+   * What holds its rows, as a listing describes it: a leaf's media type,
+   * `directory` for a folder read as the rows beneath it, `table` for a
+   * table format.
+   */
+  get storage(): string
+  /** How the rows are laid out: `leaf`, `folder` or `format`. */
+  get layout(): string
+  /** The row schema it declares, when one was declared. */
+  get declaredField(): Field | null
+  /**
+   * Its row schema, with no row read: the declared field, else the stored
+   * one.
+   */
+  field(): Field
+  /** Whether both describe the same table. */
+  equals(other: Table): boolean
+  /** The dotted path, as the plan grammar spells it. */
+  toString(): string
+}
+export type JsWarehouseTable = Table
+
+/**
+ * The tables one level below a catalog or a namespace, as a lazy map-like
+ * view.
+ *
+ * The same shape as [`Namespaces`](JsWarehouseNamespaces), one level down:
+ * `get` opens a [`Table`](JsWarehouseTable), and the writes that take a
+ * name open the table, create it from the rows' own schema where the
+ * implementation creates one, and write through the table's own record
+ * surface, answering the table.
  */
 export declare class Tables {
   /**
-   * Open the named table.
-   *
-   * # Errors
-   *
-   * Throws naming the table when no table is there, and the metadata
-   * failure when its current document cannot be read.
+   * Open the named table: dotted text descending through the grammar, or
+   * the parts as they are.
    */
-  get(name: string): Table
-  /** Return whether the named table exists, asked of storage now. */
-  has(name: string): boolean
+  get(name: ObjectPathInput): Table
   /**
-   * The names one level down, lazily - the loader wires `Symbol.iterator`,
-   * `keys`, `values`, and `entries` over this, so `for...of` walks it.
+   * Whether the named table exists, asked of the store now; a namespace's
+   * name answers `false`.
    */
-  keys(): IcebergNames
-  /** This namespace's tables, as sorted bare names. */
-  names(): Array<string>
+  has(name: ObjectPathInput): boolean
+  /** The names one level down, lazily. */
+  keys(): JsObjectNames
   /**
-   * How many tables the namespace holds, right now.
-   *
-   * This drains the level's listing, so it costs the full listing.
+   * How many tables are one level down, right now; it drains the level's
+   * listing.
    */
-  size(): number
+  get size(): number
   /**
-   * Create the named table, writing its first metadata document.
-   *
-   * `schema` is a root `Field`, a field expression, or an array of child
-   * `Field`s assembled under a root named `row`. Unnumbered columns are
-   * numbered, and the partition spec is derived from the columns the schema
-   * itself marks - a schema that marks none produces an unpartitioned table.
-   *
-   * # Errors
-   *
-   * Throws naming the table when one is already there.
+   * Create the named table with `field` as its row schema, a dotted name
+   * descending to the namespace it is created under; an implementation
+   * that creates nothing refuses by name.
    */
-  create(name: string, schema: TableSchemaInput): Table
+  create(name: string, field: Field | string, properties?: Record<string, string | number | boolean> | null): Table
   /**
-   * Open the named table if it exists, creating it otherwise.
-   *
-   * An existing table is opened as it is - `schema` describes only the table
-   * this call would create.
+   * Open the named table if it exists, creating it otherwise; an existing
+   * table is opened as it is, `field` describing only the table this call
+   * would create.
    */
-  openOrCreate(name: string, schema: TableSchemaInput): Table
+  openOrCreate(name: string, field: Field | string, properties?: Record<string, string | number | boolean> | null): Table
   /**
-   * Append `batches` to the named table, creating it on first write.
-   *
-   * A table that is not there yet takes its schema from the rows: partition
-   * marks riding the Arrow fields' metadata become the spec, so a marked
-   * schema lays its files out partitioned from the very first append.
-   * `options` configures this one write. Returns the table so the caller can
-   * keep going.
+   * Append `data` to the named table, creating it from the reader's own
+   * schema where the implementation creates one, under `options` or the
+   * table's own record options, and answer the table. The loader widens
+   * `data` to anything `BatchReader.from` reads and a property bag onto a
+   * copy of the options.
    */
-  append(name: string, batches: JsBatchReader, options?: IcebergOptions | undefined | null): Table
+  append(name: string, data: BatchReader, options?: RecordOptions | undefined | null): Table
   /**
-   * Replace the named table's rows with `batches`, creating it on first
-   * write.
-   *
-   * An existing table keeps its previous snapshot readable, which is what
-   * makes the overwrite reversible. `options` configures this one write.
-   * Returns the table so the caller can keep going.
+   * Replace the named table's rows with `data`, creating it from the
+   * reader's own schema where the implementation creates one, under
+   * `options` or the table's own record options, and answer the table.
    */
-  overwrite(name: string, batches: JsBatchReader, options?: IcebergOptions | undefined | null): Table
+  overwrite(name: string, data: BatchReader, options?: RecordOptions | undefined | null): Table
 }
-export type JsTables = Tables
+export type JsWarehouseTables = Tables
 
 /** One recursive, typed tree: a column, a constant, a comparison, a function. */
 export declare class Term {
@@ -10769,6 +11133,52 @@ export declare class Version {
 export type JsVersion = Version
 
 /**
+ * The registry of catalogs a path resolves against.
+ *
+ * Catalogs register by name, in order; a namespace or a table registers at
+ * its path, the memory catalogs and namespaces along it created as needed.
+ * Registration only extends memory catalogs and namespaces: a folder
+ * catalog lists its own store, and registering under one is refused by
+ * name.
+ */
+export declare class Warehouse {
+  /** An empty warehouse. */
+  constructor()
+  /**
+   * Register an object: a catalog by its name, a namespace or a table at
+   * its path; a name taken at that level is a conflict.
+   */
+  register(object: ObjectInput): void
+  /**
+   * Register an object, replacing the one of its name at that level and
+   * answering what was replaced, or `null`.
+   */
+  replace(object: ObjectInput): ObjectOutput | null
+  /** Remove the object registered at `path`, answering it. */
+  unregister(path: ObjectPathInput): ObjectOutput
+  /** The catalogs, in registration order. */
+  get catalogs(): Array<Catalog>
+  /** The catalog called `name`. */
+  catalog(name: string): Catalog
+  /**
+   * The object a path names: a catalog by its one part, else the object
+   * the catalog's descent reaches.
+   */
+  get(path: ObjectPathInput): ObjectOutput
+  /** The table a path names. */
+  table(path: ObjectPathInput): Table
+  /** The namespace a path names. */
+  namespace(path: ObjectPathInput): Namespace
+  /**
+   * The effective properties of the deepest registered object whose URL
+   * holds `url` on a path boundary; an object no registered URL holds has
+   * none, which is the empty bag.
+   */
+  propertiesFor(url: UrlInput): Record<string, string>
+}
+export type JsWarehouse = Warehouse
+
+/**
  * A window over a serie: `length` rows from `offset`, read and written
  * through the serie at each call, moving nothing.
  *
@@ -12126,6 +12536,38 @@ export interface MetadataEntry {
   key: string
   /** Metadata value. */
   value: string
+}
+
+/**
+ * What a static constructor states beside the object's own arguments.
+ *
+ * Every field is optional and each implementation reads the ones it has:
+ * `description` and `properties` on every object, `objects` on a memory
+ * catalog or namespace, `levels` on a folder catalog or namespace, `field`,
+ * `dtype` and `layout` on a media table. A field the implementation has no
+ * use for is refused by name rather than ignored.
+ */
+export interface ObjectOptions {
+  /** What the object's store says it is. */
+  description?: string
+  /**
+   * What the object states, which every object under it inherits and
+   * every handle under it opens with: an ordered plain object.
+   */
+  properties?: Record<string, string | number | boolean>
+  /**
+   * How many namespace levels sit under a folder catalog (one by
+   * default, `catalog.schema.table`) or a folder namespace (none).
+   */
+  levels?: number
+  /** A media table's declared row schema, renamed after the table. */
+  field?: FieldInput
+  /** A media table's declared row datatype, under a required field. */
+  dtype?: DataTypeInput
+  /** How a media table holds its rows: `leaf`, `folder` or `format`. */
+  layout?: string
+  /** The objects a memory catalog or namespace registers, in order. */
+  objects?: Array<ObjectInput>
 }
 
 /** One Hive partition column and the value a path segment gives it. */

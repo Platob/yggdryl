@@ -215,7 +215,9 @@ try {
 
 `execute()` reads the `from` target through its holder with the read sections
 pushed down and answers a `BatchReader`; a write verb sends the shaped stream
-to its target.
+to its target. A dotted path is the table registered at it in
+`warehouse.SystemWarehouse`, and `executeIn(registry)` reads a
+`warehouse.Warehouse` of your own.
 
 ```javascript
 const assert = require('node:assert/strict')

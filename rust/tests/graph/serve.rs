@@ -593,7 +593,7 @@ fn a_parquet_leaf_a_capture_landed_in_answers_every_route() {
 #[cfg(feature = "iceberg")]
 #[test]
 fn an_iceberg_table_a_capture_landed_in_answers_every_route() {
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec};
     use yggdryl::local::LocalFolder;
 
     let path = std::env::temp_dir().join(format!(
@@ -601,7 +601,7 @@ fn an_iceberg_table_a_capture_landed_in_answers_every_route() {
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&path);
-    Table::create(
+    IcebergTable::create(
         LocalFolder::new(&path).unwrap(),
         FormatVersion::V2,
         MarketData::field()

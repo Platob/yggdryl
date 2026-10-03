@@ -12,13 +12,14 @@
 //!
 //! ```no_run
 //! use std::sync::Arc;
+//! use yggdryl::FolderCatalog;
 //! use yggdryl::holder::Holder;
 //! use yggdryl::http::{Server, ServerOptions};
-//! use yggdryl::xmla::{Catalog, Service, ServiceOptions};
+//! use yggdryl::xmla::{Service, ServiceOptions};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let service = Service::new(ServiceOptions::new())
-//!     .with_catalog(Catalog::new("market", Holder::folder("/data/market")?));
+//!     .with_catalog(FolderCatalog::bound("market", Holder::folder("/data/market")?));
 //! let server = Server::bind_with("127.0.0.1:8080", ServerOptions::default())?;
 //! let endpoint = Arc::new(service).route(&server, "/xmla")?;
 //! println!("serving XMLA at {endpoint}");

@@ -479,12 +479,12 @@ fn land(table: &mut Holder, books: Vec<BookEvent>) -> Result<()> {
 /// `decimal(20, 0)` - and every read casts the rows back onto the row field.
 #[cfg(feature = "iceberg")]
 fn prepared(location: &str) -> Result<bool> {
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec};
 
     if !resource(location)?.is_container() {
         return Ok(false);
     }
-    if Table::locate(location::folder(location)?)?.is_some() {
+    if IcebergTable::locate(location::folder(location)?)?.is_some() {
         return Ok(false);
     }
     if location::folder(location)?
@@ -494,7 +494,7 @@ fn prepared(location: &str) -> Result<bool> {
     {
         return Ok(false);
     }
-    Table::create(
+    IcebergTable::create(
         location::folder(location)?,
         FormatVersion::V2,
         MarketData::field()?.into_scheme_compat(&Scheme::ICEBERG)?,

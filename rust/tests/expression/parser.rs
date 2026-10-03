@@ -129,6 +129,94 @@ mod grammar {
     }
 
     #[test]
+    fn an_unquoted_location_reads_after_a_word_that_takes_one() {
+        use yggdryl::Url;
+        use yggdryl::expression::{Expression, Location, Plan, Source, Write};
+
+        // A path after `from` is a URL, printed back in its quoted canonical
+        // spelling.
+        let plan: Plan = "select a from /tmp/lake/trades.csv where a > 1"
+            .parse()
+            .unwrap();
+        let Some(Source::Target(target)) = plan.source() else {
+            panic!("expected a target source, got {:?}", plan.source());
+        };
+        let expected = Url::from_location("/tmp/lake/trades.csv").unwrap();
+        assert_eq!(target.location(), &Location::Url(expected.clone()));
+        assert_eq!(
+            plan.to_string(),
+            format!("select a from '{expected}' where a > 1")
+        );
+        // Every opening the grammar reads, after every word that takes one.
+        for text in [
+            "./x.csv",
+            "../x.csv",
+            "~/x.csv",
+            "s3://bucket/key.parquet",
+            "https://host/a?b=c",
+            "C:\\data\\x.csv",
+            "C:/data/x.csv",
+        ] {
+            let url = Url::from_location(text).unwrap();
+            for verb in [
+                "insert into",
+                "append to",
+                "overwrite",
+                "upsert into",
+                "delete from",
+            ] {
+                let plan: Plan = format!("{verb} {text}").parse().unwrap();
+                let target = plan.write_section().and_then(Write::target).unwrap();
+                assert_eq!(
+                    target.location(),
+                    &Location::Url(url.clone()),
+                    "{verb} {text}"
+                );
+            }
+            for create in ["create", "create table", "create view"] {
+                let plan: Plan = format!("{create} {text} (id int64 not null)")
+                    .parse()
+                    .unwrap();
+                assert_eq!(
+                    plan.create_target().unwrap().location(),
+                    &Location::Url(url.clone()),
+                    "{create} {text}"
+                );
+            }
+            // A join's source is a target too, whatever the kind.
+            for join in ["join", "left join", "full outer join", "anti join"] {
+                let plan: Plan = format!("select * from lake.trades {join} {text} using (id)")
+                    .parse()
+                    .unwrap();
+                let Source::Target(target) = plan.joins()[0].source() else {
+                    panic!("expected a target join source in {join} {text}");
+                };
+                assert_eq!(
+                    target.location(),
+                    &Location::Url(url.clone()),
+                    "{join} {text}"
+                );
+            }
+        }
+        // `table` and `view` take a location only after `create`: anywhere
+        // else they may name a column, and a slash after one divides.
+        let plan: Plan = "select table / 2 from lake.trades".parse().unwrap();
+        assert_eq!(plan.to_string(), "select table / 2 from lake.trades");
+        // A location ends at whitespace, `,`, `;` or `)`.
+        let steps: Expression = "delete from /tmp/a.csv; select * from (select * from ./b.csv)"
+            .parse()
+            .unwrap();
+        assert_eq!(steps.steps().len(), 2);
+        // A slash after a column is a division, and a bare word a part.
+        let plan: Plan = "select price / size from lake.trades".parse().unwrap();
+        assert_eq!(plan.to_string(), "select price / size from lake.trades");
+        let Some(Source::Target(target)) = plan.source() else {
+            panic!("expected a target source, got {:?}", plan.source());
+        };
+        assert_eq!(target.location(), &Location::parts(["lake", "trades"]));
+    }
+
+    #[test]
     fn a_bracketed_location_part_reads_its_raw_text() {
         use yggdryl::expression::{Location, Plan, Source};
 

@@ -323,7 +323,7 @@ console.assert(file.rowSize === 2)
 console.assert(file.columnSize === 2)
 
 // An Iceberg table is a folder, and a folder is all it ever touches.
-const table = iceberg.Table.create(path.join(root, 'trades'), schema, ['venue'])
+const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema, ['venue'])
 table.append(rows)
 console.assert(table.currentSnapshot.operation === 'append')
 console.assert(table.dataFiles().length === 2)

@@ -5,8 +5,6 @@
 //! Analysis medium, its provider and its server. A test reaches the crate
 //! through `yggdryl::` and nothing else.
 
-#[path = "xmla/catalog.rs"]
-mod catalog;
 #[path = "xmla/dbtype.rs"]
 mod dbtype;
 #[path = "xmla/definitions.rs"]

@@ -186,7 +186,7 @@ import tempfile
 import pyarrow as pa
 
 from yggdryl import IOBase
-from yggdryl.iceberg import Table, assign_field_ids
+from yggdryl.iceberg import IcebergTable, assign_field_ids
 from yggdryl.logging import FileHandler, TerminalHandler
 
 schema = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("venue", pa.string())])
@@ -202,14 +202,14 @@ with tempfile.TemporaryDirectory() as folder:
     package.addHandler(handler)
     package.setLevel(logging.INFO)
 
-    Table.create(IOBase(root / "trades"), assign_field_ids(schema))
+    IcebergTable.create(IOBase(root / "trades"), assign_field_ids(schema))
     handler.flush()
     lines = location.read_text(encoding="utf-8").splitlines()
     assert any(line.startswith("INFO yggdryl.iceberg.table created iceberg table at") for line in lines)
 
     # A level changed now applies to the next record.
     package.setLevel(logging.ERROR)
-    Table.create(IOBase(root / "quiet"), assign_field_ids(schema))
+    IcebergTable.create(IOBase(root / "quiet"), assign_field_ids(schema))
     handler.flush()
     assert location.read_text(encoding="utf-8").splitlines() == lines
 

@@ -14,6 +14,7 @@ root traits, enums, and values
         │   charset ── decoded bytes for media and text
         │                         │
         ├── uri ──────────────────┘
+        ├── warehouse ── catalogs, namespaces and tables over holder and media
         ├── text
         ├── hashing: xxhash ──► txhash
         └── graph: element ──► event ──► iterator
@@ -28,14 +29,15 @@ Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs
 | Tab | Root files and folders |
 | --- | --- |
 | [Types](types/index.md) | `datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one file per type - `string.rs`, `bytes.rs`, `integer.rs`, `floating.rs`, `decimal.rs` with `int256.rs`, `boolean.rs`, `date.rs`, `time.rs`, `datetime.rs`, `duration.rs`, `interval.rs` with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs` with `wkb.rs`, `enums.rs` with the three enums `state.rs`, `side.rs` and `marketdatakind.rs`, `structure.rs`, `sequence.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `version.rs`, `code.rs` with the thirteen registered codes, `forex.rs` among them, `uri/datatype.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs`: `DataType`, `Field`, `Scalar`, the datatype families, protocol views, validation, and casting |
-| [Holder](holder/index.md) | `iobase.rs` + `iobase/`, the `io*.rs` roles, `holder/` (`Holder`, `Buffer`, buffering, counting), one folder per backend - `local/`, `fs/`, `zip/`, `s3/`: every `IOBase` implementation - `aws/`, who this process is to AWS: the credential chain, the shared files, the STS and IAM Identity Center exchanges and Signature Version 4 every S3 request signs with; `auth/`, what every identity provider shares - a secret that never renders, an expiring value leased and refreshed in time, an environment or a stand-in, a walk's report; and `xml/scanner.rs`, the scanner the small documents those APIs answer are read by |
+| [Holder](holder/index.md) | `iobase.rs` + `iobase/`, the `io*.rs` roles, `holder/` (`Holder`, `Buffer`, buffering, counting, and the `Catalog`, `Namespace` and `Table` variants holding a [warehouse](warehouse/index.md) object as the handle it is), one folder per backend - `local/`, `fs/`, `zip/`, `s3/`: every `IOBase` implementation - `aws/`, who this process is to AWS: the credential chain, the shared files, the STS and IAM Identity Center exchanges and Signature Version 4 every S3 request signs with; `auth/`, what every identity provider shares - a secret that never renders, an expiring value leased and refreshed in time, an environment or a stand-in, a walk's report; and `xml/scanner.rs`, the scanner the small documents those APIs answer are read by |
+| [Warehouse](warehouse/index.md) | `warehouse/`: the catalog, namespace and table abstraction - the traits `ObjectValue`, `NamespaceValue`, `CatalogValue`, `TableValue` and the enums `Object`, `Catalog`, `Namespace`, `Table`; `Properties`, the one ordered name/value bag a target's `with (...)` clause, `Holder::from_url` and every object read; the path intake `IntoObjectPath`; the lazy `Namespaces` and `Tables` views; `Warehouse` and the process's `SystemWarehouse` - with its generic implementations `MemoryCatalog`, `MemoryNamespace`, `FolderCatalog`, `FolderNamespace` and `MediaTable` |
 | [Media: compression](media/compression.md) | `codec.rs`, `coding/` (transparent coded handles), `gzip.rs`, `zlib.rs` (zlib and raw deflate), `zstd.rs` |
 | [Media: charsets](media/charsets.md) | `charset.rs` + `charset/` (UTF-16, the ISO 8859 and Windows code pages, transparent transcoded handles) and the three charsets with string leaves: `utf8.rs`, `ascii.rs`, `cp1252.rs` |
 | [Media](media/index.md) | `media_type.rs`, `mime_type.rs` and `media/` (record options, inference, magic, merge, partition) on the overview, and one folder per medium, each with its page - `ipc/`, `parquet/`, `avro/`, `csv/` (delimited text: CSV and TSV), `iceberg/`, `text/` (plain-text records), `xmla/` (XML for Analysis rowsets, and the provider serving them), `excel/` (Office Open XML workbooks: one worksheet as records, and the workbook, its sheets and cells for random access), and `http/wire.rs` for HTTP messages |
 | Media: [JSON](media/json.md), [YAML](media/yaml.md), [TOML](media/toml.md), [XML](media/xml.md) | `json/`, `toml/`, `yaml/`, `xml/`: structured `Scalar` codecs over the machinery in `text/`, a page each under [Media](media/index.md) |
 | [URI](uri/index.md) | `uri/`, `scheme.rs`: URI, URL, URN, ARN, path, glob, and partition syntax |
 | [Arrow](arrow/index.md) | `arrow/`: Arrow schema, scalar, array, batch, and reader boundaries |
-| [Expression](expression/index.md) | `expression/`: parsing, binding, row evaluation, Arrow evaluation, and pushdown |
+| [Expression](expression/index.md) | `expression/`: parsing, binding, row evaluation, Arrow evaluation, and pushdown; a target's `with (...)` clause is the warehouse's one `Properties` bag |
 | [Graph](graph/index.md) | `graph/element.rs`: the `Element` and `Event` traits - an element's `Uuid`, the identity it has elsewhere, its sources' UUIDs, an event's instant, state and place among the events of its instant - as signatures a value implements; `graph/market.rs` the `Market` and `Operation` traits - the instrument, the side, the price and the quantity, the stated bid and ask, the FX rates, then the operation's time in force, whether it trades and its identifiers and party ids - with the readings of an `Event` that is one of them provided on the traits themselves; `graph/operation.rs` the operation leaves - `Order`, `Quote`, `Execution` and their dated `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, one generic pair over a sealed `OperationKind` - and their book control, `graph/trade.rs` the `TradeEvent`, `graph/book.rs` the `BookEvent`, `SnapshotEvent` and the book fold, `graph/market_data.rs` the one `MarketData` enum over every leaf and `graph/kind.rs` its `MarketKind`, `graph/arrow.rs` the lifted Arrow row, `graph/view.rs` the six `MarketView` readings of it, each one `Plan`, `graph/candle.rs` the `Candle` a bucket of books folds into and the `CandleIterator` that folds them, `graph/serve.rs` the `BookService` that answers a market-data table as candles, books and audits over HTTP (the `http` feature; `yggdryl market serve` is its terminal), and `graph/iterator.rs` the one walk; the root `limit.rs` holds `Limit`, one price level of a book side, which a book states under `bidlimits` and `asklimits`, and the root `identifier.rs` holds `Identifier` and `Identifiers`, the sets a market element names its security (`securityids`), itself (`identifiers`) and its parties (`partyids`) by - each identifier a source, a type and a value, unique by its `IdKey` (`src:type`, the root `idkey.rs`), its words the `IdSource` and `IdType` of the root `idsource.rs` and `idtype.rs`; the root `isin_registry.rs` holds `IsinRegistry` and its row `IsinEntry`, what a lifecycle learns about instruments, one row per ISIN. |
 | [Hashing](hashing.md) | `digest.rs` (`Digest`, `DigestAlgorithm`, `Digester`), `hashing/` (the private stable-hash adapters), `xxhash/`: digest values, one-shot and resumable hashes, streams, handles, and row hashes; `txhash/`: an instant coupled with a digest - the sortable value, its instant intake, coupled columns, and the `DIGEST:time` holder |
 | [Logging](logging.md) | `logging/`: Python's `logging` owned by the core, behind the `log` facade - `Logger` and `get_logger`, `Level`, `Record`, `Formatter`, the `Handler` trait with `StreamHandler`, `NullHandler` and `FileHandler` over any `IOBase`, the `Host` a binding attaches its runtime's own logging with, `install`, `basic_config` and `shutdown`; `logging/warning.rs`, the deduplicated warnings the data doors raise |
@@ -99,7 +101,7 @@ project and nothing else.
 
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::holder::Buffer;
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
     use yggdryl::local::LocalFolder;
     use yggdryl::logging::{self, FileHandler, Formatter, Handler, Level};
     use yggdryl::{arrow, DataType, IOBase, StructType};
@@ -121,7 +123,7 @@ project and nothing else.
     let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-architecture-logging");
     let _ = std::fs::remove_dir_all(&path);
 
-    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), PartitionSpec::unpartitioned())?;
+    let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), PartitionSpec::unpartitioned())?;
     let batch = RecordBatch::try_new(schema.into_arrow_schema()?, vec![Arc::new(Int64Array::from(vec![1_i64, 2, 3]))])?;
     table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
@@ -150,7 +152,7 @@ project and nothing else.
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table, assign_field_ids
+    from yggdryl.iceberg import IcebergTable, assign_field_ids
 
     said: list[str] = []
 
@@ -166,7 +168,7 @@ project and nothing else.
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     with tempfile.TemporaryDirectory() as folder:
-        table = Table.create(IOBase(Path(folder) / "trades"), assign_field_ids(schema))
+        table = IcebergTable.create(IOBase(Path(folder) / "trades"), assign_field_ids(schema))
         table.append(pa.record_batch({"id": [1, 2, 3]}, schema=schema))
         assert sum(batch.num_rows for batch in table.scan()) == 3
 
@@ -196,7 +198,7 @@ project and nothing else.
     watcher.setLevel(logging.INFO)
 
     const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
-    const table = iceberg.Table.create(path.join(folder, 'trades'), schema, iceberg.PartitionSpec.unpartitioned())
+    const table = iceberg.IcebergTable.create(path.join(folder, 'trades'), schema, iceberg.PartitionSpec.unpartitioned())
     table.append(new arrow.Table({ id: arrow.vectorFromArray([1n, 2n, 3n], new arrow.Int64()) }))
     assert.equal(table.scan().intoTable().numRows, 3)
 

@@ -18,10 +18,12 @@ use yggdryl::http::{
 use yggdryl::media::RecordOptions;
 use yggdryl::soap::Envelope;
 use yggdryl::xmla::{
-    Catalog, Discover, Execute, PropertyList, Request, RequestType, Response, Service,
-    ServiceOptions, XmlaError,
+    Discover, Execute, PropertyList, Request, RequestType, Response, Service, ServiceOptions,
+    XmlaError,
 };
-use yggdryl::{DataType, IOBase, IOMedia, MimeType, Result, Scalar, StructType, Url};
+use yggdryl::{
+    DataType, FolderCatalog, IOBase, IOMedia, MimeType, Result, Scalar, StructType, Url,
+};
 
 /// A fresh catalog folder, named after `label`, holding `trades` with two
 /// rows.
@@ -76,10 +78,12 @@ fn running_with(
     service_options: ServiceOptions,
 ) -> (Server, Url, Arc<Service>) {
     let root = catalog_root(label);
-    let service = Arc::new(Service::new(service_options).with_catalog(Catalog::new(
-        "market",
-        Holder::folder(&root).expect("holds"),
-    )));
+    let service = Arc::new(
+        Service::new(service_options).with_catalog(FolderCatalog::bound(
+            "market",
+            Holder::folder(&root).expect("holds"),
+        )),
+    );
     let server = Server::bind_with("127.0.0.1:0", options).expect("a loopback port");
     let endpoint = Arc::clone(&service)
         .route(&server, "/xmla")
@@ -189,7 +193,7 @@ fn receive<R: BufRead>(reader: &mut R) -> (u16, Vec<(String, String)>, Vec<u8>) 
 fn route_answers_the_endpoint_url_and_refuses_a_path_with_a_query() {
     let root = catalog_root("route");
     let service = Arc::new(
-        Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
+        Service::new(ServiceOptions::new()).with_catalog(FolderCatalog::bound(
             "market",
             Holder::folder(&root).expect("holds"),
         )),
@@ -595,7 +599,7 @@ fn a_trace_writes_each_exchange_as_it_went_over_the_wire_and_the_request_replays
     ));
     let _ = std::fs::remove_dir_all(&trace);
     let service = Arc::new(
-        Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
+        Service::new(ServiceOptions::new()).with_catalog(FolderCatalog::bound(
             "market",
             Holder::folder(&root).expect("holds"),
         )),

@@ -80,6 +80,7 @@ everything it declares.
     cargo test -p yggdryl --all-features --test txhash
     cargo test -p yggdryl --all-features --test uri
     cargo test -p yggdryl --all-features --test value
+    cargo test -p yggdryl --all-features --test warehouse
     cargo test -p yggdryl --all-features --test xml
     cargo test -p yggdryl --all-features --test xmla
     cargo test -p yggdryl --all-features --test xxhash

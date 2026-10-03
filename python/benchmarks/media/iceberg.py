@@ -4,7 +4,7 @@ Run after ``maturin develop --release`` with::
 
     python benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
 
-The first rows time ``Catalog.append`` against a name nothing has written yet:
+The first rows time a catalogs ``tables.append`` against a name nothing has written yet:
 one call resolves the dotted name against the warehouse, creates the table
 from the reader's own schema, and commits the rows - data files, one
 manifest, one manifest list, and one metadata document. Each call targets a
@@ -57,7 +57,7 @@ import numpy as np
 import pyarrow as pa
 
 from yggdryl import IOBase
-from yggdryl.iceberg import Catalog, Table, assign_field_ids
+from yggdryl.iceberg import IcebergCatalog, IcebergTable, assign_field_ids
 
 ROW_COUNT = 65_536
 BATCH_SIZE = 8_192
@@ -83,8 +83,9 @@ BATCHES = tuple(
 TABLE = pa.Table.from_batches(BATCHES, schema=SCHEMA)
 
 ROOT = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-bench-"))
-CATALOG = Catalog(ROOT / "warehouse")
-_NAMES = (f"bench.t{index}" for index in itertools.count())
+# Tables directly under the warehouse: no namespace to create first.
+CATALOG = IcebergCatalog("bench", ROOT / "warehouse")
+_NAMES = (f"t{index}" for index in itertools.count())
 
 
 # The rows an Arrow holder carries, as the plain mappings the widened write
@@ -129,12 +130,12 @@ def _compared_table() -> pa.Table:
 
 def _append_fresh_table() -> object:
     """Create one table from the rows' own schema and commit one append."""
-    return CATALOG.append(next(_NAMES), TABLE).version
+    return CATALOG.tables.append(next(_NAMES), TABLE).version
 
 
 def _append_fresh_table_rows() -> object:
     """The same commit from plain mappings rather than an Arrow holder."""
-    return CATALOG.append(next(_NAMES), ROWS).version
+    return CATALOG.tables.append(next(_NAMES), ROWS).version
 
 
 def _measure(
@@ -214,7 +215,7 @@ def _against_pyiceberg(repeat: int) -> None:
     def ours(partition_by: list[str] | None) -> Callable[[], None]:
         def setup() -> None:
             folder = IOBase(root / "yggdryl" / f"t{next(counter)}")
-            held["ours"] = Table.create(folder, numbered, partition_by)
+            held["ours"] = IcebergTable.create(folder, numbered, partition_by)
 
         return setup
 
@@ -242,11 +243,11 @@ def _against_pyiceberg(repeat: int) -> None:
         location = pathlib.Path(written.location().removeprefix("file://"))
         metadata = written.metadata_location
         suffix = "" if spec is None else f" ({label.split(' by ')[0]})"
-        mine_table = Table.open(IOBase(location))
+        mine_table = IcebergTable(IOBase(location))
         their_table = StaticTable.from_metadata(metadata)
         projection = pa.schema([data.schema.field("id"), data.schema.field("price")])
         cases = [
-            ("open", lambda: Table.open(IOBase(location)), lambda: StaticTable.from_metadata(metadata)),
+            ("open", lambda: IcebergTable(IOBase(location)), lambda: StaticTable.from_metadata(metadata)),
             ("scan everything", lambda: mine_table.scan().read_all(), lambda: their_table.scan().to_arrow()),
             (
                 "scan symbol = 'AAPL'",
@@ -292,7 +293,7 @@ def _crate_transforms(repeat: int) -> None:
 
     def setup() -> None:
         folder = IOBase(root / "yggdryl-minutes" / f"t{next(counter)}")
-        held["table"] = Table.create(folder, numbered, ["minutes(ts, 15)"])
+        held["table"] = IcebergTable.create(folder, numbered, ["minutes(ts, 15)"])
 
     print()
     print(f"this crate alone, partitioned by minutes(ts, 15): {COMPARED_ROWS:,} rows")

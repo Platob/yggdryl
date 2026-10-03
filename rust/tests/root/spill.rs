@@ -494,22 +494,30 @@ mod internal {
         );
     }
 
-    /// The descriptors this process holds open on a spill file, read off
-    /// `/proc/self/fd`: the harness runs other tests on other threads, each
-    /// opening and closing files of its own, so only a descriptor naming a
-    /// spill file says anything about a spill.
+    /// The spill files this process holds open, read off `/proc/self/fd`.
+    ///
+    /// Only spill files count: the harness runs its other tests on threads
+    /// of this same process, and any of them may hold a file open meanwhile.
+    /// The count is the least of a few reads a millisecond apart, because
+    /// another test's spill holds its file only while it writes, where a
+    /// mapping that kept its file would hold it at every read.
     #[cfg(target_os = "linux")]
-    fn spill_descriptors() -> usize {
-        std::fs::read_dir("/proc/self/fd")
-            .expect("the process lists its descriptors")
-            .filter_map(|entry| std::fs::read_link(entry.ok()?.path()).ok())
-            .filter(|target| {
-                target
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with("yggdryl-spill-"))
+    fn open_spill_descriptors() -> usize {
+        let spill = format!("yggdryl-spill-{}-", std::process::id());
+        let count = || {
+            std::fs::read_dir("/proc/self/fd")
+                .expect("the process lists its descriptors")
+                .filter_map(|entry| std::fs::read_link(entry.ok()?.path()).ok())
+                .filter(|target| target.to_string_lossy().contains(&spill))
+                .count()
+        };
+        (0..20)
+            .map(|_| {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+                count()
             })
-            .count()
+            .min()
+            .unwrap_or_default()
     }
 
     /// A mapping holds the pages, never the file: the descriptor the spill
@@ -520,6 +528,7 @@ mod internal {
     #[test]
     fn a_live_mapping_holds_no_descriptor() {
         let array: ArrayRef = Arc::new(Int64Array::from((0..64_i64).collect::<Vec<_>>()));
+        let before = open_spill_descriptors();
         let held = (0..64)
             .map(|_| {
                 spill_array(&array, None)
@@ -527,19 +536,19 @@ mod internal {
                     .expect("the numbers have bytes")
             })
             .collect::<Vec<_>>();
-        // A descriptor kept per mapping is sixty-four of them here; another
-        // test spilling at this instant holds one for the length of its
-        // write at most.
-        let during = spill_descriptors();
-        assert!(
-            during < held.len(),
-            "{} live mappings hold {during} spill descriptors",
-            held.len()
+        let during = open_spill_descriptors();
+        assert_eq!(
+            during,
+            before,
+            "sixty-four live mappings held {} spill files open",
+            during.saturating_sub(before)
         );
         for (rebuilt, mapping) in &held {
             assert_eq!(rebuilt.len(), 64);
             assert!(mapping.len() >= 64 * 8, "the sixty-four values are mapped");
         }
+        drop(held);
+        assert_eq!(open_spill_descriptors(), before);
     }
 
     fn some(text: &str) -> Option<OsString> {
