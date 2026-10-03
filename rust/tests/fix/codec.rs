@@ -722,7 +722,7 @@ fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
 }
 
 #[test]
-fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
+fn a_bridge_frame_of_raw_bytes_reads_its_types_and_its_group_by_its_length() {
     let reader = reader();
     // One real bridge frame, byte for byte: a leading separator, `#`-prefixed
     // name keys, and one occurrence whose value packs its members behind the
@@ -1764,7 +1764,7 @@ fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
     // an occurrence, a member the occurrence already holds opens the next,
     // and a tag the group does not declare closes it - so the frame lands in
     // the shape a bridge's indexed keys would have built, with the numeric
-    // delimiter opening each Party while NoPartyIDs keeps the count.
+    // delimiter opening each Party, and the group's length is the count.
     let row =
         "8=FIX.4.4|35=D|55=AAPL|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|54=1|10=000|";
     let message = reader.sole_line(row.as_bytes()).unwrap();
@@ -1824,8 +1824,8 @@ fn a_counter_a_numeric_frame_states_twice_at_one_level_appends_to_its_group() {
     // A dictionary that does not nest one group inside another reads a
     // frame that does as two statements of the inner counter at one level.
     // Nothing is lost for it: the second counter appends to what the first
-    // gathered, and the miscount says the group holds more than one
-    // counter stated.
+    // gathered, and the group holds every occurrence that arrived - its
+    // length the count, whatever either counter stated.
     let row = "8=FIX.4.4|35=x|320=R1|146=2|55=AAPL|454=1|455=US0378331005|456=4|55=MSFT|454=2|455=US5949181045|456=4|455=MSFT.O|456=5|10=0|";
     let message = reader.sole_line(row.as_bytes()).unwrap();
     let alternates = super::sequence(message.by_name("secaltids").unwrap());

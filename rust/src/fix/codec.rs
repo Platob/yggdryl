@@ -2570,7 +2570,7 @@ impl FixCodec {
     /// Exact republications and flagged FIX retransmissions are removed by a
     /// delivery set over session, sequence, original time and the recorded
     /// canonical content code. That code survives a semantic row round trip -
-    /// a group read back as an empty list beside no stated count included,
+    /// a group column read back as `[]` where the row held null included,
     /// which states the group absent as the parse did - so this walk and
     /// [`Self::lifecycle_arrow_reader`] remove the same deliveries. A row
     /// without a complete session header keeps the stricter event identity,

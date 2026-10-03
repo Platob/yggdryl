@@ -1090,9 +1090,9 @@ fn lifecycle_over_rows_reading_an_absent_group_back_empty_yields_the_identities_
     // walk, so settled again from its content - and once framed by the next
     // session, whose row keeps the content code the parse recorded. A table
     // storing a null list as an empty one reads every absent group back as
-    // `[]` beside a null count - each party's `NoPartySubIDs(802)`, and at
-    // the root every group a message states none of; a list holding nothing
-    // beside no stated count is the group absent, so the walk over the rows
+    // `[]` - each party's `partysubids`, and at the root every group a
+    // message states none of; a list read back empty where the row held null
+    // is the group absent, so the walk over the rows
     // read back yields, message for message, the identity and the content
     // code the walk over the rows written yields.
     let codec = codec();
@@ -1143,10 +1143,10 @@ fn a_session_event_merged_from_rows_reading_an_absent_group_back_empty_writes_no
     // Two observations of one session event, each stating a party with no
     // `NoPartySubIDs(802)`, differing in what the merge fills, so their
     // content is merged. A table storing a null list as an empty one reads
-    // the absent subgroup, and every absent group at the root, back as `[]`
-    // beside a null count, and the merge writes no count for a group holding
-    // no occurrence that no observation counted: the merge over the rows
-    // read back is the merge over the rows written.
+    // the absent subgroup, and every absent group at the root, back as `[]`,
+    // and the merge writes no count for a group holding no occurrence that no
+    // observation stated: the merge over the rows read back is the merge over
+    // the rows written.
     let codec = codec().with_capture_names(["msgsessionid", "msgctxid", "msgseqnum"]);
     let captured = |body: &[u8], recdunix: i64| {
         let line = TextLine::from_bytes(

@@ -838,8 +838,9 @@ pub struct FixMsg {
     /// row read back, and a write of the cell, make it the row's word.
     detected_fx: u8,
     /// What the message states that its reading could not take as it
-    /// stands: the parse's refusals first - a value that would not type, a
-    /// counter disagreeing with its group - then what a settle dropped,
+    /// stands: the parse's refusals first - a value that would not type, an
+    /// alias stating another value than the field it lost to - then what a
+    /// settle dropped,
     /// rebuilt by every settle behind the parse's and folded as a union when
     /// messages merge. Never a column, never a digest input.
     anomalies: Vec<super::FixAnomaly>,
@@ -1737,7 +1738,8 @@ impl FixMsg {
 
     /// What the message states that its reading could not take as it
     /// stands, in arrival order: the parse's refusals - a value that would
-    /// not type, a counter disagreeing with its group - then what the last
+    /// not type, an alias stating another value than the field it lost to -
+    /// then what the last
     /// settle dropped. Read off the message beside the row: never a column,
     /// never part of the code it digests to. Two statements of one message
     /// merge them as a union, the reference's first.

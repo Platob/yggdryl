@@ -1221,7 +1221,7 @@ A handle works without `open`; opening moves materialization to a known point an
 
 `clear` empties and keeps the resource; `remove` deletes it without a probe, treats absence as success, and refuses a container with children unless `recursive`. A wrapping handle removes what it wraps, cache included.
 
-| Call | Leaf | Container | [Iceberg](../media/iceberg.md) `Table` |
+| Call | Leaf | Container | [Iceberg](../media/iceberg.md) `IcebergTable` |
 | --- | --- | --- | --- |
 | `clear` | size `0` | loses every child recursively | one snapshot with no data files; schema, properties, history stay |
 | `remove` | deleted | deleted; refused while children remain, unless `recursive` | the whole location, metadata and data files |

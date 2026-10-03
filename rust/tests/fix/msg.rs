@@ -1339,8 +1339,8 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     assert_eq!(held.get_execunix(), Some(200));
 }
 
-/// The fixed row projecting the dictionary's `Parties(453)` group, its
-/// `NoPartyIDs` counter beside it, in place of the `partyids` identifiers:
+/// The fixed row projecting the dictionary's `Parties(453)` group - its list
+/// alone, its length the count - in place of the `partyids` identifiers:
 /// the shape of a row that holds the group as a column, which the fixed row
 /// itself keeps among its entries instead.
 fn fixed_with_party_group(registry: &FixRegistry) -> Field {

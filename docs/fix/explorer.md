@@ -24,7 +24,7 @@ A Serie group and its scalar count have separate definitions: `NoPartyIDs` is th
 | Messages, a subset of components | 181 | 181 |
 | Code sets, read by 2,027 fields | 735 | 738 |
 
-The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketdatakind`, `isincode`, `forexcode`, `figicode`, `execunix`, `recdunix`, the session-event key `msgsesseventid`, a bridge's originating plugin and conversation among them - and its `metadata` Map group. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset`, `marketdatatypecodeset` and `statecodeset` make the live code-set count 738. The native fixed capture schema has 152 columns.
+The live additions are the crate's 30 held scalar fields - `srcuuids`, `marketdatakind`, `isincode`, `forexcode`, `figicode`, `execunix`, `recdunix`, the session-event key `msgsesseventid`, a bridge's originating plugin and conversation among them - and its `metadata` Map group. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset`, `marketdatatypecodeset` and `statecodeset` make the live code-set count 738. The native fixed capture schema has 150 columns.
 
 === "Rust"
 
@@ -134,7 +134,7 @@ A field's detail panel names the code set it reads by and opens that one set's m
 
 ## The capture row
 
-The [Capture](capture.md#find-a-column) page searches the 152 fixed columns projected by the native schema, in the [nine bands](capture.md#the-columns-are-the-folded-names) they are ordered in. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar` and entries.
+The [Capture](capture.md#find-a-column) page searches the 150 fixed columns projected by the native schema, in the [nine bands](capture.md#the-columns-are-the-folded-names) they are ordered in. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar` and entries.
 
 ## Where it came from
 
