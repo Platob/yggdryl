@@ -7530,7 +7530,7 @@ pub enum Location
   pub const fn is_descending(&self) -> bool
   pub const fn is_nulls_first(&self) -> bool
   impl FromStr for Ordering  (one `order by` key as the grammar spells it: a term, then an optional `asc` or `desc`, then an optional `nulls first` or `nulls last` - `price desc nulls first`; Err = Error)
-  pub fn from_scalar(value: &crate::Scalar) -> Result<Self>  (the key text, or a record {term, descending, nulls_first} with the two flags optional; what the IntoOrderings scalar forms read each entry by)
+  pub fn from_scalar(value: &crate::Scalar) -> Result<Self>  (the key text, or a record {term, descending, nulls_first} with the two flags optional, each a boolean or the text the boolean table reads; what the IntoOrderings scalar forms read each entry by)
   pub trait IntoOrderings  (the `order by` keys a value stands for, most significant first: an Ordering, a Vec, slice or array of them, a key list as one text - "venue, price desc nulls first" - a Vec, slice or array of key texts, a Selector whose projections are the keys ascending, and a Scalar that is a text, a run of texts or of key records; what every sort_by verb takes)
   fn into_orderings(self) -> Result<Vec<Ordering>>  (the parse error for text that is not a list of keys; a scalar of none of those shapes refused naming the shape)
   pub struct Join  (one `join` clause: the kind, the source joined - a target or a nested plan - and the keys; Clone, Debug, Eq/Ord/Hash, serde `{how, source, keys}`, Display `<how> join <source> using (a, b)` where every key is one bare column on both sides, else `on l = r and ...`, `inner` always written)
