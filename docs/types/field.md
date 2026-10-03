@@ -161,6 +161,47 @@ Each lookup exists by position, by path, or either:
 
 `DataType` answers the same calls in all three languages. `index_of`, the position of the child with an exact name, is `Field`'s alone - Rust `Field::index_of`, Python `index_of`, JavaScript `indexOf` - and no `DataType` answers it. The child count is Rust `field_len` on both, Python `len()` on both, JavaScript `fieldLen` on a `Field` and `length` on a `DataType`; the children are Rust `Field::fields` and `DataType::as_fields`, Python iteration over a `DataType`, JavaScript `values()`. Rust's `DataType::named_field(name, nullable)` builds a `Field` rather than finding one. The [`FIELD:`](protocol.md) view is `as_field_properties`, `field_properties`, or `fieldProperties`.
 
+## As a struct
+
+`into_struct_field` answers the root a column crosses into a table under, the field's side of [`DataType::into_struct_type`](datatype.md#as-a-struct). A struct field is answered as it is, name, nullability and metadata kept - so a nullable struct stays nullable and `validate_struct_root` still refuses it. Any other field becomes the one child, unchanged, of a required struct named `media::DEFAULT_ROOT_NAME` (`row`) that carries no metadata. The wrap's refusals are the datatype's, naming this field where the datatype names `$`. `Field::is_struct` is `dtype().is_struct()`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::media::DEFAULT_ROOT_NAME;
+    use yggdryl::{DataType, StructType};
+
+    // A leaf column is the one child of a required `row`, kept as it was.
+    let mut venue = DataType::utf8().nullable_field("venue");
+    venue.set_metadata([("comment", "where it trades")])?;
+    let root = venue.into_struct_field()?;
+    root.validate_struct_root()?;
+    assert_eq!(root.name(), DEFAULT_ROOT_NAME);
+    assert_eq!(DEFAULT_ROOT_NAME, "row");
+    assert!(root.is_metadata_empty());
+    assert_eq!(root.field_len(), 1);
+    assert_eq!(root.get_field_at(0), Some(&venue));
+
+    // A struct field is answered as it is, at any nullability.
+    let line = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+        .nullable_field("line");
+    let itself = line.into_struct_field()?;
+    assert_eq!(itself, line);
+    assert!(itself.validate_struct_root().is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only: no binding reaches Field::into_struct_field.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only: no binding reaches Field::into_struct_field.
+    ```
+
 ## Flattening and expanding
 
 `unnest_fields` flattens struct nesting to dotted leaf paths; `explode_fields` swaps each collection child for what it holds.
@@ -638,11 +679,11 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 
 | | typed value | struct root |
 | --- | --- | --- |
-| Rust | `TypedField<K>::into_field(self)` | `StructField::into_struct_field(self)` |
+| Rust | `TypedField<K>::into_field(self)` | [`Field::into_struct_field(&self)`](#as-a-struct) |
 | Python | `field(value, name=None)` | cached `Class.into_field() -> StructField`, installed by `@scalar` |
 | JavaScript | `intoField(value, name = null)` | static getter `Class.intoStructField`, memoized by `intoField` |
 
-No name, `None`/`null`, or the existing name returns the cached native value; another name returns a renamed clone. The root must be a non-null struct field.
+No name, `None`/`null`, or the existing name returns the cached native value; another name returns a renamed clone. A binding's root must be a non-null struct field; Rust's answers a struct field as it is and wraps any other.
 
 Python spells the class accessor `into_field` because a `@scalar` class converts only as a struct root and has no leaf form to tell it apart from. On a *value* Python keeps the pair the other two rows have: [`Scalar.into_field`](scalar.md) for the leaf and `Scalar.into_struct_field` for the root.
 
@@ -951,7 +992,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
 ## Edges
 
-- nullable root -> `validate_struct_root` refuses.
+- nullable root -> `validate_struct_root` refuses; `into_struct_field` answers a nullable struct as it is, so it still does.
 - Python `field(x, idx=..., path=...)` naming more than one -> refused.
 - an optional lookup -> `Option` in Rust, `None` in Python, `null` in JavaScript.
 - `unnest_fields` -> a serie or map stays one leaf column; a leaf under a nullable ancestor is nullable.
@@ -993,7 +1034,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
     ```bash
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test expression -- path::nested
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test metadata -- validation::generic
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- boolean bytes::fields decimal::fields diff::comparison field::arrow field::generic field::nested floating integer mapping::nested merge::nested metadata::generic parser::generic protocol::generic protocol::nested serde::generic serde::schemas temporal::fields typed
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- boolean bytes::fields decimal::fields diff::comparison field::arrow field::generic field::nested floating integer mapping::nested merge::nested metadata::generic parser::generic protocol::generic protocol::nested serde::generic serde::schemas structure::struct_pair temporal::fields typed
     cargo test --manifest-path rust/Cargo.toml -p yggdryl --doc -- Field::apply_arrow
     cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- diff::internal merge::internal
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/field_'
@@ -1025,7 +1066,7 @@ Rust times both consuming typed accessors, construction outside the timer; the b
 | runtime operation | estimate |
 | --- | ---: |
 | Rust `TypedField::into_field` | 41.5 ns |
-| Rust `StructField::into_struct_field` | 34.7 ns |
+| Rust `StructField::into_field` | 34.7 ns |
 | Python cached `Class.into_field()` | 677 ns |
 | Python global `field(Class)` | 1.27 us |
 | Python renamed `field(Class, name=...)` | 9.26 us |

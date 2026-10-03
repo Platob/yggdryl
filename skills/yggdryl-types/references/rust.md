@@ -180,6 +180,46 @@ assert_eq!(row.len(), 2);
 assert!(Scalar::from_struct([("id", Scalar::from(1_i64)), ("id", Scalar::from(2_i64))]).is_err());
 ```
 
+## Wrap a non-record as a record (Rust only)
+
+`into_struct_type`, `into_struct_field` and `into_struct_scalar` answer a
+struct as it is and wrap anything else as the one child of a struct: the
+datatype under a nullable `value`, the field unchanged under a required `row`,
+the value as `{value: ..}`. `inferred_record_field` is the root a value with
+no schema is a record under. Contract and refusals:
+[DataType](https://platob.github.io/yggdryl/types/datatype/#as-a-struct),
+[Field](https://platob.github.io/yggdryl/types/field/#as-a-struct),
+[Scalar](https://platob.github.io/yggdryl/types/scalar/#as-a-struct).
+
+```rust
+use yggdryl::media::{DEFAULT_ROOT_NAME, DEFAULT_VALUE_NAME};
+use yggdryl::{DataType, Scalar};
+
+// A datatype: itself when a struct, else struct<value: self>, the child nullable.
+let wrapped = DataType::Int64.into_struct_type()?;
+assert!(wrapped.is_struct());
+assert!(wrapped.as_fields().expect("a struct")[0].is_nullable());
+assert_eq!(wrapped.into_struct_type()?, wrapped);
+
+// A field: the required `row` root over the field unchanged.
+let venue = DataType::utf8().nullable_field("venue");
+let root = venue.into_struct_field()?;
+root.validate_struct_root()?;
+assert_eq!(root.name(), DEFAULT_ROOT_NAME);
+assert_eq!(root.get_field_at(0), Some(&venue));
+
+// A value: `{value: self}`, which the wrapped datatype canonicalizes.
+let five = Scalar::from(5_i64).into_struct_scalar();
+assert_eq!(five, Scalar::from_struct([(DEFAULT_VALUE_NAME, Scalar::from(5_i64))])?);
+assert_eq!(wrapped.scalar(five)?, Scalar::from_sequence([Scalar::from(5_i64)]));
+
+// No schema: the root a value is a record under, its leaf child required.
+let inferred = Scalar::from(5_i64).inferred_record_field()?;
+assert_eq!(inferred.name(), DEFAULT_ROOT_NAME);
+let child = inferred.get_field_at(0).expect("one child");
+assert_eq!((child.name(), child.is_nullable()), (DEFAULT_VALUE_NAME, false));
+```
+
 ## Borrow a typed row or value (Rust only)
 
 `FieldRecord` pairs one borrowed struct field with one `FieldScalar` per

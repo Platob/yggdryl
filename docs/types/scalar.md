@@ -19,7 +19,7 @@
 | Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
 | Families | a family is the range of `DataTypeId` bytes its `DataTypeKind` owns, not a type: `family()` is the kind whose range `id()` is in, and `is_integer`, `is_decimal`, `is_temporal`, `is_code`, `is_enum`, `is_number` are range checks; the value is the leaf its variant holds ([Families](#families)) |
 | Identity | total equality, ordering, hash, cross-width: `Int32(7)` is `UInt8(7)`, `Float32(1.5)` is `Float64(1.5)`, `Decimal32(1250, 2)` is `Decimal256(125, 1)`; kinds stay apart, `Int32(1)` is not `Float64(1.0)` |
-| Bindings | `yggdryl.enums`, `enums`; `family` and `id` on every `Scalar`; `FieldScalar`, `DataTypeKind::range`/`contains`, `DataTypeId::temporal_family` and the `wkb` reader Rust only |
+| Bindings | `yggdryl.enums`, `enums`; `family` and `id` on every `Scalar`; `FieldScalar`, `DataTypeKind::range`/`contains`, `DataTypeId::temporal_family`, [`into_struct_scalar`](#as-a-struct), [`inferred_record_field`](#inferred-fields) and the `wkb` reader Rust only |
 
 ## Use
 
@@ -427,7 +427,91 @@ Without a schema, `Scalar` exposes the inferred `Field`: `value`, `item`, or `ro
     assert.equal(Scalar.from([{ id: 1 }]).intoStructField().name, 'row')
     ```
 
+`inferred_record_field` answers the one non-null struct root any value is a record under. Rows are `inferred_struct_field`'s, refusals included; any other value is its `inferred_scalar_field` taken through [`Field::into_struct_field`](field.md#as-a-struct) and named `row` - a named record its own struct, a leaf the `value` child of one, required unless the value is null. A sequence is always rows, so a sequence of leaves is refused as positional rows rather than wrapped.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scalar, StructType};
+
+    // A leaf is the `value` child of a required `row`; present, so required.
+    assert_eq!(
+        Scalar::from(1_i64).inferred_record_field()?,
+        DataType::from(StructType::from_fields([DataType::Int64.required_field("value")])?)
+            .required_field("row"),
+    );
+    // A null names a nullable Null child.
+    assert_eq!(
+        Scalar::Null.inferred_record_field()?,
+        DataType::from(StructType::from_fields([Field::new("value", DataType::Null, true)])?)
+            .required_field("row"),
+    );
+
+    // One named record is its own required `row`.
+    let record = Scalar::from_struct([("id", Scalar::from(1_i64))])?;
+    assert_eq!(
+        record.inferred_record_field()?,
+        DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+            .required_field("row"),
+    );
+
+    // Rows answer as the struct inference does, and refuse as it does.
+    let rows = Scalar::from_sequence([record]);
+    assert_eq!(rows.inferred_record_field()?, rows.inferred_struct_field()?);
+    assert!(Scalar::from_sequence([Scalar::from(1_i64)]).inferred_record_field().is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only: no binding reaches Scalar::inferred_record_field.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only: no binding reaches Scalar::inferred_record_field.
+    ```
+
 See [Field](field.md), [Serie: one row](serie.md#arrow-one-row), and [Structured documents](../media/json.md).
+
+## As a struct
+
+`into_struct_scalar` is the value's side of [`DataType::into_struct_type`](datatype.md#as-a-struct), and it is infallible: a `Scalar::Struct` is answered as it is, and any other value - a null included - becomes the one-entry record `{value: self}`, the named input the wrapped datatype's `scalar` canonicalizes into a one-cell row. Only a `Scalar::Struct` answers itself: a canonical row is an ordered `Scalar::Serie`, and it wraps like any other value.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Scalar};
+
+    let five = Scalar::from(5_i64).into_struct_scalar();
+    assert_eq!(five, Scalar::from_struct([("value", Scalar::from(5_i64))])?);
+    assert_eq!(Scalar::Null.into_struct_scalar(), Scalar::from_struct([("value", Scalar::Null)])?);
+
+    // A named record is answered as it is.
+    let record = Scalar::from_struct([("id", Scalar::from(1_i64))])?;
+    assert_eq!(record.into_struct_scalar(), record);
+
+    // The wrapped datatype canonicalizes the wrapped value into a one-cell row.
+    let row = DataType::Int64.into_struct_type()?.scalar(five)?;
+    assert_eq!(row, Scalar::from_sequence([Scalar::from(5_i64)]));
+
+    // A canonical row is a sequence, not a record, so it wraps too.
+    let wrapped = row.into_struct_scalar();
+    assert_eq!(wrapped, Scalar::from_struct([("value", row)])?);
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only: no binding reaches Scalar::into_struct_scalar.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only: no binding reaches Scalar::into_struct_scalar.
+    ```
 
 ## Edges
 
@@ -454,6 +538,8 @@ See [Field](field.md), [Serie: one row](serie.md#arrow-one-row), and [Structured
 - [Code](codes/index.md) bases in `yggdryl.enums` -> Python only: the fixed US-ASCII widths `fixed_ascii(width)` builds, the four registered code bases `Country`, `Ccy`, `Mic`, `Cfi` and the vocabularies declared over them, `COUNTRY`, `CCY`, `MIC`, `CFI`, building the shared `StringEnum`.
 - Field inference -> `Scalar.into_field` in Python, beside the `into_field` a `@scalar` class caches for its own struct root; no binding reimplements it.
 - Named record rows -> a non-null Struct root named `row`.
+- A sequence of leaves into `inferred_record_field` -> refused as positional rows, never wrapped as `value`.
+- A canonical row into `into_struct_scalar` -> `{value: row}`: only a `Scalar::Struct` answers itself.
 - One row crosses Arrow as a one-row column: `Serie::from_scalars(field, [value])` lays it out and `Serie::from_arrow_array(Some(&field), array, options)?.scalar(0)` reads it back ([Serie: one row](serie.md#arrow-one-row)); a `FieldScalar` has no Arrow door of its own.
 
 ## Commands
@@ -463,10 +549,12 @@ See [Field](field.md), [Serie: one row](serie.md#arrow-one-row), and [Structured
     ```bash
     cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- scalar::internal arithmetic decimal::internal::reading
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test mime_type -- registry::mime
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- boolean datatype_id datatype_kind::names date::temporal datetime::temporal default::scalars duration::temporal edge_algorithm enumeration interval::temporal iokind::enums iomode::enums lib::enums media_type::vocabulary mime_type::mime parser::aliases protocol::enums scalar scheme::vocabulary temporal::datatypes temporal::fields temporal::scalars time::temporal time_unit::enums
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- boolean datatype_id datatype_kind::names date::temporal datetime::temporal default::scalars duration::temporal edge_algorithm enumeration interval::temporal iokind::enums iomode::enums lib::enums media_type::vocabulary mime_type::mime parser::aliases protocol::enums scalar scheme::vocabulary structure::struct_pair temporal::datatypes temporal::fields temporal::scalars time::temporal time_unit::enums
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test text -- format::mime
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test media -- inference::records
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(stable_hash_|from_float32|family_constructors|as_|temporal_|enum_|infer_|record_field_update|json_|checked_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^(enum_accessors|mime_parse|media_infer)/'
+    cargo bench --manifest-path rust/Cargo.toml --bench types -- '^typed/struct/into_struct_scalar'
     ```
 
 === "Python"

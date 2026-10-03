@@ -800,6 +800,7 @@ retires one regenerates it ([Before you push](#before-you-push)).
 | `as_<noun>` | borrowed, allocation-free view (`as_int64`, `as_serie`, `as_window`) |
 | `as_<state>` | a participle - `as_sorted`, `as_unique`, `as_reversed`, `as_taken`, `as_filtered` - brings `self` into that state in place and answers `Result<&mut Self>`, so calls chain; it copies nothing it can transform where it stands (a uniquely held buffer is rewritten, a shared one copied once by `Arc::make_mut`), and a refusal leaves `self` as it was |
 | `into_<state>` | a new value in that state, `self` untouched (`into_sorted`, `into_unique`, `into_reversed`, `into_taken`, `into_filtered`); the `into_*` rule above, where the representation is the same type in another state |
+| `into_struct_<root>` | self when already a struct, else the one-child wrap: `DataType::into_struct_type`, `Field::into_struct_field`, `Scalar::into_struct_scalar` |
 | `is_*` / `has_*` | side-effect-free predicate |
 | `get*` | borrowed lookup; `get_mut` only where validation/caches cannot be bypassed |
 | `set_*` | validated in-place update; failure leaves self unchanged |

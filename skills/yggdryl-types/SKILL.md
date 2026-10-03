@@ -36,6 +36,8 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | a schema | `DataType::from(StructType::from_fields([..])?).required_field("row")` | `yggdryl.struct("row", [..], nullable=False)` | `fields.struct('row', [..], { nullable: false })` |
 | schema from a class | `StructType` + typed leaves (`Int64Field::unit`) | `@scalar` class, `Class.into_field()`, `field(obj)` | `static get intoStructField()`, `intoField(Class)` |
 | check a schema root | `root.validate_struct_root()?` | `root.validate_struct_root()` | no `validateStructRoot`: check `f.dtype.id === 'struct' && !f.nullable` (only `intoField(Class)` checks a class's `intoStructField`) |
+| a non-record as a record (a struct answers itself) | `dtype.is_struct()`; `dtype.into_struct_type()?` (`struct<value: ..>`, the child nullable), `field.into_struct_field()?` (a required `row` over the field unchanged), `value.into_struct_scalar()` (`{value: ..}`) | Rust only | Rust only |
+| the record root of any value, no schema | `value.inferred_record_field()?`: rows as `inferred_struct_field`, any other value wrapped under `row` | Rust only (`Scalar.into_struct_field()` is the rows half) | Rust only (`intoStructField()` is the rows half) |
 | a value under a type | `field.scalar(v)?`, `dtype.scalar(v)?` | `field.scalar(v)`, `dtype.scalar(v)` | `field.scalar(v)`, `dtype.scalar(v)` |
 | infer from a host value | `Scalar::from(7_i64)`, `Scalar::from_struct([..])?` | `Scalar.from_(v)`, `Scalar.from_struct({..})` | `Scalar.from(v)` |
 | back to host | `as_i64()`, `as_str()`, `as_decimal()`, ... | `s.as_py()` | `s.asJs()` |
@@ -224,6 +226,10 @@ string and byte leaves, the legacy `list` words - is in
   field (crossed as IPC, so `c: Utf8` not-null under `yggdryl.ccy` reads back
   as a required `ccy`), a native value, or text; any other object is a
   `TypeError`, never stringified.
+- Python's `Scalar.into_struct_field()` and JavaScript's `intoStructField()` are
+  Rust's `Scalar::inferred_struct_field` (named rows to their root), not
+  `Field::into_struct_field` (any field wrapped as a record root), which no
+  binding reaches.
 - Python has no `DataType.decimal128`/`DataType.index_of`: exact decimal widths
   are field factories (`yggdryl.decimal128(name, p, s)`) and child positions
   are `Field.index_of`. JavaScript has no `DataType.decimal`.
