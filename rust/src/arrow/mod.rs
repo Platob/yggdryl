@@ -18,6 +18,7 @@ mod extension;
 pub(crate) mod rows;
 pub mod size;
 
+pub(crate) use size::sliced_size;
 pub use size::{array_memory_size, memory_size, scalar_memory_size};
 
 /// Arrow Schema metadata carrying dictionary IDs across the C Data Interface.

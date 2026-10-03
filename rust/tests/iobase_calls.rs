@@ -769,7 +769,7 @@ mod records {
         let read = "pstream_bytes=1 url=1 media_type=3 is_container=2 parent=1";
         costs("ipc: a read drained", &calls, read, || {
             let rows: usize = handle
-                .read_arrow(None)
+                .read_serie(None)
                 .expect("a reader")
                 .map(|batch| batch.expect("a batch").len())
                 .sum();
@@ -779,7 +779,7 @@ mod records {
             let mut windows = 0;
             let mut rows = 0;
             for window in handle
-                .read_arrow(None)
+                .read_serie(None)
                 .expect("a reader")
                 .window_by("venue", true)
                 .expect("windows")

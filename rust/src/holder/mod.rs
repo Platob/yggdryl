@@ -863,11 +863,11 @@ impl crate::IOMedia for Holder {
 
     /// Forwarded, because a handle can answer its rows other than through
     /// its bytes - an HTTP request walks the pages of a paginated document.
-    fn read_arrow(
+    fn read_serie(
         &self,
         options: Option<&crate::media::RecordOptions>,
     ) -> Result<crate::SerieReader> {
-        crate::IOMedia::read_arrow(self.as_media(), options)
+        crate::IOMedia::read_serie(self.as_media(), options)
     }
 
     fn overwrite_arrow_reader(

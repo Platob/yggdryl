@@ -90,6 +90,8 @@ everything it declares.
     cargo test -p yggdryl --all-features --test benchmark_mode  # every benchmark at its smoke corpus
     cargo test -p yggdryl --all-features --test docs_index      # the landing-page example
     cargo test -p yggdryl --all-features --test interop         # the exchanges with an outside implementation
+    cargo test -p yggdryl --all-features --test spill_doors     # the doors that settle under the process spill bound, in a process of their own
+    cargo test -p yggdryl --all-features --test scale_ulbridge  # the streamed capture path into Iceberg, three copies of the capture
     ```
 
 === "Python"
@@ -107,6 +109,15 @@ everything it declares.
     node --test "node/tests/text/*.test.js"      # one source folder
     npm test --prefix node                       # the whole binding, and `tsc --noEmit`
     ```
+
+## The capture path at scale
+
+```bash
+YGGDRYL_SCALE_BYTES=21474836480 cargo test --release -p yggdryl \
+    --test scale_ulbridge --features iceberg -- --ignored --nocapture
+```
+
+`rust/tests/scale_ulbridge.rs` streams a ULBridge capture of any size - the 144 lines of `rust/tests/fix/ulbridge.log` repeated, every clock and identifier stepped per copy, written through the crate's own Zstandard encoder - off disk, through the FIX parse, the lifecycle and the `marketdata` rows, into an Iceberg table, and asserts that the process's `RssAnon` stays where it stood a quarter of the way in. The ordinary pass runs three copies; the scale run is `#[ignore]`d and a no-op printing `SKIPPED` unless `YGGDRYL_SCALE_BYTES` names the uncompressed size to generate, so no CI job runs it. `YGGDRYL_SCALE_STAGE` (`lines`, `parse`, `lifecycle`, `market`, `write`) ends the path early to put a growth on the stage that owns it, and `YGGDRYL_SCALE_FOLDER` is where the input and the table are written.
 
 ## The documentation is tested too
 
@@ -190,6 +201,7 @@ A skipped half fails its driver, so a skipped exchange never reads as a pass.
 | `rust/tests/root/<name>.rs` | The file `rust/src/<name>.rs` holds, pinned; a folder's own `mod.rs` is pinned by `mod_.rs` |
 | `rust/tests/support/` | Fixtures several targets declare - a counting allocator, an in-process S3 |
 | `rust/tests/allocations.rs`, `iobase_calls.rs`, `benchmark_mode.rs`, `docs_index.rs`, `interop/` | What is pinned as a cost or an exchange rather than as a file |
+| `rust/tests/spill_doors.rs`, `scale_ulbridge.rs` | What must own its process: the spill doors install the process spill bound before anything reads it, and the scale run measures the process's `RssAnon` while a ULBridge capture streams from a `.log.zst` into an Iceberg table - three copies in the ordinary loop, the scale run `#[ignore]`d and a no-op printing `SKIPPED` unless `YGGDRYL_SCALE_BYTES` names the size to generate |
 | `python/tests/**/test_<name>.py` | The mirror of `python/yggdryl/` and `python/src/`, which share one shape |
 | `node/tests/**/<name>.test.js` | The mirror of `node/src/` and the JavaScript beside it, plus `tsc --noEmit` over the `.types.ts` files |
 | `*/benchmarks/<theme>*` | [Benchmarks](benchmarks.md), which stay grouped by a caller's vocabulary |

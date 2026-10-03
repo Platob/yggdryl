@@ -1121,8 +1121,34 @@ export declare class ChunkedSerie {
    */
   memorySize(): number
   /**
-   * The first occurrence of every value across the chunks, as a chunked
-   * serie of one chunk.
+   * The bytes the rows occupy in memory: every chunk's `residentSize`,
+   * summed.
+   */
+  residentSize(): number
+  /**
+   * Whether every chunk's rows lie in a spill file: no byte resident, and
+   * some bytes. A chunked serie of no chunk is never spilled.
+   */
+  isSpilled(): boolean
+  /**
+   * Move chunks to disk until the resident bytes are under the bound
+   * `options` states - the process default where it is `undefined` or
+   * `null` - the heaviest chunks whole first, so a chunked serie under the
+   * bound is untouched and one over it keeps its lightest chunks
+   * resident. A refused folder is named, the chunks spilled so far kept
+   * mapped.
+   */
+  spill(options?: JsSpillOptions | undefined | null): void
+  /**
+   * The `order by` keys this chunked record's field declares its rows
+   * keep across every chunk, each as the key grammar spells it; `null`
+   * where it declares none or is no record.
+   */
+  declaredOrder(): Array<string> | null
+  /**
+   * The first occurrence of every value across the chunks, with no
+   * join: each chunk filtered by its own first occurrences and kept
+   * apart, a chunk left with no row dropped.
    */
   intoUnique(): ChunkedSerie
   /**
@@ -4799,6 +4825,17 @@ export declare class IOBase {
    */
   readArrowReader(options?: JsRecordOptions | undefined | null): JsBatchReader
   /**
+   * Read this resource's rows as a `SerieReader`, one record serie per
+   * batch.
+   *
+   * Absent options are the handle's own: the encoding its media type
+   * names, a container's the table beneath it, and a structured text
+   * document - JSON, JSON Lines, YAML, TOML, XML - the one record column
+   * its rows parse into, of which a declared field is the only option it
+   * reads.
+   */
+  readSerie(options?: JsRecordOptions | undefined | null): JsSerieReader
+  /**
    * Decode this resource into typed text lines.
    *
    * The one decode entry point for plain text: every record method routes
@@ -7200,9 +7237,9 @@ export declare class RecordOptions {
    * A positive count publishes every that many batches of the shaped
    * stream, then the final remainder; a batch is one the source yields,
    * cut by `batchRowSize` where records are converted, never by the
-   * cadence. `null` is the destination's own cadence: a file or folder
-   * publishes once after the source ends, an Iceberg table each time the
-   * batches it holds reach its target file size.
+   * cadence. `null` is the destination's own cadence: a file, a folder
+   * and an Iceberg table each publish once after the source ends, what
+   * they hold in between kept under the process spill bound.
    */
   get commitBatchNum(): number | null
   /**
@@ -7213,6 +7250,24 @@ export declare class RecordOptions {
    * cadence.
    */
   set commitBatchNum(commitBatchNum: number | undefined | null)
+  /**
+   * The threads a write of several parts runs on at once, when set.
+   *
+   * The parts are an Iceberg commit's partition groups, written side by
+   * side; a leaf of one file reads it as the bound on its encoding's
+   * threads. `null` is the destination's own answer: an Iceberg table's
+   * `write.parallelism`, else its `read.parallelism`, else every thread
+   * the host offers.
+   */
+  get numThreads(): number | null
+  /**
+   * Set the threads a write of several parts runs on at once.
+   *
+   * Zero is retained so the write preflight refuses it by name, naming
+   * `$.num_threads`, before a one-shot source is touched. `null` restores
+   * the destination's own answer.
+   */
+  set numThreads(numThreads: number | undefined | null)
   /** The compression level on the shared 0-to-9 scale. */
   get level(): number
   /** Set the compression level on the shared 0-to-9 scale. */
@@ -7440,6 +7495,8 @@ export declare class RecordOptions {
   withMaxByteSize(maxByteSize: number): RecordOptions
   /** Return these options with a publication every `commitBatchNum` batches. */
   withCommitBatchNum(commitBatchNum: number): RecordOptions
+  /** Return these options running a write of several parts on `numThreads`. */
+  withNumThreads(numThreads: number): RecordOptions
   /** Return these options with a different compression level. */
   withLevel(level: number): RecordOptions
   /** Return these options with the keys a write matches stored rows on. */
@@ -8020,6 +8077,40 @@ export declare class Serie {
    * them, a run's values as the row estimator charges them.
    */
   memorySize(): number
+  /**
+   * The bytes the rows occupy in memory: `memorySize` less what lies in a
+   * spill file's mapping, read off the buffers.
+   */
+  residentSize(): number
+  /**
+   * Whether the rows lie in a spill file: some bytes, none of them
+   * resident. A run and an empty column are never spilled.
+   */
+  isSpilled(): boolean
+  /**
+   * Move the rows to disk until the resident bytes are under the bound
+   * `options` states - the process default (`SpillOptions.fromEnv()`)
+   * where it is `undefined` or `null` - the heaviest leaves first, each
+   * written once to a private file and mapped back read-only, so every
+   * later read reaches the mapping and a write copies the buffer it
+   * touches back once. A run spills nothing; a refused folder is named
+   * and leaves the serie as it was.
+   */
+  spill(options?: JsSpillOptions | undefined | null): void
+  /**
+   * Whether this column is a constant: one value held once for every
+   * row, as `Serie.lit` and `Serie.fromDefault` build it. A write of
+   * another value lays it out as its field's leaf, and it is no longer.
+   */
+  get isLit(): boolean
+  /**
+   * The `order by` keys this record's root declares its rows keep, most
+   * significant first, each as the key grammar spells it (`price desc`):
+   * `SORT:by` on the root, a proven order the sorts write and the writes
+   * that break it clear. `null` for a run, a column that is no record,
+   * and a root declaring none.
+   */
+  declaredOrder(): Array<string> | null
 }
 export type JsSerie = Serie
 
@@ -8059,6 +8150,25 @@ export declare class SerieReader {
    * consumed; never a column, and dropped at the Arrow face.
    */
   get staticValues(): Scalar | null
+  /**
+   * The bytes the records this reader holds occupy in memory: the held
+   * records still to yield, or the batch a window's walk stands in; a
+   * stream holds no landed batch between pulls, and a consumed reader
+   * nothing, and both answer zero.
+   */
+  residentSize(): number
+  /**
+   * Whether every record this reader holds lies in a spill file: held
+   * records only, never a stream, which holds none.
+   */
+  isSpilled(): boolean
+  /**
+   * Move the records this reader holds to disk under the bound `options`
+   * states - the process default where it is `undefined` or `null` -
+   * each held record as `Serie.spill` moves it; a stream holds none and
+   * is untouched. Refused once the reader was taken.
+   */
+  spill(options?: JsSpillOptions | undefined | null): void
   /**
    * The stream's batches reconciled to the root as a native
    * `BatchReader`, never landed; the reader is consumed.
@@ -8567,6 +8677,61 @@ export declare class SnapshotRef {
   clone(): SnapshotRef
 }
 export type JsSnapshotRef = SnapshotRef
+
+/**
+ * The bound a column stays resident under, and the folder it spills to.
+ *
+ * `byteSize` is the resident bytes a column may hold before it spills;
+ * `SpillOptions.NEVER` spills nothing and `0` everything. `folder` is where
+ * the files are created, the platform temporary folder when `null`. Every
+ * spill file is private to the process and gone from the folder as soon as
+ * it is opened, so a crash leaves nothing behind.
+ */
+export declare class SpillOptions {
+  /**
+   * The bound and the folder `options` states, each `undefined` or `null`
+   * the default: 64 MiB over the platform temporary folder. A folder that
+   * is not local is refused naming it.
+   */
+  constructor(options?: SpillOptionsInit | undefined | null)
+  /**
+   * The options the process environment states, read on the first call
+   * and the same value after: `YGGDRYL_SPILL_BYTE_SIZE` the bound - a byte
+   * count, or `never` in any case - and `YGGDRYL_SPILL_FOLDER` the folder,
+   * either unset or empty the default. A refused variable is named, and
+   * the next call reads the environment again.
+   */
+  static fromEnv(): SpillOptions
+  /**
+   * State the options every later `fromEnv` - and every verb settling
+   * under the process default - answers, before anything resolves them;
+   * refused once they were read or installed, so the value every caller
+   * saw cannot change underneath them.
+   */
+  static installEnv(options: SpillOptions): void
+  /** The resident bytes a column may hold before it spills. */
+  get byteSize(): bigint
+  /**
+   * The folder spill files are created in, as the local container handle
+   * it is, or `null` for the platform temporary folder.
+   */
+  get folder(): IOBase | null
+  /** Whether the bound is `SpillOptions.NEVER`: nothing spills. */
+  isNever(): boolean
+  /**
+   * Whether `other` states the same bound over the same folder: two
+   * folders are one when they name one location.
+   */
+  equals(other: SpillOptions): boolean
+  /** A cheap native clone. */
+  clone(): SpillOptions
+  /**
+   * The bound - `never` for `SpillOptions.NEVER` - then the folder's URL
+   * where one is stated: `SpillOptions(byteSize=0, folder=file:///spill)`.
+   */
+  toString(): string
+}
+export type JsSpillOptions = SpillOptions
 
 /** Writes each record as one line to standard error or standard output. */
 export declare class StreamHandler {
@@ -9400,6 +9565,13 @@ export declare class TextOptions {
   get commitBatchNum(): number | null
   /** Set or clear the streamed-write commit cadence, in whole batches. */
   set commitBatchNum(value: number | undefined | null)
+  /** Return the threads a write of several parts runs on at once. */
+  get numThreads(): number | null
+  /**
+   * Set or clear the threads a write of several parts runs on at once;
+   * zero is retained for the write preflight to refuse by name.
+   */
+  set numThreads(value: number | undefined | null)
   /** Return the total result-row bound. */
   get maxRowSize(): number | null
   /** Set or clear the total result-row bound. */
@@ -9536,6 +9708,8 @@ export declare class TextOptions {
   withBatchRowSize(size: number): TextOptions
   /** Return a copy publishing every `commitBatchNum` batches. */
   withCommitBatchNum(batches: number): TextOptions
+  /** Return a copy running a write of several parts on `numThreads`. */
+  withNumThreads(threads: number): TextOptions
   /** Return a copy skipping the given leading result rows. */
   withRowOffset(rows: number): TextOptions
   /** Return a copy with a total result-row bound. */
@@ -10491,6 +10665,16 @@ export declare class WindowSerie {
   rows(): Array<Scalar>
   /** The bytes the window's rows occupy, as its own slice counts them. */
   memorySize(): number
+  /**
+   * The bytes the window's rows occupy in memory, read through the serie
+   * it views: a window is never spilled on its own - spill the serie.
+   */
+  residentSize(): number
+  /**
+   * Whether the window's rows lie in a spill file: the serie's own
+   * answer over the rows it views.
+   */
+  isSpilled(): boolean
   /**
    * Whether no two window rows hold one value; two absent rows are a
    * repeat.
@@ -11693,6 +11877,44 @@ export interface IntoSerieOptions {
 }
 
 /**
+ * The options of one join, each slot `undefined` or `null` where not given,
+ * which is its default.
+ */
+export interface JoinOptionsInput {
+  /**
+   * Whether a key stated as the same bare column on both sides appears
+   * once, under the left name, left value else right; `true` by default.
+   */
+  coalesce?: boolean | null
+  /**
+   * What a right column whose name collides with a left one is suffixed
+   * with; `_right` by default.
+   */
+  suffix?: string | null
+  /**
+   * Which side is held and hashed: `left` or `right`, or by default the
+   * held side over a stream, else the smaller, else the right.
+   */
+  build?: 'left' | 'right' | null
+  /**
+   * Whether probe rows and batches the build keys cannot match are
+   * dropped before they are hashed - the answer is the same either way;
+   * `true` by default.
+   */
+  prune?: boolean | null
+  /**
+   * The bound the build side and every output batch settle under; the
+   * process default (`SpillOptions.fromEnv()`) by default.
+   */
+  spill?: SpillOptions | null
+  /**
+   * The largest distinct build key set pushed into a probe source's
+   * filter; 10,000 by default.
+   */
+  pushdownKeys?: number | null
+}
+
+/**
  * One member of the core's market data kind enum - FIX's `MsgCat` code set:
  * its stored name, the code a `marketdatakind` column stores, and what it
  * means.
@@ -11799,6 +12021,25 @@ export interface SideMember {
   fixCode?: string
   isBid: boolean
   isAsk: boolean
+}
+
+/**
+ * What a `SpillOptions` is built from, each slot `undefined` or `null` where
+ * not given: the bound and the folder.
+ */
+export interface SpillOptionsInit {
+  /**
+   * The resident bytes a column may hold before it spills: a whole
+   * `number` or a `bigint`; `SpillOptions.NEVER` spills nothing and `0`
+   * everything. The core's 64 MiB when unstated.
+   */
+  byteSize?: number | bigint | null
+  /**
+   * The local folder spill files are created in: a path, a `Url`, a
+   * `Uri`, `Urn` or `Arn` naming one, or an `IOBase`. The platform
+   * temporary folder when unstated.
+   */
+  folder?: IOBase | Url | Uri | Urn | Arn | string | null
 }
 
 /**

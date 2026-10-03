@@ -174,7 +174,7 @@ Install and cross-language conventions are in `yggdryl`.
     `session.get(url)` alone is the unsent `Request` itself, only
     `.send()`'s answer has none. Every page lays out as one Arrow batch
     through `Pages::into_arrow_reader`, `.intoArrowReader`, or Python's
-    `.read_arrow()`.
+    `.read_serie()`.
 18. **No host is made up.** A local file names none (`file:///path`; no
     host is added where none was given, since Windows reads a named one as
     a share, and on Unix `file://localhost/path` and `file://<HOSTNAME>/path`

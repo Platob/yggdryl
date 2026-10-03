@@ -319,7 +319,7 @@ pub trait IOMedia: Send {
     /// `options` absent is the handle's own encoding read whole: a record
     /// encoding answers its stored schema, a document names the root its own
     /// contents prove, and a container - a folder, a path ending in `/`, a
-    /// glob - reads as the table its leaves hold, under the encoding
+    /// glob, a table - reads as the table its leaves hold, under the encoding
     /// [`record_options`](Self::record_options) finds beneath it.
     ///
     /// ```
@@ -330,7 +330,7 @@ pub trait IOMedia: Send {
     ///     .with_media_type(Url::from_str("file:///trades.jsonl")?.media_type());
     /// handle.write_all_bytes(b"{\"symbol\": \"AAPL\", \"size\": 100}\n")?;
     ///
-    /// let columns = handle.read_arrow(None)?.collect::<Result<Vec<Serie>, _>>()?;
+    /// let columns = handle.read_serie(None)?.collect::<Result<Vec<Serie>, _>>()?;
     /// assert_eq!(columns.len(), 1);
     /// assert_eq!(columns[0].len(), 1);
     /// # Ok(())
@@ -342,7 +342,7 @@ pub trait IOMedia: Send {
     /// Returns a read, decoding, parse, inference, or cast failure, or an
     /// error naming the media type when it is neither a record encoding this
     /// build implements nor a structured text format.
-    fn read_arrow(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
         use crate::media::IORecordOptions;
 
         let handle = self.as_io_base();
@@ -365,32 +365,64 @@ pub trait IOMedia: Send {
         )?)
     }
 
-    /// Write a [`SerieReader`](crate::SerieReader)'s record columns as this
-    /// resource's rows.
+    /// Write rows in any shape the crate holds them - a held
+    /// [`Serie`](crate::Serie), a [`ChunkedSerie`](crate::ChunkedSerie), a
+    /// [`SerieReader`](crate::SerieReader) - as this resource's rows, under
+    /// one explicit [`IOMode`](crate::IOMode).
     ///
     /// The column-shaped sibling of
     /// [`write_scalar`](crate::IOBase::write_scalar), and the generic write:
-    /// the stream goes to [`write_arrow_reader`](Self::write_arrow_reader)
-    /// as its transport face, without collecting it, so every
-    /// [`IOMode`](crate::IOMode) and every option applies. A held column is
-    /// the one batch it is, as
-    /// [`SerieReader::from_serie`](crate::SerieReader::from_serie) reads it.
-    /// A structured text document is one frame around every row it holds,
-    /// so it is replaced whole and only
-    /// [`IOMode::Overwrite`](crate::IOMode::Overwrite) applies.
+    /// the source becomes the stream of the batches it already is
+    /// ([`SerieSource::into_reader`](crate::SerieSource::into_reader) - a
+    /// record column one batch, a chunk one each, a stream itself, nothing
+    /// copied or re-landed) and goes to
+    /// [`write_arrow_reader`](Self::write_arrow_reader) as its transport
+    /// face, so every mode and every option applies. `options` absent is the
+    /// handle's own: the encoding its media type names, a container's the
+    /// table beneath it. A structured text document is one frame around
+    /// every row it holds, so it is replaced whole, only
+    /// [`IOMode::Overwrite`](crate::IOMode::Overwrite) applies, and of the
+    /// options only the declared `field` - which the rows are cast onto -
+    /// reaches it: a document has no frame to select, filter or bound within.
+    ///
+    /// What a write holds between publications is bounded by the process
+    /// spill bound ([`SpillOptions::from_env`](crate::SpillOptions::from_env)):
+    /// a cadence's held batches past it are spilled to disk, so a stream of
+    /// any length is written under that bound plus one encoded file.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, IOMedia, IOMode, Scalar, Serie, Url, holder::Buffer};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::new()
+    ///     .with_media_type(Url::from_str("file:///trades.arrows")?.media_type());
+    /// let sizes = Serie::from_scalars(
+    ///     DataType::Int64.required_field("size"),
+    ///     [Scalar::from(100_i64), Scalar::from(250_i64)],
+    /// )?;
+    /// handle.write_serie(sizes.clone().into(), IOMode::Overwrite, None)?;
+    /// handle.append_serie(sizes.into(), None)?;
+    /// let rows: usize = handle.read_serie(None)?.map(|batch| Ok::<_, yggdryl::Error>(batch?.len())).sum::<Result<_, _>>()?;
+    /// assert_eq!(rows, 4);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns a schema, value, encoding, or write failure, an error naming
+    /// Returns a schema, value, encoding, or write failure, a run or a
+    /// record holding an absent row, which no table states, an error naming
     /// the media type when it names no format, or an error naming the mode
     /// when a structured text document is asked for anything but an
     /// overwrite.
-    fn write_arrow(
+    fn write_serie(
         &mut self,
-        value: crate::SerieReader,
+        value: crate::SerieSource,
         mode: crate::IOMode,
         options: Option<&RecordOptions>,
     ) -> Result<()> {
+        use crate::media::IORecordOptions;
+
         if crate::text::Format::from_media_type(self.as_io_base().media_type()).is_ok() {
             if mode != crate::IOMode::Overwrite {
                 return Err(crate::Error::InvalidRecord {
@@ -401,9 +433,16 @@ pub trait IOMedia: Send {
                     ),
                 });
             }
+            // A document reads the declared field off the options and
+            // nothing else: it has no frame to select, filter or bound within.
+            let mut reader = value.into_reader()?;
+            if let Some(field) = options.and_then(IORecordOptions::field) {
+                let safe = options.is_none_or(IORecordOptions::safe);
+                reader = reader.cast(&field, crate::ArrowCastOptions::new().with_safe(safe))?;
+            }
             return crate::media::structured::write_arrow(
                 self.as_io_base_mut(),
-                value,
+                reader,
                 crate::text::Formatting::default(),
             );
         }
@@ -411,11 +450,58 @@ pub trait IOMedia: Send {
         let options = match options {
             Some(options) => options,
             None => {
-                own = RecordOptions::for_media_type(self.as_io_base().media_type())?;
+                own = self.record_options()?;
                 &own
             }
         };
-        self.write_arrow_reader(value.into_arrow_reader(), mode, options)
+        self.write_arrow_reader(value.into_reader()?.into_arrow_reader(), mode, options)
+    }
+
+    /// Replace this resource's rows with `value`'s:
+    /// [`write_serie`](Self::write_serie) under
+    /// [`IOMode::Overwrite`](crate::IOMode::Overwrite).
+    ///
+    /// # Errors
+    ///
+    /// [`write_serie`](Self::write_serie)'s.
+    fn overwrite_serie(
+        &mut self,
+        value: crate::SerieSource,
+        options: Option<&RecordOptions>,
+    ) -> Result<()> {
+        self.write_serie(value, crate::IOMode::Overwrite, options)
+    }
+
+    /// Add `value`'s rows after this resource's:
+    /// [`write_serie`](Self::write_serie) under
+    /// [`IOMode::Append`](crate::IOMode::Append).
+    ///
+    /// # Errors
+    ///
+    /// [`write_serie`](Self::write_serie)'s.
+    fn append_serie(
+        &mut self,
+        value: crate::SerieSource,
+        options: Option<&RecordOptions>,
+    ) -> Result<()> {
+        self.write_serie(value, crate::IOMode::Append, options)
+    }
+
+    /// Merge `value`'s rows into this resource's by the options'
+    /// [`merge_by`](crate::media::IORecordOptions::merge_by) key:
+    /// [`write_serie`](Self::write_serie) under
+    /// [`IOMode::Merge`](crate::IOMode::Merge).
+    ///
+    /// # Errors
+    ///
+    /// [`write_serie`](Self::write_serie)'s, and the refusal of an empty key
+    /// where the destination has none of its own.
+    fn merge_serie(
+        &mut self,
+        value: crate::SerieSource,
+        options: Option<&RecordOptions>,
+    ) -> Result<()> {
+        self.write_serie(value, crate::IOMode::Merge, options)
     }
 
     /// Write a batch stream using one explicit [`IOMode`](crate::IOMode).
@@ -481,13 +567,12 @@ pub trait IOMedia: Send {
     /// limited once, then cut into cadences of that many batches, no batch
     /// ever split. The first cadence overwrites and every later one appends.
     /// Successful prefixes remain visible if a later cadence fails; zero is
-    /// rejected before the source is pulled. With no cadence, a leaf or a
-    /// folder publishes once at the end, and an Iceberg table publishes a
-    /// commit each time the held batches reach its target file size
-    /// (`write.target-file-size-bytes`), then the remainder - the first
-    /// commit overwriting, the rest appending, and the commits before a
-    /// later failure staying published, so a stream longer than the target
-    /// is never an atomic replacement.
+    /// rejected before the source is pulled. With no cadence, a leaf, a
+    /// folder and an Iceberg table publish once at the end - the table
+    /// holding every partition's rows under the process spill bound until
+    /// the source ends, so an overwrite of any length is one atomic
+    /// replacement, and `commit_batch_num` paces a stream whose rows would
+    /// outgrow the spill folder.
     ///
     /// # Errors
     ///
@@ -595,9 +680,9 @@ pub trait IOMedia: Send {
     /// limit combined with a non-empty match key is refused the same way.
     /// `commit_batch_num` retains append intent for every bounded publication;
     /// successful prefixes remain visible after a later failure. With no
-    /// cadence a leaf or a folder publishes once at the end, and an Iceberg
-    /// table commits each time the held batches reach its target file size
-    /// (`write.target-file-size-bytes`), then the remainder.
+    /// cadence a leaf, a folder and an Iceberg table publish once at the
+    /// end, the table holding every partition's rows under the process spill
+    /// bound until then.
     ///
     /// # Errors
     ///
@@ -646,12 +731,11 @@ pub trait IOMedia: Send {
     /// them replaces the partitions the rows fall in, and otherwise only the
     /// data files whose statistics say they can hold an incoming key are
     /// read, the rest carried forward untouched. With no cadence it commits
-    /// each time the held batches reach its target file size
-    /// (`write.target-file-size-bytes`), then the remainder, and every
-    /// commit merges by the key: a keyed merge upserts per commit, and a
-    /// merge keyed by the partition alone replaces a partition on the first
-    /// commit of the write that reaches it and appends to it on every later
-    /// one, so no commit drops the rows an earlier one wrote.
+    /// once when the source ends, and under one every commit merges by the
+    /// key: a keyed merge upserts per commit, and a merge keyed by the
+    /// partition alone replaces a partition on the first commit of the write
+    /// that reaches it and appends to it on every later one, so no commit
+    /// drops the rows an earlier one wrote.
     ///
     /// # Errors
     ///
@@ -754,6 +838,7 @@ pub trait IOMedia: Send {
 
         options.require_write_mode(crate::IOMode::Overwrite)?;
         options.require_commit_batch_num()?;
+        options.require_num_threads()?;
         let field = options.require_field()?.clone();
         let batches = crate::arrow::rows::reader(
             &field,
@@ -789,6 +874,7 @@ pub trait IOMedia: Send {
 
         options.require_write_mode(crate::IOMode::Append)?;
         options.require_commit_batch_num()?;
+        options.require_num_threads()?;
         let field = options.require_field()?.clone();
         let batches = crate::arrow::rows::reader(
             &field,
@@ -824,6 +910,7 @@ pub trait IOMedia: Send {
 
         options.require_write_mode(crate::IOMode::Merge)?;
         options.require_commit_batch_num()?;
+        options.require_num_threads()?;
         let field = options.require_field()?.clone();
         let batches = crate::arrow::rows::reader(
             &field,
@@ -995,6 +1082,15 @@ macro_rules! __delegate_iomedia_arrow {
             options: &$crate::media::RecordOptions,
         ) -> $crate::Result<$crate::arrow::BatchReader> {
             $crate::IOMedia::read_arrow_reader(&self.$handle, options)
+        }
+
+        // Forwarded, because a handle can answer its rows other than through
+        // its bytes - an HTTP request walks the pages of a paginated document.
+        fn read_serie(
+            &self,
+            options: Option<&$crate::media::RecordOptions>,
+        ) -> $crate::Result<$crate::SerieReader> {
+            $crate::IOMedia::read_serie(&self.$handle, options)
         }
 
         fn overwrite_arrow_reader(

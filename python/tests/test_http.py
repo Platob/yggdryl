@@ -561,7 +561,7 @@ class TestPages:
         assert table.column("id").to_pylist() == [1, 2, 3, 4, 5]
 
     def test_pages_read_as_a_serie_reader(self, session: Session) -> None:
-        reader = session.pages("/linked", records="data").read_arrow()
+        reader = session.pages("/linked", records="data").read_serie()
         rows = [row for serie in reader for row in serie.as_py()]
         assert [row["id"] for row in rows] == [10, 11, 20, 21, 30, 31]
 
@@ -569,7 +569,7 @@ class TestPages:
         pages = session.pages("/items")
         pages.into_arrow_reader()
         with pytest.raises(ValueError, match="already"):
-            pages.read_arrow()
+            pages.read_serie()
 
     def test_next_is_the_request_for_the_following_page(
         self, session: Session, origin: str
@@ -596,8 +596,8 @@ class TestIOBase:
             {"id": 2, "name": "b"},
         ]
         # A structured text document is the one record column its rows parse
-        # into: `read_arrow` is the record read that takes it.
-        rows = [row for serie in handle.read_arrow() for row in serie.as_py()]
+        # into: `read_serie` is the record read that takes it.
+        rows = [row for serie in handle.read_serie() for row in serie.as_py()]
         assert rows == [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
 
     def test_a_parquet_body_reads_by_range(self, origin: str) -> None:

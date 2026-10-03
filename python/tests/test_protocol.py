@@ -100,6 +100,7 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
         ("trades.arrows", "safe", True),
         ("trades.arrows", "batch_row_size", 32),
         ("trades.arrows", "commit_batch_num", 64),
+        ("trades.arrows", "num_threads", 4),
         ("trades.arrows", "max_row_size", 128),
         ("trades.arrows", "max_byte_size", 4096),
         ("trades.arrows", "level", 6),
@@ -147,6 +148,7 @@ def test_record_options_value_protocols_preserve_each_variant(
     options.safe = True
     options.batch_row_size = 32
     options.commit_batch_num = 64
+    options.num_threads = 4
     options.max_row_size = 128
     options.max_byte_size = 4096
     options.level = 6
@@ -220,6 +222,7 @@ def test_text_options_value_protocols_preserve_the_flat_configuration() -> None:
     options.safe = True
     options.batch_row_size = 32
     options.commit_batch_num = 64
+    options.num_threads = 4
     options.max_row_size = 128
     options.max_byte_size = 4096
     options.level = 6

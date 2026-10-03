@@ -1349,3 +1349,354 @@ fn a_window_serie_stays_copy_at_forty_bytes() {
     // from - a reference and a place, behind the reference's niche.
     assert_eq!(std::mem::size_of::<WindowSerie<'_>>(), 40);
 }
+
+#[test]
+fn a_window_sorts_by_its_keys_over_its_own_rows() {
+    let serie = quotes(&[
+        ("XNYS", 1, 9),
+        ("XNYS", 2, 5),
+        ("XNAS", 1, 7),
+        ("XNYS", 1, 3),
+        ("XNAS", 2, 7),
+        ("AAAA", 0, 0),
+    ]);
+    let indices = |values: [u32; 4]| values.map(Scalar::from).to_vec();
+    let window = serie.window(1, 4).expect("a window");
+    // XNAS by price descending, its tie kept in arrival order, then XNYS:
+    // every index window-relative, the rows outside never read.
+    for by in ["venue, price desc", "venue, price * -1"] {
+        assert_eq!(
+            window
+                .sort_indices_by(by)
+                .expect("an order")
+                .rows()
+                .to_vec(),
+            indices([1, 3, 0, 2]),
+            "{by}"
+        );
+    }
+    // A computed key is computed over the window's rows alone.
+    assert_eq!(
+        window
+            .sort_indices_by("day, price * -1")
+            .expect("an order")
+            .rows()
+            .to_vec(),
+        indices([1, 2, 3, 0])
+    );
+    let by = "venue, price desc";
+    assert_eq!(
+        window.into_sort_by(by).expect("sorted"),
+        window.into_serie().into_sort_by(by).expect("sorted")
+    );
+    assert_eq!(
+        window.into_sort_by(by).expect("sorted").rows().to_vec(),
+        vec![
+            quote("XNAS", 1, 7),
+            quote("XNAS", 2, 7),
+            quote("XNYS", 2, 5),
+            quote("XNYS", 1, 3)
+        ]
+    );
+
+    // A mutable window reads the same, and sorts within its edges.
+    let mut held = serie.clone();
+    let mut window = held.window_mut(1, 4).expect("a window");
+    assert_eq!(
+        window
+            .sort_indices_by(by)
+            .expect("an order")
+            .rows()
+            .to_vec(),
+        indices([1, 3, 0, 2])
+    );
+    assert_eq!(
+        window.into_sort_by(by).expect("sorted"),
+        serie
+            .window(1, 4)
+            .expect("a window")
+            .into_sort_by(by)
+            .expect("sorted")
+    );
+    window
+        .as_sort_by(by)
+        .expect("sorted")
+        .as_reversed()
+        .expect("reversed");
+    assert_eq!(window.len(), 4);
+    assert_eq!(
+        held.rows().to_vec(),
+        vec![
+            quote("XNYS", 1, 9),
+            quote("XNYS", 1, 3),
+            quote("XNYS", 2, 5),
+            quote("XNAS", 2, 7),
+            quote("XNAS", 1, 7),
+            quote("AAAA", 0, 0)
+        ]
+    );
+    // A refusal leaves the serie as it was.
+    let before = held.rows().into_owned();
+    for refused in ["tier", "venue,", "price, price desc"] {
+        assert!(
+            held.window_mut(1, 4)
+                .expect("a window")
+                .as_sort_by(refused)
+                .is_err(),
+            "{refused}"
+        );
+        assert_eq!(held.rows().into_owned(), before, "{refused}");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The declared order through a window: a window write keeps `SORT:by` where
+// the rows it wrote stay in order and clears it where they break it, and a
+// gathered `window_by` declares the key it gathered by.
+// ---------------------------------------------------------------------------
+
+/// The `SORT:by` text a serie's root carries.
+fn sort_by(serie: &Serie) -> Option<&str> {
+    serie
+        .field()
+        .and_then(|field| field.get_metadata("SORT:by"))
+}
+
+/// What [`declared_quotes`] declares.
+const DECLARED: &str = r#"["venue","price"]"#;
+
+/// The quotes sorted by `venue, price`, the root declaring it - rows 0 and
+/// 1 tie on both keys:
+///
+/// | row | venue | day | price |
+/// | --- | ----- | --- | ----- |
+/// | 0   | XNAS  | 1   | 1     |
+/// | 1   | XNAS  | 7   | 1     |
+/// | 2   | XNAS  | 2   | 3     |
+/// | 3   | XNYS  | 1   | 2     |
+/// | 4   | XNYS  | 3   | 5     |
+/// | 5   | XPAR  | 1   | 4     |
+fn declared_quotes() -> Serie {
+    let sorted = quotes(&[
+        ("XNYS", 1, 2),
+        ("XNAS", 2, 3),
+        ("XPAR", 1, 4),
+        ("XNAS", 1, 1),
+        ("XNYS", 3, 5),
+        ("XNAS", 7, 1),
+    ])
+    .into_sort_by("venue, price")
+    .expect("sorted");
+    assert_eq!(sort_by(&sorted), Some(DECLARED));
+    assert_eq!(sorted.scalar(1).expect("a row"), quote("XNAS", 7, 1));
+    sorted
+}
+
+/// Run `write` through a window of [`declared_quotes`] and pin whether the
+/// declaration stayed - and that it stays exactly where the rows still
+/// land under it.
+fn after_window_write(
+    what: &str,
+    keeps: bool,
+    write: impl FnOnce(&mut Serie) -> yggdryl::Result<()>,
+) {
+    let mut held = declared_quotes();
+    write(&mut held).unwrap_or_else(|error| panic!("{what}: {error}"));
+    assert_eq!(sort_by(&held), keeps.then_some(DECLARED), "{what}: {held}");
+    let declaring = declared_quotes().field().expect("a record").clone();
+    assert_eq!(
+        Serie::from_scalars(declaring, held.rows().into_owned()).is_ok(),
+        keeps,
+        "{what}: the rows written are in the declared order exactly when it is kept"
+    );
+}
+
+#[test]
+fn a_window_write_keeps_the_declaration_where_the_order_holds_and_clears_it_where_it_breaks() {
+    after_window_write("set, between its neighbours", true, |serie| {
+        serie.window_mut(1, 3)?.set(0, quote("XNAS", 9, 2))
+    });
+    after_window_write("set, past its neighbour", false, |serie| {
+        serie.window_mut(1, 3)?.set(1, quote("XPAR", 0, 0))
+    });
+    after_window_write("fill, between its neighbours", true, |serie| {
+        serie.window_mut(3, 2)?.fill(quote("XNYS", 0, 2))
+    });
+    after_window_write("fill, past its neighbour", false, |serie| {
+        serie.window_mut(0, 2)?.fill(quote("XNYS", 0, 9))
+    });
+    after_window_write("swap, two rows of equal keys", true, |serie| {
+        serie.window_mut(0, 2)?.swap(0, 1)
+    });
+    after_window_write("swap, two rows of unequal keys", false, |serie| {
+        serie.window_mut(1, 2)?.swap(0, 1)
+    });
+    let low = quotes(&[("XNAS", 0, 0), ("XNAS", 0, 1)]);
+    let high = quotes(&[("XPAR", 0, 9), ("XPAR", 0, 9)]);
+    after_window_write("copy_from, rows in order", true, |serie| {
+        serie
+            .window_mut(0, 2)?
+            .copy_from(&low.window(0, 2).expect("a window"))
+    });
+    after_window_write("copy_from, rows out of order", false, |serie| {
+        serie
+            .window_mut(0, 2)?
+            .copy_from(&high.window(0, 2).expect("a window"))
+    });
+    after_window_write("splice, in order", true, |serie| {
+        serie
+            .window_mut(3, 2)?
+            .splice(0..1, vec![quote("XNYS", 0, 1)])
+    });
+    after_window_write("splice, out of order", false, |serie| {
+        serie
+            .window_mut(3, 2)?
+            .splice(0..2, vec![quote("XNYS", 0, 9), quote("XNYS", 0, 1)])
+    });
+    // The sorts in place: a window already in the declared order writes
+    // back the rows it had, any other order breaks it.
+    after_window_write("as_sort_by the declaration", true, |serie| {
+        serie.window_mut(0, 5)?.as_sort_by("venue, price").map(drop)
+    });
+    after_window_write("as_sort_by another order", false, |serie| {
+        serie.window_mut(0, 3)?.as_sort_by("price desc").map(drop)
+    });
+    after_window_write(
+        "as_sorted, the whole row in the declared order",
+        true,
+        |serie| {
+            serie
+                .window_mut(0, 2)?
+                .as_sorted(SortOptions::default())
+                .map(drop)
+        },
+    );
+    after_window_write("as_sorted, the whole row out of it", false, |serie| {
+        // venue, day, price: XNAS 1 1, XNAS 2 3, XNAS 7 1.
+        serie
+            .window_mut(0, 3)?
+            .as_sorted(SortOptions::default())
+            .map(drop)
+    });
+    after_window_write("as_reversed, equal keys", true, |serie| {
+        serie.window_mut(0, 2)?.as_reversed().map(drop)
+    });
+    after_window_write("as_reversed, unequal keys", false, |serie| {
+        serie.window_mut(1, 2)?.as_reversed().map(drop)
+    });
+    after_window_write("as_taken, equal keys", true, |serie| {
+        serie
+            .window_mut(0, 2)?
+            .as_taken(&Serie::new(vec![Scalar::from(1_u32), Scalar::from(0_u32)]))
+            .map(drop)
+    });
+}
+
+#[test]
+fn a_window_reads_the_declaration_of_the_serie_it_views() {
+    let sorted = declared_quotes();
+    let window = sorted.window(1, 4).expect("a window");
+    // What the declaration states is the identity over the window's rows.
+    assert_eq!(
+        window
+            .sort_indices_by("venue")
+            .expect("an order")
+            .rows()
+            .to_vec(),
+        [0_u32, 1, 2, 3].map(Scalar::from)
+    );
+    assert_eq!(sort_by(&window.into_serie()), Some(DECLARED));
+    assert_eq!(
+        sort_by(&window.into_sort_by("venue, price").expect("sorted")),
+        Some(DECLARED)
+    );
+    assert_eq!(
+        sort_by(&window.into_sort_by("day").expect("sorted")),
+        Some(r#"["day"]"#)
+    );
+}
+
+#[test]
+fn a_gathered_window_by_declares_its_key_on_the_copy_it_owns() {
+    let unsorted = quotes(&[
+        ("XNYS", 1, 2),
+        ("XNAS", 2, 3),
+        ("XPAR", 1, 4),
+        ("XNAS", 1, 1),
+    ]);
+    for (by, text) in [
+        ("venue", r#"["venue"]"#),
+        ("venue, day * 2 as twice", r#"["venue","day * 2"]"#),
+        ("price * -1 as negated", r#"["price * -1"]"#),
+    ] {
+        let windows = unsorted.window_by(by, true).expect("windows");
+        // The rows were gathered: the copy declares its key ascending, a
+        // declaration its rows land under.
+        assert!(!std::ptr::eq(windows.serie(), &unsorted), "{by}");
+        assert_eq!(sort_by(windows.serie()), Some(text), "{by}");
+        assert!(
+            Serie::from_scalars(
+                windows.serie().field().expect("a record").clone(),
+                windows.serie().rows().into_owned()
+            )
+            .is_ok(),
+            "{by}"
+        );
+        // The serie windowed is untouched; unsorted, nothing is declared.
+        assert!(sort_by(&unsorted).is_none(), "{by}");
+        let windows = unsorted.window_by(by, false).expect("windows");
+        assert!(sort_by(windows.serie()).is_none(), "{by}");
+    }
+    // Keys already in order gather nothing, so the serie keeps what it
+    // declared, and a gather replaces it with its key.
+    let sorted = declared_quotes();
+    let windows = sorted.window_by("venue", true).expect("windows");
+    assert!(std::ptr::eq(windows.serie(), &sorted));
+    assert_eq!(sort_by(windows.serie()), Some(DECLARED));
+    let windows = sorted.window_by("day", true).expect("windows");
+    assert_eq!(sort_by(windows.serie()), Some(r#"["day"]"#));
+    // A window of the serie gathers its own rows, and its copy declares too.
+    let window = unsorted.window(1, 3).expect("a window");
+    let windows = window.window_by("venue", true).expect("windows");
+    assert_eq!(windows.serie().len(), 3);
+    assert_eq!(sort_by(windows.serie()), Some(r#"["venue"]"#));
+}
+
+#[test]
+fn a_gathered_window_by_over_absent_rows_declares_what_its_rows_keep() {
+    // Absent rows key absent in every cell, gathered last, exactly where
+    // the declaration's `nulls last` puts them.
+    let field = quote_field(true);
+    let rows = vec![
+        quote("XNYS", 1, 2),
+        Scalar::Null,
+        quote("XNAS", 2, 3),
+        Scalar::Null,
+        quote("XNAS", 1, 1),
+    ];
+    let unsorted = Serie::from_scalars(field, rows).expect("quotes");
+    let windows = unsorted.window_by("venue, price", true).expect("windows");
+    assert_eq!(sort_by(windows.serie()), Some(r#"["venue","price"]"#));
+    assert_eq!(
+        windows.serie().rows().to_vec(),
+        vec![
+            quote("XNAS", 1, 1),
+            quote("XNAS", 2, 3),
+            quote("XNYS", 1, 2),
+            Scalar::Null,
+            Scalar::Null,
+        ]
+    );
+    assert!(
+        Serie::from_scalars(
+            windows.serie().field().expect("a record").clone(),
+            windows.serie().rows().into_owned()
+        )
+        .is_ok()
+    );
+    // A column that is not a record declares nothing, gathered or not.
+    let prices = column(vec![Some(2), None, Some(1)]);
+    let windows = prices.window_by("price", true).expect("windows");
+    assert!(!std::ptr::eq(windows.serie(), &prices));
+    assert!(sort_by(windows.serie()).is_none());
+}

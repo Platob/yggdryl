@@ -2,14 +2,17 @@
 //!
 //! # Unsafe
 //!
-//! This is the only module in Yggdryl that uses `unsafe`, and it uses it once,
-//! for `memmap2`'s mapping constructor. That is `unsafe` for a reason no
-//! wrapper can remove: a mapping aliases file bytes, so if another process
-//! truncates the file while a mapping is live, touching the lost pages raises
-//! SIGBUS rather than returning an error. Yggdryl cannot prevent that, so
-//! [`LocalFile`] documents the hazard
-//! instead of pretending it away. Use [`super::Buffer`] when the file may
-//! change underneath you.
+//! `unsafe` lives in four modules of Yggdryl, each under a paragraph like
+//! this one: here, in `spill.rs`, and in the byte leaves `serie/bytes.rs`
+//! and `serie/variant.rs`. Here it is used once, for `memmap2`'s mapping
+//! constructor. That is `unsafe` for a reason no wrapper can remove: a
+//! mapping aliases file bytes, so if another process truncates the file
+//! while a mapping is live, touching the lost pages raises SIGBUS rather
+//! than returning an error. Yggdryl cannot prevent that for a named file,
+//! so [`LocalFile`] documents the hazard instead of pretending it away (a
+//! spill file is unlinked before it is mapped, which is why `spill.rs` does
+//! not carry it). Use [`super::Buffer`] when the file may change underneath
+//! you.
 
 #![allow(unsafe_code)]
 

@@ -4282,6 +4282,7 @@ mod planning {
 }
 
 mod handles {
+    use yggdryl::iceberg::{SortField, SortOrder, Transform};
 
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -4999,10 +5000,12 @@ mod handles {
     }
 
     #[test]
-    fn an_unset_cadence_commits_a_table_per_target_file_size_of_batches() {
-        // Three one-row batches: under the 512 MiB default they are one
-        // commit; under a one-byte target every batch reaches the target
-        // and is a commit of its own, and every row still reads back once.
+    fn an_unset_cadence_commits_a_table_once_and_cuts_its_files_at_the_target() {
+        // Three one-row batches are one commit whatever the target file
+        // size: the rows of a write are held under the spill bound until the
+        // source ends, so a stream of any length is one snapshot. The target
+        // cuts the files, never the commits: a one-byte target lays every
+        // row in a file of its own, and every row still reads back once.
         let rows = || {
             one_row_batches(&trades(
                 &[1, 2, 3],
@@ -5010,7 +5013,7 @@ mod handles {
                 &[Some("XNAS"), Some("XNYS"), Some("XLON")],
             ))
         };
-        for (label, target, commits) in [
+        for (label, target, files) in [
             ("default", None, 1),
             ("tiny", Some(1), 3),
             ("larger-than-the-stream", Some(1 << 20), 1),
@@ -5035,16 +5038,18 @@ mod handles {
             assert_eq!(options.commit_batch_num(), None, "{label}");
 
             table.append_arrow_reader(rows(), &options).unwrap();
-            assert_eq!(table.metadata().snapshots().len(), commits, "{label}");
+            assert_eq!(table.metadata().snapshots().len(), 1, "{label}");
+            assert_eq!(table.data_files().unwrap().len(), files, "{label}");
             assert_eq!(
                 collect(table.read_arrow_reader(&options).unwrap()).len(),
                 3,
                 "{label}"
             );
 
-            // The first cadence overwrites, every later one appends.
+            // An overwrite is one commit too, so it is one atomic replacement.
             table.overwrite_arrow_reader(rows(), &options).unwrap();
-            assert_eq!(table.metadata().snapshots().len(), 2 * commits, "{label}");
+            assert_eq!(table.metadata().snapshots().len(), 2, "{label}");
+            assert_eq!(table.data_files().unwrap().len(), files, "{label}");
             assert_eq!(
                 collect(table.read_arrow_reader(&options).unwrap()).len(),
                 3,
@@ -5084,19 +5089,19 @@ mod handles {
     }
 
     #[test]
-    fn an_unset_cadence_commits_a_located_table_per_target_file_size_of_batches() {
-        // The folder addressing a table reads the table's own target: under
-        // the 512 MiB default every write is one commit; under a one-byte
-        // target every one-row batch reaches it and commits on its own, and
+    fn an_unset_cadence_commits_a_located_table_once_whatever_its_target() {
+        // The folder addressing a table writes as the table does: every
+        // write is one commit, under the 512 MiB default target and under a
+        // one-byte target alike - the target cuts files, never commits - and
         // every row still reads back exactly once.
-        for (label, target, per_batch) in [("default", None, false), ("tiny", Some(1), true)] {
+        for (label, target) in [("default", None), ("tiny", Some(1))] {
             let (path, mut folder) = table(&format!("handle-located-byte-cadence-{label}"));
             if let Some(target) = target {
                 set_target_file_size(&path, target);
             }
             let options = options(&folder);
             assert_eq!(options.commit_batch_num(), None, "{label}");
-            let commits = |batches: usize| if per_batch { batches } else { 1 };
+            let commits = |_batches: usize| 1;
 
             // The first commit overwrites, every later one appends.
             let batch = trades(
@@ -5147,7 +5152,7 @@ mod handles {
     }
 
     #[test]
-    fn an_unset_cadence_merges_a_held_table_per_target_file_size_keyed_or_not() {
+    fn an_unset_cadence_merges_a_held_table_once_keyed_or_not() {
         let path = root("handle-table-merge-byte-cadence");
         let schema = trade_schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
@@ -5179,7 +5184,7 @@ mod handles {
             .unwrap();
         assert_eq!(table.metadata().snapshots().len(), 1);
 
-        // Keyed: a commit per one-row batch, each upserting by the key.
+        // Keyed: the one-row batches are one commit, upserting by the key.
         let keyed = options.clone().with_merge_by(["id"]).unwrap();
         let batch = trades(
             &[10, 20],
@@ -5189,7 +5194,7 @@ mod handles {
         table
             .merge_arrow_reader(one_row_batches(&batch), &keyed)
             .unwrap();
-        assert_eq!(table.metadata().snapshots().len(), 3);
+        assert_eq!(table.metadata().snapshots().len(), 2);
         assert_eq!(
             collect(table.read_arrow_reader(&options).unwrap()),
             triples(&[
@@ -5200,9 +5205,9 @@ mod handles {
             ])
         );
 
-        // Keyed by the partition alone: the first commit reaching a partition
-        // replaces it and every later one appends to it, so the four commits
-        // keep all four rows and the partition no row names keeps its own.
+        // Keyed by the partition alone: the one commit replaces the two
+        // partitions the rows fall in with all four rows, and the partition
+        // no row names keeps its own.
         let batch = trades(
             &[1, 2, 3, 4],
             &[Some("A"), Some("B"), Some("C"), Some("D")],
@@ -5212,7 +5217,7 @@ mod handles {
         table
             .merge_arrow_reader(one_row_batches(&batch), &options)
             .unwrap();
-        assert_eq!(table.metadata().snapshots().len(), 7);
+        assert_eq!(table.metadata().snapshots().len(), 3);
         assert_eq!(
             collect(table.read_arrow_reader(&options).unwrap()),
             triples(&[
@@ -5230,8 +5235,10 @@ mod handles {
     fn a_merge_keyed_by_the_partition_alone_keeps_every_row_across_its_commits() {
         // Each door replaces a partition on the first commit of the write
         // that reaches it and appends on the later ones: the held table with
-        // no key, the folder and a write session with the partition column
-        // as the key - the merge their own refusal of an empty key leaves.
+        // no key and the folder with the partition column as the key commit
+        // once, and a write session asked for one batch a commit replaces on
+        // the first and appends on the three after - the merge their own
+        // refusal of an empty key leaves.
         let seed = trades(
             &[10, 11, 12],
             &[Some("OLD"); 3],
@@ -5283,7 +5290,8 @@ mod handles {
                     session.finish(&mut folder).unwrap();
                 }
             }
-            assert_eq!(snapshots(&path), 1 + 4, "{door}");
+            let commits = if door == "session" { 4 } else { 1 };
+            assert_eq!(snapshots(&path), 1 + commits, "{door}");
             assert_eq!(
                 collect(folder.read_arrow_reader(&options).unwrap()),
                 expected,
@@ -5291,6 +5299,161 @@ mod handles {
             );
             let _ = std::fs::remove_dir_all(&path);
         }
+    }
+
+    #[test]
+    fn a_sorted_table_orders_each_partition_across_the_batches_of_one_commit() {
+        // Rows arriving out of the table's order, one batch each, are one
+        // commit whose partition is sorted as a whole: the one file the
+        // partition lands in reads back in symbol order, not arrival order.
+        let path = root("handle-table-sorted-across-batches");
+        let schema = trade_schema();
+        let mut table = Table::create_sorted(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+            SortOrder {
+                order_id: 1,
+                fields: vec![SortField {
+                    source_id: 2,
+                    transform: Transform::Identity,
+                    direction: "asc".into(),
+                    null_order: "nulls-last".into(),
+                }],
+            },
+        )
+        .unwrap();
+        let options = yggdryl::IOMedia::record_options(&table)
+            .unwrap()
+            .with_field(schema);
+        let batch = trades(
+            &[1, 2, 3, 4],
+            &[Some("d"), Some("c"), Some("b"), Some("a")],
+            &[Some("XNAS"); 4],
+        );
+        table
+            .append_arrow_reader(one_row_batches(&batch), &options)
+            .unwrap();
+        assert_eq!(table.metadata().snapshots().len(), 1);
+        let files = table.data_files().unwrap();
+        assert_eq!(
+            files.len(),
+            1,
+            "one partition, one file under the default target"
+        );
+        assert_eq!(files[0].0.sort_order_id, Some(1));
+        assert_eq!(files[0].0.record_count, 4);
+        // `collect` sorts, so the file's own row order is read off the ids.
+        let ids: Vec<i64> = table
+            .read_arrow_reader(&options)
+            .unwrap()
+            .flat_map(|batch| {
+                batch
+                    .unwrap()
+                    .column_by_name("id")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .values()
+                    .to_vec()
+            })
+            .collect();
+        assert_eq!(ids, [4, 3, 2, 1], "symbols a, b, c, d");
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn num_threads_writes_the_same_files_in_the_same_order_and_refuses_zero() {
+        let batch = trades(
+            &[1, 2, 3, 4, 5, 6],
+            &[
+                Some("A"),
+                Some("B"),
+                Some("C"),
+                Some("D"),
+                Some("E"),
+                Some("F"),
+            ],
+            &[
+                Some("XNAS"),
+                Some("XLON"),
+                Some("XNYS"),
+                Some("XNAS"),
+                Some("XLON"),
+                Some("XNYS"),
+            ],
+        );
+        let mut layouts = Vec::new();
+        for threads in [1_usize, 3] {
+            let path = root(&format!("handle-table-num-threads-{threads}"));
+            let schema = trade_schema();
+            let mut table = Table::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V2,
+                schema.clone(),
+                PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+            )
+            .unwrap();
+            let options = yggdryl::IOMedia::record_options(&table)
+                .unwrap()
+                .with_field(schema)
+                .with_num_threads(threads);
+            table
+                .append_arrow_reader(one_row_batches(&batch), &options)
+                .unwrap();
+            assert_eq!(table.metadata().snapshots().len(), 1);
+            // One file per partition holding both of its rows, whatever
+            // thread wrote each, so the layout is the same on one thread as
+            // on three; a scan's file order is the plan's, so the layouts
+            // compare by partition.
+            let mut layout: Vec<(Vec<yggdryl::Scalar>, i64)> = table
+                .data_files()
+                .unwrap()
+                .iter()
+                .map(|(file, _)| (file.partition.clone(), file.record_count))
+                .collect();
+            layout.sort();
+            layouts.push(layout);
+            let mut rows = collect(table.read_arrow_reader(&options).unwrap());
+            rows.sort();
+            assert_eq!(
+                rows,
+                triples(&[
+                    (1, "A", "XNAS"),
+                    (2, "B", "XLON"),
+                    (3, "C", "XNYS"),
+                    (4, "D", "XNAS"),
+                    (5, "E", "XLON"),
+                    (6, "F", "XNYS"),
+                ])
+            );
+
+            // Zero is refused before the source is pulled: no snapshot is added.
+            let error = table
+                .append_arrow_reader(
+                    one_row_batches(&batch),
+                    &options.clone().with_num_threads(0),
+                )
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("$.num_threads"), "{error}");
+            assert_eq!(table.metadata().snapshots().len(), 1);
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        assert_eq!(layouts[0], layouts[1]);
+        assert_eq!(
+            layouts[0].len(),
+            3,
+            "one file per partition: {:?}",
+            layouts[0]
+        );
+        assert!(
+            layouts[0].iter().all(|(_, rows)| *rows == 2),
+            "{:?}",
+            layouts[0]
+        );
     }
 
     #[test]

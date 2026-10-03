@@ -12,6 +12,8 @@ mod eval;
 mod explain;
 #[path = "expression/filter.rs"]
 mod filter;
+#[path = "expression/join.rs"]
+mod join;
 #[path = "expression/literal.rs"]
 mod literal;
 #[path = "expression/mod_.rs"]

@@ -66,6 +66,18 @@ pub(crate) fn batch_count(batches: f64) -> Result<usize> {
     })
 }
 
+/// A `numThreads` value as the thread count the core counts: an exact
+/// integer in this platform's range. Zero is kept, so the write preflight
+/// refuses it by name before a one-shot source is touched.
+pub(crate) fn thread_count(threads: f64) -> Result<usize> {
+    let threads = crate::exact_u64(threads, "numThreads")?;
+    usize::try_from(threads).map_err(|_| {
+        napi_error(format!(
+            "numThreads {threads} exceeds this platform's thread-count range"
+        ))
+    })
+}
+
 /// A CSV role byte as the one-character string JavaScript spells it.
 fn byte_text(byte: u8) -> String {
     char::from(byte).to_string()
@@ -157,6 +169,7 @@ impl JsRecordOptions {
         let mode = IOMode::from_str(&intent).map_err(napi_error)?;
         self.inner.require_write_mode(mode).map_err(napi_error)?;
         self.inner.require_commit_batch_num().map_err(napi_error)?;
+        self.inner.require_num_threads().map_err(napi_error)?;
         self.inner.require_write_limits().map_err(napi_error)?;
         u32::try_from(DEFAULT_RECORD_BATCH_ROW_SIZE).map_err(napi_error)
     }
@@ -292,9 +305,9 @@ impl JsRecordOptions {
     /// A positive count publishes every that many batches of the shaped
     /// stream, then the final remainder; a batch is one the source yields,
     /// cut by `batchRowSize` where records are converted, never by the
-    /// cadence. `null` is the destination's own cadence: a file or folder
-    /// publishes once after the source ends, an Iceberg table each time the
-    /// batches it holds reach its target file size.
+    /// cadence. `null` is the destination's own cadence: a file, a folder
+    /// and an Iceberg table each publish once after the source ends, what
+    /// they hold in between kept under the process spill bound.
     #[napi(getter)]
     pub fn commit_batch_num(&self) -> Option<f64> {
         #[allow(clippy::cast_precision_loss)]
@@ -313,6 +326,34 @@ impl JsRecordOptions {
             None => None,
         };
         self.inner.set_commit_batch_num(batches);
+        Ok(())
+    }
+
+    /// The threads a write of several parts runs on at once, when set.
+    ///
+    /// The parts are an Iceberg commit's partition groups, written side by
+    /// side; a leaf of one file reads it as the bound on its encoding's
+    /// threads. `null` is the destination's own answer: an Iceberg table's
+    /// `write.parallelism`, else its `read.parallelism`, else every thread
+    /// the host offers.
+    #[napi(getter)]
+    pub fn num_threads(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner.num_threads().map(|threads| threads as f64)
+    }
+
+    /// Set the threads a write of several parts runs on at once.
+    ///
+    /// Zero is retained so the write preflight refuses it by name, naming
+    /// `$.num_threads`, before a one-shot source is touched. `null` restores
+    /// the destination's own answer.
+    #[napi(setter)]
+    pub fn set_num_threads(&mut self, num_threads: Option<f64>) -> Result<()> {
+        let threads = match num_threads {
+            Some(threads) => Some(crate::media::options::thread_count(threads)?),
+            None => None,
+        };
+        self.inner.set_num_threads(threads);
         Ok(())
     }
 
@@ -905,6 +946,14 @@ impl JsRecordOptions {
     pub fn with_commit_batch_num(&self, commit_batch_num: f64) -> Result<Self> {
         let mut options = self.clone();
         options.set_commit_batch_num(Some(commit_batch_num))?;
+        Ok(options)
+    }
+
+    /// Return these options running a write of several parts on `numThreads`.
+    #[napi]
+    pub fn with_num_threads(&self, num_threads: f64) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_num_threads(Some(num_threads))?;
         Ok(options)
     }
 

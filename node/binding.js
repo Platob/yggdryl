@@ -1455,6 +1455,7 @@ Object.defineProperties(Scalar.prototype, {
 const nativeSerie = Object.freeze({
   fromScalars: NativeSerie._fromScalarsNative.bind(NativeSerie),
   fromDefault: NativeSerie._fromDefaultNative.bind(NativeSerie),
+  lit: NativeSerie._litNative.bind(NativeSerie),
   fromArrowArray: NativeSerie._fromArrowArrayIpcNative.bind(NativeSerie),
   fromArrowBatch: NativeSerie._fromArrowBatchIpcNative.bind(NativeSerie),
   leaf: Object.getOwnPropertyDescriptor(NativeSerie.prototype, '_leafNative').get,
@@ -1498,6 +1499,12 @@ const nativeSerie = Object.freeze({
   asReversed: NativeSerie.prototype._asReversedNative,
   asTaken: NativeSerie.prototype._asTakenNative,
   asFiltered: NativeSerie.prototype._asFilteredNative,
+  sortIndicesBy: NativeSerie.prototype._sortIndicesByNative,
+  intoSortBy: NativeSerie.prototype._intoSortByNative,
+  asSortBy: NativeSerie.prototype._asSortByNative,
+  joinWith: NativeSerie.prototype._joinWithNative,
+  asSpilled: NativeSerie.prototype._asSpilledNative,
+  intoSpilled: NativeSerie.prototype._intoSpilledNative,
   window: NativeSerie.prototype._windowNative,
   windowBy: NativeSerie.prototype._windowByNative,
   // The natives that answer a serie, each handed out as its leaf's class.
@@ -1566,6 +1573,12 @@ for (const name of [
   '_asReversedNative',
   '_asTakenNative',
   '_asFilteredNative',
+  '_sortIndicesByNative',
+  '_intoSortByNative',
+  '_asSortByNative',
+  '_joinWithNative',
+  '_asSpilledNative',
+  '_intoSpilledNative',
   '_windowNative',
   '_windowByNative',
 ]) {
@@ -1643,6 +1656,45 @@ function windowSorted(sorted, label) {
   return sorted
 }
 
+// The `order by` keys a sort reads: a Selector as it is, every projection
+// ascending with nulls last; anything else - the clause's text, an array of
+// key texts, an array of `{ term, descending, nulls_first }` records - as the
+// one Scalar it is, which the core reads by its own key rule.
+function orderingKeys(by) {
+  return by instanceof binding.Selector || by instanceof NativeScalar ? by : Scalar.from(by)
+}
+
+// The kind a join keeps rows by: one of the core's words, read there; an
+// absent answer is skipped and `null` clears it, each `inner`.
+function joinHow(how, label) {
+  if (how === undefined || how === null) return undefined
+  if (typeof how !== 'string') {
+    throw new TypeError(`${label} how must be a join kind's word, got ${typeof how}`)
+  }
+  return how
+}
+
+// The facts beside a join's keys and kind, one plain object the native door
+// reads once; an absent object or answer is skipped, and a key no join
+// knows is refused.
+const JOIN_OPTION_NAMES = new Set(['coalesce', 'suffix', 'build', 'prune', 'spill', 'pushdownKeys'])
+function joinOptionArgs(options, label) {
+  if (options === undefined || options === null) return undefined
+  if (typeof options !== 'object' || Array.isArray(options)) {
+    throw new TypeError(
+      `${label} options must be an object of coalesce, suffix, build, prune, spill and pushdownKeys`,
+    )
+  }
+  for (const key of Object.keys(options)) {
+    if (!JOIN_OPTION_NAMES.has(key)) {
+      throw new TypeError(
+        `${label} options take coalesce, suffix, build, prune, spill and pushdownKeys, got ${JSON.stringify(key)}`,
+      )
+    }
+  }
+  return options
+}
+
 // The windows a held serie lends hold the serie windowed, or the one serie
 // of the rows `sorted` gathered, which is handed out as its leaf's class.
 function lentWindows(windows, holder) {
@@ -1669,6 +1721,7 @@ const Serie = publicNativeClass(
   new Set([
     '_fromScalarsNative',
     '_fromDefaultNative',
+    '_litNative',
     '_fromArrowArrayIpcNative',
     '_fromArrowBatchIpcNative',
     '_emptyNative',
@@ -1815,6 +1868,15 @@ Object.defineProperties(Serie, {
       return describedSerie(
         nativeSerie.fromDefault(field instanceof NativeField ? field : Field.from(field), rows),
       )
+    },
+  },
+  // A constant column: `value` typed by the field's own contract once and
+  // held as one row for `length` rows.
+  lit: {
+    configurable: true,
+    value(field, value, length) {
+      const native = field instanceof NativeField ? field : Field.from(field)
+      return describedSerie(nativeSerie.lit(native, serieValue(value, native), length))
     },
   },
   fromArrowArray: {
@@ -2105,6 +2167,23 @@ Object.defineProperties(Serie.prototype, {
       return this
     },
   },
+  // Spilled in place under the bound `options` states, the process default
+  // where absent, answering this serie; `intoSpilled` a spilled copy.
+  asSpilled: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      Reflect.apply(nativeSerie.asSpilled, this, [options])
+      return this
+    },
+  },
+  intoSpilled: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return describedSerie(Reflect.apply(nativeSerie.intoSpilled, this, [options]))
+    },
+  },
   asTaken: {
     configurable: true,
     writable: true,
@@ -2119,6 +2198,51 @@ Object.defineProperties(Serie.prototype, {
     value(mask) {
       Reflect.apply(nativeSerie.asFiltered, this, [serieArgument(mask, 'Serie.asFiltered mask')])
       return this
+    },
+  },
+  // The orderings by key: `by` read once by the core's `order by` key rule.
+  sortIndicesBy: {
+    configurable: true,
+    writable: true,
+    value(by) {
+      return describedSerie(Reflect.apply(nativeSerie.sortIndicesBy, this, [orderingKeys(by)]))
+    },
+  },
+  intoSortBy: {
+    configurable: true,
+    writable: true,
+    value(by) {
+      return describedSerie(Reflect.apply(nativeSerie.intoSortBy, this, [orderingKeys(by)]))
+    },
+  },
+  asSortBy: {
+    configurable: true,
+    writable: true,
+    value(by) {
+      Reflect.apply(nativeSerie.asSortBy, this, [orderingKeys(by)])
+      return this
+    },
+  },
+  // The rows matched with another held column's on `by`: a Serie, or a
+  // window as the serie of its rows.
+  joinWith: {
+    configurable: true,
+    writable: true,
+    value(other, by, how, options) {
+      let right = other
+      if (other instanceof NativeWindowSerie) {
+        right = Reflect.apply(nativeWindowSerie.intoSerie, other, [])
+      } else if (!(other instanceof NativeSerie)) {
+        throw new TypeError('Serie.joinWith takes a Serie or a WindowSerie')
+      }
+      return describedSerie(
+        Reflect.apply(nativeSerie.joinWith, this, [
+          right,
+          literalValue(by),
+          joinHow(how, 'Serie.joinWith'),
+          joinOptionArgs(options, 'Serie.joinWith'),
+        ]),
+      )
     },
   },
   // A window holds this serie and reads and writes through it at each call.
@@ -2182,6 +2306,9 @@ const nativeWindowSerie = Object.freeze({
   asSorted: NativeWindowSerie.prototype._asSortedNative,
   asReversed: NativeWindowSerie.prototype._asReversedNative,
   asTaken: NativeWindowSerie.prototype._asTakenNative,
+  sortIndicesBy: NativeWindowSerie.prototype._sortIndicesByNative,
+  intoSortBy: NativeWindowSerie.prototype._intoSortByNative,
+  asSortBy: NativeWindowSerie.prototype._asSortByNative,
 })
 for (const name of [
   '_asJsNative',
@@ -2205,6 +2332,9 @@ for (const name of [
   '_asSortedNative',
   '_asReversedNative',
   '_asTakenNative',
+  '_sortIndicesByNative',
+  '_intoSortByNative',
+  '_asSortByNative',
 ]) {
   delete NativeWindowSerie.prototype[name]
 }
@@ -2427,6 +2557,31 @@ Object.defineProperties(WindowSerie.prototype, {
       return this
     },
   },
+  // The orderings by key over the window's rows alone.
+  sortIndicesBy: {
+    configurable: true,
+    writable: true,
+    value(by) {
+      return describedSerie(
+        Reflect.apply(nativeWindowSerie.sortIndicesBy, this, [orderingKeys(by)]),
+      )
+    },
+  },
+  intoSortBy: {
+    configurable: true,
+    writable: true,
+    value(by) {
+      return describedSerie(Reflect.apply(nativeWindowSerie.intoSortBy, this, [orderingKeys(by)]))
+    },
+  },
+  asSortBy: {
+    configurable: true,
+    writable: true,
+    value(by) {
+      Reflect.apply(nativeWindowSerie.asSortBy, this, [orderingKeys(by)])
+      return this
+    },
+  },
 })
 
 // A stream of record series: the natives it reads by are kept here, and
@@ -2439,10 +2594,24 @@ const nativeSerieReader = Object.freeze({
   next: NativeSerieReader.prototype._nextNative,
   cast: NativeSerieReader.prototype._castNative,
   windowBy: NativeSerieReader.prototype._windowByNative,
+  intoSorted: NativeSerieReader.prototype._intoSortedNative,
+  intoSortBy: NativeSerieReader.prototype._intoSortByNative,
+  joinWith: NativeSerieReader.prototype._joinWithNative,
+  asSpilled: NativeSerieReader.prototype._asSpilledNative,
+  intoSpilled: NativeSerieReader.prototype._intoSpilledNative,
 })
-delete NativeSerieReader.prototype._nextNative
-delete NativeSerieReader.prototype._castNative
-delete NativeSerieReader.prototype._windowByNative
+for (const name of [
+  '_nextNative',
+  '_castNative',
+  '_windowByNative',
+  '_intoSortedNative',
+  '_intoSortByNative',
+  '_joinWithNative',
+  '_asSpilledNative',
+  '_intoSpilledNative',
+]) {
+  delete NativeSerieReader.prototype[name]
+}
 const SerieReader = publicNativeClass(
   NativeSerieReader,
   'SerieReader',
@@ -2494,6 +2663,62 @@ Object.defineProperties(SerieReader.prototype, {
       return Reflect.apply(nativeSerieReader.windowBy, this, [
         windowKey(by, 'SerieReader.windowBy'),
         windowSorted(sorted, 'SerieReader.windowBy'),
+      ])
+    },
+  },
+  // The stream drained, sorted and read back as the held stream of the
+  // merged chunks; the reader is consumed.
+  intoSorted: {
+    configurable: true,
+    value(options) {
+      return Reflect.apply(
+        nativeSerieReader.intoSorted,
+        this,
+        sortOptionArgs(options, 'SerieReader.intoSorted'),
+      )
+    },
+  },
+  intoSortBy: {
+    configurable: true,
+    value(by) {
+      return Reflect.apply(nativeSerieReader.intoSortBy, this, [orderingKeys(by)])
+    },
+  },
+  // The records this reader holds spilled in place, answering this reader;
+  // `intoSpilled` hands them over as a new reader, this one consumed.
+  asSpilled: {
+    configurable: true,
+    value(options) {
+      Reflect.apply(nativeSerieReader.asSpilled, this, [options])
+      return this
+    },
+  },
+  intoSpilled: {
+    configurable: true,
+    value(options) {
+      return Reflect.apply(nativeSerieReader.intoSpilled, this, [options])
+    },
+  },
+  // The stream joined with a held column, a chunked one or another stream,
+  // which is consumed too; one probe batch joined at a time.
+  joinWith: {
+    configurable: true,
+    value(other, by, how, options) {
+      if (other === this) {
+        throw new TypeError('SerieReader.joinWith cannot join a stream with itself')
+      }
+      if (
+        !(other instanceof NativeSerie) &&
+        !(other instanceof NativeChunkedSerie) &&
+        !(other instanceof NativeSerieReader)
+      ) {
+        throw new TypeError('SerieReader.joinWith takes a Serie, a ChunkedSerie or a SerieReader')
+      }
+      return Reflect.apply(nativeSerieReader.joinWith, this, [
+        other,
+        literalValue(by),
+        joinHow(how, 'SerieReader.joinWith'),
+        joinOptionArgs(options, 'SerieReader.joinWith'),
       ])
     },
   },
@@ -2565,6 +2790,12 @@ const nativeChunkedSerie = Object.freeze({
   asReversed: NativeChunkedSerie.prototype._asReversedNative,
   asTaken: NativeChunkedSerie.prototype._asTakenNative,
   asFiltered: NativeChunkedSerie.prototype._asFilteredNative,
+  sortIndicesBy: NativeChunkedSerie.prototype._sortIndicesByNative,
+  intoSortBy: NativeChunkedSerie.prototype._intoSortByNative,
+  asSortBy: NativeChunkedSerie.prototype._asSortByNative,
+  joinWith: NativeChunkedSerie.prototype._joinWithNative,
+  asSpilled: NativeChunkedSerie.prototype._asSpilledNative,
+  intoSpilled: NativeChunkedSerie.prototype._intoSpilledNative,
 })
 for (const name of [
   '_chunksNative',
@@ -2590,6 +2821,12 @@ for (const name of [
   '_asReversedNative',
   '_asTakenNative',
   '_asFilteredNative',
+  '_sortIndicesByNative',
+  '_intoSortByNative',
+  '_asSortByNative',
+  '_joinWithNative',
+  '_asSpilledNative',
+  '_intoSpilledNative',
 ]) {
   delete NativeChunkedSerie.prototype[name]
 }
@@ -2898,6 +3135,23 @@ Object.defineProperties(ChunkedSerie.prototype, {
       return this
     },
   },
+  // Chunks spilled in place, answering this chunked serie; `intoSpilled` a
+  // spilled copy.
+  asSpilled: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      Reflect.apply(nativeChunkedSerie.asSpilled, this, [options])
+      return this
+    },
+  },
+  intoSpilled: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return Reflect.apply(nativeChunkedSerie.intoSpilled, this, [options])
+    },
+  },
   asTaken: {
     configurable: true,
     writable: true,
@@ -2916,6 +3170,49 @@ Object.defineProperties(ChunkedSerie.prototype, {
         serieArgument(mask, 'ChunkedSerie.asFiltered mask'),
       ])
       return this
+    },
+  },
+  // The orderings by key across the chunks: the positions through the one
+  // join, the rows through the merge.
+  sortIndicesBy: {
+    configurable: true,
+    writable: true,
+    value(by) {
+      return describedSerie(
+        Reflect.apply(nativeChunkedSerie.sortIndicesBy, this, [orderingKeys(by)]),
+      )
+    },
+  },
+  intoSortBy: {
+    configurable: true,
+    writable: true,
+    value(by) {
+      return Reflect.apply(nativeChunkedSerie.intoSortBy, this, [orderingKeys(by)])
+    },
+  },
+  asSortBy: {
+    configurable: true,
+    writable: true,
+    value(by) {
+      Reflect.apply(nativeChunkedSerie.asSortBy, this, [orderingKeys(by)])
+      return this
+    },
+  },
+  // The rows matched with another chunked serie's on `by`, the output
+  // batches kept apart as chunks.
+  joinWith: {
+    configurable: true,
+    writable: true,
+    value(other, by, how, options) {
+      if (!(other instanceof NativeChunkedSerie)) {
+        throw new TypeError('ChunkedSerie.joinWith takes a ChunkedSerie')
+      }
+      return Reflect.apply(nativeChunkedSerie.joinWith, this, [
+        other,
+        literalValue(by),
+        joinHow(how, 'ChunkedSerie.joinWith'),
+        joinOptionArgs(options, 'ChunkedSerie.joinWith'),
+      ])
     },
   },
 })
@@ -2984,6 +3281,34 @@ Object.defineProperty(ArrowCastPlan.prototype, 'apply', {
   },
 })
 
+// The bound a column stays resident under and the local folder it spills to.
+// The constructor reads `{ byteSize, folder }`, each absent or null the
+// default, and refuses a key it does not know; the bound is a u64, so it and
+// `NEVER` and the default cross as bigints, read off the core once.
+const NativeSpillOptions = binding.SpillOptions
+const SPILL_OPTION_NAMES = new Set(['byteSize', 'folder'])
+const SpillOptions = publicNativeClass(NativeSpillOptions, 'SpillOptions', new Set(), (args) => {
+  const options = args[0]
+  if (options === undefined || options === null) return args
+  if (typeof options !== 'object' || Array.isArray(options)) {
+    throw new TypeError('SpillOptions options must be an object of byteSize and folder')
+  }
+  for (const key of Object.keys(options)) {
+    if (!SPILL_OPTION_NAMES.has(key)) {
+      throw new TypeError(`SpillOptions options take byteSize and folder, got ${JSON.stringify(key)}`)
+    }
+  }
+  return args
+})
+Object.defineProperty(SpillOptions, 'NEVER', {
+  enumerable: true,
+  value: binding._spillNeverNative(),
+})
+binding.DEFAULT_SPILL_BYTE_SIZE = binding._defaultSpillByteSizeNative()
+delete binding._spillNeverNative
+delete binding._defaultSpillByteSizeNative
+
+binding.SpillOptions = SpillOptions
 binding.Serie = Serie
 binding.WindowSerie = WindowSerie
 binding.SerieReader = SerieReader
@@ -4572,10 +4897,12 @@ delete binding.ArrowWriteSession
 const { installRecords } = require('./records.js')
 const { icebergBatchReader, icebergCallOptions, intoField } = installRecords({
   BatchReader,
+  ChunkedSerie,
   Field,
   IcebergOptions: binding.IcebergOptions,
   IOBase,
   RecordOptions,
+  Serie,
   SerieReader,
   TextOptions,
   Table: binding.Table,

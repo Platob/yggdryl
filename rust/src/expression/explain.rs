@@ -39,11 +39,11 @@ use std::fmt::Write as _;
 use super::bind::{Bound, Kind, Node, Step, StepKind};
 use super::filter::Filter;
 use super::path::{FieldPath, FieldSegment};
-use super::plan::{Ordering, Plan, Source, Target, Write};
+use super::plan::{Join, Ordering, Plan, Source, Target, Write};
 use super::selector::{BoundSelector, Projection, Selector};
 use super::term::Term;
 use super::{Expression, Literal, Safety};
-use crate::Field;
+use crate::{Field, JoinOptions};
 
 /// One node of the rendered tree: a label and what hangs under it.
 #[derive(Debug, Default)]
@@ -528,14 +528,18 @@ impl Plan {
             children.push(write.tree());
         }
         if let Some(from) = self.source() {
-            children.push(match from {
-                Source::Target(target) => {
-                    let mut held = vec![Tree::leaf(target.location().to_string())];
-                    held.extend(properties(target));
-                    Tree::node("from", held)
-                }
-                Source::Plan(plan) => Tree::node("from", vec![plan.tree()]),
-            });
+            children.push(Tree::node("from", from.trees()));
+        }
+        // The root of the rows so far, where the plan states it without
+        // reading: what a join's rung is compiled against.
+        let mut left = self
+            .source()
+            .and_then(|from| from.static_root().ok().flatten());
+        let over_target = matches!(self.source(), Some(Source::Target(_)));
+        for (index, join) in self.joins().iter().enumerate() {
+            let (tree, output) = join.tree(left.take(), index == 0 && over_target);
+            children.push(tree);
+            left = output;
         }
         if !self.filter_section().is_always_true() {
             children.push(self.filter_section().tree());
@@ -559,6 +563,77 @@ impl Plan {
     }
 }
 
+impl Source {
+    /// The branches a source hangs under the node naming it: a target's
+    /// location and its properties, or a nested plan's tree.
+    fn trees(&self) -> Vec<Tree> {
+        match self {
+            Self::Target(target) => {
+                let mut held = vec![Tree::leaf(target.location().to_string())];
+                held.extend(properties(target));
+                held
+            }
+            Self::Plan(plan) => vec![plan.tree()],
+        }
+    }
+}
+
+impl Join {
+    /// The tree of this join over rows rooted at `left`, when the plan
+    /// states that root, and the root the join leaves them at.
+    ///
+    /// The node names the kind; under it hang the source, each key as
+    /// `left = right`, the rung the keys hash on - only where both roots are
+    /// stated, since the rung is the bound keys' answer - the side held and
+    /// hashed, which is the join's source because the rows so far stream,
+    /// and, for the first join over a target, the filter the left read is
+    /// pruned by: its values are the held keys, read when the plan runs.
+    fn tree(&self, left: Option<Field>, first_over_target: bool) -> (Tree, Option<Field>) {
+        let mut children = self.source().trees();
+        children.push(Tree::node(
+            "on",
+            self.keys()
+                .iter()
+                .map(|key| Tree::leaf(key.equality().to_string()))
+                .collect(),
+        ));
+        let options = JoinOptions::new();
+        let right = self.source().static_root().ok().flatten();
+        let compiled = left.zip(right).and_then(|(left, right)| {
+            crate::join::JoinPlan::compile(
+                left,
+                right,
+                self.keys(),
+                self.how(),
+                &options,
+                None,
+                Some(0),
+            )
+            .ok()
+        });
+        if let Some(compiled) = &compiled {
+            children.push(Tree::leaf(format!("rung {}", compiled.rung().as_str())));
+        }
+        let build = compiled
+            .as_ref()
+            .map_or(crate::JoinSide::Right, crate::join::JoinPlan::build_side);
+        children.push(Tree::leaf(format!("build {build}")));
+        if first_over_target
+            && crate::join::pushes_down(self.keys(), self.how(), build, &options)
+            && let [key] = self.keys().keys()
+        {
+            children.push(Tree::leaf(format!(
+                "pushdown {} in (distinct {}, at most {})",
+                key.left(),
+                key.right(),
+                options.pushdown_keys()
+            )));
+        }
+        let output = compiled.map(|compiled| Field::clone(compiled.output()));
+        (Tree::node(format!("{} join", self.how()), children), output)
+    }
+}
+
 fn properties(target: &Target) -> Option<Tree> {
     if target.properties().is_empty() {
         return None;
@@ -577,8 +652,8 @@ impl Expression {
     /// The tree of this expression, its clause, plan or sequence at the root.
     ///
     /// A plan lists its sections in the order they run: what it creates,
-    /// what it writes, where it reads, then `where`, `select`, `order by`,
-    /// `offset` and `limit`.
+    /// what it writes, where it reads, each join, then `where`, `select`,
+    /// `order by`, `offset` and `limit`.
     #[must_use]
     pub fn explain(&self) -> String {
         self.tree().render()

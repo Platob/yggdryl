@@ -22,7 +22,11 @@
 //! order for such a record. Uniqueness is one hash set over the row format's
 //! bytes on the same rung, or over the values.
 //! So every leaf answers every verb, and the cost is the ladder's rung,
-//! stated on each.
+//! stated on each. The `*_by` sorts order by a list of `order by` keys,
+//! each a term computed once over the whole serie: Arrow's row format over
+//! every key cell at once where each cell's stored bytes order as its
+//! values, and otherwise the first key whose cells differ, each cell on its
+//! own rung under its own key's options.
 //!
 //! The reads answer a new serie and leave this one as it is; the `as_*`
 //! writes bring this serie into the state in place, rewriting a uniquely
@@ -44,7 +48,7 @@ use arrow_schema::DataType as ArrowDataType;
 
 use super::{Proof, Rows as _, Serie, land, proven_row};
 use crate::arrow::{array_memory_size, scalar_memory_size};
-use crate::expression::{BoundSelector, IntoSelector};
+use crate::expression::{self, BoundSelector, IntoOrderings, IntoSelector, Projection};
 use crate::{
     DataType, Error, Field, FieldPath, Result, Scalar, Selector, SerieReader, SerieWindows,
     SortOptions,
@@ -108,7 +112,7 @@ fn row_format(array: &ArrayRef, options: SortOptions) -> Option<Rows> {
 /// what it parses to, a union and a variant by more than their buffers say,
 /// and a geospatial value by the WKB it validates to. A float leaf answers
 /// `true` and leaves its NaN payloads to [`holds_foreign_nan`].
-fn stored_order_is_value_order(dtype: &DataType) -> bool {
+pub(crate) fn stored_order_is_value_order(dtype: &DataType) -> bool {
     match dtype {
         DataType::Null
         | DataType::Boolean
@@ -385,6 +389,96 @@ impl<'a> Compare<'a> {
             order,
             windows: Box::from(&runs[..kept]),
         }
+    }
+}
+
+/// Every key cell's rows in Arrow's row format, one converter over all of
+/// them, each under its own key's options: bytes whose order is the keys'
+/// order. `None` unless every cell's buffers order as its values
+/// ([`Serie::ordered_buffers`]) and the format has a layout for each. A row
+/// the key record leaves absent is masked absent in every cell.
+fn key_rows(
+    cells: &[Serie],
+    keys: &[expression::Ordering],
+    absent: Option<&NullBuffer>,
+) -> Option<Rows> {
+    let mut fields = Vec::with_capacity(cells.len());
+    let mut arrays = Vec::with_capacity(cells.len());
+    for (cell, key) in cells.iter().zip(keys) {
+        let mut array = cell.ordered_buffers()?;
+        if let Some(absent) = absent {
+            array = masked(&array, absent)?;
+        }
+        fields.push(SortField::new_with_options(
+            array.data_type().clone(),
+            key.options().into_arrow(),
+        ));
+        arrays.push(array);
+    }
+    if !RowConverter::supports_fields(&fields) {
+        return None;
+    }
+    RowConverter::new(fields)
+        .ok()?
+        .convert_columns(&arrays)
+        .ok()
+}
+
+/// `array` absent wherever `absent` is, its buffers shared: a record's
+/// absent row says nothing of the slots beneath it. `None` for a layout
+/// that holds no validity of its own - a run-end encoding, a union, a null
+/// column - which the values' own order reads instead.
+fn masked(array: &ArrayRef, absent: &NullBuffer) -> Option<ArrayRef> {
+    let nulls = NullBuffer::union(array.nulls(), Some(absent));
+    let data = array.to_data().into_builder().nulls(nulls).build().ok()?;
+    Some(arrow_array::make_array(data))
+}
+
+/// How two rows compare under a list of `order by` keys, off the row
+/// format: the first key whose cells differ decides, each cell on its own
+/// rung of [`Compare`] under its own key's options, and a row the key
+/// record leaves absent is absent in every cell.
+struct KeysCompare<'a> {
+    /// The key record's absent rows, where it has any.
+    absent: Option<&'a NullBuffer>,
+    /// Per key: its cell column, how two of its rows compare, its options.
+    keys: Box<[(&'a Serie, Compare<'a>, SortOptions)]>,
+}
+
+impl<'a> KeysCompare<'a> {
+    fn new(
+        cells: &'a [Serie],
+        keys: &[expression::Ordering],
+        absent: Option<&'a NullBuffer>,
+    ) -> Self {
+        Self {
+            absent,
+            keys: cells
+                .iter()
+                .zip(keys)
+                .map(|(cell, key)| (cell, Compare::new(cell, key.options()), key.options()))
+                .collect(),
+        }
+    }
+
+    fn cmp(&self, left: usize, right: usize) -> Ordering {
+        let absent = |row: usize| self.absent.is_some_and(|nulls| nulls.is_null(row));
+        let (left_absent, right_absent) = (absent(left), absent(right));
+        for (cell, compare, options) in &self.keys {
+            let null = |row: usize| matches!(cell.is_null(row), Ok(true));
+            let step = match (left_absent, right_absent) {
+                (false, false) => compare.cmp(left, right),
+                (true, true) => Ordering::Equal,
+                (true, false) if null(right) => Ordering::Equal,
+                (true, false) => absent_against_present(*options),
+                (false, true) if null(left) => Ordering::Equal,
+                (false, true) => absent_against_present(*options).reverse(),
+            };
+            if step != Ordering::Equal {
+                return step;
+            }
+        }
+        Ordering::Equal
     }
 }
 
@@ -710,6 +804,15 @@ impl Serie {
     /// builds.
     pub(crate) fn sorted_order(&self, options: SortOptions) -> Result<Vec<u32>> {
         let len = require_indexable(self)? as usize;
+        if matches!(self, Self::Lit(_)) {
+            // Every row is the one value: the order is the one they stand in.
+            return Ok((0..len as u32).collect());
+        }
+        if let Some(whole) = self.whole_row_order(options)
+            && self.declares_at_least(&whole)
+        {
+            return Ok((0..len as u32).collect());
+        }
         if let Some(order) = primitive!(self, column => column.sort_indices(0..len, options)) {
             return Ok(order);
         }
@@ -736,6 +839,115 @@ impl Serie {
         }
         let array = self.into_arrow_array()?;
         (!holds_foreign_nan(array.as_ref())).then_some(array)
+    }
+
+    /// The row positions in the order the `order by` keys of `by` state, as
+    /// the `uint32` column named `index` [`Self::sort_indices`] answers:
+    /// stable, so rows whose every key is equal keep their order.
+    ///
+    /// `by` is the keys most significant first - the clause's text
+    /// (`"venue, price desc nulls first"`), an
+    /// [`Ordering`](crate::expression::Ordering), a list of either, a
+    /// [`Selector`] (every projection ascending) or a [`Scalar`] - each a
+    /// term with its direction and its nulls placement
+    /// ([`IntoOrderings`]). The terms are bound once against
+    /// [`SerieReader::root_of`]: a record column against its own field, any
+    /// other column as the one child of its record under its own name, so
+    /// a column named `price` sorts by `"price desc"`. A key that is a
+    /// column is the landed column, zero copy; a computed one - `price *
+    /// 2`, `lower(venue)` - is evaluated once over the whole serie. A row
+    /// the record leaves absent is absent in every key.
+    ///
+    /// The rung is the keys': where every key cell's stored bytes order as
+    /// its values - text, integers, temporals, records of them - one Arrow
+    /// row converter encodes every cell at once, each under its own
+    /// options, and the order is one stable sort over those rows: the rows'
+    /// bytes and the order, one allocation each. Otherwise - a version, a
+    /// windows-1252 text, a registered code, a URL, a float holding a
+    /// foreign NaN among the keys - the first key whose cells differ
+    /// decides, each cell on its own rung of [`Self::sort_indices`]'s
+    /// ladder under its own key's options, so only such a cell builds its
+    /// values, once. One key alone sorts as its cell's own
+    /// [`Self::sort_indices`] does, a primitive cell over its native slice.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie, StructType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let root = StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Int64.nullable_field("price"),
+    /// ])
+    /// .map(DataType::from)?
+    /// .required_field("quote");
+    /// let quote = |venue: &str, price: Option<i64>| {
+    ///     Scalar::from_sequence([Scalar::from(venue), price.map_or(Scalar::Null, Scalar::from)])
+    /// };
+    /// let quotes = Serie::from_scalars(root, [
+    ///     quote("XNYS", Some(1)),
+    ///     quote("XNAS", Some(2)),
+    ///     quote("XNAS", None),
+    ///     quote("XNYS", Some(3)),
+    /// ])?;
+    /// let order = quotes.sort_indices_by("venue, price desc nulls first")?;
+    /// assert_eq!(order.rows().to_vec(), [2_u32, 1, 3, 0].map(Scalar::from));
+    ///
+    /// // A plain column keys as itself, under its own name.
+    /// let prices = Serie::from_scalars(DataType::Int64.required_field("price"), [3_i64, 1, 2].map(Scalar::from))?;
+    /// assert_eq!(prices.sort_indices_by("price desc")?.rows().to_vec(), [0_u32, 2, 1].map(Scalar::from));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error, before any row is read: the parse error for text
+    /// that is not a list of keys; naming the serie, for no key at all, for
+    /// a run, which sorts by no term, and for an `unnest`, which is one row
+    /// per element where a key is one value per row; the binder's own
+    /// refusal for a term reaching no column, or two, and for two keys
+    /// publishing one name - alias one; and, naming the serie, for more
+    /// rows than one `uint32` index column addresses.
+    pub fn sort_indices_by(&self, by: impl IntoOrderings) -> Result<Self> {
+        index_column(self.sorted_order_by(&by.into_orderings()?)?)
+    }
+
+    /// The positions [`Self::sort_indices_by`] answers, as the vector it
+    /// builds.
+    pub(crate) fn sorted_order_by(&self, by: &[expression::Ordering]) -> Result<Vec<u32>> {
+        let Some(field) = self.field() else {
+            return Err(self.not_a_record("sorts by no term"));
+        };
+        if by.is_empty() {
+            return Err(refuse(
+                self,
+                smol_str::format_smolstr!(
+                    "expected at least one `order by` key to sort {} by, got none",
+                    self.name()
+                ),
+            ));
+        }
+        let len = require_indexable(self)? as usize;
+        if self.declares_at_least(by) {
+            return Ok((0..len as u32).collect());
+        }
+        let key = Selector::new(by.iter().map(|key| Projection::new(key.term().clone())))
+            .bind_key(&SerieReader::root_of(field)?, self.name(), "sort by")?;
+        let keys = key.apply_serie(self)?;
+        let record = keys.as_struct().expect("a key is a record column");
+        let absent = record.nulls().filter(|nulls| nulls.null_count() > 0);
+        let cells = record.children();
+        if let ([cell], [key], None) = (cells, by, absent) {
+            return cell.sorted_order(key.options());
+        }
+        let mut order: Vec<u32> = (0..len as u32).collect();
+        if let Some(rows) = key_rows(cells, by, absent) {
+            order.sort_by(|left, right| rows.row(*left as usize).cmp(&rows.row(*right as usize)));
+            return Ok(order);
+        }
+        let compare = KeysCompare::new(cells, by, absent);
+        order.sort_by(|left, right| compare.cmp(*left as usize, *right as usize));
+        Ok(order)
     }
 
     /// Row `left` of this serie against row `right` of `other`, a serie
@@ -777,6 +989,14 @@ impl Serie {
     /// assert!(!prices.is_sorted(SortOptions::ascending().with_nulls_first(true)));
     /// ```
     pub fn is_sorted(&self, options: SortOptions) -> bool {
+        if matches!(self, Self::Lit(_)) {
+            return true;
+        }
+        if let Some(whole) = self.whole_row_order(options)
+            && self.declares_at_least(&whole)
+        {
+            return true;
+        }
         if let Some(array) = self.ordered_buffers()
             && let Ok(compare) =
                 make_comparator(array.as_ref(), array.as_ref(), options.into_arrow())
@@ -834,6 +1054,9 @@ impl Serie {
     /// assert!(!Serie::new(vec![Scalar::Null, Scalar::Null]).is_unique());
     /// ```
     pub fn is_unique(&self) -> bool {
+        if let Self::Lit(lit) = self {
+            return crate::value::SerieValue::len(lit.as_ref()) <= 1;
+        }
         let mut unique = true;
         self.walk_distinct(|_, first| {
             unique = first;
@@ -851,6 +1074,9 @@ impl Serie {
     /// assert_eq!(venues.unique_count(), 2);
     /// ```
     pub fn unique_count(&self) -> usize {
+        if let Self::Lit(lit) = self {
+            return crate::value::SerieValue::len(lit.as_ref()).min(1);
+        }
         let mut count = 0;
         self.walk_distinct(|_, first| {
             count += usize::from(first);
@@ -889,8 +1115,56 @@ impl Serie {
     ///
     /// [`Self::sort_indices`]'s refusal.
     pub fn into_sorted(&self, options: SortOptions) -> Result<Self> {
+        if let Some(whole) = self.whole_row_order(options)
+            && self.declares_at_least(&whole)
+        {
+            // Already in this order, and the root says so: the same buffers.
+            return Ok(self.clone());
+        }
         let order = self.sorted_order(options)?;
-        self.taken(&order)
+        let sorted = self.taken(&order)?;
+        match self.whole_row_order(options) {
+            Some(by) => sorted.declaring_order(&by),
+            None => Ok(sorted),
+        }
+    }
+
+    /// The rows in the order the `order by` keys of `by` state, under the
+    /// same field, this serie untouched: [`Self::sort_indices_by`] - its
+    /// rung, its stability - then one take of every column.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie, StructType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let root = StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Int64.required_field("price"),
+    /// ])
+    /// .map(DataType::from)?
+    /// .required_field("quote");
+    /// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    /// let quotes = Serie::from_scalars(root, [quote("XNYS", 1), quote("XNAS", 2), quote("XNYS", 3)])?;
+    /// let sorted = quotes.into_sort_by("venue desc, price desc")?;
+    /// assert_eq!(sorted.rows().to_vec(), vec![quote("XNYS", 3), quote("XNYS", 1), quote("XNAS", 2)]);
+    /// // The result declares the order it keeps, so a sort by the same keys is a clone.
+    /// assert_eq!(sorted.declared_order()?.map(|by| by.len()), Some(2));
+    /// assert_eq!(quotes.scalar(0)?, quote("XNYS", 1));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Self::sort_indices_by`]'s refusals.
+    pub fn into_sort_by(&self, by: impl IntoOrderings) -> Result<Self> {
+        let by = by.into_orderings()?;
+        if !by.is_empty() && self.declares_at_least(&by) {
+            // Already in this order, and the root says so: the same buffers.
+            return Ok(self.clone());
+        }
+        let order = self.sorted_order_by(&by)?;
+        self.taken(&order)?.declaring_order(&by)
     }
 
     /// The first occurrence of every value, in order of first occurrence;
@@ -926,6 +1200,10 @@ impl Serie {
     /// ```
     pub fn into_reversed(&self) -> Self {
         let len = self.len();
+        if matches!(self, Self::Lit(_)) {
+            // Every row is the one value, so the column reversed is itself.
+            return self.clone();
+        }
         if let Self::Run(run) = self {
             let mut values = run.as_slice().to_vec();
             values.reverse();
@@ -938,8 +1216,15 @@ impl Serie {
         if len > u32::MAX as usize {
             return Self::new(self.rows().iter().rev().cloned().collect::<Vec<_>>());
         }
-        self.taken(&order)
-            .expect("a reversal names every row once, which the take accepts")
+        let reversed = self
+            .taken(&order)
+            .expect("a reversal names every row once, which the take accepts");
+        match self.declared_order() {
+            Ok(Some(by)) => reversed
+                .declaring_order(&reversed_order(&by))
+                .expect("a key read off a declaration is one the declaration takes back"),
+            _ => reversed,
+        }
     }
 
     /// The rows `indices` names, in that order, this serie untouched:
@@ -967,7 +1252,14 @@ impl Serie {
     /// integer, negative or past the end.
     pub fn into_taken(&self, indices: &Self) -> Result<Self> {
         let order = self.take_order(indices)?;
-        self.taken(&order)
+        let taken = self.taken(&order)?;
+        // Rows picked in increasing position keep the order the root
+        // declares; any other pick could break it, so the declaration goes.
+        if order.windows(2).all(|pair| pair[0] < pair[1]) {
+            Ok(taken)
+        } else {
+            taken.clearing_order()
+        }
     }
 
     /// `indices` read as row positions of this serie, each checked.
@@ -996,6 +1288,12 @@ impl Serie {
     /// The rows at `order`, every position already checked.
     pub(crate) fn taken(&self, order: &[u32]) -> Result<Self> {
         match self {
+            // Every row is the one value: the pick is the count.
+            Self::Lit(lit) => Ok(Self::lit(
+                Arc::clone(crate::value::SerieValue::field_ref(lit.as_ref())),
+                lit.value().clone(),
+                order.len(),
+            )?),
             Self::Run(run) => {
                 let values = run.as_slice();
                 Ok(Self::new(
@@ -1023,7 +1321,7 @@ impl Serie {
                             .map(|index| column.row_at(*index as usize).into_owned()),
                     );
                 }
-                Ok(land(field, taken, &Proof::Proven)?)
+                land(field, taken, &Proof::Proven)?.settled()
             }
         }
     }
@@ -1080,6 +1378,12 @@ impl Serie {
     /// The rows `keep` marks, which is as long as this serie.
     pub(crate) fn filtered(&self, keep: &[bool]) -> Result<Self> {
         match self {
+            // Every row is the one value: the kept rows are a count.
+            Self::Lit(lit) => Ok(Self::lit(
+                Arc::clone(crate::value::SerieValue::field_ref(lit.as_ref())),
+                lit.value().clone(),
+                keep.iter().filter(|kept| **kept).count(),
+            )?),
             Self::Run(run) => Ok(Self::new(
                 run.as_slice()
                     .iter()
@@ -1096,7 +1400,7 @@ impl Serie {
                 let mask = BooleanArray::from(keep.to_vec());
                 let kept =
                     arrow_select::filter::filter(array.as_ref(), &mask).map_err(Error::Arrow)?;
-                Ok(land(field, kept, &Proof::Proven)?)
+                land(field, kept, &Proof::Proven)?.settled()
             }
         }
     }
@@ -1523,6 +1827,9 @@ impl Serie {
     pub fn memory_size(&self) -> usize {
         match self {
             Self::Run(run) => run.as_slice().iter().map(scalar_memory_size).sum(),
+            // A constant states its estimate from the one row it holds and
+            // builds nothing, so sizing a column never lays it out.
+            Self::Lit(lit) => crate::value::SerieValue::memory_size(lit.as_ref()),
             column => array_memory_size(
                 &column
                     .into_arrow_array()
@@ -1563,9 +1870,37 @@ impl Serie {
     /// [`Self::sort_indices`]'s refusal, which leaves this serie as it was.
     pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self> {
         let len = self.len();
-        if !self.sort_range_in_place(0..len, options) {
+        if self.sort_range_in_place(0..len, options) {
+            self.settle()?;
+        } else {
             *self = self.into_sorted(options)?;
         }
+        Ok(self)
+    }
+
+    /// Sort the rows in place in the order the `order by` keys of `by`
+    /// state, answering this serie so calls chain: [`Self::into_sort_by`]'s
+    /// one take replaces the buffers.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut prices = Serie::from_scalars(DataType::Int64.required_field("price"), [2_i64, 3, 1].map(Scalar::from))?;
+    /// prices.as_sort_by("price desc")?.as_reversed()?;
+    /// assert_eq!(prices.rows().to_vec(), [1_i64, 2, 3].map(Scalar::from));
+    /// assert!(prices.as_sort_by("tier").is_err());
+    /// assert_eq!(prices.rows().to_vec(), [1_i64, 2, 3].map(Scalar::from));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Self::sort_indices_by`]'s refusals, which leave this serie as it
+    /// was.
+    pub fn as_sort_by(&mut self, by: impl IntoOrderings) -> Result<&mut Self> {
+        *self = self.into_sort_by(by)?;
         Ok(self)
     }
 
@@ -1653,7 +1988,9 @@ impl Serie {
     /// calls chain.
     pub fn as_reversed(&mut self) -> Result<&mut Self> {
         let len = self.len();
-        if !self.reverse_range_in_place(0..len) {
+        if self.reverse_range_in_place(0..len) {
+            self.settle()?;
+        } else {
             *self = self.into_reversed();
         }
         Ok(self)
@@ -1704,5 +2041,314 @@ impl Serie {
     pub fn as_filtered(&mut self, mask: &Self) -> Result<&mut Self> {
         *self = self.into_filtered(mask)?;
         Ok(self)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The order a record declares: `SORT:by` on its root, a fact about its rows
+// that every verb keeps true - written by the sorts, kept by what keeps the
+// order, cleared by a write that breaks it, read before any row is compared.
+// ---------------------------------------------------------------------------
+
+/// The keys as a declaration spells them, `venue, price desc`.
+pub(crate) fn spelled(by: &[expression::Ordering]) -> String {
+    by.iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Every key of `by` turned around: the direction and where the absent
+/// rows go both flipped, which is what reversing sorted rows leaves true.
+fn reversed_order(by: &[expression::Ordering]) -> Vec<expression::Ordering> {
+    by.iter()
+        .map(|key| {
+            let options = key.options();
+            let flipped = if options.is_descending() {
+                SortOptions::ascending()
+            } else {
+                SortOptions::descending()
+            }
+            .with_nulls_first(!options.is_nulls_first());
+            expression::Ordering::new(key.term().clone(), flipped)
+        })
+        .collect()
+}
+
+impl Serie {
+    /// The `order by` keys this record's root declares its rows keep, most
+    /// significant first: `SORT:by` on the root, read through
+    /// [`Field::as_sort`]. `None` for a run, a column that is not a record,
+    /// and a root declaring none.
+    ///
+    /// A declaration is a proven fact about the rows, never a hint:
+    /// [`Self::into_sorted`] and [`Self::into_sort_by`] write it, a slice, a
+    /// filter, `into_unique` and a take in increasing position keep it, a
+    /// reversal flips it, a write compares the rows it touched against their
+    /// neighbours and clears it where the order no longer holds, and
+    /// [`Self::is_sorted`], `sort_indices`, `into_sorted` and their `_by`
+    /// forms answer without a pass where it states what they ask.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie, SortOptions, StructType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let root = StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Int64.required_field("price"),
+    /// ])
+    /// .map(DataType::from)?
+    /// .required_field("quote");
+    /// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    /// let quotes = Serie::from_scalars(root, [quote("XNYS", 2), quote("XNAS", 1)])?;
+    /// assert!(quotes.declared_order()?.is_none());
+    ///
+    /// let sorted = quotes.into_sort_by("venue, price desc")?;
+    /// let keys = sorted.declared_order()?.expect("the sort declared its keys");
+    /// assert_eq!(keys.len(), 2);
+    /// assert_eq!(keys[0].term().to_string(), "venue");
+    /// assert!(keys[1].is_descending());
+    /// assert_eq!(sorted.field().expect("a record").get_metadata("SORT:by"), Some(r#"["venue","price desc"]"#));
+    ///
+    /// // What the declaration states is answered without a pass.
+    /// assert_eq!(sorted.sort_indices_by("venue")?.rows().to_vec(), [0_u32, 1].map(Scalar::from));
+    /// // A write that breaks the order clears it; one that keeps it does not.
+    /// let mut held = sorted.clone();
+    /// held.push(quote("XNYS", 1))?;
+    /// assert!(held.declared_order()?.is_some());
+    /// held.push(quote("AAAA", 0))?;
+    /// assert!(held.declared_order()?.is_none());
+    /// // A whole-row sort declares every column.
+    /// let whole = quotes.into_sorted(SortOptions::default())?;
+    /// assert_eq!(whole.field().expect("a record").get_metadata("SORT:by"), Some(r#"["venue","price"]"#));
+    /// assert!(whole.is_sorted(SortOptions::default()));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming `SORT:by` when the root's text is not a list
+    /// of `order by` keys, which no door of this crate writes.
+    pub fn declared_order(&self) -> Result<Option<Vec<expression::Ordering>>> {
+        let Some(field) = self.field() else {
+            return Ok(None);
+        };
+        if field.dtype().as_fields().is_none() || !field.as_sort().declares_order() {
+            return Ok(None);
+        }
+        field.as_sort().by()
+    }
+
+    /// Whether the root declares an order beginning with `asked`: what the
+    /// declaration already proves, a prefix of it included.
+    pub(crate) fn declares_at_least(&self, asked: &[expression::Ordering]) -> bool {
+        matches!(self.declared_order(), Ok(Some(declared)) if declared.starts_with(asked))
+    }
+
+    /// The keys a whole-row sort of this record under `options` is: every
+    /// child in declaration order, each under `options`; `None` for anything
+    /// but a record.
+    fn whole_row_order(&self, options: SortOptions) -> Option<Vec<expression::Ordering>> {
+        let record = self.as_struct()?;
+        Some(
+            record
+                .children()
+                .iter()
+                .map(|child| {
+                    expression::Ordering::new(expression::Term::column(child.name()), options)
+                })
+                .collect(),
+        )
+    }
+
+    /// This record under its root declaring `by` as the order its rows
+    /// keep, the same buffers; a run, a column that is not a record and an
+    /// empty `by` as they are, as is a root already stating it. A `by` the
+    /// declaration cannot hold - a key repeated - declares nothing, which is
+    /// always true.
+    pub(crate) fn declaring_order(self, by: &[expression::Ordering]) -> Result<Self> {
+        if by.is_empty() || self.as_struct().is_none() {
+            return Ok(self);
+        }
+        let Some(field) = self.field() else {
+            return Ok(self);
+        };
+        if field.as_sort().by()?.as_deref() == Some(by) {
+            return Ok(self);
+        }
+        let mut root = field.clone();
+        if root.as_sort_mut().set_by(by.iter().cloned()).is_err() {
+            return Ok(self);
+        }
+        self.relabeled(Arc::new(root))
+    }
+
+    /// This record under its root declaring no order, the same buffers; as
+    /// it is where it declares none.
+    pub(crate) fn clearing_order(self) -> Result<Self> {
+        let Some(field) = self.field() else {
+            return Ok(self);
+        };
+        if !field.as_sort().declares_order() {
+            return Ok(self);
+        }
+        let mut root = field.clone();
+        root.as_sort_mut().remove_by();
+        self.relabeled(Arc::new(root))
+    }
+
+    /// This record under `field`, the same children and buffers, stating
+    /// the same backing: what a verb changing only what the root declares
+    /// answers through - the record's leaf copied once, its field swapped.
+    /// Anything but a record is itself.
+    pub(crate) fn relabeled(&self, field: Arc<Field>) -> Result<Self> {
+        let mut relabelled = self.clone();
+        if let Self::Struct(held) = &mut relabelled {
+            Arc::make_mut(held).set_field(field);
+        }
+        Ok(relabelled)
+    }
+
+    /// Whether the declared order `by` holds across the rows `written` and
+    /// the row on either side of them: `Some(false)` where two adjacent rows
+    /// there compare out of order, `None` where a key is not a bare column,
+    /// which a write does not evaluate.
+    fn order_holds(&self, by: &[expression::Ordering], written: Range<usize>) -> Option<bool> {
+        let mut keys = Vec::with_capacity(by.len());
+        for key in by {
+            keys.push((self.child(key.term().as_column()?)?, key.options()));
+        }
+        let len = self.len();
+        if len < 2 {
+            return Some(true);
+        }
+        let first = written.start.saturating_sub(1);
+        let last = written.end.min(len - 1);
+        for row in first..last {
+            for (child, options) in &keys {
+                match child.compare_across(row, child, row + 1, *options) {
+                    Ordering::Less => break,
+                    Ordering::Equal => {}
+                    Ordering::Greater => return Some(false),
+                }
+            }
+        }
+        Some(true)
+    }
+
+    /// The first row out of the order `by` states, `None` where every
+    /// adjacent pair is in order: one pass over the key record `by`
+    /// computes, as a sort computes it, for rows no verb of the crate laid
+    /// out in that order.
+    ///
+    /// # Errors
+    ///
+    /// The binder's refusal of a key.
+    pub(crate) fn first_disorder(&self, by: &[expression::Ordering]) -> Result<Option<usize>> {
+        let Some(field) = self.field() else {
+            return Ok(None);
+        };
+        if by.is_empty() || self.len() < 2 {
+            return Ok(None);
+        }
+        let key = Selector::new(by.iter().map(|key| Projection::new(key.term().clone())))
+            .bind_key(&SerieReader::root_of(field)?, self.name(), "sort by")?;
+        let keys = key.apply_serie(self)?;
+        let record = keys.as_struct().expect("a key is a record column");
+        let absent = record.nulls().filter(|nulls| nulls.null_count() > 0);
+        let compare = KeysCompare::new(record.children(), by, absent);
+        Ok((1..self.len()).find(|row| compare.cmp(row - 1, *row) == Ordering::Greater))
+    }
+
+    /// This record checked against the order its root declares, refusing
+    /// the first row out of it by name; a record declaring none, and a run,
+    /// as they are. What every door landing rows no verb of the crate laid
+    /// out answers through, so a declaration a `Serie` carries is a proven
+    /// one.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the serie, the row and the declared keys
+    /// when a row is out of order.
+    pub(crate) fn verified_order(self) -> Result<Self> {
+        let Some(by) = self.declared_order()? else {
+            return Ok(self);
+        };
+        match self.first_disorder(&by)? {
+            None => Ok(self),
+            Some(row) => Err(self.out_of_order(row, &by)),
+        }
+    }
+
+    /// The refusal of row `row` lying out of the declared order `by`.
+    pub(crate) fn out_of_order(&self, row: usize, by: &[expression::Ordering]) -> Error {
+        refuse(
+            self,
+            smol_str::format_smolstr!(
+                "row {row} of {} is out of the order its root declares, `{}`",
+                self.name(),
+                spelled(by)
+            ),
+        )
+    }
+
+    /// Whether this record's last row and `next`'s first are in the order
+    /// `by` states: the edge two chunks or two batches of one column meet
+    /// at. Either side empty, or no key, is in order.
+    ///
+    /// # Errors
+    ///
+    /// The binder's refusal of a key.
+    pub(crate) fn edge_in_order(&self, next: &Self, by: &[expression::Ordering]) -> Result<bool> {
+        if self.is_empty() || next.is_empty() || by.is_empty() {
+            return Ok(true);
+        }
+        let Some(field) = self.field() else {
+            return Ok(true);
+        };
+        // Keys that are bare columns compare where they lie, no key bound.
+        if let Some(answer) = self.edge_by_columns(next, by) {
+            return Ok(answer);
+        }
+        let key = Selector::new(by.iter().map(|key| Projection::new(key.term().clone())))
+            .bind_key(&SerieReader::root_of(field)?, self.name(), "sort by")?;
+        let mut pair = key.apply_serie(&self.slice(self.len() - 1, 1)?)?;
+        pair.extend_from_serie(&key.apply_serie(&next.slice(0, 1)?)?)?;
+        let record = pair.as_struct().expect("a key is a record column");
+        let absent = record.nulls().filter(|nulls| nulls.null_count() > 0);
+        let compare = KeysCompare::new(record.children(), by, absent);
+        Ok(compare.cmp(0, 1) != Ordering::Greater)
+    }
+
+    /// [`Self::edge_in_order`] over keys that are every one a bare column:
+    /// this record's last row against `next`'s first, child by child, with
+    /// the comparator a sort uses; `None` where a key is computed or names
+    /// no child.
+    fn edge_by_columns(&self, next: &Self, by: &[expression::Ordering]) -> Option<bool> {
+        let last = self.len().checked_sub(1)?;
+        for key in by {
+            let name = key.term().as_column()?;
+            let (left, right) = (self.child(name)?, next.child(name)?);
+            match left.compare_across(last, right, 0, key.options()) {
+                Ordering::Less => return Some(true),
+                Ordering::Equal => {}
+                Ordering::Greater => return Some(false),
+            }
+        }
+        Some(true)
+    }
+
+    /// Keep this record's declared order where the rows `written` left it
+    /// true, and clear it otherwise - or where a key is computed, which a
+    /// write does not evaluate. A record declaring none is untouched.
+    pub(crate) fn keep_or_clear_order(&mut self, written: Range<usize>) -> Result<()> {
+        let Some(by) = self.declared_order()? else {
+            return Ok(());
+        };
+        if self.order_holds(&by, written) != Some(true) {
+            *self = self.clone().clearing_order()?;
+        }
+        Ok(())
     }
 }
