@@ -67,7 +67,10 @@ use crate::graph::{ElementColumn, EventColumn};
 use crate::logging::warning::warned;
 use crate::serie::{Proof, Resolved, land_batch};
 use crate::text::TextOptions;
-use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, Serie, Utf8StringSerie};
+use crate::{
+    DataType, DataTypeKind, Error, Field, Result, Scalar, Serie, SerieReader, SerieSource,
+    Utf8StringSerie,
+};
 
 use super::build::{BEGINSTRING_COLUMN, DIRECTION_COLUMN, version_of};
 use super::build::{Fill, RowExtras};
@@ -320,8 +323,13 @@ impl FixCodec {
     /// make a root field, and the Arrow layer's when it does not make an
     /// Arrow schema; a schema that makes no FIX row is the reader's error
     /// batch.
+    ///
+    /// The root keeps the source's metadata but its `SORT:by`: the walk
+    /// answers in its own order and may date a message again, so an order
+    /// the source declared is no longer proven of the rows written.
     pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader> {
-        let schema = Self::row_field(source.schema().as_ref())?;
+        let mut schema = Self::row_field(source.schema().as_ref())?;
+        schema.as_sort_mut().remove_by();
         let walked = self.lifecycle(self.messages(source));
         self.arrow_reader(schema, walked)
     }
@@ -658,6 +666,120 @@ impl FixCodec {
         sink.flush()?;
         Ok(written)
     }
+}
+
+/// The serie faces: each Arrow door's input taken as any [`SerieSource`] and
+/// its output answered as a [`SerieReader`], so a capture read with
+/// [`read_serie`](crate::IOMedia::read_serie) reaches a table's
+/// [`append_serie`](crate::IOMedia::append_serie) without leaving the serie
+/// vocabulary.
+///
+/// Each is a redirect and moves no row. A source crosses in as the stream of
+/// the batches it already is ([`SerieSource::into_reader`] then
+/// [`SerieReader::into_arrow_reader`]): transport, so a reader another face
+/// answered hands its door's own reader back. The answer is read under the
+/// root its door writes, which is the reader's own schema, so its one plan
+/// is the identity: handed on as a source it is the door's reader again,
+/// untouched, and only a caller reading its records lands a batch - sharing
+/// its buffers, and reading once each row of a leaf whose layout is not its
+/// datatype's whole contract, because the batch crossed a reader.
+impl FixCodec {
+    /// [`Self::parse_text_arrow_reader`] over any [`SerieSource`], answered
+    /// as a [`SerieReader`] under the root that door writes - the capture's
+    /// own columns leading, the fixed FIX columns following - which declares
+    /// no order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerieSource::into_reader`]'s refusal of a run or of a
+    /// record column holding an absent row, then
+    /// [`Self::parse_text_arrow_reader`]'s.
+    pub fn parse_text_serie(&self, source: impl Into<SerieSource>) -> Result<SerieReader> {
+        let parsed = self.parse_text_arrow_reader(transported(source)?)?;
+        serie_of(&Self::row_field(parsed.schema().as_ref())?, parsed)
+    }
+
+    /// [`Self::lifecycle_arrow_reader`] over any [`SerieSource`], answered
+    /// as a [`SerieReader`] under the source's root, its `SORT:by` removed as
+    /// that door removes it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerieSource::into_reader`]'s refusal of a run or of a
+    /// record column holding an absent row, then
+    /// [`Self::lifecycle_arrow_reader`]'s.
+    pub fn lifecycle_serie(&self, source: impl Into<SerieSource>) -> Result<SerieReader> {
+        let walked = self.lifecycle_arrow_reader(transported(source)?)?;
+        serie_of(&Self::row_field(walked.schema().as_ref())?, walked)
+    }
+
+    /// [`Self::market_data_arrow_reader`] over any [`SerieSource`], answered
+    /// as a [`SerieReader`] of [`MarketData::field`](crate::graph::MarketData::field)
+    /// rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerieSource::into_reader`]'s refusal of a run or of a
+    /// record column holding an absent row, then
+    /// [`Self::market_data_arrow_reader`]'s, and the row field's when it
+    /// cannot be built.
+    pub fn market_data_serie(&self, source: impl Into<SerieSource>) -> Result<SerieReader> {
+        let market = self.market_data_arrow_reader(transported(source)?)?;
+        serie_of(&crate::graph::MarketData::field()?, market)
+    }
+
+    /// [`Self::messages`] over any [`SerieSource`]: the messages its FIX rows
+    /// hold, so a table read back feeds [`Self::lifecycle`] and the book
+    /// doors directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerieSource::into_reader`]'s refusal of a run or of a
+    /// record column holding an absent row; past it, every refusal is an
+    /// item of the stream, as in [`Self::messages`].
+    pub fn messages_serie<S>(
+        &self,
+        source: S,
+    ) -> Result<impl Iterator<Item = Result<FixMsg>> + Send + use<S>>
+    where
+        S: Into<SerieSource>,
+    {
+        Ok(self.messages(transported(source)?))
+    }
+
+    /// [`Self::arrow_reader`] answered as a [`SerieReader`] under `schema` as
+    /// a record root ([`SerieReader::root_of`]); a `SORT:by` it declares is
+    /// the caller's, and verified as the records land.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Self::arrow_reader`]'s refusal, and an error when `schema`
+    /// does not make a bounded record root.
+    pub fn serie_reader<I>(&self, schema: Field, messages: I) -> Result<SerieReader>
+    where
+        I: IntoIterator,
+        I::Item: Into<Result<FixMsg>>,
+        I::IntoIter: Send + 'static,
+    {
+        let root = SerieReader::root_of(&schema)?;
+        serie_of(&root, self.arrow_reader(schema, messages)?)
+    }
+}
+
+/// `source` as the stream of the batches it already is: transport, nothing
+/// cast, copied or read.
+fn transported(source: impl Into<SerieSource>) -> Result<BatchReader> {
+    Ok(source.into().into_reader()?.into_arrow_reader())
+}
+
+/// A door's `reader` read as the records it is under `root`, the field the
+/// door wrote it under: one identity plan, compiled once from the schema.
+pub(super) fn serie_of(root: &Field, reader: BatchReader) -> Result<SerieReader> {
+    Ok(SerieReader::from_arrow_reader(
+        Some(root),
+        reader,
+        crate::ArrowCastOptions::new(),
+    )?)
 }
 
 /// What a batch has taken so far, against the two bounds it closes on.

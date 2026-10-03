@@ -7545,10 +7545,17 @@ class FixMessages(Iterator[FixMsg]):
     def __iter__(self) -> FixMessages: ...
     def __next__(self) -> FixMsg: ...
 
-# What a text reader hands the codec, and what the codec answers: a
-# ``pyarrow.RecordBatchReader``, or any holder exporting the Arrow C stream.
+# What a text reader hands the codec: a ``pyarrow.RecordBatchReader``, any
+# holder exporting the Arrow C stream, or the crate's own ``Serie``,
+# ``ChunkedSerie`` and ``SerieReader``, which cross with no C stream between.
 FixArrowSource = (
-    pyarrow.RecordBatchReader | pyarrow.Table | pyarrow.RecordBatch | ArrowStreamReader
+    pyarrow.RecordBatchReader
+    | pyarrow.Table
+    | pyarrow.RecordBatch
+    | ArrowStreamReader
+    | Serie
+    | ChunkedSerie
+    | SerieReader
 )
 
 class FixCodec:
@@ -7784,6 +7791,36 @@ class FixCodec:
         self, source: FixArrowSource, field: FieldLike
     ) -> pyarrow.RecordBatchReader: ...
     def write_arrow_reader(self, source: FixArrowSource, sink: IO[bytes]) -> int: ...
+    def parse_text_serie(self, source: FixArrowSource) -> SerieReader:
+        """``parse_text_arrow_reader`` answered as a native ``SerieReader``.
+
+        A native source crosses as the batches it already is, and the answer
+        stays native, so a following ``append_serie`` writes off the GIL.
+        """
+        ...
+    def lifecycle_serie(self, source: FixArrowSource) -> SerieReader:
+        """``lifecycle_arrow_reader`` answered as a native ``SerieReader``."""
+        ...
+    def market_data_serie(self, source: FixArrowSource) -> SerieReader:
+        """``market_data_arrow_reader`` answered as a native ``SerieReader``."""
+        ...
+    def messages_serie(self, source: FixArrowSource) -> FixMessages:
+        """``messages`` over a serie source: the messages its FIX rows hold."""
+        ...
+    def serie_reader(self, schema: FieldLike, messages: Iterable[FixMsg]) -> SerieReader:
+        """``arrow_reader`` answered as a native ``SerieReader`` under ``schema``."""
+        ...
+    def book_serie(
+        self,
+        messages: Iterable[FixMsg],
+        snapshot_millis: int = 0,
+        filter: FilterLike | None = None,
+    ) -> SerieReader:
+        """``book_arrow_reader`` answered as a native ``SerieReader``."""
+        ...
+    def market_serie(self, messages: Iterable[FixMsg]) -> SerieReader:
+        """``market_arrow_reader`` answered as a native ``SerieReader``."""
+        ...
     def __copy__(self) -> FixCodec: ...
     def __deepcopy__(self, memo: Any) -> FixCodec: ...
     def __repr__(self) -> str: ...

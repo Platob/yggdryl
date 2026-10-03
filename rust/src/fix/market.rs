@@ -536,6 +536,45 @@ impl FixCodec {
             Some(self.batch_byte_size()),
         )
     }
+
+    /// [`Self::book_arrow_reader`] answered as a [`SerieReader`](crate::SerieReader)
+    /// of [`MarketData::field`] rows, under the one identity plan the
+    /// [serie faces](Self::parse_text_serie) share: handed on as a source it
+    /// is the door's own reader again.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Self::book_arrow_reader`]'s refusals.
+    pub fn book_serie<I>(
+        &self,
+        messages: I,
+        snapshot_millis: u64,
+        filter: Option<&Filter>,
+    ) -> Result<crate::SerieReader>
+    where
+        I: IntoIterator,
+        I::Item: Into<Result<FixMsg>>,
+        I::IntoIter: Send + 'static,
+    {
+        let books = self.book_arrow_reader(messages, snapshot_millis, filter)?;
+        super::batch::serie_of(&MarketData::field()?, books)
+    }
+
+    /// [`Self::market_arrow_reader`] answered as a
+    /// [`SerieReader`](crate::SerieReader) of [`MarketData::field`] rows, as
+    /// [`Self::book_serie`] answers.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Self::market_arrow_reader`]'s refusal.
+    pub fn market_serie<I>(&self, messages: I) -> Result<crate::SerieReader>
+    where
+        I: IntoIterator,
+        I::Item: Into<Result<FixMsg>>,
+    {
+        let market = self.market_arrow_reader(messages)?;
+        super::batch::serie_of(&MarketData::field()?, market)
+    }
 }
 
 // The direct-message hot path stays inline so one order, quote, execution or
