@@ -42,7 +42,6 @@ ORDER = Field(
         [
             SEED_REGISTRY.field_by_tag(55),
             SEED_REGISTRY.field_by_tag(38),
-            SEED_REGISTRY.field_by_name("NoPartyIDs"),
             SEED_REGISTRY.field_by_name("Parties"),
         ]
     ),
@@ -53,7 +52,6 @@ MESSAGE = FixMsg(
     {
         "symbol": "AAPL",
         "orderqty": decimal.Decimal("100"),
-        "nopartyids": 1,
         "parties": [
             {"partyid": "BROKER", "partyidsource": "D", "partyrole": 1}
         ],
