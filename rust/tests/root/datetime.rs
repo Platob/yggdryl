@@ -286,14 +286,6 @@ mod from_text {
                 "2026-10-03T05:20:00+02:00[Europe/Paris]",
                 zone("Europe/Paris"),
             ),
-            ("2026-10-03T03:20:00UTC", Timezone::UTC),
-            ("2026-10-03T03:20:00 UTC", Timezone::UTC),
-            ("2026-10-03 03:20:00 UTC", Timezone::UTC),
-            (
-                "  2026-10-03T03:20:00Z
-",
-                Timezone::UTC,
-            ),
         ] {
             for naive in [Timezone::UTC, Timezone::NAIVE, zone("Asia/Tokyo")] {
                 let at = read(text, naive);
@@ -353,6 +345,29 @@ mod from_text {
         ] {
             let at = read(text, Timezone::UTC);
             assert_eq!((at.count(), at.unit()), (count, unit), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn it_reads_nothing_the_iso_readers_do_not_so_a_cell_and_the_value_door_agree() {
+        // Blanks around the text and a tool's trailing `UTC` are the habits
+        // of one intake - an expiry's, `auth::instant` - and no part of the
+        // reading: the value door of a datetime refuses them, and a cell
+        // read through here must refuse them with it.
+        for text in [
+            " 2026-10-03",
+            "2026-10-03 ",
+            " 2026-10-03T03:20:00Z",
+            "2026-10-03T03:20:00Z\n",
+            "2026-10-03T03:20:00UTC",
+            "2026-10-03T03:20:00 UTC",
+        ] {
+            for naive in [Timezone::UTC, Timezone::NAIVE] {
+                assert!(
+                    DateTime64::from_text(text, naive).is_err(),
+                    "{text:?} is refused, as the value door refuses it"
+                );
+            }
         }
     }
 

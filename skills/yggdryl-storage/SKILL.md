@@ -215,7 +215,7 @@ Install and cross-language conventions are in `yggdryl`.
 | `s3://my.bucket.com/key` | a first part ending `.com`/`.io`/`.net` is a host; use `s3::file_at(Provider::Aws, bucket, key)` / `S3File(bucket, key, provider="s3")` |
 | logging `bound_uri` | it may carry credentials; log `masked_uri` |
 | a thread pool calling `session.get(url)` per URL | `session.send_all(urls, concurrency)`: one pool, ordered, lazy, the interpreter released |
-| expecting a `POST` retried after a `503` or a reset | a non-idempotent request is sent once unless no connection took it; retry it yourself when it is safe |
+| expecting a `POST` retried after a `503` or a reset | a non-idempotent request is sent once unless no connection took it. Rust: say it does no harm twice with `Request::with_idempotent(true)`, name the answers worth another attempt with `with_retry_on(\|status, headers, body\| ...)`, bound them with `with_max_attempts(n)`. Python and JavaScript send by the method's own idempotency: retry it yourself when it is safe |
 | `Client(...).session(http_version=2)` on a client built without it | refused by name: the pool's knobs are the client's - `Client({"http_version": "2"}).session(...)` |
 | `http_version=3` against a plain `http://` origin | QUIC needs TLS: it answers as `2` (`h2c`); HTTP/3 is an `https` origin |
 | `session.get(url).content` on a large download | `get(url, stream=True)` and `iter_content(n)` / Rust `stream()?`: the body stays on the wire and resumes |

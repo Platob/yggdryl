@@ -2248,7 +2248,7 @@ pub struct ZipPath
   pub const DEFAULT_MAX_PAUSE: Duration
   pub fn from_properties<I, K, V>(properties: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
   pub fn with_properties<I, K, V>(self, properties: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
-  pub const PROPERTY_NAMES: [&'static str; 22]  (the property names as this crate spells them, what a binding suggests a mistyped keyword against)
+  pub const PROPERTY_NAMES: [&'static str; 23]  (the property names as this crate spells them, what a binding suggests a mistyped keyword against)
   pub fn is_property(name: &str) -> bool  (whether `with_properties` reads `name` in any spelling it accepts, answered by the reader itself)
   pub const fn with_http_version(self, http_version: Option<HttpVersion>) -> Self  (None negotiates: ALPN `h2` over TLS, HTTP/3 through `Alt-Svc`; Http2 speaks `h2c` to a plain origin; Http3 goes to QUIC directly; a proxied request speaks HTTP/1.1; refused by `Client::with_options` for a version the build lacks)
   pub fn with_base_url(self, base_url: Url) -> Self
@@ -2339,7 +2339,7 @@ pub struct ZipPath
   pub fn with_timeout(self, timeout: Duration) -> Self
   pub fn with_follow_redirects(self, follow: bool) -> Self
   pub fn with_idempotent(self, idempotent: bool) -> Self  (the caller attests the request does no harm twice, in place of what its method says: a POST its service documents idempotent is retried as a GET is, false keeps a GET from going twice; send_reader is never retried)
-  pub fn with_attempt_headers(self, headers: impl Fn(u32, Method, &Url) -> Result<Headers> + Send + Sync + 'static) -> Self  (headers computed at the top of every attempt - its number from 1, the method and URL of the hop - merged over everything else the attempt carries; an error it returns is the request's and never retried)
+  pub fn with_attempt_headers(self, headers: impl Fn(u32, Method, &Url) -> Result<Headers> + Send + Sync + 'static) -> Self  (headers computed at the top of every attempt - its number from 1, the method and URL of the hop - merged over everything else the attempt carries; an error it returns is the request's and never retried; not called for a redirect hop to another origin, where nothing it makes is sent)
   pub fn with_max_attempts(self, attempts: u32) -> Self  (this request's attempts in place of the client's, zero is one; every retry still paid from the client's one budget)
   pub fn with_connect_timeout(self, timeout: Duration) -> Self  (the bound on opening this request's connection, in place of the pool's)
   pub fn with_deadline(self, deadline: Duration) -> Self  (one bound on the whole of one attempt, beside the per-phase with_timeout)
@@ -6445,7 +6445,7 @@ impl DataType
   pub const fn datetime_type(&self) -> Option<DateTimeType>
 pub struct DateTime64  (an i64 count since the Unix epoch at a clock resolution beside its zone, 16 bytes; Copy, Eq/Ord/Hash, Display, serde; Value, TemporalValue)
   pub fn new(count: i64, unit: TimeUnit, timezone: Timezone) -> Result<Self>
-  pub fn from_text(text: &str, naive: Timezone) -> Result<Self>  (the crate's one reader of datetime text: ISO 8601 with Z, an offset with or without its colon, or a bracketed zone name; a trailing `UTC`; a naive date-time - `T` or a blank before the clock - or a bare date read as a wall clock in `naive`, `NAIVE` keeping it one; the resolution the digits spell; what the expiry readers, the txhash intake, the text captures, Excel's ISO cells and the scalar wire read through)
+  pub fn from_text(text: &str, naive: Timezone) -> Result<Self>  (the crate's one reader of datetime text: ISO 8601 with Z, an offset with or without its colon, or a bracketed zone name; a naive date-time - `T` or a blank before the clock - or a bare date read as a wall clock in `naive`, `NAIVE` keeping it one; the resolution the digits spell; exactly what the ISO 8601 readers read, so a blank around the text is refused as the value door refuses it; what the expiry readers, the txhash intake, the text captures, Excel's ISO cells and the scalar wire read through)
   pub const fn count(&self) -> i64
   pub const fn unit(&self) -> TimeUnit
   pub const fn timezone(&self) -> Timezone

@@ -586,6 +586,11 @@ impl Request {
     /// signature over the instant - is made for each one. An error it
     /// returns is the request's error, and is never retried.
     ///
+    /// What it makes is a credential for the origin the request names: a
+    /// redirect followed inside that origin calls it for the hop, and one
+    /// followed to another origin does not, so nothing it would make is
+    /// sent there - as the `Authorization` the caller stated is not.
+    ///
     /// ```
     /// use yggdryl::http::{Headers, Request};
     ///

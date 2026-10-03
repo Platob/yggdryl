@@ -268,12 +268,24 @@ fn repeated(failure: &str) -> Error {
 
 /// The instant an expiry states, in any spelling a cloud's tools write one.
 ///
-/// The text is read by [`DateTime64::from_text`](crate::DateTime64::from_text),
-/// the crate's one reader of datetime text, with a reading that names no zone
-/// taken as UTC - the only zone any of the tools means. Anything it cannot
-/// read answers `None`, so the value is treated as long-lived rather than
-/// lapsing at a guessed instant.
+/// The tools' own two habits are taken off here, where an expiry enters:
+/// blanks around the text, and the trailing `UTC` - with or without a blank
+/// before it - the AWS CLI's caches write for `Z`. What is left is read by
+/// [`DateTime64::from_text`](crate::DateTime64::from_text), the crate's one
+/// reader of datetime text, with a reading that names no zone taken as UTC,
+/// the only zone any of the tools means. Anything it cannot read answers
+/// `None`, so the value is treated as long-lived rather than lapsing at a
+/// guessed instant.
 pub fn instant(text: &str) -> Option<SystemTime> {
+    let text = text.trim();
+    let closed;
+    let text = match text.strip_suffix("UTC") {
+        Some(head) => {
+            closed = format!("{}Z", head.trim_end());
+            closed.as_str()
+        }
+        None => text,
+    };
     let read = crate::DateTime64::from_text(text, crate::Timezone::UTC).ok()?;
     instant_of(read.count(), read.unit())
 }

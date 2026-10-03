@@ -187,6 +187,15 @@ test('refusals name what they refuse before anything goes out', () => {
   assert.equal(session.stats.requests, 0)
 })
 
+test('netrc is an HttpOptions property the core reads', () => {
+  // A boolean by key, or its text in `options`; anything else is refused by
+  // the core, naming the property.
+  assert.ok(new http.Session(undefined, { netrc: false }))
+  assert.ok(new http.Session(undefined, { options: { netrc: 'no' } }))
+  assert.throws(() => new http.Session(undefined, { netrc: 'sometimes' }), /netrc/)
+  assert.throws(() => new http.Session(undefined, { options: { netrc: 'sometimes' } }), /netrc/)
+})
+
 test('get sends params and headers and reads json, text and content', () => {
   const session = new http.Session(origin + '/', {
     headers: { 'X-Default': 'session' },

@@ -268,6 +268,11 @@ fn every_expiry_spelling_the_tools_write_reads_as_one_instant() {
         Some(later),
         "the CLI cache's spelling"
     );
+    assert_eq!(
+        instant("2013-05-24T00:00:00 UTC"),
+        Some(later),
+        "a blank before the CLI's suffix"
+    );
     assert_eq!(instant("2013-05-24T00:00:00"), Some(later), "naive is UTC");
     assert_eq!(instant("  2013-05-24T00:00:00Z  "), Some(later), "trimmed");
     assert_eq!(instant("not an instant"), None);

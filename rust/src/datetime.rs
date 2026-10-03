@@ -534,26 +534,27 @@ temporal_leaf!(
 const _: () = assert!(std::mem::size_of::<DateTime64>() == 16);
 
 impl DateTime64 {
-    /// The datetime `text` spells, in any spelling the crate reads one in.
+    /// The datetime `text` spells, whether or not it states a zone.
     ///
     /// This is the crate's one reader of datetime text whose zone the text
     /// may or may not state - an expiry a tool wrote, a capture, a parameter,
     /// a cell, a document - over the ISO 8601 readers every text codec
-    /// shares, so no module keeps a reading of its own:
+    /// shares, so no module pairs the two of them for itself:
     ///
     /// | Spelling | Example | Reads as |
     /// | --- | --- | --- |
     /// | `Z`, or an offset with or without its colon | `2026-10-03T05:20:00+02:00`, `...+0200` | that instant, in the offset's zone |
     /// | an offset and the zone's bracketed name | `2026-10-03T05:20:00+02:00[Europe/Paris]` | that instant, in the named zone |
-    /// | a trailing `UTC`, with or without a blank | `2026-10-03T03:20:00UTC` (the AWS CLI's caches) | that instant, in UTC |
     /// | no zone, `T` or a blank before the clock | `2026-10-03 03:20:00.250` | a wall clock in `naive` |
     /// | a bare date | `2026-10-03` | that day's midnight, a wall clock in `naive` |
     ///
-    /// The resolution is the one the digits spell - seconds for `03:20:00`,
-    /// milliseconds for `03:20:00.250` - and surrounding blanks are ignored.
-    /// A reading that states no zone is a wall clock in `naive`: in
-    /// [`Timezone::UTC`] it is that instant, in [`Timezone::NAIVE`] it stays
-    /// a wall clock meaning no instant.
+    /// It reads exactly what those readers read and nothing wider: text
+    /// with a blank before or after it is refused, as the value door of a
+    /// datetime refuses it, so a cell and the door never disagree. The
+    /// resolution is the one the digits spell - seconds for `03:20:00`,
+    /// milliseconds for `03:20:00.250`. A reading that states no zone is a
+    /// wall clock in `naive`: in [`Timezone::UTC`] it is that instant, in
+    /// [`Timezone::NAIVE`] it stays a wall clock meaning no instant.
     ///
     /// ```
     /// use yggdryl::{DateTime64, TimeUnit, Timezone};
@@ -561,12 +562,13 @@ impl DateTime64 {
     /// # fn main() -> yggdryl::Result<()> {
     /// let utc = DateTime64::from_text("2026-10-03T03:20:00Z", Timezone::NAIVE)?;
     /// assert_eq!((utc.count(), utc.unit()), (1_790_997_600, TimeUnit::Second));
-    /// for spelled in ["2026-10-03T05:20:00+0200", "2026-10-03T03:20:00 UTC", "2026-10-03 03:20:00"] {
+    /// for spelled in ["2026-10-03T05:20:00+0200", "2026-10-03 03:20:00"] {
     ///     assert_eq!(DateTime64::from_text(spelled, Timezone::UTC)?.count(), 1_790_997_600);
     /// }
     /// let wall = DateTime64::from_text("2026-10-03 03:20:00.250", Timezone::NAIVE)?;
     /// assert!(wall.timezone().is_naive());
     /// assert_eq!(wall.unit(), TimeUnit::Millisecond);
+    /// assert!(DateTime64::from_text(" 2026-10-03", Timezone::UTC).is_err());
     /// assert!(DateTime64::from_text("soon", Timezone::UTC).is_err());
     /// # Ok(())
     /// # }
@@ -578,15 +580,6 @@ impl DateTime64 {
     /// `text` spells neither an instant nor a wall clock; an error when a
     /// wall clock does not exist in `naive`'s rules.
     pub fn from_text(text: &str, naive: Timezone) -> Result<Self> {
-        let text = text.trim();
-        let closed;
-        let text = match text.strip_suffix("UTC") {
-            Some(head) => {
-                closed = format!("{}Z", head.trim_end());
-                closed.as_str()
-            }
-            None => text,
-        };
         match crate::temporal::parse_timestamp(text) {
             Ok((count, unit, zone)) => Self::new(count, unit, zone),
             Err(zoned) => {

@@ -1,8 +1,10 @@
 //! `rust/src/http/session.rs`: the defaults, the credential, the cookies, the
 //! redirects and the container role, against the loopback server.
 
+use std::sync::{Arc, Mutex};
+
 use yggdryl::holder::Holder;
-use yggdryl::http::{Authorization, Client, Cookie, HttpOptions, Session};
+use yggdryl::http::{Authorization, Client, Cookie, Headers, HttpOptions, Method, Session};
 use yggdryl::{Error, IOBase, IOKind, Url};
 
 use crate::http_server::RecordedExt as _;
@@ -388,6 +390,73 @@ fn every_credential_the_caller_stated_is_withheld_from_another_host() {
     ] {
         assert_eq!(header(&requests[1], name), None, "{name}");
     }
+}
+
+#[test]
+fn headers_made_per_attempt_are_withheld_from_another_origin() {
+    let origin = HttpServer::start();
+    let elsewhere = HttpServer::start();
+    origin.put_resource("/there", b"near", Some("text/plain"));
+    elsewhere.put_resource("/there", b"far", Some("text/plain"));
+    origin.redirect("/near", 307, "/there");
+    origin.redirect("/away", 307, &elsewhere.url("/there"));
+    let session = Session::new();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let proved = |seen: &Arc<Mutex<Vec<String>>>| {
+        let seen = Arc::clone(seen);
+        move |attempt: u32, method: Method, url: &Url| {
+            seen.lock()
+                .unwrap()
+                .push(format!("{attempt} {method} {url}"));
+            let mut headers = Headers::new();
+            headers.insert("dpop", "proof")?;
+            Ok::<_, Error>(headers)
+        }
+    };
+
+    // A hop inside the origin the request named is that origin's: the hook
+    // is asked for it, and told where it goes.
+    let near = session
+        .get(&origin.url("/near"))
+        .unwrap()
+        .with_attempt_headers(proved(&seen))
+        .send()
+        .unwrap();
+    assert_eq!(near.text().unwrap(), "near");
+    let requests = origin.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(header(&requests[0], "dpop"), Some("proof"));
+    assert_eq!(header(&requests[1], "dpop"), Some("proof"));
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [
+            format!("1 GET {}", origin.url("/near")),
+            format!("1 GET {}", origin.url("/there")),
+        ]
+    );
+
+    // A hop to another origin is never asked for: nothing the hook would
+    // make is sent there, as no credential the caller stated is.
+    origin.clear_requests();
+    seen.lock().unwrap().clear();
+    let far = session
+        .get(&origin.url("/away"))
+        .unwrap()
+        .with_attempt_headers(proved(&seen))
+        .send()
+        .unwrap();
+    assert_eq!(far.text().unwrap(), "far");
+    assert_eq!(far.url().to_string(), elsewhere.url("/there"));
+    assert_eq!(header(&origin.requests()[0], "dpop"), Some("proof"));
+    let landed = elsewhere.requests();
+    assert_eq!(landed.len(), 1);
+    assert_eq!(landed[0].path, "/there");
+    assert_eq!(header(&landed[0], "dpop"), None);
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [format!("1 GET {}", origin.url("/away"))],
+        "the hook is called for the origin's hop alone"
+    );
 }
 
 // --- redirects ---------------------------------------------------------------

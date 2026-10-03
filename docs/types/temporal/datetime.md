@@ -433,17 +433,16 @@ assert!(naive.scalar(Scalar::from("20240102Z")).is_err());
 
 ## Reading text
 
-`DateTime64::from_text(text, naive)` is the crate's one reader of datetime text whose zone the text may or may not state, over the ISO 8601 readers every text codec shares, so no module keeps a reading of its own: the AWS credential expiries, `txhash` instants, Excel ISO cells, structural documents and zoned capture columns read their datetime text through it. Rust only.
+`DateTime64::from_text(text, naive)` is the crate's one reader of datetime text whose zone the text may or may not state, over the ISO 8601 readers every text codec shares, so no module pairs those readers for itself: the AWS credential expiries, `txhash` instants, Excel ISO cells, structural documents and zoned capture columns read their datetime text through it. Rust only.
 
 | spelling | example | reads as |
 | --- | --- | --- |
 | `Z`, or an offset with or without its colon | `2026-10-03T05:20:00+02:00`, `2026-10-03T05:20:00+0200` | that instant, in the offset's zone |
 | an offset and the zone's bracketed name | `2026-10-03T05:20:00+02:00[Europe/Paris]` | that instant, in the named zone |
-| a trailing `UTC`, with or without a blank | `2026-10-03T03:20:00UTC`, as the AWS CLI's caches write it | that instant, in UTC |
 | no zone, `T` or a blank before the clock | `2026-10-03 03:20:00.250` | a wall clock in `naive` |
 | a bare date | `2026-10-03` | that day's midnight, a wall clock in `naive` |
 
-The resolution is the one the digits spell - seconds for `03:20:00`, milliseconds for `.250`, microseconds for `.000250`, nanoseconds for `.000000250` - and surrounding blanks are ignored. A spelling that states a zone is that instant whatever `naive` is. One that states none is a wall clock in `naive`: `Timezone::UTC` makes it that instant, a named zone places it by that zone's rules, and `Timezone::NAIVE` keeps it a wall clock, its count the clock's own.
+The resolution is the one the digits spell - seconds for `03:20:00`, milliseconds for `.250`, microseconds for `.000250`, nanoseconds for `.000000250`. It reads exactly what those readers read: text with a blank before or after it is refused, as the value door of a datetime refuses it, so a cell and the door never disagree, and a tool's own habit - the trailing `UTC` the AWS CLI's caches write for `Z` - is taken off by the intake that meets it, never here. A spelling that states a zone is that instant whatever `naive` is. One that states none is a wall clock in `naive`: `Timezone::UTC` makes it that instant, a named zone places it by that zone's rules, and `Timezone::NAIVE` keeps it a wall clock, its count the clock's own.
 
 === "Rust"
 
@@ -457,8 +456,6 @@ The resolution is the one the digits spell - seconds for `03:20:00`, millisecond
     for spelled in [
         "2026-10-03T05:20:00+0200",
         "2026-10-03T05:20:00+02:00[Europe/Paris]",
-        "2026-10-03T03:20:00UTC",
-        "2026-10-03T03:20:00 UTC",
     ] {
         assert_eq!(DateTime64::from_text(spelled, Timezone::NAIVE)?.count(), 1_790_997_600, "{spelled}");
     }
@@ -477,7 +474,9 @@ The resolution is the one the digits spell - seconds for `03:20:00`, millisecond
     // A bare date is that day's midnight.
     assert_eq!(DateTime64::from_text("2026-10-03", Timezone::UTC)?.count(), 1_790_985_600);
 
-    // Text that is no datetime is refused.
+    // Text that is no datetime is refused, and so is a blank around one.
+    assert!(DateTime64::from_text(" 2026-10-03", Timezone::UTC).is_err());
+    assert!(DateTime64::from_text("2026-10-03T03:20:00 UTC", Timezone::UTC).is_err());
     assert!(DateTime64::from_text("soon", Timezone::UTC).is_err());
     assert!(DateTime64::from_text("2026-13-03T03:20:00Z", Timezone::UTC).is_err());
     assert!(DateTime64::from_text("2026-10-03T03:20:00Z trailing", Timezone::UTC).is_err());
@@ -503,7 +502,7 @@ The resolution is the one the digits spell - seconds for `03:20:00`, millisecond
 - `2024010210153`, `202401021015300`, `20241302101530` -> refused at the position that broke, never rounded into a neighbouring reading.
 - A fraction with no digits after its decimal sign -> refused; a grouped fraction reads at the width the grouping spells.
 - An hour past the day carries into the next date, where a [time of day](time.md) folds into its own.
-- `DateTime64::from_text` -> `soon`, a month past 12, text after the zone and a bare `UTC` are refused, naming the byte the reading stopped at; a spelling with no zone is a wall clock in `naive`, an instant only when `naive` is a zone.
+- `DateTime64::from_text` -> `soon`, a month past 12, a blank before or after the text, text after the zone and a trailing or bare `UTC` are refused, naming the byte the reading stopped at; a spelling with no zone is a wall clock in `naive`, an instant only when `naive` is a zone.
 - `datetime64(s,"Mars/Olympus")` -> the datatype holds, and the Python projection names the zone it has no rules for.
 - [Merged](../field.md) -> one unit, and a zone one side declares is kept; merged with a [date](date.md) or a [time](time.md) -> refused, two families.
 

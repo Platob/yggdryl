@@ -447,7 +447,9 @@ impl Session {
     /// request's or the session's credential travels under (`X-Api-Key`),
     /// and a `Cookie` the caller stated - the jar's own cookies for `url` go
     /// back on, because they are that origin's, and so does the `.netrc`
-    /// entry for its host.
+    /// entry for its host. What the request's per-attempt hook makes is
+    /// withheld beside them, where the hop's wire is built
+    /// ([`Self::exchange`]).
     fn withhold_credentials(
         &self,
         request: &Request,
@@ -495,7 +497,10 @@ impl Session {
     /// The client executes each hop; every `Set-Cookie` is stored; a
     /// `Location` is resolved through [`Url::join_reference`]; a `303`, and
     /// a `301` or `302` on `POST`, become a `GET` without the body, a `307`
-    /// or `308` keep both; the credential is withheld from another host.
+    /// or `308` keep both; the credential is withheld from another origin,
+    /// and so is what the request's per-attempt hook would make - a proof
+    /// or a signature is a credential the caller stated for the origin it
+    /// named, so the hook is not called for that hop.
     /// Answers the final hop, its URL, the drained earlier hops oldest first,
     /// and the time the whole exchange took.
     ///
@@ -522,7 +527,8 @@ impl Session {
         let mut hops = 0_u32;
         loop {
             let mut headers = self.headers_for(request, &url, ranged)?;
-            if hops > 0 && !same_origin(request.url(), &url) {
+            let elsewhere = hops > 0 && !same_origin(request.url(), &url);
+            if elsewhere {
                 self.withhold_credentials(request, &url, &mut headers)?;
             }
             if body.is_empty() && method != request.method() {
@@ -533,13 +539,18 @@ impl Session {
             for (name, value) in extra {
                 headers.insert(name, value)?;
             }
-            let wire = request.wire(
+            let mut wire = request.wire(
                 method,
                 &url,
                 &headers,
                 (!body.is_empty()).then(|| body.as_bytes()),
                 timeout,
             );
+            if elsewhere {
+                // A proof or a signature made per attempt is the caller's
+                // credential for the origin the request named.
+                wire.attempt_headers = None;
+            }
             let answer = self.inner.client.execute(&wire)?;
             if options.cookies() {
                 self.jar()?
