@@ -20,10 +20,13 @@ use crate::datatype::JsDataType;
 use crate::expression::{SelectorInput, selector_from_input};
 use crate::field::JsField;
 use crate::iomedia::JsBatchReader;
+use crate::join::{JoinOptionsInput, join_kind, join_options};
 use crate::napi_error;
 use crate::serie::{
-    JsSerie, JsSerieIterator, arrow_arrays_ipc, arrow_batches, count, position, sort_options,
+    JsSerie, JsSerieIterator, OrderingsInput, arrow_arrays_ipc, arrow_batches, count, orderings_of,
+    position, sort_options, spelled_orderings,
 };
+use crate::spill::{JsSpillOptions, spill_bound};
 use crate::text::codec::{JsScalar, checked_depth, value_to_transport_with_field};
 
 /// Many columns under one field, held apart: a chunked array, or a table.
@@ -475,7 +478,71 @@ impl JsChunkedSerie {
         count(self.inner.memory_size())
     }
 
-    /// The rows in sorted order, as a chunked serie of one chunk.
+    /// The bytes the rows occupy in memory: every chunk's `residentSize`,
+    /// summed.
+    #[napi]
+    pub fn resident_size(&self) -> f64 {
+        count(self.inner.resident_size())
+    }
+
+    /// Whether every chunk's rows lie in a spill file: no byte resident, and
+    /// some bytes. A chunked serie of no chunk is never spilled.
+    #[napi]
+    pub fn is_spilled(&self) -> bool {
+        self.inner.is_spilled()
+    }
+
+    /// Move chunks to disk until the resident bytes are under the bound
+    /// `options` states - the process default where it is `undefined` or
+    /// `null` - the heaviest chunks whole first, so a chunked serie under the
+    /// bound is untouched and one over it keeps its lightest chunks
+    /// resident. A refused folder is named, the chunks spilled so far kept
+    /// mapped.
+    #[napi]
+    pub fn spill(&mut self, options: Option<ClassInstance<'_, JsSpillOptions>>) -> Result<()> {
+        let bound = spill_bound(options.as_deref())?;
+        self.inner.spill(bound).map_err(napi_error)
+    }
+
+    /// Spill chunks in place under the bound `options` states, as `spill`
+    /// does; the loader answers this chunked serie.
+    #[napi(js_name = "_asSpilledNative", skip_typescript)]
+    pub fn as_spilled_native(
+        &mut self,
+        options: Option<ClassInstance<'_, JsSpillOptions>>,
+    ) -> Result<()> {
+        let bound = spill_bound(options.as_deref())?;
+        self.inner.as_spilled(bound).map(|_| ()).map_err(napi_error)
+    }
+
+    /// A copy of this chunked serie spilled under the bound `options`
+    /// states, this one untouched: the chunks the bound leaves resident are
+    /// shared, the rest written once and mapped.
+    #[napi(js_name = "_intoSpilledNative", skip_typescript)]
+    pub fn into_spilled_native(
+        &self,
+        options: Option<ClassInstance<'_, JsSpillOptions>>,
+    ) -> Result<Self> {
+        let bound = spill_bound(options.as_deref())?;
+        self.inner
+            .into_spilled(bound)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The `order by` keys this chunked record's field declares its rows
+    /// keep across every chunk, each as the key grammar spells it; `null`
+    /// where it declares none or is no record.
+    #[napi]
+    pub fn declared_order(&self) -> Result<Option<Vec<String>>> {
+        self.inner
+            .declared_order()
+            .map(spelled_orderings)
+            .map_err(napi_error)
+    }
+
+    /// The rows in sorted order, the chunks sorted on their own and merged
+    /// into chunks of at most the record batch row size, with no join.
     #[napi(js_name = "_intoSortedNative", skip_typescript)]
     pub fn into_sorted_native(
         &self,
@@ -488,8 +555,49 @@ impl JsChunkedSerie {
             .map_err(napi_error)
     }
 
-    /// The first occurrence of every value across the chunks, as a chunked
-    /// serie of one chunk.
+    /// The row positions in the order the `order by` keys of `by` state,
+    /// over every chunk, as a `uint32` column named `index`: the keys read
+    /// first, then the one join.
+    #[napi(js_name = "_sortIndicesByNative", skip_typescript)]
+    pub fn sort_indices_by_native(&self, by: OrderingsInput<'_>) -> Result<JsSerie> {
+        self.inner
+            .sort_indices_by(orderings_of(&by)?)
+            .map(JsSerie::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The rows in the order the `order by` keys of `by` state, merged as
+    /// `intoSorted` merges them, with no join; the field declares the keys.
+    #[napi(js_name = "_intoSortByNative", skip_typescript)]
+    pub fn into_sort_by_native(&self, by: OrderingsInput<'_>) -> Result<Self> {
+        self.inner
+            .into_sort_by(orderings_of(&by)?)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// This chunked serie joined with `other` on the keys `by` holds, under
+    /// the kind `how` names - `inner` where it names none - and `options`:
+    /// the output batches kept apart as chunks, each settled.
+    #[napi(js_name = "_joinWithNative", skip_typescript)]
+    pub fn join_with_native(
+        &self,
+        other: &JsChunkedSerie,
+        by: &JsScalar,
+        how: Option<String>,
+        options: Option<JoinOptionsInput<'_>>,
+    ) -> Result<Self> {
+        let how = join_kind(how)?;
+        let options = join_options(options)?;
+        self.inner
+            .join_with(&other.inner, &by.inner, how, &options)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The first occurrence of every value across the chunks, with no
+    /// join: each chunk filtered by its own first occurrences and kept
+    /// apart, a chunk left with no row dropped.
     #[napi]
     pub fn into_unique(&self) -> Result<Self> {
         self.inner
@@ -570,8 +678,8 @@ impl JsChunkedSerie {
             .map_err(napi_error)
     }
 
-    /// Sort the rows in place under the options: one chunk replaces the
-    /// chunks.
+    /// Sort the rows in place under the options: the merged chunks replace
+    /// the chunks.
     #[napi(js_name = "_asSortedNative", skip_typescript)]
     pub fn as_sorted_native(
         &mut self,
@@ -584,11 +692,20 @@ impl JsChunkedSerie {
             .map_err(napi_error)
     }
 
-    /// Keep the first occurrence of every value in place: one chunk replaces
-    /// the chunks.
+    /// Keep the first occurrence of every value in place, each chunk its
+    /// own first occurrences, kept apart.
     #[napi(js_name = "_asUniqueNative", skip_typescript)]
     pub fn as_unique_native(&mut self) -> Result<()> {
         self.inner.as_unique().map(|_| ()).map_err(napi_error)
+    }
+
+    /// Sort the rows in place in the order the `order by` keys of `by`
+    /// state: the merged chunks replace the chunks; a refusal leaves them as
+    /// they were.
+    #[napi(js_name = "_asSortByNative", skip_typescript)]
+    pub fn as_sort_by_native(&mut self, by: OrderingsInput<'_>) -> Result<()> {
+        let by = orderings_of(&by)?;
+        self.inner.as_sort_by(by).map(|_| ()).map_err(napi_error)
     }
 
     /// Reverse the rows in place: the chunks reversed, each where it stands.

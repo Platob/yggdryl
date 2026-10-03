@@ -88,7 +88,7 @@ handle.overwrite_records(rows, &options)?;
 
 // Reads stream one record column per batch; a record lends its children by name.
 let mut ids = Vec::new();
-for records in handle.read_arrow(Some(&options))? {
+for records in handle.read_serie(Some(&options))? {
     let id = records?.child("id").cloned().expect("an id column");
     for row in 0..id.len() {
         ids.push(id.scalar(row)?);

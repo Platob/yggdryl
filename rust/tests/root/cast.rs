@@ -1179,7 +1179,7 @@ mod typed {
             ArrowCastOptions::new().with_safe(false),
         )
         .unwrap();
-        let ids: &Int64Array = cast.as_int64().expect("an int64 column").array();
+        let ids: Int64Array = cast.as_int64().expect("an int64 column").array();
         assert_eq!(ids.values(), &[1, 2, 3]);
     }
 
@@ -4244,6 +4244,176 @@ mod json {
                 Scalar::from_sequence([Scalar::from(1_i64)]),
                 Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
             ]
+        );
+    }
+}
+
+mod declared_order {
+    //! A target declaring `SORT:by` is a claim about the rows a plan lands:
+    //! read once where the source does not already prove it, never where it
+    //! does, and dropped where the target declares nothing.
+
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan, ChunkedSerie, DataType, Field, Scalar, Serie};
+
+    /// The record `row{id: <id>, symbol: utf8}`, declaring `by`.
+    fn row(id: DataType, by: &[&str]) -> Field {
+        let mut root = super::root([
+            id.required_field("id"),
+            DataType::utf8().required_field("symbol"),
+        ]);
+        if !by.is_empty() {
+            root.as_sort_mut().set_by_texts(by).expect("the keys");
+        }
+        root
+    }
+
+    fn rows(field: &Field, ids: &[i64]) -> Serie {
+        Serie::from_scalars(
+            field.clone(),
+            ids.iter()
+                .map(|id| Scalar::from_sequence([Scalar::from(*id), Scalar::from("S")])),
+        )
+        .expect("rows")
+    }
+
+    fn refusal(error: yggdryl::arrow::Error) -> (String, String) {
+        match error {
+            yggdryl::arrow::Error::Core(yggdryl::Error::InvalidRecord { path, reason }) => {
+                (path.to_string(), reason.to_string())
+            }
+            other => panic!("expected an invalid record, got {other}"),
+        }
+    }
+
+    #[test]
+    fn a_plan_onto_a_declaring_target_refuses_the_first_row_out_of_its_order() {
+        let source = row(DataType::Int32, &[]);
+        let target = row(DataType::Int64, &["id desc"]);
+        let plan = ArrowCastPlan::compile(&source, &target, ArrowCastOptions::new()).unwrap();
+        assert_eq!(
+            refusal(plan.apply(&rows(&source, &[3, 2, 2, 5, 1])).unwrap_err()),
+            (
+                "row".to_owned(),
+                "row 3 of row is out of the order its root declares, `id desc`".to_owned()
+            )
+        );
+        // Rows in that order land declaring it, ties included.
+        let landed = plan.apply(&rows(&source, &[3, 2, 2, 1])).unwrap();
+        assert_eq!(landed.field(), Some(&target));
+        assert_eq!(landed.declared_order().unwrap().unwrap().len(), 1);
+        // An identity layout onto a declaring target reads the rows too.
+        let plain = row(DataType::Int64, &[]);
+        let identity = ArrowCastPlan::compile(&plain, &target, ArrowCastOptions::new()).unwrap();
+        assert!(identity.is_identity());
+        assert_eq!(
+            refusal(identity.apply(&rows(&plain, &[1, 2])).unwrap_err()),
+            (
+                "row".to_owned(),
+                "row 1 of row is out of the order its root declares, `id desc`".to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn a_source_already_declaring_the_order_lands_with_no_row_read_and_a_plain_target_drops_it() {
+        let declaring = row(DataType::Int64, &["id", "symbol"]);
+        let sorted = rows(&declaring, &[1, 2, 2, 3]);
+        // Its own field: the serie itself.
+        let same = ArrowCastPlan::compile(&declaring, &declaring, ArrowCastOptions::new()).unwrap();
+        let back = same.apply(&sorted).unwrap();
+        assert_eq!(back.field(), Some(&declaring));
+        // The same order, or a prefix of it, under another name: proven
+        // already, and declared.
+        for target in [
+            declaring.clone().with_name("again"),
+            row(DataType::Int64, &["id"]),
+        ] {
+            let plan =
+                ArrowCastPlan::compile(&declaring, &target, ArrowCastOptions::new()).unwrap();
+            let landed = plan.apply(&sorted).unwrap();
+            assert_eq!(landed.field(), Some(&target));
+            assert_eq!(landed.rows(), sorted.rows());
+        }
+        // A target declaring nothing lands declaring nothing.
+        let plain = row(DataType::Int64, &[]);
+        let plan = ArrowCastPlan::compile(&declaring, &plain, ArrowCastOptions::new()).unwrap();
+        let landed = plan.apply(&sorted).unwrap();
+        assert!(landed.declared_order().unwrap().is_none());
+        assert_eq!(landed.field(), Some(&plain));
+    }
+
+    #[test]
+    fn a_cast_changing_a_keys_datatype_proves_the_order_again() {
+        // Text orders `10` before `9`; the integers it casts into do not.
+        // The source's declaration is about its text, so the target's -
+        // spelled the same - is a new claim about the integers.
+        let text = super::root([
+            DataType::utf8().required_field("id"),
+            DataType::utf8().required_field("symbol"),
+        ]);
+        let sorted = Serie::from_scalars(
+            text,
+            ["9", "10"].map(|id| Scalar::from_sequence([Scalar::from(id), Scalar::from("S")])),
+        )
+        .unwrap()
+        .into_sort_by("id")
+        .unwrap();
+        assert_eq!(
+            sorted.child("id").unwrap().rows().to_vec(),
+            [Scalar::from("10"), Scalar::from("9")]
+        );
+        let target = row(DataType::Int64, &["id"]);
+        let cast = sorted.cast(&target, ArrowCastOptions::new());
+        assert_eq!(
+            cast.map(|landed| landed.rows().into_owned())
+                .map_err(refusal),
+            Err((
+                "row".to_owned(),
+                "row 1 of row is out of the order its root declares, `id`".to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_plan_over_chunks_proves_each_chunk_and_every_chunk_edge() {
+        let source = row(DataType::Int32, &[]);
+        let target = row(DataType::Int64, &["id"]);
+        let plan = ArrowCastPlan::compile(&source, &target, ArrowCastOptions::new()).unwrap();
+        let chunked = |cuts: &[&[i64]]| {
+            ChunkedSerie::from_series(
+                Some(&source),
+                cuts.iter().map(|ids| rows(&source, ids)),
+                ArrowCastOptions::new(),
+            )
+            .unwrap()
+        };
+        assert_eq!(
+            refusal(plan.apply_chunked(&chunked(&[&[1], &[3, 2]])).unwrap_err()),
+            (
+                "row".to_owned(),
+                "row 1 of row is out of the order its root declares, `id`".to_owned()
+            )
+        );
+        let landed = plan.apply_chunked(&chunked(&[&[1, 2], &[2, 3]])).unwrap();
+        assert_eq!(landed.field(), &target);
+        // Each chunk in order and the edge out of it: what
+        // `ChunkedSerie::cast` refuses, the plan refuses too.
+        let edge = chunked(&[&[1, 4], &[3]]);
+        assert_eq!(
+            refusal(edge.cast(&target, ArrowCastOptions::new()).unwrap_err()),
+            (
+                "row".to_owned(),
+                "chunk 1 of row opens out of the order its field declares, `id`".to_owned()
+            )
+        );
+        assert_eq!(
+            plan.apply_chunked(&edge)
+                .map(|held| held.rows())
+                .map_err(refusal),
+            Err((
+                "row".to_owned(),
+                "chunk 1 of row opens out of the order its field declares, `id`".to_owned()
+            ))
         );
     }
 }

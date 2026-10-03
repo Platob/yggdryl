@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import gzip as stdlib_gzip
 import pathlib
+from collections.abc import Callable, Iterator
+from typing import Any
 
 import pyarrow as pa
 import pyarrow.fs as pafs
 import pytest
 
-from yggdryl import IOBase, Url
+from yggdryl import ChunkedSerie, Field, IOBase, RecordOptions, Serie, SerieReader, Url
 from yggdryl.holder import Buffer, Buffered
 
 
@@ -984,3 +986,190 @@ def test_a_handle_is_addressed_by_an_identifier_and_a_location_is_one(
     # The bound filesystem's own spelling keeps its own name.
     assert handle.bound_uri is None
     assert handle.masked_uri is None
+
+
+# ---------------------------------------------------------------------------
+# `read_serie` and the `*_serie` writes - mirrors the serie cases of
+# rust/tests/root/iomedia.rs through the binding's intake: one read answering
+# a `SerieReader` whatever the resource is, one write taking rows in any
+# shape the crate or a columnar library holds them.
+# ---------------------------------------------------------------------------
+
+
+def quote_table() -> pa.Table:
+    return pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
+
+
+def quote_root() -> Field:
+    return Field("row", "struct<symbol: utf8 not null, size: int64 not null>", nullable=False)
+
+
+def quote_rows() -> list[dict[str, Any]]:
+    return [{"symbol": "AAPL", "size": 100}, {"symbol": "MSFT", "size": 250}]
+
+
+def rows_of(handle: IOBase, **properties: Any) -> list[dict[str, Any]]:
+    return [row for serie in handle.read_serie(**properties) for row in serie.as_py()]
+
+
+# Every shape a written value takes, each built fresh: a stream is pulled once.
+SOURCES: dict[str, Callable[[], object]] = {
+    "serie": lambda: Serie.from_(quote_table()),
+    "chunked_serie": lambda: ChunkedSerie.from_(quote_table()),
+    "serie_reader": lambda: SerieReader.from_(quote_table()),
+    "table": quote_table,
+    "record_batch_reader": lambda: quote_table().to_reader(),
+    "pandas": lambda: quote_table().to_pandas(),
+}
+
+
+class TestSerieVerbs:
+    @pytest.mark.parametrize("source", SOURCES)
+    def test_every_source_overwrites_and_appends(
+        self, tmp_path: pathlib.Path, source: str
+    ) -> None:
+        handle = IOBase(tmp_path / "quotes.arrows")
+        handle.overwrite_serie(SOURCES[source]())
+        assert rows_of(handle) == quote_rows()
+        handle.append_serie(SOURCES[source]())
+        assert rows_of(handle) == quote_rows() * 2
+        # The generic write: `overwrite` unless a mode is named.
+        handle.write_serie(SOURCES[source]())
+        assert rows_of(handle) == quote_rows()
+        handle.write_serie(SOURCES[source](), "append")
+        assert rows_of(handle) == quote_rows() * 2
+
+    @pytest.mark.parametrize("source", SOURCES)
+    def test_every_source_merges_by_its_key(self, tmp_path: pathlib.Path, source: str) -> None:
+        handle = IOBase(tmp_path / "quotes.arrows")
+        handle.overwrite_serie(pa.table({"symbol": ["AAPL", "GOOG"], "size": [1, 2]}))
+        handle.merge_serie(SOURCES[source](), merge_by="symbol")
+        merged = [
+            {"symbol": "AAPL", "size": 100},
+            {"symbol": "GOOG", "size": 2},
+            {"symbol": "MSFT", "size": 250},
+        ]
+        assert sorted(rows_of(handle), key=lambda row: str(row["symbol"])) == merged
+        handle.write_serie(SOURCES[source](), "merge", merge_by=["symbol"])
+        assert sorted(rows_of(handle), key=lambda row: str(row["symbol"])) == merged
+        with pytest.raises(ValueError, match="merge_by"):
+            handle.merge_serie(SOURCES[source]())
+
+    def test_a_python_stream_and_a_native_reader_over_one_both_write(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        def batches() -> Iterator[pa.RecordBatch]:
+            yield from quote_table().to_batches()
+
+        handle = IOBase(tmp_path / "quotes.arrows")
+        # A Python iterator is pulled with the lock held; a native reader
+        # over one is written with it released and takes it back per pull.
+        handle.overwrite_serie(batches())
+        assert rows_of(handle) == quote_rows()
+        handle.append_serie(SerieReader.from_(batches()))
+        assert rows_of(handle) == quote_rows() * 2
+        # Rows as mappings are a record stream too.
+        handle.overwrite_serie(quote_rows())
+        assert rows_of(handle) == quote_rows()
+
+    def test_a_native_reader_is_taken_by_the_write_it_reaches(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "quotes.arrows")
+        reader = SerieReader.from_(quote_table())
+        handle.overwrite_serie(reader)
+        with pytest.raises(ValueError, match="handed over"):
+            handle.append_serie(reader)
+        assert rows_of(handle) == quote_rows()
+
+    def test_options_and_properties_shape_the_read_and_the_write(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        symbols = IOBase(tmp_path / "symbols.arrows")
+        symbols.overwrite_serie(quote_table(), select=["symbol"])
+        assert rows_of(symbols) == [{"symbol": "AAPL"}, {"symbol": "MSFT"}]
+        handle = IOBase(tmp_path / "quotes.arrows")
+        handle.overwrite_serie(quote_table(), options=RecordOptions("quotes.arrows"))
+        assert rows_of(handle, max_row_size=1) == quote_rows()[:1]
+        assert rows_of(handle, options=RecordOptions("quotes.arrows", filter="size > 100")) == (
+            quote_rows()[1:]
+        )
+        read = handle.read_serie(field=quote_root())
+        assert isinstance(read, SerieReader)
+        assert read.field == quote_root()
+        assert Serie.from_(read).as_py() == quote_rows()
+
+    def test_absent_options_are_the_handles_own_and_a_folder_is_its_table(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        lake = tmp_path / "lake"
+        IOBase(lake / "part-0.parquet").overwrite_serie(quote_table())
+        folder = IOBase(lake)
+        assert rows_of(folder) == quote_rows()
+        folder.append_serie(quote_table())
+        assert sorted(rows_of(folder), key=lambda row: int(row["size"])) == [
+            quote_rows()[0],
+            quote_rows()[0],
+            quote_rows()[1],
+            quote_rows()[1],
+        ]
+
+    @pytest.mark.parametrize(
+        "name", ["quotes.json", "quotes.jsonl", "quotes.yaml", "quotes.toml"]
+    )
+    def test_every_structured_format_round_trips_a_table(
+        self, tmp_path: pathlib.Path, name: str
+    ) -> None:
+        handle = IOBase(tmp_path / name)
+        handle.write_serie(quote_table())
+        read = handle.read_serie(field=quote_root())
+        assert isinstance(read, SerieReader)
+        assert Serie.from_(read).as_py() == quote_rows()
+
+    def test_a_structured_document_takes_an_overwrite_only_and_names_the_mode(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "quotes.jsonl")
+        handle.overwrite_serie(quote_table())
+        with pytest.raises(ValueError, match=r"\$\.mode.*expected overwrite, got append"):
+            handle.append_serie(quote_table())
+        with pytest.raises(ValueError, match=r"\$\.mode.*expected overwrite, got merge"):
+            handle.write_serie(quote_table(), "merge")
+        # A refusal leaves the document as it was.
+        assert rows_of(handle, field=quote_root()) == quote_rows()
+
+    def test_a_zero_count_is_refused_by_name_before_the_source_is_pulled(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        pulled: list[int] = []
+
+        def batches() -> Iterator[pa.RecordBatch]:
+            for index, batch in enumerate(quote_table().to_batches()):
+                pulled.append(index)
+                yield batch
+
+        handle = IOBase(tmp_path / "quotes.arrows")
+        with pytest.raises(ValueError, match=r"\$\.num_threads"):
+            handle.overwrite_serie(batches(), num_threads=0)
+        with pytest.raises(ValueError, match=r"\$\.commit_batch_num"):
+            handle.write_serie(batches(), "append", commit_batch_num=0)
+        stream = pa.RecordBatchReader.from_batches(quote_table().schema, batches())
+        with pytest.raises(ValueError, match=r"\$\.num_threads"):
+            handle.overwrite_arrow_reader(stream, num_threads=0)
+        assert pulled == []
+        handle.overwrite_serie(batches(), num_threads=2)
+        assert rows_of(handle) == quote_rows()
+
+    def test_a_record_encoding_answers_its_stream_and_a_reader_copies_it(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        column = IOBase(tmp_path / "column.arrows")
+        column.write_serie(Serie.from_(quote_table()))
+        read = column.read_serie()
+        assert isinstance(read, SerieReader)
+        copied = IOBase(tmp_path / "copied.arrows")
+        copied.write_serie(read)
+        assert copied.read_serie().into_arrow_reader().read_all().equals(quote_table())
+        frames = IOBase(tmp_path / "quotes.jsonl")
+        frames.write_serie(quote_table().to_pandas())
+        assert len(Serie.from_(frames.read_serie(field=quote_root()))) == 2

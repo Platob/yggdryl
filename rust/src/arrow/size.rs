@@ -66,7 +66,8 @@ pub fn memory_size(batch: &RecordBatch) -> usize {
 /// falls in - found by binary search over the run ends - and their values, a
 /// dense union its type ids and offsets with the range of each child they
 /// reach, a sparse union its type ids and its children (which its slice
-/// already cut), a dictionary its keys sliced and its values whole. A layout
+/// already cut), a dictionary its keys sliced and its values as their own
+/// slice counts them. A layout
 /// not named here falls back to its whole buffers. A flat, view, struct,
 /// sparse union or dictionary column is measured off its buffers with
 /// nothing allocated; a list, map, list view, run-end or dense union column
@@ -156,7 +157,9 @@ fn payload_bytes(value: &Scalar) -> usize {
     16
 }
 
-fn sliced_size(array: &dyn Array) -> usize {
+/// The per-array half of [`array_memory_size`], over a borrowed array: what
+/// a leaf answers for its own buffers without boxing them.
+pub(crate) fn sliced_size(array: &dyn Array) -> usize {
     use arrow_array::cast::AsArray;
     use arrow_schema::DataType as ArrowType;
 
@@ -214,9 +217,12 @@ fn sliced_size(array: &dyn Array) -> usize {
                     .map(|child| sliced_size(child.as_ref()))
                     .sum::<usize>()
         }
+        // The values are counted as their own slice reaches them - the
+        // bytes the rows occupy, never a builder's spare capacity - so a
+        // column rebuilt over the same bytes measures the same.
         ArrowType::Dictionary(..) => {
             let dictionary = array.as_any_dictionary();
-            sliced_size(dictionary.keys()) + dictionary.values().get_array_memory_size()
+            sliced_size(dictionary.keys()) + sliced_size(dictionary.values().as_ref())
         }
         ArrowType::ListView(_) => nulls + list_view_size(array.as_list_view::<i32>()),
         ArrowType::LargeListView(_) => nulls + list_view_size(array.as_list_view::<i64>()),

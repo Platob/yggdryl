@@ -8,8 +8,8 @@
 use std::time::Duration;
 
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either6, Either7, Env, Object, Reference, Result,
-    Uint8Array,
+    BigInt, Buffer, ClassInstance, Either, Either3, Either6, Either7, Env, Object, Reference,
+    Result, Uint8Array,
 };
 use napi_derive::napi;
 
@@ -20,6 +20,7 @@ use yggdryl::http::HttpOptions;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
+use crate::chunked_serie::JsChunkedSerie;
 use crate::field::JsField;
 use crate::holder::fs::{
     ArrowFileInfo, FileSystemInput, JsByteReader as HandlerByteReader,
@@ -28,6 +29,7 @@ use crate::holder::fs::{
 };
 use crate::iomedia::JsBatchReader;
 use crate::media::options::JsRecordOptions;
+use crate::serie::{JsSerie, JsSerieReader, serie_source};
 use crate::text::codec::{
     DEFAULT_JS_DEPTH, JsScalar, decoded_value_for_field, value_to_transport_for_field,
 };
@@ -1699,12 +1701,12 @@ impl JsIOBase {
     pub fn read_arrow_reader(&self, options: Option<&JsRecordOptions>) -> Result<JsBatchReader> {
         // A structured text document - JSON, JSON Lines, YAML, TOML, XML - has
         // no record options of its own: its rows are the record column the
-        // core's `read_arrow` parses it into, which an HTTP resource answers
+        // core's `read_serie` parses it into, which an HTTP resource answers
         // one page at a time.
         if options.is_none()
             && yggdryl::text::Format::from_media_type(self.inner.media_type()).is_ok()
         {
-            let records = self.inner.read_arrow(None).map_err(napi_error)?;
+            let records = self.inner.read_serie(None).map_err(napi_error)?;
             let root_name = records.field().name().to_owned();
             return Ok(JsBatchReader::from_core(
                 records.into_arrow_reader(),
@@ -1714,6 +1716,59 @@ impl JsIOBase {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         let reader = self.inner.read_arrow_reader(&options).map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, options.name()))
+    }
+
+    /// Read this resource's rows as a `SerieReader`, one record serie per
+    /// batch.
+    ///
+    /// Absent options are the handle's own: the encoding its media type
+    /// names, a container's the table beneath it, and a structured text
+    /// document - JSON, JSON Lines, YAML, TOML, XML - the one record column
+    /// its rows parse into, of which a declared field is the only option it
+    /// reads.
+    #[napi]
+    pub fn read_serie(&self, options: Option<&JsRecordOptions>) -> Result<JsSerieReader> {
+        let reader = self
+            .inner
+            .read_serie(options.map(|options| &options.inner))
+            .map_err(napi_error)?;
+        JsSerieReader::from_core(reader)
+    }
+
+    /// Write rows in any shape the crate holds them - a `Serie`, a
+    /// `ChunkedSerie`, a `SerieReader`, which is consumed - under one mode.
+    ///
+    /// The loader widens every other columnar value into a `SerieReader`
+    /// and names the intent; absent options are the handle's own, resolved
+    /// by the core, and options declaring no field take the rows' own root,
+    /// as every other record write does. A structured text document takes
+    /// overwrite alone, and of the options the declared field alone.
+    #[napi(js_name = "_writeSerieNative", skip_typescript)]
+    pub fn write_serie_native(
+        &mut self,
+        value: Either3<
+            ClassInstance<'_, JsSerie>,
+            ClassInstance<'_, JsChunkedSerie>,
+            ClassInstance<'_, JsSerieReader>,
+        >,
+        mode: String,
+        options: Option<&JsRecordOptions>,
+    ) -> Result<()> {
+        let mode = IOMode::from_str(&mode).map_err(napi_error)?;
+        let value = serie_source(value)?;
+        let options = match options {
+            Some(options) => {
+                let mut options = options.inner.clone();
+                if options.field().is_none() {
+                    options.set_field(value.root().map_err(napi_error)?);
+                }
+                Some(options)
+            }
+            None => None,
+        };
+        self.inner
+            .write_serie(value, mode, options.as_ref())
+            .map_err(napi_error)
     }
 
     /// Decode this resource into typed text lines.

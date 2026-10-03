@@ -590,3 +590,17 @@ fn a_child_is_dropped_added_and_replaced_by_name() {
     );
     assert_eq!(widened.into_arrow_array().len(), 3);
 }
+
+#[test]
+fn a_freshly_built_record_column_is_resident_whole_and_not_spilled() {
+    for column in [quotes(), venues()] {
+        let leaf = column.as_struct().expect("a record column");
+        assert_eq!(
+            SerieValue::resident_size(leaf),
+            SerieValue::memory_size(leaf)
+        );
+        assert!(!SerieValue::is_spilled(leaf));
+        assert_eq!(column.resident_size(), column.memory_size());
+        assert!(!column.is_spilled());
+    }
+}

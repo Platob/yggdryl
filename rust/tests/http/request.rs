@@ -805,7 +805,7 @@ fn a_paginated_document_reads_one_batch_per_page_after_one_look() {
         leaf(&server, &session, "/orders").with_media_type(MediaType::from(MimeType::JSON));
 
     let columns: Vec<Serie> = request
-        .read_arrow(None)
+        .read_serie(None)
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
@@ -846,7 +846,7 @@ fn a_document_of_one_page_reads_through_its_bytes_with_one_get() {
     let request = leaf(&server, &session, "/rows.json");
 
     let columns: Vec<Serie> = request
-        .read_arrow(None)
+        .read_serie(None)
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
@@ -857,7 +857,7 @@ fn a_document_of_one_page_reads_through_its_bytes_with_one_get() {
     server.clear_requests();
     let plain = request.clone().with_pagination(Pagination::None);
     let columns: Vec<Serie> = plain
-        .read_arrow(None)
+        .read_serie(None)
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
@@ -868,7 +868,7 @@ fn a_document_of_one_page_reads_through_its_bytes_with_one_get() {
     server.clear_requests();
     let held = Holder::HttpRequest(request.clone());
     let rows: usize = held
-        .read_arrow(None)
+        .read_serie(None)
         .unwrap()
         .map(|column| column.unwrap().len())
         .sum();

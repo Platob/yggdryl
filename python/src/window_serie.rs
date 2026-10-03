@@ -42,7 +42,8 @@ use crate::expression::selector_from_value;
 use crate::field::PyField;
 use crate::scalar::{PyScalar, PyScalarIterator, from_py, from_py_under};
 use crate::serie::{
-    PySerie, described, groups_to_py, rows_from_py, serie_argument, sort_options, static_struct,
+    PySerie, described, groups_to_py, orderings_of, rows_from_py, serie_argument, sort_options,
+    static_struct,
 };
 use crate::{compare, normalize_index, value_error};
 
@@ -342,6 +343,18 @@ impl PyWindowSerie {
         self.read(py, |window| Ok(window.memory_size()))
     }
 
+    /// The bytes the window's rows occupy in memory, read through the serie
+    /// it views: a window is never spilled on its own - spill the serie.
+    fn resident_size(&self, py: Python<'_>) -> PyResult<usize> {
+        self.read(py, |window| Ok(window.resident_size()))
+    }
+
+    /// Whether the window's rows lie in a spill file: the serie's own answer
+    /// over the rows it views.
+    fn is_spilled(&self, py: Python<'_>) -> PyResult<bool> {
+        self.read(py, |window| Ok(window.is_spilled()))
+    }
+
     /// A narrower window, `offset..offset + length` of this one, over the
     /// same serie object.
     fn window(&self, py: Python<'_>, offset: usize, length: usize) -> PyResult<Self> {
@@ -461,6 +474,26 @@ impl PyWindowSerie {
         )
     }
 
+    /// The window-relative row positions in the order the `order by` keys
+    /// of `by` state, computed over the window's rows alone.
+    fn sort_indices_by(&self, py: Python<'_>, by: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let by = orderings_of(by)?;
+        described(
+            py,
+            self.detached(py, move |window| window.sort_indices_by(by))?,
+        )
+    }
+
+    /// The window's rows in the order the `order by` keys of `by` state, as
+    /// a serie of their own.
+    fn into_sort_by(&self, py: Python<'_>, by: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let by = orderings_of(by)?;
+        described(
+            py,
+            self.detached(py, move |window| window.into_sort_by(by))?,
+        )
+    }
+
     fn into_unique(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         described(py, self.detached(py, |window| window.into_unique())?)
     }
@@ -551,6 +584,19 @@ impl PyWindowSerie {
         let options = sort_options(descending, nulls_first);
         slf.get()
             .write(slf.py(), |mut window| window.as_sorted(options).map(|_| ()))?;
+        Ok(slf.clone())
+    }
+
+    /// Sort the window's rows in place in the order the `order by` keys of
+    /// `by` state, answering this window: every row outside it untouched,
+    /// and a refusal leaving the serie as it was.
+    fn as_sort_by<'py>(
+        slf: &Bound<'py, Self>,
+        by: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, Self>> {
+        let by = orderings_of(by)?;
+        slf.get()
+            .write(slf.py(), |mut window| window.as_sort_by(by).map(|_| ()))?;
         Ok(slf.clone())
     }
 

@@ -237,6 +237,50 @@ def test_a_window_over_a_shared_column_copies_the_column_once_and_leaves_the_clo
     assert array.to_pylist() == [2, 1, 3]
 
 
+def test_the_order_by_keys_sort_the_window_rows_alone_window_relative() -> None:
+    prices = column([9, 1, 3, 2])
+    window = prices.window(1, 3)
+    order = window.sort_indices_by("price desc")
+    assert order.field == Field("index", "uint32", nullable=False)
+    assert order.as_py() == [1, 2, 0]
+    sorted_ = window.into_sort_by("price")
+    assert sorted_.as_py() == [1, 2, 3]
+    assert sorted_.field == prices.field
+    assert prices.as_py() == [9, 1, 3, 2]
+    # In place: every row outside the window untouched.
+    assert window.as_sort_by("price desc") is window
+    assert prices.as_py() == [9, 3, 2, 1]
+    # A refusal leaves the serie as it was.
+    with pytest.raises(ValueError, match="tier"):
+        window.as_sort_by("tier")
+    with pytest.raises(ValueError, match="tier"):
+        window.into_sort_by("tier")
+    assert prices.as_py() == [9, 3, 2, 1]
+    # A record window keys by its terms.
+    quotes = Serie.from_scalars(
+        Field("quote", "struct<venue: utf8 not null, price: int64 not null>", nullable=False),
+        [["XNYS", 1], ["XNAS", 2], ["XNYS", 3], ["XNAS", 0]],
+    )
+    quotes.window(0, 3).as_sort_by(["venue", "price desc"])
+    assert [row["price"] for row in quotes.as_py()] == [2, 3, 1, 0]
+
+
+def test_a_window_reads_where_the_rows_of_the_serie_it_views_lie() -> None:
+    prices = Serie.from_scalars(Field("price", "int64", nullable=False), list(range(1_024)))
+    window = prices.window(10, 100)
+    assert not window.is_spilled()
+    assert window.resident_size() == window.memory_size() > 0
+    prices.spill(byte_size=0)
+    # The window reads the serie it holds as it is now.
+    assert window.is_spilled()
+    assert window.resident_size() == 0
+    assert window.as_py() == list(range(10, 110))
+    # A run's window is never spilled, its rows all resident.
+    run = Serie([1, 2, 3]).window(1, 2)
+    assert not run.is_spilled()
+    assert run.resident_size() == run.memory_size()
+
+
 # ---------------------------------------------------------------------------
 # window_by: the windows of a window, and the record a window states
 # ---------------------------------------------------------------------------

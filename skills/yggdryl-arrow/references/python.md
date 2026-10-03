@@ -9,7 +9,7 @@ pyarrow; cast options are the keywords `safe=True` and
 
 `Serie.from_scalars` sends every row through the field's value contract once
 and lays the buffers out once; `from_default` repeats the field's canonical
-default.
+default and `lit` any value, each as a constant column holding the one row.
 
 ```python
 from yggdryl import Field, Serie
@@ -31,6 +31,11 @@ else:
 assert Serie.from_default(price, 2).as_py() == [0, 0]
 assert Serie.from_default(Field("symbol", "utf8"), 2).as_py() == [None, None]
 assert len(Serie.empty(price)) == 0
+
+# A constant: one value held once, laid out only when something exports it.
+constant = Serie.lit(price, 125, 1_000_000)
+assert constant.is_lit and constant[999_999].as_py() == 125
+assert constant.resident_size() < 1_024
 ```
 
 ## Land a pyarrow array, sharing its buffers
@@ -372,7 +377,8 @@ field; `as_*` brings the serie into that state in place and chains
 (`copy.copy` first to keep the original). `indices`, `mask` and `keys` are a
 `Serie`, any columnar object or an iterable of values. A `ChunkedSerie`
 answers the same: `is_sorted`, `into_reversed`, `into_filtered` and
-`partition_by` chunk by chunk, the rest through one join.
+`partition_by` chunk by chunk, the sorts and `into_unique` by merging the
+chunks each sorted on its own, the rest through one join.
 
 ```python
 import copy
@@ -419,6 +425,70 @@ chunked = ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([[3, 1], [2, 3]
 assert not chunked.is_sorted()
 assert chunked.into_sorted().num_chunks == 1
 assert chunked.into_reversed().num_chunks == 2
+```
+
+## Sort by keys, read the declared order
+
+```python
+import copy
+
+from yggdryl import Field, Serie
+
+root = Field("quote", "struct<venue: utf8 not null, price: int64 not null>", nullable=False)
+quotes = Serie.from_scalars(root, [["XNYS", 1], ["XNAS", 2], ["XNYS", 3]])
+
+sorted_quotes = quotes.into_sort_by("venue, price desc")
+assert sorted_quotes.child("price").as_py() == [2, 3, 1]
+assert sorted_quotes.declared_order() == ["venue", "price desc"]
+# Answered off the declaration: the identity. Kept by a slice, cleared by a breaking write.
+assert sorted_quotes.sort_indices_by("venue").as_py() == [0, 1, 2]
+assert sorted_quotes.slice(1, 2).declared_order() == ["venue", "price desc"]
+held = copy.copy(sorted_quotes)
+held.push(["AAAA", 0])
+assert held.declared_order() is None
+```
+
+## Spill a column to disk
+
+```python
+import copy
+
+from yggdryl import Field, Serie, SpillOptions
+
+prices = Serie.from_scalars(Field("price", "int64", nullable=False), range(1_024))
+spilled = copy.copy(prices)
+spilled.spill(SpillOptions(byte_size=0))
+assert spilled.is_spilled() and spilled.resident_size() == 0
+assert spilled[7].as_py() == 7  # read exactly as resident
+spilled.push(1_024)  # a write brings the leaf back
+assert not spilled.is_spilled()
+
+# One-liners: a spilled copy, or the spill chained in place.
+assert prices.into_spilled(byte_size=0).is_spilled() and not prices.is_spilled()
+assert spilled.as_spilled(byte_size=0) is spilled and spilled.is_spilled()
+```
+
+## Join two record columns
+
+```python
+from yggdryl import Field, Serie, SerieReader
+
+trades = Serie.from_scalars(
+    Field("trade", "struct<id: int64 not null, size: int64 not null>", nullable=False),
+    [[1, 10], [2, 20], [3, 30]],
+)
+venues = Serie.from_scalars(
+    Field("venue", "struct<id: int64 not null, venue: utf8 not null>", nullable=False),
+    [[1, "XNAS"], [2, "XNYS"]],
+)
+inner = trades.join_with(venues, "id", "inner", build="right")  # `using`: id once
+assert inner.child("venue").as_py() == ["XNAS", "XNYS"]
+left = trades.join_with(venues, "id", "left", build="right")
+assert left.child("venue").as_py() == ["XNAS", "XNYS", None]
+assert len(trades.join_with(venues, "id", "anti", build="right")) == 1
+# A stream probes lazily against the held side.
+streamed = SerieReader.from_serie(trades).join_with(venues, "id", "inner", build="right")
+assert sum(len(batch) for batch in streamed) == 2
 ```
 
 ## Cut rows into windows by key

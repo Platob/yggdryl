@@ -1200,7 +1200,7 @@ impl Serie {
     ) -> Result<Self> {
         let Some(field) = field else {
             let item = item_field(array.data_type(), array.logical_null_count() != 0)?;
-            return land(Arc::new(item), array, &Proof::Unproven);
+            return Ok(land(Arc::new(item), array, &Proof::Unproven)?.verified_order()?);
         };
         if lands_exactly(field, array.data_type())? {
             let exact = land(
@@ -1209,7 +1209,9 @@ impl Serie {
                 &Proof::Unproven,
             );
             if let Ok(serie) = exact {
-                return Ok(serie);
+                // The rows are the caller's: an order the field declares is
+                // read once before they are believed.
+                return Ok(serie.verified_order()?);
             }
         }
         let source = Arc::new(ArrowField::new(
@@ -1217,8 +1219,9 @@ impl Serie {
             array.data_type().clone(),
             true,
         ));
-        ArrowCastPlan::compile_arrow(&source, field, options, Deferred::default())?
-            .cast_array(array)
+        let cast = ArrowCastPlan::compile_arrow(&source, field, options, Deferred::default())?
+            .cast_array(array)?;
+        Ok(cast.settled()?.verified_order()?)
     }
 
     /// The empty column of `field`.
@@ -1274,11 +1277,46 @@ impl Serie {
             .map(|row| field.scalar(row))
             .collect::<crate::Result<Vec<Scalar>>>()?;
         let borrowed: Vec<&Scalar> = proven.iter().collect();
-        from_canonical_rows(field, &borrowed)
+        from_canonical_rows(field, &borrowed)?
+            .settled()?
+            .verified_order()
+    }
+
+    /// `rows` copies of `value` under `field`: a constant column
+    /// ([`LitSerie`](crate::serie::LitSerie)), the value proven by the
+    /// field once and laid out as one row, the whole array built only when
+    /// something exports it. Reading a cell clones the value, slicing moves
+    /// the count, and nothing is held per row.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let venue = Serie::lit(DataType::utf8().required_field("venue"), Scalar::from("XNAS"), 1_000_000)?;
+    /// assert_eq!(venue.len(), 1_000_000);
+    /// assert_eq!(venue.scalar(999_999)?, Scalar::from("XNAS"));
+    /// assert!(venue.as_lit().is_some());
+    /// assert!(venue.resident_size() < 1_024, "one row, not a million");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the field's refusal of the value - a null under a required
+    /// field, a value of another datatype - or of a field with no Arrow
+    /// projection.
+    pub fn lit(field: impl Into<Arc<Field>>, value: Scalar, rows: usize) -> Result<Self> {
+        Ok(crate::value::SerieValue::into_serie(super::LitSerie::new(
+            field.into(),
+            value,
+            rows,
+        )?))
     }
 
     /// `rows` copies of `field`'s canonical default -
-    /// [`Field::default_value`] - laid out once and repeated by index.
+    /// [`Field::default_value`] - as the constant column [`Self::lit`]
+    /// builds.
     ///
     /// # Errors
     ///
@@ -1287,46 +1325,7 @@ impl Serie {
     pub fn from_default(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self> {
         let field = field.into();
         let default = field.default_value()?;
-        from_canonical_rows(field, &[&default])?.repeat(0, rows)
-    }
-
-    /// Row `row` of this column, `len` times.
-    ///
-    /// The selection is Arrow's `take` over one repeated index, so the rows
-    /// are laid out once and never proven again: they are rows this column
-    /// already holds.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the column when `row` is past the end.
-    pub(crate) fn repeat(&self, row: usize, len: usize) -> Result<Self> {
-        let Some(field) = self.field_ref() else {
-            let value = self.scalar(row)?;
-            return Ok(Self::new(vec![value; len]));
-        };
-        if row >= self.len() {
-            return Err(Error::IncompatibleSchema(format!(
-                "column {:?} has {} rows, so row {row} cannot repeat",
-                field.name(),
-                self.len()
-            )));
-        }
-        let index = u32::try_from(row).map_err(|_| {
-            Error::IncompatibleSchema(format!(
-                "column {:?} row {row} is past what one take can index",
-                field.name()
-            ))
-        })?;
-        let array = self.require_arrow_array()?;
-        let indices = arrow_array::UInt32Array::from(vec![index; len]);
-        let repeated = arrow_select::take::take(array.as_ref(), &indices, None)?;
-        if repeated.len() != len {
-            // Arrow's take answers a zero-width fixed-size list by its child,
-            // which has no rows to count, so the row is laid out instead.
-            let value = self.scalar(row)?;
-            return Ok(from_canonical_rows(Arc::clone(field), &vec![&value; len])?);
-        }
-        land(Arc::clone(field), repeated, &Proof::Proven)
+        Self::lit(field, default, rows)
     }
 
     /// Read one Arrow table as the record column of its rows: of the
@@ -1351,7 +1350,9 @@ impl Serie {
     ) -> Result<Self> {
         let Some(root) = root else {
             let root = field_from_arrow_schema(DEFAULT_ROOT_NAME, batch.schema().as_ref())?;
-            return land_once(Arc::new(root), batch.clone(), &Proof::Unproven);
+            return Ok(
+                land_once(Arc::new(root), batch.clone(), &Proof::Unproven)?.verified_order()?
+            );
         };
         // An exact batch lands as it stands, proven as the identity plan would
         // prove it and with no plan compiled; one the landing refuses - an
@@ -1369,11 +1370,13 @@ impl Serie {
             let resolved = Resolved::of(Arc::new(root.clone()));
             let records = crate::cast::struct_array_from_batch(batch.clone());
             if let Ok(serie) = land_planned(&resolved, records, &Proof::Unproven) {
-                return Ok(serie);
+                return Ok(serie.verified_order()?);
             }
         }
-        ArrowCastPlan::compile_schema(batch.schema_ref(), root, options, Deferred::default())?
-            .cast_batch(batch.clone())
+        let cast =
+            ArrowCastPlan::compile_schema(batch.schema_ref(), root, options, Deferred::default())?
+                .cast_batch(batch.clone())?;
+        Ok(cast.settled()?.verified_order()?)
     }
 
     /// Drain one Arrow batch stream into the record column of its rows.
@@ -1485,6 +1488,10 @@ pub struct SerieReader {
     /// The record of values every yielded row shares, beside the root: a
     /// window's.
     statics: Option<Statics>,
+    /// The last row of the stream's batch before, where the root declares
+    /// an order: what the next batch's first row is checked against. A
+    /// held, lazy or windowed source lays out its own rows and keeps none.
+    edge: Option<Serie>,
 }
 
 /// A reader's static values: a non-null record field and its row, proven
@@ -1509,6 +1516,10 @@ enum Source {
     /// One window of a [`SerieReaderWindows`] walk: its rows served piece
     /// by piece out of the one batch the walk holds.
     Window(WindowPart),
+    /// Record columns the crate lays out as they are pulled - a join's or a
+    /// sort's output - each already landed under the root, so nothing is
+    /// cast, copied or read on the way out.
+    Lazy(Box<dyn Iterator<Item = Result<Serie>> + Send>),
 }
 
 /// The record root a held column of `field` streams under, shared, and
@@ -1571,6 +1582,7 @@ impl SerieReader {
             root: Arc::new(root.clone()),
             schema,
             statics: None,
+            edge: None,
         })
     }
 
@@ -1613,6 +1625,23 @@ impl SerieReader {
         Self::held(root, records)
     }
 
+    /// The stream of record columns `records` lays out as it is pulled, each
+    /// already landed under `root`: what a join or an out-of-core sort
+    /// answers, one settled batch at a time.
+    pub(crate) fn from_landed_iter(
+        root: Arc<Field>,
+        records: impl Iterator<Item = Result<Serie>> + Send + 'static,
+    ) -> Result<Self> {
+        let schema = arrow_schema_from_field(&root)?;
+        Ok(Self {
+            inner: Some(Source::Lazy(Box::new(records))),
+            root,
+            schema,
+            statics: None,
+            edge: None,
+        })
+    }
+
     /// The stream of `records`, each already a record column under `root`.
     fn held(root: Arc<Field>, records: Vec<Serie>) -> Result<Self> {
         let schema = arrow_schema_from_field(&root)?;
@@ -1621,6 +1650,7 @@ impl SerieReader {
             root,
             schema,
             statics: None,
+            edge: None,
         })
     }
 
@@ -1667,6 +1697,11 @@ impl SerieReader {
                     .collect::<Result<Vec<_>>>()?;
                 Some(Source::Held(cast.into_iter()))
             }
+            Some(Source::Lazy(records)) => {
+                Some(Source::Lazy(Box::new(records.map(move |record| {
+                    record.and_then(|record| plan.apply(&record))
+                }))))
+            }
             Some(Source::Stream(reader, first, then))
                 if then.is_empty() && first.is_identity() && first.source_schema().is_some() =>
             {
@@ -1689,12 +1724,171 @@ impl SerieReader {
             root,
             schema,
             statics: self.statics,
+            edge: None,
         })
+    }
+
+    /// Every record this reader yields, in sorted order under `options`:
+    /// the stream drained into its chunks
+    /// ([`ChunkedSerie::from_serie_reader`](crate::ChunkedSerie::from_serie_reader),
+    /// each chunk settled as it lands), sorted by
+    /// [`ChunkedSerie::into_sorted`](crate::ChunkedSerie::into_sorted)'s
+    /// merge, and read back as the held stream of the merged chunks
+    /// ([`Self::from_chunked`]) - batches of at most
+    /// [`DEFAULT_RECORD_BATCH_ROW_SIZE`](crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE)
+    /// rows. Every batch of the stream is pulled here, before the first
+    /// sorted one is answered, because the last row pulled may be the
+    /// first in order; what the sort holds while it runs is what the merge
+    /// states. The root is kept, and so are the
+    /// [static values](Self::static_values): sorting moves rows, never
+    /// where they come from.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie, SerieReader, SortOptions, StructType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let root = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Int64.required_field("price"),
+    /// ])?)
+    /// .required_field("quote");
+    /// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    /// let quotes = Serie::from_scalars(root, [quote("XNYS", 2), quote("XNAS", 1), quote("XNYS", 1)])?;
+    /// let sorted = SerieReader::from_serie(quotes)?.into_sorted(SortOptions::descending())?;
+    /// assert_eq!(sorted.field().name(), "quote");
+    /// let rows: Vec<Scalar> = sorted.map(|batch| batch.map(|batch| batch.rows().into_owned())).collect::<Result<Vec<_>, _>>()?.concat();
+    /// assert_eq!(rows, vec![quote("XNYS", 2), quote("XNYS", 1), quote("XNAS", 1)]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The first failure a batch of the stream raises, then
+    /// [`ChunkedSerie::into_sorted`](crate::ChunkedSerie::into_sorted)'s.
+    pub fn into_sorted(mut self, options: SortOptions) -> Result<Self> {
+        let statics = self.statics.take();
+        let sorted = crate::ChunkedSerie::from_serie_reader(self)?.into_sorted(options)?;
+        let mut reader = Self::from_chunked(sorted)?;
+        reader.statics = statics;
+        Ok(reader)
+    }
+
+    /// Every record this reader yields, in the order the `order by` keys
+    /// of `by` state: [`Self::into_sorted`], its drain and its merge, by
+    /// [`ChunkedSerie::into_sort_by`](crate::ChunkedSerie::into_sort_by)'s
+    /// keys, bound against the root - a column of the root keys as itself,
+    /// so `"price desc"` sorts by the root's `price`. The keys are read
+    /// before the stream is: a key no column answers is refused with no
+    /// batch pulled.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie, SerieReader, StructType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let root = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Int64.required_field("price"),
+    /// ])?)
+    /// .required_field("quote");
+    /// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    /// let quotes = Serie::from_scalars(root, [quote("XNYS", 2), quote("XNAS", 1), quote("XNYS", 1)])?;
+    /// let sorted = SerieReader::from_serie(quotes.clone())?.into_sort_by("venue, price desc")?;
+    /// let rows: Vec<Scalar> = sorted.map(|batch| batch.map(|batch| batch.rows().into_owned())).collect::<Result<Vec<_>, _>>()?.concat();
+    /// assert_eq!(rows, vec![quote("XNAS", 1), quote("XNYS", 2), quote("XNYS", 1)]);
+    /// assert!(SerieReader::from_serie(quotes)?.into_sort_by("tier").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The keys' refusals, before any batch is pulled: their parse, none at
+    /// all, an `unnest`, a term reaching no column or two, two keys
+    /// publishing one name. Then [`Self::into_sorted`]'s.
+    pub fn into_sort_by(mut self, by: impl crate::expression::IntoOrderings) -> Result<Self> {
+        let by = by.into_orderings()?;
+        // Refused against the root's empty chunked serie, before a pull.
+        crate::ChunkedSerie::empty(Arc::clone(&self.root))?.into_sort_by(by.as_slice())?;
+        let statics = self.statics.take();
+        let sorted = crate::ChunkedSerie::from_serie_reader(self)?.into_sort_by(by)?;
+        let mut reader = Self::from_chunked(sorted)?;
+        reader.statics = statics;
+        Ok(reader)
     }
 
     /// The record every yielded column is typed by.
     pub fn field(&self) -> &Field {
         &self.root
+    }
+
+    /// The bytes the records this reader holds occupy in memory: the held
+    /// records still to yield, or the batch a window's walk stands in; a
+    /// stream holds no landed batch between pulls and answers zero.
+    pub fn resident_size(&self) -> usize {
+        match &self.inner {
+            Some(Source::Held(records)) => {
+                records.as_slice().iter().map(Serie::resident_size).sum()
+            }
+            Some(Source::Window(part)) => part.walk.lock().map_or(0, |walk| {
+                walk.held
+                    .as_ref()
+                    .map_or(0, |cut| cut.record.resident_size())
+            }),
+            _ => 0,
+        }
+    }
+
+    /// Whether every record this reader holds lies in a spill file: held
+    /// records only, and never a stream, which holds none.
+    pub fn is_spilled(&self) -> bool {
+        match &self.inner {
+            Some(Source::Held(records)) => {
+                let held = records.as_slice();
+                !held.is_empty() && held.iter().all(Serie::is_spilled)
+            }
+            _ => false,
+        }
+    }
+
+    /// Move the records this reader holds to disk under `options`' bound:
+    /// each held record through [`Serie::spill`]; a stream holds none and
+    /// is untouched.
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::spill`]'s refusal of its folder.
+    pub fn spill(&mut self, options: &crate::SpillOptions) -> crate::Result<()> {
+        if let Some(Source::Held(records)) = &mut self.inner {
+            let mut held: Vec<Serie> = std::mem::take(records).collect();
+            for record in &mut held {
+                record.spill(options)?;
+            }
+            *records = held.into_iter();
+        }
+        Ok(())
+    }
+
+    /// [`Self::spill`], answering this reader so calls chain.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::spill`]'s.
+    pub fn as_spilled(&mut self, options: &crate::SpillOptions) -> crate::Result<&mut Self> {
+        self.spill(options)?;
+        Ok(self)
+    }
+
+    /// This reader spilled under `options`' bound: [`Self::spill`] on the
+    /// held records, the reader handed back - a stream owns one source, so
+    /// it moves rather than copies.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::spill`]'s.
+    pub fn into_spilled(mut self, options: &crate::SpillOptions) -> crate::Result<Self> {
+        self.spill(options)?;
+        Ok(self)
     }
 
     /// The record root a held column of `field` crosses into a table under:
@@ -1736,6 +1930,7 @@ impl SerieReader {
                     root: self.root,
                     schema: Arc::clone(&self.schema),
                     statics: None,
+                    edge: None,
                 };
                 let batches = pieces.map(move |piece| {
                     piece
@@ -1757,6 +1952,15 @@ impl SerieReader {
                 let schema = Arc::clone(&self.schema);
                 let batches = records.map(move |record| {
                     batch_under(&schema, &record)
+                        .map_err(|error| ArrowError::ExternalError(Box::new(error)))
+                });
+                Box::new(RecordBatchIterator::new(batches, self.schema))
+            }
+            Some(Source::Lazy(records)) => {
+                let schema = Arc::clone(&self.schema);
+                let batches = records.map(move |record| {
+                    record
+                        .and_then(|record| batch_under(&schema, &record))
                         .map_err(|error| ArrowError::ExternalError(Box::new(error)))
                 });
                 Box::new(RecordBatchIterator::new(batches, self.schema))
@@ -1973,6 +2177,13 @@ impl Iterator for SerieReader {
                 }
                 return piece;
             }
+            Source::Lazy(records) => {
+                let next = records.next();
+                if !matches!(next, Some(Ok(_))) {
+                    self.inner = None;
+                }
+                return next;
+            }
         };
         let pulled = reader.next();
         let landed = match pulled {
@@ -1986,10 +2197,47 @@ impl Iterator for SerieReader {
                 return None;
             }
         };
+        let landed = landed.and_then(|landed| self.verified_batch(landed));
         if landed.is_err() {
             self.inner = None;
         }
         Some(landed)
+    }
+}
+
+impl SerieReader {
+    /// A stream's batch checked against the order the root declares: its
+    /// rows, and its first row against the batch before, whose last row the
+    /// reader kept; a root declaring none costs one lookup. The batch is
+    /// foreign - no verb of the crate laid it out in that order - so the
+    /// declaration is read before it is believed.
+    fn verified_batch(&mut self, landed: Serie) -> Result<Serie> {
+        if !self.root.as_sort().declares_order() {
+            return Ok(landed);
+        }
+        let Some(by) = landed.declared_order()? else {
+            return Ok(landed);
+        };
+        if let Some(row) = landed.first_disorder(&by)? {
+            return Err(landed.out_of_order(row, &by).into());
+        }
+        if let Some(edge) = &self.edge
+            && !edge.edge_in_order(&landed, &by)?
+        {
+            return Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new(self.root.name()),
+                reason: smol_str::format_smolstr!(
+                    "a batch of {} opens out of the order its root declares, `{}`, after the batch before",
+                    self.root.name(),
+                    crate::serie::spelled(&by)
+                ),
+            }
+            .into());
+        }
+        if !landed.is_empty() {
+            self.edge = Some(landed.slice(landed.len() - 1, 1)?);
+        }
+        Ok(landed)
     }
 }
 
@@ -2090,6 +2338,7 @@ impl Iterator for SerieReaderWindows {
             })),
             root: Arc::clone(&self.root),
             schema: Arc::clone(&self.schema),
+            edge: None,
             statics: Some(Statics {
                 field: Arc::clone(&self.statics),
                 row,

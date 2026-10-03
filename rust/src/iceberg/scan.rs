@@ -1297,10 +1297,8 @@ fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Scalar)]) -> Res
         batch.schema().fields().iter().map(Arc::clone).collect();
     let mut columns = batch.columns().to_vec();
     for (field, value) in missing {
-        // The value lays out once under its field and repeats by index.
-        let column = crate::Serie::from_scalars(field.clone(), [value.clone()])
-            .map_err(crate::arrow::Error::from)
-            .and_then(|row| row.repeat(0, batch.num_rows()))
+        // The value is one constant column, laid out as it is exported.
+        let column = crate::Serie::lit(field.clone(), value.clone(), batch.num_rows())
             .and_then(|column| Ok(column.require_arrow_array()?))
             .map_err(|error| invalid(format_smolstr!("{error}")))?;
         columns.push(column);

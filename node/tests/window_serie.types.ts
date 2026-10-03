@@ -74,6 +74,19 @@ window.copyFrom([1, 2, 3])
 // @ts-expect-error the private window bridges are hidden
 window._setNative
 
+// Where the rows live, and the orderings by key over the window's rows.
+const resident: number = window.residentSize()
+const spilled: boolean = window.isSpilled()
+const orderBy: Serie = window.sortIndicesBy('price desc')
+const sortedBy: Serie = window.intoSortBy([{ term: 'price', nulls_first: true }])
+const sortedInPlace: WindowSerie = window.asSortBy('price').asReversed()
+// @ts-expect-error a window is never spilled on its own: spill the serie
+window.spill()
+// @ts-expect-error a window never joins: take its serie
+window.joinWith(prices, 'price')
+
+void [resident, spilled, orderBy, sortedBy, sortedInPlace]
+
 void [length, offset, parent, field, empty, nulls, absent, row, maybe, rows, values, bytes, text,
   ordered, unique, distinct, order, narrower, whole, sorted, deduplicated, reversed, taken,
   filtered, groups, same, chained, lent, lentSorted, lentCleared, record, plainRecord]

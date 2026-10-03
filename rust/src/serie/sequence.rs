@@ -32,6 +32,7 @@ use arrow_buffer::{MutableBuffer, NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow_schema::DataType as ArrowDataType;
 
 use super::{Serie, layout, require_range, require_row, require_window};
+use crate::spill::Backing;
 use crate::value::SerieValue;
 use crate::{DataType, Field, Result, Scalar};
 
@@ -121,6 +122,11 @@ fn present(rows: &[Scalar]) -> Vec<bool> {
     rows.iter().map(|row| !row.is_null()).collect()
 }
 
+/// The bytes a validity bitmap spans as its slice counts them.
+fn validity_size(nulls: Option<&NullBuffer>) -> usize {
+    nulls.map_or(0, |nulls| nulls.len().div_ceil(8))
+}
+
 /// Which of `len` rows a validity bitmap marks present.
 fn validity(nulls: Option<&NullBuffer>, len: usize) -> Vec<bool> {
     (0..len)
@@ -159,6 +165,8 @@ pub struct OffsetSerie<O: OffsetSizeTrait> {
     offsets: OffsetBuffer<O>,
     items: Serie,
     nulls: Option<NullBuffer>,
+    /// Where the cut and the validity live; the items answer for their own.
+    backing: Backing,
 }
 
 /// A column of sequences, 32-bit offsets.
@@ -180,12 +188,21 @@ impl<O: OffsetSizeTrait> OffsetSerie<O> {
             offsets,
             items,
             nulls,
+            backing: Backing::Heap,
         }
     }
 
     /// Borrow the item column every row is cut out of.
     pub const fn items(&self) -> &Serie {
         &self.items
+    }
+
+    /// Borrow the item column mutably.
+    ///
+    /// The caller keeps its field and its length - it writes nothing that
+    /// changes either - so the cut still ends at the items.
+    pub(crate) const fn items_mut(&mut self) -> &mut Serie {
+        &mut self.items
     }
 
     /// Borrow the offsets buffer that cuts the items, without copying it.
@@ -196,6 +213,25 @@ impl<O: OffsetSizeTrait> OffsetSerie<O> {
     /// Borrow the validity bitmap, or `None` where no row is absent.
     pub const fn nulls(&self) -> Option<&NullBuffer> {
         self.nulls.as_ref()
+    }
+
+    /// Where this column's own cut and validity live; the items answer for
+    /// their own buffers.
+    pub(crate) const fn backing(&self) -> &Backing {
+        &self.backing
+    }
+
+    /// State where the whole unit lives: this column's cut and validity,
+    /// and the item column below them.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.items.set_backing(backing);
+        self.backing = backing;
+    }
+
+    /// The bytes this column's own cut and validity span as its slice
+    /// counts them, and nothing of the items'.
+    pub(crate) fn own_size(&self) -> usize {
+        self.offsets.len() * std::mem::size_of::<O>() + validity_size(self.nulls.as_ref())
     }
 
     /// Return the item range row `index` occupies: `None` when the row is
@@ -249,6 +285,7 @@ impl<O: OffsetSizeTrait> OffsetSerie<O> {
         self.offsets = offsets;
         self.items.write(replaced, items);
         self.nulls = layout::splice_nulls(self.nulls.take(), len, range, &present);
+        self.backing = Backing::Heap;
     }
 
     /// Append `other`'s cut and items, whose field agrees with this one's,
@@ -276,6 +313,7 @@ impl<O: OffsetSizeTrait> OffsetSerie<O> {
             len..len,
             &validity(other.nulls.as_ref(), other.offsets.len() - 1),
         );
+        self.backing = Backing::Heap;
         true
     }
 }
@@ -322,13 +360,17 @@ impl<O: OffsetLeaf> SerieValue for OffsetSerie<O> {
             .iter()
             .map(|held| *held - first)
             .collect();
-        Ok(Self::new(
-            Arc::clone(&self.field),
-            OffsetBuffer::new(ScalarBuffer::from(rebased)),
-            self.items
+        Ok(Self {
+            field: Arc::clone(&self.field),
+            offsets: OffsetBuffer::new(ScalarBuffer::from(rebased)),
+            items: self
+                .items
                 .slice(first.as_usize(), (last - first).as_usize())?,
-            self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
-        ))
+            nulls: self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
+            // The rebased cut is the heap's whatever the whole was, so this
+            // level is resident; the items keep where they lie.
+            backing: Backing::Heap,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
@@ -340,6 +382,15 @@ impl<O: OffsetLeaf> SerieValue for OffsetSerie<O> {
         self.check(&range, &canonical)?;
         self.write(range, canonical);
         Ok(())
+    }
+
+    fn resident_size(&self) -> usize {
+        let own = if self.backing().is_mapped() {
+            0
+        } else {
+            self.own_size()
+        };
+        own + self.items.resident_size()
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
@@ -365,12 +416,13 @@ impl<O: OffsetLeaf> SerieValue for OffsetSerie<O> {
 
 impl<O: OffsetSizeTrait> Clone for OffsetSerie<O> {
     fn clone(&self) -> Self {
-        Self::new(
-            Arc::clone(&self.field),
-            self.offsets.clone(),
-            self.items.clone(),
-            self.nulls.clone(),
-        )
+        Self {
+            field: Arc::clone(&self.field),
+            offsets: self.offsets.clone(),
+            items: self.items.clone(),
+            nulls: self.nulls.clone(),
+            backing: self.backing,
+        }
     }
 }
 
@@ -402,6 +454,9 @@ pub struct OffsetViewSerie<O: OffsetSizeTrait> {
     sizes: ScalarBuffer<O>,
     items: Serie,
     nulls: Option<NullBuffer>,
+    /// Where the views and the validity live; the items answer for their
+    /// own.
+    backing: Backing,
 }
 
 /// A column of sequence views, 32-bit offsets.
@@ -426,12 +481,41 @@ impl<O: OffsetSizeTrait> OffsetViewSerie<O> {
             sizes,
             items,
             nulls,
+            backing: Backing::Heap,
         }
     }
 
     /// Borrow the item column every row views into.
     pub const fn items(&self) -> &Serie {
         &self.items
+    }
+
+    /// Borrow the item column mutably.
+    ///
+    /// The caller keeps its field and its length - it writes nothing that
+    /// changes either - so the views still end at the items.
+    pub(crate) const fn items_mut(&mut self) -> &mut Serie {
+        &mut self.items
+    }
+
+    /// Where this column's own views and validity live; the items answer
+    /// for their own buffers.
+    pub(crate) const fn backing(&self) -> &Backing {
+        &self.backing
+    }
+
+    /// State where the whole unit lives: this column's views and validity,
+    /// and the item column below them.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.items.set_backing(backing);
+        self.backing = backing;
+    }
+
+    /// The bytes this column's own offsets, sizes and validity span as its
+    /// slice counts them, and nothing of the items'.
+    pub(crate) fn own_size(&self) -> usize {
+        (self.offsets.len() + self.sizes.len()) * std::mem::size_of::<O>()
+            + validity_size(self.nulls.as_ref())
     }
 
     /// Borrow the offsets buffer, one per row, without copying it.
@@ -540,6 +624,7 @@ impl<O: OffsetSizeTrait> OffsetViewSerie<O> {
         self.items.write(replaced.clone(), items);
         self.recut(&range, replaced.start, &lengths);
         self.nulls = layout::splice_nulls(self.nulls.take(), len, range, &present);
+        self.backing = Backing::Heap;
     }
 
     /// Append `other`'s views and items, whose field agrees with this one's,
@@ -566,6 +651,7 @@ impl<O: OffsetSizeTrait> OffsetViewSerie<O> {
             len..len,
             &validity(other.nulls.as_ref(), other.offsets.len()),
         );
+        self.backing = Backing::Heap;
         true
     }
 }
@@ -613,13 +699,16 @@ impl<O: OffsetLeaf> SerieValue for OffsetViewSerie<O> {
             .iter()
             .map(|held| *held - O::usize_as(reached.start))
             .collect();
-        Ok(Self::new(
-            Arc::clone(&self.field),
-            ScalarBuffer::from(rebased),
-            self.sizes.slice(offset, length),
-            self.items.slice(reached.start, reached.len())?,
-            self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
-        ))
+        Ok(Self {
+            field: Arc::clone(&self.field),
+            offsets: ScalarBuffer::from(rebased),
+            sizes: self.sizes.slice(offset, length),
+            items: self.items.slice(reached.start, reached.len())?,
+            nulls: self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
+            // The rebased cut is the heap's whatever the whole was, so this
+            // level is resident; the items keep where they lie.
+            backing: Backing::Heap,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
@@ -631,6 +720,15 @@ impl<O: OffsetLeaf> SerieValue for OffsetViewSerie<O> {
         self.check(&range, &canonical)?;
         self.write(range, canonical);
         Ok(())
+    }
+
+    fn resident_size(&self) -> usize {
+        let own = if self.backing().is_mapped() {
+            0
+        } else {
+            self.own_size()
+        };
+        own + self.items.resident_size()
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
@@ -657,13 +755,14 @@ impl<O: OffsetLeaf> SerieValue for OffsetViewSerie<O> {
 
 impl<O: OffsetSizeTrait> Clone for OffsetViewSerie<O> {
     fn clone(&self) -> Self {
-        Self::new(
-            Arc::clone(&self.field),
-            self.offsets.clone(),
-            self.sizes.clone(),
-            self.items.clone(),
-            self.nulls.clone(),
-        )
+        Self {
+            field: Arc::clone(&self.field),
+            offsets: self.offsets.clone(),
+            sizes: self.sizes.clone(),
+            items: self.items.clone(),
+            nulls: self.nulls.clone(),
+            backing: self.backing,
+        }
     }
 }
 
@@ -688,7 +787,7 @@ macro_rules! offset_leaf {
             }
 
             fn from_serie(serie: &Serie) -> Option<&OffsetSerie<Self>> {
-                super::Leaf::narrow(serie)
+                super::Leaf::narrow_laid(serie)
             }
 
             fn into_view_serie(column: OffsetViewSerie<Self>) -> Serie {
@@ -696,7 +795,7 @@ macro_rules! offset_leaf {
             }
 
             fn from_view_serie(serie: &Serie) -> Option<&OffsetViewSerie<Self>> {
-                super::Leaf::narrow(serie)
+                super::Leaf::narrow_laid(serie)
             }
         }
     };
@@ -720,6 +819,8 @@ pub struct FixedSizeSerieSerie {
     items: Serie,
     nulls: Option<NullBuffer>,
     rows: usize,
+    /// Where the validity lives; the items answer for their own buffers.
+    backing: Backing,
 }
 
 impl FixedSizeSerieSerie {
@@ -737,6 +838,7 @@ impl FixedSizeSerieSerie {
             items,
             nulls,
             rows,
+            backing: Backing::Heap,
         }
     }
 
@@ -750,9 +852,36 @@ impl FixedSizeSerieSerie {
         &self.items
     }
 
+    /// Borrow the item column mutably.
+    ///
+    /// The caller keeps its field and its length - it writes nothing that
+    /// changes either - so the rows still tile it `width` items each.
+    pub(crate) const fn items_mut(&mut self) -> &mut Serie {
+        &mut self.items
+    }
+
     /// Borrow the validity bitmap, or `None` where no row is absent.
     pub const fn nulls(&self) -> Option<&NullBuffer> {
         self.nulls.as_ref()
+    }
+
+    /// Where this column's own validity lives; the items answer for their
+    /// own buffers.
+    pub(crate) const fn backing(&self) -> &Backing {
+        &self.backing
+    }
+
+    /// State where the whole unit lives: this column's validity and the
+    /// item column below it.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.items.set_backing(backing);
+        self.backing = backing;
+    }
+
+    /// The bytes this column's own validity spans as its slice counts them,
+    /// and nothing of the items'.
+    pub(crate) fn own_size(&self) -> usize {
+        validity_size(self.nulls.as_ref())
     }
 
     /// Return the item range row `index` occupies: `None` when the row is
@@ -815,6 +944,7 @@ impl FixedSizeSerieSerie {
             .write(range.start * self.width..range.end * self.width, tiles);
         self.nulls = layout::splice_nulls(self.nulls.take(), self.rows, range.clone(), &present);
         self.rows = self.rows - range.len() + rows.len();
+        self.backing = Backing::Heap;
     }
 
     /// Append `other`'s items, whose field agrees with this one's, answering
@@ -830,6 +960,7 @@ impl FixedSizeSerieSerie {
             &validity(other.nulls.as_ref(), other.rows),
         );
         self.rows += other.rows;
+        self.backing = Backing::Heap;
         true
     }
 }
@@ -870,13 +1001,14 @@ impl SerieValue for FixedSizeSerieSerie {
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
         require_window(self.field.name(), offset, length, self.rows)?;
-        Ok(Self::new(
-            Arc::clone(&self.field),
-            self.width,
-            self.items.slice(offset * self.width, length * self.width)?,
-            self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
-            length,
-        ))
+        Ok(Self {
+            field: Arc::clone(&self.field),
+            width: self.width,
+            items: self.items.slice(offset * self.width, length * self.width)?,
+            nulls: self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
+            rows: length,
+            backing: self.backing,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
@@ -888,6 +1020,15 @@ impl SerieValue for FixedSizeSerieSerie {
         self.check(&range, &canonical)?;
         self.write(range, canonical);
         Ok(())
+    }
+
+    fn resident_size(&self) -> usize {
+        let own = if self.backing().is_mapped() {
+            0
+        } else {
+            self.own_size()
+        };
+        own + self.items.resident_size()
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
@@ -911,7 +1052,7 @@ impl SerieValue for FixedSizeSerieSerie {
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        super::Leaf::narrow(value)
+        super::Leaf::narrow_laid(value)
     }
 }
 

@@ -2349,8 +2349,8 @@ fn ordering_a_column_costs_its_rung_of_the_ladder_and_never_a_row() {
         assert!(held.is_sorted(SortOptions::default()));
         assert_eq!(
             (as_sorted, as_sorted_again, as_reversed),
-            (6, 6, 6),
-            "as_sorted and as_reversed on {rows} int64 rows held alone: the builder handshake, no row"
+            (5, 5, 5),
+            "as_sorted and as_reversed on {rows} int64 rows held alone: the builder handshake, no row; the leaf lends its buffers whole, so the take leaves one empty placeholder where an empty array left two"
         );
     }
 }
@@ -2412,8 +2412,8 @@ fn a_window_over_a_primitive_column_reads_through_it_and_adds_nothing_to_a_write
                 .expect("sorted in place");
         });
         assert_eq!(
-            sorted, 6,
-            "as_sorted on a window over {rows} rows held alone: the builder handshake, no row"
+            sorted, 5,
+            "as_sorted on a window over {rows} rows held alone: the builder handshake, no row; one placeholder buffer per take since the leaf holds its buffers"
         );
         assert!(window.is_sorted(SortOptions::default()));
     }
@@ -2640,8 +2640,8 @@ fn every_other_serie_verb_costs_its_rung_and_never_a_row() {
         );
         assert_eq!(
             (sorted, window_sorted),
-            (7, 7),
-            "as_sorted on {rows} int64 rows with absences held alone, whole and through a window"
+            (6, 6),
+            "as_sorted on {rows} int64 rows with absences held alone, whole and through a window; one placeholder buffer per take since the leaf holds its buffers"
         );
 
         // A boolean column's two bitmaps, rewritten where they stand.
@@ -2674,10 +2674,77 @@ fn every_other_serie_verb_costs_its_rung_and_never_a_row() {
         );
         assert_eq!(
             (sorted, reversed, window_sorted),
-            (4, 4, 4),
-            "as_sorted, as_reversed and a window's as_sorted on {rows} booleans held alone: the two bitmaps handed back"
+            (3, 3, 3),
+            "as_sorted, as_reversed and a window's as_sorted on {rows} booleans held alone: the two bitmaps handed back, the validity taken out at no cost since the leaf holds its buffers"
         );
     }
+}
+
+/// A record column `quote{venue: utf8, count: int64}` of `rows` rows off
+/// one Arrow batch: three venues in turn, the counts descending.
+fn quote_records(rows: usize) -> Serie {
+    let root = Field::new(
+        "quote",
+        DataType::from(
+            StructType::from_fields([
+                Field::new("venue", DataType::utf8(), false),
+                Field::new("count", DataType::Int64, false),
+            ])
+            .expect("two children"),
+        ),
+        false,
+    );
+    let batch = arrow_array::RecordBatch::try_new(
+        root.clone().into_arrow_schema().expect("a schema"),
+        vec![
+            venue_column(rows).into_arrow_array().expect("a column"),
+            descending_counts(rows)
+                .into_arrow_array()
+                .expect("a column"),
+        ],
+    )
+    .expect("a batch");
+    Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("records")
+}
+
+#[test]
+fn sort_by_over_row_format_keys_costs_a_constant_and_never_a_row() {
+    // Two keys of a record column whose cells order as their buffers: the
+    // text parsed (19 allocations), the keys bound and the key record lent
+    // zero copy, one row converter over both cells, the order and the
+    // stable sort's scratch, the index column; `into_sort_by` then one take
+    // of every column instead of the index column (twenty-four), and the
+    // order it declares on the result's root - the two keys rendered,
+    // parsed back and canonicalized by the metadata validator
+    // (seventy-four), the root shared once more and the record's leaf
+    // copied with its field swapped (three) - and `as_sort_by` costs exactly
+    // its read. The count is the same at 2,048 and at 16,384 rows - both
+    // above the 1,024 indices the sort's scratch keeps on the stack - so
+    // nothing is allocated per row.
+    let mut costs = Vec::new();
+    for rows in [2_048_usize, 16_384] {
+        let records = quote_records(rows);
+        let (indices, order) =
+            counted(|| black_box(&records).sort_indices_by(black_box("venue, count desc")));
+        let order = order.expect("an order");
+        assert_eq!(order.len(), rows);
+        assert_eq!(order.scalar(0).expect("a row"), Scalar::from(0_u32));
+        let (into_sort_by, sorted) =
+            counted(|| black_box(&records).into_sort_by(black_box("venue, count desc")));
+        assert_eq!(sorted.expect("sorted").len(), rows);
+        let mut held = records.clone();
+        let (as_sort_by, ()) = counted(|| {
+            black_box(&mut held)
+                .as_sort_by(black_box("venue, count desc"))
+                .expect("sorted in place");
+        });
+        costs.push((indices, into_sort_by, as_sort_by));
+    }
+    assert_eq!(
+        costs,
+        vec![(66, 167, 167); 2],
+        "sort_indices_by, into_sort_by and as_sort_by over two keys at 2,048 and 16,384 rows"
+    );
 }
 
 #[test]
@@ -2837,8 +2904,8 @@ fn a_window_verb_costs_the_window_s_serie_and_the_serie_s_own_verb() {
                 }),
             ),
             (
-                "as_reversed: the native slice reversed where it stands",
-                6,
+                "as_reversed: the native slice reversed where it stands, one placeholder buffer per take",
+                5,
                 counted(|| {
                     window.as_reversed().expect("reversed");
                 }),
@@ -3385,10 +3452,12 @@ fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
     // `into_filtered`, `into_reversed`, `as_reversed` and `partition_by`
     // work chunk by chunk, so their counts follow the chunks and never the
     // rows; `partition_by_chunked` over keys cut alike pairs the chunks and
-    // cuts no key; `memory_size` is one array handle per chunk; and the
-    // verbs that must see every row together cost the one join and the
-    // serie's own verb - the stable sort's scratch, heaped past a size, the
-    // one count that moves with the rows. A chunk the sorted keys hold in
+    // cuts no key; `memory_size` is one array handle per chunk; the
+    // positions and the counts that must see every row together cost the
+    // one join and the serie's own verb - the stable sort's scratch, heaped
+    // past a size, the one count that moves with the rows; and the sorts
+    // and the uniqueness merge the chunks sorted each on its own, a constant
+    // and a cost per chunk, never a join. A chunk the sorted keys hold in
     // one group is that group whole, and the whole serie is the serie: the
     // chunk itself, where a cut boxes a leaf, so `partition_by` and
     // `partition_by_chunked` cost one less per such chunk - two of four
@@ -3440,8 +3509,8 @@ fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
                 counted(|| black_box(&chunked).into_reversed()).0,
             ),
             (
-                "as_reversed: each chunk, shared with the source, copied once and reversed",
-                8 * cuts + 1,
+                "as_reversed: each chunk, shared with the source, copied once and reversed, one placeholder buffer per take",
+                7 * cuts + 1,
                 {
                     let mut held = chunked.clone();
                     counted(|| {
@@ -3476,18 +3545,26 @@ fn a_chunked_verb_costs_its_chunks_and_edges_or_its_one_join_and_never_a_row() {
                 counted(|| black_box(&chunked).unique_count()).0,
             ),
             (
-                "into_sorted: the join, the order and one take",
-                join + 11 + scratch,
+                // Each chunk sorted on its own and merged: the merge's own
+                // constant, then per chunk its sort, its array handle and
+                // its cursor's key rows, and one block each - sixteen a
+                // chunk, no scratch heaped at these sizes.
+                "into_sorted: the merge, and per chunk its sort, its handle, its cursor and one block",
+                21 + 16 * cuts,
                 counted(|| black_box(&chunked).into_sorted(options).expect("sorted")).0,
             ),
             (
-                "into_unique: the join, the row format, one set, the mask and one filter",
-                join + 19,
+                // The same merge marking each run's first row in its chunk's
+                // mask and filtering every chunk by its own: per chunk its
+                // order, its mask, its cursor, its block taken and landed and
+                // its filter - twenty-four a chunk, no gather.
+                "into_unique: the merge, and per chunk its order, its mask, its cursor, its block and its filter",
+                14 + 24 * cuts,
                 counted(|| black_box(&chunked).into_unique().expect("unique")).0,
             ),
             (
                 "as_sorted: into_sorted, replacing the chunks",
-                join + 11 + scratch,
+                21 + 16 * cuts,
                 {
                     let mut held = chunked.clone();
                     counted(|| {
@@ -3866,6 +3943,12 @@ fn window_by_sorted_over_keys_in_order_costs_what_unsorted_costs() {
 /// (nine).
 const WINDOW_BY_GATHER: usize = 1 + 1 + 1 + 5 + 2 + 19 + 9;
 
+/// What the gathered copy's root declaring its key ascending costs: the one
+/// key rendered, parsed back and canonicalized by the metadata validator
+/// (thirty-seven), the root shared once more (one) and the record's leaf
+/// copied with its field swapped (two).
+const WINDOW_BY_DECLARATION: usize = 37 + 1 + 2;
+
 #[test]
 fn window_by_sorted_gathers_the_rows_once_in_key_order() {
     // Keys out of order regroup their runs, never their rows: the runs
@@ -3918,8 +4001,8 @@ fn window_by_sorted_gathers_the_rows_once_in_key_order() {
             (unsorted, build, walk),
             (
                 WINDOW_BY_COLUMN_KEY,
-                WINDOW_BY_COLUMN_KEY + WINDOW_BY_GATHER,
-                WINDOW_BY_COLUMN_KEY + WINDOW_BY_GATHER + 3
+                WINDOW_BY_COLUMN_KEY + WINDOW_BY_GATHER + WINDOW_BY_DECLARATION,
+                WINDOW_BY_COLUMN_KEY + WINDOW_BY_GATHER + WINDOW_BY_DECLARATION + 3
             ),
             "window_by sorted over six runs of {rows} records: the call, one gather, one key a window"
         );
@@ -8451,6 +8534,1054 @@ fn a_column_of_documents_reads_into_a_nested_column_with_no_allocation_per_row()
     }
 }
 
+/// An int64 column of `rows` rows landed as it stands, every seventh row
+/// absent where `nulls` asks for a validity buffer.
+fn spill_corpus(rows: usize, nulls: bool) -> Serie {
+    let values: Vec<Option<i64>> = (0..rows as i64)
+        .map(|value| (!nulls || value % 7 != 3).then_some(value))
+        .collect();
+    Serie::from_arrow_array(
+        Some(&Field::new("price", DataType::Int64, nulls)),
+        Arc::new(arrow_array::Int64Array::from(values)),
+        ArrowCastOptions::new(),
+    )
+    .expect("an int64 column")
+}
+
+/// What `Serie::spill` costs over a clone of `column`, run nine times, each
+/// clone made and each spilled column dropped outside the count: one file
+/// per run, so nine is enough to tell a constant from a count that drifts.
+fn spill_costs(column: &Serie, options: &yggdryl::SpillOptions) -> Vec<usize> {
+    (0..9)
+        .map(|_| {
+            let mut held = column.clone();
+            let (cost, ()) = counted(|| held.spill(options).expect("spilled"));
+            assert!(held.is_spilled());
+            drop(held);
+            cost
+        })
+        .collect()
+}
+
+#[test]
+fn spilling_a_column_costs_a_constant_whatever_its_row_count() {
+    // A flat column spills whole for one allocation per buffer it maps -
+    // the values, then the validity where there is one - one for the
+    // platform temporary folder resolved where no folder is stated (a
+    // stated one is cloned for nothing), and fourteen that follow nothing:
+    // the array handle and its data, the file's path, name and joined path,
+    // the one write buffer, the skeleton the process keeps, the mapping, the
+    // rebuilt data and array, and the leaf it lands as. The bytes go to the
+    // file through the write buffer and come back mapped, so a hundred
+    // times the rows costs not one allocation more.
+    //
+    // A record of two required children - `venue: utf8`, `count: int64` -
+    // holds no buffer of its own, so it spills child by child at each
+    // child's flat cost (seventeen for the text's offsets and bytes, sixteen
+    // for the counts), beside the children ordered by weight, each child's
+    // name, and the record's leaf and child list copied once off the clone
+    // it shares them with: thirty-eight.
+    let everything = yggdryl::SpillOptions::new().with_byte_size(0);
+    let stated = everything
+        .clone()
+        .with_folder(yggdryl::local::LocalFolder::temporary().expect("a temporary folder"));
+    for rows in [1_000_usize, 100_000] {
+        for (what, column, options, expected) in [
+            (
+                "int64 with a validity",
+                spill_corpus(rows, true),
+                &everything,
+                17,
+            ),
+            (
+                "int64 with no validity",
+                spill_corpus(rows, false),
+                &everything,
+                16,
+            ),
+            (
+                "int64 with a validity, a folder stated",
+                spill_corpus(rows, true),
+                &stated,
+                16,
+            ),
+            ("record<utf8, int64>", quote_records(rows), &everything, 38),
+        ] {
+            assert!(!column.is_spilled(), "{what}");
+            assert_eq!(
+                spill_costs(&column, options),
+                vec![expected; 9],
+                "{what}: spilling {rows} rows"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_spilled_primitive_reads_its_cells_and_where_they_lie_for_nothing() {
+    // The mapping is the buffer's allocation, so a spilled leaf reads a cell
+    // exactly as a heap one does: one bounds check and one buffer read, no
+    // value built. Where the rows lie is the leaf's flag and its slice's
+    // size, so asking costs nothing either, spilled or not.
+    let everything = yggdryl::SpillOptions::new().with_byte_size(0);
+    for rows in [1_000_usize, 100_000] {
+        let heap = spill_corpus(rows, true);
+        let mut spilled = heap.clone();
+        spilled.spill(&everything).expect("spilled");
+        assert!(spilled.is_spilled());
+        let leaf = spilled.as_int64().expect("an int64 column");
+        let at = rows / 2;
+        free("scalar(i) on a spilled int64 column", || {
+            black_box(black_box(&spilled).scalar(black_box(at)).expect("a row"));
+        });
+        free("value(i) on a spilled int64 leaf", || {
+            black_box(black_box(leaf).value(black_box(at)));
+        });
+        free(
+            "resident_size and is_spilled on a spilled int64 column",
+            || {
+                black_box(black_box(&spilled).resident_size());
+                black_box(black_box(&spilled).is_spilled());
+            },
+        );
+        free(
+            "resident_size and is_spilled on a heap int64 column",
+            || {
+                black_box(black_box(&heap).resident_size());
+                black_box(black_box(&heap).is_spilled());
+            },
+        );
+        assert_eq!(
+            spilled.scalar(at).expect("a row"),
+            heap.scalar(at).expect("a row")
+        );
+    }
+}
+
+#[test]
+fn a_spilled_record_reads_its_rows_for_what_a_heap_one_costs() {
+    // A spill moves where the buffers lie, never how a row is read: a
+    // record's cell is its one run, `rows` one run per row and the list
+    // that holds them, and `resident_size` walks the leaves' flags and
+    // slices for nothing. `is_spilled` reads `resident_size` first, so a
+    // heap record answers off the flags alone, and only a record holding
+    // nothing resident measures `memory_size`, which a nested column
+    // answers off the array it assembles from its children: four handles.
+    let everything = yggdryl::SpillOptions::new().with_byte_size(0);
+    for rows in [1_000_usize, 100_000] {
+        let heap = quote_records(rows);
+        let mut spilled = heap.clone();
+        spilled.spill(&everything).expect("spilled");
+        assert!(spilled.is_spilled());
+        let at = rows / 2;
+        for (what, column) in [("heap", &heap), ("spilled", &spilled)] {
+            costs(&format!("scalar(i) on a {what} record"), 1, || {
+                black_box(black_box(column).scalar(black_box(at)).expect("a row"));
+            });
+            free(&format!("resident_size on a {what} record"), || {
+                black_box(black_box(column).resident_size());
+            });
+            let handles = if what == "heap" { 0 } else { 4 };
+            costs(&format!("is_spilled on a {what} record"), handles, || {
+                black_box(black_box(column).is_spilled());
+            });
+            let (read, ()) = counted(|| {
+                black_box(black_box(column).rows());
+            });
+            assert_eq!(read, rows + 1, "rows() on a {what} record of {rows} rows");
+        }
+        assert_eq!(spilled.rows(), heap.rows());
+    }
+}
+
+/// A `(id: int64, <payload>: int64, ...)` record named `name` over `ids`,
+/// every payload column counting up, landed from its arrays as it stands.
+fn join_side(name: &str, ids: &[i64], payloads: &[&str]) -> Serie {
+    let mut fields = vec![Field::new("id", DataType::Int64, false)];
+    fields.extend(
+        payloads
+            .iter()
+            .map(|payload| Field::new(*payload, DataType::Int64, false)),
+    );
+    let root = Field::new(
+        name,
+        DataType::from(StructType::from_fields(fields).expect("distinct names")),
+        false,
+    );
+    let counts: arrow_array::ArrayRef = Arc::new(arrow_array::Int64Array::from_iter_values(
+        0..i64::try_from(ids.len()).expect("a small side"),
+    ));
+    let mut columns: Vec<arrow_array::ArrayRef> =
+        vec![Arc::new(arrow_array::Int64Array::from(ids.to_vec()))];
+    columns.extend(payloads.iter().map(|_| Arc::clone(&counts)));
+    let batch = arrow_array::RecordBatch::try_new(
+        root.clone().into_arrow_schema().expect("a schema"),
+        columns,
+    )
+    .expect("a batch");
+    Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new()).expect("a side")
+}
+
+/// `rows` keys cycling through `0..keys`.
+fn cycling(rows: usize, keys: usize) -> Vec<i64> {
+    (0..rows)
+        .map(|row| i64::try_from(row % keys).expect("a small key"))
+        .collect()
+}
+
+/// What `work` - one join - allocates: run once to warm the process
+/// defaults it reads, then three times, each answer dropped outside the
+/// count, the three counts agreeing.
+fn join_cost<T>(what: &str, mut work: impl FnMut() -> T) -> usize {
+    drop(work());
+    let runs: Vec<usize> = (0..3)
+        .map(|_| {
+            let (cost, answer) = counted(&mut work);
+            drop(answer);
+            cost
+        })
+        .collect();
+    assert!(
+        runs.windows(2).all(|pair| pair[0] == pair[1]),
+        "{what}: {runs:?}"
+    );
+    runs[0]
+}
+
+/// The allocations of the pairs vector one probe batch of `rows` matched
+/// rows fills: four entries first, doubled up to the rows, or to the output
+/// batch they are cut at, whose capacity the next batch of the probe reuses.
+fn pair_doublings(rows: usize) -> usize {
+    let filled = rows
+        .min(yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE)
+        .next_power_of_two();
+    filled.trailing_zeros() as usize - 1
+}
+
+#[test]
+fn a_held_join_costs_its_distinct_keys_and_its_batches_never_a_row() {
+    // `rows` trades keyed `id`, cycling through `keys` values, inner joined
+    // with a venue table of one row per key in ascending order, the venues
+    // built: every trade matches once, so the output is `rows` rows. The
+    // count, measured, is
+    //
+    // - nothing per distinct key and nothing per build row: the build rows
+    //   are chained - one node vector and one group vector, each grown by
+    //   doubling, `log2(keys) - 1` growths apiece for a build of `keys` rows
+    //   - under a map from the key's hash to its first group, and the key
+    //   range names two rows the table holds, so a build side opening with
+    //   its least and greatest keys costs exactly the same;
+    // - the hash table's own: one, then one per growth - four for sixteen
+    //   keys, six for sixty-four;
+    // - the pairs vector the one probe batch fills, `log2(rows) - 1`
+    //   doublings up to the `DEFAULT_RECORD_BATCH_ROW_SIZE` rows an output
+    //   batch is cut at;
+    // - thirty-two for each output batch past the first, one per
+    //   `DEFAULT_RECORD_BATCH_ROW_SIZE` rows - its take, its gather and the
+    //   record it lands as - and, where there are several, the held door's
+    //   one join of them into its column: twenty-nine, and five a batch;
+    // - and 116 that follow neither the keys nor the rows: the keys bound
+    //   and the output root laid out, the second bound the first key sets,
+    //   the build batch's key column, row converter and key rows, the probe
+    //   batch's, the first output batch and the held door's list of them.
+    //
+    // A row costs nothing: 2,048 rows and 131,072 differ by the doublings
+    // and the one more output batch alone.
+    let built = yggdryl::JoinOptions::new().with_build(Some(yggdryl::JoinSide::Right));
+    // The keys parsed once, so the count is the join's and never the parse's.
+    let by: yggdryl::expression::JoinKeys = "id".parse().expect("one key");
+    for (keys, table) in [(16_usize, 4_usize), (64, 6)] {
+        let ascending: Vec<i64> = (0..i64::try_from(keys).expect("a small key")).collect();
+        let venues = join_side("venue", &ascending, &["rank"]);
+        let mut ends_first = vec![0, ascending[keys - 1]];
+        ends_first.extend_from_slice(&ascending[1..keys - 1]);
+        let ends_first = join_side("venue", &ends_first, &["rank"]);
+        for rows in [2_048_usize, 16_384, 131_072] {
+            let trades = join_side("trade", &cycling(rows, keys), &["size"]);
+            let batches = rows.div_ceil(yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE);
+            let joined_batches = if batches > 1 { 29 + 5 * batches } else { 0 };
+            let chains = 2 * (keys.trailing_zeros() as usize - 1);
+            let expected =
+                116 + table + chains + pair_doublings(rows) + 32 * (batches - 1) + joined_batches;
+            let cost = join_cost("an inner join", || {
+                trades
+                    .join_with(&venues, &by, yggdryl::JoinKind::Inner, &built)
+                    .expect("an inner join")
+            });
+            assert_eq!(
+                cost, expected,
+                "an inner join of {rows} rows over {keys} keys"
+            );
+            let joined = trades
+                .join_with(&venues, &by, yggdryl::JoinKind::Inner, &built)
+                .expect("an inner join");
+            assert_eq!(joined.len(), rows);
+            let cost = join_cost("an inner join, the range set by two keys", || {
+                trades
+                    .join_with(&ends_first, &by, yggdryl::JoinKind::Inner, &built)
+                    .expect("an inner join")
+            });
+            assert_eq!(
+                cost, expected,
+                "an inner join of {rows} rows over {keys} keys, the build side opening with its ends"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_streamed_join_costs_each_pull_its_batch_and_its_columns_never_a_row() {
+    // Four probe batches of `rows` trades each, keys cycling through
+    // sixteen, against sixteen venues held and built: each pull joins one
+    // probe batch into the one output batch it answers, and costs, measured,
+    //
+    // - twenty for the two batches: twelve for the probe batch - handed out
+    //   of its chunk, its key column evaluated, its key rows converted - and
+    //   eight for the output batch - the index columns its take and its
+    //   gather read, the record its columns compose;
+    // - four per probe column, the take that lays it out at the output rows;
+    // - five per build column, the interleave over its list of build
+    //   batches;
+    // - two per output column, the leaf it lands as;
+    // - the pairs vector's doublings, `log2(rows) - 1`;
+    // - and, on the first pull alone, one for the queue output batches wait
+    //   in.
+    //
+    // Eight times the rows costs the three more doublings alone.
+    let built = yggdryl::JoinOptions::new().with_build(Some(yggdryl::JoinSide::Right));
+    let venue_keys: Vec<i64> = (0..16).collect();
+    for rows in [2_048_usize, 16_384] {
+        for (what, probe_payloads, build_payloads, output_columns) in [
+            ("one payload a side", &["size"][..], &["rank"][..], 3_usize),
+            ("a wider build side", &["size"][..], &["rank", "lot"][..], 4),
+            ("a wider probe side", &["size", "lot"][..], &["rank"][..], 4),
+        ] {
+            let trades = join_side("trade", &cycling(4 * rows, 16), probe_payloads);
+            let probe = ChunkedSerie::from_series(
+                None,
+                (0..4).map(|chunk| trades.slice(chunk * rows, rows).expect("a chunk")),
+                ArrowCastOptions::new(),
+            )
+            .expect("four chunks");
+            let venues = join_side("venue", &venue_keys, build_payloads);
+            let each = 20
+                + 4 * (1 + probe_payloads.len())
+                + 5 * (1 + build_payloads.len())
+                + 2 * output_columns
+                + pair_doublings(rows);
+            let mut joined = yggdryl::SerieReader::from_chunked(probe)
+                .expect("a stream")
+                .join_with(venues, "id", yggdryl::JoinKind::Inner, &built)
+                .expect("a lazy join");
+            let pulls: Vec<usize> = (0..4)
+                .map(|_| {
+                    let (cost, batch) =
+                        counted(|| joined.next().expect("a batch").expect("joined rows"));
+                    assert_eq!(batch.len(), rows, "{what}");
+                    cost
+                })
+                .collect();
+            assert!(joined.next().is_none(), "{what}");
+            assert_eq!(
+                pulls,
+                [each + 1, each, each, each],
+                "{what}, {rows} rows a pull"
+            );
+        }
+    }
+}
+
+/// Where the values of a record chunk's `size` column lie.
+fn size_values(chunk: &Serie) -> *const i64 {
+    let batch = chunk.into_arrow_batch().expect("a record chunk");
+    batch
+        .column_by_name("size")
+        .expect("a size column")
+        .as_any()
+        .downcast_ref::<arrow_array::Int64Array>()
+        .expect("an int64 column")
+        .values()
+        .as_ptr()
+}
+
+#[test]
+fn a_join_costs_a_pruned_probe_chunk_its_one_sided_emission_alone() {
+    // A chunked left join whose one probe chunk of `rows` trades is keyed
+    // 1000 to 1015, against sixteen venues keyed 0 to 15 and built: no row
+    // can match. Pruned, the chunk's key rows are read against the build
+    // keys' range and the chunk stands alone - its own buffers, the venue
+    // columns null - for 175 at any row count. Hashed, every row is probed
+    // and misses, so the chunk costs the pairs vector's doublings and the
+    // output batch a take and a gather lay out: eighteen more than the
+    // one-sided emission, and the doublings.
+    let built = yggdryl::JoinOptions::new().with_build(Some(yggdryl::JoinSide::Right));
+    let hashed = built.clone().with_prune(false);
+    let by: yggdryl::expression::JoinKeys = "id".parse().expect("one key");
+    let venues = ChunkedSerie::from_serie(join_side("venue", &cycling(16, 16), &["rank"]))
+        .expect("one chunk");
+    for rows in [2_048_usize, 16_384] {
+        let outside: Vec<i64> = cycling(rows, 16).iter().map(|key| key + 1_000).collect();
+        let trades =
+            ChunkedSerie::from_serie(join_side("trade", &outside, &["size"])).expect("one chunk");
+        let pruned = join_cost("a pruned left join", || {
+            trades
+                .join_with(&venues, &by, yggdryl::JoinKind::Left, &built)
+                .expect("a left join")
+        });
+        assert_eq!(pruned, 132, "a pruned left join of {rows} rows");
+        let probed = join_cost("a hashed left join", || {
+            trades
+                .join_with(&venues, &by, yggdryl::JoinKind::Left, &hashed)
+                .expect("a left join")
+        });
+        assert_eq!(
+            probed,
+            pruned + 18 + pair_doublings(rows),
+            "a hashed left join of {rows} rows"
+        );
+        // The pruned chunk is the probe chunk's own rows; the hashed one a
+        // copy the take made.
+        let own = size_values(&trades.chunks()[0]);
+        let pruned = trades
+            .join_with(&venues, &by, yggdryl::JoinKind::Left, &built)
+            .expect("a left join");
+        let probed = trades
+            .join_with(&venues, &by, yggdryl::JoinKind::Left, &hashed)
+            .expect("a left join");
+        assert_eq!(pruned.len(), rows);
+        assert_eq!(pruned.rows(), probed.rows());
+        assert_eq!(size_values(&pruned.chunks()[0]), own);
+        assert_ne!(size_values(&probed.chunks()[0]), own);
+    }
+}
+
+#[test]
+fn where_a_joined_record_lies_is_read_for_nothing() {
+    // A join's output is a record column like any other: `resident_size`
+    // walks its leaves' flags and slices, and `is_spilled` of a heap record
+    // answers off the flags alone.
+    let built = yggdryl::JoinOptions::new().with_build(Some(yggdryl::JoinSide::Right));
+    let venues = join_side("venue", &cycling(16, 16), &["rank"]);
+    for rows in [2_048_usize, 16_384] {
+        let joined = join_side("trade", &cycling(rows, 16), &["size"])
+            .join_with(&venues, "id", yggdryl::JoinKind::Inner, &built)
+            .expect("an inner join");
+        assert!(!joined.is_spilled());
+        free("resident_size and is_spilled on a joined record", || {
+            black_box(black_box(&joined).resident_size());
+            black_box(black_box(&joined).is_spilled());
+        });
+    }
+}
+
+/// Four chunks of `rows` int64 rows each, chunk `c` holding `2 j + c` for
+/// `j` from `rows - 1` down to zero: each chunk sorts by reversing, the
+/// merge takes its rows from every chunk in turn, and chunks 0 and 2 - and
+/// 1 and 3 - share every value but one, so ties go to the earlier chunk
+/// and uniqueness keeps two chunks whole and one row of each other.
+fn merged_counts(rows: usize) -> ChunkedSerie {
+    use arrow_array::{ArrayRef, Int64Array};
+
+    let rows = i64::try_from(rows).expect("a row count");
+    ChunkedSerie::from_arrow_arrays(
+        Some(&Field::new("count", DataType::Int64, false)),
+        (0..4_i64).map(|chunk| {
+            Arc::new(Int64Array::from_iter_values(
+                (0..rows).rev().map(|row| 2 * row + chunk),
+            )) as ArrayRef
+        }),
+        ArrowCastOptions::new(),
+    )
+    .expect("four int64 chunks")
+}
+
+/// The rows a merge cursor reads of its chunk at once with four chunks:
+/// one output batch's worth shared among them.
+const MERGE_SPAN: usize = yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE / 4;
+
+/// What one [`ChunkedSerie::into_sorted`] call costs whatever it sorts: the
+/// sorted chunks' and the output's chunk and end vectors (four), the
+/// chunks' array handles and their borrowed views (two), the merge's
+/// lengths, cursors and heap (three), the rung read off the first block -
+/// its array handle, its field list and the row converter (five) - and the
+/// output batch's positions (one).
+const MERGE_SORT_CALL: usize = 15;
+
+/// What a chunk costs the sort: its own [`Serie::into_sorted`] - the
+/// order, the stable sort's scratch heaped at these sizes and one take
+/// (ten) - its array handle for the gather (one) and its cursor's key-row
+/// offsets and bytes, kept block after block (two).
+const MERGE_SORT_CHUNK: usize = 10 + 1 + 2;
+
+/// What an output batch costs: one `interleave` of every column (four)
+/// and the landing of its rows the chunks already proved (two).
+const MERGE_SORT_BATCH: usize = 4 + 2;
+
+/// What a block a cursor loads costs: its key cells' vector (one), their
+/// arrays' vector and array handle (two) and the converter's encoders
+/// (one) - and one slice more where the block cuts its chunk rather than
+/// being the whole of it.
+const MERGE_BLOCK_WHOLE: usize = 4;
+const MERGE_BLOCK_CUT: usize = MERGE_BLOCK_WHOLE + 1;
+
+#[test]
+fn a_chunked_sort_merge_holds_one_cursor_per_chunk_and_one_output_batch() {
+    // Four chunks sorted on their own and merged: the count is a constant,
+    // a cost per chunk, one per output batch and one per block a cursor
+    // loads - the same at 2,048 rows a chunk and at 16,384, one batch and
+    // one whole-chunk block per cursor each, and at 40,960 three batches
+    // and three cut blocks per cursor - and never one per row.
+    let batch = yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE;
+    let options = SortOptions::default();
+    for rows in [2_048_usize, 16_384, 40_960] {
+        let chunked = merged_counts(rows);
+        let total = 4 * rows;
+        let bytes = chunked.memory_size();
+        // Once outside every count, so no process-wide first use is charged.
+        black_box(chunked.into_sorted(options).expect("sorted"));
+        let (cost, sorted) = counted(|| black_box(&chunked).into_sorted(options).expect("sorted"));
+        let batches = total.div_ceil(batch);
+        assert_eq!(
+            sorted.chunks().iter().map(Serie::len).collect::<Vec<_>>(),
+            (0..batches)
+                .map(|index| batch.min(total - index * batch))
+                .collect::<Vec<_>>(),
+            "{rows} rows a chunk: the output cut into batches"
+        );
+        drop(sorted);
+        let blocks = 4 * rows.div_ceil(MERGE_SPAN);
+        let block = if rows <= MERGE_SPAN {
+            MERGE_BLOCK_WHOLE
+        } else {
+            MERGE_BLOCK_CUT
+        };
+        assert_eq!(
+            cost,
+            MERGE_SORT_CALL + 4 * MERGE_SORT_CHUNK + batches * MERGE_SORT_BATCH + blocks * block,
+            "into_sorted over four chunks of {rows} rows: {batches} batches, {blocks} blocks"
+        );
+        // What the sort holds at once: the sorted chunks - one copy of the
+        // rows - with, at the most, the output batch's positions (sixteen
+        // bytes a row) and every cursor's block of key rows (a null byte,
+        // eight value bytes and an eight-byte offset a row), one output
+        // batch's worth among them, or the gathered output - the second
+        // copy. At least the sorted copy and the positions; never a third
+        // copy, and never a cursor's state per row past one batch.
+        let (peak, sorted) = peaked(|| black_box(&chunked).into_sorted(options).expect("sorted"));
+        drop(sorted);
+        let batch_rows = total.min(batch);
+        let positions = batch_rows * 16;
+        assert!(
+            bytes + positions < peak && peak < 2 * bytes + batch_rows * (16 + 17),
+            "into_sorted over four chunks of {rows} rows held {peak} bytes: \
+             more than the sorted copy ({bytes}) and the positions ({positions}), \
+             less than two copies and {} bytes of merge state",
+            batch_rows * (16 + 17)
+        );
+    }
+}
+
+/// What one [`ChunkedSerie::into_unique`] call costs whatever it reads: the
+/// live chunks' and the orders' vectors (two), the masks' and the lengths'
+/// (two), the merge's cursors and heap (two), the rung (five), the last
+/// key's bytes (one) and the output's chunk and end vectors (two).
+const MERGE_UNIQUE_CALL: usize = 14;
+
+/// What a chunk costs uniqueness: its sorted order, its mask, its cursor's
+/// key-row offsets and bytes, and its filter by its mask, sharing the
+/// chunk's buffers where it keeps every row.
+const MERGE_UNIQUE_CHUNK: usize = 13;
+
+/// What a filter keeping only some of a chunk's rows costs more: their
+/// copy (two).
+const MERGE_UNIQUE_COPY: usize = 2;
+
+/// What a block a uniqueness cursor loads costs: its rows taken out of the
+/// chunk in sorted order and landed (eight), then read into key rows as a
+/// sort's block is (four).
+const MERGE_UNIQUE_BLOCK: usize = 8 + MERGE_BLOCK_WHOLE;
+
+#[test]
+fn a_chunked_unique_merge_costs_the_merge_its_orders_and_its_masks_and_never_a_row() {
+    // Uniqueness merges the chunks in sorted order as the sort does, its
+    // cursors' blocks taken out of each chunk by that chunk's order rather
+    // than sliced from a sorted copy, marks each run's first row in its
+    // chunk's mask, and filters every chunk by its own: no output batch is
+    // gathered. Chunks 0 and 1 keep every row and share their buffers;
+    // chunks 2 and 3 keep one row each and copy it. The same counts at
+    // 2,048 and 16,384 rows a chunk; at 40,960, three blocks a cursor.
+    let options = SortOptions::default();
+    for rows in [2_048_usize, 16_384, 40_960] {
+        let chunked = merged_counts(rows);
+        let total = 4 * rows;
+        black_box(chunked.into_unique().expect("unique"));
+        let (cost, kept) = counted(|| black_box(&chunked).into_unique().expect("unique"));
+        assert_eq!(
+            kept.chunks().iter().map(Serie::len).collect::<Vec<_>>(),
+            vec![rows, rows, 1, 1],
+            "{rows} rows a chunk: each chunk's first occurrences, kept apart"
+        );
+        drop(kept);
+        let blocks = 4 * rows.div_ceil(MERGE_SPAN);
+        assert_eq!(
+            cost,
+            MERGE_UNIQUE_CALL
+                + 4 * MERGE_UNIQUE_CHUNK
+                + 2 * MERGE_UNIQUE_COPY
+                + blocks * MERGE_UNIQUE_BLOCK,
+            "into_unique over four chunks of {rows} rows: {blocks} blocks"
+        );
+        // What uniqueness holds at once: every chunk's order (four bytes a
+        // row) and mask (one), one chunk's own sort at a time (its order
+        // and its scratch, eight bytes a row of it), and every cursor's
+        // block - its taken rows (eight bytes a row) and their key rows
+        // (seventeen) - one output batch's worth among them. Never a sorted
+        // copy of the rows, and never the sort's positions.
+        let (peak, kept) = peaked(|| black_box(&chunked).into_unique().expect("unique"));
+        drop(kept);
+        let (sort_peak, sorted) =
+            peaked(|| black_box(&chunked).into_sorted(options).expect("sorted"));
+        drop(sorted);
+        let bound = total * (4 + 1) + rows * 8 + total.min(MERGE_SPAN * 4) * (8 + 17);
+        assert!(
+            total * (4 + 1) < peak && peak < bound && peak < sort_peak,
+            "into_unique over four chunks of {rows} rows held {peak} bytes: more than its \
+             orders and masks ({}), less than {bound} and than the sort's {sort_peak}",
+            total * 5
+        );
+    }
+}
+
+/// The record `quote{venue: utf8, count: int64}`, its root declaring `by`.
+fn declared_quote_root(by: &[&str]) -> Field {
+    let mut root = Field::new(
+        "quote",
+        DataType::from(
+            StructType::from_fields([
+                Field::new("venue", DataType::utf8(), false),
+                Field::new("count", DataType::Int64, false),
+            ])
+            .expect("two children"),
+        ),
+        false,
+    );
+    if !by.is_empty() {
+        root.as_sort_mut().set_by_texts(by).expect("the keys");
+    }
+    root
+}
+
+/// `rows` quotes in the order `venue, count desc` states - XNAS, XNYS and
+/// XPAR in turn, each venue's counts descending, or ascending where
+/// `ascending` - as one batch of fresh buffers under `root`'s schema.
+fn sorted_quote_batch(rows: usize, root: &Field, ascending: bool) -> arrow_array::RecordBatch {
+    use arrow_array::{Int64Array, StringArray};
+
+    let mut venues = Vec::with_capacity(rows);
+    let mut counts = Vec::with_capacity(rows);
+    for (turn, venue) in ["XNAS", "XNYS", "XPAR"].into_iter().enumerate() {
+        let mut indices: Vec<usize> = (0..rows).filter(|index| index % 3 == turn).collect();
+        if !ascending {
+            indices.reverse();
+        }
+        for index in indices {
+            venues.push(venue);
+            counts.push(i64::try_from(index).expect("a row count"));
+        }
+    }
+    arrow_array::RecordBatch::try_new(
+        root.clone().into_arrow_schema().expect("a schema"),
+        vec![
+            Arc::new(StringArray::from(venues)),
+            Arc::new(Int64Array::from(counts)),
+        ],
+    )
+    .expect("a batch")
+}
+
+/// [`sorted_quote_batch`] landed under `root`, holding its buffers alone.
+fn sorted_quotes(rows: usize, root: &Field, ascending: bool) -> Serie {
+    Serie::from_arrow_batch(
+        Some(root),
+        &sorted_quote_batch(rows, root, ascending),
+        ArrowCastOptions::new(),
+    )
+    .expect("quotes in order")
+}
+
+/// What [`Serie::declared_order`] costs over `["venue","count desc"]`:
+/// the stored JSON list read and each of its two keys parsed by the `order
+/// by` grammar.
+const DECLARED_READ: usize = 28;
+
+/// The same over `["venue","count"]`, two keys with no suffix to parse.
+const DECLARED_READ_ASCENDING: usize = 21;
+
+/// What the text `venue, count desc` costs to parse into its two keys, as
+/// [`sort_by_over_row_format_keys_costs_a_constant_and_never_a_row`]
+/// states it.
+const ORDER_PARSE: usize = 19;
+
+/// What reading a landed record against the order its root declares costs
+/// beyond the read: the key selector built and bound against the root, the
+/// key record applied - each key a landed child, lent - and the comparator
+/// set over the key cells, one pass over adjacent rows allocating nothing.
+const ORDER_PASS: usize = 35;
+
+#[test]
+fn a_declared_order_answers_a_sort_with_its_read_and_never_a_row() {
+    // What the declaration states is answered by reading it: no key is
+    // bound, no row compared, and the count is the same at 2,048 and at
+    // 16,384 rows.
+    for rows in [2_048_usize, 16_384] {
+        let declared = sorted_quotes(rows, &declared_quote_root(&["venue", "count desc"]), false);
+        let plain = sorted_quotes(rows, &declared_quote_root(&[]), false);
+        let whole = sorted_quotes(rows, &declared_quote_root(&["venue", "count"]), true);
+        black_box(
+            declared
+                .sort_indices_by("venue, count desc")
+                .expect("an order"),
+        );
+        let (read, _) = counted(|| black_box(&declared).declared_order().expect("well formed"));
+        let (read_whole, _) = counted(|| black_box(&whole).declared_order().expect("well formed"));
+        assert_eq!(
+            (read, read_whole),
+            (DECLARED_READ, DECLARED_READ_ASCENDING),
+            "declared_order over two keys, one descending and both ascending, at {rows} rows"
+        );
+        let (parse, _) = counted(|| {
+            yggdryl::expression::IntoOrderings::into_orderings(black_box("venue, count desc"))
+                .expect("keys")
+        });
+        assert_eq!(parse, ORDER_PARSE);
+
+        // The keys parsed, the declaration read and found to begin with
+        // them, then the identity positions and their index column (six).
+        let (indices, order) =
+            counted(|| black_box(&declared).sort_indices_by(black_box("venue, count desc")));
+        let order = order.expect("an order");
+        assert_eq!(order.len(), rows);
+        assert_eq!(
+            order.scalar(rows - 1).expect("a row"),
+            Scalar::from(u32::try_from(rows - 1).expect("a row"))
+        );
+        assert_eq!(
+            indices,
+            ORDER_PARSE + DECLARED_READ + 6,
+            "sort_indices_by the declared keys at {rows} rows: the parse, the read and the identity index column"
+        );
+        // The keys parsed and the declaration read; the answer is a clone,
+        // which shares every buffer and allocates nothing.
+        let (into_sort_by, sorted) =
+            counted(|| black_box(&declared).into_sort_by(black_box("venue, count desc")));
+        assert_eq!(sorted.expect("sorted").len(), rows);
+        let (clone, _) = counted(|| black_box(&declared).clone());
+        assert_eq!(
+            (into_sort_by, clone),
+            (ORDER_PARSE + DECLARED_READ, 0),
+            "into_sort_by the declared keys at {rows} rows: the parse and the read, then a free clone"
+        );
+        // A whole-row sort under the declared options: the whole-row keys
+        // the options name (three) and the read, then the clone - and
+        // `is_sorted` the same, answering with no pass.
+        let (into_sorted, sorted) =
+            counted(|| black_box(&whole).into_sorted(black_box(SortOptions::default())));
+        assert_eq!(sorted.expect("sorted").len(), rows);
+        let (is_sorted, answer) =
+            counted(|| black_box(&whole).is_sorted(black_box(SortOptions::default())));
+        assert!(answer);
+        assert_eq!(
+            (into_sorted, is_sorted),
+            (3 + DECLARED_READ_ASCENDING, 3 + DECLARED_READ_ASCENDING),
+            "into_sorted and is_sorted under the declared whole-row order at {rows} rows: the whole-row keys and the read"
+        );
+        // A slice keeps the declaration by keeping the field: it costs on a
+        // declaring record exactly what it costs on a plain one.
+        let (sliced_declared, slice) =
+            counted(|| black_box(&declared).slice(1, rows - 2).expect("a slice"));
+        assert!(slice.declared_order().expect("well formed").is_some());
+        let (sliced_plain, _) = counted(|| black_box(&plain).slice(1, rows - 2).expect("a slice"));
+        assert_eq!(
+            (sliced_declared, sliced_plain),
+            (4, 4),
+            "a slice of {rows} rows, declaring and plain"
+        );
+    }
+}
+
+#[test]
+fn a_declared_order_write_costs_the_read_and_one_edge_compare() {
+    // A push of one row in order onto a record holding its buffers alone:
+    // what the push costs a plain record, then the declaration read and
+    // the written row compared with the row before it under each key
+    // (seven) - the same on the push that grows the buffers and on the one
+    // after it, at 2,048 and at 16,384 rows.
+    for rows in [2_048_usize, 16_384] {
+        let row = Scalar::from_sequence([Scalar::from("XPAR"), Scalar::from(-1_i64)]);
+        let mut declared =
+            sorted_quotes(rows, &declared_quote_root(&["venue", "count desc"]), false);
+        let mut plain = sorted_quotes(rows, &declared_quote_root(&[]), false);
+        let (grown_plain, ()) = counted(|| plain.push(black_box(row.clone())).expect("pushed"));
+        let (grown_declared, ()) =
+            counted(|| declared.push(black_box(row.clone())).expect("pushed"));
+        let (then_plain, ()) = counted(|| plain.push(black_box(row.clone())).expect("pushed"));
+        let (then_declared, ()) =
+            counted(|| declared.push(black_box(row.clone())).expect("pushed"));
+        assert!(declared.declared_order().expect("well formed").is_some());
+        assert_eq!(
+            (grown_plain, then_plain),
+            (38, 33),
+            "a push onto a plain record of {rows} rows, growing its buffers and then not"
+        );
+        assert_eq!(
+            (grown_declared, then_declared),
+            (
+                grown_plain + DECLARED_READ + 7,
+                then_plain + DECLARED_READ + 7
+            ),
+            "a push onto a declaring record of {rows} rows: the plain push, the read, one compare"
+        );
+    }
+}
+
+#[test]
+fn a_declared_order_is_proven_once_per_landing_and_once_per_batch_edge() {
+    // Rows a door lands under a declaring root are read once against it:
+    // the read and the pass, the same at 2,048 and at 16,384 rows.
+    for rows in [2_048_usize, 16_384] {
+        let declaring = declared_quote_root(&["venue", "count desc"]);
+        let plain = declared_quote_root(&[]);
+        let declared_batch = sorted_quote_batch(rows, &declaring, false);
+        let plain_batch = sorted_quote_batch(rows, &plain, false);
+        let land = |root: &Field, batch: &arrow_array::RecordBatch| {
+            Serie::from_arrow_batch(Some(root), batch, ArrowCastOptions::new()).expect("landed")
+        };
+        black_box(land(&plain, &plain_batch));
+        black_box(land(&declaring, &declared_batch));
+        let (landed_plain, _) = counted(|| land(black_box(&plain), &plain_batch));
+        let (landed_declared, _) = counted(|| land(black_box(&declaring), &declared_batch));
+        assert_eq!(
+            (landed_plain, landed_declared),
+            (12, 12 + DECLARED_READ + ORDER_PASS),
+            "from_arrow_batch of {rows} rows under a plain root and under a declaring one"
+        );
+
+        // A plan landing a plain record under a declaring target reads the
+        // landed declaration and then the rows (the read again and the
+        // pass); one from a record declaring the order already reads both
+        // declarations and never a row.
+        let source = sorted_quotes(rows, &plain, false);
+        let proven = sorted_quotes(rows, &declaring, false);
+        let renamed = declaring.clone().with_name("again");
+        let renamed_plain = plain.clone().with_name("again");
+        let verify =
+            ArrowCastPlan::compile(&plain, &declaring, ArrowCastOptions::new()).expect("a plan");
+        let keep =
+            ArrowCastPlan::compile(&declaring, &renamed, ArrowCastOptions::new()).expect("a plan");
+        let none = ArrowCastPlan::compile(&plain, &renamed_plain, ArrowCastOptions::new())
+            .expect("a plan");
+        let (apply_plain, _) = counted(|| none.apply(black_box(&source)).expect("cast"));
+        let (apply_verified, _) = counted(|| verify.apply(black_box(&source)).expect("cast"));
+        let (apply_proven, _) = counted(|| keep.apply(black_box(&proven)).expect("cast"));
+        assert_eq!(
+            (apply_plain, apply_verified, apply_proven),
+            (
+                9,
+                9 + DECLARED_READ + DECLARED_READ + ORDER_PASS,
+                9 + DECLARED_READ + DECLARED_READ
+            ),
+            "a plan over {rows} rows onto a plain target, a declaring one, and the declaration the source already proves"
+        );
+    }
+}
+
+/// `batches` batches of `rows` quotes under `root`'s schema, in the order
+/// `venue, count desc` states across every edge: batch `b` all venue
+/// `X00b`, its counts descending.
+fn ordered_quote_stream(rows: usize, root: &Field, batches: usize) -> yggdryl::arrow::BatchReader {
+    let schema = root.clone().into_arrow_schema().expect("a schema");
+    let parts: Vec<arrow_array::RecordBatch> = (0..batches)
+        .map(|batch| {
+            let venue = format!("X{batch:03}");
+            arrow_array::RecordBatch::try_new(
+                Arc::clone(&schema),
+                vec![
+                    Arc::new(arrow_array::StringArray::from(vec![venue.as_str(); rows])),
+                    Arc::new(arrow_array::Int64Array::from(
+                        (0..i64::try_from(rows).expect("a row count"))
+                            .rev()
+                            .collect::<Vec<_>>(),
+                    )),
+                ],
+            )
+            .expect("a batch")
+        })
+        .collect();
+    Box::new(arrow_array::RecordBatchIterator::new(
+        parts.into_iter().map(Ok),
+        schema,
+    ))
+}
+
+#[test]
+fn a_declared_stream_proves_each_batch_and_each_edge_and_never_a_row() {
+    // Drained under a plain root, a stream costs 21 and 7 a batch. Under a
+    // declaring root it costs 7 more to open, and every batch costs
+    // `DECLARED_BATCH` more - the declaration read once, its rows read
+    // against it, and its last row sliced and kept for the next edge - and
+    // every batch after the first `DECLARED_EDGE` more: its first row
+    // compared with the kept row under each key, the keys being bare
+    // columns, so no key is bound - one comparator per key. Per batch,
+    // never per row: the same at 2,048 and at 16,384 rows a batch.
+    const DECLARED_BATCH: usize = DECLARED_READ + ORDER_PASS + 4;
+    const DECLARED_EDGE: usize = 3;
+    for rows in [2_048_usize, 16_384] {
+        let declaring = declared_quote_root(&["venue", "count desc"]);
+        let plain = declared_quote_root(&[]);
+        for batches in [1_usize, 2, 4] {
+            let drain = |root: &Field| {
+                let stream = ordered_quote_stream(rows, root, batches);
+                counted(|| {
+                    let reader = yggdryl::SerieReader::from_arrow_reader(
+                        Some(root),
+                        stream,
+                        ArrowCastOptions::new(),
+                    )
+                    .expect("a stream");
+                    for batch in reader {
+                        black_box(batch.expect("in order"));
+                    }
+                })
+                .0
+            };
+            // Once each outside the count, so no first use is charged.
+            black_box(drain(&plain));
+            black_box(drain(&declaring));
+            let plain_cost = drain(&plain);
+            assert_eq!(
+                plain_cost,
+                21 + 7 * batches,
+                "{batches} plain batches of {rows} rows"
+            );
+            assert_eq!(
+                drain(&declaring),
+                plain_cost + 7 + DECLARED_BATCH * batches + DECLARED_EDGE * (batches - 1),
+                "{batches} declaring batches of {rows} rows"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_merge_join_over_declared_sides_builds_no_table_and_costs_nothing_per_key() {
+    // Both sides sorted by the key and declaring it: the probe rows walk the
+    // build rows with one cursor, no hash map and no chain, so the count is
+    // the same over sixteen keys and over sixty-four - where the hash join's
+    // grows by its table and its chains - and moves with the rows only
+    // through the pairs vector's doublings. The two declarations are read
+    // once each; the rest is the hash join's own layout of the output.
+    let built = yggdryl::JoinOptions::new().with_build(Some(yggdryl::JoinSide::Right));
+    let by: yggdryl::expression::JoinKeys = "id".parse().expect("one key");
+    let mut merged_costs = Vec::new();
+    for rows in [2_048_usize, 16_384] {
+        let mut per_keys = Vec::new();
+        for keys in [16_usize, 64] {
+            let ascending: Vec<i64> = (0..i64::try_from(keys).expect("a small key")).collect();
+            let venues = join_side("venue", &ascending, &["rank"])
+                .into_sort_by("id")
+                .expect("a sorted build side");
+            let trades = join_side("trade", &cycling(rows, keys), &["size"])
+                .into_sort_by("id")
+                .expect("a sorted probe side");
+            let unsorted_trades = join_side("trade", &cycling(rows, keys), &["size"]);
+            let unsorted_venues = join_side("venue", &ascending, &["rank"]);
+            let merged = join_cost("a merge join", || {
+                trades
+                    .join_with(&venues, &by, yggdryl::JoinKind::Inner, &built)
+                    .expect("a merge join")
+            });
+            let hashed = join_cost("a hash join", || {
+                unsorted_trades
+                    .join_with(&unsorted_venues, &by, yggdryl::JoinKind::Inner, &built)
+                    .expect("a hash join")
+            });
+            // The hash join's layout of the output - its 116, less the map,
+            // the table and the chains it never builds - plus the two
+            // declarations read once each and the build keys' arrays kept
+            // beside their rows: 155, whatever the keys.
+            const MERGE_JOIN_CALL: usize = 155;
+            assert_eq!(
+                merged,
+                MERGE_JOIN_CALL + pair_doublings(rows),
+                "a merge join of {rows} rows over {keys} keys"
+            );
+            // The hash join over the same rows grows with its keys; the merge does not.
+            assert_eq!(
+                hashed,
+                116 + if keys == 16 { 4 + 6 } else { 6 + 10 } + pair_doublings(rows),
+                "the hash join of {rows} rows over {keys} keys"
+            );
+            let joined = trades
+                .join_with(&venues, &by, yggdryl::JoinKind::Inner, &built)
+                .expect("a merge join");
+            assert_eq!(joined.len(), rows);
+            per_keys.push(merged);
+        }
+        assert_eq!(
+            per_keys[0], per_keys[1],
+            "a merge join of {rows} rows costs the same over 16 and 64 keys"
+        );
+        merged_costs.push(per_keys[0]);
+    }
+    assert_eq!(
+        merged_costs[1] - merged_costs[0],
+        pair_doublings(16_384) - pair_doublings(2_048),
+        "the rows move the count through the pairs vector alone: {merged_costs:?}"
+    );
+}
+
+/// A constant column holds one value whatever its length: building it costs
+/// the one row it lays out as and its own cell, never the rows; a cell read
+/// clones the value, a slice is one `Arc`, and the array it exports is
+/// built once and shared after.
+#[test]
+fn a_lit_column_costs_its_one_row_and_nothing_per_row() {
+    let field = DataType::utf8().required_field("venue");
+    let (building, column) = counted(|| {
+        Serie::lit(field.clone(), Scalar::from("XNAS"), 1 << 20).expect("a constant column")
+    });
+    // The one-row landing - its validity, offsets and data buffers, the
+    // leaf and its `Arc` - plus the lit leaf's own `Arc`: a fixed count,
+    // whatever the length.
+    assert_eq!(building, LIT_BUILD, "building a lit of a million rows");
+    let (short, _) =
+        counted(|| Serie::lit(field.clone(), Scalar::from("XNAS"), 2).expect("a constant"));
+    assert_eq!(short, LIT_BUILD, "the length costs nothing");
+
+    free("a lit cell", || {
+        black_box(column.scalar(777_777).expect("a row"));
+    });
+    free("a lit length and order", || {
+        black_box(column.len());
+        black_box(column.is_sorted(SortOptions::default()));
+        black_box(column.unique_count());
+    });
+    costs("a lit slice", 1, || {
+        black_box(column.slice(10, 1_000).expect("a window"));
+    });
+    let built = column.into_arrow_array().expect("the array builds once");
+    // Laid out once, an export is the one `Arc` the array crosses in.
+    costs("a built lit's export", 1, || {
+        black_box(column.into_arrow_array().expect("shared after"));
+    });
+    assert_eq!(built.len(), 1 << 20);
+}
+
+/// What building a lit of any length allocates: the value canonicalized
+/// under the field, the one-row landing - its row vector, the buffers of a
+/// one-row text column, the leaf and its `Arc` - and the lit leaf's own
+/// `Arc`; thirteen in all, and none of them a row.
+const LIT_BUILD: usize = 13;
 #[test]
 fn a_log_record_allocates_nothing_disabled_or_spelled_into_a_reused_line() {
     use std::sync::Arc;

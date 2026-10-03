@@ -36,6 +36,7 @@ cross-language conventions: see the `yggdryl` entry skill.
 | --- | --- | --- | --- |
 | Rows in hand -> column | `Serie::from_scalars(field, rows)?` | `Serie.from_scalars(field, rows)` | `Serie.fromScalars(field, rows)` |
 | Default / empty column | `Serie::from_default(field, n)?`, `Serie::empty(field)?`, `Serie::with_capacity(field, n)?` | `Serie.from_default(field, rows=1)`, `Serie.empty(field)`, `Serie.with_capacity(field, n)` | `Serie.fromDefault(field, rows?)`, `Serie.empty(field)`, `Serie.withCapacity(field, n)` |
+| One value repeated (a constant column, one row held) | `Serie::lit(field, value, n)?`, `serie.as_lit()` | `Serie.lit(field, value, n)`, `serie.is_lit` | `Serie.lit(field, value, n)`, `serie.isLit` |
 | One Arrow array -> column | `Serie::from_arrow_array(Some(&field), array, options)?` (`None` = its own layout, named `item`) | `Serie.from_arrow_array(array, field=None, *, safe=True, representation="value")` | `Serie.fromArrowArray(vector, field?, { safe, representation }?)` |
 | One batch / table -> record column | `Serie::from_arrow_batch(Some(&root), &batch, options)?` | `Serie.from_arrow_batch(batch, root=None, ...)` | `Serie.fromArrowBatch(batchOrTable, root?, options?)` |
 | Drain a stream into one column | `Serie::from_arrow_reader(Some(&root), reader, options)?` | `Serie.from_arrow_reader(reader, root=None, ...)` | `Serie.fromArrowReader(batchReader, root?, options?)` |
@@ -62,6 +63,10 @@ cross-language conventions: see the `yggdryl` entry skill.
 | Sort, order, deduplicate, take, filter (a new serie) | `sort_indices(options)?`, `into_sorted(options)?`, `into_unique()?`, `into_reversed()`, `into_taken(&indices)?`, `into_filtered(&mask)?`, `is_sorted(options)`, `is_unique()`, `unique_count()` | same names; `options` are `descending=False, nulls_first=False` keywords | `sortIndices`, `intoSorted`, `intoUnique`, `intoReversed`, `intoTaken`, `intoFiltered`, `isSorted`, `isUnique`, `uniqueCount`; `options` is `{ descending, nullsFirst }` |
 | The same, in place and chained | `serie.as_sorted(options)?.as_unique()?.as_reversed()?`, `as_taken`, `as_filtered` | `serie.as_sorted().as_unique().as_reversed()`, `as_taken`, `as_filtered` | `serie.asSorted().asUnique().asReversed()`, `asTaken`, `asFiltered` |
 | Group rows by a key | `partition_by(&keys)?`, `partition_by_paths(&paths)?`; a chunked serie's keys held in chunks: `partition_by_chunked` | `partition_by(keys)`, `partition_by_paths("venue")` | `partitionBy(keys)`, `partitionByPaths('venue')` |
+| Sort a record by `order by` keys | `sort_indices_by("venue, price desc")?`, `into_sort_by(by)?`, `as_sort_by(by)?`; `by` a text, texts, `Ordering`s or a `Selector`; also on `ChunkedSerie` (a merge, no join), `WindowSerie`, and `SerieReader::into_sorted`/`into_sort_by` (drained, merged, streamed back) | `sort_indices_by(by)`, `into_sort_by(by)`, `as_sort_by(by)`; `reader.into_sorted(...)`, `reader.into_sort_by(by)` | `sortIndicesBy(by)`, `intoSortBy(by)`, `asSortBy(by)`; `reader.intoSorted(options?)`, `reader.intoSortBy(by)` |
+| The order a record's rows are proven to be in | `serie.declared_order()?` -> `Option<Vec<Ordering>>`: the root's `SORT:by`, written by the sorts, kept, flipped or cleared by the verbs, verified where foreign rows land | `declared_order()` -> `list[str] \| None` | `declaredOrder()` -> `string[] \| null` |
+| Move a column's buffers to disk | `serie.spill(&SpillOptions::new().with_byte_size(n))?`, `as_spilled(&o)?` (chains), `into_spilled(&o)?` (a spilled copy), `resident_size()`, `is_spilled()`; `SpillOptions::install_env(..)` for the default every door settles under; also on `ChunkedSerie` and `SerieReader` (whose `into_spilled` consumes it) | `serie.spill(SpillOptions(byte_size=n))` or `spill(byte_size=n)`, `as_spilled(byte_size=n)`, `into_spilled(byte_size=n)`, `resident_size()`, `is_spilled()`; `SpillOptions.install_env(options)` | `serie.spill(new SpillOptions({ byteSize: n }))`, `asSpilled(o)`, `intoSpilled(o)`, `residentSize()`, `isSpilled()`; `SpillOptions.installEnv(options)` |
+| Join two record columns on keys | `left.join_with(&right, "id", JoinKind::Inner, &JoinOptions::new().with_build(Some(JoinSide::Right)))?`; `by` a shared column (`using`, coalesced), `"l = r and ..."`, texts, pairs; `how` `Inner`/`Left`/`Right`/`Full`/`Semi`/`Anti`; `chunked.join_with` keeps batches apart, `reader.join_with(other, ..)` probes lazily | `left.join_with(right, "id", "inner", build="right")`, `JoinOptions(...)` | `left.joinWith(right, 'id', 'inner', { build: 'right' })` |
 | Rows into windows of equal keys, as views | `serie.window_by("venue", sorted)?` -> `SerieWindows`; `for (key, window) in &windows`, each a `WindowSerie`; also on a `WindowSerie` | `serie.window_by("venue", sorted=False)` -> `[(key, WindowSerie)]` | `serie.windowBy('venue', sorted?)` -> `[[key, WindowSerie]]` |
 | The same across chunks, no join | `chunked.window_by("venue", sorted)?` -> `Vec<(Scalar, ChunkedSerie)>` | `chunked.window_by("venue", sorted=False)` | `chunked.windowBy('venue', sorted?)` |
 | A stream's windows, lazily, in order | `reader.window_by("venue", sorted)?` -> `SerieReaderWindows` of `SerieReader` | `reader.window_by(...)` -> `SerieReaderWindows` | `reader.windowBy(...)` -> `SerieReaderWindows` |
@@ -164,9 +169,48 @@ the record `row`.
     NaN is one value above every number, and a column and the run of its rows
     agree. `into_*` leaves the serie as it was; `as_*` rewrites it in place -
     a primitive or boolean column held alone sorts where it stands - and a
-    refusal leaves it unchanged. A `ChunkedSerie` joins for `sort_indices`,
-    `into_sorted`, `into_unique` and `into_taken`, and keeps its chunks apart
-    for `into_reversed`, `into_filtered` and `partition_by`.
+    refusal leaves it unchanged. A `ChunkedSerie` keeps its chunks apart for
+    `into_reversed`, `into_filtered` and `partition_by`, merges them for
+    `into_sorted`, `into_sort_by` and `into_unique` - each chunk sorted on
+    its own, then one cursor per chunk, the output cut into batches, so a
+    table larger than memory sorts under the spill bound - and joins only
+    for `sort_indices`, `is_unique`, `unique_count` and `into_taken`, whose
+    answer is one column.
+17. **Sort by keys, and trust the declaration.** `into_sort_by("venue, price
+    desc")` sorts a record by `order by` keys - a bare column, a path or a
+    computed term, each with its own direction - and declares what it
+    proved as `SORT:by` on the result's root. That declaration is a fact:
+    `is_sorted`, `sort_indices` and the sorts answer without a pass where it
+    states what they ask (a prefix counts), a slice or filter keeps it, a
+    reversal flips it, a take out of position or a write that breaks it
+    clears it, and foreign rows landing under a declaring root are read
+    once and refused by row. Never write `SORT:by` onto rows you have not
+    sorted: the next landing refuses them by name. An Iceberg scan's root
+    drops the table's `SORT:by` because files are sorted one by one.
+18. **Spill, do not shrink.** Every door that lays a column out settles it
+    under `SpillOptions::from_env()` - 64 MiB resident by default,
+    `YGGDRYL_SPILL_BYTE_SIZE`/`YGGDRYL_SPILL_FOLDER`, or
+    `SpillOptions::install_env` before anything reads it - so a sort, a
+    cast or a join larger than the bound moves its buffers to a private
+    unlinked file and reads them mapped at the same cost. `is_spilled` and
+    `resident_size` say where a column lies; a write brings the written
+    leaf back; a result that must stay resident takes its own bound
+    (`JoinOptions::with_spill`, `SpillOptions::NEVER`). A door that only
+    shares a caller's buffers, a slice, a window and a stream's batch in
+    flight never spill. `as_spilled` chains a spill and `into_spilled` spills
+    a copy. A constant column (`Serie::lit`, `from_default`) holds one row
+    however many it states and never spills: a spill forgets the array it
+    built for an export.
+19. **Join held against streamed.** `join_with` hashes the build side -
+    the held side over a stream, else the smaller, else the right; pin it
+    with `build` where the output order matters, because the probe's rows
+    come out in their own order - and probes the other batch by batch.
+    `reader.join_with(held, ...)` never collects the stream. A build past
+    the spill bound is grace-partitioned on disk, the same rows in
+    partition order. A bare shared column is `using` and coalesced; `on`
+    keeps both columns and suffixes the right one `_right`. Null keys match
+    nothing. The plan's `from a join b using (k)` pushes the build's
+    distinct keys into the probe's read for `inner`, `right` and `semi`.
 16. **Window by key instead of grouping by hand.** `window_by(by, sorted)`
     takes a selector (`"venue, minutes(ts, 15) as bucket"`), computes the key
     once and lends each window as a view - one key column and one bit per
@@ -266,6 +310,6 @@ the record `row`.
 - Schema projection: https://platob.github.io/yggdryl/arrow/schema/
 - Batch readers and `combined`: https://platob.github.io/yggdryl/arrow/readers/
 - Sibling skills: `yggdryl-types` (building `DataType`, `Field`, `Scalar`),
-  `yggdryl-records` (reading and writing files: `read_arrow`,
-  `write_arrow`, `read_arrow_reader`), `yggdryl-expressions` (filters,
+  `yggdryl-records` (reading and writing files: `read_serie`,
+  `write_serie` and its three intents, `read_arrow_reader`), `yggdryl-expressions` (filters,
   selectors and plans over Arrow batches).

@@ -46,3 +46,19 @@ test('null clears the sections a TextOptions carries', () => {
   assert.equal(options.select.toString(), '*')
   assert.ok(options.equals(new TextOptions()))
 })
+
+test('a text thread count is set, copied, and cleared like any other', () => {
+  const options = new TextOptions()
+  assert.equal(options.numThreads, null)
+
+  options.numThreads = 2
+  assert.equal(options.numThreads, 2)
+  assert.equal(options.withNumThreads(3).numThreads, 3)
+  assert.equal(options.numThreads, 2)
+  assert.throws(() => {
+    options.numThreads = -1
+  }, /numThreads/)
+  assert.equal(options.numThreads, 2)
+  options.numThreads = null
+  assert.equal(options.numThreads, null)
+})

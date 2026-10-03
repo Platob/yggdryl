@@ -1689,6 +1689,60 @@ mod write {
     }
 
     #[test]
+    fn zero_num_threads_is_rejected_before_any_input_pull() {
+        for intent in ["overwrite", "append", "merge"] {
+            let pulls = Arc::new(AtomicUsize::new(0));
+            let mut handle =
+                PublicationProbe::new(&format!("zero-threads-{intent}.arrows"), Arc::clone(&pulls));
+            let options = handle
+                .record_options()
+                .unwrap()
+                .with_field(schema())
+                .with_num_threads(0);
+            let source = counted_source(Arc::clone(&pulls), [Ok(rows_batch(&[1]))]);
+            let result = match intent {
+                "overwrite" => handle.overwrite_arrow_reader(source, &options),
+                "append" => handle.append_arrow_reader(source, &options),
+                "merge" => handle
+                    .merge_arrow_reader(source, &options.clone().with_merge_by(["id"]).unwrap()),
+                _ => unreachable!(),
+            };
+
+            let message = result.unwrap_err().to_string();
+            assert!(message.contains("$.num_threads"), "{intent}: {message}");
+            assert!(
+                message.contains("non-zero thread count"),
+                "{intent}: {message}"
+            );
+            assert_eq!(pulls.load(Ordering::SeqCst), 0, "{intent}");
+            assert_eq!(handle.publications.load(Ordering::SeqCst), 0, "{intent}");
+        }
+
+        // The row doors refuse it before the first row is pulled too.
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&pulls);
+        let records = std::iter::from_fn(move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+            Some(NativeRow {
+                id: 1,
+                symbol: None,
+            })
+        });
+        let mut handle = handle("zero-threads-native.arrows");
+        let options = handle
+            .record_options()
+            .unwrap()
+            .with_field(schema())
+            .with_num_threads(0);
+        let message = handle
+            .overwrite_records(records, &options)
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("$.num_threads"), "{message}");
+        assert_eq!(pulls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
     fn empty_append_and_merge_do_not_touch_the_destination() {
         let source_pulls = Arc::new(AtomicUsize::new(0));
         let mut handle = PublicationProbe::new("empty-no-touch.arrows", source_pulls);
@@ -2289,11 +2343,12 @@ mod write {
 }
 
 mod record_columns {
-    //! `read_arrow` and `write_arrow` over the record encodings: a stream of
+    //! `read_serie` and `write_serie` over the record encodings: a stream of
     //! record columns in, and the same rows back out, under the stored
     //! schema or a declared root.
 
     use super::handle;
+    use yggdryl::SerieSource;
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{
         ArrowCastOptions, DataType, Field, IOMedia, IOMode, MediaType, MimeType, Scalar, Serie,
@@ -2352,10 +2407,10 @@ mod record_columns {
     fn stored(name: &str) -> SerieReader {
         let mut target = handle(name);
         target
-            .write_arrow(quotes(), IOMode::Overwrite, None)
+            .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
             .unwrap_or_else(|error| panic!("{name} writes: {error}"));
         target
-            .read_arrow(None)
+            .read_serie(None)
             .unwrap_or_else(|error| panic!("{name} reads: {error}"))
     }
 
@@ -2420,13 +2475,13 @@ mod record_columns {
     fn an_append_keeps_the_rows_a_record_encoding_already_holds() {
         let mut target = handle("quotes.arrows");
         target
-            .write_arrow(quotes(), IOMode::Overwrite, None)
+            .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
             .expect("the rows write");
         target
-            .write_arrow(quotes(), IOMode::Append, None)
+            .write_serie(SerieSource::from(quotes()), IOMode::Append, None)
             .expect("the rows append");
 
-        let read = target.read_arrow(None).expect("the rows read");
+        let read = target.read_serie(None).expect("the rows read");
         assert_eq!(
             drained(read),
             Scalar::from_sequence([quote_rows(), quote_rows()].concat())
@@ -2437,7 +2492,7 @@ mod record_columns {
     fn a_declared_root_casts_the_rows_a_record_encoding_stored() {
         let mut target = handle("quotes.arrows");
         target
-            .write_arrow(quotes(), IOMode::Overwrite, None)
+            .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
             .expect("the rows write");
 
         let declared = record([
@@ -2449,7 +2504,7 @@ mod record_columns {
             .required_field("size"),
         ]);
         let read = target
-            .read_arrow(Some(&declaring(&declared)))
+            .read_serie(Some(&declaring(&declared)))
             .expect("the declared root casts the stored int64 column");
 
         assert_eq!(read.field(), &declared);
@@ -2476,7 +2531,7 @@ mod record_columns {
         .expect("the reader names its root");
         let mut target = handle("stream.arrows");
         target
-            .write_arrow(stream, IOMode::Overwrite, None)
+            .write_serie(SerieSource::from(stream), IOMode::Overwrite, None)
             .expect("the stream writes");
 
         let declared = record([
@@ -2484,7 +2539,7 @@ mod record_columns {
             DataType::Float64.required_field("size"),
         ]);
         let columns = target
-            .read_arrow(Some(&declaring(&declared)))
+            .read_serie(Some(&declaring(&declared)))
             .expect("the plan compiles from the stored schema")
             .collect::<Result<Vec<Serie>, _>>()
             .expect("every batch lands");
@@ -2511,14 +2566,16 @@ mod record_columns {
 
         let mut target = handle("empty.arrows");
         target
-            .write_arrow(
-                SerieReader::from_serie(empty).expect("a record column is one stream"),
+            .write_serie(
+                SerieSource::from(
+                    SerieReader::from_serie(empty).expect("a record column is one stream"),
+                ),
                 IOMode::Overwrite,
                 None,
             )
             .expect("the rows write");
 
-        let read = target.read_arrow(None).expect("the rows read");
+        let read = target.read_serie(None).expect("the rows read");
         // The schema is what an empty table carries, so it is the whole claim.
         assert_eq!(read.field(), &quote_root());
         assert_eq!(drained(read), Scalar::from_sequence([]));
@@ -2534,14 +2591,14 @@ mod record_columns {
 
         let mut target = handle("wide.arrows");
         target
-            .write_arrow(
-                stream_of(&quote_root(), rows.clone()),
+            .write_serie(
+                SerieSource::from(stream_of(&quote_root(), rows.clone())),
                 IOMode::Overwrite,
                 None,
             )
             .expect("the rows write");
 
-        let read = target.read_arrow(None).expect("the rows read");
+        let read = target.read_serie(None).expect("the rows read");
         assert_eq!(drained(read), Scalar::from_sequence(rows));
     }
 
@@ -2549,15 +2606,15 @@ mod record_columns {
     fn nested_children_keep_their_values_in_a_record_encoding() {
         let mut target = handle("nested.arrows");
         target
-            .write_arrow(
-                stream_of(&nested_root(), nested_rows()),
+            .write_serie(
+                SerieSource::from(stream_of(&nested_root(), nested_rows())),
                 IOMode::Overwrite,
                 None,
             )
             .expect("the rows write");
 
         let read = target
-            .read_arrow(Some(&declaring(&nested_root())))
+            .read_serie(Some(&declaring(&nested_root())))
             .expect("the rows read");
         assert_eq!(drained(read), Scalar::from_sequence(nested_rows()));
     }
@@ -2566,8 +2623,8 @@ mod record_columns {
     fn a_record_encoding_names_every_nested_child_it_stored() {
         let mut target = handle("nested.arrows");
         target
-            .write_arrow(
-                stream_of(&nested_root(), nested_rows()),
+            .write_serie(
+                SerieSource::from(stream_of(&nested_root(), nested_rows())),
                 IOMode::Overwrite,
                 None,
             )
@@ -2577,7 +2634,7 @@ mod record_columns {
         // the nullable column, the decimal, and the temporal all come back
         // named and parameterized by the schema the write stored.
         let read = target
-            .read_arrow(None)
+            .read_serie(None)
             .expect("the stored schema names the columns");
         assert_eq!(read.field(), &nested_root());
     }
@@ -3006,12 +3063,267 @@ mod shape {
         // The folder declares a directory; what it holds is found beneath it.
         let folder = yggdryl::local::LocalFolder::new(&lake).unwrap();
         let rows: usize = folder
-            .read_arrow(None)
+            .read_serie(None)
             .unwrap()
             .map(|serie| serie.unwrap().len())
             .sum();
         assert_eq!(rows, 3);
 
         let _ = std::fs::remove_dir_all(&path);
+    }
+}
+
+mod serie_verbs {
+    //! `write_serie`, `overwrite_serie`, `append_serie` and `merge_serie`
+    //! over a [`SerieSource`]: every shape rows are held in reaches the one
+    //! publication path, and the refusals land before the destination is
+    //! touched.
+
+    use super::handle;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{
+        ChunkedSerie, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Serie, SerieReader,
+        SerieSource, StructType,
+    };
+
+    fn trade_root() -> Field {
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Int64.required_field("size"),
+        ])
+        .map(DataType::from)
+        .expect("a record datatype")
+        .required_field("trade")
+    }
+
+    fn trade(id: i64, size: i64) -> Scalar {
+        Scalar::from_sequence([Scalar::from(id), Scalar::from(size)])
+    }
+
+    fn trades(ids: impl IntoIterator<Item = i64>) -> Serie {
+        Serie::from_scalars(trade_root(), ids.into_iter().map(|id| trade(id, id * 10)))
+            .expect("the rows land")
+    }
+
+    /// Every row `handle` holds, in order.
+    fn stored(handle: &impl IOMedia) -> Vec<Scalar> {
+        handle
+            .read_serie(None)
+            .expect("the rows read")
+            .collect::<Result<Vec<Serie>, _>>()
+            .expect("every batch lands")
+            .iter()
+            .flat_map(|column| column.rows().into_owned())
+            .collect()
+    }
+
+    /// The same rows in the three shapes: held, cut into a chunk per row,
+    /// streamed.
+    fn sources(rows: impl IntoIterator<Item = i64> + Clone) -> [SerieSource; 3] {
+        let held = trades(rows.clone());
+        let chunks: Vec<Serie> = (0..held.len())
+            .map(|row| held.slice(row, 1).expect("one row"))
+            .collect();
+        [
+            SerieSource::from(held),
+            SerieSource::from(
+                ChunkedSerie::from_series(Some(&trade_root()), chunks, Default::default())
+                    .expect("a chunk per row"),
+            ),
+            SerieSource::from(SerieReader::from_serie(trades(rows)).expect("a stream")),
+        ]
+    }
+
+    /// The record encodings this build writes a leaf in.
+    fn encodings() -> Vec<&'static str> {
+        let mut names = vec!["trades.arrows", "trades.avro"];
+        if cfg!(feature = "parquet") {
+            names.push("trades.parquet");
+        }
+        names
+    }
+
+    #[test]
+    fn every_shape_overwrites_appends_and_merges_through_the_one_path() {
+        for name in encodings() {
+            for (shape, source) in sources([1, 2]).into_iter().enumerate() {
+                let mut target = handle(name);
+                target
+                    .overwrite_serie(source, None)
+                    .unwrap_or_else(|error| panic!("{name} shape {shape} overwrites: {error}"));
+                assert_eq!(
+                    stored(&target),
+                    [trade(1, 10), trade(2, 20)],
+                    "{name} shape {shape}"
+                );
+
+                let [_, _, appended] = sources([3, 4]);
+                target
+                    .append_serie(appended, None)
+                    .unwrap_or_else(|error| panic!("{name} shape {shape} appends: {error}"));
+                assert_eq!(
+                    stored(&target),
+                    [trade(1, 10), trade(2, 20), trade(3, 30), trade(4, 40)],
+                    "{name} shape {shape}"
+                );
+
+                // A merge updates the matched row and appends the miss.
+                let mut options =
+                    RecordOptions::for_media_type(target.media_type()).expect("an encoding");
+                options.set_merge_by("id".parse().expect("a selector"));
+                let incoming = Serie::from_scalars(trade_root(), [trade(2, 99), trade(5, 50)])
+                    .expect("the rows");
+                target
+                    .merge_serie(SerieSource::from(incoming), Some(&options))
+                    .unwrap_or_else(|error| panic!("{name} shape {shape} merges: {error}"));
+                let rows = stored(&target);
+                assert_eq!(rows.len(), 5, "{name} shape {shape}: {rows:?}");
+                assert!(
+                    rows.contains(&trade(2, 99)) && !rows.contains(&trade(2, 20)),
+                    "{name}: {rows:?}"
+                );
+                assert!(rows.contains(&trade(5, 50)), "{name}: {rows:?}");
+
+                // The generic verb under an explicit mode is the same path.
+                let [held, _, _] = sources([7]);
+                target
+                    .write_serie(held, IOMode::Overwrite, None)
+                    .expect("the generic write overwrites");
+                assert_eq!(stored(&target), [trade(7, 70)]);
+            }
+        }
+    }
+
+    #[test]
+    fn a_plain_column_is_written_as_the_one_child_of_a_row_record() {
+        let mut target = handle("sizes.arrows");
+        let sizes = Serie::from_scalars(
+            DataType::Int64.required_field("size"),
+            [Scalar::from(1_i64), Scalar::from(2_i64)],
+        )
+        .expect("a column");
+        target
+            .overwrite_serie(sizes.into(), None)
+            .expect("the column writes");
+        let read = target.read_serie(None).expect("the rows read");
+        assert_eq!(read.field().name(), "row");
+        assert_eq!(
+            read.field()
+                .fields()
+                .iter()
+                .map(Field::name)
+                .collect::<Vec<_>>(),
+            ["size"]
+        );
+        assert_eq!(
+            stored(&target),
+            [
+                Scalar::from_sequence([Scalar::from(1_i64)]),
+                Scalar::from_sequence([Scalar::from(2_i64)])
+            ]
+        );
+    }
+
+    #[test]
+    fn a_run_and_an_absent_row_are_refused_before_the_destination_is_touched() {
+        let mut target = handle("trades.arrows");
+        target
+            .overwrite_serie(trades([1]).into(), None)
+            .expect("the rows write");
+
+        let run = Serie::new(vec![Scalar::from(1_i64)]);
+        let error = target
+            .append_serie(run.into(), None)
+            .expect_err("a run names no layout");
+        assert!(
+            error.to_string().contains("run") || error.to_string().contains("field"),
+            "{error}"
+        );
+        assert_eq!(stored(&target), [trade(1, 10)], "the refusal wrote nothing");
+
+        let absent = Serie::from_scalars(
+            trade_root().with_nullable(true),
+            [trade(2, 20), Scalar::Null],
+        )
+        .expect("a nullable record holds an absent row");
+        let error = target
+            .append_serie(absent.into(), None)
+            .expect_err("a table states no absent row");
+        assert!(
+            error.to_string().contains("null") || error.to_string().contains("absent"),
+            "{error}"
+        );
+        assert_eq!(stored(&target), [trade(1, 10)], "the refusal wrote nothing");
+    }
+
+    #[test]
+    fn a_structured_document_takes_an_overwrite_alone() {
+        let mut target = handle("trades.jsonl");
+        target
+            .overwrite_serie(trades([1, 2]).into(), None)
+            .expect("a document is replaced whole");
+        assert_eq!(stored(&target), [trade(1, 10), trade(2, 20)]);
+        for (verb, mode) in [("append", IOMode::Append), ("merge", IOMode::Merge)] {
+            let error = target
+                .write_serie(trades([3]).into(), mode, None)
+                .expect_err("a document is written whole");
+            assert!(
+                error.to_string().contains("expected overwrite"),
+                "{verb}: {error}"
+            );
+            assert_eq!(
+                stored(&target),
+                [trade(1, 10), trade(2, 20)],
+                "{verb} wrote nothing"
+            );
+        }
+    }
+
+    #[test]
+    fn absent_options_are_the_handle_s_own_so_a_declared_field_shapes_nothing_unasked() {
+        // Under the handle's own options, the stored schema is the rows' own.
+        let mut target = handle("trades.arrows");
+        target
+            .append_serie(trades([1]).into(), None)
+            .expect("an append creates the leaf");
+        target
+            .append_serie(trades([2]).into(), None)
+            .expect("a second append keeps the first");
+        assert_eq!(stored(&target), [trade(1, 10), trade(2, 20)]);
+        // An encoding stores the columns, so the stored root carries the
+        // options' name and the rows' own children.
+        let stored_field = target
+            .read_arrow_field(&target.record_options().expect("the stored encoding"))
+            .expect("the stored field");
+        assert_eq!(
+            stored_field
+                .fields()
+                .iter()
+                .map(Field::name)
+                .collect::<Vec<_>>(),
+            ["id", "size"]
+        );
+
+        // A declared field on the options casts the rows once, onto it.
+        let wide = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Float64.required_field("size"),
+        ])
+        .map(DataType::from)
+        .expect("a record datatype")
+        .required_field("trade");
+        let mut options = RecordOptions::for_media_type(target.media_type()).expect("an encoding");
+        options.set_field(wide.clone());
+        let mut declared = handle("wide.arrows");
+        declared
+            .overwrite_serie(trades([3]).into(), Some(&options))
+            .expect("the rows cast onto the declared field");
+        assert_eq!(
+            stored(&declared),
+            [Scalar::from_sequence([
+                Scalar::from(3_i64),
+                Scalar::from(30.0_f64)
+            ])]
+        );
     }
 }

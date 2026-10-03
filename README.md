@@ -182,10 +182,12 @@ not expose a C Data consumer.
 Every value crossing Arrow is a `Serie` - one row, a column or a held table,
 carrying the exact `Field` that types it - a `ChunkedSerie` where a chunked
 column or a table of several batches stays apart - a `pyarrow.ChunkedArray`,
-`Serie` columns of one `Field` - or a `SerieReader`, a stream of them. `IOMedia::read_arrow`/`write_arrow`
-read and write a `SerieReader` whatever the handle holds - a record encoding
-as its batch stream, a JSON, JSON Lines, YAML, TOML, or XML document as the one
-batch its rows parse into. In Python `Serie.from_`, `ChunkedSerie.from_` and
+`Serie` columns of one `Field` - or a `SerieReader`, a stream of them.
+`IOMedia::read_serie` reads a `SerieReader` whatever the handle holds - a
+record encoding as its batch stream, a JSON, JSON Lines, YAML, TOML, or XML
+document as the one batch its rows parse into - and `write_serie`,
+`overwrite_serie`, `append_serie` and `merge_serie` write any of the three as
+the batches it already is. In Python `Serie.from_`, `ChunkedSerie.from_` and
 `SerieReader.from_` share the one recognition every columnar runtime crosses: a `pyarrow` container, a
 pandas or polars frame or series, a NumPy array, or anything exporting the
 Arrow C data or stream protocol, the declared `Field` casting it in Rust. The

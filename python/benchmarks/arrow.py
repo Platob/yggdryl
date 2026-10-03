@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import copy
 import gc
 import importlib
 import json
@@ -131,6 +132,11 @@ MAP_BATCH = pa.RecordBatch.from_arrays(
 )
 HELD_MAP_BATCH = Serie.from_(MAP_BATCH)
 HELD_WIDE_BATCH = Serie.from_(WIDE_BATCH)
+# One dimension row per symbol, so every quote matches exactly once and the
+# join answers as many rows as the batch holds, on either side of the pair.
+DIMENSION = pa.record_batch({"symbol": ["AAPL"], "venue": ["XNAS"]})
+DIMENSION_TABLE = pa.Table.from_batches([DIMENSION])
+HELD_DIMENSION = Serie.from_(DIMENSION)
 
 STORE = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-arrow-bench-"))
 # The store is made at import, before any argument is read, so its removal is
@@ -219,11 +225,11 @@ def _read_jsonl_baseline() -> int:
 
 
 def _read_stream_value() -> int:
-    return STREAM.read_arrow().into_arrow_reader().read_all().num_rows
+    return STREAM.read_serie().into_arrow_reader().read_all().num_rows
 
 
 def _read_lines_value() -> int:
-    return len(Serie.from_(LINES.read_arrow(field=TEXT_ROOT)))
+    return len(Serie.from_(LINES.read_serie(field=TEXT_ROOT)))
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
@@ -462,6 +468,39 @@ def _cases(
             small,
         ),
         ("ChunkedSerie into_serie (yggdryl)", lambda: HELD_CHUNKED.into_serie(), bulk),
+        # The `order by` keys resolved once from their text, then one stable
+        # sort and one take of every column, beside PyArrow's sort of the same
+        # batch.
+        (
+            "Serie.into_sort_by, one key (yggdryl)",
+            lambda: HELD_BATCH.into_sort_by("size desc"),
+            bulk,
+        ),
+        (
+            "Serie.into_sort_by, one key (pyarrow)",
+            lambda: BATCH.sort_by([("size", "descending")]),
+            bulk,
+        ),
+        # The smaller side built and hashed, the batch probing it, beside
+        # Acero's hash join of the same two tables.
+        (
+            "Serie.join_with, inner on one key (yggdryl)",
+            lambda: HELD_BATCH.join_with(HELD_DIMENSION, "symbol"),
+            bulk,
+        ),
+        (
+            "Serie.join_with, inner on one key (pyarrow)",
+            lambda: TABLE.join(DIMENSION_TABLE, "symbol"),
+            bulk,
+        ),
+        # Every buffer written once to a private file and mapped back; a copy
+        # shares the buffers, so each call spills its own. No PyArrow
+        # counterpart stands beside it.
+        (
+            "Serie.spill, bound zero",
+            lambda: copy.copy(HELD_COLUMN).spill(byte_size=0),
+            io,
+        ),
         ("ChunkedSerie into_serie (pyarrow)", lambda: CHUNKED.combine_chunks(), bulk),
         ("into_arrow_scalar (yggdryl)", lambda: HELD_SCALAR.into_arrow_scalar(), small),
         ("into_arrow_scalar (pyarrow)", lambda: ONE_ROW[0], small),
@@ -492,26 +531,26 @@ def _cases(
         ("len", lambda: len(HELD_BATCH), small),
         ("field", lambda: HELD_BATCH.field, small),
         (
-            "write_arrow arrows (yggdryl)",
-            lambda: STREAM.write_arrow(TABLE),
+            "write_serie arrows (yggdryl)",
+            lambda: STREAM.write_serie(TABLE),
             io,
         ),
-        ("write_arrow arrows (pyarrow)", _write_ipc_baseline, io),
-        ("read_arrow arrows (yggdryl)", _read_stream_value, io),
-        ("read_arrow arrows (pyarrow)", _read_ipc_baseline, io),
+        ("write_serie arrows (pyarrow)", _write_ipc_baseline, io),
+        ("read_serie arrows (yggdryl)", _read_stream_value, io),
+        ("read_serie arrows (pyarrow)", _read_ipc_baseline, io),
         (
-            f"write_arrow jsonl {TEXT_ROW_COUNT:,} (yggdryl)",
-            lambda: LINES.write_arrow(TEXT_TABLE),
+            f"write_serie jsonl {TEXT_ROW_COUNT:,} (yggdryl)",
+            lambda: LINES.write_serie(TEXT_TABLE),
             io,
         ),
         (
-            f"write_arrow jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
+            f"write_serie jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
             _write_jsonl_baseline,
             io,
         ),
-        (f"read_arrow jsonl {TEXT_ROW_COUNT:,} (yggdryl)", _read_lines_value, io),
+        (f"read_serie jsonl {TEXT_ROW_COUNT:,} (yggdryl)", _read_lines_value, io),
         (
-            f"read_arrow jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
+            f"read_serie jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
             _read_jsonl_baseline,
             io,
         ),
@@ -545,13 +584,19 @@ def main() -> None:
             assert list(SerieReader.from_(value)) == list(
                 SerieReader.from_serie(Serie.from_(value))
             )
+        assert HELD_BATCH.join_with(HELD_DIMENSION, "symbol").into_arrow_batch().num_rows == (
+            TABLE.join(DIMENSION_TABLE, "symbol").num_rows
+        )
+        assert HELD_BATCH.into_sort_by("size desc").child("size").into_arrow_array().equals(
+            BATCH.sort_by([("size", "descending")]).column("size")
+        )
         for exported in (
             HELD_MAP_BATCH.into_arrow_batch(),
             HELD_MAP_BATCH.into_arrow_reader().read_next_batch(),
         ):
             assert exported.equals(MAP_BATCH, check_metadata=True)
-        STREAM.write_arrow(TABLE)
-        LINES.write_arrow(TEXT_TABLE)
+        STREAM.write_serie(TABLE)
+        LINES.write_serie(TEXT_TABLE)
         _write_jsonl_baseline()
         _write_ipc_baseline()
         # A pair that reads two different documents measures the documents,

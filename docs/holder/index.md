@@ -1617,6 +1617,10 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     write_arrow_reader(&mut self, reader: BatchReader, mode: IOMode, options: &RecordOptions) -> Result<()>
     write_arrow_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<()>
     write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<()>
+
+    read_serie(&self, options: Option<&RecordOptions>) -> Result<SerieReader>   // None: the handle's own
+    write_serie(&mut self, value: SerieSource, mode: IOMode, options: Option<&RecordOptions>) -> Result<()>
+    overwrite|append|merge_serie(&mut self, value: SerieSource, options: Option<&RecordOptions>) -> Result<()>
     ```
 
 === "Python"
@@ -1630,6 +1634,9 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|merge_records(records, *, options=None) -> None
     write_arrow_reader|table|batch(value, mode, *, options=None) -> None
     write_records(records, mode, *, options=None) -> None
+    read_serie(*, options=None) -> SerieReader
+    write_serie(value, mode="overwrite", *, options=None) -> None
+    overwrite|append|merge_serie(value, *, options=None) -> None
     ```
 
 === "JavaScript"
@@ -1643,9 +1650,12 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|mergeRecords(records, options?) -> void | Promise<void>
     writeArrowReader|Table|Batch(value, mode, options?) -> void
     writeRecords(records, mode, options?) -> void | Promise<void>
+    readSerie(options?) -> SerieReader
+    writeSerie(value, mode?, options?) -> void
+    overwrite|append|mergeSerie(value, options?) -> void
     ```
 
-Default append and merge shape once and delegate to `overwrite_arrow_reader`. `read_arrow` / `write_arrow` answer and take a [`SerieReader`](../types/serie.md#a-handle-reads-and-writes-it-whatever-it-holds) whatever the handle holds.
+Default append and merge shape once and delegate to `overwrite_arrow_reader`. `read_serie` answers a [`SerieReader`](../types/serie.md#writing-a-serie-to-a-handle) whatever the handle holds, and `write_serie` with its three intents takes a `Serie`, a `ChunkedSerie` or a `SerieReader` as one `SerieSource`, written as the batches it already is; absent options are the handle's own for both.
 
 === "Rust"
 
@@ -2273,11 +2283,11 @@ Overwrite replaces, append keeps the stored rows, merge updates matching `merge_
 
 | `commit_batch_num` | publication |
 | --- | --- |
-| unset | the destination's own cadence: a leaf or a plain folder once, when the source ends; an Iceberg table each time the batches it holds reach its target file size (`write.target-file-size-bytes`), then the remainder |
+| unset | the destination's own cadence: a leaf, a plain folder and an Iceberg table once, when the source ends - the table holding every partition's rows under the process spill bound until then, so an overwrite of any length is one atomic snapshot |
 | `N > 0` | every `N` batches, then the remainder |
 | `0` | rejected before any input is pulled |
 
-Whatever the cadence, an overwrite's first commit replaces and every later one appends, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a stream longer than the target keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement.
+Whatever the cadence, an overwrite's first commit replaces and every later one appends, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a paced stream keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement. Whatever holds a cadence between publications - a leaf's, a write session's, an Iceberg table's partition holds - is held under the process [spill bound](../types/serie.md#spilling-to-disk), the heaviest batches spilled first, so a cadence of any size costs that bound in memory; `commit_batch_num` paces a stream whose rows would outgrow the spill folder.
 
 A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/iceberg.md). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
 
@@ -4848,7 +4858,7 @@ assert_eq!(requests[1].headers.get("if-range"), stream.headers().get("etag"));
 
 ### Pages
 
-`request.pages()` walks a paginated resource, one `GET` and one `Response` per page, and `Pages::into_arrow_reader(field, batch_row_size)` lays the rows out as one Arrow batch per page under one root - `field` when given, else the record the first page's rows infer. `read_arrow_reader` on a structured resource whose first page paginates is that walk, reading the first page once. The rows are at the declared `records` path, else a top-level sequence, else the first of `data`, `items`, `results`, `records`, `value`, `rows`, `entries`, `elements`, `content`, `hits.hits`, else the largest top-level sequence.
+`request.pages()` walks a paginated resource, one `GET` and one `Response` per page, and `Pages::into_arrow_reader(field, batch_row_size)` lays the rows out as one Arrow batch per page under one root - `field` when given, else the record the first page's rows infer. `read_arrow_reader` and `read_serie` on a structured resource whose first page paginates are that walk, reading the first page once; Python's `Pages.read_serie(field=None)` answers the walk as a `SerieReader`, one record column per page. The rows are at the declared `records` path, else a top-level sequence, else the first of `data`, `items`, `results`, `records`, `value`, `rows`, `entries`, `elements`, `content`, `hits.hits`, else the largest top-level sequence.
 
 `Pagination` says how the next page is found; `Auto`, the default, tries in order:
 

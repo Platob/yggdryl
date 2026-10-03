@@ -14,6 +14,7 @@ const {
   Serie,
   SerieReader,
   Side,
+  SpillOptions,
   Plan,
   Term,
   StringEnum,
@@ -218,6 +219,49 @@ benchmark('serie/as_taken', () => takenInPlace.asTaken(orderIndices))
 const filteredInPlace = orderPrices.intoSorted()
 benchmark('serie/as_filtered', () => filteredInPlace.asFiltered(orderMask))
 benchmark('serie/window', () => orderPrices.window(8, 32))
+// By key: the keys read once by the core's `order by` rule, then one take.
+benchmark('serie/into_sort_by', () => orderQuotes.intoSortBy('venue, price desc'))
+// A join of the quotes against their three venues, the smaller side hashed.
+const orderCities = Serie.fromScalars(
+  fields.struct('venue', [fields.utf8('venue'), fields.utf8('city')], { nullable: false }),
+  [
+    { venue: 'XNAS', city: 'New York' },
+    { venue: 'XNYS', city: 'New York' },
+    { venue: 'XPAR', city: 'Paris' },
+  ],
+)
+if (orderQuotes.joinWith(orderCities, 'venue').length !== orderRows) {
+  throw new Error('the join fixture matches every quote once')
+}
+benchmark('serie/join_with', () => orderQuotes.joinWith(orderCities, 'venue'))
+// A spill writes the column once to a private file and maps it back; the one
+// row written back after it copies the buffer to the heap and drops the
+// mapping, so every call spills again and holds one file at most.
+const spilling = orderPrices.clone()
+const spillEverything = new SpillOptions({ byteSize: 0 })
+const spilledBack = Scalar.from(0)
+spilling.spill(spillEverything)
+const spilledOnce = spilling.isSpilled()
+spilling.set(0, spilledBack)
+if (!spilledOnce || spilling.isSpilled()) {
+  throw new Error('the spill fixture spills and comes back to the heap')
+}
+benchmark('serie/spill', () => {
+  spilling.spill(spillEverything)
+  spilling.set(0, spilledBack)
+})
+// The chaining door costs the spill and nothing more: it answers the serie,
+// whose write-back drops the mapping, so every call holds one file at most. A
+// spilled copy is not timed here: each holds its file until the collector
+// drops it, which a loop outruns.
+benchmark('serie/as_spilled', () => {
+  spilling.asSpilled(spillEverything).set(0, spilledBack)
+})
+// A constant column holds its one value once, whatever its length: the cost
+// is the value's proof, not the rows.
+const litField = fields.utf8('venue', { nullable: false })
+const litValue = Scalar.from('XNAS')
+benchmark('serie/lit', () => Serie.lit(litField, litValue, 1_000_000))
 // A window reads and writes through the serie it holds at each call.
 const windowed = orderPrices.intoSorted()
 const window = windowed.window(8, 32)

@@ -557,7 +557,7 @@ with http.Server.bind() as server:
     assert not hasattr(session.get("items"), "pages")  # already sent
 
     # Every page as one Arrow batch each, under the `items` root the first page infers.
-    reader = session.pages("items", pagination="url:next").read_arrow()
+    reader = session.pages("items", pagination="url:next").read_serie()
     assert sum(len(batch) for batch in reader) == 3
 ```
 

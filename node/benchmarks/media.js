@@ -11,6 +11,8 @@ const {
   IOBase,
   MimeType,
   RecordOptions,
+  Serie,
+  SerieReader,
   fields,
   iceberg,
 } = require('yggdryl')
@@ -262,6 +264,24 @@ for (const mode of ['overwrite', 'append', 'merge']) {
     )
   })
 }
+
+// The Serie doors: a held column crosses as the one record batch it is, with
+// no IPC and no copy, a stream as itself; the Arrow JS table is the IPC bridge
+// every other Arrow JS write pays, then the same native door.
+const heldRows = Serie.fromArrowBatch(table, schema)
+benchmark('records/read_serie', () => {
+  for (const batch of memory.readSerie()) batch.length
+})
+for (const mode of ['overwrite', 'append', 'merge']) {
+  benchmark(`records/write_serie/${mode}`, () => {
+    const handle = stored()
+    handle.writeSerie(heldRows, mode, mode === 'merge' ? keyed(handle) : undefined)
+  })
+}
+benchmark('records/overwrite_serie_reader', () =>
+  stored().overwriteSerie(SerieReader.fromSerie(heldRows)),
+)
+benchmark('records/overwrite_serie_arrow_table', () => stored().overwriteSerie(table))
 
 // One commit writes a data file, a manifest, a manifest list, and a metadata
 // document, so an Iceberg append is measured separately from a plain write.

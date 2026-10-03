@@ -443,6 +443,51 @@ pub trait SerieValue:
     /// its children's arrays, which are aligned by construction.
     fn into_arrow_array(&self) -> ArrayRef;
 
+    /// The bytes the rows occupy, as the column's own slice counts them:
+    /// what [`array_memory_size`](crate::arrow::array_memory_size) answers
+    /// for [`Self::into_arrow_array`], read off the buffers.
+    fn memory_size(&self) -> usize {
+        crate::arrow::array_memory_size(&self.into_arrow_array())
+    }
+
+    /// The bytes the rows occupy in memory: [`Self::memory_size`] less what
+    /// lies in a spill file's mapping.
+    ///
+    /// A flat leaf's buffers are all on the heap or all mapped, so it
+    /// answers its [`Self::memory_size`] or zero; a nested leaf counts its
+    /// own buffers where they are not mapped, beside its children's answer.
+    /// Read off the buffers, so it allocates nothing: every door that settles
+    /// a column reads it.
+    fn resident_size(&self) -> usize;
+
+    /// Whether the rows lie in a spill file: no byte resident, and some
+    /// bytes. An empty column is never spilled.
+    ///
+    /// Read in that order, so a resident column answers off its flags
+    /// alone and only a column holding nothing resident counts its bytes.
+    fn is_spilled(&self) -> bool {
+        self.resident_size() == 0 && self.memory_size() > 0
+    }
+
+    /// Move the rows to disk until the resident bytes are under `options`'
+    /// bound: [`Serie::spill`] over this leaf, which comes back as itself.
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::spill`]'s refusal, leaving the column as it was; a leaf that
+    /// did not come back as itself is a conflict naming the column.
+    fn spill(&mut self, options: &crate::SpillOptions) -> Result<()> {
+        let mut serie = self.clone().into_serie();
+        serie.spill(options)?;
+        match Self::from_serie(&serie) {
+            Some(spilled) => {
+                *self = spilled.clone();
+                Ok(())
+            }
+            None => Err(Serie::spill_mismatch(self.field().name())),
+        }
+    }
+
     /// Widen this column to the dynamic serie root.
     fn into_serie(self) -> Serie;
 

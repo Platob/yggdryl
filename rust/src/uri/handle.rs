@@ -275,8 +275,8 @@ impl IOMedia for Uri {
         IOMedia::read_arrow_reader(self.held()?, options)
     }
 
-    fn read_arrow(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
-        IOMedia::read_arrow(self.held()?, options)
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
+        IOMedia::read_serie(self.held()?, options)
     }
 
     fn overwrite_arrow_reader(
