@@ -4322,6 +4322,18 @@ assert_eq!(session.credential_source(), Some("login"));
 std::fs::remove_dir_all(&cache)?;
 ```
 
+#### How the identity services are reached
+
+Every identity call - STS, IAM Identity Center, the Sign-In service, the container endpoint, the instance metadata service - goes out through the crate's own [HTTP client](#http), one session per `Session`, so its rules are the ones stated there and nothing keeps a loop of its own:
+
+| Concern | Rule |
+| --- | --- |
+| Retries | a `5xx`, a `429` or a transport failure, for a request that does no harm twice, up to three attempts under the client's backoff; STS's throttle stated in a `400` body (`Throttling`, `RequestLimitExceeded`, `IDPCommunicationError`) is read and retried too. A refresh-token grant at IAM Identity Center is sent once, because the grant may rotate the token |
+| Redirects, cookies, `.netrc` | none followed, none kept, none read: a credential header never reaches another host |
+| Trust | the session's `ca_bundle` alone when one is named; a bundle that cannot be read is every identity request's refusal, never a fall back to the platform's roots |
+| Proxy | the process's, for a session reading the process environment; the container endpoint and the instance metadata service are reached directly whatever a proxy variable says |
+| The instance metadata service | each attempt bounded by `metadata_service_timeout` (one second), `metadata_service_num_attempts` attempts; nothing answering - refused, unreachable, silent - is not an instance, and the source is absent rather than failed |
+
 #### What a walk logs
 
 Every walk is logged through the crate's [logging](../logging.md) tree under `yggdryl.aws.session`, and a console sign-in's refresh under `yggdryl.aws.login`. A key id is logged as its first and last four characters; no secret, session token or refresh token is.
@@ -4946,7 +4958,7 @@ The walk ends at a `has_more`/`hasMore` of `false`, an empty page, a next URL eq
 | `http_version` | `auto` | `auto`, `1.1`, `2` or `3` ([HTTP/2 and HTTP/3](#http2-and-http3)) |
 | `base_url`, `user_agent`, `proxy`, `ca_bundle`, `cookies`, `read_environment`, `stream_batch_size` | none, `yggdryl/<version>`, the environment's, the environment's, true, true, 64 KiB | the rest |
 
-With `read_environment` on, an unset certificate bundle comes from the environment (`SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`), and an unset proxy is read for every request, as curl and `requests` read it: a host `no_proxy` names goes direct; else `https_proxy` carries an `https` URL and `http_proxy` an `http` one, then `all_proxy` either - each lower case first, then upper case, except that under CGI (`REQUEST_METHOD` set) upper-case `HTTP_PROXY` is not read, because a server sets it from its request's `Proxy` header (httpoxy). A proxy is `http://` or `https://`; a SOCKS one, named or read, is refused by name rather than gone past. A `no_proxy` entry is a host covering every host under it on a label boundary (`example.com` never covers `badexample.com`), an IP address or CIDR network, either with `:port` to match that port alone, or `*`. Because the environment is read per request, a process that sets or clears a proxy after its first request is followed at its next one; the proxies a value names are parsed once while the values stay the same. A named `proxy` wins over all of it. A request that names no credential - none on the request, the session or the URL - takes its host's `.netrc` entry as a `Basic` credential, as curl and `requests` do: the file `NETRC` names, else `.netrc`, then `_netrc`, in the home directory; a `machine` entry for the host, else `default`. The file is parsed once per version of it, so an edit is read at the next request, and a redirect to another host takes that host's entry.
+With `read_environment` on, an unset certificate bundle comes from the environment (`SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`), and an unset proxy is read for every request, as curl and `requests` read it: a host `no_proxy` names goes direct; else `https_proxy` carries an `https` URL and `http_proxy` an `http` one, then `all_proxy` either - each lower case first, then upper case, except that under CGI (`REQUEST_METHOD` set) upper-case `HTTP_PROXY` is not read, because a server sets it from its request's `Proxy` header (httpoxy). A proxy is `http://` or `https://`; a SOCKS one, named or read, is refused by name rather than gone past. A `no_proxy` entry is a host covering every host under it on a label boundary (`example.com` never covers `badexample.com`), an IP address or CIDR network, either with `:port` to match that port alone, or `*`. Because the environment is read per request, a process that sets or clears a proxy after its first request is followed at its next one; the proxies a value names are parsed once while the values stay the same. A named `proxy` wins over all of it. A request that names no credential - none on the request, the session or the URL - takes its host's `.netrc` entry as a `Basic` credential, as curl and `requests` do, unless the `netrc` option says otherwise (it follows `read_environment` until stated): the file `NETRC` names, else `.netrc`, then `_netrc`, in the home directory; a `machine` entry for the host, else `default`. The file is parsed once per version of it, so an edit is read at the next request, and a redirect to another host takes that host's entry.
 
 ```rust
 use yggdryl::holder::Holder;
@@ -5359,6 +5371,20 @@ A request through a proxy speaks HTTP/1.1 whatever was asked. An origin QUIC can
 ### Retries, redirects and failures
 
 A `408`, `425`, `429`, `500`, `502`, `503` or `504` is retried only for an idempotent method (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`): a `POST` or `PATCH` the server may have acted on is sent once and its answer handed back. A transport failure is retried for an idempotent method, and for any method when no connection took the request (the name did not resolve, or every address refused or timed out while connecting). Retries draw a full-jitter backoff from the client's token budget of 500 (`StatsSnapshot::retry_tokens`) - shared by every host the client reaches, so a client's retry load stays bounded whatever fails - and a `Retry-After`, in delta seconds or as an HTTP-date, is waited out up to `max_pause`; a longer one ends the retries and hands the answer back. A pooled connection is probed before it is reused, and up to 64 idle connections per host are kept, so a parallel walk to one host reconnects nothing. Redirects are followed up to `max_redirects`: a `303`, and a `301` or `302` answering a `POST`, become a `GET` without the body; `307` and `308` keep both; to another origin no credential goes along - `Authorization`, `Proxy-Authorization`, the header a credential names, a `Cookie` the caller stated - while the jar's own cookies for that origin do; each hop is one request and stays in `Response::history`. `Set-Cookie` lands in the session's jar and rides every later matching request (RFC 6265 domain and path matching, expiry); a `Domain` naming a public suffix (`com`, `co.uk`, `github.io`, by the Public Suffix List) is refused, so no origin sets a cookie its neighbours receive.
+
+A request states what the client cannot know of it, each on the `Request` and each read by the same retry rules:
+
+| `Request` | Says | Default |
+| --- | --- | --- |
+| `with_idempotent(bool)` | whether a second send does no harm: a `POST` its service documents idempotent - an OAuth refresh within its validity, a poll - is retried as a `GET` is; `false` keeps a `GET` from going twice | the method's |
+| `with_attempt_headers(f)` | headers made at the top of every attempt from its number, method and URL - a proof or a signature that must be fresh each time; an error it returns is the request's, never retried | none |
+| `with_max_attempts(n)` | this request's attempts; every retry still draws on the client's one budget | the client's `max_attempts` |
+| `with_connect_timeout(d)` | the bound on opening this request's connection | the pool's |
+| `with_deadline(d)` | one bound on a whole attempt - connect, send, head and body together | none; `with_timeout` bounds each phase |
+| `with_retry_on(rule)` | whether an answer whose status says nothing is worth another attempt: for an idempotent request the client reads at most 64 KiB of a failing body and asks `rule(status, headers, body)`; an answer not retried is handed back whole | never |
+| `with_direct(true)` | reach the server itself, past any proxy the options or the environment name | the proxy rules |
+
+Rust only; the bindings send through the same rules with the method's own idempotency. A `PUT`, `POST` or `PATCH` with no body states `Content-Length: 0`.
 
 - A `404` read is emptiness and a `404` `DELETE` is success; `401` and `403` are refusals.
 - A refusing status is `Error::Remote` naming the method, the status, the reason, the body's first line and the URL; `raise_for_status` answers the same for a `Response` in hand.

@@ -552,10 +552,10 @@ impl Request {
     /// Whether the request can do no harm twice, in place of what its
     /// method says.
     ///
-    /// The caller attests it: a `POST` whose service documents it idempotent
-    /// - an OAuth token refresh within its validity, a poll - is retried
-    /// after the server may have seen it, as a `GET` is; `false` keeps a
-    /// `GET` from going out twice. The retry budget, the attempts and the
+    /// The caller attests it: a `POST` whose service documents it idempotent,
+    /// such as an OAuth token refresh within its validity or a poll, is
+    /// retried after the server may have seen it, as a `GET` is; `false`
+    /// keeps a `GET` from going out twice. The retry budget, the attempts and the
     /// `Retry-After` rules are the ones every retry reads, and a request
     /// sent with [`Self::send_reader`] is never retried whatever this says.
     ///

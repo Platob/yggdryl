@@ -2265,6 +2265,8 @@ pub struct ZipPath
   pub fn with_ca_bundle(self, ca_bundle: impl Into<PathBuf>) -> Self
   pub fn with_accept_encodings(self, codecs: impl IntoIterator<Item = Codec>) -> Self
   pub const fn with_read_environment(self, read_environment: bool) -> Self
+  pub const fn with_netrc(self, netrc: bool) -> Self  (whether a request naming no credential takes its host's .netrc entry; unset follows read_environment; a session knob, the property `netrc`)
+  pub fn netrc(&self) -> bool
   pub const fn with_max_body_size(self, max_body_size: u64) -> Self
   pub const fn with_stream_batch_size(self, stream_batch_size: usize) -> Self
   pub const fn with_concurrency(self, concurrency: usize) -> Self
@@ -2336,6 +2338,18 @@ pub struct ZipPath
   pub fn with_authorization(self, authorization: Authorization) -> Self
   pub fn with_timeout(self, timeout: Duration) -> Self
   pub fn with_follow_redirects(self, follow: bool) -> Self
+  pub fn with_idempotent(self, idempotent: bool) -> Self  (the caller attests the request does no harm twice, in place of what its method says: a POST its service documents idempotent is retried as a GET is, false keeps a GET from going twice; send_reader is never retried)
+  pub fn with_attempt_headers(self, headers: impl Fn(u32, Method, &Url) -> Result<Headers> + Send + Sync + 'static) -> Self  (headers computed at the top of every attempt - its number from 1, the method and URL of the hop - merged over everything else the attempt carries; an error it returns is the request's and never retried)
+  pub fn with_max_attempts(self, attempts: u32) -> Self  (this request's attempts in place of the client's, zero is one; every retry still paid from the client's one budget)
+  pub fn with_connect_timeout(self, timeout: Duration) -> Self  (the bound on opening this request's connection, in place of the pool's)
+  pub fn with_deadline(self, deadline: Duration) -> Self  (one bound on the whole of one attempt, beside the per-phase with_timeout)
+  pub fn with_retry_on(self, rule: impl Fn(Status, &Headers, &[u8]) -> bool + Send + Sync + 'static) -> Self  (for an idempotent request whose answer is no success and no status retried anyway: at most 64 KiB of the body read and handed to the rule beside the status and the headers, true retrying under the rules every retry reads; an answer not retried is handed back whole)
+  pub fn with_direct(self, direct: bool) -> Self  (never through a proxy, whatever the options or the environment name)
+  pub fn idempotent(&self) -> Option<bool>
+  pub fn max_attempts(&self) -> Option<u32>
+  pub fn connect_timeout(&self) -> Option<Duration>
+  pub fn deadline(&self) -> Option<Duration>
+  pub fn is_direct(&self) -> bool
   pub fn with_pagination(self, pagination: Pagination) -> Self
   pub fn with_records(self, path: FieldPath) -> Self
   pub fn with_media_type(self, media_type: MediaType) -> Self
