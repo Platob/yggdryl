@@ -243,7 +243,8 @@ pub mod internals {
     //! home directory of the machine it runs on.
     use std::collections::BTreeMap;
 
-    use crate::http::Authorization;
+    use crate::Result;
+    use crate::http::{Authorization, Headers, Request};
 
     /// The credential the `.netrc` text `text` holds for `host`.
     pub fn authorization(text: &str, host: &str) -> Option<Authorization> {
@@ -259,5 +260,17 @@ pub mod internals {
         super::environment_authorization(host, |name| {
             variables.get(name).map(|value| (*value).to_owned())
         })
+    }
+
+    /// The headers `request` goes out with on its own session, the `.netrc`
+    /// file located by `variables`: what the session's options let the file
+    /// add.
+    pub fn sent_headers(request: &Request, variables: &[(&str, &str)]) -> Result<Headers> {
+        let variables: BTreeMap<&str, &str> = variables.iter().copied().collect();
+        request
+            .session()
+            .headers_reading(request, request.url(), false, |name| {
+                variables.get(name).map(|value| (*value).to_owned())
+            })
     }
 }

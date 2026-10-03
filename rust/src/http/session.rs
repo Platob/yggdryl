@@ -11,7 +11,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use super::client::{Answer, Wire};
+use super::client::Answer;
 use super::{
     Authorization, Client, Cookie, CookieJar, Headers, HttpOptions, Method, Pages, Request,
     Response, StatsSnapshot, Status,
@@ -388,6 +388,19 @@ impl Session {
         url: &Url,
         ranged: bool,
     ) -> Result<Headers> {
+        self.headers_reading(request, url, ranged, crate::auth::variable)
+    }
+
+    /// [`Self::headers_for`], the environment the `.netrc` file is located
+    /// by read through `variable`: the process's in a request, a map in a
+    /// test.
+    pub(crate) fn headers_reading(
+        &self,
+        request: &Request,
+        url: &Url,
+        ranged: bool,
+        variable: impl Fn(&str) -> Option<String>,
+    ) -> Result<Headers> {
         let mut headers = request.headers().merge_with(self.inner.options.headers())?;
         let authorization = request
             .authorization()
@@ -402,7 +415,7 @@ impl Session {
                         .flatten()
                 })
             })
-            .or_else(|| self.environment_authorization(url));
+            .or_else(|| self.netrc_authorization(url, variable));
         if let Some(authorization) = authorization
             && (request.authorization().is_some()
                 || !headers.contains_key(authorization.header_name()))
@@ -457,19 +470,24 @@ impl Session {
         }
         // The new host's own `.netrc` entry is its credential, as it would
         // be for a request sent there first.
-        if let Some(authorization) = self.environment_authorization(url) {
+        if let Some(authorization) = self.netrc_authorization(url, crate::auth::variable) {
             headers.insert(authorization.header_name(), &authorization.header_value())?;
         }
         Ok(())
     }
 
-    /// The `.netrc` credential for `url`'s host, when the options read the
-    /// environment ([`super::netrc`]).
-    fn environment_authorization(&self, url: &Url) -> Option<Authorization> {
-        if !self.inner.options.read_environment() {
+    /// The `.netrc` credential for `url`'s host, when the options take one
+    /// ([`HttpOptions::netrc`], [`super::netrc`]); `variable` reads the
+    /// environment that locates the file.
+    fn netrc_authorization(
+        &self,
+        url: &Url,
+        variable: impl Fn(&str) -> Option<String>,
+    ) -> Option<Authorization> {
+        if !self.inner.options.netrc() {
             return None;
         }
-        super::netrc::environment_authorization(url.hostname()?, crate::auth::variable)
+        super::netrc::environment_authorization(url.hostname()?, variable)
     }
 
     /// One exchange with redirects and cookies.
@@ -515,14 +533,13 @@ impl Session {
             for (name, value) in extra {
                 headers.insert(name, value)?;
             }
-            let wire = Wire {
+            let wire = request.wire(
                 method,
-                url: &url,
-                headers: &headers,
-                body: (!body.is_empty()).then(|| body.as_bytes()),
+                &url,
+                &headers,
+                (!body.is_empty()).then(|| body.as_bytes()),
                 timeout,
-                idempotent: method.is_idempotent(),
-            };
+            );
             let answer = self.inner.client.execute(&wire)?;
             if options.cookies() {
                 self.jar()?

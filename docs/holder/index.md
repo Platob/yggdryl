@@ -4061,18 +4061,42 @@ Sizes may carry a unit (`8MiB`, `32 MB`); durations are seconds.
 
 Who the process is to AWS - the profile, the region, the endpoint a service is reached at, and the credential set every request signs with - is one `Session` in `yggdryl::aws`, resolved the way the AWS tools resolve it and shared by every handle built on it. `S3Options::with_session` hands one over; an explicit credential pair or `with_anonymous` on the options still wins, and `with_environment(false)` seals it. Behind the `aws` feature, which `s3` implies.
 
+!!! note "Rust only"
+    Python and Node expose no `Session`. An S3 handle there takes the same knobs by name through its `options` properties (`profile`, `role_arn`, `credential_process`, ... in the table above), walks the same chain, and logs the walk under the same logger names ([What a walk logs](#what-a-walk-logs)).
+
 ```text
 Session::new()                                   // states nothing; resolves lazily, once, and caches
   .with_profile(name).with_region(region)        // else AWS_DEFAULT_PROFILE, AWS_PROFILE, AWS_REGION, the profile's own
   .with_credentials(keys).with_anonymous(true)   // an explicit set, or none
   .with_assumed_role(role).with_sso(sso)         // a role or a sign-in, as a profile would state one
+  .with_credential_process(command)              // a process, as a profile's credential_process would state one
   .with_sso_login(prompt).with_mfa_prompt(ask)   // how a person is asked, when one is needed
   .with_variables(pairs).with_environment(false) // another environment, or none at all
+  .with_directory(path)                          // another ~/.aws; with_config_text, with_credentials_text state the files' text
 session.credentials(now) -> Result<Option<Credentials>>   // the chain, walked once, refreshed in time
+session.credential_source() -> Option<&'static str>       // which source answered: "environment", "login", ...
+session.invalidate() / invalidate_if(key_id)              // a store refused the set: forget it, read the files again
 session.profile() / region() / endpoint_url("s3") / sts_endpoint(region) / login()
 ```
 
-The chain is botocore's, in botocore's order: an explicit set; an explicit role, signed by its `source_profile` or `credential_source`, else by whatever the rest of the chain answers; the environment (`AWS_ACCESS_KEY_ID`, with `AWS_CREDENTIAL_EXPIRATION` and `AWS_ACCOUNT_ID`); a profile that assumes a role through `source_profile`, `credential_source` or a web identity token; IAM Identity Center through the sign-in `aws sso login` cached; the credentials file; a `credential_process`; the configuration file; the legacy boto files; the container endpoint; the instance metadata service. Where botocore fails on the first source that is configured and broken, the session records why and walks on, and refuses only when every source has been asked - naming each. A temporary set is replaced fifteen minutes before it lapses, a refresh that fails keeps the set in hand until it has actually lapsed, and a store answering `ExpiredToken` makes the client walk the chain once more before it gives up. Assumed-role and SSO sessions are read from and written to `~/.aws/cli/cache` and `~/.aws/sso/cache` in the AWS CLI's own shape, so a sign-in or an MFA code the CLI already obtained serves this crate, and the other way round.
+The chain is botocore's, in botocore's order, with the console sign-in `aws login` files where botocore has it. The last column is the name `credential_source`, the log and a refusal call a source by.
+
+| # | source | read from | named |
+| --- | --- | --- | --- |
+| 1 | an explicit set, role, sign-in or process | `with_credentials` or a pair in the options or the URL; `with_assumed_role`, signed by its `source_profile` or `credential_source`, else by whatever the rest of the chain answers; `with_sso`; `with_credential_process` | `explicit credentials`, `assumed role`, `sso`, `credential process` |
+| 2 | the environment | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (or `AWS_SECURITY_TOKEN`), `AWS_CREDENTIAL_EXPIRATION`, `AWS_ACCOUNT_ID`; skipped when the session states a profile | `environment` |
+| 3 | a profile's role | `role_arn` with `source_profile`, `credential_source` or `web_identity_token_file` | `assumed role` |
+| 4 | web identity | `AWS_ROLE_ARN` with `AWS_WEB_IDENTITY_TOKEN_FILE`, and `AWS_ROLE_SESSION_NAME` | `web identity` |
+| 5 | IAM Identity Center | the profile's `sso_session`, or its `sso_*` keys, through the token `aws sso login` cached | `sso` |
+| 6 | the credentials file | `aws_access_key_id`, `aws_secret_access_key` and `aws_session_token` of the profile | `shared credentials file` |
+| 7 | the console sign-in | the profile's `login_session`, through the sign-in `aws login` cached ([below](#the-console-sign-in)) | `login` |
+| 8 | a `credential_process` | the profile's command | `credential process` |
+| 9 | the configuration file | the same three keys in the profile's section of `~/.aws/config` | `config file` |
+| 10 | the legacy boto files | `AWS_CREDENTIAL_FILE`, `BOTO_CONFIG`, `/etc/boto.cfg`, `~/.boto` | `boto config` |
+| 11 | the container endpoint | `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` or `AWS_CONTAINER_CREDENTIALS_FULL_URI` | `container` |
+| 12 | the instance metadata service | IMDSv2; IMDSv1 when the service issues no token, unless `ec2_metadata_v1_disabled` | `instance metadata` |
+
+A profile that names a role means that role: when the exchange fails its own keys are not a fallback, so rows 5 to 9 are not asked. Where botocore fails on the first source that is configured and broken, the session records why and walks on, and refuses only when every source has been asked - naming each that failed and each that was not there. A temporary set is replaced fifteen minutes before it lapses (a console sign-in's, which lasts fifteen minutes, five minutes before), a refresh that fails keeps the set in hand until it has actually lapsed, and an unsigned answer is held five minutes and a failure thirty seconds, rather than costing every request a walk of every source. A role or a sign-in with no region stated is traded in its ARN partition's global region - `cn-northwest-1` for an `aws-cn` role - and the STS, IAM Identity Center, Sign-In and S3 hosts are built on the region's [`ArnPartition`](../uri/arn.md#partitions) suffixes. Assumed-role and SSO sessions are read from and written to `~/.aws/cli/cache` and `~/.aws/sso/cache`, and a console sign-in to `~/.aws/login/cache`, in the AWS CLI's own shape, so a sign-in or an MFA code the CLI already obtained serves this crate, and the other way round.
 
 ```rust
 use yggdryl::aws::{AssumedRole, Credentials, Session};
@@ -4164,6 +4188,205 @@ let part = s3::file_with(
 )?;
 let _ = part.read_range_bytes(0, 8)?;
 ```
+
+#### The shared files
+
+`~/.aws/config` and `~/.aws/credentials` - or the files `AWS_CONFIG_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, `with_config_file`, `with_credentials_file` and `with_directory` name - are read once, and read again whenever either moved on disk (its length or modification time): at every walk, after any refusal a store gave (`invalidate`, `invalidate_if`), and while an unsigned or failed answer is held. A set dumped anew into `~/.aws/credentials` is picked up by a running process at its next request, with no restart.
+
+- An expiry written beside a set is read under `aws_credential_expiration`, `x_security_token_expires` (saml2aws, gimme-aws-creds), `aws_session_expiration` (yawsso), `aws_expiration` (aws-azure-login) or `expiration` (aws-mfa), in the credentials file or in the configuration file's keys - as ISO 8601 with `Z` or an offset, or the AWS CLI's trailing `UTC`, read by [`DateTime64::from_text`](../types/temporal/datetime.md#reading-text) with a spelling that names no zone taken as UTC. A dumped set is refreshed from the file fifteen minutes before it lapses; two expiries that disagree, or one nothing reads, is a named refusal.
+- Pasted values read as meant: one pair of matching quotes and a `#` or `;` comment after a blank come off a credential value; a line written as the shell block the IAM Identity Center portal prints (`export AWS_ACCESS_KEY_ID=...`, `set AWS_...=...`, PowerShell `$Env:AWS_...="..."`) reads as the key it sets; a section header followed by a comment (`[default]   # dumped 12:30`) is that section, as Python's `configparser` reads it.
+- Half a set - a key id without its secret, a secret or a token without a key id - is a named refusal, not a silently skipped source. A `role_arn` that is not an ARN is that profile's refusal.
+- A file written with a byte-order mark - UTF-8, UTF-16LE or UTF-16BE, as PowerShell writes - reads in its charset. A file that is there and cannot be read is a named failure (`shared files: the credentials file ... could not be read`), never an absent profile.
+- On Windows a `credential_process` line is split as the Microsoft C runtime splits a command line - a backslash is literal unless it runs up to a double quote, and double quotes group - so `C:\Tools\vault.exe export dev` runs `C:\Tools\vault.exe`; elsewhere it is split into POSIX words.
+
+#### A set a store refused
+
+A set a source answers is passed over by name, and the sources after it are asked, when it has lapsed - its expiry is before the machine's clock, and the refusal names both instants - or when a store refused its key. An explicit `with_credentials` set is what the caller said and is never passed over.
+
+| code a store answers | what it says of the key | passed over |
+| --- | --- | --- |
+| `ExpiredToken`, `ExpiredTokenException`, `TokenRefreshRequired` | the set lapsed | for good |
+| `InvalidAccessKeyId`, `InvalidToken`, `InvalidClientTokenId` | the store does not know the key; IAM answers a new key that way while it propagates | 30 seconds, or until the shared files move |
+
+The S3 client, refused with one of those codes, tells the session about the key that signed that very request - not whatever set the client holds by then - and signs the request once more only when the session now answers another set. A `HEAD` refused with a temporary set and no body, which is how S3 answers one, reads the files again without holding anything against the key. When nothing else answers, the refusal names every source, the key masked as its first and last four characters, and the way out:
+
+```text
+no AWS credentials could be obtained: shared credentials file: its key ASIA...MPLE lapsed at 2000-01-01T00:00:00Z, and this machine's clock reads <now>: write a fresh set under [default] in <path>, or sign in again; nothing configured in: environment, container, instance metadata (disabled)
+```
+
+```rust
+use std::time::SystemTime;
+
+use yggdryl::aws::Session;
+
+// A sealed session over a directory of its own: the variables are the whole
+// environment, and the metadata service is off.
+let directory = std::env::temp_dir().join(format!("yggdryl-docs-aws-dump-{}", std::process::id()));
+std::fs::create_dir_all(&directory)?;
+let credentials = directory.join("credentials");
+let session = Session::new()
+    .with_variables([("AWS_EC2_METADATA_DISABLED", "true")])
+    .with_directory(directory.clone());
+
+// A set a tool dumped whose written expiry has passed is passed over by name,
+// its key masked, with the way out; no secret is in the refusal.
+std::fs::write(
+    &credentials,
+    "[default]\naws_access_key_id = ASIAIOSFODNN7EXAMPLE\naws_secret_access_key = wJalrXUtnFEMI\n\
+     aws_session_token = FwoGZXIvYXdzEXAMPLE\nx_security_token_expires = 2000-01-01T00:00:00Z\n",
+)?;
+let refusal = session.credentials(SystemTime::now()).unwrap_err().to_string();
+assert!(refusal.contains("ASIA...MPLE lapsed at 2000-01-01T00:00:00Z"), "{refusal}");
+assert!(refusal.contains("write a fresh set under [default]"), "{refusal}");
+assert!(!refusal.contains("wJalrXUtnFEMI"), "{refusal}");
+
+// The same process at its next request, with no restart: the file moved, so
+// the files are read again and the set dumped anew answers.
+std::fs::write(
+    &credentials,
+    "[default]\naws_access_key_id = ASIAIOSFODNN7FRESHDUMP\naws_secret_access_key = fresh\n\
+     aws_session_token = fresh-token\n",
+)?;
+let keys = session.credentials(SystemTime::now())?.expect("the set dumped anew");
+assert_eq!(keys.access_key_id(), "ASIAIOSFODNN7FRESHDUMP");
+assert_eq!(session.credential_source(), Some("shared credentials file"));
+std::fs::remove_dir_all(&directory)?;
+```
+
+#### The console sign-in
+
+`aws login` (AWS CLI 2.32 and later) signs a developer in with the identity they use in the AWS Management Console. A profile names the sign-in with `login_session`, the session's ARN, and the sign-in is filed under `~/.aws/login/cache` - or the directory `AWS_LOGIN_CACHE_DIRECTORY` names - in `<sha256 of the session ARN>.json`.
+
+| | |
+| --- | --- |
+| Document | a set that lasts fifteen minutes (`accessToken`), the refresh token that obtains the next, the P-256 `dpopKey` that token is bound to, and the `clientId`; every field a refresh does not replace is written back as it was read |
+| Used | the cached set while more than five minutes of it remain |
+| Refreshed | otherwise, or at once when a store refused the set: one unsigned `POST` to `https://{region}.signin.aws.amazon.com/v1/token` - the partition's own Sign-In host outside `aws` - an OAuth 2.0 `refresh_token` grant carrying an ES256 DPoP proof ([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449)) signed by that key, so a refresh token copied off the machine is worth nothing without it. A throttle, a server failure or a transport failure is tried again, up to three attempts, each with a proof of its own |
+| Filed | the new set and the rotated refresh token replace the document atomically - a private sibling, synced, renamed over it - so the AWS CLI and this crate share one sign-in |
+| Region and host | the session's region, else the session ARN's partition's global region; `use_fips_endpoint` and `use_dualstack_endpoint` pick the FIPS and dual-stack hosts of the region's partition; a stated `signin` endpoint (`AWS_ENDPOINT_URL_SIGNIN`, a `[services]` entry) replaces the host |
+| Refused | naming the session, the cause and `aws login --profile <name>`; a set that still stands is kept when only its refresh failed, and no secret is rendered |
+
+```rust
+use std::time::SystemTime;
+
+use yggdryl::aws::Session;
+
+// What `aws login` filed for the session `arn:aws:iam::0123456789012:user/Admin`:
+// a set that stands, the refresh token, and the key it is bound to. The file is
+// named by the SHA-256 of the ARN.
+let cache = std::env::temp_dir().join(format!("yggdryl-docs-aws-login-{}", std::process::id()));
+std::fs::create_dir_all(&cache)?;
+std::fs::write(
+    cache.join("36db1d138ff460920374e4c3d8e01f53f9f73537e89c88d639f68393df0e2726.json"),
+    r#"{
+  "accessToken": {
+    "accessKeyId": "ASIAIOSFODNN7CONSOLE",
+    "secretAccessKey": "console-secret",
+    "sessionToken": "console-token",
+    "accountId": "012345678901",
+    "expiresAt": "2999-01-01T00:00:00Z"
+  },
+  "tokenType": "aws_sigv4",
+  "refreshToken": "console-refresh-token",
+  "clientId": "arn:aws:signin:::devtools/same-device",
+  "dpopKey": "the PEM key aws login filed"
+}"#,
+)?;
+
+// The profile names the sign-in; a set with more than five minutes left is
+// answered from the cache alone, with no request.
+let session = Session::new()
+    .with_variables([
+        ("AWS_LOGIN_CACHE_DIRECTORY", cache.to_str().expect("a UTF-8 path")),
+        ("AWS_EC2_METADATA_DISABLED", "true"),
+    ])
+    .with_directory("/nonexistent/.aws")
+    .with_config_text(
+        "[profile console]\nregion = eu-west-3\nlogin_session = arn:aws:iam::0123456789012:user/Admin\n",
+    )
+    .with_profile("console");
+let keys = session.credentials(SystemTime::now())?.expect("the console sign-in");
+assert_eq!(keys.access_key_id(), "ASIAIOSFODNN7CONSOLE");
+assert_eq!(keys.account_id(), Some("012345678901"));
+assert_eq!(session.credential_source(), Some("login"));
+std::fs::remove_dir_all(&cache)?;
+```
+
+#### What a walk logs
+
+Every walk is logged through the crate's [logging](../logging.md) tree under `yggdryl.aws.session`, and a console sign-in's refresh under `yggdryl.aws.login`. A key id is logged as its first and last four characters; no secret, session token or refresh token is.
+
+| level | record |
+| --- | --- |
+| `DEBUG` | each source asked: `AWS credentials: nothing configured in <source>`, or `AWS credentials: <source>: <why it could not answer>`; a console sign-in refreshed |
+| `INFO` | the source that answered: `AWS credentials from <source>: key ASIA...ABCD, lapsing at <instant>` |
+| `WARNING` | a set passed over, naming its source, the key and why; an answer found only after sources were passed over; a console sign-in kept in hand because its refresh failed, or refreshed and not filed |
+
+Rust: raise that logger to switch the walk on.
+
+```{ .rust .no_run }
+use yggdryl::logging::{self, BasicConfig, Level};
+
+// The terminal line on standard error from INFO up, and this walk from DEBUG.
+logging::basic_config(BasicConfig::new().with_level(Level::INFO))?;
+logging::get_logger("yggdryl.aws.session").set_level(Level::DEBUG);
+```
+
+The same logger is `logging.getLogger("yggdryl.aws.session")` in Python and `require('yggdryl').logging.getLogger('yggdryl.aws.session')` in Node, which the walk of an S3 handle there writes to.
+
+```rust
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use yggdryl::IOBase;
+use yggdryl::aws::Session;
+use yggdryl::holder::Buffer;
+use yggdryl::logging::{self, FileHandler, Formatter, Handler, Level};
+
+// A handler on the walk's logger, written to a buffer here.
+logging::install()?;
+let logger = logging::get_logger("yggdryl.aws.session");
+logger.set_level(Level::DEBUG);
+logger.set_propagating(false);
+let file = Arc::new(FileHandler::new(Buffer::new()));
+file.set_formatter(Formatter::from_str("%(levelname)s %(message)s")?);
+let handler: Arc<dyn Handler> = file.clone();
+logger.add_handler(handler.clone());
+
+// The credentials file holds a set that lapsed, the configuration file one
+// that stands: the first is passed over, the second answers.
+let session = Session::new()
+    .with_variables([("AWS_EC2_METADATA_DISABLED", "true")])
+    .with_directory("/nonexistent/.aws")
+    .with_credentials_text(
+        "[default]\naws_access_key_id = ASIAIOSFODNN7EXAMPLE\naws_secret_access_key = SECRET-LAPSED\n\
+         x_security_token_expires = 2000-01-01T00:00:00Z\n",
+    )
+    .with_config_text(
+        "[default]\naws_access_key_id = ASIAIOSFODNN7STANDING\naws_secret_access_key = SECRET-STANDING\n",
+    );
+let keys = session.credentials(SystemTime::now())?.expect("the configuration file's set");
+assert_eq!(keys.access_key_id(), "ASIAIOSFODNN7STANDING");
+
+let text = String::from_utf8(file.io().read_all_bytes()?)?;
+assert!(text.contains("DEBUG AWS credentials: nothing configured in environment"), "{text}");
+assert!(
+    text.contains(
+        "WARNING passing over the AWS credential set shared credentials file answered: \
+         its key ASIA...MPLE lapsed at 2000-01-01T00:00:00Z"
+    ),
+    "{text}"
+);
+assert!(text.contains("INFO AWS credentials from config file: key ASIA...DING"), "{text}");
+assert!(!text.contains("SECRET-"), "{text}");
+
+assert!(logger.remove_handler(&handler));
+logger.set_level(Level::NOTSET);
+logger.set_propagating(true);
+file.close()?;
+```
+
+#### Google and Azure
 
 Google's shape is the same idea on `GoogleOptions`: whatever the credential chain answers signs one call to `iamcredentials`, and the token that call returns is what reaches the store; Azure's is an Entra ID application on `AzureOptions`. Container creation and deletion can be forbidden, refused without a request.
 

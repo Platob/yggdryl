@@ -230,7 +230,7 @@ impl Arn {
     }
 
     /// Return the partition: `aws`, `aws-cn`, `aws-us-gov`, or another AWS
-    /// names.
+    /// names; [`ArnPartition::from_arn`] reads it as one AWS runs.
     pub fn partition(&self) -> &str {
         self.field(0)
     }
@@ -588,6 +588,210 @@ impl Arn {
         candidate.state_path(UriPath(path.into()));
         *self = Self::from_uri(candidate)?;
         Ok(())
+    }
+}
+
+/// One of the partitions AWS runs: a set of regions with DNS names and ARNs
+/// of its own, named by an ARN's first field.
+///
+/// The table is botocore's `partitions.json`, the one every AWS SDK resolves
+/// endpoints through: each partition's name, the prefix its regions share,
+/// its DNS suffix and its dual-stack one, and the region a global service
+/// answers in. It is what turns a region into a host, so a partition's
+/// suffixes are spelled here once and every client - STS, IAM Identity
+/// Center, the Sign-In service, Amazon S3 - builds its hosts from them.
+///
+/// ```
+/// use yggdryl::{Arn, ArnPartition};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let role = Arn::from_str("arn:aws-cn:iam::123456789012:role/lake-reader")?;
+/// let partition = ArnPartition::from_arn(&role).expect("a partition AWS runs");
+/// assert_eq!(partition, ArnPartition::AwsCn);
+/// assert_eq!(partition.dns_suffix(), "amazonaws.com.cn");
+/// assert_eq!(partition.global_region(), "cn-northwest-1");
+///
+/// // A region is in the partition its prefix names; one nobody claims is in `aws`.
+/// assert_eq!(ArnPartition::from_region("us-gov-west-1"), ArnPartition::AwsUsGov);
+/// assert_eq!(ArnPartition::from_region("eu-west-3"), ArnPartition::Aws);
+/// assert_eq!(
+///     ArnPartition::from_region("cn-north-1").service_host("sts", "cn-north-1", false, true),
+///     "sts.cn-north-1.api.amazonwebservices.com.cn"
+/// );
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ArnPartition {
+    /// `aws`, the commercial regions.
+    Aws,
+    /// `aws-cn`, the regions in China.
+    AwsCn,
+    /// `aws-us-gov`, AWS GovCloud (US).
+    AwsUsGov,
+    /// `aws-iso`, the US ISO regions.
+    AwsIso,
+    /// `aws-iso-b`, the US ISOB regions.
+    AwsIsoB,
+    /// `aws-iso-e`, the EU ISOE regions.
+    AwsIsoE,
+    /// `aws-iso-f`, the US ISOF regions.
+    AwsIsoF,
+    /// `aws-eusc`, the AWS European Sovereign Cloud.
+    AwsEusc,
+}
+
+impl ArnPartition {
+    /// Every partition, in the order botocore's table lists them.
+    pub const ALL: [Self; 8] = [
+        Self::Aws,
+        Self::AwsCn,
+        Self::AwsEusc,
+        Self::AwsIso,
+        Self::AwsIsoB,
+        Self::AwsIsoE,
+        Self::AwsIsoF,
+        Self::AwsUsGov,
+    ];
+
+    /// The partition's name, as an ARN's first field spells it.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Aws => "aws",
+            Self::AwsCn => "aws-cn",
+            Self::AwsUsGov => "aws-us-gov",
+            Self::AwsIso => "aws-iso",
+            Self::AwsIsoB => "aws-iso-b",
+            Self::AwsIsoE => "aws-iso-e",
+            Self::AwsIsoF => "aws-iso-f",
+            Self::AwsEusc => "aws-eusc",
+        }
+    }
+
+    /// The prefix every region of the partition starts with; `aws` has none
+    /// of its own, holding every region no other partition claims.
+    const fn region_prefix(self) -> Option<&'static str> {
+        match self {
+            Self::Aws => None,
+            Self::AwsCn => Some("cn-"),
+            Self::AwsUsGov => Some("us-gov-"),
+            Self::AwsIso => Some("us-iso-"),
+            Self::AwsIsoB => Some("us-isob-"),
+            Self::AwsIsoE => Some("eu-isoe-"),
+            Self::AwsIsoF => Some("us-isof-"),
+            Self::AwsEusc => Some("eusc-de-"),
+        }
+    }
+
+    /// The partition `region` is in: the one whose regions share its
+    /// prefix, else `aws`, which is where botocore resolves a region its
+    /// table does not know. Surrounding blanks and case are ignored.
+    pub fn from_region(region: &str) -> Self {
+        let region = region.trim();
+        Self::ALL
+            .into_iter()
+            .find(|partition| {
+                partition.region_prefix().is_some_and(|prefix| {
+                    region
+                        .get(..prefix.len())
+                        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+                })
+            })
+            .unwrap_or(Self::Aws)
+    }
+
+    /// The partition `arn` names, when it names one AWS runs.
+    pub fn from_arn(arn: &Arn) -> Option<Self> {
+        arn.partition().parse().ok()
+    }
+
+    /// The DNS suffix the partition's hosts end with: `amazonaws.com`,
+    /// `amazonaws.com.cn`, `c2s.ic.gov`, ...
+    pub const fn dns_suffix(self) -> &'static str {
+        match self {
+            Self::Aws | Self::AwsUsGov => "amazonaws.com",
+            Self::AwsCn => "amazonaws.com.cn",
+            Self::AwsIso => "c2s.ic.gov",
+            Self::AwsIsoB => "sc2s.sgov.gov",
+            Self::AwsIsoE => "cloud.adc-e.uk",
+            Self::AwsIsoF => "csp.hci.ic.gov",
+            Self::AwsEusc => "amazonaws.eu",
+        }
+    }
+
+    /// The DNS suffix the partition's dual-stack hosts end with: `api.aws`,
+    /// `api.amazonwebservices.com.cn`, ...
+    pub const fn dualstack_dns_suffix(self) -> &'static str {
+        match self {
+            Self::Aws | Self::AwsUsGov => "api.aws",
+            Self::AwsCn => "api.amazonwebservices.com.cn",
+            Self::AwsIso => "api.aws.ic.gov",
+            Self::AwsIsoB => "api.aws.scloud",
+            Self::AwsIsoE => "api.cloud-aws.adc-e.uk",
+            Self::AwsIsoF => "api.aws.hci.ic.gov",
+            Self::AwsEusc => "api.amazonwebservices.eu",
+        }
+    }
+
+    /// The region a global service of the partition answers in, and the one
+    /// a request names when nothing names another: `us-east-1` on `aws`.
+    pub const fn global_region(self) -> &'static str {
+        match self {
+            Self::Aws => "us-east-1",
+            Self::AwsCn => "cn-northwest-1",
+            Self::AwsUsGov => "us-gov-west-1",
+            Self::AwsIso => "us-iso-east-1",
+            Self::AwsIsoB => "us-isob-east-1",
+            Self::AwsIsoE => "eu-isoe-west-1",
+            Self::AwsIsoF => "us-isof-south-1",
+            Self::AwsEusc => "eusc-de-east-1",
+        }
+    }
+
+    /// The host `service` answers at in `region`, in the form the endpoint
+    /// rules of most services share: `{service}.{region}.{suffix}`, the
+    /// service written `{service}-fips` under `fips`, and the dual-stack
+    /// suffix under `dualstack`. A service whose rules spell its hosts
+    /// otherwise - the Sign-In service, Amazon S3's own dual-stack form -
+    /// builds them from [`Self::dns_suffix`] and
+    /// [`Self::dualstack_dns_suffix`] instead.
+    pub fn service_host(self, service: &str, region: &str, fips: bool, dualstack: bool) -> String {
+        let service = if fips {
+            format!("{service}-fips")
+        } else {
+            service.to_owned()
+        };
+        let suffix = if dualstack {
+            self.dualstack_dns_suffix()
+        } else {
+            self.dns_suffix()
+        };
+        format!("{service}.{}.{suffix}", region.trim())
+    }
+}
+
+impl FromStr for ArnPartition {
+    type Err = Error;
+
+    /// The partition a name spells, its case ignored.
+    fn from_str(value: &str) -> Result<Self> {
+        let value = value.trim();
+        Self::ALL
+            .into_iter()
+            .find(|partition| partition.as_str().eq_ignore_ascii_case(value))
+            .ok_or_else(|| {
+                parse_error(
+                    "arn",
+                    0,
+                    "expected a partition AWS runs - aws, aws-cn, aws-us-gov, aws-iso, aws-iso-b, aws-iso-e, aws-iso-f or aws-eusc",
+                )
+            })
+    }
+}
+
+impl fmt::Display for ArnPartition {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
     }
 }
 

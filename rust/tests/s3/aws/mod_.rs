@@ -192,27 +192,43 @@ mod protocol {
     }
 
     #[test]
-    fn a_lapsed_session_is_traded_again_rather_than_signed_with() {
+    fn a_session_lapsed_on_arrival_is_never_signed_with_and_not_traded_per_request() {
         let store = store();
         store.put(BUCKET, "lake/part.bin", &payload(64));
-        // Every session comes back already expired, which is the refresh path
-        // without waiting an hour for it.
+        // Every session comes back already expired: signing with one is a
+        // refusal waiting to happen, and so is a machine whose clock is
+        // wrong, so the refusal names both instants.
         store.expire_roles(true);
         let directory = scratch("lapsed-role");
         let role = AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader");
         let handle = file_with("lake/part.bin", assuming(&store, role, directory.clone()));
 
         store.clear_requests();
-        assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
-        assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
-        let exchanges = store
-            .requests()
-            .iter()
-            .filter(|request| is_exchange(request))
-            .count();
+        let message = handle
+            .read_all_bytes()
+            .expect_err("a lapsed session")
+            .to_string();
+        assert!(
+            message.contains("assumed role")
+                && message.contains("lapsed at 2000-01-01T00:00:00Z")
+                && message.contains("this machine's clock reads"),
+            "{message}"
+        );
+        handle
+            .read_all_bytes()
+            .expect_err("the refusal is held for its pause");
+        let recorded = store.requests();
         assert_eq!(
-            exchanges, 2,
-            "a session past its expiry is not signed with, it is replaced"
+            recorded
+                .iter()
+                .filter(|request| is_exchange(request))
+                .count(),
+            1,
+            "one exchange, then the pause: not one per request"
+        );
+        assert!(
+            recorded.iter().all(is_exchange),
+            "no bucket request is ever signed with the lapsed session"
         );
         let _ = std::fs::remove_dir_all(&directory);
     }
@@ -272,54 +288,197 @@ mod protocol {
     }
 
     #[test]
-    fn a_set_the_store_calls_expired_is_obtained_again_and_the_request_signed_once_more() {
+    fn a_set_the_store_calls_expired_is_signed_again_only_when_the_session_answers_another() {
         let store = store();
         store.put(BUCKET, "lake/part.bin", &payload(64));
         let handle = file(&store, "lake/part.bin");
 
-        // The store knows a set lapsed before the session thought it would:
-        // the client forgets it, walks the chain again, and signs the same
-        // request once more.
+        // A pair the caller stated is what the session answers again, and
+        // the same set would be refused the same way: the store's refusal
+        // stands after the one request.
         store.fail_next(400, "ExpiredToken", 1);
         store.clear_requests();
-        assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
-        let recorded = store.requests();
-        assert_eq!(
-            recorded.len(),
-            2,
-            "the refusal and the request signed again: {:?}",
-            recorded
-                .iter()
-                .map(|request| (&request.method, request.status))
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(recorded[0].status, 400, "the first answer is the refusal");
-        assert_eq!(recorded[1].status, 200, "the second is the object");
-        for request in &recorded {
-            let signed = authorization(request);
-            assert!(
-                signed.contains("Credential=AKIAIOSFODNN7EXAMPLE/"),
-                "both attempts are signed: {signed}"
-            );
-        }
-
-        // Once, not in a loop: a store that still calls the set expired is
-        // answered with its own refusal after the second attempt.
-        store.fail_next(400, "ExpiredToken", 2);
-        store.clear_requests();
-        let refused = handle.read_all_bytes().expect_err("a refusal");
-        match &refused {
+        match handle.read_all_bytes().expect_err("the store's refusal") {
             Error::Remote { status, code, .. } => {
-                assert_eq!(*status, 400);
+                assert_eq!(status, 400);
                 assert_eq!(code.as_str(), "ExpiredToken");
             }
             other => panic!("expected the store's refusal, got {other:?}"),
         }
         assert_eq!(
             store.request_count(),
-            2,
-            "one refresh per request, whatever the store keeps saying"
+            1,
+            "no second request with the same set"
         );
+    }
+
+    /// A temporary set for `key`, as a credentials file holds one.
+    fn dumped(key: &str, extra: &str) -> String {
+        format!(
+            "[default]\naws_access_key_id = {key}\naws_secret_access_key = {key}-secret\n\
+             aws_session_token = {key}-token\n{extra}"
+        )
+    }
+
+    /// Options that reach `store` as a session reading the credentials file
+    /// under `directory` and nothing else: the variables it reads are the
+    /// test's own, and the metadata services are off.
+    fn reading_files(store: &crate::server::FakeS3, directory: &std::path::Path) -> S3Options {
+        S3Options::default()
+            .with_endpoint(store.endpoint())
+            .with_region("us-east-1")
+            .with_path_style(true)
+            .with_session(
+                Session::new()
+                    .with_variables([(
+                        "BOTO_CONFIG",
+                        directory.join("no-such-boto.cfg").display().to_string(),
+                    )])
+                    .with_directory(directory)
+                    .with_metadata_disabled(true),
+            )
+    }
+
+    /// Who signed each recorded request, and how it was answered.
+    fn signers(store: &crate::server::FakeS3) -> Vec<(String, u16)> {
+        store
+            .requests()
+            .iter()
+            .map(|request| {
+                let signed = authorization(request);
+                let key = signed
+                    .split("Credential=")
+                    .nth(1)
+                    .and_then(|rest| rest.split('/').next())
+                    .unwrap_or_default()
+                    .to_owned();
+                (key, request.status)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_set_dumped_anew_signs_the_request_the_store_refused_the_old_one_for() {
+        let store = store();
+        store.put(BUCKET, "lake/part.bin", &payload(64));
+        let directory = scratch("redumped");
+        let credentials = directory.join("credentials");
+        std::fs::write(&credentials, dumped("ASIAOLDDUMP", "")).expect("a dumped set");
+        let handle = file_with("lake/part.bin", reading_files(&store, &directory));
+        assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
+
+        // The developer dumps a fresh set; the process still holds the old
+        // one, until the store says it lapsed - then the file is read again
+        // and the same request goes once more, signed with what it says now.
+        std::fs::write(&credentials, dumped("ASIANEWDUMPED", "")).expect("a set dumped anew");
+        store.fail_next(400, "ExpiredToken", 1);
+        store.clear_requests();
+        assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
+        assert_eq!(
+            signers(&store),
+            [
+                ("ASIAOLDDUMP".to_owned(), 400),
+                ("ASIANEWDUMPED".to_owned(), 200)
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn a_stale_dump_with_nothing_behind_it_is_the_sessions_refusal_and_a_fresh_one_mends_the_next_read()
+     {
+        let store = store();
+        store.put(BUCKET, "lake/part.bin", &payload(64));
+        let directory = scratch("stale-dump");
+        let credentials = directory.join("credentials");
+        std::fs::write(&credentials, dumped("ASIASTALEDUMP", "")).expect("a dumped set");
+        let handle = file_with("lake/part.bin", reading_files(&store, &directory));
+
+        store.fail_next(400, "ExpiredToken", 1);
+        store.clear_requests();
+        let message = handle.read_all_bytes().expect_err("a refusal").to_string();
+        assert!(
+            message.contains("shared credentials file")
+                && message.contains("a store refused its key ASIA...DUMP")
+                && message.contains("write a fresh set under [default]"),
+            "the refusal names the file, the key and the way out, not the store's code alone: {message}"
+        );
+        assert_eq!(
+            store.request_count(),
+            1,
+            "the refused set is not sent again"
+        );
+
+        std::fs::write(&credentials, dumped("ASIAMENDEDDUMP", "")).expect("a set dumped anew");
+        store.clear_requests();
+        assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
+        assert_eq!(signers(&store), [("ASIAMENDEDDUMP".to_owned(), 200)]);
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn a_key_the_store_does_not_recognize_yet_is_read_again_once_the_file_moves() {
+        let store = store();
+        store.put(BUCKET, "lake/part.bin", &payload(64));
+        // IAM answers a key it has not propagated yet as unknown: that is
+        // no lapse, so the key is held off for a pause, not for good.
+        store.require_access_key(Some("AKIAOTHERKEY"));
+        let directory = scratch("propagating");
+        let credentials = directory.join("credentials");
+        let pair = "[default]\naws_access_key_id = AKIANEWLYMADE\naws_secret_access_key = made\n";
+        std::fs::write(&credentials, pair).expect("a new pair");
+        let handle = file_with("lake/part.bin", reading_files(&store, &directory));
+        let message = handle
+            .read_all_bytes()
+            .expect_err("an unknown key")
+            .to_string();
+        assert!(
+            message.contains("a store refused its key AKIA...MADE"),
+            "{message}"
+        );
+
+        store.require_access_key(Some("AKIANEWLYMADE"));
+        std::fs::write(&credentials, format!("# saved again\n{pair}"))
+            .expect("the file saved again");
+        store.clear_requests();
+        assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
+        assert_eq!(signers(&store), [("AKIANEWLYMADE".to_owned(), 200)]);
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn a_head_refused_with_no_body_reads_the_files_again_and_goes_once_more_only_for_another_set() {
+        let store = store();
+        store.put(BUCKET, "lake/part.bin", &payload(64));
+        let directory = scratch("head-redumped");
+        let credentials = directory.join("credentials");
+        std::fs::write(&credentials, dumped("ASIAHEADOLD", "")).expect("a dumped set");
+        let mut handle = file_with("lake/part.bin", reading_files(&store, &directory));
+        handle.open().expect("one HEAD");
+        handle.close().expect("closed");
+
+        // A HEAD names no reason, so the key is held against nothing: the
+        // files are read again, and the request goes once more only because
+        // they now hold another set.
+        std::fs::write(&credentials, dumped("ASIAHEADNEWER", "")).expect("a set dumped anew");
+        store.fail_next(400, "ExpiredToken", 1);
+        store.clear_requests();
+        handle.open().expect("one HEAD, signed again");
+        handle.close().expect("closed");
+        assert_eq!(
+            signers(&store),
+            [
+                ("ASIAHEADOLD".to_owned(), 400),
+                ("ASIAHEADNEWER".to_owned(), 200)
+            ]
+        );
+
+        // Nothing moved: the answer is the store's, after the one request.
+        store.fail_next(400, "ExpiredToken", 1);
+        store.clear_requests();
+        handle.open().expect_err("the store's answer");
+        assert_eq!(store.request_count(), 1);
+        let _ = std::fs::remove_dir_all(&directory);
     }
 }
 

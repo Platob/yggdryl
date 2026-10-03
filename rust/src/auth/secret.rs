@@ -54,37 +54,60 @@ impl From<&str> for Secret {
 /// directories above it the same way, which is what the AWS tools do with
 /// every cache they keep a secret in.
 ///
+/// The file is replaced whole or not at all: the bytes go to a private
+/// sibling, are synced, and the sibling is renamed over `path` - the way
+/// botocore files its caches - so a reader beside the writer, the AWS CLI
+/// or another process, never reads half a document, and a writer killed
+/// mid-way leaves the previous one standing. A rotated refresh token lives
+/// in that file alone, so losing it is a sign-in lost.
+///
 /// # Errors
 ///
-/// The file system's refusal to create the directories or the file.
+/// The file system's refusal to create the directories, the sibling or the
+/// rename; the sibling is removed when the write fails.
 pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write as _;
 
-    if let Some(parent) = path.parent() {
-        let mut builder = std::fs::DirBuilder::new();
-        builder.recursive(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt as _;
-            builder.mode(0o700);
-        }
-        builder.create(parent)?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        builder.mode(0o700);
     }
+    builder.create(parent)?;
+    let name = path.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{} names no file", path.display()),
+        )
+    })?;
+    // One sibling per process and per write, so two writers never share one.
+    static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let write = WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut sibling_name = name.to_os_string();
+    sibling_name.push(format!(".{}.{write}.tmp", std::process::id()));
+    let sibling = parent.join(sibling_name);
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt as _;
         options.mode(0o600);
     }
-    let mut file = options.open(path)?;
-    // A file that already existed keeps the mode it had; state it again.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    let written = options.open(&sibling).and_then(|mut file| {
+        file.write_all(bytes)?;
+        file.sync_all()
+    });
+    let renamed = written.and_then(|()| std::fs::rename(&sibling, path));
+    if renamed.is_err() {
+        let _ = std::fs::remove_file(&sibling);
     }
-    file.write_all(bytes)
+    renamed
 }
 
 #[cfg(feature = "internals")]

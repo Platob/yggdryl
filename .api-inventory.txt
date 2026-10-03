@@ -2039,7 +2039,7 @@ pub struct ZipPath
   pub struct Session  (Clone shares the resolved state; Debug redacts)
   pub fn new
   pub fn with_profile, with_region, with_credentials, with_anonymous, with_assumed_role,
-      with_sso, with_credential_process, with_endpoint_url, with_config_file,
+      with_sso, with_credential_process, with_endpoint_url, with_service_endpoint_url, with_config_file,
       with_credentials_file, with_config_text, with_credentials_text, with_directory,
       with_variables, with_environment, with_metadata_endpoint, with_metadata_disabled,
       with_metadata_timeout, with_metadata_attempts, with_sso_login, with_mfa_prompt,
@@ -2051,6 +2051,7 @@ pub struct ZipPath
       use_dualstack_endpoint, sts_regional_endpoints, sts_endpoint, max_attempts, ca_bundle
   pub fn credentials(&self, now: SystemTime) -> Result<Option<Credentials>>
   pub fn credential_source, invalidate, login
+  pub fn invalidate_if(&self, access_key_id: &str) -> bool  (a store refused that key: it never signs again on the session, the walk passing over a source answering it by name; the set in hand forgotten when it is that key's)
   pub type MfaPrompt = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
   pub struct Credentials  [rust/src/aws/credentials.rs]
@@ -2059,7 +2060,8 @@ pub struct ZipPath
 
   pub struct Profile  [rust/src/aws/profile.rs]
   pub fn name, get, flag, nested, s3, iter, region, output, endpoint_url, service_endpoint_url,
-      sso_session_name, credentials, credential_process, assumed_role, sso
+      sso_session_name, credential_process, login_session, assumed_role, sso
+  pub fn credentials(&self) -> Result<Option<Credentials>>  (the credentials file's set, else the configuration file's; its expiry read from aws_credential_expiration, x_security_token_expires, aws_session_expiration, aws_expiration or expiration; a half set or an expiry nothing reads refused naming the profile and the file)
 
   pub struct AssumedRole  [rust/src/aws/sts.rs]
   pub fn new, with_session_name, with_external_id, with_duration, with_region, with_endpoint,
@@ -6156,6 +6158,7 @@ impl DataType
   pub const fn datetime_type(&self) -> Option<DateTimeType>
 pub struct DateTime64  (an i64 count since the Unix epoch at a clock resolution beside its zone, 16 bytes; Copy, Eq/Ord/Hash, Display, serde; Value, TemporalValue)
   pub fn new(count: i64, unit: TimeUnit, timezone: Timezone) -> Result<Self>
+  pub fn from_text(text: &str, naive: Timezone) -> Result<Self>  (the crate's one reader of datetime text: ISO 8601 with Z, an offset with or without its colon, or a bracketed zone name; a trailing `UTC`; a naive date-time - `T` or a blank before the clock - or a bare date read as a wall clock in `naive`, `NAIVE` keeping it one; the resolution the digits spell; what the expiry readers, the txhash intake, the text captures, Excel's ISO cells and the scalar wire read through)
   pub const fn count(&self) -> i64
   pub const fn unit(&self) -> TimeUnit
   pub const fn timezone(&self) -> Timezone
@@ -7194,6 +7197,15 @@ pub struct Authority(SmolStr);
   pub fn remove_extension(&mut self) -> bool
   pub fn clear_extensions(&mut self) -> bool
   pub fn stable_hash(&self) -> u64
+pub enum ArnPartition  (Copy, Eq/Ord/Hash, Display, FromStr; Aws, AwsCn, AwsUsGov, AwsIso, AwsIsoB, AwsIsoE, AwsIsoF, AwsEusc - botocore's partitions.json: the one owner of a partition's DNS suffixes, which the STS, IAM Identity Center, Sign-In and S3 hosts are built from)
+  pub const ALL: [Self; 8]
+  pub const fn as_str(self) -> &'static str  // aws, aws-cn, aws-us-gov, aws-iso, aws-iso-b, aws-iso-e, aws-iso-f, aws-eusc
+  pub fn from_region(region: &str) -> Self  (the prefix its regions share, else Aws)
+  pub fn from_arn(arn: &Arn) -> Option<Self>
+  pub const fn dns_suffix(self) -> &'static str
+  pub const fn dualstack_dns_suffix(self) -> &'static str
+  pub const fn global_region(self) -> &'static str
+  pub fn service_host(self, service: &str, region: &str, fips: bool, dualstack: bool) -> String  ({service}[-fips].{region}.{suffix})
 
 ### yggdryl::uri::handle  [rust/src/uri/handle.rs]  (an identifier as a handle: the storage it names, resolved through Holder::from_url on the first operation that needs it and kept for the value's life; a name lends no url)
 impl IOBase for Uri

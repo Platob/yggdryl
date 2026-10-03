@@ -232,8 +232,8 @@ pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
 pub use union_mode::UnionMode;
 pub use uri::{
-    Arn, Authority, Extensions, Parameters, Parents, PathSegments, Uri, UriParents, UriPath,
-    UriType, Url, UrlParents, Urn,
+    Arn, ArnPartition, Authority, Extensions, Parameters, Parents, PathSegments, Uri, UriParents,
+    UriPath, UriType, Url, UrlParents, Urn,
 };
 pub(crate) use uri::{URL_EXTENSION_NAME, URN_EXTENSION_NAME};
 pub use window_serie::{
@@ -363,6 +363,8 @@ pub mod internals {
     #[cfg(feature = "aws")]
     #[cfg(feature = "s3")]
     pub use crate::aws::environment::internals as aws_environment;
+    #[cfg(feature = "aws")]
+    pub use crate::aws::login::internals as aws_login;
     #[cfg(feature = "aws")]
     pub use crate::aws::profile::internals as aws_profile;
     #[cfg(feature = "aws")]

@@ -21,6 +21,14 @@ use crate::{Error, Result, TimeUnit};
 pub trait Expiring {
     /// When the value lapses; `None` is a value that does not.
     fn expires_at(&self) -> Option<SystemTime>;
+
+    /// How long before it lapses this value is replaced, when its source
+    /// keeps a window of its own - a sign-in whose sets last fifteen
+    /// minutes cannot be replaced fifteen minutes ahead; `None` takes the
+    /// lease's.
+    fn refresh_window(&self) -> Option<Duration> {
+        None
+    }
 }
 
 /// A bearer token and when it lapses: what Google and Azure each hand a
@@ -140,7 +148,7 @@ impl<T: Expiring + Clone> Lease<T> {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         let paused = state.retry_after.is_some_and(|at| now < at);
         if let Some(held) = state.held.clone() {
-            if !lapses_within(&held, now, self.window) {
+            if !lapses_within(&held, now, self.window_of(&held)) {
                 return Ok(Some(held));
             }
             let expired = lapses_within(&held, now, Duration::ZERO);
@@ -198,11 +206,32 @@ impl<T: Expiring + Clone> Lease<T> {
     /// Hold `fresh`, and hold off obtaining another when it is already near
     /// its end.
     fn adopt(&self, state: &mut State<T>, fresh: T, now: SystemTime) -> T {
-        state.retry_after = lapses_within(&fresh, now, self.window).then(|| now + self.pause);
+        state.retry_after =
+            lapses_within(&fresh, now, self.window_of(&fresh)).then(|| now + self.pause);
         state.failure = None;
         state.none_until = None;
         state.held = Some(fresh.clone());
         fresh
+    }
+
+    /// The window `value` is replaced in: its own, else the lease's.
+    fn window_of(&self, value: &T) -> Duration {
+        value.refresh_window().unwrap_or(self.window)
+    }
+
+    /// Whether [`Self::get`] at `now` answers from a hold - nothing found,
+    /// or a failure inside its pause with nothing standing to answer
+    /// instead - without obtaining: what a holder whose sources can change
+    /// under it asks before deciding the hold no longer applies.
+    pub fn is_holding(&self, now: SystemTime) -> bool {
+        let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        let stands = state
+            .held
+            .as_ref()
+            .is_some_and(|held| !lapses_within(held, now, Duration::ZERO));
+        let unsigned = state.held.is_none() && state.none_until.is_some_and(|until| now < until);
+        let paused = state.failure.is_some() && state.retry_after.is_some_and(|at| now < at);
+        unsigned || (paused && !stands)
     }
 
     /// The value held, without obtaining one.
@@ -239,21 +268,14 @@ fn repeated(failure: &str) -> Error {
 
 /// The instant an expiry states, in any spelling a cloud's tools write one.
 ///
-/// ISO 8601 with `Z` or an offset is what every service answers; the AWS
-/// CLI's own caches write the offset as a trailing `UTC`, and a naive reading
-/// is taken as UTC, which is the only zone any of them means. Anything else
-/// answers `None`, so the value is treated as long-lived rather than lapsing
-/// at a guessed instant.
+/// The text is read by [`DateTime64::from_text`](crate::DateTime64::from_text),
+/// the crate's one reader of datetime text, with a reading that names no zone
+/// taken as UTC - the only zone any of the tools means. Anything it cannot
+/// read answers `None`, so the value is treated as long-lived rather than
+/// lapsing at a guessed instant.
 pub fn instant(text: &str) -> Option<SystemTime> {
-    let text = text.trim();
-    let text = text
-        .strip_suffix("UTC")
-        .map_or_else(|| text.to_owned(), |head| format!("{head}Z"));
-    let (count, unit) = match crate::temporal::parse_timestamp(&text) {
-        Ok((count, unit, _)) => (count, unit),
-        Err(_) => crate::temporal::parse_datetime(&text).ok()?,
-    };
-    instant_of(count, unit)
+    let read = crate::DateTime64::from_text(text, crate::Timezone::UTC).ok()?;
+    instant_of(read.count(), read.unit())
 }
 
 /// The instant `count` units since the epoch names.

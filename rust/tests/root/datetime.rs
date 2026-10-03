@@ -259,3 +259,116 @@ mod temporal {
         }
     }
 }
+
+/// `DateTime64::from_text`, the crate's one reader of datetime text.
+mod from_text {
+    use yggdryl::{DateTime64, TimeUnit, Timezone};
+
+    /// 2026-10-03T03:20:00Z.
+    const INSTANT: i64 = 1_790_997_600;
+
+    fn read(text: &str, naive: Timezone) -> DateTime64 {
+        DateTime64::from_text(text, naive).unwrap_or_else(|error| panic!("{text:?}: {error}"))
+    }
+
+    fn zone(name: &str) -> Timezone {
+        Timezone::from_str(name).expect("a zone the registry knows")
+    }
+
+    #[test]
+    fn every_spelling_of_an_instant_reads_as_that_instant_whatever_naive_says() {
+        for (text, held) in [
+            ("2026-10-03T03:20:00Z", Timezone::UTC),
+            ("2026-10-03T03:20:00z", Timezone::UTC),
+            ("2026-10-03T05:20:00+02:00", zone("+02:00")),
+            ("2026-10-03T05:20:00+0200", zone("+02:00")),
+            (
+                "2026-10-03T05:20:00+02:00[Europe/Paris]",
+                zone("Europe/Paris"),
+            ),
+            ("2026-10-03T03:20:00UTC", Timezone::UTC),
+            ("2026-10-03T03:20:00 UTC", Timezone::UTC),
+            ("2026-10-03 03:20:00 UTC", Timezone::UTC),
+            (
+                "  2026-10-03T03:20:00Z
+",
+                Timezone::UTC,
+            ),
+        ] {
+            for naive in [Timezone::UTC, Timezone::NAIVE, zone("Asia/Tokyo")] {
+                let at = read(text, naive);
+                assert_eq!(
+                    (at.count(), at.unit()),
+                    (INSTANT, TimeUnit::Second),
+                    "{text:?}"
+                );
+                assert_eq!(at.timezone(), held, "{text:?}: the zone the text states");
+            }
+        }
+    }
+
+    #[test]
+    fn a_reading_that_states_no_zone_is_a_wall_clock_in_the_zone_given() {
+        let utc = read("2026-10-03 03:20:00", Timezone::UTC);
+        assert_eq!((utc.count(), utc.timezone()), (INSTANT, Timezone::UTC));
+        let wall = read("2026-10-03T03:20:00", Timezone::NAIVE);
+        assert_eq!(
+            (wall.count(), wall.timezone()),
+            (INSTANT, Timezone::NAIVE),
+            "a naive reading stays a wall clock, its count the clock's own"
+        );
+        // Paris keeps summer time on the 3rd of October and winter time in
+        // January: the zone's rules, not a fixed offset, place the clock.
+        let paris = zone("Europe/Paris");
+        let summer = read("2026-10-03 05:20:00", paris);
+        assert_eq!((summer.count(), summer.timezone()), (INSTANT, paris));
+        assert_eq!(read("2026-01-05T10:00:00", paris).count(), 1_767_603_600);
+        let midnight = read("2026-10-03", Timezone::UTC);
+        assert_eq!(
+            (midnight.count(), midnight.unit()),
+            (1_790_985_600, TimeUnit::Second),
+            "a bare date is that day's midnight"
+        );
+    }
+
+    #[test]
+    fn the_resolution_is_the_one_the_digits_spell() {
+        for (text, count, unit) in [
+            ("2026-10-03T03:20:00Z", INSTANT, TimeUnit::Second),
+            (
+                "2026-10-03T03:20:00.250Z",
+                INSTANT * 1_000 + 250,
+                TimeUnit::Millisecond,
+            ),
+            (
+                "2026-10-03 03:20:00.000250",
+                INSTANT * 1_000_000 + 250,
+                TimeUnit::Microsecond,
+            ),
+            (
+                "2026-10-03T03:20:00.000000250Z",
+                INSTANT * 1_000_000_000 + 250,
+                TimeUnit::Nanosecond,
+            ),
+        ] {
+            let at = read(text, Timezone::UTC);
+            assert_eq!((at.count(), at.unit()), (count, unit), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn text_that_is_no_datetime_is_refused() {
+        for text in [
+            "",
+            "soon",
+            "2026-13-03T03:20:00Z",
+            "2026-10-03T03:20:00Z trailing",
+            "UTC",
+        ] {
+            assert!(
+                DateTime64::from_text(text, Timezone::UTC).is_err(),
+                "{text:?} is no datetime"
+            );
+        }
+    }
+}

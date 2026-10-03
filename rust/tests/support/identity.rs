@@ -7,9 +7,11 @@
 //! walks its whole chain over a real socket: STS (`AssumeRole`,
 //! `AssumeRoleWithWebIdentity`), the IAM Identity Center OIDC service
 //! (`RegisterClient`, `StartDeviceAuthorization`, `CreateToken`) and access
-//! portal (`GetRoleCredentials`), the container credential endpoint, and the
-//! instance metadata service (IMDSv2 token, role listing, role keys, the
-//! identity document). Every request is recorded so a test can count and
+//! portal (`GetRoleCredentials`), the AWS Sign-In service's refresh of an
+//! `aws login` sign-in (`CreateOAuth2Token`, whose `DPoP` proof it verifies
+//! itself), the container credential endpoint, and the instance metadata
+//! service (IMDSv2 token, role listing, role keys, the identity document).
+//! Every request is recorded so a test can count and
 //! inspect what went on the wire, and every answer is scripted by the
 //! setters below. It is a leaf file included with `#[path]`, so it names
 //! nothing of the crate.
@@ -29,6 +31,16 @@ pub const SSO_REFRESH_TOKEN: &str = "sso-refresh-token";
 pub const IMDS_TOKEN: &str = "imds-session-token";
 /// The container endpoint's path.
 pub const CONTAINER_PATH: &str = "/v2/credentials/task";
+/// The set the Sign-In service answers a refresh with.
+pub const LOGIN_ACCESS_KEY: &str = "ASIALOGINREFRESHED";
+pub const LOGIN_SECRET_KEY: &str = "login-refreshed-secret";
+pub const LOGIN_SESSION_TOKEN: &str = "login-refreshed-session-token";
+/// The refresh token a refresh rotates to.
+pub const LOGIN_REFRESH_TOKEN: &str = "login-rotated-refresh-token";
+/// How long a refreshed set lasts, in seconds, as the service states it.
+pub const LOGIN_EXPIRES_IN: i64 = 900;
+/// The most a proof's `iat` may differ from the fake's clock, in seconds.
+const DPOP_SKEW: i64 = 60;
 
 /// One request the server handled, as a test inspects it.
 #[derive(Clone, Debug)]
@@ -85,6 +97,14 @@ struct Script {
     sso_pending: usize,
     /// The refresh token a refresh must present, when checked.
     sso_refresh_token: Option<String>,
+    /// The refresh token a Sign-In refresh must present, when checked.
+    login_refresh_token: Option<String>,
+    /// The next Sign-In refreshes answer this status and OAuth 2.0 error
+    /// code, after their proof is verified.
+    login_refusals: Option<(u16, String, usize)>,
+    /// Every proof identifier the Sign-In service has accepted; one seen
+    /// again is a replay, and refused.
+    login_jtis: Vec<String>,
     /// The access key the container endpoint answers.
     container_access_key: String,
     /// When the container endpoint's set lapses.
@@ -112,6 +132,9 @@ impl Default for Script {
             sso_token: SSO_TOKEN.to_owned(),
             sso_pending: 0,
             sso_refresh_token: None,
+            login_refresh_token: None,
+            login_refusals: None,
+            login_jtis: Vec::new(),
             container_access_key: "ASIACONTAINER".to_owned(),
             container_expiry: iso8601(now_seconds() + 3600),
             container_authorization: None,
@@ -234,6 +257,17 @@ impl Identity {
     /// Refuse a refresh unless it presents `token`.
     pub fn require_refresh_token(&self, token: Option<&str>) {
         self.inner.script().sso_refresh_token = token.map(str::to_owned);
+    }
+
+    /// Refuse a Sign-In refresh unless it presents `token`.
+    pub fn require_login_refresh_token(&self, token: Option<&str>) {
+        self.inner.script().login_refresh_token = token.map(str::to_owned);
+    }
+
+    /// Answer the next `times` Sign-In refreshes with `status` and the
+    /// OAuth 2.0 error `code`, once their proof is verified.
+    pub fn refuse_login(&self, status: u16, code: &str, times: usize) {
+        self.inner.script().login_refusals = (times > 0).then(|| (status, code.to_owned(), times));
     }
 
     /// What the container endpoint answers: `access_key`, lapsing at
@@ -501,6 +535,7 @@ fn answer(inner: &Inner, request: &Request) -> Response {
             }),
         ),
         ("POST", "/token") => oidc_token(&mut script, request),
+        ("POST", "/v1/token") => signin_token(&mut script, &inner.address, request),
         ("GET", "/federation/credentials") => portal(&script, request),
         ("GET", CONTAINER_PATH) => container(&script, request),
         ("PUT", "/latest/api/token") => Response::text(200, IMDS_TOKEN),
@@ -613,6 +648,139 @@ fn oidc_token(script: &mut Script, request: &Request) -> Response {
     }
 }
 
+/// The Sign-In service's `CreateOAuth2Token` refresh. The proof is verified
+/// here, by this file's own decoding and its own ES256 check, against the URL
+/// the request reached: a client that signed the wrong bytes, named another
+/// request or replayed a proof is refused as the service would refuse it.
+fn signin_token(script: &mut Script, address: &str, request: &Request) -> Response {
+    let invalid = |message: &str| {
+        Response::json(
+            400,
+            serde_json::json!({"error": "INVALID_REQUEST", "message": message}),
+        )
+    };
+    let htu = format!("http://{address}{}", request.path);
+    let jti = match verify_dpop(request.header("dpop"), &htu, &script.login_jtis) {
+        Ok(jti) => jti,
+        Err(defect) => return invalid(&format!("invalid DPoP proof: {defect}")),
+    };
+    script.login_jtis.push(jti);
+    if request.header("authorization").is_some() {
+        return invalid("a refresh is not signed");
+    }
+    if request.header("content-type") != Some("application/json") {
+        return invalid("expected an application/json body");
+    }
+    if request.json("grantType").as_deref() != Some("refresh_token") {
+        return invalid("expected grantType refresh_token");
+    }
+    if request.json("clientId").is_none() {
+        return invalid("expected a clientId");
+    }
+    let presented = request.json("refreshToken");
+    if presented.is_none()
+        || script
+            .login_refresh_token
+            .as_ref()
+            .is_some_and(|required| presented.as_ref() != Some(required))
+    {
+        return invalid("expected the refresh token the sign-in holds");
+    }
+    if let Some((status, code, times)) = script.login_refusals.clone() {
+        script.login_refusals = (times > 1).then(|| (status, code.clone(), times - 1));
+        return Response::json(
+            status,
+            serde_json::json!({"error": code, "message": "refused as scripted"}),
+        );
+    }
+    Response::json(
+        200,
+        serde_json::json!({
+            "accessToken": {
+                "accessKeyId": LOGIN_ACCESS_KEY,
+                "secretAccessKey": LOGIN_SECRET_KEY,
+                "sessionToken": LOGIN_SESSION_TOKEN,
+            },
+            "tokenType": "aws_sigv4",
+            "expiresIn": LOGIN_EXPIRES_IN,
+            "refreshToken": LOGIN_REFRESH_TOKEN,
+        }),
+    )
+}
+
+/// The `jti` of `proof` when it is a `DPoP` proof (RFC 9449) for `POST htu`,
+/// issued within `DPOP_SKEW` of now under an identifier not in `seen`, and
+/// signed by the P-256 key its own header carries; else what is wrong with it.
+fn verify_dpop(proof: Option<&str>, htu: &str, seen: &[String]) -> Result<String, String> {
+    use base64::Engine as _;
+    let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    let proof = proof.ok_or("no DPoP header")?;
+    let parts: Vec<&str> = proof.split('.').collect();
+    let [header, claims, signature] = parts[..] else {
+        return Err(format!("{} parts, not a compact JWS's three", parts.len()));
+    };
+    let decode = |part: &str| -> Result<serde_json::Value, String> {
+        let bytes = engine.decode(part).map_err(|error| error.to_string())?;
+        serde_json::from_slice(&bytes).map_err(|error| error.to_string())
+    };
+    let header_document = decode(header)?;
+    if header_document["typ"] != "dpop+jwt" || header_document["alg"] != "ES256" {
+        return Err(format!("header {header_document}"));
+    }
+    let jwk = &header_document["jwk"];
+    if jwk["kty"] != "EC" || jwk["crv"] != "P-256" {
+        return Err(format!("jwk {jwk}"));
+    }
+    let coordinate = |name: &str| {
+        jwk[name]
+            .as_str()
+            .and_then(|text| engine.decode(text).ok())
+            .filter(|bytes| bytes.len() == 32)
+            .ok_or_else(|| format!("jwk.{name} is not 32 bytes"))
+    };
+    let mut point = vec![0x04];
+    point.extend(coordinate("x")?);
+    point.extend(coordinate("y")?);
+    let claims_document = decode(claims)?;
+    if claims_document["htm"] != "POST" {
+        return Err(format!("htm {}", claims_document["htm"]));
+    }
+    if claims_document["htu"] != htu {
+        return Err(format!("htu {}, not {htu}", claims_document["htu"]));
+    }
+    let issued = claims_document["iat"].as_i64().ok_or("no iat")?;
+    if (now_seconds() - issued).abs() > DPOP_SKEW {
+        return Err(format!("iat {issued} is not now"));
+    }
+    let jti = claims_document["jti"].as_str().ok_or("no jti")?;
+    if !is_uuid_v4(jti) {
+        return Err(format!("jti {jti} is not a version 4 UUID"));
+    }
+    if seen.iter().any(|held| held == jti) {
+        return Err(format!("jti {jti} was seen before"));
+    }
+    let signature = engine
+        .decode(signature)
+        .map_err(|error| error.to_string())?;
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ECDSA_P256_SHA256_FIXED, &point)
+        .verify(format!("{header}.{claims}").as_bytes(), &signature)
+        .map_err(|_| "the ES256 signature does not verify".to_owned())?;
+    Ok(jti.to_owned())
+}
+
+/// Whether `text` is a version 4 RFC 9562 UUID, spelled 8-4-4-4-12 in
+/// lowercase hex.
+fn is_uuid_v4(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes.len() == 36
+        && bytes.iter().enumerate().all(|(index, byte)| match index {
+            8 | 13 | 18 | 23 => *byte == b'-',
+            _ => byte.is_ascii_digit() || (b'a'..=b'f').contains(byte),
+        })
+        && bytes[14] == b'4'
+        && matches!(bytes[19], b'8' | b'9' | b'a' | b'b')
+}
+
 fn portal(script: &Script, request: &Request) -> Response {
     if request.header("x-amz-sso_bearer_token") != Some(script.sso_token.as_str()) {
         return Response::json(
@@ -698,6 +866,7 @@ fn reason(status: u16) -> &'static str {
         401 => "Unauthorized",
         403 => "Forbidden",
         404 => "Not Found",
+        429 => "Too Many Requests",
         500 => "Internal Server Error",
         503 => "Service Unavailable",
         _ => "Answer",

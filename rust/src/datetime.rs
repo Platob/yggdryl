@@ -533,6 +533,90 @@ temporal_leaf!(
 // a pointer.
 const _: () = assert!(std::mem::size_of::<DateTime64>() == 16);
 
+impl DateTime64 {
+    /// The datetime `text` spells, in any spelling the crate reads one in.
+    ///
+    /// This is the crate's one reader of datetime text whose zone the text
+    /// may or may not state - an expiry a tool wrote, a capture, a parameter,
+    /// a cell, a document - over the ISO 8601 readers every text codec
+    /// shares, so no module keeps a reading of its own:
+    ///
+    /// | Spelling | Example | Reads as |
+    /// | --- | --- | --- |
+    /// | `Z`, or an offset with or without its colon | `2026-10-03T05:20:00+02:00`, `...+0200` | that instant, in the offset's zone |
+    /// | an offset and the zone's bracketed name | `2026-10-03T05:20:00+02:00[Europe/Paris]` | that instant, in the named zone |
+    /// | a trailing `UTC`, with or without a blank | `2026-10-03T03:20:00UTC` (the AWS CLI's caches) | that instant, in UTC |
+    /// | no zone, `T` or a blank before the clock | `2026-10-03 03:20:00.250` | a wall clock in `naive` |
+    /// | a bare date | `2026-10-03` | that day's midnight, a wall clock in `naive` |
+    ///
+    /// The resolution is the one the digits spell - seconds for `03:20:00`,
+    /// milliseconds for `03:20:00.250` - and surrounding blanks are ignored.
+    /// A reading that states no zone is a wall clock in `naive`: in
+    /// [`Timezone::UTC`] it is that instant, in [`Timezone::NAIVE`] it stays
+    /// a wall clock meaning no instant.
+    ///
+    /// ```
+    /// use yggdryl::{DateTime64, TimeUnit, Timezone};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let utc = DateTime64::from_text("2026-10-03T03:20:00Z", Timezone::NAIVE)?;
+    /// assert_eq!((utc.count(), utc.unit()), (1_790_997_600, TimeUnit::Second));
+    /// for spelled in ["2026-10-03T05:20:00+0200", "2026-10-03T03:20:00 UTC", "2026-10-03 03:20:00"] {
+    ///     assert_eq!(DateTime64::from_text(spelled, Timezone::UTC)?.count(), 1_790_997_600);
+    /// }
+    /// let wall = DateTime64::from_text("2026-10-03 03:20:00.250", Timezone::NAIVE)?;
+    /// assert!(wall.timezone().is_naive());
+    /// assert_eq!(wall.unit(), TimeUnit::Millisecond);
+    /// assert!(DateTime64::from_text("soon", Timezone::UTC).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The instant reading's refusal, naming the byte it stopped at, when
+    /// `text` spells neither an instant nor a wall clock; an error when a
+    /// wall clock does not exist in `naive`'s rules.
+    pub fn from_text(text: &str, naive: Timezone) -> Result<Self> {
+        let text = text.trim();
+        let closed;
+        let text = match text.strip_suffix("UTC") {
+            Some(head) => {
+                closed = format!("{}Z", head.trim_end());
+                closed.as_str()
+            }
+            None => text,
+        };
+        match crate::temporal::parse_timestamp(text) {
+            Ok((count, unit, zone)) => Self::new(count, unit, zone),
+            Err(zoned) => {
+                let (local, unit) = crate::temporal::parse_datetime(text).map_err(|_| zoned)?;
+                let count = if naive.is_naive() {
+                    local
+                } else {
+                    wall_clock_in(local, unit, naive)?
+                };
+                Self::new(count, unit, naive)
+            }
+        }
+    }
+}
+
+/// The UTC count of `unit` the wall clock `local` reads in `zone`.
+fn wall_clock_in(local: i64, unit: TimeUnit, zone: Timezone) -> Result<i64> {
+    let out_of_range = || Error::InvalidRecord {
+        path: smol_str::SmolStr::new_static("$.timezone"),
+        reason: smol_str::SmolStr::new_static("zoned timestamp is out of range"),
+    };
+    let per = crate::temporal::per_second(unit).ok_or_else(out_of_range)?;
+    let seconds = local.div_euclid(per);
+    let fraction = local.rem_euclid(per);
+    zone.into_utc(seconds)?
+        .checked_mul(per)
+        .and_then(|seconds| seconds.checked_add(fraction))
+        .ok_or_else(out_of_range)
+}
+
 impl Scalar {
     /// Build a 64-bit epoch or wall-clock datetime.
     ///

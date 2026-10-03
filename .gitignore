@@ -48,3 +48,12 @@ python/wheel-data/scripts/yggdryl.exe
 # Merge-conflict leftovers: `.orig` and `.rej` are never sources.
 *.orig
 *.rej
+
+# Credentials never belong in the tree: a live AWS check reads them from the
+# developer's own ~/.aws through a profile, and CI from an OIDC role.
+.aws/
+.env
+.env.*
+*.pem
+*.p12
+*.pfx

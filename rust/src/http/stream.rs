@@ -635,9 +635,13 @@ fn read_inner(inner: &mut Inner, buffer: &mut [u8]) -> io::Result<usize> {
                 }
                 Err(error) => {
                     let client = transfer.request.session().client_ref();
+                    let attempts = transfer
+                        .request
+                        .max_attempts()
+                        .unwrap_or_else(|| client.max_attempts());
                     if !transfer.resumable
                         || !is_resumable(&error)
-                        || inner.failures.saturating_add(1) >= client.max_attempts()
+                        || inner.failures.saturating_add(1) >= attempts
                         || inner.recovered >= Stream::MAX_RESUMES
                     {
                         // The reader that failed answers nothing more; a later

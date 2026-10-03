@@ -101,6 +101,45 @@ impl Credentials {
     pub const fn is_temporary(&self) -> bool {
         self.session_token.is_some() || self.expires_at.is_some()
     }
+
+    /// The access key id as a log line or a refusal names it: its first
+    /// and last four characters, enough to tell two sets apart.
+    pub(crate) fn key_id_hint(&self) -> String {
+        let id = &self.access_key_id;
+        match (id.get(..4), id.get(id.len().saturating_sub(4)..)) {
+            (Some(head), Some(tail)) if id.len() > 8 => format!("{head}...{tail}"),
+            _ => "...".to_owned(),
+        }
+    }
+}
+
+/// What a store's refusal says of the keys a request was signed with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Refusal {
+    /// The set lapsed - S3's `ExpiredToken` and `TokenRefreshRequired`, the
+    /// query services' `ExpiredTokenException` - and a lapsed set never
+    /// comes back, so its key never signs again on the session.
+    Lapsed,
+    /// The key or its token is not one the store knows - S3's
+    /// `InvalidAccessKeyId` and `InvalidToken`, the query services'
+    /// `InvalidClientTokenId`. IAM answers this for the few seconds a new
+    /// key takes to propagate, so the key is passed over for a pause and
+    /// read again after it, or as soon as the shared files move.
+    Unrecognized,
+}
+
+impl Refusal {
+    /// The refusal an AWS error code states, or `None` for a code that
+    /// refuses the request rather than the keys.
+    pub(crate) fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "ExpiredToken" | "ExpiredTokenException" | "TokenRefreshRequired" => Some(Self::Lapsed),
+            "InvalidAccessKeyId" | "InvalidToken" | "InvalidClientTokenId" => {
+                Some(Self::Unrecognized)
+            }
+            _ => None,
+        }
+    }
 }
 
 impl Expiring for Credentials {

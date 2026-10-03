@@ -18,7 +18,7 @@ use super::client::{Answer, Wire};
 use super::wire::{RequestHead, parse_request, render_request};
 use super::{
     Authorization, ContentRange, Headers, HttpVersion, Method, Pages, Pagination, Response,
-    Session, StatsSnapshot, Stream, range_header,
+    Session, StatsSnapshot, Status, Stream, range_header,
 };
 use crate::holder::Holder;
 use crate::uri::Parameters;
@@ -148,6 +148,14 @@ struct Meta {
     mtime: Option<i64>,
 }
 
+/// The headers one attempt of a request adds over its own: called with the
+/// attempt's number from 1, and the method and URL of the hop it goes to.
+pub(crate) type AttemptHeaders = dyn Fn(u32, Method, &Url) -> Result<Headers> + Send + Sync;
+
+/// Whether an answer the client would not retry by its status alone is
+/// asked for again: its status, its headers and the first bytes of its body.
+pub(crate) type RetryOn = dyn Fn(Status, &Headers, &[u8]) -> bool + Send + Sync;
+
 /// The staged value and whether the server has seen it.
 struct Stage {
     bytes: Vec<u8>,
@@ -197,6 +205,15 @@ pub struct Request {
     authorization: Option<Authorization>,
     timeout: Option<Duration>,
     follow_redirects: Option<bool>,
+    /// Whether the request may go out again after a server may have seen
+    /// it, when the caller says so rather than the method.
+    idempotent: Option<bool>,
+    max_attempts: Option<u32>,
+    connect_timeout: Option<Duration>,
+    deadline: Option<Duration>,
+    direct: bool,
+    attempt_headers: Option<Arc<AttemptHeaders>>,
+    retry_on: Option<Arc<RetryOn>>,
     pagination: Option<Pagination>,
     records: Option<FieldPath>,
     /// An explicit media type overrides what a response taught and what the
@@ -222,6 +239,13 @@ impl Clone for Request {
             authorization: self.authorization.clone(),
             timeout: self.timeout,
             follow_redirects: self.follow_redirects,
+            idempotent: self.idempotent,
+            max_attempts: self.max_attempts,
+            connect_timeout: self.connect_timeout,
+            deadline: self.deadline,
+            direct: self.direct,
+            attempt_headers: self.attempt_headers.clone(),
+            retry_on: self.retry_on.clone(),
             pagination: self.pagination.clone(),
             records: self.records.clone(),
             declared: self.declared.clone(),
@@ -234,13 +258,20 @@ impl Clone for Request {
 
 impl std::fmt::Debug for Request {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Request")
+        let mut debug = formatter.debug_struct("Request");
+        debug
             .field("method", &self.method)
             .field("url", &self.url)
             .field("headers", &self.headers)
-            .field("body_len", &self.body.len())
-            .finish_non_exhaustive()
+            .field("body_len", &self.body.len());
+        // A hook is code: it is named, never rendered.
+        if self.attempt_headers.is_some() {
+            debug.field("attempt_headers", &format_args!("<attempt headers>"));
+        }
+        if self.retry_on.is_some() {
+            debug.field("retry_on", &format_args!("<retry rule>"));
+        }
+        debug.finish_non_exhaustive()
     }
 }
 
@@ -258,6 +289,13 @@ impl Request {
             authorization: None,
             timeout: None,
             follow_redirects: None,
+            idempotent: None,
+            max_attempts: None,
+            connect_timeout: None,
+            deadline: None,
+            direct: false,
+            attempt_headers: None,
+            retry_on: None,
             pagination: None,
             records: None,
             declared: None,
@@ -511,6 +549,149 @@ impl Request {
         self
     }
 
+    /// Whether the request can do no harm twice, in place of what its
+    /// method says.
+    ///
+    /// The caller attests it: a `POST` whose service documents it idempotent
+    /// - an OAuth token refresh within its validity, a poll - is retried
+    /// after the server may have seen it, as a `GET` is; `false` keeps a
+    /// `GET` from going out twice. The retry budget, the attempts and the
+    /// `Retry-After` rules are the ones every retry reads, and a request
+    /// sent with [`Self::send_reader`] is never retried whatever this says.
+    ///
+    /// ```
+    /// use yggdryl::http::Request;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let refresh = Request::post("https://oauth.example.com/token", "grant_type=refresh_token")?
+    ///     .with_idempotent(true);
+    /// assert_eq!(refresh.idempotent(), Some(true));
+    /// assert_eq!(Request::get("https://example.com/")?.idempotent(), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_idempotent(mut self, idempotent: bool) -> Self {
+        self.idempotent = Some(idempotent);
+        self
+    }
+
+    /// Headers computed for each attempt, merged over everything else the
+    /// attempt carries - the request's own headers, the session's, the
+    /// credential - a name both state taking the hook's value.
+    ///
+    /// `headers` is called at the top of every attempt with its number from
+    /// 1 and the method and URL of the hop it goes to, so a value that must
+    /// be fresh per attempt - a DPoP proof with its own `jti` and `iat`, a
+    /// signature over the instant - is made for each one. An error it
+    /// returns is the request's error, and is never retried.
+    ///
+    /// ```
+    /// use yggdryl::http::{Headers, Request};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let request = Request::get("https://api.example.com/v1/orders")?.with_attempt_headers(
+    ///     |attempt, method, url| {
+    ///         let mut headers = Headers::new();
+    ///         headers.insert("x-attempt", &format!("{attempt} {method} {url}"))?;
+    ///         Ok(headers)
+    ///     },
+    /// );
+    /// assert!(format!("{request:?}").contains("<attempt headers>"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_attempt_headers(
+        mut self,
+        headers: impl Fn(u32, Method, &Url) -> Result<Headers> + Send + Sync + 'static,
+    ) -> Self {
+        self.attempt_headers = Some(Arc::new(headers));
+        self
+    }
+
+    /// How many times this request is attempted, in place of the client's
+    /// `max_attempts`; zero is one.
+    ///
+    /// Every retry beyond the first attempt is still paid for out of the
+    /// client's one retry budget, so a request asking for more attempts than
+    /// the client grants others cannot retry past what the client's other
+    /// requests have left it.
+    #[must_use]
+    pub fn with_max_attempts(mut self, attempts: u32) -> Self {
+        self.max_attempts = Some(attempts.max(1));
+        self
+    }
+
+    /// The bound on establishing this request's connection - the socket,
+    /// and the TLS handshake over it - in place of the pool's.
+    ///
+    /// A connection already open in the pool is reused and waits for
+    /// nothing; the bound is spent only where one is opened.
+    #[must_use]
+    pub fn with_connect_timeout(mut self, timeout: Duration) -> Self {
+        self.connect_timeout = Some(timeout);
+        self
+    }
+
+    /// One bound on the whole of one attempt: resolving, connecting,
+    /// sending, the answer's head and its body together, beside the
+    /// per-phase bound [`Self::with_timeout`] sets.
+    ///
+    /// An attempt that runs out is a timeout the retry rules read as any
+    /// other, so an idempotent request is attempted again under a fresh
+    /// deadline; a body read past it fails as a cut transfer.
+    #[must_use]
+    pub fn with_deadline(mut self, deadline: Duration) -> Self {
+        self.deadline = Some(deadline);
+        self
+    }
+
+    /// Ask `rule` whether an answer is worth another attempt when its status
+    /// alone does not say so.
+    ///
+    /// For an idempotent request - declared with [`Self::with_idempotent`]
+    /// or by its method - whose answer is not a success and not a status the
+    /// client retries anyway ([`Status::is_retryable`]), the client reads at
+    /// most 64 KiB of the body and hands `rule` the status, the headers and
+    /// those bytes; `true` retries under the budget, the attempts, the
+    /// backoff and the `Retry-After` rules every retry reads. An answer not
+    /// retried is handed back with its body whole, the bytes the rule read
+    /// in front of the rest. A service that answers throttling as `400` with
+    /// a code in its body - AWS STS's `Throttling` - is read this way.
+    ///
+    /// ```
+    /// use yggdryl::http::Request;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let request = Request::post("https://sts.amazonaws.com/", "Action=GetCallerIdentity")?
+    ///     .with_idempotent(true)
+    ///     .with_retry_on(|status, _headers, body| {
+    ///         status.code() == 400 && body.windows(10).any(|code| code == b"Throttling")
+    ///     });
+    /// assert!(format!("{request:?}").contains("<retry rule>"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_retry_on(
+        mut self,
+        rule: impl Fn(Status, &Headers, &[u8]) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.retry_on = Some(Arc::new(rule));
+        self
+    }
+
+    /// Whether this request goes to its server directly, never through a
+    /// proxy, whatever the options or the environment name: a link-local
+    /// metadata endpoint is reached from the host itself, and a proxy
+    /// between would answer for another.
+    #[must_use]
+    pub fn with_direct(mut self, direct: bool) -> Self {
+        self.direct = direct;
+        self
+    }
+
     /// How the next page is found, in place of the session's.
     #[must_use]
     pub fn with_pagination(mut self, pagination: Pagination) -> Self {
@@ -577,6 +758,67 @@ impl Request {
         self.follow_redirects
     }
 
+    /// Whether the caller declared the request idempotent, or not; `None`
+    /// when its method decides.
+    #[must_use]
+    pub fn idempotent(&self) -> Option<bool> {
+        self.idempotent
+    }
+
+    /// How many times this request is attempted, when it says rather than
+    /// the client.
+    #[must_use]
+    pub fn max_attempts(&self) -> Option<u32> {
+        self.max_attempts
+    }
+
+    /// The bound on establishing this request's connection, when it states
+    /// one rather than the pool.
+    #[must_use]
+    pub fn connect_timeout(&self) -> Option<Duration> {
+        self.connect_timeout
+    }
+
+    /// The bound on the whole of one attempt, when the request states one.
+    #[must_use]
+    pub fn deadline(&self) -> Option<Duration> {
+        self.deadline
+    }
+
+    /// Whether this request never goes through a proxy.
+    #[must_use]
+    pub fn is_direct(&self) -> bool {
+        self.direct
+    }
+
+    /// One hop of this request as it goes on the wire: `method` at `url`
+    /// with the complete `headers` and `body`, each phase bounded by
+    /// `timeout`, under the attempts, bounds, proxy choice and hooks the
+    /// request states for itself.
+    pub(crate) fn wire<'a>(
+        &'a self,
+        method: Method,
+        url: &'a Url,
+        headers: &'a Headers,
+        body: Option<&'a [u8]>,
+        timeout: Duration,
+    ) -> Wire<'a> {
+        Wire {
+            method,
+            url,
+            headers,
+            body,
+            timeout,
+            idempotent: self.idempotent.unwrap_or(method.is_idempotent()),
+            max_attempts: self.max_attempts,
+            connect_timeout: self.connect_timeout,
+            deadline: self.deadline,
+            direct: self.direct,
+            attempt_headers: self.attempt_headers.as_deref(),
+            retry_on: self.retry_on.as_deref(),
+        }
+    }
+
     /// Send, reading the whole body into memory, bounded by the session's
     /// `max_body_size`.
     ///
@@ -598,8 +840,9 @@ impl Request {
 
     /// Send with the body streamed from `reader`, `length` bytes long.
     ///
-    /// A reader cannot be read twice, so nothing is retried and no redirect
-    /// is followed: the answer is the first server's.
+    /// A reader cannot be read twice, so nothing is retried - whatever
+    /// [`Self::with_idempotent`] says - and no redirect is followed: the
+    /// answer is the first server's.
     ///
     /// # Errors
     ///
@@ -607,14 +850,14 @@ impl Request {
     pub fn send_reader(&self, reader: &mut dyn Read, length: u64) -> Result<Response> {
         let started = std::time::Instant::now();
         let headers = self.session.headers_for(self, &self.url, false)?;
-        let wire = Wire {
-            method: self.method,
-            url: &self.url,
-            headers: &headers,
-            body: None,
-            timeout: self.timeout.unwrap_or(self.session.options().timeout()),
-            idempotent: false,
-        };
+        let mut wire = self.wire(
+            self.method,
+            &self.url,
+            &headers,
+            None,
+            self.timeout.unwrap_or(self.session.options().timeout()),
+        );
+        wire.idempotent = false;
         let answer = self
             .session
             .client_ref()

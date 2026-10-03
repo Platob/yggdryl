@@ -3,17 +3,53 @@
 //! A session resolves once and answers from what it holds, so the only
 //! per-request cost is the cached answer; the parse of the shared files is
 //! paid once per session and grows with the number of profiles the machine
-//! has. Both are measured here so a regression in either shows beside the
-//! request counts the accounting tests hold.
+//! has. A walk - the first ask, the one after a store's refusal, the one a
+//! set nearing its end causes - reads the files from disk when they moved,
+//! and passes over a set a store refused: each is measured on files a
+//! benchmark writes, so a regression in any shows beside the request counts
+//! the accounting tests hold.
 
 use std::hint::black_box;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::aws::{Credentials, Session};
+use yggdryl::{Arn, ArnPartition};
 
 /// The profiles the largest configuration file holds.
 const PROFILES: usize = crate::bench_profile::corpus(256, 8);
+
+/// A directory of this benchmark's own under the platform's temporary one,
+/// holding `files` as `(name, text)`.
+fn directory(name: &str, files: &[(&str, &str)]) -> PathBuf {
+    let path =
+        std::env::temp_dir().join(format!("yggdryl-bench-aws-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&path);
+    std::fs::create_dir_all(&path).expect("a scratch directory");
+    for (file, text) in files {
+        let target = path.join(file);
+        std::fs::create_dir_all(target.parent().expect("a parent")).expect("a parent directory");
+        std::fs::write(target, text).expect("a written file");
+    }
+    path
+}
+
+/// A session reading the files under `directory` and nothing else: its own
+/// variables, no metadata service.
+fn reading(directory: &Path) -> Session {
+    Session::new()
+        .with_variables([(
+            "BOTO_CONFIG",
+            directory.join("no-such-boto.cfg").display().to_string(),
+        )])
+        .with_directory(directory)
+        .with_metadata_disabled(true)
+}
+
+/// A temporary set as `aws login`, a portal or a tool dumps one.
+const DUMPED: &str = "[default]\naws_access_key_id = ASIABENCHDUMPED\naws_secret_access_key = dumped-secret\n\
+aws_session_token = dumped-token\nx_security_token_expires = 2099-01-01T00:00:00Z\n";
 
 /// A configuration file of `count` profiles, each with a region, an
 /// endpoint and an indented `s3` table, as a real one has.
@@ -74,5 +110,104 @@ pub(crate) fn identity_benchmarks(criterion: &mut Criterion) {
     group.bench_function("sts_endpoint", |bencher| {
         bencher.iter(|| black_box(session.sts_endpoint(black_box("eu-west-3"))));
     });
+
+    // A first walk: both files read from disk and parsed, the dumped set
+    // read with its expiry and admitted.
+    let dumped = directory("walk", &[("credentials", DUMPED)]);
+    group.bench_function("walk_shared_credentials_file", |bencher| {
+        bencher.iter(|| {
+            let session = reading(&dumped);
+            black_box(
+                session
+                    .credentials(now)
+                    .expect("a walk")
+                    .expect("the dumped set"),
+            )
+        });
+    });
+
+    // The walk a store's refusal causes: the files read again whatever their
+    // versions say, the chain walked again.
+    let session = reading(&dumped);
+    session.credentials(now).expect("a first walk");
+    group.bench_function("walk_after_invalidate", |bencher| {
+        bencher.iter(|| {
+            session.invalidate();
+            black_box(
+                session
+                    .credentials(now)
+                    .expect("a walk")
+                    .expect("the dumped set"),
+            )
+        });
+    });
+
+    // A refused key passed over by name to the configuration file's set.
+    let refused = directory(
+        "refused",
+        &[
+            ("credentials", DUMPED),
+            (
+                "config",
+                "[default]\naws_access_key_id = AKIABENCHCONFIG\naws_secret_access_key = config-secret\n",
+            ),
+        ],
+    );
+    let session = reading(&refused);
+    session.credentials(now).expect("a first walk");
+    session.invalidate_if("ASIABENCHDUMPED");
+    group.bench_function("walk_past_refused_key", |bencher| {
+        bencher.iter(|| {
+            session.invalidate();
+            black_box(
+                session
+                    .credentials(now)
+                    .expect("a walk")
+                    .expect("the config set"),
+            )
+        });
+    });
+
+    // A console sign-in `aws login` filed, answered from its cache with no
+    // request: the cache read, its document parsed, its set admitted.
+    let signed_in = directory(
+        "login",
+        &[
+            (
+                "config",
+                "[profile console]\nlogin_session = arn:aws:iam::0123456789012:user/Admin\nregion = eu-west-3\n",
+            ),
+            (
+                "login/cache/36db1d138ff460920374e4c3d8e01f53f9f73537e89c88d639f68393df0e2726.json",
+                r#"{"accessToken":{"accessKeyId":"ASIABENCHLOGIN","secretAccessKey":"login-secret","sessionToken":"login-token","accountId":"012345678901","expiresAt":"2099-01-01T00:00:00Z"},"tokenType":"aws_sigv4","refreshToken":"login-refresh","clientId":"arn:aws:signin:::devtools/same-device","dpopKey":"-----BEGIN EC PRIVATE KEY-----\nnot read while the set lasts\n-----END EC PRIVATE KEY-----\n"}"#,
+            ),
+        ],
+    );
+    let session = reading(&signed_in).with_profile("console");
+    session.credentials(now).expect("a first walk");
+    group.bench_function("walk_console_sign_in_cached", |bencher| {
+        bencher.iter(|| {
+            session.invalidate();
+            black_box(
+                session
+                    .credentials(now)
+                    .expect("a walk")
+                    .expect("the cached set"),
+            )
+        });
+    });
+
+    // The partition a role's ARN names and the host it is traded at.
+    group.bench_function("arn_partition_host", |bencher| {
+        bencher.iter(|| {
+            let arn = Arn::from_str(black_box("arn:aws-cn:iam::123456789012:role/lake-reader"))
+                .expect("an ARN");
+            let partition = ArnPartition::from_arn(&arn).expect("a partition");
+            black_box(partition.service_host("sts", partition.global_region(), false, true))
+        });
+    });
     group.finish();
+    for scratch in [dumped, refused, signed_in] {
+        let _ = std::fs::remove_dir_all(scratch);
+    }
 }

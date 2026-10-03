@@ -144,8 +144,14 @@ Install and cross-language conventions are in `yggdryl`.
 15. **Credentials resolve lazily, explicit wins.** Unset knobs come from the
     URL, the environment (`AWS_`, `GOOGLE_`, `AZURE_`, `YGGDRYL_`), the store's
     files, then defaults; the AWS identity is botocore's chain through
-    `aws::Session`. `with_environment(false)` seals everything but explicit
-    values - see `references/backends.md`.
+    `aws::Session` (Rust only: Python and Node take its knobs as `options`),
+    with the console sign-in `aws login` files. The shared files are read
+    again whenever either moved, so a set dumped anew into
+    `~/.aws/credentials` reaches a running process at its next request; a
+    lapsed set, or one a store refused, is passed over by name and the sources
+    after it are asked. The walk logs under `yggdryl.aws.session`, key ids
+    masked. `with_environment(false)` seals everything but explicit values -
+    see `references/backends.md`.
 16. **HTTP is a handle and a client.** An `http`/`https` URL is a leaf: a
     whole read is one `GET`, a range one ranged `GET`, `size` one `HEAD`
     (none inside `open()`). A body read whole or streamed resumes a cut

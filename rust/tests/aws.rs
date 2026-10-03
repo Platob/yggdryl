@@ -1,8 +1,8 @@
 //! One test file per file under `rust/src/aws/`, mirrored file for file:
 //! [`session`] drives the chain whole over the identity fake, and the rest
 //! pin what each source reads and writes - [`credentials`], [`profile`],
-//! [`sts`], [`sso`], [`process`], [`container`], [`metadata`], [`sigv4`],
-//! [`environment`] - with [`mod_`] for the module's own door.
+//! [`sts`], [`sso`], [`login`], [`process`], [`container`], [`metadata`],
+//! [`sigv4`], [`environment`] - with [`mod_`] for the module's own door.
 //!
 //! The whole module is behind the `aws` feature, so every module here carries
 //! that cfg; the ones that pin something a caller cannot reach - the signing,
@@ -11,10 +11,18 @@
 //!
 //! [`identity`] is not a suite: it is the in-process fake of every identity
 //! endpoint, declared here once so every suite over a socket shares it.
+//! [`logging`] is not one either: it is the logging tree's collector, which
+//! [`login`] reads the records the crate logs through.
 
 #[cfg(feature = "aws")]
 #[path = "support/identity.rs"]
 mod identity;
+// Shared with the logging suite, which reads every item; this harness
+// reads the collector alone.
+#[cfg(feature = "aws")]
+#[allow(dead_code)]
+#[path = "support/logging.rs"]
+mod logging;
 
 #[cfg(all(feature = "aws", feature = "internals"))]
 #[path = "aws/container.rs"]
@@ -25,6 +33,9 @@ mod credentials;
 #[cfg(feature = "aws")]
 #[path = "aws/environment.rs"]
 mod environment;
+#[cfg(all(feature = "aws", feature = "internals"))]
+#[path = "aws/login.rs"]
+mod login;
 #[cfg(feature = "aws")]
 #[path = "aws/metadata.rs"]
 mod metadata;

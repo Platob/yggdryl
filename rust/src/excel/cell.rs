@@ -1204,13 +1204,9 @@ pub(crate) fn iso_scalar(text: &str) -> Result<Scalar> {
     }
     // A datetime is read at the millisecond, as a serial is; digits below
     // it are refused by the millisecond leaf's own contract.
-    if let Ok((count, unit, zone)) = crate::temporal::parse_timestamp(text) {
-        return DataType::datetime64(TimeUnit::Millisecond, zone)?
-            .scalar(Scalar::datetime64(count, unit, zone)?);
-    }
-    if let Ok((count, unit)) = crate::temporal::parse_datetime(text) {
-        return DataType::datetime64(TimeUnit::Millisecond, Timezone::NAIVE)?
-            .scalar(Scalar::datetime64(count, unit, Timezone::NAIVE)?);
+    if let Ok(read) = crate::DateTime64::from_text(text, Timezone::NAIVE) {
+        return DataType::datetime64(TimeUnit::Millisecond, read.timezone())?
+            .scalar(Scalar::DateTime64(read));
     }
     if let Ok((count, unit)) = crate::temporal::parse_time(text) {
         return match unit {

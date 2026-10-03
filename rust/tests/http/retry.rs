@@ -9,10 +9,24 @@
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 
+use yggdryl::http::{HttpOptions, Session};
 use yggdryl::internals::http_retry::{
     RETRY_BACKOFF, RETRY_BACKOFF_CAP, RETRY_COST, RETRY_REFUND, RETRY_TOKENS, RetryBudget, backoff,
-    delay, fresh_jitter, is_resumable, is_retryable_transport, is_unsent, retry_after,
+    delay, fresh_jitter, is_resumable, is_retryable_transport, is_unanswered, is_unsent,
+    retry_after,
 };
+
+use crate::http_server::HttpServer;
+
+/// What one `GET` of `url` fails with, attempted once.
+fn failure_of(url: &str) -> yggdryl::Error {
+    Session::new()
+        .get(url)
+        .expect("a URL")
+        .with_max_attempts(1)
+        .send()
+        .expect_err("a failure")
+}
 
 #[test]
 fn the_backoff_doubles_from_its_base_and_stops_doubling_after_six_steps() {
@@ -188,4 +202,54 @@ fn a_severed_read_resumes_and_a_verdict_on_the_bytes_does_not() {
     ] {
         assert!(!is_resumable(&std::io::Error::from(kind)), "{kind:?}");
     }
+}
+
+#[test]
+fn nothing_answered_is_told_apart_from_any_answer() {
+    // A released port refuses the connection.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .expect("a free port")
+        .port();
+    let refused = failure_of(&format!("http://127.0.0.1:{port}/x"));
+    assert!(is_unanswered(&refused), "{refused:?}");
+    // The text names the method, the URL and the transport's words.
+    assert!(
+        refused
+            .to_string()
+            .contains(&format!("http GET http://127.0.0.1:{port}/x failed: ")),
+        "{refused}"
+    );
+
+    // A server that reads the request and hangs up before a head.
+    let server = HttpServer::start();
+    server.put_resource("/hangup", b"short", Some("text/plain"));
+    server.fail_after("/hangup", 1);
+    let hung_up = failure_of(&server.url("/hangup"));
+    assert!(is_unanswered(&hung_up), "{hung_up:?}");
+
+    // A status is an answer.
+    server.set_status("/broken", 500, None);
+    let response = Session::new()
+        .get(&server.url("/broken"))
+        .unwrap()
+        .with_max_attempts(1)
+        .send()
+        .expect("an answer");
+    let refusal = response.raise_for_status().expect_err("a 500");
+    assert!(!is_unanswered(&refusal), "{refusal:?}");
+
+    // So is a head whose body is cut after it.
+    let long: Vec<u8> = (0..4096).map(|index| (index % 251) as u8).collect();
+    server.put_resource("/cut", &long, Some("application/octet-stream"));
+    server.cut_body_at("/cut", 100);
+    let cut = failure_of(&server.url("/cut"));
+    assert!(!is_unanswered(&cut), "{cut:?}");
+
+    // And an error that is no transport's at all.
+    let parse = Session::with_options(HttpOptions::default())
+        .unwrap()
+        .get("relative/path")
+        .expect_err("no base URL");
+    assert!(!is_unanswered(&parse), "{parse:?}");
 }

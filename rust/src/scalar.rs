@@ -919,13 +919,8 @@ impl<'de> Deserialize<'de> for Scalar {
                 Self::datetime64(count, unit, zone).map_err(D::Error::custom)
             }
             StructuralWire::DateTime64(Temporal64::Iso(spelled)) => {
-                crate::temporal::parse_timestamp(&spelled)
-                    .and_then(|(count, unit, zone)| Self::datetime64(count, unit, zone))
-                    .or_else(|_| {
-                        crate::temporal::parse_datetime(&spelled).and_then(|(count, unit)| {
-                            Self::datetime64(count, unit, Timezone::NAIVE)
-                        })
-                    })
+                crate::DateTime64::from_text(&spelled, Timezone::NAIVE)
+                    .map(Self::DateTime64)
                     .map_err(D::Error::custom)
             }
             StructuralWire::Duration32(Temporal32::Triple(count, unit, zone)) => {

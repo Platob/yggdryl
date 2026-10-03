@@ -59,6 +59,7 @@ pub(crate) mod container;
 pub(crate) mod credentials;
 #[cfg(feature = "s3")]
 pub(crate) mod environment;
+pub(crate) mod login;
 pub(crate) mod metadata;
 pub(crate) mod process;
 pub(crate) mod profile;
@@ -72,6 +73,44 @@ pub use profile::Profile;
 pub use session::{MfaPrompt, Session};
 pub use sso::{DeviceAuthorization, Sso, SsoLogin};
 pub use sts::{AssumedRole, CredentialSource};
+
+/// One answer an identity service gave, read whole: its status, the error
+/// type it names in `x-amzn-ErrorType`, and its body.
+///
+/// Every identity call - STS, IAM Identity Center, the Sign-In service, the
+/// container endpoint, the instance metadata service - goes out through the
+/// session's [`crate::http::Session`], so the retries, the timeouts, the
+/// proxy rules and the CA bundle are the HTTP client's, stated per request.
+pub(crate) struct Answer {
+    pub(crate) status: u16,
+    pub(crate) error_type: Option<String>,
+    pub(crate) body: std::sync::Arc<[u8]>,
+}
+
+impl Answer {
+    /// Send `request` and read its answer whole.
+    ///
+    /// # Errors
+    ///
+    /// The HTTP client's: a transport failure no retry could mend
+    /// ([`crate::http::is_unanswered`] tells one where nothing answered),
+    /// or a body past the session's bound.
+    pub(crate) fn of(request: &crate::http::Request) -> crate::Result<Self> {
+        let response = request.send()?;
+        let error_type = response
+            .headers()
+            .get("x-amzn-errortype")
+            .and_then(|value| value.split(':').next())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        Ok(Self {
+            status: response.status().code(),
+            error_type,
+            body: response.bytes()?,
+        })
+    }
+}
 
 /// The lowercase hex SHA-1 of `text`, which is how the AWS tools name every
 /// file in the caches this module shares with them.

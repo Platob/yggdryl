@@ -37,7 +37,7 @@ pub(crate) mod pattern;
 pub(crate) mod url;
 mod urn;
 
-pub use arn::Arn;
+pub use arn::{Arn, ArnPartition};
 pub use authority::Authority;
 pub use datatype::UriType;
 pub(crate) use datatype::{URL_EXTENSION_NAME, URN_EXTENSION_NAME, casts};

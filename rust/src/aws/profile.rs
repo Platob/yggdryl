@@ -16,7 +16,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use super::credentials::Credentials;
 use super::sso::Sso;
@@ -237,24 +237,44 @@ impl Profile {
     /// The key pair the profile holds: the credentials file's, else the
     /// configuration file's, and never a pair with one file's key and the
     /// other's token.
-    pub fn credentials(&self) -> Option<Credentials> {
-        self.credential_file_credentials()
-            .or_else(|| self.config_file_credentials())
+    ///
+    /// A set carries the expiry a tool wrote beside it, under
+    /// `aws_credential_expiration`, `x_security_token_expires`,
+    /// `aws_session_expiration`, `aws_expiration` or `expiration`.
+    ///
+    /// # Errors
+    ///
+    /// Half a set - a key id without its secret, a secret or a session
+    /// token without a key id - or an expiry that is not an instant, or two
+    /// expiries that disagree.
+    pub fn credentials(&self) -> Result<Option<Credentials>> {
+        match self.credential_file_credentials()? {
+            Some(found) => Ok(Some(found)),
+            None => self.config_file_credentials(),
+        }
     }
 
     /// The key pair the credentials file alone holds.
-    pub(crate) fn credential_file_credentials(&self) -> Option<Credentials> {
+    pub(crate) fn credential_file_credentials(&self) -> Result<Option<Credentials>> {
         credentials_of(&self.credential_values)
+            .map_err(|reason| self.refusal(format!("in the credentials file {reason}")))
     }
 
     /// The key pair the configuration file alone holds.
-    pub(crate) fn config_file_credentials(&self) -> Option<Credentials> {
+    pub(crate) fn config_file_credentials(&self) -> Result<Option<Credentials>> {
         credentials_of(&self.config_values)
+            .map_err(|reason| self.refusal(format!("in the configuration file {reason}")))
     }
 
     /// The `credential_process` command line.
     pub fn credential_process(&self) -> Option<&str> {
         self.get("credential_process")
+    }
+
+    /// The console sign-in `aws login` filed for this profile, named by its
+    /// session ARN.
+    pub fn login_session(&self) -> Option<&str> {
+        self.get("login_session")
     }
 
     /// The role the profile assumes, with how it obtains the keys that sign
@@ -270,6 +290,13 @@ impl Profile {
         let Some(role_arn) = self.get("role_arn") else {
             return Ok(None);
         };
+        // Read once where it is written, so a typo is this profile's refusal
+        // rather than a request STS refuses with less to say.
+        crate::Arn::from_str(role_arn).map_err(|error| {
+            self.refusal(format!(
+                "names role_arn {role_arn:?}, which is not an ARN: {error}"
+            ))
+        })?;
         let mut role = AssumedRole::new(role_arn);
         if let Some(name) = self.get("role_session_name") {
             role = role.with_session_name(name);
@@ -479,20 +506,96 @@ fn nested<'a>(table: &'a Table, name: &str, key: &str) -> Option<&'a str> {
     }
 }
 
-/// The key pair a section holds, when it holds one.
-fn credentials_of(table: &Table) -> Option<Credentials> {
-    let access_key_id = text(table, "aws_access_key_id")?;
-    let secret_access_key = text(table, "aws_secret_access_key")?;
-    let mut credentials = Credentials::new(access_key_id, secret_access_key);
-    if let Some(token) =
-        text(table, "aws_session_token").or_else(|| text(table, "aws_security_token"))
+/// The names an expiry is written under beside a set in a shared file: the
+/// file spelling of `AWS_CREDENTIAL_EXPIRATION` first, then the spellings
+/// the tools that dump temporary sets write - saml2aws and gimme-aws-creds
+/// (`x_security_token_expires`), yawsso (`aws_session_expiration`),
+/// aws-azure-login (`aws_expiration`) and aws-mfa (`expiration`). The AWS
+/// CLI reads none of them; a set that states one is refreshed before it
+/// lapses rather than signed with after.
+pub(crate) const EXPIRY_KEYS: [&str; 5] = [
+    "aws_credential_expiration",
+    "x_security_token_expires",
+    "aws_session_expiration",
+    "aws_expiration",
+    "expiration",
+];
+
+/// One credential value of `table`, as a person pasted it: a comment after
+/// whitespace and one pair of matching quotes taken off. Neither a key id, a
+/// secret, a session token nor an instant holds a quote, or a `#` or `;`
+/// after a blank, so neither cut can change a value that was written bare.
+fn pasted<'a>(table: &'a Table, key: &str) -> Option<&'a str> {
+    let mut value = text(table, key)?;
+    if let Some(at) = value
+        .char_indices()
+        .zip(value.chars().skip(1))
+        .find(|((_, blank), mark)| blank.is_whitespace() && matches!(mark, '#' | ';'))
+        .map(|((at, _), _)| at)
     {
+        value = value[..at].trim_end();
+    }
+    for quote in ['"', '\''] {
+        if let Some(inner) = value
+            .strip_prefix(quote)
+            .and_then(|rest| rest.strip_suffix(quote))
+        {
+            value = inner.trim();
+        }
+    }
+    (!value.is_empty()).then_some(value)
+}
+
+/// The key pair a section holds, when it holds one, with the session token
+/// and the expiry beside it.
+///
+/// # Errors
+///
+/// The reason half a set, or its expiry, cannot be read - worded to follow
+/// the section it is in.
+fn credentials_of(table: &Table) -> std::result::Result<Option<Credentials>, String> {
+    let access_key_id = pasted(table, "aws_access_key_id");
+    let secret_access_key = pasted(table, "aws_secret_access_key");
+    let token = pasted(table, "aws_session_token").or_else(|| pasted(table, "aws_security_token"));
+    let (access_key_id, secret_access_key) = match (access_key_id, secret_access_key) {
+        (Some(id), Some(secret)) => (id, secret),
+        (Some(_), None) => {
+            return Err("sets aws_access_key_id without aws_secret_access_key".to_owned());
+        }
+        (None, Some(_)) => {
+            return Err("sets aws_secret_access_key without aws_access_key_id".to_owned());
+        }
+        (None, None) if token.is_some() => {
+            return Err("sets aws_session_token without aws_access_key_id".to_owned());
+        }
+        (None, None) => return Ok(None),
+    };
+    let mut credentials = Credentials::new(access_key_id, secret_access_key);
+    if let Some(token) = token {
         credentials = credentials.with_session_token(token);
     }
-    if let Some(account_id) = text(table, "aws_account_id") {
+    if let Some(account_id) = pasted(table, "aws_account_id") {
         credentials = credentials.with_account_id(account_id);
     }
-    Some(credentials)
+    let mut expiry: Option<(&str, SystemTime)> = None;
+    for key in EXPIRY_KEYS {
+        let Some(value) = pasted(table, key) else {
+            continue;
+        };
+        let at = crate::auth::instant(value)
+            .ok_or_else(|| format!("sets {key} to {value:?}, which is not an ISO 8601 instant"))?;
+        match expiry {
+            Some((first, held)) if held != at => {
+                return Err(format!("sets {first} and {key} to two different instants"));
+            }
+            Some(_) => {}
+            None => expiry = Some((key, at)),
+        }
+    }
+    if let Some((_, at)) = expiry {
+        credentials = credentials.with_expiry(at);
+    }
+    Ok(Some(credentials))
 }
 
 /// Read one file's sections, in document order.
@@ -526,9 +629,12 @@ fn parse(text: &str, style: Style) -> Vec<(Header, Table)> {
             continue;
         }
         pending = None;
+        // A header runs to its last `]`, as Python's configparser - which
+        // the AWS CLI reads with - takes one: `[default]  # dumped 12:30` is
+        // the section `default`.
         if let Some(inner) = trimmed
             .strip_prefix('[')
-            .and_then(|rest| rest.strip_suffix(']'))
+            .and_then(|rest| rest.rfind(']').map(|end| &rest[..end]))
         {
             sections.push((header(inner.trim(), style), Table::new()));
             key_indent = None;
@@ -553,11 +659,29 @@ fn parse(text: &str, style: Style) -> Vec<(Header, Table)> {
 }
 
 /// `key = value` or `key: value`, split at the first delimiter, both trimmed.
+///
+/// A line pasted from the shell block the IAM Identity Center portal and
+/// `aws configure export-credentials` print reads as the key it sets:
+/// `export AWS_ACCESS_KEY_ID="..."` (a POSIX shell), `set AWS_...=` (the
+/// Windows command prompt), `$Env:AWS_...="..."` (PowerShell). None of those
+/// words begins a key the AWS tools define.
 fn split_pair(line: &str) -> Option<(&str, &str)> {
+    let line = SHELL_PREFIXES
+        .iter()
+        .find_map(|prefix| {
+            line.get(..prefix.len())
+                .filter(|head| head.eq_ignore_ascii_case(prefix))
+                .map(|_| line[prefix.len()..].trim_start())
+        })
+        .unwrap_or(line);
     let at = line.find(['=', ':'])?;
     let (key, value) = (line[..at].trim(), line[at + 1..].trim());
     (!key.is_empty()).then_some((key, value))
 }
+
+/// What a shell puts before a variable it sets, in the three forms a
+/// credential block is pasted from.
+const SHELL_PREFIXES: [&str; 3] = ["export ", "set ", "$env:"];
 
 /// What a section header names.
 fn header(inner: &str, style: Style) -> Header {
@@ -646,6 +770,60 @@ pub(crate) fn split_words(text: &str) -> Vec<String> {
     words
 }
 
+/// Split a `credential_process` line into its program and arguments the way
+/// the AWS tools do on the platform that runs it: POSIX words
+/// ([`split_words`]) everywhere but Windows, where the line is read as the
+/// Microsoft C runtime reads a command line - only a blank or a tab
+/// separates, only a double quote groups, and a backslash is literal unless
+/// it runs up to a double quote, where each pair is one backslash and an odd
+/// one out escapes the quote. So `C:\Tools\vault.exe export dev` is the
+/// program `C:\Tools\vault.exe`, as botocore's Windows splitter reads it.
+pub(crate) fn split_command(text: &str, windows: bool) -> Vec<String> {
+    if !windows {
+        return split_words(text);
+    }
+    let mut words = Vec::new();
+    let mut word = String::new();
+    // A pair of quotes stands for a word even when nothing is between them.
+    let mut started = false;
+    let mut quoted = false;
+    let mut backslashes = 0_usize;
+    for character in text.chars() {
+        match character {
+            '\\' => backslashes += 1,
+            '"' => {
+                word.extend(std::iter::repeat_n('\\', backslashes / 2));
+                let escaped = backslashes % 2 == 1;
+                backslashes = 0;
+                started = true;
+                if escaped {
+                    word.push('"');
+                } else {
+                    quoted = !quoted;
+                }
+            }
+            ' ' | '\t' if !quoted => {
+                word.extend(std::iter::repeat_n('\\', backslashes));
+                backslashes = 0;
+                if started || !word.is_empty() {
+                    words.push(std::mem::take(&mut word));
+                }
+                started = false;
+            }
+            other => {
+                word.extend(std::iter::repeat_n('\\', backslashes));
+                backslashes = 0;
+                word.push(other);
+            }
+        }
+    }
+    word.extend(std::iter::repeat_n('\\', backslashes));
+    if started || !word.is_empty() {
+        words.push(word);
+    }
+    words
+}
+
 /// `path` with a leading `~` replaced by `home`, the way the AWS tools read
 /// `AWS_CONFIG_FILE`.
 pub(crate) fn expand_user(path: &str, home: Option<&Path>) -> PathBuf {
@@ -683,8 +861,9 @@ pub(crate) fn boto_config(text: &str) -> Option<Credentials> {
     parse(text, Style::Credentials)
         .into_iter()
         .find_map(|(header, table)| match header {
+            // The legacy file is read as it always was: a set or nothing.
             Header::Profile(name) if name.eq_ignore_ascii_case("credentials") => {
-                credentials_of(&table)
+                credentials_of(&table).ok().flatten()
             }
             _ => None,
         })
@@ -708,6 +887,11 @@ pub mod internals {
     /// Split `text` into words the way a POSIX shell does.
     pub fn split_words(text: &str) -> Vec<String> {
         super::split_words(text)
+    }
+
+    /// Split a `credential_process` line as the platform that runs it does.
+    pub fn split_command(text: &str, windows: bool) -> Vec<String> {
+        super::split_command(text, windows)
     }
 
     /// `path` with a leading `~` replaced by `home`.

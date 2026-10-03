@@ -77,6 +77,8 @@ pub mod wire;
 use std::sync::OnceLock;
 
 pub use authorization::Authorization;
+#[cfg(any(feature = "aws", feature = "internals"))]
+pub(crate) use client::is_unanswered;
 pub use client::{Client, StatsSnapshot};
 pub use cookie::{Cookie, CookieJar};
 pub use headers::{

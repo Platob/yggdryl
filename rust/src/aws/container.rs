@@ -21,8 +21,6 @@ const CONTAINER_HOST: &str = "http://169.254.170.2";
 const TIMEOUT: Duration = Duration::from_secs(2);
 /// Attempts before an endpoint that does not answer is given up on.
 const ATTEMPTS: u32 = 3;
-/// The largest credential document read.
-const MAX_ANSWER: u64 = 64 * 1024;
 
 /// The credential set the container endpoint serves, when the environment
 /// names one.
@@ -34,7 +32,10 @@ const MAX_ANSWER: u64 = 64 * 1024;
 /// A full URI on a host the AWS tools refuse, a token file that cannot be
 /// read or holds a newline, an endpoint that does not answer, or an answer
 /// that is not a credential document.
-pub(crate) fn credentials(agent: &ureq::Agent, env: &Environment) -> Result<Option<Credentials>> {
+pub(crate) fn credentials(
+    http: &crate::http::Session,
+    env: &Environment,
+) -> Result<Option<Credentials>> {
     let Some(url) = uri(env)? else {
         return Ok(None);
     };
@@ -55,53 +56,45 @@ pub(crate) fn credentials(agent: &ureq::Agent, env: &Environment) -> Result<Opti
             "the container authorization token holds a line break, which no header may carry",
         ));
     }
-    let mut last = None;
-    for _ in 0..ATTEMPTS {
-        let mut request = agent
-            .get(&url)
-            .config()
-            .timeout_global(Some(TIMEOUT))
-            .build();
-        if let Some(token) = &token {
-            request = request.header("Authorization", token);
-        }
-        let mut response = match request.call() {
-            Ok(response) => response,
-            Err(error) => {
-                last = Some(format!(
-                    "the container credential endpoint {url} did not answer: {error}"
-                ));
-                continue;
-            }
-        };
-        let status = response.status().as_u16();
-        let body = response
-            .body_mut()
-            .with_config()
-            .limit(MAX_ANSWER)
-            .read_to_vec()
-            .map_err(|error| refusal(format!("reading container credentials failed: {error}")))?;
-        if status >= 500 {
-            last = Some(format!(
-                "the container credential endpoint answered {status}"
-            ));
-            continue;
-        }
-        if status != 200 {
-            return Err(Error::remote(
-                "ecs",
-                "ContainerCredentials",
-                status,
-                "CredentialsUnavailable",
-                format!("the container credential endpoint answered {status}"),
-                url,
-            ));
-        }
-        return credentials::parse_document(&body, "container credentials").map(Some);
+    // The endpoint is on the machine or the task's own network, so it is
+    // reached directly whatever proxy the environment names; a server-side
+    // failure or a connection that took nothing is tried again.
+    let mut request = http
+        .get(&url)?
+        .with_deadline(TIMEOUT)
+        .with_max_attempts(ATTEMPTS)
+        .with_direct(true);
+    if let Some(token) = &token {
+        request = request.with_header("authorization", token)?;
     }
-    Err(refusal(last.unwrap_or_else(|| {
-        "the container credential endpoint did not answer".to_owned()
-    })))
+    let answer = match super::Answer::of(&request) {
+        Ok(answer) => answer,
+        Err(error) => {
+            return Err(refusal(format!(
+                "the container credential endpoint {url} did not answer: {error}"
+            )));
+        }
+    };
+    if answer.status >= 500 {
+        return Err(refusal(format!(
+            "the container credential endpoint answered {}",
+            answer.status
+        )));
+    }
+    if answer.status != 200 {
+        return Err(Error::remote(
+            "ecs",
+            "ContainerCredentials",
+            answer.status,
+            "CredentialsUnavailable",
+            format!(
+                "the container credential endpoint answered {}",
+                answer.status
+            ),
+            url,
+        ));
+    }
+    credentials::parse_document(&answer.body, "container credentials").map(Some)
 }
 
 /// The endpoint the environment names, when it names one.

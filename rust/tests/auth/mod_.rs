@@ -25,7 +25,7 @@ fn the_shared_pieces_are_one_vocabulary() {
         std::time::Duration::from_secs(1),
     );
     assert!(lease.peek().is_none());
-    let report = Report::new("credentials");
+    let report = Report::new("credentials", "auth::tests");
     assert!(
         report
             .conclude::<Token>()

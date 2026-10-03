@@ -581,11 +581,7 @@ impl Client {
                 };
                 let fips = session.use_fips_endpoint();
                 let dualstack = session.use_dualstack_endpoint() || table("use_dualstack_endpoint");
-                let suffix = if region.starts_with("cn-") {
-                    "amazonaws.com.cn"
-                } else {
-                    "amazonaws.com"
-                };
+                let suffix = crate::ArnPartition::from_region(&region).dns_suffix();
                 match (table("use_accelerate_endpoint"), fips, dualstack) {
                     (true, _, true) => "s3-accelerate.dualstack.amazonaws.com".to_owned(),
                     (true, _, false) => "s3-accelerate.amazonaws.com".to_owned(),
@@ -818,7 +814,7 @@ impl Client {
                 self.adopt_region(region)?;
                 continue;
             }
-            if self.refresh_on_expiry(&answer, &mut refreshed)? {
+            if self.refresh_on_expiry(request, &headers, &answer, &mut refreshed)? {
                 continue;
             }
             if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
@@ -830,38 +826,54 @@ impl Client {
         }
     }
 
-    /// Whether a refusal says the credential set the request was signed with
-    /// has lapsed - a session the store knows expired before the session
-    /// thought it would - in which case the chain is walked again and the
-    /// request signed once more, once.
-    fn refresh_on_expiry(&self, answer: &Answer, refreshed: &mut bool) -> Result<bool> {
+    /// Whether a refusal says the keys that signed the attempt are no longer
+    /// accepted - a set the store knows lapsed before the session thought it
+    /// would, a key it does not recognize - in which case the session is told,
+    /// and the request is signed once more, once, when the session now
+    /// answers another set: the same set would be refused the same way.
+    ///
+    /// The key is read off the attempt's own `Authorization` header rather
+    /// than the client's shared signer, which another request may already
+    /// have refilled with a fresh set. A `HEAD` answers its refusal with no
+    /// body, so a lapsed temporary set reads as a bare `400` or `403`: the
+    /// session reads its sources again without holding anything against the
+    /// key, which may be fine, and the request goes again only if they now
+    /// answer another set. When nothing answers, the session's refusal -
+    /// every source and why - is the error rather than the store's.
+    fn refresh_on_expiry(
+        &self,
+        request: &Request<'_>,
+        sent: &[(String, String)],
+        answer: &Answer,
+        refreshed: &mut bool,
+    ) -> Result<bool> {
         if *refreshed
             || !matches!(self.provider, Provider::Aws)
             || !matches!(answer.status, 400 | 403)
         {
             return Ok(false);
         }
-        let Some(code) = super::xml::parse_error(&answer.body).map(|error| error.code) else {
+        let Some(signed) = signed_access_key(sent) else {
             return Ok(false);
         };
-        if !matches!(
-            code.as_str(),
-            "ExpiredToken" | "ExpiredTokenException" | "InvalidToken" | "TokenRefreshRequired"
-        ) {
-            return Ok(false);
+        let now = SystemTime::now();
+        match super::xml::parse_error(&answer.body).map(|error| error.code) {
+            Some(code) => {
+                if !self.session.refused_by_store(signed, &code, now) {
+                    return Ok(false);
+                }
+            }
+            None if request.method == "HEAD"
+                && answer.body.is_empty()
+                && header_value(sent, "x-amz-security-token").is_some() =>
+            {
+                self.session.forget_if(signed, false);
+            }
+            None => return Ok(false),
         }
         *refreshed = true;
-        let mut signer = self.signer.lock().map_err(|_| poisoned())?;
-        // Only the set this request was signed with is forgotten: another
-        // client on the same session may already hold a fresh one.
-        match signer.as_ref() {
-            Some((signed, _, _)) => {
-                self.session.invalidate_if(signed.access_key_id());
-            }
-            None => self.session.invalidate(),
-        }
-        *signer = None;
-        Ok(true)
+        let fresh = self.session.credentials(now)?;
+        Ok(fresh.is_none_or(|fresh| fresh.access_key_id() != signed))
     }
 
     /// The wire target and the headers one attempt goes out with.
@@ -1021,8 +1033,8 @@ impl Client {
             if attempt > 1 {
                 self.stats.retries.fetch_add(1, Ordering::Relaxed);
             }
-            let (target, headers) = self.prepare(request, None, SystemTime::now())?;
-            let opened = self.open_stream(request, &target, &headers);
+            let (target, sent) = self.prepare(request, None, SystemTime::now())?;
+            let opened = self.open_stream(request, &target, &sent);
             let (status, headers, mut reader) = match opened {
                 Ok(opened) => opened,
                 Err(error) => {
@@ -1060,7 +1072,7 @@ impl Client {
                     self.adopt_region(region)?;
                     continue;
                 }
-                if self.refresh_on_expiry(&answer, &mut refreshed)? {
+                if self.refresh_on_expiry(request, &sent, &answer, &mut refreshed)? {
                     continue;
                 }
                 if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
@@ -2346,6 +2358,22 @@ fn too_many_parts() -> Error {
         std::io::ErrorKind::InvalidInput,
         "expected a value small enough to upload in the parts this store accepts",
     ))
+}
+
+/// The access key id a Signature Version 4 `Authorization` header names:
+/// what follows `Credential=` up to the scope's first `/`.
+fn signed_access_key(sent: &[(String, String)]) -> Option<&str> {
+    let authorization = header_value(sent, "authorization")?;
+    let credential = &authorization[authorization.find("Credential=")? + "Credential=".len()..];
+    credential.split('/').next().filter(|key| !key.is_empty())
+}
+
+/// The value of the header `name` among `headers`, its case ignored.
+fn header_value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(held, _)| held.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
 }
 
 /// The host and the path-with-query of a whole URL.

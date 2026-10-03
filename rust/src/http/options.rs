@@ -55,6 +55,9 @@ pub struct HttpOptions {
     ca_bundle: Option<PathBuf>,
     accept_encodings: Vec<Codec>,
     read_environment: bool,
+    /// Whether a request naming no credential takes its host's `.netrc`
+    /// entry; `None` follows `read_environment`.
+    netrc: Option<bool>,
     max_body_size: u64,
     stream_batch_size: usize,
     concurrency: usize,
@@ -106,6 +109,7 @@ impl HttpOptions {
             ca_bundle: None,
             accept_encodings: Self::DEFAULT_ACCEPT_ENCODINGS.to_vec(),
             read_environment: true,
+            netrc: None,
             max_body_size: Self::DEFAULT_MAX_BODY_SIZE,
             stream_batch_size: DEFAULT_STREAM_BATCH_SIZE,
             concurrency: default_concurrency(),
@@ -138,7 +142,7 @@ impl HttpOptions {
     /// | --- | --- |
     /// | `timeout`, `connect_timeout`, `max_pause` | seconds, decimal allowed, with an optional `s` or `ms` suffix |
     /// | `max_attempts`, `max_redirects`, `concurrency`, `page_limit`, `stream_batch_size` | a whole number; `page_limit` `0` clears the limit |
-    /// | `follow_redirects`, `read_environment`, `cookies` | `true`/`false`, `1`/`0`, `yes`/`no` |
+    /// | `follow_redirects`, `read_environment`, `netrc`, `cookies` | `true`/`false`, `1`/`0`, `yes`/`no` |
     /// | `max_body_size` | a byte count with an optional `KiB`, `MiB`, `GiB` (or `KB`, `MB`, `GB`) suffix |
     /// | `accept_encoding` | comma-separated coding names this crate decodes |
     /// | `user_agent`, `proxy`, `ca_bundle` | text as given |
@@ -177,7 +181,7 @@ impl HttpOptions {
     /// The names of the properties [`Self::with_properties`] reads, as this
     /// crate spells them - the aliases it also reads, and `header.<name>`,
     /// aside. What a binding suggests a mistyped keyword against.
-    pub const PROPERTY_NAMES: [&'static str; 22] = [
+    pub const PROPERTY_NAMES: [&'static str; 23] = [
         "timeout",
         "connect_timeout",
         "max_pause",
@@ -188,6 +192,7 @@ impl HttpOptions {
         "page_limit",
         "follow_redirects",
         "read_environment",
+        "netrc",
         "cookies",
         "max_body_size",
         "accept_encoding",
@@ -257,6 +262,7 @@ impl HttpOptions {
                 }
                 "follow_redirects" => self.with_follow_redirects(flag(name, value)?),
                 "read_environment" => self.with_read_environment(flag(name, value)?),
+                "netrc" => self.with_netrc(flag(name, value)?),
                 "cookies" => self.with_cookies(flag(name, value)?),
                 "max_body_size" => self.with_max_body_size(size(name, value)?),
                 "accept_encoding" | "accept_encodings" => {
@@ -415,10 +421,34 @@ impl HttpOptions {
     }
 
     /// Whether the proxy and CA bundle variables of the environment are read
-    /// where the options name none.
+    /// where the options name none - and the `.netrc` file, unless
+    /// [`Self::with_netrc`] says otherwise.
     #[must_use]
     pub const fn with_read_environment(mut self, read_environment: bool) -> Self {
         self.read_environment = read_environment;
+        self
+    }
+
+    /// Whether a request naming no credential takes the `.netrc` entry of
+    /// its host - the file `NETRC` names, else `.netrc` then `_netrc` in the
+    /// home directory - as curl and Python's `requests` do.
+    ///
+    /// Left unset it follows [`Self::read_environment`], so a session that
+    /// reads no environment reads no `.netrc` either; `false` keeps the file
+    /// out of a session that reads the proxy and the CA bundle variables, as
+    /// one whose every request states the credential it means does.
+    ///
+    /// ```
+    /// use yggdryl::http::HttpOptions;
+    ///
+    /// assert!(HttpOptions::default().netrc());
+    /// assert!(!HttpOptions::default().with_read_environment(false).netrc());
+    /// assert!(!HttpOptions::default().with_netrc(false).netrc());
+    /// assert!(HttpOptions::default().with_read_environment(false).with_netrc(true).netrc());
+    /// ```
+    #[must_use]
+    pub const fn with_netrc(mut self, netrc: bool) -> Self {
+        self.netrc = Some(netrc);
         self
     }
 
@@ -579,6 +609,16 @@ impl HttpOptions {
     #[must_use]
     pub const fn read_environment(&self) -> bool {
         self.read_environment
+    }
+
+    /// Whether a request naming no credential takes its host's `.netrc`
+    /// entry: what [`Self::with_netrc`] said, else [`Self::read_environment`].
+    #[must_use]
+    pub const fn netrc(&self) -> bool {
+        match self.netrc {
+            Some(netrc) => netrc,
+            None => self.read_environment,
+        }
     }
 
     /// The most a whole-body read holds.

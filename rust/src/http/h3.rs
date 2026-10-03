@@ -154,11 +154,17 @@ impl Pool {
         let request =
             request_of(origin, wire, ureq::http::Version::HTTP_3).map_err(Declined::Failed)?;
         let timeout = wire.timeout;
-        let outcome = runtime::wait(async {
-            let (sender, connection) = match self.connection(origin, port, &slot).await {
-                Some(held) => held,
-                None => return Err(Declined::Fallback),
-            };
+        let connect_timeout = wire.connect_timeout.unwrap_or(self.connect_timeout);
+        // The one bound on the whole attempt, the body's reads included.
+        let until = wire
+            .deadline
+            .and_then(|deadline| Instant::now().checked_add(deadline));
+        let exchange = async {
+            let (sender, connection) =
+                match self.connection(origin, port, &slot, connect_timeout).await {
+                    Some(held) => held,
+                    None => return Err(Declined::Fallback),
+                };
             match send(sender, request, payload, timeout).await {
                 Ok(answered) => Ok(answered),
                 Err(error) => {
@@ -169,8 +175,12 @@ impl Pool {
                     Err(Declined::Failed(failure(error)))
                 }
             }
-        })
-        .map_err(|error| Declined::Failed(ureq::Error::Io(error)))?;
+        };
+        let outcome = runtime::wait(runtime::before(until, exchange))
+            .map_err(|error| Declined::Failed(ureq::Error::Io(error)))?
+            .unwrap_or(Err(Declined::Failed(ureq::Error::Timeout(
+                ureq::Timeout::Global,
+            ))));
         match outcome {
             Ok((response, stream)) => Ok(Answer {
                 status: status_of(response.status()).map_err(Declined::Failed)?,
@@ -180,6 +190,7 @@ impl Pool {
                     stream,
                     chunk: Bytes::new(),
                     timeout,
+                    until,
                     done: false,
                 }),
                 attempts: 1,
@@ -194,9 +205,15 @@ impl Pool {
         }
     }
 
-    /// The live connection to `origin`, opened when there is none; `None`
-    /// when QUIC cannot reach it.
-    async fn connection(&self, origin: &Origin, port: u16, slot: &Slot<Held>) -> Option<Held> {
+    /// The live connection to `origin`, opened within `connect_timeout` when
+    /// there is none; `None` when QUIC cannot reach it.
+    async fn connection(
+        &self,
+        origin: &Origin,
+        port: u16,
+        slot: &Slot<Held>,
+        connect_timeout: Duration,
+    ) -> Option<Held> {
         if let Some(held) = live(slot) {
             return Some(held);
         }
@@ -205,7 +222,7 @@ impl Pool {
         if let Some(held) = live(slot) {
             return Some(held);
         }
-        let held = runtime::within(self.connect_timeout, self.open(origin, port)).await??;
+        let held = runtime::within(connect_timeout, self.open(origin, port)).await??;
         slot.set(held.clone());
         Some(held)
     }
@@ -408,7 +425,11 @@ fn failure(error: Unsent) -> ureq::Error {
 struct Body {
     stream: Stream,
     chunk: Bytes,
+    /// How long one read waits for the next frame.
     timeout: Duration,
+    /// The deadline of the attempt the body answers, past which no read
+    /// waits.
+    until: Option<Instant>,
     done: bool,
 }
 
@@ -423,7 +444,8 @@ impl Read for Body {
             if self.done {
                 return Ok(0);
             }
-            let received = runtime::wait_for(self.timeout, async {
+            let bound = runtime::capped(self.timeout, self.until);
+            let received = runtime::wait_for(bound, async {
                 self.stream
                     .recv_data()
                     .await

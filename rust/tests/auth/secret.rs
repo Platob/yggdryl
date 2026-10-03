@@ -39,3 +39,42 @@ fn equality_and_hashing_read_the_text() {
         .collect();
     assert_eq!(set.len(), 2);
 }
+
+/// A file written whole or not at all, and only its owner's to read.
+#[cfg(feature = "aws")]
+#[test]
+fn a_private_write_replaces_the_file_whole_and_leaves_no_sibling() {
+    use yggdryl::internals::auth_secret::write_private;
+
+    let directory =
+        std::env::temp_dir().join(format!("yggdryl-auth-private-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    let path = directory.join("nested").join("token.json");
+    write_private(&path, b"{\"first\":true}").expect("a first write");
+    write_private(&path, b"{\"second\":true}").expect("a replacing write");
+    assert_eq!(
+        std::fs::read(&path).expect("the file"),
+        b"{\"second\":true}"
+    );
+    let names: Vec<String> = std::fs::read_dir(path.parent().expect("a parent"))
+        .expect("the directory")
+        .map(|entry| {
+            entry
+                .expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(names, ["token.json"], "no sibling is left behind");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(&path)
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "only its owner reads it");
+    }
+    let _ = std::fs::remove_dir_all(&directory);
+}

@@ -33,8 +33,6 @@ const REFRESH_WINDOW: Duration = Duration::from_secs(15 * 60);
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(5);
 /// How much longer to wait between polls when the service asks to slow down.
 const SLOW_DOWN: Duration = Duration::from_secs(5);
-/// The largest document any of these endpoints answers.
-const MAX_ANSWER: u64 = 256 * 1024;
 /// The bound on one request to the portal or the OIDC service.
 const TIMEOUT: Duration = Duration::from_secs(30);
 /// The longest lifetime a service's `expiresIn` is believed; a bigger one
@@ -42,7 +40,6 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_LIFETIME: Duration = Duration::from_secs(90 * 86_400);
 /// Attempts at one request before its failure is the answer.
 const ATTEMPTS: u32 = 3;
-const RETRY_PAUSE: Duration = Duration::from_millis(200);
 
 /// One IAM Identity Center sign-in and the role it is traded for.
 ///
@@ -162,14 +159,24 @@ impl Sso {
         super::sha1_hex(&format!("{{{}}}", rendered.join(",")))
     }
 
-    /// The OIDC service the sign-in is registered and refreshed at.
+    /// The OIDC service the sign-in is registered and refreshed at, on the
+    /// partition its region is in.
     pub(crate) fn oidc_endpoint(&self) -> String {
-        format!("https://oidc.{}.amazonaws.com", self.region)
+        let partition = crate::ArnPartition::from_region(&self.region);
+        format!(
+            "https://{}",
+            partition.service_host("oidc", &self.region, false, false)
+        )
     }
 
-    /// The access portal the token is traded at.
+    /// The access portal the token is traded at, on the partition its region
+    /// is in.
     pub(crate) fn portal_endpoint(&self) -> String {
-        format!("https://portal.sso.{}.amazonaws.com", self.region)
+        let partition = crate::ArnPartition::from_region(&self.region);
+        format!(
+            "https://portal.{}",
+            partition.service_host("sso", &self.region, false, false)
+        )
     }
 }
 
@@ -377,7 +384,7 @@ impl Token {
 /// The OIDC service's refusal, the transport's failure, or an answer without
 /// a token.
 pub(crate) fn refresh(
-    agent: &ureq::Agent,
+    http: &crate::http::Session,
     oidc: &str,
     token: &Token,
     now: SystemTime,
@@ -389,8 +396,11 @@ pub(crate) fn refresh(
             "the cached sign-in registered no client that could refresh it",
         ));
     };
+    // A refresh token may be rotated by the grant it serves, so a refresh
+    // whose answer was lost is not sent again: it could spend the token.
     let answer = post_json(
-        agent,
+        http,
+        false,
         &format!("{oidc}/token"),
         &serde_json::json!({
             "clientId": client_id,
@@ -424,7 +434,7 @@ pub(crate) fn refresh(
 /// three steps, an authorization that expired or was denied, or the
 /// transport's failure.
 pub(crate) fn login(
-    agent: &ureq::Agent,
+    http: &crate::http::Session,
     oidc: &str,
     sso: &Sso,
     prompt: &SsoLogin,
@@ -444,7 +454,8 @@ pub(crate) fn login(
         sso.scopes.iter().map(String::as_str).collect()
     };
     let registered = post_json(
-        agent,
+        http,
+        true,
         &format!("{oidc}/client/register"),
         &serde_json::json!({
             "clientName": CLIENT_NAME,
@@ -464,7 +475,8 @@ pub(crate) fn login(
         });
 
     let started = post_json(
-        agent,
+        http,
+        true,
         &format!("{oidc}/device_authorization"),
         &serde_json::json!({
             "clientId": client_id,
@@ -497,7 +509,8 @@ pub(crate) fn login(
     loop {
         std::thread::sleep(interval);
         let answer = post(
-            agent,
+            http,
+            true,
             &format!("{oidc}/token"),
             &serde_json::json!({
                 "clientId": client_id,
@@ -555,7 +568,7 @@ pub(crate) fn login(
 /// The portal's refusal - a lapsed token answers 401 - the transport's
 /// failure, or an answer without a credential set.
 pub(crate) fn role_credentials(
-    agent: &ureq::Agent,
+    http: &crate::http::Session,
     portal: &str,
     sso: &Sso,
     token: &Token,
@@ -565,21 +578,13 @@ pub(crate) fn role_credentials(
         super::sigv4::encode_query_component(&sso.role_name),
         super::sigv4::encode_query_component(&sso.account_id)
     );
-    let mut answer = agent
-        .get(&url)
-        .config()
-        .timeout_global(Some(TIMEOUT))
-        .build()
-        .header("x-amz-sso_bearer_token", token.access_token.expose())
-        .call()
-        .map_err(|error| transport_failure(portal, &error))?;
-    let status = answer.status().as_u16();
-    let body = answer
-        .body_mut()
-        .with_config()
-        .limit(MAX_ANSWER)
-        .read_to_vec()
-        .map_err(|error| transport_failure(portal, &error))?;
+    let request = http
+        .get(&url)?
+        .with_header("x-amz-sso_bearer_token", token.access_token.expose())?
+        .with_timeout(TIMEOUT)
+        .with_max_attempts(ATTEMPTS);
+    let answer = super::Answer::of(&request).map_err(|error| transport_failure(portal, &error))?;
+    let (status, body) = (answer.status, answer.body);
     let document: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
     if status != 200 {
         return Err(Error::remote(
@@ -623,13 +628,14 @@ pub(crate) fn role_credentials(
 
 /// Send one JSON request and read a JSON answer, refusing a non-2xx status.
 fn post_json(
-    agent: &ureq::Agent,
+    http: &crate::http::Session,
+    idempotent: bool,
     url: &str,
     body: &serde_json::Value,
     operation: &'static str,
     path: &str,
 ) -> Result<serde_json::Value> {
-    let (status, document) = post(agent, url, body, path)?;
+    let (status, document) = post(http, idempotent, url, body, path)?;
     if status >= 300 {
         return Err(Error::remote(
             "sso-oidc",
@@ -643,43 +649,27 @@ fn post_json(
     Ok(document)
 }
 
-/// Send one JSON request and read the status and the JSON it answered.
+/// Send one JSON request and read the status and the JSON it answered;
+/// `idempotent` says whether one the service may have acted on can go
+/// again.
 fn post(
-    agent: &ureq::Agent,
+    http: &crate::http::Session,
+    idempotent: bool,
     url: &str,
     body: &serde_json::Value,
     path: &str,
 ) -> Result<(u16, serde_json::Value)> {
-    let mut attempt = 0;
-    loop {
-        attempt += 1;
-        let answered = agent
-            .post(url)
-            .config()
-            .timeout_global(Some(TIMEOUT))
-            .build()
-            .header("Content-Type", "application/json")
-            .send(body.to_string().as_bytes())
-            .and_then(|mut answer| {
-                let status = answer.status().as_u16();
-                answer
-                    .body_mut()
-                    .with_config()
-                    .limit(MAX_ANSWER)
-                    .read_to_vec()
-                    .map(|bytes| (status, bytes))
-            });
-        match answered {
-            Ok((status, _)) if (status >= 500 || status == 429) && attempt < ATTEMPTS => {
-                std::thread::sleep(RETRY_PAUSE);
-            }
-            Ok((status, bytes)) => {
-                return Ok((status, serde_json::from_slice(&bytes).unwrap_or_default()));
-            }
-            Err(_) if attempt < ATTEMPTS => std::thread::sleep(RETRY_PAUSE),
-            Err(error) => return Err(transport_failure(path, &error)),
-        }
-    }
+    let request = http
+        .post(url, body.to_string())?
+        .with_header("content-type", "application/json")?
+        .with_timeout(TIMEOUT)
+        .with_max_attempts(ATTEMPTS)
+        .with_idempotent(idempotent);
+    let answer = super::Answer::of(&request).map_err(|error| transport_failure(path, &error))?;
+    Ok((
+        answer.status,
+        serde_json::from_slice(&answer.body).unwrap_or_default(),
+    ))
 }
 
 fn text(document: &serde_json::Value, key: &str) -> Option<String> {

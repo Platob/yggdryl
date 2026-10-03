@@ -4,8 +4,8 @@
 //! path a stand-in `NETRC` names, so no test reads the home directory of the
 //! machine it runs on.
 
-use yggdryl::http::Authorization;
-use yggdryl::internals::http_netrc::{authorization, environment_authorization};
+use yggdryl::http::{Authorization, HttpOptions, Session};
+use yggdryl::internals::http_netrc::{authorization, environment_authorization, sent_headers};
 
 const NETRC: &str = r#"
 # Comments run to the end of their line.
@@ -76,6 +76,54 @@ fn the_file_netrc_names_is_read_and_reread_when_it_changes() {
     assert_eq!(
         environment_authorization("h.example", &[("NETRC", missing.to_str().unwrap())]),
         None
+    );
+    std::fs::remove_dir_all(&directory).unwrap();
+}
+
+#[test]
+fn a_session_sends_the_netrc_credential_only_where_its_options_take_it() {
+    let directory =
+        std::env::temp_dir().join(format!("yggdryl-netrc-session-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("credentials");
+    std::fs::write(&path, "machine h.example login u password p").unwrap();
+    let variables = [("NETRC", path.to_str().unwrap())];
+    let sent = |options: HttpOptions| {
+        let session = Session::with_options(options).expect("a session");
+        let request = session.get("http://h.example/rows").expect("a URL");
+        sent_headers(&request, &variables)
+            .expect("headers")
+            .get("authorization")
+            .map(str::to_owned)
+    };
+    let basic = Some(Authorization::basic("u", "p").header_value());
+
+    assert_eq!(sent(HttpOptions::default()), basic);
+    assert_eq!(sent(HttpOptions::default().with_netrc(false)), None);
+    // Unset, it follows whether the environment is read at all.
+    assert_eq!(
+        sent(HttpOptions::default().with_read_environment(false)),
+        None
+    );
+    assert_eq!(
+        sent(
+            HttpOptions::default()
+                .with_read_environment(false)
+                .with_netrc(true)
+        ),
+        basic
+    );
+    // A credential the request names is never the file's.
+    let session = Session::with_options(HttpOptions::default()).expect("a session");
+    let request = session
+        .get("http://h.example/rows")
+        .unwrap()
+        .with_authorization(Authorization::bearer("t"));
+    assert_eq!(
+        sent_headers(&request, &variables)
+            .unwrap()
+            .get("authorization"),
+        Some("Bearer t")
     );
     std::fs::remove_dir_all(&directory).unwrap();
 }

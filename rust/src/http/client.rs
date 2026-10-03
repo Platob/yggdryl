@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use super::request::{AttemptHeaders, RetryOn};
 use super::retry::{self, RETRY_COST, RETRY_REFUND, RetryBudget, fresh_jitter};
 use super::{Headers, HttpOptions, HttpVersion, Method, Session, Status};
 use crate::holder::Holder;
@@ -132,18 +133,37 @@ pub(crate) struct Answer {
 }
 
 /// One request as it goes on the wire: the complete header set, session
-/// defaults and cookies already merged in.
+/// defaults and cookies already merged in, and what the request states for
+/// its own attempts ([`super::Request::wire`]).
+#[derive(Clone, Copy)]
 pub(crate) struct Wire<'a> {
     pub(crate) method: Method,
     pub(crate) url: &'a Url,
     pub(crate) headers: &'a Headers,
     pub(crate) body: Option<&'a [u8]>,
+    /// The bound on each phase of an attempt.
     pub(crate) timeout: Duration,
     /// Whether the request may go out again after the server may have seen
-    /// it: an idempotent method. A request that is not goes out again only
-    /// when its connection was never made.
+    /// it: an idempotent method, or a request its caller declared so. A
+    /// request that is not goes out again only when its connection was
+    /// never made.
     pub(crate) idempotent: bool,
+    /// The attempts the request asks for, in place of the client's.
+    pub(crate) max_attempts: Option<u32>,
+    /// The bound on opening a connection, in place of the pool's.
+    pub(crate) connect_timeout: Option<Duration>,
+    /// The bound on the whole of one attempt.
+    pub(crate) deadline: Option<Duration>,
+    /// Whether no proxy is gone through, whatever the client would choose.
+    pub(crate) direct: bool,
+    /// The headers each attempt computes over [`Self::headers`].
+    pub(crate) attempt_headers: Option<&'a AttemptHeaders>,
+    /// Whether an answer the status alone does not retry is retried.
+    pub(crate) retry_on: Option<&'a RetryOn>,
 }
+
+/// The most of an answer's body a [`RetryOn`] rule is handed.
+const RETRY_ON_PEEK: u64 = 64 * 1024;
 
 /// What the pool this client sends on was built for.
 struct Inner {
@@ -389,12 +409,21 @@ impl Client {
         )
     }
 
-    /// The proxy `url` goes through when the environment decides, read now:
-    /// `Some(None)` to go direct, `None` when the pool's own setting stands.
-    fn proxy_for(&self, url: &Url) -> std::result::Result<Option<Option<ureq::Proxy>>, Error> {
+    /// The proxy `wire` goes through when the request or the environment
+    /// decides, read now: `Some(None)` to go direct, `None` when the pool's
+    /// own setting stands. A request that goes direct overrides whatever
+    /// proxy the pool names.
+    fn proxy_for(
+        &self,
+        wire: &Wire<'_>,
+    ) -> std::result::Result<Option<Option<ureq::Proxy>>, Error> {
+        if wire.direct {
+            return Ok(self.inner.agent.config().proxy().map(|_| None));
+        }
         if !self.inner.environment_proxy {
             return Ok(None);
         }
+        let url = wire.url;
         let Some(named) = super::proxy::environment_proxy(url, crate::auth::variable) else {
             // Nothing to override when the pool goes direct too.
             return Ok(self.inner.agent.config().proxy().map(|_| None));
@@ -466,9 +495,16 @@ impl Client {
         std::thread::sleep(retry::delay(attempt, asked, &self.inner.jitter));
     }
 
-    /// Whether another attempt is allowed, and pay for it if so.
-    fn may_retry(&self, attempt: u32) -> bool {
-        attempt < self.inner.transport.max_attempts && self.inner.retries.withdraw()
+    /// How many times `wire` is attempted: what its request asks for, else
+    /// the client's count.
+    fn attempts_of(&self, wire: &Wire<'_>) -> u32 {
+        wire.max_attempts
+            .unwrap_or(self.inner.transport.max_attempts)
+    }
+
+    /// Whether another attempt of `wire` is allowed, and pay for it if so.
+    fn may_retry(&self, wire: &Wire<'_>, attempt: u32) -> bool {
+        attempt < self.attempts_of(wire) && self.inner.retries.withdraw()
     }
 
     /// Give back what an exchange that reached a verdict is owed.
@@ -485,35 +521,46 @@ impl Client {
 
     /// One request with retries.
     ///
-    /// An idempotent request is retried per `retry` on a transport failure
-    /// worth retrying and on a [`Status::is_retryable`] answer; any other is
-    /// retried only when its connection was never made, since the server
-    /// may have acted on it otherwise. A `Retry-After` - seconds or a date -
-    /// is waited for up to the options' `max_pause`, and one asking longer
-    /// ends the retries with that answer; a `3xx` is not followed here.
-    /// Every attempt is counted, so a test reads the true number of round
-    /// trips rather than the intended one. A body is read only to drain an
-    /// answer that is retried; the one handed back is the caller's, unread.
+    /// An idempotent request - by its method, or declared so - is retried
+    /// per `retry` on a transport failure worth retrying, on a
+    /// [`Status::is_retryable`] answer, and on any other failing answer its
+    /// own rule reads as worth another attempt; any other is retried only
+    /// when its connection was never made, since the server may have acted
+    /// on it otherwise. A `Retry-After` - seconds or a date - is waited for
+    /// up to the options' `max_pause`, and one asking longer ends the
+    /// retries with that answer; a `3xx` is not followed here. The request's
+    /// own attempt count stands in for the client's, and every retry is paid
+    /// for out of the client's one budget. Each attempt carries the headers
+    /// the request's hook computes for it. Every attempt is counted, so a
+    /// test reads the true number of round trips rather than the intended
+    /// one. A body is read only to drain an answer that is retried, or as
+    /// far as a rule reads it; the one handed back is the caller's, whole.
     ///
     /// # Errors
     ///
     /// [`Error::Io`] naming the method and the URL for a transport failure
     /// that was not, or could no longer be, retried; [`Error::Parse`] for a
-    /// response header that will not validate.
+    /// response header that will not validate; what the request's attempt
+    /// headers hook returned, at once.
     pub(crate) fn execute(&self, wire: &Wire<'_>) -> Result<Answer> {
         let mut attempt = 0;
         loop {
             attempt += 1;
+            let headers = attempt_headers(wire, attempt)?;
             if attempt > 1 {
                 self.inner.stats.retries.fetch_add(1, Ordering::Relaxed);
             }
-            let outcome = self.attempt(wire, wire.body.map(Payload::Bytes));
+            let sent = Wire {
+                headers: headers.as_ref().unwrap_or(wire.headers),
+                ..*wire
+            };
+            let outcome = self.attempt(&sent, sent.body.map(Payload::Bytes));
             let mut answer = match outcome {
                 Ok(answer) => answer,
                 Err(Failure::Transport(error)) => {
                     if retry::is_retryable_transport(&error)
                         && (wire.idempotent || retry::is_unsent(&error))
-                        && self.may_retry(attempt)
+                        && self.may_retry(wire, attempt)
                     {
                         self.pause(attempt, None);
                         continue;
@@ -522,17 +569,8 @@ impl Client {
                 }
                 Err(Failure::Refused(error)) => return Err(error),
             };
-            if answer.status.is_retryable() && wire.idempotent {
-                let asked = retry::retry_after(answer.headers.get("retry-after"));
-                let patient = asked.is_none_or(|pause| pause <= self.inner.transport.max_pause);
-                if patient && self.may_retry(attempt) {
-                    let _ = std::io::copy(
-                        &mut (&mut answer.body).take(FAILURE_BODY_LIMIT),
-                        &mut std::io::sink(),
-                    );
-                    self.pause(attempt, asked);
-                    continue;
-                }
+            if wire.idempotent && self.asks_again(wire, attempt, &mut answer) {
+                continue;
             }
             self.settle(answer.status, attempt);
             answer.attempts = attempt;
@@ -540,8 +578,56 @@ impl Client {
         }
     }
 
+    /// Whether an idempotent request's `answer` is asked for again: a status
+    /// that says "not now", or a failing one the request's rule reads as
+    /// that from at most [`RETRY_ON_PEEK`] bytes of the body - while the
+    /// attempts, the budget and the `Retry-After` allow it, the retry paid
+    /// for, the body drained and the pause waited out. An answer that is not
+    /// asked for again keeps its body whole, the bytes a rule read in front.
+    fn asks_again(&self, wire: &Wire<'_>, attempt: u32, answer: &mut Answer) -> bool {
+        if !answer.status.is_retryable() {
+            let Some(rule) = wire.retry_on else {
+                return false;
+            };
+            if answer.status.is_success() || attempt >= self.attempts_of(wire) {
+                return false;
+            }
+            let mut peeked = Vec::new();
+            let read = (&mut answer.body)
+                .take(RETRY_ON_PEEK)
+                .read_to_end(&mut peeked);
+            let rest = std::mem::replace(&mut answer.body, Box::new(std::io::empty()));
+            if let Err(error) = read {
+                // A body that failed while the rule was to read it is no
+                // verdict: it is handed back failing where it failed.
+                answer.body = Box::new(std::io::Cursor::new(peeked).chain(Severed {
+                    error: Some(error),
+                    rest,
+                }));
+                return false;
+            }
+            let retried = rule(answer.status, &answer.headers, &peeked);
+            answer.body = Box::new(std::io::Cursor::new(peeked).chain(rest));
+            if !retried {
+                return false;
+            }
+        }
+        let asked = retry::retry_after(answer.headers.get("retry-after"));
+        let patient = asked.is_none_or(|pause| pause <= self.inner.transport.max_pause);
+        if !patient || !self.may_retry(wire, attempt) {
+            return false;
+        }
+        let _ = std::io::copy(
+            &mut (&mut answer.body).take(FAILURE_BODY_LIMIT),
+            &mut std::io::sink(),
+        );
+        self.pause(attempt, asked);
+        true
+    }
+
     /// One request whose body is streamed from `body`, `length` bytes long,
-    /// with no retry: a consumed reader cannot be sent again.
+    /// with no retry: a consumed reader cannot be sent again. The one
+    /// attempt carries the headers the request's hook computes for it.
     ///
     /// # Errors
     ///
@@ -552,7 +638,12 @@ impl Client {
         body: &mut dyn Read,
         length: u64,
     ) -> Result<Answer> {
-        let outcome = self.attempt(wire, Some(Payload::Reader { body, length }));
+        let headers = attempt_headers(wire, 1)?;
+        let sent = Wire {
+            headers: headers.as_ref().unwrap_or(wire.headers),
+            ..*wire
+        };
+        let outcome = self.attempt(&sent, Some(Payload::Reader { body, length }));
         match outcome {
             Ok(mut answer) => {
                 self.settle(answer.status, 1);
@@ -566,7 +657,7 @@ impl Client {
 
     /// Send one attempt and read its head.
     fn attempt(&self, wire: &Wire<'_>, payload: Option<Payload<'_>>) -> Outcome {
-        let proxy = self.proxy_for(wire.url).map_err(Failure::Refused)?;
+        let proxy = self.proxy_for(wire).map_err(Failure::Refused)?;
         self.inner.stats.record(wire.method);
         #[cfg(feature = "http2")]
         let mut payload = payload;
@@ -609,20 +700,27 @@ impl Client {
             }
         }
         let response = match payload {
+            // A method that carries a body states its length when the body is
+            // empty - `Content-Length: 0`, as curl and requests send it - so
+            // no server has to read an empty chunked body to find its end.
+            None if matches!(wire.method, Method::Post | Method::Put | Method::Patch) => {
+                let request = builder.body(&[][..]).map_err(ureq::Error::Http)?;
+                self.run(request, wire, proxy)?
+            }
             None => {
                 let request = builder.body(()).map_err(ureq::Error::Http)?;
-                self.run(request, wire.timeout, proxy)?
+                self.run(request, wire, proxy)?
             }
             Some(Payload::Bytes(bytes)) => {
                 let request = builder.body(bytes).map_err(ureq::Error::Http)?;
-                self.run(request, wire.timeout, proxy)?
+                self.run(request, wire, proxy)?
             }
             Some(Payload::Reader { body, length }) => {
                 let request = builder
                     .header("content-length", length.to_string())
                     .body(ureq::SendBody::from_reader(body))
                     .map_err(ureq::Error::Http)?;
-                self.run(request, wire.timeout, proxy)?
+                self.run(request, wire, proxy)?
             }
         };
         let status = Status::new(response.status().as_u16()).map_err(Failure::Refused)?;
@@ -653,15 +751,21 @@ impl Client {
         })
     }
 
-    /// Run one built request on the pool, under `timeout` when it is not the
-    /// pool's own.
+    /// Run one built request on the pool, under the bounds `wire` states
+    /// where they are not the pool's own: its phase timeout, its connect
+    /// timeout and its deadline over the whole attempt.
     fn run<B: ureq::AsSendBody>(
         &self,
         request: ureq::http::Request<B>,
-        timeout: Duration,
+        wire: &Wire<'_>,
         proxy: Option<Option<ureq::Proxy>>,
     ) -> std::result::Result<ureq::http::Response<ureq::Body>, ureq::Error> {
-        if timeout == self.inner.timeout && proxy.is_none() {
+        let timeout = wire.timeout;
+        if timeout == self.inner.timeout
+            && proxy.is_none()
+            && wire.connect_timeout.is_none()
+            && wire.deadline.is_none()
+        {
             return self.inner.agent.run(request);
         }
         let mut request = self.inner.agent.configure_request(request);
@@ -673,6 +777,13 @@ impl Client {
                 .timeout_send_request(Some(timeout))
                 .timeout_recv_response(Some(timeout))
                 .timeout_recv_body(Some(timeout));
+        }
+        if let Some(connect) = wire.connect_timeout {
+            request = request.timeout_connect(Some(connect));
+        }
+        if let Some(deadline) = wire.deadline {
+            // From the call to the last byte of the body, every phase within.
+            request = request.timeout_global(Some(deadline));
         }
         if let Some(proxy) = proxy {
             request = request.proxy(proxy);
@@ -720,11 +831,84 @@ impl From<ureq::Error> for Failure {
 
 type Outcome = std::result::Result<Answer, Failure>;
 
+/// The headers one attempt of `wire` goes out with, when its request
+/// computes some: the hook's, over the wire's own; `None` when it has no
+/// hook and the wire's stand.
+fn attempt_headers(wire: &Wire<'_>, attempt: u32) -> Result<Option<Headers>> {
+    let Some(hook) = wire.attempt_headers else {
+        return Ok(None);
+    };
+    hook(attempt, wire.method, wire.url)?
+        .merge_with(wire.headers)
+        .map(Some)
+}
+
+/// A body whose read failed while a [`RetryOn`] rule was to read it: the
+/// failure once, where it happened, then whatever the rest still answers.
+struct Severed {
+    error: Option<std::io::Error>,
+    rest: Box<dyn Read + Send>,
+}
+
+impl Read for Severed {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        match self.error.take() {
+            Some(error) => Err(error),
+            None => self.rest.read(buffer),
+        }
+    }
+}
+
 /// A request that never reached the server, or whose connection failed.
+///
+/// The text names the method, the URL and the transport's own words; the
+/// kind is the transport's - a refused, reset or timed-out connection as
+/// such - and a failure no answer's head arrived for carries the marker
+/// `is_unanswered` reads.
 fn transport_failure(method: Method, url: &Url, error: &ureq::Error) -> Error {
-    Error::Io(std::io::Error::other(format!(
-        "http {method} {url} failed: {error}"
-    )))
+    let message = format!("http {method} {url} failed: {error}");
+    let (kind, unanswered) = match error {
+        ureq::Error::Io(error) => (error.kind(), true),
+        ureq::Error::Timeout(_) => (std::io::ErrorKind::TimedOut, true),
+        ureq::Error::ConnectionFailed => (std::io::ErrorKind::ConnectionRefused, true),
+        ureq::Error::HostNotFound => (std::io::ErrorKind::Other, true),
+        // A request the client could not form, a TLS handshake or a proxy
+        // that refused, a head that would not parse: something answered, or
+        // nothing was sent to be answered.
+        _ => (std::io::ErrorKind::Other, false),
+    };
+    Error::Io(if unanswered {
+        std::io::Error::new(kind, Unanswered(message))
+    } else {
+        std::io::Error::new(kind, message)
+    })
+}
+
+/// The text of a transport failure no answer's head arrived for: the marker
+/// `is_unanswered` reads, displayed as the text alone.
+#[derive(Debug)]
+struct Unanswered(String);
+
+impl std::fmt::Display for Unanswered {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Unanswered {}
+
+/// Whether `error` is a transport failure in which no answer's head was
+/// read: the name did not resolve, the connection was refused, unreachable
+/// or timed out, the request timed out or was cut - reset, hung up on -
+/// before a head arrived. That is "nothing answered", told apart from any
+/// answer: a status, a head that would not read, a TLS handshake that
+/// refused, a body cut after its head.
+#[cfg(any(feature = "aws", feature = "internals"))]
+pub(crate) fn is_unanswered(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::Io(error) if error.get_ref().is_some_and(|inner| inner.is::<Unanswered>())
+    )
 }
 
 /// The pool `options` and `tls` call for: the process-wide one when every
