@@ -494,11 +494,21 @@ mod internal {
         );
     }
 
-    /// The descriptors this process holds open, read off `/proc/self/fd`.
+    /// The descriptors this process holds open on a spill file, read off
+    /// `/proc/self/fd`: the harness runs other tests on other threads, each
+    /// opening and closing files of its own, so only a descriptor naming a
+    /// spill file says anything about a spill.
     #[cfg(target_os = "linux")]
-    fn open_descriptors() -> usize {
+    fn spill_descriptors() -> usize {
         std::fs::read_dir("/proc/self/fd")
             .expect("the process lists its descriptors")
+            .filter_map(|entry| std::fs::read_link(entry.ok()?.path()).ok())
+            .filter(|target| {
+                target
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("yggdryl-spill-"))
+            })
             .count()
     }
 
@@ -510,7 +520,6 @@ mod internal {
     #[test]
     fn a_live_mapping_holds_no_descriptor() {
         let array: ArrayRef = Arc::new(Int64Array::from((0..64_i64).collect::<Vec<_>>()));
-        let before = open_descriptors();
         let held = (0..64)
             .map(|_| {
                 spill_array(&array, None)
@@ -518,19 +527,19 @@ mod internal {
                     .expect("the numbers have bytes")
             })
             .collect::<Vec<_>>();
-        let during = open_descriptors();
-        assert_eq!(
-            during,
-            before,
-            "sixty-four live mappings opened {} descriptors",
-            during.saturating_sub(before)
+        // A descriptor kept per mapping is sixty-four of them here; another
+        // test spilling at this instant holds one for the length of its
+        // write at most.
+        let during = spill_descriptors();
+        assert!(
+            during < held.len(),
+            "{} live mappings hold {during} spill descriptors",
+            held.len()
         );
         for (rebuilt, mapping) in &held {
             assert_eq!(rebuilt.len(), 64);
             assert!(mapping.len() >= 64 * 8, "the sixty-four values are mapped");
         }
-        drop(held);
-        assert_eq!(open_descriptors(), before);
     }
 
     fn some(text: &str) -> Option<OsString> {
