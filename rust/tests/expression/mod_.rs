@@ -51,7 +51,7 @@ mod grammar {
     fn unnest_is_one_of_the_closed_functions_under_its_duckdb_name() {
         use yggdryl::expression::Function;
 
-        assert_eq!(Function::ALL.len(), 27);
+        assert_eq!(Function::ALL.len(), 28);
         assert_eq!(Function::ALL.last(), Some(&Function::Unnest));
         assert_eq!(Function::Unnest.as_str(), "unnest");
         for spelling in ["unnest", "UNNEST", "explode"] {

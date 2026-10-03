@@ -2147,7 +2147,7 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
 
 ### Append and merge
 
-Overwrite replaces, append keeps the stored rows, merge updates matching `merge_by` keys and adds the rest. Keys use Arrow's row format: null matches null and the last arrival wins. Merge holds only the stored side in memory.
+Overwrite replaces - a leaf whole, a partitioned folder or table only the partitions its rows reach and the ones its `where` pins, every other partition's leaves kept, so an overwrite with no row touches nothing outside that scope - append keeps the stored rows, merge updates matching `merge_by` keys and adds the rest. A folder holds each commit's rows split by partition under the process spill bound and writes every leaf it reaches once. Keys use Arrow's row format: null matches null and the last arrival wins. Merge holds only the stored side in memory.
 
 === "Rust"
 
@@ -2288,7 +2288,7 @@ Overwrite replaces, append keeps the stored rows, merge updates matching `merge_
 | `N > 0` | every `N` batches, then the remainder |
 | `0` | rejected before any input is pulled |
 
-Whatever the cadence, an overwrite's first commit replaces and every later one appends, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a paced stream keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement. Whatever holds a cadence between publications - a leaf's, a write session's, an Iceberg table's partition holds - is held under the process [spill bound](../types/serie.md#spilling-to-disk), the heaviest batches spilled first, so a cadence of any size costs that bound in memory; `commit_batch_num` paces a stream whose rows would outgrow the spill folder.
+Whatever the cadence, an overwrite's first commit replaces and every later one appends - per partition where the destination is partitioned: the first commit reaching a partition replaces it, and a partition no row reaches is not touched, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a paced stream keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement. Whatever holds a cadence between publications - a leaf's, a write session's, an Iceberg table's partition holds - is held under the process [spill bound](../types/serie.md#spilling-to-disk), the heaviest batches spilled first, so a cadence of any size costs that bound in memory; `commit_batch_num` paces a stream whose rows would outgrow the spill folder.
 
 A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/iceberg.md). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
 
@@ -4072,18 +4072,42 @@ Sizes, durations, counts and flags read as an HTTP session's do ([Durations, cou
 
 Who the process is to AWS - the profile, the region, the endpoint a service is reached at, and the credential set every request signs with - is one `Session` in `yggdryl::aws`, resolved the way the AWS tools resolve it and shared by every handle built on it. `S3Options::with_session` hands one over; an explicit credential pair or `with_anonymous` on the options still wins, and `with_environment(false)` seals it. Behind the `aws` feature, which `s3` implies.
 
+!!! note "Rust only"
+    Python and Node expose no `Session`. An S3 handle there takes the same knobs by name through its `options` properties (`profile`, `role_arn`, `credential_process`, ... in the table above), walks the same chain, and logs the walk under the same logger names ([What a walk logs](#what-a-walk-logs)).
+
 ```text
 Session::new()                                   // states nothing; resolves lazily, once, and caches
   .with_profile(name).with_region(region)        // else AWS_DEFAULT_PROFILE, AWS_PROFILE, AWS_REGION, the profile's own
   .with_credentials(keys).with_anonymous(true)   // an explicit set, or none
   .with_assumed_role(role).with_sso(sso)         // a role or a sign-in, as a profile would state one
+  .with_credential_process(command)              // a process, as a profile's credential_process would state one
   .with_sso_login(prompt).with_mfa_prompt(ask)   // how a person is asked, when one is needed
   .with_variables(pairs).with_environment(false) // another environment, or none at all
+  .with_directory(path)                          // another ~/.aws; with_config_text, with_credentials_text state the files' text
 session.credentials(now) -> Result<Option<Credentials>>   // the chain, walked once, refreshed in time
+session.credential_source() -> Option<&'static str>       // which source answered: "environment", "login", ...
+session.invalidate() / invalidate_if(key_id)              // a store refused the set: forget it, read the files again
 session.profile() / region() / endpoint_url("s3") / sts_endpoint(region) / login()
 ```
 
-The chain is botocore's, in botocore's order: an explicit set; an explicit role, signed by its `source_profile` or `credential_source`, else by whatever the rest of the chain answers; the environment (`AWS_ACCESS_KEY_ID`, with `AWS_CREDENTIAL_EXPIRATION` and `AWS_ACCOUNT_ID`); a profile that assumes a role through `source_profile`, `credential_source` or a web identity token; IAM Identity Center through the sign-in `aws sso login` cached; the credentials file; a `credential_process`; the configuration file; the legacy boto files; the container endpoint; the instance metadata service. Where botocore fails on the first source that is configured and broken, the session records why and walks on, and refuses only when every source has been asked - naming each. A temporary set is replaced fifteen minutes before it lapses, a refresh that fails keeps the set in hand until it has actually lapsed, and a store answering `ExpiredToken` makes the client walk the chain once more before it gives up. Assumed-role and SSO sessions are read from and written to `~/.aws/cli/cache` and `~/.aws/sso/cache` in the AWS CLI's own shape, so a sign-in or an MFA code the CLI already obtained serves this crate, and the other way round.
+The chain is botocore's, in botocore's order, with the console sign-in `aws login` files where botocore has it. The last column is the name `credential_source`, the log and a refusal call a source by.
+
+| # | source | read from | named |
+| --- | --- | --- | --- |
+| 1 | an explicit set, role, sign-in or process | `with_credentials` or a pair in the options or the URL; `with_assumed_role`, signed by its `source_profile` or `credential_source`, else by whatever the rest of the chain answers; `with_sso`; `with_credential_process` | `explicit credentials`, `assumed role`, `sso`, `credential process` |
+| 2 | the environment | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (or `AWS_SECURITY_TOKEN`), `AWS_CREDENTIAL_EXPIRATION`, `AWS_ACCOUNT_ID`; skipped when the session states a profile | `environment` |
+| 3 | a profile's role | `role_arn` with `source_profile`, `credential_source` or `web_identity_token_file` | `assumed role` |
+| 4 | web identity | `AWS_ROLE_ARN` with `AWS_WEB_IDENTITY_TOKEN_FILE`, and `AWS_ROLE_SESSION_NAME` | `web identity` |
+| 5 | IAM Identity Center | the profile's `sso_session`, or its `sso_*` keys, through the token `aws sso login` cached | `sso` |
+| 6 | the credentials file | `aws_access_key_id`, `aws_secret_access_key` and `aws_session_token` of the profile | `shared credentials file` |
+| 7 | the console sign-in | the profile's `login_session`, through the sign-in `aws login` cached ([below](#the-console-sign-in)) | `login` |
+| 8 | a `credential_process` | the profile's command | `credential process` |
+| 9 | the configuration file | the same three keys in the profile's section of `~/.aws/config` | `config file` |
+| 10 | the legacy boto files | `AWS_CREDENTIAL_FILE`, `BOTO_CONFIG`, `/etc/boto.cfg`, `~/.boto` | `boto config` |
+| 11 | the container endpoint | `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` or `AWS_CONTAINER_CREDENTIALS_FULL_URI` | `container` |
+| 12 | the instance metadata service | IMDSv2; IMDSv1 when the service issues no token, unless `ec2_metadata_v1_disabled` | `instance metadata` |
+
+A profile that names a role means that role: when the exchange fails its own keys are not a fallback, so rows 5 to 9 are not asked. Where botocore fails on the first source that is configured and broken, the session records why and walks on, and refuses only when every source has been asked - naming each that failed and each that was not there. A temporary set is replaced fifteen minutes before it lapses (a console sign-in's, which lasts fifteen minutes, five minutes before), a refresh that fails keeps the set in hand until it has actually lapsed, and an unsigned answer is held five minutes and a failure thirty seconds, rather than costing every request a walk of every source. A role or a sign-in with no region stated is traded in its ARN partition's global region - `cn-northwest-1` for an `aws-cn` role - and the STS, IAM Identity Center, Sign-In and S3 hosts are built on the region's [`ArnPartition`](../uri/arn.md#partitions) suffixes. Assumed-role and SSO sessions are read from and written to `~/.aws/cli/cache` and `~/.aws/sso/cache`, and a console sign-in to `~/.aws/login/cache`, in the AWS CLI's own shape, so a sign-in or an MFA code the CLI already obtained serves this crate, and the other way round.
 
 ```rust
 use yggdryl::aws::{AssumedRole, Credentials, Session};
@@ -4175,6 +4199,291 @@ let part = s3::file_with(
 )?;
 let _ = part.read_range_bytes(0, 8)?;
 ```
+
+#### The shared files
+
+`~/.aws/config` and `~/.aws/credentials` - or the files `AWS_CONFIG_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, `with_config_file`, `with_credentials_file` and `with_directory` name - are read once, and read again whenever either moved on disk (its length or modification time): at every walk, after any refusal a store gave (`invalidate`, `invalidate_if`), and while an unsigned or failed answer is held. A set dumped anew into `~/.aws/credentials` is picked up by a running process at its next request, with no restart.
+
+- An expiry written beside a set is read under `aws_credential_expiration`, `x_security_token_expires` (saml2aws, gimme-aws-creds), `aws_session_expiration` (yawsso), `aws_expiration` (aws-azure-login) or `expiration` (aws-mfa), in the credentials file or in the configuration file's keys - as ISO 8601 with `Z` or an offset, blanks around it and the AWS CLI's trailing `UTC` taken off where the expiry enters, then read by [`DateTime64::from_text`](../types/temporal/datetime.md#reading-text) with a spelling that names no zone taken as UTC. A dumped set is refreshed from the file fifteen minutes before it lapses; two expiries that disagree, or one nothing reads, is a named refusal.
+- Pasted values read as meant: one pair of matching quotes and a `#` or `;` comment after a blank come off a credential value; a line written as the shell block the IAM Identity Center portal prints (`export AWS_ACCESS_KEY_ID=...`, `set AWS_...=...`, PowerShell `$Env:AWS_...="..."`) reads as the key it sets; a section header followed by a comment (`[default]   # dumped 12:30`) is that section, as Python's `configparser` reads it.
+- Half a set - a key id without its secret, a secret or a token without a key id - is a named refusal, not a silently skipped source. A `role_arn` that is not an ARN is that profile's refusal.
+- A file written with a byte-order mark - UTF-8, UTF-16LE or UTF-16BE, as PowerShell writes - reads in its charset. A file that is there and cannot be read is a named failure (`shared files: the credentials file ... could not be read`), never an absent profile.
+- On Windows a `credential_process` line is split as the Microsoft C runtime splits a command line - a backslash is literal unless it runs up to a double quote, and double quotes group - so `C:\Tools\vault.exe export dev` runs `C:\Tools\vault.exe`; elsewhere it is split into POSIX words.
+
+#### A set a store refused
+
+A set a source answers is passed over by name, and the sources after it are asked, when it has lapsed - its expiry is before the machine's clock, and the refusal names both instants - or when a store refused its key. An explicit `with_credentials` set is what the caller said and is never passed over.
+
+| code a store answers | what it says of the key | passed over |
+| --- | --- | --- |
+| `ExpiredToken`, `ExpiredTokenException`, `TokenRefreshRequired` | the set lapsed | for good |
+| `InvalidAccessKeyId`, `InvalidToken`, `InvalidClientTokenId` | the store does not know the key; IAM answers a new key that way while it propagates | 30 seconds, or until the shared files move |
+
+The S3 client, refused with one of those codes, tells the session about the key that signed that very request - not whatever set the client holds by then - and signs the request once more only when the session now answers another set. A `HEAD` refused with a temporary set and no body, which is how S3 answers one, reads the files again without holding anything against the key. When nothing else answers, the refusal names every source, the key masked as its first and last four characters, and the way out:
+
+```text
+no AWS credentials could be obtained: shared credentials file: its key ASIA...MPLE lapsed at 2000-01-01T00:00:00Z, and this machine's clock reads <now>: write a fresh set under [default] in <path>, or sign in again; nothing configured in: environment, container, instance metadata (disabled)
+```
+
+```rust
+use std::time::SystemTime;
+
+use yggdryl::aws::Session;
+
+// A sealed session over a directory of its own: the variables are the whole
+// environment, and the metadata service is off.
+let directory = std::env::temp_dir().join(format!("yggdryl-docs-aws-dump-{}", std::process::id()));
+std::fs::create_dir_all(&directory)?;
+let credentials = directory.join("credentials");
+let session = Session::new()
+    .with_variables([("AWS_EC2_METADATA_DISABLED", "true")])
+    .with_directory(directory.clone());
+
+// A set a tool dumped whose written expiry has passed is passed over by name,
+// its key masked, with the way out; no secret is in the refusal.
+std::fs::write(
+    &credentials,
+    "[default]\naws_access_key_id = ASIAIOSFODNN7EXAMPLE\naws_secret_access_key = wJalrXUtnFEMI\n\
+     aws_session_token = FwoGZXIvYXdzEXAMPLE\nx_security_token_expires = 2000-01-01T00:00:00Z\n",
+)?;
+let refusal = session.credentials(SystemTime::now()).unwrap_err().to_string();
+assert!(refusal.contains("ASIA...MPLE lapsed at 2000-01-01T00:00:00Z"), "{refusal}");
+assert!(refusal.contains("write a fresh set under [default]"), "{refusal}");
+assert!(!refusal.contains("wJalrXUtnFEMI"), "{refusal}");
+
+// The same process at its next request, with no restart: the file moved, so
+// the files are read again and the set dumped anew answers.
+std::fs::write(
+    &credentials,
+    "[default]\naws_access_key_id = ASIAIOSFODNN7FRESHDUMP\naws_secret_access_key = fresh\n\
+     aws_session_token = fresh-token\n",
+)?;
+let keys = session.credentials(SystemTime::now())?.expect("the set dumped anew");
+assert_eq!(keys.access_key_id(), "ASIAIOSFODNN7FRESHDUMP");
+assert_eq!(session.credential_source(), Some("shared credentials file"));
+std::fs::remove_dir_all(&directory)?;
+```
+
+#### The console sign-in
+
+`aws login` (AWS CLI 2.32 and later) signs a developer in with the identity they use in the AWS Management Console. A profile names the sign-in with `login_session`, the session's ARN, and the sign-in is filed under `~/.aws/login/cache` - or the directory `AWS_LOGIN_CACHE_DIRECTORY` names - in `<sha256 of the session ARN>.json`.
+
+| | |
+| --- | --- |
+| Document | a set that lasts fifteen minutes (`accessToken`), the refresh token that obtains the next, the P-256 `dpopKey` that token is bound to, and the `clientId`; every field a refresh does not replace is written back as it was read |
+| Used | the cached set while more than five minutes of it remain |
+| Refreshed | otherwise, or at once when a store refused the set: one unsigned `POST` to `https://{region}.signin.aws.amazon.com/v1/token` - the partition's own Sign-In host outside `aws` - an OAuth 2.0 `refresh_token` grant carrying an ES256 DPoP proof ([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449)) signed by that key, so a refresh token copied off the machine is worth nothing without it. A throttle, a server failure or a transport failure is tried again, up to three attempts, each with a proof of its own |
+| Filed | the new set and the rotated refresh token replace the document atomically - a private sibling, synced, renamed over it - so the AWS CLI and this crate share one sign-in |
+| Region and host | the session's region, else the session ARN's partition's global region; `use_fips_endpoint` and `use_dualstack_endpoint` pick the FIPS and dual-stack hosts of the region's partition; a stated `signin` endpoint (`AWS_ENDPOINT_URL_SIGNIN`, a `[services]` entry) replaces the host |
+| Refused | naming the session, the cause and `aws login --profile <name>`; a set that still stands is kept when only its refresh failed, and no secret is rendered |
+
+```rust
+use std::time::SystemTime;
+
+use yggdryl::aws::Session;
+
+// What `aws login` filed for the session `arn:aws:iam::0123456789012:user/Admin`:
+// a set that stands, the refresh token, and the key it is bound to. The file is
+// named by the SHA-256 of the ARN.
+let cache = std::env::temp_dir().join(format!("yggdryl-docs-aws-login-{}", std::process::id()));
+std::fs::create_dir_all(&cache)?;
+std::fs::write(
+    cache.join("36db1d138ff460920374e4c3d8e01f53f9f73537e89c88d639f68393df0e2726.json"),
+    r#"{
+  "accessToken": {
+    "accessKeyId": "ASIAIOSFODNN7CONSOLE",
+    "secretAccessKey": "console-secret",
+    "sessionToken": "console-token",
+    "accountId": "012345678901",
+    "expiresAt": "2999-01-01T00:00:00Z"
+  },
+  "tokenType": "aws_sigv4",
+  "refreshToken": "console-refresh-token",
+  "clientId": "arn:aws:signin:::devtools/same-device",
+  "dpopKey": "the PEM key aws login filed"
+}"#,
+)?;
+
+// The profile names the sign-in; a set with more than five minutes left is
+// answered from the cache alone, with no request.
+let session = Session::new()
+    .with_variables([
+        ("AWS_LOGIN_CACHE_DIRECTORY", cache.to_str().expect("a UTF-8 path")),
+        ("AWS_EC2_METADATA_DISABLED", "true"),
+    ])
+    .with_directory("/nonexistent/.aws")
+    .with_config_text(
+        "[profile console]\nregion = eu-west-3\nlogin_session = arn:aws:iam::0123456789012:user/Admin\n",
+    )
+    .with_profile("console");
+let keys = session.credentials(SystemTime::now())?.expect("the console sign-in");
+assert_eq!(keys.access_key_id(), "ASIAIOSFODNN7CONSOLE");
+assert_eq!(keys.account_id(), Some("012345678901"));
+assert_eq!(session.credential_source(), Some("login"));
+std::fs::remove_dir_all(&cache)?;
+```
+
+#### How the identity services are reached
+
+Every identity call - STS, IAM Identity Center, the Sign-In service, the container endpoint, the instance metadata service - goes out through the crate's own [HTTP client](#http), one session per `Session`, so its rules are the ones stated there and nothing keeps a loop of its own:
+
+| Concern | Rule |
+| --- | --- |
+| Retries | a `5xx`, a `429` or a transport failure, for a request that does no harm twice, up to three attempts under the client's backoff; STS's throttle stated in a `400` body (`Throttling`, `RequestLimitExceeded`, `IDPCommunicationError`) is read and retried too. A refresh-token grant at IAM Identity Center is sent once, because the grant may rotate the token |
+| Redirects, cookies, `.netrc` | none followed, none kept, none read: a credential header never reaches another host |
+| Trust | the session's `ca_bundle` alone when one is named; a bundle that cannot be read is every identity request's refusal, never a fall back to the platform's roots |
+| Proxy | the process's, for a session reading the process environment; the container endpoint and the instance metadata service are reached directly whatever a proxy variable says |
+| The instance metadata service | each attempt bounded by `metadata_service_timeout` (one second), `metadata_service_num_attempts` attempts; nothing answering - refused, unreachable, silent - is not an instance, and the source is absent rather than failed |
+
+#### What a walk logs
+
+Every walk is logged through the crate's [logging](../logging.md) tree under `yggdryl.aws.session`, and a console sign-in's refresh under `yggdryl.aws.login`. A key id is logged as its first and last four characters; no secret, session token or refresh token is.
+
+| level | record |
+| --- | --- |
+| `DEBUG` | each source asked: `AWS credentials: nothing configured in <source>`, or `AWS credentials: <source>: <why it could not answer>`; a console sign-in refreshed |
+| `INFO` | the source that answered: `AWS credentials from <source>: key ASIA...ABCD, lapsing at <instant>` |
+| `WARNING` | a set passed over, naming its source, the key and why; an answer found only after sources were passed over; a console sign-in kept in hand because its refresh failed, or refreshed and not filed |
+
+Rust: raise that logger to switch the walk on.
+
+```{ .rust .no_run }
+use yggdryl::logging::{self, BasicConfig, Level};
+
+// The terminal line on standard error from INFO up, and this walk from DEBUG.
+logging::basic_config(BasicConfig::new().with_level(Level::INFO))?;
+logging::get_logger("yggdryl.aws.session").set_level(Level::DEBUG);
+```
+
+The same logger is `logging.getLogger("yggdryl.aws.session")` in Python and `require('yggdryl').logging.getLogger('yggdryl.aws.session')` in Node, which the walk of an S3 handle there writes to.
+
+```rust
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use yggdryl::IOBase;
+use yggdryl::aws::Session;
+use yggdryl::holder::Buffer;
+use yggdryl::logging::{self, FileHandler, Formatter, Handler, Level};
+
+// A handler on the walk's logger, written to a buffer here.
+logging::install()?;
+let logger = logging::get_logger("yggdryl.aws.session");
+logger.set_level(Level::DEBUG);
+logger.set_propagating(false);
+let file = Arc::new(FileHandler::new(Buffer::new()));
+file.set_formatter(Formatter::from_str("%(levelname)s %(message)s")?);
+let handler: Arc<dyn Handler> = file.clone();
+logger.add_handler(handler.clone());
+
+// The credentials file holds a set that lapsed, the configuration file one
+// that stands: the first is passed over, the second answers.
+let session = Session::new()
+    .with_variables([("AWS_EC2_METADATA_DISABLED", "true")])
+    .with_directory("/nonexistent/.aws")
+    .with_credentials_text(
+        "[default]\naws_access_key_id = ASIAIOSFODNN7EXAMPLE\naws_secret_access_key = SECRET-LAPSED\n\
+         x_security_token_expires = 2000-01-01T00:00:00Z\n",
+    )
+    .with_config_text(
+        "[default]\naws_access_key_id = ASIAIOSFODNN7STANDING\naws_secret_access_key = SECRET-STANDING\n",
+    );
+let keys = session.credentials(SystemTime::now())?.expect("the configuration file's set");
+assert_eq!(keys.access_key_id(), "ASIAIOSFODNN7STANDING");
+
+let text = String::from_utf8(file.io().read_all_bytes()?)?;
+assert!(text.contains("DEBUG AWS credentials: nothing configured in environment"), "{text}");
+assert!(
+    text.contains(
+        "WARNING passing over the AWS credential set shared credentials file answered: \
+         its key ASIA...MPLE lapsed at 2000-01-01T00:00:00Z"
+    ),
+    "{text}"
+);
+assert!(text.contains("INFO AWS credentials from config file: key ASIA...DING"), "{text}");
+assert!(!text.contains("SECRET-"), "{text}");
+
+assert!(logger.remove_handler(&handler));
+logger.set_level(Level::NOTSET);
+logger.set_propagating(true);
+file.close()?;
+```
+
+#### Signing other services
+
+A request the [HTTP client](#http) sends to any AWS service is signed by the same `Session`: `Request::with_sigv4(&session, service, region)` signs every attempt with Signature Version 4, `Session::service_endpoint(service, region)` says where the service is, and `Session::with_properties` reads who signs out of a property map. A catalog client - an Iceberg REST endpoint, Amazon S3 Tables - needs nothing else of AWS.
+
+!!! note "Rust only"
+    Python and Node sign S3 requests through their handles; neither exposes `with_sigv4`, `service_endpoint` or `Session::with_properties`.
+
+| Door | Contract |
+| --- | --- |
+| `Request::with_sigv4(&session, service, region)` | `service` is the SigV4 signing name (`s3tables`, `execute-api`, `glue`). Each attempt asks the session for its set, so a refreshed one signs the next attempt, and signs what is sent: the hop's method, the `Host` with the port the URL names, the path as it is on the wire, the query, the `content-type`, `content-md5` and `x-amz-*` headers, and the SHA-256 of the body. Adds `x-amz-date`, `x-amz-content-sha256`, `x-amz-security-token` for a temporary set, and `authorization` |
+| `Session::service_endpoint(service, region)` | the endpoint configured for the service (`with_service_endpoint_url`, `AWS_ENDPOINT_URL_<SERVICE>`, the profile's `[services]` entry), else `https://{service}[-fips].{region}.{suffix}` from the region's [partition](../uri/arn.md), FIPS and dual-stack as the session says. `service` is the endpoint id, which is not always the signing name |
+| `Session::with_properties(pairs)`, `Session::from_properties(pairs)` | the one reader of AWS identity properties: `region`; `access_key_id`, `secret_access_key`, `session_token`; `anonymous`; `profile`; a role (`role_arn`, `role_session_name`, `external_id`, `role_duration`, `sts_region`, `sts_endpoint`, `mfa_serial`, `source_profile`, `credential_source`, `web_identity_token_file`); a sign-in (`sso_start_url`, `sso_region`, `sso_account_id`, `sso_role_name`, `sso_session`); `config_file`, `shared_credentials_file`, `credential_process`, `ca_bundle`; `use_fips_endpoint`, `use_dualstack_endpoint`, `sts_regional_endpoints`; the `ec2_metadata_*` and `metadata_service_*` knobs. Case, `-`, `_` and `.` are alike, and a leading `aws_` or `client.` is dropped, so `AWS_REGION` and PyIceberg's `client.region` are `region` |
+
+- **The canonical URI follows the service.** S3's family (`s3`, `s3express`, `s3-object-lambda`, `s3-outposts`) signs the path as sent. Every other service signs it with empty and dot segments removed and every segment percent-encoded once more, as botocore does: a path carrying `%1F` or an encoded ARN signs as `%251F` and `%253A`. The signer is pinned against vectors botocore computed.
+- **`x-amz-content-sha256` is always sent and signed**, which S3 requires and every other service accepts as one more signed header.
+- **No credential source answering is a refusal**, ``SigV4 for `<service>` asked, no credential source answered``, never an unsigned request; a session whose sources failed refuses naming each.
+- **A streamed body** (`send_reader`) cannot be hashed: it is refused for a service outside the S3 family, and declared `UNSIGNED-PAYLOAD` inside it.
+- **A refused key is mended once.** A `400` or `403` naming `ExpiredToken`, `ExpiredTokenException`, `TokenRefreshRequired`, `InvalidAccessKeyId`, `InvalidToken`, `InvalidClientTokenId` or `UnrecognizedClientException` - in `x-amzn-ErrorType`, a JSON `__type` or `code`, or an XML `<Code>` - is told to the session, and the request goes out once more, whatever its method, when the session then answers another key: the same set would be refused the same way. A redirect to another origin is neither signed nor sent again.
+- **Never read here:** a bare `token`, which is a catalog's own bearer token, and `s3.*`, which is the object store's reader's (`S3Options::with_properties` hands its identity names to this reader).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::aws::Session;
+    use yggdryl::http::{Method, Response, Server, Status};
+
+    // A catalog's properties, in PyIceberg's names; most are nobody's identity.
+    let session = Session::new().with_environment(false).with_properties([
+        ("warehouse", "arn:aws:s3tables:eu-west-3:123456789012:bucket/lake"),
+        ("client.region", "eu-west-3"),
+        ("client.access-key-id", "AKIDEXAMPLE"),
+        ("client.secret-access-key", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"),
+    ])?;
+    let region = session.region().expect("the stated region");
+    assert_eq!(
+        session.service_endpoint("s3tables", &region),
+        "https://s3tables.eu-west-3.amazonaws.com"
+    );
+
+    // Stand in for the service on loopback and send it a signed request.
+    let server = Server::bind("127.0.0.1:0")?;
+    server.respond(
+        Some(Method::Get),
+        "/iceberg/v1/config",
+        Response::new(Status::OK).with_body("{}"),
+    );
+    let url = server.url_of("/iceberg/v1/config")?.to_string();
+    let response = yggdryl::http::Session::new()
+        .get(&url)?
+        .with_sigv4(&session, "s3tables", &region)
+        .send()?;
+    assert_eq!(response.status(), Status::OK);
+
+    let sent = &server.requests()[0];
+    let authorization = sent.headers.get("authorization").expect("a signature");
+    assert!(authorization.starts_with("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/"));
+    assert!(authorization.contains(
+        "/eu-west-3/s3tables/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, "
+    ));
+    server.shutdown()?;
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only: no binding reaches Request.with_sigv4 or aws.Session.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only: no binding reaches Request.withSigv4 or aws.Session.
+    ```
+
+#### Google and Azure
 
 Google's shape is the same idea on `GoogleOptions`: whatever the credential chain answers signs one call to `iamcredentials`, and the token that call returns is what reaches the store; Azure's is an Entra ID application on `AzureOptions`. Container creation and deletion can be forbidden, refused without a request.
 
@@ -4722,6 +5031,7 @@ The walk ends at a `has_more`/`hasMore` of `false` - a boolean, or text the [boo
 | `bearer_token`, `basic_auth` | none | a credential; `basic_auth` is `user:password` |
 | `header.<name>`, `headers.<name>` | none | one default header |
 | `http_version` | `auto` | `auto`, `1.1`, `2` or `3` ([HTTP/2 and HTTP/3](#http2-and-http3)) |
+| `netrc` | follows `read_environment` | whether a request naming no credential takes its host's `.netrc` entry; a flag |
 | `base_url`, `user_agent`, `proxy`, `ca_bundle`, `cookies`, `read_environment`, `stream_batch_size` | none, `yggdryl/<version>`, the environment's, the environment's, true, true, 64 KiB | the rest; `cookies` and `read_environment` are flags, `stream_batch_size` a count |
 
 #### Durations, counts, sizes and flags
@@ -4735,7 +5045,7 @@ Every property reads its text through the one reader of the type it holds - the 
 | byte size | a whole count, then an optional suffix in any case, blanks allowed between: `b`; `k`, `kb`, `kib`; `m`, `mb`, `mib`; `g`, `gb`, `gib` - each a power of 1024, the decimal spellings as every configuration file means them | a fraction, an exponent, a negative count, a count the suffix multiplies past 64 bits |
 | flag | the [boolean table](../types/numeric/boolean.md#the-one-text-reader): `true`/`false`, `yes`/`no`, `y`/`n`, `on`/`off`, `1`/`0` and their prefixes, in any case | anything else, `expected true/false, yes/no, y/n, on/off or 1/0` |
 
-With `read_environment` on, an unset certificate bundle comes from the environment (`SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`), and an unset proxy is read for every request, as curl and `requests` read it: a host `no_proxy` names goes direct; else `https_proxy` carries an `https` URL and `http_proxy` an `http` one, then `all_proxy` either - each lower case first, then upper case, except that under CGI (`REQUEST_METHOD` set) upper-case `HTTP_PROXY` is not read, because a server sets it from its request's `Proxy` header (httpoxy). A proxy is `http://` or `https://`; a SOCKS one, named or read, is refused by name rather than gone past. A `no_proxy` entry is a host covering every host under it on a label boundary (`example.com` never covers `badexample.com`), an IP address or CIDR network, either with `:port` to match that port alone, or `*`. Because the environment is read per request, a process that sets or clears a proxy after its first request is followed at its next one; the proxies a value names are parsed once while the values stay the same. A named `proxy` wins over all of it. A request that names no credential - none on the request, the session or the URL - takes its host's `.netrc` entry as a `Basic` credential, as curl and `requests` do: the file `NETRC` names, else `.netrc`, then `_netrc`, in the home directory; a `machine` entry for the host, else `default`. The file is parsed once per version of it, so an edit is read at the next request, and a redirect to another host takes that host's entry.
+With `read_environment` on, an unset certificate bundle comes from the environment (`SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`), and an unset proxy is read for every request, as curl and `requests` read it: a host `no_proxy` names goes direct; else `https_proxy` carries an `https` URL and `http_proxy` an `http` one, then `all_proxy` either - each lower case first, then upper case, except that under CGI (`REQUEST_METHOD` set) upper-case `HTTP_PROXY` is not read, because a server sets it from its request's `Proxy` header (httpoxy). A proxy is `http://` or `https://`; a SOCKS one, named or read, is refused by name rather than gone past. A `no_proxy` entry is a host covering every host under it on a label boundary (`example.com` never covers `badexample.com`), an IP address or CIDR network, either with `:port` to match that port alone, or `*`. Because the environment is read per request, a process that sets or clears a proxy after its first request is followed at its next one; the proxies a value names are parsed once while the values stay the same. A named `proxy` wins over all of it. A request that names no credential - none on the request, the session or the URL - takes its host's `.netrc` entry as a `Basic` credential, as curl and `requests` do, unless the `netrc` option says otherwise (it follows `read_environment` until stated): the file `NETRC` names, else `.netrc`, then `_netrc`, in the home directory; a `machine` entry for the host, else `default`. The file is parsed once per version of it, so an edit is read at the next request, and a redirect to another host takes that host's entry.
 
 ```rust
 use yggdryl::holder::Holder;
@@ -5147,7 +5457,21 @@ A request through a proxy speaks HTTP/1.1 whatever was asked. An origin QUIC can
 
 ### Retries, redirects and failures
 
-A `408`, `425`, `429`, `500`, `502`, `503` or `504` is retried only for an idempotent method (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`): a `POST` or `PATCH` the server may have acted on is sent once and its answer handed back. A transport failure is retried for an idempotent method, and for any method when no connection took the request (the name did not resolve, or every address refused or timed out while connecting). Retries draw a full-jitter backoff from the client's token budget of 500 (`StatsSnapshot::retry_tokens`) - shared by every host the client reaches, so a client's retry load stays bounded whatever fails - and a `Retry-After`, in delta seconds or as an HTTP-date, is waited out up to `max_pause`; a longer one ends the retries and hands the answer back. A pooled connection is probed before it is reused, and up to 64 idle connections per host are kept, so a parallel walk to one host reconnects nothing. Redirects are followed up to `max_redirects`: a `303`, and a `301` or `302` answering a `POST`, become a `GET` without the body; `307` and `308` keep both; to another origin no credential goes along - `Authorization`, `Proxy-Authorization`, the header a credential names, a `Cookie` the caller stated - while the jar's own cookies for that origin do; each hop is one request and stays in `Response::history`. `Set-Cookie` lands in the session's jar and rides every later matching request (RFC 6265 domain and path matching, expiry); a `Domain` naming a public suffix (`com`, `co.uk`, `github.io`, by the Public Suffix List) is refused, so no origin sets a cookie its neighbours receive.
+A `408`, `425`, `429`, `500`, `502`, `503` or `504` is retried only for an idempotent method (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`): a `POST` or `PATCH` the server may have acted on is sent once and its answer handed back. A transport failure is retried for an idempotent method, and for any method when no connection took the request (the name did not resolve, or every address refused or timed out while connecting). Retries draw a full-jitter backoff from the client's token budget of 500 (`StatsSnapshot::retry_tokens`) - shared by every host the client reaches, so a client's retry load stays bounded whatever fails - and a `Retry-After`, in delta seconds or as an HTTP-date, is waited out up to `max_pause`; a longer one ends the retries and hands the answer back. A pooled connection is probed before it is reused, and up to 64 idle connections per host are kept, so a parallel walk to one host reconnects nothing. Redirects are followed up to `max_redirects`: a `303`, and a `301` or `302` answering a `POST`, become a `GET` without the body; `307` and `308` keep both; to another origin no credential goes along - `Authorization`, `Proxy-Authorization`, the header a credential names, a `Cookie` the caller stated, what a `with_attempt_headers` hook would make - while the jar's own cookies for that origin do; each hop is one request and stays in `Response::history`. `Set-Cookie` lands in the session's jar and rides every later matching request (RFC 6265 domain and path matching, expiry); a `Domain` naming a public suffix (`com`, `co.uk`, `github.io`, by the Public Suffix List) is refused, so no origin sets a cookie its neighbours receive.
+
+A request states what the client cannot know of it, each on the `Request` and each read by the same retry rules:
+
+| `Request` | Says | Default |
+| --- | --- | --- |
+| `with_idempotent(bool)` | whether a second send does no harm: a `POST` its service documents idempotent - an OAuth refresh within its validity, a poll - is retried as a `GET` is; `false` keeps a `GET` from going twice | the method's |
+| `with_attempt_headers(f)` | headers made at the top of every attempt from the `Attempt` as it is about to go out - its number, the hop's method and URL, the headers already on it, the body's bytes (none for a body streamed by `send_reader`) - a proof or a signature that must be fresh each time and cover what is sent; an error it returns is the request's, never retried; a redirect hop to another origin does not call it, so nothing it makes is sent there. [`with_sigv4`](#signing-other-services) is built on it | none |
+| `with_max_attempts(n)` | this request's attempts; every retry still draws on the client's one budget | the client's `max_attempts` |
+| `with_connect_timeout(d)` | the bound on opening this request's connection | the pool's |
+| `with_deadline(d)` | one bound on a whole attempt - connect, send, head and body together | none; `with_timeout` bounds each phase |
+| `with_retry_on(rule)` | whether an answer whose status says nothing is worth another attempt: for an idempotent request the client reads at most 64 KiB of a failing body and asks `rule(status, headers, body)`; an answer not retried is handed back whole | never |
+| `with_direct(true)` | reach the server itself, past any proxy the options or the environment name | the proxy rules |
+
+Rust only; the bindings send through the same rules with the method's own idempotency. A `PUT`, `POST` or `PATCH` with no body states `Content-Length: 0`.
 
 - A `404` read is emptiness and a `404` `DELETE` is success; `401` and `403` are refusals.
 - A refusing status is `Error::Remote` naming the method, the status, the reason, the body's first line and the URL; `raise_for_status` answers the same for a `Response` in hand.
@@ -5158,7 +5482,7 @@ A `408`, `425`, `429`, `500`, `502`, `503` or `504` is retried only for an idemp
 
 ### HTTP performance
 
-The `http_bytes` and `http_session` groups measure, against the crate's own `Server` on loopback, a whole read, an 8 KiB footer read, a streamed drain, one small JSON `POST` answered and parsed, a walk of 64 pages and a 256-request `send_all` fan-out; built with `http2` (and `http3`), the `http_versions` group sends one small `GET`, the whole 4 MiB resource and the fan-out over HTTP/1.1, HTTP/2 and HTTP/3 side by side. The request counts they rest on are the table above; a loopback round trip exaggerates fixed cost, so what the timings establish is that no per-request cost is hiding. No Criterion table is published yet: it is regenerated by a release run on the reference host.
+The `http_bytes` and `http_session` groups measure, against the crate's own `Server` on loopback, a whole read, an 8 KiB footer read, a streamed drain, one small JSON `POST` answered and parsed, one small `GET` sent plain and again under a per-attempt header hook and a retry rule (`get_plain`, `get_with_request_knobs`: what a request's own knobs cost when nothing is retried), a walk of 64 pages and a 256-request `send_all` fan-out; built with `http2` (and `http3`), the `http_versions` group sends one small `GET`, the whole 4 MiB resource and the fan-out over HTTP/1.1, HTTP/2 and HTTP/3 side by side. The request counts they rest on are the table above; a loopback round trip exaggerates fixed cost, so what the timings establish is that no per-request cost is hiding. No Criterion table is published yet: it is regenerated by a release run on the reference host.
 
 ```bash
 cargo bench -p yggdryl --bench holder --features http3 -- http_ --noplot

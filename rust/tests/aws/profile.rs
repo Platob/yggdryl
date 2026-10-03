@@ -8,11 +8,11 @@
 //! through `yggdryl::internals::aws_profile` for what it cannot.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 
 use yggdryl::aws::{CredentialSource, Credentials, Profile, Session, Sso};
 use yggdryl::internals::aws_profile::{
-    Files, boto_config, ec2_credential_file, expand_user, service_key, split_words,
+    Files, boto_config, ec2_credential_file, expand_user, service_key, split_command, split_words,
 };
 
 /// The profile `name` two spelled files hold, read through a session that
@@ -29,6 +29,11 @@ fn read_profile(config: &str, credentials: &str, name: &str) -> Option<Profile> 
 /// The profile `name` the configuration file alone holds.
 fn configured(config: &str, name: &str) -> Profile {
     read_profile(config, "", name).unwrap_or_else(|| panic!("the configuration file spells {name}"))
+}
+
+/// The set `profile` holds, which must be readable.
+fn pair(profile: &Profile) -> Option<Credentials> {
+    profile.credentials().expect("a readable set")
 }
 
 /// The text of a refusal, which is invalid data naming the profile.
@@ -145,6 +150,32 @@ region = us-east-1
     }
 
     #[test]
+    fn a_header_followed_by_a_comment_is_that_section_as_the_aws_cli_reads_it() {
+        const CREDENTIALS: &str = "\
+[old]
+aws_access_key_id = AKIAOLD
+aws_secret_access_key = old-secret
+[default]   # dumped 12:30
+aws_access_key_id = AKIANEW
+aws_secret_access_key = new-secret
+";
+        assert_eq!(
+            Files::parse(None, Some(CREDENTIALS)).names(),
+            ["default", "old"],
+            "the comment after the header is no part of its name"
+        );
+        assert_eq!(
+            read_profile("", CREDENTIALS, "old").and_then(|old| pair(&old)),
+            Some(Credentials::new("AKIAOLD", "old-secret")),
+            "the section before keeps its own keys"
+        );
+        assert_eq!(
+            read_profile("", CREDENTIALS, "default").and_then(|default| pair(&default)),
+            Some(Credentials::new("AKIANEW", "new-secret"))
+        );
+    }
+
+    #[test]
     fn the_credentials_file_names_every_section_bare() {
         const CREDENTIALS: &str = "\
 [default]
@@ -162,11 +193,11 @@ aws_secret_access_key = desk-secret
         let trading =
             read_profile("", CREDENTIALS, "trading").expect("a bare section is a profile");
         assert_eq!(
-            trading.credentials(),
+            pair(&trading),
             Some(Credentials::new("AKIATRADING", "trading-secret"))
         );
         assert_eq!(
-            read_profile("", CREDENTIALS, "default").and_then(|default| default.credentials()),
+            read_profile("", CREDENTIALS, "default").and_then(|default| pair(&default)),
             Some(Credentials::new("AKIADEFAULT", "default-secret"))
         );
         assert!(
@@ -561,12 +592,12 @@ aws_secret_access_key = credentials-secret
             "a key only the configuration file spells stays"
         );
         assert_eq!(
-            desk.credentials(),
+            pair(&desk),
             Some(Credentials::new("AKIACREDENTIALS", "credentials-secret")),
             "the credentials file's pair wins"
         );
         assert_eq!(
-            configured(CONFIG, "desk").credentials(),
+            pair(&configured(CONFIG, "desk")),
             Some(Credentials::new("AKIACONFIG", "config-secret")),
             "the configuration file's pair stands alone"
         );
@@ -596,8 +627,7 @@ aws_session_token = session-token
 aws_access_key_id = AKIAHALF
 region = eu-west-3
 ";
-        let modern =
-            read_profile("", CREDENTIALS, "modern").and_then(|modern| modern.credentials());
+        let modern = read_profile("", CREDENTIALS, "modern").and_then(|modern| pair(&modern));
         assert_eq!(
             modern,
             Some(
@@ -611,15 +641,14 @@ region = eu-west-3
             "a token is a temporary set"
         );
 
-        let legacy =
-            read_profile("", CREDENTIALS, "legacy").and_then(|legacy| legacy.credentials());
+        let legacy = read_profile("", CREDENTIALS, "legacy").and_then(|legacy| pair(&legacy));
         assert_eq!(
             legacy.as_ref().and_then(Credentials::session_token),
             Some("legacy-token"),
             "aws_security_token is the session token's older name"
         );
 
-        let both = read_profile("", CREDENTIALS, "both").and_then(|both| both.credentials());
+        let both = read_profile("", CREDENTIALS, "both").and_then(|both| pair(&both));
         assert_eq!(
             both.as_ref().and_then(Credentials::session_token),
             Some("session-token"),
@@ -627,17 +656,175 @@ region = eu-west-3
         );
 
         let half = read_profile("", CREDENTIALS, "half").expect("a profile with half a pair");
-        assert_eq!(
-            half.credentials(),
-            None,
-            "a key id without its secret is no pair"
+        let message = refusal(half.credentials());
+        assert!(
+            message.contains("half")
+                && message.contains("credentials file")
+                && message.contains("aws_access_key_id without aws_secret_access_key"),
+            "a key id without its secret is a refusal naming the profile, the file and the missing key: {message}"
+        );
+        assert!(
+            !message.contains("AKIAHALF"),
+            "no value is quoted: {message}"
         );
         assert_eq!(half.region(), Some("eu-west-3"));
+    }
+
+    #[test]
+    fn half_a_set_is_a_refusal_naming_what_is_missing_and_nothing_is_no_set() {
+        const CREDENTIALS: &str = "\
+[secret_only]
+aws_secret_access_key = lonely-secret
+
+[token_only]
+aws_session_token = lonely-token
+
+[region_only]
+region = eu-west-3
+";
+        let read = |name| read_profile("", CREDENTIALS, name).expect("the profile");
+        let message = refusal(read("secret_only").credentials());
+        assert!(
+            message.contains("aws_secret_access_key without aws_access_key_id"),
+            "{message}"
+        );
+        assert!(
+            !message.contains("lonely-secret"),
+            "the secret never renders: {message}"
+        );
+        let message = refusal(read("token_only").credentials());
+        assert!(
+            message.contains("aws_session_token without aws_access_key_id"),
+            "{message}"
+        );
+        assert!(
+            !message.contains("lonely-token"),
+            "the token never renders: {message}"
+        );
+        assert_eq!(
+            pair(&read("region_only")),
+            None,
+            "a profile holding no key at all holds no set, and that is no refusal"
+        );
+        let message = refusal(
+            configured("[profile desk]\naws_access_key_id = AKIADESK\n", "desk").credentials(),
+        );
+        assert!(
+            message.contains("configuration file"),
+            "the refusal names the file the half set is in: {message}"
+        );
+    }
+
+    #[test]
+    fn an_expiry_a_tool_wrote_beside_the_set_is_read_under_every_name_the_tools_write() {
+        let lapses = UNIX_EPOCH + Duration::from_secs(1_790_997_600);
+        // 2026-10-03T03:20:00Z, spelled as each tool writes it.
+        for (key, value) in [
+            ("aws_credential_expiration", "2026-10-03T03:20:00Z"),
+            ("AWS_CREDENTIAL_EXPIRATION", "2026-10-03T03:20:00Z"),
+            ("x_security_token_expires", "2026-10-03T05:20:00+02:00"),
+            ("aws_session_expiration", "2026-10-03T03:20:00+0000"),
+            ("aws_session_expiration", "2026-10-03T03:20:00+00:00"),
+            ("aws_expiration", "2026-10-03T03:20:00.000Z"),
+            ("expiration", "2026-10-03 03:20:00"),
+        ] {
+            let text = format!(
+                "[dumped]\naws_access_key_id = ASIADUMPED\naws_secret_access_key = s\naws_session_token = t\n{key} = {value}\n"
+            );
+            let found = read_profile("", &text, "dumped")
+                .and_then(|dumped| pair(&dumped))
+                .expect("the dumped set");
+            assert_eq!(found.expires_at(), Some(lapses), "{key} = {value}");
+            assert!(found.is_temporary());
+        }
+        let found = read_profile(
+            "",
+            "[long]\naws_access_key_id = AKIALONG\naws_secret_access_key = s\n",
+            "long",
+        )
+        .and_then(|long| pair(&long))
+        .expect("a long-lived pair");
+        assert_eq!(found.expires_at(), None, "no expiry written, none read");
+    }
+
+    #[test]
+    fn an_expiry_nothing_reads_or_two_that_disagree_is_a_refusal_naming_the_keys() {
+        let unreadable = read_profile(
+            "",
+            "[dumped]\naws_access_key_id = ASIADUMPED\naws_secret_access_key = s\nx_security_token_expires = soon\n",
+            "dumped",
+        )
+        .expect("the profile");
+        let message = refusal(unreadable.credentials());
+        assert!(
+            message.contains("x_security_token_expires") && message.contains("\"soon\""),
+            "the key and the value nothing reads are named: {message}"
+        );
+        let disagreeing = read_profile(
+            "",
+            "[dumped]\naws_access_key_id = ASIADUMPED\naws_secret_access_key = s\n\
+             aws_credential_expiration = 2026-10-03T03:20:00Z\naws_expiration = 2026-10-03T04:20:00Z\n",
+            "dumped",
+        )
+        .expect("the profile");
+        let message = refusal(disagreeing.credentials());
+        assert!(
+            message.contains("aws_credential_expiration") && message.contains("aws_expiration"),
+            "both keys that disagree are named: {message}"
+        );
+        let agreeing = read_profile(
+            "",
+            "[dumped]\naws_access_key_id = ASIADUMPED\naws_secret_access_key = s\n\
+             aws_credential_expiration = 2026-10-03T03:20:00Z\naws_expiration = 2026-10-03T05:20:00+02:00\n",
+            "dumped",
+        )
+        .and_then(|dumped| pair(&dumped));
+        assert!(agreeing.is_some(), "two spellings of one instant agree");
+    }
+
+    #[test]
+    fn a_set_pasted_from_a_shell_block_reads_as_the_set_it_spells() {
+        // The three blocks the IAM Identity Center portal and
+        // `aws configure export-credentials` print, pasted under a header.
+        let expected = Credentials::new("ASIAPASTED", "pasted/secret+key")
+            .with_session_token("IQoJb3JpZ2luX2VjEJr//////////wEaCXVzLWVhc3QtMSJHMEUCIQ==");
+        for block in [
+            "export AWS_ACCESS_KEY_ID=\"ASIAPASTED\"\nexport AWS_SECRET_ACCESS_KEY=\"pasted/secret+key\"\n\
+             export AWS_SESSION_TOKEN=\"IQoJb3JpZ2luX2VjEJr//////////wEaCXVzLWVhc3QtMSJHMEUCIQ==\"\n",
+            "set AWS_ACCESS_KEY_ID=ASIAPASTED\nset AWS_SECRET_ACCESS_KEY=pasted/secret+key\n\
+             set AWS_SESSION_TOKEN=IQoJb3JpZ2luX2VjEJr//////////wEaCXVzLWVhc3QtMSJHMEUCIQ==\n",
+            "$Env:AWS_ACCESS_KEY_ID=\"ASIAPASTED\"\n$Env:AWS_SECRET_ACCESS_KEY=\"pasted/secret+key\"\n\
+             $Env:AWS_SESSION_TOKEN=\"IQoJb3JpZ2luX2VjEJr//////////wEaCXVzLWVhc3QtMSJHMEUCIQ==\"\n",
+            "aws_access_key_id = 'ASIAPASTED'   # dumped at 12:30\naws_secret_access_key = pasted/secret+key ; from the portal\n\
+             aws_session_token = \"IQoJb3JpZ2luX2VjEJr//////////wEaCXVzLWVhc3QtMSJHMEUCIQ==\"\n",
+        ] {
+            let text = format!("[default]\n{block}");
+            assert_eq!(
+                read_profile("", &text, "default").and_then(|default| pair(&default)),
+                Some(expected.clone()),
+                "{block}"
+            );
+        }
     }
 }
 
 mod roles {
     use super::*;
+
+    #[test]
+    fn a_role_arn_that_is_not_an_arn_is_the_profiles_refusal() {
+        let profile = configured(
+            "[profile desk]\nrole_arn = lake-reader\nsource_profile = desk\n",
+            "desk",
+        );
+        let message = refusal(profile.assumed_role());
+        assert!(
+            message.contains("desk")
+                && message.contains("role_arn")
+                && message.contains("not an ARN"),
+            "{message}"
+        );
+    }
 
     const ARN: &str = "arn:aws:iam::123456789012:role/lake-reader";
 
@@ -964,6 +1151,48 @@ sso_start_url = https://corp.awsapps.com/start
 
 mod words {
     use super::*;
+
+    #[test]
+    fn a_windows_command_line_keeps_its_backslashes_and_groups_by_double_quotes_alone() {
+        let windows = |text: &str| split_command(text, true);
+        assert_eq!(
+            windows(r"C:\Tools\vault.exe export dev"),
+            [r"C:\Tools\vault.exe", "export", "dev"],
+            "a path's backslashes are literal"
+        );
+        assert_eq!(
+            windows(r#""C:\Program Files\aws-vault.exe" exec  trading	--json"#),
+            [
+                r"C:\Program Files\aws-vault.exe",
+                "exec",
+                "trading",
+                "--json"
+            ],
+            "quotes group, blanks and tabs separate"
+        );
+        assert_eq!(
+            windows(r#"helper a\"b c\\"d e" f\\\"g"#),
+            ["helper", r#"a"b"#, r"c\d e", r#"f\"g"#],
+            "backslashes before a quote halve, and an odd one escapes it"
+        );
+        assert_eq!(
+            windows(r"C:\dir\ next"),
+            [r"C:\dir\", "next"],
+            "a trailing backslash stays"
+        );
+        assert_eq!(
+            windows(r#"a "" b"#),
+            ["a", "", "b"],
+            "an empty pair of quotes is a word"
+        );
+        assert_eq!(windows("it's"), ["it's"], "a single quote is a character");
+        assert!(windows(" \t ").is_empty());
+        assert_eq!(
+            split_command(r"C:\Tools\vault.exe export", false),
+            split_words(r"C:\Tools\vault.exe export"),
+            "elsewhere the line is POSIX words"
+        );
+    }
 
     #[test]
     fn whitespace_separates_words_and_nothing_is_no_word() {

@@ -777,19 +777,9 @@ impl<H: IOBase> IcebergTable<H> {
     /// read cannot be reached or decoded.
     pub fn plan_matching(&self, filter: impl crate::expression::IntoFilter) -> Result<ScanPlan> {
         let filter = filter.into_filter()?;
-        let conjuncts = super::scan::conjuncts(self.schema()?, &filter)?;
-        let schema = self.read_root()?;
-        self.planned(&conjuncts, &schema, false)
-    }
-
-    /// The root a scan's rows land under: the schema without its `SORT:by`.
-    /// A table's sort order is how its writers lay each data file out, and
-    /// a scan reads the files in plan order, so the stream across them
-    /// states no order - a root declaring one would have every batch and
-    /// every batch edge checked, and refused where two files meet.
-    /// [`Self::schema`] keeps reporting the order the table declares.
-    fn read_root(&self) -> Result<Field> {
-        Ok(self.schema()?.clone().with_metadata_removed("SORT:by"))
+        let schema = self.schema()?;
+        let conjuncts = super::scan::conjuncts(schema, &filter)?;
+        self.planned(&conjuncts, schema, false)
     }
 
     /// Plan a scan of one retained snapshot rather than the current one.
@@ -811,7 +801,7 @@ impl<H: IOBase> IcebergTable<H> {
         let conjuncts = super::scan::conjuncts(schema, &filter)?;
         let schema = schema.clone();
         let manifests = self.manifests_at(snapshot)?;
-        self.plan_manifests(&manifests, &conjuncts, &schema, false)
+        self.plan_manifests(&manifests, &conjuncts, &schema, false, None)
     }
 
     /// Read one retained snapshot's rows: time travel as an ordinary scan.
@@ -837,8 +827,8 @@ impl<H: IOBase> IcebergTable<H> {
         let filter = pairs_predicate(&stored, filters);
         let conjuncts = super::scan::conjuncts(&stored, &filter)?;
         let manifests = self.manifests_at(snapshot)?;
-        let plan = self.plan_manifests(&manifests, &conjuncts, &stored, true)?;
-        self.reader(plan.tasks, &stored, field, &filter, false)
+        let plan = self.plan_manifests(&manifests, &conjuncts, &stored, true, None)?;
+        self.reader(plan.tasks, &stored, field, &filter)
     }
 
     /// Return one retained snapshot, or say which ids are retained.
@@ -883,16 +873,19 @@ impl<H: IOBase> IcebergTable<H> {
         for_read: bool,
     ) -> Result<ScanPlan> {
         let manifests = self.manifests()?;
-        self.plan_manifests(&manifests, conjuncts, schema, for_read)
+        self.plan_manifests(&manifests, conjuncts, schema, for_read, None)
     }
 
-    /// Plan one set of manifests under one set of resolved filters.
+    /// Plan one set of manifests under one set of resolved filters,
+    /// keeping the bounds of the column `ordered` names on a read-only plan
+    /// (see [`super::scan::plan`]).
     fn plan_manifests(
         &self,
         manifests: &[ManifestFile],
         conjuncts: &[crate::expression::Bound],
         schema: &Field,
         for_read: bool,
+        ordered: Option<i32>,
     ) -> Result<ScanPlan> {
         let location = self.opened()?.metadata.location();
         log::debug!(
@@ -915,6 +908,7 @@ impl<H: IOBase> IcebergTable<H> {
             conjuncts,
             schema,
             for_read,
+            ordered,
         )?;
         // How much the filters removed is the read signal worth watching: a
         // plan that opens every file is a plan whose predicate bought nothing.
@@ -1293,15 +1287,11 @@ impl<H: IOBase> IcebergTable<H> {
         filter: impl crate::expression::IntoFilter,
         field: Option<&Field>,
     ) -> Result<BatchReader> {
-        self.scan_with(filter.into_filter()?, field, false)
-    }
-
-    /// [`Self::scan_matching`], decoding lazily on one thread when `lazy`.
-    fn scan_with(&self, filter: Filter, field: Option<&Field>, lazy: bool) -> Result<BatchReader> {
+        let filter = filter.into_filter()?;
         let stored = self.schema()?.clone();
         let conjuncts = super::scan::conjuncts(&stored, &filter)?;
         let plan = self.planned(&conjuncts, &stored, true)?;
-        self.reader(plan.tasks, &stored, field, &filter, lazy)
+        self.reader(plan.tasks, &stored, field, &filter)
     }
 
     /// Build the reader over one set of planned files.
@@ -1311,21 +1301,20 @@ impl<H: IOBase> IcebergTable<H> {
         stored: &Field,
         field: Option<&Field>,
         filter: &crate::Filter,
-        lazy: bool,
     ) -> Result<BatchReader> {
-        let root = field.map_or_else(|| stored.clone(), Clone::clone);
+        // The files are read in plan order, so the rows state no order
+        // across them: the root drops the `SORT:by` the writers keep.
+        let root = field.map_or_else(
+            || stored.clone().with_metadata_removed("SORT:by"),
+            Clone::clone,
+        );
         let read_root = super::scan::read_root(&root, stored, filter)?;
         // The residual conjuncts run against the read root, which carries the
         // predicate's own columns even when the caller projected them away.
         let predicates = super::scan::conjuncts(&read_root, filter)?;
         let parts = self.scan_parts(tasks, stored, &read_root)?;
-        let mut parallel =
+        let parallel =
             IcebergOptions::read_settings(self.options.as_ref(), &self.opened()?.metadata)?;
-        if lazy {
-            // A limited read decodes one file at a time, on one thread, so it
-            // stops where its limit does rather than decoding ahead of it.
-            parallel.parallelism = 1;
-        }
         super::scan::reader(
             parts,
             root,
@@ -1385,7 +1374,9 @@ impl<H: IOBase> IcebergTable<H> {
         Ok(parts)
     }
 
-    /// Read the rows the record options ask for, under one more predicate.
+    /// Read the rows the record options ask for, under one more predicate:
+    /// [`Self::read_rows`] as transport, the selector and the limit wrapping
+    /// it.
     ///
     /// This is the one door every options-driven read takes: the `where`
     /// clause and `scope` - the partition a folder handle addresses - are
@@ -1400,34 +1391,181 @@ impl<H: IOBase> IcebergTable<H> {
         scope: Filter,
         options: &RecordOptions,
     ) -> Result<BatchReader> {
-        let stored = self.schema()?.clone();
-        let filter = options.filter();
-        let select = options.select();
-        let late = crate::expression::filter_after_select(
-            filter,
-            select,
-            stored.fields().iter().map(Field::name),
-        );
-        let root = match options.field() {
-            Some(field) => Some(field),
-            None => options
-                .apply_columns()
-                .and_then(|columns| projected_root(&stored, &columns)),
-        };
-        let lazy = options.max_row_size().is_some();
+        let (rows, late) = self.read_rows(scope, options)?;
+        let reader = rows.into_arrow_reader()?;
         if late {
-            let reader = self.scan_with(scope, root.as_ref(), lazy)?;
             return options.limit_arrow_reader(options.apply_arrow_expressions(reader)?);
         }
-        let pushed = if scope.is_always_true() {
+        // The limit wraps last, as on every handle, so it counts result rows
+        // and a satisfied read opens no partition past the one that
+        // satisfied it.
+        options.limit_arrow_reader(options.select().apply_arrow_reader(reader)?)
+    }
+
+    /// The rows an options-driven read yields before the `select`, a `where`
+    /// that runs after it and the row bounds wrap them - partition after
+    /// partition in ascending tuple order, each partition's rows in the
+    /// table's default sort order - and whether that `where` runs after the
+    /// `select` (`true`) or was pushed into the plan whole with `scope`.
+    ///
+    /// The plan is grouped by partition tuple ([`super::scan::partition_groups`]);
+    /// a group is decoded only when the one before it has been yielded, its
+    /// files read through the ordinary scan - in parallel where the plan is
+    /// worth it - and, where the order names a key the group does not hold
+    /// constant, landed into one chunked serie under the process spill bound
+    /// and sorted unless it already keeps the order: at most one partition
+    /// is held at once. A key the root does not read is not sorted on, nor
+    /// is any key after it. A table with no such key - unsorted, or sorted
+    /// only by its identity partition columns - streams its files in group
+    /// order and holds nothing, and its transport face is its scan, landing
+    /// nothing. A plan holding a file of another partition spec than the
+    /// default reads in plan order and proves nothing.
+    ///
+    /// The root declares what the stream proves ([`Self::read_order`]),
+    /// which [`IOMedia::read_arrow_field`] declares too.
+    fn read_rows(
+        &self,
+        scope: Filter,
+        options: &RecordOptions,
+    ) -> Result<(super::scan::Partitions, bool)> {
+        let stored = self.schema()?.clone();
+        let filter = options.filter();
+        let late = crate::expression::filter_after_select(
+            filter,
+            options.select(),
+            stored.fields().iter().map(Field::name),
+        );
+        let (landing, given) = self.read_landing(options)?;
+        let pushed = if late {
+            scope
+        } else if scope.is_always_true() {
             filter.clone()
         } else {
             Filter::all([scope, filter.clone()])
         };
-        let reader = self.scan_with(pushed, root.as_ref(), lazy)?;
-        // The limit wraps last, as on every handle, so it counts result rows
-        // and a satisfied scan stops decoding data files.
-        options.limit_arrow_reader(select.apply_arrow_reader(reader)?)
+        let metadata = &self.opened()?.metadata;
+        let spec = metadata.default_spec()?;
+        let order = metadata.default_sort_order()?;
+        let conjuncts = super::scan::conjuncts(&stored, &pushed)?;
+        let plan = self.plan_manifests(
+            &self.manifests()?,
+            &conjuncts,
+            &stored,
+            true,
+            super::scan::leading_key_id(order, spec, &stored),
+        )?;
+        let read_root = super::scan::read_root(&landing, &stored, &pushed)?;
+        // The residual conjuncts run against the read root, which carries the
+        // predicate's own columns even when the caller projected them away.
+        let predicates = super::scan::conjuncts(&read_root, &pushed)?;
+        let (groups, sorting, proven) =
+            match super::scan::partition_groups(plan.tasks, spec, order, &stored) {
+                Ok(groups) => {
+                    let sorting = self.read_sorting(&landing)?;
+                    let proven = self.read_order(&landing, options.select(), sorting.len())?;
+                    (groups, sorting, proven)
+                }
+                Err(tasks) => {
+                    log::debug!(
+                        "reading iceberg table {} in plan order: a planned file belongs to a \
+                         partition spec other than the default {}, whose tuples do not compare",
+                        metadata.location(),
+                        spec.spec_id
+                    );
+                    (vec![tasks], Vec::new(), Vec::new())
+                }
+            };
+        let groups = groups
+            .into_iter()
+            .map(|tasks| self.scan_parts(tasks, &stored, &read_root))
+            .collect::<Result<Vec<_>>>()?;
+        let mut parallel = IcebergOptions::read_settings(self.options.as_ref(), metadata)?;
+        if options.max_row_size().is_some() {
+            // A limited read decodes one file at a time, on one thread, so it
+            // stops where its limit does rather than decoding ahead of it.
+            parallel.parallelism = 1;
+        }
+        let root = super::scan::declaring(landing.clone(), proven)?;
+        let declared_read_root = super::scan::read_root(&root, &stored, &pushed)?;
+        let partitions = super::scan::Partitions::new(
+            groups,
+            super::scan::GroupScan {
+                target: given.then(|| landing.clone()),
+                root: landing,
+                read_root,
+                declared_read_root,
+                predicates,
+                parallel,
+                renamed: columns_renamed(metadata),
+            },
+            sorting,
+            std::sync::Arc::new(root),
+        );
+        Ok((partitions, late))
+    }
+
+    /// The root an options-driven read lands its rows under, declaring no
+    /// order, and whether the caller gave it: the declared field, else the
+    /// stored schema narrowed to the columns the clauses read and named as
+    /// the options name the root.
+    fn read_landing(&self, options: &RecordOptions) -> Result<(Field, bool)> {
+        if let Some(field) = options.field() {
+            return Ok((field.with_metadata_removed("SORT:by"), true));
+        }
+        let stored = self.schema()?;
+        let projected = options
+            .apply_columns()
+            .and_then(|columns| projected_root(stored, &columns));
+        let given = projected.is_some();
+        let root = projected
+            .unwrap_or_else(|| stored.clone())
+            .with_name(options.name());
+        Ok((root.with_metadata_removed("SORT:by"), given))
+    }
+
+    /// The keys a record read sorts each partition group by: the table's
+    /// default order without the columns a group holds constant, while
+    /// `landing` reads them. An order naming a column the schema no longer
+    /// has sorts nothing - the rows are still read, in tuple order.
+    fn read_sorting(&self, landing: &Field) -> Result<Vec<crate::expression::Ordering>> {
+        let metadata = &self.opened()?.metadata;
+        let Ok((keys, _)) = sort_orderings(
+            metadata.default_sort_order()?,
+            metadata.default_spec()?,
+            self.schema()?,
+        ) else {
+            return Ok(Vec::new());
+        };
+        Ok(keys
+            .into_iter()
+            .take_while(|key| key.term().bind(landing).is_ok())
+            .collect())
+    }
+
+    /// The order a record read of rows landing under `landing`, groups
+    /// sorted on `sorted` keys, proves once `select` has run
+    /// ([`super::scan::proven_order`]) - and none for a table whose
+    /// metadata holds a partition spec besides the default, so the root a
+    /// schema read answers from metadata alone declares exactly what the
+    /// stream does, whichever files a filter plans.
+    fn read_order(
+        &self,
+        landing: &Field,
+        select: &Selector,
+        sorted: usize,
+    ) -> Result<Vec<crate::expression::Ordering>> {
+        let metadata = &self.opened()?.metadata;
+        if metadata.partition_specs().len() != 1 {
+            return Ok(Vec::new());
+        }
+        Ok(super::scan::proven_order(
+            metadata.default_spec()?,
+            metadata.default_sort_order()?,
+            self.schema()?,
+            landing,
+            select,
+            sorted,
+        ))
     }
 
     /// Append `batches` as a new snapshot, keeping everything already stored.
@@ -1447,7 +1585,26 @@ impl<H: IOBase> IcebergTable<H> {
     /// batch cannot be cast to the table schema, when any write fails, or a
     /// [`CommitConflict`] when concurrent writers exhausted the retries.
     pub fn commit_append(&mut self, batches: BatchReader) -> Result<()> {
+        let batches = self.derived(batches)?;
         self.commit_append_on(batches, None)
+    }
+
+    /// The rows of `batches` with every column the schema derives computed.
+    ///
+    /// A stored column declaring `TRANSFORM:expression` is computed from the
+    /// columns the rows carry before anything is cast or grouped, whatever
+    /// the rows carry under its own name - a table partitioned by a column
+    /// it derives states that column for every writer, as it computes every
+    /// other partition value, so what it stores is what its schema says and
+    /// a scan may bound the source by the partition. A schema deriving
+    /// nothing hands the reader back. The public commit doors and the
+    /// record doors derive; the crate's `_on` and cadence forms take rows
+    /// already derived.
+    fn derived(&self, batches: BatchReader) -> Result<BatchReader> {
+        match crate::expression::Derivation::owning(self.schema()?)? {
+            Some(derivation) => derivation.apply_arrow_reader(batches),
+            None => Ok(batches),
+        }
     }
 
     /// [`Self::commit_append`] with its partition groups written on
@@ -1463,7 +1620,18 @@ impl<H: IOBase> IcebergTable<H> {
         Ok(())
     }
 
-    /// Replace every row with `batches` as a new snapshot.
+    /// Replace the partitions `batches` falls in as a new snapshot.
+    ///
+    /// The incoming rows are grouped by partition tuple - the grouping an
+    /// append lays files out by - and every live file of a partition they
+    /// reach is dropped from the new snapshot, while every other file is
+    /// carried exactly as it is: same location, same statistics, same row
+    /// lineage. The partition is the unit: no stored row is read, joined or
+    /// rewritten, so this holds on every format version, and a source with
+    /// no row reaches no partition and commits nothing. An unpartitioned
+    /// table is one partition, replaced whole - and emptied by a source with
+    /// no row. [`Self::commit_overwrite_where`] replaces a stated scope
+    /// instead, every row when it states none.
     ///
     /// The previous snapshot is retained and still readable; only the current
     /// pointer moves, which is what makes an overwrite reversible.
@@ -1471,12 +1639,53 @@ impl<H: IOBase> IcebergTable<H> {
     /// # Errors
     ///
     /// Returns an error when the partition spec cannot place a row, when a
-    /// batch cannot be cast to the table schema, or when any write fails.
+    /// batch cannot be cast to the table schema, when a live file written
+    /// under another partition spec could hold rows of a partition the
+    /// source reaches - rewrite it into the current spec first - when any
+    /// write fails, or a [`CommitConflict`] when a concurrent commit won.
     pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()> {
-        self.commit_overwrite_where(&[], batches)
+        let batches = self.derived(batches)?;
+        self.commit_overwrite_cadence(&[], batches, &mut ReplacedPartitions::default(), None)
+    }
+
+    /// One commit of a streamed overwrite.
+    ///
+    /// With no `filters` on a partitioned table the partitions the rows fall
+    /// in are replaced, and `replaced` carries the ones this write's earlier
+    /// commits replaced: the first commit that reaches a partition replaces
+    /// it, every later one appends beside what the write put there. With
+    /// `filters`, or on an unpartitioned table, the write's first commit
+    /// replaces the rows the filters select - every row with none - and
+    /// every later one appends.
+    pub(crate) fn commit_overwrite_cadence(
+        &mut self,
+        filters: &[(&str, &str)],
+        batches: BatchReader,
+        replaced: &mut ReplacedPartitions,
+        threads: Option<usize>,
+    ) -> Result<()> {
+        if filters.is_empty() && !self.opened()?.metadata.default_spec()?.is_unpartitioned() {
+            return self.commit_partitions(
+                filters,
+                batches,
+                Selector::new(Vec::new()),
+                false,
+                replaced,
+                threads,
+            );
+        }
+        if replaced.scope {
+            return self.commit_append_on(batches, threads);
+        }
+        self.commit_overwrite_where_on(filters, batches, threads)?;
+        replaced.scope = true;
+        Ok(())
     }
 
     /// Replace only the rows `filters` selects, keeping every other file.
+    ///
+    /// No filter selects every row, which is the whole table replaced in
+    /// one snapshot whatever its partitions.
     ///
     /// A file the filters exclude is carried into the new snapshot exactly as
     /// it is - the same location, the same statistics, the commit order it was
@@ -1503,6 +1712,7 @@ impl<H: IOBase> IcebergTable<H> {
         filters: &[(&str, &str)],
         batches: BatchReader,
     ) -> Result<()> {
+        let batches = self.derived(batches)?;
         self.commit_overwrite_where_on(filters, batches, None)
     }
 
@@ -1576,8 +1786,8 @@ impl<H: IOBase> IcebergTable<H> {
     ///
     /// # Errors
     ///
-    /// Returns an error for a merge on format v3, whose existing row IDs this
-    /// writer cannot yet preserve, when `merge_by` names a column the schema
+    /// Returns an error for a keyed merge on format v3, whose existing row IDs
+    /// this writer cannot yet preserve, when `merge_by` names a column the schema
     /// does not declare, when the table has neither a partition nor a key,
     /// when a live file written under another partition spec could hold an
     /// incoming key - it belongs to no partition of the current spec, so
@@ -1590,6 +1800,7 @@ impl<H: IOBase> IcebergTable<H> {
         merge_by: &crate::Selector,
         safe: bool,
     ) -> Result<()> {
+        let batches = self.derived(batches)?;
         self.commit_merge_cadence(
             filters,
             batches,
@@ -1619,10 +1830,14 @@ impl<H: IOBase> IcebergTable<H> {
         replaced: &mut ReplacedPartitions,
         threads: Option<usize>,
     ) -> Result<()> {
-        self.require_row_id_preserving_rewrite("merge")?;
         let schema = self.schema()?.clone();
         let spec = self.opened()?.metadata.default_spec()?.clone();
         let (keys, row_keys) = merge_keys(&schema, &spec, merge_by);
+        if !row_keys.is_empty() {
+            // A keyed merge rewrites the stored rows it keeps, under fresh
+            // row IDs; a partition replaced whole retains none of them.
+            self.require_row_id_preserving_rewrite("merge")?;
+        }
         if keys.is_empty() {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.merge_by"),
@@ -1635,6 +1850,29 @@ impl<H: IOBase> IcebergTable<H> {
         // Every key column is checked against the schema before a file is
         // read, computed keys included, so a bad key costs nothing.
         keys.bind(&schema)?;
+        self.commit_partitions(filters, batches, row_keys, safe, replaced, threads)
+    }
+
+    /// One commit over the partitions `batches` falls in: each joined with
+    /// its stored rows by `row_keys`, or - with no key beyond the partition -
+    /// replaced.
+    ///
+    /// What [`Self::commit_merge_cadence`] and
+    /// [`Self::commit_overwrite_cadence`] share: the incoming rows grouped
+    /// by partition tuple, the plan opened over those partitions alone, and
+    /// every file of every other partition carried untouched. A source with
+    /// no row commits nothing.
+    fn commit_partitions(
+        &mut self,
+        filters: &[(&str, &str)],
+        batches: BatchReader,
+        row_keys: Selector,
+        safe: bool,
+        replaced: &mut ReplacedPartitions,
+        threads: Option<usize>,
+    ) -> Result<()> {
+        let schema = self.schema()?.clone();
+        let spec = self.opened()?.metadata.default_spec()?.clone();
 
         // The incoming side is held, grouped by partition, and this is why:
         // the files a merge has to read are the ones of the partitions the
@@ -1687,8 +1925,8 @@ impl<H: IOBase> IcebergTable<H> {
                     continue;
                 }
                 return Err(invalid(format_smolstr!(
-                    "expected every live file a merge could change to belong to partition spec \
-                     {}, got {:?} under spec {}; rewrite it into the current spec first",
+                    "expected every live file this write could replace to belong to partition \
+                     spec {}, got {:?} under spec {}; rewrite it into the current spec first",
                     spec.spec_id,
                     task.entry.data_file.file_path,
                     task.spec.spec_id
@@ -1837,13 +2075,7 @@ impl<H: IOBase> IcebergTable<H> {
             self.opened()?.metadata.location(),
         );
         let schema = self.schema()?.clone();
-        let rows = self.reader(
-            selected,
-            &schema,
-            None,
-            &crate::Filter::always_true(),
-            false,
-        )?;
+        let rows = self.reader(selected, &schema, None, &crate::Filter::always_true())?;
         let writes = self.partition_writes(rows, false)?;
         let files_after = self.commit(
             writes,
@@ -2359,7 +2591,6 @@ impl<H: IOBase> IcebergTable<H> {
         };
 
         let operation = SmolStr::new(operation);
-        let compacting = operation == "replace";
         // The live manifests of one snapshot never change, so an attempt
         // beaten on write rather than on the version check re-uses the list
         // it already read; only a rebase onto a newer snapshot reads again.
@@ -2507,51 +2738,7 @@ impl<H: IOBase> IcebergTable<H> {
         // The staging is committed inside, the moment the versioned document
         // is durable; what is left of it when it drops is the directory.
         self.commit_document(on_conflict, apply, Some(&staging))?;
-        self.maybe_auto_compact(compacting)?;
         Ok(files_written)
-    }
-
-    /// Run the configured compaction cadence after a data commit.
-    ///
-    /// [`IcebergOptions::compact_after_commits`] paces this: after every `n`
-    /// data commits the undersized files fold together, so no single commit
-    /// pays for a full rewrite and no scan pays for hundreds of small files.
-    /// A compaction itself commits `replace`, which is what the count runs
-    /// from, so the cadence cannot recurse. A beaten compaction is ignored -
-    /// a concurrent writer's success is not this commit's failure, and the
-    /// next cadence point retries what this one left - while any other
-    /// failure surfaces, because the data commit already stands either way.
-    fn maybe_auto_compact(&mut self, compacting: bool) -> Result<()> {
-        // Automatic compaction is optional. Skipping it on v3 keeps a
-        // successful data commit successful without rewriting retained rows
-        // under fresh row IDs.
-        if compacting || self.opened()?.metadata.format_version >= FormatVersion::V3 {
-            return Ok(());
-        }
-        let Some(cadence) =
-            IcebergOptions::resolved(self.options.as_ref(), &self.opened()?.metadata)?
-                .compact_after_commits()
-        else {
-            return Ok(());
-        };
-        let mut since_replace: u32 = 0;
-        for snapshot in self.opened()?.metadata.snapshots.iter().rev() {
-            if snapshot.operation() == "replace" {
-                break;
-            }
-            since_replace = since_replace.saturating_add(1);
-        }
-        if since_replace < cadence {
-            return Ok(());
-        }
-        match self.compact() {
-            Ok(_) => Ok(()),
-            // A CommitConflict reaches `Error` through exactly one From impl,
-            // so its display is the marker; a beaten compaction retries at
-            // the next cadence point rather than failing the data commit.
-            Err(error) if error.to_string().contains("got beaten") => Ok(()),
-            Err(error) => Err(error),
-        }
     }
 
     /// Reject rewrites that would assign fresh row IDs to retained v3 rows.
@@ -2775,7 +2962,7 @@ impl<H: IOBase> IOBase for IcebergTable<H> {
             return Ok(());
         }
         let schema = crate::arrow::arrow_schema_from_field(self.schema()?)?;
-        self.commit_overwrite(crate::arrow::batch_reader(schema, []))
+        self.commit_overwrite_where(&[], crate::arrow::batch_reader(schema, []))
     }
 
     /// Delete the table completely: metadata, manifests, and data files.
@@ -2913,16 +3100,23 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
 
     /// The stored schema as the metadata declares it, no data file opened.
     ///
-    /// A declared schema is returned as it stands, as on every handle.
-    /// Otherwise the answer is [`IcebergTable::schema`] renamed to the options' root
-    /// name - field identifiers and protocol metadata included - where the
-    /// base implementation would build a reader and take the shape off its
-    /// batches.
+    /// A declared schema is returned as it stands, as on every handle, but
+    /// for its `SORT:by`. Otherwise the answer is [`IcebergTable::schema`]
+    /// renamed to the options' root name - field identifiers and protocol
+    /// metadata included - where the base implementation would build a
+    /// reader and take the shape off its batches. Either way its `SORT:by`
+    /// is the order a record read of these options proves, which the
+    /// stream's root declares - none where it proves none - rather than the
+    /// order the table's writers keep.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
-        if let Some(field) = options.field() {
-            return Ok(field);
-        }
-        Ok(self.read_root()?.with_name(options.name()))
+        let (landing, _) = self.read_landing(options)?;
+        let sorted = self.read_sorting(&landing)?.len();
+        let proven = self.read_order(&landing, options.select(), sorted)?;
+        let root = match options.field() {
+            Some(field) => field,
+            None => self.schema()?.clone().with_name(options.name()),
+        };
+        super::scan::declaring(root.with_metadata_removed("SORT:by"), proven)
     }
 
     /// Scan the current snapshot, the whole `where` clause answered by the plan.
@@ -2931,14 +3125,78 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
     /// it, so every spelling the expression language has prunes: `venue in
     /// ('XNAS', 'XLON')` and `ts between ... and ...` skip the same manifests
     /// and files an equality does. The read decodes only the columns the
-    /// `select` and the `where` name.
+    /// `select` and the `where` name. The rows arrive as [`Self::read_serie`]
+    /// yields them - partition after partition, each in the table's sort
+    /// order - as transport.
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<BatchReader> {
         self.read_scoped(Filter::always_true(), options)
     }
 
-    /// Replace the selected partitions: `write_cadenced` under
-    /// [`IOMode::Overwrite`](crate::IOMode::Overwrite), the first commit
-    /// replacing the addressed partitions and every later one appending.
+    /// The table's rows partition after partition, in ascending partition
+    /// tuple order, each partition's rows in the table's default sort order,
+    /// the root declaring the order the stream proves.
+    ///
+    /// One partition is held at a time, spilled under the process bound,
+    /// and decoded only once the one before it has been yielded. A read the
+    /// options shape - a `select`, a `where` after it, a row bound - is
+    /// [`Self::read_arrow_reader`]'s stream landed once, the order it
+    /// declares carried as proven rather than read batch by batch again.
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
+        let owned;
+        let options = match options {
+            Some(options) => options,
+            None => {
+                owned = self.record_options()?;
+                &owned
+            }
+        };
+        let bounded = options.max_row_size().is_some()
+            || options.max_byte_size().is_some()
+            || options.row_offset().is_some_and(|rows| rows != 0);
+        // Under `*` the whole `where` clause was pushed into the plan, so the
+        // rows need nothing past what the read itself yields.
+        if options.select().is_all() && !bounded {
+            return Ok(self
+                .read_rows(Filter::always_true(), options)?
+                .0
+                .into_serie_reader()?);
+        }
+        // The selector, a `where` after it and the bounds are Arrow's, so
+        // what they shape lands once, under its root without the order, and
+        // each record is relabelled under the root declaring it. Lazy, so no
+        // record is read against that order again: it was proven before
+        // them - its keys are the ones the selector publishes unchanged
+        // (`proven_order`) - and a `where` keeps its rows in their order, a
+        // bound a run of them.
+        let shaped = self.read_scoped(Filter::always_true(), options)?;
+        let declared = crate::arrow::field_from_arrow_schema(
+            crate::media::DEFAULT_ROOT_NAME,
+            shaped.schema().as_ref(),
+        )?;
+        let plain = declared.clone().with_metadata_removed("SORT:by");
+        let landed = crate::SerieReader::from_arrow_reader(
+            Some(&plain),
+            shaped,
+            crate::ArrowCastOptions::default(),
+        )?;
+        if !declared.as_sort().declares_order() {
+            return Ok(landed);
+        }
+        let root = std::sync::Arc::new(declared);
+        let relabel = std::sync::Arc::clone(&root);
+        Ok(crate::SerieReader::from_landed_iter(
+            root,
+            landed.map(move |record| {
+                record.map(|record| record.into_relabeled(std::sync::Arc::clone(&relabel)))
+            }),
+        )?)
+    }
+
+    /// Replace the partitions the rows fall in - the partitions the
+    /// options' `where` addresses where it states any, an unpartitioned
+    /// table whole: `write_cadenced` under
+    /// [`IOMode::Overwrite`](crate::IOMode::Overwrite). No other partition
+    /// is touched, and a source with no row replaces none.
     fn overwrite_arrow_reader(
         &mut self,
         batches: BatchReader,
@@ -2977,7 +3235,9 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
 impl<H: IOBase> IcebergTable<H> {
     /// One streamed write under `mode`, over the partitions `pairs` address.
     ///
-    /// The rows are shaped onto the stored schema once and cut into
+    /// The rows are shaped onto the stored schema once - the columns it
+    /// derives computed between the options' declared field and their
+    /// clauses - and cut into
     /// cadences: every [`commit_batch_num`](IORecordOptions::commit_batch_num)
     /// batches where one is stated, else one commit when the source ends -
     /// the rows of every partition held under the process spill bound until
@@ -2987,11 +3247,14 @@ impl<H: IOBase> IcebergTable<H> {
     /// [`num_threads`](IORecordOptions::num_threads) threads at once where
     /// stated, else the table's `write.parallelism`, each group's rows in
     /// the table's sort order and cut into files at
-    /// [`Self::target_file_size_bytes`]. An overwrite's first commit
-    /// replaces and every later one appends, an append appends, and every
-    /// commit of a merge merges by its key - a merge keyed by the partition
-    /// alone replacing a partition on the first commit that reaches it and
-    /// appending to it on every later one. The commits before a failure stay
+    /// [`Self::target_file_size_bytes`]. An overwrite of a partitioned
+    /// table addressed whole replaces each partition its rows fall in on the
+    /// first commit that reaches it and appends to it on every later one,
+    /// touching no other partition; an overwrite of stated `pairs`, or of
+    /// an unpartitioned table, replaces that scope on its first commit and
+    /// appends after. An append appends, and every commit of a merge merges
+    /// by its key - a merge keyed by the partition alone replacing
+    /// partitions as an overwrite does. The commits before a failure stay
     /// published.
     ///
     /// # Errors
@@ -3047,8 +3310,7 @@ impl<H: IOBase> IcebergTable<H> {
         let Some(batches) = batches else {
             return Ok(());
         };
-        let (batches, _, _) =
-            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let batches = crate::iobase::prepare_arrow_write_deriving(batches, options, &stored)?;
         let batches = if overwrite {
             Some(batches)
         } else {
@@ -3061,16 +3323,18 @@ impl<H: IOBase> IcebergTable<H> {
         let mut commits = options.commit_arrow_readers(batches, cadence)?;
         match mode {
             crate::IOMode::Overwrite => {
+                let mut replaced = ReplacedPartitions::default();
                 let Some(first) = commits.next() else {
-                    return self.commit_overwrite_where_on(
+                    return self.commit_overwrite_cadence(
                         pairs,
                         crate::arrow::batch_reader(schema, []),
+                        &mut replaced,
                         threads,
                     );
                 };
-                self.commit_overwrite_where_on(pairs, first?, threads)?;
+                self.commit_overwrite_cadence(pairs, first?, &mut replaced, threads)?;
                 for commit in commits {
-                    self.commit_append_on(commit?, threads)?;
+                    self.commit_overwrite_cadence(pairs, commit?, &mut replaced, threads)?;
                 }
             }
             crate::IOMode::Append => {
@@ -3240,16 +3504,19 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
         .map_or_else(|| hasher.finish(), |width| hasher.finish() % width)
 }
 
-/// The partitions one streamed merge has replaced, carried across its
-/// commits.
+/// What one streamed write has replaced, carried across its commits.
 ///
-/// A merge keyed by the partition columns alone replaces the partitions its
-/// rows fall in. Cut into several commits by its cadence, it would replace
-/// each partition once per commit and keep only the last commit's rows, so
-/// [`IcebergTable::commit_merge_cadence`] replaces a partition on the first commit
-/// of a write that reaches it and appends to it on every later one. One
-/// value per write - a [`IcebergTable`] or [`super::Located`] stream, or a write
-/// session - and nothing a keyed merge records.
+/// An overwrite of a partitioned table, and a merge keyed by the partition
+/// columns alone, replace the partitions their rows fall in. Cut into
+/// several commits by its cadence, such a write would replace each partition
+/// once per commit and keep only the last commit's rows, so
+/// [`IcebergTable::commit_overwrite_cadence`] and
+/// [`IcebergTable::commit_merge_cadence`] replace a partition on the first
+/// commit of a write that reaches it and append to it on every later one.
+/// An overwrite of a stated scope, or of an unpartitioned table, replaces
+/// on its first commit alone, which `scope` records. One value per write -
+/// a [`IcebergTable`] or [`super::Located`] stream, or a write session - and
+/// nothing a keyed merge records.
 ///
 /// Bounded by the partitions the write's rows fall in: one tuple each,
 /// held until the write ends, because a later commit may reach any of them.
@@ -3257,6 +3524,9 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
 pub(crate) struct ReplacedPartitions {
     /// The partition tuples replaced so far, in spec order.
     tuples: HashSet<Vec<Scalar>>,
+    /// Whether an overwrite of a stated scope, or of an unpartitioned
+    /// table, has replaced it: every later commit of the write appends.
+    scope: bool,
 }
 
 impl ReplacedPartitions {

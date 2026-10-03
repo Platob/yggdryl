@@ -17,7 +17,7 @@
 
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
 use base64::Engine as _;
@@ -228,9 +228,6 @@ pub(super) struct Client {
     /// Who the AWS requests sign as: the caller's session, narrowed by what
     /// the options said explicitly.
     session: Session,
-    /// The signer for the current credential set and region, rebuilt when
-    /// either changes.
-    signer: Mutex<Option<(Credentials, String, Arc<Signer>)>>,
     /// The bearer token Google's dialect authorizes with, obtained on the first
     /// request that needs one and refreshed shortly before it lapses.
     tokens: super::google::token::TokenCache,
@@ -300,7 +297,6 @@ impl Client {
             scheme: url.scheme().clone(),
             region: RwLock::new(region),
             session,
-            signer: Mutex::new(None),
             tokens: super::google::token::TokenCache::new(
                 options.google(),
                 options.anonymous(),
@@ -585,11 +581,7 @@ impl Client {
                 };
                 let fips = session.use_fips_endpoint();
                 let dualstack = session.use_dualstack_endpoint() || table("use_dualstack_endpoint");
-                let suffix = if region.starts_with("cn-") {
-                    "amazonaws.com.cn"
-                } else {
-                    "amazonaws.com"
-                };
+                let suffix = crate::ArnPartition::from_region(&region).dns_suffix();
                 match (table("use_accelerate_endpoint"), fips, dualstack) {
                     (true, _, true) => "s3-accelerate.dualstack.amazonaws.com".to_owned(),
                     (true, _, false) => "s3-accelerate.amazonaws.com".to_owned(),
@@ -713,31 +705,13 @@ impl Client {
             .unwrap_or_else(|_| DEFAULT_REGION.to_owned())
     }
 
-    /// The signer for the current credentials and region.
+    /// The signer for the current credentials and region: the session's,
+    /// which keeps one per credential set, region and service.
     ///
     /// `None` when the client is anonymous, which is a valid way to reach a
     /// public bucket rather than a failure.
     fn signer(&self, now: SystemTime) -> Result<Option<Arc<Signer>>> {
-        let Some(credentials) = self.session.credentials(now)? else {
-            return Ok(None);
-        };
-        let region = self.region();
-        let mut slot = self.signer.lock().map_err(|_| poisoned())?;
-        if let Some((signed, signed_region, signer)) = slot.as_ref() {
-            // The whole set, not the key alone: a refreshed session can keep
-            // its access key id and change its secret or its token.
-            if *signed == credentials && *signed_region == region {
-                return Ok(Some(signer.clone()));
-            }
-        }
-        let signer = Arc::new(Signer::new(
-            credentials.access_key_id(),
-            credentials.secret_access_key(),
-            credentials.session_token().map(str::to_owned),
-            &region,
-        ));
-        *slot = Some((credentials, region, signer.clone()));
-        Ok(Some(signer))
+        self.session.signer("s3", &self.region(), now)
     }
 
     /// Wait before the next attempt: what the store asked for, else a draw
@@ -819,7 +793,7 @@ impl Client {
                 self.adopt_region(region)?;
                 continue;
             }
-            if self.refresh_on_expiry(&answer, &mut refreshed)? {
+            if self.refresh_on_expiry(request, &headers, &answer, &mut refreshed)? {
                 continue;
             }
             if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
@@ -831,38 +805,51 @@ impl Client {
         }
     }
 
-    /// Whether a refusal says the credential set the request was signed with
-    /// has lapsed - a session the store knows expired before the session
-    /// thought it would - in which case the chain is walked again and the
-    /// request signed once more, once.
-    fn refresh_on_expiry(&self, answer: &Answer, refreshed: &mut bool) -> Result<bool> {
+    /// Whether a refusal says the keys that signed the attempt are no longer
+    /// accepted - a set the store knows lapsed before the session thought it
+    /// would, a key it does not recognize - in which case the session is told,
+    /// and the request is signed once more, once, when the session now
+    /// answers another set: the same set would be refused the same way.
+    ///
+    /// The key is read off the attempt's own `Authorization` header rather
+    /// than the client's shared signer, which another request may already
+    /// have refilled with a fresh set. A `HEAD` answers its refusal with no
+    /// body, so a lapsed temporary set reads as a bare `400` or `403`: the
+    /// session reads its sources again without holding anything against the
+    /// key, which may be fine, and the request goes again only if they now
+    /// answer another set. When nothing answers, the session's refusal -
+    /// every source and why - is the error rather than the store's.
+    fn refresh_on_expiry(
+        &self,
+        request: &Request<'_>,
+        sent: &[(String, String)],
+        answer: &Answer,
+        refreshed: &mut bool,
+    ) -> Result<bool> {
         if *refreshed
             || !matches!(self.provider, Provider::Aws)
             || !matches!(answer.status, 400 | 403)
         {
             return Ok(false);
         }
-        let Some(code) = super::xml::parse_error(&answer.body).map(|error| error.code) else {
+        let Some(signed) = header_value(sent, "authorization").and_then(sigv4::signed_access_key)
+        else {
             return Ok(false);
         };
-        if !matches!(
-            code.as_str(),
-            "ExpiredToken" | "ExpiredTokenException" | "InvalidToken" | "TokenRefreshRequired"
-        ) {
+        let code = super::xml::parse_error(&answer.body).map(|error| error.code);
+        let bodyless = request.method == "HEAD"
+            && answer.body.is_empty()
+            && header_value(sent, "x-amz-security-token").is_some();
+        if code.is_none() && !bodyless {
             return Ok(false);
         }
-        *refreshed = true;
-        let mut signer = self.signer.lock().map_err(|_| poisoned())?;
-        // Only the set this request was signed with is forgotten: another
-        // client on the same session may already hold a fresh one.
-        match signer.as_ref() {
-            Some((signed, _, _)) => {
-                self.session.invalidate_if(signed.access_key_id());
-            }
-            None => self.session.invalidate(),
-        }
-        *signer = None;
-        Ok(true)
+        let another = self
+            .session
+            .answers_another(signed, code.as_deref(), SystemTime::now())?;
+        // A refusal that is not sent again ends the request, so the one
+        // chance is spent only when it is taken.
+        *refreshed = another;
+        Ok(another)
     }
 
     /// The wire target and the headers one attempt goes out with.
@@ -1022,8 +1009,8 @@ impl Client {
             if attempt > 1 {
                 self.stats.retries.fetch_add(1, Ordering::Relaxed);
             }
-            let (target, headers) = self.prepare(request, None, SystemTime::now())?;
-            let opened = self.open_stream(request, &target, &headers);
+            let (target, sent) = self.prepare(request, None, SystemTime::now())?;
+            let opened = self.open_stream(request, &target, &sent);
             let (status, headers, mut reader) = match opened {
                 Ok(opened) => opened,
                 Err(error) => {
@@ -1061,7 +1048,7 @@ impl Client {
                     self.adopt_region(region)?;
                     continue;
                 }
-                if self.refresh_on_expiry(&answer, &mut refreshed)? {
+                if self.refresh_on_expiry(request, &sent, &answer, &mut refreshed)? {
                     continue;
                 }
                 if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
@@ -1114,14 +1101,11 @@ impl Client {
         Ok((status, headers, Box::new(reader)))
     }
 
-    /// Sign for `region` from here on, dropping the signer bound to the old one.
+    /// Sign for `region` from here on: the session's signers are kept by
+    /// region, so the next request takes that region's.
     fn adopt_region(&self, region: String) -> Result<()> {
-        {
-            let mut current = self.region.write().map_err(|_| poisoned())?;
-            *current = region;
-        }
-        let mut signer = self.signer.lock().map_err(|_| poisoned())?;
-        *signer = None;
+        let mut current = self.region.write().map_err(|_| poisoned())?;
+        *current = region;
         Ok(())
     }
 
@@ -2347,6 +2331,14 @@ fn too_many_parts() -> Error {
         std::io::ErrorKind::InvalidInput,
         "expected a value small enough to upload in the parts this store accepts",
     ))
+}
+
+/// The value of the header `name` among `headers`, its case ignored.
+fn header_value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(held, _)| held.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
 }
 
 /// The host and the path-with-query of a whole URL.

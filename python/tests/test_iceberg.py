@@ -528,9 +528,12 @@ class TestCommits:
         with pytest.raises(TypeError, match="expected rows"):
             table.append(12)
 
-        # A table that declared its schema can be emptied by writing no rows,
-        # which is how JavaScript already spelled the same delete.
+        # An overwrite replaces the partitions its rows fall in, so no row
+        # replaces nothing on a partitioned table; the scope that names every
+        # row is what empties it.
         table.overwrite([])
+        assert table.scan().read_all().num_rows == 3
+        table.overwrite_where(None, [])
         assert table.scan().read_all().num_rows == 0
 
     def test_a_named_write_types_rows_against_the_table_it_lands_in(
@@ -1511,7 +1514,6 @@ class TestIcebergOptions:
             ("read_parallel_min_file_size", 1),
             ("write_parallelism", 1),
             ("write_staging", "off"),
-            ("compact_after_commits", 1),
             ("data_mime_type", "avro"),
         ]:
             with pytest.raises(TypeError, match="hashed IcebergOptions"):

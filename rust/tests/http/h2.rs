@@ -214,3 +214,38 @@ fn a_plain_origin_that_does_not_speak_http2_is_remembered_as_http1() {
         "the refusal is learned once"
     );
 }
+
+#[test]
+fn a_deadline_bounds_an_http2_attempt_as_it_does_an_http1_one() {
+    let server = served(b"");
+    // The connection is opened and spoken over first, so the deadline is
+    // spent on the answer alone.
+    let session = http2();
+    let warm = session
+        .get(&url(&server, "/hello"))
+        .unwrap()
+        .send()
+        .unwrap();
+    assert_eq!(warm.version(), HttpVersion::Http2);
+    server.inject("/hello", Fault::Delay(std::time::Duration::from_secs(2)), 1);
+    let started = std::time::Instant::now();
+
+    let error = session
+        .get(&url(&server, "/hello"))
+        .unwrap()
+        .with_deadline(std::time::Duration::from_millis(300))
+        .with_max_attempts(1)
+        .send()
+        .expect_err("the answer comes after the deadline");
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(1_500),
+        "{error:?}"
+    );
+    match &error {
+        yggdryl::Error::Io(io) => {
+            assert_eq!(io.kind(), std::io::ErrorKind::TimedOut, "{io:?}");
+        }
+        other => panic!("expected a timeout, got {other:?}"),
+    }
+}

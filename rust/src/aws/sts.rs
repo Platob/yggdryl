@@ -28,8 +28,6 @@ const MAX_DURATION: Duration = Duration::from_secs(12 * 3600);
 /// What a generated session name starts with; the AWS tools spell theirs
 /// `botocore-session-{seconds}`, and a name this crate generated says so.
 const SESSION_NAME_PREFIX: &str = "yggdryl-session";
-/// The largest STS answer read into memory; one credential set is a kilobyte.
-const MAX_ANSWER: u64 = 256 * 1024;
 /// A cached session lapsing within this is not worth reading back.
 const CACHE_WINDOW: Duration = Duration::from_secs(15 * 60);
 /// The bound on one exchange.
@@ -37,7 +35,6 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 /// Attempts at one exchange before its failure is the answer: a throttle or
 /// a server-side failure is tried again, after a short pause.
 const ATTEMPTS: u32 = 3;
-const RETRY_PAUSE: Duration = Duration::from_millis(200);
 
 /// Where the keys that sign a role exchange come from, when a profile names
 /// a source rather than another profile.
@@ -332,7 +329,7 @@ fn json_string(text: &str) -> String {
 // would only rename them.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn assume(
-    agent: &ureq::Agent,
+    http: &crate::http::Session,
     base: &Credentials,
     role: &AssumedRole,
     session_name: &str,
@@ -377,7 +374,7 @@ pub(crate) fn assume(
         now,
     );
     exchange(
-        agent,
+        http,
         &format!("{scheme}://{host}/?{}", sigv4::canonical_query(&query)),
         &signed,
         "AssumeRole",
@@ -394,7 +391,7 @@ pub(crate) fn assume(
 ///
 /// As [`assume`].
 pub(crate) fn assume_with_web_identity(
-    agent: &ureq::Agent,
+    http: &crate::http::Session,
     role: &AssumedRole,
     token: &str,
     session_name: &str,
@@ -414,7 +411,7 @@ pub(crate) fn assume_with_web_identity(
     ];
     let (scheme, host) = split_endpoint(endpoint)?;
     exchange(
-        agent,
+        http,
         &format!("{scheme}://{host}/?{}", sigv4::canonical_query(&query)),
         &[],
         "AssumeRoleWithWebIdentity",
@@ -425,8 +422,12 @@ pub(crate) fn assume_with_web_identity(
 }
 
 /// Send one exchange and read the credential set it answers.
+///
+/// A throttle STS states in its body - a `400` naming `Throttling` - or an
+/// identity provider it could not reach is tried again under the HTTP
+/// client's rules, beside the statuses it retries of its own accord.
 fn exchange(
-    agent: &ureq::Agent,
+    http: &crate::http::Session,
     url: &str,
     headers: &[(String, String)],
     action: &'static str,
@@ -434,36 +435,28 @@ fn exchange(
     role_arn: &str,
     now: SystemTime,
 ) -> Result<Credentials> {
-    let mut attempt = 0;
-    let (status, body) = loop {
-        attempt += 1;
-        let mut request = agent
-            .get(url)
-            .config()
-            .timeout_global(Some(TIMEOUT))
-            .build()
-            .header("Accept", "application/xml");
-        for (name, value) in headers {
-            request = request.header(name, value);
-        }
-        let answered = request.call().and_then(|mut answer| {
-            let status = answer.status().as_u16();
-            answer
-                .body_mut()
-                .with_config()
-                .limit(MAX_ANSWER)
-                .read_to_vec()
-                .map(|body| (status, body))
+    let mut request = http
+        .get(url)?
+        .with_header("accept", "application/xml")?
+        .with_timeout(TIMEOUT)
+        .with_max_attempts(ATTEMPTS)
+        .with_retry_on(|_, _, body| {
+            parse_error(body).is_some_and(|(code, _)| {
+                matches!(
+                    code.as_str(),
+                    "Throttling"
+                        | "ThrottlingException"
+                        | "RequestLimitExceeded"
+                        | "IDPCommunicationError"
+                )
+            })
         });
-        match answered {
-            Ok((status, _)) if (status >= 500 || status == 429) && attempt < ATTEMPTS => {
-                std::thread::sleep(RETRY_PAUSE);
-            }
-            Ok(answered) => break answered,
-            Err(_) if attempt < ATTEMPTS => std::thread::sleep(RETRY_PAUSE),
-            Err(error) => return Err(transport_failure(endpoint, &error)),
-        }
-    };
+    for (name, value) in headers {
+        request = request.with_header(name, value)?;
+    }
+    let answer =
+        super::Answer::of(&request).map_err(|error| transport_failure(endpoint, &error))?;
+    let (status, body) = (answer.status, answer.body);
     if status >= 300 {
         let (code, message) =
             parse_error(&body).unwrap_or_else(|| (format!("{action}Failed"), String::new()));
@@ -502,23 +495,17 @@ fn parse(body: &[u8], action: &str, now: SystemTime) -> Option<Credentials> {
     if let Some(account) = result
         .child("AssumedRoleUser")
         .and_then(|user| user.child_text("Arn"))
-        .and_then(account_of_arn)
+        .and_then(|arn| crate::Arn::from_str(arn).ok())
+        .and_then(|arn| arn.account().map(str::to_owned))
     {
         credentials = credentials.with_account_id(account);
     }
     Some(credentials)
 }
 
-/// The account field of an ARN, `arn:partition:service:region:account:...`.
-fn account_of_arn(arn: &str) -> Option<String> {
-    arn.split(':')
-        .nth(4)
-        .filter(|account| !account.is_empty())
-        .map(str::to_owned)
-}
-
-/// Read `<ErrorResponse><Error><Code>..</Code><Message>..</Message>`.
-fn parse_error(body: &[u8]) -> Option<(String, String)> {
+/// Read `<ErrorResponse><Error><Code>..</Code><Message>..</Message>`, or
+/// the bare `<Error>` S3 answers with.
+pub(crate) fn parse_error(body: &[u8]) -> Option<(String, String)> {
     let root = parse_document(body).ok()?;
     let error = match root.name() {
         "ErrorResponse" => root.child("Error")?,

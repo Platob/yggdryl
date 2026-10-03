@@ -162,8 +162,6 @@ pub struct IcebergOptionsInput<'env> {
     pub write_parallelism: Option<u32>,
     /// Where a commit stages its files: `off`, or a local folder URL or path.
     pub write_staging: Option<String>,
-    /// After how many data commits an automatic compaction runs.
-    pub compact_after_commits: Option<u32>,
     /// The MIME type for new data files. Table writes encode Parquet and Avro.
     pub data_mime_type: Option<MimeTypeInput<'env>>,
 }
@@ -221,9 +219,6 @@ fn apply_options_input(
         options
             .set_write_staging(WriteStaging::from_str(&staging).map_err(napi_error)?)
             .map_err(napi_error)?;
-    }
-    if let Some(commits) = input.compact_after_commits {
-        options.set_compact_after_commits(commits);
     }
     if let Some(mime_type) = input.data_mime_type {
         options
@@ -459,19 +454,6 @@ impl JsIcebergOptions {
                 "readParallelMinFileSize",
             )?);
         Ok(())
-    }
-
-    /// After how many data commits an automatic compaction runs; `null` - the
-    /// default - never compacts on its own, and 0 reads as off.
-    #[napi(getter)]
-    pub fn compact_after_commits(&self) -> Option<u32> {
-        self.inner.compact_after_commits()
-    }
-
-    /// Set after how many data commits an automatic compaction runs.
-    #[napi(setter)]
-    pub fn set_compact_after_commits(&mut self, commits: u32) {
-        self.inner.set_compact_after_commits(commits);
     }
 
     /// The MIME type for new data files. Default: `MimeType.PARQUET`.
@@ -1960,7 +1942,10 @@ impl JsTable {
         })
     }
 
-    /// Replace every row with `batches` as a new snapshot.
+    /// Replace the partitions `batches` fall in as a new snapshot: every
+    /// row of an unpartitioned table, and of a partitioned one the
+    /// partitions the rows touch - no row replaces nothing there, and
+    /// `overwriteWhere(null, [])` empties it.
     ///
     /// The previous snapshot stays readable; only the current pointer moves.
     /// `options` configures this one write, exactly as on

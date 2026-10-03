@@ -198,7 +198,6 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
         .with_commit_min_backoff_ms(3)
         .with_commit_max_backoff_ms(4)
         .with_commit_total_timeout_ms(9)
-        .with_compact_after_commits(0)
         .with_read_parallel_min_files(6)
         .with_read_parallel_min_file_size_bytes(7)
         .try_with_data_mime_type(yggdryl::MimeType::AVRO)
@@ -210,7 +209,6 @@ fn immutable_reports_and_metadata_have_complete_value_traits() {
     assert_eq!(options.commit_min_backoff_ms_option(), Some(3));
     assert_eq!(options.commit_max_backoff_ms_option(), Some(4));
     assert_eq!(options.commit_total_timeout_ms_option(), Some(9));
-    assert_eq!(options.compact_after_commits_option(), Some(0));
     assert_eq!(options.target_file_size_bytes_option(), Some(5));
     assert_eq!(options.read_parallel_min_files_option(), Some(6));
     assert_eq!(options.read_parallel_min_file_size_bytes_option(), Some(7));
@@ -2376,8 +2374,8 @@ mod tables {
     use arrow_schema::DataType as ArrowDataType;
 
     use super::{
-        FormatVersion, IOBase, IcebergOptions, IcebergTable, LocalFolder, PartitionField,
-        PartitionSpec, Transform, assign_field_ids, collect, root, trade_schema, trades,
+        FormatVersion, IOBase, IcebergTable, LocalFolder, PartitionField, PartitionSpec, Transform,
+        assign_field_ids, collect, root, trade_schema, trades,
     };
 
     use yggdryl::IOMedia;
@@ -3706,7 +3704,6 @@ mod tables {
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        table.set_options(IcebergOptions::default().with_compact_after_commits(2));
 
         for id in [1_i64, 2] {
             let batch = trades(&[id], &[Some("AAPL")], &[Some("XNAS")]);
@@ -3715,15 +3712,6 @@ mod tables {
                 .unwrap();
         }
         assert_eq!(table.data_files().unwrap().len(), 2);
-        assert!(
-            table
-                .metadata()
-                .unwrap()
-                .snapshots()
-                .iter()
-                .all(|snapshot| snapshot.operation() == "append"),
-            "v3 auto-compaction must not rewrite retained rows"
-        );
 
         let children = |directory: &str| {
             let mut paths: Vec<_> = std::fs::read_dir(path.join(directory))
@@ -4430,7 +4418,9 @@ mod handles {
             3
         );
 
-        // An overwrite replaces every row, and the table still reads as a table.
+        // An overwrite replaces the partition its rows fall in - `XLON`,
+        // which held `VOD` - and no other, and the table still reads as a
+        // table.
         let batch = trades(&[9], &[Some("BP")], &[Some("XLON")]);
         folder
             .overwrite_arrow_reader(
@@ -4438,9 +4428,15 @@ mod handles {
                 &options,
             )
             .unwrap();
+        let mut rows = collect(folder.read_arrow_reader(&options).unwrap());
+        rows.sort();
         assert_eq!(
-            collect(folder.read_arrow_reader(&options).unwrap()),
-            vec![(9, Some("BP".to_owned()), Some("XLON".to_owned()))]
+            rows,
+            vec![
+                (1, Some("AAPL".to_owned()), Some("XNAS".to_owned())),
+                (2, Some("MSFT".to_owned()), Some("XNYS".to_owned())),
+                (9, Some("BP".to_owned()), Some("XLON".to_owned())),
+            ]
         );
 
         // Every write was a snapshot, so the table has one commit per call.
@@ -4651,8 +4647,15 @@ mod handles {
         assert_eq!(field.name(), options.name());
         assert_eq!(field.fields()[0].parquet_field_id().unwrap(), Some(1));
         assert_eq!(field.fields()[2].parquet_field_id().unwrap(), Some(3));
+        // A declared schema comes back as it stands, declaring the order a
+        // record read proves: the venue partitions arrive in tuple order.
         let declared = options.clone().with_field(trade_schema());
-        assert_eq!(table.read_arrow_field(&declared).unwrap(), trade_schema());
+        let mut ordered = trade_schema();
+        ordered
+            .as_sort_mut()
+            .set_by_texts(["venue nulls first"])
+            .unwrap();
+        assert_eq!(table.read_arrow_field(&declared).unwrap(), ordered);
 
         // Writing through the generic surface is one commit each, and the
         // in-memory metadata follows without reopening anything.
@@ -4744,7 +4747,8 @@ mod handles {
         let past = table.current_snapshot().unwrap().unwrap().snapshot_id;
         let version = table.metadata_version().unwrap();
 
-        // No match key replaces every row; the snapshot it replaced is
+        // An overwrite replaces the partitions its rows fall in - `XLON`
+        // held nothing - and keeps every other; the snapshot before it is
         // retained and still reads exactly as it was written.
         let batch = trades(&[9], &[Some("BP")], &[Some("XLON")]);
         table
@@ -4758,9 +4762,15 @@ mod handles {
             "overwrite"
         );
         assert_eq!(table.metadata_version().unwrap(), version + 1);
+        let mut rows = collect(table.read_arrow_reader(&options).unwrap());
+        rows.sort();
         assert_eq!(
-            collect(table.read_arrow_reader(&options).unwrap()),
-            vec![(9, Some("BP".to_owned()), Some("XLON".to_owned()))]
+            rows,
+            vec![
+                (1, Some("AAPL".to_owned()), Some("XNAS".to_owned())),
+                (2, Some("MSFT".to_owned()), Some("XNYS".to_owned())),
+                (9, Some("BP".to_owned()), Some("XLON".to_owned())),
+            ]
         );
         assert_eq!(collect(table.scan_at(past, &[], None).unwrap()).len(), 2);
 
@@ -4777,9 +4787,13 @@ mod handles {
                 &merging,
             )
             .unwrap();
+        let mut rows = collect(table.read_arrow_reader(&options).unwrap());
+        rows.sort();
         assert_eq!(
-            collect(table.read_arrow_reader(&options).unwrap()),
+            rows,
             vec![
+                (1, Some("AAPL".to_owned()), Some("XNAS".to_owned())),
+                (2, Some("MSFT".to_owned()), Some("XNYS".to_owned())),
                 (9, Some("BP.L".to_owned()), Some("XLON".to_owned())),
                 (10, Some("SHEL".to_owned()), Some("XLON".to_owned())),
             ]
@@ -5344,6 +5358,210 @@ mod handles {
             );
             let _ = std::fs::remove_dir_all(&path);
         }
+    }
+
+    #[test]
+    fn an_overwrite_replaces_the_partitions_its_rows_fall_in_through_every_door() {
+        // `XNAS` and `XLON` are reached and replaced, `XNYS` is not and
+        // keeps its row. The held table and the folder commit once; a write
+        // session asked for one batch a commit replaces each partition on
+        // the first commit that reaches it and appends on the later ones, so
+        // every incoming row of a partition survives its four commits.
+        let seed = trades(
+            &[10, 11, 12],
+            &[Some("OLD"); 3],
+            &[Some("XNAS"), Some("XLON"), Some("XNYS")],
+        );
+        let incoming = trades(
+            &[1, 2, 3, 4],
+            &[Some("A"), Some("B"), Some("C"), Some("D")],
+            &[Some("XNAS"), Some("XLON"), Some("XNAS"), Some("XLON")],
+        );
+        let expected = triples(&[
+            (1, "A", "XNAS"),
+            (2, "B", "XLON"),
+            (3, "C", "XNAS"),
+            (4, "D", "XLON"),
+            (12, "OLD", "XNYS"),
+        ]);
+        for door in ["table", "folder", "session"] {
+            let (path, mut folder) = table(&format!("handle-partition-overwrite-{door}"));
+            let options = options(&folder);
+            folder
+                .append_arrow_reader(
+                    yggdryl::arrow::batch_reader(seed.schema(), [seed.clone()]),
+                    &options,
+                )
+                .unwrap();
+            let kept = venue_files(&path, "XNYS");
+            match door {
+                "table" => {
+                    let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+                    table
+                        .overwrite_arrow_reader(one_row_batches(&incoming), &options)
+                        .unwrap();
+                }
+                "folder" => folder
+                    .overwrite_arrow_reader(one_row_batches(&incoming), &options)
+                    .unwrap(),
+                _ => {
+                    let cadence = options.clone().with_commit_batch_num(1);
+                    let mut session = yggdryl::ArrowWriteSession::overwrite(&cadence).unwrap();
+                    assert!(
+                        session
+                            .push(&mut folder, one_row_batches(&incoming))
+                            .unwrap()
+                    );
+                    session.finish(&mut folder).unwrap();
+                }
+            }
+            let commits = if door == "session" { 4 } else { 1 };
+            assert_eq!(snapshots(&path), 1 + commits, "{door}");
+            let mut rows = collect(folder.read_arrow_reader(&options).unwrap());
+            rows.sort();
+            assert_eq!(rows, expected, "{door}");
+            assert_eq!(
+                venue_files(&path, "XNYS"),
+                kept,
+                "{door}: a partition no row reaches keeps its files"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    /// The data files of one venue with the row lineage each carries, sorted.
+    fn venue_files(path: &std::path::Path, venue: &str) -> Vec<(String, Option<i64>)> {
+        let table = IcebergTable::open(LocalFolder::new(path).unwrap()).unwrap();
+        let mut files: Vec<(String, Option<i64>)> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .filter(|(file, _)| {
+                file.partition.first().and_then(yggdryl::Scalar::as_str) == Some(venue)
+            })
+            .map(|(file, _)| (file.file_path.to_string(), file.first_row_id))
+            .collect();
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn an_overwrite_on_format_v3_carries_untouched_files_with_their_row_lineage() {
+        // No stored row is read or rewritten, so the replacement holds on
+        // v3: the files of the partitions the rows do not reach stay the
+        // same files under the same row identifiers.
+        let path = root("handle-partition-overwrite-v3");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V3,
+            schema,
+            spec,
+        )
+        .unwrap();
+        let seed = trades(
+            &[10, 11, 12],
+            &[Some("OLD"); 3],
+            &[Some("XNAS"), Some("XLON"), Some("XNYS")],
+        );
+        table
+            .commit_append(yggdryl::arrow::batch_reader(seed.schema(), [seed]))
+            .unwrap();
+        let (xnas, xnys) = (venue_files(&path, "XNAS"), venue_files(&path, "XNYS"));
+        assert!(xnas[0].1.is_some(), "a v3 file states its first row id");
+
+        let incoming = trades(
+            &[1, 2],
+            &[Some("B"), Some("P")],
+            &[Some("XLON"), Some("XPAR")],
+        );
+        table
+            .commit_overwrite(yggdryl::arrow::batch_reader(incoming.schema(), [incoming]))
+            .unwrap();
+        assert_eq!(
+            table.current_snapshot().unwrap().unwrap().operation(),
+            "overwrite"
+        );
+        assert_eq!(venue_files(&path, "XNAS"), xnas);
+        assert_eq!(venue_files(&path, "XNYS"), xnys);
+        let mut rows = collect(table.scan(None).unwrap());
+        rows.sort();
+        assert_eq!(
+            rows,
+            triples(&[
+                (1, "B", "XLON"),
+                (2, "P", "XPAR"),
+                (10, "OLD", "XNAS"),
+                (12, "OLD", "XNYS"),
+            ])
+        );
+
+        // A merge keyed by the partition alone is the same replacement, so
+        // it holds on v3 too; a keyed one still rewrites stored rows.
+        let options = yggdryl::IOMedia::record_options(&table).unwrap();
+        let again = trades(&[3], &[Some("Q")], &[Some("XPAR")]);
+        table
+            .merge_arrow_reader(
+                yggdryl::arrow::batch_reader(again.schema(), [again]),
+                &options,
+            )
+            .unwrap();
+        let mut rows = collect(table.scan(None).unwrap());
+        rows.sort();
+        assert_eq!(rows.len(), 4);
+        assert!(rows.contains(&(3, Some("Q".to_owned()), Some("XPAR".to_owned()))));
+        assert_eq!(venue_files(&path, "XNAS"), xnas);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn an_overwrite_with_no_row_replaces_nothing_and_a_scope_replaces_itself() {
+        let (path, mut folder) = table("handle-partition-overwrite-empty");
+        let options = options(&folder);
+        let seed = trades(&[10, 11], &[Some("OLD"); 2], &[Some("XNAS"), Some("XLON")]);
+        folder
+            .append_arrow_reader(
+                yggdryl::arrow::batch_reader(seed.schema(), [seed.clone()]),
+                &options,
+            )
+            .unwrap();
+
+        // No row reaches a partition: nothing is replaced, nothing committed.
+        folder
+            .overwrite_arrow_reader(yggdryl::arrow::batch_reader(seed.schema(), []), &options)
+            .unwrap();
+        assert_eq!(snapshots(&path), 1);
+        assert_eq!(
+            collect(folder.read_arrow_reader(&options).unwrap()).len(),
+            2
+        );
+
+        // A `where` naming a partition replaces it whatever the rows reach:
+        // with no row it is emptied, and the other partition is kept.
+        let scoped = options.clone().with_filter("venue = 'XLON'").unwrap();
+        folder
+            .overwrite_arrow_reader(yggdryl::arrow::batch_reader(seed.schema(), []), &scoped)
+            .unwrap();
+        assert_eq!(snapshots(&path), 2);
+        assert_eq!(
+            collect(folder.read_arrow_reader(&options).unwrap()),
+            triples(&[(10, "OLD", "XNAS")])
+        );
+
+        // A filterless scope replaces the whole table, and `clear` empties it.
+        let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let whole = trades(&[7], &[Some("VOD")], &[Some("XLON")]);
+        table
+            .commit_overwrite_where(&[], yggdryl::arrow::batch_reader(whole.schema(), [whole]))
+            .unwrap();
+        assert_eq!(
+            collect(table.scan(None).unwrap()),
+            triples(&[(7, "VOD", "XLON")])
+        );
+        table.clear().unwrap();
+        assert!(collect(table.scan(None).unwrap()).is_empty());
+        let _ = std::fs::remove_dir_all(&path);
     }
 
     #[test]
@@ -7349,8 +7567,8 @@ mod datatype_coverage {
     }
 }
 
-mod concurrency_and_compaction {
-    //! Real racing writers, a beaten merge, and the compaction cadence.
+mod concurrency {
+    //! Real racing writers and a beaten merge.
 
     use super::*;
 
@@ -7445,46 +7663,6 @@ mod concurrency_and_compaction {
             error.to_string().contains("got beaten"),
             "unexpected error: {error}"
         );
-    }
-
-    #[test]
-    fn the_cadence_compacts_after_every_n_data_commits_by_itself() {
-        let path = root("auto-compact");
-        let schema = trade_schema();
-        let mut table = IcebergTable::create(
-            LocalFolder::new(&path).unwrap(),
-            FormatVersion::V2,
-            schema,
-            PartitionSpec::unpartitioned(),
-        )
-        .unwrap();
-        table
-            .set_options(yggdryl::iceberg::IcebergOptions::default().with_compact_after_commits(2));
-
-        for id in 0..4_i64 {
-            let batch = trades(&[id], &[Some("S")], &[Some("V")]);
-            table
-                .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
-                .unwrap();
-        }
-
-        // Two cadence points passed, so replace snapshots appear on their own
-        // and the live file count shrank below one-per-append.
-        let operations: Vec<String> = table
-            .metadata()
-            .unwrap()
-            .snapshots()
-            .iter()
-            .map(|snapshot| snapshot.operation().to_owned())
-            .collect();
-        let replaces = operations.iter().filter(|op| *op == "replace").count();
-        assert!(
-            replaces >= 1,
-            "no automatic compaction ran; operations: {operations:?}"
-        );
-        assert!(table.data_files().unwrap().len() < 4);
-        // And nothing was lost along the way.
-        assert_eq!(collect(table.scan(None).unwrap()).len(), 4);
     }
 }
 

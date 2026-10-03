@@ -12,6 +12,7 @@ The Apache Parquet file format: columns stored in row groups, pages compressed i
 | Python, JavaScript | any `IOBase` whose name declares Parquet, through the [calls every medium answers](index.md#read), plus the footer readers `read_parquet_statistics` / `readParquetStatistics` and `read_parquet_geospatial_statistics` / `readParquetGeospatialStatistics` |
 | Settings | `compression`, `max_row_group_size` and `key_value_metadata`, beside the shared [`RecordOptions`](index.md#options) |
 | Refused | a coded name such as `.parquet.gz`, and a union column |
+| `uuid` | written as `FIXED_LEN_BYTE_ARRAY(16)` annotated `UUID`, at the root and nested in a struct, a serie or a map; a foreign file's `UUID` column reads as `uuid` |
 
 Pages are compressed inside the file (`compression`), and the footer records the codec, so reads name nothing. A coded name such as `.parquet.gz` is refused. Parquet has no union layout, so a union column is refused by name before a byte is written; [Arrow IPC](ipc.md) holds one, and a [variant](../types/variant.md) column is the semi-structured alternative.
 

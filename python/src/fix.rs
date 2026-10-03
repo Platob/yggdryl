@@ -39,6 +39,7 @@ use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
 use crate::isin_registry::PyIsinRegistry;
 use crate::scalar::{PyScalar, from_py};
+use crate::serie::{PySerieReader, serie_source_of};
 use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::text::line::{PyTextLine, core_path_from_value};
 use crate::uri::core_url_from_value;
@@ -2626,7 +2627,10 @@ impl PyFixMsg {
 /// it only carries what Python said across. A stage is a call: the stream
 /// methods take any iterable and answer a lazy [`FixMessages`](PyFixMessages),
 /// and the Arrow methods take and answer a `pyarrow.RecordBatchReader` over
-/// the C stream interface, one batch at a time.
+/// the C stream interface, one batch at a time. Each Arrow method has a serie
+/// face - `parse_text_serie`, `lifecycle_serie`, `market_data_serie`,
+/// `messages_serie`, `serie_reader`, `book_serie`, `market_serie` - answering
+/// a native `SerieReader` that a write takes off the GIL.
 #[pyclass(name = "FixCodec", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyFixCodec {
     inner: CoreFixCodec,
@@ -3334,6 +3338,110 @@ impl PyFixCodec {
     ) -> PyResult<Bound<'py, PyAny>> {
         let source = batch_reader_from_value(source)?;
         Self::reader_to_pyarrow(py, self.inner.market_data_arrow_reader(source))
+    }
+
+    /// `parse_text_arrow_reader` answered as a native `SerieReader`.
+    ///
+    /// `source` is a `Serie`, a `ChunkedSerie`, a `SerieReader` - such as
+    /// `IOBase.read_serie` answers - or anything `SerieReader.from_` reads.
+    /// A native source crosses as the batches it already is, and the answer
+    /// stays native: handed to `append_serie` or `overwrite_serie`, or to
+    /// another serie face, it is written or read off the GIL with no
+    /// `pyarrow` stream between, nothing cast or copied.
+    fn parse_text_serie(&self, source: &Bound<'_, PyAny>) -> PyResult<PySerieReader> {
+        let source = serie_source_of(source)?;
+        self.inner
+            .parse_text_serie(source)
+            .map(PySerieReader::from)
+            .map_err(value_error)
+    }
+
+    /// `lifecycle_arrow_reader` answered as a native `SerieReader`, over the
+    /// sources `parse_text_serie` takes; the root is the source's, without
+    /// the `SORT:by` the walk no longer keeps.
+    fn lifecycle_serie(&self, source: &Bound<'_, PyAny>) -> PyResult<PySerieReader> {
+        let source = serie_source_of(source)?;
+        self.inner
+            .lifecycle_serie(source)
+            .map(PySerieReader::from)
+            .map_err(value_error)
+    }
+
+    /// `market_data_arrow_reader` answered as a native `SerieReader` of
+    /// lifted `marketdata` rows, over the sources `parse_text_serie` takes.
+    fn market_data_serie(&self, source: &Bound<'_, PyAny>) -> PyResult<PySerieReader> {
+        let source = serie_source_of(source)?;
+        self.inner
+            .market_data_serie(source)
+            .map(PySerieReader::from)
+            .map_err(value_error)
+    }
+
+    /// `messages` over the sources `parse_text_serie` takes: the messages a
+    /// stream of FIX rows holds, so a table read back with `read_serie`
+    /// feeds `lifecycle` and the book doors.
+    fn messages_serie(&self, source: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+        let source = serie_source_of(source)?;
+        self.inner
+            .messages_serie(source)
+            .map(PyFixMessages::over)
+            .map_err(value_error)
+    }
+
+    /// `arrow_reader` answered as a native `SerieReader` under `schema` as a
+    /// record root; a `SORT:by` it declares is verified as records land.
+    fn serie_reader(
+        &self,
+        schema: &Bound<'_, PyAny>,
+        messages: &Bound<'_, PyAny>,
+    ) -> PyResult<PySerieReader> {
+        let schema = core_field_from_value(schema)?;
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
+            failed.take().map(|error| Err(python_failure(error)))
+        }));
+        self.inner
+            .serie_reader(schema, messages)
+            .map(PySerieReader::from)
+            .map_err(value_error)
+    }
+
+    /// `book_arrow_reader` answered as a native `SerieReader` of lifted
+    /// `marketdata` rows.
+    #[pyo3(signature = (messages, snapshot_millis=0, filter=None))]
+    fn book_serie(
+        &self,
+        messages: &Bound<'_, PyAny>,
+        snapshot_millis: u64,
+        filter: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PySerieReader> {
+        let filter = filter
+            .map(crate::expression::filter_from_value)
+            .transpose()?;
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
+            failed.take().map(|error| Err(python_failure(error)))
+        }));
+        self.inner
+            .book_serie(messages, snapshot_millis, filter.as_ref())
+            .map(PySerieReader::from)
+            .map_err(value_error)
+    }
+
+    /// `market_arrow_reader` answered as a native `SerieReader` of lifted
+    /// `marketdata` rows.
+    fn market_serie(&self, messages: &Bound<'_, PyAny>) -> PyResult<PySerieReader> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
+            failed.take().map(|error| Err(python_failure(error)))
+        }));
+        self.inner
+            .market_serie(messages)
+            .map(PySerieReader::from)
+            .map_err(value_error)
     }
 
     /// A stream of messages as the rows one message field holds them.

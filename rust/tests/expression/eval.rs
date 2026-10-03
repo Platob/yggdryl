@@ -1237,3 +1237,351 @@ mod epoch_functions {
         }
     }
 }
+
+/// `time_bucket(width, x)`: a date or a timestamp floored to a multiple of a
+/// constant width from DuckDB's origin, in `x`'s own datatype, the same by
+/// row and by batch.
+mod time_bucket {
+    use yggdryl::{
+        ArrowCastOptions, DataType, Field, Scalar, Selector, Serie, StructType, Term, TimeUnit,
+        Timezone,
+    };
+
+    const MINUTE_NS: i64 = 60_000_000_000;
+
+    fn instant(unit: TimeUnit) -> DataType {
+        DataType::DateTime64 {
+            unit,
+            timezone: Timezone::UTC,
+        }
+    }
+
+    /// One column per unit, zoned and naive, two dates and a whole number.
+    fn schema() -> Field {
+        StructType::from_fields([
+            instant(TimeUnit::Second).nullable_field("s"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Millisecond,
+                timezone: Timezone::NAIVE,
+            }
+            .nullable_field("ms"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::from_str("Europe/Paris").unwrap(),
+            }
+            .nullable_field("us"),
+            instant(TimeUnit::Nanosecond).nullable_field("ns"),
+            DataType::date32().nullable_field("d"),
+            DataType::date64().nullable_field("e"),
+            DataType::Int64.nullable_field("w"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    }
+
+    /// A row holding the one value `column` names, every other cell null.
+    fn row(schema: &Field, column: &str, value: Scalar) -> Scalar {
+        Scalar::from_sequence(schema.fields().iter().map(|field| {
+            if field.name() == column {
+                value.clone()
+            } else {
+                Scalar::Null
+            }
+        }))
+    }
+
+    /// What one projection answers over rows, by row and by batch, which
+    /// must be the same values.
+    fn answers(text: &str, rows: &[Scalar]) -> Vec<Scalar> {
+        let schema = schema();
+        let selector: Selector = text.parse().unwrap();
+        let by_row: Vec<Scalar> = rows
+            .iter()
+            .map(|held| {
+                selector
+                    .apply_scalar(&schema, held)
+                    .unwrap()
+                    .as_sequence()
+                    .unwrap()[0]
+                    .clone()
+            })
+            .collect();
+        let batch = Serie::from_scalars(schema.clone(), rows.to_vec())
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
+        let answered = Serie::from_arrow_batch(
+            None,
+            &selector.apply_arrow_batch(&batch).unwrap(),
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        let by_batch: Vec<Scalar> = (0..rows.len())
+            .map(|position| answered.scalar(position).unwrap().as_sequence().unwrap()[0].clone())
+            .collect();
+        assert_eq!(by_row, by_batch, "{text}");
+        by_row
+    }
+
+    fn nanos(count: i64) -> Scalar {
+        Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
+    }
+
+    #[test]
+    fn an_instant_floors_on_the_bucket_one_nanosecond_before_and_before_the_epoch() {
+        let schema = schema();
+        let quarter = 15 * MINUTE_NS;
+        let cases = [
+            (0, 0),
+            (quarter, quarter),
+            (quarter - 1, 0),
+            (quarter + 1, quarter),
+            (-1, -quarter),
+            (-quarter, -quarter),
+            (-quarter - 1, -2 * quarter),
+            // 2024-01-01T00:00:00.000000001.
+            (1_704_067_200_000_000_001, 1_704_067_200_000_000_000),
+        ];
+        let rows: Vec<Scalar> = cases
+            .iter()
+            .map(|(count, _)| row(&schema, "ns", nanos(*count)))
+            .chain([row(&schema, "ns", Scalar::Null)])
+            .collect();
+        let expected: Vec<Scalar> = cases
+            .iter()
+            .map(|(_, floored)| nanos(*floored))
+            .chain([Scalar::Null])
+            .collect();
+        assert_eq!(answers("time_bucket('15 minutes', ns)", &rows), expected);
+    }
+
+    #[test]
+    fn every_unit_and_zone_keeps_its_datatype_and_floors_the_same_instant() {
+        let schema = schema();
+        // 2017-11-16T22:31:08.123456789, which floors to 22:30:00.
+        let (seconds, floored) = (1_510_871_468_i64, 1_510_871_400_i64);
+        let paris = Timezone::from_str("Europe/Paris").unwrap();
+        for (column, value, expected) in [
+            (
+                "s",
+                Scalar::datetime64(seconds, TimeUnit::Second, Timezone::UTC).unwrap(),
+                Scalar::datetime64(floored, TimeUnit::Second, Timezone::UTC).unwrap(),
+            ),
+            (
+                "ms",
+                Scalar::datetime64(
+                    seconds * 1_000 + 123,
+                    TimeUnit::Millisecond,
+                    Timezone::NAIVE,
+                )
+                .unwrap(),
+                Scalar::datetime64(floored * 1_000, TimeUnit::Millisecond, Timezone::NAIVE)
+                    .unwrap(),
+            ),
+            (
+                "us",
+                Scalar::datetime64(seconds * 1_000_000 + 123_456, TimeUnit::Microsecond, paris)
+                    .unwrap(),
+                Scalar::datetime64(floored * 1_000_000, TimeUnit::Microsecond, paris).unwrap(),
+            ),
+            (
+                "ns",
+                nanos(seconds * 1_000_000_000 + 123_456_789),
+                nanos(floored * 1_000_000_000),
+            ),
+        ] {
+            let text = format!("time_bucket('15 minutes', {column})");
+            assert_eq!(
+                answers(&text, &[row(&schema, column, value)]),
+                vec![expected],
+                "{column}"
+            );
+            // The answer is the column's own datatype, unit and zone kept.
+            let typed = text
+                .parse::<Selector>()
+                .unwrap()
+                .apply_field(&schema)
+                .unwrap();
+            assert_eq!(
+                typed.fields()[0].dtype(),
+                schema.get_field_by_path(column).unwrap().dtype(),
+                "{column}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_width_spells_one_length_many_ways() {
+        let schema = schema();
+        let at = 1_704_068_999_999_999_999_i64; // 2024-01-01T00:29:59.999999999
+        let rows = [row(&schema, "ns", nanos(at))];
+        let expected = vec![nanos(1_704_068_100_000_000_000)];
+        for width in [
+            "'15 minutes'",
+            "'15 MINUTES'",
+            "'15minutes'",
+            "' 15 min '",
+            "'15 mins'",
+            "'900s'",
+            "'900 seconds'",
+            "'0.25h'",
+            "'0.25 hours'",
+            "'900000 ms'",
+            "'PT15M'",
+            "'00:15:00'",
+            "duration64(s) 'PT900S'",
+            "duration32(ms) 'PT15M'",
+        ] {
+            assert_eq!(
+                answers(&format!("time_bucket({width}, ns)"), &rows),
+                expected,
+                "{width}"
+            );
+        }
+        // The bucket keeps the spelling it was written in.
+        for text in [
+            "time_bucket('15 minutes', currunix)",
+            "time_bucket('PT15M', currunix)",
+        ] {
+            assert_eq!(text.parse::<Term>().unwrap().to_string(), text);
+        }
+    }
+
+    #[test]
+    fn day_and_week_widths_start_at_duckdbs_monday_origin() {
+        let schema = schema();
+        // 1970-01-01 is a Thursday: its week starts Monday 1969-12-29.
+        let day = 86_400_i64;
+        let seconds =
+            |count: i64| Scalar::datetime64(count, TimeUnit::Second, Timezone::UTC).unwrap();
+        assert_eq!(
+            answers(
+                "time_bucket('1 week', s)",
+                &[
+                    row(&schema, "s", seconds(0)),
+                    row(&schema, "s", seconds(4 * day)),
+                    row(&schema, "s", seconds(4 * day - 1)),
+                ]
+            ),
+            vec![seconds(-3 * day), seconds(4 * day), seconds(-3 * day)]
+        );
+        // A width that divides a day starts at the epoch whatever the origin.
+        assert_eq!(
+            answers(
+                "time_bucket('1 day', s)",
+                &[row(&schema, "s", seconds(day + 1))]
+            ),
+            vec![seconds(day)]
+        );
+        // A date floors in whole days: 2024-02-14 is a Wednesday, its week
+        // starts on Monday 2024-02-12, day 19_765 - and 19_779 is Monday
+        // 2024-02-26.
+        assert_eq!(
+            answers(
+                "time_bucket('7 days', d)",
+                &[
+                    row(&schema, "d", Scalar::date32(19_767)),
+                    row(&schema, "d", Scalar::date32(19_779)),
+                    row(&schema, "d", Scalar::date32(-1)),
+                ]
+            ),
+            vec![
+                Scalar::date32(19_765),
+                Scalar::date32(19_779),
+                Scalar::date32(-3)
+            ]
+        );
+        let millis = |days: i64| {
+            Scalar::date64_in(days * 86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap()
+        };
+        assert_eq!(
+            answers(
+                "time_bucket('1 week', e)",
+                &[row(&schema, "e", millis(19_767))]
+            ),
+            vec![millis(19_765)]
+        );
+    }
+
+    #[test]
+    fn a_width_that_is_no_fixed_positive_constant_is_refused_naming_it() {
+        let schema = schema();
+        let refused = |text: &str| -> String {
+            text.parse::<Selector>()
+                .and_then(|selector| selector.apply_field(&schema))
+                .expect_err(text)
+                .to_string()
+        };
+        for width in [
+            "'15m'",
+            "'0 minutes'",
+            "'-15 minutes'",
+            "'1 month'",
+            "'1 year'",
+            "'quarter'",
+            "'15'",
+            "'1.5ns'",
+            "15",
+            "duration64(s) 'PT0S'",
+        ] {
+            let error = refused(&format!("time_bucket({width}, ns)"));
+            assert!(
+                error.contains("width of time_bucket(width, x)"),
+                "{width}: {error}"
+            );
+        }
+        // A width finer than the unit, a clock under a date, a computed
+        // width, and an argument that is no date or timestamp.
+        let error = refused("time_bucket('1 ms', s)");
+        assert!(error.contains("whole number of s"), "{error}");
+        let error = refused("time_bucket('1500 ms', s)");
+        assert!(error.contains("whole number of s"), "{error}");
+        let error = refused("time_bucket('1 hour', d)");
+        assert!(error.contains("whole days"), "{error}");
+        let error = refused("time_bucket('12 hours', e)");
+        assert!(error.contains("whole days"), "{error}");
+        let error = refused("time_bucket(w, ns)");
+        assert!(error.contains("to be a constant"), "{error}");
+        let error = refused("time_bucket(null, ns)");
+        assert!(error.contains("to be a constant"), "{error}");
+        let error = refused("time_bucket('15 minutes', w)");
+        assert!(error.contains("a date or a timestamp"), "{error}");
+        // A bucket starting before the first count a timestamp holds is
+        // refused by both tiers, never wrapped.
+        let selector: Selector = "time_bucket('15 minutes', ns)".parse().unwrap();
+        let low = row(&schema, "ns", nanos(i64::MIN));
+        assert!(selector.apply_scalar(&schema, &low).is_err());
+        let batch = Serie::from_scalars(schema.clone(), [low])
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
+        assert!(selector.apply_arrow_batch(&batch).is_err());
+    }
+
+    #[test]
+    fn a_batch_floors_every_present_row_and_keeps_every_null() {
+        let schema = schema();
+        let hour = 60 * MINUTE_NS;
+        let rows: Vec<Scalar> = (0..1_000_i64)
+            .map(|index| {
+                let value = if index % 7 == 0 {
+                    Scalar::Null
+                } else {
+                    nanos(index * 7 * MINUTE_NS - 500 * MINUTE_NS)
+                };
+                row(&schema, "ns", value)
+            })
+            .collect();
+        let expected: Vec<Scalar> = (0..1_000_i64)
+            .map(|index| {
+                if index % 7 == 0 {
+                    Scalar::Null
+                } else {
+                    nanos((index * 7 * MINUTE_NS - 500 * MINUTE_NS).div_euclid(hour) * hour)
+                }
+            })
+            .collect();
+        assert_eq!(answers("time_bucket('1 hour', ns)", &rows), expected);
+    }
+}

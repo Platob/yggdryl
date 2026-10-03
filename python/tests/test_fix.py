@@ -4952,3 +4952,42 @@ def test_the_bridge_row_header_dates_each_line_by_its_own_clock(tmp_path: pathli
         1_786_718_799_769_123_000,
         1_786_718_800_000_000_000,
     ]
+
+
+def test_the_serie_faces_keep_a_capture_native_from_text_rows_to_walked_rows(
+    seed_batch: FixRegistry,
+) -> None:
+    # Text rows read with `read_serie` go into the codec and what comes out
+    # is the native reader a following `append_serie` writes off the GIL:
+    # no `pyarrow` stream between, and the rows the Arrow doors answer.
+    options = TextOptions()
+    options.rowheader = ULBRIDGE_ROWHEADER
+    options.timezone = "UTC"
+    options.start_rownum = 1
+    source = IOBase.from_bytes(ULBRIDGE_LOG.read_bytes())
+    source.media_type = Url("file:///ulbridge.log").media_type
+    codec = _fixed_batch(seed_batch)
+
+    parsed = codec.parse_text_serie(source.read_serie(options=options))
+    assert isinstance(parsed, yggdryl.SerieReader)
+    walked = codec.lifecycle_serie(parsed)
+    assert isinstance(walked, yggdryl.SerieReader)
+    rows = sum(len(record) for record in walked)
+
+    arrow = codec.lifecycle_arrow_reader(
+        codec.parse_text_arrow_reader(source.read_arrow_reader(options=options))
+    ).read_all()
+    assert rows == arrow.num_rows > 0
+
+    # A table read back feeds the walk and the books as messages.
+    messages = list(
+        codec.messages_serie(codec.parse_text_serie(source.read_serie(options=options)))
+    )
+    assert len(messages) == codec.parse_text_arrow_reader(
+        source.read_arrow_reader(options=options)
+    ).read_all().num_rows
+    market = codec.market_data_serie(codec.parse_text_serie(source.read_serie(options=options)))
+    assert isinstance(market, yggdryl.SerieReader)
+    assert sum(len(record) for record in market) > 0
+    books = codec.book_serie(codec.lifecycle(messages), 900_000)
+    assert isinstance(books, yggdryl.SerieReader)

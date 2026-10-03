@@ -800,7 +800,7 @@ pub trait IORecordOptions: Sized {
         batch: arrow_array::RecordBatch,
         existing: Option<&Field>,
     ) -> Result<arrow_array::RecordBatch> {
-        Shaping::compile(self, batch.schema(), existing)?.apply(batch)
+        Shaping::compile(self, batch.schema(), existing, false)?.apply(batch)
     }
 
     /// Shape a whole reader as [`apply_arrow_batch`](Self::apply_arrow_batch)
@@ -924,6 +924,10 @@ pub trait IORecordOptions: Sized {
 /// it, so a batch of that schema moves only rows.
 pub(crate) struct Shaping {
     declared: Option<ArrowCastPlan>,
+    /// The columns the destination derives, computed from the rows as the
+    /// declared field leaves them and before any clause reads them: a table
+    /// that owns its derivations, never a leaf.
+    derived: Option<crate::expression::Derivation>,
     /// Whether the `select` runs first, because the `where` reads a column
     /// only the selector builds.
     late: bool,
@@ -937,6 +941,11 @@ impl Shaping {
     /// Compile how `options`, completed onto `existing`, shape a batch of
     /// `source`.
     ///
+    /// `derive` is a destination that owns the derivations its stored field
+    /// declares - a table - and computes them: after the declared cast,
+    /// before the clauses, so a `where` may name a derived column and a
+    /// required one is never refused as missing.
+    ///
     /// # Errors
     ///
     /// Returns an error when a cast cannot be planned, a declaration cannot be
@@ -945,6 +954,7 @@ impl Shaping {
         options: &impl IORecordOptions,
         source: SchemaRef,
         existing: Option<&Field>,
+        derive: bool,
     ) -> Result<Self> {
         let cast = ArrowCastOptions::new().with_safe(options.safe());
         let mut schema = source;
@@ -957,6 +967,13 @@ impl Shaping {
             }
             None => None,
         };
+        let derived = match existing.filter(|_| derive) {
+            Some(stored) => crate::expression::Derivation::owning(stored)?,
+            None => None,
+        };
+        if let Some(derivation) = &derived {
+            schema = derivation.schema(&schema)?;
+        }
         let late = crate::expression::filter_after_select(
             options.filter(),
             options.select(),
@@ -980,6 +997,7 @@ impl Shaping {
         };
         Ok(Self {
             declared,
+            derived,
             late,
             filter,
             select,
@@ -1018,6 +1036,9 @@ impl Shaping {
             Some(plan) => plan.reconcile_batch(batch)?,
             None => batch,
         };
+        if let Some(derivation) = &self.derived {
+            batch = derivation.apply(batch)?;
+        }
         if self.late {
             batch = self.select(batch)?;
             batch = self.filter(batch)?;

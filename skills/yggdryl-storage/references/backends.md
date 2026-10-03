@@ -139,25 +139,41 @@ Rust builders: `S3Options::default().with_endpoint(..).with_region(..)
 
 ### AWS identity (`aws::Session`)
 
-The credential chain is botocore's, in botocore's order; a configured but
-broken source is recorded and passed over, and the walk refuses only when
-every source has been asked, naming each.
+Rust only: Python and Node expose no `Session`; an S3 handle there takes the
+same knobs by name through `options` and walks the same chain.
+
+The credential chain is botocore's, in botocore's order, with the console
+sign-in where botocore has it; a configured but broken source is recorded and
+passed over, and the walk refuses only when every source has been asked,
+naming each.
 
 | Order | Source |
 | --- | --- |
 | 1 | an explicit set (`with_credentials`, a pair in options or the URL) |
 | 2 | an explicit role (`with_assumed_role(AssumedRole::new(arn))`), signed by its `source_profile` / `credential_source` or the rest of the chain |
 | 3 | environment: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, with `AWS_CREDENTIAL_EXPIRATION` and `AWS_ACCOUNT_ID` |
-| 4 | a profile assuming a role (`source_profile`, `credential_source`, web identity token) |
-| 5 | IAM Identity Center (the token `aws sso login` cached) |
-| 6 | the credentials file, then `credential_process`, then the config file, then legacy boto files |
-| 7 | the container endpoint, then the instance metadata service |
+| 4 | a profile assuming a role (`source_profile`, `credential_source`, `web_identity_token_file`) |
+| 5 | web identity (`AWS_ROLE_ARN` with `AWS_WEB_IDENTITY_TOKEN_FILE`) |
+| 6 | IAM Identity Center (the token `aws sso login` cached) |
+| 7 | the credentials file |
+| 8 | the console sign-in `aws login` filed (the profile's `login_session`) |
+| 9 | `credential_process`, then the config file, then the legacy boto files |
+| 10 | the container endpoint, then the instance metadata service |
 
 | Behavior | Rule |
 | --- | --- |
 | laziness | `Session::new()` states nothing; the chain is walked once, on the first request, and cached |
-| refresh | a temporary set is replaced 15 minutes before it lapses; a failed refresh keeps the set until it actually lapses; `ExpiredToken` walks the chain once more |
-| caches | assumed-role and SSO tokens are read from and written to `~/.aws/cli/cache` and `~/.aws/sso/cache` in the CLI's shape |
+| refresh | a temporary set is replaced 15 minutes before it lapses (a console sign-in's, 5 minutes); a failed refresh keeps the set until it actually lapses; an unsigned answer is held 5 minutes, a failure 30 seconds |
+| shared files | `~/.aws/config` and `~/.aws/credentials` are read again whenever either moved (length or modification time) at every walk, after a store's refusal (`invalidate`, `invalidate_if`) and while an unsigned or failed answer is held: a set dumped anew is picked up with no restart |
+| passed over | a set whose expiry is before the machine's clock, or whose key a store refused, is passed over by name (key masked as `ASIA...DUMP`, with `write a fresh set under [default] in <path>, or sign in again`) and the sources after it are asked; `with_credentials` is never passed over |
+| store refusals | `ExpiredToken`, `ExpiredTokenException`, `TokenRefreshRequired`: for good; `InvalidAccessKeyId`, `InvalidToken`, `InvalidClientTokenId`: 30 seconds or until the files move; the S3 client signs once more only when the session now answers another set |
+| dumped expiry | read under `aws_credential_expiration`, `x_security_token_expires`, `aws_session_expiration`, `aws_expiration` or `expiration`; two that disagree, or one nothing reads, is a named refusal |
+| pasted values | one pair of quotes and a ` #`/` ;` comment come off a credential value; `export AWS_ACCESS_KEY_ID=...`, `set AWS_...=...` and `$Env:AWS_...="..."` read as the key; `[default]   # note` is `[default]`; half a set is a named refusal; a BOM (UTF-8, UTF-16LE/BE) reads in its charset; an unreadable file is a named failure |
+| console sign-in | profile `login_session` (the session ARN); cache `~/.aws/login/cache/<sha256 of the ARN>.json` or `AWS_LOGIN_CACHE_DIRECTORY`; the cached set is used while more than 5 minutes remain, else refreshed at `https://{region}.signin.aws.amazon.com/v1/token` (OAuth 2.0 `refresh_token` grant, ES256 DPoP proof, RFC 9449) and filed back atomically, shared with the AWS CLI; refusals name `aws login --profile <name>` |
+| regions | a role or a sign-in with no region is traded in its ARN partition's global region (`cn-northwest-1` for `aws-cn`); STS, IAM Identity Center, Sign-In and S3 hosts are built on `ArnPartition` (`aws`, `aws-cn`, `aws-us-gov`, `aws-iso`, `aws-iso-b`, `aws-iso-e`, `aws-iso-f`, `aws-eusc`) |
+| `credential_process` | split as the Microsoft C runtime splits a command line on Windows (`C:\Tools\vault.exe export dev` runs `C:\Tools\vault.exe`), as POSIX words elsewhere |
+| caches | assumed-role, SSO and console sign-in tokens are read from and written to `~/.aws/cli/cache`, `~/.aws/sso/cache` and `~/.aws/login/cache` in the CLI's shape |
+| logging | every walk logs under `yggdryl.aws.session` (`yggdryl.aws.login` for a refresh): each source asked at `DEBUG`, the answering source at `INFO` (`AWS credentials from <source>: key ASIA...ABCD, lapsing at ...`), a set passed over at `WARNING`; no secret, key ids masked; Rust `logging::get_logger("yggdryl.aws.session").set_level(Level::DEBUG)` after `logging::basic_config(...)`, Python `logging.getLogger("yggdryl.aws.session")` |
 | sealing | `Session::new().with_environment(false)` reads no variable and no file unless given (`with_config_text`, `with_variables`, `with_directory`) |
 | profile/region/endpoint | `with_profile`, else `AWS_DEFAULT_PROFILE`, `AWS_PROFILE`; `with_region`, else `AWS_REGION`, the profile's own; `endpoint_url("s3")` from `AWS_ENDPOINT_URL_S3` or the profile's `[services]`; these `AWS_*` variables are the session's, never swept into `S3Options` |
 | Google / Azure | `GoogleOptions::with_impersonation(sa)` signs one `iamcredentials` call; Azure takes an Entra ID application on `AzureOptions` |
@@ -192,10 +208,10 @@ versions. One synchronous client: a caller brings no async runtime.
 | pool | a `Client` is the pool and its knobs; sessions over one client share it, and a session stating another pool knob than its client's is refused |
 | versions | `http_version`: `auto` (ALPN `h2` over TLS, HTTP/3 once `Alt-Svc` advertises it, else HTTP/1.1), `1.1`, `2` (`h2c` by prior knowledge on `http://`), `3`; a refusal falls back in the same attempt and is remembered per origin; a proxied request is HTTP/1.1 |
 | multiplexing | HTTP/2 and HTTP/3 hold one connection per origin for every thread; HTTP/1.1 keeps up to 64 idle connections per host |
-| retries | a `408`/`425`/`429`/`5xx` only for `GET`/`HEAD`/`OPTIONS`/`PUT`/`DELETE`; a transport failure for those, or for any method no connection took; `Retry-After` waited up to `max_pause`; one token budget per client |
-| redirects | up to `max_redirects`; `303` (and `301`/`302` answering a `POST`) become a `GET`; a credential the caller stated never crosses to another origin |
+| retries | a `408`/`425`/`429`/`5xx` only for `GET`/`HEAD`/`OPTIONS`/`PUT`/`DELETE`; a transport failure for those, or for any method no connection took; `Retry-After` waited up to `max_pause`; one token budget per client. Rust only, per request: `with_idempotent(true)` for a `POST` its service documents safe twice, `with_retry_on(rule)` for an answer whose status says nothing (the rule reads the status, the headers and at most 64 KiB of the body), `with_max_attempts(n)` over the client's count |
+| redirects | up to `max_redirects`; `303` (and `301`/`302` answering a `POST`) become a `GET`; a credential the caller stated never crosses to another origin, and neither does a header a Rust `with_attempt_headers` hook makes |
 | resume | a cut body of a successful uncoded `GET` resumes from its cursor with `Range` + `If-Range`, at most `Stream::MAX_RESUMES` times; a changed resource is `Error::Conflict`, never spliced |
-| environment | `http_proxy`/`https_proxy`/`all_proxy`/`no_proxy` read per request as curl reads them (upper-case `HTTP_PROXY` ignored under CGI; SOCKS refused); `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`; `.netrc` for a request naming no credential; `read_environment=false` reads none |
+| environment | `http_proxy`/`https_proxy`/`all_proxy`/`no_proxy` read per request as curl reads them (upper-case `HTTP_PROXY` ignored under CGI; SOCKS refused); `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`; `.netrc` for a request naming no credential (`netrc=false` leaves it alone and keeps the rest); `read_environment=false` reads none |
 | properties | `timeout`, `connect_timeout`, `max_attempts`, `max_redirects`, `max_pause`, `max_body_size`, `concurrency`, `http_version`, `proxy`, `ca_bundle`, `bearer_token`, `basic_auth`, `header.<name>`, `pagination`, `page_limit`, `base_url`; unknown names are ignored, so a catalog's property bag can be handed over |
 | pagination | one of `auto` (the default ladder: `Link` header, then a next-page header, then a next URL or cursor in the body), `none`, `link`, `header:<name>`, `url:<path>`, `cursor:<path>:<parameter>`, `offset:<parameter>:<size>`, `page:<parameter>:<start>`; walked with `.pages()` on an unsent `Request`, never an already-sent `Response` - see SKILL.md rule 17 and https://platob.github.io/yggdryl/holder/#pages |
 | test origin | `Server::bind("127.0.0.1:0")` in process: `respond`, `route`, `mount(prefix, holder)` with ranges and validators, `inject(Fault)` (cut, close, refuse, delay), `requests()` the log; `with_http3(true)` adds QUIC and TLS under a self-signed `certificate()` |

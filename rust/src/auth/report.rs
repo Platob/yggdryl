@@ -7,6 +7,10 @@
 //! not there is kept beside it, and the refusal at the end names them all -
 //! or is no refusal at all, when nothing was configured, because an unsigned
 //! request against a public resource is a valid thing to send.
+//!
+//! Each entry is also logged at `DEBUG` as it is recorded, under the logger
+//! the walking module names, so a walk can be followed as it happens rather
+//! than only read back from its refusal.
 
 use crate::{Error, Result};
 
@@ -15,15 +19,19 @@ use crate::{Error, Result};
 pub struct Report {
     /// What was being looked for, for the refusal: `AWS credentials`.
     what: &'static str,
+    /// The `log` target the entries are logged under: the walking module's
+    /// path, which the logging tree reads as `yggdryl.aws.session`.
+    target: &'static str,
     failed: Vec<String>,
     absent: Vec<String>,
 }
 
 impl Report {
-    /// An empty report of a walk for `what`.
-    pub const fn new(what: &'static str) -> Self {
+    /// An empty report of a walk for `what`, logged under `target`.
+    pub const fn new(what: &'static str, target: &'static str) -> Self {
         Self {
             what,
+            target,
             failed: Vec::new(),
             absent: Vec::new(),
         }
@@ -31,12 +39,21 @@ impl Report {
 
     /// `source` was configured and could not answer.
     pub fn failed(&mut self, source: &str, error: impl std::fmt::Display) {
-        self.failed.push(format!("{source}: {error}"));
+        let entry = format!("{source}: {error}");
+        log::debug!(target: self.target, "{}: {entry}", self.what);
+        self.failed.push(entry);
     }
 
     /// `source` was not configured.
     pub fn absent(&mut self, source: &str) {
+        log::debug!(target: self.target, "{}: nothing configured in {source}", self.what);
         self.absent.push(source.to_owned());
+    }
+
+    /// Every source that was configured and could not answer, as
+    /// `source: reason`, in the order they were asked.
+    pub fn failures(&self) -> &[String] {
+        &self.failed
     }
 
     /// Nothing answered: a refusal naming what failed, or `None` when

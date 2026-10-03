@@ -125,7 +125,12 @@ pub(crate) fn wait<F: Future>(future: F) -> std::io::Result<F::Output> {
 /// ever polled under a `wait`, never in a runtime task, where nothing would
 /// poll it again at its deadline.
 pub(crate) async fn within<F: Future>(timeout: Duration, future: F) -> Option<F::Output> {
-    let deadline = Instant::now().checked_add(timeout);
+    before(Instant::now().checked_add(timeout), future).await
+}
+
+/// `future`, or `None` once `deadline` has passed; no deadline waits as long
+/// as the future takes. Kept as [`within`] keeps its own.
+pub(crate) async fn before<F: Future>(deadline: Option<Instant>, future: F) -> Option<F::Output> {
     let mut future = pin!(future);
     poll_fn(|context| {
         if let Poll::Ready(output) = future.as_mut().poll(context) {
@@ -146,6 +151,14 @@ pub(crate) async fn within<F: Future>(timeout: Duration, future: F) -> Option<F:
         Poll::Pending
     })
     .await
+}
+
+/// `timeout`, cut to what is left before `deadline` when one stands: the
+/// bound on one wait of an attempt a deadline bounds as a whole.
+pub(crate) fn capped(timeout: Duration, deadline: Option<Instant>) -> Duration {
+    deadline.map_or(timeout, |deadline| {
+        timeout.min(deadline.saturating_duration_since(Instant::now()))
+    })
 }
 
 /// [`wait`] for `future`, giving up after `timeout`: `None` when it ran out.

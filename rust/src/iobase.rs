@@ -218,7 +218,7 @@ use hierarchy::{descend, no_children};
 pub(crate) use lifecycle::{coding_mime, not_atomic, oversized, reject_container};
 pub use lifecycle::{not_empty, skip_absent};
 #[cfg(feature = "iceberg")]
-pub(crate) use transfer::prepare_arrow_write_onto;
+pub(crate) use transfer::prepare_arrow_write_deriving;
 pub use transfer::{ArrowWriteSession, overwrite_arrow_reader_default};
 pub(crate) use transfer::{
     append_arrow_reader_default, leaf_field, leaf_reader, leaf_row_size, leaf_writer,

@@ -4628,7 +4628,7 @@ declare module './index' {
   interface IcebergTable {
     /** Append rows as a new snapshot, keeping everything already stored. */
     append(rows: IcebergSource, options?: IcebergOptions | IcebergProperties | null, properties?: IcebergProperties | null): void
-    /** Replace every row with `rows` as a new snapshot. */
+    /** Replace the partitions `rows` fall in as a new snapshot; every row of an unpartitioned table. */
     overwrite(rows: IcebergSource, options?: IcebergOptions | IcebergProperties | null, properties?: IcebergProperties | null): void
     /** Replace only the rows `filters` selects, keeping every other file. */
     overwriteWhere(
@@ -4835,7 +4835,6 @@ export type IcebergProperties = {
   readonly readParallelMinFileSize?: number
   readonly writeParallelism?: number
   readonly writeStaging?: string
-  readonly compactAfterCommits?: number
   readonly dataMimeType?: MimeTypeInput
 }
 /**

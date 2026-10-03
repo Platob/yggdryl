@@ -598,6 +598,7 @@ fn epoch_function_benchmarks(criterion: &mut Criterion) {
         ("days", "days(ts)"),
         ("hours", "hours(ts)"),
         ("minutes_15", "minutes(ts, 15)"),
+        ("time_bucket_15", "time_bucket('15 minutes', ts)"),
     ] {
         let bound = text
             .parse::<yggdryl::Selector>()

@@ -400,6 +400,47 @@ class TestRequestsShape:
             warnings.simplefilter("error")
             Client({"warehouse": "s3://lake"})
 
+    def test_netrc_is_a_property_that_leaves_the_entry_unsent(
+        self, origin: str, tmp_path: pathlib.Path
+    ) -> None:
+        # `netrc` is an `HttpOptions` property like the rest: a boolean is
+        # taken, by keyword or in the mapping, and the entry `NETRC` names is
+        # then not sent; anything else is refused naming the property. The
+        # file is read in a subprocess, so this process's own environment
+        # and home directory are never consulted.
+        import os
+        import subprocess
+        import sys
+
+        host = urllib.parse.urlsplit(origin).hostname
+        netrc = tmp_path / "netrc"
+        netrc.write_text(f"machine {host} login alice password s3cret\n")
+        script = (
+            "import sys\n"
+            "from yggdryl.http import Session\n"
+            "for session in (\n"
+            "    Session(sys.argv[1]),\n"
+            "    Session(sys.argv[1], netrc=False),\n"
+            "    Session(sys.argv[1], options={'netrc': 'no'}),\n"
+            "):\n"
+            "    print(session.get('/echo').json()['headers'].get('authorization'))\n"
+        )
+        environment = {
+            key: value for key, value in os.environ.items() if "proxy" not in key.lower()
+        }
+        environment["NETRC"] = str(netrc)
+        run = subprocess.run(
+            [sys.executable, "-c", script, origin],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        assert run.stdout.splitlines() == ["Basic YWxpY2U6czNjcmV0", "None", "None"]
+        with pytest.raises(ValueError, match="netrc"):
+            Session(origin, netrc="sometimes")
+
     def test_a_session_over_a_client_refuses_another_pool_knob(self, origin: str) -> None:
         client = Client({"max_attempts": 5})
         # The client's own knobs, or none stated, are the client's.

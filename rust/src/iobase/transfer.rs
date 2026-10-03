@@ -274,6 +274,38 @@ pub(crate) fn prepare_arrow_write_onto(
     Ok((batches, delegated, declared))
 }
 
+/// Shape one incoming stream onto the stored field of a table that derives
+/// columns of its own.
+///
+/// [`prepare_arrow_write_onto`] with one layer more: the `TRANSFORM:`
+/// columns `stored` declares are computed from the rows as the declared
+/// field leaves them, before the `where` and the `select` read them and
+/// before the stored cast - so a clause may name a derived column, and a
+/// required one is never refused as missing. The table owns what it
+/// derives, so a value the rows carry under a derived name is computed
+/// again; a stored field deriving nothing costs nothing.
+#[cfg(feature = "iceberg")]
+pub(crate) fn prepare_arrow_write_deriving(
+    batches: crate::arrow::BatchReader,
+    options: &RecordOptions,
+    stored: &crate::Field,
+) -> Result<crate::arrow::BatchReader> {
+    use crate::media::IORecordOptions;
+
+    let cast = crate::ArrowCastOptions::new().with_safe(options.safe());
+    let batches = match options.field() {
+        Some(declared) => declared.apply_arrow_reader(batches, cast)?,
+        None => batches,
+    };
+    let batches = match crate::expression::Derivation::owning(stored)? {
+        Some(derivation) => derivation.apply_arrow_reader(batches)?,
+        None => batches,
+    };
+    let batches = options.apply_arrow_expressions(batches)?;
+    let batches = stored.apply_arrow_reader(batches, cast)?;
+    options.limit_arrow_reader(batches)
+}
+
 /// The options a shaped write publishes with, and the declared field taken
 /// from them: every incoming-only transform cleared, so the publication hook
 /// neither shapes the rows again nor splits them into cadences of its own.
@@ -391,8 +423,8 @@ enum ArrowWriteTarget {
     Iceberg {
         located: Box<crate::iceberg::Located>,
         stored: crate::Field,
-        /// The partitions this write's merge cadences replaced so far, so a
-        /// merge keyed by the partition alone replaces each once.
+        /// What this write's cadences replaced so far, so an overwrite, or
+        /// a merge keyed by the partition alone, replaces each partition once.
         replaced: crate::iceberg::ReplacedPartitions,
     },
 }
@@ -405,6 +437,16 @@ impl ArrowWriteTarget {
             Self::EmptyLeaf | Self::TextLeaf | Self::Folder { .. } => None,
             #[cfg(feature = "iceberg")]
             Self::Iceberg { stored, .. } => Some(stored),
+        }
+    }
+
+    /// Whether the destination computes the columns its stored field
+    /// derives: a table owns its derivations, a leaf never does.
+    fn derives(&self) -> bool {
+        match self {
+            Self::Leaf { .. } | Self::EmptyLeaf | Self::TextLeaf | Self::Folder { .. } => false,
+            #[cfg(feature = "iceberg")]
+            Self::Iceberg { .. } => true,
         }
     }
 }
@@ -514,6 +556,7 @@ impl ArrowWriteSession {
                 None => break,
             };
             let target = self.target.as_ref().and_then(ArrowWriteTarget::stored);
+            let derives = self.target.as_ref().is_some_and(ArrowWriteTarget::derives);
             let shaped = self
                 .shapings
                 .get_or_compile(batch.schema_ref().fields(), || {
@@ -521,6 +564,7 @@ impl ArrowWriteSession {
                         &self.options,
                         batch.schema(),
                         target,
+                        derives,
                     )?)
                 })
                 .map_err(Error::from)
@@ -713,8 +757,15 @@ impl ArrowWriteSession {
             return Ok(());
         }
         use crate::media::IORecordOptions as _;
-        let empty = arrow_array::RecordBatch::new_empty(input_schema);
-        let shaped = self.options.apply_arrow_batch(empty, self.target_field())?;
+        let derives = self.target.as_ref().is_some_and(ArrowWriteTarget::derives);
+        let empty = arrow_array::RecordBatch::new_empty(std::sync::Arc::clone(&input_schema));
+        let shaped = crate::media::Shaping::compile(
+            &self.options,
+            input_schema,
+            self.target_field(),
+            derives,
+        )?
+        .apply(empty)?;
         let schema = shaped.schema();
         // A missing leaf acquires the first shaped schema as this session's
         // target. Unlike an ordinary one-shot call, resumed cadences must not
@@ -832,11 +883,15 @@ impl ArrowWriteSession {
                 }
             },
             #[cfg(feature = "iceberg")]
+            // The session's own mode, not the cadence's: every cadence of
+            // an overwrite goes through the one door, and `replaced` is what
+            // tells a first commit from a later one, partition by partition
+            // where the table is addressed whole.
             ArrowWriteTarget::Iceberg {
                 located, replaced, ..
-            } => match mode {
+            } => match self.mode {
                 crate::IOMode::Overwrite => {
-                    located.overwrite_prepared(batches, self.delegated.num_threads())?;
+                    located.overwrite_prepared(batches, replaced, self.delegated.num_threads())?;
                 }
                 crate::IOMode::Append => {
                     located.append_prepared(batches, self.delegated.num_threads())?;

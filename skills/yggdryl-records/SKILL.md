@@ -184,12 +184,14 @@ medium does the work before a byte is decoded.
     none, and from its `SORT:by` as the default sort order; `minutes[n]`,
     `week` and `quarter` are this crate's own transforms, which other Iceberg
     readers do not prune by. A scan decodes qualifying files side by side
-    (`read.parallelism`) and hands batches back in plan order.
+    (`read.parallelism`) and hands batches back in plan order; a record read
+    (`read_serie`, `read_arrow_reader`) yields partition after partition in
+    tuple order, each in the table's sort order, one partition held at once.
 17. **Folders read by their layout.** A stored `column=value` layout is
     authoritative; with none on disk, the schema's partition-marked fields
     decide where rows go (`with_partition_fields`, or `with_partition_by` for
     derived entries such as `years(ts)`, whose column the caller fills first
-    through the transform view: a write only casts and refuses a required
+    through the transform view - a write to a leaf or a folder only casts, where an Iceberg table computes the columns its own schema derives - and refuses a required
     column the rows lack, by path). The first batch to reach a
     leaf performs the write's operation; later ones append.
 

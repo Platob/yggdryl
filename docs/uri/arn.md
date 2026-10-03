@@ -22,6 +22,7 @@ An ARN is a [`Uri`](index.md) whose scheme is `arn`, so everything on this page 
 | Filenames | [accessors](path.md) read the resource, not the whole path; setters leave the five fields alone |
 | Bindings | Rust, Python and JavaScript each answer the fields, the resource and `locator`. Python's `Arn` is a subclass of `Uri`, so `Uri("arn:…")` answers one; JavaScript has no class inheritance here, so `Uri.from("arn:…")` answers a `Uri` and `intoArn()` narrows it |
 | Errors | Rust `Err`, Python `ValueError`, JavaScript throw, each naming the field that refused |
+| Partition | `ArnPartition` reads an ARN's first field, or a region, as one of the eight partitions AWS runs, with the suffixes and the global region of each; Rust only, [below](#partitions) |
 
 ## Use
 
@@ -332,6 +333,77 @@ No byte backend opens an `s3tables:` location: `is_object_store` stays false for
     assert.equal(located.bucket, 'lake')
     assert.equal(located.key, 't-a1')
     ```
+
+## Partitions
+
+`ArnPartition` is the set of partitions AWS runs - what an ARN's first field names - as botocore's `partitions.json` states them, the table every AWS SDK resolves endpoints through: each partition's name, the prefix its regions share, its DNS suffix, its dual-stack suffix, and the region a global service answers in. It is the one place those are spelled, so the STS, IAM Identity Center, Sign-In and Amazon S3 hosts of the [AWS identity](../holder/index.md#aws-identity) are all built from it. Rust only.
+
+| Door | Answers |
+| --- | --- |
+| `ArnPartition::from_region(region)` | the partition whose regions share the region's prefix, else `aws` - where botocore resolves a region its table does not know; surrounding blanks and case are ignored |
+| `ArnPartition::from_arn(&arn)` | the partition the ARN's first field names, `None` for one AWS does not run |
+| `as_str()`, `Display`, `FromStr` | the name an ARN spells; `FromStr` ignores case and refuses any other name, listing the eight |
+| `dns_suffix()`, `dualstack_dns_suffix()`, `global_region()` | the columns of the table below |
+| `service_host(service, region, fips, dualstack)` | `{service}.{region}.{suffix}` - `{service}-fips` under `fips`, the dual-stack suffix under `dualstack`; a service whose rules spell its hosts otherwise, as the Sign-In service and Amazon S3's dual-stack form do, builds them from the two suffixes |
+| `ArnPartition::ALL` | the eight, in botocore's order |
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{Arn, ArnPartition};
+
+    let role = Arn::from_str("arn:aws-cn:iam::123456789012:role/lake-reader")?;
+    let partition = ArnPartition::from_arn(&role).expect("a partition AWS runs");
+    assert_eq!(partition, ArnPartition::AwsCn);
+    assert_eq!(partition.as_str(), "aws-cn");
+    assert_eq!(partition.dns_suffix(), "amazonaws.com.cn");
+    assert_eq!(partition.global_region(), "cn-northwest-1");
+
+    // A region is in the partition its prefix names; one nobody claims is in `aws`.
+    assert_eq!(ArnPartition::from_region("us-gov-west-1"), ArnPartition::AwsUsGov);
+    assert_eq!(ArnPartition::from_region("eu-west-3"), ArnPartition::Aws);
+    assert_eq!(ArnPartition::from_region("mars-north-1"), ArnPartition::Aws);
+
+    // A service host is built on the partition's own suffixes.
+    assert_eq!(
+        ArnPartition::Aws.service_host("sts", "eu-west-3", true, false),
+        "sts-fips.eu-west-3.amazonaws.com"
+    );
+    assert_eq!(
+        ArnPartition::from_region("cn-north-1").service_host("sts", "cn-north-1", false, true),
+        "sts.cn-north-1.api.amazonwebservices.com.cn"
+    );
+
+    // A name is read with its case ignored; another is refused, and an ARN that
+    // names a partition AWS does not run answers none.
+    assert_eq!("AWS-US-GOV".parse::<ArnPartition>()?, ArnPartition::AwsUsGov);
+    assert!("aws-moon".parse::<ArnPartition>().is_err());
+    assert_eq!(ArnPartition::from_arn(&Arn::from_str("arn:aws-moon:iam::1:role/x")?), None);
+    assert_eq!(ArnPartition::ALL.len(), 8);
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only: no binding reaches ArnPartition; Arn.partition answers the name as text.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only: no binding reaches ArnPartition; Arn.partition answers the name as text.
+    ```
+
+| Variant | Name | Regions | DNS suffix | Dual-stack suffix | Global region |
+| --- | --- | --- | --- | --- | --- |
+| `Aws` | `aws` | every region no other partition claims | `amazonaws.com` | `api.aws` | `us-east-1` |
+| `AwsCn` | `aws-cn` | `cn-` | `amazonaws.com.cn` | `api.amazonwebservices.com.cn` | `cn-northwest-1` |
+| `AwsEusc` | `aws-eusc` | `eusc-de-` | `amazonaws.eu` | `api.amazonwebservices.eu` | `eusc-de-east-1` |
+| `AwsIso` | `aws-iso` | `us-iso-` | `c2s.ic.gov` | `api.aws.ic.gov` | `us-iso-east-1` |
+| `AwsIsoB` | `aws-iso-b` | `us-isob-` | `sc2s.sgov.gov` | `api.aws.scloud` | `us-isob-east-1` |
+| `AwsIsoE` | `aws-iso-e` | `eu-isoe-` | `cloud.adc-e.uk` | `api.cloud-aws.adc-e.uk` | `eu-isoe-west-1` |
+| `AwsIsoF` | `aws-iso-f` | `us-isof-` | `csp.hci.ic.gov` | `api.aws.hci.ic.gov` | `us-isof-south-1` |
+| `AwsUsGov` | `aws-us-gov` | `us-gov-` | `amazonaws.com` | `api.aws` | `us-gov-west-1` |
 
 ## Edges
 

@@ -3132,3 +3132,180 @@ fn a_dated_capture_reads_a_retired_spelling_and_the_fact_it_names_is_the_events(
         "a plugin names no dialect: a message is not a dictionary member"
     );
 }
+
+/// The bundled bridge capture as the text rows a read answers: its own row
+/// header, each line numbered, the clock read in UTC.
+fn bridge_capture() -> (yggdryl::holder::Buffer, yggdryl::media::RecordOptions) {
+    let source = yggdryl::holder::Buffer::from_bytes(include_bytes!("ulbridge.log").to_vec())
+        .with_media_type(
+            yggdryl::Url::from_str("file:///ulbridge.log")
+                .expect("a URL")
+                .media_type(),
+        );
+    let mut options = yggdryl::text::TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .expect("the bridge's row header compiles")
+        .with_timezone(yggdryl::Timezone::UTC);
+    options.start_rownum = Some(1);
+    (source, options.into())
+}
+
+/// Every record a serie face answered, as the batch it is.
+fn serie_batches(reader: yggdryl::SerieReader) -> Vec<RecordBatch> {
+    reader
+        .map(|record| {
+            record
+                .expect("a record")
+                .into_arrow_batch()
+                .expect("a record column is a table")
+        })
+        .collect()
+}
+
+/// What identifies a message and everything it states.
+fn stated(messages: impl Iterator<Item = yggdryl::Result<FixMsg>>) -> Vec<(yggdryl::Uuid, u128)> {
+    messages
+        .map(|message| {
+            let message = message.expect("a message");
+            (message.get_curruuid(), message.digest())
+        })
+        .collect()
+}
+
+#[test]
+fn each_serie_face_yields_exactly_the_rows_its_arrow_door_yields() {
+    use yggdryl::IOMedia;
+    let codec = codec();
+    let (source, options) = bridge_capture();
+    let text = || source.read_arrow_reader(&options).expect("a text reader");
+    let read = || source.read_serie(Some(&options)).expect("a text serie");
+
+    // Text rows in, FIX rows out: the root the Arrow door writes, declaring
+    // no order, and its batches row for row.
+    let parsed = batches(codec.parse_text_arrow_reader(text()).unwrap());
+    assert!(row_count(&parsed) > 0, "the capture parses");
+    let faced = codec.parse_text_serie(read()).unwrap();
+    let root = yggdryl::Field::from_arrow_schema("fix", &parsed[0].schema()).unwrap();
+    assert_eq!(faced.field(), &root);
+    assert!(!faced.field().as_sort().declares_order());
+    assert_eq!(serie_batches(faced), parsed);
+    let fix_rows = || yggdryl::arrow::batch_reader(parsed[0].schema(), parsed.clone());
+
+    // FIX rows in, walked FIX rows out - fed by the face before it, which
+    // crosses as the door's own reader.
+    let walked = batches(codec.lifecycle_arrow_reader(fix_rows()).unwrap());
+    let faced = codec
+        .lifecycle_serie(codec.parse_text_serie(read()).unwrap())
+        .unwrap();
+    assert_eq!(faced.field(), &root);
+    assert_eq!(serie_batches(faced), walked);
+
+    // FIX rows in, market data rows out.
+    let market = batches(codec.market_data_arrow_reader(fix_rows()).unwrap());
+    assert!(row_count(&market) > 0, "the capture holds market data");
+    let faced = codec
+        .market_data_serie(codec.parse_text_serie(read()).unwrap())
+        .unwrap();
+    assert_eq!(faced.field(), &yggdryl::graph::MarketData::field().unwrap());
+    assert!(!faced.field().as_sort().declares_order());
+    assert_eq!(serie_batches(faced), market);
+
+    // FIX rows in, messages out: what a table read back feeds the walk.
+    let messages = stated(codec.messages(fix_rows()));
+    assert_eq!(messages.len(), row_count(&parsed));
+    let faced = codec
+        .messages_serie(codec.parse_text_serie(read()).unwrap())
+        .unwrap();
+    assert_eq!(stated(faced), messages);
+
+    // Messages in, FIX rows out, under the root the caller names.
+    let written = batches(
+        codec
+            .arrow_reader(root.clone(), codec.messages(fix_rows()))
+            .unwrap(),
+    );
+    let faced = codec
+        .serie_reader(root.clone(), codec.messages(fix_rows()))
+        .unwrap();
+    assert_eq!(faced.field(), &root);
+    assert_eq!(serie_batches(faced), written);
+
+    // Messages in, market data and books out.
+    let market = batches(
+        codec
+            .market_arrow_reader(codec.messages(fix_rows()))
+            .unwrap(),
+    );
+    let faced = codec.market_serie(codec.messages(fix_rows())).unwrap();
+    assert_eq!(serie_batches(faced), market);
+    let books = batches(
+        codec
+            .book_arrow_reader(codec.messages(fix_rows()), 900_000, None)
+            .unwrap(),
+    );
+    let faced = codec
+        .book_serie(codec.messages(fix_rows()), 900_000, None)
+        .unwrap();
+    assert_eq!(serie_batches(faced), books);
+}
+
+#[test]
+fn the_serie_faces_answer_alike_on_several_threads() {
+    use yggdryl::IOMedia;
+    let one = codec();
+    let four = codec().with_threads(4);
+    let (source, options) = bridge_capture();
+    let read = || source.read_serie(Some(&options)).expect("a text serie");
+    let walk = |codec: &FixCodec| {
+        serie_batches(
+            codec
+                .lifecycle_serie(codec.parse_text_serie(read()).unwrap())
+                .unwrap(),
+        )
+    };
+    assert_eq!(walk(&four), walk(&one));
+}
+
+#[test]
+fn a_walk_states_no_order_its_source_declared() {
+    // The walk answers in its own order and may date a message again, so a
+    // `SORT:by` on the rows it read is not a fact of the rows it writes.
+    let codec = codec();
+    let parsed = batches(codec.parse_text_arrow_reader(source()).unwrap());
+    let mut root = yggdryl::Field::from_arrow_schema("fix", &parsed[0].schema()).unwrap();
+    root.as_sort_mut().set_by_texts(["currunix"]).unwrap();
+    let schema = root.clone().into_arrow_schema().unwrap();
+    let declared: Vec<RecordBatch> = parsed
+        .iter()
+        .map(|batch| batch.clone().with_schema(schema.clone()).unwrap())
+        .collect();
+
+    let walked = codec
+        .lifecycle_arrow_reader(yggdryl::arrow::batch_reader(
+            schema.clone(),
+            declared.clone(),
+        ))
+        .unwrap();
+    assert!(!walked.schema().metadata().contains_key("SORT:by"));
+    assert!(row_count(&batches(walked)) > 0);
+
+    let rows = yggdryl::SerieReader::from_arrow_reader(
+        None,
+        yggdryl::arrow::batch_reader(schema, declared),
+        yggdryl::ArrowCastOptions::new(),
+    )
+    .unwrap();
+    assert!(rows.field().as_sort().declares_order());
+    let faced = codec.lifecycle_serie(rows).unwrap();
+    assert!(!faced.field().as_sort().declares_order());
+    assert!(!serie_batches(faced).is_empty());
+}
+
+#[test]
+fn a_serie_face_refuses_a_run_before_a_row_is_read() {
+    let run = yggdryl::Serie::from(yggdryl::Run::new(vec![Scalar::from(1_i64)]));
+    assert!(codec().parse_text_serie(run.clone()).is_err());
+    assert!(codec().lifecycle_serie(run.clone()).is_err());
+    assert!(codec().market_data_serie(run.clone()).is_err());
+    assert!(codec().messages_serie(run).is_err());
+}

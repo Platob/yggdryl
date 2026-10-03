@@ -1474,9 +1474,10 @@ fn malformed_environment_keys_are_a_failed_source_and_the_chain_walks_on() {
 // --- refresh and invalidation -----------------------------------------------
 
 #[test]
-fn a_set_that_is_stale_at_once_is_traded_again_on_every_ask_until_one_lasts() {
+fn a_set_already_lapsed_when_traded_is_never_signed_with_and_the_refusal_names_both_clocks() {
     let identity = Identity::start();
     identity.expire_sessions(true);
+    identity.set_imds_role(None);
     let (session, _) = walled(&identity, "refresh", &[]);
     let session = session
         .with_config_text(
@@ -1485,34 +1486,43 @@ fn a_set_that_is_stale_at_once_is_traded_again_on_every_ask_until_one_lasts() {
         .with_credentials_text(BASE_CREDENTIALS)
         .with_profile("trader");
 
+    // STS answers a set that lapsed in 2000: signing with it is a refusal
+    // waiting to happen, so it is passed over by name - with both instants,
+    // because a machine whose clock is wrong reads a fresh set this way.
     let now = SystemTime::now();
-    let first = session
+    let message = session
         .credentials(now)
-        .expect("an exchange")
-        .expect("a set");
-    assert_eq!(first.access_key_id(), "ASIAlake-reader");
+        .expect_err("nothing else answers")
+        .to_string();
+    assert!(
+        message.contains("assumed role")
+            && message.contains("lapsed at 2000-01-01T00:00:00Z")
+            && message.contains("this machine's clock reads"),
+        "{message}"
+    );
     session
         .credentials(now)
-        .expect("an exchange")
-        .expect("a set");
+        .expect_err("the refusal is held for the pause");
     assert_eq!(
         exchanges(&identity, "AssumeRole").len(),
-        2,
-        "a set inside its refresh window is replaced rather than signed with"
+        1,
+        "a set that lapsed on arrival is not traded for again on every ask"
     );
 
     identity.expire_sessions(false);
-    session
-        .credentials(now)
-        .expect("an exchange")
+    let later = now + Duration::from_secs(31);
+    let traded = session
+        .credentials(later)
+        .expect("an exchange after the pause")
         .expect("a set");
+    assert_eq!(traded.access_key_id(), "ASIAlake-reader");
     session
-        .credentials(now)
+        .credentials(later)
         .expect("the set in hand")
         .expect("a set");
     assert_eq!(
         exchanges(&identity, "AssumeRole").len(),
-        3,
+        2,
         "a set that lasts is held rather than traded again"
     );
 }
@@ -2289,6 +2299,328 @@ fn debug_output_never_renders_a_secret() {
     assert!(!rendered.contains("debug-secret"), "{rendered}");
     assert!(!rendered.contains("debug-token"), "{rendered}");
     assert!(!rendered.contains("variable-secret"), "{rendered}");
+}
+
+// --- the shared files as they move ------------------------------------------
+
+/// The set `[default]` of a credentials file holds, spelled for `key`.
+fn dumped(key: &str, extra: &str) -> String {
+    format!(
+        "[default]\naws_access_key_id = {key}\naws_secret_access_key = {key}-secret\n\
+         aws_session_token = {key}-token\n{extra}"
+    )
+}
+
+#[test]
+fn a_set_dumped_while_the_session_went_unsigned_is_read_at_the_next_ask() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    let (session, directory) = walled(&identity, "dumped-later", &[]);
+    assert_eq!(
+        session.credentials(SystemTime::now()).expect("unsigned"),
+        None,
+        "nothing configured yet"
+    );
+
+    // The unsigned answer is held for minutes; a file written meanwhile is
+    // what the hold was about, so the next ask reads it.
+    write(
+        &directory.join("credentials"),
+        &dumped("ASIADUMPEDLATER", ""),
+    );
+    assert_eq!(found(&session).access_key_id(), "ASIADUMPEDLATER");
+    assert_eq!(session.credential_source(), Some("shared credentials file"));
+}
+
+#[test]
+fn a_key_a_store_refused_is_passed_over_by_name_and_a_set_dumped_anew_is_read_at_once() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    let (session, directory) = walled(&identity, "refused-dump", &[]);
+    let credentials = directory.join("credentials");
+    write(&credentials, &dumped("ASIASTALEDUMP", ""));
+    assert_eq!(found(&session).access_key_id(), "ASIASTALEDUMP");
+
+    // The store says the set lapsed: the key never signs again here, and
+    // the source that keeps answering it is passed over by name.
+    assert!(session.invalidate_if("ASIASTALEDUMP"));
+    let message = refused(&session);
+    assert!(
+        message.contains("shared credentials file")
+            && message.contains("a store refused its key ASIA...DUMP")
+            && message.contains("write a fresh set under [default]"),
+        "{message}"
+    );
+    assert!(!message.contains("ASIASTALEDUMP-secret"), "{message}");
+
+    // The refusal is held for its pause, and a set dumped anew breaks it.
+    write(&credentials, &dumped("ASIAFRESHDUMPED", ""));
+    assert_eq!(found(&session).access_key_id(), "ASIAFRESHDUMPED");
+}
+
+#[test]
+fn a_set_whose_written_expiry_has_passed_is_passed_over_to_the_instance() {
+    let identity = Identity::start();
+    let (session, directory) = walled(&identity, "lapsed-dump", &[]);
+    write(
+        &directory.join("credentials"),
+        &dumped(
+            "ASIALAPSEDDUMP",
+            "x_security_token_expires = 2000-01-01T00:00:00Z\n",
+        ),
+    );
+    assert_eq!(found(&session).access_key_id(), INSTANCE_KEY);
+    assert_eq!(session.credential_source(), Some("instance metadata"));
+}
+
+#[test]
+fn a_set_whose_written_expiry_nears_is_replaced_from_the_file_before_it_lapses() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    let (session, directory) = walled(&identity, "expiring-dump", &[]);
+    let credentials = directory.join("credentials");
+    let expiry = |seconds: i64| {
+        format!(
+            "aws_credential_expiration = {}\n",
+            iso8601(now_seconds() + seconds)
+        )
+    };
+    write(&credentials, &dumped("ASIASOONGONE", &expiry(60 * 60)));
+    let first = found(&session);
+    assert_eq!(first.access_key_id(), "ASIASOONGONE");
+    assert!(
+        first.expires_at().is_some(),
+        "the written expiry is carried"
+    );
+
+    // Inside the fifteen minutes before it lapses the chain is walked
+    // again, and a set dumped meanwhile is what it finds.
+    write(
+        &credentials,
+        &dumped("ASIADUMPEDAHEAD", &expiry(2 * 60 * 60)),
+    );
+    let later = SystemTime::now() + Duration::from_secs(50 * 60);
+    let replaced = session.credentials(later).expect("a walk").expect("a set");
+    assert_eq!(replaced.access_key_id(), "ASIADUMPEDAHEAD");
+}
+
+#[test]
+fn a_shared_file_written_with_a_byte_order_mark_reads_every_profile_in_its_charset() {
+    let text = "[default]\naws_access_key_id = AKIAMARKED\naws_secret_access_key = marked\n";
+    let utf16 = |big: bool| {
+        let mut bytes = if big {
+            vec![0xFE, 0xFF]
+        } else {
+            vec![0xFF, 0xFE]
+        };
+        for unit in text.encode_utf16() {
+            let pair = if big {
+                unit.to_be_bytes()
+            } else {
+                unit.to_le_bytes()
+            };
+            bytes.extend_from_slice(&pair);
+        }
+        bytes
+    };
+    let mut utf8 = vec![0xEF, 0xBB, 0xBF];
+    utf8.extend_from_slice(text.as_bytes());
+    for (name, bytes) in [
+        ("utf8-bom", utf8),
+        ("utf16le", utf16(false)),
+        ("utf16be", utf16(true)),
+    ] {
+        let session = offline(name, &[]);
+        let directory = session.directory().expect("a directory");
+        std::fs::write(directory.join("credentials"), bytes).expect("a written file");
+        assert_eq!(session.available_profiles(), ["default"], "{name}");
+        assert_eq!(found(&session).access_key_id(), "AKIAMARKED", "{name}");
+    }
+}
+
+#[test]
+fn a_shared_file_that_is_there_and_cannot_be_read_is_a_named_failure() {
+    let session = offline("unreadable", &[]);
+    let directory = session.directory().expect("a directory");
+    std::fs::create_dir_all(directory.join("credentials"))
+        .expect("a directory where the file goes");
+    let message = refused(&session);
+    assert!(
+        message.contains("shared files")
+            && message.contains("credentials file")
+            && message.contains("could not be read"),
+        "{message}"
+    );
+}
+
+// --- the console sign-in `aws login` files ----------------------------------
+
+/// A console session and the SHA-256 its cache file is named by, pinned
+/// from outside the crate.
+const LOGIN_SESSION: &str = "arn:aws:iam::0123456789012:user/Admin";
+const LOGIN_SESSION_KEY: &str = "36db1d138ff460920374e4c3d8e01f53f9f73537e89c88d639f68393df0e2726";
+/// The P-256 key a sign-in is bound to, which the fake checks every proof by.
+const LOGIN_KEY: &str = "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIFDZHUzOG1Pzq+6F0mjMlOSp1syN9LRPBuHMoCFXTcXhoAoGCCqGSM49\nAwEHoUQDQgAE9qhj+KtcdHj1kVgwxWWWw++tqoh7H7UHs7oXh8jBbgF47rrYGC+t\ndjiIaHK3dBvvdE7MGj5HsepzLm3Kj91bqA==\n-----END EC PRIVATE KEY-----\n";
+
+/// A session whose profile `console` names the sign-in, the sign-in filed
+/// under its `~/.aws/login/cache` lapsing `expires_in` seconds from now.
+fn signed_in_console(identity: &Identity, name: &str, expires_in: i64) -> (Session, PathBuf) {
+    let (session, directory) = walled(identity, name, &[]);
+    let cache = directory.join("login").join("cache");
+    std::fs::create_dir_all(&cache).expect("a cache directory");
+    let document = serde_json::json!({
+        "accessToken": {
+            "accessKeyId": "ASIACONSOLECACHED",
+            "secretAccessKey": "console-cached-secret",
+            "sessionToken": "console-cached-token",
+            "accountId": "012345678901",
+            "expiresAt": iso8601(now_seconds() + expires_in),
+        },
+        "tokenType": "aws_sigv4",
+        "refreshToken": "console-refresh-token",
+        "clientId": "arn:aws:signin:::devtools/same-device",
+        "dpopKey": LOGIN_KEY,
+    });
+    let file = cache.join(format!("{LOGIN_SESSION_KEY}.json"));
+    std::fs::write(&file, document.to_string()).expect("a filed sign-in");
+    let session = session
+        .with_config_text(format!(
+            "[profile console]\nlogin_session = {LOGIN_SESSION}\n"
+        ))
+        .with_profile("console");
+    (session, file)
+}
+
+#[test]
+fn a_console_sign_in_answers_from_its_cache_with_no_request() {
+    let identity = Identity::start();
+    let (session, _) = signed_in_console(&identity, "console-cached", 60 * 60);
+    let keys = found(&session);
+    assert_eq!(keys.access_key_id(), "ASIACONSOLECACHED");
+    assert_eq!(keys.account_id(), Some("012345678901"));
+    assert_eq!(session.credential_source(), Some("login"));
+    assert_eq!(
+        identity.request_count(),
+        0,
+        "a cached set that lasts costs nothing"
+    );
+}
+
+#[test]
+fn a_console_sign_in_near_its_end_is_refreshed_once_and_held_until_five_minutes_before_the_next() {
+    let identity = Identity::start();
+    let (session, file) = signed_in_console(&identity, "console-refreshed", 2 * 60);
+    let keys = found(&session);
+    assert_eq!(keys.access_key_id(), crate::identity::LOGIN_ACCESS_KEY);
+    assert_eq!(shape(&identity), ["POST /v1/token"]);
+    let filed: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&file).expect("the refiled sign-in")).expect("JSON");
+    assert_eq!(
+        filed["accessToken"]["accessKeyId"],
+        crate::identity::LOGIN_ACCESS_KEY,
+        "the refreshed set is filed where the CLI reads it"
+    );
+
+    // Fifteen minutes long, the set is held until five minutes before it
+    // lapses - not re-walked for want of the chain's fifteen-minute window.
+    let later = SystemTime::now() + Duration::from_secs(5 * 60);
+    session.credentials(later).expect("the set in hand");
+    assert_eq!(identity.request_count(), 1);
+}
+
+#[test]
+fn a_console_sign_in_the_service_ended_is_a_refusal_naming_aws_login() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    identity.refuse_login(400, "TOKEN_EXPIRED", 1);
+    let (session, _) = signed_in_console(&identity, "console-ended", -60);
+    let message = refused(&session);
+    assert!(
+        message.contains("login") && message.contains("aws login --profile console"),
+        "{message}"
+    );
+    assert!(!message.contains("console-refresh-token"), "{message}");
+}
+
+// --- the walk, as the logging tree hears it ----------------------------------
+
+#[test]
+fn a_walk_is_logged_source_by_source_and_no_record_holds_a_secret() {
+    use yggdryl::logging::{self, Level};
+
+    let _tree = crate::logging::serial();
+    logging::install().expect("the tree");
+    let logger = logging::get_logger("yggdryl.aws.session");
+    logger.set_level(Level::DEBUG);
+    let collect = crate::logging::Collect::shared();
+    logger.add_handler(collect.clone());
+
+    let identity = Identity::start();
+    let (session, directory) = walled(&identity, "logged-walk", &[]);
+    write(
+        &directory.join("credentials"),
+        &dumped(
+            "ASIALOGGEDDUMP",
+            "x_security_token_expires = 2000-01-01T00:00:00Z\n",
+        ),
+    );
+    assert_eq!(found(&session).access_key_id(), INSTANCE_KEY);
+    logger.set_level(Level::NOTSET);
+
+    // The tree is the process's, and other suites walk beside this one: the
+    // records this walk wrote are the ones naming its own dump.
+    let lines: Vec<(Level, String)> = collect
+        .take()
+        .into_iter()
+        .map(|kept| (kept.level, kept.line))
+        .collect();
+    let passed_over = lines
+        .iter()
+        .find(|(_, line)| line.contains("passing over") && line.contains("ASIA...DUMP"))
+        .unwrap_or_else(|| panic!("the lapsed dump is passed over by name: {lines:#?}"));
+    assert_eq!(passed_over.0, Level::WARNING);
+    assert!(
+        passed_over.1.contains("lapsed at 2000-01-01T00:00:00Z"),
+        "{}",
+        passed_over.1
+    );
+    assert!(
+        lines.iter().any(|(level, line)| *level == Level::INFO
+            && line.contains("AWS credentials from instance metadata")),
+        "the answering source is logged: {lines:#?}"
+    );
+    assert!(
+        lines.iter().any(|(level, line)| *level == Level::DEBUG && line.contains("shared credentials file")),
+        "each failing source is logged as it is asked: {lines:#?}"
+    );
+    for (_, line) in &lines {
+        for secret in [
+            "ASIALOGGEDDUMP-secret",
+            "ASIALOGGEDDUMP-token",
+            "ASIALOGGEDDUMP\n",
+            "instance-secret",
+        ] {
+            assert!(!line.contains(secret), "{secret} rendered in {line}");
+        }
+        assert!(
+            !line.contains("ASIALOGGEDDUMP"),
+            "a key id is logged masked: {line}"
+        );
+    }
+}
+
+#[test]
+fn the_sts_host_of_a_partition_is_built_on_its_own_suffixes() {
+    let session = offline("sts-china", &[]).with_use_dualstack_endpoint(true);
+    assert_eq!(
+        session.sts_endpoint("cn-north-1"),
+        "https://sts.cn-north-1.api.amazonwebservices.com.cn",
+        "dual-stack in China is China's dual-stack suffix"
+    );
+    assert_eq!(
+        offline("sts-govcloud", &[]).sts_endpoint("us-gov-east-1"),
+        "https://sts.us-gov-east-1.amazonaws.com"
+    );
 }
 
 #[cfg(feature = "internals")]

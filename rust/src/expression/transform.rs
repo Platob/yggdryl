@@ -6,6 +6,11 @@
 //! property holds the canonical text of one [`Term`] over the other columns
 //! of the same struct, and [`TransformField::apply_arrow_batch`] computes it -
 //! applying the field itself, or reading and writing under it, only casts.
+//! The one writer that computes is the table that owns the declaration: an
+//! Iceberg table derives the columns its stored schema declares for every
+//! row written to it, as it computes every other partition value - and for
+//! every row, whatever it carries under the column's name, so what the
+//! table stores is what its schema says and a reader may rely on it.
 //! That is the same declaration a [`Selector`](super::Selector) projection
 //! makes - `year(event) as year` - so
 //! [`Selector::into_field`](super::Selector::into_field) writes one and
@@ -245,14 +250,16 @@ pub(crate) fn canonicalize_transform_expression(key: &str, value: &str) -> Resul
     Ok(term.to_string())
 }
 
+pub(crate) use arrow::Derivation;
+
 mod arrow {
     use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
-    use arrow_array::{Array, RecordBatch, StructArray};
-    use arrow_schema::{Field as ArrowField, Schema};
+    use arrow_array::{Array, RecordBatch, RecordBatchReader, StructArray};
+    use arrow_schema::{ArrowError, Field as ArrowField, Schema, SchemaRef};
 
     use super::Term;
-    use crate::arrow::{field_from_arrow_schema, rebuilt_batch};
+    use crate::arrow::{BatchReader, field_from_arrow_schema, rebuilt_batch};
     use crate::cast::{ArrowCastOptions, PlanCache};
     use crate::expression::Bound;
     use crate::expression::arrow::ColumnCast;
@@ -313,7 +320,184 @@ mod arrow {
         pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch> {
             let root = self.as_field();
             root.require_struct()?;
-            Ok(filled_struct(root, &Level::new(root), batch)?.unwrap_or_else(|| batch.clone()))
+            Ok(filled_struct(root, &Level::new(root, false), batch)?
+                .unwrap_or_else(|| batch.clone()))
+        }
+
+        /// Add the derived columns this schema declares to every batch of a
+        /// stream.
+        ///
+        /// [`Self::apply_arrow_batch`] under one plan: the declarations are
+        /// parsed once for the stream and bound once per batch layout, never
+        /// once per batch, and the reader states the filled columns in its
+        /// schema before a batch is pulled. A schema deriving nothing, at
+        /// any level, hands the reader back as it is.
+        ///
+        /// ```
+        /// use std::sync::Arc;
+        ///
+        /// use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
+        /// use yggdryl::DataType;
+        /// use yggdryl::StructType;
+        ///
+        /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+        /// let mut year = DataType::Int32.nullable_field("year");
+        /// year.as_transform_mut().set_term(&"year(event)".parse()?)?;
+        /// let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event"), year])?)
+        ///     .required_field("row");
+        ///
+        /// let batch = RecordBatch::try_from_iter([(
+        ///     "event",
+        ///     Arc::new(Date32Array::from(vec![19_723, 20_089])) as ArrayRef,
+        /// )])?;
+        /// let reader = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+        ///
+        /// let mut filled = root.as_transform().apply_arrow_reader(reader)?;
+        ///
+        /// assert_eq!(filled.schema().field(1).name(), "year");
+        /// let batch = filled.next().expect("one batch")?;
+        /// assert_eq!(
+        ///     batch.column(1).as_ref(),
+        ///     &Int32Array::from(vec![2024, 2025]) as &dyn arrow_array::Array,
+        /// );
+        /// # Ok(())
+        /// # }
+        /// ```
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when this view is not on a struct root, or a
+        /// declaration does not parse or bind against the reader's columns;
+        /// a computed value that does not fit the type its column declares
+        /// fails the batch it is in.
+        pub fn apply_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
+            match Derivation::of(self.as_field())? {
+                Some(derivation) => derivation.apply_arrow_reader(reader),
+                None => Ok(reader),
+            }
+        }
+    }
+
+    /// What one struct root derives, planned for every batch it meets.
+    ///
+    /// The stream form of [`TransformField::apply_arrow_batch`]: the declared
+    /// root and its levels are held once, each term parsed on its first use
+    /// and bound once per batch layout, so a batch of a layout already seen
+    /// moves only rows.
+    pub(crate) struct Derivation {
+        declared: Field,
+        plan: Level,
+    }
+
+    impl Derivation {
+        /// The derivations `root` declares, `None` when it declares none at
+        /// any level - a schema computing nothing costs its writer nothing.
+        /// A column the rows carry written is left as it came.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when `root` is not a struct.
+        pub(crate) fn of(root: &Field) -> Result<Option<Self>> {
+            Self::planned(root, false)
+        }
+
+        /// The derivations `root` declares, computed for every row whatever
+        /// it carries under a derived column's name: what the owner of a
+        /// declaration - a table - writes, so that what it stores is what
+        /// its schema says.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when `root` is not a struct.
+        pub(crate) fn owning(root: &Field) -> Result<Option<Self>> {
+            Self::planned(root, true)
+        }
+
+        fn planned(root: &Field, owning: bool) -> Result<Option<Self>> {
+            root.require_struct()?;
+            if !derives(root) {
+                return Ok(None);
+            }
+            Ok(Some(Self {
+                declared: root.clone(),
+                plan: Level::new(root, owning),
+            }))
+        }
+
+        /// The schema a batch of `source` has once filled, which is what an
+        /// empty batch of it fills to.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when a declaration does not parse or bind against
+        /// the columns `source` carries.
+        pub(crate) fn schema(&self, source: &SchemaRef) -> Result<SchemaRef> {
+            let empty = RecordBatch::new_empty(Arc::clone(source));
+            Ok(filled_struct(&self.declared, &self.plan, &empty)?
+                .map_or_else(|| Arc::clone(source), |filled| filled.schema()))
+        }
+
+        /// One batch with every derived column it lacks, or holds unwritten,
+        /// computed.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when a declaration does not bind against the
+        /// batch, or a computed value does not fit its declared column.
+        pub(crate) fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
+            Ok(filled_struct(&self.declared, &self.plan, &batch)?.unwrap_or(batch))
+        }
+
+        /// Every batch of `reader` through [`Self::apply`], the filled
+        /// columns stated in the schema before a batch is pulled.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::schema`]'s.
+        pub(crate) fn apply_arrow_reader(self, reader: BatchReader) -> Result<BatchReader> {
+            let schema = self.schema(&reader.schema())?;
+            Ok(Box::new(Filled {
+                inner: reader,
+                derivation: self,
+                schema,
+            }))
+        }
+    }
+
+    /// Whether a declared struct derives a column, at any level.
+    fn derives(declared: &Field) -> bool {
+        declared
+            .fields()
+            .iter()
+            .any(|child| child.as_transform().is_derived() || (child.is_struct() && derives(child)))
+    }
+
+    /// One reader's batches, each filled by one derivation.
+    struct Filled {
+        inner: BatchReader,
+        derivation: Derivation,
+        schema: SchemaRef,
+    }
+
+    impl Iterator for Filled {
+        type Item = std::result::Result<RecordBatch, ArrowError>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let batch = match self.inner.next()? {
+                Ok(batch) => batch,
+                Err(error) => return Some(Err(error)),
+            };
+            Some(
+                self.derivation
+                    .apply(batch)
+                    .map_err(|error| ArrowError::ExternalError(Box::new(error))),
+            )
+        }
+    }
+
+    impl RecordBatchReader for Filled {
+        fn schema(&self) -> SchemaRef {
+            Arc::clone(&self.schema)
         }
     }
 
@@ -323,6 +507,9 @@ mod arrow {
         /// The columns this level's batches carry, as the root its terms bind
         /// against.
         stored: Mutex<PlanCache<Arc<Stored>>>,
+        /// Whether a derived column is computed even where the rows carry it
+        /// written: the owner of the declaration states its own value.
+        owning: bool,
     }
 
     /// One declared child: the level it declares when it is a struct, the
@@ -340,18 +527,19 @@ mod arrow {
     }
 
     impl Level {
-        fn new(declared: &Field) -> Self {
+        fn new(declared: &Field, owning: bool) -> Self {
             Self {
                 children: declared
                     .fields()
                     .iter()
                     .map(|child| Child {
-                        nested: child.is_struct().then(|| Self::new(child)),
+                        nested: child.is_struct().then(|| Self::new(child, owning)),
                         term: OnceLock::new(),
                         cast: ColumnCast::default(),
                     })
                     .collect(),
                 stored: Mutex::new(PlanCache::new()),
+                owning,
             }
         }
 
@@ -477,6 +665,7 @@ mod arrow {
             };
             let held = batch.schema().index_of(child.name()).ok();
             if let Some(index) = held
+                && !plan.owning
                 && !is_unwritten(child, &columns[index], rows)?
             {
                 continue;

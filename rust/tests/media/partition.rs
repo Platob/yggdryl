@@ -39,9 +39,14 @@ mod lake {
 
     /// Seed one partition directly, which is how a layout comes into being.
     fn seed(root: &Path, directory: &str, batch: &RecordBatch) {
+        seed_as(root, directory, "part-0.arrows", batch);
+    }
+
+    /// Seed one named leaf under `directory`.
+    fn seed_as(root: &Path, directory: &str, name: &str, batch: &RecordBatch) {
         let mut leaf = Holder::folder(root.join(directory))
             .unwrap()
-            .child_by_path("part-0.arrows")
+            .child_by_path(name)
             .unwrap();
         leaf.overwrite_arrow_reader(
             yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]),
@@ -49,6 +54,27 @@ mod lake {
         )
         .unwrap();
         leaf.flush().unwrap();
+    }
+
+    /// Rows of 2024 under the whole schema: one price per month given.
+    fn dated(prices: &[i64], months: &[&str]) -> RecordBatch {
+        RecordBatch::try_new(
+            schema().into_arrow_schema().unwrap(),
+            vec![
+                std::sync::Arc::new(arrow_array::Int64Array::from(prices.to_vec())),
+                std::sync::Arc::new(Int32Array::from(vec![2024; prices.len()])),
+                std::sync::Arc::new(StringArray::from(months.to_vec())),
+            ],
+        )
+        .unwrap()
+    }
+
+    /// A stored leaf's bytes and modification time.
+    fn stamp(path: &Path) -> (Vec<u8>, std::time::SystemTime) {
+        (
+            std::fs::read(path).unwrap(),
+            std::fs::metadata(path).unwrap().modified().unwrap(),
+        )
     }
 
     /// Every row a lake holds, as `(year, month, price)`.
@@ -399,15 +425,45 @@ mod lake {
     }
 
     #[test]
-    fn an_empty_folder_overwrite_keeps_an_inferable_encoded_field() {
-        let (root, mut handle) = lake("empty-overwrite-field");
+    fn an_empty_overwrite_touches_no_partition_and_replaces_a_flat_folder_whole() {
+        // No row reaches a partition, so a partitioned folder keeps every leaf.
+        let (root, mut handle) = lake("empty-overwrite-partitioned");
         seed(&root, "year=2024/month=01", &prices());
+        let january = root.join("year=2024/month=01/part-0.arrows");
+        let before = stamp(&january);
         let field = schema();
         let arrow = field.clone().into_arrow_schema().unwrap();
+        handle
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(arrow.clone(), []),
+                &options(None),
+            )
+            .unwrap();
+        assert_eq!(stamp(&january), before);
+        assert_eq!(rows(&handle, &field).len(), 3);
+        let _ = std::fs::remove_dir_all(&root);
 
-        // No declared field is available on either side of this call: the
-        // empty reader's Arrow schema must remain discoverable from a real
-        // encoded leaf rather than a zero-byte remnant.
+        // A layout only declared has nothing stored to touch, so nothing is
+        // written and nothing refused.
+        let (root, mut handle) = lake("empty-overwrite-declared");
+        let declared = schema().with_partition_fields(&["year", "month"]).unwrap();
+        handle
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(arrow.clone(), []),
+                &options(Some(declared)),
+            )
+            .unwrap();
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
+        let _ = std::fs::remove_dir_all(&root);
+
+        // A flat folder is one partition and is replaced whole. No declared
+        // field is available on either side of this call: the empty reader's
+        // Arrow schema must remain discoverable from a real encoded leaf
+        // rather than a zero-byte remnant.
+        let (root, mut handle) = lake("empty-overwrite-flat");
+        let full = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
+        seed_as(&root, "", "part-0.arrows", &full);
+        seed_as(&root, "", "part-1.arrows", &full);
         handle
             .overwrite_arrow_reader(yggdryl::arrow::batch_reader(arrow, []), &options(None))
             .unwrap();
@@ -422,15 +478,10 @@ mod lake {
             vec!["price", "year", "month"]
         );
         assert_eq!(handle.read_arrow_reader(&options(None)).unwrap().count(), 0);
-        assert!(
-            std::fs::metadata(
-                root.join("year=2024")
-                    .join("month=01")
-                    .join("part-0.arrows")
-            )
-            .unwrap()
-            .len()
-                > 0
+        assert!(std::fs::metadata(root.join("part-0.arrows")).unwrap().len() > 0);
+        assert_eq!(
+            std::fs::metadata(root.join("part-1.arrows")).unwrap().len(),
+            0
         );
 
         let _ = std::fs::remove_dir_all(&root);
@@ -520,30 +571,161 @@ mod lake {
     }
 
     #[test]
-    fn an_overwrite_empties_a_partition_the_incoming_rows_no_longer_name() {
-        let (root, mut handle) = lake("empty-partition");
+    fn an_overwrite_replaces_only_the_partitions_its_rows_touch() {
+        let (root, mut handle) = lake("dynamic");
         seed(&root, "year=2024/month=01", &prices());
         seed(&root, "year=2024/month=02", &prices());
+        // A second leaf: replacing a partition replaces every leaf it holds.
+        seed_as(&root, "year=2024/month=02", "part-1.arrows", &prices());
+        seed(&root, "year=2024/month=03", &prices());
+        let leaf = |month: &str, name: &str| {
+            root.join("year=2024")
+                .join(format!("month={month}"))
+                .join(name)
+        };
+        let january = stamp(&leaf("01", "part-0.arrows"));
+        let march = stamp(&leaf("03", "part-0.arrows"));
 
         let field = schema();
-        let only_january = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
+        // February twice in one write: the second batch adds to the
+        // February this write already replaced, and April is new.
+        let first = dated(&[40, 50], &["02", "04"]);
+        let second = dated(&[60], &["02"]);
         handle
             .overwrite_arrow_reader(
-                yggdryl::arrow::batch_reader(only_january.schema(), [only_january]),
+                yggdryl::arrow::batch_reader(first.schema(), [first, second]),
                 &options(Some(field.clone())),
             )
             .unwrap();
 
-        // February still exists as a location and reads as no rows, which is
-        // what the laziness contract says an empty resource is.
-        assert!(root.join("year=2024").join("month=02").is_dir());
+        // January and March were never reached: the same bytes, never
+        // rewritten.
+        assert_eq!(stamp(&leaf("01", "part-0.arrows")), january);
+        assert_eq!(stamp(&leaf("03", "part-0.arrows")), march);
+        assert_eq!(
+            std::fs::metadata(leaf("02", "part-1.arrows"))
+                .unwrap()
+                .len(),
+            0
+        );
+        assert!(leaf("04", "part-0.arrows").is_file());
         assert_eq!(
             rows(&handle, &field),
             vec![
                 (2024, "01".to_owned(), 10),
                 (2024, "01".to_owned(), 20),
                 (2024, "01".to_owned(), 30),
+                (2024, "02".to_owned(), 40),
+                (2024, "02".to_owned(), 60),
+                (2024, "03".to_owned(), 10),
+                (2024, "03".to_owned(), 20),
+                (2024, "03".to_owned(), 30),
+                (2024, "04".to_owned(), 50),
             ]
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn every_cadence_replaces_a_partition_it_reaches_first_and_extends_one_already_replaced() {
+        let (root, mut handle) = lake("dynamic-cadence");
+        seed(&root, "year=2024/month=01", &prices());
+        seed(&root, "year=2024/month=02", &prices());
+
+        let field = schema();
+        // One cadence a batch: January is replaced by the first and extended
+        // by the second, February is first reached by the second and so
+        // replaced there, never appended to.
+        let first = dated(&[40], &["01"]);
+        let second = dated(&[50, 60], &["02", "01"]);
+        handle
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(first.schema(), [first, second]),
+                &options(Some(field.clone())).with_commit_batch_num(1),
+            )
+            .unwrap();
+
+        assert_eq!(
+            rows(&handle, &field),
+            vec![
+                (2024, "01".to_owned(), 40),
+                (2024, "01".to_owned(), 60),
+                (2024, "02".to_owned(), 50),
+            ]
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_overwrite_scoped_by_where_replaces_every_partition_it_selects() {
+        let (root, mut handle) = lake("scoped");
+        seed(&root, "year=2024/month=01", &prices());
+        seed(&root, "year=2024/month=02", &prices());
+        seed(&root, "year=2025/month=01", &prices());
+        let elsewhere = root.join("year=2025/month=01/part-0.arrows");
+        let before = stamp(&elsewhere);
+
+        let field = schema();
+        // The scope is all of 2024: February has no incoming row and is
+        // still replaced, 2025 is outside it and kept.
+        let january = dated(&[40], &["01"]);
+        handle
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(january.schema(), [january]),
+                &options(Some(field.clone()))
+                    .with_filter("year = 2024")
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(stamp(&elsewhere), before);
+        assert_eq!(
+            rows(&handle, &field),
+            vec![
+                (2024, "01".to_owned(), 40),
+                (2025, "01".to_owned(), 10),
+                (2025, "01".to_owned(), 20),
+                (2025, "01".to_owned(), 30),
+            ]
+        );
+
+        // With no row at all the scope is still replaced, its first leaf kept
+        // as the empty carrier of the schema.
+        handle
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(field.clone().into_arrow_schema().unwrap(), []),
+                &options(Some(field.clone()))
+                    .with_filter("year = 2025")
+                    .unwrap(),
+            )
+            .unwrap();
+        assert!(std::fs::metadata(&elsewhere).unwrap().len() > 0);
+        assert_eq!(rows(&handle, &field), vec![(2024, "01".to_owned(), 40)]);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_flat_folder_overwrite_replaces_every_leaf() {
+        let (root, mut handle) = lake("flat-overwrite");
+        let field = schema();
+        let full = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
+        seed_as(&root, "", "part-0.arrows", &full);
+        seed_as(&root, "", "part-1.arrows", &full);
+
+        let may = dated(&[40], &["05"]);
+        handle
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(may.schema(), [may]),
+                &options(Some(field.clone())),
+            )
+            .unwrap();
+
+        assert_eq!(rows(&handle, &field), vec![(2024, "05".to_owned(), 40)]);
+        assert_eq!(
+            std::fs::metadata(root.join("part-1.arrows")).unwrap().len(),
+            0
         );
 
         let _ = std::fs::remove_dir_all(&root);
@@ -782,14 +964,20 @@ mod lake {
 
         assert!(root.join("year=null").join("month=null").is_dir());
         // A path cannot say whether that is the absence or the three letters,
-        // so a nullable declared column reads the text back as a null.
+        // so a nullable declared column reads the text back as a null. The
+        // seeded partition no row reached keeps its three rows beside it.
         let read: Vec<RecordBatch> = handle
             .read_arrow_reader(&options(Some(field)))
             .unwrap()
             .map(std::result::Result::unwrap)
             .collect();
-        assert_eq!(read.len(), 1);
-        assert_eq!(read[0].column_by_name("year").unwrap().null_count(), 1);
+        assert_eq!(read.iter().map(RecordBatch::num_rows).sum::<usize>(), 4);
+        assert_eq!(
+            read.iter()
+                .map(|batch| batch.column_by_name("year").unwrap().null_count())
+                .sum::<usize>(),
+            1
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }

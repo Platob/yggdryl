@@ -27,6 +27,7 @@ fn a_known_property_whose_value_does_not_parse_is_refused_naming_it() {
         ("page_limit", "1.5", "whole number"),
         ("follow_redirects", "maybe", "true/false"),
         ("read_environment", "2", "true/false"),
+        ("netrc", "sometimes", "true/false"),
         ("cookies", "jar", "true/false"),
         ("max_body_size", "lots", "byte count"),
         ("max_body_size", "1.5MiB", "byte count"),
@@ -73,6 +74,7 @@ fn every_knob_has_its_documented_default() {
         [Codec::Gzip, Codec::Deflate, Codec::Zstd]
     );
     assert!(options.read_environment());
+    assert!(options.netrc());
     assert_eq!(options.max_body_size(), 256 * 1024 * 1024);
     assert_eq!(options.stream_batch_size(), DEFAULT_STREAM_BATCH_SIZE);
     let parallelism = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
@@ -118,6 +120,7 @@ fn every_setter_is_read_back_by_its_getter() {
         .with_ca_bundle("/etc/ssl/corp.pem")
         .with_accept_encodings([Codec::Identity])
         .with_read_environment(false)
+        .with_netrc(true)
         .with_max_body_size(1024)
         .with_stream_batch_size(4096)
         .with_concurrency(3)
@@ -139,6 +142,7 @@ fn every_setter_is_read_back_by_its_getter() {
     assert_eq!(options.ca_bundle(), Some(Path::new("/etc/ssl/corp.pem")));
     assert_eq!(options.accept_encodings(), [Codec::Identity]);
     assert!(!options.read_environment());
+    assert!(options.netrc());
     assert_eq!(options.max_body_size(), 1024);
     assert_eq!(options.stream_batch_size(), 4096);
     assert_eq!(options.concurrency(), 3);
@@ -175,6 +179,7 @@ fn every_property_reaches_its_knob_in_snake_and_kebab_case() {
         ("ca_bundle", "/etc/ssl/corp.pem"),
         ("accept_encoding", "gzip, identity"),
         ("read_environment", "no"),
+        ("netrc", "yes"),
         ("max_body_size", "16MiB"),
         ("stream_batch_size", "4096"),
         ("concurrency", "2"),
@@ -197,6 +202,7 @@ fn every_property_reaches_its_knob_in_snake_and_kebab_case() {
         ("ca-bundle", "/etc/ssl/corp.pem"),
         ("accept-encodings", "gzip,identity"),
         ("read-environment", "False"),
+        ("NETRC", "true"),
         ("max-body-size", "16 MB"),
         ("stream-batch-size", "4 KiB"),
         ("concurrency", "2"),
@@ -219,6 +225,7 @@ fn every_property_reaches_its_knob_in_snake_and_kebab_case() {
         assert_eq!(options.ca_bundle(), Some(Path::new("/etc/ssl/corp.pem")));
         assert_eq!(options.accept_encodings(), [Codec::Gzip, Codec::Identity]);
         assert!(!options.read_environment());
+        assert!(options.netrc());
         assert_eq!(options.max_body_size(), 16 * 1024 * 1024);
         assert_eq!(options.stream_batch_size(), 4096);
         assert_eq!(options.concurrency(), 2);
@@ -377,4 +384,37 @@ fn a_property_is_a_name_the_reader_reads_in_any_spelling_it_accepts() {
             .timeout(),
         HttpOptions::DEFAULT_TIMEOUT
     );
+}
+
+#[test]
+fn netrc_follows_read_environment_until_it_is_said() {
+    assert!(HttpOptions::default().netrc());
+    assert!(!HttpOptions::default().with_read_environment(false).netrc());
+    assert!(!HttpOptions::default().with_netrc(false).netrc());
+    // Said once, it stands whatever the environment knob says after.
+    let said = HttpOptions::default().with_netrc(false);
+    assert!(!said.clone().with_read_environment(true).netrc());
+    assert!(
+        HttpOptions::default()
+            .with_netrc(true)
+            .with_read_environment(false)
+            .netrc()
+    );
+    let read = HttpOptions::from_properties([("netrc", "no")]).expect("options");
+    assert!(!read.netrc());
+    assert!(read.read_environment());
+}
+
+#[test]
+fn netrc_is_a_session_knob_a_session_over_a_client_may_state() {
+    // The pool reads no `.netrc`: a session over a shared client states it
+    // freely, as it does its cookies.
+    let client = yggdryl::http::Client::new();
+    let session = yggdryl::http::Session::with_client(
+        client.clone(),
+        HttpOptions::default().with_netrc(false),
+    )
+    .expect("a session knob");
+    assert!(!session.options().netrc());
+    assert_eq!(session.stats(), client.stats());
 }

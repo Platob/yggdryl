@@ -995,15 +995,16 @@ fn schema_from_metadata(metadata: Arc<ParquetMetaData>) -> Result<Arc<Schema>> {
     Ok(Arc::clone(metadata.schema()))
 }
 
-/// The reader metadata for one footer, with the variant extension attached
-/// wherever the Parquet schema says `VARIANT` and the Arrow schema does not.
+/// The reader metadata for one footer, with the variant and uuid extensions
+/// attached wherever the Parquet schema says `VARIANT` or `UUID` and the
+/// Arrow schema does not.
 ///
 /// A file written here already declares it, so this is the read of a
 /// *foreign* file: the annotation is what says the two binaries are one
 /// variant, and reading it is what makes the column import as one.
 fn reader_metadata(metadata: Arc<ParquetMetaData>) -> Result<ArrowReaderMetadata> {
     let read = ArrowReaderMetadata::try_new(Arc::clone(&metadata), ArrowReaderOptions::new())?;
-    let Some(schema) = geospatial::variant_schema(
+    let Some(schema) = geospatial::annotated_schema(
         metadata.file_metadata().schema_descr(),
         read.schema().as_ref(),
     ) else {

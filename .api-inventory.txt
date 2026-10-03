@@ -352,7 +352,7 @@ pub const RECURSION_LIMIT: usize = 32
   pub const fn is_safe(self) -> bool
   pub const fn as_str(self) -> &'static str
   pub enum Function
-  pub const ALL: [Self; 27] = [ Self::Lower, Self::Upper, Self::Length, Self::Substring, Self::Trim, Self::StartsWith, Self::EndsWith, Self::Contains, Self::Concat, Self::Year, Self::Month, Self::Day, Self::Hour, Self::Years, Self::Quarters, Self::Months, Self::Weeks, Self::Days, Self::Hours, Self::Minutes, Self::Truncate, Self::Coalesce, Self::IfNull, Self::Size, Self::Get, Self::Slice, Self::Unnest ]  (`Unnest` - `unnest(serie)`, alias `explode` - is the one select-list form that multiplies rows: the whole term of a projection, at most once per select, and refused anywhere a value is read)
+  pub const ALL: [Self; 28] = [ Self::Lower, Self::Upper, Self::Length, Self::Substring, Self::Trim, Self::StartsWith, Self::EndsWith, Self::Contains, Self::Concat, Self::Year, Self::Month, Self::Day, Self::Hour, Self::Years, Self::Quarters, Self::Months, Self::Weeks, Self::Days, Self::Hours, Self::Minutes, Self::Truncate, Self::TimeBucket, Self::Coalesce, Self::IfNull, Self::Size, Self::Get, Self::Slice, Self::Unnest ]  (`Unnest` - `unnest(serie)`, alias `explode` - is the one select-list form that multiplies rows: the whole term of a projection, at most once per select, and refused anywhere a value is read)
   pub fn as_str(&self) -> &str
   pub fn from_name(name: &str) -> Option<Self>
   pub fn arity(&self) -> (usize, usize)
@@ -726,7 +726,7 @@ pub const DEFAULT_REFUSED_MSGTYPES: [&str; 3] = ["0", "1", "unknown"];  (the typ
 ### yggdryl::fix::batch  [rust/src/fix/batch.rs]  (arrow feature)
 impl FixCodec
   pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row, and the capture's own cells are read off the source row and carried by every message parsed out of it, stated again at their columns when the messages are written back; the row's `currunix` - the reader's `mtime` - becomes each message's precise `recdunix` and the sending clock of one stating no SendingTime(52), as `parse_text_line` reads the line; a carrier's seventeen event columns are the line each row is: its `curruuid` is every message's one source, `srcuuids`, and the other sixteen fill nothing and are dropped as the row's own twins take their names; batches close as `arrow_reader` closes them, on the bytes each row lands as. With several threads, whole input batches are at most one job per thread in flight and answer in input-batch order)
-  pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, chained FIX rows out under the same schema: each row through `FixMsg::from_row`, the ordered walk `lifecycle` runs, each back into a row; no re-parse. Each row's capture cells are read into the message it makes and travel with it through the walk's own ordering, then are stated again at their own columns, so the pairing is by message and never by position)
+  pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, chained FIX rows out under the same schema: each row through `FixMsg::from_row`, the ordered walk `lifecycle` runs, each back into a row; no re-parse. Each row's capture cells are read into the message it makes and travel with it through the walk's own ordering, then are stated again at their own columns, so the pairing is by message and never by position); the root keeps the source's metadata but its SORT:by, which the walk no longer proves
   pub fn market_data_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, MarketData::field rows out: messages into market_arrow_reader; a schema making no root refused before a row is read)
   pub fn parse_arrow_messages(&self, source: BatchReader) -> Result<impl Iterator<Item = Result<FixMsg>> + Send + use<>>  (capture rows in, the messages the rows carry out: each row read cell by cell and parsed through the line funnel - the payload, the beginstring and msgdirection columns, the currunix column - the reader's mtime - dating the row's line and becoming each message's `recdunix` and the sending clock of one stating no SendingTime(52), the carrier's `curruuid` column read as each message's one source where the carrier states one - else the identity the same bytes and instant derive - the other sixteen event columns filling nothing, every other column named after a dictionary field filling it - and the capture's own cells carried by every message parsed out of the row, under their columns; where each column sits is decided once from the schema; refuses a source with no payload column or one holding neither text nor bytes. With several threads, whole input batches are at most one job per thread in flight and answer in input-batch order)
   pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema, the capture's own cells read into the message with it, so a `messages` -> `arrow_reader` round trip over a carrying schema states them again at their columns; one thread holds one batch at a time, while several retain 64-row chunks at lane depth two that can span source batches, in source order; a row or a batch the data refuses is left out with a deduplicated warning, and a source failure is yielded after the messages before it and ends the stream)
@@ -734,6 +734,11 @@ impl FixCodec
   pub fn format_messages<'codec, 'field, I>(&'codec self, messages: I, field: &'field Field) -> impl Iterator<Item = Result<Scalar>> + use<'codec, 'field, I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (each message through `FixMsg::into_row` under one message field of the registry; a projected column is read from its holder or residual entry record; a packed occurrence, a composed key and a row-header capture are the codec's readings and are not in the record to lift)
   pub fn format_arrow_reader(&self, source: BatchReader, field: &Field) -> Result<BatchReader>  (the Arrow twin; the capture's own columns still lead the row, stated from the cells each message carries; a source carrying no residual entry record is cast through `arrow::cast_reader` instead of read back as messages)
   pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (semantic content rebuilt from projected columns and the residual entry record, then written with the codec's separator else `SOH`; refuses a batch without `fixentries`)
+  pub fn parse_text_serie(&self, source: impl Into<SerieSource>) -> Result<SerieReader>  (parse_text_arrow_reader over any SerieSource - into_reader then into_arrow_reader, transport - answered as a SerieReader under the root that door writes, one identity plan: handed on it is the door's own reader, nothing cast, copied or landed; a run or a record with an absent row refused)
+  pub fn lifecycle_serie(&self, source: impl Into<SerieSource>) -> Result<SerieReader>  (lifecycle_arrow_reader likewise; the source's root without SORT:by)
+  pub fn market_data_serie(&self, source: impl Into<SerieSource>) -> Result<SerieReader>  (market_data_arrow_reader likewise, under MarketData::field)
+  pub fn messages_serie<S>(&self, source: S) -> Result<impl Iterator<Item = Result<FixMsg>> + Send + use<S>> where S: Into<SerieSource>  (messages over any SerieSource)
+  pub fn serie_reader<I>(&self, schema: Field, messages: I) -> Result<SerieReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (arrow_reader answered under SerieReader::root_of(schema); a SORT:by it declares verified as records land)
 
 ### yggdryl::fix::digest  [rust/src/fix/digest.rs]
 pub struct FixDedup<I>  (re-exported at the crate root; drops a message whose `FixMsg::digest` equals the one just yielded - an adjacent republished line - and counts what it dropped; a stage the caller composes)
@@ -917,6 +922,8 @@ impl FixCodec
   pub fn book_arrow_reader<I>(&self, messages: I, snapshot_millis: u64, filter: Option<&Filter>) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (sorted FIX messages folded into books: orders, quotes and BOOK W/X - the kinds `MarketDataKind::is_booked` admits - every other record ignored before it is expanded, without advancing book time: a fill moves a book through its order's or quote's report, so an execution, and a trade whose fills are executions, never reach one, an execution report of no fill is that report - a venue's cancel, reject or expiry taking the entry off its book - and an acknowledgement of an execution (`BN`, `Q`) states none; a quote one entry resting on each leg it states, its bid and its offer alike; a book message's leaves pruned by the same rule, an entry reporting a trade (`269=2`) folding into no book; admitted messages lazily expanded through `FixMarketIterator`, folded by `BookIterator` - one book per `Market::book_crosscode`, narrowed by `filter` where given as `BookIterator::with_filter` narrows, never admitting a pruned kind - then streamed through `MarketData::arrow_reader` as `marketdata` rows of `marketdatakind` `BOOK` under the codec's row and byte bounds; each leaf carries its message's unmapped fields where `market_metadata` says so; zero disables the epoch-aligned book snapshot grid, every book then its deltas alone but at a full refresh; what an admitted message states that cannot stand is passed over with a warning, and only a source failure follows the completed book prefix and fuses; lifecycle enrichment is explicit; refuses a `snapshot_millis` past an `i64` nanosecond grid and a `filter` naming a column the row does not carry or answering anything but a boolean)
   pub fn market_data<I>(&self, messages: I) -> impl FusedIterator<Item = Result<MarketData>> + Send + 'static where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (collects the capture; admits orders, quotes, actual executions, W and X - what book_arrow_reader folds and the executions besides, a trade as the executions its parse split off, an execution report of no fill as its order's or quote's leaf, an acknowledgement of an execution (`BN`, `Q`) none; each admitted message expanded as into_market_data under the codec's metadata switch; a message its intake refused for what it states is passed over with a warning, then the operations stably sorted by snapunix else currunix - a source failure ending the capture where it happens, yielded after the operations of every message before it; no lifecycle, no msgtype filter; fused)
   pub fn market_arrow_reader<I>(&self, messages: I) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (market_data as MarketData::field rows under the codec's row and byte bounds; every row read before a source failure, then that failure)
+  pub fn book_serie<I>(&self, messages: I, snapshot_millis: u64, filter: Option<&Filter>) -> Result<SerieReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (book_arrow_reader answered as a SerieReader of MarketData::field rows, one identity plan)
+  pub fn market_serie<I>(&self, messages: I) -> Result<SerieReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (market_arrow_reader likewise)
 
 ### yggdryl::fix::entry  [rust/src/fix/entry.rs]
 pub struct FixEntry  (one field a message states, beside what is nested under it; re-exported at the crate root)
@@ -2054,7 +2061,7 @@ pub struct ZipPath
   pub struct Session  (Clone shares the resolved state; Debug redacts)
   pub fn new
   pub fn with_profile, with_region, with_credentials, with_anonymous, with_assumed_role,
-      with_sso, with_credential_process, with_endpoint_url, with_config_file,
+      with_sso, with_credential_process, with_endpoint_url, with_service_endpoint_url, with_config_file,
       with_credentials_file, with_config_text, with_credentials_text, with_directory,
       with_variables, with_environment, with_metadata_endpoint, with_metadata_disabled,
       with_metadata_timeout, with_metadata_attempts, with_sso_login, with_mfa_prompt,
@@ -2066,6 +2073,12 @@ pub struct ZipPath
       use_dualstack_endpoint, sts_regional_endpoints, sts_endpoint, max_attempts, ca_bundle
   pub fn credentials(&self, now: SystemTime) -> Result<Option<Credentials>>
   pub fn credential_source, invalidate, login
+  pub fn invalidate_if(&self, access_key_id: &str) -> bool  (a store refused that key: it never signs again on the session, the walk passing over a source answering it by name; the set in hand forgotten when it is that key's)
+  pub fn service_endpoint(&self, service: &str, region: &str) -> String  (the one endpoint door: the configured endpoint_url(service), else `https://{service}[-fips].{region}.{suffix}` from the region's ArnPartition under the session's FIPS and dual-stack switches; `service` the endpoint id, not always the signing name; STS keeps its legacy global rule over it)
+  pub const PROPERTY_NAMES: [&'static str; 32]  [rust/src/aws/properties.rs]  (the identity property names as this crate spells them)
+  pub fn from_properties<K, V>(properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where K: AsRef<str>, V: AsRef<str>
+  pub fn with_properties<K, V>(&self, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where K: AsRef<str>, V: AsRef<str>  (the one reader of AWS identity properties: bare names, `aws_` names and PyIceberg's `client.*` - region, the pair and its token, anonymous, profile, a role, a sign-in, the shared files, the endpoint switches, the metadata service; case, `-`, `_`, `.` alike; never `token`, never `s3.*`; an unknown name ignored, half a set or half a sign-in refused naming what is missing; S3Options::with_properties delegates its identity names to it)
+  pub fn is_property(name: &str) -> bool  (whether with_properties reads `name` in any spelling, answered by the reader itself)
   pub type MfaPrompt = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
   pub struct Credentials  [rust/src/aws/credentials.rs]
@@ -2074,7 +2087,8 @@ pub struct ZipPath
 
   pub struct Profile  [rust/src/aws/profile.rs]
   pub fn name, get, flag, nested, s3, iter, region, output, endpoint_url, service_endpoint_url,
-      sso_session_name, credentials, credential_process, assumed_role, sso
+      sso_session_name, credential_process, login_session, assumed_role, sso
+  pub fn credentials(&self) -> Result<Option<Credentials>>  (the credentials file's set, else the configuration file's; its expiry read from aws_credential_expiration, x_security_token_expires, aws_session_expiration, aws_expiration or expiration; a half set or an expiry nothing reads refused naming the profile and the file)
 
   pub struct AssumedRole  [rust/src/aws/sts.rs]
   pub fn new, with_session_name, with_external_id, with_duration, with_region, with_endpoint,
@@ -2261,7 +2275,7 @@ pub struct ZipPath
   pub const DEFAULT_MAX_PAUSE: Duration
   pub fn from_properties<I, K, V>(properties: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
   pub fn with_properties<I, K, V>(self, properties: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
-  pub const PROPERTY_NAMES: [&'static str; 22]  (the property names as this crate spells them, what a binding suggests a mistyped keyword against)
+  pub const PROPERTY_NAMES: [&'static str; 23]  (the property names as this crate spells them, what a binding suggests a mistyped keyword against)
   pub fn is_property(name: &str) -> bool  (whether `with_properties` reads `name` in any spelling it accepts, answered by the reader itself)
   pub const fn with_http_version(self, http_version: Option<HttpVersion>) -> Self  (None negotiates: ALPN `h2` over TLS, HTTP/3 through `Alt-Svc`; Http2 speaks `h2c` to a plain origin; Http3 goes to QUIC directly; a proxied request speaks HTTP/1.1; refused by `Client::with_options` for a version the build lacks)
   pub fn with_base_url(self, base_url: Url) -> Self
@@ -2278,6 +2292,8 @@ pub struct ZipPath
   pub fn with_ca_bundle(self, ca_bundle: impl Into<PathBuf>) -> Self
   pub fn with_accept_encodings(self, codecs: impl IntoIterator<Item = Codec>) -> Self
   pub const fn with_read_environment(self, read_environment: bool) -> Self
+  pub const fn with_netrc(self, netrc: bool) -> Self  (whether a request naming no credential takes its host's .netrc entry; unset follows read_environment; a session knob, the property `netrc`)
+  pub fn netrc(&self) -> bool
   pub const fn with_max_body_size(self, max_body_size: u64) -> Self
   pub const fn with_stream_batch_size(self, stream_batch_size: usize) -> Self
   pub const fn with_concurrency(self, concurrency: usize) -> Self
@@ -2349,6 +2365,26 @@ pub struct ZipPath
   pub fn with_authorization(self, authorization: Authorization) -> Self
   pub fn with_timeout(self, timeout: Duration) -> Self
   pub fn with_follow_redirects(self, follow: bool) -> Self
+  pub fn with_idempotent(self, idempotent: bool) -> Self  (the caller attests the request does no harm twice, in place of what its method says: a POST its service documents idempotent is retried as a GET is, false keeps a GET from going twice; send_reader is never retried)
+  pub fn with_attempt_headers(self, headers: impl Fn(&Attempt<'_>) -> Result<Headers> + Send + Sync + 'static) -> Self  (headers computed at the top of every attempt from the Attempt as it is about to go out - its number from 1, the hop's method and URL, the headers already on it, the body - merged over everything else the attempt carries; an error it returns is the request's and never retried; not called for a redirect hop to another origin, where nothing it makes is sent)
+  pub fn with_max_attempts(self, attempts: u32) -> Self  (this request's attempts in place of the client's, zero is one; every retry still paid from the client's one budget)
+  pub fn with_connect_timeout(self, timeout: Duration) -> Self  (the bound on opening this request's connection, in place of the pool's)
+  pub fn with_deadline(self, deadline: Duration) -> Self  (one bound on the whole of one attempt, beside the per-phase with_timeout)
+  pub fn with_retry_on(self, rule: impl Fn(Status, &Headers, &[u8]) -> bool + Send + Sync + 'static) -> Self  (for an idempotent request whose answer is no success and no status retried anyway: at most 64 KiB of the body read and handed to the rule beside the status and the headers, true retrying under the rules every retry reads; an answer not retried is handed back whole)
+  pub fn with_direct(self, direct: bool) -> Self  (never through a proxy, whatever the options or the environment name)
+  pub fn idempotent(&self) -> Option<bool>
+  pub fn max_attempts(&self) -> Option<u32>
+  pub fn connect_timeout(&self) -> Option<Duration>
+  pub fn deadline(&self) -> Option<Duration>
+  pub fn is_direct(&self) -> bool
+  pub fn with_sigv4(self, session: &aws::Session, service: impl Into<SmolStr>, region: impl Into<String>) -> Self  [rust/src/aws/request.rs]  (behind `aws`: every attempt signed with Signature Version 4 as the session answers at that moment - the hop's method, the host with the port the URL names, the path as sent, the query, the content-type, content-md5 and x-amz-* headers, the SHA-256 of the body; the canonical URI as sent for the S3 family and normalized and encoded once more for every other service; no credential source answering refused by name rather than sent unsigned; a streamed body refused outside the S3 family; a 400 or 403 naming a refused key told to the session and the request sent once more, whatever its method, when another key answers)
+  pub struct Attempt<'a>  (Clone, Copy, Debug naming no header value: one attempt as the request's hooks see it)
+  pub const fn number(&self) -> u32  (from 1 within a hop)
+  pub const fn method(&self) -> Method
+  pub const fn url(&self) -> &'a Url
+  pub const fn headers(&self) -> &'a Headers  (what the attempt carries before the hook's own)
+  pub const fn body(&self) -> Option<&'a [u8]>  (the bytes in hand; None for no body and for a streamed one)
+  pub const fn is_streamed(&self) -> bool  (send_reader: the body cannot be read beforehand)
   pub fn with_pagination(self, pagination: Pagination) -> Self
   pub fn with_records(self, path: FieldPath) -> Self
   pub fn with_media_type(self, media_type: MediaType) -> Self
@@ -3104,6 +3140,7 @@ pub enum FormatVersion
   pub fn default_spec(&self) -> Result<&PartitionSpec>
   pub fn spec_by_id(&self, spec_id: i32) -> Option<&PartitionSpec>
   pub fn property(&self, key: &str) -> Option<&str>
+  pub const TRANSFORM_PROPERTY_PREFIX: &'static str  (`yggdryl.transform.`: the table property holding one derived top-level column's term, written at creation from the schema's TRANSFORM declarations and declared back on the column wherever the metadata is read)
   pub fn add_schema(&mut self, schema: Field) -> Result<i32>
   pub fn from_json(document: &Scalar) -> Result<Self>
   pub fn into_json(self) -> Result<Scalar>
@@ -3286,8 +3323,8 @@ pub struct IcebergTable<H: IOBase>  (the root eager, the current metadata docume
   pub fn plan(&self, filters: &[(&str, &str)]) -> Result<ScanPlan>
   pub fn plan_matching(&self, filter: impl crate::expression::IntoFilter) -> Result<ScanPlan>
   pub fn commit_append(&mut self, batches: BatchReader) -> Result<()>
-  pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()>
-  pub fn commit_overwrite_where(&mut self, filters: &[(&str, &str)], batches: BatchReader) -> Result<()>
+  pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()>  (the partitions the rows fall in replaced, every other file carried with its row lineage, on every format version; a source with no row commits nothing; an unpartitioned table replaced whole)
+  pub fn commit_overwrite_where(&mut self, filters: &[(&str, &str)], batches: BatchReader) -> Result<()>  (the stated scope replaced; no filter is the whole table)
   pub fn commit_merge(&mut self, batches: BatchReader, merge_by: &crate::Selector, safe: bool) -> Result<()>
   pub fn commit_merge_where(&mut self, filters: &[(&str, &str)], batches: BatchReader, merge_by: &crate::Selector, safe: bool) -> Result<()>
   pub fn evolve_schema(&mut self, schema: Field) -> Result<i32>
@@ -6450,6 +6487,7 @@ impl DataType
   pub const fn datetime_type(&self) -> Option<DateTimeType>
 pub struct DateTime64  (an i64 count since the Unix epoch at a clock resolution beside its zone, 16 bytes; Copy, Eq/Ord/Hash, Display, serde; Value, TemporalValue)
   pub fn new(count: i64, unit: TimeUnit, timezone: Timezone) -> Result<Self>
+  pub fn from_text(text: &str, naive: Timezone) -> Result<Self>  (the crate's one reader of datetime text: ISO 8601 with Z, an offset with or without its colon, or a bracketed zone name; a naive date-time - `T` or a blank before the clock - or a bare date read as a wall clock in `naive`, `NAIVE` keeping it one; the resolution the digits spell; exactly what the ISO 8601 readers read, so a blank around the text is refused as the value door refuses it; what the expiry readers, the txhash intake, the text captures, Excel's ISO cells and the scalar wire read through)
   pub const fn count(&self) -> i64
   pub const fn unit(&self) -> TimeUnit
   pub const fn timezone(&self) -> Timezone
@@ -7551,6 +7589,15 @@ pub struct Authority(SmolStr);
   pub fn remove_extension(&mut self) -> bool
   pub fn clear_extensions(&mut self) -> bool
   pub fn stable_hash(&self) -> u64
+pub enum ArnPartition  (Copy, Eq/Ord/Hash, Display, FromStr; Aws, AwsCn, AwsUsGov, AwsIso, AwsIsoB, AwsIsoE, AwsIsoF, AwsEusc - botocore's partitions.json: the one owner of a partition's DNS suffixes, which the STS, IAM Identity Center, Sign-In and S3 hosts are built from)
+  pub const ALL: [Self; 8]
+  pub const fn as_str(self) -> &'static str  // aws, aws-cn, aws-us-gov, aws-iso, aws-iso-b, aws-iso-e, aws-iso-f, aws-eusc
+  pub fn from_region(region: &str) -> Self  (the prefix its regions share, else Aws)
+  pub fn from_arn(arn: &Arn) -> Option<Self>
+  pub const fn dns_suffix(self) -> &'static str
+  pub const fn dualstack_dns_suffix(self) -> &'static str
+  pub const fn global_region(self) -> &'static str
+  pub fn service_host(self, service: &str, region: &str, fips: bool, dualstack: bool) -> String  ({service}[-fips].{region}.{suffix})
 
 ### yggdryl::uri::handle  [rust/src/uri/handle.rs]  (an identifier as a handle: the storage it names, resolved through Holder::from_url on the first operation that needs it and kept for the value's life; a name lends no url)
 impl IOBase for Uri
@@ -7849,6 +7896,7 @@ pub fn term(&self) -> Result<Option<Term>>  (`TRANSFORM:expression`, else the fu
   pub fn set_function<I, P>(&mut self, function: &Function, by: I) -> Result<()> where
   pub fn remove_term(&mut self) -> Option<String>
   pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch>
+  pub fn apply_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader>  (apply_arrow_batch under one plan for a stream: the declarations parsed once, bound once per batch layout, the filled columns stated in the reader's schema before a batch is pulled; a schema deriving nothing hands the reader back)
 
 ### yggdryl::expression::literal  [rust/src/expression/literal.rs]
 pub struct Literal

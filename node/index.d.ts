@@ -4495,13 +4495,6 @@ export declare class IcebergOptions {
    */
   set readParallelMinFileSize(bytes: number)
   /**
-   * After how many data commits an automatic compaction runs; `null` - the
-   * default - never compacts on its own, and 0 reads as off.
-   */
-  get compactAfterCommits(): number | null
-  /** Set after how many data commits an automatic compaction runs. */
-  set compactAfterCommits(commits: number)
-  /**
    * The MIME type for new data files. Default: `MimeType.PARQUET`.
    *
    * Only what a write produces is decided here: a scan decodes each data
@@ -4704,7 +4697,10 @@ export declare class IcebergTable {
    */
   append(batches: JsBatchReader, options?: IcebergOptions | undefined | null): void
   /**
-   * Replace every row with `batches` as a new snapshot.
+   * Replace the partitions `batches` fall in as a new snapshot: every
+   * row of an unpartitioned table, and of a partitioned one the
+   * partitions the rows touch - no row replaces nothing there, and
+   * `overwriteWhere(null, [])` empties it.
    *
    * The previous snapshot stays readable; only the current pointer moves.
    * `options` configures this one write, exactly as on
@@ -12437,8 +12433,6 @@ export interface IcebergOptionsInput {
   writeParallelism?: number
   /** Where a commit stages its files: `off`, or a local folder URL or path. */
   writeStaging?: string
-  /** After how many data commits an automatic compaction runs. */
-  compactAfterCommits?: number
   /** The MIME type for new data files. Table writes encode Parquet and Avro. */
   dataMimeType?: MimeTypeInput
 }

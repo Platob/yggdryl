@@ -32,7 +32,7 @@ const POLL: Duration = Duration::from_millis(20);
 /// non-zero (its standard error quoted) or does not exit within a minute, or
 /// output that is not a credential document.
 pub(crate) fn run(command: &str) -> Result<Credentials> {
-    let words = super::profile::split_words(command);
+    let words = super::profile::split_command(command, cfg!(windows));
     let Some((program, arguments)) = words.split_first() else {
         return Err(refusal("credential_process names no program"));
     };
