@@ -35,7 +35,7 @@ When the copies of a duplicate disagree, treat the disagreement as a **defect**.
   If part 2 has already landed when you start, fold any copies it left into its owner. If it has not, leave them alone.
 
   These record-root sites stay in this review's scope, among those STRUCT_SPEC.md §2 lists as deliberately not rerouted: `serie/order.rs` `record_of` (root named `"key"`), `xxhash/arrow.rs` `level_root`, the `Field::new(DEFAULT_ROOT_NAME, dtype, false)` roots at `expression/{plan.rs ≈1047, selector.rs ≈784, filter.rs ≈191, records.rs ≈148}`, the about 30 `field_from_arrow_schema(DEFAULT_ROOT_NAME, ..)` imports, and the `as_fields().is_some()` / `is_none()` reads that could say `is_struct()` (`cast.rs ≈501/599`, `arrow/mod.rs ≈320`, `iceberg/statistics.rs ≈231`, `serie/arrow.rs ≈1362`). `avro/arrow.rs` (≈29-46) is in scope under one constraint: a root `["null", record]` keeps answering the `value` child of a required `row`, never a nullable root.
-- **X3, static values (task #14).** This covers any duplicate `WINDOWNUM` / `ROWNUM` / `Statics` definitions in `serie/arrow.rs` against the statics owner.
+- **X3, static values.** This covers any duplicate `WINDOWNUM` / `ROWNUM` / `Statics` definitions in `serie/arrow.rs` against the statics owner.
 
 ## Rules that govern this work (AGENTS.md)
 
@@ -81,7 +81,7 @@ When the copies of a duplicate disagree, treat the disagreement as a **defect**.
 
 ## Preconditions
 
-1. **Wait for task #14 to merge.** It changes `serie/arrow.rs`, `serie/order.rs`, `window_serie.rs`, `rust/tests/allocations.rs`, `rust/tests/root/window_serie.rs` and `rust/tests/serie/arrow.rs`. Start from a clean `git status --short` and record HEAD.
+1. **Start from `main` after #192.** The window statics landed with #191 and the struct pair with #192. Start from a clean `git status --short` and record HEAD.
 2. **Re-anchor every candidate by symbol name** (`grep -n 'fn <name>'`) before acting. The anchors below were taken at `d7c4d93` plus uncommitted edits, and they drift. Never edit by line number.
 3. **Check `AGENTS.md` itself for names this change makes stale.** The Layout rows for `cast.rs`, `serie.rs` and `serie/` name helpers, and a consolidation that retires one edits that row in the same change.
 
