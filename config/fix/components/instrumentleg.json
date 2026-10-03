@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nolegsecurityaltid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegsecurityaltid",
-          "FIX:tag": "604"
-        }
-      },
-      {
         "name": "legsecaltidgrp",
         "dtype": {
           "type": "null"
@@ -377,17 +366,6 @@
         }
       },
       {
-        "name": "nolegsecondaryassetclasses",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegsecondaryassetclasses",
-          "FIX:tag": "2076"
-        }
-      },
-      {
         "name": "legsecondaryassetclasses",
         "dtype": {
           "type": "null"
@@ -395,17 +373,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legsecondaryassetclasses"
-        }
-      },
-      {
-        "name": "nolegassetattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegassetattributes",
-          "FIX:tag": "2308"
         }
       },
       {
@@ -1672,17 +1639,6 @@
         }
       },
       {
-        "name": "nolegevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegevents",
-          "FIX:tag": "2059"
-        }
-      },
-      {
         "name": "legevents",
         "dtype": {
           "type": "null"
@@ -1690,17 +1646,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legevents"
-        }
-      },
-      {
-        "name": "noleginstrumentparties",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noleginstrumentparties",
-          "FIX:tag": "2254"
         }
       },
       {
@@ -1722,17 +1667,6 @@
         "metadata": {
           "FIX:field": "legshortsalerestriction",
           "FIX:tag": "2209"
-        }
-      },
-      {
-        "name": "nolegcomplexevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcomplexevents",
-          "FIX:tag": "2218"
         }
       },
       {
@@ -1852,17 +1786,6 @@
         }
       },
       {
-        "name": "nolegstreams",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstreams",
-          "FIX:tag": "40241"
-        }
-      },
-      {
         "name": "legstreams",
         "dtype": {
           "type": "null"
@@ -1870,17 +1793,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legstreams"
-        }
-      },
-      {
-        "name": "nolegprovisions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprovisions",
-          "FIX:tag": "40448"
         }
       },
       {
@@ -1894,17 +1806,6 @@
         }
       },
       {
-        "name": "nolegadditionalterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegadditionalterms",
-          "FIX:tag": "41335"
-        }
-      },
-      {
         "name": "legadditionalterms",
         "dtype": {
           "type": "null"
@@ -1912,17 +1813,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legadditionalterms"
-        }
-      },
-      {
-        "name": "nolegprotectionterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprotectionterms",
-          "FIX:tag": "41616"
         }
       },
       {
@@ -1936,17 +1826,6 @@
         }
       },
       {
-        "name": "nolegcashsettlterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcashsettlterms",
-          "FIX:tag": "41344"
-        }
-      },
-      {
         "name": "legcashsettlterms",
         "dtype": {
           "type": "null"
@@ -1957,17 +1836,6 @@
         }
       },
       {
-        "name": "nolegphysicalsettlterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegphysicalsettlterms",
-          "FIX:tag": "41599"
-        }
-      },
-      {
         "name": "legphysicalsettlterms",
         "dtype": {
           "type": "null"
@@ -1975,17 +1843,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legphysicalsettlterms"
-        }
-      },
-      {
-        "name": "nolegextraordinaryevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegextraordinaryevents",
-          "FIX:tag": "42388"
         }
       },
       {

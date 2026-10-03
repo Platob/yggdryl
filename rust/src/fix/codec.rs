@@ -2080,7 +2080,8 @@ impl FixCodec {
     /// that named nothing is read the way a sentence is.
     ///
     /// A key opening with `#` is a bridge's own spelling of a name:
-    /// `#SYMBOL=TTF` is the field, `#NOPARTYIDS=1` a counter and
+    /// `#SYMBOL=TTF` is the field, `#NOPARTYIDS=1` the group it counts -
+    /// framing, never a field - and
     /// `#NOPARTYIDS[0]=…` one occurrence whose *value* is a run of member
     /// pairs - read into the fields it packs, while the arrival record keeps
     /// the pair the bridge wrote, because a rendered member path names no
@@ -2094,7 +2095,7 @@ impl FixCodec {
     /// | `#ORDERID=123` alone | `OrderID` 123: the mark drops |
     /// | `ORDERID=123\|#ORDERID=123` | `OrderID` 123 once: the marked pair restates the bare one and is dropped |
     /// | `ORDERID=123\|#ORDERID=345` | `OrderID` 123: the bare pair is the wire's word and the marked restatement is dropped |
-    /// | `NOPARTYIDS=2\|NOPARTYIDS[0]=…\|NOPARTYIDS[1]=…\|#NOPARTYIDS=6\|#NOPARTYIDS[0]=…` | one `Parties` group: the bare occurrences, then the marked ones numbered past them; an occurrence restating another is dropped and the group counts what is left, sorted |
+    /// | `NOPARTYIDS=2\|NOPARTYIDS[0]=…\|NOPARTYIDS[1]=…\|#NOPARTYIDS=6\|#NOPARTYIDS[0]=…` | one `Parties` group: the bare occurrences, then the marked ones numbered past them; an occurrence restating another is dropped and the group holds what is left, sorted, its length the count |
     ///
     /// The twin is a spelling, never an identity: a tag and a marked name -
     /// `55=AAPL|#SYMBOL=AAPL` - state two values, exactly as a tag and a bare
@@ -2178,7 +2179,7 @@ impl FixCodec {
                     // Rendered in place: a byte vector never refuses a write.
                     let _ = std::io::Write::write_fmt(&mut path, format_args!("{occurrence}"));
                     path.extend_from_slice(b"]");
-                    let segments = members(&held.value, declared, 0);
+                    let segments = members(&self.registry, &held.value, declared, 0);
                     // The bridge closed what it packed inside this occurrence
                     // where it wrote a close anywhere but at the run's own
                     // end; a run carrying none is bounded by the dictionary.
@@ -2281,22 +2282,16 @@ impl FixCodec {
             Hashed::Duplicate => {
                 let marked = line::trim_ascii(held.value());
                 let digest = stem_digest(stem_of(stripped));
-                // A marked counter counts the marked occurrences, which are
-                // numbered past the bare ones, so it says nothing against the
-                // bare count.
-                let counts_marked = arrived.iter().any(|other| {
-                    other.marked
-                        && group_index(line::trim_ascii(other.key()))
-                            .is_some_and(|(group, _)| folds_twin(group, stripped))
-                });
-                if counts_marked {
-                    return None;
-                }
                 if let Some((_, key, value)) = bare.iter().find(|(held_digest, key, _)| {
                     *held_digest == digest && folds_twin(key, stripped)
                 }) {
                     let value = line::trim_ascii(value);
-                    if value != marked {
+                    // A marked counter is the group's spelling and no fact:
+                    // the group is its list, whose length is the count, and
+                    // the marked occurrences are numbered past the bare ones
+                    // into it, so its number says nothing against the bare
+                    // one's.
+                    if value != marked && !self.is_counter_key(stripped) {
                         conflicts.push(super::FixAnomaly::new(
                             super::build::folded_key(key),
                             format!(
@@ -2383,7 +2378,7 @@ impl FixCodec {
                     // What the sub-occurrence packed into its own value,
                     // then every following segment up to where it ends.
                     let end = self.extent(segments, at, sub_declared, message, explicit);
-                    let mut nested = members(held, sub_declared, end - at);
+                    let mut nested = members(&self.registry, held, sub_declared, end - at);
                     nested.extend_from_slice(&segments[at..end]);
                     self.render_members(&sub_path, &nested, message, explicit, depth + 1, out);
                     at = end;
@@ -2446,7 +2441,12 @@ impl FixCodec {
                             at = self.extent(segments, at + 1, sub_declared, message, false);
                             continue;
                         }
-                        _ if !explicit && !declares(declared, key.as_bytes()) => break,
+                        _ if !explicit
+                            && !declares(declared, key.as_bytes())
+                            && !self.declares_counter(declared, key.as_bytes()) =>
+                        {
+                            break;
+                        }
                         _ => {}
                     }
                 }
@@ -2456,8 +2456,32 @@ impl FixCodec {
         at
     }
 
+    /// Whether `key` spells the counter of a group the level whose members
+    /// are `declared` holds, by its tag or its name: the counter heads the
+    /// group it frames and is no member of its own. Read off the counters the
+    /// level's groups state, so an undeclared key costs no dictionary probe.
+    fn declares_counter(&self, declared: &[Field], key: &[u8]) -> bool {
+        let Ok(key) = std::str::from_utf8(key) else {
+            return false;
+        };
+        let key = key.trim();
+        let tag = super::field::parse_tag(key);
+        declared
+            .iter()
+            .filter_map(|field| field.as_fix().counter().ok().flatten())
+            .any(|counter| {
+                tag == Some(counter)
+                    || self
+                        .registry
+                        .get_field_by_tag(counter)
+                        .is_some_and(|field| crate::folds_equal(field.name(), key))
+            })
+    }
+
     /// Whether the level whose members are `declared` declares the group
-    /// `sub` addresses: the group itself, or the counter that heads it.
+    /// `sub` addresses - by the group's name or the counter that heads it,
+    /// `NOPARTYSUBIDS` as much as `PARTYSUBIDS`: a counter is no member of
+    /// its own, only the group's spelling.
     fn declares_group(&self, declared: &[Field], sub: &[u8], message: Declared<'_>) -> bool {
         let Some(group) = self.group_definition(sub, message) else {
             return false;
@@ -2465,10 +2489,8 @@ impl FixCodec {
         let counter = group.as_fix().counter().ok().flatten();
         declared.iter().any(|field| {
             crate::folds_equal(field.name(), group.name())
-                || counter.is_some_and(|counter| {
-                    field.as_fix().tag().ok().flatten() == Some(counter)
-                        || field.as_fix().counter().ok().flatten() == Some(counter)
-                })
+                || counter
+                    .is_some_and(|counter| field.as_fix().counter().ok().flatten() == Some(counter))
         })
     }
 
@@ -2929,6 +2951,22 @@ impl FixCodec {
             return &[];
         };
         super::schema::item_fields(field).unwrap_or_default()
+    }
+
+    /// Whether a bridge key names a NumInGroup counter, by its tag or by its
+    /// name: the dictionary's own field, so the probe is one lookup that a
+    /// declared name answers without building anything.
+    fn is_counter_key(&self, key: &[u8]) -> bool {
+        let Ok(key) = std::str::from_utf8(key) else {
+            return false;
+        };
+        let field = match super::field::parse_tag(key) {
+            Some(tag) => self.registry.get_field_by_tag(tag),
+            None => self.registry.get_field_by_name(key),
+        };
+        field
+            .and_then(|field| self.registry.identity_of(field))
+            .is_some_and(|(tag, _)| self.registry.is_counter_tag(tag))
     }
 
     /// The repeating group a bridge key addresses, as the dictionary declares
@@ -3422,8 +3460,13 @@ fn group_index(key: &[u8]) -> Option<(&[u8], usize)> {
 /// between them - is a close, kept for the renderer to end a nested
 /// occurrence on; a segment that is neither a pair nor empty is residue and
 /// stays out. `spare` is room for the segments a caller appends behind them.
-fn members(value: &TextBytes, declared: &[Field], spare: usize) -> Vec<Segment> {
-    let parts = split_members(value.as_bytes(), declared);
+fn members(
+    registry: &FixRegistry,
+    value: &TextBytes,
+    declared: &[Field],
+    spare: usize,
+) -> Vec<Segment> {
+    let parts = split_members(registry, value.as_bytes(), declared);
     // Sized once: a segment is at most one per part, and a filtered collect
     // states no count of its own.
     let mut segments = Vec::with_capacity(parts.len() + spare);
@@ -3460,12 +3503,12 @@ fn member_pair(value: &TextBytes, part: Range<usize>) -> Option<(TextBytes, Text
 /// an unresolved run remains one segment. Every part is a range of the value
 /// and nothing more, so a wide occurrence costs the list, no byte, and no
 /// count of the page until a part is read as a pair.
-fn split_members(held: &[u8], declared: &[Field]) -> Vec<Range<usize>> {
+fn split_members(registry: &FixRegistry, held: &[u8], declared: &[Field]) -> Vec<Range<usize>> {
     let Some(separator) = MEMBER_SEPARATORS
         .into_iter()
         .find(|marker| memchr::memmem::find(held, marker).is_some())
     else {
-        return split_on_declared_members(held, declared);
+        return split_on_declared_members(registry, held, declared);
     };
     let mut parts = Vec::new();
     let mut start = 0;
@@ -3481,10 +3524,31 @@ fn split_members(held: &[u8], declared: &[Field]) -> Vec<Range<usize>> {
 /// Splits a separator-less run at names declared directly by its group.
 ///
 /// The first `KEY=` starts the run. After that, the earliest declared member
-/// spelling followed by `=` starts the next pair. Matching uses the FIX name
-/// fold, and the longest declared match at one byte wins. Bytes that match no
-/// declared member remain verbatim in the surrounding pair.
-fn split_on_declared_members(held: &[u8], declared: &[Field]) -> Vec<Range<usize>> {
+/// spelling followed by `=` starts the next pair - a nested group spelled by
+/// the counter heading it, `NOPARTYSUBIDS=`, as a bridge packs one. Matching
+/// uses the FIX name fold, and the longest declared match at one byte wins.
+/// Bytes that match no declared member remain verbatim in the surrounding
+/// pair.
+fn split_on_declared_members(
+    registry: &FixRegistry,
+    held: &[u8],
+    declared: &[Field],
+) -> Vec<Range<usize>> {
+    // Each member's spelling, resolved once for the run: the counter's name
+    // for a nested group, the member's own otherwise.
+    let names: SmallVec<[&str; 16]> = declared
+        .iter()
+        .map(|field| {
+            field
+                .as_fix()
+                .counter()
+                .ok()
+                .flatten()
+                .and_then(|counter| registry.get_field_by_tag(counter))
+                .unwrap_or(field)
+                .name()
+        })
+        .collect();
     let mut parts = Vec::new();
     let Some(first_equals) = memchr::memchr(b'=', held) else {
         parts.push(0..held.len());
@@ -3493,7 +3557,7 @@ fn split_on_declared_members(held: &[u8], declared: &[Field]) -> Vec<Range<usize
     let mut start = 0;
     let mut at = first_equals + 1;
     while at < held.len() {
-        let Some(prefix_len) = declared_member_prefix(&held[at..], declared) else {
+        let Some(prefix_len) = declared_member_prefix(&held[at..], &names) else {
             at += 1;
             continue;
         };
@@ -3506,11 +3570,10 @@ fn split_on_declared_members(held: &[u8], declared: &[Field]) -> Vec<Range<usize
 }
 
 /// The length through `=` of the longest declared member at this byte.
-fn declared_member_prefix(value: &[u8], declared: &[Field]) -> Option<usize> {
-    declared
+fn declared_member_prefix(value: &[u8], names: &[&str]) -> Option<usize> {
+    names
         .iter()
-        .filter_map(|field| {
-            let name = field.name();
+        .filter_map(|name| {
             let prefix = folded_name_prefix(value, name)?;
             let length = name.bytes().filter(|byte| !name_separator(*byte)).count();
             Some((length, prefix))

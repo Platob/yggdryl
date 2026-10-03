@@ -115,14 +115,13 @@ enum Write {
     Field(FieldWrite),
     /// One occurrence of a repeating group: merged into the occurrence at
     /// `occurrence`, appended when there is none; the Serie itself created
-    /// from `serie` when the level holds none. The counter child is set to
-    /// the count the group then has.
+    /// from `serie` when the level holds none. The group's length is its
+    /// count, so nothing else is written.
     Group {
         at: Option<usize>,
         serie: Option<Field>,
         occurrence: Option<usize>,
         members: Vec<Write>,
-        counter: FieldWrite,
     },
 }
 
@@ -212,7 +211,7 @@ impl Level {
         }
     }
 
-    /// Lands one planned write, members and counter included.
+    /// Lands one planned write, members included.
     fn apply(&mut self, write: Write) {
         match write {
             Write::Field(write) => self.write_field(write),
@@ -221,7 +220,6 @@ impl Level {
                 serie,
                 occurrence,
                 members,
-                counter,
             } => {
                 let at = match (at, serie) {
                     (Some(at), _) => at,
@@ -250,7 +248,6 @@ impl Level {
                 for member in members {
                     target.apply(member);
                 }
-                self.write_field(counter);
             }
         }
     }
@@ -333,66 +330,21 @@ impl Level {
             }
         }
         // Keyed once per child rather than once per comparison: tagged
-        // members by tag, a group after the scalar sharing its tag, and
-        // untagged bridge fields after them by lowercased name. The sort is
-        // stable, so members one key names keep their order.
+        // members by tag, a group - keyed by its counter - after a scalar a
+        // bridge filed under that tag, and untagged bridge fields after them
+        // by lowercased name. The sort is stable, so members one key names
+        // keep their order.
         self.children
             .sort_by_cached_key(|child| match child_tag(registry, child) {
                 Some(tag) => (false, tag, matches!(child, Child::Group(..)), String::new()),
                 None => (true, 0, false, child.name().to_ascii_lowercase()),
             });
     }
-
-    /// Brings every scalar counter in step with the merged Serie it counts.
-    ///
-    /// A group holding no occurrence is stated by its count alone, so a
-    /// count is written for one only where the level already states it: an
-    /// empty list beside no count is the group absent - what a table storing
-    /// a null list as an empty one reads back - and a zero written beside it
-    /// would state a group no observation stated.
-    fn sync_group_counts(&mut self, registry: &FixRegistry) -> Result<()> {
-        for child in &mut self.children {
-            if let Child::Group(_, occurrences) = child {
-                for occurrence in occurrences.iter_mut().flatten() {
-                    occurrence.sync_group_counts(registry)?;
-                }
-            }
-        }
-        let groups: Vec<(i32, usize)> = self
-            .children
-            .iter()
-            .filter_map(|child| match child {
-                Child::Group(field, occurrences) => tag_and_counter(registry, field)
-                    .1
-                    .map(|counter| (counter, occurrences.len())),
-                Child::Flat(..) => None,
-            })
-            .collect();
-        for (counter, count) in groups {
-            let Some(field) = registry.get_field_by_tag(counter).map(stated_field) else {
-                continue;
-            };
-            let at = self.position_of_field(Some(counter), field.name());
-            if count == 0
-                && at
-                    .and_then(|at| self.value_at(at))
-                    .is_none_or(Scalar::is_null)
-            {
-                continue;
-            }
-            let value = field.scalar(Scalar::from(i64::try_from(count).unwrap_or(i64::MAX)))?;
-            match at {
-                Some(at) => self.children[at] = Child::Flat(field, value),
-                None => self.children.push(Child::Flat(field, value)),
-            }
-        }
-        Ok(())
-    }
 }
 
 /// The FIX identity one child states. A group is named by its counter; a
-/// scalar by its tag. Shape remains part of the identity because the scalar
-/// counter and the Serie it counts legitimately share one numeric tag.
+/// scalar by its tag. Shape remains part of the identity because a bridge
+/// scalar filed under a counter's tag shares that number with the group.
 fn child_tag(registry: &FixRegistry, child: &Child) -> Option<i32> {
     let field = child.field();
     let (tag, counter) = tag_and_counter(registry, field);
@@ -1202,7 +1154,7 @@ impl<'msg> Restater<'msg> {
 
     /// One occurrence of `group` planned from fills: merged into the
     /// occurrence whose constant members all equal the fills' constants,
-    /// else appended, the counter set to the count the group then has.
+    /// else appended.
     ///
     /// An occurrence stating no constant matches the first occurrence there
     /// is, so a second pass finds what the first wrote rather than appending
@@ -1219,7 +1171,6 @@ impl<'msg> Restater<'msg> {
             .registry
             .get_definition(crate::FixCategory::Groups, group)?;
         let counter_tag = definition.as_fix().counter().ok().flatten()?;
-        let counter_field = stated_field(self.msg.known_by_tag(counter_tag)?);
         let at = level.position_of_group(counter_tag, definition.name());
         let empty: Vec<Option<Level>> = Vec::new();
         let (serie, occurrences) = match at {
@@ -1260,21 +1211,11 @@ impl<'msg> Restater<'msg> {
         for member in members {
             planned.push(self.fill_write(target, reads, source, &[], member, false, false)?);
         }
-        let count = occurrences.len() + usize::from(matched.is_none());
-        let value = counter_field
-            .scalar(Scalar::from(i64::try_from(count).ok()?))
-            .ok()?;
-        let counter = FieldWrite {
-            at: self.position_of(level, counter_tag),
-            field: counter_field,
-            value,
-        };
         Some(Write::Group {
             at,
             serie,
             occurrence: matched,
             members: planned,
-            counter,
         })
     }
 
@@ -1347,7 +1288,6 @@ pub(super) fn merge_content(reference: &mut FixMsg, other: &FixMsg) -> Result<()
         Level::unpack(other.as_field().fields(), other_values),
     );
     merged.merge_from(&registry, other_level);
-    merged.sync_group_counts(&registry)?;
     merged.sort(&registry);
     let (fields, values) = merged.pack()?;
     let root = Field::new_with_metadata(

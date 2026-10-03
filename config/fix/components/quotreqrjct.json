@@ -35,17 +35,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -242,17 +231,6 @@
         }
       },
       {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
-        }
-      },
-      {
         "name": "stipulations",
         "dtype": {
           "type": "null"
@@ -296,17 +274,6 @@
         }
       },
       {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
-        }
-      },
-      {
         "name": "quotreqlegs",
         "dtype": {
           "type": "null"
@@ -314,17 +281,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "quotreqlegs"
-        }
-      },
-      {
-        "name": "noquotequalifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noquotequalifiers",
-          "FIX:tag": "735"
         }
       },
       {
@@ -357,17 +313,6 @@
         "metadata": {
           "FIX:field": "quotepricetype",
           "FIX:tag": "692"
-        }
-      },
-      {
-        "name": "nopricequalifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricequalifiers",
-          "FIX:tag": "2709"
         }
       },
       {
@@ -464,17 +409,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "yielddata"
-        }
-      },
-      {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
         }
       },
       {

@@ -1578,7 +1578,11 @@ fn lifecycle_merges_overlapping_bridge_groups_by_sorted_occurrence_index() {
     assert_eq!(merged.len(), 1);
     let message = &merged[0];
     assert_eq!(
-        message.get_by_tag(453).as_ref().and_then(Scalar::as_i128),
+        message
+            .by_name("parties")
+            .unwrap()
+            .as_sequence()
+            .map(<[Scalar]>::len),
         Some(2)
     );
     let parties = message

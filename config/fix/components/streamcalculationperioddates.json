@@ -37,17 +37,6 @@
         }
       },
       {
-        "name": "nostreamcalculationperiodbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreamcalculationperiodbusinesscenters",
-          "FIX:tag": "40958"
-        }
-      },
-      {
         "name": "streamcalculationperiodbusinesscenters",
         "dtype": {
           "type": "null"
@@ -55,17 +44,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "streamcalculationperiodbusinesscenters"
-        }
-      },
-      {
-        "name": "nostreamcalculationperioddates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreamcalculationperioddates",
-          "FIX:tag": "41241"
         }
       },
       {
@@ -98,17 +76,6 @@
         "metadata": {
           "FIX:field": "streamfirstperiodstartdatebusinessdayconvention",
           "FIX:tag": "40076"
-        }
-      },
-      {
-        "name": "nostreamfirstperiodstartdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreamfirstperiodstartdatebusinesscenters",
-          "FIX:tag": "40959"
         }
       },
       {

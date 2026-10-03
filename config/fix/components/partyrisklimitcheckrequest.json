@@ -146,17 +146,6 @@
         }
       },
       {
-        "name": "norequestingpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norequestingpartyids",
-          "FIX:tag": "1657"
-        }
-      },
-      {
         "name": "requestingpartyids",
         "dtype": {
           "type": "null"
@@ -167,17 +156,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -185,17 +163,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "norelatedpartydetailid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedpartydetailid",
-          "FIX:tag": "1562"
         }
       },
       {
@@ -219,17 +186,6 @@
         }
       },
       {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
-        }
-      },
-      {
         "name": "legordgrp",
         "dtype": {
           "type": "null"
@@ -237,17 +193,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legordgrp"
-        }
-      },
-      {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
         }
       },
       {

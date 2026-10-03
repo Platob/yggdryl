@@ -420,8 +420,8 @@ impl FixCodec {
     /// A stream of messages as a stream of batches of FIX rows under `schema`.
     ///
     /// Each message fills one row through [`FixMsg::into_row`]: the schema's
-    /// columns in its order, each by its tag or its group's counter, a column
-    /// carrying neither by the child of its name. The other half of what the
+    /// columns in its order, each by its tag or, for a group, by the counter
+    /// tag that names it, a column carrying neither by the child of its name. The other half of what the
     /// Arrow twins compose; [`fix_schema`](super::fix_schema) is the schema a
     /// parsed message fills whole, and a schema read off a batch by
     /// [`Self::messages`] is the one its messages return to. Batches close on

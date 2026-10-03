@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nounderlyingreturnrateprices",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingreturnrateprices",
-          "FIX:tag": "43064"
-        }
-      },
-      {
         "name": "underlyingreturnrateprices",
         "dtype": {
           "type": "null"
@@ -88,17 +77,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingreturnrateprices"
-        }
-      },
-      {
-        "name": "nounderlyingreturnratefxconversions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingreturnratefxconversions",
-          "FIX:tag": "43030"
         }
       },
       {
@@ -244,17 +222,6 @@
         }
       },
       {
-        "name": "nounderlyingreturnrateinformationsources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingreturnrateinformationsources",
-          "FIX:tag": "43060"
-        }
-      },
-      {
         "name": "underlyingreturnrateinformationsources",
         "dtype": {
           "type": "null"
@@ -284,17 +251,6 @@
         "metadata": {
           "FIX:field": "underlyingreturnratecashflowtype",
           "FIX:tag": "43054"
-        }
-      },
-      {
-        "name": "nounderlyingreturnratedates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingreturnratedates",
-          "FIX:tag": "43008"
         }
       },
       {

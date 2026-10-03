@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nounderlyingsecurityaltid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingsecurityaltid",
-          "FIX:tag": "457"
-        }
-      },
-      {
         "name": "undsecaltidgrp",
         "dtype": {
           "type": "null"
@@ -1036,17 +1025,6 @@
         }
       },
       {
-        "name": "nounderlyingstips",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingstips",
-          "FIX:tag": "887"
-        }
-      },
-      {
         "name": "underlyingstipulations",
         "dtype": {
           "type": "null"
@@ -1098,17 +1076,6 @@
         "metadata": {
           "FIX:field": "underlyingcapvalue",
           "FIX:tag": "1038"
-        }
-      },
-      {
-        "name": "noundlyinstrumentparties",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noundlyinstrumentparties",
-          "FIX:tag": "1058"
         }
       },
       {
@@ -1306,17 +1273,6 @@
         "metadata": {
           "FIX:field": "underlyingfutureidsource",
           "FIX:tag": "2621"
-        }
-      },
-      {
-        "name": "nounderlyingevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingevents",
-          "FIX:tag": "1981"
         }
       },
       {
@@ -1583,17 +1539,6 @@
         }
       },
       {
-        "name": "nounderlyingsecondaryassetclasses",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingsecondaryassetclasses",
-          "FIX:tag": "2080"
-        }
-      },
-      {
         "name": "underlyingsecondaryassetclasses",
         "dtype": {
           "type": "null"
@@ -1601,17 +1546,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingsecondaryassetclasses"
-        }
-      },
-      {
-        "name": "nounderlyingassetattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingassetattributes",
-          "FIX:tag": "2312"
         }
       },
       {
@@ -2065,17 +1999,6 @@
         }
       },
       {
-        "name": "nounderlyingcomplexevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcomplexevents",
-          "FIX:tag": "2045"
-        }
-      },
-      {
         "name": "underlyingcomplexevents",
         "dtype": {
           "type": "null"
@@ -2192,17 +2115,6 @@
         }
       },
       {
-        "name": "nounderlyingstreams",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingstreams",
-          "FIX:tag": "40540"
-        }
-      },
-      {
         "name": "underlyingstreams",
         "dtype": {
           "type": "null"
@@ -2210,17 +2122,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingstreams"
-        }
-      },
-      {
-        "name": "nounderlyingprovisions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingprovisions",
-          "FIX:tag": "42149"
         }
       },
       {
@@ -2234,17 +2135,6 @@
         }
       },
       {
-        "name": "nounderlyingadditionalterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingadditionalterms",
-          "FIX:tag": "42036"
-        }
-      },
-      {
         "name": "underlyingadditionalterms",
         "dtype": {
           "type": "null"
@@ -2252,17 +2142,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingadditionalterms"
-        }
-      },
-      {
-        "name": "nounderlyingprotectionterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingprotectionterms",
-          "FIX:tag": "42068"
         }
       },
       {
@@ -2276,17 +2155,6 @@
         }
       },
       {
-        "name": "nounderlyingcashsettlterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcashsettlterms",
-          "FIX:tag": "42041"
-        }
-      },
-      {
         "name": "underlyingcashsettlterms",
         "dtype": {
           "type": "null"
@@ -2294,17 +2162,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingcashsettlterms"
-        }
-      },
-      {
-        "name": "nounderlyingphysicalsettlterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingphysicalsettlterms",
-          "FIX:tag": "42060"
         }
       },
       {
@@ -2335,17 +2192,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "underlyingdividendpayout"
-        }
-      },
-      {
-        "name": "nounderlyingextraordinaryevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingextraordinaryevents",
-          "FIX:tag": "42884"
         }
       },
       {

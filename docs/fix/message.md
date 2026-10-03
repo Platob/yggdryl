@@ -7,11 +7,11 @@
 | item | contract |
 | --- | --- |
 | Holders | the event the message is, read through the four [graph traits](../graph/index.md#traits) - `Element`, `Event`, `Market` and `Operation`: the identities, the codes, the instants, the place at the instant, and the market reading *derived* from the FIX fields the message stated: the price, the quantity, the bid and the ask, the state, the side and the three [identifier maps](#the-identifier-maps) - `securityids`, `identifiers` and `partyids`; `lifted() -> &FixLifted`, the FIX numbers and identifiers the message lifted out of its row, exactly as it stated them - a fact the traits answer but this holder lacks is derived, and a derived fact reaches neither the wire, the entries nor the code; `header() -> &FixHeader`, the frame: tags 8, 35, 49, 56, 34, 52, 43, 385 and the trailer 93, 89, 10 typed; `capture() -> &FixCapture`, `msgpluginid`, `msgctxid` and `msgsessionid` - what a bridge's own row header stated, read off the line's own bytes, and never what a *reader* said about the line - the `msgsesseventid` the message derives from them, and the `msgoriginator` and `conversationid` a bridge's log line names; `text() -> Option<&str>`, `Text(58)`; `metadata() -> &BTreeMap<SmolStr, SmolStr>`, what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.acronym` - each under the key as the bridge spelled it, folded |
-| Row | `as_field()` and `as_value()`: a root Struct [`Field`](../types/field.md) and the `Scalar::Serie` it declares, holding only what no holder owns - the dictionary's fields, a group as a Serie of Struct occurrences beside its `int32` counter, a component as a Struct, a key no dictionary explains under its own spelling; a [typed tag](#typed-tags) is never in it |
-| Entries | `entries() -> &[FixEntry]`, the row read as a tree, derived on the first ask and dropped by every write: one entry per non-null child, each carrying the tag the dictionary resolved - `0` for a key it does not explain - the canonical name and the value as the wire spells it; a group is one entry under its counter valued the count, with one valueless entry per occurrence heading the members; a group holding no occurrence is an entry only where the counter beside it states the count - `802=0` parses as that counter and the empty list, and re-emits - so an empty list beside no stated count, which is what a table storing a null list as an empty one reads an absent group back as, is no entry; a component a valueless entry heading its members; the typed facts are not entries |
+| Row | `as_field()` and `as_value()`: a root Struct [`Field`](../types/field.md) and the `Scalar::Serie` it declares, holding only what no holder owns - the dictionary's fields, a group as a Serie of Struct occurrences, its length the count and no counter field beside it, a component as a Struct, a key no dictionary explains under its own spelling; a [typed tag](#typed-tags) is never in it |
+| Entries | `entries() -> &[FixEntry]`, the row read as a tree, derived on the first ask and dropped by every write: one entry per non-null child, each carrying the tag the dictionary resolved - `0` for a key it does not explain - the canonical name and the value as the wire spells it; a group is one entry filed under its counter's tag, valued the group's length as text - the count is never a field of its own - with one valueless entry per occurrence heading the members; a group stated empty is an entry valued `0` - `802=0` parses as the empty list and re-emits - and a null list is the group absent, no entry; a table column holds a group as null or as at least one occurrence, so a stated zero rides the residual `fixentries` record, and a column read back as `[]` where the row held null, as PyIceberg does, states nothing and is no entry; a component a valueless entry heading its members; the typed facts are not entries |
 | Wire | `into_bytes(separator)` and `into_text(separator)` re-emit what the message *stated*: the header tags 8, 35, 49, 56, 34, 43 and 52 - the last only where the message stated it - then the fields it lifted in tag order - 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 198, 262 and 1003 - then 58, then the entries pre-order, then the trailer 93, 89 and 10, which closes the frame whatever the body's tags are. A fact the message *derived* - the price it is about, the state it reached, the category it is filed under - is emitted nowhere. A coded fact spells as its wire code, `54=1`. `digest() -> u128` is the XXH3-128 of what `into_bytes` emits, whatever separator |
-| Constructors | `FixMsg::new` links `FixRegistry::from_env()`; `FixMsg::with_registry` keeps the `Arc` it is given, lifts every typed fact out of the children that state it, settles the clocks and derives the identity, and runs no derivation - a [parse](capture.md#a-reader-is-the-whole-parse-surface) does; `FixMsg::from_row` reads a [fixed row](#a-row-is-a-message-again) back, entries included |
-| Lookups | every one answers an owned `Scalar`: a typed tag its holder's fact, or nothing where the holder states none; any other key the row child it reaches |
+| Constructors | `FixMsg::new` links `FixRegistry::from_env()`; `FixMsg::with_registry` keeps the `Arc` it is given, lifts every typed fact out of the children that state it, settles the clocks and derives the identity, and runs no derivation - a [parse](capture.md#a-reader-is-the-whole-parse-surface) does - and refuses a root listing a group's counter beside the group, `expected a group alone, its length the count, got `NoPartyIDs` (453) counting the group `Parties` beside it`; `FixMsg::from_row` reads a [fixed row](#a-row-is-a-message-again) back, entries included |
+| Lookups | every one answers an owned `Scalar`: a typed tag its holder's fact, or nothing where the holder states none; any other key the row child it reaches. A group's counter tag reaches nothing, the count being the group's length: `by_tag(453)` is a miss and `by_name("parties")` holds the occurrences |
 | Writes | `set`, `set_many`, `with_value` and `remove`: a key reaching a typed fact writes its holder, a `Null` clearing it; a key reaching [the capture's own column](#a-row-is-a-message-again) - `sourceurl` - is refused, naming the column, because a message holds no fact for it; any other key [writes the row](#written-into-the-row), typed through the registry's field; every write settles the identity again; a refusal leaves the message unchanged. `set_many` and `with_value` are Rust-only |
 | Settled | `currunix` is a stated `currunix`, else the [official clock](capture.md#the-official-clock-dates-the-message) standing within the codec's `official_time_delay_ms` of `SendingTime(52)` - the `TransactTime(60)` the message states, else the `TrdRegTimestamp(769)` its `TrdRegTimestampType(770)` says is about the event or a hop - else that `SendingTime`; `SendingTime` is the message's own, else a row cell or line capture reaching tag 52, else the `currunix` of the [text line](../media/text.md) it was read out of, else the codec's `default_sending_time`, else one UTC-now read at intake, and only a stated one is a fact of the message - it goes back on the wire and into a row, while a stand-in intake supplied does neither; `creaunix` is a stated one, else `currunix`; `execunix` is the most precise execution clock the message states, else `currunix` where `FixMsg::is_execution` accepts the report and it follows nothing; the [identity](../hashing.md) - `crosscode`, `crosshashcode`, `currhashcode`, `curruuid`, `crossuuid` - is derived from what the message *states* but the standard header and trailer, less `MsgType(35)`, and never the chain it is in: the event facts, text, metadata, lifted FIX fields and canonical entry tree. A complete nonempty `msgtype`, capture `msgsessionid` and capture `msgctxid` with a present `msgseqnum` are also settled as the capture's `msgsesseventid`, the four values joined by `:` - `"<msgtype>:<msgsessionid>:<msgctxid>:<msgseqnum>"`, as `8:e7256476:9effef3e6a:1094`; the sequence is canonical `u64`, an absent part removes it, and this delivery identity is excluded from the FIX content identity. An explicit nonempty `crosscode` wins; otherwise the first nonempty `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` or `MDReqID(262)` names the chain, and the message stores it as `{kind}:{side}:{base}` - the [`MarketDataKind`](../types/enum/marketdatakind.md#sided-kinds-and-batches) code of the category it is filed under, then the `Side` code of the side it takes where that category is sided (`ORDR`, `EXEC`: [`MarketDataKind::is_sided`](../types/enum/marketdatakind.md#sided-kinds-and-batches)), `0` for any other category - a quote's, whose side is a tag over the two legs it holds, among them - or a side of `UNKN` - `10:1:A1` for a buy order `A1`, `14:0:Q1` for a quote `Q1` whatever side it tags, `21:0:T1` for a trade - so a buy and a sell order under one `ClOrdID` are two chains. `Market::stored_crosscode` is the one place the prefix is spelled, and `crosshashcode` and `crossuuid` read the stored code |
 | Identity | a field is its tag and its name; a message speaks no dialect and carries no membership, so a bare tag or name resolves in the registry's [one namespace](#one-namespace) |
@@ -353,7 +353,7 @@ An order list with a buy and a sell is the list, then one order per entry, each 
 
 ### What a leaf's metadata holds
 
-Every leaf carries, in its [`Market::get_metadata`](../graph/market.md#contract), what its message states that no typed column reads and no identifier map of the leaf holds, each value the canonical text it spells - a decimal the shortest that states it: the bridge's namespaced keys as they are (`tech.clientid`), then every other top-level field under its folded name (`execinst`, `handlinst`), and a group, a component or a map as one key under its folded name holding JSON - a group the array of one object per occurrence, a component or a map one object, each member under its folded name and nested groups and components recursing, every leaf the canonical text a root field spells, so no value is a JSON number and the keys are in name order: `miscfees` holds `[{"miscfeeamt":"1.5","miscfeecurr":"EUR","miscfeetype":"4"}]`. A key no dictionary resolved is a top-level field like any other, `9999` under its own spelling. Left out are the envelope a message's code leaves out, so two hops of one message are one leaf; every tag a typed column reads; an alternate identifier's source field; what the leaf's [identifier maps](#the-identifier-maps) hold, below; the fields read by name - `eventtimestamp`, the detailed CFI, `BidCurrency` and `AskCurrency`, the security-type names; null members and a group's counter; and the group a message expands into its leaves, `NoMDEntries(268)` for `W` and `X`, `NoSides(552)` for an execution a trade split off. A book entry and a trade side add their own occurrence's scalar members keyed bare, each leading a message field of the same name, a nested member of that occurrence as JSON under its bare name, and never a sibling's.
+Every leaf carries, in its [`Market::get_metadata`](../graph/market.md#contract), what its message states that no typed column reads and no identifier map of the leaf holds, each value the canonical text it spells - a decimal the shortest that states it: the bridge's namespaced keys as they are (`tech.clientid`), then every other top-level field under its folded name (`execinst`, `handlinst`), and a group, a component or a map as one key under its folded name holding JSON - a group the array of one object per occurrence, a component or a map one object, each member under its folded name and nested groups and components recursing, every leaf the canonical text a root field spells, so no value is a JSON number and the keys are in name order: `miscfees` holds `[{"miscfeeamt":"1.5","miscfeecurr":"EUR","miscfeetype":"4"}]`. A key no dictionary resolved is a top-level field like any other, `9999` under its own spelling. Left out are the envelope a message's code leaves out, so two hops of one message are one leaf; every tag a typed column reads; an alternate identifier's source field; what the leaf's [identifier maps](#the-identifier-maps) hold, below; the fields read by name - `eventtimestamp`, the detailed CFI, `BidCurrency` and `AskCurrency`, the security-type names; null members; and the group a message expands into its leaves, `NoMDEntries(268)` for `W` and `X`, `NoSides(552)` for an execution a trade split off. A book entry and a trade side add their own occurrence's scalar members keyed bare, each leading a message field of the same name, a nested member of that occurrence as JSON under its bare name, and never a sibling's.
 
 What the leaf's identifier maps hold is no metadata: each `Parties(453)` or `RootParties(1116)` occurrence whose party id its `partyids` hold, the `Account(1)` they hold as `account`, and each `RegulatoryTradeIDGrp` or `SideRegulatoryTradeIDGrp` occurrence whose identifier its `identifiers` hold under its type (`regtradeid`, `tvtic`, ...). A book entry's own `Parties(453)` are its leaf's party ids, leading the message's, as a trade side's are its execution's, and leave the entry leaf's metadata. What no set holds stays: a second party of one role and source, whose occurrence alone stays in `parties`, and a value no identifier holds. An empty `W` snapshot's control holds no identifiers, so its metadata keeps its parties and its account.
 
@@ -503,20 +503,20 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     let mut parties = DataType::serie(party.clone()).nullable_field("Parties");
     parties.as_fix_mut().set_counter(453)?;
     parties.as_fix_mut().set_component("Party")?;
-    let mut registry = FixRegistry::from_fields([msgtype.clone(), side.clone(), symbol.clone(), qty.clone(), count.clone(), party_id])?;
+    let mut registry = FixRegistry::from_fields([msgtype.clone(), side.clone(), symbol.clone(), qty.clone(), count, party_id])?;
     registry.insert(party)?;
     registry.insert(parties.clone())?;
     let registry = Arc::new(registry);
 
-    // The root carries two typed tags and a tag no dictionary explains.
-    let root = DataType::from(StructType::from_fields([msgtype, side, qty, symbol, count, parties, DataType::utf8().nullable_field("9999")])?)
+    // The root carries two typed tags and a tag no dictionary explains, and
+    // the group alone: its counter stays a field of the registry, never of a root.
+    let root = DataType::from(StructType::from_fields([msgtype, side, qty, symbol, parties, DataType::utf8().nullable_field("9999")])?)
         .required_field("NewOrderSingle");
     let value = Scalar::from_struct([
         ("MsgType", Scalar::from("D")),
         ("Side", Scalar::from("1")),
         ("Symbol", Scalar::from("AAPL")),
         ("OrderQty", Scalar::from(100_i64)),
-        ("NoPartyIDs", Scalar::from(1_i32)),
         ("Parties", Scalar::from_sequence([
             Scalar::from_struct([("PartyID", Scalar::from("BROKER"))])?,
         ])),
@@ -526,11 +526,11 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
 
     // The typed facts left the row for their holders: the type is the
     // header's and the quantity the message lifts. The side is an ordinary
-    // child, so it stays in the row beside the four others.
+    // child, so it stays in the row beside the three others.
     assert_eq!(msg.header().msgtype(), "D");
     assert_eq!(msg.get_side().as_str(), "BUYS");
     let children: Vec<&str> = msg.as_field().fields().iter().map(yggdryl::Field::name).collect();
-    assert_eq!(children, ["Side", "Symbol", "NoPartyIDs", "Parties", "9999"]);
+    assert_eq!(children, ["Side", "Symbol", "Parties", "9999"]);
     // A lookup answers the holder for a typed tag and the row for the rest.
     // `OrderQty` is the order quantity the message lifts, so it answers exact,
     // and a fresh order's quantity is what is left of it to work;
@@ -544,6 +544,9 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     assert_eq!(msg.get_quantity(), Some(yggdryl::Decimal::from_int(100)));
     assert_eq!(msg.by_name("ticker")?, Scalar::from("AAPL"));
     assert_eq!(msg.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?, Scalar::from("BROKER"));
+    // The count is the group's length: the counter tag reaches nothing.
+    assert_eq!(msg.by_name("parties")?.as_serie().map(yggdryl::Serie::len), Some(1));
+    assert!(msg.get_by_tag(453).is_none());
     assert_eq!(msg.by_tag(9999)?, Scalar::from("custom"), "an unknown tag is retained");
     assert_eq!(msg.get(55), msg.get_by_tag(55));
     assert!(msg.value("Parties.PartyID").is_err(), "a group member needs its index");
@@ -608,10 +611,11 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     registry.insert(party)
     registry.insert(parties)
 
-    # The root carries two typed tags and a tag no dictionary explains.
+    # The root carries two typed tags and a tag no dictionary explains, and the
+    # group alone: its counter stays a field of the registry, never of a root.
     root = Field(
         "NewOrderSingle",
-        DataType.from_fields([msgtype, side, qty, symbol, count, parties, Field("9999", "utf8")]),
+        DataType.from_fields([msgtype, side, qty, symbol, parties, Field("9999", "utf8")]),
         nullable=False,
     )
     message = FixMsg(
@@ -621,19 +625,19 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
             "Side": "1",
             "Symbol": "AAPL",
             "OrderQty": 100,
-            "NoPartyIDs": 1,
             "Parties": [{"PartyID": "BROKER"}],
             "9999": "custom",
         },
         registry,
     )
 
-    # The typed facts left the row for their holders: the type is the header's,
-    # the side and the quantity the event's, and the row holds the four others.
+    # The typed facts left the row for their holders: the type is the header's
+    # and the quantity the event's; the side is an ordinary child, so it stays
+    # in the row beside the three others.
     assert message.header().msgtype == "D"
     assert message.side == yggdryl.Side.BUYS
-    assert [name for name, _ in message] == ["Side", "Symbol", "NoPartyIDs", "Parties", "9999"]
-    assert len(message) == 5
+    assert [name for name, _ in message] == ["Side", "Symbol", "Parties", "9999"]
+    assert len(message) == 4
 
     # A lookup answers the holder for a typed tag and the row for the rest.
     # `OrderQty` is the order quantity the event lifts, so it answers exact.
@@ -642,13 +646,17 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     assert message.by_tag(38).as_py() == Decimal(100)
     assert message.by_name("ticker").as_py() == "AAPL"
     assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
+    # The count is the group's length: the counter tag reaches nothing.
+    assert len(message.by_name("parties").as_py()) == 1
+    assert message.get_by_tag(453) is None
     assert message.by_tag(9999).as_py() == "custom", "an unknown tag is retained"
     assert message[55] == message.get_by_tag(55)
     with pytest.raises(KeyError):
         message.by_path("Parties.PartyID")  # a group member needs its index
 
-    # The entries are the row read as a tree: the group is its counter valued
-    # the count, over one valueless entry per occurrence.
+    # The entries are the row read as a tree: the group is one entry filed
+    # under its counter's tag, valued its length, over one valueless entry per
+    # occurrence.
     assert message.entries() == [
         (54, "Side", "1", []),
         (55, "Symbol", "AAPL", []),
@@ -707,10 +715,11 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     registry.insert(party)
     registry.insert(parties)
 
-    // The root carries two typed tags and a tag no dictionary explains.
+    // The root carries two typed tags and a tag no dictionary explains, and the
+    // group alone: its counter stays a field of the registry, never of a root.
     const root = fields.struct(
       'NewOrderSingle',
-      [msgtype, side, qty, symbol, count, parties, Field.from('9999: utf8')],
+      [msgtype, side, qty, symbol, parties, Field.from('9999: utf8')],
       { nullable: false },
     )
     const message = new fix.FixMsg(
@@ -720,7 +729,6 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
         Side: '1',
         OrderQty: 100n,
         Symbol: 'AAPL',
-        NoPartyIDs: 1,
         Parties: [{ PartyID: 'BROKER' }],
         9999: 'custom',
       },
@@ -729,10 +737,10 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
 
     // The typed facts left the row for their holders: the type is the header's,
     // and the quantity the message lifts. The side is an ordinary child, so it
-    // stays in the row beside the four others.
+    // stays in the row beside the three others.
     assert.equal(message.header().msgtype, 'D')
     assert.equal(message.side, 'BUYS')
-    assert.equal(message.size, 5)
+    assert.equal(message.size, 4)
 
     // A lookup answers the holder for a typed tag and the row for the rest.
     // `OrderQty` is the order quantity the message lifts, so it answers exact - a
@@ -747,12 +755,16 @@ The map is computed where the leaf is built and never stored on the `FixMsg`, so
     assert.equal(message.quantity, '100')
     assert.equal(message.byName('ticker').asJs(), 'AAPL')
     assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
+    // The count is the group's length: the counter tag reaches nothing.
+    assert.equal(message.byName('parties').length, 1)
+    assert.equal(message.getByTag(453), null)
     assert.equal(message.byTag(9999).asJs(), 'custom', 'an unknown tag is retained')
     assert.ok(message.get(55).equals(message.getByTag(55)))
     assert.throws(() => message.at('Parties.PartyID'), /fix/)
 
     // Iterating a message walks its entries: the row read as a tree, the group
-    // its counter valued the count over one valueless entry per occurrence.
+    // one entry filed under its counter's tag, valued its length, over one
+    // valueless entry per occurrence.
     assert.deepEqual(
       [...message].map(entry => [entry.tag, entry.name, entry.value]),
       [[54, 'Side', '1'], [55, 'Symbol', 'AAPL'], [453, 'Parties', '1'], [0, '9999', 'custom']],
@@ -830,7 +842,7 @@ Every lookup answers an owned `Scalar`: a holder's fact is rendered into the col
 
 ## Anomalies
 
-A value that will not type is null in the row rather than a failure - a clock, `SendingTime(52)` or `TransactTime(60)`, naming no instant included, which leaves the message dated as one stating none is - a counter that disagrees with the group it counts is kept as it arrived, and a settle drops a stated identifier that conflicts with a stated one of no lower rank - a security identifier, or a second value under one [identifier](#the-identifier-maps) source and type - and records the one it replaced where the later one outranks it: `states isin=US0378331005, replacing isin=XX0000000001, which ranks below it`. A bridge's line adds its own: a `#`-marked twin stating another value than the bare key beside it, a `CONVERSATIONID` its `{conversationId: ...}` contradicts, a MIC alias that is no ISO 10383 code, and - when two observations of one delivery merge - a later one naming another `msgoriginator` or `conversationid` than the earlier, which keeps its own. Each is a fact about the message worth more than a null nobody can explain, and what the parse defaults is also said once as a deduplicated [warning](capture.md#warnings). `anomalies()` reads them off the message beside the row, in arrival order - the parse's first, then what the last settle dropped - each a `FixAnomaly` of the field it was stated under and the reason. Never a column, never part of the code the message digests to; two statements of one message merge them as a union, the reference's first.
+A value that will not type is null in the row rather than a failure - a clock, `SendingTime(52)` or `TransactTime(60)`, naming no instant included, which leaves the message dated as one stating none is - a count that disagrees with the group it frames is no anomaly, the group holding what arrived and the wire re-emitting its length, and a settle drops a stated identifier that conflicts with a stated one of no lower rank - a security identifier, or a second value under one [identifier](#the-identifier-maps) source and type - and records the one it replaced where the later one outranks it: `states isin=US0378331005, replacing isin=XX0000000001, which ranks below it`. A bridge's line adds its own: a `#`-marked twin stating another value than the bare key beside it, a `CONVERSATIONID` its `{conversationId: ...}` contradicts, a MIC alias that is no ISO 10383 code, and - when two observations of one delivery merge - a later one naming another `msgoriginator` or `conversationid` than the earlier, which keeps its own. Each is a fact about the message worth more than a null nobody can explain, and what the parse defaults is also said once as a deduplicated [warning](capture.md#warnings). `anomalies()` reads them off the message beside the row, in arrival order - the parse's first, then what the last settle dropped - each a `FixAnomaly` of the field it was stated under and the reason. Never a column, never part of the code the message digests to; two statements of one message merge them as a union, the reference's first.
 
 === "Rust"
 
@@ -852,10 +864,13 @@ A value that will not type is null in the row rather than a failure - a clock, `
     assert_eq!(refused.field(), "stoppx");
     assert!(refused.reason().ends_with(", got \"abc\""), "{}", refused.reason());
 
-    // A counter that disagrees with its group: the group is the row, the
-    // disagreement is kept.
-    let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=2|448=BROKER|447=D|452=1|10=0|")?;
-    assert_eq!(held.anomalies()[0].to_string(), "nopartyids: states 2, the group holds 1");
+    // A count that disagrees with its group is no anomaly: the group holds
+    // what arrived and the wire re-emits its length.
+    let miscounted = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=2|448=BROKER|447=D|452=1|10=0|")?;
+    assert!(miscounted.anomalies().is_empty());
+    assert_eq!(miscounted.by_name("parties")?.as_serie().map(yggdryl::Serie::len), Some(1));
+    let wire = miscounted.into_text('|')?;
+    assert!(wire.contains("|453=1|") && !wire.contains("453=2"), "{wire}");
 
     // A line that types whole has none.
     let clean = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|99=10.5|10=0|")?;
@@ -877,8 +892,13 @@ A value that will not type is null in the row rather than a failure - a clock, `
     assert field == "stoppx"
     assert reason.endswith(', got "abc"'), reason
 
-    held = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=2|448=BROKER|447=D|452=1|10=0|")
-    assert held.anomalies == [("nopartyids", "states 2, the group holds 1")]
+    # A count that disagrees with its group is no anomaly: the group holds what
+    # arrived and the wire re-emits its length.
+    miscounted = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=2|448=BROKER|447=D|452=1|10=0|")
+    assert miscounted.anomalies == []
+    assert len(miscounted.by_name("parties").as_py()) == 1
+    wire = miscounted.into_text("|")
+    assert "|453=1|" in wire and "453=2" not in wire, wire
 
     assert reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|99=10.5|10=0|").anomalies == []
     ```
@@ -898,8 +918,13 @@ A value that will not type is null in the row rather than a failure - a clock, `
     assert.equal(held.anomalies[0].field, 'stoppx')
     assert.ok(held.anomalies[0].reason.endsWith(', got "abc"'), held.anomalies[0].reason)
 
-    const counted = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A1|55=AAPL|453=2|448=BROKER|447=D|452=1|10=0|'))
-    assert.deepEqual(counted.anomalies, [{ field: 'nopartyids', reason: 'states 2, the group holds 1' }])
+    // A count that disagrees with its group is no anomaly: the group holds what
+    // arrived and the wire re-emits its length.
+    const miscounted = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A1|55=AAPL|453=2|448=BROKER|447=D|452=1|10=0|'))
+    assert.deepEqual(miscounted.anomalies, [])
+    assert.equal(miscounted.byName('parties').length, 1)
+    const wire = miscounted.intoText('|')
+    assert.ok(wire.includes('|453=1|') && !wire.includes('453=2'), wire)
 
     assert.deepEqual(reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A1|55=AAPL|99=10.5|10=0|')).anomalies, [])
     ```
@@ -1305,7 +1330,7 @@ Two readings are the crate's own rather than a field's `FIX:idmap`, and a settle
     assert!(written.insert_partyid(Identifier::new(IdKey::base(IdType::ClientId), "C-2")?)?);
     assert!(!written.insert_partyid(Identifier::new(IdKey::new(IdSource::Proprietary, IdType::ExecutingTrader), "OTHER")?)?);
     assert_eq!(written.get_partyids().get(&IdType::ClientId), Some("C-2"));
-    assert_eq!(written.by_tag(453)?.as_i128(), Some(3));
+    assert_eq!(written.by_name("parties")?.as_serie().map(yggdryl::Serie::len), Some(3));
     ```
 
 === "Python"
@@ -1370,7 +1395,7 @@ A capture holds what each session spoke: a FIX 4.2 report states its fill as `La
 | --- | --- |
 | Canonicalizes | every child the registry knows - by its `FIX:tag`, else its name or alias, else the decimal tag its name spells - is re-expressed under the registry's field: canonical name, datatype, tag, in the position it held; a child no dictionary knows stays exactly as it is |
 | Merges | children reaching one field become one: the canonical-named child's value when stated, else the first stated among the rest; a child whose stated value disagrees with the kept one is left in place, so nothing that arrived is lost |
-| Restates | each child the specification retired, in ascending tag order, by the first entry of [the table](registry.md#what-the-specification-retired) whose condition holds at the level - the held value, the message type and the enclosing group; a group occurrence a rule states makes or completes one occurrence and sets its counter |
+| Restates | each child the specification retired, in ascending tag order, by the first entry of [the table](registry.md#what-the-specification-retired) whose condition holds at the level - the held value, the message type and the enclosing group; a group occurrence a rule states makes or completes one occurrence and sets no counter, the group's length being the count |
 | Deprecated | a field the dictionary marks [`FIX:deprecated`](registry.md#the-dictionary-holds-one-reading-and-filters-by-no-version) - one FIX Latest removed, `MaxFloor(111)` among them - is restated to the field that replaced it and then nulled, so the row holds the fact once under its latest name while the entries keep the pair as it arrived |
 | All or nothing | every target an entry fills is computed and checked before any is written; one target that cannot take its value blocks the whole entry, and no later entry fills in for it |
 | Never overwrites | a value the message stated: a target takes a value only when it is absent, null or already equal; the source field itself is the one exception, because it is what is being restated |
@@ -1409,9 +1434,9 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     // Rule80A A is an agency order.
     assert_eq!(latest.by_tag(528)?.as_str(), Some("A"));
     assert_eq!(latest.by_tag(47)?.as_str(), Some("A"), "the source stays as read");
-    // ExecBroker and ClientID are two parties, in tag order, and the
-    // counter states the count.
-    assert_eq!(latest.by_tag(453)?.as_i128(), Some(2));
+    // ExecBroker and ClientID are two parties, in tag order, and the count is
+    // the group's length.
+    assert_eq!(latest.by_name("parties")?.as_serie().map(yggdryl::Serie::len), Some(2));
     assert_eq!(latest.by_path(&FieldPath::from_str("parties[0].partyid")?)?, Scalar::from("BRKR"));
     assert_eq!(latest.by_path(&FieldPath::from_str("parties[0].partyrole")?)?, Scalar::from(1));
     assert_eq!(latest.by_path(&FieldPath::from_str("parties[1].partyid")?)?, Scalar::from("CLIENT1"));
@@ -1454,9 +1479,9 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     # Rule80A A is an agency order.
     assert latest.by_tag(528).as_py() == "A"
     assert latest.by_tag(47).as_py() == "A", "the source stays as read"
-    # ExecBroker and ClientID are two parties, in tag order, and the counter
-    # states the count.
-    assert latest.by_tag(453).as_py() == 2
+    # ExecBroker and ClientID are two parties, in tag order, and the count is
+    # the group's length.
+    assert len(latest.by_name("parties").as_py()) == 2
     assert latest.by_path("parties[0].partyid").as_py() == "BRKR"
     assert latest.by_path("parties[0].partyrole").as_py() == 1
     assert latest.by_path("parties[1].partyid").as_py() == "CLIENT1"
@@ -1498,9 +1523,9 @@ A FIX 4.2 execution report, read as it was sent, which restates it as it builds 
     // Rule80A A is an agency order.
     assert.equal(latest.byTag(528).asJs(), 'A')
     assert.equal(latest.byTag(47).asJs(), 'A', 'the source stays as read')
-    // ExecBroker and ClientID are two parties, in tag order, and the counter
-    // states the count.
-    assert.equal(latest.byTag(453).asJs(), 2)
+    // ExecBroker and ClientID are two parties, in tag order, and the count is
+    // the group's length.
+    assert.equal(latest.byName('parties').length, 2)
     assert.equal(latest.byPath('parties[0].partyid').asJs(), 'BRKR')
     assert.equal(latest.byPath('parties[0].partyrole').asJs(), 1)
     assert.equal(latest.byPath('parties[1].partyid').asJs(), 'CLIENT1')
@@ -1552,7 +1577,7 @@ A boolean value spells no code but a flag, so a rule about one of its characters
 - A rule whose target holds a stated current code (`40=A|59=0`, a `TimeInForce` the message chose) -> blocked whole: `OrdType` stays `A` and no later entry answers for it; `59=7`, the rule's own value, is no obstacle.
 - A rule that rewrote the source's own value (`ExecInst` `T` -> `R`) -> the new value is restated in turn (`R` is a `PegPriceType`), so one parse reaches what a second would find; a chain is bounded by the rules the field states.
 - A `join` with a part unstated (`205=5` and no `200`) or a `from` whose tag is absent -> the entry fills nothing.
-- A group fill whose constants match an existing occurrence (`ClearingFirm` made the role-4 party, `ClearingAccount` adds its sub-identifier) -> merged into it and the counter unchanged; a stated occurrence of the same role with another identifier -> the fill is blocked, the occurrence stands.
+- A group fill whose constants match an existing occurrence (`ClearingFirm` made the role-4 party, `ClearingAccount` adds its sub-identifier) -> merged into it and the group's length unchanged; a stated occurrence of the same role with another identifier -> the fill is blocked, the occurrence stands.
 - A rule scoped to message types on a message stating no `MsgType(35)` -> does not apply; one scoped to a group at the root -> does not apply.
 - A removed field the specification replaced with nothing (`SendingDate(51)`) -> kept as read, and the registry still holds it under its own tag.
 

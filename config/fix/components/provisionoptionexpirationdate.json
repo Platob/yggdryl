@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "noprovisionoptionexpirationdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noprovisionoptionexpirationdatebusinesscenters",
-          "FIX:tag": "40955"
-        }
-      },
-      {
         "name": "provisionoptionexpirationdatebusinesscenters",
         "dtype": {
           "type": "null"

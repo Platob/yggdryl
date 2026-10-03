@@ -693,8 +693,9 @@ fn msgcat_of(value: &Scalar) -> Option<MarketDataKind> {
 /// linked registry, never through a private copy of its rules. An unknown
 /// tag is retained rather than dropped: it is looked for under its rendered
 /// decimal name, which is where a transcriber keeps a tag no dictionary
-/// explains. A repeating-group counter remains an int32 value reached by its
-/// tag; the separate collection is reached by name, such as `Parties`.
+/// explains. A repeating group is its list alone, reached by name, such as
+/// `Parties`: its length is its count, so its NumInGroup tag - `453` - is no
+/// child of its own and reaches nothing.
 ///
 /// The message's identity is settled from what it states: the code is the
 /// XXH3-64 of the event's facts, the text, the metadata, the FIX fields it
@@ -3280,8 +3281,8 @@ impl FixMsg {
     /// group an array of one object per occurrence, a component or a map one
     /// object, nested groups and components recursing, every leaf inside the
     /// canonical text a root scalar spells, so a decimal is its shortest
-    /// exact text and no value is a JSON number. Null, skipped and counter
-    /// members are left out, and a child left with nothing writes no key.
+    /// exact text and no value is a JSON number. Null and skipped members
+    /// are left out, and a child left with nothing writes no key.
     /// Left out too are a child the [envelope](super::digest) holds, since
     /// the message's code leaves the same set out; a typed tag stated twice;
     /// a tag [`identity::MARKET_TAGS`] reads; an identifier map's source;
@@ -3389,17 +3390,6 @@ impl FixMsg {
                 continue;
             }
             let nested = child.dtype().is_nested();
-            // A counter beside the group it counts states nothing the group
-            // does not.
-            if !nested
-                && tag.is_some_and(|tag| {
-                    self.groups
-                        .binary_search_by_key(&tag, |(counter, _)| *counter)
-                        .is_ok()
-                })
-            {
-                continue;
-            }
             if let Some(expanded) = expanded.filter(|expanded| *counter == Some(expanded.counter)) {
                 unmapped.occurrences = self.own_occurrences(child, cell, expanded, &holds);
                 continue;
@@ -3554,10 +3544,9 @@ impl FixMsg {
         // Then the content, as the entries state it rather than as the row
         // stores it. Two readings of one message lay its children out
         // differently - a group one reading declares whole and another
-        // states member by member is one group, and a child stating null or
-        // a list holding nothing beside no stated count says nothing at all
-        // - so a code taken off the row's storage would make a message read
-        // back out of a row a different message. The entries are what the
+        // states member by member is one group, and a child stating null
+        // says nothing at all - so a code taken off the row's storage would
+        // make a message read back out of a row a different message. The entries are what the
         // message says, and they are what this feeds.
         feed_entries(&mut state, self.entries());
         state.as_u64()
@@ -3748,9 +3737,9 @@ impl FixMsg {
 
     /// The row read as a tree: one entry per child it states, a group's
     /// occurrences and a component's members nested under the entry that
-    /// heads them; nothing for a child stating null, nor for a list holding
-    /// nothing that no counter beside it states a count for - a group of no
-    /// occurrence is stated by its count.
+    /// heads them, the group's count its own entry's value; nothing for a
+    /// child stating null. A group holding no occurrence is stated empty -
+    /// `NoPartySubIDs(802)=0` - and is an entry like any other.
     ///
     /// Derived on the first ask and kept until a write, so a consumer
     /// walking the message twice pays once and a stream that never asks
@@ -4100,10 +4089,13 @@ impl FixMsg {
         }
         // What each write reaches is stated again at the next settle: a
         // field no tag maps reaches what a bridge's own spelling can state.
+        // A group is reached by the counter it is filed under, its own tag
+        // being a definition's.
         for write in &writes {
-            self.stale |= match write.field.as_fix().tag() {
-                Ok(Some(tag)) => facts_of_tag(&self.registry, tag),
-                _ => fact::NAMED,
+            let (tag, counter) = super::schema::tag_and_counter(&self.registry, &write.field);
+            self.stale |= match counter.or(tag) {
+                Some(tag) => facts_of_tag(&self.registry, tag),
+                None => fact::NAMED,
             };
         }
         // Only a value something else states too is kept for replication:
@@ -4344,7 +4336,10 @@ impl FixMsg {
             return Ok(None);
         }
         let tag = members[at].as_fix().tag().ok().flatten();
-        self.stale |= tag.map_or(fact::NAMED, |tag| facts_of_tag(&self.registry, tag));
+        let reached = super::schema::tag_and_counter(&self.registry, &members[at])
+            .1
+            .or(tag);
+        self.stale |= reached.map_or(fact::NAMED, |tag| facts_of_tag(&self.registry, tag));
         // The children sharing the tag go with it, highest first so each
         // position still names its child.
         let mut gone = tag.map(|tag| self.siblings_of(tag)).unwrap_or_default();
@@ -5083,40 +5078,22 @@ fn feed_entry(state: &mut crate::xxhash::Xxh3, entry: &FixEntry) {
 }
 
 /// One level of the row as the entries it states, in its order: every
-/// child through [`entry_of`], except the counter scalar beside the group
-/// it counts - at the root, in a component, in an occurrence alike - since
-/// a group's count is the group entry's own value and the counter child
-/// states nothing the entries do not already; and except a list holding
-/// nothing that no counter beside it states the count of.
+/// child through [`entry_of`], at the root, in a component and in an
+/// occurrence alike.
 ///
-/// A group holding no occurrence is stated by its count alone: the parse
-/// holds `NoPartySubIDs(802)=0` as the counter stating zero beside the
-/// empty list, which is the group's entry and re-emits. An empty list with
-/// no count stated beside it is the group absent - a table may store a null
-/// list as an empty one, and PyIceberg reads a null list of structs back as
-/// `[]` - so a row read back and settled again feeds its content code, its
+/// A group is its list alone - no counter child stands beside it at any
+/// level - and its entry states the list's length as its count, which is
+/// what re-emits as `NoPartyIDs(453)=2`. A list holding nothing is the group
+/// stated empty, `NoPartySubIDs(802)=0`; a null one is the group absent. A
+/// table cannot tell the two apart, so a row's column holds a group as null
+/// or as at least one occurrence and a stated zero rides the residual
+/// record: a row read back and settled again feeds its content code, its
 /// digest and the delivery a lifecycle folds it by as the parse did.
 fn entries_of(registry: &FixRegistry, fields: &[Field], values: &[Scalar]) -> Vec<FixEntry> {
-    let counters: Vec<i32> = fields
-        .iter()
-        .filter(|child| child.dtype().is_nested())
-        .filter_map(|child| super::schema::tag_and_counter(registry, child).1)
-        .collect();
-    let counted = |child: &Field| {
-        !counters.is_empty()
-            && !child.dtype().is_nested()
-            && super::schema::tag_and_counter(registry, child)
-                .0
-                .is_some_and(|tag| counters.contains(&tag))
-    };
-    let unstated = |child: &Field, value: &Scalar| {
-        super::schema::is_unstated_group(registry, child, value, fields, values)
-    };
     let mut entries = Vec::new();
     for entry in fields
         .iter()
         .zip(values)
-        .filter(|(child, value)| !counted(child) && !unstated(child, value))
         .filter_map(|(child, value)| entry_of(registry, child, value))
     {
         // Sized once, on the first entry, for every child there is: a level
@@ -5453,27 +5430,17 @@ struct Walk<'a> {
 
 impl<'a> Walk<'a> {
     /// The members of one component or occurrence, each resolved once: a
-    /// counter beside the group it counts is left out, as [`entries_of`]
-    /// leaves it out, and so is a member whose tag or counter the walk
-    /// skips. What a member holds is planned only once a value reaches it.
+    /// member whose tag or counter the walk skips is left out. What a member
+    /// holds is planned only once a value reaches it.
     fn members(&self, fields: &'a [Field]) -> Vec<Planned<'a>> {
-        let counters: SmallVec<[i32; 4]> = fields
-            .iter()
-            .filter(|field| field.dtype().is_nested())
-            .filter_map(|field| super::schema::tag_and_counter(self.registry, field).1)
-            .collect();
         fields
             .iter()
             .map(|field| {
                 let (tag, counter) = super::schema::tag_and_counter(self.registry, field);
-                let counts =
-                    !field.dtype().is_nested() && tag.is_some_and(|tag| counters.contains(&tag));
                 Planned {
                     tag,
                     counter,
-                    skipped: counts
-                        || tag.is_some_and(self.skipped)
-                        || counter.is_some_and(self.skipped),
+                    skipped: tag.is_some_and(self.skipped) || counter.is_some_and(self.skipped),
                     ..Planned::new(field)
                 }
             })
@@ -5509,8 +5476,7 @@ struct Planned<'a> {
     /// type, where it is a group a leaf's identifier maps read; planned on
     /// the first value that reaches it.
     held: OnceCell<Option<[Option<usize>; 2]>>,
-    /// Whether it is left out: a counter beside its group, or a tag a leaf
-    /// reads.
+    /// Whether it is left out: a tag a leaf reads.
     skipped: bool,
     shape: OnceCell<Shape<'a>>,
 }

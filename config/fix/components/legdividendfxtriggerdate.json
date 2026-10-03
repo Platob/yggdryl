@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nolegdividendfxtriggerdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegdividendfxtriggerdatebusinesscenters",
-          "FIX:tag": "42364"
-        }
-      },
-      {
         "name": "legdividendfxtriggerdatebusinesscenters",
         "dtype": {
           "type": "null"

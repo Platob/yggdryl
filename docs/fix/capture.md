@@ -8,7 +8,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `FIX:tag`, and a named group column's counter on its `FIX:counter` |
-| Shape | the columns every generated schema opens with - the element's, the event's, the market's with the `metadata` Map group, and the operation's; then the clocks FIX states, the standard header with FIX's own `msgdirection` and the capture's facts, the instrument with its normalized codes and the strike `StrikePrice(202)`, the fields a consumer reads, two Serie groups, the trailer, then the `fixentries` map: 149 tags from `fix_schema_tags`, 152 columns with the shipped registry, each Serie group adding its column beside its counter. The full listing is [Row schemas](../graph/schemas.md#the-fix-row) |
+| Shape | the columns every generated schema opens with - the element's, the event's, the market's with the `metadata` Map group, and the operation's; then the clocks FIX states, the standard header with FIX's own `msgdirection` and the capture's facts, the instrument with its normalized codes and the strike `StrikePrice(202)`, the fields a consumer reads, two Serie groups, the trailer, then the `fixentries` map: 149 tags from `fix_schema_tags`, 150 columns with the shipped registry, each Serie group its column alone: the group's length is its count, and no column holds the counter. The full listing is [Row schemas](../graph/schemas.md#the-fix-row) |
 | Identifiers | the names a message goes by, the parties it names and its security's identifiers are the shared columns `identifiers`, `partyids` and `securityids`, each a serie of [identifiers](../graph/identifier.md#arrow) [read off](message.md#the-identifier-maps) the FIX fields that state them; `SecurityID(48)`, `SecurityIDSource(22)`, `Parties(453)` and `SecAltIDGrp(454)` are no columns of their own and stay in `fixentries` as sent, and the crated `isincode`, `forexcode`, `bloombergcode` and `figicode` are views of `securityids` |
 | Non-null | `beginstring`, `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - the instants the identity is settled against and the identity it settles to; every other column is nullable, `state` among them - stated on every row a message writes, `UNKNOWN` where nothing states one, while an empty cell entering the column is null as it is for any [enum](../types/enum/state.md#the-code-is-the-rank) - `sendingtime` among them, because the row states tag 52 only where the message did: a clock intake stood in with is not a fact of the message, and the instant it was settled into has a column of its own |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
@@ -176,7 +176,8 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     // The packed members became three real fields under one nesting.
     let party = yggdryl::FieldPath::from_str("Parties[0].PartyID")?;
     assert_eq!(held.by_path(&party)?.as_str(), Some("BUYSIDE"));
-    assert_eq!(held.by_tag(453)?.as_i128(), Some(1));
+    // The group is its list: its length is the count, and the bridge's `#NOPARTYIDS=1` only framed it.
+    assert_eq!(held.by_name("parties")?.as_sequence().map(<[Scalar]>::len), Some(1));
 
     let lines: [&[u8]; 4] = [
         b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|",
@@ -216,7 +217,8 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     assert held.by_tag(44).as_py() == decimal.Decimal("41.25")
     # The packed members became three real fields under one nesting.
     assert held.by_path("Parties[0].PartyID").as_py() == "BUYSIDE"
-    assert held.by_tag(453).as_py() == 1
+    # The group is its list: its length is the count, and the bridge's `#NOPARTYIDS=1` only framed it.
+    assert len(held.by_name("parties").as_py()) == 1
 
     lines = [
         b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|",
@@ -257,7 +259,8 @@ Every one of them ends in the same builder, so a document is typed by the rules 
     assert.ok(held.byTag(44).equals(Scalar.decimal(4125n, 2)))
     // The packed members became three real fields under one nesting.
     assert.equal(held.byPath('Parties[0].PartyID').asJs(), 'BUYSIDE')
-    assert.equal(held.byTag(453).asJs(), 1)
+    // The group is its list: its length is the count, and the bridge's `#NOPARTYIDS=1` only framed it.
+    assert.equal(held.byName('parties').length, 1)
 
     const lines = [
       '8=FIX.4.4|35=D|11=A|55=AAPL|10=0|',
@@ -382,7 +385,7 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
 ### Edges
 
 - Ordinary unframed text produces no message at all - a line that opens no frame, states no bridge pair and carries no document states nothing to read, so it is no row either. A payload that was there and would not parse is a message with nothing in it, so malformed syntax never fails the batch it arrives in; a clock that names no instant is left unstated and a frame that builds no message is left out, each beside a [warning](#warnings) - only a source's own failure is an error item.
-- A bridge key's `#` is judged against the row's bare spellings, in a bridge row and in the name keys a bridge writes into a numeric frame alike. Alone, it drops: `#ORDERID=123` is the dictionary's `OrderID`. Restating a bare pair's bytes, the marked pair is a second spelling of one pair and goes, row and entries alike: `ORDERID=123|#ORDERID=123` is `OrderID` once, and `into_bytes` re-emits the one pair. Beside a bare twin stating other bytes it stays verbatim, because collapsing the two would merge two values under one name: `ORDERID=123|#ORDERID=345` is `OrderID` 123 beside `#ORDERID` 345 - its own column, its own entry - whichever arrived first. The twin is matched by the fold every key resolves under, so `OrderId` and `ORDER_ID` twin it too, and by its stem, so a bare `NOPARTYIDS` group claims every `#NOPARTYIDS[n]` however many the two state - each stays whole under its own name, the count beside them, and none lands in the dictionary's group. A marked group goes only whole: a marked count restating the bare one beside occurrences the bare group never numbered stays with them, and only a marked group restating the bare group pair for pair goes. A bare pair whose value is a stated absence is no twin, because a key that said nothing was sent is not a key that was sent; a value is compared as its bytes, because `abc` is not `ABC`; and the twin is a spelling, never an identity, so a tag and a marked name - `55=AAPL|#SYMBOL=AAPL` - state two values exactly as a tag and a bare name do. In a numeric frame the marks are judged and the keys kept as they are: a packed occurrence there is one value, as a bare one always was. A key marked twice is judged one mark at a time: `##ORDERID` twins `#ORDERID` as `#ORDERID` twins `ORDERID` - restating it goes, beside other bytes it stays, alone it loses one mark.
+- A bridge key's `#` is judged against the row's bare spellings, in a bridge row and in the name keys a bridge writes into a numeric frame alike. Alone, it drops: `#ORDERID=123` is the dictionary's `OrderID`. Restating a bare pair's bytes, the marked pair is a second spelling of one pair and goes, row and entries alike: `ORDERID=123|#ORDERID=123` is `OrderID` once, and `into_bytes` re-emits the one pair. Beside a bare twin stating other bytes it stays verbatim, because collapsing the two would merge two values under one name: `ORDERID=123|#ORDERID=345` is `OrderID` 123 beside `#ORDERID` 345 - its own column, its own entry - whichever arrived first. The twin is matched by the fold every key resolves under, so `OrderId` and `ORDER_ID` twin it too, and by its stem, so a bare `NOPARTYIDS` group claims every `#NOPARTYIDS[n]` however many the two state: the marked occurrences are numbered past the bare ones into the one group, and an occurrence restating another pair for pair goes. A marked counter - `#NOPARTYIDS=6` - is framing only: dropped, never a field and never an anomaly, whatever the bare one states, because the group's length is its count. A bare pair whose value is a stated absence is no twin, because a key that said nothing was sent is not a key that was sent; a value is compared as its bytes, because `abc` is not `ABC`; and the twin is a spelling, never an identity, so a tag and a marked name - `55=AAPL|#SYMBOL=AAPL` - state two values exactly as a tag and a bare name do. In a numeric frame the marks are judged and the keys kept as they are: a packed occurrence there is one value, as a bare one always was. A key marked twice is judged one mark at a time: `##ORDERID` twins `#ORDERID` as `#ORDERID` twins `ORDERID` - restating it goes, beside other bytes it stays, alone it loses one mark.
 - A row's message type resolves the way every key does, in the one namespace: a name reaches the message of that name, and a bare code the message tag 35's code set names, else the first in name order. A bridge row calling itself `tradecapturereport` reads against the message of that name, which is what places a counter half the dictionary shares - `NoLegs`, `NoSides` - under the group that message declares.
 - A stated absence produces no field and no entry, because a key that said nothing was sent is not a key that was sent. Unless `null_values` is pinned, matching trims ASCII whitespace and folds case over exactly `""`, `null`, `<null>`, `none`, `n/a` and `[n/a]`.
 
@@ -497,16 +500,16 @@ The order opens with the columns every generated schema of the crate opens with 
 | which order | `Account`, `ClOrdID`, `OrigClOrdID`, `SecondaryClOrdID`, `OrderID`, `SecondaryOrderID`, `ExecID`, `TradeID`, `QuoteReqID`, `QuoteID`, `MDReqID`, `QuoteRespID` |
 | the values FIX states under its own names | `OrderQty`, `MaxFloor`, `PrevClosePx`, `UnitOfMeasure`, `SettlCurrency`, `QtyType`, the `OrdType`, `QuoteType` and `TrdType` the `marketdatatype` reads, then the quote's `OfferPx`, `BidSize` and `OfferSize`, then the FX parts `LastSpotRate`, `LastForwardPoints`, `BidSpotRate`, `BidForwardPoints`, `OfferSpotRate` and `OfferForwardPoints` |
 | how it went | `OrdStatus`, `ExecType`, `QuoteStatus`, `QuoteResponseLevel`, `QuoteEntryRejectReason`, `OrdRejReason`, `CxlRejReason`, `Text` |
-| what it carried whole | the two repeating groups, each beside its counter: `TrdRegTimestamps`, `regulatorytradeids` (display `RegulatoryTradeIDs`) - `TrdRegTimestamps` is read rather than merely carried, since its `TrdRegTimestamp` / `TrdRegTimestampType` pair can [date the message](#the-official-clock-dates-the-message). Who was on the trade and what the instrument's other identifiers were are the shared `partyids` and `securityids`, so `Parties(453)` and `SecAltIDGrp(454)` are no columns: a message stating them keeps them in `fixentries` as sent |
+| what it carried whole | the two repeating groups, each its column alone: `TrdRegTimestamps`, `regulatorytradeids` (display `RegulatoryTradeIDs`) - `TrdRegTimestamps` is read rather than merely carried, since its `TrdRegTimestamp` / `TrdRegTimestampType` pair can [date the message](#the-official-clock-dates-the-message). Who was on the trade and what the instrument's other identifiers were are the shared `partyids` and `securityids`, so `Parties(453)` and `SecAltIDGrp(454)` are no columns: a message stating them keeps them in `fixentries` as sent |
 | everything else | the standard header, body and trailer fields no band above claims, then the `fixentries` map |
 
 A market or an operation column FIX names alike - `Price(44)`, `StopPx(99)`, `Currency(15)`, `Quantity(53)`, `DisplayQty(1138)`, `Side(54)`, `CFICode(461)`, `LastPx(31)`, `LastQty(32)`, `AvgPx(6)`, `CumQty(14)`, `LeavesQty(151)`, `CxlQty(84)`, `BidPx(132)` and the operation's `TimeInForce(59)` - is that FIX field, holding what the message states there. Every other one is the crate's own: the ones FIX states under a name of its own are [derived](#the-crates-own-columns) from those fields and stated a second time beside them - `ticker` beside `Symbol`, `askpx` beside `OfferPx`, `ordqty` beside `OrderQty`, `hiddenqty` the quantity past the part shown - so both spellings are columns and neither is lost.
 
 `cargo run --example fix_schema --features arrow` prints that row as the Arrow batch schema a consumer reads, one column a line: its tag, its name, its Arrow type, and whether it is required.
 
-A Serie group column carries `FIX:counter` beside the `FIX:tag` its definition derives from its own name: the numeric count keeps its own column, and the group column beside it holds the occurrences. The semantic collections are `trdregtimestamps` / `TrdRegTimestamps` and `regulatorytradeids` / `RegulatoryTradeIDs`, while `NoTrdRegTimestamps(768)` and `NoRegulatoryTradeIDs(1907)` remain the counters beside them. The crate's `metadata` Map instead carries tag and counter on one group column, 65035, with no scalar count field; a Map's entries already determine its cardinality.
+A Serie group column carries `FIX:counter` beside the `FIX:tag` its definition derives from its own name, and `FIX:counter` is only the wire tag that names it: the NumInGroup tag that frames the group on the wire and finds the column, never a column of its own. The group's length is its count, and the column holds the occurrences. The semantic collections are `trdregtimestamps` / `TrdRegTimestamps`, found by tag 768, and `regulatorytradeids` / `RegulatoryTradeIDs`, found by tag 1907 - `fix_column_of(schema, 1907)` answers the `regulatorytradeids` column - while `NoTrdRegTimestamps(768)` and `NoRegulatoryTradeIDs(1907)` stay fields of the dictionary and are no columns. The crate's `metadata` Map carries tag and counter on one group column, 65035, the same way; a Map's entries already determine its cardinality.
 
-A proprietary group that reuses a standard counter but maps none of that standard group's members remains whole in `fixentries`; its fixed Serie and scalar counter stay null instead of asserting a misleading empty standard group.
+A proprietary group that reuses a standard counter but maps none of that standard group's members remains whole in `fixentries`; its fixed Serie stays null instead of asserting a misleading empty standard group.
 
 === "Rust"
 
@@ -529,7 +532,7 @@ A proprietary group that reuses a standard counter but maps none of that standar
     assert_eq!(&columns[header..header + 4], ["beginstring", "msgtype", "msgseqnum", "sendercompid"]);
     assert_eq!(columns.last(), Some(&"fixentries"));
     assert_eq!(fix_schema_tags().len(), 149);
-    assert_eq!(columns.len(), 152);
+    assert_eq!(columns.len(), 150);
     assert_eq!(&fix_schema_tags()[header..header + 4], [8, 35, 34, 49]);
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -563,7 +566,7 @@ A proprietary group that reuses a standard counter but maps none of that standar
     assert columns[header:header + 4] == ["beginstring", "msgtype", "msgseqnum", "sendercompid"]
     assert columns[-1] == "fixentries"
     assert len(fix_schema_tags()) == 149
-    assert len(columns) == 152
+    assert len(columns) == 150
     assert fix_schema_tags()[header:header + 4] == [8, 35, 34, 49]
 
     # The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -594,7 +597,7 @@ A proprietary group that reuses a standard counter but maps none of that standar
     assert.deepEqual(columns.slice(header, header + 4), ['beginstring', 'msgtype', 'msgseqnum', 'sendercompid'])
     assert.equal(columns[columns.length - 1], 'fixentries')
     assert.equal(fix.schemaTags().length, 149)
-    assert.equal(columns.length, 152)
+    assert.equal(columns.length, 150)
     assert.deepEqual(fix.schemaTags().slice(header, header + 4), [8, 35, 34, 49])
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -614,7 +617,7 @@ Two cells close every row: `metadata`, then `fixentries`. Together with the proj
 | --- | --- |
 | a scalar | its canonical wire text, `18:execinst` = `G` |
 | a scalar whose text opens the way JSON does - `[`, `{` or `"` | its JSON string, so a value opening that way is JSON and every other value is text |
-| a group | the JSON array of its occurrences, each the object of its members |
+| a group | the JSON array of its occurrences, each the object of its members, keyed by its counter's tag - `453:parties`; the array's length is the count |
 | a component | the JSON object of its members |
 | a member | keyed `tag:name` the same way, leaves as text, nested groups and components recursing |
 | a key stated more than once at one level | one key, the JSON array of its values in arrival order |
@@ -623,7 +626,7 @@ The typed entries are the message's in memory - [`entries()`](message.md#contrac
 
 A key whose name [names an identifier](message.md#the-identifier-maps) - a bridge's `PARENTORDERID`, `OMS_RICCODE`, `TECH.CLIENTID` - is captured instead, wherever the set its type belongs to holds it with the value it states: it rides `fixentries` under `0:` and the key folded as the message holds it, its value as it arrived - `PARENTORDERID=P1` is `0:parentorderid` = `P1` - and leaves the `metadata` cell, so each arrival is held once and `metadata` holds only what nothing resolved. A name stated several times is captured only where every occurrence is, and a key whose value its type refuses, or whose set holds another value of no lower rank, stays in `metadata`. The wire and the digest a row reads back to are the parse's either way; the message in memory - its entries and `FixMsg::metadata()` - is unchanged by the capture, and a row with a `metadata` column and no `fixentries` keeps every unresolved key in `metadata`.
 
-An entry says what the message states and only that. A group holding no occurrence is stated by its count alone: `NoPartySubIDs(802)=0` is the counter stating zero beside the empty list, one entry that re-emits, while an empty list beside no stated count is the group absent - no entry, no `fixentries` key, nothing the wire re-emits and nothing `currhashcode` digests. A table storing an absent list as an empty one, as PyIceberg does beside a null counter, therefore reads back the message that was written; a projection keeping the list without its counter keeps a stated count in `fixentries`. A bridge packing a whole occurrence into one value - `#NOPARTYIDS[0]=PARTYID=BUYSIDE...PARTYROLE=1` - is read into the members of the occurrence it names, so the record holds the occurrence under its counter's entry as it holds one a numeric frame spelled member by member. No dialect is there either: a message is not a dictionary member, and which dictionaries a field belongs to is the field's own `FIX:branches` in the registry.
+An entry says what the message states and only that. A group is one entry, filed under its counter's tag with its length as its value - `(453, "Parties", "1", [...])` in memory, `453:parties` in `fixentries` - and the count is never a field of its own: the wire re-emits `453=N` from the list's length. A list holding nothing is the group stated empty - `NoPartySubIDs(802)=0` is one entry that re-emits - while a null list is the group absent: no entry, no `fixentries` key, nothing the wire re-emits and nothing `currhashcode` digests. A table column holds a group as null or as at least one occurrence, so a stated zero rides the residual `fixentries` record; a column read back as `[]` where the row held null, as PyIceberg does, states nothing, and a row read back keeps its `currhashcode` and folds with the delivery it was. A miscount is no anomaly: `453=2` followed by one occurrence is a group of one, which re-emits `453=1`. A bridge packing a whole occurrence into one value - `#NOPARTYIDS[0]=PARTYID=BUYSIDE...PARTYROLE=1` - is read into the members of the occurrence it names, so the record holds the occurrence in its group's entry as it holds one a numeric frame spelled member by member. No dialect is there either: a message is not a dictionary member, and which dictionaries a field belongs to is the field's own `FIX:branches` in the registry.
 
 ## The crate's own columns
 
@@ -1411,7 +1414,7 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 
 Every message in a capture asks for the same tags in the same order, and each ask through the ordinary [lookup](registry.md) would be a hash and a verification. None of that runs per row: the schema is fixed, its columns are named `msgtype` and `symbol`, each carries its field's `FIX:tag`, and `into_row` fills each one by that tag. `fix_column_tags` reads the tags off a schema once, so a batch of a million rows reads them once rather than once per row; a caller-declared root that spells a column by its tag's digits is read the same way, the digits answering where the field carries no tag.
 
-So there is nothing beside the schema to build, hold, or invalidate. A caller finds a column with `index_of` on the schema it already has - or with `fix_column_of` and the tag - and two captures sharing a dictionary share both the schema and every position in it. A Serie group column is filled by its `FIX:counter`, while the numeric count stays in its own column; the self-counting `metadata` Map occupies only its own column.
+So there is nothing beside the schema to build, hold, or invalidate. A caller finds a column with `index_of` on the schema it already has - or with `fix_column_of` and the tag - and two captures sharing a dictionary share both the schema and every position in it. A Serie group column is filled by its `FIX:counter`, the wire tag that names it, and no column holds a count; the self-counting `metadata` Map occupies only its own column.
 
 ### A group is laid out the way the column declares it
 

@@ -14,17 +14,6 @@
         }
       },
       {
-        "name": "nousernames",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nousernames",
-          "FIX:tag": "809"
-        }
-      },
-      {
         "name": "usernames",
         "dtype": {
           "type": "null"
@@ -43,17 +32,6 @@
         "metadata": {
           "FIX:field": "userstatus",
           "FIX:tag": "926"
-        }
-      },
-      {
-        "name": "nothrottles",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nothrottles",
-          "FIX:tag": "1610"
         }
       },
       {

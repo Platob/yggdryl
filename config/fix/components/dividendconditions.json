@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nodividendperiods",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodividendperiods",
-          "FIX:tag": "42274"
-        }
-      },
-      {
         "name": "dividendperiods",
         "dtype": {
           "type": "null"

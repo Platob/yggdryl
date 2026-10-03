@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "notestscenarioparameters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notestscenarioparameters",
-          "FIX:tag": "3130"
-        }
-      },
-      {
         "name": "testscenarioparameters",
         "dtype": {
           "type": "null"
@@ -69,17 +58,6 @@
         }
       },
       {
-        "name": "nonestedpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonestedpartyids",
-          "FIX:tag": "539"
-        }
-      },
-      {
         "name": "nestedparties",
         "dtype": {
           "type": "null"
@@ -87,17 +65,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "nestedparties"
-        }
-      },
-      {
-        "name": "noinstrumentscopes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noinstrumentscopes",
-          "FIX:tag": "1656"
         }
       },
       {
@@ -155,17 +122,6 @@
         }
       },
       {
-        "name": "noteststeps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noteststeps",
-          "FIX:tag": "3036"
-        }
-      },
-      {
         "name": "teststeps",
         "dtype": {
           "type": "null"
@@ -173,17 +129,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "teststeps"
-        }
-      },
-      {
-        "name": "notestsystemmodules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notestsystemmodules",
-          "FIX:tag": "3049"
         }
       },
       {
@@ -197,17 +142,6 @@
         }
       },
       {
-        "name": "notestmeasures",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notestmeasures",
-          "FIX:tag": "3052"
-        }
-      },
-      {
         "name": "testmeasures",
         "dtype": {
           "type": "null"
@@ -215,17 +149,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "testmeasures"
-        }
-      },
-      {
-        "name": "notestorders",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notestorders",
-          "FIX:tag": "3082"
         }
       },
       {

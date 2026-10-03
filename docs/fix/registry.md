@@ -23,6 +23,7 @@
 | Identifier maps | A scalar may carry `FIX:idmap`: the [identifier types](#a-field-names-a-message-by-its-identifiers) its value states - the map, `identifiers`, the lower-case key the type is, whether a following operation carries it, and on `PartyID(448)` the `PartyRole(452)` of the occurrence stating it; `idmap_sources` compiles every field's once |
 | Identifiers | `FIX:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
 | Definition tags | Components and Serie/LargeSerie groups carry a `FIX:tag` derived from their name into `[100000, 1100000)`; a reference occurrence never restates it. A crate Map group instead has one reserved tag, also its counter, with no scalar counterpart |
+| Counters | A group's counter is an `int32` field of the dictionary, found by `field_by_tag`; the group it frames carries the counter's tag as `FIX:counter` and is found by `field_by_counter`. The counter frames the group on the wire and nothing else: a message or component definition lists the group alone, its length the count, and one listing the counter beside the group is refused |
 | Doors | one family, and every category answers it: `field_by_tag`, `field_by_name`, `field_by_id`, `field_by_path`, `field_by_counter` and the generic `field`, each with its `get_` twin; `insert` files a Struct as a component, a Serie/LargeSerie of a Struct or a Map as a group, anything else as a scalar, and `update`, `add_field`, `merge_with` and `remove` take any of the three |
 | References | `FIX:field`, `FIX:component`, and `FIX:group` resolve once at catalog intake; live definitions hold resolved native fields |
 | Planning | Message identity, contextual counter lookup, group layouts and identifier selection are compiled before parsing rows |
@@ -37,7 +38,7 @@
 
 ## Use
 
-`NoPartyIDs(453)` stores a count, while `Parties` stores the occurrences and `Party` describes one occurrence.
+`NoPartyIDs(453)` is a field of the dictionary that frames the group on the wire, and no definition lists it beside the group: `Parties` stores the occurrences, its length the count, and `Party` describes one occurrence.
 
 === "Rust"
 
@@ -63,9 +64,7 @@
 
     let mut group = registry.field_by_name("Parties")?.clone();
     group.as_fix_mut().set_group("Parties")?;
-    let mut count = registry.field(453)?.clone();
-    count.as_fix_mut().set_field_ref("NoPartyIDs")?;
-    let mut order = DataType::from(StructType::from_fields([count, group])?).required_field("Order");
+    let mut order = DataType::from(StructType::from_fields([group])?).required_field("Order");
     order.as_fix_mut().set_msgtype("D")?;
     registry.insert(order)?;
 
@@ -105,9 +104,7 @@
 
     group = registry.field_by_name("Parties")
     group.fix.group = "Parties"
-    count = registry.field(453)
-    count.fix.field_ref = "NoPartyIDs"
-    order = Field("Order", DataType.from_fields([count, group]), nullable=False)
+    order = Field("Order", DataType.from_fields([group]), nullable=False)
     order.fix.msgtype = "D"
     registry.insert(order)
 
@@ -145,9 +142,7 @@
 
     const group = registry.fieldByName('Parties')
     group.fix.group = 'Parties'
-    const count = registry.field(453)
-    count.fix.fieldRef = 'NoPartyIDs'
-    const order = fields.struct('Order', [count, group], { nullable: false })
+    const order = fields.struct('Order', [group], { nullable: false })
     order.fix.msgtype = 'D'
     registry.insert(order)
 
@@ -929,7 +924,7 @@ How one entry is applied at one level - the root, or one occurrence of a repeati
 | Match | the first entry whose condition holds over the level - the held value, the message types it is scoped to, the group it applies inside |
 | Plan | every target's value computed and re-typed for the target's field; a value the target cannot hold, or a part a join needs left unstated, ends the entry |
 | Check | every target writable: absent, null, or already equal to what would be written; the source field itself is always writable, and a constant written over a multi-valued source replaces the code the condition named |
-| Apply | all-or-nothing: one target that cannot take its value blocks the whole entry, and no later entry fills in for it; an occurrence merges into the one whose literal members all equal the planned ones, else appends one, and sets the counter to the count the group then has |
+| Apply | all-or-nothing: one target that cannot take its value blocks the whole entry, and no later entry fills in for it; an occurrence merges into the one whose literal members all equal the planned ones, else appends one, and sets no counter, the group's length being the count |
 | Chain | an entry that rewrote the source's own value leaves a new held value, restated in turn, bounded by the entries the tag lists |
 
 ### What the specification retired

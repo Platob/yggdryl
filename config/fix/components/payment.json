@@ -257,17 +257,6 @@
         }
       },
       {
-        "name": "nopaymentbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentbusinesscenters",
-          "FIX:tag": "40944"
-        }
-      },
-      {
         "name": "paymentbusinesscenters",
         "dtype": {
           "type": "null"
@@ -396,17 +385,6 @@
         "metadata": {
           "FIX:field": "paymentmethod",
           "FIX:tag": "492"
-        }
-      },
-      {
-        "name": "nopaymentsettls",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentsettls",
-          "FIX:tag": "40230"
         }
       },
       {

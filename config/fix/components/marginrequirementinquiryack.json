@@ -25,17 +25,6 @@
         }
       },
       {
-        "name": "nomarginreqmtinqqualifier",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nomarginreqmtinqqualifier",
-          "FIX:tag": "1636"
-        }
-      },
-      {
         "name": "marginreqmtinqqualgrp",
         "dtype": {
           "type": "null"
@@ -109,17 +98,6 @@
         "metadata": {
           "FIX:field": "responsedestination",
           "FIX:tag": "726"
-        }
-      },
-      {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
         }
       },
       {

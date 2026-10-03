@@ -106,7 +106,8 @@ from yggdryl.fix import FixCodec, FixRegistry
 codec = FixCodec(FixRegistry.from_handle(Path("config/fix")))
 
 message, = codec.parse_line(b"recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|")
-assert message.by_tag(453).as_py() == 1
+# The group is its list: its length is the count, and tag 453 reaches nothing.
+assert len(message.by_name("parties").as_py()) == 1
 assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
 
 # Two frames on one line are two messages; a sentence is none.
@@ -616,6 +617,8 @@ import yggdryl
 from yggdryl import DataType, Field
 from yggdryl.fix import FixRegistry
 
+# The counter is a field of the dictionary; no component or message lists it
+# beside the group, whose length is its count.
 count = Field("NoPartyIDs", "int32")
 count.fix.tag = 453
 party_id = Field("PartyID", "utf8")

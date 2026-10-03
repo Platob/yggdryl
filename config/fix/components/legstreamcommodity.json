@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nolegstreamcommodityaltids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstreamcommodityaltids",
-          "FIX:tag": "41674"
-        }
-      },
-      {
         "name": "legstreamcommodityaltids",
         "dtype": {
           "type": "null"
@@ -110,17 +99,6 @@
         "metadata": {
           "FIX:field": "legstreamcommoditydeliverypricingregion",
           "FIX:tag": "42588"
-        }
-      },
-      {
-        "name": "nolegstreamassetattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstreamassetattributes",
-          "FIX:tag": "41452"
         }
       },
       {
@@ -211,17 +189,6 @@
         }
       },
       {
-        "name": "nolegstreamcommoditydatasources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstreamcommoditydatasources",
-          "FIX:tag": "41677"
-        }
-      },
-      {
         "name": "legstreamcommoditydatasources",
         "dtype": {
           "type": "null"
@@ -287,17 +254,6 @@
         }
       },
       {
-        "name": "nolegstreamcommoditysettlbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstreamcommoditysettlbusinesscenters",
-          "FIX:tag": "41646"
-        }
-      },
-      {
         "name": "legstreamcommoditysettlbusinesscenters",
         "dtype": {
           "type": "null"
@@ -360,17 +316,6 @@
         "metadata": {
           "FIX:field": "legstreamcommoditysettldaytype",
           "FIX:tag": "41671"
-        }
-      },
-      {
-        "name": "nolegstreamcommoditysettlperiods",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstreamcommoditysettlperiods",
-          "FIX:tag": "41686"
         }
       },
       {

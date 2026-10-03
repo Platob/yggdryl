@@ -55,17 +55,6 @@
         }
       },
       {
-        "name": "nostrikerules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostrikerules",
-          "FIX:tag": "1201"
-        }
-      },
-      {
         "name": "strikerules",
         "dtype": {
           "type": "null"
@@ -73,17 +62,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "strikerules"
-        }
-      },
-      {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
         }
       },
       {
@@ -119,17 +97,6 @@
         }
       },
       {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
-        }
-      },
-      {
         "name": "stipulations",
         "dtype": {
           "type": "null"
@@ -140,17 +107,6 @@
         }
       },
       {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
-        }
-      },
-      {
         "name": "seclstupdrelsymsleggrp",
         "dtype": {
           "type": "null"
@@ -158,17 +114,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "seclstupdrelsymsleggrp"
-        }
-      },
-      {
-        "name": "norelatedinstruments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedinstruments",
-          "FIX:tag": "1647"
         }
       },
       {

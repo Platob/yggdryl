@@ -6605,7 +6605,12 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// became a market fact: that line's tags run from 1100 to 1162 and so state
 /// `DisplayQty(1138)`, which the market facts hold in the one boxed record
 /// of rarely stated quantities they allocate on the first such fact.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 29), (16, 30), (64, 32)];
+///
+/// It fell by one at every width when a group became its list alone: the
+/// builder's finish no longer collects each child's tag and counter to
+/// restate a counter beside its group, there being none: 29 to 28, 30 to 29
+/// and 32 to 31.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 28), (16, 29), (64, 31)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -6657,7 +6662,7 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 ///
 /// It last moved with [`FIX_LINE_COSTS`], by the same one in both columns.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (29, 35)), (16, (30, 60)), (64, (31, 157))];
+    [(4, (28, 34)), (16, (29, 59)), (64, (30, 156))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -6742,8 +6747,9 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// Each rendered key is exactly one allocation: the path, held as the bytes
 /// it is, rather than a counted page that would only be borrowed back.
 /// Members stay in `Member::Value` and the group keeps occurrences, so no
-/// `Slot.values` buffer exists. A packed row has exactly three scalar slots:
-/// `MsgType`, the counter, and fallback `BeginString`.
+/// `Slot.values` buffer exists. A packed row has exactly two scalar slots:
+/// `MsgType` and fallback `BeginString`; the counter opens the group and is
+/// no slot of its own.
 ///
 /// Four members and sixteen, because the number that matters is the slope,
 /// and the rest of it is the row a wider group builds. The codec reads a
@@ -6772,7 +6778,12 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 ///
 /// It rose by one at both widths with [`FIX_LINE_COSTS`], the `Arc` the
 /// message's table of names is shared through: 54 to 55 and 74 to 75.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 55), (16, 75)];
+///
+/// It fell by two at both widths when a group became its list alone: the
+/// finish's list of each child's tag and counter, as at every width of
+/// [`FIX_LINE_COSTS`], and the list of counters the entries collected at
+/// the row's level to leave the counter's child out: 55 to 53 and 75 to 73.
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 53), (16, 73)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -6818,8 +6829,8 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// It moved with [`FIX_LINE_COSTS`], by the same four: 31 to 27 at four
 /// pairs, 32 to 28 at sixteen and 33 to 29 at sixty-four; then by the
 /// same one: 28, 29 and 30; and last by its displayed quantity at
-/// sixty-four alone: 31.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 28), (16, 29), (64, 31)];
+/// sixty-four alone: 31; and with it by one at every width: 27, 28 and 30.
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 27), (16, 28), (64, 30)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
@@ -7865,16 +7876,37 @@ struct StageCosts {
 /// keys and four nodes to 88, a frame's twenty-two and three to 64, the
 /// packed frame's eleven and one to 250.
 ///
+/// A group then became its list alone, no counter beside it at any level.
+/// Each parse fell by the list of every child's tag and counter the
+/// builder's finish collected to restate a counter: one each, and three
+/// more for the bridge row, whose `NoPartyIDs` stated two beside the eight
+/// occurrences the group held, for the anomaly that disagreement built.
+/// Each fell by the list of counters every entries walk collected at
+/// a level holding groups to leave a counter's child out: one for the bridge
+/// row, four for a frame and eleven for the packed frame. The packed frame
+/// fell by sixty-two more, the one write per split side restating
+/// `NoSides(552)=1` beside the side's group, and by one where its root's six
+/// groups no longer spilled the four-wide list of counters the member walk
+/// kept; the bridge row rose by one, the builder holding three slots fewer
+/// and crossing one growth boundary the other way - what the former reading
+/// paid for this line with any one of its three named counters dropped. So
+/// the bridge row's parse fell by four to 556, a frame's by five to 223,
+/// the packed frame's by seventy-five to 1022. Each landing fell by what the
+/// fixed row's two counter columns, `notrdregtimestamps` and
+/// `noregulatorytradeids`, cost to lay out - ten for the bridge row, twelve
+/// for each frame - and each batch by the two arrays it no longer gathers,
+/// to 210; no `into_row` moved.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 560,
+            parse: 556,
             into_row: 88,
-            landing: 1512,
-            batch: 212,
+            landing: 1502,
+            batch: 210,
             digest: 1,
             lifecycle: 10,
         },
@@ -7883,10 +7915,10 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_pipe",
         72,
         StageCosts {
-            parse: 228,
+            parse: 223,
             into_row: 64,
-            landing: 1494,
-            batch: 212,
+            landing: 1482,
+            batch: 210,
             digest: 1,
             lifecycle: 10,
         },
@@ -7895,10 +7927,10 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1097,
+            parse: 1022,
             into_row: 250,
-            landing: 1532,
-            batch: 212,
+            landing: 1520,
+            batch: 210,
             digest: 1,
             lifecycle: 10,
         },

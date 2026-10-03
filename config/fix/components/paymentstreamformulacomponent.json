@@ -37,17 +37,6 @@
         }
       },
       {
-        "name": "nopaymentstreamformulas",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentstreamformulas",
-          "FIX:tag": "42683"
-        }
-      },
-      {
         "name": "paymentstreamformulas",
         "dtype": {
           "type": "null"

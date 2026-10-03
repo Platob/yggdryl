@@ -212,7 +212,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `identifiers` | `FIX:identifiers` | canonical member names, in component order | the component's direct scalar identifiers; [declaration and compiled selection](registry.md#component-identifiers) |
 | `description` | `description` | text | the specification's wording, on the generic key every catalog reads |
 | `codeset` | `FIX:codeset` | one name | the [code set](registry.md#a-field-names-the-code-set-it-reads-by) this field draws its values from; the dictionary holds the members under that name, and a registry refuses a field naming a set it does not hold |
-| `counter` | `FIX:counter` | `i32` | on a Serie/LargeSerie group, the separate scalar count field's tag; on a crate Map group, its own tag, without a scalar counter |
+| `counter` | `FIX:counter` | `i32` | on a group, the NumInGroup tag that frames it on the wire, written from the group's length and never a field beside it; on a crate Map group, its own tag |
 | `component` | `FIX:component` | name | component reference, including a group's occurrence |
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |
 | `group` | `FIX:group` | name | group reference in a definition |
@@ -468,17 +468,18 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 ## Nesting needs no second type
 
 `NoPartyIDs` is an `int32` field at tag 453. `Parties` is a separate Serie of the
-`Party` Struct, linked to that count through `FIX:counter`. Fields, components
-and groups are the three registry categories, a message being a component that
-carries `FIX:msgtype`.
+`Party` Struct, linked to that field through `FIX:counter`, which only frames the
+group on the wire. No component, message, row or entry lists the counter beside
+the group: the group's length is its count. Fields, components and groups are
+the three registry categories, a message being a component that carries
+`FIX:msgtype`.
 
 The crate's `metadata(65035)` is also a group: a nullable, sorted-key
 `map<utf8, utf8>` whose occurrence is its non-null entries Struct, with no
 separate scalar counter and no invented numeric tags for its key or value. A
 parse fills it from the
 [namespaced keys](capture.md#a-composed-key-fills-the-field-its-last-segment-names)
-a bridge wrote, and a row from every key no dictionary resolved, while
-ordinary Serie/LargeSerie groups keep their existing counter rules; the names
+a bridge wrote, and a row from every key no dictionary resolved; the names
 a message goes by are its [identifiers](message.md#the-identifier-maps).
 
 The published FIX component names guide the catalog: [FIX message structures](https://fixtrading.org/concepts-part1-messagestructures/)

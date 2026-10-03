@@ -587,17 +587,6 @@
         }
       },
       {
-        "name": "nounderlyingpaymentstreampricingbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentstreampricingbusinesscenters",
-          "FIX:tag": "41909"
-        }
-      },
-      {
         "name": "underlyingpaymentstreampricingbusinesscenters",
         "dtype": {
           "type": "null"
@@ -608,17 +597,6 @@
         }
       },
       {
-        "name": "nounderlyingpaymentstreampricingdays",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentstreampricingdays",
-          "FIX:tag": "41944"
-        }
-      },
-      {
         "name": "underlyingpaymentstreampricingdays",
         "dtype": {
           "type": "null"
@@ -626,17 +604,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingpaymentstreampricingdays"
-        }
-      },
-      {
-        "name": "nounderlyingpaymentstreampricingdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentstreampricingdates",
-          "FIX:tag": "41941"
         }
       },
       {
@@ -788,17 +755,6 @@
         "metadata": {
           "FIX:field": "underlyingreturnratenotionalreset",
           "FIX:tag": "42963"
-        }
-      },
-      {
-        "name": "nounderlyingreturnrates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingreturnrates",
-          "FIX:tag": "43034"
         }
       },
       {

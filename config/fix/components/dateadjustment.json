@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nobusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nobusinesscenters",
-          "FIX:tag": "40278"
-        }
-      },
-      {
         "name": "businesscenters",
         "dtype": {
           "type": "null"

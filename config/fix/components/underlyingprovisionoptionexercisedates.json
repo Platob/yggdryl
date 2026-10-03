@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nounderlyingprovisionoptionexercisebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingprovisionoptionexercisebusinesscenters",
-          "FIX:tag": "42184"
-        }
-      },
-      {
         "name": "underlyingprovisionoptionexercisebusinesscenters",
         "dtype": {
           "type": "null"
@@ -33,17 +22,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingprovisionoptionexercisebusinesscenters"
-        }
-      },
-      {
-        "name": "nounderlyingprovisionoptionexercisefixeddates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingprovisionoptionexercisefixeddates",
-          "FIX:tag": "42112"
         }
       },
       {

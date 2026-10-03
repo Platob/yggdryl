@@ -468,7 +468,6 @@ fn a_grammar_becomes_one_root_flattened_across_part() {
             "msgtype",
             "timeinforce",
             "avgpx",
-            "nolegs",
             "legs",
             "beginstring2"
         ],
@@ -477,7 +476,7 @@ fn a_grammar_becomes_one_root_flattened_across_part() {
     // The duplicate keeps the tag, which is what recovers it.
     let fields = root.dtype().as_fields().unwrap();
     assert_eq!(fields[0].as_fix().tag().unwrap(), Some(8));
-    assert_eq!(fields[7].as_fix().tag().unwrap(), Some(8));
+    assert_eq!(fields[6].as_fix().tag().unwrap(), Some(8));
 }
 
 #[test]
@@ -500,12 +499,14 @@ fn required_decides_nullability_and_an_expression_counts_as_absent() {
 }
 
 #[test]
-fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
+fn a_nested_grammar_is_its_group_alone_and_its_counter_a_dictionary_field() {
+    // The counter heads the group on the wire and is no member of the
+    // grammar's root: the group is its list alone, its length the count,
+    // and the counter's tag stands on the group as `FIX:counter` while the
+    // dictionary keeps the counter as a field of its own.
     let (registry, roots) = parse(CBLOCK);
     let fields = roots[0].dtype().as_fields().unwrap();
-    let count = fields.iter().find(|held| held.name() == "nolegs").unwrap();
-    assert_eq!(count.dtype(), &DataType::Int32);
-    assert_eq!(count.as_fix().tag().unwrap(), Some(555));
+    assert!(fields.iter().all(|held| held.name() != "nolegs"));
     assert_eq!(
         registry.field_by_tag(555).unwrap().dtype(),
         &DataType::Int32
@@ -523,17 +524,19 @@ fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
     let members = item.dtype().as_fields().expect("an item struct");
     assert_eq!(
         members.iter().map(yggdryl::Field::name).collect::<Vec<_>>(),
-        ["legcurrency", "nolegsecurityaltid", "legsecurityaltidgrp"]
+        ["legcurrency", "legsecurityaltidgrp"]
     );
     assert!(!members[0].is_nullable(), "556 is required");
-    assert_eq!(members[1].dtype(), &DataType::Int32);
-    assert_eq!(members[1].as_fix().tag().unwrap(), Some(604));
-    let DataType::Serie(inner) = members[2].dtype() else {
-        panic!("a nested serie, got {}", members[2].dtype());
+    assert_eq!(
+        registry.field_by_tag(604).unwrap().dtype(),
+        &DataType::Int32
+    );
+    let DataType::Serie(inner) = members[1].dtype() else {
+        panic!("a nested serie, got {}", members[1].dtype());
     };
-    assert_eq!(members[2].as_fix().tag().unwrap(), None);
-    assert_eq!(members[2].as_fix().counter().unwrap(), Some(604));
-    assert_eq!(members[2].display(), Some("LegSecurityAltIDGrp"));
+    assert_eq!(members[1].as_fix().tag().unwrap(), None);
+    assert_eq!(members[1].as_fix().counter().unwrap(), Some(604));
+    assert_eq!(members[1].display(), Some("LegSecurityAltIDGrp"));
     assert_eq!(inner.display(), Some("LegSecurityAltIDComponent"));
     assert_eq!(
         inner

@@ -125,17 +125,6 @@
         }
       },
       {
-        "name": "notrdregpublications",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdregpublications",
-          "FIX:tag": "2668"
-        }
-      },
-      {
         "name": "trdregpublications",
         "dtype": {
           "type": "null"
@@ -143,17 +132,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "trdregpublications"
-        }
-      },
-      {
-        "name": "notradepriceconditions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradepriceconditions",
-          "FIX:tag": "1838"
         }
       },
       {

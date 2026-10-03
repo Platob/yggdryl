@@ -1107,10 +1107,10 @@ impl Generator for JsFixFieldIterator {
 ///
 /// The row read as a tree: a resolved field carries its canonical positive
 /// tag and name, a key no dictionary explains carries `0` and its own
-/// spelling, and an entry that heads others - a group under its counter, an
-/// occurrence, a component - nests them under `entries`. A group entry's
-/// value is its occurrence count; an occurrence and a component state no
-/// value of their own.
+/// spelling, and an entry that heads others - a group filed under its
+/// counter's tag, an occurrence, a component - nests them under `entries`. A
+/// group entry's value is its length, the count no field states beside it;
+/// an occurrence and a component state no value of their own.
 #[napi(object, object_from_js = false)]
 pub struct FixEntryView {
     /// The resolved canonical tag, or `0` for a key no dictionary explains.
@@ -1288,8 +1288,8 @@ fn capture_view(capture: &FixCapture) -> FixCaptureView {
 /// graph traits' facts - the standard header, what the line said about the
 /// capture it was written for, the `Text(58)` and the metadata a bridge
 /// spelled under its own namespaces. The row holds everything else the message states: the
-/// dictionary fields, groups as series beside their counter, components as
-/// structs. The schema is one non-null Struct `Field` - the only row schema -
+/// dictionary fields, groups as series - each its list alone, its length the
+/// count - components as structs. The schema is one non-null Struct `Field` - the only row schema -
 /// and a plain object crosses as the record the core canonicalizes into that
 /// order exactly as every other row is; a child stating a typed fact fills
 /// the holder that owns it and leaves the row. The entries are the row read
@@ -1775,8 +1775,9 @@ impl JsFixMsg {
     }
 
     /// What the message states that its reading could not take as it
-    /// stands, in arrival order: a value that would not type, a counter
-    /// disagreeing with its group, what the last settle dropped.
+    /// stands, in arrival order: a value that would not type, an alias
+    /// stating another value than the field it lost to, what the last settle
+    /// dropped.
     #[napi(getter)]
     pub fn anomalies(&self) -> Vec<FixAnomalyView> {
         self.inner
@@ -3345,9 +3346,9 @@ pub fn fix_ulbridge_rowheader_native() -> &'static str {
     yggdryl::ULBRIDGE_ROWHEADER
 }
 
-/// One row's columns, in order, as tags: the crate's own, the header, the
-/// body, the groups, the trailer, `MsgDirection` and the counter of the
-/// content record.
+/// One row's columns, in order, as tags: the crate's leading columns, then
+/// the message, the instrument, the order, the values, how it went, the
+/// groups - each by the counter tag naming it - and the frame.
 #[allow(clippy::cast_lossless)]
 #[napi(js_name = "fixSchemaTags")]
 pub fn fix_schema_tags() -> Vec<f64> {

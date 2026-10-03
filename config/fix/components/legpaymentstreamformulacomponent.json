@@ -37,17 +37,6 @@
         }
       },
       {
-        "name": "nolegpaymentstreamformulas",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstreamformulas",
-          "FIX:tag": "42485"
-        }
-      },
-      {
         "name": "legpaymentstreamformulas",
         "dtype": {
           "type": "null"

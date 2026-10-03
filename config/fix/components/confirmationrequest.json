@@ -36,17 +36,6 @@
         }
       },
       {
-        "name": "noorders",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noorders",
-          "FIX:tag": "73"
-        }
-      },
-      {
         "name": "ordallocgrp",
         "dtype": {
           "type": "null"

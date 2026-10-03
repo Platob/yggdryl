@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nounderlyingmarketdisruptionevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingmarketdisruptionevents",
-          "FIX:tag": "41864"
-        }
-      },
-      {
         "name": "underlyingmarketdisruptionevents",
         "dtype": {
           "type": "null"
@@ -47,17 +36,6 @@
         }
       },
       {
-        "name": "nounderlyingmarketdisruptionfallbacks",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingmarketdisruptionfallbacks",
-          "FIX:tag": "41866"
-        }
-      },
-      {
         "name": "underlyingmarketdisruptionfallbacks",
         "dtype": {
           "type": "null"
@@ -65,17 +43,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingmarketdisruptionfallbacks"
-        }
-      },
-      {
-        "name": "nounderlyingmarketdisruptionfallbackreferenceprices",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingmarketdisruptionfallbackreferenceprices",
-          "FIX:tag": "41868"
         }
       },
       {

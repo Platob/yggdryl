@@ -1233,7 +1233,6 @@ fn trade_sides(trade: &mut FixMsg) -> Vec<FixMsg> {
     else {
         return Vec::new();
     };
-    let counted = trade.get_by_tag(TRADE_SIDES).is_some();
     // A trade is not sided, so its cross code is its chain as given.
     let chain = SmolStr::new(trade.get_crosscode());
     let mut sides = Vec::with_capacity(group.entries().len());
@@ -1260,9 +1259,6 @@ fn trade_sides(trade: &mut FixMsg) -> Vec<FixMsg> {
             if let Some(value) = entry_value(occurrence, member) {
                 writes.push((FixKey::Tag(root), side_value(root, value)));
             }
-        }
-        if counted {
-            writes.push((FixKey::Tag(TRADE_SIDES), Scalar::from(1_i32)));
         }
         if let Err(error) = execution.set_each(writes) {
             excluded_side(trade, &name, index, &error);

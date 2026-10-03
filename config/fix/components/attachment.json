@@ -92,17 +92,6 @@
         }
       },
       {
-        "name": "noattachmentkeywords",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noattachmentkeywords",
-          "FIX:tag": "2113"
-        }
-      },
-      {
         "name": "attachmentkeywords",
         "dtype": {
           "type": "null"

@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "noundlyinstrumentpartysubids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noundlyinstrumentpartysubids",
-          "FIX:tag": "1062"
-        }
-      },
-      {
         "name": "undlyinstrumentpartysubids",
         "dtype": {
           "type": "null"

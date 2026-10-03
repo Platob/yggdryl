@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nolegpaymentstreamcompoundingdatesbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstreamcompoundingdatesbusinesscenters",
-          "FIX:tag": "42419"
-        }
-      },
-      {
         "name": "legpaymentstreamcompoundingdatesbusinesscenters",
         "dtype": {
           "type": "null"
@@ -33,17 +22,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legpaymentstreamcompoundingdatesbusinesscenters"
-        }
-      },
-      {
-        "name": "nolegpaymentstreamcompoundingdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstreamcompoundingdates",
-          "FIX:tag": "42405"
         }
       },
       {

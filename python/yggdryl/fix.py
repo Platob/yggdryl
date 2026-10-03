@@ -74,7 +74,8 @@ about the line, which is held nowhere on a message; the free
 :attr:`FixMsg.text` of tag 58; and a bridge's own :attr:`FixMsg.metadata`,
 the ``TECH.`` and ``firm.`` keys under the spelling it gave them - and the
 row holds everything else the message states: the dictionary's fields,
-groups as series beside their counter, components as structs.
+groups as series - each its list alone, its length the count - components
+as structs.
 :meth:`FixMsg.market_data` answers the typed graph leaves the message
 expands to - an order, a quote, an execution, a trade or, for a book ``W`` or
 ``X``, one per entry or one snapshot control - each a
@@ -211,9 +212,11 @@ and :meth:`FixRegistry.add_cfb_file` take a ``dialect`` and stamp it on every
 field the file produces, and :meth:`FixRegistry.dialects` lists the names any
 field or definition carries.
 
-Repeating counts such as ``NoPartyIDs`` are ``int32`` fields; ``Parties`` is a
-separate serie of ``Party`` components, reached by its name or by
-:meth:`FixRegistry.field_by_counter`. A crate Map is a group too: its
+Repeating counts such as ``NoPartyIDs`` are ``int32`` fields of the
+dictionary that frame a group on the wire and nothing else: ``Parties`` is a
+serie of ``Party`` components whose length is its count, reached by its name
+or by :meth:`FixRegistry.field_by_counter`, and no component, message, row or
+entry lists the counter beside it. A crate Map is a group too: its
 occurrence is its non-null entries Struct, its key stays non-null and its own
 tag is its counter.
 

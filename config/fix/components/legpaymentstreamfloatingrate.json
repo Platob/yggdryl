@@ -587,17 +587,6 @@
         }
       },
       {
-        "name": "nolegpaymentstreampricingbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstreampricingbusinesscenters",
-          "FIX:tag": "41561"
-        }
-      },
-      {
         "name": "legpaymentstreampricingbusinesscenters",
         "dtype": {
           "type": "null"
@@ -608,17 +597,6 @@
         }
       },
       {
-        "name": "nolegpaymentstreampricingdays",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstreampricingdays",
-          "FIX:tag": "41596"
-        }
-      },
-      {
         "name": "legpaymentstreampricingdays",
         "dtype": {
           "type": "null"
@@ -626,17 +604,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legpaymentstreampricingdays"
-        }
-      },
-      {
-        "name": "nolegpaymentstreampricingdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstreampricingdates",
-          "FIX:tag": "41593"
         }
       },
       {
@@ -788,17 +755,6 @@
         "metadata": {
           "FIX:field": "legreturnratenotionalreset",
           "FIX:tag": "42467"
-        }
-      },
-      {
-        "name": "nolegreturnrates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegreturnrates",
-          "FIX:tag": "42534"
         }
       },
       {

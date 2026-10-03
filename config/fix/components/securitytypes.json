@@ -79,17 +79,6 @@
         }
       },
       {
-        "name": "nosecuritytypes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosecuritytypes",
-          "FIX:tag": "558"
-        }
-      },
-      {
         "name": "sectypes",
         "dtype": {
           "type": "null"

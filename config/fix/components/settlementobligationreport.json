@@ -112,17 +112,6 @@
         }
       },
       {
-        "name": "nosettloblig",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nosettloblig",
-          "FIX:tag": "1165"
-        }
-      },
-      {
         "name": "settlobligationinstructions",
         "dtype": {
           "type": "null"

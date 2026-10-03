@@ -13,8 +13,10 @@ needs no network at all.
 Orchestra's fields, components and groups each have their own directory of
 native Field documents; a message is a component carrying ``FIX:msgtype`` and
 is written into ``components/`` beside the others. Only wire
-fields have tags. A group references its ordinary int32 counter and contains
-a non-null component. Datatypes resolve through the crate's logical-name table.
+fields have tags. A group states its ordinary int32 counter as its own
+``FIX:counter`` - the tag that frames it on the wire - and contains a non-null
+component; no member lists the counter beside the group, whose length is its
+count. Datatypes resolve through the crate's logical-name table.
 
 ``codesets/`` is the fourth directory, and it holds vocabularies rather than
 fields. A code set is named by the specification - ``SideCodeSet``,
@@ -1266,11 +1268,9 @@ def build_catalog(
                 target = (f"{kind}s", identifier)
                 if target not in definitions:
                     raise ValueError(f"{source_names[owner]}: unresolved {kind} {identifier}")
-                if kind == "group":
-                    counter = definitions[target]["tag"]
-                    if counter not in by_tag or by_tag[counter]["dtype"] != {"type": "int32"}:
-                        raise ValueError(f"{source_names[target]}: counter {counter} must be an int32 field")
-                    children.append(reference(by_tag[counter]["name"], "field", required, counter))
+                # A group is its list alone: its length is the count, so the
+                # NumInGroup counter frames it on the wire as the group's own
+                # `FIX:counter` and is never a member beside it.
                 children.append(reference(names[target], kind, required))
         for child in children:
             if child["name"] in child_names:

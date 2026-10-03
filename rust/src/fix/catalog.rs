@@ -1728,6 +1728,12 @@ impl FixRegistry {
         Some(self.catalog.entries[position].field.as_field())
     }
 
+    /// Whether `tag` counts a repeating group of the dictionary - one group
+    /// or several, so a counter two groups share answers too.
+    pub(super) fn is_counter_tag(&self, tag: i32) -> bool {
+        self.catalog.counters.contains_key(&tag)
+    }
+
     pub(super) fn get_group_plan_by_tag(&self, tag: i32) -> Option<&GroupPlan> {
         let position = self.catalog.counters.get(&tag).copied().flatten()?;
         match &self.catalog.entries[position].field {
@@ -2054,7 +2060,33 @@ impl FixRegistry {
         if let Some(item) = occurrence_of(field) {
             self.validate_references(item, depth + 1)?;
         } else {
+            // A group is its list alone, its length the count: the NumInGroup
+            // field framing it on the wire is its `FIX:counter`, never a
+            // member standing beside it.
+            let mut counters = Vec::new();
             for child in field.fields() {
+                let counter = match child.as_fix().group() {
+                    Some(name) => self
+                        .definition(FixCategory::Groups, name)?
+                        .as_fix()
+                        .counter()?,
+                    None => child.as_fix().counter()?,
+                };
+                counters.extend(counter);
+            }
+            for child in field.fields() {
+                if !child.dtype().is_nested()
+                    && let Some(tag) = child.as_fix().tag()?
+                    && counters.contains(&tag)
+                {
+                    return Err(Error::InvalidRecord {
+                        path: format_smolstr!("{}.{}", field.name(), child.name()),
+                        reason: crate::text::expected_got(
+                            "no NumInGroup counter beside the group it counts, whose length is its count",
+                            format_args!("{} ({tag})", child.name()),
+                        ),
+                    });
+                }
                 self.validate_references(child, depth + 1)?;
             }
         }

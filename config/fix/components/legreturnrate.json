@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nolegreturnrateprices",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegreturnrateprices",
-          "FIX:tag": "42564"
-        }
-      },
-      {
         "name": "legreturnrateprices",
         "dtype": {
           "type": "null"
@@ -88,17 +77,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legreturnrateprices"
-        }
-      },
-      {
-        "name": "nolegreturnratefxconversions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegreturnratefxconversions",
-          "FIX:tag": "42530"
         }
       },
       {
@@ -244,17 +222,6 @@
         }
       },
       {
-        "name": "nolegreturnrateinformationsources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegreturnrateinformationsources",
-          "FIX:tag": "42560"
-        }
-      },
-      {
         "name": "legreturnrateinformationsources",
         "dtype": {
           "type": "null"
@@ -284,17 +251,6 @@
         "metadata": {
           "FIX:field": "legreturnratecashflowtype",
           "FIX:tag": "42554"
-        }
-      },
-      {
-        "name": "nolegreturnratedates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegreturnratedates",
-          "FIX:tag": "42508"
         }
       },
       {

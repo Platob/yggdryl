@@ -90,17 +90,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -108,17 +97,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "undinstrmtgrp"
-        }
-      },
-      {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
         }
       },
       {
@@ -186,17 +164,6 @@
         }
       },
       {
-        "name": "nopricequalifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricequalifiers",
-          "FIX:tag": "2709"
-        }
-      },
-      {
         "name": "pricequalifiers",
         "dtype": {
           "type": "null"
@@ -237,17 +204,6 @@
         "metadata": {
           "FIX:field": "avgpx",
           "FIX:tag": "6"
-        }
-      },
-      {
-        "name": "noregulatorytradeids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noregulatorytradeids",
-          "FIX:tag": "1907"
         }
       },
       {

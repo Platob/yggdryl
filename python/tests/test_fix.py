@@ -1003,7 +1003,8 @@ def test_rows_prune_projected_scalars_and_complete_groups_from_residual_entries(
     assert row.as_py()[schema.index_of("metadata")] == {"9999": "x"}
     rebuilt = FixMsg.from_row(schema, row, seed_batch)
     assert rebuilt.by_tag(55).as_py() == "AAPL"
-    assert rebuilt.by_tag(453).as_py() == 1
+    assert len(rebuilt.by_name("parties").as_py()) == 1
+    assert rebuilt.get_by_tag(453) is None
     assert rebuilt.into_row(schema) == row
 
 
@@ -1118,7 +1119,7 @@ def test_a_row_without_the_entries_column_keeps_projected_content(seed_batch: Fi
     narrow = Field(
         "fix",
         DataType.from_fields(
-            [column for column in wide if column.name not in ("fixentries", "nofixentries")]
+            [column for column in wide if column.name != "fixentries"]
         ),
         nullable=False,
     )
@@ -1140,12 +1141,13 @@ def test_a_row_without_the_entries_column_keeps_projected_content(seed_batch: Fi
 def test_a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
     seed_batch: FixRegistry,
 ) -> None:
-    """A group of no occurrence is stated by its count alone.
+    """A group is its list alone, and one holding nothing is stated empty.
 
-    ``802=0`` is the counter stating zero beside the empty list and re-emits;
-    PyIceberg reads a null list of structs back as ``[]`` beside a null
-    counter, which states nothing: each row read back and settled again from
-    its content is the message the parse wrote.
+    ``802=0`` is the list holding nothing and re-emits; a column holds a group
+    as null or as at least one occurrence, so the zero rides the residual
+    record, and PyIceberg reads a null list of structs back as ``[]``, which
+    states nothing: each row read back and settled again from its content is
+    the message the parse wrote.
     """
     codec = _fixed_batch(seed_batch)
     party = b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|453=1|448=X|447=D|452=1|"
@@ -1160,25 +1162,22 @@ def test_a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
     # states; it holds the dictionary's `Parties(453)` group as a column, in
     # place of the `partyids` identifiers, as a narrower table may.
     wide = fix_schema(seed_batch)
-    count_field = copy.copy(seed_batch.field_by_tag(453))
     group_field = copy.copy(seed_batch.field_by_counter(453))
-    count_field.set_nullable(True)
     group_field.set_nullable(True)
     columns = []
     for column in wide:
         if column.name == "fixentries":
-            columns.extend([count_field, group_field])
+            columns.append(group_field)
         if column.name not in ("currhashcode", "partyids"):
             columns.append(column)
     narrow = Field("fix", DataType.from_fields(columns), nullable=False)
     parties = narrow.index_of("parties")
     party_item = narrow.field_by_path("parties").dtype.field_at(0)
     subids = party_item.index_of("partysubids")
-    count = party_item.index_of("nopartysubids")
+    assert party_item.index_of("nopartysubids") is None
     for message, stated in ((absent, False), (counted, True)):
         written = message.into_row(narrow).as_py()
-        assert (written[parties][0][count] is not None) is stated
-        assert (written[parties][0][subids] is not None) is stated
+        assert written[parties][0][subids] is None
         read_back = copy.deepcopy(written)
         read_back[parties][0][subids] = []
         for row in (written, read_back):
@@ -1191,10 +1190,10 @@ def test_a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
 def test_a_root_group_counting_none_is_stated_and_a_map_read_back_empty_is_not(
     seed_batch: FixRegistry,
 ) -> None:
-    """The same rule at the root: ``453=0`` is stated, ``partyids = {}`` beside no count is not.
+    """The same rule at the root: ``453=0`` is stated, ``partyids = {}`` is not.
 
-    A ``partyids`` identifier map read back as ``{}`` where the row held null - its
-    ``nopartyids`` still null, or no such column at all - is the group absent.
+    A ``partyids`` identifier map read back as ``{}`` where the row held null is
+    the group absent.
     """
     codec = _fixed_batch(seed_batch)
     order = b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|"
@@ -1204,23 +1203,22 @@ def test_a_root_group_counting_none_is_stated_and_a_map_read_back_empty_is_not(
     assert "453=" not in absent.into_text("|")
 
     wide = fix_schema(seed_batch)
-    for dropped in ({"currhashcode"}, {"currhashcode", "nopartyids"}):
-        narrow = Field(
-            "fix",
-            DataType.from_fields([column for column in wide if column.name not in dropped]),
-            nullable=False,
-        )
-        partyids = narrow.index_of("partyids")
-        for message, stated in ((absent, False), (counted, True)):
-            written = message.into_row(narrow).as_py()
-            read_back = copy.deepcopy(written)
-            if read_back[partyids] is None:
-                read_back[partyids] = {}
-            for row in (written, read_back):
-                held = FixMsg.from_row(narrow, row, seed_batch)
-                assert held.currhashcode == message.currhashcode
-                assert held.curruuid == message.curruuid
-                assert ("|453=" in held.into_text("|")) is stated
+    narrow = Field(
+        "fix",
+        DataType.from_fields([column for column in wide if column.name != "currhashcode"]),
+        nullable=False,
+    )
+    partyids = narrow.index_of("partyids")
+    for message, stated in ((absent, False), (counted, True)):
+        written = message.into_row(narrow).as_py()
+        read_back = copy.deepcopy(written)
+        if read_back[partyids] is None:
+            read_back[partyids] = {}
+        for row in (written, read_back):
+            held = FixMsg.from_row(narrow, row, seed_batch)
+            assert held.currhashcode == message.currhashcode
+            assert held.curruuid == message.curruuid
+            assert ("|453=" in held.into_text("|")) is stated
 
 
 def test_the_lifecycle_twin_walks_the_rows_a_batch_holds(seed_batch: FixRegistry) -> None:
@@ -1338,9 +1336,9 @@ def _catalog(members: Iterable[Field] = ()) -> FixRegistry:
     registry.insert(group)
     group = registry.field_by_name("Parties")
     group.fix.group = "Parties"
-    counter = registry.field(453)
-    counter.fix.field_ref = "NoPartyIDs"
-    registry.insert(_message("NewOrderSingle", "D", [counter, group]))
+    # A group is its list alone: the counter is the dictionary's field and
+    # no member of the message beside it.
+    registry.insert(_message("NewOrderSingle", "D", [group]))
     return registry
 
 
@@ -1698,7 +1696,7 @@ def _numeric_group_registry(scoped: bool) -> FixRegistry:
     held.fix.component = component.name
     registry.insert(held)
     if scoped:
-        message = _message("AlphaMessage", "X", [counter, held, tail])
+        message = _message("AlphaMessage", "X", [held, tail])
         message.fix.branches = ["alpha"]
         registry.insert(message)
     return registry
@@ -1715,7 +1713,8 @@ def test_numeric_groups_resolve_through_the_one_namespace(scoped: bool) -> None:
     codec = FixCodec(registry)
     wire = b"35=X|6000=1|6001=42|6002=7|55=AAPL|10=0|"
     message = codec.parse_fix_line(wire)
-    assert message.by_name("NoAlphaRows").as_py() == 1
+    assert len(message.by_name("AlphaRows").as_py()) == 1
+    assert message.get_by_name("NoAlphaRows") is None
     assert message.by_path("AlphaRows[0].AlphaID").as_py() == 42
     assert message.by_name("AlphaValue").as_py() == 7
     assert message.by_tag(55).as_py() == "AAPL"
@@ -2920,7 +2919,6 @@ def _order(seed: FixRegistry) -> Field:
             [
                 seed.field_by_tag(55),
                 seed.field_by_tag(38),
-                seed.field_by_name("NoPartyIDs"),
                 seed.field_by_name("Parties"),
                 Field("9999", "utf8"),
                 seed.field_by_tag(52),
@@ -2933,7 +2931,6 @@ def _order(seed: FixRegistry) -> Field:
 ORDER_VALUE: dict[str, Any] = {
     "symbol": "AAPL",
     "orderqty": decimal.Decimal("100"),
-    "nopartyids": 1,
     "parties": [{"partyid": "BROKER", "partyidsource": "D", "partyrole": 1}],
     "9999": "custom",
     "sendingtime": CLOCK,
@@ -2948,12 +2945,11 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     # the row, so the root keeps only what the message states of its own.
     assert [child.name for child in message.field] == [
         "symbol",
-        "nopartyids",
         "parties",
         "9999",
     ]
     assert message.registry == seed
-    assert len(message) == 4
+    assert len(message) == 3
     symbol_id = seed.field_by_tag(55).fix.id
     assert symbol_id is not None
     assert message.by_tag(55).as_py() == "AAPL"
@@ -3451,8 +3447,8 @@ def test_the_entries_are_the_row_read_as_a_tree(seed: FixRegistry) -> None:
         (0, "9999", "x", []),
         (59, "timeinforce", "0", []),
     ]
-    # The group's counter is the group entry's own value, so the counter
-    # child beside it states nothing the entries do not already.
+    # The group's length is the group entry's own value, filed under its
+    # counter's tag, and no counter child stands beside it.
     assert [tag for tag, _, _, _ in message.entries()].count(453) == 1
     # A typed fact is not an entry: the holders answer those, the lifted
     # `ClOrdID(11)` and the trailer's own `CheckSum(10)` included.
@@ -3507,7 +3503,7 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     )
     assert restored.by_path("parties[0].partyid").as_py() == "BROKER"
 
-    assert repr(message) == 'FixMsg("NewOrderSingle", 4 values)'
+    assert repr(message) == 'FixMsg("NewOrderSingle", 3 values)'
 
 
 def test_message_refuses_a_value_its_field_refuses(seed: FixRegistry) -> None:
@@ -4006,10 +4002,11 @@ def test_a_parse_restates_deprecated_fields_to_their_latest_aliases(seed: FixReg
     latest = next(codec.parse_line(REPORT))
 
     # ExecType PartiallyFilled is restated as Trade; Rule80A A is an agency
-    # order; ExecBroker and ClientID are two parties, in tag order, counted.
+    # order; ExecBroker and ClientID are two parties, in tag order, the
+    # group's length its count.
     assert latest.by_tag(150).as_py() == "F"
     assert latest.by_tag(528).as_py() == "A"
-    assert latest.by_tag(453).as_py() == 2
+    assert len(latest.by_name("parties").as_py()) == 2
     assert latest.by_path("parties[0].partyid").as_py() == "BRKR"
     assert latest.by_path("parties[1].partyid").as_py() == "CLIENT1"
     # The fill under its newest spelling, reachable by the old one too.

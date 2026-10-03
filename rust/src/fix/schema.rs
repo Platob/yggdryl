@@ -132,6 +132,9 @@ pub const BODY_TAGS: [i32; 54] = [
 /// and what the instrument's other identifiers were are the prefix's
 /// `parties` and `secaltids`, so `Parties(453)` and `SecAltIDGrp(454)` are
 /// no columns: a message stating them keeps them in `fixentries` as sent.
+/// Each tag is the group's counter and lands as the group's column alone -
+/// `trdregtimestamps`, `regulatorytradeids` - never as a NumInGroup column
+/// beside it: the list's length is the count.
 pub const GROUP_TAGS: [i32; 2] = [768, 1907];
 
 /// The column holding the residual record: a sorted `map<utf8, utf8>` from
@@ -477,7 +480,12 @@ pub(super) fn rooted(
 ) -> Result<Field> {
     let mut fields: Vec<Field> = Vec::with_capacity(tags.len() + 1);
     for tag in tags {
-        if let Some(held) = registry.get_field_by_tag(tag) {
+        // A tag counting a repeating group is no column: the group's own
+        // list stands under it below, its length the count.
+        if let Some(held) = registry
+            .get_field_by_tag(tag)
+            .filter(|_| !registry.is_counter_tag(tag))
+        {
             let mut held = held.clone();
             // The scalar's canonical name is folded; its display preserves
             // the dictionary's spelling independently of that identity.
@@ -515,7 +523,8 @@ pub(super) fn rooted(
                 fields.push(held);
             }
         }
-        // A native Map group owns its counter; no scalar has to precede it.
+        // A group stands alone, of any kind: its length is the count, and
+        // the counter tag it is filed under frames it on the wire.
         if let Some(group) = registry.get_group_by_tag(tag) {
             let mut group = group.clone();
             group.set_nullable(true);
@@ -656,14 +665,15 @@ pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize> {
         .position(|column| column_tag(column) == Some(tag))
 }
 
-/// The tag one column answers for: the one its field declares, else the one
-/// its name spells.
+/// The tag one column answers for: a group's counter, the tag it is filed
+/// under on the wire, else the one its field declares, else the one its name
+/// spells.
 fn column_tag(column: &Field) -> Option<i32> {
-    column
-        .as_fix()
-        .tag()
+    let view = column.as_fix();
+    view.counter()
         .ok()
         .flatten()
+        .or_else(|| view.tag().ok().flatten())
         .or_else(|| super::field::parse_tag(column.name()))
 }
 
@@ -714,6 +724,7 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
             schema.dtype(),
         ));
     };
+    refuse_counters_beside_groups(registry, schema.fields(), &crate::path::Path::root())?;
     let mut columns = Vec::with_capacity(fields.len());
     for column in fields.iter() {
         let tag = super::identity::resolve_tag(column, registry)?;
@@ -743,6 +754,48 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
         });
     }
     Ok(Arc::from(columns))
+}
+
+/// Refuses a NumInGroup counter standing beside the group it counts, at the
+/// level `fields` make and inside every occurrence and component below it:
+/// a group's count is its length, so a counter beside it would state one
+/// fact twice, and the two could disagree. Read once per shape, with the
+/// plan.
+fn refuse_counters_beside_groups(
+    registry: &FixRegistry,
+    fields: &[Field],
+    path: &crate::path::Path<'_>,
+) -> Result<()> {
+    let facts = member_facts(registry, fields);
+    for (field, (tag, counter)) in fields.iter().zip(&facts) {
+        let Some(tag) = tag.filter(|_| counter.is_none() && !field.dtype().is_nested()) else {
+            continue;
+        };
+        if let Some((group, _)) = fields
+            .iter()
+            .zip(&facts)
+            .find(|(held, (_, counts))| held.dtype().is_nested() && *counts == Some(tag))
+        {
+            return Err(crate::Error::InvalidRecord {
+                path: path.field(field.name()).render().into(),
+                reason: crate::text::expected_got(
+                    "a group alone, its length the count",
+                    format_args!(
+                        "`{}` ({tag}) counting the group `{}` beside it",
+                        field.name(),
+                        group.name()
+                    ),
+                ),
+            });
+        }
+    }
+    for field in fields {
+        let members = item_fields(field).or_else(|| field.dtype().as_fields());
+        if let Some(members) = members {
+            refuse_counters_beside_groups(registry, members, &path.field(field.name()))?;
+        }
+    }
+    Ok(())
 }
 
 /// One schema's plan as this thread read it, beside the schema and a weak
@@ -883,29 +936,62 @@ pub(super) fn tag_and_counter(registry: &FixRegistry, field: &Field) -> (Option<
     }
 }
 
-/// Whether `value`, held by the child `field` of the level `fields` and
-/// `values` make, is a list holding nothing that no counter of that level
-/// states a count for: no entry, the group absent.
+/// `value` as a group column holds it: null where the group lists no
+/// occurrence, and every group an occurrence holds the same, at any depth.
 ///
-/// A group holding no occurrence is stated by its count alone - the parse
-/// holds `NoPartySubIDs(802)=0` as the counter stating zero beside the
-/// empty list, which is the group's entry - while a table may store a null
-/// list as an empty one: PyIceberg reads a null list of structs back as
-/// `[]`, its counter still null.
-pub(super) fn is_unstated_group(
-    registry: &FixRegistry,
-    field: &Field,
-    value: &crate::Scalar,
-    fields: &[Field],
-    values: &[crate::Scalar],
-) -> bool {
-    matches!(field.dtype(), DataType::Serie(_) | DataType::LargeSerie(_))
-        && value.as_serie().is_some_and(crate::Serie::is_empty)
-        && !tag_and_counter(registry, field).1.is_some_and(|counter| {
-            fields.iter().zip(values).any(|(held, stated)| {
-                !stated.is_null()
-                    && !held.dtype().is_nested()
-                    && tag_and_counter(registry, held).0 == Some(counter)
+/// A group's length is its count, so a column cannot tell a group stated
+/// empty - `NoPartySubIDs(802)=0` - from one never stated, and a table may
+/// read a null list of structs back as `[]`, as PyIceberg does. A column
+/// therefore holds a group as null or as at least one occurrence, and a
+/// stated zero stays in the residual record. `field` is the column's own: a
+/// list of anything but occurrences is no group and passes as it is. Reads
+/// without allocating, and builds only where it empties something.
+pub(super) fn without_empty_groups(field: &Field, value: crate::Scalar) -> crate::Scalar {
+    if !holds_empty_group(field, &value) {
+        return value;
+    }
+    let (Some(members), Some(occurrences)) = (group_members(field), value.as_serie()) else {
+        return value;
+    };
+    if occurrences.is_empty() {
+        return crate::Scalar::Null;
+    }
+    crate::Scalar::from_sequence(occurrences.iter().map(|occurrence| {
+        match occurrence.as_sequence() {
+            Some(cells) => crate::Scalar::from_sequence(
+                members
+                    .iter()
+                    .zip(cells)
+                    .map(|(member, cell)| without_empty_groups(member, cell.clone())),
+            ),
+            None => occurrence.into_owned(),
+        }
+    }))
+}
+
+/// The members of one occurrence of `field`, where `field` is a group: a
+/// list of occurrences.
+fn group_members(field: &Field) -> Option<&[Field]> {
+    if matches!(field.dtype(), DataType::Serie(_) | DataType::LargeSerie(_)) {
+        item_fields(field)
+    } else {
+        None
+    }
+}
+
+/// Whether `value`, held under `field`, is a group listing no occurrence or
+/// holds one at any depth.
+fn holds_empty_group(field: &Field, value: &crate::Scalar) -> bool {
+    let (Some(members), Some(occurrences)) = (group_members(field), value.as_serie()) else {
+        return false;
+    };
+    occurrences.is_empty()
+        || occurrences.iter().any(|occurrence| {
+            occurrence.as_sequence().is_some_and(|cells| {
+                members
+                    .iter()
+                    .zip(cells)
+                    .any(|(member, cell)| holds_empty_group(member, cell))
             })
         })
 }
@@ -1456,7 +1542,7 @@ fn content_from_entries(
     for entry in entries {
         let (mut field, value) = child_from_entry(registry, entry, None)?;
         preserve_contended_name(tags, entry, &mut field);
-        push_child(registry, &mut fields, &mut values, &mut folds, field, value);
+        push_child(&mut fields, &mut values, &mut folds, field, value);
     }
     Ok((fields, values))
 }
@@ -1575,13 +1661,6 @@ impl FoldIndex {
         fields.push(field);
     }
 
-    /// Puts `field` in place of the child at `at`.
-    fn set(&mut self, fields: &mut [Field], at: usize, field: Field) {
-        self.unnamed(fields[at].name(), at);
-        self.named(field.name(), at);
-        fields[at] = field;
-    }
-
     /// Renames the child at `at`.
     fn rename(&mut self, fields: &mut [Field], at: usize, name: String) {
         self.unnamed(fields[at].name(), at);
@@ -1621,27 +1700,15 @@ impl FoldIndex {
 }
 
 /// Adds one rebuilt child to a level, as the builder adds one: a group
-/// arrives behind its counter's own child, which the group entry's count
-/// fills, and two children one fold names keep the first.
+/// stands alone, its length the count, and two children one fold names keep
+/// the first.
 fn push_child(
-    registry: &FixRegistry,
     fields: &mut Vec<Field>,
     values: &mut Vec<crate::Scalar>,
     folds: &mut FoldIndex,
     field: Field,
     value: crate::Scalar,
 ) {
-    if let Some(counter) = field.as_fix().counter().ok().flatten()
-        && let Some(scalar) = registry.get_scalar_by_tag(counter)
-        && folds.first(fields, scalar.name()).is_none()
-    {
-        let count = value.as_serie().map_or(0, crate::Serie::len);
-        let count = super::build::typed_spelling(registry, scalar, &count.to_string());
-        let mut scalar = scalar.clone();
-        scalar.set_nullable(count.is_null());
-        folds.push(fields, scalar);
-        values.push(count);
-    }
     if folds.first(fields, field.name()).is_some() {
         return;
     }
@@ -1668,9 +1735,9 @@ fn member_facts(registry: &FixRegistry, fields: &[Field]) -> Vec<(Option<i32>, O
         .collect()
 }
 
-/// The one declared member an entry owns. A group column owns its counter's
-/// entry before the scalar counter beside it; that scalar is the same fact,
-/// checked separately against the occurrence count.
+/// The one declared member an entry owns. A group owns the entry of the
+/// counter it is filed under - no scalar counter stands beside it - before
+/// any member whose own tag that is.
 ///
 /// `facts` is [`tag_and_counter`] of each of `fields`, resolved once by the
 /// caller for every entry it asks about.
@@ -1803,48 +1870,21 @@ fn covers_members(
             return false;
         }
         owned[word] |= mask;
-        // An empty list beside no count stated for it represents no entry.
-        if is_unstated_group(registry, &fields[index], &values[index], fields, values)
-            || !covers_entry(registry, &fields[index], &values[index], entry)
-        {
+        // A group stated empty is null in its column, so it is represented
+        // by no column and stays whole in the record.
+        if !covers_entry(registry, &fields[index], &values[index], entry) {
             return false;
         }
     }
+    // Every member the fitting stated is one an entry owns: a group's count
+    // is its length, never a member of its own.
     values
         .iter()
-        .zip(facts)
         .enumerate()
-        .filter(|(_, (value, _))| !value.is_null())
-        .all(|(index, (value, (tag, counter)))| {
+        .filter(|(_, value)| !value.is_null())
+        .all(|(index, _)| {
             let (word, mask) = bit(index);
-            if owned[word] & mask != 0 {
-                return true;
-            }
-            // A group's scalar counter is represented by the same entry
-            // as its Serie. It is covered only when both fitted values say
-            // the same occurrence count.
-            let Some(tag) = tag.filter(|_| counter.is_none()) else {
-                return false;
-            };
-            let mut groups = facts
-                .iter()
-                .enumerate()
-                .filter(|(_, (_, held))| *held == Some(tag));
-            let Some((group_index, _)) = groups.next() else {
-                return false;
-            };
-            if groups.next().is_some() {
-                return false;
-            }
-            let mut owners = entries.iter().filter(|entry| entry.tag() == tag);
-            let Some(owner) = owners.next() else {
-                return false;
-            };
-            owners.next().is_none()
-                && covered_member_index(fields, facts, owner) == Some(group_index)
-                && values[group_index].as_serie().is_some_and(|occurrences| {
-                    value.as_i128() == i128::try_from(occurrences.len()).ok()
-                })
+            owned[word] & mask != 0
         })
 }
 
@@ -1956,7 +1996,7 @@ fn group_from_entry(
                 .and_then(|index| declared.get(index));
             let (mut field, value) = child_from_entry(registry, member, slot)?;
             preserve_contended_name(&tags, member, &mut field);
-            push_child(registry, &mut fields, &mut values, &mut folds, field, value);
+            push_child(&mut fields, &mut values, &mut folds, field, value);
         }
         let mut members = Vec::with_capacity(fields.len());
         for (field, value) in fields.into_iter().zip(values) {
@@ -2136,7 +2176,7 @@ fn unknown_nested_from_entry(
     for member in entry.entries() {
         let (mut field, value) = child_from_entry(registry, member, None)?;
         preserve_contended_name(&tags, member, &mut field);
-        push_child(registry, &mut fields, &mut values, &mut folds, field, value);
+        push_child(&mut fields, &mut values, &mut folds, field, value);
     }
     let named: Vec<(SmolStr, crate::Scalar)> = fields
         .iter()
@@ -2268,7 +2308,7 @@ fn child_from_entry(
                     .and_then(|index| known.fields().get(index));
                 let (mut field, value) = child_from_entry(registry, member, slot)?;
                 preserve_contended_name(&tags, member, &mut field);
-                push_child(registry, &mut fields, &mut values, &mut folds, field, value);
+                push_child(&mut fields, &mut values, &mut folds, field, value);
             }
             let named: Vec<(SmolStr, crate::Scalar)> = fields
                 .iter()
@@ -2450,29 +2490,23 @@ impl super::FixMsg {
                         carried.push((smol_str::SmolStr::new(column.name()), value.clone()));
                     }
                 }
-                // A list holding nothing beside no count stated for it is
-                // the group absent, at the root as inside an occurrence: a
-                // table may read a null list of structs back as `[]`, and
-                // the group pushed from it would state its counter as zero.
+                // A list holding no occurrence is the group absent, at the
+                // root as inside an occurrence: a group's count is its
+                // length, a table may read a null list of structs back as
+                // `[]`, and a group stated empty is the record's.
                 Some(tag) => {
-                    if !value.is_null()
-                        && !is_unstated_group(&registry, column, value, schema.fields(), held)
-                    {
-                        projected.push((
-                            planned.counter.unwrap_or(tag),
-                            column.clone(),
-                            value.clone(),
-                        ));
+                    let value = without_empty_groups(column, value.clone());
+                    if !value.is_null() {
+                        projected.push((planned.counter.unwrap_or(tag), column.clone(), value));
                     }
                 }
                 None if planned.counter.is_some() => {
-                    if !value.is_null()
-                        && !is_unstated_group(&registry, column, value, schema.fields(), held)
-                    {
+                    let value = without_empty_groups(column, value.clone());
+                    if !value.is_null() {
                         projected.push((
                             planned.counter.expect("the guarded counter"),
                             column.clone(),
-                            value.clone(),
+                            value,
                         ));
                     }
                 }
@@ -2566,40 +2600,10 @@ impl super::FixMsg {
         // its column, so rebuild it through the same child insertion rule as
         // an entry.
         for (tag, field, value) in projected {
-            if let Some(owner) = tags.first(tag).map(|at| &residual[at]) {
-                // A group entry owns the occurrences, while its separate
-                // scalar counter column owns an explicitly stated count (or
-                // the derived count a semantic row records). Keep that scalar
-                // beside the group so a conflicting explicit count is not
-                // silently replaced by the occurrence length.
-                if !owner.entries().is_empty() && !field.dtype().is_nested() {
-                    if let Some(index) = members.iter().position(|member| {
-                        !member.dtype().is_nested()
-                            && tag_and_counter(&registry, member).0 == Some(tag)
-                    }) {
-                        folds.set(&mut members, index, field);
-                        values[index] = value;
-                    } else {
-                        push_child(
-                            &registry,
-                            &mut members,
-                            &mut values,
-                            &mut folds,
-                            field,
-                            value,
-                        );
-                    }
-                }
+            if tags.first(tag).is_some() {
                 continue;
             }
-            push_child(
-                &registry,
-                &mut members,
-                &mut values,
-                &mut folds,
-                field,
-                value,
-            );
+            push_child(&mut members, &mut values, &mut folds, field, value);
         }
         // The columns are the schema's, validated when it was built, and
         // the content is the dictionary's fields, each kept only where no
@@ -2740,9 +2744,12 @@ impl super::FixMsg {
                         .and_then(|index| self.as_value().get(index))
                         .map(Cow::into_owned)
                         .unwrap_or(crate::Scalar::Null);
-                    self.regrouped(counter, column, value)
+                    without_empty_groups(column, self.regrouped(counter, column, value))
                 }
-                (Some(tag), None) => self.regrouped(tag, column, self.column_value(tag)),
+                (Some(tag), None) => without_empty_groups(
+                    column,
+                    self.regrouped(tag, column, self.column_value(tag)),
+                ),
                 (None, None) => match self.carried_cell(column.name()) {
                     crate::Scalar::Null => self
                         .index_of_name(column.name())
@@ -2759,29 +2766,10 @@ impl super::FixMsg {
             return crate::Scalar::try_sequence(columns.len(), fitted_cell);
         }
         // The row is written where it is stored: every fitted cell first,
-        // then the counters and the record decided over them.
+        // then the record decided over them.
         crate::Scalar::try_build_sequence(columns.len(), |values| {
             for (index, slot) in values.iter_mut().enumerate() {
                 *slot = fitted_cell(index)?;
-            }
-            // A group occurrence none of the fixed Serie's members can represent
-            // belongs wholly to the residual record. Its scalar counter must stay
-            // there with it: projecting the count beside a null Serie would claim
-            // that the fixed group represented occurrences it cannot describe.
-            // A bare scalar counter with no group still stands as stated.
-            for (group_index, group) in plan.iter().enumerate() {
-                let Some(counter) = group.counter else {
-                    continue;
-                };
-                if !values[group_index].is_null() || self.index_of_group(counter).is_none() {
-                    continue;
-                }
-                if let Some(counter_index) = plan
-                    .iter()
-                    .position(|held| held.tag == Some(counter) && held.counter.is_none())
-                {
-                    values[counter_index] = crate::Scalar::Null;
-                }
             }
             let entries = self.entries();
             let prunes = plan.iter().any(|column| column.entries);
@@ -2831,18 +2819,10 @@ impl super::FixMsg {
                         {
                             continue;
                         }
-                        // A group holding no occurrence is stated by its
-                        // count alone: an empty list with no counter column
-                        // stating it represents no entry, so a stated zero
-                        // stays in the record.
+                        // A group stated empty is null in its column, which
+                        // represents no entry: a stated zero stays in the
+                        // record, at any depth.
                         if !source_field.dtype().is_nested()
-                            || is_unstated_group(
-                                self.registry(),
-                                column,
-                                &values[index],
-                                columns,
-                                values,
-                            )
                             || !covers_entry(self.registry(), column, &values[index], entry)
                         {
                             continue;
@@ -2976,57 +2956,25 @@ impl super::FixMsg {
             .unwrap_or_default();
         // Where each declared member stands among the message's own, a fact
         // of the two schemas alone and so read once for every occurrence.
-        let placed: Vec<(Option<usize>, Option<usize>)> = members
+        let placed: Vec<Option<usize>> = members
             .iter()
             .map(|member| {
-                let at = spelled
+                spelled
                     .iter()
-                    .position(|field| crate::folds_equal(field.name(), member.name()));
-                // A group counter may be absent from the message's physical
-                // member row while its group is present. Resolve that
-                // relationship once for the schemas, then state the count
-                // only where no explicit non-null counter value exists.
-                let group_at = if member.dtype().is_nested() {
-                    None
-                } else {
-                    let (Some(tag), None) = tag_and_counter(self.registry(), member) else {
-                        return (at, None);
-                    };
-                    let mut groups = spelled.iter().enumerate().filter_map(|(index, field)| {
-                        (tag_and_counter(self.registry(), field).1 == Some(tag)).then_some(index)
-                    });
-                    let first = groups.next();
-                    if first.is_some() && groups.next().is_none() {
-                        first
-                    } else {
-                        None
-                    }
-                };
-                (at, group_at)
+                    .position(|field| crate::folds_equal(field.name(), member.name()))
             })
             .collect();
-        if !occurrences.is_empty()
-            && !placed
-                .iter()
-                .any(|(at, group_at)| at.is_some() || group_at.is_some())
-        {
+        if !occurrences.is_empty() && !placed.iter().any(Option::is_some) {
             return crate::Scalar::Null;
         }
         crate::Scalar::from_sequence(occurrences.iter().map(|occurrence| {
             let Some(stated) = occurrence.as_sequence() else {
                 return occurrence.into_owned();
             };
-            crate::Scalar::from_sequence(placed.iter().map(|(at, group_at)| {
-                let explicit = at.and_then(|at| stated.get(at));
-                if let Some(value) = explicit.filter(|value| !value.is_null()) {
-                    return value.clone();
-                }
-                group_at
-                    .and_then(|at| stated.get(at))
-                    .and_then(crate::Scalar::as_serie)
-                    .map(|occurrences| {
-                        crate::Scalar::from(i32::try_from(occurrences.len()).unwrap_or(i32::MAX))
-                    })
+            crate::Scalar::from_sequence(placed.iter().map(|at| {
+                at.and_then(|at| stated.get(at))
+                    .filter(|value| !value.is_null())
+                    .cloned()
                     .unwrap_or(crate::Scalar::Null)
             }))
         }))
@@ -3034,12 +2982,12 @@ impl super::FixMsg {
 
     /// One column's value, derived where the message does not carry it.
     ///
-    /// Three sources, in this order. What the message actually said, always,
-    /// because a stated value is never overridden. Then the count of a group
-    /// whose counter the message did not state. Then the facts this crate
+    /// Two sources, in this order. What the message actually said, always,
+    /// because a stated value is never overridden. Then the facts this crate
     /// computes for a message built from a schema and a value - `BeginString`
     /// and the classification `CFICode(461)` - which the
-    /// [enriching pass](super::enrich) would otherwise have stated.
+    /// [enriching pass](super::enrich) would otherwise have stated. A group's
+    /// count is no column's: the group's own column is its list.
     ///
     /// Enrichment fills and never overwrites, so a column a venue did state
     /// is that venue's answer whatever the derivation would have said.
@@ -3056,17 +3004,6 @@ impl super::FixMsg {
         // A stated value wins.
         if let Some(held) = self.get_by_tag(tag).filter(|held| !held.is_null()) {
             return held;
-        }
-        // A group is the statement its counter counts. Where no scalar
-        // counter was stated, derive the column from the occurrences; an
-        // explicit non-null counter returned above remains authoritative even
-        // when it conflicts.
-        if let Some(count) = self
-            .index_of_group(tag)
-            .and_then(|index| self.as_value().get(index))
-            .and_then(|held| held.as_serie().map(crate::Serie::len))
-        {
-            return crate::Scalar::from(i32::try_from(count).unwrap_or(i32::MAX));
         }
         // The version a message that states none is said to be read at,
         // derived here for a message built from a schema and a value exactly

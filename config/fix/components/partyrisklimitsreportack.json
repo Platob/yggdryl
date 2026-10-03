@@ -58,17 +58,6 @@
         }
       },
       {
-        "name": "nopartyrisklimits",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyrisklimits",
-          "FIX:tag": "1677"
-        }
-      },
-      {
         "name": "partyrisklimitsupdategrp",
         "dtype": {
           "type": "null"

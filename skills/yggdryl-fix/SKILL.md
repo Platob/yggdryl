@@ -206,11 +206,17 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     or two spellings of one key with two values - and `messages` leaves such a
     row out with a
     warning. `write_arrow_reader` rebuilds each
-    message from the row and refuses a batch with no `fixentries`. A group
-    holding no occurrence is stated by its count alone: `802=0` is an entry
-    and re-emits, while `[]` beside a null counter - what a table such as
-    PyIceberg reads an absent list back as - states nothing, so a row read
-    back keeps its `currhashcode` and folds with the delivery it was.
+    message from the row and refuses a batch with no `fixentries`. A group is
+    one entry filed under its counter's tag (`453:parties`), valued its
+    length: the count is no field of its own and the wire re-emits `453=N`
+    from the list. A list holding nothing is the group stated empty (`802=0`
+    re-emits) and a null list is the group absent; a table column holds a
+    group as null or as at least one occurrence, so a stated zero rides the
+    residual `fixentries` record, and `[]` read back where the row held null -
+    what a table such as PyIceberg does - states nothing, so a row read back
+    keeps its `currhashcode` and folds with the delivery it was. A miscount
+    (`453=2`, one occurrence) is no anomaly: the group holds what arrived and
+    re-emits `453=1`.
 13. The derived fills and the retired-field restatements are native code: a
     registry carries no rule of its own, and nothing in `FIX:` metadata
     changes how a field is filled.
@@ -276,7 +282,13 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   through the lifecycle takes the quote off its book, while the `QuoteCancel`
   (`Z`) before it reads `PENDING_CANCEL` and keeps it there.
 - A group member needs its index on a message: `Parties[0].PartyID`;
-  `Parties.PartyID` is the schema spelling and misses on a value.
+  `Parties.PartyID` is the schema spelling and misses on a value. A group is
+  its list and its length is its count: `by_tag(453)` reaches nothing on a
+  message (`get_by_tag(453)` is `None`/`null`). Read Rust
+  `by_name("parties")?.as_sequence().map(<[Scalar]>::len)`, Python
+  `len(by_name("parties").as_py())`, JavaScript `byName('parties').length`.
+  A message root built by hand lists no counter beside its group, and a
+  registry definition that does is refused.
 - `into_text` output reflects what the dictionary derived (a day order's
   `59=0`), minus facts supplied at intake (an unstated `SendingTime`); it is
   canonical wire, not a byte-for-byte copy of the input.
@@ -339,7 +351,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   and one naming no `orderid` carries the chain's with both. A caller's
   `insert_*`/`set_*` is the message's word and writes no field: to change the
   wire, write the field. `SecurityID(48)`, `SecurityIDSource(22)`,
-  `Parties(453)` and `SecAltIDGrp(454)` are no columns of the fixed row (152
+  `Parties(453)` and `SecAltIDGrp(454)` are no columns of the fixed row (150
   columns): `fixentries` keeps them as sent (`453:parties`, the group's own name).
 - A graph leaf (`market_data`) carries in its `metadata` what its message
   states that no typed column reads and none of the leaf's identifier maps

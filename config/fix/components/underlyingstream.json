@@ -252,17 +252,6 @@
         }
       },
       {
-        "name": "nounderlyingpaymentschedules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentschedules",
-          "FIX:tag": "40664"
-        }
-      },
-      {
         "name": "underlyingpaymentschedules",
         "dtype": {
           "type": "null"
@@ -270,17 +259,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingpaymentschedules"
-        }
-      },
-      {
-        "name": "nounderlyingpaymentstubs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentstubs",
-          "FIX:tag": "40708"
         }
       },
       {
@@ -301,17 +279,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "underlyingdeliverystream"
-        }
-      },
-      {
-        "name": "nounderlyingdeliveryschedules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingdeliveryschedules",
-          "FIX:tag": "41756"
         }
       },
       {

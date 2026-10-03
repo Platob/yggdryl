@@ -1575,8 +1575,8 @@ type MsgPickle = (Py<PyAny>, (String, Py<PyAny>, String));
 /// the graph vocabulary answers, the standard `header()`, what the
 /// `capture()` said about the line, the free `text` and a bridge's own
 /// `metadata` - and the row holds everything else the message states: the
-/// dictionary's fields, groups as series beside their counter, components
-/// as structs. The schema is one non-null Struct `Field` - the only row
+/// dictionary's fields, groups as series - each its list alone, its length
+/// the count - components as structs. The schema is one non-null Struct `Field` - the only row
 /// schema - and the value the row it declares, so a mapping input is
 /// canonicalized into that order by the core exactly as every other row is,
 /// and a child stating a typed fact fills the holder that owns it and leaves
@@ -2372,8 +2372,8 @@ impl PyFixMsg {
 
     /// What the message states that its reading could not take as it
     /// stands, each as `(field, reason)` in arrival order: a value that
-    /// would not type, a counter disagreeing with its group, what the last
-    /// settle dropped. Never a column.
+    /// would not type, an alias stating another value than the field it
+    /// lost to, what the last settle dropped. Never a column.
     #[getter]
     fn anomalies(&self) -> Vec<(String, String)> {
         self.inner
@@ -2537,8 +2537,9 @@ impl PyFixMsg {
     /// One tuple per row child that states a value, in the row's order,
     /// carrying the tag the dictionary resolved - `0` for a key no
     /// dictionary explains - the canonical name, and the value as the wire
-    /// spells it. A repeating group is one tuple under its counter with the
-    /// count as its value, and each occurrence a tuple under it with no
+    /// spells it. A repeating group is one tuple filed under its counter's
+    /// tag with its length as its value - the count is never a field of its
+    /// own - and each occurrence a tuple under it with no
     /// value and the occurrence's members nested; a component is a tuple
     /// with no value and its members nested. The typed facts are not
     /// entries: the header, the event and the capture are the holders' to

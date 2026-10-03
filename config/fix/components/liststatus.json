@@ -157,17 +157,6 @@
         }
       },
       {
-        "name": "noorders",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "noorders",
-          "FIX:tag": "73"
-        }
-      },
-      {
         "name": "ordliststatgrp",
         "dtype": {
           "type": "null"

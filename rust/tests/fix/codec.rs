@@ -444,7 +444,13 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
     let reader = reader();
     let wire = b"8=FIX.4.4|35=D|453=2|448=A|447=D|452=1|802=2|523=DESK|803=1|523=CLIENT|803=2|448=B|447=D|452=3|802=1|523=OTHER|803=3|55=AAPL|10=0|";
     let message = reader.parse_fix_line(wire).unwrap();
-    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
+    // A group is its list alone: its length is the count, and the counter's
+    // tag is no child of its own.
+    assert_eq!(
+        super::sequence(message.by_name("parties").unwrap()).len(),
+        2
+    );
+    assert!(message.get_by_tag(453).is_none(), "no counter column");
     assert_eq!(
         message
             .by_path(&path("Parties[0].PartyID"))
@@ -460,8 +466,8 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
         Some("B")
     );
     assert_eq!(
-        message.by_path(&path("Parties[0].NoPartySubIDs")).unwrap(),
-        Scalar::from(2_i32)
+        super::sequence(message.by_path(&path("Parties[0].PartySubIDs")).unwrap()).len(),
+        2
     );
     assert_eq!(
         message
@@ -525,11 +531,11 @@ fn numeric_group_counts_describe_arrivals_without_allocating_stated_lengths() {
             "{wire}"
         );
         assert_eq!(message.by_tag(55).unwrap().as_str(), Some("AAPL"));
-        // The counter describes the arrival: the group entry carries the
-        // occurrences it holds, whatever length the wire claimed, so a
-        // miscount, a word and an overflow all re-emit as what came.
-        let held = i32::try_from(held).expect("a small count");
-        assert_eq!(message.by_tag(453).unwrap(), Scalar::from(held), "{wire}");
+        // The counter frames the arrival and is no field: the group entry
+        // carries the occurrences it holds, whatever length the wire
+        // claimed, so a miscount, a word and an overflow all re-emit as what
+        // came.
+        assert!(message.get_by_tag(453).is_none(), "{wire}");
         assert_eq!(
             String::from_utf8(message.into_bytes(b'|')).unwrap(),
             format!("8=FIX.4.4|35=D|453={held}|{members}55=AAPL|59=0|10=0|"),
@@ -961,9 +967,10 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
 
     // A group is one thing however many occurrences it states, so a bare
     // group claims every marked one of it: the marked occurrences are
-    // numbered past the bare ones, the group counts what is left, and the
-    // list is sorted by what each occurrence states - so the two spellings
-    // of one row answer one group whichever side arrived first.
+    // numbered past the bare ones, the group holds what is left - its length
+    // the count, a marked count no fact beside the bare one - and the list
+    // is sorted by what each occurrence states - so the two spellings of one
+    // row answer one group whichever side arrived first.
     for row in [
         b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=BARE\x04\x03PARTYROLE=1\
 |#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=B\x04\x03PARTYROLE=3"
@@ -974,7 +981,8 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     ] {
         let message = reader.sole_line(row).unwrap();
         let spelled = String::from_utf8_lossy(row);
-        assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(3), "{spelled}");
+        assert!(message.get_by_tag(453).is_none(), "{spelled}");
+        assert!(message.anomalies().is_empty(), "{spelled}");
         let ids: Vec<String> = super::sequence(message.by_name("parties").unwrap())
             .iter()
             .map(|occurrence| {
@@ -985,13 +993,13 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
             })
             .collect();
         assert_eq!(ids, ["A", "B", "BARE"], "{spelled}");
-        // One counter and one group, whichever spelling the row opened with.
+        // One group, whichever spelling the row opened with.
         let mut columns: Vec<&str> =
             message.as_field().fields().iter().map(Field::name).collect();
         columns.sort_unstable();
         assert_eq!(
             columns,
-            ["nopartyids", "parties", "timeinforce"],
+            ["parties", "timeinforce"],
             "{spelled}"
         );
     }
@@ -1001,7 +1009,10 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     let restated: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1\
 |#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
     let message = reader.sole_line(restated).unwrap();
-    assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1));
+    assert_eq!(
+        super::sequence(message.by_name("parties").unwrap()).len(),
+        1
+    );
     assert_eq!(
         message.by_path(&path("Parties[0].PartyID")).unwrap(),
         Scalar::from("A")
@@ -1162,7 +1173,10 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
         deep.extend_from_slice(b"NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03");
     }
     let message = reader.sole_line(&deep).unwrap();
-    assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1));
+    assert_eq!(
+        super::sequence(message.by_name("parties").unwrap()).len(),
+        1
+    );
     // The entries are that row read as a tree, so they nest as deep as it
     // does and no deeper: one group, one occurrence, then the sub-group
     // repeated to the bound.
@@ -1603,7 +1617,10 @@ NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
     frame.extend_from_slice(b"|10=0|");
 
     let message = reader().sole_line(&frame).unwrap();
-    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
+    assert_eq!(
+        super::sequence(message.by_name("parties").unwrap()).len(),
+        2
+    );
     assert_eq!(message.by_tag(38).unwrap(), super::decimal("3"));
 
     // The message's own group holds the two outer occurrences, and the
@@ -1650,7 +1667,10 @@ NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
     frame.extend_from_slice(payload);
     frame.extend_from_slice(b"|10=0|");
     let numeric = reader().sole_line(&frame).unwrap();
-    assert_eq!(numeric.by_tag(453).unwrap(), Scalar::from(2_i32));
+    assert_eq!(
+        super::sequence(numeric.by_name("parties").unwrap()).len(),
+        2
+    );
     assert_eq!(numeric.by_tag(38).unwrap(), super::decimal("3"));
     outer(&numeric);
     let row = numeric.into_row(&schema).unwrap();
@@ -1764,9 +1784,9 @@ fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
         .map(|occurrence| occurrence.as_sequence().unwrap()[0].as_str().unwrap())
         .collect();
     assert_eq!(ids, ["BUYSIDE", "VENUE"]);
-    // The counter is a scalar column of its own and keeps what the frame
-    // stated, beside the group the occurrences reach.
-    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
+    // The counter frames the group and is no column of its own: the
+    // group's length is the count.
+    assert!(message.get_by_tag(453).is_none(), "no counter column");
     assert_eq!(
         message.by_path(&path("Parties[0].PartyRole")).unwrap(),
         Scalar::from(1_i32)
@@ -1819,9 +1839,9 @@ fn a_counter_a_numeric_frame_states_twice_at_one_level_appends_to_its_group() {
 #[test]
 fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     // A dictionary declaring one group inside another reads the inner
-    // counter as a member: it opens its group inside the occurrence being
-    // filled, the members that follow fill that group first, and a member of
-    // the outer group closes it.
+    // counter as that group's opening: it opens its group inside the
+    // occurrence being filled, the members that follow fill that group
+    // first, and a member of the outer group closes it.
     let mut sub_id = DataType::utf8().nullable_field("partysubid");
     sub_id.as_fix_mut().set_tag(523).unwrap();
     let mut sub_type = DataType::Int32.nullable_field("partysubidtype");
@@ -1832,21 +1852,18 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
         .required_field("partysub");
     let mut sub_count = DataType::Int32.nullable_field("nopartysubids");
     sub_count.as_fix_mut().set_tag(802).unwrap();
+    // The counter is a field of the dictionary and no member of the item:
+    // the nested group is its list alone.
     let mut subs = DataType::serie(sub_item).nullable_field("partysubids");
     subs.as_fix_mut().set_counter(802).unwrap();
     let mut party_id = DataType::utf8().nullable_field("partyid");
     party_id.as_fix_mut().set_tag(448).unwrap();
     let mut role = DataType::Int32.nullable_field("partyrole");
     role.as_fix_mut().set_tag(452).unwrap();
-    let item = StructType::from_fields([
-        party_id.clone(),
-        role.clone(),
-        sub_count.clone(),
-        subs.clone(),
-    ])
-    .map(DataType::from)
-    .unwrap()
-    .required_field("party");
+    let item = StructType::from_fields([party_id.clone(), role.clone(), subs.clone()])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("party");
     let mut count = DataType::Int32.nullable_field("nopartyids");
     count.as_fix_mut().set_tag(453).unwrap();
     let mut parties = DataType::serie(item).nullable_field("parties");
@@ -1872,7 +1889,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     assert_eq!(occurrences.len(), 2);
     let first = occurrences[0].as_sequence().unwrap();
     assert_eq!(first[0].as_str(), Some("A"));
-    let subs = first[3]
+    let subs = first[2]
         .as_sequence()
         .expect("the nested group in the first occurrence");
     let sub_ids: Vec<&str> = subs
@@ -1882,7 +1899,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     assert_eq!(sub_ids, ["S1", "S2"]);
     let second = occurrences[1].as_sequence().unwrap();
     assert_eq!(second[0].as_str(), Some("B"));
-    assert!(second[3].is_null(), "the second party stated no sub-ids");
+    assert!(second[2].is_null(), "the second party stated no sub-ids");
     assert!(
         message.by_tag(802).is_err(),
         "the inner counter is no root column"
@@ -1917,7 +1934,7 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
     let reader = reader();
     // `FixKey` reads every string as a name, so a numeric group key resolves
     // only tag-first. Resolving it by name alone built a second, tag-less
-    // column beside the counter's own and left the counter holding nothing.
+    // column beside the group's own.
     let by_tag = reader
         .sole_line(b"MSGTYPE=D|453=2|453[0]=448=BUYSIDE|453[1]=448=VENUE")
         .unwrap();
@@ -1938,10 +1955,10 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
             .collect();
         assert_eq!(
             columns,
-            ["nopartyids", "parties", "timeinforce"],
-            "one counter, one group and the day order the dictionary derives"
+            ["parties", "timeinforce"],
+            "one group and the day order the dictionary derives"
         );
-        assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
+        assert!(message.get_by_tag(453).is_none());
         let occurrences = super::sequence(message.by_name("parties").unwrap());
         assert_eq!(occurrences.len(), 2);
     }
@@ -1956,7 +1973,6 @@ fn an_unnamed_occurrence_opens_the_declared_component_under_its_counter() {
     let message = reader()
         .sole_line(b"MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=ONE|NOPARTYIDS[1]=TWO")
         .unwrap();
-    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
     let occurrences = super::sequence(message.by_name("parties").unwrap());
     assert_eq!(occurrences, [Scalar::Null, Scalar::Null]);
     let group = message.as_field().get_field_by_path("parties").unwrap();
@@ -1996,7 +2012,7 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
         .iter()
         .map(yggdryl::Field::name)
         .collect();
-    assert_eq!(names, ["nolinesoftext", "linesoftextgrp"], "{names:?}");
+    assert_eq!(names, ["linesoftextgrp"], "{names:?}");
     // One group, one column: the counter and its members reach one slot.
     assert_eq!(
         message
@@ -2007,21 +2023,21 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
             .len(),
         2
     );
-    let group = message
-        .as_field()
-        .field("nolinesoftext")
-        .expect("the counter's column");
+    let counter = message
+        .registry()
+        .get_field_by_tag(33)
+        .expect("the counter's field");
     assert!(
-        group.as_fix().names().any(|held| held == "linesoftext"),
-        "the 4.2 spelling is still readable off the column",
+        counter.as_fix().names().any(|held| held == "linesoftext"),
+        "the 4.2 spelling is still readable off the counter's field",
     );
 }
 
 #[test]
-fn a_group_the_dictionary_holds_as_a_large_serie_still_states_its_count() {
+fn a_group_the_dictionary_holds_as_a_large_serie_is_its_list_alone() {
     // The FIX layer reads a group as `Serie` or `LargeSerie` everywhere it looks
-    // at one, so the miscount looks at the same pair: a dictionary that stored
-    // its group in the wider variant is still a dictionary of groups.
+    // at one: a dictionary that stored its group in the wider variant is still
+    // a dictionary of groups, each its list alone.
     let mut party_id = DataType::utf8().nullable_field("partyid");
     party_id.as_fix_mut().set_tag(448).unwrap();
     let item = StructType::from_fields([party_id])
@@ -2043,14 +2059,13 @@ fn a_group_the_dictionary_holds_as_a_large_serie_still_states_its_count() {
     let message = super::fixed_codec(registry)
         .sole_line(b"35=D|55=AAPL|453=2|10=0|")
         .unwrap();
-    // The counter describes the group: it holds no occurrence, so the count
-    // is zero however wide a serie the dictionary stores the group in.
-    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(0_i32));
-    assert!(
-        message
-            .get_by_name("parties")
-            .is_none_or(|held| held.as_sequence().is_none_or(<[Scalar]>::is_empty))
-    );
+    // The counter frames the group: it holds no occurrence, so the group is
+    // stated empty and re-emits a zero count however wide a serie the
+    // dictionary stores it in.
+    assert!(message.get_by_tag(453).is_none());
+    assert!(super::sequence(message.by_name("parties").unwrap()).is_empty());
+    let wire = String::from_utf8(message.into_bytes(b'|')).unwrap();
+    assert!(wire.contains("|453=0|"), "{wire}");
 }
 
 /// A capture that cannot print `0x01` writes it, and the frame is the same.
@@ -2184,11 +2199,10 @@ fn separatorless_group_inference_uses_only_direct_members() {
     let mut group = DataType::serie(item).nullable_field("minimalparties");
     group.as_fix_mut().set_counter(453).unwrap();
     scoped.insert(group.clone()).unwrap();
-    let mut definition =
-        StructType::from_fields([scoped.field_by_tag(453).unwrap().clone(), group])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("minimalpartiesmessage");
+    let mut definition = StructType::from_fields([group])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("minimalpartiesmessage");
     definition.as_fix_mut().set_msgtype("ZMIN").unwrap();
     scoped.insert(definition).unwrap();
     let numeric_name = super::fixed_codec(Arc::new(scoped))

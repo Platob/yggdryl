@@ -90,17 +90,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -130,17 +119,6 @@
         "metadata": {
           "FIX:field": "regulatoryreporttypebusinessdate",
           "FIX:tag": "2869"
-        }
-      },
-      {
-        "name": "notrdregtimestamps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdregtimestamps",
-          "FIX:tag": "768"
         }
       },
       {
@@ -238,17 +216,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "instrument"
-        }
-      },
-      {
-        "name": "nomarginamt",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nomarginamt",
-          "FIX:tag": "1643"
         }
       },
       {

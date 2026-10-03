@@ -145,17 +145,6 @@
         }
       },
       {
-        "name": "noinstrumentscopes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noinstrumentscopes",
-          "FIX:tag": "1656"
-        }
-      },
-      {
         "name": "instrumentscopes",
         "dtype": {
           "type": "null"
@@ -163,17 +152,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "instrumentscopes"
-        }
-      },
-      {
-        "name": "norelatedmarketsegments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedmarketsegments",
-          "FIX:tag": "2545"
         }
       },
       {
@@ -219,17 +197,6 @@
         }
       },
       {
-        "name": "noordtyperules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noordtyperules",
-          "FIX:tag": "1237"
-        }
-      },
-      {
         "name": "ordtyperules",
         "dtype": {
           "type": "null"
@@ -237,17 +204,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "ordtyperules"
-        }
-      },
-      {
-        "name": "notimeinforcerules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notimeinforcerules",
-          "FIX:tag": "1239"
         }
       },
       {
@@ -261,17 +217,6 @@
         }
       },
       {
-        "name": "noexecinstrules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noexecinstrules",
-          "FIX:tag": "1232"
-        }
-      },
-      {
         "name": "execinstrules",
         "dtype": {
           "type": "null"
@@ -279,17 +224,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "execinstrules"
-        }
-      },
-      {
-        "name": "noauctiontyperules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noauctiontyperules",
-          "FIX:tag": "2548"
         }
       },
       {
@@ -303,17 +237,6 @@
         }
       },
       {
-        "name": "nomdfeedtypes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomdfeedtypes",
-          "FIX:tag": "1141"
-        }
-      },
-      {
         "name": "marketdatafeedtypes",
         "dtype": {
           "type": "null"
@@ -321,17 +244,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "marketdatafeedtypes"
-        }
-      },
-      {
-        "name": "nomatchrules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomatchrules",
-          "FIX:tag": "1235"
         }
       },
       {
@@ -345,17 +257,6 @@
         }
       },
       {
-        "name": "noflexproducteligibilities",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noflexproducteligibilities",
-          "FIX:tag": "2560"
-        }
-      },
-      {
         "name": "flexproducteligibilities",
         "dtype": {
           "type": "null"
@@ -366,17 +267,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -384,17 +274,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "nomiscfees",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomiscfees",
-          "FIX:tag": "136"
         }
       },
       {

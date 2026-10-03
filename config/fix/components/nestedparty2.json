@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nonested2partysubids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonested2partysubids",
-          "FIX:tag": "806"
-        }
-      },
-      {
         "name": "nested2partysubids",
         "dtype": {
           "type": "null"

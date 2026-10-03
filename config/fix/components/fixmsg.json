@@ -1555,17 +1555,6 @@
         }
       },
       {
-        "name": "notrdregtimestamps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdregtimestamps",
-          "FIX:tag": "768"
-        }
-      },
-      {
         "name": "trdregtimestamps",
         "dtype": {
           "type": "null"
@@ -1573,17 +1562,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "trdregtimestamps"
-        }
-      },
-      {
-        "name": "noregulatorytradeids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noregulatorytradeids",
-          "FIX:tag": "1907"
         }
       },
       {

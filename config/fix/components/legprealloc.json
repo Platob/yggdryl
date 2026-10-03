@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nonested2partyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonested2partyids",
-          "FIX:tag": "756"
-        }
-      },
-      {
         "name": "nestedparties2",
         "dtype": {
           "type": "null"

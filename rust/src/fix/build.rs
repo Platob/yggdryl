@@ -13,7 +13,7 @@
 //! | `Instrument.Symbol` | a path |
 //! | `PartyID[0]`, `PartyID[1]` | one field, two occurrences, in order |
 //! | `Parties[0].PartyID` | which group, which occurrence, which member |
-//! | `NoPartyIDs[0].PartyID` | a wire counter resolving the same group |
+//! | `NoPartyIDs[0].PartyID` | the group's counter, naming the same group |
 //! | `VenueOwnThing` | an unknown name, kept |
 //! | `#NoPartyIDs[0]` | a spelling a reader left marked, at the top of a row: one child under its own name, its packed value its value |
 //! | `""`, `"   "` | dropped |
@@ -78,14 +78,6 @@ struct Composition<'source> {
     write: super::msg::Write,
     disagreed: bool,
     invalid_utf8: bool,
-}
-
-impl Known<'_> {
-    /// A key the dictionary holds nothing under.
-    const NONE: Self = Self {
-        field: None,
-        group: None,
-    };
 }
 
 /// The level a key the dictionary does not name resolves against.
@@ -230,7 +222,8 @@ struct Slot {
     /// Whether this slot is a repeating group, whatever it has been given.
     ///
     /// A group whose counter arrived and whose members did not is still a
-    /// group, and the empty serie is what says the count was not met.
+    /// group, and the empty serie is what states it empty: the group's
+    /// length is its count.
     group: bool,
     /// The group members, when this slot is a repeating group.
     ///
@@ -624,6 +617,11 @@ pub(super) fn fill_field<'registry>(
         .or_else(|| registry.get_field_by_name(key));
     let field = named?;
     let tag = field.as_fix().tag().ok().flatten()?;
+    // A counter is no field a row fills: the group it counts is its list,
+    // whose length is the count.
+    if !field.dtype().is_nested() && registry.is_counter_tag(tag) {
+        return None;
+    }
     Some((field, tag))
 }
 
@@ -758,8 +756,8 @@ pub(super) struct Builder<'registry> {
     failure: Option<Error>,
     composed: Vec<Composed>,
     /// What this build could not read as it stands - a value that would not
-    /// type, a counter disagreeing with its group - in arrival order, kept
-    /// on the message beside the row.
+    /// type, an alias stating another value - in arrival order, kept on the
+    /// message beside the row.
     anomalies: Vec<super::FixAnomaly>,
 }
 
@@ -851,13 +849,20 @@ impl<'registry> Builder<'registry> {
                 .and_then(super::field::parse_tag)
                 .and_then(|tag| Some((tag, self.numeric_plan(tag)?)));
             self.arrival = pair.arrived();
-            self.push(key, value);
-            if let Some((tag, plan)) = group {
+            let Some((tag, plan)) = group else {
+                self.push(key, value);
+                continue;
+            };
+            // A counter frames the group it heads and is no value of its
+            // own: the group's length is the count. The frame moves on, so
+            // every group still open closes, and the members that follow
+            // are read into the group's slot.
+            self.open.clear();
+            self.record(tag);
+            {
                 let value = self.read_numeric_group(plan, pairs, &mut cursor, &absent);
-                // Not `known`: the group is addressed by the counter's tag
-                // on the wire but does not carry it - the counter's own column
-                // does. Indexing both under one tag makes `by_tag` answer with
-                // whichever the binary search lands on.
+                // Not `known`: the group is reached by its name, and the
+                // counter tag it is filed under is no child's tag.
                 let slot = self.slot_for(plan.field().clone(), tag, false);
                 slot.field = plan.field().clone();
                 // A counter the frame states twice at one level appends to what
@@ -924,7 +929,14 @@ impl<'registry> Builder<'registry> {
             let Some(tag) = super::field::parse_tag(key) else {
                 break;
             };
-            let Some(column) = plan.tag_index(tag) else {
+            // A nested group arrives as its counter, which opens it in the
+            // occurrence and holds no value: the members that follow are
+            // what it holds, and its length is the count.
+            let nested = plan.nested(tag);
+            let Some(column) = nested
+                .map(|(column, _)| column)
+                .or_else(|| plan.tag_index(tag))
+            else {
                 break;
             };
             if plan.delimiter() == Some(tag)
@@ -933,12 +945,15 @@ impl<'registry> Builder<'registry> {
                 rows.push(plan.row(values));
             }
             let values = current.get_or_insert_with(|| vec![Scalar::Null; plan.columns_len()]);
-            let text = String::from_utf8_lossy(raw);
-            values[column] = self.typed(plan.column(column), Some(plan.column(column)), raw, &text);
+            if nested.is_none() {
+                let text = String::from_utf8_lossy(raw);
+                values[column] =
+                    self.typed(plan.column(column), Some(plan.column(column)), raw, &text);
+            }
             self.arrival = pair.arrived();
             self.record(tag);
             *cursor += 1;
-            if let Some((column, nested)) = plan.nested(tag) {
+            if let Some((column, nested)) = nested {
                 values[column] = self.read_numeric_group(nested, pairs, cursor, absent);
             }
         }
@@ -1035,9 +1050,16 @@ impl<'registry> Builder<'registry> {
         // A key arriving still marked `#` is one the reader left so - kept
         // whole beside a bare twin that took the structure, or a twice-marked
         // key's bare - and is one flat child under its own name, so
-        // `#NOPARTYIDS[0]` never writes over the count `#NOPARTYIDS` stated
-        // beside it. A member a rendered occurrence carries marked is a
-        // member like any other, and nests as its key says.
+        // `#NOPARTYIDS[0]` stays the packed occurrence it is. A marked count
+        // is dropped: the group it counts is its list, whose length is the
+        // count. A member a rendered occurrence carries marked is a member
+        // like any other, and nests as its key says.
+        if let Some(stem) = key_text.strip_prefix('#')
+            && !stem.contains(['.', '['])
+            && self.counter_from(&self.known(stem)).is_some()
+        {
+            return;
+        }
         let located = if key_text.starts_with('#') {
             Key {
                 text: key_text,
@@ -1399,15 +1421,12 @@ impl<'registry> Builder<'registry> {
     /// One flat child, appended in arrival order.
     fn push_flat(&mut self, key: &str, text: &str, raw: &[u8]) {
         // A flat key naming a repeating group is that group's counter: it
-        // opens the group slot the members land in, and the number that
-        // arrived stays in the counter's own child beside it. The group's
-        // length and the stated count are two readings of one line, compared
-        // on demand through `anomalies()`.
+        // opens the group slot the members land in and is no value of its
+        // own, because the group's length is the count.
         //
         // A tag reaches the dictionary once, and which half it is in decides
         // the rest: the counter and the scalar readings are the same probe
         // filtered two ways, and a numeric key is most of every frame.
-        let mut located = Known::NONE;
         let (field, tag, source) = if let Some(parsed) = super::field::parse_tag(key) {
             // A tag an open group declares is that group's member, placed in
             // the occurrence the frame's order implies; any other tag closes
@@ -1421,7 +1440,7 @@ impl<'registry> Builder<'registry> {
             // A nested row cannot partly replace a group the enclosing frame
             // already stated. Keep the open-group cursor only to consume its
             // numeric members; `push_grouped` sees the shadowed root and
-            // leaves both the frame's counter and its occurrences untouched.
+            // leaves the frame's occurrences untouched.
             if let Some(group) = self
                 .outer
                 .and_then(|_| self.numeric_group(parsed))
@@ -1437,28 +1456,31 @@ impl<'registry> Builder<'registry> {
                 return;
             }
             // The tag's first holder, the same probe `push_pairs` reads under.
-            match self.by_tag(parsed) {
+            let found = self.by_tag(parsed);
+            if let Some(found) = found.filter(|found| found.dtype().is_nested()) {
+                let tag = self.registry.identity_of(found).map_or(0, |(tag, _)| tag);
+                if self.shadowed(found.name()) {
+                    self.overshadow(found.name());
+                }
+                self.record(tag);
+                self.open_group(found, tag, true);
+                return;
+            }
+            // A counter opens the group it heads, empty until a member
+            // arrives - one stating nothing opens nothing - and the slot is
+            // not `known`, because the group is reached by its name and the
+            // counter tag is no child's tag.
+            if let Some(group) = self.numeric_group(parsed) {
+                if raw.is_empty() {
+                    return;
+                }
+                self.record(parsed);
+                self.open_group(group, parsed, false);
+                return;
+            }
+            match found {
                 Some(found) => {
                     let tag = self.registry.identity_of(found).map_or(0, |(tag, _)| tag);
-                    if found.dtype().is_nested() {
-                        if self.shadowed(found.name()) {
-                            self.overshadow(found.name());
-                        }
-                        self.record(tag);
-                        let members = declared_members(found);
-                        let name = SmolStr::new(found.name());
-                        let slot = self.slot_for(stated(found), tag, true);
-                        slot.group = true;
-                        let base = slot.occurrences.len();
-                        self.open.push(OpenGroup {
-                            name,
-                            members,
-                            occurrence: None,
-                            base,
-                            seen: Vec::new(),
-                        });
-                        return;
-                    }
                     (stated(found), tag, Some(found))
                 }
                 None => (
@@ -1468,7 +1490,18 @@ impl<'registry> Builder<'registry> {
                 ),
             }
         } else {
-            located = self.known(key);
+            let located = self.known(key);
+            // A counter's name opens the group it heads, as its tag does,
+            // and states no value of its own - `Parties=2` is the same
+            // statement - so no field is built for it.
+            if let Some((group, counter)) = self.counter_from(&located) {
+                if raw.is_empty() || self.shadowed(group.name()) {
+                    return;
+                }
+                self.record(counter);
+                self.slot_for(group, counter, false).group = true;
+                return;
+            }
             self.field_from(key, located.field, self.scope())
         };
         // A key that reaches a field by one of its `FIX:names` rather than
@@ -1499,13 +1532,6 @@ impl<'registry> Builder<'registry> {
             self.record(unresolved(0));
             let own = self.alias_field(spelling.clone(), declared);
             self.slot_for(own, 0, false).values.push(Scalar::from(text));
-            return;
-        }
-        let counter = self.counter_from(&located);
-        if counter
-            .as_ref()
-            .is_some_and(|(group, _)| self.shadowed(group.name()))
-        {
             return;
         }
         // A row nested in a data field restating the classification folds
@@ -1646,14 +1672,6 @@ impl<'registry> Builder<'registry> {
                 }
             }
         }
-        // The counter's child is built first, so the count keeps the column
-        // its own field names; the group it heads is opened after it, empty
-        // until a member arrives - located, indexed or numbered.
-        if let Some((group, counter)) = counter {
-            // Not `known`, for the reason the numeric path states: the
-            // counter holds the tag, the group it heads does not.
-            self.slot_for(group, counter, false).group = true;
-        }
     }
 
     /// Folds `value`, a second statement of `CFICode(461)` under `alias` or
@@ -1691,6 +1709,24 @@ impl<'registry> Builder<'registry> {
         slot.values = SlotValues::One(refined);
         slot.agreeing.extend(lost.map(|(spelling, _)| spelling));
         true
+    }
+
+    /// Opens `group` in a numeric frame under `tag`: its slot stated a group,
+    /// empty until a member arrives, and its members read into it in the
+    /// order the frame states them, after what the slot already holds.
+    fn open_group(&mut self, group: &'registry Field, tag: i32, known: bool) {
+        let members = declared_members(group);
+        let name = SmolStr::new(group.name());
+        let slot = self.slot_for(stated(group), tag, known);
+        slot.group = true;
+        let base = slot.occurrences.len();
+        self.open.push(OpenGroup {
+            name,
+            members,
+            occurrence: None,
+            base,
+            seen: Vec::new(),
+        });
     }
 
     /// The repeating group a flat key names, when it names one.
@@ -1779,7 +1815,7 @@ impl<'registry> Builder<'registry> {
                 return;
             }
             self.record(0);
-            let slot = self.slot_for(field, tag, true);
+            let slot = self.slot_for(field, tag, false);
             slot.group = true;
             slot.values.set(occurrence, Scalar::from(text));
             return;
@@ -1822,7 +1858,7 @@ impl<'registry> Builder<'registry> {
         }
         let located = self.known(group);
         let answer = match self.counter_from(&located) {
-            Some((field, tag)) => (field, tag, true),
+            Some((field, tag)) => (field, tag, false),
             None => match located.group {
                 Some(known) => {
                     let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
@@ -2088,13 +2124,12 @@ impl<'registry> Builder<'registry> {
     /// after namespace composition, never while the payload is still built.
     pub(super) fn finish(self, name: &str) -> Result<Built> {
         let Self {
-            registry,
             beginstring,
             version,
             mut slots,
             failure,
             composed,
-            mut anomalies,
+            anomalies,
             ..
         } = self;
         if let Some(error) = failure {
@@ -2153,49 +2188,6 @@ impl<'registry> Builder<'registry> {
             let (field, value) = slot.into_child()?;
             fields.push(field);
             values.push(value);
-        }
-        // A group's counter counts the occurrences the group holds, once
-        // they are merged: a bridge stating six restated parties beside two
-        // bare ones counts eight. Each field's tag and counter are read once
-        // for both sides of that match.
-        let facts: Vec<(Option<i32>, Option<i32>)> = fields
-            .iter()
-            .map(|field| super::schema::tag_and_counter(registry, field))
-            .collect();
-        for (index, (_, counter)) in facts.iter().enumerate() {
-            let Some(counter) = *counter else {
-                continue;
-            };
-            let Some(held) = values[index].as_sequence().map(<[Scalar]>::len) else {
-                continue;
-            };
-            if let Some(at) = facts
-                .iter()
-                .zip(&fields)
-                .position(|((tag, counts), field)| {
-                    *tag == Some(counter) && counts.is_none() && !field.dtype().is_nested()
-                })
-            {
-                let count = i32::try_from(held).unwrap_or(i32::MAX);
-                // The number that arrived and the occurrences the group
-                // holds are two readings of one line: where they disagree,
-                // the group's is the row's and the disagreement is kept.
-                if let Some(stated) = values[at]
-                    .as_i64()
-                    .filter(|stated| *stated != i64::from(count))
-                {
-                    let detail = format!("states {stated}, the group holds {held}");
-                    warned!(
-                        "FIX group counter restated: it disagrees with the occurrences the group holds",
-                        fields[at].name(),
-                        "{detail}"
-                    );
-                    anomalies.push(super::FixAnomaly::new(fields[at].name(), detail));
-                }
-                if let Ok(value) = fields[at].scalar(Scalar::from(count)) {
-                    values[at] = value;
-                }
-            }
         }
         tags.sort_unstable();
         // Every child is the dictionary's own field, a field built for a key
@@ -2360,8 +2352,8 @@ impl Slot {
     /// This slot as one child field and its value.
     fn into_child(self) -> Result<(Field, Scalar)> {
         // A group whose counter arrived and whose members did not is a group
-        // holding nothing, not a scalar: the empty serie is what lets the
-        // count it stated be compared with what the row actually holds.
+        // holding nothing, not a scalar: the empty serie is the group stated
+        // empty, `NoPartyIDs(453)=0`, its length the count.
         if self.group && self.occurrences.is_empty() {
             if matches!(&self.values, SlotValues::Empty) {
                 let value = Scalar::from_sequence(Vec::new());
@@ -2796,12 +2788,19 @@ fn member_fields(group: &Field) -> &[Field] {
     super::schema::item_fields(group).unwrap_or_default()
 }
 
-/// The tags one repeating group declares as its direct members, the first
-/// being the delimiter that opens an occurrence.
+/// The tags one repeating group declares as its direct members, as the wire
+/// spells them - a nested group by its counter - the first being the
+/// delimiter that opens an occurrence.
 fn declared_members(group: &Field) -> Vec<i32> {
     member_fields(group)
         .iter()
-        .filter_map(|member| member.as_fix().tag().ok().flatten())
+        .filter_map(|member| {
+            let fix = member.as_fix();
+            fix.counter()
+                .ok()
+                .flatten()
+                .or_else(|| fix.tag().ok().flatten())
+        })
         .collect()
 }
 

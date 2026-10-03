@@ -189,17 +189,6 @@
         }
       },
       {
-        "name": "notradetypes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradetypes",
-          "FIX:tag": "3005"
-        }
-      },
-      {
         "name": "tradetypes",
         "dtype": {
           "type": "null"
@@ -240,17 +229,6 @@
         "metadata": {
           "FIX:field": "offsetinstruction",
           "FIX:tag": "1849"
-        }
-      },
-      {
-        "name": "notradepriceconditions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradepriceconditions",
-          "FIX:tag": "1838"
         }
       },
       {
@@ -506,17 +484,6 @@
         }
       },
       {
-        "name": "noregulatorytradeids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noregulatorytradeids",
-          "FIX:tag": "1907"
-        }
-      },
-      {
         "name": "regulatorytradeids",
         "dtype": {
           "type": "null"
@@ -549,17 +516,6 @@
         }
       },
       {
-        "name": "nopricequalifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricequalifiers",
-          "FIX:tag": "2709"
-        }
-      },
-      {
         "name": "pricequalifiers",
         "dtype": {
           "type": "null"
@@ -578,17 +534,6 @@
         "metadata": {
           "FIX:field": "crosstype",
           "FIX:tag": "549"
-        }
-      },
-      {
-        "name": "norootpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norootpartyids",
-          "FIX:tag": "1116"
         }
       },
       {
@@ -720,17 +665,6 @@
         }
       },
       {
-        "name": "nopayments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopayments",
-          "FIX:tag": "40212"
-        }
-      },
-      {
         "name": "payments",
         "dtype": {
           "type": "null"
@@ -762,17 +696,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -783,17 +706,6 @@
         }
       },
       {
-        "name": "norelatedinstruments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedinstruments",
-          "FIX:tag": "1647"
-        }
-      },
-      {
         "name": "relatedinstruments",
         "dtype": {
           "type": "null"
@@ -801,17 +713,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "relatedinstruments"
-        }
-      },
-      {
-        "name": "nocollateralamounts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocollateralamounts",
-          "FIX:tag": "1703"
         }
       },
       {
@@ -836,17 +737,6 @@
         }
       },
       {
-        "name": "noratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noratesources",
-          "FIX:tag": "1445"
-        }
-      },
-      {
         "name": "ratesources",
         "dtype": {
           "type": "null"
@@ -854,17 +744,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "ratesources"
-        }
-      },
-      {
-        "name": "notransactionattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notransactionattributes",
-          "FIX:tag": "2871"
         }
       },
       {
@@ -1305,17 +1184,6 @@
         }
       },
       {
-        "name": "noposamt",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noposamt",
-          "FIX:tag": "753"
-        }
-      },
-      {
         "name": "positionamountdata",
         "dtype": {
           "type": "null"
@@ -1348,17 +1216,6 @@
         }
       },
       {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
-        }
-      },
-      {
         "name": "trdinstrmtleggrp",
         "dtype": {
           "type": "null"
@@ -1377,17 +1234,6 @@
         "metadata": {
           "FIX:field": "transacttime",
           "FIX:tag": "60"
-        }
-      },
-      {
-        "name": "notrdregtimestamps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdregtimestamps",
-          "FIX:tag": "768"
         }
       },
       {
@@ -1478,17 +1324,6 @@
         }
       },
       {
-        "name": "notradeqtys",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradeqtys",
-          "FIX:tag": "1841"
-        }
-      },
-      {
         "name": "tradeqtys",
         "dtype": {
           "type": "null"
@@ -1496,17 +1331,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "tradeqtys"
-        }
-      },
-      {
-        "name": "nosides",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nosides",
-          "FIX:tag": "552"
         }
       },
       {
@@ -1597,17 +1421,6 @@
         }
       },
       {
-        "name": "notrdrepindicators",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdrepindicators",
-          "FIX:tag": "1387"
-        }
-      },
-      {
         "name": "trdrepindicators",
         "dtype": {
           "type": "null"
@@ -1648,17 +1461,6 @@
         "metadata": {
           "FIX:field": "tradepublishindicator",
           "FIX:tag": "1390"
-        }
-      },
-      {
-        "name": "notrdregpublications",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdregpublications",
-          "FIX:tag": "2668"
         }
       },
       {
@@ -1889,17 +1691,6 @@
         "metadata": {
           "FIX:field": "mandatoryclearingindicator",
           "FIX:tag": "1928"
-        }
-      },
-      {
-        "name": "nomandatoryclearingjurisdictions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomandatoryclearingjurisdictions",
-          "FIX:tag": "41312"
         }
       },
       {
@@ -2152,17 +1943,6 @@
         "metadata": {
           "FIX:field": "affiliatedfirmstradeindicator",
           "FIX:tag": "2525"
-        }
-      },
-      {
-        "name": "noattachments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noattachments",
-          "FIX:tag": "2104"
         }
       },
       {

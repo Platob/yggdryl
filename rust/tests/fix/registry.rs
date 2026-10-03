@@ -151,9 +151,7 @@ mod lenient {
         registry.insert(group).unwrap();
         let mut group = registry.field_by_name("Parties").unwrap().clone();
         group.as_fix_mut().set_group("Parties").unwrap();
-        let mut counter = registry.field(453).unwrap().clone();
-        counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
-        let mut message = StructType::from_fields([counter, group])
+        let mut message = StructType::from_fields([group])
             .map(DataType::from)
             .unwrap()
             .required_field("NewOrderSingle");
@@ -468,7 +466,7 @@ mod lenient {
         assert!(!registry.add_field(order).unwrap());
         let order = registry.msgtype("D").unwrap();
         assert_eq!(order.as_str(), "D");
-        assert_eq!(names(order.as_field()), ["NoPartyIDs", "Parties", "Text"]);
+        assert_eq!(names(order.as_field()), ["Parties", "Text"]);
     }
 
     #[test]
@@ -1491,7 +1489,7 @@ mod lenient {
         assert!(!registry.add_field(restated).unwrap());
         let order = registry.msgtype("D").unwrap();
         assert_eq!(order.name(), "NewOrderSingle");
-        assert_eq!(names(order.as_field()), ["NoPartyIDs", "Parties", "Text"]);
+        assert_eq!(names(order.as_field()), ["Parties", "Text"]);
         assert_eq!(super::msgtypes(&registry).count(), 2);
         assert_eq!(
             FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
@@ -1512,10 +1510,7 @@ mod lenient {
         assert_eq!(target.msgtype("D").unwrap().name(), "NewOrderSingle");
         assert_eq!(target.msgtype("VenueOrder").unwrap().as_str(), "D");
         assert_eq!(super::msgtypes(&target).count(), 2);
-        assert_eq!(
-            names(target.msgtype("D").unwrap().as_field()),
-            ["NoPartyIDs", "Parties"]
-        );
+        assert_eq!(names(target.msgtype("D").unwrap().as_field()), ["Parties"]);
     }
 
     #[test]

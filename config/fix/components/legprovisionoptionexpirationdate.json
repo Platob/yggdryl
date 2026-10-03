@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nolegprovisionoptionexpirationdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprovisionoptionexpirationdatebusinesscenters",
-          "FIX:tag": "40937"
-        }
-      },
-      {
         "name": "legprovisionoptionexpirationdatebusinesscenters",
         "dtype": {
           "type": "null"

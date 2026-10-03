@@ -81,17 +81,6 @@
         }
       },
       {
-        "name": "nounderlyingprotectiontermeventqualifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingprotectiontermeventqualifiers",
-          "FIX:tag": "42085"
-        }
-      },
-      {
         "name": "underlyingprotectiontermeventqualifiers",
         "dtype": {
           "type": "null"

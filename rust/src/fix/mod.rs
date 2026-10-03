@@ -19,15 +19,15 @@
 //! | description | `description` | text | the specification's own wording, on the key every catalog reads |
 //! | code set | `FIX:codeset` | name | the registry-owned vocabulary this field reads by |
 //! | directions | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults |
-//! | counter | `FIX:counter` | `i32` | the wire field counting a group's occurrences |
+//! | counter | `FIX:counter` | `i32` | on a group: the NumInGroup tag framing it on the wire, written from the group's length and never a field beside it |
 //! | component | `FIX:component` | name | the component defining a group occurrence |
 //!
 //! The categories are scalar wire fields, components and groups. A message
 //! is a component carrying `FIX:msgtype`. Serie groups hold non-null Struct
-//! occurrences and reference a separate int32 counter: `NoPartyIDs` is tag
-//! 453, while `Parties` contains `Party` values. A crate-owned Map group
-//! holds its native entries under its own counter, without a scalar count
-//! column. The registry keeps each enumeration once; fields name it through
+//! occurrences, and their length is their count: `Parties` contains `Party`
+//! values and is framed on the wire by `NoPartyIDs(453)`, a dictionary field
+//! no component, message or row lists beside the group. A crate-owned Map
+//! group holds its native entries under its own counter. The registry keeps each enumeration once; fields name it through
 //! `FIX:codeset`.
 //!
 //! # Identity

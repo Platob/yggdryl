@@ -118,7 +118,8 @@ let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(di
 let mut messages = codec.parse_line(b"recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|")?;
 let message = messages.next().expect("one frame")?;
 assert!(messages.next().is_none());
-assert_eq!(message.by_tag(453)?, Scalar::from(1_i32));
+// The group is its list: its length is the count, and tag 453 reaches nothing.
+assert_eq!(message.by_name("parties")?.as_sequence().map(<[Scalar]>::len), Some(1));
 assert_eq!(message.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?.as_str(), Some("BROKER"));
 
 // Two frames on one line are two messages; a sentence is none.
@@ -662,6 +663,8 @@ use yggdryl::{DataType, FieldPath, FixCode, FixRegistry, IOBase, StructType};
 let path = std::env::temp_dir().join(format!("ygg-skill-fix-store-{}", std::process::id()));
 let mut root = LocalFolder::new(&path)?;
 
+// The counter is a field of the dictionary; no component or message lists it
+// beside the group, whose length is its count.
 let mut count = DataType::Int32.nullable_field("NoPartyIDs");
 count.as_fix_mut().set_tag(453)?;
 let mut party_id = DataType::utf8().nullable_field("PartyID");

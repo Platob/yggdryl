@@ -36,17 +36,6 @@
         }
       },
       {
-        "name": "norequestingpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norequestingpartyids",
-          "FIX:tag": "1657"
-        }
-      },
-      {
         "name": "requestingpartyids",
         "dtype": {
           "type": "null"
@@ -57,17 +46,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -75,17 +53,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "norequestedpartyroles",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norequestedpartyroles",
-          "FIX:tag": "1508"
         }
       },
       {
@@ -110,17 +77,6 @@
         }
       },
       {
-        "name": "noentitlementtypes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noentitlementtypes",
-          "FIX:tag": "2345"
-        }
-      },
-      {
         "name": "entitlementtypes",
         "dtype": {
           "type": "null"
@@ -142,17 +98,6 @@
         }
       },
       {
-        "name": "noinstrumentscopes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noinstrumentscopes",
-          "FIX:tag": "1656"
-        }
-      },
-      {
         "name": "instrumentscopes",
         "dtype": {
           "type": "null"
@@ -160,17 +105,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "instrumentscopes"
-        }
-      },
-      {
-        "name": "nomarketsegments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomarketsegments",
-          "FIX:tag": "1310"
         }
       },
       {

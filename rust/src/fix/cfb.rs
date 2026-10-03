@@ -28,8 +28,10 @@
 //!
 //! `vocabulary` builds the dictionary; `grammar-binding` builds the message
 //! roots out of it. A constraint borrows its resolved field and records its
-//! own nullability. A nested grammar resolves its opening counter to int32,
-//! retains that field, and adds a separately named Serie of components.
+//! own nullability. A nested grammar resolves its opening counter to int32 in
+//! the vocabulary and becomes a separately named Serie of components that
+//! states the counter as its `FIX:counter`: the count is the serie's length,
+//! so no message lists the counter beside it.
 //!
 //! # Only repeating groups are structure
 //!
@@ -42,7 +44,6 @@
 //! one recursive function reads all of them - nested grammars are siblings as
 //! often as children. Its entries become named component definitions and its
 //! collection becomes a group definition; both carry no synthetic FIX tag.
-//! The count field remains a sibling immediately before the collection.
 //!
 //! # What is lost, by name
 //!
@@ -404,7 +405,8 @@ impl FixRegistry {
     /// The registry holds scalar wire fields under their tags and message
     /// roots as components carrying `FIX:msgtype`. Nested grammars contribute
     /// Groups and Components definitions, with `FIX:counter` linking each
-    /// serie to its ordinary int32 field. Enumerations name the registry set in `FIX:codeset`
+    /// serie to its ordinary int32 field, which no message lists beside the
+    /// serie. Enumerations name the registry set in `FIX:codeset`
     /// metadata. Named definitions carry no `FIX:tag`.
     ///
     /// No seed is taken: this answers what one file says. Folding it into a
@@ -2226,10 +2228,7 @@ impl<'doc> Parse<'doc> {
                 Event::Start(element) if is_named(&element, b"grammar") => {
                     let declared = self.attribute(&element, "rg-name");
                     let nested = self.read_grammar(depth + 1, msgtype)?;
-                    if let Some((counter, group)) =
-                        self.grouped(nested, msgtype, declared.as_deref())
-                    {
-                        push_member(&mut children, counter);
+                    if let Some(group) = self.grouped(nested, msgtype, declared.as_deref()) {
                         push_member(&mut children, group);
                     }
                 }
@@ -2248,18 +2247,21 @@ impl<'doc> Parse<'doc> {
 
     /// One nested grammar's children as a repeating-group field.
     ///
-    /// The scalar count precedes the named serie; its item holds the members.
+    /// The grammar's opening constraint is its counter: it names the group
+    /// and its tag frames the group on the wire as the group's `FIX:counter`,
+    /// never a member beside it - the serie's length is the count. Its item
+    /// holds the members that follow.
     fn grouped(
         &mut self,
         mut children: Vec<Field>,
         msgtype: &str,
         declared: Option<&str>,
-    ) -> Option<(Field, Field)> {
+    ) -> Option<Field> {
         if children.is_empty() {
             self.dropped(&self.counterless(msgtype), GROUP_DROPPED);
             return None;
         }
-        let mut counter = children.remove(0);
+        let counter = children.remove(0);
         // A group whose first child is another grammar has no counter to name
         // it, so it is dropped while the parent keeps the rest.
         if matches!(
@@ -2293,10 +2295,6 @@ impl<'doc> Parse<'doc> {
                 GROUP_DROPPED,
             );
         };
-        if let Err(error) = counter.set_dtype(DataType::Int32) {
-            dropping(self, &error);
-            return None;
-        }
         let tag = match counter.as_fix().tag() {
             Ok(Some(tag)) => tag,
             Ok(None) => {
@@ -2346,7 +2344,7 @@ impl<'doc> Parse<'doc> {
                 entry_display.push_str("Component");
             }
         }
-        let built = || -> Result<(Field, Field)> {
+        let built = || -> Result<Field> {
             let mut item =
                 DataType::from(StructType::from_fields(children)?).required_field(entry.clone());
             item.set_display(&entry_display)?;
@@ -2357,7 +2355,7 @@ impl<'doc> Parse<'doc> {
             self.stamp(&mut group)?;
             group.as_fix_mut().set_counter(tag)?;
             group.as_fix_mut().set_component(&entry)?;
-            Ok((counter.clone(), group))
+            Ok(group)
         };
         match built() {
             Ok(held) => Some(held),

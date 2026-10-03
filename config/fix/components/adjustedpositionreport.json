@@ -69,17 +69,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -90,17 +79,6 @@
         }
       },
       {
-        "name": "nopositions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nopositions",
-          "FIX:tag": "702"
-        }
-      },
-      {
         "name": "positionqty",
         "dtype": {
           "type": "null"
@@ -108,17 +86,6 @@
         "nullable": false,
         "metadata": {
           "FIX:group": "positionqty"
-        }
-      },
-      {
-        "name": "norelatedsym",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedsym",
-          "FIX:tag": "146"
         }
       },
       {

@@ -639,7 +639,8 @@ pub(super) fn canonical_id(field: &Field) -> Result<FixId> {
 pub(super) struct FieldFacts {
     /// `FIX:tag`.
     pub(super) tag: Option<i32>,
-    /// `FIX:counter`, on a group's count field.
+    /// `FIX:counter`, on a group: the NumInGroup tag that frames it on the
+    /// wire and keys it, never a field beside it.
     pub(super) counter: Option<i32>,
     /// Whether a replacement rule could restate the field: one the
     /// specification's [retirements](super::retired) state of its tag.

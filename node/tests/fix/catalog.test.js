@@ -53,9 +53,9 @@ function catalog() {
   registry.insert(group)
   const occurrence = registry.fieldByName('Parties')
   occurrence.fix.group = 'Parties'
-  const counter = registry.field(453)
-  counter.fix.fieldRef = 'NoPartyIDs'
-  registry.insert(message('NewOrderSingle', 'D', [counter, occurrence]))
+  // A group is its list alone: the counter is the dictionary's field and no
+  // member of the message beside it.
+  registry.insert(message('NewOrderSingle', 'D', [occurrence]))
   return registry
 }
 
@@ -254,12 +254,15 @@ test('a message reaches its group by the counter that opens it', () => {
   assert.equal(held.getGroupByTag(999), null)
   assert.throws(() => held.getGroupByTag(1.5), /tag must be a signed 32-bit integer/)
 
-  // And a parse under that registry fills the group beside its counter.
+  // And a parse under that registry fills the group the counter opens: the
+  // group is its list alone, its length the count, and the counter's tag is
+  // no child of its own.
   const codec = reading(registry)
   const values = [...codec.parseLine(Buffer.from('35=D|453=2|448=ONE|448=TWO|'))]
   assert.equal(values.length, 1)
   const value = values[0]
-  assert.equal(value.byTag(453).asJs(), 2)
+  assert.equal(value.getByTag(453), null)
+  assert.equal(value.byName('Parties').length, 2)
   assert.equal(value.byPath('Parties[0].PartyID').asJs(), 'ONE')
   assert.equal(value.byPath('Parties[1].PartyID').asJs(), 'TWO')
   assert.match(value.intoText('|'), /453=2\|448=ONE\|448=TWO/)

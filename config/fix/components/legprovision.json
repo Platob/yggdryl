@@ -37,17 +37,6 @@
         }
       },
       {
-        "name": "nolegprovisiondatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprovisiondatebusinesscenters",
-          "FIX:tag": "40939"
-        }
-      },
-      {
         "name": "legprovisiondatebusinesscenters",
         "dtype": {
           "type": "null"
@@ -357,17 +346,6 @@
         "metadata": {
           "FIX:field": "encodedlegprovisiontext",
           "FIX:tag": "40981"
-        }
-      },
-      {
-        "name": "nolegprovisionpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprovisionpartyids",
-          "FIX:tag": "40533"
         }
       },
       {

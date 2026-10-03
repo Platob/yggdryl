@@ -190,17 +190,6 @@
         }
       },
       {
-        "name": "nonestedpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonestedpartyids",
-          "FIX:tag": "539"
-        }
-      },
-      {
         "name": "nestedparties",
         "dtype": {
           "type": "null"

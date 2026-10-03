@@ -171,9 +171,7 @@ ulbridge[001]:0.field.settlcurrency	"CHF"
 ulbridge[001]:0.field.ordtype	"2"
 ulbridge[001]:0.field.ordstatus	"2"
 ulbridge[001]:0.field.exectype	"F"
-ulbridge[001]:0.field.notrdregtimestamps	2
 ulbridge[001]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.506000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.715000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
-ulbridge[001]:0.field.noregulatorytradeids	1
 ulbridge[001]:0.field.regulatorytradeids	[["042K38MWK5817YZZ",null,null,5,null,null]]
 ulbridge[001]:0.field.fixentries	{"0:firm.orig.clientid":"2540498.003","0:marketorderid":"U8NNITDd-00","0:omsdealeraccount":"YNHD5","0:omsdealerorderid":"U8NNITDd-00","0:omsdealerparentorderid":"-8NNI7PB-00","0:omsinstrumentid":"dbi;CH0012214059_XSWX_CHF","0:parentorderid":"-8NNI7PB-00","0:ullink.clientid":"trader1","0:ullink.instrumentid":"dbi;CH0012214059_XSWX_CHF","0:ultraderclordid":"XM8NNITE3-00","107:securitydesc":"HOLCIM N","21:handlinst":"stp","22:securityidsource":"4","2524:tradereportingindicator":"6","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"16985.8","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"2540498.003\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"ULTrader\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\"}]","470:countryofissue":"CH","48:securityid":"CH0012214059","528:ordercapacity":"A","553:username":"trader1","562:mintradevol":"1","63:settltype":"0","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38MWK5817YZZ"}
 ulbridge[001]:1.type	8
@@ -345,9 +343,7 @@ ulbridge[001]:1.field.settlcurrency	"CHF"
 ulbridge[001]:1.field.ordtype	"2"
 ulbridge[001]:1.field.ordstatus	"2"
 ulbridge[001]:1.field.exectype	"F"
-ulbridge[001]:1.field.notrdregtimestamps	2
 ulbridge[001]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.506000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.715000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
-ulbridge[001]:1.field.noregulatorytradeids	1
 ulbridge[001]:1.field.regulatorytradeids	[["042K38MWK5817YZZ",null,null,5,null,null]]
 ulbridge[001]:1.field.fixentries	{"0:firm.orig.clientid":"2540498.003","0:marketorderid":"U8NNITDd-00","0:omsdealeraccount":"YNHD5","0:omsdealerorderid":"U8NNITDd-00","0:omsdealerparentorderid":"-8NNI7PB-00","0:omsinstrumentid":"dbi;CH0012214059_XSWX_CHF","0:parentorderid":"-8NNI7PB-00","0:ullink.clientid":"trader1","0:ullink.instrumentid":"dbi;CH0012214059_XSWX_CHF","0:ultraderclordid":"XM8NNITE3-00","107:securitydesc":"HOLCIM N","21:handlinst":"stp","22:securityidsource":"4","2524:tradereportingindicator":"6","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"16985.8","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"2540498.003\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"ULTrader\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\"}]","470:countryofissue":"CH","48:securityid":"CH0012214059","528:ordercapacity":"A","553:username":"trader1","562:mintradevol":"1","63:settltype":"0","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38MWK5817YZZ"}
 ulbridge[001].messages	2
@@ -519,9 +515,7 @@ ulbridge[003]:0.field.settlcurrency	"CHF"
 ulbridge[003]:0.field.ordtype	"2"
 ulbridge[003]:0.field.ordstatus	"2"
 ulbridge[003]:0.field.exectype	"F"
-ulbridge[003]:0.field.notrdregtimestamps	2
 ulbridge[003]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.506000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.715000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
-ulbridge[003]:0.field.noregulatorytradeids	1
 ulbridge[003]:0.field.regulatorytradeids	[["042K38MWK5817YZZ",null,null,5,null,null]]
 ulbridge[003]:0.field.fixentries	{"0:firm.orig.clientid":"2540498.003","0:marketorderid":"U8NNITDd-00","0:omsdealeraccount":"YNHD5","0:omsdealerorderid":"U8NNITDd-00","0:omsdealerparentorderid":"-8NNI7PB-00","0:omsinstrumentid":"dbi;CH0012214059_XSWX_CHF","0:parentorderid":"-8NNI7PB-00","0:ullink.clientid":"trader1","0:ullink.instrumentid":"dbi;CH0012214059_XSWX_CHF","0:ultraderclordid":"XM8NNITE3-00","107:securitydesc":"HOLCIM N","21:handlinst":"stp","22:securityidsource":"4","2524:tradereportingindicator":"6","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"16985.8","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"2540498.003\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"ULTrader\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\"}]","470:countryofissue":"CH","48:securityid":"CH0012214059","528:ordercapacity":"A","553:username":"trader1","562:mintradevol":"1","63:settltype":"0","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38MWK5817YZZ"}
 ulbridge[003]:1.type	8
@@ -691,9 +685,7 @@ ulbridge[003]:1.field.settlcurrency	"CHF"
 ulbridge[003]:1.field.ordtype	"2"
 ulbridge[003]:1.field.ordstatus	"2"
 ulbridge[003]:1.field.exectype	"F"
-ulbridge[003]:1.field.notrdregtimestamps	2
 ulbridge[003]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.506000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.715000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
-ulbridge[003]:1.field.noregulatorytradeids	1
 ulbridge[003]:1.field.regulatorytradeids	[["042K38MWK5817YZZ",null,null,5,null,null]]
 ulbridge[003]:1.field.fixentries	{"0:firm.orig.clientid":"2540498.003","0:marketorderid":"U8NNITDd-00","0:omsdealeraccount":"YNHD5","0:omsdealerorderid":"U8NNITDd-00","0:omsdealerparentorderid":"-8NNI7PB-00","0:omsinstrumentid":"dbi;CH0012214059_XSWX_CHF","0:parentorderid":"-8NNI7PB-00","0:ullink.clientid":"trader1","0:ullink.instrumentid":"dbi;CH0012214059_XSWX_CHF","0:ultraderclordid":"XM8NNITE3-00","107:securitydesc":"HOLCIM N","21:handlinst":"stp","22:securityidsource":"4","2524:tradereportingindicator":"6","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"16985.8","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"2540498.003\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"ULTrader\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\"}]","470:countryofissue":"CH","48:securityid":"CH0012214059","528:ordercapacity":"A","553:username":"trader1","562:mintradevol":"1","63:settltype":"0","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38MWK5817YZZ"}
 ulbridge[003].messages	2
@@ -871,9 +863,7 @@ ulbridge[004]:0.field.settlcurrency	"CHF"
 ulbridge[004]:0.field.ordtype	"2"
 ulbridge[004]:0.field.ordstatus	"2"
 ulbridge[004]:0.field.exectype	"F"
-ulbridge[004]:0.field.notrdregtimestamps	2
 ulbridge[004]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.506000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.715000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
-ulbridge[004]:0.field.noregulatorytradeids	1
 ulbridge[004]:0.field.regulatorytradeids	[["042K38MWK5817YZZ",null,null,5,null,null]]
 ulbridge[004]:0.field.bodylength	3513
 ulbridge[004]:0.field.xmldatalen	3419
@@ -1054,9 +1044,7 @@ ulbridge[004]:1.field.settlcurrency	"CHF"
 ulbridge[004]:1.field.ordtype	"2"
 ulbridge[004]:1.field.ordstatus	"2"
 ulbridge[004]:1.field.exectype	"F"
-ulbridge[004]:1.field.notrdregtimestamps	2
 ulbridge[004]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.506000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.715000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
-ulbridge[004]:1.field.noregulatorytradeids	1
 ulbridge[004]:1.field.regulatorytradeids	[["042K38MWK5817YZZ",null,null,5,null,null]]
 ulbridge[004]:1.field.bodylength	3513
 ulbridge[004]:1.field.xmldatalen	3419
@@ -1211,7 +1199,6 @@ ulbridge[005]:0.field.settlcurrency	"CHF"
 ulbridge[005]:0.field.ordtype	"2"
 ulbridge[005]:0.field.ordstatus	"1"
 ulbridge[005]:0.field.exectype	"F"
-ulbridge[005]:0.field.noregulatorytradeids	1
 ulbridge[005]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[005]:0.field.bodylength	938
 ulbridge[005]:0.field.checksum	"200"
@@ -1363,7 +1350,6 @@ ulbridge[005]:1.field.settlcurrency	"CHF"
 ulbridge[005]:1.field.ordtype	"2"
 ulbridge[005]:1.field.ordstatus	"1"
 ulbridge[005]:1.field.exectype	"F"
-ulbridge[005]:1.field.noregulatorytradeids	1
 ulbridge[005]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[005]:1.field.bodylength	938
 ulbridge[005]:1.field.checksum	"200"
@@ -1518,7 +1504,6 @@ ulbridge[006]:0.field.settlcurrency	"CHF"
 ulbridge[006]:0.field.ordtype	"2"
 ulbridge[006]:0.field.ordstatus	"partfilled"
 ulbridge[006]:0.field.exectype	"F"
-ulbridge[006]:0.field.noregulatorytradeids	1
 ulbridge[006]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[006]:0.field.fixentries	{"0:parentorderid":"XM8NNITE000","1057:aggressorindicator":"Y","113:reporttoexch":"N","21:handlinst":"stp","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[006]:1.type	8
@@ -1670,7 +1655,6 @@ ulbridge[006]:1.field.settlcurrency	"CHF"
 ulbridge[006]:1.field.ordtype	"2"
 ulbridge[006]:1.field.ordstatus	"partfilled"
 ulbridge[006]:1.field.exectype	"F"
-ulbridge[006]:1.field.noregulatorytradeids	1
 ulbridge[006]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[006]:1.field.fixentries	{"0:parentorderid":"XM8NNITE000","1057:aggressorindicator":"Y","113:reporttoexch":"N","21:handlinst":"stp","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[006].messages	2
@@ -1832,7 +1816,6 @@ ulbridge[007]:0.field.settlcurrency	"CHF"
 ulbridge[007]:0.field.ordtype	"2"
 ulbridge[007]:0.field.ordstatus	"partfilled"
 ulbridge[007]:0.field.exectype	"F"
-ulbridge[007]:0.field.noregulatorytradeids	1
 ulbridge[007]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[007]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","802:partysubids":"[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[007]:1.type	8
@@ -1993,7 +1976,6 @@ ulbridge[007]:1.field.settlcurrency	"CHF"
 ulbridge[007]:1.field.ordtype	"2"
 ulbridge[007]:1.field.ordstatus	"partfilled"
 ulbridge[007]:1.field.exectype	"F"
-ulbridge[007]:1.field.noregulatorytradeids	1
 ulbridge[007]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[007]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","802:partysubids":"[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[007].messages	2
@@ -2155,7 +2137,6 @@ ulbridge[008]:0.field.settlcurrency	"CHF"
 ulbridge[008]:0.field.ordtype	"2"
 ulbridge[008]:0.field.ordstatus	"partfilled"
 ulbridge[008]:0.field.exectype	"F"
-ulbridge[008]:0.field.noregulatorytradeids	1
 ulbridge[008]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[008]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"_NCI\\",\\"452:partyrole\\":\\"24\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"1\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[008]:1.type	8
@@ -2316,7 +2297,6 @@ ulbridge[008]:1.field.settlcurrency	"CHF"
 ulbridge[008]:1.field.ordtype	"2"
 ulbridge[008]:1.field.ordstatus	"partfilled"
 ulbridge[008]:1.field.exectype	"F"
-ulbridge[008]:1.field.noregulatorytradeids	1
 ulbridge[008]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[008]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"_NCI\\",\\"452:partyrole\\":\\"24\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"1\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[008].messages	2
@@ -2478,7 +2458,6 @@ ulbridge[009]:0.field.settlcurrency	"CHF"
 ulbridge[009]:0.field.ordtype	"2"
 ulbridge[009]:0.field.ordstatus	"partfilled"
 ulbridge[009]:0.field.exectype	"F"
-ulbridge[009]:0.field.noregulatorytradeids	1
 ulbridge[009]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[009]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","802:partysubids":"[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[009]:1.type	8
@@ -2639,7 +2618,6 @@ ulbridge[009]:1.field.settlcurrency	"CHF"
 ulbridge[009]:1.field.ordtype	"2"
 ulbridge[009]:1.field.ordstatus	"partfilled"
 ulbridge[009]:1.field.exectype	"F"
-ulbridge[009]:1.field.noregulatorytradeids	1
 ulbridge[009]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[009]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","802:partysubids":"[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[009].messages	2
@@ -2796,7 +2774,6 @@ ulbridge[010]:0.field.settlcurrency	"CHF"
 ulbridge[010]:0.field.ordtype	"2"
 ulbridge[010]:0.field.ordstatus	"partfilled"
 ulbridge[010]:0.field.exectype	"F"
-ulbridge[010]:0.field.noregulatorytradeids	1
 ulbridge[010]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[010]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[010]:1.type	8
@@ -2952,7 +2929,6 @@ ulbridge[010]:1.field.settlcurrency	"CHF"
 ulbridge[010]:1.field.ordtype	"2"
 ulbridge[010]:1.field.ordstatus	"partfilled"
 ulbridge[010]:1.field.exectype	"F"
-ulbridge[010]:1.field.noregulatorytradeids	1
 ulbridge[010]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[010]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[010].messages	2
@@ -3109,7 +3085,6 @@ ulbridge[011]:0.field.settlcurrency	"CHF"
 ulbridge[011]:0.field.ordtype	"2"
 ulbridge[011]:0.field.ordstatus	"partfilled"
 ulbridge[011]:0.field.exectype	"F"
-ulbridge[011]:0.field.noregulatorytradeids	1
 ulbridge[011]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[011]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[011]:1.type	8
@@ -3265,7 +3240,6 @@ ulbridge[011]:1.field.settlcurrency	"CHF"
 ulbridge[011]:1.field.ordtype	"2"
 ulbridge[011]:1.field.ordstatus	"partfilled"
 ulbridge[011]:1.field.exectype	"F"
-ulbridge[011]:1.field.noregulatorytradeids	1
 ulbridge[011]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[011]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[011].messages	2
@@ -3423,7 +3397,6 @@ ulbridge[013]:0.field.settlcurrency	"CHF"
 ulbridge[013]:0.field.ordtype	"2"
 ulbridge[013]:0.field.ordstatus	"partfilled"
 ulbridge[013]:0.field.exectype	"F"
-ulbridge[013]:0.field.noregulatorytradeids	1
 ulbridge[013]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[013]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[013]:1.type	8
@@ -3579,7 +3552,6 @@ ulbridge[013]:1.field.settlcurrency	"CHF"
 ulbridge[013]:1.field.ordtype	"2"
 ulbridge[013]:1.field.ordstatus	"partfilled"
 ulbridge[013]:1.field.exectype	"F"
-ulbridge[013]:1.field.noregulatorytradeids	1
 ulbridge[013]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[013]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[013].messages	2
@@ -3736,7 +3708,6 @@ ulbridge[014]:0.field.settlcurrency	"CHF"
 ulbridge[014]:0.field.ordtype	"2"
 ulbridge[014]:0.field.ordstatus	"partfilled"
 ulbridge[014]:0.field.exectype	"F"
-ulbridge[014]:0.field.noregulatorytradeids	1
 ulbridge[014]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[014]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[014]:1.type	8
@@ -3892,7 +3863,6 @@ ulbridge[014]:1.field.settlcurrency	"CHF"
 ulbridge[014]:1.field.ordtype	"2"
 ulbridge[014]:1.field.ordstatus	"partfilled"
 ulbridge[014]:1.field.exectype	"F"
-ulbridge[014]:1.field.noregulatorytradeids	1
 ulbridge[014]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[014]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[014].messages	2
@@ -4049,7 +4019,6 @@ ulbridge[015]:0.field.settlcurrency	"CHF"
 ulbridge[015]:0.field.ordtype	"2"
 ulbridge[015]:0.field.ordstatus	"partfilled"
 ulbridge[015]:0.field.exectype	"F"
-ulbridge[015]:0.field.noregulatorytradeids	1
 ulbridge[015]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[015]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[015]:1.type	8
@@ -4205,7 +4174,6 @@ ulbridge[015]:1.field.settlcurrency	"CHF"
 ulbridge[015]:1.field.ordtype	"2"
 ulbridge[015]:1.field.ordstatus	"partfilled"
 ulbridge[015]:1.field.exectype	"F"
-ulbridge[015]:1.field.noregulatorytradeids	1
 ulbridge[015]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[015]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[015].messages	2
@@ -4368,7 +4336,6 @@ ulbridge[020]:0.field.settlcurrency	"CHF"
 ulbridge[020]:0.field.ordtype	"2"
 ulbridge[020]:0.field.ordstatus	"partfilled"
 ulbridge[020]:0.field.exectype	"F"
-ulbridge[020]:0.field.noregulatorytradeids	1
 ulbridge[020]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[020]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[020]:1.type	8
@@ -4526,7 +4493,6 @@ ulbridge[020]:1.field.settlcurrency	"CHF"
 ulbridge[020]:1.field.ordtype	"2"
 ulbridge[020]:1.field.ordstatus	"partfilled"
 ulbridge[020]:1.field.exectype	"F"
-ulbridge[020]:1.field.noregulatorytradeids	1
 ulbridge[020]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[020]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[020].messages	2
@@ -4684,7 +4650,6 @@ ulbridge[021]:0.field.settlcurrency	"CHF"
 ulbridge[021]:0.field.ordtype	"2"
 ulbridge[021]:0.field.ordstatus	"partfilled"
 ulbridge[021]:0.field.exectype	"F"
-ulbridge[021]:0.field.noregulatorytradeids	1
 ulbridge[021]:0.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[021]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[021]:1.type	8
@@ -4841,7 +4806,6 @@ ulbridge[021]:1.field.settlcurrency	"CHF"
 ulbridge[021]:1.field.ordtype	"2"
 ulbridge[021]:1.field.ordstatus	"partfilled"
 ulbridge[021]:1.field.exectype	"F"
-ulbridge[021]:1.field.noregulatorytradeids	1
 ulbridge[021]:1.field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 ulbridge[021]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"1744.68","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZU"}
 ulbridge[021].messages	2
@@ -5187,7 +5151,6 @@ ulbridge[025]:0.field.settlcurrency	"CHF"
 ulbridge[025]:0.field.ordtype	"2"
 ulbridge[025]:0.field.ordstatus	"0"
 ulbridge[025]:0.field.exectype	"0"
-ulbridge[025]:0.field.notrdregtimestamps	2
 ulbridge[025]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.534000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.717000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
 ulbridge[025]:0.field.fixentries	{"0:firm.orig.clientid":"2540498.003","0:marketorderid":"U8NNITE0-00","0:omsdealeraccount":"YNHD5","0:omsdealerorderid":"U8NNITE0-00","0:omsdealerparentorderid":"-8NNI7PA-00","0:omsinstrumentid":"dbi;CH0012005267_XSWX_CHF","0:parentorderid":"-8NNI7PA-00","0:ullink.clientid":"trader1","0:ullink.instrumentid":"dbi;CH0012005267_XSWX_CHF","0:ultraderclordid":"XM8NNITE5-00","107:securitydesc":"NOVARTIS","21:handlinst":"stp","22:securityidsource":"4","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"0","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"2540498.003\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"ULTrader\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\"}]","470:countryofissue":"CH","48:securityid":"CH0012005267","528:ordercapacity":"A","553:username":"trader1","562:mintradevol":"1","63:settltype":"0"}
 ulbridge[025].messages	1
@@ -5337,7 +5300,6 @@ ulbridge[026]:0.field.settlcurrency	"CHF"
 ulbridge[026]:0.field.ordtype	"2"
 ulbridge[026]:0.field.ordstatus	"0"
 ulbridge[026]:0.field.exectype	"0"
-ulbridge[026]:0.field.notrdregtimestamps	2
 ulbridge[026]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.534000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.717000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
 ulbridge[026]:0.field.fixentries	{"0:firm.orig.clientid":"2540498.003","0:marketorderid":"U8NNITE0-00","0:omsdealeraccount":"YNHD5","0:omsdealerorderid":"U8NNITE0-00","0:omsdealerparentorderid":"-8NNI7PA-00","0:omsinstrumentid":"dbi;CH0012005267_XSWX_CHF","0:parentorderid":"-8NNI7PA-00","0:ullink.clientid":"trader1","0:ullink.instrumentid":"dbi;CH0012005267_XSWX_CHF","0:ultraderclordid":"XM8NNITE5-00","107:securitydesc":"NOVARTIS","21:handlinst":"stp","22:securityidsource":"4","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"0","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"2540498.003\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"ULTrader\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\"}]","470:countryofissue":"CH","48:securityid":"CH0012005267","528:ordercapacity":"A","553:username":"trader1","562:mintradevol":"1","63:settltype":"0"}
 ulbridge[026].messages	1
@@ -5487,7 +5449,6 @@ ulbridge[027]:0.field.settlcurrency	"CHF"
 ulbridge[027]:0.field.ordtype	"2"
 ulbridge[027]:0.field.ordstatus	"0"
 ulbridge[027]:0.field.exectype	"0"
-ulbridge[027]:0.field.notrdregtimestamps	2
 ulbridge[027]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.534000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.717000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
 ulbridge[027]:0.field.fixentries	{"0:firm.orig.clientid":"2540498.003","0:marketorderid":"U8NNITE0-00","0:omsdealeraccount":"YNHD5","0:omsdealerorderid":"U8NNITE0-00","0:omsdealerparentorderid":"-8NNI7PA-00","0:omsinstrumentid":"dbi;CH0012005267_XSWX_CHF","0:parentorderid":"-8NNI7PA-00","0:ullink.clientid":"trader1","0:ullink.instrumentid":"dbi;CH0012005267_XSWX_CHF","0:ultraderclordid":"XM8NNITE5-00","107:securitydesc":"NOVARTIS","21:handlinst":"stp","22:securityidsource":"4","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"0","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"2540498.003\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"ULTrader\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\"}]","470:countryofissue":"CH","48:securityid":"CH0012005267","528:ordercapacity":"A","553:username":"trader1","562:mintradevol":"1","63:settltype":"0"}
 ulbridge[027].messages	1
@@ -5641,7 +5602,6 @@ ulbridge[030]:0.field.settlcurrency	"CHF"
 ulbridge[030]:0.field.ordtype	"2"
 ulbridge[030]:0.field.ordstatus	"0"
 ulbridge[030]:0.field.exectype	"0"
-ulbridge[030]:0.field.notrdregtimestamps	2
 ulbridge[030]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.534000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.717000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
 ulbridge[030]:0.field.fixentries	{"0:firm.orig.clientid":"2540498.003","0:marketorderid":"U8NNITE0-00","0:omsdealeraccount":"YNHD5","0:omsdealerorderid":"U8NNITE0-00","0:omsdealerparentorderid":"-8NNI7PA-00","0:omsinstrumentid":"dbi;CH0012005267_XSWX_CHF","0:parentorderid":"-8NNI7PA-00","0:ullink.clientid":"trader1","0:ullink.instrumentid":"dbi;CH0012005267_XSWX_CHF","0:ultraderclordid":"XM8NNITE5-00","107:securitydesc":"NOVARTIS","21:handlinst":"stp","22:securityidsource":"4","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"0","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"2540498.003\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"ULTrader\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\"}]","470:countryofissue":"CH","48:securityid":"CH0012005267","528:ordercapacity":"A","553:username":"trader1","562:mintradevol":"1","63:settltype":"0"}
 ulbridge[030].messages	1
@@ -5792,7 +5752,6 @@ ulbridge[032]:0.field.settlcurrency	"CHF"
 ulbridge[032]:0.field.ordtype	"2"
 ulbridge[032]:0.field.ordstatus	"0"
 ulbridge[032]:0.field.exectype	"0"
-ulbridge[032]:0.field.notrdregtimestamps	2
 ulbridge[032]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.534000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.717000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
 ulbridge[032]:0.field.fixentries	{"0:firm.orig.clientid":"2540498.003","0:marketorderid":"U8NNITE0-00","0:omsdealeraccount":"YNHD5","0:omsdealerorderid":"U8NNITE0-00","0:omsdealerparentorderid":"-8NNI7PA-00","0:omsinstrumentid":"dbi;CH0012005267_XSWX_CHF","0:parentorderid":"-8NNI7PA-00","0:ullink.clientid":"trader1","0:ullink.instrumentid":"dbi;CH0012005267_XSWX_CHF","0:ultraderclordid":"XM8NNITE5-00","107:securitydesc":"NOVARTIS","21:handlinst":"stp","22:securityidsource":"4","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"0","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"2540498.003\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"ULTrader\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\"}]","470:countryofissue":"CH","48:securityid":"CH0012005267","528:ordercapacity":"A","553:username":"trader1","562:mintradevol":"1","63:settltype":"0"}
 ulbridge[032].messages	1
@@ -5949,7 +5908,6 @@ ulbridge[033]:0.field.settlcurrency	"CHF"
 ulbridge[033]:0.field.ordtype	"2"
 ulbridge[033]:0.field.ordstatus	"0"
 ulbridge[033]:0.field.exectype	"0"
-ulbridge[033]:0.field.notrdregtimestamps	2
 ulbridge[033]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.534000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.717000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
 ulbridge[033]:0.field.bodylength	2898
 ulbridge[033]:0.field.xmldatalen	2804
@@ -6103,7 +6061,6 @@ ulbridge[034]:0.field.settlcurrency	"CHF"
 ulbridge[034]:0.field.ordtype	"2"
 ulbridge[034]:0.field.ordstatus	"2"
 ulbridge[034]:0.field.exectype	"F"
-ulbridge[034]:0.field.noregulatorytradeids	1
 ulbridge[034]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[034]:0.field.bodylength	886
 ulbridge[034]:0.field.sendersubid	"78182"
@@ -6255,7 +6212,6 @@ ulbridge[034]:1.field.settlcurrency	"CHF"
 ulbridge[034]:1.field.ordtype	"2"
 ulbridge[034]:1.field.ordstatus	"2"
 ulbridge[034]:1.field.exectype	"F"
-ulbridge[034]:1.field.noregulatorytradeids	1
 ulbridge[034]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[034]:1.field.bodylength	886
 ulbridge[034]:1.field.sendersubid	"78182"
@@ -6395,7 +6351,6 @@ ulbridge[035]:0.field.settlcurrency	"CHF"
 ulbridge[035]:0.field.ordtype	"2"
 ulbridge[035]:0.field.ordstatus	"2"
 ulbridge[035]:0.field.exectype	"F"
-ulbridge[035]:0.field.noregulatorytradeids	1
 ulbridge[035]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[035]:0.field.sendersubid	"78182"
 ulbridge[035]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -6532,7 +6487,6 @@ ulbridge[035]:1.field.settlcurrency	"CHF"
 ulbridge[035]:1.field.ordtype	"2"
 ulbridge[035]:1.field.ordstatus	"2"
 ulbridge[035]:1.field.exectype	"F"
-ulbridge[035]:1.field.noregulatorytradeids	1
 ulbridge[035]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[035]:1.field.sendersubid	"78182"
 ulbridge[035]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -6682,7 +6636,6 @@ ulbridge[036]:0.field.settlcurrency	"CHF"
 ulbridge[036]:0.field.ordtype	"2"
 ulbridge[036]:0.field.ordstatus	"2"
 ulbridge[036]:0.field.exectype	"F"
-ulbridge[036]:0.field.noregulatorytradeids	1
 ulbridge[036]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[036]:0.field.sendersubid	"78182"
 ulbridge[036]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -6831,7 +6784,6 @@ ulbridge[036]:1.field.settlcurrency	"CHF"
 ulbridge[036]:1.field.ordtype	"2"
 ulbridge[036]:1.field.ordstatus	"2"
 ulbridge[036]:1.field.exectype	"F"
-ulbridge[036]:1.field.noregulatorytradeids	1
 ulbridge[036]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[036]:1.field.sendersubid	"78182"
 ulbridge[036]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -6981,7 +6933,6 @@ ulbridge[037]:0.field.settlcurrency	"CHF"
 ulbridge[037]:0.field.ordtype	"2"
 ulbridge[037]:0.field.ordstatus	"2"
 ulbridge[037]:0.field.exectype	"F"
-ulbridge[037]:0.field.noregulatorytradeids	1
 ulbridge[037]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[037]:0.field.sendersubid	"78182"
 ulbridge[037]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -7130,7 +7081,6 @@ ulbridge[037]:1.field.settlcurrency	"CHF"
 ulbridge[037]:1.field.ordtype	"2"
 ulbridge[037]:1.field.ordstatus	"2"
 ulbridge[037]:1.field.exectype	"F"
-ulbridge[037]:1.field.noregulatorytradeids	1
 ulbridge[037]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[037]:1.field.sendersubid	"78182"
 ulbridge[037]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -7295,7 +7245,6 @@ ulbridge[038]:0.field.settlcurrency	"CHF"
 ulbridge[038]:0.field.ordtype	"2"
 ulbridge[038]:0.field.ordstatus	"2"
 ulbridge[038]:0.field.exectype	"F"
-ulbridge[038]:0.field.noregulatorytradeids	1
 ulbridge[038]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[038]:0.field.sendersubid	"78182"
 ulbridge[038]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -7459,7 +7408,6 @@ ulbridge[038]:1.field.settlcurrency	"CHF"
 ulbridge[038]:1.field.ordtype	"2"
 ulbridge[038]:1.field.ordstatus	"2"
 ulbridge[038]:1.field.exectype	"F"
-ulbridge[038]:1.field.noregulatorytradeids	1
 ulbridge[038]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[038]:1.field.sendersubid	"78182"
 ulbridge[038]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -7624,7 +7572,6 @@ ulbridge[039]:0.field.settlcurrency	"CHF"
 ulbridge[039]:0.field.ordtype	"2"
 ulbridge[039]:0.field.ordstatus	"2"
 ulbridge[039]:0.field.exectype	"F"
-ulbridge[039]:0.field.noregulatorytradeids	1
 ulbridge[039]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[039]:0.field.sendersubid	"78182"
 ulbridge[039]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -7788,7 +7735,6 @@ ulbridge[039]:1.field.settlcurrency	"CHF"
 ulbridge[039]:1.field.ordtype	"2"
 ulbridge[039]:1.field.ordstatus	"2"
 ulbridge[039]:1.field.exectype	"F"
-ulbridge[039]:1.field.noregulatorytradeids	1
 ulbridge[039]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[039]:1.field.sendersubid	"78182"
 ulbridge[039]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -7960,9 +7906,7 @@ ulbridge[043]:0.field.settlcurrency	"CHF"
 ulbridge[043]:0.field.ordtype	"2"
 ulbridge[043]:0.field.ordstatus	"2"
 ulbridge[043]:0.field.exectype	"F"
-ulbridge[043]:0.field.notrdregtimestamps	1
 ulbridge[043]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[043]:0.field.noregulatorytradeids	1
 ulbridge[043]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[043]:0.field.sendersubid	"78182"
 ulbridge[043]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -8130,9 +8074,7 @@ ulbridge[043]:1.field.settlcurrency	"CHF"
 ulbridge[043]:1.field.ordtype	"2"
 ulbridge[043]:1.field.ordstatus	"2"
 ulbridge[043]:1.field.exectype	"F"
-ulbridge[043]:1.field.notrdregtimestamps	1
 ulbridge[043]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[043]:1.field.noregulatorytradeids	1
 ulbridge[043]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[043]:1.field.sendersubid	"78182"
 ulbridge[043]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -8301,9 +8243,7 @@ ulbridge[044]:0.field.settlcurrency	"CHF"
 ulbridge[044]:0.field.ordtype	"2"
 ulbridge[044]:0.field.ordstatus	"2"
 ulbridge[044]:0.field.exectype	"F"
-ulbridge[044]:0.field.notrdregtimestamps	1
 ulbridge[044]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[044]:0.field.noregulatorytradeids	1
 ulbridge[044]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[044]:0.field.sendersubid	"78182"
 ulbridge[044]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -8471,9 +8411,7 @@ ulbridge[044]:1.field.settlcurrency	"CHF"
 ulbridge[044]:1.field.ordtype	"2"
 ulbridge[044]:1.field.ordstatus	"2"
 ulbridge[044]:1.field.exectype	"F"
-ulbridge[044]:1.field.notrdregtimestamps	1
 ulbridge[044]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[044]:1.field.noregulatorytradeids	1
 ulbridge[044]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[044]:1.field.sendersubid	"78182"
 ulbridge[044]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -8642,9 +8580,7 @@ ulbridge[045]:0.field.settlcurrency	"CHF"
 ulbridge[045]:0.field.ordtype	"2"
 ulbridge[045]:0.field.ordstatus	"2"
 ulbridge[045]:0.field.exectype	"F"
-ulbridge[045]:0.field.notrdregtimestamps	1
 ulbridge[045]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[045]:0.field.noregulatorytradeids	1
 ulbridge[045]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[045]:0.field.sendersubid	"78182"
 ulbridge[045]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -8812,9 +8748,7 @@ ulbridge[045]:1.field.settlcurrency	"CHF"
 ulbridge[045]:1.field.ordtype	"2"
 ulbridge[045]:1.field.ordstatus	"2"
 ulbridge[045]:1.field.exectype	"F"
-ulbridge[045]:1.field.notrdregtimestamps	1
 ulbridge[045]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[045]:1.field.noregulatorytradeids	1
 ulbridge[045]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[045]:1.field.sendersubid	"78182"
 ulbridge[045]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -8984,9 +8918,7 @@ ulbridge[047]:0.field.settlcurrency	"CHF"
 ulbridge[047]:0.field.ordtype	"2"
 ulbridge[047]:0.field.ordstatus	"2"
 ulbridge[047]:0.field.exectype	"F"
-ulbridge[047]:0.field.notrdregtimestamps	1
 ulbridge[047]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[047]:0.field.noregulatorytradeids	1
 ulbridge[047]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[047]:0.field.sendersubid	"78182"
 ulbridge[047]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -9154,9 +9086,7 @@ ulbridge[047]:1.field.settlcurrency	"CHF"
 ulbridge[047]:1.field.ordtype	"2"
 ulbridge[047]:1.field.ordstatus	"2"
 ulbridge[047]:1.field.exectype	"F"
-ulbridge[047]:1.field.notrdregtimestamps	1
 ulbridge[047]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[047]:1.field.noregulatorytradeids	1
 ulbridge[047]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[047]:1.field.sendersubid	"78182"
 ulbridge[047]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -9330,9 +9260,7 @@ ulbridge[051]:0.field.settlcurrency	"CHF"
 ulbridge[051]:0.field.ordtype	"2"
 ulbridge[051]:0.field.ordstatus	"2"
 ulbridge[051]:0.field.exectype	"F"
-ulbridge[051]:0.field.notrdregtimestamps	1
 ulbridge[051]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[051]:0.field.noregulatorytradeids	1
 ulbridge[051]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[051]:0.field.sendersubid	"78182"
 ulbridge[051]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -9502,9 +9430,7 @@ ulbridge[051]:1.field.settlcurrency	"CHF"
 ulbridge[051]:1.field.ordtype	"2"
 ulbridge[051]:1.field.ordstatus	"2"
 ulbridge[051]:1.field.exectype	"F"
-ulbridge[051]:1.field.notrdregtimestamps	1
 ulbridge[051]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[051]:1.field.noregulatorytradeids	1
 ulbridge[051]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[051]:1.field.sendersubid	"78182"
 ulbridge[051]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -9675,9 +9601,7 @@ ulbridge[052]:0.field.settlcurrency	"CHF"
 ulbridge[052]:0.field.ordtype	"2"
 ulbridge[052]:0.field.ordstatus	"2"
 ulbridge[052]:0.field.exectype	"F"
-ulbridge[052]:0.field.notrdregtimestamps	1
 ulbridge[052]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[052]:0.field.noregulatorytradeids	1
 ulbridge[052]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[052]:0.field.sendersubid	"78182"
 ulbridge[052]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -9847,9 +9771,7 @@ ulbridge[052]:1.field.settlcurrency	"CHF"
 ulbridge[052]:1.field.ordtype	"2"
 ulbridge[052]:1.field.ordstatus	"2"
 ulbridge[052]:1.field.exectype	"F"
-ulbridge[052]:1.field.notrdregtimestamps	1
 ulbridge[052]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[052]:1.field.noregulatorytradeids	1
 ulbridge[052]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[052]:1.field.sendersubid	"78182"
 ulbridge[052]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -10020,9 +9942,7 @@ ulbridge[053]:0.field.settlcurrency	"CHF"
 ulbridge[053]:0.field.ordtype	"2"
 ulbridge[053]:0.field.ordstatus	"2"
 ulbridge[053]:0.field.exectype	"F"
-ulbridge[053]:0.field.notrdregtimestamps	1
 ulbridge[053]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[053]:0.field.noregulatorytradeids	1
 ulbridge[053]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[053]:0.field.sendersubid	"78182"
 ulbridge[053]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -10192,9 +10112,7 @@ ulbridge[053]:1.field.settlcurrency	"CHF"
 ulbridge[053]:1.field.ordtype	"2"
 ulbridge[053]:1.field.ordstatus	"2"
 ulbridge[053]:1.field.exectype	"F"
-ulbridge[053]:1.field.notrdregtimestamps	1
 ulbridge[053]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[053]:1.field.noregulatorytradeids	1
 ulbridge[053]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[053]:1.field.sendersubid	"78182"
 ulbridge[053]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
@@ -10343,7 +10261,6 @@ ulbridge[055]:0.field.settlcurrency	"CHF"
 ulbridge[055]:0.field.ordtype	"2"
 ulbridge[055]:0.field.ordstatus	"1"
 ulbridge[055]:0.field.exectype	"F"
-ulbridge[055]:0.field.noregulatorytradeids	1
 ulbridge[055]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[055]:0.field.bodylength	938
 ulbridge[055]:0.field.checksum	"197"
@@ -10491,7 +10408,6 @@ ulbridge[055]:1.field.settlcurrency	"CHF"
 ulbridge[055]:1.field.ordtype	"2"
 ulbridge[055]:1.field.ordstatus	"1"
 ulbridge[055]:1.field.exectype	"F"
-ulbridge[055]:1.field.noregulatorytradeids	1
 ulbridge[055]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[055]:1.field.bodylength	938
 ulbridge[055]:1.field.checksum	"197"
@@ -10646,7 +10562,6 @@ ulbridge[056]:0.field.settlcurrency	"CHF"
 ulbridge[056]:0.field.ordtype	"2"
 ulbridge[056]:0.field.ordstatus	"partfilled"
 ulbridge[056]:0.field.exectype	"F"
-ulbridge[056]:0.field.noregulatorytradeids	1
 ulbridge[056]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[056]:0.field.fixentries	{"0:parentorderid":"XM8NNITE000","1057:aggressorindicator":"Y","113:reporttoexch":"N","21:handlinst":"stp","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[056]:1.type	8
@@ -10798,7 +10713,6 @@ ulbridge[056]:1.field.settlcurrency	"CHF"
 ulbridge[056]:1.field.ordtype	"2"
 ulbridge[056]:1.field.ordstatus	"partfilled"
 ulbridge[056]:1.field.exectype	"F"
-ulbridge[056]:1.field.noregulatorytradeids	1
 ulbridge[056]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[056]:1.field.fixentries	{"0:parentorderid":"XM8NNITE000","1057:aggressorindicator":"Y","113:reporttoexch":"N","21:handlinst":"stp","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\",\\"802:partysubids\\":[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[056].messages	2
@@ -10960,7 +10874,6 @@ ulbridge[057]:0.field.settlcurrency	"CHF"
 ulbridge[057]:0.field.ordtype	"2"
 ulbridge[057]:0.field.ordstatus	"partfilled"
 ulbridge[057]:0.field.exectype	"F"
-ulbridge[057]:0.field.noregulatorytradeids	1
 ulbridge[057]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[057]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","802:partysubids":"[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[057]:1.type	8
@@ -11121,7 +11034,6 @@ ulbridge[057]:1.field.settlcurrency	"CHF"
 ulbridge[057]:1.field.ordtype	"2"
 ulbridge[057]:1.field.ordstatus	"partfilled"
 ulbridge[057]:1.field.exectype	"F"
-ulbridge[057]:1.field.noregulatorytradeids	1
 ulbridge[057]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[057]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","802:partysubids":"[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[057].messages	2
@@ -11283,7 +11195,6 @@ ulbridge[058]:0.field.settlcurrency	"CHF"
 ulbridge[058]:0.field.ordtype	"2"
 ulbridge[058]:0.field.ordstatus	"partfilled"
 ulbridge[058]:0.field.exectype	"F"
-ulbridge[058]:0.field.noregulatorytradeids	1
 ulbridge[058]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[058]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","802:partysubids":"[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[058]:1.type	8
@@ -11444,7 +11355,6 @@ ulbridge[058]:1.field.settlcurrency	"CHF"
 ulbridge[058]:1.field.ordtype	"2"
 ulbridge[058]:1.field.ordstatus	"partfilled"
 ulbridge[058]:1.field.exectype	"F"
-ulbridge[058]:1.field.noregulatorytradeids	1
 ulbridge[058]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[058]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"YNHD5_NCI\\",\\"452:partyrole\\":\\"24\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","802:partysubids":"[{\\"523:partysubid\\":\\"trader1\\",\\"803:partysubidtype\\":\\"9\\"}]","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[058].messages	2
@@ -11601,7 +11511,6 @@ ulbridge[059]:0.field.settlcurrency	"CHF"
 ulbridge[059]:0.field.ordtype	"2"
 ulbridge[059]:0.field.ordstatus	"partfilled"
 ulbridge[059]:0.field.exectype	"F"
-ulbridge[059]:0.field.noregulatorytradeids	1
 ulbridge[059]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[059]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[059]:1.type	8
@@ -11757,7 +11666,6 @@ ulbridge[059]:1.field.settlcurrency	"CHF"
 ulbridge[059]:1.field.ordtype	"2"
 ulbridge[059]:1.field.ordstatus	"partfilled"
 ulbridge[059]:1.field.exectype	"F"
-ulbridge[059]:1.field.noregulatorytradeids	1
 ulbridge[059]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[059]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[059].messages	2
@@ -11914,7 +11822,6 @@ ulbridge[060]:0.field.settlcurrency	"CHF"
 ulbridge[060]:0.field.ordtype	"2"
 ulbridge[060]:0.field.ordstatus	"partfilled"
 ulbridge[060]:0.field.exectype	"F"
-ulbridge[060]:0.field.noregulatorytradeids	1
 ulbridge[060]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[060]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[060]:1.type	8
@@ -12070,7 +11977,6 @@ ulbridge[060]:1.field.settlcurrency	"CHF"
 ulbridge[060]:1.field.ordtype	"2"
 ulbridge[060]:1.field.ordstatus	"partfilled"
 ulbridge[060]:1.field.exectype	"F"
-ulbridge[060]:1.field.noregulatorytradeids	1
 ulbridge[060]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[060]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[060].messages	2
@@ -12228,7 +12134,6 @@ ulbridge[062]:0.field.settlcurrency	"CHF"
 ulbridge[062]:0.field.ordtype	"2"
 ulbridge[062]:0.field.ordstatus	"partfilled"
 ulbridge[062]:0.field.exectype	"F"
-ulbridge[062]:0.field.noregulatorytradeids	1
 ulbridge[062]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[062]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[062]:1.type	8
@@ -12384,7 +12289,6 @@ ulbridge[062]:1.field.settlcurrency	"CHF"
 ulbridge[062]:1.field.ordtype	"2"
 ulbridge[062]:1.field.ordstatus	"partfilled"
 ulbridge[062]:1.field.exectype	"F"
-ulbridge[062]:1.field.noregulatorytradeids	1
 ulbridge[062]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[062]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[062].messages	2
@@ -12541,7 +12445,6 @@ ulbridge[063]:0.field.settlcurrency	"CHF"
 ulbridge[063]:0.field.ordtype	"2"
 ulbridge[063]:0.field.ordstatus	"partfilled"
 ulbridge[063]:0.field.exectype	"F"
-ulbridge[063]:0.field.noregulatorytradeids	1
 ulbridge[063]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[063]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[063]:1.type	8
@@ -12697,7 +12600,6 @@ ulbridge[063]:1.field.settlcurrency	"CHF"
 ulbridge[063]:1.field.ordtype	"2"
 ulbridge[063]:1.field.ordstatus	"partfilled"
 ulbridge[063]:1.field.exectype	"F"
-ulbridge[063]:1.field.noregulatorytradeids	1
 ulbridge[063]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[063]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[063].messages	2
@@ -12854,7 +12756,6 @@ ulbridge[064]:0.field.settlcurrency	"CHF"
 ulbridge[064]:0.field.ordtype	"2"
 ulbridge[064]:0.field.ordstatus	"partfilled"
 ulbridge[064]:0.field.exectype	"F"
-ulbridge[064]:0.field.noregulatorytradeids	1
 ulbridge[064]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[064]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[064]:1.type	8
@@ -13010,7 +12911,6 @@ ulbridge[064]:1.field.settlcurrency	"CHF"
 ulbridge[064]:1.field.ordtype	"2"
 ulbridge[064]:1.field.ordstatus	"partfilled"
 ulbridge[064]:1.field.exectype	"F"
-ulbridge[064]:1.field.noregulatorytradeids	1
 ulbridge[064]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[064]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[064].messages	2
@@ -13173,7 +13073,6 @@ ulbridge[069]:0.field.settlcurrency	"CHF"
 ulbridge[069]:0.field.ordtype	"2"
 ulbridge[069]:0.field.ordstatus	"partfilled"
 ulbridge[069]:0.field.exectype	"F"
-ulbridge[069]:0.field.noregulatorytradeids	1
 ulbridge[069]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[069]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[069]:1.type	8
@@ -13331,7 +13230,6 @@ ulbridge[069]:1.field.settlcurrency	"CHF"
 ulbridge[069]:1.field.ordtype	"2"
 ulbridge[069]:1.field.ordstatus	"partfilled"
 ulbridge[069]:1.field.exectype	"F"
-ulbridge[069]:1.field.noregulatorytradeids	1
 ulbridge[069]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[069]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[069].messages	2
@@ -13489,7 +13387,6 @@ ulbridge[070]:0.field.settlcurrency	"CHF"
 ulbridge[070]:0.field.ordtype	"2"
 ulbridge[070]:0.field.ordstatus	"partfilled"
 ulbridge[070]:0.field.exectype	"F"
-ulbridge[070]:0.field.noregulatorytradeids	1
 ulbridge[070]:0.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[070]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[070]:1.type	8
@@ -13646,7 +13543,6 @@ ulbridge[070]:1.field.settlcurrency	"CHF"
 ulbridge[070]:1.field.ordtype	"2"
 ulbridge[070]:1.field.ordstatus	"partfilled"
 ulbridge[070]:1.field.exectype	"F"
-ulbridge[070]:1.field.noregulatorytradeids	1
 ulbridge[070]:1.field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 ulbridge[070]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"YNHD5_NCI","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"4735.56","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"2\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"3\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"A","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZV"}
 ulbridge[070].messages	2
@@ -13796,7 +13692,6 @@ ulbridge[072]:0.field.settlcurrency	"CHF"
 ulbridge[072]:0.field.ordtype	"2"
 ulbridge[072]:0.field.ordstatus	"2"
 ulbridge[072]:0.field.exectype	"F"
-ulbridge[072]:0.field.noregulatorytradeids	1
 ulbridge[072]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[072]:0.field.bodylength	886
 ulbridge[072]:0.field.sendersubid	"78182"
@@ -13947,7 +13842,6 @@ ulbridge[072]:1.field.settlcurrency	"CHF"
 ulbridge[072]:1.field.ordtype	"2"
 ulbridge[072]:1.field.ordstatus	"2"
 ulbridge[072]:1.field.exectype	"F"
-ulbridge[072]:1.field.noregulatorytradeids	1
 ulbridge[072]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[072]:1.field.bodylength	886
 ulbridge[072]:1.field.sendersubid	"78182"
@@ -14087,7 +13981,6 @@ ulbridge[073]:0.field.settlcurrency	"CHF"
 ulbridge[073]:0.field.ordtype	"2"
 ulbridge[073]:0.field.ordstatus	"2"
 ulbridge[073]:0.field.exectype	"F"
-ulbridge[073]:0.field.noregulatorytradeids	1
 ulbridge[073]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[073]:0.field.sendersubid	"78182"
 ulbridge[073]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -14224,7 +14117,6 @@ ulbridge[073]:1.field.settlcurrency	"CHF"
 ulbridge[073]:1.field.ordtype	"2"
 ulbridge[073]:1.field.ordstatus	"2"
 ulbridge[073]:1.field.exectype	"F"
-ulbridge[073]:1.field.noregulatorytradeids	1
 ulbridge[073]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[073]:1.field.sendersubid	"78182"
 ulbridge[073]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -14374,7 +14266,6 @@ ulbridge[074]:0.field.settlcurrency	"CHF"
 ulbridge[074]:0.field.ordtype	"2"
 ulbridge[074]:0.field.ordstatus	"2"
 ulbridge[074]:0.field.exectype	"F"
-ulbridge[074]:0.field.noregulatorytradeids	1
 ulbridge[074]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[074]:0.field.sendersubid	"78182"
 ulbridge[074]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -14523,7 +14414,6 @@ ulbridge[074]:1.field.settlcurrency	"CHF"
 ulbridge[074]:1.field.ordtype	"2"
 ulbridge[074]:1.field.ordstatus	"2"
 ulbridge[074]:1.field.exectype	"F"
-ulbridge[074]:1.field.noregulatorytradeids	1
 ulbridge[074]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[074]:1.field.sendersubid	"78182"
 ulbridge[074]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -14673,7 +14563,6 @@ ulbridge[075]:0.field.settlcurrency	"CHF"
 ulbridge[075]:0.field.ordtype	"2"
 ulbridge[075]:0.field.ordstatus	"2"
 ulbridge[075]:0.field.exectype	"F"
-ulbridge[075]:0.field.noregulatorytradeids	1
 ulbridge[075]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[075]:0.field.sendersubid	"78182"
 ulbridge[075]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -14822,7 +14711,6 @@ ulbridge[075]:1.field.settlcurrency	"CHF"
 ulbridge[075]:1.field.ordtype	"2"
 ulbridge[075]:1.field.ordstatus	"2"
 ulbridge[075]:1.field.exectype	"F"
-ulbridge[075]:1.field.noregulatorytradeids	1
 ulbridge[075]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[075]:1.field.sendersubid	"78182"
 ulbridge[075]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"STANDARD\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -14987,7 +14875,6 @@ ulbridge[076]:0.field.settlcurrency	"CHF"
 ulbridge[076]:0.field.ordtype	"2"
 ulbridge[076]:0.field.ordstatus	"2"
 ulbridge[076]:0.field.exectype	"F"
-ulbridge[076]:0.field.noregulatorytradeids	1
 ulbridge[076]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[076]:0.field.sendersubid	"78182"
 ulbridge[076]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -15151,7 +15038,6 @@ ulbridge[076]:1.field.settlcurrency	"CHF"
 ulbridge[076]:1.field.ordtype	"2"
 ulbridge[076]:1.field.ordstatus	"2"
 ulbridge[076]:1.field.exectype	"F"
-ulbridge[076]:1.field.noregulatorytradeids	1
 ulbridge[076]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[076]:1.field.sendersubid	"78182"
 ulbridge[076]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -15316,7 +15202,6 @@ ulbridge[077]:0.field.settlcurrency	"CHF"
 ulbridge[077]:0.field.ordtype	"2"
 ulbridge[077]:0.field.ordstatus	"2"
 ulbridge[077]:0.field.exectype	"F"
-ulbridge[077]:0.field.noregulatorytradeids	1
 ulbridge[077]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[077]:0.field.sendersubid	"78182"
 ulbridge[077]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -15480,7 +15365,6 @@ ulbridge[077]:1.field.settlcurrency	"CHF"
 ulbridge[077]:1.field.ordtype	"2"
 ulbridge[077]:1.field.ordstatus	"2"
 ulbridge[077]:1.field.exectype	"F"
-ulbridge[077]:1.field.noregulatorytradeids	1
 ulbridge[077]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[077]:1.field.sendersubid	"78182"
 ulbridge[077]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -15652,9 +15536,7 @@ ulbridge[081]:0.field.settlcurrency	"CHF"
 ulbridge[081]:0.field.ordtype	"2"
 ulbridge[081]:0.field.ordstatus	"2"
 ulbridge[081]:0.field.exectype	"F"
-ulbridge[081]:0.field.notrdregtimestamps	1
 ulbridge[081]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[081]:0.field.noregulatorytradeids	1
 ulbridge[081]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[081]:0.field.sendersubid	"78182"
 ulbridge[081]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -15822,9 +15704,7 @@ ulbridge[081]:1.field.settlcurrency	"CHF"
 ulbridge[081]:1.field.ordtype	"2"
 ulbridge[081]:1.field.ordstatus	"2"
 ulbridge[081]:1.field.exectype	"F"
-ulbridge[081]:1.field.notrdregtimestamps	1
 ulbridge[081]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[081]:1.field.noregulatorytradeids	1
 ulbridge[081]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[081]:1.field.sendersubid	"78182"
 ulbridge[081]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -15993,9 +15873,7 @@ ulbridge[082]:0.field.settlcurrency	"CHF"
 ulbridge[082]:0.field.ordtype	"2"
 ulbridge[082]:0.field.ordstatus	"2"
 ulbridge[082]:0.field.exectype	"F"
-ulbridge[082]:0.field.notrdregtimestamps	1
 ulbridge[082]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[082]:0.field.noregulatorytradeids	1
 ulbridge[082]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[082]:0.field.sendersubid	"78182"
 ulbridge[082]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -16163,9 +16041,7 @@ ulbridge[082]:1.field.settlcurrency	"CHF"
 ulbridge[082]:1.field.ordtype	"2"
 ulbridge[082]:1.field.ordstatus	"2"
 ulbridge[082]:1.field.exectype	"F"
-ulbridge[082]:1.field.notrdregtimestamps	1
 ulbridge[082]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[082]:1.field.noregulatorytradeids	1
 ulbridge[082]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[082]:1.field.sendersubid	"78182"
 ulbridge[082]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -16334,9 +16210,7 @@ ulbridge[083]:0.field.settlcurrency	"CHF"
 ulbridge[083]:0.field.ordtype	"2"
 ulbridge[083]:0.field.ordstatus	"2"
 ulbridge[083]:0.field.exectype	"F"
-ulbridge[083]:0.field.notrdregtimestamps	1
 ulbridge[083]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[083]:0.field.noregulatorytradeids	1
 ulbridge[083]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[083]:0.field.sendersubid	"78182"
 ulbridge[083]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -16504,9 +16378,7 @@ ulbridge[083]:1.field.settlcurrency	"CHF"
 ulbridge[083]:1.field.ordtype	"2"
 ulbridge[083]:1.field.ordstatus	"2"
 ulbridge[083]:1.field.exectype	"F"
-ulbridge[083]:1.field.notrdregtimestamps	1
 ulbridge[083]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[083]:1.field.noregulatorytradeids	1
 ulbridge[083]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[083]:1.field.sendersubid	"78182"
 ulbridge[083]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -16676,9 +16548,7 @@ ulbridge[085]:0.field.settlcurrency	"CHF"
 ulbridge[085]:0.field.ordtype	"2"
 ulbridge[085]:0.field.ordstatus	"2"
 ulbridge[085]:0.field.exectype	"F"
-ulbridge[085]:0.field.notrdregtimestamps	1
 ulbridge[085]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[085]:0.field.noregulatorytradeids	1
 ulbridge[085]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[085]:0.field.sendersubid	"78182"
 ulbridge[085]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -16846,9 +16716,7 @@ ulbridge[085]:1.field.settlcurrency	"CHF"
 ulbridge[085]:1.field.ordtype	"2"
 ulbridge[085]:1.field.ordstatus	"2"
 ulbridge[085]:1.field.exectype	"F"
-ulbridge[085]:1.field.notrdregtimestamps	1
 ulbridge[085]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[085]:1.field.noregulatorytradeids	1
 ulbridge[085]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[085]:1.field.sendersubid	"78182"
 ulbridge[085]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -17022,9 +16890,7 @@ ulbridge[089]:0.field.settlcurrency	"CHF"
 ulbridge[089]:0.field.ordtype	"2"
 ulbridge[089]:0.field.ordstatus	"2"
 ulbridge[089]:0.field.exectype	"F"
-ulbridge[089]:0.field.notrdregtimestamps	1
 ulbridge[089]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[089]:0.field.noregulatorytradeids	1
 ulbridge[089]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[089]:0.field.sendersubid	"78182"
 ulbridge[089]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -17194,9 +17060,7 @@ ulbridge[089]:1.field.settlcurrency	"CHF"
 ulbridge[089]:1.field.ordtype	"2"
 ulbridge[089]:1.field.ordstatus	"2"
 ulbridge[089]:1.field.exectype	"F"
-ulbridge[089]:1.field.notrdregtimestamps	1
 ulbridge[089]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[089]:1.field.noregulatorytradeids	1
 ulbridge[089]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[089]:1.field.sendersubid	"78182"
 ulbridge[089]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -17367,9 +17231,7 @@ ulbridge[090]:0.field.settlcurrency	"CHF"
 ulbridge[090]:0.field.ordtype	"2"
 ulbridge[090]:0.field.ordstatus	"2"
 ulbridge[090]:0.field.exectype	"F"
-ulbridge[090]:0.field.notrdregtimestamps	1
 ulbridge[090]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[090]:0.field.noregulatorytradeids	1
 ulbridge[090]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[090]:0.field.sendersubid	"78182"
 ulbridge[090]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -17539,9 +17401,7 @@ ulbridge[090]:1.field.settlcurrency	"CHF"
 ulbridge[090]:1.field.ordtype	"2"
 ulbridge[090]:1.field.ordstatus	"2"
 ulbridge[090]:1.field.exectype	"F"
-ulbridge[090]:1.field.notrdregtimestamps	1
 ulbridge[090]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[090]:1.field.noregulatorytradeids	1
 ulbridge[090]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[090]:1.field.sendersubid	"78182"
 ulbridge[090]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -17712,9 +17572,7 @@ ulbridge[091]:0.field.settlcurrency	"CHF"
 ulbridge[091]:0.field.ordtype	"2"
 ulbridge[091]:0.field.ordstatus	"2"
 ulbridge[091]:0.field.exectype	"F"
-ulbridge[091]:0.field.notrdregtimestamps	1
 ulbridge[091]:0.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[091]:0.field.noregulatorytradeids	1
 ulbridge[091]:0.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[091]:0.field.sendersubid	"78182"
 ulbridge[091]:0.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -17884,9 +17742,7 @@ ulbridge[091]:1.field.settlcurrency	"CHF"
 ulbridge[091]:1.field.ordtype	"2"
 ulbridge[091]:1.field.ordstatus	"2"
 ulbridge[091]:1.field.exectype	"F"
-ulbridge[091]:1.field.notrdregtimestamps	1
 ulbridge[091]:1.field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[091]:1.field.noregulatorytradeids	1
 ulbridge[091]:1.field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 ulbridge[091]:1.field.sendersubid	"78182"
 ulbridge[091]:1.field.fixentries	{"0:firmuserid":"8","0:parentorderid":"XM8NNITE000","0:tech.account":"HIGH_TOUCH","0:tech.clientid":"OMSX1","1057:aggressorindicator":"Y","109:clientid":"OMSX1","113:reporttoexch":"N","21:handlinst":"stp","228:factor":"1","22:securityidsource":"isin","2524:tradereportingindicator":"6","2897:currencycodesource":"6","377:solicitedflag":"N","381:grosstradeamt":"6231","386:notradingsessions":"[{\\"336:tradingsessionid\\":\\"1\\"}]","442:multilegreportingtype":"new","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"12\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"78182\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"shortcodeid\\",\\"448:partyid\\":\\"OMSX1\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"OmsVendor\\"}]","454:secaltids":"[{\\"455:securityaltid\\":\\"CH0012221716\\",\\"456:securityaltidsource\\":\\"isin\\"}]","470:countryofissue":"CH","48:securityid":"CH0012221716","528:ordercapacity":"R","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38JAC5817YZW"}
@@ -18298,9 +18154,7 @@ ulbridge[104]:0.field.settlcurrency	"CHF"
 ulbridge[104]:0.field.ordtype	"2"
 ulbridge[104]:0.field.ordstatus	"2"
 ulbridge[104]:0.field.exectype	"F"
-ulbridge[104]:0.field.notrdregtimestamps	4
 ulbridge[104]:0.field.trdregtimestamps	[["2026-08-14T12:46:35.060000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:35.060000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:35.073000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:58.453000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[104]:0.field.noregulatorytradeids	1
 ulbridge[104]:0.field.regulatorytradeids	[["042K38JAC5817YDV",null,null,5,null,null]]
 ulbridge[104]:0.field.bodylength	3168
 ulbridge[104]:0.field.xmldatalen	3074
@@ -18477,9 +18331,7 @@ ulbridge[104]:1.field.settlcurrency	"CHF"
 ulbridge[104]:1.field.ordtype	"2"
 ulbridge[104]:1.field.ordstatus	"2"
 ulbridge[104]:1.field.exectype	"F"
-ulbridge[104]:1.field.notrdregtimestamps	4
 ulbridge[104]:1.field.trdregtimestamps	[["2026-08-14T12:46:35.060000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:35.060000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:35.073000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:58.453000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-ulbridge[104]:1.field.noregulatorytradeids	1
 ulbridge[104]:1.field.regulatorytradeids	[["042K38JAC5817YDV",null,null,5,null,null]]
 ulbridge[104]:1.field.bodylength	3168
 ulbridge[104]:1.field.xmldatalen	3074
@@ -18825,7 +18677,6 @@ ulbridge[111]:0.field.execid	"9612147_C"
 ulbridge[111]:0.field.orderqty	"0"
 ulbridge[111]:0.field.ordstatus	"2"
 ulbridge[111]:0.field.exectype	"F"
-ulbridge[111]:0.field.notrdregtimestamps	1
 ulbridge[111]:0.field.trdregtimestamps	[["2026-08-14T14:52:55.000000000Z",1,null,null,null,null,null,null,null,null,null,null]]
 ulbridge[111]:0.field.bodylength	3430
 ulbridge[111]:0.field.xmldatalen	3347
@@ -19016,7 +18867,6 @@ ulbridge[111]:1.field.execid	"9612147_C"
 ulbridge[111]:1.field.orderqty	"0"
 ulbridge[111]:1.field.ordstatus	"2"
 ulbridge[111]:1.field.exectype	"F"
-ulbridge[111]:1.field.notrdregtimestamps	1
 ulbridge[111]:1.field.trdregtimestamps	[["2026-08-14T14:52:55.000000000Z",1,null,null,null,null,null,null,null,null,null,null]]
 ulbridge[111]:1.field.bodylength	3430
 ulbridge[111]:1.field.xmldatalen	3347
@@ -20006,7 +19856,6 @@ ulbridge[134]:0.field.origclordid	"0201623594616112"
 ulbridge[134]:0.field.orderid	"931070583-1940-30712_192"
 ulbridge[134]:0.field.ordstatus	"8"
 ulbridge[134]:0.field.text	"Counterparty unavailable - please contact support"
-ulbridge[134]:0.field.notrdregtimestamps	5
 ulbridge[134]:0.field.trdregtimestamps	[["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
 ulbridge[134]:0.field.onbehalfofcompid	"RDXY"
 ulbridge[134]:0.field.fixentries	{"434:cxlrejresponseto":"cancel"}
@@ -20068,7 +19917,6 @@ ulbridge[135]:0.field.origclordid	"0201623594616112"
 ulbridge[135]:0.field.orderid	"931070583-1940-30712_192"
 ulbridge[135]:0.field.ordstatus	"8"
 ulbridge[135]:0.field.text	"Counterparty unavailable - please contact support"
-ulbridge[135]:0.field.notrdregtimestamps	5
 ulbridge[135]:0.field.trdregtimestamps	[["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
 ulbridge[135]:0.field.onbehalfofcompid	"RDXY"
 ulbridge[135]:0.field.fixentries	{"434:cxlrejresponseto":"cancel"}
@@ -20224,7 +20072,6 @@ ulbridge[138]:0.field.orderqty	"10000"
 ulbridge[138]:0.field.settlcurrency	"TWD"
 ulbridge[138]:0.field.ordstatus	"8"
 ulbridge[138]:0.field.text	"Counterparty unavailable - please contact support"
-ulbridge[138]:0.field.notrdregtimestamps	5
 ulbridge[138]:0.field.trdregtimestamps	[["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
 ulbridge[138]:0.field.onbehalfofcompid	"RDXY"
 ulbridge[138]:0.field.delivertocompid	"RDXY"
@@ -20379,7 +20226,6 @@ ulbridge[140]:0.field.orderqty	"10000"
 ulbridge[140]:0.field.settlcurrency	"TWD"
 ulbridge[140]:0.field.ordstatus	"8"
 ulbridge[140]:0.field.text	"Counterparty unavailable - please contact support"
-ulbridge[140]:0.field.notrdregtimestamps	5
 ulbridge[140]:0.field.trdregtimestamps	[["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
 ulbridge[140]:0.field.onbehalfofcompid	"RDXY"
 ulbridge[140]:0.field.delivertocompid	"RDXY"
@@ -20538,7 +20384,6 @@ ulbridge[141]:0.field.orderqty	"10000"
 ulbridge[141]:0.field.settlcurrency	"TWD"
 ulbridge[141]:0.field.ordstatus	"8"
 ulbridge[141]:0.field.text	"Counterparty unavailable - please contact support"
-ulbridge[141]:0.field.notrdregtimestamps	5
 ulbridge[141]:0.field.trdregtimestamps	[["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
 ulbridge[141]:0.field.bodylength	3438
 ulbridge[141]:0.field.onbehalfofcompid	"RDXY"
@@ -21040,9 +20885,7 @@ lifecycle[006].field.settlcurrency	"CHF"
 lifecycle[006].field.ordtype	"2"
 lifecycle[006].field.ordstatus	"2"
 lifecycle[006].field.exectype	"F"
-lifecycle[006].field.notrdregtimestamps	2
 lifecycle[006].field.trdregtimestamps	[["2026-08-14T12:46:39.506000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.715000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
-lifecycle[006].field.noregulatorytradeids	1
 lifecycle[006].field.regulatorytradeids	[["042K38MWK5817YZZ",null,null,5,null,null]]
 lifecycle[006].field.fixentries	{"0:firm.orig.clientid":"2540498.003","0:marketorderid":"U8NNITDd-00","0:omsdealeraccount":"YNHD5","0:omsdealerorderid":"U8NNITDd-00","0:omsdealerparentorderid":"-8NNI7PB-00","0:omsinstrumentid":"dbi;CH0012214059_XSWX_CHF","0:parentorderid":"-8NNI7PB-00","0:ullink.clientid":"trader1","0:ullink.instrumentid":"dbi;CH0012214059_XSWX_CHF","0:ultraderclordid":"XM8NNITE3-00","107:securitydesc":"HOLCIM N","21:handlinst":"stp","22:securityidsource":"4","2524:tradereportingindicator":"6","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"16985.8","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"2540498.003\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"ULTrader\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\"}]","470:countryofissue":"CH","48:securityid":"CH0012214059","528:ordercapacity":"A","553:username":"trader1","562:mintradevol":"1","63:settltype":"0","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38MWK5817YZZ"}
 lifecycle[007].type	8
@@ -21213,9 +21056,7 @@ lifecycle[007].field.settlcurrency	"CHF"
 lifecycle[007].field.ordtype	"2"
 lifecycle[007].field.ordstatus	"2"
 lifecycle[007].field.exectype	"F"
-lifecycle[007].field.notrdregtimestamps	2
 lifecycle[007].field.trdregtimestamps	[["2026-08-14T12:46:39.506000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.715000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
-lifecycle[007].field.noregulatorytradeids	1
 lifecycle[007].field.regulatorytradeids	[["042K38MWK5817YZZ",null,null,5,null,null]]
 lifecycle[007].field.fixentries	{"0:firm.orig.clientid":"2540498.003","0:marketorderid":"U8NNITDd-00","0:omsdealeraccount":"YNHD5","0:omsdealerorderid":"U8NNITDd-00","0:omsdealerparentorderid":"-8NNI7PB-00","0:omsinstrumentid":"dbi;CH0012214059_XSWX_CHF","0:parentorderid":"-8NNI7PB-00","0:ullink.clientid":"trader1","0:ullink.instrumentid":"dbi;CH0012214059_XSWX_CHF","0:ultraderclordid":"XM8NNITE3-00","107:securitydesc":"HOLCIM N","21:handlinst":"stp","22:securityidsource":"4","2524:tradereportingindicator":"6","2897:currencycodesource":"6","29:lastcapacity":"agency","377:solicitedflag":"Y","381:grosstradeamt":"16985.8","453:parties":"[{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"1743045.007\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"2540498.003\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"HIGH_TOUCH\\",\\"452:partyrole\\":\\"3\\"},{\\"447:partyidsource\\":\\"generallyacceptedmarketparticipantidentifier\\",\\"448:partyid\\":\\"SWXCCP\\",\\"452:partyrole\\":\\"1\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"122\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"TRADER2\\",\\"452:partyrole\\":\\"36\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"ULTrader\\"},{\\"447:partyidsource\\":\\"D\\",\\"448:partyid\\":\\"trader1\\",\\"452:partyrole\\":\\"12\\"}]","470:countryofissue":"CH","48:securityid":"CH0012214059","528:ordercapacity":"A","553:username":"trader1","562:mintradevol":"1","63:settltype":"0","76:execbroker":"1743045.007","851:lastliquidityind":"2","880:trdmatchid":"042K38MWK5817YZZ"}
 lifecycle[008].type	8
@@ -21408,7 +21249,6 @@ lifecycle[008].field.settlcurrency	"CHF"
 lifecycle[008].field.ordtype	"2"
 lifecycle[008].field.ordstatus	"1"
 lifecycle[008].field.exectype	"F"
-lifecycle[008].field.noregulatorytradeids	1
 lifecycle[008].field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 lifecycle[008].field.bodylength	938
 lifecycle[008].field.checksum	"200"
@@ -21603,7 +21443,6 @@ lifecycle[009].field.settlcurrency	"CHF"
 lifecycle[009].field.ordtype	"2"
 lifecycle[009].field.ordstatus	"1"
 lifecycle[009].field.exectype	"F"
-lifecycle[009].field.noregulatorytradeids	1
 lifecycle[009].field.regulatorytradeids	[["042K38JAC5817YZU",null,null,5,null,null]]
 lifecycle[009].field.bodylength	938
 lifecycle[009].field.checksum	"200"
@@ -21803,7 +21642,6 @@ lifecycle[010].field.settlcurrency	"CHF"
 lifecycle[010].field.ordtype	"2"
 lifecycle[010].field.ordstatus	"1"
 lifecycle[010].field.exectype	"F"
-lifecycle[010].field.noregulatorytradeids	1
 lifecycle[010].field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 lifecycle[010].field.bodylength	938
 lifecycle[010].field.checksum	"197"
@@ -21998,7 +21836,6 @@ lifecycle[011].field.settlcurrency	"CHF"
 lifecycle[011].field.ordtype	"2"
 lifecycle[011].field.ordstatus	"1"
 lifecycle[011].field.exectype	"F"
-lifecycle[011].field.noregulatorytradeids	1
 lifecycle[011].field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 lifecycle[011].field.bodylength	938
 lifecycle[011].field.checksum	"197"
@@ -22200,9 +22037,7 @@ lifecycle[012].field.settlcurrency	"CHF"
 lifecycle[012].field.ordtype	"2"
 lifecycle[012].field.ordstatus	"2"
 lifecycle[012].field.exectype	"F"
-lifecycle[012].field.notrdregtimestamps	1
 lifecycle[012].field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-lifecycle[012].field.noregulatorytradeids	1
 lifecycle[012].field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 lifecycle[012].field.bodylength	886
 lifecycle[012].field.sendersubid	"78182"
@@ -22399,9 +22234,7 @@ lifecycle[013].field.settlcurrency	"CHF"
 lifecycle[013].field.ordtype	"2"
 lifecycle[013].field.ordstatus	"2"
 lifecycle[013].field.exectype	"F"
-lifecycle[013].field.notrdregtimestamps	1
 lifecycle[013].field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-lifecycle[013].field.noregulatorytradeids	1
 lifecycle[013].field.regulatorytradeids	[["042K38JAC5817YZW",null,null,5,null,null]]
 lifecycle[013].field.bodylength	886
 lifecycle[013].field.sendersubid	"78182"
@@ -22634,7 +22467,6 @@ lifecycle[015].field.settlcurrency	"CHF"
 lifecycle[015].field.ordtype	"2"
 lifecycle[015].field.ordstatus	"0"
 lifecycle[015].field.exectype	"0"
-lifecycle[015].field.notrdregtimestamps	2
 lifecycle[015].field.trdregtimestamps	[["2026-08-14T12:46:39.534000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.717000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
 lifecycle[015].field.bodylength	2898
 lifecycle[015].field.xmldatalen	2804
@@ -22798,7 +22630,6 @@ lifecycle[016].field.settlcurrency	"CHF"
 lifecycle[016].field.ordtype	"2"
 lifecycle[016].field.ordstatus	"0"
 lifecycle[016].field.exectype	"0"
-lifecycle[016].field.notrdregtimestamps	2
 lifecycle[016].field.trdregtimestamps	[["2026-08-14T12:46:39.534000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.717000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
 lifecycle[016].field.bodylength	413
 lifecycle[016].field.checksum	"093"
@@ -22995,9 +22826,7 @@ lifecycle[017].field.settlcurrency	"CHF"
 lifecycle[017].field.ordtype	"2"
 lifecycle[017].field.ordstatus	"2"
 lifecycle[017].field.exectype	"F"
-lifecycle[017].field.notrdregtimestamps	1
 lifecycle[017].field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-lifecycle[017].field.noregulatorytradeids	1
 lifecycle[017].field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 lifecycle[017].field.bodylength	886
 lifecycle[017].field.sendersubid	"78182"
@@ -23195,9 +23024,7 @@ lifecycle[018].field.settlcurrency	"CHF"
 lifecycle[018].field.ordtype	"2"
 lifecycle[018].field.ordstatus	"2"
 lifecycle[018].field.exectype	"F"
-lifecycle[018].field.notrdregtimestamps	1
 lifecycle[018].field.trdregtimestamps	[["2026-08-14T12:46:39.743000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-lifecycle[018].field.noregulatorytradeids	1
 lifecycle[018].field.regulatorytradeids	[["042K38JAC5817YZV",null,null,5,null,null]]
 lifecycle[018].field.bodylength	886
 lifecycle[018].field.sendersubid	"78182"
@@ -23645,9 +23472,7 @@ lifecycle[025].field.settlcurrency	"CHF"
 lifecycle[025].field.ordtype	"2"
 lifecycle[025].field.ordstatus	"2"
 lifecycle[025].field.exectype	"F"
-lifecycle[025].field.notrdregtimestamps	4
 lifecycle[025].field.trdregtimestamps	[["2026-08-14T12:46:35.060000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:35.060000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:35.073000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:58.453000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-lifecycle[025].field.noregulatorytradeids	1
 lifecycle[025].field.regulatorytradeids	[["042K38JAC5817YDV",null,null,5,null,null]]
 lifecycle[025].field.bodylength	3168
 lifecycle[025].field.xmldatalen	3074
@@ -23824,9 +23649,7 @@ lifecycle[026].field.settlcurrency	"CHF"
 lifecycle[026].field.ordtype	"2"
 lifecycle[026].field.ordstatus	"2"
 lifecycle[026].field.exectype	"F"
-lifecycle[026].field.notrdregtimestamps	4
 lifecycle[026].field.trdregtimestamps	[["2026-08-14T12:46:35.060000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:35.060000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:35.073000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:58.453000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
-lifecycle[026].field.noregulatorytradeids	1
 lifecycle[026].field.regulatorytradeids	[["042K38JAC5817YDV",null,null,5,null,null]]
 lifecycle[026].field.bodylength	3168
 lifecycle[026].field.xmldatalen	3074
@@ -24091,7 +23914,6 @@ lifecycle[031].field.execid	"9612147_C"
 lifecycle[031].field.orderqty	"0"
 lifecycle[031].field.ordstatus	"2"
 lifecycle[031].field.exectype	"F"
-lifecycle[031].field.notrdregtimestamps	1
 lifecycle[031].field.trdregtimestamps	[["2026-08-14T14:52:55.000000000Z",1,null,null,null,null,null,null,null,null,null,null]]
 lifecycle[031].field.bodylength	3430
 lifecycle[031].field.xmldatalen	3347
@@ -24282,7 +24104,6 @@ lifecycle[032].field.execid	"9612147_C"
 lifecycle[032].field.orderqty	"0"
 lifecycle[032].field.ordstatus	"2"
 lifecycle[032].field.exectype	"F"
-lifecycle[032].field.notrdregtimestamps	1
 lifecycle[032].field.trdregtimestamps	[["2026-08-14T14:52:55.000000000Z",1,null,null,null,null,null,null,null,null,null,null]]
 lifecycle[032].field.bodylength	3430
 lifecycle[032].field.xmldatalen	3347
@@ -24445,7 +24266,6 @@ lifecycle[033].field.settlcurrency	"CHF"
 lifecycle[033].field.ordtype	"2"
 lifecycle[033].field.ordstatus	"0"
 lifecycle[033].field.exectype	"0"
-lifecycle[033].field.notrdregtimestamps	2
 lifecycle[033].field.trdregtimestamps	[["2026-08-14T12:46:39.534000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T12:46:39.717000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null]]
 lifecycle[033].field.bodylength	413
 lifecycle[033].field.checksum	"093"
@@ -24717,7 +24537,6 @@ lifecycle[036].field.orderqty	"10000"
 lifecycle[036].field.settlcurrency	"TWD"
 lifecycle[036].field.ordstatus	"8"
 lifecycle[036].field.text	"Counterparty unavailable - please contact support"
-lifecycle[036].field.notrdregtimestamps	5
 lifecycle[036].field.trdregtimestamps	[["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
 lifecycle[036].field.onbehalfofcompid	"RDXY"
 lifecycle[036].field.delivertocompid	"RDXY"

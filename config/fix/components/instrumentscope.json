@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "noinstrumentscopesecurityaltid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noinstrumentscopesecurityaltid",
-          "FIX:tag": "1540"
-        }
-      },
-      {
         "name": "instrumentscopesecurityaltidgrp",
         "dtype": {
           "type": "null"

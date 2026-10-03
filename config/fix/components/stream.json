@@ -252,17 +252,6 @@
         }
       },
       {
-        "name": "nopaymentschedules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentschedules",
-          "FIX:tag": "40828"
-        }
-      },
-      {
         "name": "paymentschedules",
         "dtype": {
           "type": "null"
@@ -270,17 +259,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "paymentschedules"
-        }
-      },
-      {
-        "name": "nopaymentstubs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentstubs",
-          "FIX:tag": "40872"
         }
       },
       {
@@ -301,17 +279,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "deliverystream"
-        }
-      },
-      {
-        "name": "nodeliveryschedules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodeliveryschedules",
-          "FIX:tag": "41037"
         }
       },
       {

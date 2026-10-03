@@ -104,7 +104,8 @@ const { fix } = require('yggdryl')
 const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
 
 const [message] = codec.parseLine(Buffer.from('recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|'))
-assert.equal(message.byTag(453).asJs(), 1)
+// The group is its list: its length is the count, and tag 453 reaches nothing.
+assert.equal(message.byName('parties').length, 1)
 assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
 
 // Two frames on one line are two messages; a sentence is none.
@@ -598,6 +599,8 @@ const os = require('node:os')
 const path = require('node:path')
 const { Field, fields, fix } = require('yggdryl')
 
+// The counter is a field of the dictionary; no component or message lists it
+// beside the group, whose length is its count.
 const count = Field.from('NoPartyIDs: int32')
 count.fix.tag = 453
 const partyId = Field.from('PartyID: utf8')

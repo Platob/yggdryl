@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nolegstreamterminationdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstreamterminationdatebusinesscenters",
-          "FIX:tag": "40943"
-        }
-      },
-      {
         "name": "legstreamterminationdatebusinesscenters",
         "dtype": {
           "type": "null"

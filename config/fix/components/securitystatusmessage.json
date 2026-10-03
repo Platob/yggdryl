@@ -76,17 +76,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -97,17 +86,6 @@
         }
       },
       {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
-        }
-      },
-      {
         "name": "instrmtleggrp",
         "dtype": {
           "type": "null"
@@ -115,17 +93,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "instrmtleggrp"
-        }
-      },
-      {
-        "name": "norelatedinstruments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedinstruments",
-          "FIX:tag": "1647"
         }
       },
       {
@@ -257,17 +224,6 @@
         "metadata": {
           "FIX:field": "tradingsessionenvironment",
           "FIX:tag": "3139"
-        }
-      },
-      {
-        "name": "notradingservices",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradingservices",
-          "FIX:tag": "3134"
         }
       },
       {
@@ -512,17 +468,6 @@
         }
       },
       {
-        "name": "noclearingpriceparameters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noclearingpriceparameters",
-          "FIX:tag": "2580"
-        }
-      },
-      {
         "name": "clearingpriceparameters",
         "dtype": {
           "type": "null"
@@ -654,17 +599,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -672,17 +606,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "notargetpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notargetpartyids",
-          "FIX:tag": "1461"
         }
       },
       {

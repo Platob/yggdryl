@@ -92,17 +92,6 @@
         }
       },
       {
-        "name": "noteststepparameters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noteststepparameters",
-          "FIX:tag": "3045"
-        }
-      },
-      {
         "name": "teststepparameters",
         "dtype": {
           "type": "null"

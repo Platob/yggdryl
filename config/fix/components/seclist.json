@@ -24,17 +24,6 @@
         }
       },
       {
-        "name": "nosecurityclassifications",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosecurityclassifications",
-          "FIX:tag": "1582"
-        }
-      },
-      {
         "name": "securityclassifications",
         "dtype": {
           "type": "null"
@@ -65,17 +54,6 @@
         }
       },
       {
-        "name": "nostrikerules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostrikerules",
-          "FIX:tag": "1201"
-        }
-      },
-      {
         "name": "strikerules",
         "dtype": {
           "type": "null"
@@ -83,17 +61,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "strikerules"
-        }
-      },
-      {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
         }
       },
       {
@@ -129,17 +96,6 @@
         }
       },
       {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
-        }
-      },
-      {
         "name": "stipulations",
         "dtype": {
           "type": "null"
@@ -150,17 +106,6 @@
         }
       },
       {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
-        }
-      },
-      {
         "name": "instrmtlegseclistgrp",
         "dtype": {
           "type": "null"
@@ -168,17 +113,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "instrmtlegseclistgrp"
-        }
-      },
-      {
-        "name": "norelatedinstruments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedinstruments",
-          "FIX:tag": "1647"
         }
       },
       {
@@ -209,17 +143,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "yielddata"
-        }
-      },
-      {
-        "name": "nopricemovements",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricemovements",
-          "FIX:tag": "1919"
         }
       },
       {

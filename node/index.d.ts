@@ -3178,8 +3178,8 @@ export type JsFixMessages = FixMessages
  * graph traits' facts - the standard header, what the line said about the
  * capture it was written for, the `Text(58)` and the metadata a bridge
  * spelled under its own namespaces. The row holds everything else the message states: the
- * dictionary fields, groups as series beside their counter, components as
- * structs. The schema is one non-null Struct `Field` - the only row schema -
+ * dictionary fields, groups as series - each its list alone, its length the
+ * count - components as structs. The schema is one non-null Struct `Field` - the only row schema -
  * and a plain object crosses as the record the core canonicalizes into that
  * order exactly as every other row is; a child stating a typed fact fills
  * the holder that owns it and leaves the row. The entries are the row read
@@ -3471,8 +3471,9 @@ export declare class FixMsg {
   get lastpx(): string | null
   /**
    * What the message states that its reading could not take as it
-   * stands, in arrival order: a value that would not type, a counter
-   * disagreeing with its group, what the last settle dropped.
+   * stands, in arrival order: a value that would not type, an alias
+   * stating another value than the field it lost to, what the last settle
+   * dropped.
    */
   get anomalies(): Array<FixAnomalyView>
   /** The quantity it last traded, `LastQty(32)`, or `null`. */
@@ -11525,10 +11526,10 @@ export interface FixDirection {
  *
  * The row read as a tree: a resolved field carries its canonical positive
  * tag and name, a key no dictionary explains carries `0` and its own
- * spelling, and an entry that heads others - a group under its counter, an
- * occurrence, a component - nests them under `entries`. A group entry's
- * value is its occurrence count; an occurrence and a component state no
- * value of their own.
+ * spelling, and an entry that heads others - a group filed under its
+ * counter's tag, an occurrence, a component - nests them under `entries`. A
+ * group entry's value is its length, the count no field states beside it;
+ * an occurrence and a component state no value of their own.
  */
 export interface FixEntryView {
   /** The resolved canonical tag, or `0` for a key no dictionary explains. */
@@ -11690,9 +11691,9 @@ export declare function fixSchema(registry?: FixRegistry | undefined | null, nam
 export declare function fixSchemaCarrying(carrier: Field, read: Field): Field
 
 /**
- * One row's columns, in order, as tags: the crate's own, the header, the
- * body, the groups, the trailer, `MsgDirection` and the counter of the
- * content record.
+ * One row's columns, in order, as tags: the crate's leading columns, then
+ * the message, the instrument, the order, the values, how it went, the
+ * groups - each by the counter tag naming it - and the frame.
  */
 export declare function fixSchemaTags(): Array<number>
 

@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nolegcomplexeventtimes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcomplexeventtimes",
-          "FIX:tag": "2253"
-        }
-      },
-      {
         "name": "legcomplexeventtimes",
         "dtype": {
           "type": "null"

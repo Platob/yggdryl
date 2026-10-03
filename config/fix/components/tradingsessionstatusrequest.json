@@ -113,17 +113,6 @@
         }
       },
       {
-        "name": "notradingservices",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradingservices",
-          "FIX:tag": "3134"
-        }
-      },
-      {
         "name": "tradingservices",
         "dtype": {
           "type": "null"

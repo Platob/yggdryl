@@ -67,8 +67,8 @@ fn metadata(row: &Scalar, schema: &Field) -> Vec<(String, String)> {
 
 /// The `regulatorytradeids` occurrences out of a fixed row.
 ///
-/// The group is reached by its name and not by tag 1907, which is the
-/// counter's column: a Serie group and its counter are two columns.
+/// The group is reached by its name, which is the one column it is: its
+/// counter's tag 1907 names it and is no column of its own.
 fn group<'row>(row: &'row Scalar, schema: &Field) -> &'row [Scalar] {
     let at = schema
         .index_of("regulatorytradeids")
@@ -198,9 +198,16 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    // The two identifier fields and the two groups, each group beside its
-    // counter's column, are six columns no row holds.
-    assert_eq!(schema.fields().len(), 152);
+    // The two identifier fields and the two groups - each its list alone,
+    // its length the count - are four columns no row holds.
+    assert_eq!(schema.fields().len(), 150);
+    assert!(
+        schema
+            .fields()
+            .iter()
+            .all(|field| !["notrdregtimestamps", "noregulatorytradeids"].contains(&field.name())),
+        "no counter column"
+    );
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
     let expected: Vec<&str> = yggdryl::graph::ElementColumn::ALL
         .map(yggdryl::graph::ElementColumn::name)
@@ -1437,8 +1444,14 @@ fn a_group_keeps_the_members_that_read() {
         .collect();
     assert_eq!(identifiers, [Some("TVT-1"), Some("UTI-1")]);
     assert!(occurrences[0].as_sequence().unwrap()[1].is_null());
-    // The counter column is the group's own tag and still counts them.
-    assert_eq!(at(&packed, &schema, 1907).as_i128(), Some(2));
+    // The group's column is found by the counter tag naming it, and its
+    // length is the count.
+    assert_eq!(
+        at(&packed, &schema, 1907)
+            .as_sequence()
+            .map(<[Scalar]>::len),
+        Some(2)
+    );
 
     // And one member the row cannot read costs that member alone: the
     // occurrence around it and the occurrences beside it stay.
@@ -1507,7 +1520,7 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     assert!(message.get_by_name("regulatorytradeidgrp").is_none());
     assert!(message.get_by_name("regulatorytradeids").is_some());
     let row = message.into_row(&schema).unwrap();
-    assert_eq!(at(&row, &schema, 1907).as_i128(), Some(1));
+    assert_eq!(column_of(&schema, 1907), at_group);
     let occurrences = row.as_sequence().unwrap()[at_group]
         .as_sequence()
         .expect("the regulatory trade identifier occurrences");
@@ -1658,23 +1671,20 @@ fn children_one_fold_names_rebuild_as_the_first_of_them_ascii_or_not() {
     }
 }
 
-/// A group column whose counter column is null states its count by its
-/// occurrences, a column's as a run's.
+/// A group column states its occurrences, its length the count, whether the
+/// row holds it as a run or as a column.
 #[test]
-fn a_group_column_beside_a_null_counter_counts_its_occurrences() {
+fn a_group_column_is_its_occurrences_as_a_run_and_as_a_column() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let order = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A1|1907=1|1903=UTI-1|1906=0|10=0|")
         .unwrap();
-    let mut cells = order
-        .into_row(&schema)
-        .unwrap()
-        .as_sequence()
-        .unwrap()
-        .to_vec();
-    cells[column_of(&schema, 1907)] = Scalar::Null;
-    let row = Scalar::from_sequence(cells);
+    let row = order.into_row(&schema).unwrap();
+    assert_eq!(
+        column_of(&schema, 1907),
+        schema.index_of("regulatorytradeids").unwrap()
+    );
     let at = schema
         .index_of("regulatorytradeids")
         .expect("a regulatorytradeids column");
@@ -1682,8 +1692,17 @@ fn a_group_column_beside_a_null_counter_counts_its_occurrences() {
 
     let run = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     let held = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &column).unwrap();
-    assert_eq!(run.by_tag(1907).unwrap().as_i128(), Some(1));
-    assert_eq!(held.by_tag(1907).unwrap().as_i128(), Some(1));
+    for message in [&run, &held] {
+        assert!(message.get_by_tag(1907).is_none(), "no counter child");
+        assert_eq!(
+            message
+                .by_name("regulatorytradeids")
+                .unwrap()
+                .as_serie()
+                .map(yggdryl::Serie::len),
+            Some(1)
+        );
+    }
 }
 
 /// A message holding a group as a column whose occurrences state their

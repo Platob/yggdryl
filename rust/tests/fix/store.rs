@@ -156,9 +156,7 @@ fn catalog() -> FixRegistry {
     registry.insert(group).unwrap();
     let mut group = registry.field_by_name("Parties").unwrap().clone();
     group.as_fix_mut().set_group("Parties").unwrap();
-    let mut counter = registry.field(453).unwrap().clone();
-    counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
-    let mut message = StructType::from_fields([counter, group])
+    let mut message = StructType::from_fields([group])
         .map(DataType::from)
         .unwrap()
         .required_field("NewOrderSingle");
@@ -3352,10 +3350,18 @@ mod committed {
     /// the `0:key` entries it carries: the crate's field shard, the
     /// `metadata` group and the fixed row component written again over
     /// those five texts. No count of the census below moved.
+    /// It last moved when a group became its list alone: no component,
+    /// message or occurrence lists a NumInGroup counter beside the group it
+    /// counts - 1219 counter members gone, `NoPartySubIDs(802)` from `Party`
+    /// among them, the group's `FIX:counter` the one place its tag stands -
+    /// and the fixed row dropped `notrdregtimestamps` and
+    /// `noregulatorytradeids`, the dictionary regenerated and the crate's dump
+    /// written again. No count of the census below moved: the counters are
+    /// still the dictionary's own fields.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 14_756_162_143_663_868_964);
+        assert_eq!(registry.stable_hash(), 16_008_785_016_294_945_489);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

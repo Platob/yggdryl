@@ -824,12 +824,12 @@ with the sentence in the pin that says why.
 
 | stage, per message | `bridge_pipe` | `frame_pipe` | `frame_packed` |
 | --- | ---: | ---: | ---: |
-| `parse`, the codec over the body | 628 | 230 | 1,029 |
-| `into_row`, a fresh clone against the fixed schema | 77 | 57 | 243 |
-| `landing`, the row as a one-row `Serie` under the warm root | 1,381 | 1,362 | 1,398 |
-| `batch`, the `Serie` built into a `RecordBatch` | 190 | 190 | 190 |
-| `digest`, the arrival record's hash | 24 | 24 | 16 |
-| `lifecycle`, the walk over one message | 8 | 7 | 7 |
+| `parse`, the codec over the body | 556 | 223 | 1,022 |
+| `into_row`, a fresh clone against the fixed schema | 88 | 64 | 250 |
+| `landing`, the row as a one-row `Serie` under the warm root | 1,502 | 1,482 | 1,520 |
+| `batch`, the `Serie` built into a `RecordBatch` | 210 | 210 | 210 |
+| `digest`, the arrival record's hash | 1 | 1 | 1 |
+| `lifecycle`, the walk over one message | 10 | 10 | 10 |
 
 The `fix_allocations` target reports the same dimension over the whole capture,
 one copy on one thread, per message: `fix/allocations` counts requests and

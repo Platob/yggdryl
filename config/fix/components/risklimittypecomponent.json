@@ -114,17 +114,6 @@
         }
       },
       {
-        "name": "noriskwarninglevels",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noriskwarninglevels",
-          "FIX:tag": "1559"
-        }
-      },
-      {
         "name": "riskwarninglevels",
         "dtype": {
           "type": "null"

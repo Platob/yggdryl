@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nolegdividendaccrualpaymentdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegdividendaccrualpaymentdatebusinesscenters",
-          "FIX:tag": "42310"
-        }
-      },
-      {
         "name": "legdividendaccrualpaymentdatebusinesscenters",
         "dtype": {
           "type": "null"

@@ -1346,11 +1346,6 @@ fn a_row_reads_back_into_the_message_that_made_it() {
 fn fixed_with_party_group(registry: &FixRegistry) -> Field {
     let fixed = fix_schema(registry, "fix").unwrap();
     // Every column of a row is nullable: a message states the group or not.
-    let count = registry
-        .field_by_tag(453)
-        .expect("NoPartyIDs")
-        .clone()
-        .with_nullable(true);
     let group = registry
         .field_by_counter(453)
         .expect("Parties")
@@ -1359,7 +1354,7 @@ fn fixed_with_party_group(registry: &FixRegistry) -> Field {
     let mut columns = Vec::new();
     for column in fixed.fields() {
         if column.name() == FIXENTRIES_COLUMN {
-            columns.extend([count.clone(), group.clone()]);
+            columns.push(group.clone());
         }
         if column.name() != "partyids" {
             columns.push(column.clone());
@@ -1371,14 +1366,14 @@ fn fixed_with_party_group(registry: &FixRegistry) -> Field {
         .required_field("fix")
 }
 
-/// A repeating group holding no occurrence is stated by its count alone:
-/// `NoPartySubIDs(802)=0` is the counter stating zero beside the empty
-/// list - an entry of its own, which re-emits - and a list holding nothing
-/// beside no stated count is the group absent. A table storing a null list
-/// as an empty one - PyIceberg reads a null list of structs back as `[]`,
-/// the counter beside it still null - so hands each message back as the
-/// parse wrote it: settled again from its content, each keeps its content
-/// code and its identity, and only the count stated re-emits.
+/// A repeating group is its list alone: `NoPartySubIDs(802)=0` is the list
+/// holding nothing - an entry of its own, which re-emits - and a group never
+/// stated is no list at all. A column holds a group as null or as at least
+/// one occurrence, so the stated zero rides the residual record, and a table
+/// storing a null list as an empty one - PyIceberg reads a null list of
+/// structs back as `[]` - hands each message back as the parse wrote it:
+/// settled again from its content, each keeps its content code and its
+/// identity, and only the group stated empty re-emits.
 #[test]
 fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
     let (registry, reader) = reader();
@@ -1419,7 +1414,10 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
         panic!("parties is a repeating group");
     };
     let subids_at = party.index_of("partysubids").expect("a partysubids member");
-    let count_at = party.index_of("nopartysubids").expect("its counter member");
+    assert!(
+        party.index_of("nopartysubids").is_none(),
+        "no counter member"
+    );
     for (message, stated) in [(&absent, false), (&counted, true)] {
         let mut cells = message
             .into_row(&fixed)
@@ -1433,12 +1431,11 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
             .as_sequence()
             .expect("one party")
             .to_vec();
-        assert_eq!(!members[count_at].is_null(), stated, "the count");
-        assert_eq!(!members[subids_at].is_null(), stated, "the subgroup");
+        assert!(members[subids_at].is_null(), "the subgroup's column");
         members[subids_at] = Scalar::from_sequence(Vec::<Scalar>::new());
         cells[parties_at] = Scalar::from_sequence([Scalar::from_sequence(members)]);
         let read_back = Scalar::from_sequence(cells);
-        assert_eq!(read_back == written, stated, "only the absent list moves");
+        assert_ne!(read_back, written, "the list read back empty");
         let [as_written, as_read_back] = [written, read_back]
             .map(|row| FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap());
         for (held, read) in [(&as_written, "as written"), (&as_read_back, "as read back")] {
@@ -1450,8 +1447,7 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
             assert_eq!(held.get_curruuid(), message.get_curruuid(), "{read}");
             assert_eq!(wire(held).contains("|802=0|"), stated, "{read}");
         }
-        // Equality compares the row's storage; what the row states agrees.
-        assert_eq!(as_read_back == as_written, stated);
+        // What the row states agrees, whichever way the list was stored.
         assert_eq!(as_read_back.entries(), as_written.entries());
         assert_eq!(as_read_back.digest(), as_written.digest());
         assert_eq!(wire(&as_read_back), wire(&as_written));
@@ -1460,9 +1456,8 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
 
 /// The same rule at the root of a row: `NoPartyIDs(453)=0` is stated and
 /// re-emits, and a `parties` group column read back as `[]` where the row held
-/// null - its `nopartyids` still null, or no such column at all - is the
-/// group absent, so a message settled again from the row keeps its content
-/// code and its identity.
+/// null is the group absent, so a message settled again from the row keeps
+/// its content code and its identity.
 #[test]
 fn a_root_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
     let (registry, reader) = reader();
@@ -1476,42 +1471,37 @@ fn a_root_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
     assert!(!wire(&absent).contains("453="), "{}", wire(&absent));
 
     // Read without the content code, so each message is settled from what
-    // its row states; then without the count's column as well.
+    // its row states.
     let fixed = fixed_with_party_group(&registry);
     let hashcode_at = yggdryl::fix_column_of(&fixed, yggdryl::CURRHASHCODE_TAG_NAME.0)
         .expect("a currhashcode column");
-    let count_at = fixed.index_of("nopartyids").expect("a nopartyids column");
-    for dropped in [vec![hashcode_at], vec![hashcode_at, count_at]] {
-        let schema = StructType::from_fields(
-            fixed
-                .fields()
-                .iter()
-                .enumerate()
-                .filter(|(at, _)| !dropped.contains(at))
-                .map(|(_, column)| column.clone()),
-        )
-        .map(DataType::from)
-        .unwrap()
-        .required_field("fix");
-        let parties_at = schema.index_of("parties").expect("a parties column");
-        for (message, stated) in [(&absent, false), (&counted, true)] {
-            let written = message.into_row(&schema).unwrap();
-            let mut cells = written.as_sequence().unwrap().to_vec();
-            if cells[parties_at].is_null() {
-                cells[parties_at] = Scalar::from_sequence(Vec::<Scalar>::new());
-            }
-            let read_back = Scalar::from_sequence(cells);
-            let columns = dropped.len();
-            for (row, read) in [(&written, "as written"), (&read_back, "as read back")] {
-                let held = FixMsg::from_row(Arc::clone(&registry), &schema, row).unwrap();
-                assert_eq!(
-                    held.get_currhashcode(),
-                    message.get_currhashcode(),
-                    "{read}, {columns} column(s) dropped"
-                );
-                assert_eq!(held.get_curruuid(), message.get_curruuid(), "{read}");
-                assert_eq!(wire(&held).contains("|453="), stated, "{read}");
-            }
+    let schema = StructType::from_fields(
+        fixed
+            .fields()
+            .iter()
+            .enumerate()
+            .filter(|(at, _)| *at != hashcode_at)
+            .map(|(_, column)| column.clone()),
+    )
+    .map(DataType::from)
+    .unwrap()
+    .required_field("fix");
+    let parties_at = schema.index_of("parties").expect("a parties column");
+    for (message, stated) in [(&absent, false), (&counted, true)] {
+        let written = message.into_row(&schema).unwrap();
+        let mut cells = written.as_sequence().unwrap().to_vec();
+        assert!(cells[parties_at].is_null(), "a column holds no empty group");
+        cells[parties_at] = Scalar::from_sequence(Vec::<Scalar>::new());
+        let read_back = Scalar::from_sequence(cells);
+        for (row, read) in [(&written, "as written"), (&read_back, "as read back")] {
+            let held = FixMsg::from_row(Arc::clone(&registry), &schema, row).unwrap();
+            assert_eq!(
+                held.get_currhashcode(),
+                message.get_currhashcode(),
+                "{read}"
+            );
+            assert_eq!(held.get_curruuid(), message.get_curruuid(), "{read}");
+            assert_eq!(wire(&held).contains("|453="), stated, "{read}");
         }
     }
 }

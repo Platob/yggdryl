@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nounderlyingpaymentstubenddatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentstubenddatebusinesscenters",
-          "FIX:tag": "42991"
-        }
-      },
-      {
         "name": "underlyingpaymentstubenddatebusinesscenters",
         "dtype": {
           "type": "null"

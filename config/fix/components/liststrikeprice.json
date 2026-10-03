@@ -47,17 +47,6 @@
         }
       },
       {
-        "name": "nostrikes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nostrikes",
-          "FIX:tag": "428"
-        }
-      },
-      {
         "name": "strikes",
         "dtype": {
           "type": "null"

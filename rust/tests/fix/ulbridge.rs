@@ -1070,8 +1070,17 @@ mod dataset {
         // occurrence nests inside it rather than beside it, at every depth:
         // the leg carries its own allocations, the side its parties, and a
         // party its sub-identifiers.
-        assert_eq!(message.by_tag(555).unwrap().as_i64(), Some(1), "NoLegs");
-        assert_eq!(message.by_tag(552).unwrap().as_i64(), Some(1), "NoSides");
+        for group in ["TrdInstrmtLegGrp", "TrdCapRptSideGrp"] {
+            assert_eq!(
+                message
+                    .by_name(group)
+                    .unwrap()
+                    .as_sequence()
+                    .map(<[Scalar]>::len),
+                Some(1),
+                "{group}"
+            );
+        }
         assert_eq!(
             message
                 .by_path(&path("TrdInstrmtLegGrp[0].LegAllocs[0].LegAllocQty"))

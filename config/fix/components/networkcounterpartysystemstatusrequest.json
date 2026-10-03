@@ -36,17 +36,6 @@
         }
       },
       {
-        "name": "nocompids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocompids",
-          "FIX:tag": "936"
-        }
-      },
-      {
         "name": "compidreqgrp",
         "dtype": {
           "type": "null"
