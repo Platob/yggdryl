@@ -79031,7 +79031,7 @@
         "metadata": {
           "FIX:tag": "65003",
           "FIX:transient": "false",
-          "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and its side, 10:1:ORD-1, side 0 on one of side UNKN and on every kind but an order, a quote or an execution: 21:0:T-1; its chain's once followed.",
+          "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UNKN and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed.",
           "display": "Cross Code"
         },
         "name": "crosscode",
@@ -238666,7 +238666,7 @@
         "metadata": {
           "FIX:counter": "65035",
           "FIX:tag": "65035",
-          "description": "What a message stated that is no field: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order.",
+          "description": "What a message stated that is no field and no identifier map holds: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order; a key an identifier map holds with its value - a bridge's TECH.CLIENTID, its PARENTORDERID - rides fixentries under 0:key as it arrived instead.",
           "display": "Metadata"
         },
         "name": "metadata",
@@ -291914,7 +291914,7 @@
         "t": 65003,
         "n": "Cross Code",
         "y": "utf8",
-        "x": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and its side, 10:1:ORD-1, side 0 on one of side UNKN and on every kind but an order, a quote or an execution: 21:0:T-1; its chain's once followed."
+        "x": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UNKN and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed."
       },
       {
         "c": "currhashcode",
@@ -292075,7 +292075,7 @@
         "t": 65020,
         "n": "Security IDs",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
-        "x": "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent. Derived from the message's fields; a row stating one is the row's word."
+        "x": "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key, the keyed aliases a bridge states - ISINCODE, OMS_RICCODE, SEDOL_CODE - and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent, and a keyed alias under 0:key. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "isincode",
@@ -292166,14 +292166,14 @@
         "t": 65026,
         "n": "Spot Rate",
         "y": "decimal",
-        "x": "The spot part of an FX forward price: LastSpotRate, or a sided quote's BidSpotRate or OfferSpotRate. Derived from the message's fields; a row stating one is the row's word."
+        "x": "The spot part of an FX forward price: LastSpotRate. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "forwardpoints",
         "t": 65027,
         "n": "Forward Points",
         "y": "decimal",
-        "x": "The forward points of an FX forward price: LastForwardPoints, or a sided quote's BidForwardPoints or OfferForwardPoints. Derived from the message's fields; a row stating one is the row's word."
+        "x": "The forward points of an FX forward price: LastForwardPoints. Derived from the message's fields; a row stating one is the row's word."
       },
       {
         "c": "bidpx",
@@ -292236,7 +292236,7 @@
         "t": 65035,
         "n": "Metadata",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
-        "x": "What a message stated that is no field: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order."
+        "x": "What a message stated that is no field and no identifier map holds: a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every key no dictionary resolved, each under the key as it was spelled, folded, in sorted order; a key an identifier map holds with its value - a bridge's TECH.CLIENTID, its PARENTORDERID - rides fixentries under 0:key as it arrived instead."
       },
       {
         "c": "ordqty",
@@ -292264,14 +292264,14 @@
         "t": 65038,
         "n": "Identifiers",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
-        "x": "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap and the parties that name one. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
+        "x": "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap, the parties that name one, and the keys no dictionary resolved whose names spell one - a bridge's PARENTORDERID, its firm.x.ParentOrderID - which ride fixentries under 0:key. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
       },
       {
         "c": "partyids",
         "t": 65039,
         "n": "Party IDs",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=false,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
-        "x": "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, and Account under AcctIDSource. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
+        "x": "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, Account under AcctIDSource, and the keys no dictionary resolved whose names spell a party - a bridge's OMS_UserID, its TECH.CLIENTID - which ride fixentries under 0:key. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks."
       },
       {
         "c": "sendingtime",
@@ -292957,7 +292957,7 @@
         "t": 0,
         "n": "FixEntries",
         "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
-        "x": "Content no other column represents, keyed by each field's tag:name: a scalar's wire text, a group or a component as the JSON of what it holds, keyed the same way."
+        "x": "Content no other column represents, keyed by each field's tag:name: a scalar's wire text, a group or a component as the JSON of what it holds, keyed the same way; and, under 0:key, each key no dictionary resolved that an identifier map holds with its value, as it arrived."
       }
     ],
     "call": "const registry = fix.FixRegistry.fromHandle('config/fix')\nfix.schema(registry, 'FixMessage')"
@@ -293127,13 +293127,13 @@
           "t": 38,
           "n": "OrderQty",
           "y": "decimal128(38,18)",
-          "v": "100.000000000000000000"
+          "v": "100"
         },
         {
           "t": 44,
           "n": "Price",
           "y": "decimal128(38,18)",
-          "v": "10.500000000000000000"
+          "v": "10.5"
         },
         {
           "t": 60,
@@ -293169,7 +293169,7 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": "0",
+        "cumqty": null,
         "leavesqty": "100",
         "cxlqty": null,
         "prevpx": null,
@@ -293389,7 +293389,7 @@
         "BUYS",
         "2024-02-01T12:34:57.900000000Z",
         "0",
-        "1050.000000000000000000"
+        "1050"
       ],
       "mime": "text/fix",
       "msgtype": "8",
@@ -293436,19 +293436,19 @@
           "t": 38,
           "n": "OrderQty",
           "y": "decimal128(38,18)",
-          "v": "100.000000000000000000"
+          "v": "100"
         },
         {
           "t": 31,
           "n": "LastPx",
           "y": "decimal128(38,18)",
-          "v": "10.500000000000000000"
+          "v": "10.5"
         },
         {
           "t": 32,
           "n": "LastQty",
           "y": "decimal128(38,18)",
-          "v": "100.000000000000000000"
+          "v": "100"
         },
         {
           "t": 39,
@@ -293891,13 +293891,13 @@
           "t": 38,
           "n": "OrderQty",
           "y": "decimal128(38,18)",
-          "v": "50.000000000000000000"
+          "v": "50"
         },
         {
           "t": 44,
           "n": "Price",
           "y": "decimal128(38,18)",
-          "v": "41.250000000000000000"
+          "v": "41.25"
         },
         {
           "t": 60,
@@ -293933,7 +293933,7 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": "0",
+        "cumqty": null,
         "leavesqty": "50",
         "cxlqty": null,
         "prevpx": null,
@@ -296744,7 +296744,7 @@
           [
             "0",
             null,
-            "41.200000000000000000",
+            "41.2",
             null,
             null,
             null,
@@ -296758,7 +296758,7 @@
             null,
             null,
             null,
-            "500.000000000000000000",
+            "500",
             null,
             null,
             null,
@@ -296861,7 +296861,7 @@
           [
             "1",
             null,
-            "41.300000000000000000",
+            "41.3",
             null,
             null,
             null,
@@ -296875,7 +296875,7 @@
             null,
             null,
             null,
-            "400.000000000000000000",
+            "400",
             null,
             null,
             null,
@@ -297266,10 +297266,10 @@
       "value": [
         69,
         "BRN",
-        "41.200000000000000000",
-        "41.300000000000000000",
-        "500.000000000000000000",
-        "500.000000000000000000",
+        "41.2",
+        "41.3",
+        "500",
+        "500",
         "2024-02-01T12:35:00.000000000Z"
       ],
       "mime": "text/fix",
@@ -297293,13 +297293,13 @@
           "t": 132,
           "n": "BidPx",
           "y": "decimal128(38,18)",
-          "v": "41.200000000000000000"
+          "v": "41.2"
         },
         {
           "t": 133,
           "n": "OfferPx",
           "y": "decimal128(38,18)",
-          "v": "41.300000000000000000"
+          "v": "41.3"
         },
         {
           "t": 60,
@@ -298156,13 +298156,13 @@
           "t": 38,
           "n": "OrderQty",
           "y": "decimal128(38,18)",
-          "v": "150.000000000000000000"
+          "v": "150"
         },
         {
           "t": 44,
           "n": "Price",
           "y": "decimal128(38,18)",
-          "v": "10.750000000000000000"
+          "v": "10.75"
         },
         {
           "t": 60,
@@ -298464,13 +298464,13 @@
           "t": 38,
           "n": "OrderQty",
           "y": "decimal128(38,18)",
-          "v": "100.000000000000000000"
+          "v": "100"
         },
         {
           "t": 44,
           "n": "Price",
           "y": "decimal128(38,18)",
-          "v": "10.500000000000000000"
+          "v": "10.5"
         }
       ],
       "event": {
@@ -298500,7 +298500,7 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": "0",
+        "cumqty": null,
         "leavesqty": "100",
         "cxlqty": null,
         "prevpx": null,
@@ -298758,7 +298758,7 @@
           "t": 38,
           "n": "OrderQty",
           "y": "decimal128(38,18)",
-          "v": "100.000000000000000000"
+          "v": "100"
         }
       ],
       "event": {
@@ -298788,7 +298788,7 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": "0",
+        "cumqty": null,
         "leavesqty": "100",
         "cxlqty": null,
         "prevpx": null,
@@ -299458,13 +299458,13 @@
           "t": 38,
           "n": "OrderQty",
           "y": "decimal128(38,18)",
-          "v": "1200.000000000000000000"
+          "v": "1200"
         },
         {
           "t": 44,
           "n": "Price",
           "y": "decimal128(38,18)",
-          "v": "41.250000000000000000"
+          "v": "41.25"
         }
       ],
       "event": {
@@ -299687,7 +299687,7 @@
           "t": 38,
           "n": "OrderQty",
           "y": "decimal128(38,18)",
-          "v": "100.000000000000000000"
+          "v": "100"
         }
       ],
       "event": {
@@ -299717,7 +299717,7 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": "0",
+        "cumqty": null,
         "leavesqty": "100",
         "cxlqty": null,
         "prevpx": null,
@@ -299899,7 +299899,7 @@
           "t": 38,
           "n": "OrderQty",
           "y": "decimal128(38,18)",
-          "v": "100.000000000000000000"
+          "v": "100"
         }
       ],
       "event": {
@@ -299929,7 +299929,7 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": "0",
+        "cumqty": null,
         "leavesqty": "100",
         "cxlqty": null,
         "prevpx": null,
@@ -300552,13 +300552,13 @@
           "t": 38,
           "n": "OrderQty",
           "y": "decimal128(38,18)",
-          "v": "100.000000000000000000"
+          "v": "100"
         },
         {
           "t": 44,
           "n": "Price",
           "y": "decimal128(38,18)",
-          "v": "10.500000000000000000"
+          "v": "10.5"
         }
       ],
       "event": {
@@ -300588,7 +300588,7 @@
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
-        "cumqty": "0",
+        "cumqty": null,
         "leavesqty": "100",
         "cxlqty": null,
         "prevpx": null,

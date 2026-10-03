@@ -388,16 +388,15 @@ fn read_token(body: &[u8], now: SystemTime) -> Result<(String, Option<SystemTime
         .get_key_str("access_token")
         .and_then(Scalar::as_str)
         .ok_or_else(|| refusal("expected access_token in the token answer"))?;
-    // A hosted endpoint states a lifetime as a string and the rest as a number.
-    let lifetime = value.get_key_str("expires_in").and_then(|value| {
-        value
-            .as_str()
-            .and_then(|text| text.trim().parse::<u64>().ok())
-            .or_else(|| value.as_u128().and_then(|value| u64::try_from(value).ok()))
-    });
+    // A hosted endpoint states a lifetime as text and the rest as a number;
+    // the one integer reader takes either.
+    let lifetime = value
+        .get_key_str("expires_in")
+        .and_then(crate::integer::integer_from_scalar_as::<u64>);
     Ok((
         token.to_owned(),
-        lifetime.map(|seconds| now + Duration::from_secs(seconds)),
+        // A lifetime no clock can hold states none, rather than panicking.
+        lifetime.and_then(|seconds| now.checked_add(Duration::from_secs(seconds))),
     ))
 }
 
@@ -422,4 +421,27 @@ fn refusal(message: &str) -> Error {
         std::io::ErrorKind::InvalidInput,
         message.to_owned(),
     ))
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/s3/azure/auth.rs` pins and a caller cannot reach.
+    //!
+    //! Every token exchange and identity endpoint ends in one reader of the
+    //! token answer. The item forwards.
+    use std::time::SystemTime;
+
+    use crate::Result;
+
+    /// The access token an answer carries and the instant it lapses, when it
+    /// states one.
+    ///
+    /// # Errors
+    ///
+    /// Returns a refusal when the body is not JSON or carries no
+    /// `access_token`.
+    pub fn read_token(body: &[u8], now: SystemTime) -> Result<(String, Option<SystemTime>)> {
+        super::read_token(body, now)
+    }
 }

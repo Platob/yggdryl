@@ -563,10 +563,11 @@ test('the registered codes build their own datatype at their own width', () => {
 
   assert.ok(!fields.ccy('ccy').dtype.equals(fields.fixedAscii('ccy', 3).dtype))
   assert.ok(!fields.ccy('ccy').dtype.equals(fields.fixedAscii('ccy', 8).dtype))
-  // A securities identifier is closed by its own check digit, and a column
-  // of them holds the canonical spelling: a cast lets in an identifier the
-  // check digit closes, in upper case; a typo or a lower-case spelling is
-  // null under the safe default and a refusal naming the row when strict.
+  // A securities identifier is held to its shape, and a column of them to
+  // the canonical spelling: a cast lets in the upper-case spelling, a check
+  // digit that does not close included - a typo is a value of the lowest
+  // rank, never a refusal - while a lower-case spelling is null under the
+  // safe default and a refusal naming the row when strict.
   const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
   const strict = { safe: false }
   // A currency is ISO 4217's three letters or a digital-asset ticker up to
@@ -581,26 +582,33 @@ test('the registered codes build their own datatype at their own width', () => {
   )
   assert.deepEqual(
     [...castArray(fields.cusip('sid'), utf8(['037833100', '037833101', '38259p508']))],
-    ['037833100', null, null],
+    ['037833100', '037833101', null],
   )
   assert.deepEqual(
     [...castArray(fields.sedol('sid'), utf8(['B0YBKJ7', 'B0YBKJ8', 'b0ybkj7']))],
-    ['B0YBKJ7', null, null],
+    ['B0YBKJ7', 'B0YBKJ8', null],
   )
   assert.deepEqual(
     [...castArray(fields.figi('sid'), utf8(['BBG000BLNQ16', 'BBG000BLNQ17', 'bbg000blnq16']))],
-    ['BBG000BLNQ16', null, null],
+    ['BBG000BLNQ16', 'BBG000BLNQ17', null],
   )
+  for (const [field, typo] of [
+    [fields.cusip('sid'), '037833101'],
+    [fields.sedol('sid'), 'B0YBKJ8'],
+    [fields.figi('sid'), 'BBG000BLNQ17'],
+  ]) {
+    assert.deepEqual([...castArray(field, utf8([typo]), strict)], [typo])
+  }
   assert.throws(
-    () => castArray(fields.cusip('sid'), utf8(['037833101']), strict),
-    /canonical spelling/,
+    () => castArray(fields.cusip('sid'), utf8(['037833100', '38259p508']), strict),
+    /canonical spelling.*row 1 of column sid|row 1 of column sid.*canonical spelling/,
   )
   assert.throws(
     () => castArray(fields.sedol('sid'), utf8(['b0ybkj7']), strict),
     /canonical spelling/,
   )
   assert.throws(
-    () => castArray(fields.figi('sid'), utf8(['BBG000BLNQ17']), strict),
+    () => castArray(fields.figi('sid'), utf8(['bbg000blnq16']), strict),
     /canonical spelling/,
   )
   // A RIC is one token of printable ASCII and keeps its case: a code with a

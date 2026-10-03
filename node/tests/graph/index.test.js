@@ -170,11 +170,12 @@ test('the market facts cross as plain values', () => {
 test('every element states its cross code as {kind}:{side}:{base}', () => {
   const stored = (Class, facts) => new Class(1, facts).crosscode
   // The kind is the `MarketDataKind` code and the side the `Side` code of a
-  // sided kind - an order, a quote, an execution - and 0 for any other kind.
+  // sided kind - an order, an execution - and 0 for any other kind: a quote
+  // holds its two legs, its side a tag that moves no prefix.
   assert.equal(stored(graph.OrderEvent, { crosscode: 'ORD-1', side: 'BUYS' }), '10:1:ORD-1')
   assert.equal(stored(graph.OrderEvent, { crosscode: 'ORD-1', side: 'SELL' }), '10:2:ORD-1')
   assert.equal(stored(graph.OrderEvent, { crosscode: 'ORD-1' }), '10:0:ORD-1', 'a side nobody stated is 0')
-  assert.equal(stored(graph.QuoteEvent, { crosscode: 'Q-1', side: 'BUYS' }), '14:1:Q-1')
+  assert.equal(stored(graph.QuoteEvent, { crosscode: 'Q-1', side: 'BUYS' }), '14:0:Q-1')
   assert.equal(stored(graph.ExecutionEvent, { crosscode: 'E-1', side: 'SELL' }), '8:2:E-1')
 })
 
@@ -183,7 +184,10 @@ test('a stored cross code replaces another kind or side prefix and an empty code
   assert.equal(order({ crosscode: '8:2:ORD-1', side: 'BUYS' }), '10:1:ORD-1', 'the prefix is replaced')
   assert.equal(order({ crosscode: '10:1:ORD-1', side: 'BUYS' }), '10:1:ORD-1', 'a stored code is itself')
   assert.equal(order({ crosscode: '', side: 'BUYS' }), '', 'no code, no prefix')
-  assert.equal(new graph.BookEvent(1, '').crosscode, '')
+  // A book is never codeless: an empty symbol keys it by the ISIN that
+  // states none, and it states no ticker.
+  assert.equal(new graph.BookEvent(1, '').crosscode, '3:0:XX0000000000')
+  assert.equal(new graph.BookEvent(1, '').ticker, null)
 })
 
 test('a book states 3:0:{ticker} and every identity derives from the stored code', () => {

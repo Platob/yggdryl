@@ -106,8 +106,8 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
         .expect("a valid holder role");
     digest
         .as_digest_mut()
-        .set_sources(["symbol"])
-        .expect("a valid holder path");
+        .set_by(["symbol"])
+        .expect("a valid holder term");
     let root = StructType::from_fields([symbol.clone(), digest.clone()])
         .map(DataType::from)
         .expect("a valid Struct")

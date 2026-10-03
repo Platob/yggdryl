@@ -545,7 +545,7 @@ mod records {
         media.overwrite_arrow_reader(reader(), &options).unwrap();
         assert!(!media.opened());
         media.open().unwrap();
-        media.options_mut().set_commit_row_size(Some(1));
+        media.options_mut().set_commit_batch_num(Some(1));
 
         let append_options = media.record_options().unwrap();
         media
@@ -589,7 +589,7 @@ mod records {
         let options = media.record_options().unwrap();
         media.overwrite_arrow_reader(reader(), &options).unwrap();
         media.open().unwrap();
-        media.options_mut().set_commit_row_size(Some(1));
+        media.options_mut().set_commit_batch_num(Some(1));
 
         let options = media.record_options().unwrap();
         let message = media

@@ -31,7 +31,8 @@
 //! they are what makes a batch a lossless capture rather than one reader's
 //! summary of it. A caller wanting facets alone projects the batch
 //! afterwards, which already exists. A key no dictionary resolved is no
-//! field, and `metadata` holds it.
+//! field: `metadata` holds it, or `fixentries` under `0:<key>` where an
+//! identifier map holds it with its value.
 //!
 //! A column per tag seen is deliberately not the shape: it makes the schema
 //! depend on the data, gives a mixed capture a thousand mostly-null columns,
@@ -60,11 +61,12 @@ use smallvec::SmallVec;
 use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
-use crate::arrow::rows::{Closing, appended_bytes, canonical_closing_reader};
+use crate::arrow::rows::{Closing, canonical_closing_reader};
+use crate::arrow::scalar_memory_size;
 use crate::graph::{ElementColumn, EventColumn};
+use crate::logging::warning::warned;
 use crate::serie::{Proof, Resolved, land_batch};
 use crate::text::TextOptions;
-use crate::warning::warned;
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, Serie, Utf8StringSerie};
 
 use super::build::{BEGINSTRING_COLUMN, DIRECTION_COLUMN, version_of};
@@ -610,8 +612,10 @@ impl FixCodec {
     /// pinned, else [`SOH`], then a newline. The wire combines projected
     /// ordinary fields with residual entries; residual content owns any
     /// overlapping tag or group. Represented content may reorder or normalize.
-    /// A key no dictionary resolved is the row's `metadata` and no field, so
-    /// it is not written, exactly as a bridge's namespaced keys are not.
+    /// A key no dictionary resolved is restored from the row's `metadata`,
+    /// or from `fixentries` under `0:<key>` where an identifier map holds
+    /// it, as the tag-zero entry a parse holds and is written as it arrived;
+    /// a bridge's namespaced key is the message's metadata and is not.
     /// A batch without the
     /// [`FIXENTRIES_COLUMN`](super::FIXENTRIES_COLUMN) cannot be written and says
     /// so before a row is read. A row in is a line out - a row whose message
@@ -898,7 +902,7 @@ const ROW_REFUSED: &str = "FIX row excluded: its message was not read or does no
 /// with a warning; a source failure as itself.
 fn charged(message: Result<FixMsg>, schema: &Field) -> Option<Result<Charged>> {
     match message.and_then(|message| message.into_row(schema)) {
-        Ok(row) => Some(Ok((appended_bytes(&row), row))),
+        Ok(row) => Some(Ok((scalar_memory_size(&row) as u64, row))),
         Err(error) => source_failure(error, ROW_REFUSED).map(Err),
     }
 }

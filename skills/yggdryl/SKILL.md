@@ -51,7 +51,7 @@ answers the task.
 | Task | Skill |
 | --- | --- |
 | declare a schema, parse a type expression, build or check a value, dataclass/record classes, metadata, codes (`ccy`, `forex`) and enums (`side`, `marketdatakind`, `state`) | `yggdryl-types` |
-| Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts | `yggdryl-arrow` |
+| Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts, sorting, grouping and windows of equal keys (`window_by`) | `yggdryl-arrow` |
 | open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, HTTP(S) resources and requests-style sessions, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
 | parse or build a URI, URL, URN, ARN, path; glob pattern text or a hive partition path (listing is `yggdryl-storage`) | `yggdryl-uri` |
 | read or write rows/batches in Arrow IPC, Parquet, Avro, CSV/TSV, Excel (`.xlsx`, with `Workbook`/`Sheet`/`Cell`), text, Iceberg; a file's schema or row count; pandas/polars frames to or from a file; partitions; merge/upsert | `yggdryl-records` |
@@ -82,6 +82,7 @@ answers the task.
 | bytes | `&[u8]`, `Vec<u8>` | `bytes` | `Buffer` / `Uint8Array` |
 | Arrow | `arrow-array` 59 types, shared buffers | pyarrow over the C Data Interface, **zero copy** | apache-arrow over IPC, **copied** |
 | errors | `yggdryl::Error`, `yggdryl::arrow::Error` (`?` converts both ways) | `ValueError` (bad input), `TypeError` (wrong kind), `OSError` subclasses (I/O), each with the native message; checked arithmetic raises `ArithmeticError` subclasses (`OverflowError`, `ZeroDivisionError`) | `Error` with the native message; arithmetic throws `TypeError`/`RangeError` with an `ERR_YGGDRYL_*` code; a record write's mismatched column values (a non-integer `number` beside `bigint` in one column) also throw `TypeError`, naming the column and the value, with no code, in the write's first batch - a later batch (past 65,536 rows, or `batchRowSize`) wraps the same failure as an `Error` with `code: 'GenericFailure'` instead |
+| log to the terminal | `logging::basic_config(BasicConfig::new().with_level(Level::INFO))?` (`yggdryl::logging`) | `logging.basicConfig(level=logging.INFO, handlers=[TerminalHandler()])` (`from yggdryl.logging import TerminalHandler`) | `logging.basicConfig({ level: 'INFO' })` (`const { logging } = require('yggdryl')`) |
 
 Verb prefixes mean the same everywhere: `from_*` parses or constructs,
 `into_*` converts (may allocate), `as_*` borrows without allocating, `is_*` /
@@ -91,16 +92,24 @@ leaves the value unchanged), `with_*` returns an updated copy. There is no
 also takes its properties by name: `read_arrow_reader(rowheader=...)` in
 Python, `readArrowReader({ rowheader })` in JavaScript.
 
+The logging row writes the core's terminal line on standard error -
+`2026-10-03 14:05:09,123 • INFO     [main] trades.feed open:42 › opened 3 venues`:
+the time, the level's glyph and name, the thread (`MainThread` in Python),
+the logger, the call site, the message - coloured by the core's rule
+(`NO_COLOR` off, else `FORCE_COLOR` or `CLICOLOR_FORCE` on, else `TERM=dumb`
+off, else on for a terminal). Rust and JavaScript write the same line for a
+warning no handler takes.
+
 ## Rules for fast, correct use
 
 1. **Resolve once at the boundary.** Parse a `DataType`/`Field` once and pass
    the object; compile an `ArrowCastPlan` once per stream; bind an expression
    once. Anything parsed or compiled inside a row or batch loop is a defect.
 2. **Stream; never collect.** Record reads answer a batch reader
-   (`read_arrow_reader`; `read_arrow` for a `SerieReader` in Rust and Python -
-   Node has no `readArrow`, so wrap
-   `SerieReader.fromArrowReader(handle.readArrowReader())`); keep it a reader
-   end to end. Nothing streamable should become a list of batches or rows
+   (`read_arrow_reader`; `read_serie` / `readSerie` for a `SerieReader`), and
+   `write_serie` with its three intents takes a held `Serie`, a `ChunkedSerie`
+   or a `SerieReader` as the batches it already is; keep it a reader end to
+   end. Nothing streamable should become a list of batches or rows
    unless the caller asked for one.
 3. **Values enter through their type.** `DataType.scalar`/`Field.scalar` check
    and canonicalize (width narrowed, decimal rescaled, time at its unit, text
@@ -160,16 +169,24 @@ Python, `readArrowReader({ rowheader })` in JavaScript.
   reading `Arrow schema error: External error: TypeError: ...` with
   `code: 'GenericFailure'`. Arrow JS interop copies through IPC - cross the
   boundary in whole batches, not per row.
+- Rust: the process ends without dropping what a static holds, so the records
+  a `logging::FileHandler` keeps under a `with_capacity` (the default publishes
+  each record at once) are lost unless something publishes them. An
+  application calls `yggdryl::logging::shutdown()` before `main` returns (a
+  handler's own `flush()` and a drop publish too); Python runs
+  `logging.shutdown` at exit and the Node addon at the main thread's process
+  exit (a worker ending closes nothing).
 
 ## Language references
 
 - `references/rust.md` - features, imports, error types, logging, a runnable end-to-end example.
 - `references/python.md` - package layout and typing, arguments (`...` vs `None`), errors, record classes, logging, a runnable end-to-end example; pandas/polars/pyarrow columns are `yggdryl-arrow`, and pandas/polars frames to or from a file are `yggdryl-records`.
-- `references/javascript.md` - CommonJS/TypeScript, `bigint`, `Buffer`, Arrow JS, errors, a runnable end-to-end example.
+- `references/javascript.md` - CommonJS/TypeScript, `bigint`, `Buffer`, Arrow JS, errors, logging, a runnable end-to-end example.
 
 ## Deeper
 
 - Site: https://platob.github.io/yggdryl/ (every example there runs in CI, in all three languages).
 - Getting started: https://platob.github.io/yggdryl/getting-started/
 - Architecture and shared rules: https://platob.github.io/yggdryl/architecture/
+- Logging: https://platob.github.io/yggdryl/logging/
 - Rust API: https://docs.rs/yggdryl

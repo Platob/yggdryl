@@ -18,9 +18,9 @@ Each message states its `msgcat` - the `MarketDataKind` its type files under
 (`ORDR`, `QUOT`, `EXEC`, `TRAD`, `BOOK`, the batches `ORDB`, `QUOB`, `TRDB`,
 ...) - and the parse splits what it reports once: an execution report is its
 order's report (`ORDR`, `QUOT` naming a `QuoteID`), a filling one adds its
-`EXEC` message, a trade one execution per side, a two-sided quote a `BUYS` and
-a `SELL` quote, a batch one message per entry. A lifecycle chains within one
-`msgcat`, so a fill never follows its order.
+`EXEC` message, a trade one execution per side, a batch one message per
+entry. A quote is one message holding both its legs. A lifecycle chains
+within one `msgcat`, so a fill never follows its order.
 
 Hold two speeds apart. **Decoding is per message**: each frame is parsed on its
 own, in parallel (`threads`), answers in input order, and never reads another
@@ -81,7 +81,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | share what lifecycles learn about instruments | `codec.with_isin_registry(Arc::new(Mutex::new(IsinRegistry::from_handle(&file)?)))` | `FixCodec(registry, isin_registry=IsinRegistry.from_handle(path))` | `new fix.FixCodec(registry, { isinRegistry: IsinRegistry.fromHandle(path) })` |
 | one message as graph leaves | `msg.market_data()?`, `msg.into_market_data()?` | `msg.market_data()` | `msg.marketData()` |
 | sorted market data | `codec.market_data(messages)` | `codec.market_data(messages)` | `codec.marketData(messages)` |
-| books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0)?` | `codec.book_arrow_reader(msgs, snapshot_millis=0)` | `codec.bookArrowReader(msgs, 0)` |
+| books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0, None)?`, `Some(&filter)` to narrow | `codec.book_arrow_reader(msgs, snapshot_millis=0, filter=None)` | `codec.bookArrowReader(msgs, 0, filter)` |
 | sorted market data as `marketdata` rows | `codec.market_arrow_reader(msgs)?` | `codec.market_arrow_reader(messages)` | `codec.marketArrowReader(messages)` |
 | FIX rows in Arrow to `marketdata` rows | `codec.market_data_arrow_reader(reader)?` | `codec.market_data_arrow_reader(reader)` | `codec.marketDataArrowReader(reader)` |
 | manage a dictionary from a shell | `yggdryl fix --root <dir> ...` ([cli](references/cli.md)) | same binary, shipped in the wheel | same binary |
@@ -120,10 +120,17 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    consumer keyed by `curruuid` needs no dedup of its own.
 6. Market hand-off is `market_data(lifecycle(messages))`: the walk settles
    each message, the sorted door orders every leaf by the instant a book folds
-   it. One message is one leaf - an order, a one-sided quote, an execution -
-   and a `W`/`X` message one per entry; a trade, a batch and a two-sided quote
-   reach the book as the messages their parse split off, never twice.
-   `book_arrow_reader` does not sort - an operation dated before its book is
+   it. One message is one leaf - an order, a quote holding both its legs, an
+   execution - and a `W`/`X` message one per entry; a trade and a batch reach
+   the book as the messages their parse split off, never twice. An
+   `ExecutionReport` (`8`) of no fill is its order's leaf (its quote's, naming
+   a `QuoteID(117)`), so a venue's cancel, reject or expiry moves the book; an
+   `ExecutionAcknowledgement` (`BN`) and a `DontKnowTrade` (`Q`) answer no
+   leaf - they state no fact of the order. `book_arrow_reader` folds orders,
+   quotes and `W`/`X` entries, pruning executions and trades before a book
+   sees them, one book per book key - the instrument's ISIN, else the ticker,
+   else `XX0000000000` - and its `filter` narrows what folds, never admitting
+   an execution back. It does not sort - an operation dated before its book is
    left out with a warning - and neither door runs the lifecycle for you. For a capture already landed as FIX rows,
    `market_data_arrow_reader` reads each row as its message (no line parsed
    again) and sorts its leaves; it runs no lifecycle either, and a
@@ -211,9 +218,13 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     projection, the lifecycle and the book walk default what a message states
     that they cannot read - a value that will not type is null beside a
     `FixAnomaly`, a clock naming no instant is unstated - or leave the item
-    out, each with a deduplicated warning: Rust `log` at `WARN`, Python
-    `logging` under `yggdryl.<module path>`, standard error in JavaScript and
-    the CLI. Only a reader, store or runtime that could not answer is an error
+    out, each with a deduplicated warning: Rust `log` at `WARN` (the core's
+    `yggdryl::logging` tree or any `log` backend), Python `logging` under
+    `yggdryl.<module path>`, JavaScript standard error as the core's terminal
+    line (`... ! WARNING  [main] yggdryl.fix.build build:<line> › FIX clock
+    left unstated: ...`) unless a handler on `logging.getLogger('yggdryl')`
+    takes them, and the CLI on standard output once its progress line is
+    done. Only a reader, store or runtime that could not answer is an error
     item, yielded after the messages before it, and it ends the stream.
 
 ## Pitfalls
@@ -233,8 +244,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   source no member names is kept as stated - a private `100` is the type
   `100`, `Z` is `z` - while `ticker`, an order's or a party's identifier
   (`ClOrdID`, `Exchange`) and a spelling no word holds (`House/Key`) are
-  anomalies, left on the wire; an `isoccy` or `isoctry` value must be a code
-  ISO names, else it is an anomaly.
+  anomalies, left on the wire. A code is held to its type's shape and its
+  validity is a rank, never a refusal: an ISIN whose check digit does not
+  close, a masked `XX0000000001`, an `isoctry` ISO does not list or an
+  `isoccy` of `XXX` is a value of a lower rank, which a real value - stated or
+  derived, earlier or later - replaces wherever two meet; only another shape
+  (an eleven-character ISIN) is an anomaly.
 - A bare integer is always a **tag**: `registry.field(55)`, `msg.get(55)`. A
   field identity (`FixId`, the signed XXH32 of tag + folded name) is only
   reached through `field_by_id` / `get_by_id` (`FixKey::Id` in Rust).
@@ -255,6 +270,11 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 - A coded value reads as its name (`by_tag(54)` -> `BUYS`; Python answers the
   `Side.BUYS` member) but emits as its wire code (`54=1`); set it with the wire
   code or any spelling the code set resolves.
+- A status the dictionary types as an integer (`QuoteStatus(297)`) states the
+  message's state as its code reads, whether the column holds an integer or
+  text: a `QuoteStatusReport` (`AI`) stating `297=4` reads `CANCELED`, and
+  through the lifecycle takes the quote off its book, while the `QuoteCancel`
+  (`Z`) before it reads `PENDING_CANCEL` and keeps it there.
 - A group member needs its index on a message: `Parties[0].PartyID`;
   `Parties.PartyID` is the schema spelling and misses on a value.
 - `into_text` output reflects what the dictionary derived (a day order's
@@ -269,12 +289,14 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   spelling: no code names, no groups, no `fixentries`.
 - A message's `crosscode` is stored `{kind}:{side}:{base}` - `msgcat` code, side
   code, then the code as the message names it: an order `A1` buying is
-  `10:1:A1`, a quote `14:1:Q1` / `14:2:Q1` for its bid and ask, an execution
-  `8:1:E-1`. Only an order, a quote or an execution states its side there;
-  every other message stores side `0`, whatever side it states. A derived
-  execution is chained under its `ExecID(17)` as given (`8:1:E-1`), else
-  `TradeID=<TradeID(1003)>`. Count messages after the parse, not lines: one
-  filling report is two messages.
+  `10:1:A1`, an execution `8:1:E-1`, a quote `14:0:Q1` whatever side it
+  states. Only an order or an execution states its side there; every other
+  message stores side `0`. A quote stating a bid and an offer is one message
+  of side `UNKN`, no `price` of its own, its `bidpx`/`bidqty` and
+  `askpx`/`askqty` the two legs; one stating `Side(54)` tags the leg it
+  quotes. A derived execution is chained under its `ExecID(17)` as given
+  (`8:1:E-1`), else `TradeID=<TradeID(1003)>`. Count messages after the
+  parse, not lines: one filling report is two messages.
 - A message's identifiers are logical `Identifiers` maps keyed `src:type`, read
   off its fields, the wire kept as sent, each identifier `key=value` in
   lower-case words, a FIX field's under the base key spelled as its type alone
@@ -300,7 +322,15 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   none (`Derived_ISIN` is `isin`), and
   another instrument's word before a security type naming no identifier
   (`OMS_UnderlyingISIN`, `FIX.LegISIN`); one naming an operation's or a party's
-  identifier whose value its type refuses stays on the wire, no anomaly.
+  identifier whose value its type refuses stays on the wire, no anomaly. Such
+  an entry is **captured**: one whose folded name ends with a security type's
+  spelling (`ISINCODE`, `RICCODE`, `OMS_CUSIPCODE`, `SEDOLCODE`,
+  `BLOOMBERGCODE`, `OMS_InstrumentID`) lands in `securityids`, an operation's
+  or a party's identifier in `identifiers` or `partyids`; a captured entry
+  leaves the fixed row's `metadata` cell and rides `fixentries` under
+  `0:<key>` (`RICCODE=AAPL.O` is `0:riccode`), so the row holds every arrival
+  once, and a row read back restores it on the wire. A value its type refuses
+  by shape stays in `metadata`.
   A field states `FIX:parents`, the types holding the parents of its identifier
   nearest first (`ClOrdID(11)` has `["origclordid"]`); a follower and every
   settle fill the parent's own type from its nearest stated parent (`orderid` from

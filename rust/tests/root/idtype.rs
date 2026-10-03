@@ -370,8 +370,90 @@ fn a_field_name_names_one_instruments_own_identifier_type() {
         "isincodes",
         "clordid",
         "account",
+        "instrumentcode",
     ] {
         assert_eq!(named(refused), None, "{refused:?} names no type");
+    }
+    // The bare spellings a bridge writes a code under name their type whole.
+    for (name, expected) in [
+        ("bbg", "bloomberg"),
+        ("BBGCode", "bloomberg"),
+        ("bbgsymbol", "bloomberg"),
+        ("BloombergTicker", "bloomberg"),
+        ("OpenFIGI", "figi"),
+        ("ReutersCode", "ric"),
+        ("reuters", "ric"),
+        ("ExchSymbol", "exchsymb"),
+        ("isinid", "isin"),
+        ("cusipid", "cusip"),
+        ("sedol_number", "sedol"),
+        ("valor_id", "valor"),
+        ("wkncode", "wkn"),
+    ] {
+        assert_eq!(named(name).as_deref(), Some(expected), "{name}");
+    }
+}
+
+/// A code-suffixed spelling of a security type - `riccode`, `bbgsymbol`,
+/// `cusipnumber` - names the type at the end of a key the way an `id`
+/// spelling does, so a bridge's `OMS_RICCODE` reads as `oms:ric` and its
+/// `ULLINK.ISINCODE` as `ullink:isin`; bare `ric` and `cfi` stay out of the
+/// end-matching, so `GENERIC` and `OMS_RIC` name nothing, a ticker spelling
+/// names no type, and another instrument's word still refuses the type.
+#[test]
+fn a_code_suffixed_security_spelling_reads_at_the_end_of_a_key() {
+    let read = |key: &str, value: &str| Identifier::from_key(key, value).map(|id| id.to_string());
+    for (key, value, expected) in [
+        ("OMS_RICCODE", "AAPL.O", "oms:ric=AAPL.O"),
+        (
+            "ULLINK.ISINCODE",
+            "US0378331005",
+            "ullink:isin=US0378331005",
+        ),
+        ("OMS_CUSIPCODE", "037833100", "oms:cusip=037833100"),
+        ("OMS_SEDOLNUMBER", "2046251", "oms:sedol=2046251"),
+        (
+            "firm.x.FIGICode",
+            "BBG000B9XRY4",
+            "firm.x:figi=BBG000B9XRY4",
+        ),
+        (
+            "OMS_BBGSYMBOL",
+            "AAPL US Equity",
+            "oms:bloomberg=AAPL US Equity",
+        ),
+        (
+            "OMS_BloombergTicker",
+            "AAPL US Equity",
+            "oms:bloomberg=AAPL US Equity",
+        ),
+        ("OMS_ReutersCode", "AAPL.O", "oms:ric=AAPL.O"),
+        ("OMS_ExchSymbol", "AAPL", "oms:exchsymb=AAPL"),
+        ("OMS_InstrumentCode", "dbi;X", "oms:instrumentid=dbi;X"),
+        ("OMS_WKNCode", "865985", "oms:wkn=865985"),
+        ("OMS_ValorNumber", "1221405", "oms:valor=1221405"),
+        ("OMS_ISINID", "US0378331005", "oms:isin=US0378331005"),
+        ("BBGCODE", "AAPL US Equity", "bloomberg=AAPL US Equity"),
+        ("BBG", "AAPL US Equity", "bloomberg=AAPL US Equity"),
+        ("OpenFIGI", "BBG000B9XRY4", "figi=BBG000B9XRY4"),
+        ("Reuters", "AAPL.O", "ric=AAPL.O"),
+        ("ExchSymbol", "AAPL", "exchsymb=AAPL"),
+        ("InstrumentCode", "dbi;X", "instrumentid=dbi;X"),
+    ] {
+        assert_eq!(read(key, value).as_deref(), Some(expected), "{key}");
+    }
+    for key in [
+        "TICKER",
+        "SYMBOL",
+        "TICKERCODE",
+        "CLIENT.SYMBOL",
+        "GENERIC",
+        "OMS_RIC",
+        "OMS_CFI",
+        "OMS_UnderlyingISINCode",
+        "FIX.LegRICCode",
+    ] {
+        assert_eq!(read(key, "AAPL.O"), None, "{key}");
     }
 }
 
@@ -479,16 +561,56 @@ fn each_type_holds_its_value_to_its_own_rule() {
     let accepts = |text: &str, value: &str| id(text, value).is_ok();
     assert!(accepts("isin", "US0378331005"));
     assert!(accepts("isin", "us0378331005"));
-    assert!(
-        !accepts("isin", "US0378331006"),
-        "the check digit must close"
-    );
+    // The check digit is a rank, not a refusal: a number that does not
+    // close is held, and ranks below one that does.
+    assert!(accepts("isin", "US0378331006"));
+    assert!(!accepts("isin", "US037833100"), "the shape");
+    assert_eq!(IdType::Isin.rank("US0378331005"), 2);
+    assert_eq!(IdType::Isin.rank("US0378331006"), 1);
+    assert_eq!(IdType::Isin.rank("XX0000000001"), 0);
+    assert_eq!(IdType::Isin.max_rank(), 2);
+    assert!(IdType::Isin.is_real("US0378331005"));
+    assert!(!IdType::Isin.is_real("US0378331006"));
+    // A rank reads the text as its type does, folded: a lower-case spelling
+    // the type holds ranks as its upper-case one, whichever the code.
+    for (kind, lower, rank) in [
+        (IdType::Isin, "us0378331005", 2),
+        (IdType::Cusip, "38259p508", 1),
+        (IdType::Sedol, "b0ybkj7", 1),
+        (IdType::Figi, "bbg000blnq16", 1),
+    ] {
+        assert_eq!(kind.rank(lower), rank, "{lower}");
+        assert_eq!(
+            kind.rank(lower),
+            kind.rank(&lower.to_ascii_uppercase()),
+            "{lower}"
+        );
+    }
+    assert!(IdType::Isin.is_real("us0378331005"));
     assert!(accepts("cusip", "037833100"));
-    assert!(!accepts("cusip", "037833101"));
+    assert!(accepts("cusip", "037833101"));
+    assert_eq!(IdType::Cusip.rank("037833100"), 1);
+    assert_eq!(IdType::Cusip.rank("037833101"), 0);
     assert!(accepts("sedol", "0263494"));
-    assert!(!accepts("sedol", "0263495"));
+    assert!(accepts("sedol", "0263495"));
+    assert_eq!(IdType::Sedol.rank("0263495"), 0);
     assert!(accepts("figi", "BBG000B9XRY4"));
-    assert!(!accepts("figi", "BBG000B9XRY5"));
+    assert!(accepts("figi", "BBG000B9XRY5"));
+    assert_eq!(IdType::Figi.rank("BBG000B9XRY5"), 0);
+    assert!(!accepts("figi", "BSG000B9XRY4"), "a reserved prefix");
+    // The listed country and the detailed classification rank; every
+    // other type has nothing partial about it.
+    assert_eq!(IdType::IsoCtry.rank("CH"), 1);
+    assert_eq!(IdType::IsoCtry.rank("XX"), 0);
+    assert_eq!(IdType::IsoCcy.rank("XXX"), 0);
+    assert_eq!(IdType::IsoCcy.rank("USDT"), 1);
+    assert_eq!(IdType::Cfi.rank("ESVUFR"), 2);
+    assert_eq!(IdType::Cfi.rank("ESXXXX"), 1);
+    assert_eq!(IdType::Cfi.rank("XXXXXX"), 0);
+    assert_eq!(IdType::Cfi.max_rank(), 2);
+    assert_eq!(IdType::OrderId.rank("O-1"), 1);
+    assert_eq!(IdType::OrderId.max_rank(), 1);
+    assert!(IdType::Ric.is_real("AAPL.O"));
     assert!(accepts("wkn", "716460"));
     assert!(accepts("wkn", "BASF11"));
     assert!(accepts("wkn", "basf11"));
@@ -553,7 +675,7 @@ fn each_type_holds_its_value_to_its_own_rule() {
         "expected a wkn value, got \"BASI11\", not six of [0-9A-HJ-NP-Z]"
     );
     assert!(matches!(
-        id("isin", "US0378331006"),
+        id("isin", "US037833100"),
         Err(Error::InvalidDataType { kind: "isin", .. })
     ));
     let (path, reason) = located(id("bloomberg", &"B".repeat(33)));
@@ -562,6 +684,39 @@ fn each_type_holds_its_value_to_its_own_rule() {
         reason.contains("33 bytes, over the 32 the type allows"),
         "{reason}"
     );
+}
+
+/// `IdType::rank` and `is_real` read the text as the type stores it: every
+/// type that folds case ranks a lower-case spelling as the upper-case one,
+/// whether or not the code's own `new` folds (a CFI, an ISO currency and an
+/// ISO country do not).
+#[test]
+fn a_rank_reads_a_lower_case_spelling_as_the_upper_case_one_it_folds_to() {
+    for (kind, upper, rank) in [
+        (IdType::Isin, "US0378331005", 2),
+        (IdType::Isin, "US0378331006", 1),
+        (IdType::Isin, "XX0000000001", 0),
+        (IdType::Cusip, "38259P508", 1),
+        (IdType::Cusip, "38259P509", 0),
+        (IdType::Sedol, "B0YBKJ7", 1),
+        (IdType::Sedol, "B0YBKJ8", 0),
+        (IdType::Figi, "BBG000BLNQ16", 1),
+        (IdType::Figi, "BBG000BLNQ15", 0),
+        (IdType::Cfi, "ESVUFR", 2),
+        (IdType::Cfi, "ESXXXX", 1),
+        (IdType::Cfi, "XXXXXX", 0),
+        (IdType::IsoCcy, "USDT", 1),
+        (IdType::IsoCcy, "XXX", 0),
+        (IdType::IsoCtry, "CH", 1),
+        (IdType::IsoCtry, "XX", 0),
+    ] {
+        let lower = upper.to_ascii_lowercase();
+        assert_eq!(kind.rank(upper), rank, "{kind} {upper}");
+        assert_eq!(kind.rank(&lower), rank, "{kind} {lower}");
+        assert_eq!(kind.is_real(&lower), kind.is_real(upper), "{kind} {lower}");
+    }
+    // A type that does not fold case keeps its text as it is.
+    assert_eq!(IdType::Ric.rank("aapl.o"), 1);
 }
 
 #[test]

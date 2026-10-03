@@ -1542,6 +1542,139 @@ fn an_unsided_order_joins_the_one_live_side_of_its_base_under_the_stored_code() 
     assert_eq!(quote.get_crosscode(), "14:0:ORD-1");
 }
 
+/// A quote is unsided: every statement of one quote stores `14:0:`
+/// whatever side it tags, so a bid statement and an offer statement under
+/// one code are one chain, each following the one before. A name a quote
+/// goes by is alive on the side it tags - FIX scopes an `MDEntryID(278)` by
+/// its `MDEntryType(269)` - so under two codes a bid and an offer going by
+/// one name are two chains; a statement tagging no side joins the one
+/// quote alive under the name, and a tagged one the untagged quote holding
+/// both legs.
+#[test]
+fn one_quote_identifier_is_one_chain_whatever_side_its_statements_state() {
+    use yggdryl::Side;
+    use yggdryl::graph::QuoteEvent;
+
+    let quote = |code: &str, ms: i64, side: Side, px: &str| {
+        let mut quote = QuoteEvent::at(at(ms));
+        quote.set_crosscode(code.to_owned());
+        quote.set_side(side, true);
+        quote.set_price(Some(px.parse().unwrap()), true);
+        quote
+            .insert_identifier(identifier(&IdType::QuoteId, "Q1"))
+            .unwrap();
+        quote.finalize();
+        quote
+    };
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            quote("Q-1", 10, Side::Buy, "99"),
+            quote("Q-1", 20, Side::Sell, "101"),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked.len(), 2);
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_crossuuid(), walked[0].get_crossuuid());
+    assert_eq!(
+        (walked[0].get_crosscode(), walked[1].get_crosscode()),
+        ("14:0:Q-1", "14:0:Q-1")
+    );
+    assert_eq!(
+        walked[1].get_side(),
+        Side::Sell,
+        "the tag is the statement's"
+    );
+
+    // Two codes going by one quote identifier, tagging two sides: two
+    // chains, each its own code.
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            quote("BID-1", 10, Side::Buy, "99"),
+            quote("ASK-1", 20, Side::Sell, "101"),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), None);
+    assert_eq!(walked[1].get_crosscode(), "14:0:ASK-1");
+    assert_ne!(walked[1].get_crossuuid(), walked[0].get_crossuuid());
+
+    // A statement tagging no side joins the one quote alive under the
+    // name, and neither where both sides are.
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            quote("BID-1", 10, Side::Buy, "99"),
+            quote("ANY-1", 20, Side::Unknown, "98"),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_crosscode(), "14:0:BID-1");
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            quote("BID-1", 10, Side::Buy, "99"),
+            quote("ASK-1", 20, Side::Sell, "101"),
+            quote("ANY-1", 30, Side::Unknown, "98"),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[2].get_prevuuid(), None);
+
+    // A tagged statement continues the untagged quote going by its name.
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            quote("TWO-1", 10, Side::Unknown, "99"),
+            quote("FILL-1", 20, Side::Buy, "99"),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_crosscode(), "14:0:TWO-1");
+}
+
+/// Elements split off one message - two entries of one batch going by the
+/// batch's own identifier - are two entries: neither joins the other's
+/// chain by the name they share.
+#[test]
+fn elements_split_off_one_message_never_join_one_another_by_a_name() {
+    use yggdryl::graph::QuoteEvent;
+
+    let batch = Uuid::from_v8(7);
+    let entry = |code: &str, ms: i64, sources: Vec<Uuid>| {
+        let mut quote = QuoteEvent::at(at(ms));
+        quote.set_crosscode(code.to_owned());
+        quote.set_bidpx(Some("99".parse().unwrap()), true);
+        quote
+            .insert_identifier(identifier(&IdType::QuoteId, "MQ1"))
+            .unwrap();
+        quote.set_srcuuids(sources);
+        quote.finalize();
+        quote
+    };
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![entry("E-1", 10, vec![batch]), entry("E-2", 10, vec![batch])],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), None, "a sibling is no step");
+    assert_eq!(walked[1].get_crosscode(), "14:0:E-2");
+    // An element of another message going by the name joins by it.
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            entry("E-1", 10, vec![batch]),
+            entry("ACK-1", 20, vec![Uuid::from_v8(8)]),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+}
+
 /// Two sides of one code stay two chains for as long as both live: each
 /// statement follows the live one of its own side, under the stored code
 /// and the cross identity that side owns.
@@ -1721,5 +1854,44 @@ fn a_walk_carries_the_parents_of_each_identifier_along_its_chain() {
             .map(|event| held(event, "parentclordid"))
             .collect::<Vec<_>>(),
         [None, some("A"), some("B")]
+    );
+}
+
+/// The expiration a walk emits reports no fill: it takes the live
+/// element's facts and its cumulative fill, never its last one - the last
+/// price, its FX parts and the last quantity are the fill the live element
+/// reported, which the expiry did not.
+#[test]
+fn an_expiration_reports_no_fill() {
+    let decimal = |text: &str| yggdryl::Decimal::parse(text).expect("a decimal");
+    let mut order = incarnation("O-100", 10);
+    order.set_state(State::PartiallyFilled);
+    order.set_ordqty(Some(decimal("100")), true);
+    order.set_cumqty(Some(decimal("40")), true);
+    order.set_lastqty(Some(decimal("40")), true);
+    order.set_spotrate(Some(decimal("1.25")), true);
+    order.set_forwardpoints(Some(decimal("0.25")), true);
+    order.set_exprunix(Some(at(20)));
+    order.finalize();
+    assert_eq!(order.get_lastpx(), Some(decimal("1.5")));
+    assert_eq!(order.get_avgpx(), Some(decimal("1.5")));
+    let walked: Vec<_> = EventIterator::new([order], true).collect();
+    let expired = &walked[1];
+    assert_eq!(*expired.get_state(), State::Expired);
+    assert_eq!(
+        (expired.get_lastpx(), expired.get_lastqty()),
+        (None, None),
+        "an expiry reports no fill"
+    );
+    assert_eq!(
+        (expired.get_spotrate(), expired.get_forwardpoints()),
+        (None, None),
+        "nor the parts of a fill's price"
+    );
+    assert_eq!(expired.get_cumqty(), Some(decimal("40")));
+    assert_eq!(expired.get_avgpx(), Some(decimal("1.5")));
+    assert_eq!(
+        (expired.get_leavesqty(), expired.get_cxlqty()),
+        (Some(decimal("0")), Some(decimal("60")))
     );
 }

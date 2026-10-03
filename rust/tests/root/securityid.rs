@@ -95,8 +95,8 @@ fn embedded_names_the_national_number_a_canonical_isin_carries() {
     assert!(none(&isin("DE000BASO11")), "a WKN holding O");
     assert!(none(&isin("CH000000000")), "a Valor number of nothing");
     assert!(none(&Isin::default()), "an empty ISIN");
-    let unchecked: Isin = serde_json::from_str("\"US0378331006\"").unwrap();
-    assert!(Isin::new("US0378331006").is_err());
+    let unchecked = Isin::new("US0378331006").unwrap();
+    assert!(!Isin::is_closed(unchecked.as_str()));
     assert!(none(&unchecked), "a bad ISIN check digit");
     let lower: Isin = serde_json::from_str("\"us0378331005\"").unwrap();
     assert!(none(&lower), "not canonical");

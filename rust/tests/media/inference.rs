@@ -312,3 +312,74 @@ mod refusals {
         assert!(message.contains("hard limit of 64"), "{message}");
     }
 }
+
+mod records {
+    use yggdryl::{DataType, Field, Scalar, StructType};
+
+    #[test]
+    fn rows_that_name_no_columns_refuse_as_the_struct_inference_does() {
+        let error = Scalar::from(Vec::<Scalar>::new())
+            .inferred_record_field()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("cannot infer a Struct Field from empty rows; pass a Struct Field"),
+            "{error}"
+        );
+        let error = Scalar::from_sequence([Scalar::from_sequence([Scalar::from(1_i64)])])
+            .inferred_record_field()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error
+                .contains("positional Sequence rows cannot infer field names; pass a Struct Field"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn named_rows_infer_the_row_root_the_struct_inference_answers() {
+        let rows = Scalar::from_sequence([
+            Scalar::from_struct([("id", Scalar::from(1_i64)), ("venue", Scalar::Null)]).unwrap(),
+            Scalar::from_struct([("id", Scalar::from(2_i64)), ("venue", Scalar::from("XNAS"))])
+                .unwrap(),
+        ]);
+        assert_eq!(
+            rows.inferred_record_field().unwrap(),
+            rows.inferred_struct_field().unwrap()
+        );
+    }
+
+    #[test]
+    fn one_named_record_is_its_own_required_row() {
+        let record = Scalar::from_struct([("id", Scalar::from(1_i64))]).unwrap();
+        let root = record.inferred_record_field().unwrap();
+        assert_eq!(
+            root,
+            DataType::from(
+                StructType::from_fields([DataType::Int64.required_field("id")]).unwrap()
+            )
+            .required_field("row")
+        );
+    }
+
+    #[test]
+    fn a_leaf_is_the_value_of_a_required_row() {
+        let root = Scalar::from(1_i64).inferred_record_field().unwrap();
+        assert_eq!(
+            root,
+            DataType::from(
+                StructType::from_fields([DataType::Int64.required_field("value")]).unwrap()
+            )
+            .required_field("row")
+        );
+        let root = Scalar::Null.inferred_record_field().unwrap();
+        assert_eq!(
+            root,
+            DataType::from(
+                StructType::from_fields([Field::new("value", DataType::Null, true)]).unwrap()
+            )
+            .required_field("row")
+        );
+    }
+}

@@ -31,8 +31,19 @@ mod categories {
                 Some("BBG000BLNQ16")
             );
         }
-        let malformed = codec
+        // A FIGI whose check digit does not close is a value of rank 0, held
+        // until a closing one replaces it; one of no FIGI shape - no closing
+        // digit at all - stays raw.
+        let unclosed = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|11=X|22=S|48=BBG000BLNQ17|10=0|")
+            .expect("an unclosed FIGI is a value");
+        assert_eq!(
+            unclosed.get_securityids().get(&IdType::Figi),
+            Some("BBG000BLNQ17")
+        );
+        assert_eq!(IdType::Figi.rank("BBG000BLNQ17"), 0);
+        let malformed = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|11=Y|22=S|48=BBG000BLNQ1X|10=0|")
             .expect("a malformed FIGI stays raw");
         assert!(malformed.get_securityids().get(&IdType::Figi).is_none());
 

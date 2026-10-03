@@ -185,7 +185,7 @@ fn a_signature_is_a_struct_field_both_ways() {
 }
 
 #[test]
-fn a_call_over_columns_is_stored_as_the_function_and_its_sources() {
+fn a_call_over_columns_is_stored_as_the_function_and_its_by() {
     registered();
     let selector: Selector = "ccy, rs.double(size) as doubled".parse().unwrap();
     let stored = selector.into_field(&rows()).unwrap();
@@ -194,10 +194,7 @@ fn a_call_over_columns_is_stored_as_the_function_and_its_sources() {
         doubled.get_metadata("TRANSFORM:function"),
         Some("rs.double")
     );
-    assert_eq!(
-        doubled.get_metadata("TRANSFORM:sources"),
-        Some(r#"["size"]"#)
-    );
+    assert_eq!(doubled.get_metadata("TRANSFORM:by"), Some(r#"["size"]"#));
     assert_eq!(doubled.get_metadata("TRANSFORM:expression"), None);
     assert_eq!(
         doubled.as_transform().term().unwrap().unwrap().to_string(),

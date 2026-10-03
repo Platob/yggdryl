@@ -155,6 +155,21 @@ class TestRecordPath:
         with pytest.raises(ValueError, match="Trades!A2.*declare a field"):
             handle.read_arrow_reader(sheet="Trades", header=False)
 
+    def test_a_coded_workbook_name_is_refused_at_every_door(self, tmp_path: pathlib.Path) -> None:
+        # A workbook is a ZIP package deflated inside, so `.xlsx.gz` names a
+        # file no spreadsheet opens: the write refuses it before a byte is
+        # written, and a read and `Workbook.open` refuse it too.
+        for name, codec in (("trades.xlsx.gz", "gzip"), ("trades.xlsx.zst", "zstd")):
+            refused = f"expected an uncompressed xlsx handle, got {codec} coding"
+            handle = IOBase(tmp_path / name)
+            with pytest.raises(ValueError, match=refused):
+                handle.overwrite_arrow_table(trades())
+            assert not (tmp_path / name).exists()
+            with pytest.raises(ValueError, match=refused):
+                handle.read_arrow_reader()
+            with pytest.raises(ValueError, match=refused):
+                Workbook.open(tmp_path / name)
+
     def test_a_missing_sheet_reads_as_nothing_and_a_write_adds_it(self, tmp_path: pathlib.Path) -> None:
         handle = written(tmp_path)
         assert handle.read_arrow_reader(sheet="Missing").read_all().num_rows == 0

@@ -2002,12 +2002,15 @@ impl PyFixMsg {
         PyBytes::new(py, &self.inner.digest().to_be_bytes())
     }
 
-    /// The graph market data this message expands to: an order, a quote, an
-    /// execution or an initial trade report is one; a book `W` or `X` one per
+    /// The graph market data this message expands to: an order, a quote -
+    /// one leaf holding both its legs - or an execution is one, an execution
+    /// report of no fill its order's or quote's; a book `W` or `X` one per
     /// `NoMDEntries(268)` occurrence, or one scoped snapshot control for an
-    /// empty `W` - each a `MarketData` carrying, in its `metadata`, what the
-    /// message states that no typed column reads and no identifier map of the
-    /// leaf holds, the identifiers among it lifted into the leaf's `identifiers`.
+    /// empty `W`; a trade, a batch and an acknowledgement of an execution
+    /// (`BN`, `Q`) none - each a `MarketData` carrying, in its `metadata`,
+    /// what the message states that no typed column reads and no identifier
+    /// map of the leaf holds, the identifiers among it lifted into the
+    /// leaf's sets.
     fn market_data(&self) -> PyResult<Vec<PyMarketData>> {
         self.inner
             .market_data()
@@ -2089,10 +2092,12 @@ impl PyFixMsg {
 
     /// The cross code: the identifier every message of one lifecycle
     /// shares, stored as `{kind}:{side}:{base}` - the `MarketDataKind` code,
-    /// the `Side` code of a sided kind (`0` for any other) and the
+    /// the `Side` code of a sided kind - an order or an execution - (`0` for
+    /// any other, a quote holding both its legs among them) and the
     /// identifier the message names (`OrderID`, `ClOrdID`, `OrigClOrdID`,
     /// `QuoteID`, `QuoteReqID` or `MDReqID`, the first stated), so a buy order
-    /// `O-1` is `10:1:O-1` - and empty where it names none.
+    /// `O-1` is `10:1:O-1` and a quote `Q-1` `14:0:Q-1` - and empty where it
+    /// names none.
     #[getter]
     fn crosscode(&self) -> &str {
         self.inner.get_crosscode()
@@ -3226,35 +3231,53 @@ impl PyFixCodec {
     /// stateful book iterator into a `pyarrow.RecordBatchReader` of lifted
     /// `marketdata` rows, one `book_event` row per book.
     ///
-    /// Admits ORDR/QUOT, actual EXEC, BOOK W/X and TRAD AE; other records
-    /// are ignored. Source errors and invalid admitted messages still fail,
-    /// including unsupported AE corrections, cancellations and status reports.
+    /// A book folds orders, quotes and `W`/`X` book messages; every other
+    /// record is ignored before it is expanded - a fill moves a book through
+    /// its order's or quote's report, so an execution, and a trade whose
+    /// fills are executions, never reach one. A quote is one entry resting
+    /// on each leg it states, its bid and its offer alike. What an admitted
+    /// message states that cannot stand is passed over with a warning;
+    /// the iterable's own failure follows the completed book prefix.
     ///
-    /// `snapshot_millis` enables epoch-aligned book snapshots; one book is
-    /// kept per book key - the ticker, else `MIC:CFI`. Lifecycle enrichment
-    /// is explicit: pass `codec.lifecycle(messages)` when it is wanted. Each
-    /// leaf carries its message's unmapped fields where `market_metadata`
-    /// says so.
-    #[pyo3(signature = (messages, snapshot_millis=0))]
+    /// `snapshot_millis` enables epoch-aligned book snapshots, at which a
+    /// book is emitted whole; every other book states its deltas. One book
+    /// is kept per book key - the instrument's ISIN, else its ticker, else
+    /// `XX0000000000`. `filter` - a `Filter`, a `Term`, an `Expression` or
+    /// the text of a predicate over the `marketdata` row - narrows what the
+    /// books fold, and never admits a kind they do not; `None` keeps every
+    /// booked leaf. Lifecycle enrichment is explicit: pass
+    /// `codec.lifecycle(messages)` when it is wanted. Each leaf carries its
+    /// message's unmapped fields where `market_metadata` says so.
+    #[pyo3(signature = (messages, snapshot_millis=0, filter=None))]
     fn book_arrow_reader<'py>(
         &self,
         py: Python<'py>,
         messages: &Bound<'py, PyAny>,
         snapshot_millis: u64,
+        filter: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
+        let filter = filter
+            .map(crate::expression::filter_from_value)
+            .transpose()?;
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
         let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
             failed.take().map(|error| Err(python_failure(error)))
         }));
-        Self::reader_to_pyarrow(py, self.inner.book_arrow_reader(messages, snapshot_millis))
+        Self::reader_to_pyarrow(
+            py,
+            self.inner
+                .book_arrow_reader(messages, snapshot_millis, filter.as_ref()),
+        )
     }
 
-    /// A capture of messages as the market data a book folds, in the order
-    /// it folds them: each a `MarketData`.
+    /// A capture of messages as the market data its book messages, orders,
+    /// quotes, executions and trades are, in the order of their instants:
+    /// each a `MarketData`.
     ///
-    /// Admits what `book_arrow_reader` admits and expands each admitted
-    /// message as `FixMsg.market_data` does, each leaf carrying its
+    /// Admits what `book_arrow_reader` admits and the executions besides -
+    /// a trade as the executions its parse split off - and expands each
+    /// admitted message as `FixMsg.market_data` does, each leaf carrying its
     /// message's unmapped fields where `market_metadata` says so. Neither
     /// the lifecycle nor a message-type filter runs here: pass
     /// `codec.lifecycle(messages)` for the walk. `messages` is any iterable

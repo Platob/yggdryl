@@ -47,9 +47,9 @@
 //!
 //! An absent input answers nothing, so the target stays unfilled; a
 //! condition that does not hold answers nothing the same way. A value the
-//! target's field refuses - an identifier whose check digit does not close,
-//! a spelling a code set does not read - is dropped with a deduplicated
-//! warning naming the field. The cost of a dropped value is a null column;
+//! target's field refuses - an identifier of the wrong width, a spelling a
+//! code set does not read - is dropped with a deduplicated warning naming
+//! the field. The cost of a dropped value is a null column;
 //! the cost of a guess is a wrong number nobody can tell from a sent one.
 //!
 //! # The pass never refuses the message
@@ -70,7 +70,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator, Market};
-use crate::warning::warned;
+use crate::logging::warning::warned;
 use crate::{Error, IsinRegistry, Result, Scalar, Side, State, Uuid};
 
 use super::msg::{FixMsg, Viewed};
@@ -79,19 +79,17 @@ use super::registry::FixRegistry;
 /// Fills what `msg` implies, leaving what it stated alone.
 ///
 /// Three steps in order, and the last step of every parse. The message is
-/// restated under the dictionary the registry holds; the crate's
-/// derivations fill what the message implies, to a fixpoint; and the
-/// component's identifier declaration fills the names the message goes by.
-/// Every answer lands
-/// where the fact lives - a typed fact on its holder, anything else in the
-/// row, typed by the dictionary's own field for the tag - so a derived
-/// value is indistinguishable from a stated one, and a value the field
-/// refuses, such as an identifier whose check digit does not close, is
-/// dropped with a warning. A declared identifier that cannot spell text is
-/// left out rather than allowed to refuse the message. A step the rebuild
-/// refuses leaves the message as the step found it, beside a warning. The
-/// views of the security identifiers the line stated, `viewed`, are
-/// resolved once all of that is filled, before the one settle
+/// restated under the dictionary the registry holds; the crate's derivations
+/// fill what the message implies, to a fixpoint; and the component's identifier
+/// declaration fills the names the message goes by. Every answer lands where
+/// the fact lives - a typed fact on its holder, anything else in the row, typed
+/// by the dictionary's own field for the tag - so a derived value is
+/// indistinguishable from a stated one, and a value the field refuses, such as
+/// an identifier of the wrong width, is dropped with a warning. A declared
+/// identifier that cannot spell text is left out rather than allowed to refuse
+/// the message. A step the rebuild refuses leaves the message as the step found
+/// it, beside a warning. The views of the security identifiers the line stated,
+/// `viewed`, are resolved once all of that is filled, before the one settle
 /// ([`FixMsg::resolve_views`]).
 pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> FixMsg {
     // Restatement first, and not as a step a caller may skip: every
@@ -234,12 +232,9 @@ fn delivery_key(message: &FixMsg) -> DeliveryKey {
         };
     };
     let replay = header.possdupflag() == Some(true)
-        || message.get_by_tag(97).is_some_and(|value| {
-            value.as_bool() == Some(true)
-                || value
-                    .as_str()
-                    .is_some_and(|value| value.eq_ignore_ascii_case("Y"))
-        });
+        || message
+            .get_by_tag(97)
+            .is_some_and(|value| crate::boolean::bool_of(&value) == Some(true));
     let sending_time = if header.stated_sendingtime() {
         header.sendingtime()
     } else {
@@ -280,19 +275,21 @@ fn session_event_key(message: &FixMsg) -> Option<SmolStr> {
         return None;
     }
     // One delivery the parse split holds several messages - a report and
-    // its execution, a trade and its sided executions, a quote and its
-    // sided quotes - which are never observations of one another: the
-    // category, the side and an execution's own chain keep them apart.
+    // its execution, a trade and its sided executions - which are never
+    // observations of one another: the category, the side a sided kind is
+    // keyed by and an execution's own chain keep them apart. An unsided
+    // message's side is a tag, which keys nothing.
     let identifier = message.session_event_identifier()?;
     let chain = if message.is_execution() {
         message.get_crosscode()
     } else {
         ""
     };
+    let kind = message.msgcat();
     Some(format_smolstr!(
         "{identifier}\u{1f}{}\u{1f}{}\u{1f}{chain}",
-        message.msgcat().code(),
-        message.get_side().code()
+        kind.code(),
+        kind.stored_side(message.get_side()).code()
     ))
 }
 
@@ -420,14 +417,17 @@ fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
 
 /// A message stating no `Side(54)` restated with the side of the chain it
 /// follows, answering whether it was: the walk joined it to the one live
-/// side of its order - where its kind is sided, the side its cross code is
-/// stored under - so its content states it too, and a row read back, a book
+/// side of its order - a sided kind's, the side its cross code is stored
+/// under - so its content states it too, and a row read back, a book
 /// folding it, reads the side the walk gave it. A side the message states
-/// always stands, and a chain stating none lends none. A write the rebuild
-/// refuses leaves the side the message stated, `UNKN`, beside a warning.
+/// always stands, a chain stating none lends none, and an unsided chain - a
+/// quote's, whose side is each statement's own tag - lends none either. A
+/// write the rebuild refuses leaves the side the message stated, `UNKN`,
+/// beside a warning.
 fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> bool {
     let side = previous.get_side();
-    if side == Side::Unknown
+    if !previous.is_sided()
+        || side == Side::Unknown
         || current.get_side() != Side::Unknown
         || current.get_by_tag(54).is_some_and(|held| !held.is_null())
     {

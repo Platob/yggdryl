@@ -1,7 +1,7 @@
 'use strict'
 
-// `node/src/lib.rs`: what the addon registers when it loads - the logger the
-// core's warnings reach standard error through.
+// `node/src/lib.rs`: what the addon registers when it loads - the core's
+// logging tree, whose last resort writes its warnings to standard error.
 
 const assert = require('node:assert/strict')
 const { spawnSync } = require('node:child_process')
@@ -31,7 +31,9 @@ test('a data warning reaches standard error once and then is counted', () => {
     .split('\n')
     .filter((line) => line.includes('FIX clock left unstated'))
   assert.equal(warned.length, 2, child.stderr)
-  assert.ok(warned.every((line) => line.startsWith('yggdryl: ')), child.stderr)
+  // The core's last resort: the terminal line, plain because a pipe is no
+  // colour terminal, naming the module that warned.
+  assert.ok(warned.every((line) => / ! WARNING  \[main\] yggdryl\.fix\.\w+ \w+:\d+ › /.test(line)), child.stderr)
   assert.match(warned[0], /\(sendingtime\).*"bad".*later occurrences are counted rather than repeated/)
   assert.match(warned[1], /seen 10 times$/)
 })

@@ -1,20 +1,20 @@
 # IsinRegistry
 
-`IsinRegistry` is a table of instruments keyed by ISIN: one row per ISIN of the equivalents it is known by - its detailed CFI code, the market and ticker of its listing, and one code per `SecurityIDSource(22)` type, a RIC, a Bloomberg symbol, a CUSIP, a FIGI among them. A lifecycle learns each market element's statements into it and fills what a later element of the same instrument leaves unsaid; the latest statement leads column by column, and an older one only fills. The table is an Arrow stream, so it loads from and saves to any holder - an Arrow IPC file, Parquet, a folder of either, an object store - through the record surface every medium shares.
+`IsinRegistry` is a table of instruments keyed by ISIN: one row per ISIN of the equivalents it is known by - its detailed CFI code, the market and ticker of its listing, and one code per `SecurityIDSource(22)` type, a RIC, a Bloomberg symbol, a CUSIP, a FIGI among them. A lifecycle learns each market element's statements into it and fills what a later element of the same instrument leaves unsaid - found by its ISIN, its RIC or its ticker on its market; a real value is never downgraded, and between two of one rank the latest statement leads column by column while an older one only fills. The table is an Arrow stream, so it loads from and saves to any holder - an Arrow IPC file, Parquet, a folder of either, an object store - through the record surface every medium shares.
 
 ## Contract
 
 | Key | Rule |
 | --- | --- |
 | Owner | `yggdryl::IsinRegistry` and `yggdryl::IsinEntry` (root `isin_registry.rs`); Python `yggdryl.IsinRegistry`; JavaScript `IsinRegistry`. A binding holds one table behind one lock and crosses a row as a `dict` / plain object of its columns; `IsinEntry` is Rust-only |
-| Key | the ISIN, canonical and never `ZZ`: the instrument's one atomic code. A RIC may lead to its ISIN through the exact inverse index the rows keep; a Bloomberg symbol, a FIGI, a CUSIP or a SEDOL is an equivalent the ISIN fills and is never looked up |
+| Key | a real ISIN - closing under a listed prefix, `IdType::Isin.is_real` - the instrument's one atomic code; a `ZZ` number, a masked one or a typo keys no row. A RIC or a ticker leads back to its row through an exact inverse index the rows keep, the ticker gated by the market the listing was stated on; a Bloomberg symbol, a FIGI, a CUSIP or a SEDOL is an equivalent the ISIN fills and is never looked up |
 | Row | `IsinEntry::field()`, the non-null struct `isinregistry`: `isin` (`isin`, required), `updunix` (`datetime64(ns, UTC)`, when the statement that last moved the row happened, null an undated row and the oldest), `cficode` (`cfi`, detailed only), `miccode` (`mic`, the market its listing columns belong to, never `XXXX`), `ticker` (`utf8`, one to 64 bytes), then one column per `SecurityIDSource(22)` type but the ISIN, in code-set order - `cusip`, `sedol`, `quik`, `ric`, `isoccy`, `isoctry`, `exchsymb`, `cta`, `bloomberg`, `wkn`, `dutch`, `valor`, ... `dti` - each typed by `IdType::value_dtype` (`ric`, `bbg`, `figi`, `utf8` for a type with no datatype of its own): 37 columns, at most `IsinRegistry::MAX_EQUIVALENTS` (12) codes stated per row |
 | Listing columns | `IdType::is_listing` names the codes of one venue's listing rather than the instrument - `ric`, `bloomberg`, `exchsymb`, `cta`, `sedol`, `figi`, `mktassigned`, `fim`, `umtf`, `instrumentid` - and they belong, with `ticker`, to the row's `miccode` |
-| `merge(entry)` | folds one row into the row of its ISIN by the [update rule](#the-update-rule); whether anything moved. Refuses a `ZZ` ISIN and a new ISIN past `max_instruments` |
-| `learn(event)` | reads what a dated market element states about its instrument - keyed by its stated ISIN, else by its stated RIC through the inverse index, which only fills - at its `currunix`; never a derived code, a `ZZ` ISIN, an `Other` type or an `instrumentid`. A new ISIN past the bound is skipped with one warning per registry; a known one keeps learning |
-| `fill(element)` | from the row its ISIN - stated or derived - names, else the row its RIC names, whose ISIN is derived first: each equivalent of a type it holds nothing of as a `derived` identifier (its base key filled, so `map['valor']` answers), the listing codes and the ticker only where its market - none and `XXXX` unstated - is the row's or either is unstated, and its CFI code where it states none or the row's [refines](../types/codes/cfi.md#two-statements-of-one-instrument) it; the element is finalized where anything moved. Nothing reaches a FIX field or the wire |
+| `merge(entry)` | folds one row into the row of its ISIN by the [update rule](#the-update-rule); whether anything moved. Refuses an ISIN that is not real (`expected an ISIN some agency numbers, got ...`) and a new ISIN past `max_instruments` |
+| `learn(event)` | reads what a dated market element states about its instrument - keyed by its stated ISIN where it is real, else by its stated RIC through the inverse index, which only fills - at its `currunix`: its detailed CFI code, its market but `XXXX`, its ticker and each equivalent its map answers with a real value ([`IdType::is_real`](identifier.md#ranks)); never a derived code, a masked number or a typo, an `Other` type or an `instrumentid`. A new ISIN past the bound is skipped with one warning per registry; a known one keeps learning |
+| `fill(element)` | from the row its real ISIN - stated or derived - names, else the row its RIC names, else the row its ticker names on its market (`get_by_ticker`), whose ISIN is derived first - over none, or over a number [ranking](identifier.md#ranks) below it, a masked one or a typo: each equivalent of a type it holds nothing of as a `derived` identifier (its base key filled, so `map['valor']` answers), the listing codes and the ticker only where its market - none and `XXXX` unstated - is the row's or either is unstated, and its CFI code where it states none or the row's [refines](../types/codes/cfi.md#two-statements-of-one-instrument) it; the element is finalized where anything moved. Nothing reaches a FIX field or the wire |
 | `enrich(event)` | `learn`, then `fill` - what each lifecycle runs on every message, in instant order |
-| Reads | `get(isin)` and `get_by_ric(ric)` borrow a row, allocation-free; `iter()` in ISIN order; `len`, `is_empty`, `max_instruments`; `remove(isin)`, `clear()` |
+| Reads | `get(isin)` and `get_by_ric(ric)` borrow a row, allocation-free; `get_by_ticker(ticker, market)` the one row listing the ticker whose market is `market`, or where either is unstated - none and `XXXX` unstated - two rows answering being ambiguous and answering none (Rust-only); `iter()` in ISIN order; `len`, `is_empty`, `max_instruments`; `remove(isin)`, `clear()` |
 | A value | `Clone` is an O(1) snapshot sharing the table, and a write copies it only while another clone shares it; an empty registry allocates nothing |
 | Persistence | `from_handle(handle)` / `extend_from_handle(handle)` read the handle's own record stream, `from_arrow_reader(reader)` / `extend_from_arrow_reader(reader)` any Arrow stream, and `into_arrow_reader()` is a snapshot stream under `IsinEntry::field()`, written by `IOBase::write_arrow_reader` - an overwrite saves a snapshot, a merge by `isin` upserts. No write verb of its own |
 | Sharing | `FixCodec::with_isin_registry(Arc<Mutex<IsinRegistry>>)` shares one table with every lifecycle the codec runs; without it each walk learns into its own, starting empty. Python `FixCodec(..., isin_registry=registry)`, JavaScript `new fix.FixCodec(registry, { isinRegistry })`, each with an `isin_registry` / `isinRegistry` getter answering the caller's own table |
@@ -30,7 +30,7 @@
     use arrow_schema::{DataType, Field, Schema};
     use yggdryl::arrow::batch_reader;
     use yggdryl::graph::{Event, Market, OrderEvent};
-    use yggdryl::{IdKey, IdType, Identifier, IsinRegistry};
+    use yggdryl::{IdKey, IdType, Identifier, IsinRegistry, Mic};
 
     // A golden file's columns are read by any spelling of the fact they name.
     let schema = Arc::new(Schema::new(vec![
@@ -38,6 +38,8 @@
         Field::new("RIC", DataType::Utf8, true),
         Field::new("BloombergSymbol", DataType::Utf8, true),
         Field::new("CFI", DataType::Utf8, true),
+        Field::new("MIC", DataType::Utf8, true),
+        Field::new("Ticker", DataType::Utf8, true),
     ]));
     let golden = RecordBatch::try_new(
         Arc::clone(&schema),
@@ -46,6 +48,8 @@
             Arc::new(StringArray::from(vec!["HOLN.S"])),
             Arc::new(StringArray::from(vec!["HOLN SW Equity"])),
             Arc::new(StringArray::from(vec!["ESVUFR"])),
+            Arc::new(StringArray::from(vec!["XSWX"])),
+            Arc::new(StringArray::from(vec!["HOLN"])),
         ],
     )?;
     let mut registry = IsinRegistry::from_arrow_reader(batch_reader(schema, vec![golden]))?;
@@ -59,6 +63,15 @@
     assert!(order.get_securityids().is_derived(&IdType::Isin));
     assert_eq!(order.get_securityids().get(&IdType::Bloomberg), Some("HOLN SW Equity"));
     assert_eq!(order.get_cficode().map(|code| code.as_str()), Some("ESVUFR"));
+
+    // An order naming only its ticker on the listing's market finds the row
+    // through the ticker index; another market's listing is another row.
+    let mut quoted = OrderEvent::at(1_700_000_000_000_000_000);
+    quoted.set_ticker(Some("HOLN".into()), true);
+    quoted.set_miccode(Some(Mic::new("XSWX")?), true);
+    assert!(registry.enrich(&mut quoted));
+    assert_eq!(quoted.get_isincode(), Some("CH0012214059"));
+    assert!(registry.get_by_ticker("HOLN", Some(&Mic::new("XLON")?)).is_none());
 
     // The table streams out as a snapshot, one row per ISIN.
     let back = IsinRegistry::from_arrow_reader(registry.into_arrow_reader()?)?;
@@ -78,14 +91,17 @@
         "RIC": ["HOLN.S"],
         "BloombergSymbol": ["HOLN SW Equity"],
         "CFI": ["ESVUFR"],
+        "MIC": ["XSWX"],
+        "Ticker": ["HOLN"],
     })
     registry = IsinRegistry.from_arrow_reader(golden)
     assert len(registry) == 1
     row = registry.get_by_ric("HOLN.S")
-    assert row is not None and (row["isin"], row["bloomberg"], row["cficode"]) == (
+    assert row is not None and (row["isin"], row["bloomberg"], row["cficode"], row["ticker"]) == (
         "CH0012214059",
         "HOLN SW Equity",
         "ESVUFR",
+        "HOLN",
     )
 
     # The table streams out as a snapshot, one row per ISIN, in ISIN order.
@@ -107,11 +123,13 @@
       RIC: arrow.vectorFromArray(['HOLN.S'], new arrow.Utf8()),
       BloombergSymbol: arrow.vectorFromArray(['HOLN SW Equity'], new arrow.Utf8()),
       CFI: arrow.vectorFromArray(['ESVUFR'], new arrow.Utf8()),
+      MIC: arrow.vectorFromArray(['XSWX'], new arrow.Utf8()),
+      Ticker: arrow.vectorFromArray(['HOLN'], new arrow.Utf8()),
     })
     const registry = IsinRegistry.fromArrowReader(BatchReader.from(golden))
     assert.equal(registry.length, 1)
     const row = registry.getByRic('HOLN.S')
-    assert.deepEqual([row.isin, row.bloomberg, row.cficode], ['CH0012214059', 'HOLN SW Equity', 'ESVUFR'])
+    assert.deepEqual([row.isin, row.bloomberg, row.cficode, row.ticker], ['CH0012214059', 'HOLN SW Equity', 'ESVUFR', 'HOLN'])
 
     // The table streams out as a snapshot, one row per ISIN, in ISIN order.
     const back = IsinRegistry.fromArrowReader(registry.intoArrowReader())
@@ -127,7 +145,8 @@ A statement - a row `merge` folds, or what `learn` reads off an element, dated b
 | no row yet | the row is created, below `max_instruments`; past it `merge` refuses naming the bound and `learn` skips the ISIN |
 | which is newer | an undated row is the oldest; an undated statement is older than a dated row; a dated statement at or after the row's `updunix` is newer, ties going by read order |
 | a column the row lacks | filled, whatever the time |
-| a column holding another value | replaced by a newer statement, kept against an older one |
+| a code column holding another value | a value of a higher [rank](identifier.md#ranks) replaces it whatever the time, one of a lower rank never; between two of one rank, replaced by a newer statement and kept against an older one |
+| `cficode`, `miccode`, `ticker` holding another value | replaced by a newer statement, kept against an older one - `cficode` by its own rule below |
 | `cficode` | a code that refines the held one - fills its `X` positions and contradicts nothing ([`Cfi::refined`](../types/codes/cfi.md#two-statements-of-one-instrument)) - refines it whatever the time; a contradicting code replaces it whole only when newer; a coarse code is no statement |
 | the listing | a newer statement stating another market and at least one listing fact switches the listing whole: `miccode` becomes its market and every listing column it does not restate is cleared. An older one's listing facts are dropped; where either states no market, listing facts fold by the rows above under the row's market, which takes the statement's where it had none |
 | a RIC | the inverse index stays exact: a row's RIC moving drops its old entry, and a RIC another row holds moves only from a statement at or after that row's `updunix`, which then loses it - a RIC names one listing at a time. A RIC not taken leaves the row's own where its market stayed, and none where the statement switched the listing: one market's RIC never stays on another's |
@@ -274,7 +293,7 @@ A statement that moves nothing allocates nothing and never copies a shared table
 | Bound | Value |
 | --- | --- |
 | `max_instruments` | `IsinRegistry::DEFAULT_MAX_INSTRUMENTS` (16,384) unless `with_max_instruments` says otherwise; no eviction |
-| Memory | each instrument is charged its worst case - B-tree slack, twelve codes at their widest, the ticker and one inverse-index slot - 3 KiB, so a registry holds at most `max_instruments` × 3 KiB, 48 MiB at the default |
+| Memory | each instrument is charged its worst case - B-tree slack, twelve codes at their widest, the ticker, one RIC slot in the inverse index and one slot in the ticker index - 3 KiB, so a registry holds at most `max_instruments` × 3 KiB, 48 MiB at the default |
 | Per row | `MAX_EQUIVALENTS` (12) codes: a row stating more, or a code in a `utf8` column its type refuses (past its `max_value_width`), is refused naming the row and the column, `$[1].wkn`. A typed code column's cell its datatype cannot hold lands null, and a ticker outside one to 64 bytes is stored as none; the rest of the row loads |
 | Past the bound | `learn` skips a new ISIN with one warning per registry, a known ISIN learning on; `merge` and `extend_from_*` refuse, naming the bound |
 
@@ -282,7 +301,8 @@ A statement that moves nothing allocates nothing and never copies a shared table
 
 - Learning is the ordered lifecycle's, never a parse's: a parse depends only on its event, and a setter stays pure. A shared registry moved by walks run at once interleaves their learning; share one across walks run one after another.
 - A registry's fill is a derivation: it never writes `CFICode(461)` or any FIX field, so a row's `cficode` shows a refined code only where 461 is unstated.
-- A filled ticker moves the [book](book.md) an element without `Symbol(55)` stands in, so the books and candles it lands in.
+- A filled ISIN moves the [book](book.md) an element stands in: its [book key](market.md#the-book-key) is the ISIN once the registry fills it, so a ticker-only statement joins its instrument's book, and the candles it lands in.
+- A ticker leads to a row only on the market its listing was stated on, or where the element or the row states none; a ticker two rows list there leads to none.
 - One listing per ISIN: across venues, fills alternate rather than mix - never wrong, by the market gate, only sparse. A market read off `LastMkt(30)` or `ExDestination(100)` can file a routed order's RIC under the routed venue.
 - A reused RIC can fill gaps in the old instrument's row through a statement keyed by it, and never replaces a value.
 

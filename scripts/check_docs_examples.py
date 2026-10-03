@@ -246,15 +246,17 @@ def run_scripts(pages, language: str, jobs: int) -> tuple[int, int, list[str]]:
                     command = [str(PYTHON), str(script)]
                 else:
                     script = workspace / f"{label}.js"
+                    # Only the module a `require` names: `getLogger('yggdryl')`
+                    # names a logger, not the package.
                     rewired = block.code
                     for name, target in (
                         ("yggdryl/book", NODE_BOOK),
                         ("yggdryl", NODE_BINDING),
                         ("apache-arrow", NODE_ARROW),
                     ):
-                        rewired = rewired.replace(f"'{name}'", f"'{target}'").replace(
-                            f'"{name}"', f'"{target}"'
-                        )
+                        rewired = rewired.replace(
+                            f"require('{name}')", f"require('{target}')"
+                        ).replace(f'require("{name}")', f'require("{target}")')
                     script.write_text(rewired, encoding="utf-8")
                     command = ["node", str(script)]
                 pending.append((page, block, command))

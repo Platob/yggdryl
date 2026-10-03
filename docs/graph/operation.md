@@ -102,7 +102,7 @@
 | Reading | Rule |
 | --- | --- |
 | `following_operation` | [`following_market`](market.md#following-and-merging), then time in force/tradability if unstated, the party ids, and every identifier of the chain it lacks but `mdentryrefid`, each carried as it is; each base identifier it states takes the [parents](identifier.md#parentage) its chain gave it - its own values stand; a holder's own dictionary may flag fewer |
-| The side | this operation's where it states one, the chain's where it states `UNKN` - in following and in restating - and with it the chain's [cross code](market.md#sides-and-cross-codes), restated under that side for an order, a quote or an execution |
+| The side | an order's or an execution's: this operation's where it states one, the chain's where it states `UNKN` - in following and in restating - and with it the chain's [cross code](market.md#sides-and-cross-codes), restated under that side; a quote's side is its own tag, and it takes the [legs](market.md#a-quotes-two-legs) of its chain it states nothing of |
 | Party ids | a source and role this statement names none for is the chain's, every role - the parties an operation is booked to stay with its chain |
 | Restating | a market operation event's [`restating`](event.md#restating) also takes the time in force, tradability, followed identifiers and the party ids, as following does |
 | `merging_operation_event` | [`merging_market_event`](market.md#following-and-merging), then the time in force (the better), tradability (the reference's if stated), the identifiers and the party ids (each a union by source and type, reference-led) |

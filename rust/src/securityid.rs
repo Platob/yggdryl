@@ -8,15 +8,16 @@ use crate::{Cfi, Cusip, Figi, IdKey, IdSource, IdType, Identifier, Isin, Ric, Se
 // embedded: the national number an ISIN carries.
 // ---------------------------------------------------------------------------
 
-/// The identifier a canonical ISIN embeds as its national number, where its
+/// The identifier a closing ISIN embeds as its national number, where its
 /// country's scheme is one this crate checks: at most one.
 ///
 /// `US` and `CA` carry a CUSIP in positions 2 to 11; `GB`, `IE`, `GG`, `JE`
 /// and `IM` a SEDOL in positions 4 to 11 behind `00`; `DE` a WKN in positions
 /// 5 to 11 behind `000`; `CH` and `LI` a Valor number in positions 2 to 11
-/// with its leading zeros dropped. The embedded code must close on its own
-/// check too: neither an arbitrary national number nor an unchecked ISIN is
-/// enough to name another identifier.
+/// with its leading zeros dropped. The number must close on its check digit
+/// ([`Isin::is_closed`]) and the embedded code on its own: neither an
+/// arbitrary national number nor a number that does not close - a typo, a
+/// mask - is enough to name another identifier.
 ///
 /// ```
 /// use yggdryl::Isin;
@@ -26,10 +27,11 @@ use crate::{Cfi, Cusip, Figi, IdKey, IdSource, IdType, Identifier, Isin, Ric, Se
 /// let cusip = embedded(&apple).next().unwrap();
 /// assert_eq!(cusip.to_string(), "derived:cusip=037833100");
 /// assert!(embedded(&Isin::new("XS0203470157").unwrap()).next().is_none());
+/// assert!(embedded(&Isin::new("US0378331006").unwrap()).next().is_none());
 /// ```
 pub fn embedded(isin: &Isin) -> impl Iterator<Item = Identifier> {
     let text = isin.as_str();
-    let found = if !Isin::is_canonical(text) {
+    let found = if !Isin::is_closed(text) {
         None
     } else {
         let (kind, code) = match &text[..2] {
@@ -42,6 +44,7 @@ pub fn embedded(isin: &Isin) -> impl Iterator<Item = Identifier> {
             _ => (None, ""),
         };
         kind.and_then(|kind| Identifier::new(IdKey::new(IdSource::Derived, kind), code).ok())
+            .filter(|id| id.kind().is_real(id.value()))
     };
     found.into_iter()
 }
@@ -169,13 +172,22 @@ impl SymbolCode {
             INSTRUMENT_SHORTEST..=INSTRUMENT_LONGEST if bytes[12] == b'_' && bytes[17] == b'_' => {
                 Self::instrument(text)
             }
-            12 if text.starts_with("BBG") => Figi::new(text).ok().map(Self::Figi),
+            12 if text.starts_with("BBG") => Figi::new(text)
+                .ok()
+                .filter(|figi| Figi::is_closed(figi.as_str()))
+                .map(Self::Figi),
             12 if alphanumeric(bytes) => Isin::new(text)
                 .ok()
-                .filter(|isin| Isin::is_canonical(isin.as_str()))
+                .filter(|isin| Isin::is_closed(isin.as_str()))
                 .map(Self::Isin),
-            9 if alphanumeric(bytes) => Cusip::new(text).ok().map(Self::Cusip),
-            7 if alphanumeric(bytes) => Sedol::new(text).ok().map(Self::Sedol),
+            9 if alphanumeric(bytes) => Cusip::new(text)
+                .ok()
+                .filter(|cusip| Cusip::is_closed(cusip.as_str()))
+                .map(Self::Cusip),
+            7 if alphanumeric(bytes) => Sedol::new(text)
+                .ok()
+                .filter(|sedol| Sedol::is_closed(sedol.as_str()))
+                .map(Self::Sedol),
             6 if upper(bytes) && Cfi::is_detailed(text) => Cfi::new(text).ok().map(Self::Cfi),
             _ => None,
         };
@@ -221,7 +233,7 @@ impl SymbolCode {
         }
         let isin = Isin::new(isin)
             .ok()
-            .filter(|held| Isin::is_canonical(held.as_str()));
+            .filter(|held| Isin::is_closed(held.as_str()));
         let mic = crate::Mic::from_market(mic);
         let ccy = crate::Ccy::new(ccy).ok();
         (isin.is_some() || mic.is_some() || ccy.is_some()).then_some(Self::Instrument {

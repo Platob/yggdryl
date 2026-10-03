@@ -431,6 +431,52 @@ fn execute_runs_a_statement_against_a_catalog_table() {
 }
 
 #[test]
+fn a_join_source_resolves_against_the_catalog_as_from_does() {
+    let service = service("join");
+    // `trades` and the dotted `market.eu.fills` both resolve to the leaves
+    // the catalog holds: the join reads the second through its own location.
+    let response = answer(
+        &service,
+        Execute::statement(
+            "select symbol, price, size_right from trades \
+             join market.eu.fills using (symbol) where price > 150 order by price desc",
+        )
+        .with_properties(PropertyList::new().with("Catalog", "market")),
+    );
+    let rows = cells(&response);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(cell(&rows[0], "symbol"), &Scalar::from("MSFT"));
+    assert_eq!(cell(&rows[1], "symbol"), &Scalar::from("AAPL"));
+    assert_eq!(cell(&rows[1], "size_right"), &Scalar::from(100_i64));
+    // A join source inside a nested plan resolves the same way.
+    let nested = answer(
+        &service,
+        Execute::statement(
+            "select symbol from trades \
+             semi join (select symbol from eu.fills where size is null) using (symbol)",
+        )
+        .with_properties(PropertyList::new().with("Catalog", "market")),
+    );
+    let rows = cells(&nested);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(cell(&rows[0], "symbol"), &Scalar::from("MSFT"));
+    // A join source is refused as a `from` is: an unknown table, and a URL
+    // outside every catalog, by name.
+    let unknown = fault(
+        &service,
+        Execute::statement("select * from trades join nowhere using (symbol)")
+            .with_properties(PropertyList::new().with("Catalog", "market")),
+    );
+    assert_eq!(unknown.code(), &FaultCode::Client);
+    assert!(unknown.string().contains("nowhere"), "{}", unknown.string());
+    let outside = fault(
+        &service,
+        Execute::statement("select * from trades join 'file:///etc/passwd' using (symbol)"),
+    );
+    assert!(outside.string().contains("passwd"), "{}", outside.string());
+}
+
+#[test]
 fn execute_refuses_what_it_cannot_run_by_name() {
     let service = service("refusals");
     let unknown = fault(

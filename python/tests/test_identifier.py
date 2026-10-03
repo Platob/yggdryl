@@ -56,8 +56,10 @@ def test_a_key_or_a_value_that_reads_as_nothing_is_refused() -> None:
 def test_a_security_type_checks_its_code() -> None:
     apple = Identifier("isin", " us0378331005 ")
     assert (apple.src, apple.type, apple.value) == ("base", "isin", "US0378331005")
+    # The type checks the code's shape; a check digit is a rank, not a refusal.
+    assert Identifier("isin", "US0378331006").value == "US0378331006"
     with pytest.raises(ValueError):
-        Identifier("isin", "US0378331006")
+        Identifier("isin", "US037833100")
     assert Identifier("forex", "eur/usd").value == "EUR/USD"
     assert Identifier("isinnumber", "US0378331005").type == "isin"
 
@@ -158,7 +160,7 @@ def test_a_dict_refuses_what_states_no_identifier_naming_the_key() -> None:
     with pytest.raises(ValueError, match="fix:"):
         Identifiers.from_dict({"fix:": "X"})
     with pytest.raises(ValueError, match="isin"):
-        Identifiers.from_dict({"isin": "US0378331006"})
+        Identifiers.from_dict({"isin": "US037833100"})
     with pytest.raises(ValueError):
         Identifiers.from_dict({"isin": "US0378331005", "BASE:ISIN": "CH0012214059"})
     with pytest.raises(ValueError, match="orderid"):

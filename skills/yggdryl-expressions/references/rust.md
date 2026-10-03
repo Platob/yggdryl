@@ -23,7 +23,7 @@ assert_eq!(filter.columns(), vec!["ccy".to_owned(), "price".to_owned()]);
 
 let bound = filter.bind(&schema)?;
 // The literal was converted once, into the column's exact type.
-assert_eq!(bound.term().to_string(), "ccy = 'EUR' and price > decimal32(9,2) '100.00'");
+assert_eq!(bound.term().to_string(), "ccy = 'EUR' and price > decimal32(9,2) '100'");
 
 let row = Scalar::from_sequence([Scalar::from("EUR"), Scalar::decimal128(15_000, 2), Scalar::from(5_i64)]);
 assert!(bound.matches(&row)?);
@@ -238,7 +238,7 @@ schema.set_dtype(DataType::from(StructType::from_fields(children)?))?;
 
 let residual = "year = 2024 and price > 100".parse::<Term>()?.bind(&schema)?.partition_split();
 assert_eq!(residual.answerable().to_string(), "year = int32 '2024'");
-assert_eq!(residual.remaining().to_string(), "price > decimal32(9,2) '100.00'");
+assert_eq!(residual.remaining().to_string(), "price > decimal32(9,2) '100'");
 assert!(!residual.is_complete());
 ```
 
@@ -407,10 +407,10 @@ let tripled = "skills.triple(size) as tripled".parse::<Selector>()?.apply_arrow_
 assert_eq!(tripled.column(0).as_ref(), &Int64Array::from(vec![Some(3), None, Some(9)]) as &dyn Array);
 assert_eq!("skills.triple(size) > 3".parse::<Filter>()?.apply_arrow_batch(&batch)?.num_rows(), 1);
 
-// A stored column records the derivation as TRANSFORM:function over TRANSFORM:sources.
+// A stored column records the derivation as TRANSFORM:function over TRANSFORM:by.
 let stored = "skills.triple(size) as tripled".parse::<Selector>()?.into_field(&rows)?;
 assert_eq!(stored.fields()[0].get_metadata("TRANSFORM:function"), Some("skills.triple"));
-assert_eq!(stored.fields()[0].get_metadata("TRANSFORM:sources"), Some(r#"["size"]"#));
+assert_eq!(stored.fields()[0].get_metadata("TRANSFORM:by"), Some(r#"["size"]"#));
 
 assert!(unregister_function(&UserRef::parse("skills.triple")?));
 assert!("skills.triple(size)".parse::<yggdryl::expression::Term>()?.field(&rows).is_err());
@@ -420,15 +420,16 @@ assert!("skills.triple(size)".parse::<yggdryl::expression::Term>()?.field(&rows)
 
 `into_field` writes a selector as the declaration it is - each computed
 column carrying `TRANSFORM:` metadata - and `from_field` reads it back, so a
-`Field` is a plan holder. `Field::apply_arrow_batch` (and
-`apply_arrow_reader`) recomputes the derivations on a batch; keep the source
-columns in the selector, because the stored field is what the recompute reads.
+`Field` is a plan holder. `as_transform().apply_arrow_batch` recomputes the
+derivations on a batch (`Field::apply_arrow_batch` is the cast alone); keep the
+source columns in the selector, because the stored field is what the recompute
+reads.
 
 ```rust
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray};
-use yggdryl::{ArrowCastOptions, DataType, Selector, StructType};
+use yggdryl::{DataType, Selector, StructType};
 
 let root = DataType::from(StructType::from_fields([
     DataType::utf8().nullable_field("ccy"),
@@ -447,7 +448,7 @@ let batch = RecordBatch::try_from_iter([
     ("ccy", Arc::new(StringArray::from(vec!["EUR", "USD"])) as ArrayRef),
     ("size", Arc::new(Int64Array::from(vec![3_i64, 4])) as ArrayRef),
 ])?;
-let applied = holder.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?;
+let applied = holder.as_transform().apply_arrow_batch(&batch)?;
 let doubled = applied.column(2).as_any().downcast_ref::<Int32Array>().ok_or("int32")?;
 assert_eq!(doubled.values().to_vec(), vec![6, 8]);
 ```

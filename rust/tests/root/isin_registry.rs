@@ -234,6 +234,197 @@ fn the_latest_statement_leads_and_an_older_one_only_fills() {
     assert_eq!(undated.get(APPLE).unwrap().get(&IdType::Common), Some("B"));
 }
 
+/// A column takes the higher-ranked value whatever the time: a code its
+/// check digit closes replaces a typo from an older statement, a typo from
+/// a newer one never replaces it, and only between two of one rank does the
+/// time decide.
+#[test]
+fn a_column_never_downgrades_and_upgrades_whatever_the_time() {
+    const REAL: &str = "037833100";
+    const TYPO: &str = "037833101";
+    const OTHER: &str = "594918104";
+    let mut registry = IsinRegistry::new();
+    assert!(
+        registry
+            .merge(entry(HOLCIM, Some(20), &[(IdType::Cusip, TYPO)]))
+            .unwrap()
+    );
+    // An older real code upgrades the typo.
+    assert!(
+        registry
+            .merge(entry(HOLCIM, Some(10), &[(IdType::Cusip, REAL)]))
+            .unwrap()
+    );
+    assert_eq!(
+        registry.get(HOLCIM).unwrap().get(&IdType::Cusip),
+        Some(REAL)
+    );
+    assert_eq!(registry.get(HOLCIM).unwrap().updunix(), Some(20));
+    // A newer typo never downgrades it.
+    assert!(
+        !registry
+            .merge(entry(HOLCIM, Some(30), &[(IdType::Cusip, TYPO)]))
+            .unwrap()
+    );
+    assert_eq!(
+        registry.get(HOLCIM).unwrap().get(&IdType::Cusip),
+        Some(REAL)
+    );
+    // Two real codes: the newer leads, the older only fills.
+    assert!(
+        !registry
+            .merge(entry(HOLCIM, Some(15), &[(IdType::Cusip, OTHER)]))
+            .unwrap()
+    );
+    assert!(
+        registry
+            .merge(entry(HOLCIM, Some(40), &[(IdType::Cusip, OTHER)]))
+            .unwrap()
+    );
+    assert_eq!(
+        registry.get(HOLCIM).unwrap().get(&IdType::Cusip),
+        Some(OTHER)
+    );
+
+    // The key is a real number: a masked or mistyped one names no row.
+    for unreal in ["XX0000000001", "CH0012214058", "ZZ0000000008"] {
+        let refused = IsinRegistry::new()
+            .merge(IsinEntry::new(isin(unreal)))
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("$.isin"), "{unreal}: {refused}");
+        assert!(refused.contains(unreal), "{unreal}: {refused}");
+    }
+    // Learning keys only a real stated ISIN and collects only the
+    // equivalents that are real: a masked number learns nothing and a typo
+    // beside a real key is left out.
+    let mut registry = IsinRegistry::new();
+    let mut masked = order(
+        1,
+        &[(IdType::Isin, "XX0000000001"), (IdType::Common, "C-1")],
+    );
+    masked.set_ticker(Some(SmolStr::new("MASK")), true);
+    assert!(!registry.learn(&masked));
+    assert!(registry.is_empty());
+    let typed = order(
+        2,
+        &[
+            (IdType::Isin, HOLCIM),
+            (IdType::Cusip, TYPO),
+            (IdType::Common, "C-1"),
+        ],
+    );
+    assert!(registry.learn(&typed));
+    let row = registry.get(HOLCIM).unwrap();
+    assert_eq!(row.get(&IdType::Cusip), None);
+    assert_eq!(row.get(&IdType::Common), Some("C-1"));
+}
+
+/// A ticker leads back to its ISIN through an inverse index, gated by the
+/// market: an element stating only the ticker takes the row's ISIN where
+/// the markets agree or either is unstated and exactly one row lists the
+/// ticker, and a masked ISIN it states is replaced by the row's real one.
+#[test]
+fn a_registry_fills_the_isin_a_ticker_names_on_the_same_market() {
+    let mut registry = IsinRegistry::new();
+    let mut listed = order(10, &[(IdType::Isin, HOLCIM), (IdType::Ric, "HOLN.S")]);
+    listed.set_ticker(Some(SmolStr::new("HOLN")), true);
+    listed.set_miccode(mic("XSWX"), true);
+    assert!(registry.learn(&listed));
+    assert_eq!(
+        registry
+            .get_by_ticker("HOLN", None)
+            .map(|row| row.isin().as_str()),
+        Some(HOLCIM)
+    );
+    assert_eq!(
+        registry
+            .get_by_ticker("HOLN", mic("XSWX").as_ref())
+            .map(|row| row.isin().as_str()),
+        Some(HOLCIM)
+    );
+    assert!(
+        registry
+            .get_by_ticker("HOLN", mic("XLON").as_ref())
+            .is_none()
+    );
+    assert!(registry.get_by_ticker("ABBN", None).is_none());
+
+    // A ticker-only statement, no market: the ISIN derives, the rest with it.
+    let mut unstated = OrderEvent::at(20);
+    unstated.set_ticker(Some(SmolStr::new("HOLN")), true);
+    assert!(registry.fill(&mut unstated));
+    assert_eq!(unstated.get_isincode(), Some(HOLCIM));
+    assert!(unstated.get_securityids().is_derived(&IdType::Isin));
+    assert_eq!(unstated.get_securityids().get(&IdType::Ric), Some("HOLN.S"));
+    // On the row's market: the same; on another market: nothing.
+    let mut same = OrderEvent::at(20);
+    same.set_ticker(Some(SmolStr::new("HOLN")), true);
+    same.set_miccode(mic("XSWX"), true);
+    assert!(registry.fill(&mut same));
+    assert_eq!(same.get_isincode(), Some(HOLCIM));
+    let mut other = OrderEvent::at(20);
+    other.set_ticker(Some(SmolStr::new("HOLN")), true);
+    other.set_miccode(mic("XLON"), true);
+    assert!(!registry.fill(&mut other));
+    assert_eq!(other.get_isincode(), None);
+    // A masked ISIN beside the ticker is replaced by the row's real one.
+    let mut masked = order(20, &[(IdType::Isin, "XX0000000001")]);
+    masked.set_ticker(Some(SmolStr::new("HOLN")), true);
+    assert!(registry.fill(&mut masked));
+    assert_eq!(masked.get_isincode(), Some(HOLCIM));
+    // A real ISIN stated beside a ticker another row lists stands.
+    let mut stated = order(20, &[(IdType::Isin, APPLE)]);
+    stated.set_ticker(Some(SmolStr::new("HOLN")), true);
+    assert!(!registry.fill(&mut stated));
+    assert_eq!(stated.get_isincode(), Some(APPLE));
+
+    // Two rows listing one ticker on two markets: a statement naming a
+    // market resolves to that listing, one naming none resolves to neither.
+    let mut other_listing = order(30, &[(IdType::Isin, NOVARTIS)]);
+    other_listing.set_ticker(Some(SmolStr::new("HOLN")), true);
+    other_listing.set_miccode(mic("XLON"), true);
+    assert!(registry.learn(&other_listing));
+    assert_eq!(
+        registry
+            .get_by_ticker("HOLN", mic("XLON").as_ref())
+            .map(|row| row.isin().as_str()),
+        Some(NOVARTIS)
+    );
+    assert_eq!(
+        registry
+            .get_by_ticker("HOLN", mic("XSWX").as_ref())
+            .map(|row| row.isin().as_str()),
+        Some(HOLCIM)
+    );
+    assert!(registry.get_by_ticker("HOLN", None).is_none(), "ambiguous");
+    let mut ambiguous = OrderEvent::at(40);
+    ambiguous.set_ticker(Some(SmolStr::new("HOLN")), true);
+    assert!(!registry.fill(&mut ambiguous));
+    // The index follows a row's ticker: a newer listing fact moves it, and
+    // a removed row leaves it.
+    let mut renamed = order(50, &[(IdType::Isin, NOVARTIS)]);
+    renamed.set_ticker(Some(SmolStr::new("NOVN")), true);
+    renamed.set_miccode(mic("XLON"), true);
+    assert!(registry.learn(&renamed));
+    assert_eq!(
+        registry
+            .get_by_ticker("NOVN", None)
+            .map(|row| row.isin().as_str()),
+        Some(NOVARTIS)
+    );
+    assert_eq!(
+        registry
+            .get_by_ticker("HOLN", None)
+            .map(|row| row.isin().as_str()),
+        Some(HOLCIM)
+    );
+    assert!(registry.remove(HOLCIM).is_some());
+    assert!(registry.get_by_ticker("HOLN", None).is_none());
+    registry.clear();
+    assert!(registry.get_by_ticker("NOVN", None).is_none());
+}
+
 #[test]
 fn a_cfi_code_refines_whatever_the_time_and_a_conflict_goes_to_the_latest() {
     let mut registry = IsinRegistry::new();

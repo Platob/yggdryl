@@ -107,9 +107,9 @@ mod fact {
     pub(super) const CLEARED: u32 =
         ALL & !(SECURITYIDS | STATE | KIND | EXPIRY | EXECUTION | IDENTIFIERS | PARTYIDS);
     /// What the message's status reaches: the state, the category read
-    /// against it, the execution it dates, and what the category decides -
-    /// the type and a sided quote's FX parts.
-    pub(super) const STATUS: u32 = STATE | KIND | EXECUTION | MDTYPE | LASTPX | ORDERED;
+    /// against it, the execution it dates, and what they decide - the type
+    /// and what the order's quantities imply of one another.
+    pub(super) const STATUS: u32 = STATE | KIND | EXECUTION | MDTYPE | ORDERED;
     /// What a field no tag maps reaches: the facts a bridge's own spelling
     /// can state - an identifier source, a detailed classification, a quote
     /// side's currency, an event timestamp - and what the instrument key an
@@ -130,7 +130,7 @@ fn facts_of_tag(registry: &FixRegistry, tag: i32) -> u32 {
         1138 | 111 => fact::DISPLAYQTY | fact::HIDDENQTY,
         84 => fact::ORDERED,
         996 => fact::UNIT,
-        54 => fact::SIDE | fact::BIDASK | fact::PRICE | fact::QUANTITY | fact::LASTPX,
+        54 => fact::SIDE | fact::BIDASK | fact::PRICE | fact::QUANTITY,
         59 => fact::TIF,
         55 => fact::TICKER,
         326 | 340 | 965 => fact::TRADABLE,
@@ -139,7 +139,7 @@ fn facts_of_tag(registry: &FixRegistry, tag: i32) -> u32 {
         BIDPX_TAG | OFFERPX_TAG | BIDSIZE_TAG | OFFERSIZE_TAG => {
             fact::BIDASK | fact::PRICE | fact::QUANTITY
         }
-        31 | 194 | 195 | 188 | 189 | 190 | 191 => fact::LASTPX | fact::FILLS,
+        31 | 194 | 195 => fact::LASTPX | fact::FILLS,
         32 | 6 | 14 | 151 => fact::ORDERED,
         15 | 120 => fact::CURRENCY | fact::BIDASK,
         30 | 100 | 207 => fact::MIC,
@@ -204,11 +204,10 @@ fn fact_of_crate_tag(tag: i32) -> u32 {
     }
 }
 
-/// One field's text, trimmed; `None` where it is null or empty.
+/// One field's text, trimmed, an integer as its digits ([`scalar_text`]);
+/// `None` where it is null, empty or of another shape.
 fn stated_text(value: Option<Scalar>) -> Option<SmolStr> {
-    value
-        .and_then(|held| held.as_str().map(str::trim).map(SmolStr::new))
-        .filter(|held| !held.is_empty())
+    value.as_ref().and_then(scalar_text)
 }
 
 /// FIX's own `StrikePrice(202)`: what [`FixMsg::strikeprice`] reads.
@@ -532,8 +531,11 @@ fn regulatory_kind(kind: Option<&str>) -> crate::Result<IdType> {
 }
 
 /// States `value` as an identifier of `kind` from `src` in `ids`: the first
-/// value one is stated with fills it, and a later different one - or one no
-/// identifier holds - states nothing and is kept as an anomaly of `field`.
+/// value one is stated with fills it, a later one that outranks it replaces
+/// it ([`Identifiers::insert`]) - recorded as an anomaly of `field` naming
+/// what it replaced - and a later different one of no higher rank, or one
+/// no identifier holds, states nothing and is kept as an anomaly of
+/// `field`.
 fn admit_identifier(
     ids: &mut Identifiers,
     src: IdSource,
@@ -555,11 +557,27 @@ fn admit_identifier(
             return;
         }
     };
+    admit_stated(ids, field, id, dropped);
+}
+
+/// Lands `id` in `ids` as [`admit_identifier`] states: filling, replacing
+/// what ranks below it, and dropping what a held value of no lower rank
+/// refuses - each move past a plain fill recorded on `field`.
+fn admit_stated(
+    ids: &mut Identifiers,
+    field: &str,
+    id: Identifier,
+    anomalies: &mut Vec<super::FixAnomaly>,
+) {
     match ids.get_from(id.key()) {
-        Some(held) if held != id.value() => dropped.push(super::FixAnomaly::new(
-            field,
-            format!("states {id} where {}={held} is already stated", id.key()),
-        )),
+        Some(held) if held != id.value() => {
+            let held = SmolStr::new(held);
+            if ids.insert(id.clone()) {
+                anomalies.push(replaced_identifier(field, &id, &held));
+            } else {
+                anomalies.push(dropped_identifier(field, &id, &held));
+            }
+        }
         Some(_) => {}
         None => {
             ids.insert(id);
@@ -1082,15 +1100,6 @@ fn instant_of(value: &Scalar) -> Option<i64> {
     held.temporal_count_at(crate::TimeUnit::Nanosecond)
 }
 
-/// One code of a set as the number it is, however the dictionary typed the
-/// tag: the integer a code set answers with, else the digits a dictionary
-/// that left the tag as text carries.
-fn code_of(value: &Scalar) -> Option<i64> {
-    value
-        .as_i64()
-        .or_else(|| value.as_str()?.trim().parse().ok())
-}
-
 /// The position of the child carrying one tag among `fields`, by the
 /// dictionary's own reading of each child. A group occurrence is positional,
 /// the names living on the field and never in the value, so this is found once
@@ -1527,7 +1536,7 @@ impl FixMsg {
             .flat_map(|(occurrences, stamp, kind)| {
                 occurrences.iter().filter_map(move |occurrence| {
                     let held = occurrence.as_sequence()?;
-                    let rank = trdregtimestamp_rank(code_of(held.get(kind)?)?)?;
+                    let rank = trdregtimestamp_rank(identity::integer_of(held.get(kind)?)?)?;
                     Some((rank, instant_of(held.get(stamp)?)?))
                 })
             })
@@ -1845,12 +1854,13 @@ impl FixMsg {
     /// Whether two observations state one complete session event: one
     /// delivery, read as the same category of market data. The messages a
     /// parse splits one delivery into - an order's report beside its
-    /// execution, a trade beside its sided executions, an unsided quote
-    /// beside its sided quotes - share the delivery and are never another
-    /// observation of one another: their categories differ, and where they
-    /// do not their chains do, which is what keeps them apart before the
-    /// walk (the lifecycle's own key adds the side and an execution's cross
-    /// code) and inside it (each walks a chain of its own).
+    /// execution, a trade beside its sided executions, a batch beside its
+    /// entries - share the delivery and are never another observation of
+    /// one another: their categories differ, and where they do not their
+    /// chains do, which is what keeps them apart before the walk (the
+    /// lifecycle's own key adds the side a sided kind is keyed by and an
+    /// execution's cross code) and inside it (each walks a chain of its
+    /// own).
     pub(super) fn is_same_session_event(&self, other: &Self) -> bool {
         self.msgcat() == other.msgcat()
             && self
@@ -1964,10 +1974,17 @@ impl FixMsg {
             .map(|held| matches!(held.as_str(), Some("F" | "1" | "2")))
     }
 
-    /// Whether this is an execution report of no fill: a type filed under
-    /// `EXEC` that reports no execution, its order's or its quote's report.
-    pub(super) fn reports_no_fill(&self) -> bool {
-        filed_msgcat(&self.registry, self.header.msgtype()) == MarketDataKind::Execution
+    /// Whether this message acknowledges an execution rather than reports
+    /// its order: a type filed under `EXEC` other than the
+    /// `ExecutionReport` (`8`) - an `ExecutionAcknowledgement` (`BN`), a
+    /// `DontKnowTrade` (`Q`) - that reports no execution. Filed as its
+    /// order's or quote's report, a lifecycle walks it there, but what it
+    /// states is the execution's standing - `ExecAckStatus(1036)` `2` reads
+    /// `DONT_KNOW` - never the order's, so no market leaf is read off it.
+    pub(super) fn acknowledges_execution(&self) -> bool {
+        let msgtype = self.header.msgtype();
+        msgtype != "8"
+            && filed_msgcat(&self.registry, msgtype) == MarketDataKind::Execution
             && !self.reports_execution()
     }
 
@@ -2277,26 +2294,14 @@ impl FixMsg {
             // `LastSpotRate(194)` and `LastForwardPoints(195)`, the parts of
             // `LastPx(31)` - never of `Price(44)` - so one tag triple is one
             // statement, completed where two of its three are stated. A
-            // sided quote states its side's where it states none of its own.
+            // quote's bid and offer parts are its legs', which no last price
+            // reads: they stay the message's own fields.
             let (mut lastpx, mut spotrate, mut forwardpoints) = (
                 self.lifted.lastpx(),
                 self.lifted.lastspotrate(),
                 self.lifted.lastforwardpoints(),
             );
             fx_triple(&mut lastpx, &mut spotrate, &mut forwardpoints);
-            if self.event.marketdatakind() == MarketDataKind::Quotation {
-                match self.stated_side() {
-                    Some(side) if side.is_bid() => {
-                        spotrate = spotrate.or_else(|| self.lifted.bidspotrate());
-                        forwardpoints = forwardpoints.or_else(|| self.lifted.bidforwardpoints());
-                    }
-                    Some(side) if side.is_ask() => {
-                        spotrate = spotrate.or_else(|| self.lifted.offerspotrate());
-                        forwardpoints = forwardpoints.or_else(|| self.lifted.offerforwardpoints());
-                    }
-                    _ => {}
-                }
-            }
             let overwrite = over(fact::LASTPX);
             let event = &mut *self.event;
             event.set_lastpx(lastpx, overwrite);
@@ -2421,7 +2426,9 @@ impl FixMsg {
         self.get_by_tag(tag).filter(|held| !held.is_null())
     }
 
-    /// One field's text, trimmed; `None` where it is null or empty.
+    /// One field's text, trimmed - an integer-typed field, such as a status
+    /// code set whose values are numbers, as its digits; `None` where it is
+    /// null or empty.
     fn stated_word(&self, tag: i32) -> Option<SmolStr> {
         stated_text(self.stated_by_tag(tag))
     }
@@ -2736,12 +2743,13 @@ impl FixMsg {
     }
 
     /// Whether it could trade, from whichever status says so, in the codes
-    /// FIX's own enumerations state. A status that is about something else -
-    /// a code neither list names - says nothing either way, so the next
-    /// status answers instead.
+    /// FIX's own enumerations state, each read as the integer it is however
+    /// the dictionary typed the tag ([`identity::integer_of`]). A status
+    /// that is about something else - a code neither list names - says
+    /// nothing either way, so the next status answers instead.
     fn stated_tradable(&self) -> Option<bool> {
         let status = |tag: i32, open: &[i64], shut: &[i64]| {
-            let held = self.stated_by_tag(tag)?.as_i64()?;
+            let held: i64 = identity::integer_of(&self.stated_by_tag(tag)?)?;
             if open.contains(&held) {
                 Some(true)
             } else if shut.contains(&held) {
@@ -2752,11 +2760,7 @@ impl FixMsg {
         };
         status(326, &[3, 17], &[1, 2, 4, 18, 19, 21])
             .or_else(|| status(340, &[2], &[1, 3, 4, 5, 7]))
-            .or_else(|| match self.stated_word(965)?.as_str() {
-                "1" | "3" => Some(true),
-                "2" | "4" | "5" | "6" | "9" | "11" => Some(false),
-                _ => None,
-            })
+            .or_else(|| status(965, &[1, 3], &[2, 4, 5, 6, 9, 11]))
     }
 
     /// The type of its kind the message is: the first field its kind names
@@ -2813,7 +2817,7 @@ impl FixMsg {
             || format_smolstr!("{tag}"),
             |field| format_smolstr!("{}({tag})", field.name()),
         );
-        crate::warning::warned!(
+        crate::logging::warning::warned!(
             what,
             &field,
             "{stated:?} on a {} message",
@@ -2882,11 +2886,18 @@ impl FixMsg {
     /// What a settle moves when a split refiled a settled message: its
     /// category, its state, its chain - each recorded as a crate column's
     /// word, which no settle restates - and its sources. The fields, and so
-    /// the market, the maps and the parents read off them, stood still, so
-    /// what is left is the cross codes in step with the category and the
-    /// code the content digests to, and the identity they derive.
+    /// the maps and the parents read off them, stood still; of the market
+    /// the category decides what the order's quantities imply, so the
+    /// quantity is stated again off `Quantity(53)` and they settle under it:
+    /// an order's report is about what it has left, and an execution's
+    /// quantity is what it states, never what its order has left. What is
+    /// left is the cross codes in step with the category and the code the
+    /// content digests to, and the identity they derive.
     pub(super) fn settle_refiled(&mut self) {
         debug_assert_eq!(self.stale, 0, "a refiled message moved no field");
+        let over = self.stated & fact::QUANTITY == 0;
+        self.event.set_quantity(self.lifted.quantity(), over);
+        self.event.settle_orders();
         self.event.sync_cross();
         let code = self.currhashcode();
         self.event.finalized(code);
@@ -2899,24 +2910,19 @@ impl FixMsg {
     /// anomaly, the field kept on the wire - then each unmapped field whose
     /// name names a source ([`Self::keyed_securityids`]), and last the ISIN
     /// a bridge's instrument key names where none is stated. Each code is
-    /// validated and the first stated code under a key kept.
+    /// held to its shape; the first stated code under a key is kept unless
+    /// a later one outranks it ([`IdType::rank`]) - a real number over a
+    /// masked one - which replaces it.
     fn stated_securityids(&self) -> (Identifiers, Vec<super::FixAnomaly>) {
         let mut ids = Identifiers::new();
         let mut anomalies = Vec::new();
-        // Fill only: the same code twice under one type and source is one
-        // entry, and a later different one is dropped with an anomaly,
+        // The same code twice under one type and source is one entry; a
+        // later different one replaces the held one only where it outranks
+        // it, and is otherwise dropped - each with an anomaly, the field
         // staying on the wire as it arrived.
         let mut insert =
             |ids: &mut Identifiers, field: &str, made: crate::Result<Identifier>| match made {
-                Ok(id) => match ids.get_from(id.key()) {
-                    Some(held) if held != id.value() => {
-                        anomalies.push(dropped_identifier(field, &id, held));
-                    }
-                    Some(_) => {}
-                    None => {
-                        ids.insert(id);
-                    }
-                },
+                Ok(id) => admit_stated(ids, field, id, &mut anomalies),
                 Err(error) => anomalies.push(super::FixAnomaly::new(field, error.to_string())),
             };
         let mut state =
@@ -2978,10 +2984,43 @@ impl FixMsg {
 
     /// The identifier names this message's type declares under
     /// `FIX:identifiers`, comma-separated.
-    fn declared_identifiers(&self) -> Option<&str> {
+    pub(super) fn declared_identifiers(&self) -> Option<&str> {
         self.registry
             .get_msgtype(self.header.msgtype())
             .and_then(|definition| declared_identifiers(definition.as_field()))
+    }
+
+    /// Whether the arrival `key` states, holding `text`, is captured: its
+    /// key names an identifier - read as [`Holds::land`] reads an untagged
+    /// one, against the `declared` names of this message's type - and the
+    /// set that identifier's type belongs to ([`Operation::identifier_set`])
+    /// holds its key with the value the text states, held as the type
+    /// stores it. A captured arrival is held in that set and nowhere else:
+    /// a leaf drops it from its metadata, and a row carries it in its
+    /// residual record rather than its `metadata` cell. A key no map holds -
+    /// one naming no identifier, one whose value its type refuses, one a
+    /// held value of no lower rank refused - is not captured. Allocates
+    /// nothing: the key's reading is `memo`'s, the value is canonicalized
+    /// into a buffer and the set is searched.
+    pub(super) fn is_captured(
+        &self,
+        memo: &super::memo::Memo,
+        declared: Option<&str>,
+        key: &str,
+        text: &str,
+    ) -> bool {
+        let text = text.trim();
+        if text.is_empty() || is_null_like(text) {
+            return false;
+        }
+        let Some(id) = inferred_key(memo, key, declared, false) else {
+            return false;
+        };
+        let mut buffer = [0_u8; crate::identifier::IDENTIFIER_VALUE_WIDTH];
+        let Ok(value) = id.kind().value_into(text, &mut buffer) else {
+            return false;
+        };
+        self.identifier_set(id.kind()).held_at(&id, value).is_some()
     }
 
     /// Each entry this message states that no dictionary maps, as its key
@@ -3240,8 +3279,8 @@ impl FixMsg {
     /// `miscfees` holds `[{"miscfeeamt":"1.5","miscfeecurr":"EUR"}]` - a
     /// group an array of one object per occurrence, a component or a map one
     /// object, nested groups and components recursing, every leaf inside the
-    /// canonical text a root scalar spells, so a decimal keeps its stored
-    /// scale and no value is a JSON number. Null, skipped and counter
+    /// canonical text a root scalar spells, so a decimal is its shortest
+    /// exact text and no value is a JSON number. Null, skipped and counter
     /// members are left out, and a child left with nothing writes no key.
     /// Left out too are a child the [envelope](super::digest) holds, since
     /// the message's code leaves the same set out; a typed tag stated twice;
@@ -3936,9 +3975,9 @@ impl FixMsg {
     /// and no settling, answering how many landed.
     ///
     /// The lenient twin of [`Self::set_many`], for a pass whose answers are
-    /// best effort: a value the target refuses - an identifier whose check
-    /// digit does not close, a spelling its code set does not read - is
-    /// dropped with a deduplicated warning naming the key rather than
+    /// best effort: a value the target refuses - an identifier of the wrong
+    /// width, a spelling its code set does not read - is dropped with a
+    /// deduplicated warning naming the key rather than
     /// refused, and every other value lands as `set_many` lands it. Nothing
     /// else is lenient: the rebuild's refusal, which no single value causes,
     /// is still returned and leaves the message unchanged. The identity is
@@ -3961,7 +4000,7 @@ impl FixMsg {
             match self.staged(&key, value, &|_, _| Ok(())) {
                 Ok(Staged::Typed(tag, value)) => typed.push((tag, value)),
                 Ok(Staged::Row(write)) => stage(&mut writes, write),
-                Err(error) => crate::warning::warned!(
+                Err(error) => crate::logging::warning::warned!(
                     "FIX value dropped: the field its key reaches refuses it",
                     &match key {
                         FixKey::Tag(tag) => format_smolstr!("{tag}"),
@@ -5333,11 +5372,24 @@ impl Holds<'_> {
 }
 
 /// What dropping `id`, which `field` states under a key already holding
-/// `held`, records: the first code under a key stands.
+/// `held`, records: the first code under a key stands over one of no
+/// higher rank.
 fn dropped_identifier(field: &str, id: &Identifier, held: &str) -> super::FixAnomaly {
     super::FixAnomaly::new(
         field,
         format!("states {id} where {}={held} is already stated", id.key()),
+    )
+}
+
+/// What replacing `held` by `id`, which `field` states under its key and
+/// which outranks it, records: a real number over a masked one or a typo.
+fn replaced_identifier(field: &str, id: &Identifier, held: &str) -> super::FixAnomaly {
+    super::FixAnomaly::new(
+        field,
+        format!(
+            "states {id}, replacing {}={held}, which ranks below it",
+            id.key()
+        ),
     )
 }
 
@@ -5358,7 +5410,21 @@ fn inferred_identifier(
     if value.is_empty() || is_null_like(value) {
         return None;
     }
-    let key = memo.identifier_key(declared, tagged, key, || {
+    let key = inferred_key(memo, key, declared, tagged)?;
+    wanted(key.kind()).then(|| Identifier::new(key, value))
+}
+
+/// The identifier key one unmapped `key` names, as [`inferred_identifier`]
+/// reads it: the `declared` names of its level and, where no dictionary
+/// field is `tagged` by it, the crate's identifier names too - answered by
+/// `memo` once per distinct key and declaration.
+fn inferred_key(
+    memo: &super::memo::Memo,
+    key: &str,
+    declared: Option<&str>,
+    tagged: bool,
+) -> Option<IdKey> {
+    memo.identifier_key(declared, tagged, key, || {
         let names = declared
             .into_iter()
             .flat_map(|names| names.split(','))
@@ -5369,8 +5435,7 @@ fn inferred_identifier(
                     .flatten(),
             );
         IdKey::infer(key, names)
-    })?;
-    wanted(key.kind()).then(|| Identifier::new(key, value))
+    })
 }
 
 /// The `FIX:identifiers` a component - a message's definition, an
@@ -5497,8 +5562,8 @@ impl<'a> Planned<'a> {
 
 impl<'a> Shape<'a> {
     /// `value` rebuilt as named values: a leaf as the canonical text it
-    /// spells - the same text a root scalar lands as, decimals at their
-    /// stored scale and codes as their names, so no number is ever a JSON
+    /// spells - the same text a root scalar lands as, decimals as their
+    /// shortest exact text and codes as their names, so no number is ever a JSON
     /// number - a component or an occurrence as one record of its members
     /// under their names, a group or a list as the sequence of its
     /// occurrences, a map as one record of its text keys. A null, a skipped

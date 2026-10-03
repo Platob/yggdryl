@@ -8,6 +8,9 @@
 #[cfg(feature = "aws")]
 use std::collections::BTreeMap;
 
+#[cfg(feature = "aws")]
+use crate::boolean::bool_from_text;
+
 /// A non-empty value, trimmed; an empty one is unset.
 fn present(value: String) -> Option<String> {
     let trimmed = value.trim();
@@ -35,19 +38,18 @@ impl Environment {
         present(value)
     }
 
-    /// A boolean variable, in the spellings the cloud tools accept.
+    /// A boolean variable, read through `bool_from_text`: the one table
+    /// every flag in the crate reads, `true`, `yes`, `y`, `on`, `1` and their
+    /// opposites in any case.
+    ///
+    /// `None` is a variable that is unset or blank. Text the table does not
+    /// spell reads false, as the cloud tools read it: these are toggles read
+    /// where nothing can refuse, and one nobody can read is not one that was
+    /// set.
     pub fn flag(&self, name: &str) -> Option<bool> {
-        self.get(name).map(|value| is_true(&value))
+        self.get(name)
+            .map(|value| bool_from_text(&value).unwrap_or(false))
     }
-}
-
-/// Whether `value` spells true the way the cloud tools read one.
-#[cfg(feature = "aws")]
-pub fn is_true(value: &str) -> bool {
-    matches!(
-        value.trim().to_ascii_lowercase().as_str(),
-        "true" | "1" | "yes" | "on"
-    )
 }
 
 /// A non-empty process environment variable, trimmed: what the HTTP client
@@ -63,10 +65,4 @@ pub mod internals {
     //! What `rust/tests/auth/environment.rs` pins and a caller cannot reach.
     #[cfg(feature = "aws")]
     pub use super::Environment;
-
-    /// Whether `value` spells true the way the cloud tools read one.
-    #[cfg(feature = "aws")]
-    pub fn is_true(value: &str) -> bool {
-        super::is_true(value)
-    }
 }

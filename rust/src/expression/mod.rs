@@ -54,13 +54,14 @@ mod display;
 pub(crate) mod eval;
 mod explain;
 mod filter;
+mod join;
 mod literal;
 mod parser;
 mod path;
 mod plan;
 mod pushdown;
 mod records;
-mod selector;
+pub(crate) mod selector;
 mod serde;
 mod term;
 mod transform;
@@ -75,19 +76,23 @@ use crate::{Error, Field, Result};
 
 pub use bind::Bound;
 pub use filter::{Filter, IntoFilter};
+pub use join::{IntoJoinKeys, JoinKey, JoinKeys};
 pub use literal::Literal;
 pub use parser::needs_quoting;
 pub use path::{FieldPath, FieldSegment};
 pub(crate) use path::{resolve_index, resolve_range};
-pub use plan::{IntoPlan, Location, Ordering, Plan, Source, Target, Verb, Write};
+pub use plan::{
+    IntoOrderings, IntoPlan, Join, Location, Ordering, Plan, Source, Target, Verb, Write,
+};
 pub use pushdown::{Bounds, ColumnBounds, Residual};
 pub use records::Records;
 pub use selector::{BoundSelector, IntoSelector, Projection, Selector};
 pub use term::{Term, col, lit};
 pub(crate) use transform::{
-    TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_KEYS, TRANSFORM_SOURCES_KEY,
-    TransformPlan, canonicalize_transform_expression, canonicalize_transform_function,
+    TRANSFORM_BY_KEY, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_KEYS,
+    canonicalize_transform_expression, canonicalize_transform_function,
 };
+pub(crate) use typing::common_type;
 pub use user::{
     FunctionSignature, UserFunction, UserRef, lookup_function, register_function,
     registered_functions, unregister_function,
@@ -365,6 +370,58 @@ pub enum Function {
     Day,
     /// The clock hour, 0 through 23.
     Hour,
+    /// `years(x)` - whole years since 1970, the Iceberg `year` transform.
+    ///
+    /// The four calendar parts above read a field off a date; the seven epoch
+    /// functions from here to [`Self::Minutes`] count the whole periods from
+    /// the Unix epoch to it, floored, so an instant before 1970 lands in its
+    /// own period (`years('1969-12-31')` is `-1`). They are spelled in the
+    /// plural as Spark's Iceberg DDL spells them, and each is one partition
+    /// transform of an Iceberg table.
+    Years,
+    /// `quarters(x)` - quarters since 1970-Q1, the `quarter` transform.
+    Quarters,
+    /// `months(x)` - months since 1970-01, the `month` transform.
+    Months,
+    /// `weeks(x)` - Monday-start weeks since Monday 1969-12-29, the `week`
+    /// transform; every week starts on a Monday as an ISO 8601 week does.
+    Weeks,
+    /// `days(x)` - the UTC day of a date or an instant as a `date32`, the
+    /// `day` transform.
+    Days,
+    /// `hours(x)` - hours since the epoch, from an instant; the `hour`
+    /// transform.
+    Hours,
+    /// `minutes(x, n)` - periods of `n` minutes since the epoch, from an
+    /// instant; the `minutes[n]` transform.
+    ///
+    /// `n` is a whole-number literal from 1 to `u32::MAX`, always written:
+    /// `minutes(ts, 1)` is the minute, `minutes(ts, 15)` the quarter hour
+    /// `minutes[15]` and `minutes(ts, 60)` the hour `hours(ts)` answers.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Field, Selector, StructType, TimeUnit, Timezone};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let schema: Field = StructType::from_fields([DataType::DateTime64 {
+    ///     unit: TimeUnit::Second,
+    ///     timezone: Timezone::UTC,
+    /// }
+    /// .required_field("ts")])
+    /// .map(DataType::from)?
+    /// .required_field("row");
+    /// let selector: Selector = "minutes(ts, 15) as q, minutes(ts, 1) as m".parse()?;
+    /// let typed = selector.apply_field(&schema)?;
+    /// assert_eq!(typed.fields()[0].dtype(), &DataType::Int32);
+    /// assert_eq!(selector.to_string(), "minutes(ts, 15) as q, minutes(ts, 1) as m");
+    /// // The step is always written, and a positive whole number.
+    /// assert!("minutes(ts)".parse::<Selector>().is_err());
+    /// let zero: Selector = "minutes(ts, 0)".parse()?;
+    /// assert!(zero.apply_field(&schema).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    Minutes,
     /// `truncate(value, unit_or_width)` - a temporal floored to a unit, or a
     /// number floored to a multiple.
     Truncate,
@@ -403,7 +460,7 @@ pub enum Function {
 
 impl Function {
     /// Every function this grammar knows, in canonical spelling.
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 27] = [
         Self::Lower,
         Self::Upper,
         Self::Length,
@@ -417,6 +474,13 @@ impl Function {
         Self::Month,
         Self::Day,
         Self::Hour,
+        Self::Years,
+        Self::Quarters,
+        Self::Months,
+        Self::Weeks,
+        Self::Days,
+        Self::Hours,
+        Self::Minutes,
         Self::Truncate,
         Self::Coalesce,
         Self::IfNull,
@@ -444,6 +508,13 @@ impl Function {
             Self::Month => "month",
             Self::Day => "day",
             Self::Hour => "hour",
+            Self::Years => "years",
+            Self::Quarters => "quarters",
+            Self::Months => "months",
+            Self::Weeks => "weeks",
+            Self::Days => "days",
+            Self::Hours => "hours",
+            Self::Minutes => "minutes",
             Self::Truncate => "truncate",
             Self::Coalesce => "coalesce",
             Self::IfNull => "if_null",
@@ -476,6 +547,13 @@ impl Function {
             "month" => Self::Month,
             "day" | "dayofmonth" => Self::Day,
             "hour" => Self::Hour,
+            "years" => Self::Years,
+            "quarters" => Self::Quarters,
+            "months" => Self::Months,
+            "weeks" => Self::Weeks,
+            "days" => Self::Days,
+            "hours" => Self::Hours,
+            "minutes" => Self::Minutes,
             "truncate" | "trunc" | "date_trunc" => Self::Truncate,
             "coalesce" => Self::Coalesce,
             "if_null" | "ifnull" | "nvl" | "isnull" => Self::IfNull,
@@ -504,7 +582,8 @@ impl Function {
             | Self::Contains
             | Self::Truncate
             | Self::IfNull
-            | Self::Get => (2, 2),
+            | Self::Get
+            | Self::Minutes => (2, 2),
             _ => (1, 1),
         }
     }
@@ -513,6 +592,63 @@ impl Function {
     #[must_use]
     pub fn is_calendar(&self) -> bool {
         matches!(self, Self::Year | Self::Month | Self::Day | Self::Hour)
+    }
+
+    /// Return whether this function counts whole periods since the epoch.
+    ///
+    /// These are the seven of [`Self::Years`] through [`Self::Minutes`]: each
+    /// floors a temporal to a period and is monotone over it, which is what
+    /// lets a range on the argument prune through the function.
+    #[must_use]
+    pub const fn is_epoch(&self) -> bool {
+        matches!(
+            self,
+            Self::Years
+                | Self::Quarters
+                | Self::Months
+                | Self::Weeks
+                | Self::Days
+                | Self::Hours
+                | Self::Minutes
+        )
+    }
+
+    /// The period an epoch call floors to, for the seven that do.
+    ///
+    /// `constants` is the call's arguments as the constant each one holds -
+    /// `None` for an argument that is not one - and this is the one rule
+    /// that knows where a step is written: `minutes(x, n)` carries its `n`
+    /// as the second argument, a literal. Every other epoch function takes
+    /// its argument alone.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a `minutes` call whose step is missing, or is not a literal
+    /// whole number from 1 to `u32::MAX`.
+    pub(crate) fn epoch_period<'value>(
+        &self,
+        mut constants: impl Iterator<Item = Option<&'value crate::Scalar>>,
+    ) -> Result<Option<eval::EpochPeriod>> {
+        Ok(Some(match self {
+            Self::Years => eval::EpochPeriod::Year,
+            Self::Quarters => eval::EpochPeriod::Quarter,
+            Self::Months => eval::EpochPeriod::Month,
+            Self::Weeks => eval::EpochPeriod::Week,
+            Self::Days => eval::EpochPeriod::Day,
+            Self::Hours => eval::EpochPeriod::Hour,
+            Self::Minutes => match constants.nth(1) {
+                Some(Some(step)) => eval::EpochPeriod::minutes(step)?,
+                Some(None) | None => {
+                    return Err(Error::InvalidRecord {
+                        path: SmolStr::new_static("$"),
+                        reason: SmolStr::new_static(
+                            "expected the step n of minutes(x, n) to be a literal whole number",
+                        ),
+                    });
+                }
+            },
+            _ => return Ok(None),
+        }))
     }
 
     /// Every function name this grammar accepts, for an error message.
@@ -866,6 +1002,17 @@ impl std::str::FromStr for Expression {
 
     fn from_str(input: &str) -> Result<Self> {
         parser::parse_expression(input)
+    }
+}
+
+impl std::str::FromStr for Comparison {
+    type Err = Error;
+
+    /// Read a comparison as the grammar spells one: `=`, `<>` or `!=`, `<`,
+    /// `<=`, `>`, `>=`, `is distinct from` or `is not distinct from`, in any
+    /// case, the surrounding blanks not part of it.
+    fn from_str(input: &str) -> Result<Self> {
+        parser::parse_comparison(input)
     }
 }
 

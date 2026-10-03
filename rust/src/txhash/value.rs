@@ -289,10 +289,10 @@ impl TxHash {
     /// microsecond and all 64 digest bits agree.
     ///
     /// The digest is the only content this needs, because whatever else an
-    /// identity rests on is already inside it - a graph [`Event`] digests its
-    /// cross code, its names, its parents, its state, its sequence and its
-    /// predecessor into `currhashcode` before coupling it here, so rehashing
-    /// them into the identifier would only spend bits restating them.
+    /// identity rests on is already inside it - a graph [`Event`] digests what
+    /// it states, a text line its body, into `currhashcode` before coupling it
+    /// here, so rehashing them into the identifier would only spend bits
+    /// restating them.
     ///
     /// Neither the original unit nor the algorithm is encoded, and
     /// sub-microsecond time cannot be recovered, so this is a projection of
@@ -592,10 +592,16 @@ impl FromStr for TxHash {
                 ),
             )
         })?;
-        let unix = unix.parse::<i64>().map_err(|error| {
+        let unix = crate::integer::integer_from_text_as::<i64>(unix).ok_or_else(|| {
             parse_error(
                 0,
-                format_smolstr!("expected a signed 64-bit unix count, got {error}"),
+                crate::text::expected_got(
+                    "a signed 64-bit unix count",
+                    format_args!(
+                        "{:?}",
+                        crate::text::elide_to(unix, crate::text::ERROR_TEXT_LIMIT)
+                    ),
+                ),
             )
         })?;
         let rest_offset = normalized.len() - rest.len();

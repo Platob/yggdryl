@@ -41,6 +41,31 @@ fn reader() -> (Arc<FixRegistry>, FixCodec) {
     (registry, reader)
 }
 
+/// A status code set whose values are numbers - `QuoteStatus(297)`, typed
+/// as an integer by the dictionary - states the message's state as a text
+/// one does: a quote status report reads its quote as cancelled, expired or
+/// rejected rather than unknown.
+#[test]
+fn an_integer_typed_status_tag_states_the_messages_state() {
+    use yggdryl::State;
+
+    let (_, reader) = reader();
+    for (code, state) in [
+        ("1", State::Canceled),
+        ("7", State::Expired),
+        ("5", State::Rejected),
+    ] {
+        let line = format!("8=FIX.4.4|35=AI|52=20260921-10:00:00|117=Q1|55=AAPL|297={code}|10=0|");
+        let message = reader.sole_line(line.as_bytes()).expect("one message");
+        assert_eq!(
+            message.get_by_tag(297).and_then(|held| held.as_i64()),
+            code.parse().ok(),
+            "{code} is typed as an integer"
+        );
+        assert_eq!(*message.get_state(), state, "{code}");
+    }
+}
+
 /// A setter states a security identifier as the message's fact and leaves
 /// the wire as the source sent it: the `SecAltIDGrp(454)` occurrence the
 /// message carried is still its one, and the identifier it read stands
@@ -399,11 +424,19 @@ fn a_cross_code_is_stored_under_the_kind_and_the_side_the_message_takes() {
     assert_eq!(order.get_crosshashcode(), yggdryl::xxhash::xxh3(b"10:2:C9"));
 
     // A message stating no side states `0`; so does any kind that is no
-    // order, quote or execution, whatever side its parts take.
+    // order or execution, whatever side its parts take - a quote's side is
+    // a tag, which a write moves without moving its code.
     let none = reader
         .sole_line(b"8=FIX.4.4|35=D|11=C2|55=AAPL|38=1|40=2|10=0|")
         .unwrap();
     assert_eq!(none.get_crosscode(), "10:0:C2");
+    let mut quote = reader
+        .sole_line(b"8=FIX.4.4|35=S|117=Q5|55=AAPL|54=1|132=99|134=1|10=0|")
+        .unwrap();
+    assert_eq!(quote.get_crosscode(), "14:0:Q5");
+    quote.set(54, Scalar::from("2")).unwrap();
+    assert_eq!(quote.get_side().as_str(), "SELL");
+    assert_eq!(quote.get_crosscode(), "14:0:Q5", "a tag moves no code");
     let mut trade = reader
         .parse_line(
             b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=R1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=1|54=1|1427=E1|1009=10|37=O1|11=C3|10=0|",
@@ -1083,6 +1116,48 @@ fn a_boolean_reads_every_spelling_a_column_cast_reads() {
         .expect("a message");
     assert_eq!(message.get_by_tag(1028), Some(Scalar::Null));
     assert_eq!(message.anomalies().len(), 1);
+}
+
+#[test]
+fn a_status_a_dictionary_left_as_text_reads_as_the_number_it_spells() {
+    // `SecurityTradingStatus(326)` and `TradSesStatus(340)` are numbers in the
+    // committed dictionary and `SecurityStatus(965)` a code, spelled as text:
+    // a dictionary that leaves all three text states the spelling the wire
+    // carried, and the one integer reader reads each as the number it is.
+    let fields = [
+        ("securitytradingstatus", 326),
+        ("tradsesstatus", 340),
+        ("securitystatus", 965),
+        ("symbol", 55),
+    ]
+    .map(|(name, tag)| {
+        let mut field = DataType::utf8().nullable_field(name);
+        field.as_fix_mut().set_tag(tag).expect("a tag");
+        field
+    });
+    let registry = Arc::new(FixRegistry::from_fields(fields).expect("a dictionary"));
+    let reader = super::fixed_codec(registry);
+    for (body, expected) in [
+        ("326=17|", Some(true)),
+        ("326= 17 |", Some(true)),
+        ("326=2|", Some(false)),
+        ("326=7|", None),
+        ("340=2|", Some(true)),
+        ("340=3|", Some(false)),
+        ("965=1|", Some(true)),
+        ("965=3|", Some(true)),
+        ("965=01|", Some(true)),
+        ("965=5|", Some(false)),
+        ("965=11|", Some(false)),
+        ("965=7|", None),
+        ("965=abc|", None),
+        // The first status that answers decides.
+        ("340=3|965=1|", Some(false)),
+    ] {
+        let line = format!("8=FIX.4.4|35=8|55=BRN|{body}10=0|");
+        let held = reader.sole_line(line.as_bytes()).expect("a message");
+        assert_eq!(held.get_tradable(), expected, "{line}");
+    }
 }
 
 #[test]
@@ -1985,6 +2060,10 @@ fn a_quotes_bid_and_offer_name_no_side_and_no_price() {
         .unwrap();
     assert_eq!(stated.get_side().as_str(), "SELL");
     assert_eq!(stated.get_price(), None);
+    // The side a quote states is a tag: its code stores none, and its bid
+    // stands beside the ask it tags.
+    assert_eq!(stated.get_crosscode(), "14:0:Q4");
+    assert_eq!(stated.get_bidpx(), Some(decimal("101")));
 
     // A report pricing itself is about the fill: what it last executed at
     // is `lastpx`, never the price.
@@ -2012,6 +2091,135 @@ fn a_quotes_bid_and_offer_name_no_side_and_no_price() {
     assert_eq!(order.get_side().as_str(), "BUYS");
     order.remove(54).unwrap();
     assert_eq!(order.get_side().as_str(), "UNKN");
+}
+
+/// The market facts an element completes, by name: what the twin property
+/// compares.
+fn completed_market(element: &impl Operation) -> Vec<(&'static str, Option<String>)> {
+    let shown = |value: Option<Decimal>| value.map(|held| held.to_string());
+    vec![
+        ("currency", Some(element.get_currency().as_str().to_owned())),
+        ("price", shown(element.get_price())),
+        ("quantity", shown(element.get_quantity())),
+        ("displayqty", shown(element.get_displayqty())),
+        ("hiddenqty", shown(element.get_hiddenqty())),
+        ("bidpx", shown(element.get_bidpx())),
+        ("bidqty", shown(element.get_bidqty())),
+        (
+            "bidccy",
+            element.get_bidccy().map(|held| held.as_str().to_owned()),
+        ),
+        ("askpx", shown(element.get_askpx())),
+        ("askqty", shown(element.get_askqty())),
+        (
+            "askccy",
+            element.get_askccy().map(|held| held.as_str().to_owned()),
+        ),
+        ("ordqty", shown(element.get_ordqty())),
+        ("cumqty", shown(element.get_cumqty())),
+        ("leavesqty", shown(element.get_leavesqty())),
+        ("cxlqty", shown(element.get_cxlqty())),
+        ("lastpx", shown(element.get_lastpx())),
+        ("lastqty", shown(element.get_lastqty())),
+        ("avgpx", shown(element.get_avgpx())),
+        ("spotrate", shown(element.get_spotrate())),
+        ("forwardpoints", shown(element.get_forwardpoints())),
+    ]
+}
+
+/// The typed twin of `message`: an element of its category stating, through
+/// the setters, its state, its side, its ticker and each market fact the
+/// line states as it states it - and nothing the dictionary derived from
+/// them - then finalized, as a parse finalizes the message.
+fn typed_twin<E: Event + Operation>(
+    mut twin: E,
+    message: &FixMsg,
+    line: &str,
+) -> Vec<(&'static str, Option<String>)> {
+    twin.set_state(*message.get_state());
+    for (tag, value) in line
+        .split('|')
+        .filter_map(|field| field.split_once('='))
+        .filter_map(|(tag, value)| Some((tag.parse::<i32>().ok()?, value)))
+    {
+        let number = || Some(Decimal::parse(value).expect("a decimal"));
+        match tag {
+            54 => twin.set_side(message.get_side(), true),
+            55 => twin.set_ticker(Some(value.into()), true),
+            15 => twin.set_currency(yggdryl::Ccy::new(value).expect("a currency"), true),
+            44 => twin.set_price(number(), true),
+            53 => twin.set_quantity(number(), true),
+            1138 | 111 => twin.set_displayqty(number(), true),
+            132 => twin.set_bidpx(number(), true),
+            134 => twin.set_bidqty(number(), true),
+            133 => twin.set_askpx(number(), true),
+            135 => twin.set_askqty(number(), true),
+            38 => twin.set_ordqty(number(), true),
+            14 => twin.set_cumqty(number(), true),
+            151 => twin.set_leavesqty(number(), true),
+            84 => twin.set_cxlqty(number(), true),
+            31 => twin.set_lastpx(number(), true),
+            32 => twin.set_lastqty(number(), true),
+            6 => twin.set_avgpx(number(), true),
+            194 => twin.set_spotrate(number(), true),
+            195 => twin.set_forwardpoints(number(), true),
+            _ => {}
+        }
+    }
+    twin.finalize();
+    completed_market(&twin)
+}
+
+/// A FIX message and its typed twin are two representations of one market:
+/// what the message completes - the dictionary's derivations over its
+/// fields, then the facts it states through the setters - is exactly what
+/// the twin completes stating the same raw facts through the setters alone,
+/// so neither layer fills a fact the other leaves, or fills it otherwise.
+#[test]
+fn a_fix_message_and_its_typed_twin_complete_alike() {
+    use yggdryl::MarketDataKind;
+    use yggdryl::graph::{ExecutionEvent, OrderEvent, QuoteEvent};
+
+    const CORPUS: [&str; 17] = [
+        // A new order, and an iceberg showing part of it.
+        "8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=100|40=2|15=USD|10=0|",
+        "8=FIX.4.4|35=D|11=C2|55=AAPL|54=2|44=50|38=1000|1138=100|40=2|15=USD|10=0|",
+        // Acknowledged, pending and accepted for bidding.
+        "8=FIX.4.4|35=8|37=O1|17=E1|150=0|39=0|54=1|55=AAPL|44=10|38=100|151=100|14=0|10=0|",
+        "8=FIX.4.4|35=8|37=O1|17=E2|150=A|39=A|54=1|55=AAPL|38=100|14=0|10=0|",
+        "8=FIX.4.4|35=8|37=O1|17=E3|150=D|39=D|54=1|55=AAPL|38=100|10=0|",
+        // Partly filled, stating what traded or what is left.
+        "8=FIX.4.4|35=8|37=O2|17=E4|150=F|39=1|54=1|55=AAPL|44=100|38=100|14=40|32=40|31=100.5|15=USD|10=0|",
+        "8=FIX.4.4|35=8|37=O2|17=E5|150=F|39=1|54=1|55=AAPL|38=100|151=60|32=40|31=10|10=0|",
+        // Filled, and an FX forward filled at spot plus points - stating
+        // the currency its symbol's pair would otherwise name, a reading of
+        // the wire the twin has no symbol detector for.
+        "8=FIX.4.4|35=8|37=O3|17=E6|150=F|39=2|54=2|55=AAPL|38=100|14=100|32=60|31=101|6=100.8|10=0|",
+        "8=FIX.4.4|35=8|37=O4|17=E7|150=F|39=2|54=1|55=EURUSD|15=EUR|38=1000000|32=1000000|194=1.25|195=0.0025|10=0|",
+        // Canceled, stating what was canceled or nothing, and expired.
+        "8=FIX.4.4|35=8|37=O5|17=E8|150=4|39=4|54=1|55=AAPL|38=100|14=40|84=60|10=0|",
+        "8=FIX.4.4|35=8|37=O5|17=E9|150=4|39=4|54=1|55=AAPL|38=100|10=0|",
+        "8=FIX.4.4|35=8|37=O6|17=E10|150=C|39=C|54=2|55=AAPL|38=100|14=30|10=0|",
+        // Rejected.
+        "8=FIX.4.4|35=8|37=O7|17=E11|150=8|39=8|54=1|55=AAPL|38=100|10=0|",
+        // Quotes: two-sided, tagged, and one leg alone.
+        "8=FIX.4.4|35=S|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|",
+        "8=FIX.4.4|35=S|117=Q2|55=AAPL|54=1|15=USD|132=99|134=7|133=101|135=8|10=0|",
+        "8=FIX.4.4|35=S|117=Q3|55=AAPL|54=2|133=101|135=8|10=0|",
+        // A quote's FX parts are its legs', which no last price reads.
+        "8=FIX.4.4|35=S|117=Q4|55=EURUSD|15=EUR|54=1|132=1.2|134=1000000|188=1.19|189=0.01|10=0|",
+    ];
+    let (_, reader) = reader();
+    for line in CORPUS {
+        let message = reader.sole_line(line.as_bytes()).expect("a message");
+        let twin = match message.msgcat() {
+            MarketDataKind::Order => typed_twin(OrderEvent::at(0), &message, line),
+            MarketDataKind::Quotation => typed_twin(QuoteEvent::at(0), &message, line),
+            MarketDataKind::Execution => typed_twin(ExecutionEvent::at(0), &message, line),
+            other => panic!("{line}: an order, a quote or an execution, got {other:?}"),
+        };
+        assert_eq!(completed_market(&message), twin, "{line}");
+    }
 }
 
 mod market_ladder {
@@ -2201,7 +2409,7 @@ mod identifier_maps {
     //! and a bridge's user and account keys name, which leave its leaves'
     //! metadata.
 
-    use yggdryl::graph::{Market, Operation};
+    use yggdryl::graph::{Element, Market, Operation};
     use yggdryl::{FixMsg, IdType, Identifier};
 
     fn parsed(line: &str) -> FixMsg {
@@ -2227,6 +2435,102 @@ mod identifier_maps {
         message.market_data().expect("market data")[0]
             .get_metadata()
             .clone()
+    }
+
+    /// A bridge's code-like keys each land in `securityids`: the crate's
+    /// own `ISINCODE` and `BLOOMBERGCODE` views, and the keyed `RICCODE`,
+    /// `OMS_CUSIPCODE` and `SEDOLCODE` the alias table reads. The row's
+    /// `metadata` holds none of them - a keyed one rides `fixentries` under
+    /// `0:<key>` as it arrived, a view its own column - and only a value a
+    /// type refuses by shape stays in `metadata`; the row read back restates
+    /// the wire, the sets, the digest and the identity.
+    #[test]
+    fn a_bridges_code_aliases_land_in_securityids_and_leave_the_rows_metadata() {
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|ISINCODE=US0378331005|BLOOMBERGCODE=AAPL US Equity|\
+             OMS_CUSIPCODE=037833100|RICCODE=AAPL.O|SEDOLCODE=2046251|#CUSIPCODE=03783310|\
+             10=0|",
+        );
+        let ids = held.get_securityids();
+        for (kind, value) in [
+            (IdType::Isin, "US0378331005"),
+            (IdType::Bloomberg, "AAPL US Equity"),
+            (IdType::Ric, "AAPL.O"),
+            (IdType::Cusip, "037833100"),
+            (IdType::Sedol, "2046251"),
+        ] {
+            assert_eq!(ids.get(&kind), Some(value), "{kind}: {ids}");
+        }
+        assert_eq!(
+            ids.get_from(&yggdryl::IdKey::new("oms".parse().unwrap(), IdType::Cusip)),
+            Some("037833100")
+        );
+        let anomalies: Vec<&str> = held.anomalies().iter().map(|held| held.field()).collect();
+        assert_eq!(anomalies, ["cusipcode"]);
+
+        let registry = super::super::committed_registry();
+        let schema = yggdryl::fix_schema(&registry, "fix").expect("a schema");
+        let row = held.into_row(&schema).expect("a row");
+        let cells = row.as_sequence().expect("a row");
+        let cell = |name: &str| -> Vec<(String, String)> {
+            cells[schema.index_of(name).expect(name)]
+                .as_mapping()
+                .map(|held| {
+                    held.iter()
+                        .map(|(key, value)| {
+                            (
+                                key.as_str().expect("a text key").to_owned(),
+                                value.as_str().expect("a text value").to_owned(),
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            cell("metadata"),
+            [("cusipcode".to_owned(), "03783310".to_owned())]
+        );
+        let residual = cell("fixentries");
+        for (key, value) in [
+            ("0:omscusipcode", "037833100"),
+            ("0:riccode", "AAPL.O"),
+            ("0:sedolcode", "2046251"),
+        ] {
+            assert!(
+                residual.contains(&(key.to_owned(), value.to_owned())),
+                "{key} in {residual:?}"
+            );
+        }
+        assert!(
+            residual.iter().all(|(key, _)| {
+                key != "0:cusipcode"
+                    && !key.ends_with("isincode")
+                    && !key.ends_with("bloombergcode")
+            }),
+            "{residual:?}"
+        );
+        let column = |name: &str| cells[schema.index_of(name).expect(name)].as_str();
+        assert_eq!(column("isincode"), Some("US0378331005"));
+        assert_eq!(column("bloombergcode"), Some("AAPL US Equity"));
+
+        let again =
+            FixMsg::from_row(std::sync::Arc::clone(&registry), &schema, &row).expect("again");
+        assert_eq!(again.get_securityids(), ids);
+        assert_eq!(again.metadata(), held.metadata());
+        let tokens = |held: &FixMsg| {
+            let mut tokens: Vec<String> = String::from_utf8(held.into_bytes(b'|'))
+                .expect("a text wire")
+                .split('|')
+                .map(str::to_owned)
+                .collect();
+            tokens.sort();
+            tokens
+        };
+        assert_eq!(tokens(&again), tokens(&held));
+        assert_eq!(again.digest(), held.digest());
+        assert_eq!(again.get_currhashcode(), held.get_currhashcode());
+        assert_eq!(again.into_row(&schema).expect("a row again"), row);
     }
 
     #[test]
@@ -2996,7 +3300,7 @@ mod settled_market {
                 .any(|(key, _)| key.starts_with("parties")),
             "no member keyed by its path"
         );
-        // A decimal keeps its stored scale inside the text, as a string.
+        // A decimal is its shortest exact text inside the text, as a string.
         let fees = parsed(
             "8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|54=1|55=AAPL|31=10|32=5|136=1|137=1.5|138=EUR|139=4|10=0|",
         );
@@ -3007,7 +3311,7 @@ mod settled_market {
         assert_eq!(key, "miscfees");
         assert_eq!(
             text,
-            r#"[{"miscfeeamt":"1.500000000000000000","miscfeecurr":"EUR","miscfeetype":"4"}]"#
+            r#"[{"miscfeeamt":"1.5","miscfeecurr":"EUR","miscfeetype":"4"}]"#
         );
     }
 

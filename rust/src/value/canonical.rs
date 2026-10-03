@@ -361,6 +361,13 @@ pub(crate) fn dtype_canonical(dtype: &DataType, value: Scalar) -> Result<Scalar>
     if dtype.is_bare_contract_leaf() && value.id() == dtype.id() {
         return Ok(value);
     }
+    // An integer of another width arriving at an integer leaf is restated
+    // here: the check below admits exactly the integers the leaf's range
+    // holds, and the rewrite narrows one to the leaf's width, which is this.
+    // One out of range goes on, for the check to refuse in its own words.
+    if let Some(narrowed) = narrowed_integer(dtype, &value) {
+        return Ok(narrowed);
+    }
     // A spelling is read once, here: the check and the rewrite below each
     // begin by reading one, so both are handed what this read answered, and
     // a refused spelling is refused as the check refuses it.
@@ -377,6 +384,24 @@ pub(crate) fn dtype_canonical(dtype: &DataType, value: Scalar) -> Result<Scalar>
     // value itself, exactly as the check above roots one.
     let (canonical, changed) = canonicalize_dtype_value(dtype, &value)?;
     Ok(if changed { canonical } else { value })
+}
+
+/// An integer value restated at an integer leaf's width, where it is in the
+/// leaf's range: what [`validate_dtype_value`] admits and
+/// [`canonicalize_dtype_value`] answers for it, in one step.
+fn narrowed_integer(dtype: &DataType, value: &Scalar) -> Option<Scalar> {
+    use DataType as D;
+    Some(match dtype {
+        D::Int8 => Scalar::from(i8::try_from(value.as_i128()?).ok()?),
+        D::Int16 => Scalar::from(i16::try_from(value.as_i128()?).ok()?),
+        D::Int32 => Scalar::from(i32::try_from(value.as_i128()?).ok()?),
+        D::Int64 => Scalar::from(i64::try_from(value.as_i128()?).ok()?),
+        D::UInt8 => Scalar::from(u8::try_from(value.as_u128()?).ok()?),
+        D::UInt16 => Scalar::from(u16::try_from(value.as_u128()?).ok()?),
+        D::UInt32 => Scalar::from(u32::try_from(value.as_u128()?).ok()?),
+        D::UInt64 => Scalar::from(u64::try_from(value.as_u128()?).ok()?),
+        _ => return None,
+    })
 }
 
 /// Whether a bare [`Scalar::Null`] is a value this datatype holds.
@@ -532,6 +557,17 @@ impl<'a> RowCells<'a> {
     }
 }
 
+/// The cell a record that names no `field` holds, under a struct whose
+/// children are checked at `depth`: the field's default, checked and
+/// canonicalized as [`validate_record_fields`] and [`RowCells::canonical`]
+/// treat an absent name - for a reader that plans that cell once rather
+/// than per row.
+pub(crate) fn absent_record_cell(field: &Field, depth: usize) -> Result<Scalar> {
+    let default = field.default_value()?;
+    validate_field_value_at_depth(field, &default, depth).map_err(rooted_failure)?;
+    canonicalize_field_value(field, &default).map(|(canonical, _)| canonical)
+}
+
 /// Re-root one value refusal at the field that refused it.
 fn rooted_at_field(error: Error, name: &str) -> Error {
     prepend_canonical_error(error, [FieldSegment::field(name)])
@@ -650,15 +686,50 @@ fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
         // exactly as a struct root reads a record's field names.
         D::Map(_) | D::SortedMap(_) => {
             let record = value.as_struct()?;
-            Some(Scalar::from_mapping(
-                record
-                    .iter()
-                    .map(|(name, value)| (Scalar::from(name.as_str()), value.clone()))
-                    .collect::<Vec<_>>(),
-            ))
+            let entries = record
+                .iter()
+                .map(|(name, value)| (Scalar::from(name.as_str()), value.clone()))
+                .collect::<Vec<_>>();
+            Some(Scalar::from_mapping(match dtype.as_mapping() {
+                Some(map) => record_entries_in_key_order(&map, entries),
+                None => entries,
+            }))
         }
         _ => read_text_as(dtype, text_reading(value)?),
     }
+}
+
+/// The entries a record spells for a map, in the order the map keeps.
+///
+/// A record holds no order of its own, so a sorted map takes its entries in
+/// the order of the keys they name rather than of the names' text - `10`
+/// after `2` - where every name reads as one: each key is read here, once,
+/// and the entries carry what it read. A name that reads as no key is left
+/// for the map's own check to refuse by path.
+pub(crate) fn record_entries_in_key_order(
+    map: &crate::MappingType,
+    entries: Vec<(Scalar, Scalar)>,
+) -> Vec<(Scalar, Scalar)> {
+    let [key, _] = map.entries().fields() else {
+        return entries;
+    };
+    if !map.keys_sorted() {
+        return entries;
+    }
+    let Ok(keys) = entries
+        .iter()
+        .map(|(name, _)| key.dtype().scalar(name.clone()))
+        .collect::<Result<Vec<_>>>()
+    else {
+        return entries;
+    };
+    let mut keyed = keys
+        .into_iter()
+        .zip(entries)
+        .map(|(key, (_, value))| (key, value))
+        .collect::<Vec<_>>();
+    keyed.sort_by(|left, right| left.0.cmp(&right.0));
+    keyed
 }
 
 /// The text a value offers a datatype that stores something else.
@@ -771,9 +842,9 @@ fn temporal_matches(
 ///
 /// A decimal is restated at that scale. A whole number is a decimal of scale
 /// zero and is restated the same way, because that is what it is: one hundred
-/// written into `decimal(12, 2)` is `100.00`, which is already what the same
-/// value answers spelled as a decimal, spelled as text, and cast into that
-/// column by Arrow itself.
+/// written into `decimal(12, 2)` is the coefficient `10000` at scale two,
+/// which is already what the same value answers spelled as a decimal,
+/// spelled as text, and cast into that column by Arrow itself.
 ///
 /// `None` when no exact restatement exists, which every caller reports naming
 /// the width it was writing into.

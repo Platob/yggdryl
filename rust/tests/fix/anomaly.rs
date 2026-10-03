@@ -99,12 +99,27 @@ fn every_settle_states_what_it_dropped_once() {
         .expect("a price the message can state");
     assert_eq!(dropped(&held), 1, "a write settles: {:?}", pairs(&held));
     // A write reaching the security identifiers restates their reading,
-    // and the reading of every other identifier still stands once beside it.
+    // and the reading of every other identifier still stands once beside it:
+    // a number its check digit does not close is a value, not an anomaly,
+    // and one of the wrong shape is one.
     held.set(48, yggdryl::Scalar::from("US0378331006"))
         .expect("a security identifier the message can state");
     held.set(22, yggdryl::Scalar::from("4"))
         .expect("its source");
     assert_eq!(dropped(&held), 1, "{:?}", pairs(&held));
+    assert_eq!(
+        held.anomalies()
+            .iter()
+            .filter(|anomaly| anomaly.field() == "securityid")
+            .count(),
+        0,
+        "{:?}",
+        pairs(&held)
+    );
+    held.finalize();
+    assert_eq!(held.anomalies().len(), 1, "{:?}", pairs(&held));
+    held.set(48, yggdryl::Scalar::from("US037833100"))
+        .expect("a security identifier the message can state");
     assert_eq!(
         held.anomalies()
             .iter()

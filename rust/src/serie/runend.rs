@@ -23,6 +23,7 @@ use arrow_schema::DataType as ArrowDataType;
 
 use super::primitive::{NativeLeaf, PrimitiveLeaf, PrimitiveSerie};
 use super::{Serie, proven_row, require_range, require_row, require_window};
+use crate::spill::Backing;
 use crate::value::SerieValue;
 use crate::{DataType, Field, Result, Scalar};
 
@@ -47,6 +48,9 @@ pub struct RunEndEncodedSerie {
     run_ends: Serie,
     values: Serie,
     len: usize,
+    /// Where the unit lives; the run ends and the values answer for their
+    /// own buffers, this column holding none.
+    backing: Backing,
 }
 
 /// Call one width-generic function over the run ends as the native slice
@@ -280,6 +284,7 @@ impl RunEndEncodedSerie {
             run_ends,
             values,
             len,
+            backing: Backing::Heap,
         }
     }
 
@@ -291,6 +296,42 @@ impl RunEndEncodedSerie {
     /// Borrow the values column, one row per run.
     pub const fn values(&self) -> &Serie {
         &self.values
+    }
+
+    /// Borrow the run ends column mutably.
+    ///
+    /// The caller keeps its field and its length - it writes nothing that
+    /// changes either - so the runs still climb to the logical length.
+    pub(crate) const fn run_ends_mut(&mut self) -> &mut Serie {
+        &mut self.run_ends
+    }
+
+    /// Borrow the values column mutably.
+    ///
+    /// The caller keeps its field and its length - it writes nothing that
+    /// changes either - so it still holds one row per run.
+    pub(crate) const fn values_mut(&mut self) -> &mut Serie {
+        &mut self.values
+    }
+
+    /// Where the unit was last stated to live; the run ends and the values
+    /// answer for their own buffers.
+    pub(crate) const fn backing(&self) -> &Backing {
+        &self.backing
+    }
+
+    /// State where the whole unit lives: the run ends column and the values
+    /// column.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.run_ends.set_backing(backing);
+        self.values.set_backing(backing);
+        self.backing = backing;
+    }
+
+    /// The bytes this column's own buffers span: none, the run ends and
+    /// the values being columns of their own.
+    pub(crate) const fn own_size(&self) -> usize {
+        0
     }
 
     /// Return the logical length: the row count the runs encode.
@@ -438,12 +479,13 @@ impl SerieValue for RunEndEncodedSerie {
         require_window(self.field.name(), offset, length, self.len)?;
         let field = Arc::clone(self.run_ends.field_ref().expect(RUN_ENDS));
         let (run_ends, runs) = over_run_ends!(self, window(field, offset, length));
-        Ok(Self::new(
-            Arc::clone(&self.field),
+        Ok(Self {
+            field: Arc::clone(&self.field),
             run_ends,
-            self.values.slice(runs.start, runs.len())?,
-            length,
-        ))
+            values: self.values.slice(runs.start, runs.len())?,
+            len: length,
+            backing: self.backing,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
@@ -455,6 +497,15 @@ impl SerieValue for RunEndEncodedSerie {
         self.check(&range, &canonical)?;
         self.write(range, canonical);
         Ok(())
+    }
+
+    fn resident_size(&self) -> usize {
+        let own = if self.backing().is_mapped() {
+            0
+        } else {
+            self.own_size()
+        };
+        own + self.run_ends.resident_size() + self.values.resident_size()
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
@@ -480,7 +531,7 @@ impl SerieValue for RunEndEncodedSerie {
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        super::Leaf::narrow(value)
+        super::Leaf::narrow_laid(value)
     }
 }
 

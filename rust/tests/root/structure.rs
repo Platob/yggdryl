@@ -23,3 +23,437 @@ mod nested {
         );
     }
 }
+
+mod partition_by {
+    use yggdryl::expression::Projection;
+    use yggdryl::{DataType, Field, StructType, TimeUnit, Timezone};
+
+    fn rows() -> Field {
+        DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("venue"),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond,
+                    timezone: Timezone::NAIVE,
+                }
+                .required_field("ts"),
+                DataType::utf8().required_field("name"),
+                DataType::Int64.required_field("price"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row")
+    }
+
+    fn entries(texts: &[&str]) -> Vec<Projection> {
+        texts.iter().map(|text| text.parse().unwrap()).collect()
+    }
+
+    #[test]
+    fn a_derived_entry_is_named_by_its_alias_or_the_singular_convention() {
+        let partitioned = rows()
+            .with_partition_by(entries(&[
+                "venue",
+                "years(ts)",
+                "days(ts)",
+                "minutes(ts, 15)",
+                "truncate(name, 4) as prefix",
+            ]))
+            .unwrap();
+        assert_eq!(
+            partitioned.partition_field_names().collect::<Vec<_>>(),
+            ["venue", "ts_year", "ts_day", "ts_minutes", "prefix"]
+        );
+        assert_eq!(
+            partitioned.get_metadata("PARTITION:by"),
+            Some(
+                r#"["venue","years(ts)","days(ts)","minutes(ts, 15)","truncate(name, 4) as prefix"]"#
+            )
+        );
+        // The identity column carries only its mark; a derived column is a
+        // marked transform typed by its term.
+        let venue = partitioned.get_field_by_path("venue").unwrap();
+        assert!(venue.is_partition());
+        assert!(!venue.as_transform().is_derived());
+        let day = partitioned.get_field_by_path("ts_day").unwrap();
+        assert_eq!(day.dtype(), &DataType::date32());
+        assert!(day.is_partition());
+        assert_eq!(
+            day.as_transform()
+                .term()
+                .unwrap()
+                .map(|term| term.to_string()),
+            Some("days(ts)".to_owned())
+        );
+        let prefix = partitioned.get_field_by_path("prefix").unwrap();
+        assert_eq!(prefix.dtype(), &DataType::utf8());
+        assert_eq!(
+            prefix
+                .as_transform()
+                .term()
+                .unwrap()
+                .map(|term| term.to_string()),
+            Some("truncate(name, 4)".to_owned())
+        );
+        assert_eq!(
+            partitioned
+                .partition_by()
+                .unwrap()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            [
+                "venue",
+                "years(ts)",
+                "days(ts)",
+                "minutes(ts, 15)",
+                "truncate(name, 4) as prefix"
+            ]
+        );
+        // Every ordinary column is still there, unmarked.
+        assert_eq!(partitioned.field_len(), 8);
+        assert!(
+            !partitioned
+                .get_field_by_path("price")
+                .unwrap()
+                .is_partition()
+        );
+    }
+
+    #[test]
+    fn redeclaring_replaces_the_marks_and_an_empty_declaration_removes_them() {
+        let first = rows()
+            .with_partition_by(entries(&["venue", "years(ts)"]))
+            .unwrap();
+        let second = first
+            .with_partition_by(entries(&["weeks(ts) as week"]))
+            .unwrap();
+        assert_eq!(second.partition_field_names().collect::<Vec<_>>(), ["week"]);
+        // The column the first declaration derived stays a column, unmarked.
+        let year = second.get_field_by_path("ts_year").unwrap();
+        assert!(!year.is_partition());
+        assert!(year.as_transform().is_derived());
+        assert_eq!(
+            second.get_metadata("PARTITION:by"),
+            Some(r#"["weeks(ts) as week"]"#)
+        );
+
+        let none = second.with_partition_by(Vec::new()).unwrap();
+        assert!(!none.has_partition_fields());
+        assert_eq!(none.get_metadata("PARTITION:by"), None);
+        assert!(none.partition_by().unwrap().is_empty());
+
+        // Re-declaring the same entry is the same schema.
+        assert_eq!(
+            first
+                .with_partition_by(entries(&["venue", "years(ts)"]))
+                .unwrap(),
+            first
+        );
+    }
+
+    #[test]
+    fn with_partition_fields_is_the_declaration_over_bare_columns() {
+        let marked = rows().with_partition_fields(&["venue", "name"]).unwrap();
+        assert_eq!(
+            marked,
+            rows()
+                .with_partition_by(entries(&["venue", "name"]))
+                .unwrap()
+        );
+        assert_eq!(
+            marked.get_metadata("PARTITION:by"),
+            Some(r#"["venue","name"]"#)
+        );
+        // Marks alone are a declaration too: a layout read off a folder
+        // marks without declaring, and the marks are what it partitions by.
+        let unmarked_declaration = DataType::from(
+            StructType::from_fields([
+                DataType::utf8()
+                    .required_field("venue")
+                    .with_partition(true),
+                DataType::Int64.required_field("price"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+        assert_eq!(unmarked_declaration.get_metadata("PARTITION:by"), None);
+        assert_eq!(
+            unmarked_declaration.partition_by().unwrap(),
+            [Projection::column("venue")]
+        );
+    }
+
+    #[test]
+    fn the_declaration_refuses_what_it_cannot_name_or_find() {
+        let error = rows()
+            .with_partition_by(entries(&["missing"]))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("missing"), "{error}");
+        let error = rows()
+            .with_partition_by(entries(&["price * 2"]))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("alias"), "{error}");
+        let error = rows()
+            .with_partition_by(entries(&["years(ts)", "weeks(ts) as ts_year"]))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("ts_year"), "{error}");
+        let error = rows()
+            .with_partition_by(entries(&["lower(absent)"]))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("absent"), "{error}");
+        assert!(
+            DataType::Int64
+                .required_field("id")
+                .with_partition_by(Vec::new())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn marks_that_contradict_the_declaration_are_refused_naming_both() {
+        // The declaration names `ts`, the marks say `venue`.
+        let marked = DataType::from(
+            StructType::from_fields([
+                DataType::utf8()
+                    .required_field("venue")
+                    .with_partition(true),
+                DataType::Int64.required_field("ts"),
+            ])
+            .unwrap(),
+        );
+        let error = Field::from_parts("row", marked, false, [("PARTITION:by", r#"["ts"]"#)])
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("PARTITION:by [ts]"), "{error}");
+        assert!(
+            error.contains("\"venue\" the declaration does not name"),
+            "{error}"
+        );
+        let marked = rows().with_partition_fields(&["venue"]).unwrap();
+        let error = Field::from_parts(
+            "row",
+            marked.dtype().clone(),
+            false,
+            [("PARTITION:by", r#"["years(ts) as venue2"]"#)],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("$.venue"), "{error}");
+        // The other way round contradicts nothing: a declared column may be
+        // unmarked or absent - a lake leaf stores the rows minus the partition
+        // columns under the whole declaration, and an Iceberg table keeps a
+        // derived entry's value in its manifest - because `with_partition_by`
+        // is what marks, and it is asked for.
+        let dtype = rows().dtype().clone();
+        for declaration in [r#"["venue"]"#, r#"["absent"]"#, r#"["years(ts)"]"#] {
+            Field::from_parts("row", dtype.clone(), false, [("PARTITION:by", declaration)])
+                .unwrap();
+        }
+        let unmarked =
+            Field::from_parts("row", dtype, false, [("PARTITION:by", r#"["venue"]"#)]).unwrap();
+        assert!(!unmarked.has_partition_fields());
+        assert_eq!(
+            unmarked.partition_by().unwrap(),
+            [Projection::column("venue")]
+        );
+        assert_eq!(
+            unmarked
+                .with_partition_by(unmarked.partition_by().unwrap())
+                .unwrap()
+                .partition_field_names()
+                .collect::<Vec<_>>(),
+            ["venue"]
+        );
+    }
+
+    #[test]
+    fn removing_columns_keeps_the_declaration_consistent() {
+        let partitioned = rows()
+            .with_partition_by(entries(&["venue", "years(ts)"]))
+            .unwrap();
+        // What a leaf stores: the rows minus the partition columns, and no
+        // declaration - the folder's layout is the declaration.
+        let stored = partitioned.without_partition_fields().unwrap();
+        assert_eq!(stored.field_len(), 3);
+        assert_eq!(stored.get_metadata("PARTITION:by"), None);
+        assert!(!stored.has_partition_fields());
+        // Removing one partition column drops its entry alone.
+        let narrowed = partitioned.without_fields(&["venue"]).unwrap();
+        assert_eq!(
+            narrowed.get_metadata("PARTITION:by"),
+            Some(r#"["years(ts)"]"#)
+        );
+        assert_eq!(
+            narrowed.partition_field_names().collect::<Vec<_>>(),
+            ["ts_year"]
+        );
+        let kept = partitioned.only_partition_fields().unwrap();
+        assert_eq!(kept.field_len(), 2);
+        assert_eq!(
+            kept.get_metadata("PARTITION:by"),
+            Some(r#"["venue","years(ts)"]"#)
+        );
+    }
+}
+
+mod struct_pair {
+    use yggdryl::{DataType, Field, Scalar, StructType};
+
+    /// `levels` struct levels around `int64`, each holding one child `x`.
+    fn chain(levels: usize) -> DataType {
+        let mut dtype = DataType::Int64;
+        for _ in 0..levels {
+            dtype =
+                DataType::from(StructType::from_fields([Field::new("x", dtype, false)]).unwrap());
+        }
+        dtype
+    }
+
+    #[test]
+    fn a_wrap_past_the_recursion_limit_is_refused_naming_the_root_and_the_limit() {
+        // The deepest datatype a field holds: a serie whose own walk reaches
+        // depth 63, one short of the limit, so the field stands and the wrap
+        // does not. (A struct field answers itself, so the field is a serie.)
+        let deepest = DataType::serie(chain(62).required_field("item"));
+        let field = deepest.clone().required_field("deep");
+        field.validate_bounded().unwrap();
+        let error = field.into_struct_field().unwrap_err().to_string();
+        assert!(
+            error.contains("deep: schema nesting exceeds the hard limit of 64"),
+            "{error}"
+        );
+        let error = deepest.into_struct_type().unwrap_err().to_string();
+        assert!(
+            error.contains("$: schema nesting exceeds the hard limit of 64"),
+            "{error}"
+        );
+        // One level less is a wrap that stands.
+        let wrapped = DataType::serie(chain(61).required_field("item"))
+            .required_field("deep")
+            .into_struct_field()
+            .unwrap();
+        wrapped.validate_bounded().unwrap();
+    }
+
+    #[test]
+    fn a_wrap_over_a_shared_subtree_is_refused_within_the_node_budget() {
+        // Twenty levels of `struct<a: X, b: X>` over one shared `Arc` per
+        // level: 2^21 - 1 logical nodes in twenty allocations, past the
+        // million-node budget, which a depth check alone would never reach.
+        // (Each `from_fields` validates its children, so the fixture itself
+        // costs the sum of the levels' subtrees, about four million visits.)
+        let mut dtype = DataType::Int64;
+        for _ in 0..20 {
+            dtype = DataType::from(
+                StructType::from_fields([
+                    Field::new("a", dtype.clone(), false),
+                    Field::new("b", dtype, false),
+                ])
+                .unwrap(),
+            );
+        }
+        let shared = DataType::serie(dtype.required_field("item"));
+        let error = shared
+            .clone()
+            .required_field("shared")
+            .into_struct_field()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("shared: schema exceeds the 1000000 node safety limit"),
+            "{error}"
+        );
+        let error = shared.into_struct_type().unwrap_err().to_string();
+        assert!(
+            error.contains("$: schema exceeds the 1000000 node safety limit"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_datatype_wraps_as_a_nullable_value_and_a_struct_answers_itself() {
+        let wrapped = DataType::Int64.into_struct_type().unwrap();
+        assert_eq!(
+            wrapped,
+            DataType::from(
+                StructType::from_fields([DataType::Int64.nullable_field("value")]).unwrap()
+            )
+        );
+        assert!(wrapped.as_fields().unwrap()[0].is_nullable());
+
+        let again = wrapped.into_struct_type().unwrap();
+        assert_eq!(again, wrapped);
+        assert!(std::ptr::eq(
+            again.as_fields().unwrap().as_ptr(),
+            wrapped.as_fields().unwrap().as_ptr()
+        ));
+    }
+
+    #[test]
+    fn a_field_wraps_as_the_one_child_of_a_required_row() {
+        let mut leaf = DataType::utf8().nullable_field("venue");
+        leaf.set_metadata([("comment", "where it trades")]).unwrap();
+        let root = leaf.into_struct_field().unwrap();
+        assert_eq!(root.name(), "row");
+        assert!(!root.is_nullable());
+        assert_eq!(root.metadata_len(), 0);
+        assert_eq!(root.field_len(), 1);
+        assert_eq!(root.get_field_at(0).unwrap(), &leaf);
+
+        let mut record = DataType::from(
+            StructType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
+        )
+        .nullable_field("line");
+        record.set_metadata([("comment", "a record")]).unwrap();
+        let itself = record.into_struct_field().unwrap();
+        assert_eq!(itself, record);
+        assert!(itself.is_nullable());
+        assert_eq!(itself.get_metadata("comment"), Some("a record"));
+    }
+
+    #[test]
+    fn a_scalar_wraps_under_value_and_canonicalizes_under_the_wrapped_type() {
+        assert_eq!(
+            Scalar::from(5_i64).into_struct_scalar(),
+            Scalar::from_struct([("value", Scalar::from(5_i64))]).unwrap()
+        );
+        assert_eq!(
+            Scalar::Null.into_struct_scalar(),
+            Scalar::from_struct([("value", Scalar::Null)]).unwrap()
+        );
+        let record = Scalar::from_struct([("id", Scalar::from(1_i64))]).unwrap();
+        assert_eq!(record.into_struct_scalar(), record);
+
+        let canonical = DataType::Int64
+            .into_struct_type()
+            .unwrap()
+            .scalar(Scalar::from(5_i64).into_struct_scalar())
+            .unwrap();
+        assert_eq!(canonical, Scalar::from_sequence([Scalar::from(5_i64)]));
+    }
+
+    #[test]
+    fn is_struct_names_the_struct_shape_alone() {
+        let record = DataType::from(
+            StructType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
+        );
+        assert!(record.is_struct());
+        assert!(record.clone().required_field("row").is_struct());
+        assert!(!DataType::Int64.is_struct());
+        assert!(!DataType::serie(record.clone().required_field("item")).is_struct());
+        let entries = DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("key"),
+                record.required_field("value"),
+            ])
+            .unwrap(),
+        )
+        .required_field("entries");
+        assert!(!DataType::map(entries, false).unwrap().is_struct());
+    }
+}

@@ -120,15 +120,37 @@ impl OperationColumn {
     }
 
     /// Records a cell on `operation`, leniently: a null clears an optional
-    /// fact, and an incompatible value is ignored.
+    /// fact, and an incompatible value is ignored. A flag is read as every
+    /// flag in the crate is ([`crate::boolean`]'s table), so `yes` and `0`
+    /// are cells and `maybe` is incompatible.
     pub fn record<E: Operation + ?Sized>(self, operation: &mut E, value: &Scalar) {
         match self {
-            Self::OrdQty => operation.set_ordqty(crate::Decimal::from_scalar(value), true),
-            Self::TimeInForce => operation.set_timeinforce(
-                <crate::TimeInForce as crate::EnumValue>::from_scalar_value(value),
-                true,
-            ),
-            Self::Tradable => operation.set_tradable(value.as_bool(), true),
+            Self::OrdQty => match value {
+                Scalar::Null => operation.set_ordqty(None, true),
+                _ => {
+                    if let Some(held) = crate::Decimal::from_scalar(value) {
+                        operation.set_ordqty(Some(held), true);
+                    }
+                }
+            },
+            Self::TimeInForce => match value {
+                Scalar::Null => operation.set_timeinforce(None, true),
+                _ => {
+                    if let Some(held) =
+                        <crate::TimeInForce as crate::EnumValue>::from_scalar_value(value)
+                    {
+                        operation.set_timeinforce(Some(held), true);
+                    }
+                }
+            },
+            Self::Tradable => match value {
+                Scalar::Null => operation.set_tradable(None, true),
+                _ => {
+                    if let Some(held) = crate::boolean::bool_of(value) {
+                        operation.set_tradable(Some(held), true);
+                    }
+                }
+            },
             Self::Identifiers => {
                 if let Some(ids) = ids_of(value) {
                     let _ = operation.set_identifiers(ids, true);

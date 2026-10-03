@@ -93,3 +93,24 @@ pub const STRICT_RELATIONSHIPS_NAMESPACE: &str =
 
 /// The sheet a write creates when the options name none.
 pub const DEFAULT_SHEET_NAME: &str = "Sheet1";
+
+/// Refuse a handle whose media type declares a content coding.
+///
+/// A workbook is a ZIP package deflated inside, so `trades.xlsx.gz` names a
+/// file no spreadsheet opens: every door that reads or writes the package
+/// refuses the name before a byte crosses, as Parquet's do, and the holder
+/// leaves the coding undecoded so the refusal is the answer a caller gets.
+pub(crate) fn reject_outer_coding<H: crate::IOBase + ?Sized>(handle: &H) -> crate::Result<()> {
+    let codec = handle.codec();
+    if codec.is_identity() {
+        return Ok(());
+    }
+    Err(crate::Error::Codec {
+        format: "xlsx",
+        position: 0,
+        reason: smol_str::format_smolstr!(
+            "expected an uncompressed xlsx handle, got {codec} coding; a workbook is a ZIP \
+             package deflated inside, so drop the {codec} coding from its name"
+        ),
+    })
+}

@@ -125,14 +125,15 @@ Metadata belongs to the field and behaves like each language's mapping type; a n
 | Logical types, parsing, families | [DataType](types/datatype.md) |
 | Names, nullability, metadata, casting | [Field](types/field.md), [Cast](types/cast.md) |
 | Bytes and records on any storage | [Holder](holder/index.md) |
-| gzip, zlib, zstd | [Coding](media/index.md#compression) |
-| Character encodings | [Charset](media/index.md#charsets) |
+| gzip, zlib, zstd | [Compression](media/compression.md) |
+| Character encodings | [Charsets](media/charsets.md) |
 | IPC, Parquet, Avro, CSV, Iceberg | [Media](media/index.md) |
-| JSON, YAML, TOML, XML | [Structured documents](media/index.md#json) |
+| JSON, YAML, TOML, XML | [JSON](media/json.md), [YAML](media/yaml.md), [TOML](media/toml.md), [XML](media/xml.md) |
 | Naming a resource | [URI](uri/index.md) |
 | Scalars, schemas, and batch readers at the Arrow boundary | [Arrow](arrow/index.md) |
 | Predicates and pushdown | [Expression](expression/index.md) |
 | Digests and time-keyed digests | [Hashing](hashing.md) |
+| Loggers, levels, handlers, and log files on any storage | [Logging](logging.md) |
 | Orders, quotes, executions, books, candles, and the book display | [Graph](graph/index.md) |
 | FIX messages, registries, and captures | [FIX](fix/index.md) |
 

@@ -194,22 +194,61 @@ pub trait CodeValue: Value {
     /// keeps it clones this handle rather than re-validating and copying.
     fn storage(&self) -> &SmolStr;
 
-    /// The better statement of this code and another of the same kind: this
-    /// one, unless it states less than `other` does.
+    /// The highest rank a value of this code reaches: the rank of a real
+    /// one. One, for a code with nothing partial about it.
+    const MAX_RANK: u8 = 1;
+
+    /// How real this value is, from zero to [`Self::MAX_RANK`]: shape to
+    /// state, closing and listing to rank. A code's `new` admits its shape,
+    /// and what the shape leaves open - whether a number closes on its
+    /// check digit, whether its prefix is one an agency numbers under,
+    /// whether the text is the one that states no value - is this reading,
+    /// which every merge decides by: an [`Isin`](crate::Isin) closing under a
+    /// listed prefix is two, closing or listed one, neither zero; a
+    /// [`Cusip`](crate::Cusip), a [`Sedol`](crate::Sedol) and a [`Figi`](crate::Figi)
+    /// one where they close; a [`Country`](crate::Country) one where ISO 3166
+    /// lists it; a [`Ccy`](crate::Ccy) `XXX`, a [`Mic`](crate::Mic) `XXXX` and an
+    /// empty [`Unit`](crate::Unit) zero; a [`Cfi`](crate::Cfi) unclassified zero,
+    /// classified one and detailed two; every other code one.
+    fn rank(&self) -> u8 {
+        Self::MAX_RANK
+    }
+
+    /// Whether this value is as real as one of its code gets:
+    /// [`Self::rank`] at [`Self::MAX_RANK`].
+    fn is_real(&self) -> bool {
+        self.rank() == Self::MAX_RANK
+    }
+
+    /// The better statement of this code and another of the same kind: the
+    /// other where it outranks this one, else this one - so a real value
+    /// replaces a placeholder, a masked number or a typo whichever was
+    /// stated first, and two values of one rank keep the one that leads.
     ///
-    /// What "less" means is each code's own, and the codes that can state
-    /// nothing say so: a [`Cfi`](crate::Cfi) fills every `X` position from the other
-    /// where the two describe one instrument, and an unclassified one - every
-    /// position `X`, or no classification at all - yields whole to a
-    /// classified other; a [`Ccy`](crate::Ccy) `XXX` and a [`Mic`](crate::Mic) `XXXX` take the
-    /// other; an [`Isin`](crate::Isin) under the `ZZ` prefix yields to any other prefix.
-    /// Every other code is an identifier with nothing partial about it, so
-    /// this one stands as it is. This is what a graph element folds two statements
-    /// of one fact with.
+    /// A [`Cfi`](crate::Cfi) folds further: it fills every `X` position from
+    /// the other where the two describe one instrument. This is what a graph
+    /// element folds two statements of one fact with.
+    ///
+    /// ```
+    /// use yggdryl::{CodeValue, Isin, Mic};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let masked = Isin::new("XX0000000001")?;
+    /// let apple = Isin::new("US0378331005")?;
+    /// assert_eq!(masked.clone().merge_with(&apple), apple);
+    /// assert_eq!(apple.clone().merge_with(&masked), apple);
+    /// assert_eq!(Mic::new("XXXX")?.merge_with(&Mic::new("XPAR")?).as_str(), "XPAR");
+    /// assert_eq!(Mic::new("XNAS")?.merge_with(&Mic::new("XPAR")?).as_str(), "XNAS");
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     fn merge_with(self, other: &Self) -> Self {
-        let _ = other;
-        self
+        if other.rank() > self.rank() {
+            other.clone()
+        } else {
+            self
+        }
     }
 }
 
@@ -442,6 +481,51 @@ pub trait SerieValue:
     /// The buffers are shared, never copied; a nested column assembles from
     /// its children's arrays, which are aligned by construction.
     fn into_arrow_array(&self) -> ArrayRef;
+
+    /// The bytes the rows occupy, as the column's own slice counts them:
+    /// what [`array_memory_size`](crate::arrow::array_memory_size) answers
+    /// for [`Self::into_arrow_array`], read off the buffers.
+    fn memory_size(&self) -> usize {
+        crate::arrow::array_memory_size(&self.into_arrow_array())
+    }
+
+    /// The bytes the rows occupy in memory: [`Self::memory_size`] less what
+    /// lies in a spill file's mapping.
+    ///
+    /// A flat leaf's buffers are all on the heap or all mapped, so it
+    /// answers its [`Self::memory_size`] or zero; a nested leaf counts its
+    /// own buffers where they are not mapped, beside its children's answer.
+    /// Read off the buffers, so it allocates nothing: every door that settles
+    /// a column reads it.
+    fn resident_size(&self) -> usize;
+
+    /// Whether the rows lie in a spill file: no byte resident, and some
+    /// bytes. An empty column is never spilled.
+    ///
+    /// Read in that order, so a resident column answers off its flags
+    /// alone and only a column holding nothing resident counts its bytes.
+    fn is_spilled(&self) -> bool {
+        self.resident_size() == 0 && self.memory_size() > 0
+    }
+
+    /// Move the rows to disk until the resident bytes are under `options`'
+    /// bound: [`Serie::spill`] over this leaf, which comes back as itself.
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::spill`]'s refusal, leaving the column as it was; a leaf that
+    /// did not come back as itself is a conflict naming the column.
+    fn spill(&mut self, options: &crate::SpillOptions) -> Result<()> {
+        let mut serie = self.clone().into_serie();
+        serie.spill(options)?;
+        match Self::from_serie(&serie) {
+            Some(spilled) => {
+                *self = spilled.clone();
+                Ok(())
+            }
+            None => Err(Serie::spill_mismatch(self.field().name())),
+        }
+    }
 
     /// Widen this column to the dynamic serie root.
     fn into_serie(self) -> Serie;

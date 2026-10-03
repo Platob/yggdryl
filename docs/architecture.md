@@ -23,24 +23,25 @@ fix ── protocol vocabulary over types + holder
 
 ## Root files, root folders and tabs
 
-Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs` owns `IOBase`, `codec.rs` owns `Codec`, `media_type.rs` owns `MediaType`, `ccy.rs` owns the `ccy` datatype, its field marker and its value). Each implementation - a medium, a codec, a storage backend, a digest, a charset with string leaves - is a root folder or file of its own name (`parquet/`, `gzip.rs`, `zip/`, `xxhash/`, `utf8.rs`), and a parent folder (`media/`, `text/`, `coding/`, `holder/`, `hashing/`, `charset/`) holds only what its implementations share. The site's top bar groups those files by the vocabulary they answer to, with one join: every encoding, coding and charset - `ipc/`, `parquet/`, `avro/`, `csv/`, `text/`, `json/`, `toml/`, `yaml/`, `xml/`, `xmla/`, `excel/`, `iceberg/`, the codecs and the charsets - documents as one section of the single [Media](media/index.md) page, because a reader picks all three by the name a handle carries, not by which crate module answers it. Storage is joined the same way: `iobase.rs`, the `io*.rs` roles, `holder/` and every backend folder document as sections of the single [Holder](holder/index.md) page, because every backend answers the one `IOBase` contract.
+Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs` owns `IOBase`, `codec.rs` owns `Codec`, `media_type.rs` owns `MediaType`, `ccy.rs` owns the `ccy` datatype, its field marker and its value). Each implementation - a medium, a codec, a storage backend, a digest, a charset with string leaves - is a root folder or file of its own name (`parquet/`, `gzip.rs`, `zip/`, `xxhash/`, `utf8.rs`), and a parent folder (`media/`, `text/`, `coding/`, `holder/`, `hashing/`, `charset/`) holds only what its implementations share. The site's top bar groups those files by the vocabulary they answer to, with one join: every encoding, coding and charset - `ipc/`, `parquet/`, `avro/`, `csv/`, `text/`, `json/`, `toml/`, `yaml/`, `xml/`, `xmla/`, `excel/`, `iceberg/`, the codecs and the charsets - documents under the one [Media](media/index.md) tab, because a reader picks all three by the name a handle carries, not by which crate module answers it: the tab's overview holds the calls every medium shares, and each medium, the content codings and the charsets have a page of their own. Storage is joined on one page instead: `iobase.rs`, the `io*.rs` roles, `holder/` and every backend folder document as sections of the single [Holder](holder/index.md) page, because every backend answers the one `IOBase` contract.
 
 | Tab | Root files and folders |
 | --- | --- |
 | [Types](types/index.md) | `datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one file per type - `string.rs`, `bytes.rs`, `integer.rs`, `floating.rs`, `decimal.rs` with `int256.rs`, `boolean.rs`, `date.rs`, `time.rs`, `datetime.rs`, `duration.rs`, `interval.rs` with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs` with `wkb.rs`, `enums.rs` with the three enums `state.rs`, `side.rs` and `marketdatakind.rs`, `structure.rs`, `sequence.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `version.rs`, `code.rs` with the thirteen registered codes, `forex.rs` among them, `uri/datatype.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs`: `DataType`, `Field`, `Scalar`, the datatype families, protocol views, validation, and casting |
 | [Holder](holder/index.md) | `iobase.rs` + `iobase/`, the `io*.rs` roles, `holder/` (`Holder`, `Buffer`, buffering, counting), one folder per backend - `local/`, `fs/`, `zip/`, `s3/`: every `IOBase` implementation - `aws/`, who this process is to AWS: the credential chain, the shared files, the STS and IAM Identity Center exchanges and Signature Version 4 every S3 request signs with; `auth/`, what every identity provider shares - a secret that never renders, an expiring value leased and refreshed in time, an environment or a stand-in, a walk's report; and `xml/scanner.rs`, the scanner the small documents those APIs answer are read by |
-| [Media: compression](media/index.md#compression) | `codec.rs`, `coding/` (transparent coded handles), `gzip.rs`, `zlib.rs` (zlib and raw deflate), `zstd.rs` |
-| [Media: charsets](media/index.md#charsets) | `charset.rs` + `charset/` (UTF-16, the ISO 8859 and Windows code pages, transparent transcoded handles) and the three charsets with string leaves: `utf8.rs`, `ascii.rs`, `cp1252.rs` |
-| [Media](media/index.md) | `media_type.rs`, `mime_type.rs`, `media/` (record options, inference, magic, merge, partition) and one folder per medium - `ipc/`, `parquet/`, `avro/`, `csv/` (delimited text: CSV and TSV), `iceberg/`, `text/` (plain-text records), `xmla/` (XML for Analysis rowsets, and the provider serving them), `excel/` (Office Open XML workbooks: one worksheet as records, and the workbook, its sheets and cells for random access) |
-| [Media: JSON, YAML, TOML, XML](media/index.md#json) | `json/`, `toml/`, `yaml/`, `xml/`: structured `Scalar` codecs over the machinery in `text/`, four more sections of the [Media](media/index.md) page |
+| [Media: compression](media/compression.md) | `codec.rs`, `coding/` (transparent coded handles), `gzip.rs`, `zlib.rs` (zlib and raw deflate), `zstd.rs` |
+| [Media: charsets](media/charsets.md) | `charset.rs` + `charset/` (UTF-16, the ISO 8859 and Windows code pages, transparent transcoded handles) and the three charsets with string leaves: `utf8.rs`, `ascii.rs`, `cp1252.rs` |
+| [Media](media/index.md) | `media_type.rs`, `mime_type.rs` and `media/` (record options, inference, magic, merge, partition) on the overview, and one folder per medium, each with its page - `ipc/`, `parquet/`, `avro/`, `csv/` (delimited text: CSV and TSV), `iceberg/`, `text/` (plain-text records), `xmla/` (XML for Analysis rowsets, and the provider serving them), `excel/` (Office Open XML workbooks: one worksheet as records, and the workbook, its sheets and cells for random access), and `http/wire.rs` for HTTP messages |
+| Media: [JSON](media/json.md), [YAML](media/yaml.md), [TOML](media/toml.md), [XML](media/xml.md) | `json/`, `toml/`, `yaml/`, `xml/`: structured `Scalar` codecs over the machinery in `text/`, a page each under [Media](media/index.md) |
 | [URI](uri/index.md) | `uri/`, `scheme.rs`: URI, URL, URN, ARN, path, glob, and partition syntax |
 | [Arrow](arrow/index.md) | `arrow/`: Arrow schema, scalar, array, batch, and reader boundaries |
 | [Expression](expression/index.md) | `expression/`: parsing, binding, row evaluation, Arrow evaluation, and pushdown |
 | [Graph](graph/index.md) | `graph/element.rs`: the `Element` and `Event` traits - an element's `Uuid`, the identity it has elsewhere, its sources' UUIDs, an event's instant, state and place among the events of its instant - as signatures a value implements; `graph/market.rs` the `Market` and `Operation` traits - the instrument, the side, the price and the quantity, the stated bid and ask, the FX rates, then the operation's time in force, whether it trades and its identifiers and party ids - with the readings of an `Event` that is one of them provided on the traits themselves; `graph/operation.rs` the operation leaves - `Order`, `Quote`, `Execution` and their dated `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, one generic pair over a sealed `OperationKind` - and their book control, `graph/trade.rs` the `TradeEvent`, `graph/book.rs` the `BookEvent`, `SnapshotEvent` and the book fold, `graph/market_data.rs` the one `MarketData` enum over every leaf and `graph/kind.rs` its `MarketKind`, `graph/arrow.rs` the lifted Arrow row, `graph/view.rs` the six `MarketView` readings of it, each one `Plan`, `graph/candle.rs` the `Candle` a bucket of books folds into and the `CandleIterator` that folds them, `graph/serve.rs` the `BookService` that answers a market-data table as candles, books and audits over HTTP (the `http` feature; `yggdryl market serve` is its terminal), and `graph/iterator.rs` the one walk; the root `limit.rs` holds `Limit`, one price level of a book side, which a book states under `bidlimits` and `asklimits`, and the root `identifier.rs` holds `Identifier` and `Identifiers`, the sets a market element names its security (`securityids`), itself (`identifiers`) and its parties (`partyids`) by - each identifier a source, a type and a value, unique by `src:type`, its words the `IdSource` and `IdType` of the root `idsource.rs` and `idtype.rs`. |
 | [Hashing](hashing.md) | `digest.rs` (`Digest`, `DigestAlgorithm`, `Digester`), `hashing/` (the private stable-hash adapters), `xxhash/`: digest values, one-shot and resumable hashes, streams, handles, and row hashes; `txhash/`: an instant coupled with a digest - the sortable value, its instant intake, coupled columns, and the `DIGEST:time` holder |
+| [Logging](logging.md) | `logging/`: Python's `logging` owned by the core, behind the `log` facade - `Logger` and `get_logger`, `Level`, `Record`, `Formatter`, the `Handler` trait with `StreamHandler`, `NullHandler` and `FileHandler` over any `IOBase`, the `Host` a binding attaches its runtime's own logging with, `install`, `basic_config` and `shutdown`; `logging/warning.rs`, the deduplicated warnings the data doors raise |
 | [FIX](fix/index.md) | `fix/`: FIX vocabulary over core `Field` values and `IOBase` registry storage |
 
-Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several pages, `docs/<tab>.md` for a single-page tab such as Hashing - so one name finds a concept's contract, validation, boundary, and page, whichever root files answer it. Source and tests are not: the Python package and both binding crates repeat the crate's own layout, one file per type at the root and one per implementation beside it, and every test file sits at the path of the source file it pins.
+Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several pages, `docs/<tab>.md` for a single-page tab such as Hashing or Logging - so one name finds a concept's contract, validation, boundary, and page, whichever root files answer it. Source and tests are not: the Python package and both binding crates repeat the crate's own layout, one file per type at the root and one per implementation beside it, and every test file sits at the path of the source file it pins.
 
 ## Rules the layers share
 
@@ -52,8 +53,8 @@ Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several
 | Listings are iterators | `ls`, `glob`, and predicate listings yield `Result` items lazily and fuse at the first failure. |
 | Traits say what, enums say which | `Codec`, `MediaType`, `IOKind`, `IOMode` dispatch; `Holder` and `Media` carry one native implementation across bindings. |
 | Arrow speaks batches | IPC, Parquet, text records, and Iceberg expose bounded `BatchReader` streams, never collected batches. |
-| Text speaks values | JSON, YAML, TOML, and XML parse and render one [`Scalar`](media/index.md#json); the exact field directs nullability, order, and dictionaries. |
-| A scheme owns a direction, not a surface | Every [Media](media/index.md) scheme answers the same two surfaces, so it documents them the same way: an overview, a read page, a write page, and one page per feature it alone has. Reading and writing each show native scalars first, then Arrow batches, in all three languages. |
+| Text speaks values | JSON, YAML, TOML, and XML parse and render one [`Scalar`](media/json.md); the exact field directs nullability, order, and dictionaries. |
+| A scheme owns a direction, not a surface | Every [Media](media/index.md) scheme answers the same two surfaces, so its page documents them the same way: an Overview, a Read section, a Write section, then one section per feature it alone has. Read and Write each lead with a runnable example in all three languages. |
 | A family owns a subsection | Every [Types](types/index.md) family is a folder: `index.md` for what its leaves share, and one page per type, each presenting its datatype, its field, its scalar, its Arrow storage, then its features. |
 | One expression, three tiers | [`Expression`](expression/index.md) parses once, binds once, then evaluates a row, a batch, or container statistics; statistics answer `false` only when no row can match. |
 | One shape per hierarchy level | Collections use `get`, `create`, `open_or_create`, `contains`, lazy iteration, `len`, `is_empty`; dotted names descend. |
@@ -61,21 +62,83 @@ Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several
 
 ## Watching what the core does
 
-The native core narrates its work through Rust's `log` facade, so a Rust caller
-installs any `log` implementation. Python bridges it into `logging` under the
-package's own logger: a record's name is the Rust module path it came from, so
-`yggdryl.iceberg.table` and its siblings all hang off `yggdryl` and one
-`setLevel` is the whole switch. The Node addon writes warnings to standard
-error as `yggdryl: <message>` when it loads, unless the process already
-installed a logger, and the `yggdryl` command writes them to standard error
-prefixed `!`. What a data door passes over is said once per kind and then
-counted ([Warnings](fix/capture.md#warnings)).
+The native core owns a Python-like logging tree, `yggdryl::logging`, behind
+Rust's `log` facade: a record's logger is named after the Rust module path it
+came from, so `yggdryl.iceberg.table` and its siblings all hang off `yggdryl`
+and one level on `yggdryl` is the whole switch. A Rust caller installs the tree
+(`install`, or `basic_config` for a handler on standard error) or any other
+`log` backend. Wherever no format is stated - `basic_config`, a handler with
+no formatter, the last resort - a record is the
+[terminal line](logging.md#terminal): the time, the level's glyph and name,
+`[thread]`, the logger, the call site, ` › `, the message, coloured only where
+the [colour rule](logging.md#colour) says - a colour terminal, `NO_COLOR`,
+`FORCE_COLOR`, `CLICOLOR_FORCE` and `TERM=dumb` honoured. Python hosts the
+tree in `logging`: each Rust logger is the Python logger of the same name, and
+a level changed at any time applies to the next record
+([Python: hosted by logging](logging.md#python-hosted-by-logging)). The Node
+addon installs the tree when it loads, and its last resort writes warnings to
+standard error as that line, from `[main]` or `[worker-N]`
+([JavaScript](logging.md#javascript)). The `yggdryl` command keeps the core's
+warnings and prints them on standard output once the command's progress line is
+done: one `!` line counting them, then each as a `·` note. What a data door
+passes over is said once per kind and then counted
+([Warnings](fix/capture.md#warnings)). Loggers, levels, handlers and the
+formatter are one contract, on [Logging](logging.md).
 
 Debug is an operation starting; info is one done, carrying the counts a monitor
 watches. Nothing is reported per row, per batch, or per file: a commit is the
 unit, so ten times the rows is the same handful of records. A dependency of the
-build reaches `logging` only at warning and above, so enabling debug narrates
-this project and nothing else.
+build reaches the tree only at warning and above, in Python and in JavaScript
+([The log facade](logging.md#the-log-facade)), so enabling debug narrates this
+project and nothing else.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch};
+    use yggdryl::holder::Buffer;
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::logging::{self, FileHandler, Formatter, Handler, Level};
+    use yggdryl::{arrow, DataType, IOBase, StructType};
+
+    // The tree is the `log` facade's backend. A handler on `yggdryl.iceberg`
+    // holds the narration of every table, one line per record.
+    logging::install()?;
+    let held = Arc::new(FileHandler::new(Buffer::new()));
+    held.set_formatter(Formatter::from_str("%(levelname)s %(name)s %(message)s")?);
+    let narration: Arc<dyn Handler> = held.clone();
+    let watcher = logging::get_logger("yggdryl.iceberg");
+    watcher.set_level(Level::INFO);
+    watcher.set_propagating(false);
+    watcher.add_handler(narration.clone());
+
+    let mut schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+        .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-architecture-logging");
+    let _ = std::fs::remove_dir_all(&path);
+
+    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), PartitionSpec::unpartitioned())?;
+    let batch = RecordBatch::try_new(schema.into_arrow_schema()?, vec![Arc::new(Int64Array::from(vec![1_i64, 2, 3]))])?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+
+    // Other tables narrated meanwhile land in the same handler, so the lines
+    // are read for this table's folder.
+    let said = String::from_utf8(held.io().read_all_bytes()?)?;
+    let folder = "yggdryl-docs-architecture-logging";
+    assert!(said.lines().any(|line| {
+        line.starts_with("INFO yggdryl.iceberg.table created iceberg table at") && line.contains(folder)
+    }));
+    assert!(said.lines().any(|line| {
+        line.starts_with("INFO yggdryl.iceberg.table wrote 3 rows as") && line.contains(folder)
+    }));
+
+    watcher.remove_handler(&narration);
+    let _ = std::fs::remove_dir_all(&path);
+    ```
 
 === "Python"
 
@@ -86,7 +149,7 @@ this project and nothing else.
 
     import pyarrow as pa
 
-    from yggdryl import IOBase, refresh_logging
+    from yggdryl import IOBase
     from yggdryl.iceberg import Table, assign_field_ids
 
     said: list[str] = []
@@ -100,9 +163,6 @@ this project and nothing else.
     watcher = logging.getLogger("yggdryl")
     watcher.addHandler(Collect())
     watcher.setLevel(logging.INFO)
-    # The bridge caches each logger's effective level, so a level set after
-    # import reaches it only through this call.
-    refresh_logging()
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     with tempfile.TemporaryDirectory() as folder:
@@ -112,6 +172,41 @@ this project and nothing else.
 
     assert any(message.startswith("created iceberg table at") for message in said)
     assert any("wrote 3 rows as" in message for message in said)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg, logging } = require('yggdryl')
+
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const narration = path.join(folder, 'narration.log')
+
+    // Every record hangs off `yggdryl`, so one level there is the whole switch;
+    // a file handler holds the narration, one line per record.
+    const handler = new logging.FileHandler(narration)
+    handler.setFormatter(new logging.Formatter('%(levelname)s %(name)s %(message)s'))
+    const watcher = logging.getLogger('yggdryl')
+    watcher.addHandler(handler)
+    watcher.setLevel(logging.INFO)
+
+    const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
+    const table = iceberg.Table.create(path.join(folder, 'trades'), schema, iceberg.PartitionSpec.unpartitioned())
+    table.append(new arrow.Table({ id: arrow.vectorFromArray([1n, 2n, 3n], new arrow.Int64()) }))
+    assert.equal(table.scan().intoTable().numRows, 3)
+
+    const said = fs.readFileSync(narration, 'utf8')
+    assert.match(said, /^INFO yggdryl\.iceberg\.table created iceberg table at/m)
+    assert.match(said, /^INFO yggdryl\.iceberg\.table wrote 3 rows as/m)
+
+    watcher.removeHandler(handler)
+    handler.close()
+    fs.rmSync(folder, { recursive: true, force: true })
     ```
 
 | Reported | Level | Carries |
@@ -156,3 +251,5 @@ Every family page follows one order, so a reader who learns one page can navigat
 | Edges | Refusals, nulls, empties, overflows, and limits, one line each |
 | Commands | The test and benchmark commands scoped to the page |
 | Performance | The measured table, its host and toolchain, and the regenerate command |
+
+A [Media](media/index.md) page keeps that order with its use split by direction: Overview - the contract table: what declares the medium, its build, its doors in each language, its settings and refusals - then Read and Write, each led by its example, then the sections only that medium has, then Performance.

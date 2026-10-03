@@ -383,6 +383,21 @@ impl<'a> From<&'a String> for FixKey<'a> {
     }
 }
 
+impl<'a> FixKey<'a> {
+    /// The key a text a caller typed names: a tag when it spells one the way
+    /// the dictionary's own tag reader reads it - ASCII digits alone, `1` to
+    /// `2147483647`, a leading zero kept, so `035` is tag `35` - and a name
+    /// otherwise, `+35`, `0` and ` 35` among them. Total, like [`From`], so
+    /// one text has one reading.
+    #[must_use]
+    pub fn from_text(text: &'a str) -> Self {
+        match field::parse_tag(text) {
+            Some(tag) => Self::Tag(tag),
+            None => Self::Name(text),
+        }
+    }
+}
+
 impl fmt::Display for FixKey<'_> {
     /// Renders the key the way an absence names it: `tag 35`,
     /// `identifier -1873404312`, `name "MsgType"`.

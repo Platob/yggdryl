@@ -64,6 +64,13 @@ void snapshotClass
 void snapshotRefClass
 
 const created: Table = iceberg.Table.create('file:///lake/trades', numbered, spec)
+// The entries a schema's `PARTITION:by` declares: identity and derived alike.
+const derived: Table = iceberg.Table.create('file:///lake/daily', numbered, [
+  'venue',
+  'days(ts)',
+  'minutes(ts, 15) as quarter',
+])
+void derived
 const opened: Table = iceberg.Table.open(new IOBase('file:///lake/trades'))
 const either: Table = iceberg.Table.openOrCreate(
   Url.fromString('file:///lake/trades'),

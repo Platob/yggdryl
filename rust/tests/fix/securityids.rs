@@ -62,9 +62,19 @@ fn every_spelling_of_a_source_name_states_its_entry() {
 
 #[test]
 fn an_invalid_value_states_nothing_records_an_anomaly_and_still_re_emits() {
-    // A bad check digit is no CUSIP: nothing is guessed, the refusal is
-    // kept, and the field stays on the row as it arrived.
+    // A bad check digit is a CUSIP of rank zero: the value is stated as it
+    // is, nothing is refused, and the field stays on the row as it arrived.
     let held = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|#CUSIPCODE=037833101|10=0|");
+    assert_eq!(ids(&held), ["cusip=037833101"]);
+    assert!(anomalies(&held).is_empty(), "{:?}", anomalies(&held));
+    assert_eq!(
+        held.get_by_name("cusipcode")
+            .and_then(|held| held.as_str().map(str::to_owned)),
+        Some("037833101".to_owned())
+    );
+    // A value of the wrong shape is no CUSIP: nothing is guessed, the
+    // refusal is kept, and the field stays on the row as it arrived.
+    let held = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|#CUSIPCODE=03783310|10=0|");
     assert!(ids(&held).is_empty());
     let dropped = anomalies(&held);
     assert_eq!(dropped.len(), 1, "{dropped:?}");
@@ -72,7 +82,7 @@ fn an_invalid_value_states_nothing_records_an_anomaly_and_still_re_emits() {
     assert_eq!(
         held.get_by_name("cusipcode")
             .and_then(|held| held.as_str().map(str::to_owned)),
-        Some("037833101".to_owned())
+        Some("03783310".to_owned())
     );
     // An empty or null-like value states nothing and refuses nothing.
     for line in [
@@ -1325,15 +1335,20 @@ fn the_security_source_code_picks_the_type_of_the_entry() {
     let bloomberg =
         parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|IDSource=A|SecurityID=AAPL US EQUITY|10=0|");
     assert_eq!(ids(&bloomberg), ["bloomberg=AAPL US EQUITY"]);
-    // A value the type refuses states nothing and is kept as an anomaly,
-    // the field staying on the row as it arrived.
-    let refused = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331006|10=0|");
+    // A number its check digit does not close is held as the value it is,
+    // of a lower rank, and is no anomaly; a value the type's shape refuses
+    // states nothing and is kept as one, the field staying on the row as
+    // it arrived.
+    let typo = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US0378331006|10=0|");
+    assert_eq!(ids(&typo), ["isin=US0378331006"]);
+    assert!(anomalies(&typo).is_empty(), "{:?}", anomalies(&typo));
+    let refused = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|22=4|48=US037833100|10=0|");
     assert!(ids(&refused).is_empty(), "{:?}", ids(&refused));
     assert_eq!(
         refused
             .get_by_tag(48)
             .and_then(|held| held.as_str().map(str::to_owned)),
-        Some("US0378331006".to_owned())
+        Some("US037833100".to_owned())
     );
     assert!(!anomalies(&refused).is_empty());
 }
@@ -1614,4 +1629,32 @@ fn an_iso_currency_or_country_source_reads_a_code_its_standard_names() {
     let refused = parsed(b"8=FIX.4.4|35=D|11=A1|55=EUR|22=6|48=EURO|10=0|");
     assert!(ids(&refused).is_empty(), "{:?}", ids(&refused));
     assert!(!anomalies(&refused).is_empty());
+}
+
+/// A code-suffixed spelling behind a namespace states its source's entry -
+/// `OMS_RICCODE` is `oms:ric`, `ULLINK.ISINCODE` `ullink:isin`,
+/// `firm.x.BBGSymbol` `firm.x:bloomberg`, `OMS_FIGICODE` `oms:figi` - and
+/// the base key of each type takes the value where nothing else states it.
+#[test]
+fn a_code_suffixed_alias_behind_a_namespace_states_its_sources_entry() {
+    let held = parsed(
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|OMS_RICCODE=AAPL.O|ULLINK.ISINCODE=US0378331005|\
+          firm.x.BBGSymbol=AAPL US Equity|OMS_FIGICODE=BBG000B9XRY4|10=0|",
+    );
+    let ids = held.get_securityids();
+    let src = |name: &str| name.parse::<yggdryl::IdSource>().expect("a source");
+    for (source, kind, value) in [
+        ("oms", IdType::Ric, "AAPL.O"),
+        ("ullink", IdType::Isin, "US0378331005"),
+        ("firm.x", IdType::Bloomberg, "AAPL US Equity"),
+        ("oms", IdType::Figi, "BBG000B9XRY4"),
+    ] {
+        assert_eq!(
+            ids.get_from(&IdKey::new(src(source), kind.clone())),
+            Some(value),
+            "{source}:{kind} in {ids}"
+        );
+        assert_eq!(ids.get(&kind), Some(value), "{kind} in {ids}");
+    }
+    assert!(anomalies(&held).is_empty(), "{:?}", anomalies(&held));
 }

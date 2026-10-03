@@ -4282,6 +4282,7 @@ mod planning {
 }
 
 mod handles {
+    use yggdryl::iceberg::{SortField, SortOrder, Transform};
 
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -4889,14 +4890,14 @@ mod handles {
         .unwrap();
         let untyped_table = yggdryl::IOMedia::record_options(&table)
             .unwrap()
-            .with_commit_row_size(1);
+            .with_commit_batch_num(1);
         table
             .overwrite_arrow_reader(
                 yggdryl::arrow::batch_reader(bad.schema(), [bad.clone()]),
                 &untyped_table,
             )
             .unwrap();
-        let untyped_leaf = leaf.record_options().unwrap().with_commit_row_size(1);
+        let untyped_leaf = leaf.record_options().unwrap().with_commit_batch_num(1);
         leaf.overwrite_arrow_reader(
             yggdryl::arrow::batch_reader(bad.schema(), [bad]),
             &untyped_leaf,
@@ -4918,8 +4919,16 @@ mod handles {
         }
     }
 
+    /// One batch per row, so a cadence of one batch is a commit per row.
+    fn one_row_batches(batch: &RecordBatch) -> yggdryl::arrow::BatchReader {
+        let rows: Vec<RecordBatch> = (0..batch.num_rows())
+            .map(|row| batch.slice(row, 1))
+            .collect();
+        yggdryl::arrow::batch_reader(batch.schema(), rows)
+    }
+
     #[test]
-    fn table_commit_row_size_publishes_each_intent_at_the_requested_cadence() {
+    fn table_commit_batch_num_publishes_each_intent_at_the_requested_cadence() {
         let path = root("handle-table-commit-cadence");
         let schema = trade_schema();
         let mut table = Table::create(
@@ -4932,7 +4941,7 @@ mod handles {
         let options = yggdryl::IOMedia::record_options(&table)
             .unwrap()
             .with_field(schema)
-            .with_commit_row_size(1);
+            .with_commit_batch_num(1);
 
         let batch = trades(
             &[1, 2, 3],
@@ -4940,10 +4949,7 @@ mod handles {
             &[Some("XNAS"), Some("XNYS"), Some("XLON")],
         );
         table
-            .overwrite_arrow_reader(
-                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
-                &options,
-            )
+            .overwrite_arrow_reader(one_row_batches(&batch), &options)
             .unwrap();
         assert_eq!(table.metadata().snapshots().len(), 3);
         assert_eq!(collect(table.read_arrow_reader(&options).unwrap()).len(), 3);
@@ -4954,10 +4960,7 @@ mod handles {
             &[Some("XLON"), Some("XLON")],
         );
         table
-            .append_arrow_reader(
-                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
-                &options,
-            )
+            .append_arrow_reader(one_row_batches(&batch), &options)
             .unwrap();
         assert_eq!(table.metadata().snapshots().len(), 5);
 
@@ -4968,10 +4971,7 @@ mod handles {
             &[Some("XNYS"), Some("XLON")],
         );
         table
-            .merge_arrow_reader(
-                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
-                &merging,
-            )
+            .merge_arrow_reader(one_row_batches(&batch), &merging)
             .unwrap();
         assert_eq!(table.metadata().snapshots().len(), 7);
         assert_eq!(collect(table.read_arrow_reader(&options).unwrap()).len(), 6);
@@ -4980,7 +4980,7 @@ mod handles {
     #[test]
     fn a_table_located_through_its_folder_keeps_the_same_commit_cadence() {
         let (path, mut folder) = table("handle-located-table-cadence");
-        let options = options(&folder).with_commit_row_size(1);
+        let options = options(&folder).with_commit_batch_num(1);
         let batch = trades(
             &[1, 2, 3],
             &[Some("AAPL"), Some("MSFT"), Some("VOD")],
@@ -4988,10 +4988,7 @@ mod handles {
         );
 
         folder
-            .overwrite_arrow_reader(
-                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
-                &options,
-            )
+            .overwrite_arrow_reader(one_row_batches(&batch), &options)
             .unwrap();
 
         let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
@@ -4999,6 +4996,463 @@ mod handles {
         assert_eq!(
             collect(reopened.read_arrow_reader(&options).unwrap()).len(),
             3
+        );
+    }
+
+    #[test]
+    fn an_unset_cadence_commits_a_table_once_and_cuts_its_files_at_the_target() {
+        // Three one-row batches are one commit whatever the target file
+        // size: the rows of a write are held under the spill bound until the
+        // source ends, so a stream of any length is one snapshot. The target
+        // cuts the files, never the commits: a one-byte target lays every
+        // row in a file of its own, and every row still reads back once.
+        let rows = || {
+            one_row_batches(&trades(
+                &[1, 2, 3],
+                &[Some("AAPL"), Some("MSFT"), Some("VOD")],
+                &[Some("XNAS"), Some("XNYS"), Some("XLON")],
+            ))
+        };
+        for (label, target, files) in [
+            ("default", None, 1),
+            ("tiny", Some(1), 3),
+            ("larger-than-the-stream", Some(1 << 20), 1),
+        ] {
+            let path = root(&format!("handle-table-byte-cadence-{label}"));
+            let schema = trade_schema();
+            let mut table = Table::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V2,
+                schema.clone(),
+                PartitionSpec::unpartitioned(),
+            )
+            .unwrap();
+            if let Some(target) = target {
+                let mut explicit = yggdryl::iceberg::IcebergOptions::default();
+                explicit.set_target_file_size_bytes(target).unwrap();
+                table.set_options(explicit);
+            }
+            let options = yggdryl::IOMedia::record_options(&table)
+                .unwrap()
+                .with_field(schema);
+            assert_eq!(options.commit_batch_num(), None, "{label}");
+
+            table.append_arrow_reader(rows(), &options).unwrap();
+            assert_eq!(table.metadata().snapshots().len(), 1, "{label}");
+            assert_eq!(table.data_files().unwrap().len(), files, "{label}");
+            assert_eq!(
+                collect(table.read_arrow_reader(&options).unwrap()).len(),
+                3,
+                "{label}"
+            );
+
+            // An overwrite is one commit too, so it is one atomic replacement.
+            table.overwrite_arrow_reader(rows(), &options).unwrap();
+            assert_eq!(table.metadata().snapshots().len(), 2, "{label}");
+            assert_eq!(table.data_files().unwrap().len(), files, "{label}");
+            assert_eq!(
+                collect(table.read_arrow_reader(&options).unwrap()).len(),
+                3,
+                "{label}"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    /// Store a target file size on the table at `path`, so every handle
+    /// that opens it - a held [`Table`] or a folder addressing it - reads
+    /// the same cadence.
+    fn set_target_file_size(path: &std::path::Path, target: u64) {
+        Table::open(LocalFolder::new(path).unwrap())
+            .unwrap()
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property("write.target-file-size-bytes", target.to_string())?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    /// The snapshots the table at `path` holds, read afresh.
+    fn snapshots(path: &std::path::Path) -> usize {
+        Table::open(LocalFolder::new(path).unwrap())
+            .unwrap()
+            .metadata()
+            .snapshots()
+            .len()
+    }
+
+    /// `(id, symbol, venue)` triples as [`collect`] answers them.
+    fn triples(rows: &[(i64, &str, &str)]) -> Vec<(i64, Option<String>, Option<String>)> {
+        rows.iter()
+            .map(|(id, symbol, venue)| (*id, Some((*symbol).to_owned()), Some((*venue).to_owned())))
+            .collect()
+    }
+
+    #[test]
+    fn an_unset_cadence_commits_a_located_table_once_whatever_its_target() {
+        // The folder addressing a table writes as the table does: every
+        // write is one commit, under the 512 MiB default target and under a
+        // one-byte target alike - the target cuts files, never commits - and
+        // every row still reads back exactly once.
+        for (label, target) in [("default", None), ("tiny", Some(1))] {
+            let (path, mut folder) = table(&format!("handle-located-byte-cadence-{label}"));
+            if let Some(target) = target {
+                set_target_file_size(&path, target);
+            }
+            let options = options(&folder);
+            assert_eq!(options.commit_batch_num(), None, "{label}");
+            let commits = |_batches: usize| 1;
+
+            // The first commit overwrites, every later one appends.
+            let batch = trades(
+                &[1, 2, 3],
+                &[Some("AAPL"), Some("MSFT"), Some("VOD")],
+                &[Some("XNAS"), Some("XNYS"), Some("XLON")],
+            );
+            folder
+                .overwrite_arrow_reader(one_row_batches(&batch), &options)
+                .unwrap();
+            let mut expected = commits(3);
+            assert_eq!(snapshots(&path), expected, "{label}");
+
+            let batch = trades(&[4, 5], &[Some("BP"), Some("SHEL")], &[Some("XLON"); 2]);
+            folder
+                .append_arrow_reader(one_row_batches(&batch), &options)
+                .unwrap();
+            expected += commits(2);
+            assert_eq!(snapshots(&path), expected, "{label}");
+
+            // A keyed merge upserts on every commit: the update of one
+            // commit and the insert of the next both land, once.
+            let merging = options.clone().with_merge_by(["id"]).unwrap();
+            let batch = trades(
+                &[2, 6],
+                &[Some("MSFT.L"), Some("ARM")],
+                &[Some("XNYS"), Some("XLON")],
+            );
+            folder
+                .merge_arrow_reader(one_row_batches(&batch), &merging)
+                .unwrap();
+            expected += commits(2);
+            assert_eq!(snapshots(&path), expected, "{label}");
+            assert_eq!(
+                collect(folder.read_arrow_reader(&options).unwrap()),
+                triples(&[
+                    (1, "AAPL", "XNAS"),
+                    (2, "MSFT.L", "XNYS"),
+                    (3, "VOD", "XLON"),
+                    (4, "BP", "XLON"),
+                    (5, "SHEL", "XLON"),
+                    (6, "ARM", "XLON"),
+                ]),
+                "{label}"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn an_unset_cadence_merges_a_held_table_once_keyed_or_not() {
+        let path = root("handle-table-merge-byte-cadence");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+        let mut explicit = yggdryl::iceberg::IcebergOptions::default();
+        explicit.set_target_file_size_bytes(1).unwrap();
+        table.set_options(explicit);
+        let options = yggdryl::IOMedia::record_options(&table)
+            .unwrap()
+            .with_field(schema);
+        assert_eq!(options.commit_batch_num(), None);
+        // One batch is one commit whatever the target.
+        let seed = trades(
+            &[10, 11, 12],
+            &[Some("OLD"); 3],
+            &[Some("XNAS"), Some("XLON"), Some("XNYS")],
+        );
+        table
+            .append_arrow_reader(
+                yggdryl::arrow::batch_reader(seed.schema(), [seed]),
+                &options,
+            )
+            .unwrap();
+        assert_eq!(table.metadata().snapshots().len(), 1);
+
+        // Keyed: the one-row batches are one commit, upserting by the key.
+        let keyed = options.clone().with_merge_by(["id"]).unwrap();
+        let batch = trades(
+            &[10, 20],
+            &[Some("NEW"), Some("ADD")],
+            &[Some("XNAS"), Some("XLON")],
+        );
+        table
+            .merge_arrow_reader(one_row_batches(&batch), &keyed)
+            .unwrap();
+        assert_eq!(table.metadata().snapshots().len(), 2);
+        assert_eq!(
+            collect(table.read_arrow_reader(&options).unwrap()),
+            triples(&[
+                (10, "NEW", "XNAS"),
+                (11, "OLD", "XLON"),
+                (12, "OLD", "XNYS"),
+                (20, "ADD", "XLON"),
+            ])
+        );
+
+        // Keyed by the partition alone: the one commit replaces the two
+        // partitions the rows fall in with all four rows, and the partition
+        // no row names keeps its own.
+        let batch = trades(
+            &[1, 2, 3, 4],
+            &[Some("A"), Some("B"), Some("C"), Some("D")],
+            &[Some("XNAS"), Some("XLON"), Some("XNAS"), Some("XLON")],
+        );
+        assert!(options.merge_by().is_empty());
+        table
+            .merge_arrow_reader(one_row_batches(&batch), &options)
+            .unwrap();
+        assert_eq!(table.metadata().snapshots().len(), 3);
+        assert_eq!(
+            collect(table.read_arrow_reader(&options).unwrap()),
+            triples(&[
+                (1, "A", "XNAS"),
+                (2, "B", "XLON"),
+                (3, "C", "XNAS"),
+                (4, "D", "XLON"),
+                (12, "OLD", "XNYS"),
+            ])
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_merge_keyed_by_the_partition_alone_keeps_every_row_across_its_commits() {
+        // Each door replaces a partition on the first commit of the write
+        // that reaches it and appends on the later ones: the held table with
+        // no key and the folder with the partition column as the key commit
+        // once, and a write session asked for one batch a commit replaces on
+        // the first and appends on the three after - the merge their own
+        // refusal of an empty key leaves.
+        let seed = trades(
+            &[10, 11, 12],
+            &[Some("OLD"); 3],
+            &[Some("XNAS"), Some("XLON"), Some("XNYS")],
+        );
+        let incoming = trades(
+            &[1, 2, 3, 4],
+            &[Some("A"), Some("B"), Some("C"), Some("D")],
+            &[Some("XNAS"), Some("XLON"), Some("XNAS"), Some("XLON")],
+        );
+        let expected = triples(&[
+            (1, "A", "XNAS"),
+            (2, "B", "XLON"),
+            (3, "C", "XNAS"),
+            (4, "D", "XLON"),
+            (12, "OLD", "XNYS"),
+        ]);
+        for door in ["table", "folder", "session"] {
+            let (path, mut folder) = table(&format!("handle-partition-merge-{door}"));
+            set_target_file_size(&path, 1);
+            let options = options(&folder);
+            folder
+                .append_arrow_reader(
+                    yggdryl::arrow::batch_reader(seed.schema(), [seed.clone()]),
+                    &options,
+                )
+                .unwrap();
+            let by_partition = options.clone().with_merge_by(["venue"]).unwrap();
+            match door {
+                "table" => {
+                    let mut table = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+                    table
+                        .merge_arrow_reader(one_row_batches(&incoming), &options)
+                        .unwrap();
+                }
+                "folder" => folder
+                    .merge_arrow_reader(one_row_batches(&incoming), &by_partition)
+                    .unwrap(),
+                _ => {
+                    // A session publishes by its own byte default, so one
+                    // batch a commit is asked for.
+                    let cadence = by_partition.clone().with_commit_batch_num(1);
+                    let mut session = yggdryl::ArrowWriteSession::merge(&cadence).unwrap();
+                    assert!(
+                        session
+                            .push(&mut folder, one_row_batches(&incoming))
+                            .unwrap()
+                    );
+                    session.finish(&mut folder).unwrap();
+                }
+            }
+            let commits = if door == "session" { 4 } else { 1 };
+            assert_eq!(snapshots(&path), 1 + commits, "{door}");
+            assert_eq!(
+                collect(folder.read_arrow_reader(&options).unwrap()),
+                expected,
+                "{door}"
+            );
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+
+    #[test]
+    fn a_sorted_table_orders_each_partition_across_the_batches_of_one_commit() {
+        // Rows arriving out of the table's order, one batch each, are one
+        // commit whose partition is sorted as a whole: the one file the
+        // partition lands in reads back in symbol order, not arrival order.
+        let path = root("handle-table-sorted-across-batches");
+        let schema = trade_schema();
+        let mut table = Table::create_sorted(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+            SortOrder {
+                order_id: 1,
+                fields: vec![SortField {
+                    source_id: 2,
+                    transform: Transform::Identity,
+                    direction: "asc".into(),
+                    null_order: "nulls-last".into(),
+                }],
+            },
+        )
+        .unwrap();
+        let options = yggdryl::IOMedia::record_options(&table)
+            .unwrap()
+            .with_field(schema);
+        let batch = trades(
+            &[1, 2, 3, 4],
+            &[Some("d"), Some("c"), Some("b"), Some("a")],
+            &[Some("XNAS"); 4],
+        );
+        table
+            .append_arrow_reader(one_row_batches(&batch), &options)
+            .unwrap();
+        assert_eq!(table.metadata().snapshots().len(), 1);
+        let files = table.data_files().unwrap();
+        assert_eq!(
+            files.len(),
+            1,
+            "one partition, one file under the default target"
+        );
+        assert_eq!(files[0].0.sort_order_id, Some(1));
+        assert_eq!(files[0].0.record_count, 4);
+        // `collect` sorts, so the file's own row order is read off the ids.
+        let ids: Vec<i64> = table
+            .read_arrow_reader(&options)
+            .unwrap()
+            .flat_map(|batch| {
+                batch
+                    .unwrap()
+                    .column_by_name("id")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .values()
+                    .to_vec()
+            })
+            .collect();
+        assert_eq!(ids, [4, 3, 2, 1], "symbols a, b, c, d");
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn num_threads_writes_the_same_files_in_the_same_order_and_refuses_zero() {
+        let batch = trades(
+            &[1, 2, 3, 4, 5, 6],
+            &[
+                Some("A"),
+                Some("B"),
+                Some("C"),
+                Some("D"),
+                Some("E"),
+                Some("F"),
+            ],
+            &[
+                Some("XNAS"),
+                Some("XLON"),
+                Some("XNYS"),
+                Some("XNAS"),
+                Some("XLON"),
+                Some("XNYS"),
+            ],
+        );
+        let mut layouts = Vec::new();
+        for threads in [1_usize, 3] {
+            let path = root(&format!("handle-table-num-threads-{threads}"));
+            let schema = trade_schema();
+            let mut table = Table::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V2,
+                schema.clone(),
+                PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+            )
+            .unwrap();
+            let options = yggdryl::IOMedia::record_options(&table)
+                .unwrap()
+                .with_field(schema)
+                .with_num_threads(threads);
+            table
+                .append_arrow_reader(one_row_batches(&batch), &options)
+                .unwrap();
+            assert_eq!(table.metadata().snapshots().len(), 1);
+            // One file per partition holding both of its rows, whatever
+            // thread wrote each, so the layout is the same on one thread as
+            // on three; a scan's file order is the plan's, so the layouts
+            // compare by partition.
+            let mut layout: Vec<(Vec<yggdryl::Scalar>, i64)> = table
+                .data_files()
+                .unwrap()
+                .iter()
+                .map(|(file, _)| (file.partition.clone(), file.record_count))
+                .collect();
+            layout.sort();
+            layouts.push(layout);
+            let mut rows = collect(table.read_arrow_reader(&options).unwrap());
+            rows.sort();
+            assert_eq!(
+                rows,
+                triples(&[
+                    (1, "A", "XNAS"),
+                    (2, "B", "XLON"),
+                    (3, "C", "XNYS"),
+                    (4, "D", "XNAS"),
+                    (5, "E", "XLON"),
+                    (6, "F", "XNYS"),
+                ])
+            );
+
+            // Zero is refused before the source is pulled: no snapshot is added.
+            let error = table
+                .append_arrow_reader(
+                    one_row_batches(&batch),
+                    &options.clone().with_num_threads(0),
+                )
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("$.num_threads"), "{error}");
+            assert_eq!(table.metadata().snapshots().len(), 1);
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        assert_eq!(layouts[0], layouts[1]);
+        assert_eq!(
+            layouts[0].len(),
+            3,
+            "one file per partition: {:?}",
+            layouts[0]
+        );
+        assert!(
+            layouts[0].iter().all(|(_, rows)| *rows == 2),
+            "{:?}",
+            layouts[0]
         );
     }
 
@@ -5016,7 +5470,7 @@ mod handles {
         let options = yggdryl::IOMedia::record_options(&table)
             .unwrap()
             .with_field(schema)
-            .with_commit_row_size(1);
+            .with_commit_batch_num(1);
         let first = trades(&[7], &[Some("NVDA")], &[Some("XNAS")]);
         let reader = Box::new(RecordBatchIterator::new(
             [
@@ -6080,6 +6534,57 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
         3,
         "property still speaks"
     );
+
+    let _ = std::fs::remove_dir_all(&path);
+}
+
+#[test]
+fn a_count_property_reads_as_every_count_reads_and_refuses_what_none_does() {
+    use yggdryl::iceberg::IcebergOptions;
+
+    let path = root("option-integer-spelling");
+    let mut table = Table::create(
+        LocalFolder::new(&path).unwrap(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+
+    // Surrounding blanks and an explicit plus are no part of a number. The
+    // two keys are the crate's own, which the official table-property reader
+    // does not also hold to its untrimmed spelling.
+    table
+        .commit_metadata_changes(|metadata| {
+            metadata.set_property(IcebergOptions::READ_PARALLEL_MIN_FILES_KEY, " 4 ")?;
+            metadata.set_property(IcebergOptions::READ_PARALLEL_MIN_FILE_SIZE_KEY, "+9")?;
+            Ok(())
+        })
+        .unwrap();
+    let options = table.options().unwrap();
+    assert_eq!(options.read_parallel_min_files(), 4);
+    assert_eq!(options.read_parallel_min_file_size_bytes(), 9);
+
+    // A fraction, an exponent, a unit, a word and a sign an unsigned count
+    // cannot hold are refused naming the key and the text.
+    for text in ["5.0", "1e3", "1_000", "512 MB", "many", "-1"] {
+        table
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property(IcebergOptions::READ_PARALLEL_MIN_FILES_KEY, text)?;
+                Ok(())
+            })
+            .unwrap();
+        let error = table.options().unwrap_err();
+        assert!(
+            matches!(
+                error,
+                yggdryl::Error::InvalidMetadataValue { ref key, .. }
+                    if key == IcebergOptions::READ_PARALLEL_MIN_FILES_KEY
+            ),
+            "{text}: {error:?}"
+        );
+        assert!(error.to_string().contains(text), "{text}: {error}");
+    }
 
     let _ = std::fs::remove_dir_all(&path);
 }
@@ -7537,7 +8042,7 @@ fn a_uuid_column_keeps_its_type_through_a_round_trip() {
 }
 
 /// Partition isolation, default keys, sorted files, parallel writes, and the
-/// v3 types: the private half of the contract `docs/media/index.md` (Iceberg)
+/// v3 types: the private half of the contract `docs/media/iceberg.md`
 /// states, pinned where the plan, the grouping, and the data-file handles
 /// are visible.
 mod isolation {
@@ -8952,6 +9457,468 @@ mod staging_transaction {
         assert_eq!(reopened.metadata_version(), version);
         assert!(reopened.current_snapshot().is_none());
         let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+}
+
+/// A table partitioned by one of this crate's own transforms: written by
+/// `minutes[15]` and `minutes[30]`, read back through the metadata and the
+/// manifests a reopened table reads, and pruned by the periods its files and
+/// manifests name.
+mod time_partitions {
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int64Array, RecordBatch, TimestampMicrosecondArray};
+
+    use super::{
+        FormatVersion, LocalFolder, PartitionField, PartitionSpec, Table, Transform,
+        assign_field_ids, root,
+    };
+    use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
+
+    fn schema() -> Field {
+        let mut schema = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::NAIVE,
+            }
+            .required_field("ts"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema
+    }
+
+    fn batch(schema: &Field, ids: &[i64], seconds: &[i64]) -> RecordBatch {
+        let arrow = schema.clone().into_arrow_schema().unwrap();
+        RecordBatch::try_new(
+            arrow,
+            vec![
+                Arc::new(Int64Array::from(ids.to_vec())) as ArrayRef,
+                Arc::new(TimestampMicrosecondArray::from(
+                    seconds
+                        .iter()
+                        .map(|second| second * 1_000_000)
+                        .collect::<Vec<_>>(),
+                )) as ArrayRef,
+            ],
+        )
+        .unwrap()
+    }
+
+    fn rows(reader: yggdryl::arrow::BatchReader) -> usize {
+        reader.map(|batch| batch.unwrap().num_rows()).sum()
+    }
+
+    /// A table at `path` partitioned by `minutes[step]` of `ts`, in a field
+    /// named `ts_minutes`.
+    fn minutes_table(path: &std::path::Path, schema: &Field, step: u32) -> Table<LocalFolder> {
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![PartitionField {
+                source_id: 2,
+                field_id: 1000,
+                name: "ts_minutes".into(),
+                transform: Transform::Minutes(step),
+            }],
+        };
+        Table::create(
+            LocalFolder::new(path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap()
+    }
+
+    /// Every metadata document the table wrote, as the text on disk.
+    fn metadata_documents(path: &std::path::Path) -> Vec<String> {
+        let documents: Vec<String> = std::fs::read_dir(path.join("metadata"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|file| file.to_string_lossy().ends_with(".metadata.json"))
+            .map(|file| std::fs::read_to_string(file).unwrap())
+            .collect();
+        assert!(!documents.is_empty(), "the table wrote its metadata");
+        documents
+    }
+
+    /// The on-disk files of a reopened table: partition tuple, row count,
+    /// path, sorted.
+    fn data_files(
+        table: &Table<LocalFolder>,
+        transform: Transform,
+    ) -> Vec<(Vec<Scalar>, i64, String)> {
+        let mut files: Vec<(Vec<Scalar>, i64, String)> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, spec)| {
+                assert_eq!(spec.fields[0].transform, transform);
+                (
+                    file.partition,
+                    file.record_count,
+                    file.file_path.to_string(),
+                )
+            })
+            .collect();
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn a_table_partitioned_by_minutes_15_writes_one_file_per_period_and_reads_back() {
+        let path = root("minutes-15-partitions");
+        let schema = schema();
+        let mut table = minutes_table(&path, &schema, 15);
+
+        // Five instants over three quarter hours of 1970-01-01: 00:00,
+        // 00:14:59, 00:15, 00:30 and 00:44:59.
+        let first = batch(&schema, &[1, 2, 3, 4, 5], &[0, 899, 900, 1800, 2699]);
+        table
+            .commit_append(yggdryl::arrow::batch_reader(first.schema(), [first]))
+            .unwrap();
+        // One more commit an hour in, so the manifest list has a second
+        // summary to prune.
+        let second = batch(&schema, &[6], &[3600]);
+        table
+            .commit_append(yggdryl::arrow::batch_reader(second.schema(), [second]))
+            .unwrap();
+
+        // The document on disk spells the transform as the crate does; the
+        // reserved bucket the official model reads it as never lands there.
+        for text in metadata_documents(&path) {
+            assert!(text.contains("\"minutes[15]\""), "{text}");
+            assert!(!text.contains("\"bucket[21474"), "{text}");
+        }
+
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let files = data_files(&reopened, Transform::Minutes(15));
+        assert_eq!(files.len(), 4, "one data file per quarter hour: {files:?}");
+        for ((partition, count, file_path), (expected, expected_count)) in
+            files.iter().zip([(0, 2), (1, 1), (2, 2), (4, 1)])
+        {
+            assert_eq!(partition, &vec![Scalar::from(expected)]);
+            assert_eq!(*count, expected_count, "{file_path}");
+            assert!(
+                file_path.contains(&format!("ts_minutes={expected}/")),
+                "{file_path}"
+            );
+        }
+        assert_eq!(rows(reopened.scan(None).unwrap()), 6);
+
+        // The second manifest holds only quarter hour 4, so its
+        // manifest-list summary keeps a predicate before 00:15 from opening
+        // it; of the first manifest's three files, two are skipped by the
+        // `ts` bounds this writer records on every file - the period alone
+        // pruning a file without column statistics is pinned in
+        // `rust/tests/iceberg/scan.rs`.
+        let early = reopened
+            .plan_matching("ts < '1970-01-01T00:15:00'")
+            .unwrap();
+        assert_eq!(early.tasks.len(), 1);
+        assert_eq!(early.manifests_skipped(), 1);
+        assert_eq!(early.manifests_read, 1);
+        assert_eq!(early.files_skipped(), 2);
+        assert_eq!(early.record_count().unwrap(), 2);
+        // The file's own `ts` bounds put every row before 00:15, so no
+        // residual is left for its rows.
+        assert!(early.tasks[0].residual.is_empty());
+
+        // A range reaching into the third quarter hour keeps two files of
+        // the first manifest and the whole second one.
+        let late = reopened
+            .plan_matching("ts >= '1970-01-01T00:30:00'")
+            .unwrap();
+        assert_eq!(late.tasks.len(), 2);
+        assert_eq!(late.manifests_skipped(), 0);
+        assert_eq!(late.files_skipped(), 2);
+        assert_eq!(
+            rows(
+                reopened
+                    .scan_matching("ts >= '1970-01-01T00:30:00'", None)
+                    .unwrap()
+            ),
+            3
+        );
+        // An instant between two periods matches nothing, and says so
+        // before a data file is opened.
+        let none = reopened
+            .plan_matching("ts >= '1970-01-01T00:45:00' and ts < '1970-01-01T01:00:00'")
+            .unwrap();
+        assert_eq!(none.tasks.len(), 0);
+        assert_eq!(none.manifests_skipped(), 2);
+        assert_eq!(none.files_skipped(), 0);
+        assert_eq!(
+            rows(
+                reopened
+                    .scan_matching("ts = '1970-01-01T00:14:59'", None)
+                    .unwrap()
+            ),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_table_partitioned_by_minutes_30_writes_one_file_per_half_hour() {
+        let path = root("minutes-30-partitions");
+        let schema = schema();
+        let mut table = minutes_table(&path, &schema, 30);
+        // 00:00, 00:14:59 and 00:15 are the first half hour, 00:30 and
+        // 00:44:59 the second, 01:00 the third.
+        let rows_in = batch(
+            &schema,
+            &[1, 2, 3, 4, 5, 6],
+            &[0, 899, 900, 1800, 2699, 3600],
+        );
+        table
+            .commit_append(yggdryl::arrow::batch_reader(rows_in.schema(), [rows_in]))
+            .unwrap();
+        for text in metadata_documents(&path) {
+            assert!(text.contains("\"minutes[30]\""), "{text}");
+            assert!(!text.contains("\"bucket[21474"), "{text}");
+        }
+
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let files = data_files(&reopened, Transform::Minutes(30));
+        assert_eq!(files.len(), 3, "one data file per half hour: {files:?}");
+        for ((partition, count, file_path), (expected, expected_count)) in
+            files.iter().zip([(0, 3), (1, 2), (2, 1)])
+        {
+            assert_eq!(partition, &vec![Scalar::from(expected)]);
+            assert_eq!(*count, expected_count, "{file_path}");
+            assert!(
+                file_path.contains(&format!("ts_minutes={expected}/")),
+                "{file_path}"
+            );
+        }
+        let early = reopened
+            .plan_matching("ts < '1970-01-01T00:30:00'")
+            .unwrap();
+        assert_eq!(early.tasks.len(), 1);
+        assert_eq!(early.files_skipped(), 2);
+        assert_eq!(early.record_count().unwrap(), 3);
+        assert_eq!(rows(reopened.scan(None).unwrap()), 6);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+}
+
+mod declared_schema {
+    //! A table created from what its schema declares: `PARTITION:by` as
+    //! its spec, `SORT:by` as its default order, both reported back on
+    //! `Table::schema()` and after a reopen.
+
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray};
+
+    use super::{FormatVersion, LocalFolder, PartitionSpec, Table, Transform, root};
+    use yggdryl::iceberg::IcebergOptions;
+    use yggdryl::{DataType, Field, StructType, TimeUnit, Timezone};
+
+    /// The rows with both declarations on the root and nothing materialized:
+    /// an Iceberg table keeps a derived partition's value in its manifest,
+    /// so the declaration is written on the root rather than through
+    /// `with_partition_by`, which would add the column to the rows.
+    fn declared() -> Field {
+        let mut rows = DataType::from(
+            StructType::from_fields([
+                DataType::Int64.required_field("id"),
+                DataType::utf8().required_field("venue"),
+                DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond,
+                    timezone: Timezone::NAIVE,
+                }
+                .required_field("ts"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+        rows.as_partition_mut()
+            .set_by_texts(["venue", "minutes(ts, 15)"])
+            .unwrap();
+        rows.as_sort_mut()
+            .set_by_texts(["ts desc nulls first", "id"])
+            .unwrap();
+        rows
+    }
+
+    fn batch(ids: &[i64], venues: &[&str], seconds: &[i64]) -> RecordBatch {
+        RecordBatch::try_from_iter([
+            (
+                "id",
+                Arc::new(Int64Array::from(ids.to_vec())) as arrow_array::ArrayRef,
+            ),
+            ("venue", Arc::new(StringArray::from(venues.to_vec()))),
+            (
+                "ts",
+                Arc::new(TimestampMicrosecondArray::from(
+                    seconds.iter().map(|s| s * 1_000_000).collect::<Vec<_>>(),
+                )),
+            ),
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn a_table_is_created_from_the_declarations_and_reports_them_back() {
+        let path = root("declared-schema");
+        let schema = declared();
+        // The schema is numbered by the create, so the spec is read off it
+        // there too: nothing is declared twice.
+        let mut numbered = schema.clone();
+        yggdryl::iceberg::assign_field_ids(&mut numbered, 1).unwrap();
+        let spec = PartitionSpec::from_schema(1, &numbered).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec.clone(),
+        )
+        .unwrap();
+        assert_eq!(spec.fields[1].transform, Transform::Minutes(15));
+        assert_eq!(spec.fields[1].name, "ts_minutes");
+        // A derived partition column is the manifest's, not the schema's.
+        assert_eq!(table.schema().unwrap().field_len(), 3);
+
+        let order = table.metadata().default_sort_order().unwrap();
+        assert_eq!(order.fields.len(), 2);
+        assert_eq!(order.fields[0].source_id, 3);
+        assert_eq!(order.fields[0].direction, "desc");
+        assert_eq!(order.fields[0].null_order, "nulls-first");
+        assert_eq!(order.fields[1].source_id, 1);
+        assert_eq!(order.fields[1].direction, "asc");
+
+        let reported = table.schema().unwrap();
+        assert_eq!(
+            reported.get_metadata("PARTITION:by"),
+            Some(r#"["venue","minutes(ts, 15)"]"#)
+        );
+        assert_eq!(
+            reported.get_metadata("SORT:by"),
+            Some(r#"["ts desc nulls first","id"]"#)
+        );
+        assert_eq!(
+            reported.partition_field_names().collect::<Vec<_>>(),
+            ["venue"]
+        );
+
+        // Rows land in one file per venue and quarter hour, sorted by the
+        // declared order.
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_target_file_size_bytes(1)
+                .unwrap(),
+        );
+        let rows = batch(
+            &[1, 2, 3, 4],
+            &["X", "X", "X", "Y"],
+            &[100, 1_000, 950, 100],
+        );
+        table
+            .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+            .unwrap();
+        let mut directories: Vec<String> = table
+            .data_files()
+            .unwrap()
+            .iter()
+            .map(|(file, _)| {
+                let path = file.file_path.as_str();
+                let start = path.find("data/").unwrap() + 5;
+                path[start..].rsplit_once('/').unwrap().0.to_owned()
+            })
+            .collect();
+        directories.sort();
+        directories.dedup();
+        assert_eq!(
+            directories,
+            [
+                "venue=X/ts_minutes=0",
+                "venue=X/ts_minutes=1",
+                "venue=Y/ts_minutes=0"
+            ]
+        );
+        let ids: Vec<i64> = table
+            .scan(None)
+            .unwrap()
+            .flat_map(|batch| {
+                batch
+                    .unwrap()
+                    .column_by_name("id")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .values()
+                    .to_vec()
+            })
+            .collect();
+        assert_eq!(ids.len(), 4);
+
+        // Reopening reads both declarations off the document.
+        let reopened = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let reported = reopened.schema().unwrap();
+        assert_eq!(
+            reported.get_metadata("PARTITION:by"),
+            Some(r#"["venue","minutes(ts, 15)"]"#)
+        );
+        assert_eq!(
+            reported.get_metadata("SORT:by"),
+            Some(r#"["ts desc nulls first","id"]"#)
+        );
+        assert_eq!(
+            PartitionSpec::from_schema(1, reported).unwrap(),
+            *reopened.metadata().default_spec().unwrap()
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_group_already_in_the_declared_order_is_written_as_it_arrived() {
+        let path = root("declared-sorted");
+        let mut schema = declared();
+        schema.as_sort_mut().set_by_texts(["id"]).unwrap();
+        let mut numbered = schema.clone();
+        yggdryl::iceberg::assign_field_ids(&mut numbered, 1).unwrap();
+        let spec = PartitionSpec::from_schema(1, &numbered).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+        )
+        .unwrap();
+        for ids in [[1_i64, 2, 3], [3, 1, 2]] {
+            let rows = batch(&ids, &["X"; 3], &[100; 3]);
+            table
+                .commit_append(yggdryl::arrow::batch_reader(rows.schema(), [rows]))
+                .unwrap();
+        }
+        // Both commits read back in the declared order, whether the rows
+        // arrived sorted and were kept, or arrived unsorted and were sorted.
+        let ids: Vec<i64> = table
+            .scan(None)
+            .unwrap()
+            .flat_map(|batch| {
+                batch
+                    .unwrap()
+                    .column_by_name("id")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .values()
+                    .to_vec()
+            })
+            .collect();
+        assert_eq!(ids, [1, 2, 3, 1, 2, 3]);
+        for (file, _) in table.data_files().unwrap() {
+            assert_eq!(file.sort_order_id, Some(1));
+        }
         let _ = std::fs::remove_dir_all(&path);
     }
 }

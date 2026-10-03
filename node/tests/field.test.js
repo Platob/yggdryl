@@ -702,6 +702,7 @@ test('every well-known protocol has its own live field accessor', () => {
     'digest',
     'identity',
     'partition',
+    'sort',
     's3',
     'gs',
     'az',
@@ -741,7 +742,158 @@ test('every well-known protocol has its own live field accessor', () => {
   )
 })
 
-test('a digest holder names its own sources and validates atomically', () => {
+// Mirrors rust/tests/root/protocol.rs
+// `the_sort_view_declares_the_order_a_struct_keeps`.
+test('the sort view declares the order a struct keeps', () => {
+  const { Plan } = require('yggdryl')
+  assert.equal(new Field('x', 'int64').protocol('Sort').scheme, 'sort')
+  const row = Field.from('row: struct<venue: utf8 not null, price: float64> not null')
+  assert.equal(row.sort.scheme, 'sort')
+  assert.equal(row.sort.prefix, 'SORT')
+  assert.equal(row.sort.has('by'), false)
+  assert.equal(row.sort.by, null)
+
+  row.sort.by = ['venue', 'price DESC NULLS FIRST']
+  assert.equal(row.sort.has('by'), true)
+  assert.equal(row.get('SORT:by'), '["venue","price desc nulls first"]')
+  const keys = row.sort.by
+  assert.deepEqual(keys, ['venue', 'price desc nulls first'])
+  // What the getter answers, assigned again, stores one spelling.
+  const again = row.clone()
+  again.sort.by = keys
+  assert.ok(again.equals(row))
+
+  // A plan owns the order: the key leaves the root's metadata for the
+  // `order by` section and comes back from it.
+  const plan = Plan.fromField(row)
+  assert.deepEqual(
+    plan.ordering.map(({ term, direction, nulls }) => [term.toString(), direction, nulls]),
+    [
+      ['venue', 'asc', 'last'],
+      ['price', 'desc', 'first'],
+    ],
+  )
+  assert.deepEqual(plan.rootMetadata, [])
+  assert.equal(
+    plan.toString(),
+    'create (venue utf8 not null, price float64 null) order by venue, price desc nulls first',
+  )
+  assert.ok(plan.field().equals(row))
+  assert.ok(Plan.parse(plan.toString()).equals(plan))
+
+  // The declaration travels through the structural document and back.
+  assert.deepEqual(Field.fromJSON(row.toJSON()).sort.by, keys)
+
+  // A key that is not an `order by` key is refused naming the property, by
+  // the typed setter and by the generic write alike.
+  const unchanged = row.clone()
+  assert.throws(() => {
+    row.sort.by = ['price desc nulls']
+  }, /SORT:by/)
+  assert.ok(row.equals(unchanged))
+  assert.throws(() => new Field('row', 'int64', false, { 'SORT:by': '["venue","venue"]' }))
+  assert.throws(() => new Field('row', 'int64', false, { 'SORT:by': '["price >"]' }))
+
+  assert.equal(row.sort.removeBy(), '["venue","price desc nulls first"]')
+  assert.equal(row.sort.has('by'), false)
+  assert.equal(row.sort.removeBy(), null)
+  // `null` clears, as removeBy does.
+  row.sort.by = ['venue']
+  row.sort.by = null
+  assert.equal(row.get('SORT:by'), null)
+})
+
+// Mirrors rust/tests/root/protocol.rs
+// `the_partition_view_declares_what_rows_partition_by`.
+test('the partition view declares what rows partition by', () => {
+  const row = Field.from('row: struct<venue: utf8 not null, id: int64 not null> not null')
+  assert.equal(row.partition.has('by'), false)
+  assert.equal(row.partition.by, null)
+
+  row.partition.by = ['venue', 'Years(ts)', 'truncate(name, 4) as prefix']
+  assert.equal(row.partition.has('by'), true)
+  assert.equal(
+    row.get('PARTITION:by'),
+    '["venue","years(ts)","truncate(name, 4) as prefix"]',
+  )
+  const entries = row.partition.by
+  assert.deepEqual(entries, ['venue', 'years(ts)', 'truncate(name, 4) as prefix'])
+  const again = row.clone()
+  again.partition.by = entries
+  assert.ok(again.equals(row))
+
+  // An entry is a term with an optional alias: a declared datatype or column
+  // metadata is a column declaration, not a partition entry.
+  const unchanged = row.clone()
+  for (const entry of [
+    'venue int64',
+    'venue not null',
+    "venue with (comment = 'x')",
+    'year(',
+  ]) {
+    assert.throws(
+      () => {
+        row.partition.by = [entry]
+      },
+      /PARTITION:by/,
+      entry,
+    )
+    assert.ok(row.equals(unchanged), entry)
+  }
+  assert.equal(
+    row.partition.removeBy(),
+    '["venue","years(ts)","truncate(name, 4) as prefix"]',
+  )
+  assert.equal(row.partition.has('by'), false)
+
+  // `by` belongs to the four declaring protocols alone.
+  assert.throws(() => row.http.by, /by is a partition, sort, digest or transform property/)
+  assert.throws(() => row.iceberg.removeBy(), /this is a iceberg view/)
+})
+
+// Mirrors the rustdoc example on `Field::with_partition_by`.
+test('a partition declaration marks identity columns and materializes derived ones', () => {
+  const rows = Field.from(
+    'row: struct<venue: utf8 not null, ts: timestamp(us) not null, name: utf8 not null> not null',
+  )
+  const partitioned = rows.withPartitionBy([
+    'venue',
+    'minutes(ts, 15)',
+    'truncate(name, 4) as prefix',
+    'days(ts)',
+  ])
+  assert.equal(
+    partitioned.get('PARTITION:by'),
+    '["venue","minutes(ts, 15)","truncate(name, 4) as prefix","days(ts)"]',
+  )
+  assert.deepEqual(partitioned.partitionFieldNames(), ['venue', 'ts_minutes', 'prefix', 'ts_day'])
+  const derived = partitioned.dtype.getFieldByPath('ts_minutes')
+  assert.equal(derived.dtype.toString(), 'int32')
+  assert.equal(derived.get('TRANSFORM:expression'), 'minutes(ts, 15)')
+  // A call over columns alone is stored as its function and the terms it
+  // reads, which the transform view's `by` answers.
+  const day = partitioned.dtype.getFieldByPath('ts_day')
+  assert.equal(day.transform.get('function'), 'days')
+  assert.deepEqual(day.transform.by, ['ts'])
+  assert.equal(day.transform.term.toString(), 'days(ts)')
+  assert.deepEqual(partitioned.partitionBy(), [
+    'venue',
+    'minutes(ts, 15)',
+    'truncate(name, 4) as prefix',
+    'days(ts)',
+  ])
+  // The bare-column form, and the marks answering where nothing is declared.
+  assert.deepEqual(rows.withPartitionFields(['venue']).partitionBy(), ['venue'])
+  assert.deepEqual(rows.partitionBy(), [])
+  // An empty declaration removes it.
+  assert.equal(partitioned.withPartitionBy([]).get('PARTITION:by'), null)
+  assert.throws(() => rows.withPartitionBy(['tier']), /tier/)
+  assert.throws(() => rows.withPartitionBy(['venue', 'venue']), /twice/)
+  assert.throws(() => rows.withPartitionBy(['venue int64']))
+  assert.throws(() => new Field('x', 'int64').withPartitionBy(['x']))
+})
+
+test('a digest holder names what it reads by and validates atomically', () => {
   const symbol = new Field('symbol', 'utf8', false)
   const price = new Field('price', 'float64', false)
   const holder = new Field('row_digest', 'uint64', false)
@@ -779,7 +931,7 @@ test('a digest holder names its own sources and validates atomically', () => {
   const venue = new Field('venue', 'utf8', false)
   const narrowed = new Field('row_digest', 'uint64', true, {
     'DIGEST:role': 'holder',
-    'DIGEST:sources': '["venue"]',
+    'DIGEST:by': '["venue"]',
   })
   const explicit = new Field(
     'row',
@@ -787,16 +939,17 @@ test('a digest holder names its own sources and validates atomically', () => {
     false,
   )
   assert.deepEqual(venue.digest.entries(), [])
-  assert.equal(narrowed.digest.get('sources'), '["venue"]')
+  assert.equal(narrowed.digest.get('by'), '["venue"]')
+  assert.deepEqual(narrowed.digest.by, ['venue'])
   assert.deepEqual(explicit.digestFieldNames(), ['symbol', 'venue', 'price'])
   assert.equal(explicit.digestFieldLen, 3)
   assert.throws(
     () =>
       new Field('bad', 'uint64', true, {
         'DIGEST:role': 'holder',
-        'DIGEST:sources': '["*","venue"]',
+        'DIGEST:by': '["*","venue"]',
       }),
-    /DIGEST:sources/,
+    /DIGEST:by/,
   )
 
   const holdersOnly = new Field(
@@ -1039,4 +1192,30 @@ test('the constructor reads every metadata shape `update` reads', () => {
     () => new Field('price', new DataType('float64'), true, [['venue']]),
     /two items/,
   )
+})
+
+test('the transform view declares its term and reads the terms its function reads', () => {
+  const year = new Field('year', 'int32', true)
+  assert.equal(year.transform.term, null)
+  // A call over plain columns is stored as its function beside its `by`.
+  year.transform.term = 'year(event)'
+  assert.equal(year.get('TRANSFORM:function'), 'year')
+  assert.deepEqual(year.transform.by, ['event'])
+  assert.equal(year.transform.term.toString(), 'year(event)')
+  // Any other term is stored whole, and the function and its `by` go.
+  year.transform.term = 'YEAR(event) + 1'
+  assert.deepEqual(year.transform.entries(), [{ key: 'expression', value: 'year(event) + 1' }])
+  assert.equal(year.transform.by, null)
+  // A function's arguments are never written apart from it.
+  assert.throws(() => {
+    year.transform.by = ['event']
+  }, /assign field.transform.term/)
+  assert.throws(() => year.transform.removeBy(), /assign field.transform.term/)
+  assert.equal(year.transform.removeTerm(), 'year(event) + 1')
+  assert.equal(year.transform.term, null)
+  year.transform.term = 'year(event)'
+  year.transform.term = null
+  assert.equal(year.transform.term, null)
+  // The term belongs to the transform view alone.
+  assert.throws(() => year.partition.term, /term is a transform property, and this is a partition view/)
 })

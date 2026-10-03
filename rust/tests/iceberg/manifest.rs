@@ -870,6 +870,76 @@ fn official_manifest_reads_preserve_unknown_partition_transforms() {
     );
 }
 
+/// A manifest header's spec is bridged into the official reader the way a
+/// metadata document is, so a `bucket[n]` it states above `i32::MAX` - the
+/// count `minutes[15]` crosses as, here - is refused by that count rather
+/// than read back as the transform the count carries; the same header
+/// stating a real count reads as written.
+#[test]
+fn a_manifest_header_stating_a_reserved_bucket_count_is_refused_by_its_count() {
+    let field = field();
+    let spec = PartitionSpec {
+        spec_id: 3,
+        fields: vec![yggdryl::iceberg::PartitionField {
+            source_id: 1,
+            field_id: 1000,
+            name: "id_bucket".into(),
+            transform: Transform::Bucket(16),
+        }],
+    };
+    let input = ManifestEntry::added(
+        41,
+        DataFile {
+            file_path: "s3://warehouse/table/data/part.parquet".into(),
+            partition: vec![Scalar::from(3_i32)],
+            record_count: 1,
+            file_size_in_bytes: 128,
+            ..DataFile::default()
+        },
+    );
+    let partition = spec.partition_field(&field).unwrap();
+    let row = entry_to_value(&input, FormatVersion::V2, &partition).unwrap();
+    let (avro_schema, schema_text, spec_text) =
+        manifest_header_parts(&field, &spec, FormatVersion::V2);
+    let write = |spec_text: &str| {
+        let metadata = [
+            ("schema", schema_text.as_str()),
+            ("schema-id", "0"),
+            ("partition-spec", spec_text),
+            ("partition-spec-id", "3"),
+            ("format-version", "2"),
+            ("content", "data"),
+        ];
+        let mut handle = Buffer::new();
+        yggdryl::avro::write_container(
+            &mut handle,
+            &avro_schema,
+            &metadata,
+            std::slice::from_ref(&row),
+        )
+        .unwrap();
+        handle
+    };
+
+    let stated = write(&spec_text);
+    assert_eq!(read_manifest_spec(&stated).unwrap(), spec);
+
+    for count in [2_147_483_663_u32, u32::MAX - 1, u32::MAX] {
+        let reserved = spec_text.replace("bucket[16]", &format!("bucket[{count}]"));
+        assert_ne!(reserved, spec_text, "the header states the bucket");
+        let handle = write(&reserved);
+        for message in [
+            read_manifest_spec(&handle).unwrap_err().to_string(),
+            read_manifest(&handle).unwrap_err().to_string(),
+            read_manifest_for_plan(&handle, true)
+                .unwrap_err()
+                .to_string(),
+        ] {
+            assert!(message.contains(&format!("bucket[{count}]")), "{message}");
+        }
+    }
+}
+
 #[test]
 fn official_uuid_partition_literals_use_the_exact_uuid_shape() {
     let document = yggdryl::json::from_utf8(

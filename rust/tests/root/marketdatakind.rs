@@ -106,11 +106,12 @@ fn the_members_are_the_msgcat_code_set_in_code_order() {
     assert_eq!(std::mem::size_of::<MarketDataKind>(), 1);
 }
 
-/// Only an order, a quote and an execution are sided: their cross code is
-/// stored under their side. Each batch files many of one single category,
-/// which is its item; every other kind is its own item.
+/// Only an order and an execution are sided: their cross code is stored
+/// under their side. A quote holds its bid and its ask in one element, so it
+/// is no more sided than a trade or a book. Each batch files many of one
+/// single category, which is its item; every other kind is its own item.
 #[test]
-fn only_the_three_operations_are_sided_and_each_batch_names_its_item() {
+fn only_orders_and_executions_are_sided_and_each_batch_names_its_item() {
     for (name, kind, sided, batch, item) in [
         (
             "ORDR",
@@ -122,7 +123,7 @@ fn only_the_three_operations_are_sided_and_each_batch_names_its_item() {
         (
             "QUOT",
             MarketDataKind::Quotation,
-            true,
+            false,
             false,
             MarketDataKind::Quotation,
         ),
@@ -193,7 +194,7 @@ fn only_the_three_operations_are_sided_and_each_batch_names_its_item() {
         .filter(|kind| kind.is_sided())
         .map(|kind| kind.as_str())
         .collect();
-    assert_eq!(sided, ["EXEC", "ORDR", "QUOT"]);
+    assert_eq!(sided, ["EXEC", "ORDR"]);
     for spelling in [
         "order_batch",
         "OrderBatch",
@@ -206,6 +207,36 @@ fn only_the_three_operations_are_sided_and_each_batch_names_its_item() {
             "{spelling}"
         );
     }
+}
+
+/// A book folds an order, a quote and a book's own snapshot; every other
+/// kind - an execution, a trade, a batch, a session message, an unfiled
+/// one - is pruned before the fold.
+#[test]
+fn only_orders_quotes_and_books_are_booked() {
+    let booked: Vec<&str> = MarketDataKind::ALL
+        .iter()
+        .filter(|kind| kind.is_booked())
+        .map(|kind| kind.as_str())
+        .collect();
+    assert_eq!(booked, ["BOOK", "ORDR", "QUOT"]);
+    for kind in [
+        MarketDataKind::Execution,
+        MarketDataKind::Trade,
+        MarketDataKind::OrderBatch,
+        MarketDataKind::QuoteBatch,
+        MarketDataKind::ExecutionBatch,
+        MarketDataKind::TradeBatch,
+        MarketDataKind::Session,
+        MarketDataKind::Unknown,
+    ] {
+        assert!(!kind.is_booked(), "{}", kind.as_str());
+    }
+    // A batch's item is booked exactly when it is an order or a quote.
+    assert!(MarketDataKind::OrderBatch.item().is_booked());
+    assert!(MarketDataKind::QuoteBatch.item().is_booked());
+    assert!(!MarketDataKind::ExecutionBatch.item().is_booked());
+    assert!(!MarketDataKind::TradeBatch.item().is_booked());
 }
 
 #[test]
@@ -616,5 +647,39 @@ fn a_kind_filters_and_casts_by_its_member_in_an_expression() {
             kept,
             "{clause}"
         );
+    }
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    use yggdryl::internals::marketdatakind::stored_side;
+    use yggdryl::{MarketDataKind, Side};
+
+    /// The side a cross code and a chain are keyed by is the stated side of
+    /// an order or an execution, and no side for every other kind: a quote
+    /// stating `Side(54)` is still one chain under `14:0:`.
+    #[test]
+    fn a_stored_side_is_the_side_of_a_sided_kind_alone() {
+        for kind in MarketDataKind::ALL {
+            for side in [Side::Unknown, Side::Buy, Side::Sell, Side::SShort] {
+                let expected = if kind.is_sided() { side } else { Side::Unknown };
+                assert_eq!(stored_side(*kind, side), expected, "{kind:?} {side:?}");
+            }
+        }
+        assert_eq!(stored_side(MarketDataKind::Order, Side::Buy), Side::Buy);
+        assert_eq!(
+            stored_side(MarketDataKind::Execution, Side::Sell),
+            Side::Sell
+        );
+        assert_eq!(
+            stored_side(MarketDataKind::Quotation, Side::Buy),
+            Side::Unknown
+        );
+        assert_eq!(
+            stored_side(MarketDataKind::Quotation, Side::Sell),
+            Side::Unknown
+        );
+        assert_eq!(stored_side(MarketDataKind::Trade, Side::Buy), Side::Unknown);
+        assert_eq!(stored_side(MarketDataKind::Book, Side::Sell), Side::Unknown);
     }
 }

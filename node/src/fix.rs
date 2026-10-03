@@ -2948,23 +2948,37 @@ impl JsFixCodec {
     /// stateful book iterator into Arrow batches of lifted `marketdata` rows,
     /// one `book_event` row per book.
     ///
-    /// Admits ORDR/QUOT, actual EXEC, BOOK W/X and TRAD AE; other records
-    /// are ignored. Source errors and invalid admitted messages still fail,
-    /// including unsupported AE corrections, cancellations and status reports.
+    /// Folds orders, quotes and `W`/`X` book messages; an execution, a
+    /// trade and every other record are ignored before they are expanded,
+    /// since a fill moves a book through its order's or quote's report.
+    /// Source errors still fail.
     ///
     /// The loader supplies the iterable pull. `snapshotMillis` enables an
-    /// epoch-aligned snapshot grid. Lifecycle enrichment remains an explicit
-    /// composition.
+    /// epoch-aligned snapshot grid. `filter` - a `Filter`, a `Term` or the
+    /// text of a predicate over the `marketdata` row - narrows what the
+    /// books fold, bound once here; it never admits a pruned kind. Not
+    /// given, every booked leaf is kept. Lifecycle enrichment remains an
+    /// explicit composition.
     #[napi(js_name = "_bookArrowReaderNative", skip_typescript)]
     pub fn book_arrow_reader_native(
         &self,
         env: Env,
         pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
         snapshot_millis: f64,
+        filter: Option<
+            Either3<
+                ClassInstance<'_, crate::expression::JsFilter>,
+                ClassInstance<'_, crate::expression::JsTerm>,
+                String,
+            >,
+        >,
     ) -> Result<JsBatchReader> {
         let snapshot_millis = exact_i64(snapshot_millis, "snapshotMillis")?;
         let snapshot_millis = u64::try_from(snapshot_millis)
             .map_err(|_| napi_error("snapshotMillis must not be negative"))?;
+        let filter = filter
+            .map(crate::expression::filter_from_input)
+            .transpose()?;
         let pulled = Pulled::new(env, pull)?;
         let failed = pulled.failed.clone();
         let messages = pulled
@@ -2974,7 +2988,7 @@ impl JsFixCodec {
             }));
         let reader = self
             .inner
-            .book_arrow_reader(messages, snapshot_millis)
+            .book_arrow_reader(messages, snapshot_millis, filter.as_ref())
             .map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, "marketdata"))
     }

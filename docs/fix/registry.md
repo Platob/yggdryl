@@ -969,7 +969,7 @@ The crate holds the replaced and deprecated features of FIX 4.3 through 5.0 SP2 
 
 Deliberately not covered, because the appendix states no value mapping a rule can write: `MDEntryOriginator`, `MDMkt`, `LocationID` and `DeskID` into `PartyRole`; `TargetStrategyParameters` and `ParticipationRate` into `StrategyParameters`; the settlement instruction fields 173 to 187 into `SettlParties`; `SecurityType` `FOR`, which has four candidates; `QuoteType`; `SecondaryTradeReportID` and `SecondaryTradeReportRefID`; `Signature` and the `SecureData` pair; `UnitOfMeasure` `MMbbl`; the `UnderlyingLeg` fields of EP187; `TotalNumPosReports`; `ReceivedDeptID`; `FXBenchmarkRateFix`. `SecurityType` `FUT` and `OPT` and `PutOrCall` into `CFICode` are not rules either, because the native [derivation of `CFICode`](capture.md#what-a-message-implied-is-filled-in) already states them. A field the specification removed and replaced with nothing - `SendingDate(51)`, `WaveNo(105)` - is in the dictionary with its `removed` entry and stays in a restated row as read.
 
-Four entries are listed as the specification states them and do not fire on a parse: `OrderID(37)` and `SecondaryOrderID(198)` are lifted out of the row onto the message's own holders before the restatement reads it, and `OddLot(575)` and `PublishTrdIndicator(852)` are boolean fields, whose value spells no code a condition could name.
+Two entries are listed as the specification states them and do not fire on a parse: `OrderID(37)` and `SecondaryOrderID(198)` are lifted out of the row onto the message's own holders before the restatement reads it. `OddLot(575)` and `PublishTrdIndicator(852)` are boolean fields, and a condition on `Y` or `N` names the flag the [boolean reader](../types/numeric/boolean.md#the-one-text-reader) reads it as: `575=Y` is `LotType(1093)` `1`, `852=Y` and `852=N` are `TradePublishIndicator(1390)` `1` and `0`, and `575=N`, which no rule names, stays as it arrived.
 
 ## A registry states no derivation
 
@@ -1113,6 +1113,7 @@ A message states what type of its kind it is - a limit order, a tradeable quote,
 | Compiled | `FixRegistry::marketdatatype_sources() -> &[(i32, SmolStr, MarketDataType)]`, every field's pairs beside its tag, compiled once and forgotten by every change to the fields; Python `marketdatatype_sources()`, Rust and Python only |
 | Any field | the mapping is not limited to the eight typing fields: a dialect's own field may state it too, though a parse reads first the fields its message type or kind names ([`fix_tags_of`](../types/enum/marketdatatype.md#fix)) |
 | Parse | a [message](message.md) states its `marketdatatype` as it is built, through its registry's `marketdatatype_of` over the first of its `fix_tags_of(msgtype, kind)` it states, then any other field the registry maps, `UNKN` where it states none |
+| Book entries | a `W` or `X` entry is a bid, an offer or a trade by the member `marketdatatype_of(269, ..)` reads its `MDEntryType(269)` as - `BOOKBID`, `BOOKOFFER`, `BOOKTRADE` - so a mapping on `MDEntryType` books a venue's own entry type; any other member excludes the entry ([Message](message.md#market-data)) |
 
 === "Rust"
 

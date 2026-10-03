@@ -143,14 +143,16 @@ fn a_session_over_the_process_environment_reads_it() {
 }
 
 #[test]
-fn a_boolean_variable_is_true_in_the_spellings_the_tools_accept_and_false_otherwise() {
-    for value in ["true", "TRUE", " True ", "1", "yes", "on"] {
+fn a_boolean_variable_reads_the_one_boolean_table_and_is_false_otherwise() {
+    for value in [
+        "true", "TRUE", " True ", "t", "tru", "1", "yes", "y", "ye", "on",
+    ] {
         let session = Session::new()
             .with_variables([("AWS_USE_FIPS_ENDPOINT", value)])
             .with_directory(scratch("environment-flag-true"));
         assert!(session.use_fips_endpoint(), "{value:?} spells true");
     }
-    for value in ["false", "0", "no", "off", "maybe", ""] {
+    for value in ["false", "f", "0", "no", "n", "off", "of", "maybe", ""] {
         let session = Session::new()
             .with_variables([("AWS_USE_FIPS_ENDPOINT", value)])
             .with_directory(scratch("environment-flag-false"));

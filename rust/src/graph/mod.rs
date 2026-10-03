@@ -24,10 +24,12 @@
 //! [`OperationEvent`] are the one undated and one dated operation type - an
 //! order, a quote or an execution by the sealed [`OperationKind`] they are
 //! generic over - and [`MarketData`] is the one value over every leaf, read
-//! generically past the boundary that resolved it. [`BookEvent`] holds its
-//! alive [`OrderEvent`]/[`QuoteEvent`] entries, the deltas applied since the
-//! book before it and the executions at its instant, and answers each side
-//! as its price levels, best first. The one walk,
+//! generically past the boundary that resolved it. [`BookEvent`] holds the
+//! deltas applied since the book before it, in the order applied - never
+//! an execution - and, complete, its alive [`OrderEvent`]/[`QuoteEvent`]
+//! entries, answering each side as its price levels, best first; a
+//! [`BookIterator`] emits a book complete only at a snapshot tick and its
+//! deltas alone between, which [`Element::with_previous`] rebuilds. The one walk,
 //! [`EventIterator`], reads operations in their order and states each as
 //! the one after the live element it follows. [`ElementColumn`] is the six
 //! columns every generated schema of an element opens with,

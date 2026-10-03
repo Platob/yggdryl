@@ -1552,3 +1552,135 @@ test('a catalog and a namespace carry properties, transactionally', (t) => {
   assert.deepEqual(catalog.namespaces.get('sales').properties(), { team: 'emea' })
   assert.throws(() => sales.updateProperties({ 'ICEBERG:x': '1' }), /reserved "ICEBERG:"/)
 })
+
+// ---------------------------------------------------------------------------
+// `partitionBy` takes the `PARTITION:by` entries the core reads a spec from:
+// a bare column an identity partition, an epoch function or a truncation a
+// derived one, each resolved by `PartitionSpec::from_schema`.
+// ---------------------------------------------------------------------------
+
+function timed() {
+  return fields.struct(
+    'row',
+    [Field.from('id: int64'), Field.from('ts: timestamp(us)'), Field.from('venue: utf8')],
+    { nullable: false },
+  )
+}
+
+const at = (day, hour, minute = 0, second = 0) =>
+  new Date(Date.UTC(2024, 0, day, hour, minute, second))
+
+test('a bare column partitions by identity, as the short spelling always did', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const table = iceberg.Table.create(path.join(root, 'trades'), timed(), ['venue'])
+  assert.deepEqual(
+    table.spec.fields.map((field) => [field.name, field.transform, field.sourceId]),
+    [['venue', 'identity', 3]],
+  )
+  assert.ok(table.spec.equals(iceberg.PartitionSpec.identity(table.schema, ['venue'])))
+})
+
+test('a day partition writes one data file per UTC day and reads every row back', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const table = iceberg.Table.create(path.join(root, 'daily'), timed(), ['days(ts)'])
+  assert.deepEqual(
+    table.spec.fields.map((field) => [field.name, field.transform, field.sourceId]),
+    [['ts_day', 'day', 2]],
+  )
+
+  table.append([
+    { id: 1n, ts: at(1, 1), venue: 'XNAS' },
+    { id: 2n, ts: at(1, 23, 59), venue: 'XNYS' },
+    { id: 3n, ts: at(2, 0), venue: 'XNAS' },
+    { id: 4n, ts: at(3, 12), venue: 'XNAS' },
+  ])
+  const files = table
+    .dataFiles()
+    .sort((left, right) =>
+      left.partition[0].toString().localeCompare(right.partition[0].toString()),
+    )
+  assert.deepEqual(
+    files.map((file) => [file.partitionNames, file.partition.map(String), file.recordCount]),
+    [
+      [['ts_day'], ['"2024-01-01"'], 2],
+      [['ts_day'], ['"2024-01-02"'], 1],
+      [['ts_day'], ['"2024-01-03"'], 1],
+    ],
+  )
+  assert.deepEqual(table.scan().intoTable().getChild('id').toJSON().sort(), [1n, 2n, 3n, 4n])
+
+  // Omitted, `partitionBy` is the schema's own declaration read the same way,
+  // and a schema declaring nothing is unpartitioned; `null` is unpartitioned
+  // whatever the schema declares.
+  const declared = timed()
+  declared.partition.by = ['days(ts)']
+  const fromSchema = iceberg.Table.create(path.join(root, 'declared'), declared)
+  assert.ok(fromSchema.spec.equals(table.spec))
+  const explicit = iceberg.Table.openOrCreate(path.join(root, 'explicit'), declared, undefined, 2)
+  assert.ok(explicit.spec.equals(table.spec))
+  assert.ok(iceberg.Table.create(path.join(root, 'plain'), timed()).spec.isUnpartitioned())
+  assert.ok(iceberg.Table.create(path.join(root, 'none'), declared, null).spec.isUnpartitioned())
+  assert.ok(
+    iceberg.Table.openOrCreate(path.join(root, 'none-either'), declared, null).spec.isUnpartitioned(),
+  )
+})
+
+test('a minutes(ts, 15) partition cuts the rows into quarter hours', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const table = iceberg.Table.create(path.join(root, 'quarters'), timed(), [
+    'minutes(ts, 15)',
+    'venue',
+  ])
+  assert.deepEqual(
+    table.spec.fields.map((field) => [field.name, field.transform]),
+    [
+      ['ts_minutes', 'minutes[15]'],
+      ['venue', 'identity'],
+    ],
+  )
+
+  table.append([
+    { id: 1n, ts: at(1, 9, 0), venue: 'XNAS' },
+    { id: 2n, ts: at(1, 9, 14, 59), venue: 'XNAS' },
+    { id: 3n, ts: at(1, 9, 15), venue: 'XNAS' },
+    { id: 4n, ts: at(1, 9, 31), venue: 'XNYS' },
+  ])
+  // The partition value is the count of quarter hours since the epoch.
+  const quarter = (date) => Math.floor(date.getTime() / (15 * 60 * 1000))
+  assert.deepEqual(
+    table
+      .dataFiles()
+      .map((file) => [file.partition.map((value) => value.asJs()), file.recordCount])
+      .sort((left, right) => left[0][0] - right[0][0]),
+    [
+      [[quarter(at(1, 9, 0)), 'XNAS'], 2],
+      [[quarter(at(1, 9, 15)), 'XNAS'], 1],
+      [[quarter(at(1, 9, 30)), 'XNYS'], 1],
+    ],
+  )
+  assert.equal(table.scan().intoTable().numRows, 4)
+})
+
+test('an entry no spec can hold is refused, naming it', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const location = path.join(root, 'refused')
+  assert.throws(
+    () => iceberg.Table.create(location, timed(), ['lower(venue)']),
+    /expected an Iceberg partition transform .* got `lower\(venue\)`/,
+  )
+  assert.throws(
+    () => iceberg.Table.create(location, timed(), ['tier']),
+    /got `tier`: no column "tier" to partition on/,
+  )
+  // An entry the grammar cannot read is refused by the declaration itself.
+  assert.throws(
+    () => iceberg.Table.openOrCreate(location, timed(), ['venue int64']),
+    /PARTITION:by.*venue int64/,
+  )
+  // Nothing was created.
+  assert.equal(fs.existsSync(path.join(location, 'metadata')), false)
+})

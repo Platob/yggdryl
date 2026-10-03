@@ -9,8 +9,8 @@ needed. Setters do not finalize - call `finalize()` once the facts are in.
 ## Build an order event from named facts
 
 Set the facts, then `finalize` derives the identity and what the facts imply:
-the national number an ISIN embeds, the side an order's, a quote's or an
-execution's cross code is stored under.
+the national number an ISIN embeds, the side an order's or an execution's
+cross code is stored under.
 
 ```rust
 use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
@@ -25,7 +25,7 @@ order.set_price(Some("189.50".parse()?), true);
 order.set_quantity(Some(Decimal::from_int(100)), true);
 order.set_currency(Ccy::new("USD")?, true);
 order.set_ticker(Some("AAPL".into()), true);
-// An identifier is a source, a type and a value, unique by `src:type`; a code is checked by its type.
+// An identifier is a source, a type and a value, unique by `src:type`; a code is held to its type's shape.
 order.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "US0378331005")?)?;
 order.insert_identifier(Identifier::new(IdKey::base(IdType::OrderId), "O-1001")?)?;
 order.finalize();
@@ -48,9 +48,10 @@ assert_eq!(order.kind().marketdatakind(), MarketDataKind::Order);
 
 ## Build undated leaves, quotes and book entries
 
-An undated leaf's identity is its content; `at` dates it. A quote states its
-own side and price, or the bid and ask it quotes as the six `bid*`/`ask*`
-facts; a market-data entry carries a `BookRef`.
+An undated leaf's identity is its content; `at` dates it. A quote is one
+element holding a bid and an ask leg - the six `bid*`/`ask*` facts - stored
+under side `0`; its `side` is a tag, so a quote stating a side and a price
+states the leg that side takes. A market-data entry carries a `BookRef`.
 
 ```rust
 use yggdryl::graph::{BookRef, Element, Market, MarketKind, MdUpdateAction, Order, OrderEvent, QuoteEvent};
@@ -67,7 +68,7 @@ assert_eq!(order.get_curruuid(), Uuid::from_v8(u128::from(order.get_currhashcode
 let event: OrderEvent = order.at(T);
 assert!(!event.is_after(&event));
 
-// A two-sided quote: its bid and ask are facts, and it takes no side.
+// A two-sided quote: its bid and ask are its two legs, and it tags no side.
 let mut quote = QuoteEvent::at(T);
 quote.set_crosscode("Q-7".to_owned());
 quote.set_ticker(Some("AAPL".into()), true);
@@ -81,7 +82,7 @@ quote.finalize();
 assert_eq!((quote.get_side(), quote.get_crosscode()), (Side::Unknown, "14:0:Q-7"));
 assert_eq!(quote.kind().marketdatakind(), MarketDataKind::Quotation);
 
-// A sided offer, placed in a book by its control; the scope is a fact, the rest walk-time.
+// An offer: tagged `SELL`, its price is its ask leg; a quote's code stays under side 0.
 let mut offer = QuoteEvent::at(T);
 offer.set_crosscode("Q-8".to_owned());
 offer.set_ticker(Some("AAPL".into()), true);
@@ -89,6 +90,9 @@ offer.set_side(Side::Sell, true);
 offer.set_price(Some("189.52".parse()?), true);
 offer.set_quantity(Some(Decimal::from_int(100)), true);
 offer.finalize();
+assert_eq!(offer.get_crosscode(), "14:0:Q-8");
+assert_eq!(offer.get_askpx(), Some("189.52".parse()?));
+// Placed in a book by its control; the scope is a fact, the rest walk-time.
 let mut entry = offer.clone().with_book(BookRef {
     action: MdUpdateAction::read("new"),
     position: Some(1),
@@ -150,10 +154,11 @@ assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
 
 `EventIterator` chains a stream by cross identity (and by a live element's
 `identifiers`), yields a twin as a restatement rather than a successor, retires a
-chain at a terminal state and emits one `EXPIRED` at a deadline. An order's,
-a quote's or an execution's chain is keyed by side, a chain lives within one
-`marketdatakind` (an order and an execution under one cross code are two
-chains), and every walked element leaves stating `creaunix`.
+chain at a terminal state and emits one `EXPIRED` at a deadline. An order's or
+an execution's chain is keyed by side - a quote's is one chain whatever side
+it tags - a chain lives within one `marketdatakind` (an order and an execution
+under one cross code are two chains), and every walked element leaves stating
+`creaunix`.
 
 ```rust
 use yggdryl::graph::{Element, Event, EventIterator, Market, OrderEvent};
@@ -325,9 +330,10 @@ let values = vec![
     MarketData::from(BookEvent::new(1_700_000_001_000_000_000, "AAPL")),
 ];
 
-// 60 columns: 6 element, 9 event, 34 market (marketdatakind first), 5 operation, bookscope, 5 nested.
+// 62 columns: 6 element, 9 event, 34 market (marketdatakind first), 5 operation,
+// the book controls bookscope, bookaction and bookposition, 5 nested.
 let field = MarketData::field()?;
-assert_eq!(field.field_len(), 60);
+assert_eq!(field.field_len(), 62);
 assert_eq!(field.fields()[15].name(), "marketdatakind");
 let batches: Vec<RecordBatch> = MarketData::arrow_reader(values.clone(), Some(1_000), None)?.collect::<Result<_, _>>()?;
 let read: Vec<MarketData> = MarketData::from_arrow_reader(batch_reader(batches[0].schema(), batches))?
@@ -382,13 +388,17 @@ assert_eq!(read, values);
 
 ## Fold a sorted stream into books
 
-`BookIterator` folds sorted operations into one `BookEvent` per touched
-instant and book: an input's ticker, else its category `MIC:CFI`. Depth
-persists; deltas and executions are each book's own.
+`BookIterator` folds sorted orders and quotes into one `BookEvent` per
+instant and book key that moved it - the instrument's ISIN, else its ticker,
+else `XX0000000000` - pruning every execution and trade. A book is complete
+(`is_complete`) only at a snapshot tick; every other book states its deltas
+alone beside the top of book they settled on, and `with_previous` over the
+complete book before it rebuilds it whole. A filter over the `marketdata` row
+narrows what folds.
 
 ```rust
-use yggdryl::graph::{BookIterator, Element, Event, ExecutionEvent, Market, MarketData, Order, OrderEvent};
-use yggdryl::{Decimal, Mic, Side};
+use yggdryl::graph::{BookEvent, BookIterator, Element, Event, ExecutionEvent, Market, MarketData, Order, OrderEvent};
+use yggdryl::{Decimal, IdKey, IdType, Identifier, Isin, Side, State};
 
 const T: i64 = 1_700_000_000_000_000_000;
 const SECOND: i64 = 1_000_000_000;
@@ -399,6 +409,7 @@ let bid = |unix: i64, code: &str, price: &str, quantity: i64| -> yggdryl::Result
     order.set_side(Side::Buy, true);
     order.set_price(Some(price.parse()?), true);
     order.set_quantity(Some(Decimal::from_int(quantity)), true);
+    order.set_state(State::New);
     order.finalize();
     Ok(MarketData::from(order))
 };
@@ -412,24 +423,38 @@ fill.finalize();
 let stream = vec![bid(T, "B-1", "189.48", 300)?, bid(T + SECOND, "B-2", "189.49", 200)?, MarketData::from(fill)];
 
 let books = BookIterator::new(stream.clone().into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
-assert_eq!(books.len(), 2, "one book per touched instant");
+assert_eq!(books.len(), 2, "one book per instant that moved it; the execution folds into none");
+// No grid and no snapshot input: each book states its deltas alone and its top of book.
 let last = &books[1];
-assert_eq!((last.get_currunix(), last.alive().count()), (T + SECOND, 2), "depth persists");
-assert_eq!(last.deltas().count(), 1);
-assert_eq!(last.executions().iter().map(Element::get_crosscode).collect::<Vec<_>>(), ["8:1:E-1"]);
+assert!(!last.is_complete());
+assert_eq!((last.get_currunix(), last.deltas().len(), last.alive().count()), (T + SECOND, 1, 0));
+assert_eq!(last.best_price(Side::Buy), Some("189.49".parse()?));
+// Rebuilt whole: the first over the empty book its key starts from, the next over it.
+assert_eq!(books[0].get_prevuuid(), None);
+let first = books[0].clone().with_previous(&BookEvent::keyed(T, "AAPL")).expect("a rebuild");
+let whole = last.clone().with_previous(&first).expect("a rebuild");
+assert!(whole.is_complete());
+assert_eq!((whole.alive().count(), whole.get_curruuid()), (2, last.get_curruuid()), "depth persists");
 
-// A 500 ms grid adds the living book at each crossed tick.
-let gridded = BookIterator::new(stream.into_iter(), 500)?.collect::<yggdryl::Result<Vec<_>>>()?;
+// A 500 ms grid states the whole living book at each crossed tick.
+let gridded = BookIterator::new(stream.clone().into_iter(), 500)?.collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(gridded.len(), 3);
+assert!(gridded.iter().all(BookEvent::is_complete));
+// A filter narrows what folds, and never admits an execution.
+let filtered = BookIterator::new(stream.into_iter(), 0)?.with_filter("marketdatakind = 'EXEC'")?;
+assert_eq!(filtered.count(), 0);
 
-// No ticker: the book is the category, `XXXX` or `XXXXXX` for what is unstated.
+// The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
 let mut listed = OrderEvent::at(T);
 listed.set_crosscode("L-1".to_owned());
 listed.set_side(Side::Sell, true);
-listed.set_miccode(Some(Mic::new("XNAS")?), true);
+assert_eq!(listed.book_crosscode(), Isin::NONE);
+listed.set_ticker(Some("AAPL".into()), true);
+assert_eq!(listed.book_crosscode(), "AAPL");
+listed.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "US0378331005")?)?;
 listed.finalize();
 let [book] = BookIterator::new([MarketData::from(listed)].into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("one book");
-assert_eq!((book.get_crosscode(), book.get_ticker()), ("3:0:XNAS:XXXXXX", None));
+assert_eq!((book.get_crosscode(), book.get_isincode(), book.get_ticker()), ("3:0:US0378331005", Some("US0378331005"), Some("AAPL")));
 // A value a book does not fold - an undated order - is refused by its kind.
 let undated = MarketData::from(Order::new());
 assert!(BookIterator::new([undated].into_iter(), 0)?.next().expect("one result").is_err());
@@ -437,10 +462,11 @@ assert!(BookIterator::new([undated].into_iter(), 0)?.next().expect("one result")
 
 ## Read a book
 
-A book answers each side as its `limits` (one per price, best first, the
-unpriced market level last) and the readings of the first level that can
-trade: `best_price`, `best_quantity`, the `bidpx`/`askpx` it states,
-`spread`, `depth`, `imbalance`.
+A complete book answers each side as its `limits` (one per price, best
+first, the unpriced market level last) and its entries as `alive_on(side)`;
+every book answers the readings of the first level that can trade:
+`best_price`, `best_quantity`, the `bidpx`/`askpx` it states, `spread`; a
+complete one `depth` and `imbalance` too. A book built by hand is complete.
 
 ```rust
 use yggdryl::graph::{BookEvent, Element, Market, MarketData, Operation, OrderEvent};
@@ -484,7 +510,10 @@ assert_eq!(book.bbo_midpoint(), Some(px("189.50")?));
 assert_eq!(book.get_price(), book.bbo_midpoint());
 assert!(!book.is_locked() && !book.is_crossed());
 assert_eq!(book.depth(Side::Buy, 2), Some(Decimal::from_int(310)));
-assert_eq!(book.alive().count(), 5);
+assert!(book.is_complete());
+assert_eq!((book.alive().count(), book.alive_on(Side::Buy).len(), book.alive_on(Side::Sell).len()), (5, 4, 1));
+// The deltas are the five orders, in the order applied.
+assert_eq!(book.deltas().map(Element::get_crosscode).collect::<Vec<_>>(), ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:2:A-1", "10:1:MKT"]);
 ```
 
 ## Replace a scope with a snapshot
@@ -573,8 +602,10 @@ assert_eq!(rows(MarketData::apply_view(&lifecycle, &[], stream()?)?.collect::<Re
 ## Turn a FIX capture into books
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
-message, `book_arrow_reader` folds sorted messages into book rows, and
-`MarketData::from_arrow_reader` reads the books back.
+message, `book_arrow_reader` folds sorted messages into book rows - orders,
+quotes and `W`/`X` entries, a trade entry pruned - and
+`MarketData::from_arrow_reader` reads the books back. A `W` full refresh is a
+snapshot input, so its book is complete; the `X` after it states its delta.
 
 ```rust
 use std::sync::Arc;
@@ -592,24 +623,27 @@ let lines = [
 ];
 let capture: Vec<FixMsg> = codec.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
 
-let rows = codec.book_arrow_reader(codec.lifecycle(capture), 0)?;
+let rows = codec.book_arrow_reader(codec.lifecycle(capture), 0, None)?;
 let books: Vec<MarketData> = MarketData::from_arrow_reader(rows)?.collect::<yggdryl::Result<_>>()?;
 assert_eq!(books.len(), 2);
 assert!(books.iter().all(|book| book.marketdatakind() == MarketDataKind::Book));
+let first = books[0].as_book_event().expect("a book row");
+assert!(first.is_complete());
 let last = books[1].as_book_event().expect("a book row");
 assert_eq!(last.best_price(Side::Buy).map(|price| price.to_string()).as_deref(), Some("101"));
-assert_eq!(last.executions().len(), 1);
+// The bid's change is the one delta; the trade entry (`269=2`) folds into no book.
+assert!(!last.is_complete());
+assert_eq!(last.deltas().len(), 1);
 ```
 
 ## Fold books into candles
 
 `CandleIterator` folds books sorted by their instant into one `Candle` per
-cross code and bucket: the best bid, the best ask, the mid and the spread each
-an `Ohlc`, the touch when the bucket closed, the books, the executions and
-what they traded - each trade counted once within the bucket, at the largest
-last quantity any of its executions states. `CandleOptions` is
-the interval and the zone whose wall clock the buckets align to;
-`Candle::field()` is the twenty-five-cell row candles cross as.
+book cross code and bucket: the best bid, the best ask, the mid and the spread
+each an `Ohlc`, the touch when the bucket closed and how many books folded. It
+reads a book's top of book alone, so delta books fold as complete ones do.
+`CandleOptions` is the interval and the zone whose wall clock the buckets
+align to; `Candle::field()` is the twenty-three-cell row candles cross as.
 
 ```rust
 use yggdryl::graph::{BookIterator, Candle, CandleIterator, CandleOptions, Element, Event, Market, MarketData, QuoteEvent};
@@ -647,7 +681,7 @@ let bid = first.bid.expect("two books stated a bid");
 assert_eq!((bid.open, bid.high, bid.low, bid.close), ("189.48".parse()?, "189.50".parse()?, "189.48".parse()?, "189.50".parse()?));
 assert_eq!(first.spread.map(|spread| spread.close), Some("0.02".parse()?));
 assert_eq!((first.bidqty, first.askqty), (Some(Decimal::from_int(200)), Some(Decimal::from_int(100))));
-assert_eq!((first.books, first.executions, first.volume), (2, 0, Decimal::ZERO));
+assert_eq!(first.books, 2);
 // A2 undercuts A1: the second bucket's ask opens at 189.51 and the spread narrows.
 assert_eq!(second.ask.map(|ask| ask.open), Some("189.51".parse()?));
 assert_eq!(second.mid.map(|mid| mid.close), Some("189.505".parse()?));
@@ -662,7 +696,7 @@ assert_eq!(utc[0].start, 1_699_920_000 * SECOND);
 
 // Candles cross as rows of `Candle::field()`, and read back as the same values.
 let field = Candle::field()?;
-assert_eq!(field.field_len(), 25);
+assert_eq!(field.field_len(), 23);
 let batch = Candle::arrow_reader(candles.clone().into_iter().map(Ok), None)?.next().expect("one batch")?;
 let rows = Serie::from_arrow_batch(Some(&field), &batch, ArrowCastOptions::default())?;
 assert_eq!(Candle::from_scalar(&rows.scalar(1)?)?, candles[1]);
@@ -670,11 +704,13 @@ assert_eq!(Candle::from_scalar(&rows.scalar(1)?)?, candles[1]);
 
 ## Serve a table of books
 
-`BookService` is the HTTP face of a `marketdata` table - the tickers, the
-candles of a ticker over a range, the book at an instant, the audit of every
-entry, delta and execution - and every reading is a method, so a program
-asks without HTTP what the display's routes answer. `yggdryl market serve`
-is the same service with the display in front of it.
+`BookService` is the HTTP face of a `marketdata` table, keyed by the book key
+(the ISIN, else the ticker, else `XX0000000000`) - the keys it holds, the
+candles of a key over a range, the book at an instant rebuilt whole, the audit
+of every alive entry and delta - and every reading is a method, so a program
+asks without HTTP what the display's routes answer. A `ticker` argument names
+a key, else the ticker one key's books state. `yggdryl market serve` is the
+same service with the display in front of it.
 
 ```rust
 use std::sync::Arc;
@@ -725,6 +761,9 @@ assert_eq!(candles[0].bid.map(|bid| bid.close), Some(Decimal::from_int(100)));
 assert_eq!(candles[1].ask.map(|ask| ask.open), Some(Decimal::from_int(102)));
 let book = service.book("books", "ACME", T0 + 90 * SECOND)?.expect("the last book at or before 10:01:30");
 assert_eq!(book.get_currunix(), T0 + 65 * SECOND);
+// Stored as deltas, answered whole: rebuilt over the books before it.
+assert!(book.is_complete());
+assert_eq!(book.alive().count(), 2);
 assert_eq!(service.tickers("books")?.sequence_rows().map(|listed| listed.len()), Some(1));
 
 // The routes, on the crate's server: `{prefix}/api/...`, JSON, `Cache-Control: no-store`.
@@ -732,7 +771,7 @@ let server = Server::bind("127.0.0.1:0")?;
 let endpoint = Arc::clone(&service).route(&server, "/")?;
 let answer = Request::get(&format!("{endpoint}api/tickers?table=books"))?.send()?;
 assert_eq!(answer.status(), Status::OK);
-assert!(answer.text()?.contains("\"ticker\":\"ACME\""));
+assert!(answer.text()?.contains("\"key\":\"ACME\""));
 // The zones `tz` reads - UTC, then every zone this build has rules for - to offer a caller.
 let zones = Request::get(&format!("{endpoint}api/timezones"))?.send()?.scalar()?;
 let zones = zones.sequence_rows().expect("a list");
@@ -749,8 +788,8 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
   written to Arrow. Call `finalize()` after the last `set_*`.
 - `get_crosscode` answers the stored code `{kind}:{side}:{base}`: `10:1:O-1001`
   for a buy order, `10:0:O-1001` for `Side::Unknown`, and side `0` for every
-  element `marketdatakind().is_sided()` answers `false` for - a trade, a book, a
-  snapshot control - whatever side it states. `stored_crosscode(code)` says
+  element `marketdatakind().is_sided()` answers `false` for - a quote, a trade,
+  a book, a snapshot control - whatever side it states. `stored_crosscode(code)` says
   what a code is stored as, idempotent and converging whichever of the code,
   the kind and the side is stated last; a lifecycle view and a lookup name the
   stored spelling.
@@ -760,23 +799,35 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
   yielded as it came, `prevuuid` null).
 - `BookIterator::new(items, snapshot_millis)` takes an iterator
   (`.into_iter()`) of `MarketData` or `Result<MarketData>` and yields
-  `Result<BookEvent>`. An `Err` item is a source's own failure or a value no
-  book folds; an operation dated before its book, an order or a quote stating
-  neither side and a group the book refuses are left out with a `log`
-  warning.
+  `Result<BookEvent>`; `with_filter(filter)` binds an expression over the
+  `marketdata` row once, refusing a column the row does not carry. An `Err`
+  item is a source's own failure or a value no book folds (an undated order, a
+  `BookEvent`); every input `MarketDataKind::is_booked` refuses - an
+  execution, a trade, a batch - is pruned in silence. An operation dated before
+  its book and a group the book refuses are left out with a `log` warning, and
+  an order or a quote resting on neither side is placed nowhere with one, yet
+  still counts as the book's delta.
+- A book from a walk is complete only at a snapshot tick: test
+  `is_complete()` before reading `alive()`, `alive_on`, `limits`, `depth` or
+  `imbalance`, and rebuild a delta book with `with_previous(&previous)` - over
+  `BookEvent::keyed(unix, key)` for a code's first book, which names no
+  `prevuuid`. `add_operations` on a delta book is refused at `$.alive`.
 - `with_previous`/`merge_with` answer `Option`: `None` means nothing moved (its
   own predecessor, an earlier event, another element), not an error.
-- `insert_securityid(id)` fills an absent source and type and takes back a
-  `derived` identifier of its type (a CUSIP derived from the ISIN), answering
-  whether it added; `insert_identifier`, `insert_partyid` and `insert_fxrate` fill
+- `insert_securityid(id)` fills an absent key, or one holding a value of a
+  lower rank (`IdType::rank`: a masked `XX0000000001` or a typo below a real
+  ISIN), and takes back a `derived` identifier of its type it does not rank
+  below (a CUSIP derived from the ISIN), answering whether it added - a
+  derivation that outranks it stands; `insert_identifier`, `insert_partyid` and `insert_fxrate` fill
   an absent key (a target) only, a named source filling its type's base key;
   `set_securityids`, `set_identifiers` and `set_partyids` replace the whole map
   under `overwrite` and fill without it, `set_fxrates` replaces the map;
   `remove_securityid(&IdKey::base(IdType::Isin))` removes the type and takes
   every `derived` identifier back. `Identifier::new(key, value)` takes an
   `IdKey` - `IdKey::base(kind)`, `"oms:clordid".parse()?` - and refuses a value
-  that states nothing and a code its type does not check, so a verb never sees
-  one; `Identifier::from_key(name, value)` infers the key a bridge's own name
+  that states nothing and a code of another shape than its type's, so a verb
+  never sees one; a code of the right shape that does not close is a value of
+  a lower rank, never a refusal; `Identifier::from_key(name, value)` infers the key a bridge's own name
   spells (`OMS_ClOrdID` is `oms:clordid`).
 - A follower fills a parent identifier from the type it replaces - `orderid`
   into `parentorderid` into `origorderid`, `clordid` into `origclordid` - as

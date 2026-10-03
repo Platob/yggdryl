@@ -20,7 +20,7 @@ const filter = new Filter("ccy = 'EUR' and price > 100")
 assert.deepEqual(filter.columns, ['ccy', 'price'])
 
 const bound = filter.bind(schema)
-assert.equal(bound.term.toString(), "ccy = 'EUR' and price > decimal32(9,2) '100.00'")
+assert.equal(bound.term.toString(), "ccy = 'EUR' and price > decimal32(9,2) '100'")
 
 const price = Scalar.decimal(15000n, 2)
 assert.equal(bound.matches(['EUR', price, 5]), true)
@@ -179,7 +179,7 @@ const schema = new Field('trades', DataType.fromFields([year, new Field('price',
 
 const { answerable, remaining } = new Filter('year = 2024 and price > 100').bind(schema).partitionSplit()
 assert.equal(answerable.toString(), "year = int32 '2024'")
-assert.equal(remaining.toString(), "price > decimal32(9,2) '100.00'")
+assert.equal(remaining.toString(), "price > decimal32(9,2) '100'")
 ```
 
 ## Push the filter and projection into a read
@@ -293,8 +293,8 @@ assert.throws(() => term.bind(Field.from('rows: struct<size: int64> not null')),
 
 `intoField` writes a selector as the declaration it is, each computed column
 carrying `TRANSFORM:` metadata; `Selector.fromField` reads it back.
-Recomputing the derivations on a batch (`Field.apply_arrow_batch` in Rust and
-Python) is not bound in JavaScript.
+Recomputing the derivations on a batch (the transform view's `apply_arrow_batch`:
+`as_transform()` in Rust, `field.transform` in Python) is not bound in JavaScript.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -304,6 +304,12 @@ const root = new Field('rows', 'struct<ccy:utf8,size:int64>', false)
 const stored = new Selector('ccy, size * 2 as doubled int32').intoField(root)
 assert.equal(stored.dtype.getFieldAt(1).transform.get('expression'), 'size * 2')
 assert.ok(Selector.fromField(stored).equals('ccy utf8 null, size * 2 as doubled int32 null'))
+
+// Any other term is the expression; a call over plain columns is a function over its `by`.
+assert.equal(String(stored.dtype.getFieldAt(1).transform.term), 'size * 2')
+const called = new Selector('lower(ccy) as low').intoField(root)
+assert.equal(called.dtype.getFieldAt(0).transform.get('function'), 'lower')
+assert.deepEqual(called.dtype.getFieldAt(0).transform.by, ['ccy'])
 ```
 
 ## Read the plan, the text and the document

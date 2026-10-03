@@ -78,9 +78,9 @@ fn an_embedded_placeholder_substitutes_textually_and_stays_a_string() {
     for value in resolved("localhost:{{ PORT }}/health", placeholders.clone()) {
         assert_eq!(value.unwrap(), Scalar::from("localhost:8080/health"));
     }
-    // A decimal never goes through a float: 1.50 stays 1.50.
+    // A decimal never goes through a float: 1.50 is the exact 1.5.
     for value in resolved("price={{ PRICE }}", placeholders.clone()) {
-        assert_eq!(value.unwrap(), Scalar::from("price=1.50"));
+        assert_eq!(value.unwrap(), Scalar::from("price=1.5"));
     }
     // Two in one scalar, and text on both sides of each.
     for value in resolved("{{ ROOT }}:{{ PORT }}!", placeholders.clone()) {

@@ -103,7 +103,7 @@ function main() {
   )
   const holder = new Field('row_digest', 'uint64', false, {
     'DIGEST:role': 'holder',
-    'DIGEST:sources': '["symbol"]',
+    'DIGEST:by': '["symbol"]',
   })
   const root = new Field(
     'row',
@@ -124,7 +124,7 @@ function main() {
   }).batches[0]
   const signedHolder = new Field('row_digest', 'int64', false, {
     'DIGEST:role': 'holder',
-    'DIGEST:sources': '["symbol"]',
+    'DIGEST:by': '["symbol"]',
   })
   const signedRoot = new Field(
     'row',

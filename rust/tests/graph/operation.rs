@@ -72,14 +72,20 @@ fn each_kind_marker_names_its_leaf_and_the_word_it_digests_under() {
     }
 }
 
+/// An execution reports one whatever its state; an order or a quote has no
+/// report kind beside its state, so it reports one where its state does - a
+/// partial fill, a fill - and none otherwise.
 #[test]
-fn the_kind_says_whether_an_operation_is_an_execution_whatever_its_state() {
+fn an_operation_is_an_execution_by_its_kind_or_by_a_state_reporting_one() {
     let order = full_order();
-    assert!(!order.is_execution(), "the kind wins over a filled state");
-    assert!(!QuoteEvent::from(&order).is_execution());
+    assert!(order.is_execution(), "a filled order reports its fill");
+    assert!(QuoteEvent::from(&order).is_execution());
     let unknown = ExecutionEvent::at(23);
     assert!(unknown.is_execution());
     assert!(!OrderEvent::at(23).is_execution());
+    let mut working = OrderEvent::at(23);
+    working.set_state(State::New);
+    assert!(!working.is_execution());
     assert_eq!(order.kind(), MarketKind::Order);
     assert_eq!(QuoteEvent::from(&order).kind(), MarketKind::Quote);
     assert_eq!(ExecutionEvent::from(&order).kind(), MarketKind::Execution);
@@ -372,8 +378,8 @@ fn an_element_follows_and_merges_through_its_facts() {
 #[test]
 fn merging_an_undated_element_lets_this_statement_lead() {
     // With no instant to say which statement is later, this one leads:
-    // its price, quantity and unit stand, and each code is the better of
-    // the two with this one first.
+    // its price and quantity stand, and each code - the unit, the currency
+    // - is the better of the two with this one first.
     let mut this = Order::new();
     this.set_crosscode("T-1".to_owned());
     this.set_price(Some(Decimal::parse("82.5").expect("a decimal")), true);
@@ -400,8 +406,8 @@ fn merging_an_undated_element_lets_this_statement_lead() {
     );
     assert_eq!(
         merged.get_unit(),
-        &Unit::none(),
-        "this element's unit stands, stated or not"
+        &Unit::new("bbl").expect("a unit"),
+        "unknown takes the other"
     );
     assert_eq!(
         merged.get_currency().as_str(),
@@ -538,4 +544,35 @@ fn an_operation_digests_its_marketdatakind() {
     let order: OrderEvent = full();
     let quote: QuoteEvent = full();
     assert_ne!(order.get_currhashcode(), quote.get_currhashcode());
+}
+
+/// A copy of an operation into its own kind states every fact its source
+/// does - the order quantities a state leaves, an execution's own quantity
+/// and the iceberg's parts included - whatever the source's kind makes of
+/// them.
+#[test]
+fn a_copy_into_its_own_kind_states_every_fact_its_source_does() {
+    let decimal = |text: &str| -> Decimal { text.parse().unwrap() };
+    let mut fill = ExecutionEvent::at(1_700_000_000_000_000_000);
+    fill.set_crosscode("E-1".to_owned());
+    fill.set_state(State::Filled);
+    fill.set_side(Side::Buy, true);
+    fill.set_lastqty(Some(decimal("40")), true);
+    fill.set_cumqty(Some(decimal("40")), true);
+    fill.set_leavesqty(Some(decimal("60")), true);
+    fill.finalize();
+    assert_eq!(fill.get_ordqty(), Some(decimal("100")));
+    assert_eq!(fill.get_quantity(), None);
+    assert_eq!(ExecutionEvent::from(&fill), fill);
+
+    let mut canceled = OrderEvent::at(1_700_000_000_000_000_000);
+    canceled.set_crosscode("O-1".to_owned());
+    canceled.set_state(State::Canceled);
+    canceled.set_cumqty(Some(decimal("40")), true);
+    canceled.set_cxlqty(Some(decimal("60")), true);
+    canceled.set_displayqty(Some(decimal("0")), true);
+    canceled.finalize();
+    assert_eq!(canceled.get_ordqty(), Some(decimal("100")));
+    assert_eq!(OrderEvent::from(&canceled), canceled);
+    assert_eq!(OrderEvent::from(&full_order()), full_order());
 }

@@ -47,6 +47,11 @@ export function apiUrl(base, route, params = {}) {
   return new URL(route + queryString(params), normalizeBase(base)).toString()
 }
 
+// Every query names its book by the `ticker` parameter, which the service
+// reads as a book key - the `key` `fetchTickers` lists, an instrument's ISIN
+// or a ticker - else as the ticker of exactly one key's books. The display
+// sends the key.
+
 /** The parameters of a candles query, in the route's order. */
 export function candleParams({ table, ticker, from, to, tz, interval } = {}) {
   return { table, ticker, from, to, tz, interval }
@@ -107,7 +112,12 @@ export function fetchTimezones(base, options) {
   return fetchJson(apiUrl(base, 'api/timezones'), options)
 }
 
-/** `GET api/tickers?table=`: `[{ ticker, crosscode, from, to, books }]`, by ticker. */
+/**
+ * `GET api/tickers?table=`: `[{ key, ticker, crosscode, from, to, books }]`,
+ * one per book key - the instrument's ISIN, else the ticker, else
+ * `XX0000000000` - ordered by key, `ticker` the first its books state or
+ * `null`.
+ */
 export function fetchTickers(base, table, options) {
   return fetchJson(apiUrl(base, 'api/tickers', { table }), options)
 }

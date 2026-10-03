@@ -1642,10 +1642,7 @@ impl Scalar {
 
     /// The one shared empty sequence, which every empty run answers with.
     fn empty_sequence() -> Self {
-        static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
-        Self::Serie(Serie::Run(Run::new(Arc::clone(
-            EMPTY.get_or_init(|| Arc::from([])),
-        ))))
+        Self::Serie(Serie::Run(Run::default()))
     }
 
     /// The one shared empty mapping.
@@ -1813,12 +1810,15 @@ impl Scalar {
     /// [`Self::is_empty`] does not say, because that one only counts entries.
     ///
     /// Text is the one place this is wider than Python, and deliberately:
-    /// `"false"`, `"no"`, `"off"` and `"0"` read as false, where Python calls
-    /// every non-empty string true. Values arrive as text from CSV, FIX and
-    /// query strings, and a column that spells false is not asking to be
-    /// read as true. The reading is ASCII case-insensitive and trims. It is
-    /// a coercion of any text, so text the boolean value door refuses -
-    /// `"n/a"` - still answers here, as true.
+    /// every text the boolean reader reads as false - `"false"`, `"no"`,
+    /// `"off"`, `"0"`, `"f"`, `"n"` and the prefixes of the first and the
+    /// third - reads as false, where Python calls every non-empty string
+    /// true. Values arrive as text from CSV, FIX and query strings, and a
+    /// column that spells false is not asking to be read as true. The reading
+    /// is ASCII case-insensitive and trims, and only a string is a spelling:
+    /// a registered code or an enum member is an identity, present unless
+    /// empty. It is a coercion of any text, so text the boolean value door
+    /// refuses - `"n/a"` - still answers here, as true.
     ///
     /// ```
     /// use yggdryl::Scalar;
@@ -1860,12 +1860,13 @@ impl Scalar {
             // NaN is not zero, so it is present. Only the two zeroes are not.
             return value != 0.0;
         }
+        if let Some(text) = self.as_string() {
+            return crate::boolean::truthy_text(text.as_str());
+        }
+        // A code or an enum member is an identity, never a spelling: present
+        // unless it is a code's empty neutral member.
         if let Some(text) = self.as_str() {
-            let trimmed = text.trim();
-            return !matches!(
-                trimmed.to_ascii_lowercase().as_str(),
-                "" | "0" | "f" | "n" | "no" | "off" | "false"
-            );
+            return !text.trim().is_empty();
         }
         if let Some(bytes) = self.as_bytes() {
             return !bytes.is_empty();
@@ -2480,7 +2481,7 @@ fn shared_children<T>(
 /// ascending order - distinct by that alone, since the order is total and
 /// agrees with equality - else a scan for a short mapping, a set past
 /// sixteen entries.
-fn unique_keys(entries: &[(Scalar, Scalar)]) -> Result<()> {
+pub(crate) fn unique_keys(entries: &[(Scalar, Scalar)]) -> Result<()> {
     if entries.windows(2).all(|pair| pair[0].0 < pair[1].0) {
         return Ok(());
     }

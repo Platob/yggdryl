@@ -159,8 +159,12 @@ test('at dates an element and intoElement undates it', () => {
   const event = element.at(CLOCK)
   assert.ok(event instanceof graph.QuoteEvent)
   assert.equal(event.currunix, CLOCK)
-  assert.equal(event.crosscode, '14:2:Q-1')
+  // A quote holds its two legs and is stored unsided: its side is a tag,
+  // and the price it states on the offer is its ask leg.
+  assert.equal(event.crosscode, '14:0:Q-1')
   assert.equal(event.price, element.price)
+  assert.equal(event.askpx, '102')
+  assert.equal(event.bidpx, null)
   const back = event.intoElement()
   assert.ok(back instanceof graph.Quote)
   assert.ok(back.equals(element))

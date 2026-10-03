@@ -111,8 +111,8 @@ capture is context and stamps nothing; the line's own ``currunix`` - an
 its typed facts, explodes a nested ``XmlData`` into it, restates deprecated
 fields to their latest aliases, runs the crate's native derivations, reads
 the identifier maps off the fields that state them, splits an execution a
-report or a trade states - and a two-sided quote - into sided messages of
-their own, and settles the identity: ``SendingTime`` is the message's own, else
+report or a trade states into sided messages of their own - a quote stays
+one message holding both its legs - and settles the identity: ``SendingTime`` is the message's own, else
 a row cell reaching tag 52, else the ``currunix`` of the line it was read out
 of, else the codec's ``default_sending_time``, else UTC now
 read once - a clock the parse supplied is never the message's own, so the
@@ -149,10 +149,13 @@ reads a batch back as the messages that made it and
 :meth:`FixCodec.arrow_reader` writes messages as batches under a schema.
 :meth:`FixCodec.book_arrow_reader` streams sorted messages through native
 market data and books into lifted ``marketdata`` batches, one
-``book_event`` row per book and book key - the ticker, else ``MIC:CFI`` -
-read back by :meth:`yggdryl.graph.MarketData.from_arrow_reader`;
-``snapshot_millis`` selects an epoch-aligned snapshot grid. Lifecycle
-enrichment remains an explicit composition.
+``book_event`` row per book and book key - the instrument's ISIN, else its
+ticker, else ``XX0000000000`` - read back by
+:meth:`yggdryl.graph.MarketData.from_arrow_reader`; ``snapshot_millis``
+selects an epoch-aligned snapshot grid, at which a book is written whole,
+every other book its deltas, and ``filter`` narrows what the books fold. A
+book folds orders, quotes and book messages and never an execution or a
+trade. Lifecycle enrichment remains an explicit composition.
 :meth:`FixCodec.market_data` is the sorted door: it collects a
 capture, admits what the book door admits, expands each message and answers
 the market data stably sorted by the instant a book folds them at, nothing a

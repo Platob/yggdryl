@@ -34,7 +34,7 @@
     "metadata": {
       "FIX:tag": "65003",
       "FIX:transient": "false",
-      "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and its side, 10:1:ORD-1, side 0 on one of side UNKN and on every kind but an order, a quote or an execution: 21:0:T-1; its chain's once followed.",
+      "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated - an execution the parse splits off a report its ExecID, else TradeID=<TradeID>, else its report's code and content digest, one split off a trade its side's order and the side's first stated identifier, a batch entry the order or entry it names - stored after the codes of its category and of the side an order or an execution takes, 10:1:ORD-1, side 0 on one of side UNKN and on every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its chain's once followed.",
       "display": "Cross Code"
     }
   },

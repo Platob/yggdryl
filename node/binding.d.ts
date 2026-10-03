@@ -29,6 +29,7 @@ export {
   Records,
   Selector,
   SerieReader,
+  SpillOptions,
   ArrowCastPlan,
   StringEnum,
   Term,
@@ -69,8 +70,10 @@ export {
   type HttpRecorded,
   type HttpServerOptions,
   type HttpStats,
+  type JoinOptionsInput,
   type MetadataEntry,
   type PartitionEntry,
+  type SpillOptionsInit,
   type StringParameters,
   type StringParametersInput,
   type TimezoneAlias,
@@ -93,6 +96,8 @@ import type {
   DataType,
   Digest,
   Field,
+  FieldPath,
+  Filter,
   IOBase,
   IOCursor,
   Listing,
@@ -107,7 +112,11 @@ import type {
   Selector,
   Serie as NativeSerie,
   SerieReader,
+  SerieReaderWindows as NativeSerieReaderWindows,
+  SpillOptions,
+  WindowSerie as NativeWindowSerie,
   ArrowCastPlan,
+  JoinOptionsInput,
   StringParametersInput,
   Term,
   TextLine,
@@ -167,6 +176,11 @@ import {
   Candle,
   CandleOptions,
   CandleIterator,
+  Logger,
+  Formatter,
+  StreamHandler,
+  FileHandler,
+  NullHandler,
 } from './index'
 import type {
   DataType as ArrowDataType,
@@ -183,15 +197,38 @@ import type { URL as NodeURL } from 'node:url'
 export type Serie = NativeSerie
 /** The public constructor converts each JavaScript row through Scalar. */
 /**
- * The machine this process runs on, read once by the core: the host an
- * in-process location and a buffer's identity name.
+ * The machine this process runs on, read once by the core: intake reads
+ * `file://<HOSTNAME>/x` as the local path, and no URL the core writes names
+ * it - in-process storage names `localhost`.
  */
 export declare const HOSTNAME: string
+
+/** The bound one column stays resident under by default: 64 MiB, as a `bigint`. */
+export declare const DEFAULT_SPILL_BYTE_SIZE: bigint
 
 export declare const Serie: Omit<typeof NativeSerie, 'prototype'> & {
   readonly prototype: Serie
   new(rows?: Iterable<unknown> | null): Serie
 }
+
+/**
+ * A window over a serie, read and written through it at each call: both the
+ * shared and the mutable window.
+ */
+export type WindowSerie = NativeWindowSerie
+/** Handed out by `serie.window(offset, length)`: there is no public constructor. */
+export declare const WindowSerie: Omit<typeof NativeWindowSerie, 'prototype'> &
+  (abstract new () => WindowSerie) & {
+    readonly prototype: WindowSerie
+  }
+
+/** The windows of a stream: one lazy `SerieReader` per run of equal adjacent keys. */
+export type SerieReaderWindows = NativeSerieReaderWindows
+/** Handed out by `reader.windowBy(by, sorted)`: there is no public constructor. */
+export declare const SerieReaderWindows: Omit<typeof NativeSerieReaderWindows, 'prototype'> &
+  (abstract new () => SerieReaderWindows) & {
+    readonly prototype: SerieReaderWindows
+  }
 
 /** Many columns under one field, held apart: a chunked array, or a table. */
 export type ChunkedSerie = NativeChunkedSerie
@@ -302,6 +339,11 @@ export type {
   Candle,
   CandleOptions,
   CandleIterator,
+  Logger,
+  Formatter,
+  StreamHandler,
+  FileHandler,
+  NullHandler,
 }
 
 /** A native MIME wrapper or canonical MIME/extension string. */
@@ -860,9 +902,16 @@ declare module './index' {
     /**
      * Stream sorted messages through native market data and books into
      * nested Arrow batches, one book per book key and instant. A positive
-     * snapshot width is epoch aligned.
+     * snapshot width is epoch aligned. Orders, quotes and `W`/`X` book
+     * messages fold; an execution or a trade never reaches a book. `filter`,
+     * a predicate over the `marketdata` row, narrows what the books fold and
+     * never admits a pruned kind; not given, every booked leaf is kept.
      */
-    bookArrowReader(messages: Iterable<FixMsg>, snapshotMillis?: number): BatchReader
+    bookArrowReader(
+      messages: Iterable<FixMsg>,
+      snapshotMillis?: number,
+      filter?: Filter | Term | string,
+    ): BatchReader
     /**
      * The sorted door: a capture collected, what `bookArrowReader` admits
      * expanded into market data, stably sorted by `snapunix`, else
@@ -910,8 +959,15 @@ declare module './index' {
     function empty(field: Field | string): Serie
     /** The empty column of `field`, with room for `rows` rows. */
     function withCapacity(field: Field | string, rows: number): Serie
-    /** `rows` copies of `field`'s canonical default, one by default. */
+    /** `rows` copies of `field`'s canonical default, one by default: a constant column. */
     function fromDefault(field: Field | string, rows?: number): Serie
+    /**
+     * `length` copies of `value` under `field`: a constant column, the value
+     * typed by the field's own contract once and held as one row, the whole
+     * array built only when something exports it. A null under a required
+     * field, a value of another datatype and a sequence are refused.
+     */
+    function lit(field: Field | string, value: unknown, length: number): Serie
     /**
      * One Apache Arrow JS vector as a column: of its own layout under the
      * field `item`, nullable only where a row is null, or cast once into
@@ -943,10 +999,10 @@ declare module './index' {
   }
 
   interface Serie extends Iterable<Scalar> {
-    /** Whether the rows equal another serie's, or a chunked serie's. */
-    equals(other: Serie | ChunkedSerie): boolean
-    /** Order the rows against another serie's, or a chunked serie's. */
-    compare(other: Serie | ChunkedSerie): number
+    /** Whether the rows equal another serie's, a chunked serie's or a window's. */
+    equals(other: Serie | ChunkedSerie | WindowSerie): boolean
+    /** Order the rows against another serie's, a chunked serie's or a window's. */
+    compare(other: Serie | ChunkedSerie | WindowSerie): number
     /** Every row as its natural JavaScript value. */
     asJs(options?: Pick<CodecOptions, 'maxDepth'> | null): unknown[]
     /** The same row values as asJs, for JSON.stringify. */
@@ -994,6 +1050,207 @@ declare module './index' {
     intoArrowArray(): ArrowVector
     /** Every row of this column as one Apache Arrow JS record batch. */
     intoArrowBatch(): ArrowRecordBatch
+    /**
+     * The row positions in sorted order under `options`, as a `uint32`
+     * column named `index`: stable, so equal rows keep their order, and
+     * absent rows gathered to the end `nullsFirst` names.
+     */
+    sortIndices(options?: SortOptions | null): Serie
+    /** Whether the rows are in sorted order under `options`: one pass, no row built for a column. */
+    isSorted(options?: SortOptions | null): boolean
+    /**
+     * The rows in sorted order under `options`, as a new serie under the same
+     * field - a record's root declaring every column it was sorted by
+     * (`declaredOrder`).
+     */
+    intoSorted(options?: SortOptions | null): Serie
+    /** The first occurrence of every value, in order of first occurrence; an absent row is one value. */
+    intoUnique(): Serie
+    /** The rows in reverse order, as a new serie. */
+    intoReversed(): Serie
+    /**
+     * The rows `indices` names, in that order: an integer serie of any
+     * width, or an iterable of integers. An index absent, negative or past
+     * the end is refused naming the serie.
+     */
+    intoTaken(indices: SerieArgument): Serie
+    /**
+     * The rows `mask` keeps: a boolean serie, or an iterable of booleans, as
+     * long as this serie; an absent mask row keeps nothing.
+     */
+    intoFiltered(mask: SerieArgument): Serie
+    /**
+     * The rows grouped by `keys`, a serie - or an iterable of values - as
+     * long as this one: one `[key, rows]` pair per distinct key in order of
+     * first occurrence, an absent key one value. Sorted keys cut every group
+     * as a zero-copy slice. A record groups by one child through
+     * `partitionBy(serie.child('venue'))`.
+     */
+    partitionBy(keys: SerieArgument): Array<[Scalar, Serie]>
+    /**
+     * A record column's rows grouped by the cells `paths` reach - one field
+     * path, its text, or an iterable of them - keyed by the run of those
+     * cells in `paths` order.
+     */
+    partitionByPaths(paths: FieldPathsArgument): Array<[Scalar, Serie]>
+    /**
+     * Sort the rows in place under `options` and answer this serie, so calls
+     * chain: a primitive column holding its buffer alone sorts where it
+     * stands; a shared buffer is copied once.
+     */
+    asSorted(options?: SortOptions | null): this
+    /** Keep the first occurrence of every value, in place, and answer this serie. */
+    asUnique(): this
+    /** Reverse the rows in place and answer this serie. */
+    asReversed(): this
+    /** Keep the rows `indices` names, in that order, in place, and answer this serie. */
+    asTaken(indices: SerieArgument): this
+    /** Keep the rows `mask` keeps, in place, and answer this serie. */
+    asFiltered(mask: SerieArgument): this
+    /**
+     * The row positions in the order the `order by` keys of `by` state, as
+     * a `uint32` column named `index`: stable, every term bound once against
+     * the record root - a column that is no record keys as itself, under its
+     * own name. A key no column answers, an `unnest`, a run and no key at
+     * all are refused naming the serie, before any row is read; what the
+     * root's `declaredOrder` already states is answered without a pass.
+     */
+    sortIndicesBy(by: OrderingKeys): Serie
+    /**
+     * The rows in the order the `order by` keys of `by` state, as a new
+     * serie under the same field whose root declares those keys
+     * (`declaredOrder`); this serie untouched.
+     */
+    intoSortBy(by: OrderingKeys): Serie
+    /** Sort the rows in place by the keys of `by` and answer this serie; a refusal leaves it as it was. */
+    asSortBy(by: OrderingKeys): this
+    /**
+     * Spill the rows in place under the bound `options` states - the process
+     * default (`SpillOptions.fromEnv()`) where it is absent or null - as
+     * `spill` does, and answer this serie.
+     */
+    asSpilled(options?: SpillOptions | null): this
+    /**
+     * A copy of this serie spilled under the bound `options` states, this
+     * one untouched: the buffers the bound leaves resident are shared, the
+     * rest written once and mapped.
+     */
+    intoSpilled(options?: SpillOptions | null): Serie
+    /**
+     * This serie joined with `other` - a Serie, or a window as the serie of
+     * its rows - on `by`, under `how` (`inner` when absent or null): one
+     * record column named after this serie's root, the left columns then
+     * the right, a key stated as one bare column on both sides appearing
+     * once under the left name (`coalesce`), a colliding right name taking
+     * `suffix`, a side the kind makes optional nullable. A column that is no
+     * record keys as the one child of a `row` record. A key absent on a
+     * row matches nothing; duplicates multiply, in build order within a
+     * probe row. A run, no key, a term reaching no column and a key pair
+     * sharing no datatype are refused before any row is read.
+     */
+    joinWith(
+      other: Serie | WindowSerie,
+      by: JoinKeys,
+      how?: JoinHow | null,
+      options?: JoinOptionsInput | null,
+    ): Serie
+    /**
+     * The window `offset..offset + length` over this serie: it holds this
+     * serie and reads and writes through it at each call, moving nothing.
+     * Refused naming the serie and both counts when it reaches past the end.
+     */
+    window(offset: number, length: number): WindowSerie
+    /**
+     * The rows cut into windows by `by`, read as a projection list against
+     * the record root (a column that is no record is the one child of a
+     * `row` root): one `[key, window]` pair per run of equal adjacent keys,
+     * in row order, the key a run of the key's cells. Each window holds this
+     * serie, at its own offset. With `sorted`, each key once in key order -
+     * ascending, absent keys last: the windows of keys already in order are
+     * the same windows, and keys out of order gather the rows once into one
+     * new serie every window holds. Every window states its record as its
+     * `staticValues`. `sorted` absent or `null` is `false`. A run, an empty
+     * key, an `unnest` and a term naming no column are refused naming the
+     * serie, before any row is read.
+     */
+    windowBy(by: WindowKey, sorted?: boolean | null): Array<[Scalar, WindowSerie]>
+  }
+
+  interface WindowSerie extends Iterable<Scalar> {
+    /** Iterate the window's rows as Scalar values. */
+    [Symbol.iterator](): IterableIterator<Scalar>
+    /** Every row of the window as its natural JavaScript value. */
+    asJs(options?: Pick<CodecOptions, 'maxDepth'> | null): unknown[]
+    /** The same row values as asJs, for JSON.stringify. */
+    toJSON(): unknown[]
+    /** Whether the window's rows are in sorted order under `options`. */
+    isSorted(options?: SortOptions | null): boolean
+    /** The window-relative row positions in sorted order, as a `uint32` column named `index`. */
+    sortIndices(options?: SortOptions | null): Serie
+    /** A narrower window, window-relative, over the same serie. It states no record. */
+    window(offset: number, length: number): WindowSerie
+    /**
+     * The window's rows cut into windows by `by`, as `Serie.windowBy` cuts
+     * them: each over the same serie at its own offset, or over one new
+     * serie of the rows `sorted` gathered, from offset 0. Each states its
+     * record as its `staticValues`; under a window `windowBy` lent, the
+     * rows are those it was cut over, its record's cells come first -
+     * `windownum` and `rownum` but - and `rownum` stays absolute, so a key
+     * cell named as a kept cell is refused naming both.
+     */
+    windowBy(by: WindowKey, sorted?: boolean | null): Array<[Scalar, WindowSerie]>
+    /** The window's rows as a serie: `slice`, sharing a column's buffers. It carries rows only. */
+    intoSerie(): Serie
+    /** The window's rows in sorted order, as a new serie. */
+    intoSorted(options?: SortOptions | null): Serie
+    /** The first occurrence of every value in the window, as a new serie. */
+    intoUnique(): Serie
+    /** The window's rows in reverse order, as a new serie. */
+    intoReversed(): Serie
+    /** The window rows `indices` names, window-relative, as a new serie. */
+    intoTaken(indices: SerieArgument): Serie
+    /** The window rows `mask`, as long as the window, keeps. */
+    intoFiltered(mask: SerieArgument): Serie
+    /** The window's rows grouped by `keys`, as long as the window. */
+    partitionBy(keys: SerieArgument): Array<[Scalar, Serie]>
+    /** Whether the window's rows equal another window's, or a serie's. */
+    equals(other: WindowSerie | Serie): boolean
+    /** Overwrite window row `index` through the serie's field: one buffer write on a primitive leaf. */
+    set(index: number, value: unknown): void
+    /** Overwrite every window row with `value`, proved once. */
+    fill(value: unknown): void
+    /**
+     * Overwrite the window, row for row, with another window's rows or a
+     * whole serie's, which must be exactly as many.
+     */
+    copyFrom(other: WindowSerie | Serie): void
+    /**
+     * Replace window rows `start..end` by exactly as many `rows`: a window
+     * never grows or shrinks what it views.
+     */
+    splice(start: number, end: number, rows?: Iterable<unknown> | null): void
+    /** Sort the window's rows in place under `options`, and answer this window. */
+    asSorted(options?: SortOptions | null): this
+    /** Reverse the window's rows in place, and answer this window. */
+    asReversed(): this
+    /**
+     * Rearrange the window's rows as `indices` - window-relative and exactly
+     * as many as the window holds - names them, and answer this window.
+     */
+    asTaken(indices: SerieArgument): this
+    /**
+     * The window-relative row positions in the order the `order by` keys of
+     * `by` state, the keys computed over the window's rows alone.
+     */
+    sortIndicesBy(by: OrderingKeys): Serie
+    /** The window's rows in the order the keys of `by` state, as a new serie declaring them. */
+    intoSortBy(by: OrderingKeys): Serie
+    /**
+     * Sort the window's rows in place by the keys of `by`, written back over
+     * the window's range, and answer this window; every row outside it is
+     * untouched and a refusal leaves the serie as it was.
+     */
+    asSortBy(by: OrderingKeys): this
   }
 
   namespace SerieReader {
@@ -1034,6 +1291,71 @@ declare module './index' {
      * stream's batches as they are pulled. The reader is consumed.
      */
     cast(field: Field | DataType | string, options?: ArrowCastOptions): SerieReader
+    /**
+     * The stream cut into one lazy reader per run of equal adjacent keys,
+     * in the order they arrive, `by` bound against the root before any batch
+     * is pulled. Windows are read in order: taking the next window drops
+     * the unread rows of the one before, and a window read after the walk
+     * passed rows of it refuses once, naming it. With `sorted`, the keys
+     * must arrive in key order - ascending, absent keys last - and the
+     * first that goes backwards is refused naming its batch and row; a
+     * stream is never reordered. Every window states its record as its
+     * `staticValues`. `sorted` absent or `null` is `false`. The reader is
+     * consumed, a refused key included.
+     */
+    windowBy(by: WindowKey, sorted?: boolean | null): SerieReaderWindows
+    /**
+     * Every record this reader yields in sorted order under `options`: the
+     * stream drained into its chunks, each settled under the spill bound as
+     * it lands, merged, and read back as a held stream of the merged
+     * chunks. The root and `staticValues` are kept; the reader is consumed.
+     */
+    intoSorted(options?: SortOptions | null): SerieReader
+    /**
+     * Every record this reader yields in the order the `order by` keys of
+     * `by` state, bound against the root before any batch is pulled, then
+     * drained and merged as `intoSorted` is. The reader is consumed, a
+     * refused key included.
+     */
+    intoSortBy(by: OrderingKeys): SerieReader
+    /**
+     * This stream joined with `other` - a Serie, a ChunkedSerie, or another
+     * SerieReader, consumed too - on `by`, under `how` (`inner` when absent
+     * or null): a stream of the output, one probe batch joined at a time,
+     * the held side built and hashed first, `Serie.joinWith`'s rules for the
+     * columns. `how` and `options` are read before anything is consumed;
+     * this reader is consumed, a refused key included.
+     */
+    joinWith(
+      other: Serie | ChunkedSerie | SerieReader,
+      by: JoinKeys,
+      how?: JoinHow | null,
+      options?: JoinOptionsInput | null,
+    ): SerieReader
+    /**
+     * Spill the records this reader holds in place under the bound `options`
+     * states, as `spill` does, and answer this reader; a stream holds none
+     * and is untouched. Refused once the reader was consumed.
+     */
+    asSpilled(options?: SpillOptions | null): this
+    /**
+     * This reader with the records it holds spilled under the bound
+     * `options` states, handed over as a new reader: a stream moves rather
+     * than copies, so this reader is consumed.
+     */
+    intoSpilled(options?: SpillOptions | null): SerieReader
+  }
+
+  interface SerieReaderWindows extends IterableIterator<SerieReader> {
+    /**
+     * Open the next window as its lazy reader, in the order they arrive, or
+     * done after the last: the unread rows of the window before are pulled
+     * and dropped. A key going backwards under `sorted` is thrown once,
+     * naming its batch and row, and the walk is done after it.
+     */
+    next(): IteratorResult<SerieReader>
+    /** The windows themselves: one walk, iterated once. */
+    [Symbol.iterator](): SerieReaderWindows
   }
 
   namespace ChunkedSerie {
@@ -1121,13 +1443,94 @@ declare module './index' {
      * placeholder, which crosses back as no chunk.
      */
     intoArrowTable(): ArrowTable
-    /** Whether the rows equal another chunked serie's, or a serie's. */
-    equals(other: ChunkedSerie | Serie): boolean
+    /** Whether the rows equal another chunked serie's, a serie's or a window's. */
+    equals(other: ChunkedSerie | Serie | WindowSerie): boolean
     /**
-     * Order the rows against another chunked serie's, or a serie's, as the
-     * core orders a column's, however the rows are cut.
+     * Order the rows against another chunked serie's, a serie's or a
+     * window's, as the core orders a column's, however the rows are cut.
      */
-    compare(other: ChunkedSerie | Serie): number
+    compare(other: ChunkedSerie | Serie | WindowSerie): number
+    /** The row positions in sorted order across the chunks, as a `uint32` column named `index`: the one join, then the sort. */
+    sortIndices(options?: SortOptions | null): Serie
+    /** Whether the rows are in sorted order across the chunks: each chunk and every chunk edge, with no join. */
+    isSorted(options?: SortOptions | null): boolean
+    /**
+     * The rows in sorted order, with no join: each chunk sorted on its own,
+     * then merged into chunks of at most the record batch row size.
+     */
+    intoSorted(options?: SortOptions | null): ChunkedSerie
+    /** The rows `indices` names across the chunks, as a chunked serie of one chunk. */
+    intoTaken(indices: SerieArgument): ChunkedSerie
+    /** The rows `mask`, as long as the whole, keeps: chunk by chunk, kept apart. */
+    intoFiltered(mask: SerieArgument): ChunkedSerie
+    /**
+     * The rows grouped by `keys`, as long as the whole: one `[key, rows]`
+     * pair per distinct key in order of first occurrence, each group's rows
+     * the chunks each chunk contributed, kept apart. Keys are a Serie or any
+     * iterable of values, or held in chunks - a ChunkedSerie, or an Apache
+     * Arrow JS vector of one chunk per `Data` - grouped chunk beside chunk
+     * with no join where both are cut at the same rows, and joined once and
+     * cut to the rows' chunks otherwise.
+     */
+    partitionBy(keys: SerieArgument | ChunkedSerie | ArrowVector): Array<[Scalar, ChunkedSerie]>
+    /**
+     * The rows cut into windows by `by` across the chunks, as
+     * `Serie.windowBy` cuts the joined rows: a run crossing a chunk edge is
+     * one window, and with `sorted` each key's runs are regrouped into one
+     * window, its rows the pieces of the chunks it spans - no row copied. A
+     * chunked window states no record: its key is the pair's first half and
+     * its place the pair's index.
+     */
+    windowBy(by: WindowKey, sorted?: boolean | null): Array<[Scalar, ChunkedSerie]>
+    /** Sort the rows in place - the merged chunks replace the chunks - and answer this chunked serie. */
+    asSorted(options?: SortOptions | null): this
+    /** Keep the first occurrence of every value in place, each chunk its own, kept apart, and answer this chunked serie. */
+    asUnique(): this
+    /** Reverse the rows in place, the chunks kept apart, and answer this chunked serie. */
+    asReversed(): this
+    /** Keep the rows `indices` names in place - one chunk - and answer this chunked serie. */
+    asTaken(indices: SerieArgument): this
+    /** Keep the rows `mask` keeps in place, chunk by chunk, and answer this chunked serie. */
+    asFiltered(mask: SerieArgument): this
+    /**
+     * The row positions in the order the `order by` keys of `by` state,
+     * across the chunks, as a `uint32` column named `index`: the keys read
+     * first, then the one join.
+     */
+    sortIndicesBy(by: OrderingKeys): Serie
+    /**
+     * The rows in the order the keys of `by` state, merged as `intoSorted`
+     * merges them, with no join; the field declares the keys.
+     */
+    intoSortBy(by: OrderingKeys): ChunkedSerie
+    /** Sort the rows in place by the keys of `by` - the merged chunks replace the chunks - and answer this chunked serie. */
+    asSortBy(by: OrderingKeys): this
+    /**
+     * Spill chunks in place under the bound `options` states, the heaviest
+     * whole first, as `spill` does, and answer this chunked serie.
+     */
+    asSpilled(options?: SpillOptions | null): this
+    /**
+     * A copy of this chunked serie spilled under the bound `options` states,
+     * this one untouched: the chunks the bound leaves resident are shared.
+     */
+    intoSpilled(options?: SpillOptions | null): ChunkedSerie
+    /**
+     * This chunked serie joined with `other` on `by`, under `how` (`inner`
+     * when absent or null), by `Serie.joinWith`'s rules: the output batches
+     * kept apart as chunks, each settled under the spill bound.
+     */
+    joinWith(
+      other: ChunkedSerie,
+      by: JoinKeys,
+      how?: JoinHow | null,
+      options?: JoinOptionsInput | null,
+    ): ChunkedSerie
+  }
+
+  namespace SpillOptions {
+    /** The bound under which nothing spills: `2^64 - 1`, as a `bigint`. */
+    const NEVER: bigint
   }
 
   namespace ArrowCastPlan {
@@ -3839,6 +4242,10 @@ declare module './index' {
 
   /** A native handle, any identifier naming a location, or location text. */
   type LocationInput = IOBase | Url | Uri | Urn | Arn | string
+  /** A level: its number, or its name in any case. */
+  type LoggingLevelInput = number | string
+  /** Any handler a logger takes. */
+  type LoggingHandlerInput = StreamHandler | FileHandler | NullHandler
   /** A cell reference: a `CellRef`, its `A1` text, or a `[row, column]` pair. */
   type CellRefInput = CellRef | string | [number, number]
   /** A cell range: a `CellRange`, its `A1:C3` text, or a pair of references. */
@@ -3849,7 +4256,10 @@ declare module './index' {
   type FileSystemInput = FileSystemHandler
   /** A location, or the file system one of its locations sits on. */
   type LocationOrFileSystemInput = LocationInput | FileSystemHandler
-  /** A partition spec, or the column names one would be built from. */
+  /**
+   * A partition spec, or the `PARTITION:by` entries one is read from: a bare
+   * column, `days(ts)`, `minutes(ts, 15)`, `truncate(name, 4) as prefix`.
+   */
   type PartitionInput = PartitionSpec | readonly string[]
   /** A native zone wrapper or an IANA name, alias, or fixed offset. */
   type TimezoneInput = Timezone | string
@@ -4015,6 +4425,44 @@ declare module './index' {
     writeArrowBatch(
       batch: ArrowRecordBatch,
       mode: IOMode,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
+    ): void
+
+    /**
+     * Read this resource's rows as a `SerieReader`, one record serie per
+     * batch. Absent options are the handle's own - a container's the table
+     * beneath it, a structured text document the record column its rows
+     * parse into, of which the declared field is the one option it reads.
+     */
+    readSerie(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): SerieReader
+    /**
+     * Write rows in any shape they are held - a Serie, a ChunkedSerie, a
+     * SerieReader (consumed), or any value `BatchReader.from` accepts -
+     * under `mode`, `overwrite` when absent. A structured text document
+     * takes `overwrite` alone, and of the options the declared field alone.
+     */
+    writeSerie(
+      value: SerieSource,
+      mode?: IOMode,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
+    ): void
+    /** Replace this resource's rows with `value`'s: `writeSerie` under `overwrite`. */
+    overwriteSerie(
+      value: SerieSource,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
+    ): void
+    /** Add `value`'s rows after this resource's: `writeSerie` under `append`. */
+    appendSerie(
+      value: SerieSource,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
+    ): void
+    /** Merge `value`'s rows by the non-empty `options.mergeBy` keys: `writeSerie` under `merge`. */
+    mergeSerie(
+      value: SerieSource,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
     ): void
@@ -4234,6 +4682,77 @@ export interface ArrowCastOptions {
   representation?: Representation
 }
 
+/**
+ * The two facts an ordering states beside its key: `descending` and
+ * `nullsFirst`. An absent answer is skipped and `null` clears it, each taking
+ * the default: ascending, absent rows last - the plan's `order by` default.
+ */
+export interface SortOptions {
+  descending?: boolean | null
+  nullsFirst?: boolean | null
+}
+
+/**
+ * A serie a verb reads beside its own - indices, a mask, keys: a `Serie`, or
+ * any iterable of values, read as the schema-free run of them.
+ */
+export type SerieArgument = Serie | Iterable<unknown>
+
+/**
+ * One `order by` key as a record: the term it orders by, beside the two
+ * optional booleans. The core reads the keys as spelled, so the nulls flag is
+ * `nulls_first` here - a `nullsFirst` key is refused by name.
+ */
+export interface OrderingKey {
+  term: string
+  descending?: boolean
+  /** Where the absent rows go; `nulls_first` is the grammar's own spelling of the same flag. */
+  nullsFirst?: boolean
+  nulls_first?: boolean
+}
+
+/**
+ * The keys of an `order by`, most significant first: the clause's text
+ * without its keywords (`'venue, price desc nulls first'`), an array of key
+ * texts or `OrderingKey` records, one record, or a `Selector`, every
+ * projection ascending with nulls last.
+ */
+export type OrderingKeys =
+  | Selector
+  | Scalar
+  | string
+  | OrderingKey
+  | readonly (string | OrderingKey)[]
+
+/**
+ * The keys of a join: the text of a key list (`'id, venue = market'` - a bare
+ * term the same term over both sides, an equality a left and a right term),
+ * an array of key texts and `[left, right]` term pairs, or a `Map` or plain
+ * object of left terms to right terms.
+ */
+export type JoinKeys =
+  | Scalar
+  | string
+  | readonly (string | readonly [string, string])[]
+  | ReadonlyMap<string, string>
+  | Readonly<Record<string, string>>
+
+/**
+ * Which rows a join keeps, DuckDB's words read case-folded, a trailing
+ * `outer` or `join` read past: `left outer join` is `left`, `outer` is
+ * `full`.
+ */
+export type JoinHow = 'inner' | 'left' | 'right' | 'full' | 'outer' | 'semi' | 'anti' | (string & {})
+
+/**
+ * The key a serie is windowed by: a `Selector`, a `Term`, the text of a
+ * projection list, or an array of terms and projection texts.
+ */
+export type WindowKey = Selector | Term | string | readonly (Term | string)[]
+
+/** The field paths a record partitions by: one path, its text, or an iterable of them. */
+export type FieldPathsArgument = FieldPath | string | Iterable<FieldPath | string>
+
 /** Anything that names a stream of Arrow record batches. */
 export type BatchSource =
   | BatchReader
@@ -4243,6 +4762,11 @@ export type BatchSource =
   | Buffer
   | Uint8Array
   | ArrayBuffer
+/**
+ * Rows the `Serie` record writes take: a held column, held chunks, a stream
+ * (consumed), or any value `BatchReader.from` accepts.
+ */
+export type SerieSource = Serie | ChunkedSerie | SerieReader | BatchSource
 /** One row accepted by the record-specific write entry points. */
 // `& object` is what keeps a primitive out: every JavaScript value carries a
 // `constructor`, so a bare number structurally satisfies StructFieldInstance.
@@ -4279,7 +4803,10 @@ export type IcebergProperties = {
   readonly compactAfterCommits?: number
   readonly dataMimeType?: MimeTypeInput
 }
-/** A partition spec, or the column names one would be built from. */
+/**
+ * A partition spec, or the `PARTITION:by` entries one is read from: a bare
+ * column, `days(ts)`, `minutes(ts, 15)`, `truncate(name, 4) as prefix`.
+ */
 export type PartitionInput = PartitionSpec | readonly string[]
 /** A native root `Field`, or the field expression naming one. */
 export type SchemaInput = Field | string
@@ -4349,6 +4876,60 @@ export interface Iceberg {
 }
 
 export declare const iceberg: Iceberg
+
+/** A level: its number, or its name in any case (`warn`, `WARNING`, `30`). */
+export type LoggingLevelInput = number | string
+
+/** Any handler a logger takes. */
+export type LoggingHandlerInput = StreamHandler | FileHandler | NullHandler
+
+/** What `logging.basicConfig` gives the root, Python's `basicConfig` arguments. */
+export interface LoggingBasicConfig {
+  /** The level stated on the root. */
+  readonly level?: LoggingLevelInput
+  /** The `%`-style format every handler without a formatter takes. */
+  readonly format?: string
+  /** The `strftime` date format `asctime` is spelled in. */
+  readonly datefmt?: string
+  /** The handlers attached to the root, standard error when none is given. */
+  readonly handlers?: readonly LoggingHandlerInput[]
+  /** Close and remove the root's handlers first. */
+  readonly force?: boolean
+}
+
+/**
+ * The core's logging tree, the process's logger since the addon loaded:
+ * Python's `logging` in camelCase, its level numbers the core's own.
+ */
+export interface Logging {
+  readonly NOTSET: number
+  readonly TRACE: number
+  readonly DEBUG: number
+  readonly INFO: number
+  readonly WARNING: number
+  readonly ERROR: number
+  readonly CRITICAL: number
+  /** A named logger of the tree. */
+  readonly Logger: typeof Logger
+  /** A `%`-style format and the date format `asctime` takes. */
+  readonly Formatter: typeof Formatter
+  /** Writes each record as one line to standard error or standard output. */
+  readonly StreamHandler: typeof StreamHandler
+  /** Writes each record as one line through a location, one append per publish. */
+  readonly FileHandler: typeof FileHandler
+  /** Takes every record and writes none. */
+  readonly NullHandler: typeof NullHandler
+  /** The logger named `name`, the root when absent. */
+  getLogger(name?: string): Logger
+  /** Give a root with no handler its handlers, format and level. */
+  basicConfig(config?: LoggingBasicConfig): void
+  /** Drop every record at or below `level`, `CRITICAL` when absent; `NOTSET` lifts it. */
+  disable(level?: LoggingLevelInput): void
+  /** Publish and close every handler of the tree; also run at process exit. */
+  shutdown(): void
+}
+
+export declare const logging: Logging
 
 /** One header, query or form value: text, or a number or boolean spelled as text. */
 export type HttpTextInput = string | number | bigint | boolean
@@ -4742,10 +5323,17 @@ export interface OperationEventConstructor<T> {
 /**
  * The public `BookIterator` constructor: its items pulled lazily from the
  * caller's iterable through the loader's pull adapter, the way `FixCodec`'s
- * streams are; a failure behind the iterable is thrown as itself.
+ * streams are; a failure behind the iterable is thrown as itself. Orders,
+ * quotes and snapshot controls fold, and every other input is pruned;
+ * `filter`, a predicate over the `marketdata` row bound once, narrows what
+ * the books fold and never admits an execution or a trade.
  */
 export interface BookIteratorConstructor {
-  new (items: Iterable<MarketItem>, snapshotMillis?: number): BookIterator
+  new (
+    items: Iterable<MarketItem>,
+    snapshotMillis?: number,
+    filter?: Filter | Term | string,
+  ): BookIterator
   readonly prototype: BookIterator
 }
 

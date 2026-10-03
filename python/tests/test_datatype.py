@@ -123,15 +123,22 @@ def test_decimal_infers_storage_width_and_integer_like_arguments() -> None:
         DataType.decimal(18, 2.0)
     with pytest.raises(TypeError, match="scale.*NoneType"):
         DataType.decimal(18, None)  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="precision.*base-10 integer string"):
+    # Text crosses the parameter's own value door - `uint8` for a precision,
+    # `int8` for a scale - the one integer reader the core owns, whose
+    # refusal names what it expected; an int past the width is Python's own
+    # overflow.
+    with pytest.raises(ValueError, match="precision.*expected uint8"):
         DataType.decimal("18.0", 2)
+    assert DataType.decimal(" +18 ", "2") == DataType("decimal64(18,2)")
     with pytest.raises(ValueError, match="positive scale cannot exceed precision"):
         DataType.decimal(2, "3")
     with pytest.raises(OverflowError, match="precision.*unsigned byte"):
         DataType.decimal(256, 0)
-    with pytest.raises(OverflowError, match="precision.*supported integer range"):
+    with pytest.raises(ValueError, match="precision.*expected uint8"):
+        DataType.decimal("256", 0)
+    with pytest.raises(ValueError, match="precision.*expected uint8"):
         DataType.decimal("9" * 100, 0)
-    with pytest.raises(OverflowError, match="scale.*supported integer range"):
+    with pytest.raises(ValueError, match="scale.*expected int8"):
         DataType.decimal(18, "-" + "9" * 100)
 
 
@@ -809,26 +816,27 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     figi = DataType("figi")
     assert (figi.id, figi.code_width, figi.kind) == ("figi", 12, "code")
     assert figi.scalar("bbg000blnq16").as_py() == "BBG000BLNQ16"
-    with pytest.raises(ValueError, match="check digit"):
-        figi.scalar("BBG000BLNQ17")
+    # A code keeps its shape rule and nothing else: a check digit that does
+    # not close is a value of the code - a masked line's, a typo's - whose
+    # validity is a rank the identifier sets read, never a refusal.
+    assert figi.scalar("BBG000BLNQ17").as_py() == "BBG000BLNQ17"
 
-    # An ISIN is closed by its own check digit: a spelling one digit off is a
-    # typo and is refused rather than stored as a security, and lower case
+    # An ISIN is twelve characters closed by its own check digit; lower case
     # folds to the upper case it spells because the check digit cannot tell
-    # the two apart.
+    # the two apart, and a spelling one digit off is the value it states.
     isin = DataType("isin")
     apple = isin.scalar("us0378331005")
     assert apple.as_py() == "US0378331005"
     assert apple.kind == "isin"
     assert pickle.loads(pickle.dumps(apple)) == apple
     assert isin.ascii_packed("US0378331005") == DataType.fixed_ascii(12).ascii_packed("US0378331005")
-    with pytest.raises(ValueError, match="check digit does not close"):
-        isin.scalar("US0378331006")
+    assert isin.scalar("us0378331006").as_py() == "US0378331006"
+    assert isin.scalar("XX0000000000").as_py() == "XX0000000000", "the number that states none"
     with pytest.raises(ValueError, match="expected twelve characters"):
         isin.scalar("US037833100")
 
     # A CUSIP and a SEDOL are closed by their own check digits the same way:
-    # nine and seven characters, a typo refused, lower case folded.
+    # nine and seven characters, a typo stated as it is, lower case folded.
     cusip = DataType("cusip")
     apple_cusip = cusip.scalar("037833100")
     assert apple_cusip.as_py() == "037833100"
@@ -836,8 +844,7 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     assert cusip.scalar("38259p508").as_py() == "38259P508"
     assert pickle.loads(pickle.dumps(apple_cusip)) == apple_cusip
     assert cusip.ascii_packed("037833100") == DataType.fixed_ascii(9).ascii_packed("037833100")
-    with pytest.raises(ValueError, match="check digit does not close"):
-        cusip.scalar("037833101")
+    assert cusip.scalar("037833101").as_py() == "037833101"
     with pytest.raises(ValueError, match="expected nine characters"):
         cusip.scalar("03783310")
     sedol = DataType("sedol")
@@ -846,8 +853,7 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     assert shell.kind == "sedol"
     assert pickle.loads(pickle.dumps(shell)) == shell
     assert sedol.ascii_packed("B0YBKJ7") == DataType.fixed_ascii(7).ascii_packed("B0YBKJ7")
-    with pytest.raises(ValueError, match="check digit does not close"):
-        sedol.scalar("B0YBKJ8")
+    assert sedol.scalar("B0YBKJ8").as_py() == "B0YBKJ8"
     with pytest.raises(ValueError, match="expected seven characters"):
         sedol.scalar("B0YBKJ")
     # Two identifiers are two values, and neither is the string it spells.

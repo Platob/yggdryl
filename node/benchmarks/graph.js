@@ -5,10 +5,11 @@
 // Every case here is one crossing over the typed market leaves and
 // `MarketData`: building an order event from named facts, reading a fact back
 // typed, dating and undating an element, a book folding a group of
-// operations, its limits and two-sided readings, the lazy book and event
-// walks, the lifted Arrow doors and the named views over them, the identifier
-// maps crossing as a plain object and the instrument registry's reads. Run
-// against the release addon with `npm run --prefix node bench:graph`.
+// operations, its limits, one side's live entries and two-sided readings,
+// the lazy book and event walks - one under a filter - the lifted Arrow
+// doors and the named views over them, the identifier maps crossing as a
+// plain object and the instrument registry's reads. Run against the release
+// addon with `npm run --prefix node bench:graph`.
 
 const { performance } = require('node:perf_hooks')
 
@@ -87,6 +88,12 @@ benchmarkStreams(`book fold/${FOLD_OPERATION_COUNT}`, () =>
   new graph.BookEvent(CLOCK, 'ACME').withOperations(FOLD_OPERATIONS))
 benchmarkStreams(`book iterator drain/${FOLD_OPERATION_COUNT}`, () =>
   count(new graph.BookIterator(FOLD_OPERATIONS)))
+// The same walk under a filter over the `marketdata` row, bound once when the
+// walk opens and answered a batch of booked inputs at a time.
+benchmarkStreams(`book iterator filtered drain/${FOLD_OPERATION_COUNT}`, () =>
+  count(new graph.BookIterator(FOLD_OPERATIONS, 0, "side = 'BUYS'")))
+benchmark('book keyed', () => graph.BookEvent.keyed(CLOCK, 'ACME'))
+benchmarkStreams(`book bid alive/${FOLD_OPERATION_COUNT}`, () => FOLD_BOOK.aliveOn('BUYS'))
 benchmarkStreams(`event iterator drain/${FOLD_OPERATION_COUNT}`, () =>
   count(new graph.EventIterator(FOLD_OPERATIONS)))
 benchmarkStreams(`operations arrowReader/${FOLD_OPERATION_COUNT}`, () =>

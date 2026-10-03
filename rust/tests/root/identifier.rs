@@ -299,7 +299,14 @@ fn an_explicit_key_names_its_source_and_its_type() {
     );
     // The two halves are all it reads: what is no word, what its type
     // refuses and what states nothing read as none.
-    assert!(Identifier::from_key("fix:isin", "US0378331006").is_none());
+    assert!(Identifier::from_key("fix:isin", "US037833100").is_none());
+    assert_eq!(
+        Identifier::from_key("fix:isin", "US0378331006")
+            .unwrap()
+            .to_string(),
+        "isin=US0378331006",
+        "a check digit is a rank, not a refusal"
+    );
     assert!(Identifier::from_key("fix:clordid", "n/a").is_none());
     assert!(Identifier::from_key("fix:", "C-1").is_none());
     assert!(Identifier::from_key(":clordid", "C-1").is_none());
@@ -593,17 +600,29 @@ fn a_key_that_names_no_identifier_or_another_instruments_security_is_none() {
             "{value:?}"
         );
     }
-    assert!(
-        Identifier::from_key("ISINCode", "US0378331006").is_none(),
-        "a bad check digit"
+    // A check digit that does not close is a rank, never a refusal: the
+    // shape is what the type holds to.
+    assert_eq!(
+        Identifier::from_key("ISINCode", "US0378331006")
+            .unwrap()
+            .to_string(),
+        "isin=US0378331006"
+    );
+    assert_eq!(
+        Identifier::from_key("firm.isin", "US0378331006")
+            .unwrap()
+            .to_string(),
+        "firm:isin=US0378331006"
+    );
+    assert_eq!(
+        Identifier::from_key("venue.cusip", "037833101")
+            .unwrap()
+            .to_string(),
+        "venue:cusip=037833101"
     );
     assert!(
-        Identifier::from_key("firm.isin", "US0378331006").is_none(),
-        "a bad check digit"
-    );
-    assert!(
-        Identifier::from_key("venue.cusip", "037833101").is_none(),
-        "a bad check digit"
+        Identifier::from_key("ISINCode", "US037833100").is_none(),
+        "the shape"
     );
     assert!(
         Identifier::from_key("OrderID", &"9".repeat(65)).is_none(),
@@ -895,6 +914,285 @@ fn a_map_merges_by_key_and_the_later_one_replaces_what_differs() {
     assert!(merged.is_derived(&IdType::Valor));
 }
 
+/// A placeholder never beats a real value in any merge, in any order: a
+/// higher rank replaces a lower one through `insert`, `merge` and `close`
+/// whichever was stated first, and among values of one rank the existing
+/// rule stands - the leading one keeps on `insert`, the later one replaces
+/// on `merge`, the first in key order answers on `close`.
+#[test]
+fn a_higher_ranked_value_replaces_a_lower_one_in_insert_merge_and_close_whatever_the_order() {
+    const REAL: &str = "US0378331005";
+    const OTHER: &str = "US5949181045";
+    const MASKED: &str = "XX0000000001";
+    assert!(IdType::Isin.rank(REAL) > IdType::Isin.rank(MASKED));
+
+    // A base key restated: the real number replaces the masked one and the
+    // masked one never replaces the real one.
+    let mut held = base(&[("isin", MASKED)]);
+    assert!(held.insert(id("base", "isin", REAL)));
+    assert_eq!(held.to_string(), format!("[isin={REAL}]"));
+    let mut held = base(&[("isin", REAL)]);
+    assert!(!held.insert(id("base", "isin", MASKED)));
+    assert_eq!(held.to_string(), format!("[isin={REAL}]"));
+    // A named source outranking the base upgrades it and stands beside it
+    // as evidence; one ranking below lands under its own key and leaves
+    // the answer.
+    let mut held = base(&[("isin", MASKED)]);
+    assert!(held.insert(id("ullink", "isin", REAL)));
+    assert_eq!(
+        held.to_string(),
+        format!("[isin={REAL}, ullink:isin={REAL}]")
+    );
+    let mut held = base(&[("isin", REAL)]);
+    assert!(held.insert(id("ullink", "isin", MASKED)));
+    assert_eq!(
+        held.to_string(),
+        format!("[isin={REAL}, ullink:isin={MASKED}]")
+    );
+    // A named key restated by a higher rank moves, and fills the base with it.
+    let mut held: Identifiers = [id("ullink", "isin", MASKED)].into_iter().collect();
+    assert!(held.insert(id("ullink", "isin", REAL)));
+    assert_eq!(
+        held.to_string(),
+        format!("[isin={REAL}, ullink:isin={REAL}]")
+    );
+    assert!(!held.insert(id("ullink", "isin", MASKED)));
+    // A derivation lands over a base that ranks below it - a registry's
+    // real number over a masked statement - and never over one that does
+    // not.
+    let mut held = base(&[("isin", MASKED)]);
+    assert!(held.insert(id("derived", "isin", REAL)));
+    assert_eq!(held.get(&IdType::Isin), Some(REAL));
+    assert!(held.is_derived(&IdType::Isin));
+    let mut held = base(&[("isin", REAL)]);
+    assert!(!held.insert(id("derived", "isin", MASKED)));
+    assert_eq!(held.to_string(), format!("[isin={REAL}]"));
+    // Two of one rank keep the leading one on insert.
+    let mut held = base(&[("isin", REAL)]);
+    assert!(!held.insert(id("base", "isin", OTHER)));
+    assert_eq!(held.get(&IdType::Isin), Some(REAL));
+
+    // A merge takes the higher rank whether or not the other map leads, and
+    // only between equals does the later one replace.
+    for later in [false, true] {
+        let mut held = base(&[("isin", MASKED)]);
+        assert!(held.merge(&base(&[("isin", REAL)]), later), "{later}");
+        assert_eq!(held.get(&IdType::Isin), Some(REAL), "{later}");
+        let mut held = base(&[("isin", REAL)]);
+        assert!(!held.merge(&base(&[("isin", MASKED)]), later), "{later}");
+        assert_eq!(held.get(&IdType::Isin), Some(REAL), "{later}");
+        let mut held = base(&[("isin", REAL)]);
+        assert_eq!(held.merge(&base(&[("isin", OTHER)]), later), later);
+        assert_eq!(
+            held.get(&IdType::Isin),
+            Some(if later { OTHER } else { REAL })
+        );
+    }
+    // A set is the explicit statement and stays unconditional.
+    let mut held = base(&[("isin", REAL)]);
+    assert!(held.set(id("base", "isin", MASKED)));
+    assert_eq!(held.get(&IdType::Isin), Some(MASKED));
+
+    // A map read raw closes each type on its highest-ranked named source,
+    // the first in key order among equals, whatever order the entries came
+    // in.
+    let closed = Identifiers::from_scalar(&entries(&[
+        ("abc:isin", MASKED),
+        ("venue:isin", REAL),
+        ("zzz:isin", OTHER),
+    ]))
+    .unwrap();
+    assert_eq!(closed.get(&IdType::Isin), Some(REAL));
+    let closed =
+        Identifiers::from_scalar(&entries(&[("zzz:isin", REAL), ("abc:isin", MASKED)])).unwrap();
+    assert_eq!(closed.get(&IdType::Isin), Some(REAL));
+    let closed = Identifiers::from_scalar(&entries(&[
+        ("zzz:isin", OTHER),
+        ("abc:isin", MASKED),
+        ("derived:isin", REAL),
+    ]))
+    .unwrap();
+    assert_eq!(
+        closed.get(&IdType::Isin),
+        Some(OTHER),
+        "a named source over a derivation of the same rank"
+    );
+}
+
+/// A derivation ranks like any statement: a registry's real number a chain
+/// derived stands over a masked or mistyped statement that comes after it -
+/// under the base key, under a named source, carried along a chain or
+/// merged from another map, whichever leads - and only a statement that
+/// does not rank below it takes it back.
+#[test]
+fn a_statement_takes_back_a_derivation_only_where_it_does_not_rank_below_it() {
+    const REAL: &str = "US0378331005";
+    const OTHER: &str = "US5949181045";
+    const TYPO: &str = "US0378331006";
+    const MASKED: &str = "XX0000000001";
+    let derived = || {
+        let mut held = Identifiers::new();
+        assert!(held.insert(id("derived", "isin", REAL)));
+        held
+    };
+    let named =
+        |value: &str| -> Identifiers { [id("ullink", "isin", value)].into_iter().collect() };
+    for lower in [MASKED, TYPO] {
+        // A base statement ranking below the derivation lands nowhere.
+        let mut held = derived();
+        assert!(!held.insert(id("base", "isin", lower)), "{lower}");
+        assert_eq!(
+            held.to_string(),
+            format!("[derived:isin={REAL}, isin={REAL}]"),
+            "{lower}"
+        );
+        // A named one stands under its own key as evidence and leaves the
+        // answer and the derivation alone.
+        let mut held = derived();
+        assert!(held.insert(id("ullink", "isin", lower)), "{lower}");
+        assert_eq!(
+            held.to_string(),
+            format!("[derived:isin={REAL}, isin={REAL}, ullink:isin={lower}]"),
+            "{lower}"
+        );
+        assert!(held.is_derived(&IdType::Isin), "{lower}");
+        // A merge, whichever map leads.
+        for later in [false, true] {
+            let mut held = derived();
+            assert!(
+                !held.merge(&base(&[("isin", lower)]), later),
+                "{lower} {later}"
+            );
+            assert_eq!(held.get(&IdType::Isin), Some(REAL), "{lower} {later}");
+            let mut held = derived();
+            assert!(held.merge(&named(lower), later), "{lower} {later}");
+            assert_eq!(held.get(&IdType::Isin), Some(REAL), "{lower} {later}");
+            let mut held = base(&[("isin", lower)]);
+            assert!(held.merge(&derived(), later), "{lower} {later}");
+            assert_eq!(held.get(&IdType::Isin), Some(REAL), "{lower} {later}");
+            assert!(held.is_derived(&IdType::Isin), "{lower} {later}");
+        }
+        // A whole map - the derivation, its echo and a lower named source -
+        // merged into an empty one answers the derivation.
+        let mut other = derived();
+        assert!(other.insert(id("ullink", "isin", lower)));
+        let mut held = Identifiers::new();
+        assert!(held.merge(&other, true), "{lower}");
+        assert_eq!(held.get(&IdType::Isin), Some(REAL), "{lower}");
+        // A chain's lower statement never takes back the real number its
+        // follower derived; a named source is carried as evidence.
+        let mut next = derived();
+        assert!(!next.carry(&base(&[("isin", lower)]), |_| true), "{lower}");
+        assert_eq!(next.get(&IdType::Isin), Some(REAL), "{lower}");
+        let mut next = derived();
+        assert!(next.carry(&named(lower), |_| true), "{lower}");
+        assert_eq!(next.get(&IdType::Isin), Some(REAL), "{lower}");
+        assert_eq!(
+            next.get_from(&"ullink:isin".parse().unwrap()),
+            Some(lower),
+            "{lower}"
+        );
+    }
+    // A statement of the derivation's own rank takes it back.
+    let mut held = derived();
+    assert!(held.insert(id("base", "isin", OTHER)));
+    assert_eq!(held.to_string(), format!("[isin={OTHER}]"));
+    let mut held = derived();
+    assert!(held.insert(id("ullink", "isin", OTHER)));
+    assert_eq!(
+        held.to_string(),
+        format!("[isin={OTHER}, ullink:isin={OTHER}]")
+    );
+    // A map read raw closes on its derivation where that outranks every
+    // named source of the type.
+    let closed = Identifiers::from_scalar(&entries(&[
+        ("abc:isin", MASKED),
+        ("derived:isin", REAL),
+        ("zzz:isin", TYPO),
+    ]))
+    .unwrap();
+    assert_eq!(closed.get(&IdType::Isin), Some(REAL));
+    assert!(closed.is_derived(&IdType::Isin));
+}
+
+/// A merge restating a named source the derivation outranks - a typo over
+/// the masked number held as evidence, or another masked number on a later
+/// merge - moves that source's own key alone: the derivation and its answer
+/// stand whichever map leads, as a `set` of a named key leaves the answer,
+/// and removing the derivation hands the base key to the highest-ranked
+/// named source left, as a read map's close does.
+#[test]
+fn a_restated_named_source_never_takes_back_a_derivation_that_outranks_it() {
+    const REAL: &str = "US0378331005";
+    const TYPO: &str = "US0378331006";
+    const MASKED: &str = "XX0000000001";
+    const OTHER_MASKED: &str = "XX0000000003";
+    assert!(IdType::Isin.rank(REAL) > IdType::Isin.rank(TYPO));
+    assert!(IdType::Isin.rank(TYPO) > IdType::Isin.rank(MASKED));
+    assert_eq!(IdType::Isin.rank(OTHER_MASKED), IdType::Isin.rank(MASKED));
+    // The derivation, its echo and a masked named source held as evidence.
+    let evidence = || {
+        let mut held = Identifiers::new();
+        assert!(held.insert(id("derived", "isin", REAL)));
+        assert!(held.insert(id("ullink", "isin", MASKED)));
+        assert_eq!(
+            held.to_string(),
+            format!("[derived:isin={REAL}, isin={REAL}, ullink:isin={MASKED}]")
+        );
+        held
+    };
+    let named =
+        |value: &str| -> Identifiers { [id("ullink", "isin", value)].into_iter().collect() };
+    for later in [false, true] {
+        // The typo outranks the evidence and not the derivation.
+        let mut held = evidence();
+        assert!(held.merge(&named(TYPO), later), "{later}");
+        assert_eq!(
+            held.to_string(),
+            format!("[derived:isin={REAL}, isin={REAL}, ullink:isin={TYPO}]"),
+            "{later}"
+        );
+        assert!(held.is_derived(&IdType::Isin), "{later}");
+        // The other way round, the typo's map takes the derivation.
+        let mut held = named(TYPO);
+        assert!(held.merge(&evidence(), later), "{later}");
+        assert_eq!(held.get(&IdType::Isin), Some(REAL), "{later}");
+        assert!(held.is_derived(&IdType::Isin), "{later}");
+    }
+    // Another masked number of the evidence's rank replaces it on a later
+    // merge alone, the derivation still answering.
+    let mut held = evidence();
+    assert!(!held.merge(&named(OTHER_MASKED), false));
+    assert!(held.merge(&named(OTHER_MASKED), true));
+    assert_eq!(
+        held.to_string(),
+        format!("[derived:isin={REAL}, isin={REAL}, ullink:isin={OTHER_MASKED}]")
+    );
+    // A set of the named key moves that key alone; a set of the base key is
+    // the explicit answer and takes the derivation back.
+    let mut held = evidence();
+    assert!(held.set(id("ullink", "isin", TYPO)));
+    assert!(!held.set(id("ullink", "isin", TYPO)), "no change");
+    assert_eq!(
+        held.to_string(),
+        format!("[derived:isin={REAL}, isin={REAL}, ullink:isin={TYPO}]")
+    );
+    assert!(held.set(id("base", "isin", MASKED)));
+    assert_eq!(
+        held.to_string(),
+        format!("[isin={MASKED}, ullink:isin={TYPO}]")
+    );
+    // Removing the derivation hands the base key to the highest-ranked
+    // named source left, whatever its place in key order.
+    let mut held = evidence();
+    assert!(held.insert(id("zzz", "isin", TYPO)));
+    assert!(held.remove(&key("derived:isin")).is_some());
+    assert_eq!(
+        held.to_string(),
+        format!("[isin={TYPO}, ullink:isin={MASKED}, zzz:isin={TYPO}]")
+    );
+}
+
 #[test]
 fn a_map_carries_what_it_admits_and_never_a_base_key_over_a_type_it_states() {
     let previous = base(&[
@@ -940,6 +1238,13 @@ fn a_map_carries_what_it_admits_and_never_a_base_key_over_a_type_it_states() {
     let mut stated = base(&[("cusip", "594918104")]);
     assert!(!stated.carry(&derived, |_| true));
     assert_eq!(stated.to_string(), "[cusip=594918104]");
+    // A chain's statement is carried over a derivation of its type, which
+    // it takes back: a registry's reading of the follower never outlives
+    // what the chain states.
+    let mut filled: Identifiers = [id("derived", "cusip", "037833100")].into_iter().collect();
+    assert!(filled.carry(&base(&[("cusip", "037833100")]), |_| true));
+    assert_eq!(filled.to_string(), "[cusip=037833100]");
+    assert!(!filled.is_derived(&IdType::Cusip));
     // Nothing admitted, nothing moved.
     let mut none = base(&[("clordid", "B")]);
     assert!(!none.carry(&previous, |_| false));
@@ -1307,10 +1612,13 @@ fn an_identifier_moves_to_another_type_of_its_source_as_that_type_stores_it() {
         lower.with_kind(IdType::Isin).unwrap().value(),
         "US0378331005"
     );
-    assert!(
+    assert_eq!(
         id("base", "house", "US0378331006")
             .with_kind(IdType::Isin)
-            .is_err()
+            .unwrap()
+            .value(),
+        "US0378331006",
+        "a check digit is a rank, not a refusal"
     );
     assert!(
         id("base", "house", "037833100")
@@ -1443,7 +1751,7 @@ fn a_map_entry_no_identifier_reads_is_refused_on_its_key() {
     }
     // A value that states nothing, or that its type refuses.
     for (text, value) in [
-        ("isin", "US0378331006"),
+        ("isin", "US037833100"),
         ("clordid", "null"),
         ("clordid", "  "),
         ("ullink:isin", "037833100"),

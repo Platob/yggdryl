@@ -114,7 +114,7 @@ fn every_shared_setting_starts_at_the_default_of_every_encoding() {
     assert_eq!(options.max_row_size(), None);
     assert_eq!(options.row_offset(), None);
     assert_eq!(options.max_byte_size(), None);
-    assert_eq!(options.commit_row_size(), None);
+    assert_eq!(options.commit_batch_num(), None);
     assert_eq!(options.level(), Level::DEFAULT);
     assert!(options.plan().is_empty());
 }
@@ -250,7 +250,7 @@ fn every_bound_the_cadence_the_safety_and_the_level_round_trip() {
     options.set_max_row_size(Some(10));
     options.set_row_offset(Some(2));
     options.set_max_byte_size(Some(1 << 20));
-    options.set_commit_row_size(Some(5));
+    options.set_commit_batch_num(Some(5));
     options.set_level(Level::BEST);
     assert!(!options.safe());
     assert_eq!(options.batch_row_size(), Some(3));
@@ -258,13 +258,13 @@ fn every_bound_the_cadence_the_safety_and_the_level_round_trip() {
     assert_eq!(options.max_row_size(), Some(10));
     assert_eq!(options.row_offset(), Some(2));
     assert_eq!(options.max_byte_size(), Some(1 << 20));
-    assert_eq!(options.commit_row_size(), Some(5));
+    assert_eq!(options.commit_batch_num(), Some(5));
     assert_eq!(options.level(), Level::BEST);
 
     // The public fields are the same settings the trait reads.
     assert!(!options.safe);
     assert_eq!(options.batch_row_size, Some(3));
-    assert_eq!(options.commit_row_size, Some(5));
+    assert_eq!(options.commit_batch_num, Some(5));
 
     // The builders spell the same values as the setters.
     let built = ExcelOptions::new()
@@ -274,15 +274,15 @@ fn every_bound_the_cadence_the_safety_and_the_level_round_trip() {
         .with_max_row_size(10)
         .with_row_offset(2)
         .with_max_byte_size(1 << 20)
-        .with_commit_row_size(5)
+        .with_commit_batch_num(5)
         .with_level(Level::BEST);
     assert_eq!(built, options);
 
     // Each clears back to unset.
     options.set_batch_row_size(None);
-    options.set_commit_row_size(None);
+    options.set_commit_batch_num(None);
     assert_eq!(options.batch_row_size(), None);
-    assert_eq!(options.commit_row_size(), None);
+    assert_eq!(options.commit_batch_num(), None);
 }
 
 #[test]
@@ -765,7 +765,7 @@ fn the_batch_size_and_the_row_bounds_reach_the_rows_a_read_yields() {
 
 #[test]
 fn a_write_published_in_commits_holds_every_row_in_order() {
-    let handle = written(ExcelOptions::new().with_commit_row_size(2));
+    let handle = written(ExcelOptions::new().with_commit_batch_num(2));
     let options = RecordOptions::from(ExcelOptions::new()).with_field(schema());
     let batches: Vec<RecordBatch> = handle
         .read_arrow_reader(&options)

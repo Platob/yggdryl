@@ -153,8 +153,19 @@ pub struct ParquetOptions {
     pub row_offset: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
-    /// Rows published per streamed-write commit; `None` publishes once.
-    pub commit_row_size: Option<usize>,
+    /// Whole batches published per streamed-write commit, never rows; `None`
+    /// is the destination's own cadence: a leaf, a folder and an Iceberg
+    /// table publish once, after the source ends - the table holding every
+    /// partition's rows under the process spill bound until then - an
+    /// overwrite's first commit replacing and every later one appending
+    /// while every commit of a merge merges by its key; a write session by
+    /// [`DEFAULT_COMMIT_BYTE_SIZE`](crate::media::DEFAULT_COMMIT_BYTE_SIZE).
+    /// The commits completed before a later failure stay published. The rule
+    /// is [`IORecordOptions::commit_batch_num`]'s.
+    pub commit_batch_num: Option<usize>,
+    /// The threads a write of several parts runs on at once; `None` is the
+    /// destination's own answer.
+    pub num_threads: Option<usize>,
     /// Unused: Parquet compresses pages internally through `compression`.
     pub level: crate::Level,
     /// The threads one file's columns decode or encode on; `None` is what
@@ -189,7 +200,8 @@ struct ParquetOptionsIdentity<'a> {
     max_row_size: Option<u64>,
     row_offset: Option<u64>,
     max_byte_size: Option<u64>,
-    commit_row_size: Option<usize>,
+    commit_batch_num: Option<usize>,
+    num_threads: Option<usize>,
     level: crate::Level,
 }
 
@@ -210,7 +222,8 @@ impl ParquetOptions {
             max_row_size: self.max_row_size,
             row_offset: self.row_offset,
             max_byte_size: self.max_byte_size,
-            commit_row_size: self.commit_row_size,
+            commit_batch_num: self.commit_batch_num,
+            num_threads: self.num_threads,
             level: self.level,
         }
     }
@@ -232,7 +245,8 @@ impl ParquetOptions {
             max_row_size: None,
             row_offset: None,
             max_byte_size: None,
-            commit_row_size: None,
+            commit_batch_num: None,
+            num_threads: None,
             level: crate::Level::DEFAULT,
             threads: None,
         }
@@ -599,7 +613,8 @@ where
     // data and is still refused, because a cast would invent the columns it is
     // missing. The plan is built once per layout the batches carry, and an
     // exact batch never reaches it.
-    let root = crate::arrow::field_from_arrow_schema("row", schema.as_ref())?;
+    let root =
+        crate::arrow::field_from_arrow_schema(crate::media::DEFAULT_ROOT_NAME, schema.as_ref())?;
     let options = crate::ArrowCastOptions::new().with_safe(false);
     let mut plans = crate::cast::PlanCache::new();
     for (index, batch) in batches.enumerate() {
@@ -747,7 +762,7 @@ impl RowGroupEncoder {
             return Ok(());
         }
         for (root, column) in batch.columns().iter().enumerate() {
-            let size = crate::arrow::sliced_array_size(column);
+            let size = crate::arrow::array_memory_size(column);
             if let (Some(pending), Some(weight)) =
                 (self.pending.get_mut(root), self.weights.get_mut(root))
             {
@@ -1315,19 +1330,13 @@ fn extremes_bound(field: &Field) -> bool {
 /// The stored root column a filter column reads, with the field the filter
 /// reads it as - when it is stored as that type, and only then.
 ///
-/// A declared child that derives its value - a partition, digest or
-/// transform column - reads something other than what is stored under its
-/// name, so its statistics bound nothing the filter sees.
+/// A declared read only casts, so a child declaring a derivation or a digest
+/// holder reads what is stored under its name, and its statistics bound it.
 fn stored_column(root: &Field, stored: &Schema, name: &str) -> Option<(usize, Field)> {
     let declared = root
         .fields()
         .iter()
         .find(|child| child.name().eq_ignore_ascii_case(name))?;
-    if declared.metadata_iter().any(|(key, _)| {
-        key.starts_with("PARTITION:") || key.starts_with("DIGEST:") || key.starts_with("TRANSFORM:")
-    }) {
-        return None;
-    }
     let (index, column) = stored
         .fields()
         .iter()

@@ -66,8 +66,19 @@ pub struct CsvOptions {
     pub row_offset: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
-    /// Rows published per streamed-write commit; `None` publishes once.
-    pub commit_row_size: Option<usize>,
+    /// Whole batches published per streamed-write commit, never rows; `None`
+    /// is the destination's own cadence: a leaf, a folder and an Iceberg
+    /// table publish once, after the source ends - the table holding every
+    /// partition's rows under the process spill bound until then - an
+    /// overwrite's first commit replacing and every later one appending
+    /// while every commit of a merge merges by its key; a write session by
+    /// [`DEFAULT_COMMIT_BYTE_SIZE`](crate::media::DEFAULT_COMMIT_BYTE_SIZE).
+    /// The commits completed before a later failure stay published. The rule
+    /// is [`IORecordOptions::commit_batch_num`](crate::media::IORecordOptions::commit_batch_num)'s.
+    pub commit_batch_num: Option<usize>,
+    /// The threads a write of several parts runs on at once; `None` is the
+    /// destination's own answer.
+    pub num_threads: Option<usize>,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
     separator: u8,
@@ -101,7 +112,8 @@ impl CsvOptions {
             max_row_size: None,
             row_offset: None,
             max_byte_size: None,
-            commit_row_size: None,
+            commit_batch_num: None,
+            num_threads: None,
             level: Level::DEFAULT,
             separator: b',',
             quote: Some(b'"'),
@@ -122,6 +134,43 @@ impl CsvOptions {
         let mut options = Self::new();
         options.separator = b'\t';
         options
+    }
+
+    /// The one byte a dialect role - the separator, the quote, the escape,
+    /// the comment - is spelled as in text: one character standing for one
+    /// byte, its scalar value. Whether that byte may play the role is the
+    /// role's own setter's refusal; this reads the spelling alone, so a
+    /// binding's text and a setting's text read alike.
+    ///
+    /// ```
+    /// use yggdryl::csv::CsvOptions;
+    ///
+    /// assert_eq!(CsvOptions::byte_from_text(";", "separator").unwrap(), b';');
+    /// assert_eq!(CsvOptions::byte_from_text("\t", "separator").unwrap(), b'\t');
+    /// assert!(CsvOptions::byte_from_text(";;", "separator").is_err());
+    /// assert!(CsvOptions::byte_from_text("€", "quote").is_err());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] at `$.<setting>` for text that is not
+    /// one character, or one past what a byte holds.
+    pub fn byte_from_text(text: &str, setting: &str) -> Result<u8> {
+        let mut characters = text.chars();
+        match (characters.next(), characters.next()) {
+            (Some(character), None) => u8::try_from(u32::from(character)).ok(),
+            _ => None,
+        }
+        .ok_or_else(|| Error::InvalidRecord {
+            path: format_smolstr!("$.{setting}"),
+            reason: expected_got(
+                "one character standing for one byte",
+                format_args!(
+                    "{:?}",
+                    crate::text::elide_to(text, crate::text::ERROR_TEXT_LIMIT)
+                ),
+            ),
+        })
     }
 
     /// The byte between two cells of one record.

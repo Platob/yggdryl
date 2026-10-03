@@ -154,13 +154,13 @@ impl<'field> FixField<'field> {
     /// # Errors
     ///
     /// Returns an error naming the full `FIX:transient` key when the stored
-    /// text is not `true` or `false`.
+    /// text is no boolean the crate reads: `true`/`false`, `yes`/`no`,
+    /// `y`/`n`, `on`/`off` or `1`/`0`.
     pub fn is_transient(&self) -> Result<bool> {
         match self.get(TRANSIENT) {
             None => Ok(true),
-            Some("true") => Ok(true),
-            Some("false") => Ok(false),
-            Some(stored) => Err(self.invalid(TRANSIENT, "true or false", stored)),
+            Some(stored) => crate::boolean::bool_from_text(stored)
+                .ok_or_else(|| self.invalid(TRANSIENT, crate::boolean::BOOLEAN_SPELLINGS, stored)),
         }
     }
 

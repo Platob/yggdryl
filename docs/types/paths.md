@@ -133,8 +133,14 @@ paths already resolved. Applying a resolved path allocates nothing.
 
 - The [expression grammar](../expression/index.md) writes the same steps and
   shares the one segment type, which is why the path value lives beside it.
-- [Text lines](../media/index.md#plain-text) address one entry of a
+- [Text lines](../media/text.md) address one entry of a
   decoded line, each path taking its alias where it writes one.
+- A digest holder's `DIGEST:by` column paths and its `DIGEST:time`
+  ([Hashing](../hashing.md#digest-holders-and-row-digests)), and an Iceberg
+  `SchemaUpdate`'s column paths ([Iceberg](../media/iceberg.md#schema-evolution)),
+  are read by this one parser, field names only: `"a.b"` is the column named
+  `a.b`, `a.b` is always two levels, and no name is matched as a literal
+  prefix of the text.
 
 ## What it is not
 

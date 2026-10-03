@@ -315,24 +315,21 @@ def _write_through_protocol_view() -> None:
 # The partition cases measure the boundary a derived column crosses: reading
 # the declaration, and computing the whole column through the native evaluator
 # rather than through a Python loop over PyArrow scalars.
-PARTITION_YEAR = Field("year", "int32", nullable=True)
-PARTITION_YEAR.partition.sources = ["event"]
-PARTITION_YEAR.partition.transform = "year"
 PARTITION_ROOT = Field(
     "row",
-    DataType.from_fields([Field("event", "date32", nullable=False), PARTITION_YEAR]),
+    DataType.from_fields([Field("event", "date32", nullable=False)]),
     nullable=False,
-)
+).with_partition_by(["years(event) as year"])
 PARTITION_BATCH = pa.record_batch(
     {"event": pa.array(range(1_024), pa.date32())}
 )
 
 
-PARTITION_HELD = PARTITION_ROOT.get_field(1).partition
+PARTITION_HELD = PARTITION_ROOT.partition
 
 
-def _read_partition_transform() -> object:
-    return PARTITION_HELD.transform
+def _read_partition_by() -> object:
+    return PARTITION_HELD.by
 
 
 def _apply_arrow_batch() -> object:
@@ -537,7 +534,7 @@ def main() -> None:
             _write_python_class_metadata,
             args.iterations,
         )
-        _measure("partition transform read", _read_partition_transform, args.iterations)
+        _measure("partition by read", _read_partition_by, args.iterations)
         _measure(
             "partition apply_arrow_batch 1024",
             _apply_arrow_batch,

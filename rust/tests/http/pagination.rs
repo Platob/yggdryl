@@ -380,6 +380,66 @@ fn offset_counts_up_by_the_page_size_and_ends_at_a_short_page_or_the_total() {
 }
 
 #[test]
+fn an_offset_total_is_read_as_a_whole_number_whether_it_is_one_or_spells_one() {
+    let with_total = Pagination::from_str("offset:offset:2:meta.total").expect("a spelling");
+    let at_four = url("https://api.example.com/v1/orders?limit=2&offset=4");
+    let no_headers = Headers::new();
+    let next = |total: &str| {
+        with_total
+            .next(
+                &at_four,
+                &no_headers,
+                Some(&page(&format!(r#""meta":{{"total":{total}}}"#))),
+                2,
+                2,
+            )
+            .expect("a verdict")
+    };
+    for total in ["6", r#""6""#, r#"" 6 ""#, r#""+6""#, "5"] {
+        assert_eq!(next(total), None, "a total of {total} ends the walk");
+    }
+    // A total that is no whole number states none, so the walk goes on.
+    for total in [
+        "7", r#""7""#, r#""six""#, r#""-6""#, "-6", "6.5", r#""6.0""#, "null",
+    ] {
+        assert_eq!(
+            next(total),
+            parameter("offset", "6"),
+            "a total of {total} does not end the walk"
+        );
+    }
+}
+
+#[test]
+fn a_count_in_a_spelling_is_read_by_the_one_integer_reader() {
+    assert_eq!(
+        Pagination::from_str("offset:offset: +5 ").expect("a spelling"),
+        Pagination::Offset {
+            parameter: SmolStr::new("offset"),
+            page_size: 5,
+            total: None,
+        }
+    );
+    assert_eq!(
+        Pagination::from_str("page:page: 1 ").expect("a spelling"),
+        Pagination::Page {
+            parameter: SmolStr::new("page"),
+            start: 1,
+        }
+    );
+    for spelling in [
+        "offset:offset:0x5",
+        "offset:offset:1_0",
+        "offset:offset:5.0",
+        "offset:offset:-5",
+        "page:page:-1",
+        "page:page:1e3",
+    ] {
+        Pagination::from_str(spelling).expect_err(spelling);
+    }
+}
+
+#[test]
 fn page_counts_up_from_the_start_and_ends_at_an_empty_page() {
     let paged = Pagination::from_str("page:page:1").expect("a spelling");
     let no_headers = Headers::new();
@@ -597,6 +657,37 @@ fn auto_ends_the_walk_on_the_documented_stop_conditions() {
     assert_eq!(
         auto(ORDERS, &Headers::new(), Some(&has_more_true)),
         parameter("cursor", "c1")
+    );
+    // A document that spells the flag as text - an XML body, a JSON string -
+    // is read through the one boolean table: false ends the walk, true and
+    // text no spelling reads go on.
+    for (spelling, ends) in [
+        ("false", true),
+        ("False", true),
+        ("no", true),
+        ("N", true),
+        ("off", true),
+        ("0", true),
+        ("true", false),
+        ("yes", false),
+        ("maybe", false),
+    ] {
+        let body = page(&format!(r#""has_more":"{spelling}","next_cursor":"c1""#));
+        assert_eq!(
+            auto(ORDERS, &Headers::new(), Some(&body)),
+            if ends {
+                None
+            } else {
+                parameter("cursor", "c1")
+            },
+            "has_more {spelling:?}"
+        );
+    }
+    let counted = page(r#""has_more":0,"next_cursor":"c1""#);
+    assert_eq!(
+        auto(ORDERS, &Headers::new(), Some(&counted)),
+        parameter("cursor", "c1"),
+        "a number is a count, not a boolean"
     );
 
     let empty_page = json(r#"{"data":[],"next":"/v1/orders?page=2"}"#);

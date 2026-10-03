@@ -82,7 +82,9 @@ pub(crate) fn merged(
     safe: bool,
 ) -> Result<BatchReader> {
     let schema = arrow_schema_from_field(field)?;
-    let keys = key_selector(field, merge_by)?;
+    // The key binds against the merged rows' root with the fold the cast
+    // that shaped those rows matched their columns by.
+    let keys = merge_by.bind_key(field, "$.merge_by", "merge on")?;
     let converter = RowConverter::new(
         arrow_schema_from_field(keys.output())?
             .fields()
@@ -150,26 +152,6 @@ pub(crate) fn merged(
         positions: positions.into_iter().peekable(),
         current_batch: None,
     }))
-}
-
-/// Resolve the match key against the merged rows' root.
-///
-/// Names fold ASCII case, the way every name resolution in the crate folds,
-/// because the cast that shaped these rows matched their columns with the
-/// same fold. A key the root does not declare is refused naming what it does,
-/// and so is an `unnest`: a key is one value per row, where an unnest is one
-/// row per element.
-fn key_selector(field: &Field, merge_by: &Selector) -> Result<BoundSelector> {
-    if merge_by.is_empty() {
-        return Err(Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$.merge_by"),
-            reason: smol_str::SmolStr::new_static(
-                "expected at least one column to merge on, got an empty match key",
-            ),
-        });
-    }
-    merge_by.refuse_unnest("in a key")?;
-    merge_by.bind(field)
 }
 
 /// The match-key columns of one batch, each computed once.

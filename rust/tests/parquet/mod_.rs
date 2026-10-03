@@ -1313,7 +1313,7 @@ mod records {
         media.open().unwrap();
         assert!(media.opened());
         assert_eq!(media.read_statistics().unwrap().num_rows, 2);
-        media.options_mut().set_commit_row_size(Some(1));
+        media.options_mut().set_commit_batch_num(Some(1));
 
         let overwrite_options = media.record_options().unwrap();
         media
@@ -1371,7 +1371,7 @@ mod records {
             )
             .unwrap();
         media.open().unwrap();
-        media.options_mut().set_commit_row_size(Some(1));
+        media.options_mut().set_commit_batch_num(Some(1));
 
         let options = media.record_options().unwrap();
         let message = media
@@ -2555,7 +2555,7 @@ mod parallel {
             .read_arrow_reader(&options.clone().with_filter("symbol is not null").unwrap())
             .unwrap();
         let mut streamed = options.clone();
-        streamed.set_commit_row_size(Some(50_000));
+        streamed.set_commit_batch_num(Some(1));
         media.overwrite_arrow_reader(reader, &streamed).unwrap();
         media.flush().unwrap();
         assert_eq!(media.row_size().unwrap(), 450_000);
@@ -2932,8 +2932,9 @@ mod pruning {
     }
 
     #[test]
-    fn a_derived_column_prunes_nothing_by_what_is_stored_under_its_name() {
-        // Stored all null under `y`; the declared root computes `y` from `x`.
+    fn a_derived_column_reads_and_prunes_by_what_is_stored_under_its_name() {
+        // Stored all null under `y`; the declared root says `y` derives from
+        // `x`, which a read does not compute: it casts what is stored.
         let batch = RecordBatch::try_new(
             Arc::new(arrow_schema::Schema::new(vec![
                 arrow_schema::Field::new("x", arrow_schema::DataType::Int64, false),
@@ -2960,8 +2961,15 @@ mod pruning {
         .map(DataType::from)
         .unwrap()
         .required_field("row");
-        // The unprunable spelling is the rows' own answer.
-        assert_eq!(kept(&media, Some(root.clone()), "(y + 0) = 10"), vec![1]);
-        assert_eq!(kept(&media, Some(root), "y = 10"), vec![1]);
+        // The unprunable spelling and the statistics agree with the rows.
+        assert_eq!(
+            kept(&media, Some(root.clone()), "(y + 0) = 10"),
+            Vec::<i64>::new()
+        );
+        assert_eq!(
+            kept(&media, Some(root.clone()), "y = 10"),
+            Vec::<i64>::new()
+        );
+        assert_eq!(kept(&media, Some(root), "y is null"), vec![1, 2]);
     }
 }

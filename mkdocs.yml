@@ -136,6 +136,7 @@ nav:
       - Scalar: types/scalar.md
       - Serie: types/serie.md
       - Chunked serie: types/chunked-serie.md
+      - Window serie: types/window-serie.md
       - Cast: types/cast.md
       - Paths: types/paths.md
       - Protocol: types/protocol.md
@@ -198,7 +199,23 @@ nav:
       - Value stream: types/value-stream.md
     - Playground: types/playground.md
   - Holder: holder/index.md
-  - Media: media/index.md
+  - Media:
+    - media/index.md
+    - Arrow IPC: media/ipc.md
+    - Parquet: media/parquet.md
+    - Avro: media/avro.md
+    - Plain text: media/text.md
+    - CSV: media/csv.md
+    - JSON: media/json.md
+    - YAML: media/yaml.md
+    - TOML: media/toml.md
+    - XML: media/xml.md
+    - XML for Analysis: media/xmla.md
+    - Excel: media/excel.md
+    - Iceberg: media/iceberg.md
+    - HTTP messages: media/http.md
+    - Compression: media/compression.md
+    - Charsets: media/charsets.md
   - URI:
     - uri/index.md
     - Path: uri/path.md
@@ -220,6 +237,7 @@ nav:
     - Plans: expression/plans.md
     - Evaluate: expression/evaluate.md
   - Hashing: hashing.md
+  - Logging: logging.md
   - Graph:
     - graph/index.md
     - Element: graph/element.md

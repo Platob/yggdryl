@@ -335,7 +335,9 @@ with tempfile.TemporaryDirectory() as directory:
 
 `fix_schema` is the one row every message answers as; `arrow_reader` and
 `messages` cross between messages and batches, any record medium stores the
-batches, and `write_arrow_reader` writes them back as wire lines.
+batches, and `write_arrow_reader` writes them back as wire lines. A key no
+dictionary resolves lands in `metadata`, unless it names an identifier the
+message captures - then it rides `fixentries` under `0:<key>`.
 
 ```python
 import io
@@ -359,6 +361,14 @@ assert row.as_py()[schema.index_of("msgtype")] == "D"
 assert row.as_py()[schema.index_of("fixentries")] == {"18:execinst": "G"}
 assert row.as_py()[schema.index_of("metadata")] == {"9999": "x"}
 assert FixMsg.from_row(schema, row, registry).into_row(schema) == row
+
+# An unresolved key naming an identifier is captured: held in its set, it rides
+# `fixentries` under `0:<key>` and leaves `metadata`.
+bridged = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=ORDER-2|55=AAPL|54=1|RICCODE=AAPL.O|10=0|")
+assert bridged.securityids.get("ric") == "AAPL.O"
+cells = bridged.into_row(schema).as_py()
+assert cells[schema.index_of("fixentries")]["0:riccode"] == "AAPL.O"
+assert "riccode" not in (cells[schema.index_of("metadata")] or {})
 
 with tempfile.TemporaryDirectory() as directory:
     # A stream of messages as batches, landed in Parquet without a per-row detour.
@@ -499,19 +509,21 @@ assert held(chained[3]) == ("O3", "O2", "O1", "C3", "C2")
 assert all(message.crossuuid == chained[0].crossuuid for message in chained)
 ```
 
-## Split fills, two-sided quotes and batches at the parse
+## Split fills and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
-fill or a side twice: an execution report is its order's report (`msgcat`
-`ORDR`, its own state) - one of no fill from its parse - and one that fills
-adds one `EXEC` message reading `FILLED`, chained under its `ExecID(17)` as given, else
-`TradeID=<TradeID(1003)>`; a trade (`AE`) adds one sided execution per
-`NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
-a `BUYS` and a `SELL` quote; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+fill twice: an execution report is its order's report (`msgcat` `ORDR`, its
+own state; `QUOT` where it names a `QuoteID(117)`) - one of no fill from its
+parse - and one that fills adds one `EXEC` message reading `FILLED`, chained
+under its `ExecID(17)` as given, else `TradeID=<TradeID(1003)>`; a trade
+(`AE`) adds one sided execution per `NoSides(552)` occurrence; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
 an order list, a mass order, a cross, a mass quote, a match report) adds one
-message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`),
-chained by the order the entry names and split again as its category is.
-Each split message names its source in `srcuuids`.
+message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`) - a
+mass quote's entry one quote holding both its legs - chained by the order the
+entry names and split again as its category is. Each split message names its
+source in `srcuuids`. A quote is never split: a bid and an offer are the two
+legs of one message, stored under side `0`. An acknowledgement of an execution
+(`BN`, `Q`) states no fact of its order, so it answers no market leaf.
 
 ```python
 from decimal import Decimal
@@ -527,25 +539,30 @@ report, execution = codec.parse_line(fill)
 assert (report.msgcat, report.state) == (MarketDataKind.ORDR, State.PARTIALLY_FILLED)
 assert (execution.msgcat, execution.state) == (MarketDataKind.EXEC, State.FILLED)
 assert report.curruuid in execution.srcuuids
-# An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
+# An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert (report.crosscode, execution.crosscode) == ("10:1:O-9", "8:1:E-1")
 
-quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|"
-quote, bid, ask = codec.parse_line(quote)
-assert (quote.side, bid.side, ask.side) == (Side.UNKN, Side.BUYS, Side.SELL)
-assert (bid.crosscode, ask.crosscode) == ("14:1:Q1", "14:2:Q1")
-# Each side prices at its own level and keeps the pair its source stated.
-assert bid.price is not None and bid.price.as_py() == Decimal(99)
-assert ask.bidpx is not None and ask.bidpx.as_py() == Decimal(99)
-assert bid.bidccy is not None and bid.bidccy.as_py() == "USD"
+[quote] = codec.parse_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|")
+assert (quote.msgcat, quote.side, quote.crosscode) == (MarketDataKind.QUOT, Side.UNKN, "14:0:Q1")
+# Both legs on the one message, each in its currency; neither is the quote's own price.
+assert quote.price is None
+assert quote.bidpx is not None and quote.bidpx.as_py() == Decimal(99)
+assert quote.askpx is not None and quote.askpx.as_py() == Decimal(101)
+assert quote.askccy is not None and quote.askccy.as_py() == "USD"
+
+# An acknowledgement of an execution states no fact of its order: no market leaf.
+ack = codec.parse_fix_line(b"8=FIX.4.4|35=BN|52=20260921-10:00:01|17=E-1|37=O-9|1036=2|10=0|")
+assert ack.market_data() == []
 ```
 
 ## Turn FIX into market data and books
 
-`market_data` admits what a book folds - orders, one-sided quotes, executions,
-`W`/`X` book messages - reads each as its one graph leaf (a book message one
-per entry) and sorts them by the instant a book folds them at;
-`graph.BookIterator` then walks them. Compose `lifecycle` in front when
+`market_data` admits orders, quotes, executions and `W`/`X` book messages - a
+trade as the executions its parse split off - reads each as its one graph
+leaf (a book message one per entry) and sorts them by the instant a book folds
+them at; `graph.BookIterator` then walks them, pruning the executions.
+`book_arrow_reader(messages, snapshot_millis=0, filter=None)` folds the same
+messages into book rows, one book per book key. Compose `lifecycle` in front when
 predecessor state matters. `market_arrow_reader` writes the sorted leaves as
 `marketdata` rows, and `market_data_arrow_reader` is its twin over batches of
 FIX rows already in Arrow.
@@ -716,5 +733,9 @@ with tempfile.TemporaryDirectory() as directory:
   of undated frames.
 - `side`, `state` and `msgcat` answer `IntEnum` members (`Side.BUYS`,
   `State.FILLED`, `MarketDataKind.ORDR`): compare with `is`, never with text.
-- `book_arrow_reader(messages, snapshot_millis=0)` takes no mode beyond the
-  grid: books are keyed by ticker, else by `MIC:CFI`.
+- `book_arrow_reader(messages, snapshot_millis=0, filter=None)` takes no mode
+  beyond the grid and the filter (a `Filter`, a `Term`, an `Expression` or a
+  predicate's text over the `marketdata` row): books are keyed by the
+  instrument's ISIN, else the ticker, else `XX0000000000`, and a book is
+  complete only at a grid tick or a `W` full refresh - every other row states
+  its deltas, which `book.with_previous(previous)` rebuilds.

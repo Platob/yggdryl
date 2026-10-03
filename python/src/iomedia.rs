@@ -788,12 +788,6 @@ fn row_reader(
             .batch_row_size()
             .unwrap_or(DEFAULT_ROWS_PER_BATCH)
             .max(1),
-        // Conversion must stop at each exact publication boundary. A fixed
-        // `min(batch_row_size, commit_row_size)` is not enough when the two do not
-        // divide: for batch 1,024 and commit 1,500 the second conversion must
-        // stop after 476 rows, publish, and only then inspect row 1,501.
-        commit_row_size: options.commit_row_size().filter(|rows| *rows != 0),
-        commit_progress: 0,
         // The rows the limit seam keeps are the ones after its skip, so
         // conversion stops once both are covered.
         remaining: options
@@ -858,12 +852,9 @@ struct Rows {
     names: Option<Py<PyList>>,
     /// The schema the first batch settled, which every later one is built to.
     schema: SchemaRef,
-    /// The most rows one batch holds.
+    /// The most rows one batch holds: a commit cadence counts these batches
+    /// whole, so it never cuts one.
     per_batch: usize,
-    /// The exact publication cadence rows must not be converted across.
-    commit_row_size: Option<usize>,
-    /// Rows converted since the last exact publication boundary.
-    commit_progress: usize,
     /// Rows the global positive write limit still admits.
     remaining: Option<u64>,
     /// The row pulled to decide this was a stream of rows at all.
@@ -895,9 +886,7 @@ impl Rows {
                 Some(_) => Chunk::Values(Vec::new()),
                 None => Chunk::Mappings(PyList::empty(py)),
             };
-            let mut target = self.commit_row_size.map_or(self.per_batch, |commit| {
-                self.per_batch.min(commit - self.commit_progress)
-            });
+            let mut target = self.per_batch;
             if let Some(remaining) = self.remaining {
                 target = target.min(usize::try_from(remaining).unwrap_or(usize::MAX));
             }
@@ -925,9 +914,6 @@ impl Rows {
                 }
                 (chunk, _) => self.build_with_pyarrow(py, chunk)?,
             };
-            if let Some(commit) = self.commit_row_size {
-                self.commit_progress = (self.commit_progress + batch.num_rows()) % commit;
-            }
             if let Some(remaining) = self.remaining.as_mut() {
                 *remaining = remaining.saturating_sub(batch.num_rows() as u64);
             }
@@ -1370,6 +1356,20 @@ pub(crate) fn string_pairs_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<
     Ok(pairs)
 }
 
+/// Read a `commit_batch_num` or `num_threads` value, `name`: an integer
+/// count, never a `bool`.
+///
+/// Zero is kept, so the write refuses it by name before it pulls a one-shot
+/// source.
+fn whole_count(value: &Bound<'_, PyAny>, name: &str) -> PyResult<usize> {
+    if value.is_instance_of::<PyBool>() {
+        return Err(PyTypeError::new_err(format!(
+            "{name} must be an integer or None, not bool"
+        )));
+    }
+    value.extract::<usize>()
+}
+
 /// Set the row-per-batch bound, refusing a bound of nothing.
 ///
 /// A batch of zero rows is not a small batch: the readers chunk by this number,
@@ -1433,20 +1433,13 @@ fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::text::Line
 }
 
 /// Read one CSV dialect byte - a separator, a quote, an escape or a comment
-/// byte - out of a one-character `str` or one byte of `bytes`, naming the
-/// setting on refusal. Only the shape is judged here: whether the byte can
-/// play the role is the core's own refusal.
+/// byte - out of a `str` through the core's one spelling
+/// ([`yggdryl::csv::CsvOptions::byte_from_text`]) or one byte of `bytes`,
+/// naming the setting on refusal. Whether the byte can play the role is the
+/// core setter's own refusal.
 fn csv_byte_from_value(value: &Bound<'_, PyAny>, setting: &str) -> PyResult<u8> {
     if let Ok(text) = value.extract::<&str>() {
-        let mut characters = text.chars();
-        if let (Some(character), None) = (characters.next(), characters.next())
-            && let Ok(byte) = u8::try_from(u32::from(character))
-        {
-            return Ok(byte);
-        }
-        return Err(PyValueError::new_err(format!(
-            "expected a one-character str or one byte for {setting}, got {text:?}"
-        )));
+        return yggdryl::csv::CsvOptions::byte_from_text(text, setting).map_err(value_error);
     }
     if let Ok(bytes) = value.cast::<PyBytes>() {
         if let [byte] = bytes.as_bytes() {
@@ -1536,7 +1529,8 @@ impl PyRecordOptions {
         )?;
         state.set_item("safe", self.inner.safe())?;
         state.set_item("batch_row_size", self.inner.batch_row_size())?;
-        state.set_item("commit_row_size", self.inner.commit_row_size())?;
+        state.set_item("commit_batch_num", self.inner.commit_batch_num())?;
+        state.set_item("num_threads", self.inner.num_threads())?;
         state.set_item("max_row_size", self.inner.max_row_size())?;
         state.set_item("row_offset", self.inner.row_offset())?;
         state.set_item("max_byte_size", self.inner.max_byte_size())?;
@@ -1622,7 +1616,8 @@ impl PyRecordOptions {
             "field" => self.set_field(given)?,
             "safe" => self.set_safe(value.extract()?)?,
             "batch_row_size" => self.set_batch_row_size(value.extract()?)?,
-            "commit_row_size" => self.set_commit_row_size(given)?,
+            "commit_batch_num" => self.set_commit_batch_num(given)?,
+            "num_threads" => self.set_num_threads(given)?,
             "max_row_size" => self.set_max_row_size(value.extract()?)?,
             "row_offset" => self.set_row_offset(value.extract()?)?,
             "max_byte_size" => self.set_max_byte_size(value.extract()?)?,
@@ -1815,9 +1810,12 @@ impl PyRecordOptions {
         options.set_safe(required_record_pickle_item(state, "safe")?.extract()?)?;
         options
             .set_batch_row_size(required_record_pickle_item(state, "batch_row_size")?.extract()?)?;
-        let commit_row_size =
-            required_record_pickle_item(state, "commit_row_size")?.extract::<Option<usize>>()?;
-        options.inner.set_commit_row_size(commit_row_size);
+        let commit_batch_num =
+            required_record_pickle_item(state, "commit_batch_num")?.extract::<Option<usize>>()?;
+        options.inner.set_commit_batch_num(commit_batch_num);
+        let num_threads =
+            required_record_pickle_item(state, "num_threads")?.extract::<Option<usize>>()?;
+        options.inner.set_num_threads(num_threads);
         options.set_max_row_size(required_record_pickle_item(state, "max_row_size")?.extract()?)?;
         options.set_row_offset(required_record_pickle_item(state, "row_offset")?.extract()?)?;
         options
@@ -1982,31 +1980,53 @@ impl PyRecordOptions {
         set_batch_row_size_option(&mut self.inner, batch_row_size)
     }
 
-    /// The streamed-write publication cadence, in rows.
+    /// The streamed-write publication cadence, in whole batches.
     ///
-    /// `None` publishes once after the source ends. A positive value publishes
-    /// each complete group of that many incoming rows and the final remainder.
-    /// Zero is retained so a write can reject it before inspecting a one-shot
-    /// Python input.
+    /// A positive value publishes every that many batches of the shaped
+    /// stream and then the final remainder; a batch is one the source yields,
+    /// cut by `batch_row_size` where Python rows are converted, never by the
+    /// cadence. `None` is the destination's own cadence: a file or folder
+    /// publishes once after the source ends, an Iceberg table each time the
+    /// batches it holds reach its target file size. Zero is retained so a
+    /// write can reject it before inspecting a one-shot Python input.
     #[getter]
-    fn commit_row_size(&self) -> Option<usize> {
-        self.inner.commit_row_size()
+    fn commit_batch_num(&self) -> Option<usize> {
+        self.inner.commit_batch_num()
     }
 
     #[setter]
-    fn set_commit_row_size(&mut self, commit_row_size: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+    fn set_commit_batch_num(
+        &mut self,
+        commit_batch_num: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<()> {
         self.require_mutable()?;
-        let commit_row_size = commit_row_size
-            .map(|value| {
-                if value.is_instance_of::<PyBool>() {
-                    return Err(PyTypeError::new_err(
-                        "commit_row_size must be an integer or None, not bool",
-                    ));
-                }
-                value.extract::<usize>()
-            })
+        let commit_batch_num = commit_batch_num
+            .map(|value| whole_count(value, "commit_batch_num"))
             .transpose()?;
-        self.inner.set_commit_row_size(commit_row_size);
+        self.inner.set_commit_batch_num(commit_batch_num);
+        Ok(())
+    }
+
+    /// The threads a write of several parts runs on at once.
+    ///
+    /// `Some(n)` writes at most `n` parts side by side - an Iceberg commit's
+    /// partition groups - and `None` is the destination's own answer: an
+    /// Iceberg table's `write.parallelism`, else its `read.parallelism`,
+    /// else every thread the host offers. Zero is retained so a write can
+    /// reject it, naming `$.num_threads`, before inspecting a one-shot
+    /// Python input.
+    #[getter]
+    fn num_threads(&self) -> Option<usize> {
+        self.inner.num_threads()
+    }
+
+    #[setter]
+    fn set_num_threads(&mut self, num_threads: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let num_threads = num_threads
+            .map(|value| whole_count(value, "num_threads"))
+            .transpose()?;
+        self.inner.set_num_threads(num_threads);
         Ok(())
     }
 
@@ -2427,11 +2447,10 @@ impl PyRecordOptions {
     /// resource already holds. A layer whose target already matches costs
     /// nothing.
     ///
-    /// A field shapes rows by applying, not by casting: a declaration is a
-    /// cast *and* the `TRANSFORM:` and `DIGEST:` columns it derives, so a
-    /// declared derived column arrives written. The selection after it only
-    /// narrows, because deriving there would restore what it was asked to
-    /// drop.
+    /// A field shapes rows by the cast alone: a `TRANSFORM:`, `PARTITION:` or
+    /// `DIGEST:` declaration it carries is metadata the rows travel under,
+    /// never a column the shaping fills - `field.transform` and
+    /// `field.digest` fill those.
     #[pyo3(signature = (batch, existing = None))]
     fn apply_arrow_batch<'py>(
         &self,
@@ -2501,15 +2520,6 @@ impl PyRecordOptions {
     fn remove_field(&mut self) -> PyResult<Option<PyField>> {
         self.require_mutable()?;
         Ok(self.inner.take_field().map(PyField::from_inner))
-    }
-
-    /// The row bound a native-record write materializes in one batch.
-    ///
-    /// The smaller of `batch_row_size` and `commit_row_size`, so a conversion
-    /// failure at row N+1 cannot erase a complete N-row commit.
-    #[getter]
-    fn write_batch_row_size(&self) -> Option<usize> {
-        self.inner.write_batch_row_size()
     }
 
     /// Return the deterministic hash of the complete native configuration.
@@ -2604,7 +2614,8 @@ impl PyTextOptions {
             "field" => self.set_field(given)?,
             "safe" => self.set_safe(value.extract()?)?,
             "batch_row_size" => self.set_batch_row_size(value.extract()?)?,
-            "commit_row_size" => self.set_commit_row_size(given)?,
+            "commit_batch_num" => self.set_commit_batch_num(given)?,
+            "num_threads" => self.set_num_threads(given)?,
             "max_row_size" => self.set_max_row_size(value.extract()?)?,
             "row_offset" => self.set_row_offset(value.extract()?)?,
             "max_byte_size" => self.set_max_byte_size(value.extract()?)?,
@@ -2717,24 +2728,32 @@ impl PyTextOptions {
     }
 
     #[getter]
-    fn commit_row_size(&self) -> Option<usize> {
-        self.inner.commit_row_size()
+    fn commit_batch_num(&self) -> Option<usize> {
+        self.inner.commit_batch_num()
     }
 
     #[setter]
-    fn set_commit_row_size(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+    fn set_commit_batch_num(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         self.require_mutable()?;
-        let rows = value
-            .map(|value| {
-                if value.is_instance_of::<PyBool>() {
-                    return Err(PyTypeError::new_err(
-                        "commit_row_size must be an integer or None, not bool",
-                    ));
-                }
-                value.extract::<usize>()
-            })
+        let batches = value
+            .map(|value| whole_count(value, "commit_batch_num"))
             .transpose()?;
-        self.inner.set_commit_row_size(rows);
+        self.inner.set_commit_batch_num(batches);
+        Ok(())
+    }
+
+    #[getter]
+    fn num_threads(&self) -> Option<usize> {
+        self.inner.num_threads()
+    }
+
+    #[setter]
+    fn set_num_threads(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let threads = value
+            .map(|value| whole_count(value, "num_threads"))
+            .transpose()?;
+        self.inner.set_num_threads(threads);
         Ok(())
     }
 
@@ -3027,11 +3046,10 @@ impl PyTextOptions {
     /// resource already holds. A layer whose target already matches costs
     /// nothing.
     ///
-    /// A field shapes rows by applying, not by casting: a declaration is a
-    /// cast *and* the `TRANSFORM:` and `DIGEST:` columns it derives, so a
-    /// declared derived column arrives written. The selection after it only
-    /// narrows, because deriving there would restore what it was asked to
-    /// drop.
+    /// A field shapes rows by the cast alone: a `TRANSFORM:`, `PARTITION:` or
+    /// `DIGEST:` declaration it carries is metadata the rows travel under,
+    /// never a column the shaping fills - `field.transform` and
+    /// `field.digest` fill those.
     #[pyo3(signature = (batch, existing = None))]
     fn apply_arrow_batch<'py>(
         &self,
@@ -3101,15 +3119,6 @@ impl PyTextOptions {
     fn remove_field(&mut self) -> PyResult<Option<PyField>> {
         self.require_mutable()?;
         Ok(self.inner.take_field().map(PyField::from_inner))
-    }
-
-    /// The row bound a native-record write materializes in one batch.
-    ///
-    /// The smaller of `batch_row_size` and `commit_row_size`, so a conversion
-    /// failure at row N+1 cannot erase a complete N-row commit.
-    #[getter]
-    fn write_batch_row_size(&self) -> Option<usize> {
-        self.inner.write_batch_row_size()
     }
 
     /// The names of the compiled `rowheader`'s captures, in regex order.

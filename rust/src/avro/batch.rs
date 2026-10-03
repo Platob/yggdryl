@@ -86,8 +86,19 @@ pub struct AvroOptions {
     pub row_offset: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
-    /// Rows published per streamed-write commit; `None` publishes once.
-    pub commit_row_size: Option<usize>,
+    /// Whole batches published per streamed-write commit, never rows; `None`
+    /// is the destination's own cadence: a leaf, a folder and an Iceberg
+    /// table publish once, after the source ends - the table holding every
+    /// partition's rows under the process spill bound until then - an
+    /// overwrite's first commit replacing and every later one appending
+    /// while every commit of a merge merges by its key; a write session by
+    /// [`DEFAULT_COMMIT_BYTE_SIZE`](crate::media::DEFAULT_COMMIT_BYTE_SIZE).
+    /// The commits completed before a later failure stay published. The rule
+    /// is [`IORecordOptions::commit_batch_num`](crate::media::IORecordOptions::commit_batch_num)'s.
+    pub commit_batch_num: Option<usize>,
+    /// The threads a write of several parts runs on at once; `None` is the
+    /// destination's own answer.
+    pub num_threads: Option<usize>,
     /// Compression level for the block codec.
     pub level: Level,
     /// The Avro codec name blocks are written with: `null`, `deflate`,
@@ -120,7 +131,8 @@ impl AvroOptions {
             max_row_size: None,
             row_offset: None,
             max_byte_size: None,
-            commit_row_size: None,
+            commit_batch_num: None,
+            num_threads: None,
             level: Level::DEFAULT,
             codec: SmolStr::new_static("deflate"),
             sync_marker: None,
@@ -401,7 +413,7 @@ where
         // least a byte on the wire whatever it takes in memory, so a bit-packed
         // boolean is not a block of a million rows. A block never holds more
         // rows than a reader with the default limits accepts.
-        let width = (crate::arrow::sliced_memory_size(&batch) / rows)
+        let width = (crate::arrow::memory_size(&batch) / rows)
             .max(batch.num_columns())
             .max(1);
         let block_rows = (WRITE_BLOCK_BYTES / width).clamp(1, Limits::default().max_nodes());

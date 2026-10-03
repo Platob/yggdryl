@@ -33,7 +33,8 @@ use crate::CodeValue;
 use crate::securityid::{SymbolCode, embedded};
 use crate::xxhash::Xxh3;
 use crate::{
-    Ccy, Cfi, Decimal, IdKey, IdType, Identifier, Identifiers, Mic, Result, Side, TimeInForce, Unit,
+    Ccy, Cfi, Decimal, IdKey, IdType, Identifier, Identifiers, Isin, Mic, Result, Side,
+    TimeInForce, Unit,
 };
 
 /// Free-form facts a market element carries beside its typed ones: never an
@@ -84,21 +85,27 @@ pub fn empty_fxrates() -> &'static FxRates {
 /// source moves a fact it implies along with it - where the element states
 /// nothing there, or still holds what the source was - and never one stated
 /// apart from it; a fact that states something back about its source only
-/// fills the source where the element states none:
+/// fills the source where the element states none; and nothing a setter's
+/// fact implies writes that fact back, so a fact stated - as none included -
+/// stands. Facts that do not contradict one another land alike in whatever
+/// order they are stated:
 ///
 /// | Changed | Moves | Fills back |
 /// | --- | --- | --- |
 /// | price, quantity | the bid of a buyer, the ask of a seller: `bidpx`/`bidqty`, `askpx`/`askqty` | |
-/// | side | the side it left stops quoting the price and quantity, the side it takes quotes them; a sided kind's cross code | the price and quantity, from what the side quotes |
+/// | side | a sided element's - an order's, an execution's: the side it left stops quoting the price and quantity, and its cross code. Any other's is a tag over the legs it holds, withdrawing none: the price and quantity move from the leg the old tag took to the leg the new one takes. Either way the side it takes quotes them | the price and quantity, from what the side quotes |
 /// | currency | `bidccy`/`askccy` of a bid or ask the element states | |
-/// | quantity, `displayqty` | `hiddenqty`, the quantity past the shown part | |
+/// | quantity, `displayqty`, `hiddenqty` | `hiddenqty`, the quantity past the shown part | the third of an iceberg's three where two are stated: `displayqty` the quantity less the hidden part, the quantity the two parts together |
 /// | `bidpx`/`bidqty`, `askpx`/`askqty` | | the price and quantity of an element taking that side |
-/// | `hiddenqty` | | `displayqty`, the quantity less it - or the quantity, the two parts together |
 /// | a predecessor's `hiddenqty`, followed | a follower stating none: what it kept back less what traded since - the rise in `cumqty`, else `lastqty` | |
+/// | a predecessor's side, followed | a sided follower stating none takes it: the side is part of its identity | |
+/// | a predecessor's bid or ask, followed | an unsided follower tagging no side and stating neither the price nor the quantity of that leg: the leg whole, its currency with it | |
+/// | a predecessor's `ordqty`, `cumqty`, `avgpx`, followed | an operation's follower stating none of them: what its chain ordered, traded and at what average - never a last fill, which no rise in `cumqty` invents | |
 /// | `lastpx`, `spotrate`, `forwardpoints` | | the third, where two are stated: `lastpx` is spot plus points |
-/// | an operation's `ordqty`, `cumqty`, `leavesqty` and its state | | working, the third of the three - fresh, asked for or new, all it ordered is left; filled, `leavesqty` 0 and `cumqty` all ordered; no longer active, `leavesqty` 0 and - canceled, done for the day, expired - `cxlqty` what was left ([`Operation::get_ordqty`]) |
-/// | `leavesqty` | the quantity: what is still open is what the element is about | |
-/// | `cumqty`, `lastqty`, `lastpx` | | `avgpx`, the last price, where all that traded is the last fill |
+/// | an operation's `ordqty`, `cumqty`, `leavesqty`, `cxlqty` and its state | | the standing its state leaves them in ([`Operation::get_ordqty`]): working, the third of `ordqty`, `cumqty`, `leavesqty` - fresh, asked for or acknowledged, `leavesqty` and `ordqty` each other while nothing traded; filled, `leavesqty` 0 and `cumqty` and `ordqty` each other; ended any other way, `leavesqty` 0 and the third of `ordqty`, `cumqty`, `cxlqty` - canceled, done for the day, expired, `cxlqty` the rest of what was ordered. A state unstated implies none of it, and an execution or a trade reads as working whatever its state |
+/// | `leavesqty` | the quantity of an order: what is still open is what it is about - never an execution's or a trade's, whose quantity is its own | |
+/// | `cumqty`, `lastqty`, `lastpx` | | `avgpx`, the last price, where all that traded is the last, positive fill |
+/// | `cficode` | | a detailed code over another describing one instrument, what that one says where it says nothing; a coarse code states nothing |
 ///
 /// Each redirection writes its target directly, never through the target's
 /// setter, so a change runs once and a chain of them cannot loop.
@@ -166,7 +173,9 @@ pub trait Market {
     fn get_unit(&self) -> &Unit;
     /// Sets [`Self::get_unit`].
     fn set_unit(&mut self, unit: Unit, overwrite: bool);
-    /// The side the element takes, [`Side::Unknown`] where it states none.
+    /// The side the element takes, [`Side::Unknown`] where it states none:
+    /// a sided element's one side ([`Self::is_sided`]), any other's tag, as
+    /// a one-sided quote names the leg it states and a two-sided one none.
     fn get_side(&self) -> Side;
     /// Sets [`Self::get_side`]; a sided element's cross code is stored under
     /// the side taken ([`Self::stored_crosscode`]), and the side's bid or ask
@@ -178,10 +187,11 @@ pub trait Market {
     /// so an order and an execution under one cross code are two chains.
     fn marketdatakind(&self) -> crate::MarketDataKind;
     /// Whether the element's cross code is stored under its side: whether
-    /// its kind is an order, a quote or an execution
+    /// its kind is an order or an execution
     /// ([`MarketDataKind::is_sided`](crate::MarketDataKind::is_sided)).
-    /// Every other element - a trade, a book, a snapshot control, a message
-    /// of any other category - keeps its cross code as given, whatever side
+    /// Every other element - a quote, which holds its bid and its ask and
+    /// tags a side, a trade, a book, a snapshot control, a message of any
+    /// other category - stores its cross code under side `0`, whatever side
     /// it states.
     fn is_sided(&self) -> bool {
         self.marketdatakind().is_sided()
@@ -235,7 +245,10 @@ pub trait Market {
     fn derive_securityid(&mut self, kind: &IdType, code: &str) -> bool;
     /// The detailed CFI classification, where one is known.
     fn get_cficode(&self) -> Option<&Cfi>;
-    /// Sets [`Self::get_cficode`].
+    /// Sets [`Self::get_cficode`]: a code saying nothing past its category
+    /// and group states nothing, and a detailed one stated over another
+    /// describing the same instrument takes what that one says where it
+    /// says nothing ([`Cfi::refined`]).
     fn set_cficode(&mut self, code: Option<Cfi>, overwrite: bool);
     /// The market the element trades on, where known.
     fn get_miccode(&self) -> Option<&Mic>;
@@ -344,15 +357,15 @@ pub trait Market {
     /// code of the category it is filed under and the [`Side`] code of the
     /// side it takes - `10:1:ORD-1` for an order to buy - so each category
     /// and each side of one identifier is a chain of its own. Only a sided
-    /// element ([`Self::is_sided`]: an order, a quote or an execution) states
-    /// its side there; any other - a trade, a book, a snapshot control -
-    /// states `0`, as one taking [`Side::Unknown`] does: `21:0:T-1`,
-    /// `3:0:XNAS:ESVUFR`, `10:0:ORD-1`. Idempotent: a code already carrying
-    /// this prefix is answered as it is, one carrying another has it
-    /// replaced, and an empty code stays empty. The one place the prefix is
-    /// decided; every market holder stores its cross code through it, so
-    /// stamping the category or setting the side after the code converges
-    /// on the same answer.
+    /// element ([`Self::is_sided`]: an order or an execution) states its
+    /// side there; any other - a quote, a trade, a book, a snapshot control -
+    /// states `0`, as one taking [`Side::Unknown`] does: `14:0:Q-1`,
+    /// `21:0:T-1`, `3:0:XNAS:ESVUFR`, `10:0:ORD-1`. Idempotent: a code
+    /// already carrying this prefix is answered as it is, one carrying
+    /// another has it replaced, and an empty code stays empty. The one place
+    /// the prefix is decided; every market holder stores its cross code
+    /// through it, so stamping the category or setting the side after the
+    /// code converges on the same answer.
     ///
     /// ```
     /// use yggdryl::graph::{BookEvent, Element, Market, OrderEvent};
@@ -409,21 +422,33 @@ pub trait Market {
         self.get_securityids().get(&IdType::Isin)
     }
 
-    /// The key of the book the element stands in: its ticker where it
-    /// states one, else its category - `{miccode}:{cficode}`, `XXXX` for a
-    /// market it names none of and `XXXXXX` for a classification it knows
-    /// none of. Borrowed where the ticker answers, so a ticker input
-    /// allocates nothing.
-    fn book_crosscode(&self) -> Cow<'_, str> {
-        match self.get_ticker().filter(|ticker| !ticker.is_empty()) {
-            Some(ticker) => Cow::Borrowed(ticker),
-            None => Cow::Owned(format!(
-                "{}:{}",
-                self.get_miccode().map_or(Mic::NONE, |code| code.as_str()),
-                self.get_cficode()
-                    .map_or(Cfi::UNCLASSIFIED, |code| code.as_str())
-            )),
-        }
+    /// The key of the book the element stands in: its instrument's ISIN
+    /// ([`Self::get_isincode`]) where it holds one, whatever its rank - a
+    /// masked number keys a book, since what a walk sees is what the
+    /// lifecycle already corrected - else its ticker where it states a
+    /// non-empty one, else [`Isin::NONE`], the number that states none. One
+    /// book per instrument wherever an ISIN is known, and a ticker-only
+    /// statement joins it once the lifecycle's registry has learned the
+    /// pair. Every arm borrows, so no input allocates.
+    ///
+    /// ```
+    /// use yggdryl::graph::{Market, OrderEvent};
+    /// use yggdryl::{IdKey, IdType, Identifier, Isin};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut order = OrderEvent::at(1);
+    /// assert_eq!(order.book_crosscode(), Isin::NONE);
+    /// order.set_ticker(Some("HOLN".into()), true);
+    /// assert_eq!(order.book_crosscode(), "HOLN");
+    /// order.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "CH0012214059")?)?;
+    /// assert_eq!(order.book_crosscode(), "CH0012214059");
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn book_crosscode(&self) -> &str {
+        self.get_isincode()
+            .or_else(|| self.get_ticker().filter(|ticker| !ticker.is_empty()))
+            .unwrap_or(Isin::NONE)
     }
 
     /// Fills every market fact this element implies from the ones it
@@ -478,7 +503,7 @@ pub trait Market {
         let Some(isin) = self
             .get_securityids()
             .get(&IdType::Isin)
-            .and_then(|code| crate::Isin::new(code).ok())
+            .and_then(|code| Isin::new(code).ok())
         else {
             return;
         };
@@ -628,7 +653,7 @@ pub(crate) fn stored_crosscode(
     if code.is_empty() {
         return Cow::Borrowed(code);
     }
-    let side = if kind.is_sided() { side } else { Side::Unknown };
+    let side = kind.stored_side(side);
     let base = match split_crosscode(code) {
         Some((held_kind, held_side, _)) if held_kind == kind && held_side == side => {
             return Cow::Borrowed(code);
@@ -677,12 +702,17 @@ pub trait Operation: Market {
     /// The quantity the operation ordered, FIX's `OrderQty(38)`, where
     /// stated. Working, what is left is what was ordered less what traded,
     /// so any two of `ordqty`, [`Market::get_cumqty`] and
-    /// [`Market::get_leavesqty`] fill the third; filled, nothing is left and
-    /// all of it traded; no longer active - canceled, done for the day,
-    /// expired, calculated or rejected - nothing is left, and what someone
-    /// ended canceled the rest ([`Market::get_cxlqty`]). What was ordered is
-    /// never the quantity the element is about: [`Market::get_quantity`]
-    /// stands apart from it.
+    /// [`Market::get_leavesqty`] fill the third, and while nothing traded
+    /// what is left is all that was ordered; filled, nothing is left and
+    /// what was ordered all traded; no longer active - canceled, done for the
+    /// day, expired, calculated, rejected, failed - nothing is left, what was
+    /// ordered is what traded plus what was canceled
+    /// ([`Market::get_cxlqty`]), and what someone or the clock ended
+    /// canceled the rest. An order whose state is unstated implies none of
+    /// it, and an execution or a trade, whose state says what it reports,
+    /// reads as working whatever its state. What was ordered is never the
+    /// quantity the element is about: [`Market::get_quantity`] stands apart
+    /// from it.
     fn get_ordqty(&self) -> Option<Decimal>;
     /// Sets [`Self::get_ordqty`].
     fn set_ordqty(&mut self, qty: Option<Decimal>, overwrite: bool);
@@ -751,6 +781,19 @@ pub trait Operation: Market {
     /// Returns an error when the holder is a view of a store that refuses
     /// the removal.
     fn remove_partyid(&mut self, key: &IdKey) -> Result<bool>;
+    /// The set an identifier of `kind` belongs to: a security type's
+    /// [`Market::get_securityids`], a party's [`Self::get_partyids`], any
+    /// other type's [`Self::get_identifiers`] - where a key naming one lands,
+    /// and so where a reader asks whether a key is held.
+    fn identifier_set(&self, kind: &IdType) -> &Identifiers {
+        if kind.is_security() {
+            self.get_securityids()
+        } else if kind.is_party() {
+            self.get_partyids()
+        } else {
+            self.get_identifiers()
+        }
+    }
     /// Whether an operation that follows another carries `id`, one of the
     /// predecessor's identifiers, where it states none of its key: every
     /// type but a book entry's [`IdType::MdEntryRefId`], the reference one
@@ -915,10 +958,11 @@ fn merge_market_event<E: Event + Market>(
 }
 
 /// The execution instant a market event states or, while it is still an
-/// unstamped lifecycle input whose state itself reports an execution, its
-/// own instant. A predecessor marks a lifecycle output: its state may have
-/// been inherited, so replaying that output must not reinterpret the folded
-/// state as this event's own execution report.
+/// unstamped lifecycle input that itself reports an execution
+/// ([`Event::is_execution`]), its own instant. A predecessor marks a
+/// lifecycle output: its state may have been inherited, so replaying that
+/// output must not reinterpret the folded state as this event's own
+/// execution report.
 fn execution_unix<E: Event + Market + ?Sized>(event: &E) -> Option<i64> {
     event.get_execunix().or_else(|| {
         (event.get_prevuuid().is_none() && event.is_execution()).then_some(event.get_currunix())
@@ -1122,11 +1166,14 @@ fn restate_market<E: Market + ?Sized>(this: &mut E, live: &E) -> bool {
 
 /// What the chain an element stands in is about, taken from another
 /// statement of that chain where this one says nothing of it. This
-/// statement always leads, and nothing here is about a step. The side is
-/// this statement's own where it states one, and the chain's where it
-/// states none, for an operation as for any other market element; the
-/// metadata is this statement's, every key of the chain's it does not state
-/// beside it.
+/// statement always leads, and nothing here is about a step. A sided
+/// element's side - an order's, an execution's - is this statement's own
+/// where it states one and the chain's where it states none, the side being
+/// part of what the chain is; any other element's side is its own tag, and
+/// it takes each leg of its quote it states nothing of where it updates
+/// the quote rather than restating a level ([`carry_legs`]). The metadata
+/// is this statement's, every key of the
+/// chain's it does not state beside it.
 fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
     let mut changed = follow_hidden(this, previous);
     changed |= moved(
@@ -1134,11 +1181,14 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
         better(this.get_currency().clone(), previous.get_currency(), false),
         |currency| this.set_currency(currency, true),
     );
-    changed |= moved(
-        this.get_side(),
-        this.get_side().merge_with(previous.get_side()),
-        |side| this.set_side(side, true),
-    );
+    if this.is_sided() {
+        changed |= moved(
+            this.get_side(),
+            this.get_side().merge_with(previous.get_side()),
+            |side| this.set_side(side, true),
+        );
+    }
+    changed |= carry_legs(this, previous);
     changed |= moved(
         this.get_marketdatatype(),
         stated_type(this.get_marketdatatype(), previous.get_marketdatatype()),
@@ -1158,7 +1208,7 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
     // An element naming another ISIN than its predecessor is another
     // instrument, and takes none of the predecessor's identifiers.
     if !names_other_instrument(this, previous) {
-        changed |= yield_unknown_isin(this, previous);
+        changed |= yield_lower_isin(this, previous);
         // The follower takes the identifiers it lacks.
         let mut ids = this.get_securityids().clone();
         if ids.carry(previous.get_securityids(), |_| true) {
@@ -1191,31 +1241,112 @@ fn chain_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
     changed
 }
 
-/// Whether an ISIN is filed under `ZZ`, the prefix of no country: an
-/// identifier a better one replaces.
-fn is_unknown_isin(code: &str) -> bool {
-    code.starts_with("ZZ")
+/// Carries the legs of a quote along its chain: an unsided follower takes
+/// each leg of the statement it follows - the bid, the ask - that it states
+/// neither the price nor the quantity of, whole: its price, its quantity
+/// and its currency as one, the currency only where the follower states
+/// none for that leg. A statement updating one leg so keeps the other, an
+/// acknowledgement quoting nothing keeps the quote, and a leg stated - a
+/// zero quantity withdrawing it included - is the follower's own; the leg a
+/// follower's tag takes, stated by a quantity alone, keeps the chain's
+/// price. A tagged follower of a tagged entry quoting one leg - a book
+/// level - restates that entry whole, moving between sides included; one
+/// following a quote that holds both legs or tags no side - a fill
+/// reported on the leg that traded - keeps the other. A sided follower
+/// quotes its own side alone, and no leg crosses to another instrument.
+/// Whether anything moved.
+fn carry_legs<E: Market + ?Sized>(this: &mut E, previous: &E) -> bool {
+    if this.is_sided()
+        || names_other_instrument(this, previous)
+        || names_other_ticker(this, previous)
+    {
+        return false;
+    }
+    let quotes = |market: &E, bid: bool| {
+        if bid {
+            market.get_bidpx().is_some() || market.get_bidqty().is_some()
+        } else {
+            market.get_askpx().is_some() || market.get_askqty().is_some()
+        }
+    };
+    let tag = this.get_side();
+    if tag != Side::Unknown
+        && previous.get_side() != Side::Unknown
+        && !(quotes(previous, true) && quotes(previous, false))
+    {
+        return false;
+    }
+    let mut changed = false;
+    if this.get_bidpx().is_none() && this.get_bidqty().is_none() {
+        if quotes(previous, true) {
+            if this.get_bidccy().is_none() && previous.get_bidccy().is_some() {
+                this.set_bidccy(previous.get_bidccy().cloned(), true);
+            }
+            this.set_bidpx(previous.get_bidpx(), true);
+            this.set_bidqty(previous.get_bidqty(), true);
+            changed = true;
+        }
+    } else if tag.is_bid()
+        && this.get_bidpx().is_none()
+        && this.get_bidqty().is_some_and(|qty| !qty.is_zero())
+        && previous.get_bidpx().is_some()
+    {
+        this.set_bidpx(previous.get_bidpx(), true);
+        changed = true;
+    }
+    if this.get_askpx().is_none() && this.get_askqty().is_none() {
+        if quotes(previous, false) {
+            if this.get_askccy().is_none() && previous.get_askccy().is_some() {
+                this.set_askccy(previous.get_askccy().cloned(), true);
+            }
+            this.set_askpx(previous.get_askpx(), true);
+            this.set_askqty(previous.get_askqty(), true);
+            changed = true;
+        }
+    } else if tag.is_ask()
+        && this.get_askpx().is_none()
+        && this.get_askqty().is_some_and(|qty| !qty.is_zero())
+        && previous.get_askpx().is_some()
+    {
+        this.set_askpx(previous.get_askpx(), true);
+        changed = true;
+    }
+    changed
 }
 
-/// Whether `this` and `other` each state an ISIN, and not the same one - a
-/// `ZZ` ISIN names no country's instrument, so it is never the other one.
+/// Whether `this` and `other` each state a ticker, and not the same one:
+/// two instruments, whose quotes never mix.
+fn names_other_ticker<E: Market + ?Sized>(this: &E, other: &E) -> bool {
+    matches!(
+        (this.get_ticker(), other.get_ticker()),
+        (Some(mine), Some(theirs)) if !mine.is_empty() && !theirs.is_empty() && mine != theirs
+    )
+}
+
+/// Whether `this` and `other` each state a real ISIN - closing under a
+/// listed prefix ([`Isin::rank_of`]) - and not the same one: two
+/// instruments. A `ZZ` number, a masked one or a typo names no country's
+/// instrument, so it is never the other one.
 fn names_other_instrument<E: Market + ?Sized>(this: &E, other: &E) -> bool {
     matches!(
         (this.get_isincode(), other.get_isincode()),
         (Some(mine), Some(theirs))
-            if mine != theirs && !is_unknown_isin(mine) && !is_unknown_isin(theirs)
+            if mine != theirs
+                && IdType::Isin.is_real(mine)
+                && IdType::Isin.is_real(theirs)
     )
 }
 
-/// A `ZZ` ISIN `this` states yields to a real one `other` states: the type
-/// taken out - and every identifier derived from it with it - and replaced
-/// by `other`'s statements of it, its base key first, so what the real one
-/// carries derives afresh. Whether it moved.
-fn yield_unknown_isin<E: Market + ?Sized>(this: &mut E, other: &E) -> bool {
+/// An ISIN `this` states yields to one `other` states that outranks it
+/// ([`Isin::rank_of`]) - a `ZZ` number, a masked one or a typo to a real
+/// one: the type taken out - and every identifier derived from it with it -
+/// and replaced by `other`'s statements of it, its base key first, so what
+/// the higher-ranked one carries derives afresh. Whether it moved.
+fn yield_lower_isin<E: Market + ?Sized>(this: &mut E, other: &E) -> bool {
     let (Some(mine), Some(theirs)) = (this.get_isincode(), other.get_isincode()) else {
         return false;
     };
-    if !is_unknown_isin(mine) || is_unknown_isin(theirs) {
+    if Isin::rank_of(mine) >= Isin::rank_of(theirs) {
         return false;
     }
     let ids = other.get_securityids();
@@ -1236,26 +1367,21 @@ fn yield_unknown_isin<E: Market + ?Sized>(this: &mut E, other: &E) -> bool {
 }
 
 /// The market facts an element takes from another statement of itself:
-/// the leading statement's price, quantity and unit, each optional fact the
-/// selected statement states, and each code the better of the two. `later`
-/// says whether `other` is the leading statement.
+/// each optional fact - the price and the quantity as every other - the
+/// leading statement's where it states one and the other's where it does
+/// not, and each code - the unit, the currency - the better of the two.
+/// `later` says whether `other` is the leading statement.
 pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: bool) -> bool {
     // Two statements of one element keep the earliest execution either knows.
     let execunix = earliest(this.get_execunix(), other.get_execunix());
     let mut changed = moved(this.get_execunix(), execunix, |unix| {
         this.set_execunix(unix, true)
     });
-    if later {
-        changed |= moved(this.get_price(), other.get_price(), |px| {
-            this.set_price(px, true)
-        });
-        changed |= moved(this.get_quantity(), other.get_quantity(), |qty| {
-            this.set_quantity(qty, true)
-        });
-        changed |= moved(this.get_unit().clone(), other.get_unit().clone(), |unit| {
-            this.set_unit(unit, true)
-        });
-    }
+    changed |= moved(
+        this.get_unit().clone(),
+        better(this.get_unit().clone(), other.get_unit(), later),
+        |unit| this.set_unit(unit, true),
+    );
     macro_rules! optional {
         ($get:ident, $set:ident) => {
             changed |= moved(
@@ -1265,19 +1391,9 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
             );
         };
     }
-    optional!(get_stoppx, set_stoppx);
-    optional!(get_displayqty, set_displayqty);
-    optional!(get_hiddenqty, set_hiddenqty);
-    optional!(get_lastpx, set_lastpx);
-    optional!(get_lastqty, set_lastqty);
-    optional!(get_avgpx, set_avgpx);
-    optional!(get_cumqty, set_cumqty);
-    optional!(get_leavesqty, set_leavesqty);
-    optional!(get_cxlqty, set_cxlqty);
-    optional!(get_prevpx, set_prevpx);
-    optional!(get_prevqty, set_prevqty);
-    optional!(get_spotrate, set_spotrate);
-    optional!(get_forwardpoints, set_forwardpoints);
+    // The legs and the side first, leg by leg: a price or a quantity the
+    // side reads off a leg then follows the merged leg, whichever statement
+    // leads, rather than dragging the other statement's leg along.
     // The bid and the ask: the leading statement's where it states one.
     optional!(get_bidpx, set_bidpx);
     optional!(get_bidqty, set_bidqty);
@@ -1315,6 +1431,21 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
         },
         |side| this.set_side(side, true),
     );
+    optional!(get_price, set_price);
+    optional!(get_quantity, set_quantity);
+    optional!(get_stoppx, set_stoppx);
+    optional!(get_displayqty, set_displayqty);
+    optional!(get_hiddenqty, set_hiddenqty);
+    optional!(get_lastpx, set_lastpx);
+    optional!(get_lastqty, set_lastqty);
+    optional!(get_avgpx, set_avgpx);
+    optional!(get_cumqty, set_cumqty);
+    optional!(get_leavesqty, set_leavesqty);
+    optional!(get_cxlqty, set_cxlqty);
+    optional!(get_prevpx, set_prevpx);
+    optional!(get_prevqty, set_prevqty);
+    optional!(get_spotrate, set_spotrate);
+    optional!(get_forwardpoints, set_forwardpoints);
     changed |= moved(
         this.get_marketdatatype(),
         if later {
@@ -1342,29 +1473,12 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
                 .is_ok();
         }
     } else {
-        changed |= yield_unknown_isin(this, other);
+        changed |= yield_lower_isin(this, other);
         // Every key either statement holds, the leading one's value where
-        // both hold one; a `ZZ` ISIN never replaces a real one, whichever
-        // leads.
-        let theirs = other.get_securityids();
-        let guarded: Option<Identifiers> = (this
-            .get_isincode()
-            .is_some_and(|isin| !is_unknown_isin(isin))
-            && theirs
-                .of_kind(&IdType::Isin)
-                .any(|id| is_unknown_isin(id.value())))
-        .then(|| {
-            theirs
-                .iter()
-                .filter(|id| {
-                    !(id.key().is_base() && theirs.is_derived(id.kind()))
-                        && !(id.kind() == &IdType::Isin && is_unknown_isin(id.value()))
-                })
-                .cloned()
-                .collect()
-        });
+        // both hold one of a rank; a lower-ranked ISIN never replaces a
+        // higher one, whichever leads ([`Identifiers::merge`]).
         let mut ids = this.get_securityids().clone();
-        if ids.merge(guarded.as_ref().unwrap_or(theirs), later) {
+        if ids.merge(other.get_securityids(), later) {
             changed |= this.set_securityids(ids, true).is_ok();
         }
     }
@@ -1421,19 +1535,46 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
 /// order's own identifiers, how long it stands and whether it can trade
 /// where this statement says nothing.
 pub(crate) fn follow_operation<E: Operation + ?Sized>(this: &mut E, previous: &E) -> bool {
-    chain_operation(this, previous)
+    chain_operation(this, previous, true)
 }
 
 fn restate_operation<E: Operation + ?Sized>(this: &mut E, live: &E) -> bool {
-    chain_operation(this, live)
+    chain_operation(this, live, false)
 }
 
-fn chain_operation<E: Operation + ?Sized>(this: &mut E, previous: &E) -> bool {
+/// What an operation's chain is about, taken from another statement of it
+/// where this one says nothing of it: what was ordered, then what has
+/// traded and at what average - so an acknowledgement stating neither ends
+/// with what its chain filled, and a cancel cancels the rest and no more -
+/// how long it stands, whether it trades, its identifiers with the parents
+/// its chain gave them, and its parties. No fill is carried and none is
+/// invented: a rise in what traded is no `lastqty`.
+///
+/// A `step` - the statement before this one, rather than another statement
+/// of this one - says what had traded before this statement: its
+/// cumulative fill is this one's only where this one reports no fill of its
+/// own, and its average only where this one's cumulative fill is the
+/// chain's, so neither is ever a stale value standing for an unknown one.
+fn chain_operation<E: Operation + ?Sized>(this: &mut E, previous: &E, step: bool) -> bool {
     let mut changed = moved(
         this.get_ordqty(),
         stated(this.get_ordqty(), previous.get_ordqty(), false),
         |qty| this.set_ordqty(qty, true),
     );
+    if !step || this.get_lastqty().is_none_or(Decimal::is_zero) {
+        changed |= moved(
+            this.get_cumqty(),
+            stated(this.get_cumqty(), previous.get_cumqty(), false),
+            |qty| this.set_cumqty(qty, true),
+        );
+    }
+    if !step || this.get_cumqty() == previous.get_cumqty() {
+        changed |= moved(
+            this.get_avgpx(),
+            stated(this.get_avgpx(), previous.get_avgpx(), false),
+            |px| this.set_avgpx(px, true),
+        );
+    }
     changed |= moved(
         this.get_timeinforce().cloned(),
         stated(

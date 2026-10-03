@@ -328,7 +328,9 @@ fs.rmSync(directory, { recursive: true, force: true })
 `fix.schema` is the one row every message answers as; `arrowReader` and
 `messages` cross between messages and batches, any record medium stores the
 batches, and `writeArrowReader` writes them back as wire lines to any
-`{ write(chunk) }` sink.
+`{ write(chunk) }` sink. A key no dictionary resolves lands in `metadata`,
+unless it names an identifier the message captures - then it rides
+`fixentries` under `0:<key>`.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -351,6 +353,14 @@ assert.equal(row.toJSON()[schema.indexOf('msgtype')], 'D')
 assert.deepEqual(row.toJSON()[schema.indexOf('fixentries')], { '18:execinst': 'G' })
 assert.deepEqual(row.toJSON()[schema.indexOf('metadata')], { 9999: 'x' })
 assert.ok(fix.FixMsg.fromRow(schema, row, registry).intoRow(schema).equals(row))
+
+// An unresolved key naming an identifier is captured: held in its set, it rides
+// `fixentries` under `0:<key>` and leaves `metadata`.
+const bridged = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=ORDER-2|55=AAPL|54=1|RICCODE=AAPL.O|10=0|'))
+assert.equal(bridged.securityids.get('ric'), 'AAPL.O')
+const cells = bridged.intoRow(schema).toJSON()
+assert.equal(cells[schema.indexOf('fixentries')]['0:riccode'], 'AAPL.O')
+assert.equal((cells[schema.indexOf('metadata')] ?? {}).riccode, undefined)
 
 // A stream of messages as batches, landed in Parquet without a per-row detour.
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
@@ -488,19 +498,21 @@ assert.deepEqual(held(chained[3]), ['O3', 'O2', 'O1', 'C3', 'C2'])
 assert.ok(chained.every((message) => message.crossuuid === chained[0].crossuuid))
 ```
 
-## Split fills, two-sided quotes and batches at the parse
+## Split fills and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
-fill or a side twice: an execution report is its order's report (`msgcat`
-`ORDR`, its own state) - one of no fill from its parse - and one that fills
-adds one `EXEC` message reading `FILLED`, chained under its `ExecID(17)` as given, else
-`TradeID=<TradeID(1003)>`; a trade (`AE`) adds one sided execution per
-`NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
-a `BUYS` and a `SELL` quote; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+fill twice: an execution report is its order's report (`msgcat` `ORDR`, its
+own state; `QUOT` where it names a `QuoteID(117)`) - one of no fill from its
+parse - and one that fills adds one `EXEC` message reading `FILLED`, chained
+under its `ExecID(17)` as given, else `TradeID=<TradeID(1003)>`; a trade
+(`AE`) adds one sided execution per `NoSides(552)` occurrence; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
 an order list, a mass order, a cross, a mass quote, a match report) adds one
-message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`),
-chained by the order the entry names and split again as its category is.
-Each split message names its source in `srcuuids`.
+message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`) - a
+mass quote's entry one quote holding both its legs - chained by the order the
+entry names and split again as its category is. Each split message names its
+source in `srcuuids`. A quote is never split: a bid and an offer are the two
+legs of one message, stored under side `0`. An acknowledgement of an execution
+(`BN`, `Q`) states no fact of its order, so it answers no market leaf.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -514,23 +526,29 @@ const [report, execution] = codec.parseLine(Buffer.from(fill))
 assert.deepEqual([report.msgcat, report.state], ['ORDR', 'PARTIALLY_FILLED'])
 assert.deepEqual([execution.msgcat, execution.state], ['EXEC', 'FILLED'])
 assert.ok(execution.srcuuids.includes(report.curruuid))
-// An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
+// An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert.deepEqual([report.crosscode, execution.crosscode], ['10:1:O-9', '8:1:E-1'])
 
 const stated = '8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|'
-const [quote, bid, ask] = codec.parseLine(Buffer.from(stated))
-assert.deepEqual([quote.side, bid.side, ask.side], ['UNKN', 'BUYS', 'SELL'])
-assert.deepEqual([bid.crosscode, ask.crosscode], ['14:1:Q1', '14:2:Q1'])
-// Each side prices at its own level and keeps the pair its source stated.
-assert.deepEqual([bid.price, ask.price, ask.bidpx, bid.bidccy], ['99', '101', '99', 'USD'])
+const [quote] = codec.parseLine(Buffer.from(stated))
+assert.deepEqual([quote.msgcat, quote.side, quote.crosscode], ['QUOT', 'UNKN', '14:0:Q1'])
+// Both legs on the one message, each in its currency; neither is the quote's own price.
+assert.equal(quote.price, null)
+assert.deepEqual([quote.bidpx, quote.askpx, quote.askqty, quote.askccy], ['99', '101', '8', 'USD'])
+
+// An acknowledgement of an execution states no fact of its order: no market leaf.
+const ack = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=BN|52=20260921-10:00:01|17=E-1|37=O-9|1036=2|10=0|'))
+assert.deepEqual(ack.marketData(), [])
 ```
 
 ## Turn FIX into market data and books
 
-`marketData` admits what a book folds - orders, one-sided quotes, executions,
-`W`/`X` book messages - reads each as its one graph leaf (a book message one
-per entry) and sorts them by the instant a book folds them at;
-`graph.BookIterator` then walks them. Compose `lifecycle` in front when
+`marketData` admits orders, quotes, executions and `W`/`X` book messages - a
+trade as the executions its parse split off - reads each as its one graph leaf
+(a book message one per entry) and sorts them by the instant a book folds them
+at; `graph.BookIterator` then walks them, pruning the executions.
+`bookArrowReader(messages, snapshotMillis, filter)` folds the same messages
+into book rows, one book per book key. Compose `lifecycle` in front when
 predecessor state matters. `marketArrowReader` writes the sorted leaves as
 `marketdata` rows, and `marketDataArrowReader` is its twin over batches of FIX
 rows already in Arrow.
@@ -661,7 +679,9 @@ fs.rmSync(folder, { recursive: true, force: true })
 - `FixMessages` is a one-shot iterable: spread it once (`[...codec.parseLines(x)]`);
   it throws only for a source failure, where the iteration reaches it. What a
   line states that cannot be read is defaulted or left out, and the addon
-  writes a warning to standard error as `yggdryl: <message>`, once per kind.
+  writes a warning to standard error as the core's terminal line
+  (`... ! WARNING  [main] yggdryl.fix.build build:<line> › ...`), once per
+  kind, unless a handler on `logging.getLogger('yggdryl')` takes them.
 - Arrow JS interop is copied IPC with bounded cursors, never zero copy; keep
   bulk work inside `parseTextArrowReader` / `arrowReader` / `writeArrowReader`
   and cross into Arrow JS once at the end (`intoTable()`).

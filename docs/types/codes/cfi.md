@@ -236,15 +236,20 @@ assert_eq!(Cfi::coarse('E', None).as_deref(), Some("EMXXXX"));
 assert_eq!(Cfi::coarse('X', None), None);
 ```
 
-A classified code that says nothing past its category and group - `ESXXXX` - is coarse. `Cfi::is_detailed` answers whether one of positions 3 to 6 is stated, which is what a market reading that keeps only detailed codes asks. Rust only.
+A classified code that says nothing past its category and group - `ESXXXX` - is coarse. `Cfi::is_detailed` answers whether one of positions 3 to 6 is stated, which is what a market reading that keeps only detailed codes asks. The two readings are the code's [rank](index.md#rank): zero for a code that classifies nothing, one for a classified one, two - `MAX_RANK`, what `is_real` asks - for a detailed one. Rust only.
 
 ```rust
-use yggdryl::Cfi;
+use yggdryl::{Cfi, CodeValue};
 
 assert!(Cfi::is_detailed("ESVUFR"));
 assert!(Cfi::is_detailed("ESVXXX"));
 assert!(!Cfi::is_detailed("ESXXXX"));
 assert!(!Cfi::is_detailed("XXXXXX"));
+
+// Classified and detailed, read as a rank.
+assert_eq!(Cfi::new("XXXXXX")?.rank(), 0);
+assert_eq!(Cfi::new("ESXXXX")?.rank(), 1);
+assert!(Cfi::new("ESVUFR")?.is_real());
 ```
 
 ## Two statements of one instrument

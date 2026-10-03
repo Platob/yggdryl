@@ -279,6 +279,9 @@ mod pairing {
         );
         assert_eq!(typed.as_struct(), None);
         assert_eq!(typed.get(0).as_deref(), Some(&Scalar::from(1_i64)));
+        // A row is ordered, and its field names each cell exactly.
+        assert_eq!(typed.get_key_str("id"), Some(&Scalar::from(1_i64)));
+        assert_eq!(typed.get_key_str("ID"), None);
         assert_eq!(typed.as_ref(), typed.value());
 
         let mapping = Scalar::from_mapping([(Scalar::from("id"), Scalar::from(1_i64))]).unwrap();
@@ -312,7 +315,7 @@ mod pairing {
             (FieldScalar::infer(Scalar::from(true)).unwrap(), "true"),
             (
                 FieldScalar::infer(Scalar::decimal128(150, 2)).unwrap(),
-                "1.50",
+                "1.5",
             ),
             (
                 FieldScalar::infer(Scalar::date32(19_723)).unwrap(),
@@ -825,7 +828,7 @@ mod records {
     fn a_row_displays_its_named_cells() {
         let schema = schema();
         let record = FieldRecord::new(&schema, row()).unwrap();
-        assert_eq!(record.to_string(), "{id=7, symbol=AAPL, price=1.50}");
+        assert_eq!(record.to_string(), "{id=7, symbol=AAPL, price=1.5}");
         let absent = FieldRecord::new(
             &schema,
             Scalar::from_sequence([Scalar::from(1_i64), Scalar::Null, Scalar::Null]),

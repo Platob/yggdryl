@@ -92,10 +92,12 @@ mod iopath;
 pub mod ipc;
 pub mod isin;
 mod isin_registry;
+mod join;
 pub mod json;
 pub mod limit;
 mod listing;
 pub mod local;
+pub mod logging;
 pub mod mapping;
 pub mod marketdatakind;
 pub mod marketdatatype;
@@ -123,8 +125,11 @@ pub mod securityid;
 pub mod sedol;
 pub(crate) mod serde;
 pub mod serie;
+mod serie_source;
 pub mod side;
 pub mod soap;
+mod sort_options;
+mod spill;
 pub mod state;
 pub mod string;
 pub mod structure;
@@ -148,7 +153,7 @@ mod valuestream;
 mod variant;
 pub mod version;
 mod vocabulary;
-pub(crate) mod warning;
+mod window_serie;
 pub mod wkb;
 pub mod xml;
 pub mod xmla;
@@ -211,6 +216,7 @@ pub use iokind::IOKind;
 pub use iomedia::IOMedia;
 pub use iomode::IOMode;
 pub use iopath::IOPath;
+pub use join::{DEFAULT_JOIN_SUFFIX, DEFAULT_PUSHDOWN_KEYS, JoinKind, JoinOptions, JoinSide};
 pub use listing::Listing;
 pub use media_type::MediaType;
 pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
@@ -222,10 +228,14 @@ pub use protocol::{
     IcebergFieldMut, IdentityField, IdentityFieldMut, MysqlField, MysqlFieldMut, PandasField,
     PandasFieldMut, PartitionField, PartitionFieldMut, PolarsField, PolarsFieldMut, PostgresField,
     PostgresFieldMut, PostgresqlField, PostgresqlFieldMut, ProtocolField, ProtocolFieldMut,
-    PythonField, PythonFieldMut, PythonKind, PythonMetadata, S3Field, S3FieldMut, SparkField,
-    SparkFieldMut, SqlField, SqlFieldMut, TransformField, TransformFieldMut, UrnField, UrnFieldMut,
+    PythonField, PythonFieldMut, PythonKind, PythonMetadata, S3Field, S3FieldMut, SortField,
+    SortFieldMut, SparkField, SparkFieldMut, SqlField, SqlFieldMut, TransformField,
+    TransformFieldMut, UrnField, UrnFieldMut,
 };
 pub use scheme::Scheme;
+pub use serie_source::SerieSource;
+pub use sort_options::SortOptions;
+pub use spill::{DEFAULT_SPILL_BYTE_SIZE, SpillOptions};
 pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
 pub use union_mode::UnionMode;
@@ -234,6 +244,9 @@ pub use uri::{
     UriType, Url, UrlParents, Urn,
 };
 pub(crate) use uri::{URL_EXTENSION_NAME, URN_EXTENSION_NAME};
+pub use window_serie::{
+    SerieWindows, SerieWindowsIter, WindowSerie, WindowSerieMut, WindowSerieRows,
+};
 pub use xxhash::{DigestFieldNames, DigestFields};
 
 pub(crate) use arithmetic::Arithmetic;
@@ -370,13 +383,17 @@ pub mod internals {
     pub use crate::aws::sso::internals as aws_sso;
     #[cfg(feature = "aws")]
     pub use crate::aws::sts::internals as aws_sts;
+    pub use crate::boolean::internals as boolean;
+    pub use crate::bytes::internals as bytes;
     pub use crate::bytestream::internals as bytestream;
     pub use crate::charset::reader::internals as charset_reader;
     pub use crate::code::internals as code;
     pub use crate::decimal::internals as decimal;
     pub use crate::diff::internals as diff;
+    pub use crate::duration::internals as duration;
     pub use crate::error::internals as error;
     pub use crate::expression::eval::internals as expression_eval;
+    pub use crate::expression::selector::internals as expression_selector;
     pub use crate::fix::catalog::internals as fix_catalog;
     pub use crate::fix::codec::internals as fix_codec;
     pub use crate::fix::codes::internals as fix_codes;
@@ -393,7 +410,9 @@ pub mod internals {
     pub use crate::fix::retired::internals as fix_retired;
     pub use crate::fix::schema::internals as fix_schema;
     pub use crate::fix::store::internals as fix_store;
+    pub use crate::floating::internals as floating;
     pub use crate::fs::local::internals as fs_local;
+    pub use crate::graph::book::internals as graph_book;
     pub use crate::graph::element::internals as graph_element;
     pub use crate::graph::facts::internals as graph_facts;
     pub use crate::graph::iterator::internals as graph_iterator;
@@ -434,10 +453,18 @@ pub mod internals {
     pub use crate::iceberg::table::internals as iceberg_table;
     #[cfg(feature = "iceberg")]
     pub use crate::iceberg::value::internals as iceberg_value;
+    pub use crate::integer::internals as integer;
     pub use crate::ipc::internals as ipc;
     pub use crate::isin_registry::internals as isin_registry;
+    pub use crate::json::column::internals as json_column;
+    pub use crate::json::field::internals as json_field;
     pub use crate::local::internals as local;
+    pub use crate::logging::logger::internals as logging_logger;
+    pub use crate::logging::terminal::internals as logging_terminal;
+    pub use crate::logging::warning::internals as logging_warning;
+    pub use crate::marketdatakind::internals as marketdatakind;
     pub use crate::media::merge::internals as media_merge;
+    pub use crate::media::options::commit::internals as media_options_commit;
     pub use crate::media::options::internals as media_options;
     pub use crate::media::partition::internals as media_partition;
     pub use crate::merge::internals as merge;
@@ -455,6 +482,8 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::aws::xml::internals as s3_aws_xml;
     #[cfg(feature = "s3")]
+    pub use crate::s3::azure::auth::internals as s3_azure_auth;
+    #[cfg(feature = "s3")]
     pub use crate::s3::azure::dialect::internals as s3_azure_dialect;
     #[cfg(feature = "s3")]
     pub use crate::s3::azure::sign::internals as s3_azure_sign;
@@ -465,12 +494,15 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::file::internals as s3_file;
     #[cfg(feature = "s3")]
+    pub use crate::s3::google::token::internals as s3_google_token;
+    #[cfg(feature = "s3")]
     pub use crate::s3::options::internals as s3_options;
     #[cfg(feature = "s3")]
     pub use crate::s3::xml::internals as s3_xml;
     pub use crate::scalar::internals as scalar;
     pub use crate::serie::arrow::internals as serie_arrow;
     pub use crate::serie::layout::internals as serie_layout;
+    pub use crate::spill::internals as spill;
     pub use crate::temporal::internals as temporal;
     pub use crate::text::display::internals as text_display;
     pub use crate::text::line::internals as text_line;
@@ -486,7 +518,6 @@ pub mod internals {
     pub use crate::valuestream::internals as valuestream;
     pub use crate::variant::internals as variant;
     pub use crate::version::internals as version;
-    pub use crate::warning::internals as warning;
     #[cfg(feature = "aws")]
     pub use crate::xml::scanner::internals as xml_scanner;
     pub use crate::xxhash::internals as xxhash;

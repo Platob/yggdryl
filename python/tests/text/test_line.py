@@ -7,7 +7,7 @@ import pickle
 import pytest
 
 import yggdryl
-from yggdryl import FieldPath, MimeType, Scalar, TextLine, TextOptions, Url
+from yggdryl import FieldPath, MimeType, Scalar, TextLine, TextOptions, Url, xxhash
 from yggdryl.holder import Buffer
 
 CAPTURE = b"8=FIX|55=AAPL|35=D\n35=D|55=MSFT\n"
@@ -82,6 +82,11 @@ class TestTextLine:
         assert str(lines[1].sourceuri) == str(lines[0].sourceuri)
         assert lines[1].crossuuid == lines[0].crossuuid
         assert lines[1].curruuid != lines[0].curruuid
+        # The identifier seeds the identity and stays out of the content code:
+        # the same body held under none is the same code and another identity.
+        bare = TextLine(lines[0].index, lines[0].body)
+        assert bare.currhashcode == lines[0].currhashcode
+        assert bare.curruuid != lines[0].curruuid
 
     def test_a_line_reads_itself_on_the_first_ask(self) -> None:
         lines = list(source().read_text_lines(options=TextOptions()))
@@ -101,14 +106,17 @@ class TestTextLine:
         assert line.captures == ("INFO",)
         assert line.mtime is None
         assert line.currunix == 0
-        # Its identity derives from its instant and the whole code of its
-        # source, its row and its bytes, so one body on two rows is two.
+        # The content code is the body's XXH3-64 and nothing else - not the
+        # captures, the row or the source - and the identity derives from the
+        # instant, the row and that code, so one body on two rows is two.
+        assert line.currhashcode == xxhash.xxh3(b"8=FIX|55=AAPL|35=D")
         assert isinstance(line.curruuid, Scalar)
         later = TextLine(7, "[INFO] 8=FIX|55=AAPL|35=D", None, options)
         assert later.index == 7
+        assert later.currhashcode == line.currhashcode
         assert line.curruuid != later.curruuid
-        # A line read under no header states the whole text as its body and
-        # names nothing, so it is a different event from this one.
+        # A line read under no header holds the whole text as its body, so its
+        # code is another one.
         assert line.currhashcode != TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D").currhashcode
         # Another body is another code, and so another identity.
         other = TextLine(7, "[INFO] 8=FIX|55=MSFT|35=D", None, options)

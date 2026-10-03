@@ -54,27 +54,40 @@ impl JsRecordOptions {
     }
 }
 
+/// A `commitBatchNum` value as the batch count the core counts: an exact
+/// integer in this platform's range. Zero is kept, so the write preflight
+/// refuses it by name before a one-shot source is touched.
+pub(crate) fn batch_count(batches: f64) -> Result<usize> {
+    let batches = crate::exact_u64(batches, "commitBatchNum")?;
+    usize::try_from(batches).map_err(|_| {
+        napi_error(format!(
+            "commitBatchNum {batches} exceeds this platform's batch-count range"
+        ))
+    })
+}
+
+/// A `numThreads` value as the thread count the core counts: an exact
+/// integer in this platform's range. Zero is kept, so the write preflight
+/// refuses it by name before a one-shot source is touched.
+pub(crate) fn thread_count(threads: f64) -> Result<usize> {
+    let threads = crate::exact_u64(threads, "numThreads")?;
+    usize::try_from(threads).map_err(|_| {
+        napi_error(format!(
+            "numThreads {threads} exceeds this platform's thread-count range"
+        ))
+    })
+}
+
 /// A CSV role byte as the one-character string JavaScript spells it.
 fn byte_text(byte: u8) -> String {
     char::from(byte).to_string()
 }
 
-/// The one byte a CSV role is spelled as: a one-character string whose
-/// character is a byte. Whether that byte may play the role is the core's
-/// judgement, so a non-ASCII byte is handed over for its refusal; text that
-/// is not one such character can reach no byte and is refused here naming
-/// the property.
+/// The one byte a CSV role is spelled as, read by the core's one spelling
+/// ([`yggdryl::csv::CsvOptions::byte_from_text`]); whether that byte may
+/// play the role is the core setter's judgement.
 fn byte_of(text: &str, name: &str) -> Result<u8> {
-    let mut characters = text.chars();
-    match (characters.next(), characters.next()) {
-        (Some(character), None) => u8::try_from(u32::from(character)).ok(),
-        _ => None,
-    }
-    .ok_or_else(|| {
-        napi_error(format!(
-            "expected one ASCII character for {name}, got {text:?}"
-        ))
-    })
+    yggdryl::csv::CsvOptions::byte_from_text(text, name).map_err(crate::napi_error)
 }
 
 /// The byte an optional CSV role is set to, or `None` where `null` clears
@@ -135,6 +148,25 @@ impl JsRecordOptions {
         self.inner.field().map(JsField::from_core)
     }
 
+    /// The write mode `mode` spells, read through the core's `IOMode`
+    /// vocabulary - trimmed, in any case - as its canonical name: one of
+    /// `overwrite`, `append` and `merge`. The loader captures and removes
+    /// this private bridge, and reads every generic write's mode through it
+    /// before an input is touched; a mode that writes nothing (`readonly`,
+    /// `random`) is refused here.
+    #[napi(js_name = "_writeModeNative", skip_typescript)]
+    pub fn write_mode_native(mode: String) -> Result<String> {
+        let mode = IOMode::from_str(&mode).map_err(napi_error)?;
+        if IOMode::WRITE.contains(&mode) {
+            Ok(mode.as_str().to_owned())
+        } else {
+            Err(napi_error(format!(
+                "expected a write mode - {} - got {mode}",
+                IOMode::WRITE.map(IOMode::as_str).join(", ")
+            )))
+        }
+    }
+
     /// Validate explicit write intent before JavaScript converts or pulls input.
     ///
     /// The loader captures and removes this private bridge, then calls it ahead
@@ -144,7 +176,8 @@ impl JsRecordOptions {
     pub fn require_write_preflight(&self, intent: String) -> Result<u32> {
         let mode = IOMode::from_str(&intent).map_err(napi_error)?;
         self.inner.require_write_mode(mode).map_err(napi_error)?;
-        self.inner.require_commit_row_size().map_err(napi_error)?;
+        self.inner.require_commit_batch_num().map_err(napi_error)?;
+        self.inner.require_num_threads().map_err(napi_error)?;
         self.inner.require_write_limits().map_err(napi_error)?;
         u32::try_from(DEFAULT_RECORD_BATCH_ROW_SIZE).map_err(napi_error)
     }
@@ -275,31 +308,60 @@ impl JsRecordOptions {
         Ok(())
     }
 
-    /// Rows published per streamed-write commit, when one is set.
+    /// Whole batches published per streamed-write commit, when one is set.
+    ///
+    /// A positive count publishes every that many batches of the shaped
+    /// stream, then the final remainder; a batch is one the source yields,
+    /// cut by `batchRowSize` where records are converted, never by the
+    /// cadence. `null` is the destination's own cadence: a file, a folder
+    /// and an Iceberg table each publish once after the source ends, what
+    /// they hold in between kept under the process spill bound.
     #[napi(getter)]
-    pub fn commit_row_size(&self) -> Option<f64> {
+    pub fn commit_batch_num(&self) -> Option<f64> {
         #[allow(clippy::cast_precision_loss)]
-        self.inner.commit_row_size().map(|rows| rows as f64)
+        self.inner.commit_batch_num().map(|batches| batches as f64)
     }
 
-    /// Set the streamed-write publication cadence.
+    /// Set the streamed-write publication cadence, in whole batches.
     ///
     /// Zero is retained so the write preflight can reject it before touching a
-    /// one-shot JavaScript source. `null` restores one publication at the end.
+    /// one-shot JavaScript source. `null` restores the destination's own
+    /// cadence.
     #[napi(setter)]
-    pub fn set_commit_row_size(&mut self, commit_row_size: Option<f64>) -> Result<()> {
-        let rows = match commit_row_size {
-            Some(rows) => {
-                let rows = crate::exact_u64(rows, "commitRowSize")?;
-                Some(usize::try_from(rows).map_err(|_| {
-                    napi_error(format!(
-                        "commitRowSize {rows} exceeds this platform's row-count range"
-                    ))
-                })?)
-            }
+    pub fn set_commit_batch_num(&mut self, commit_batch_num: Option<f64>) -> Result<()> {
+        let batches = match commit_batch_num {
+            Some(batches) => Some(crate::media::options::batch_count(batches)?),
             None => None,
         };
-        self.inner.set_commit_row_size(rows);
+        self.inner.set_commit_batch_num(batches);
+        Ok(())
+    }
+
+    /// The threads a write of several parts runs on at once, when set.
+    ///
+    /// The parts are an Iceberg commit's partition groups, written side by
+    /// side; a leaf of one file reads it as the bound on its encoding's
+    /// threads. `null` is the destination's own answer: an Iceberg table's
+    /// `write.parallelism`, else its `read.parallelism`, else every thread
+    /// the host offers.
+    #[napi(getter)]
+    pub fn num_threads(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner.num_threads().map(|threads| threads as f64)
+    }
+
+    /// Set the threads a write of several parts runs on at once.
+    ///
+    /// Zero is retained so the write preflight refuses it by name, naming
+    /// `$.num_threads`, before a one-shot source is touched. `null` restores
+    /// the destination's own answer.
+    #[napi(setter)]
+    pub fn set_num_threads(&mut self, num_threads: Option<f64>) -> Result<()> {
+        let threads = match num_threads {
+            Some(threads) => Some(crate::media::options::thread_count(threads)?),
+            None => None,
+        };
+        self.inner.set_num_threads(threads);
         Ok(())
     }
 
@@ -887,11 +949,19 @@ impl JsRecordOptions {
         Ok(options)
     }
 
-    /// Return these options with a streamed-write publication cadence.
+    /// Return these options with a publication every `commitBatchNum` batches.
     #[napi]
-    pub fn with_commit_row_size(&self, commit_row_size: f64) -> Result<Self> {
+    pub fn with_commit_batch_num(&self, commit_batch_num: f64) -> Result<Self> {
         let mut options = self.clone();
-        options.set_commit_row_size(Some(commit_row_size))?;
+        options.set_commit_batch_num(Some(commit_batch_num))?;
+        Ok(options)
+    }
+
+    /// Return these options running a write of several parts on `numThreads`.
+    #[napi]
+    pub fn with_num_threads(&self, num_threads: f64) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_num_threads(Some(num_threads))?;
         Ok(options)
     }
 

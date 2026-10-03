@@ -61,7 +61,7 @@ def test_nested_field_class_yaml_is_ordinary_yaml_with_no_class_name() -> None:
     assert b"Trade" not in encoded
     assert yaml.loads(encoded) == {
         "trade_id": 42,
-        "leg": {"symbol": "ABC", "price": "12.50"},
+        "leg": {"symbol": "ABC", "price": "12.5"},
         "executed_at": "2026-08-15T10:30:00.000000",
     }
 

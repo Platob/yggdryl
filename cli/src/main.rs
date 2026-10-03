@@ -6,8 +6,9 @@
 //! market-data namespace whose `serve` verb is the book display. The top
 //! level parses, dispatches, and prints a refusal and whatever the core
 //! warned about that no command printed ([`warnings`]); every verb lives in
-//! the namespace it belongs to, and [`location`] is how every serving
-//! command reads where its data is.
+//! the namespace it belongs to, [`location`] is how every serving command
+//! reads where its data is and [`timeout`] how long it lets a connection
+//! stay quiet.
 //!
 //! | namespace | what it is |
 //! | --- | --- |
@@ -43,6 +44,7 @@ mod registry;
 mod schema;
 mod shell;
 mod style;
+mod timeout;
 mod warnings;
 mod xmla;
 
@@ -50,6 +52,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use yggdryl::DataType;
 
 /// The yggdryl command line.
 #[derive(Parser)]
@@ -70,8 +73,9 @@ enum Command {
 
         /// Print findings as workflow annotations rather than as a table.
         ///
-        /// Turned on by itself where the environment says it is a GitHub
-        /// Actions runner, so a workflow needs no extra flag.
+        /// Turned on by itself where `GITHUB_ACTIONS` is true (`true`, `yes`,
+        /// `on` or `1`, in any case), so a workflow needs no extra flag;
+        /// `false`, `no`, `off`, `0` or nothing at all leaves it off.
         #[arg(long, global = true)]
         annotate: bool,
 
@@ -92,11 +96,47 @@ enum Command {
     },
 }
 
+/// The variable a workflow runner sets to say that it is one.
+const RUNNER: &str = "GITHUB_ACTIONS";
+
+/// Whether the environment says this is a workflow runner.
+///
+/// The variable is read as the boolean it is, through the value door every
+/// boolean in the core is read through, so `true` and `1` say a runner and
+/// `false` and `0` do not. Unset and blank are no runner, decided here so the
+/// answer does not rest on how the door reads empty text.
+///
+/// # Errors
+///
+/// Returns the variable's name with what the boolean door refused of its
+/// text, or of a value that is no text at all.
+fn on_runner() -> Result<bool, String> {
+    let Some(value) = std::env::var_os(RUNNER) else {
+        return Ok(false);
+    };
+    let text = value
+        .into_string()
+        .map_err(|_| format!("{RUNNER}: expected text, got bytes that are not UTF-8"))?;
+    if text.trim().is_empty() {
+        return Ok(false);
+    }
+    DataType::Boolean
+        .scalar(text.as_str())
+        .map(|reading| reading.as_bool() == Some(true))
+        .map_err(|error| format!("{RUNNER}: {error}"))
+}
+
 fn main() -> ExitCode {
     warnings::install();
     let cli = Cli::parse();
-    let annotate = std::env::var_os("GITHUB_ACTIONS").is_some()
-        || matches!(cli.command, Command::Fix { annotate: true, .. });
+    let on_runner = match on_runner() {
+        Ok(on_runner) => on_runner,
+        Err(refusal) => {
+            style::bad(&refusal);
+            return ExitCode::FAILURE;
+        }
+    };
+    let annotate = on_runner || matches!(cli.command, Command::Fix { annotate: true, .. });
     let outcome = match &cli.command {
         Command::Fix { root, command, .. } => fix::run(root, annotate, command.as_deref()),
         Command::Xmla { command } => xmla::run(command),

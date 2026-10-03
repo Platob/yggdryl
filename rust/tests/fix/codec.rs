@@ -19,6 +19,44 @@ fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
 }
 
+/// A chain whose first statement masks its instrument's number and whose
+/// later statement the walk's own registry fills with the real one - learned
+/// from another order's line between them - keeps the real number: what a
+/// follower derived outranks what its chain stated, so the instrument is one
+/// book key however its lines spell it.
+#[test]
+fn a_followers_derived_real_isin_stands_over_its_chains_masked_statement() {
+    use yggdryl::IdType;
+    use yggdryl::graph::Market;
+
+    let codec = codec();
+    let lines: [&[u8]; 3] = [
+        b"8=FIX.4.4|35=8|52=20260921-10:00:00|37=O1|11=C1|17=E1|150=0|39=0|55=ACME|54=1|38=10|44=100|14=0|151=10|ISINCODE=XX0000000001|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:01|37=O2|11=C2|17=E2|150=0|39=0|55=ACME|48=US0378331005|22=4|54=2|38=5|44=101|14=0|151=5|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:02|37=O1|11=C1|17=E3|150=5|39=0|55=ACME|54=1|38=10|44=100|14=0|151=10|10=0|",
+    ];
+    let parsed: Vec<yggdryl::FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("three messages");
+    let chained: Vec<yggdryl::FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    assert_eq!(chained.len(), 3);
+    assert_eq!(chained[0].get_isincode(), Some("XX0000000001"));
+    let last = &chained[2];
+    assert_eq!(last.get_prevuuid(), Some(chained[0].get_curruuid()));
+    assert_eq!(last.get_isincode(), Some("US0378331005"));
+    assert_eq!(last.book_crosscode(), "US0378331005");
+    assert!(last.get_securityids().is_derived(&IdType::Isin));
+    assert_eq!(
+        last.get_securityids().get(&IdType::Cusip),
+        Some("037833100"),
+        "the number it derived embeds the CUSIP"
+    );
+}
+
 fn codec() -> FixCodec {
     super::fixed_codec(registry())
 }
@@ -3836,9 +3874,9 @@ mod equivalence {
             .map(|line| {
                 let mut line = line.expect("a line");
                 // The bytes are the committed file above, not the temporary
-                // in-memory allocation used to exercise the reader. Text-line
-                // identity includes the identifier it was read under, so
-                // state that stable source.
+                // in-memory allocation used to exercise the reader. A line's
+                // identity is seeded by the cross hash of the identifier it
+                // was read under, so state that stable source.
                 line.set_sourceuri(Some(Arc::clone(&uri)));
                 line
             })

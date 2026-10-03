@@ -541,6 +541,18 @@ impl Cfi {
             .unwrap_or(self)
     }
 
+    /// [`CodeValue::rank`](crate::CodeValue::rank): zero for a code that
+    /// classifies nothing, one for one that only classifies - a category
+    /// and a group - and two for a detailed one. What [`Self::refined`]
+    /// already prefers, read as a number.
+    fn ranked(&self) -> u8 {
+        if Self::is_detailed(self.as_str()) {
+            2
+        } else {
+            u8::from(Self::is_classified(self.as_str()))
+        }
+    }
+
     /// The category a letter names, or `None` where no category has it.
     #[must_use]
     pub fn category_of(letter: char) -> Option<&'static CfiCategory> {
@@ -703,7 +715,14 @@ impl Cfi {
 
 code_leaf!(Cfi, CFI_WIDTH);
 
-code_value!(Cfi, Cfi, CFI_WIDTH, merge = Cfi::filled);
+code_value!(
+    Cfi,
+    Cfi,
+    CFI_WIDTH,
+    merge = Cfi::filled,
+    rank = Cfi::ranked,
+    max_rank = 2
+);
 
 /// The Arrow extension name of the classification code.
 pub(crate) const CFI_EXTENSION_NAME: &str = "yggdryl.cfi";

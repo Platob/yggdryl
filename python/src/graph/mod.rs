@@ -69,10 +69,11 @@ macro_rules! element_getters {
 
             /// The cross code: the identifier every statement of one element
             /// shares, stored as `{kind}:{side}:{base}` - the
-            /// `MarketDataKind` code, the `Side` code of a sided kind (`0`
-            /// for any other) and the identifier itself, so a buy order
-            /// `ORD-1` is `10:1:ORD-1` and a book `3:0:AAPL` - empty where
-            /// it names none.
+            /// `MarketDataKind` code, the `Side` code of a sided kind - an
+            /// order or an execution - (`0` for any other, a quote among
+            /// them) and the identifier itself, so a buy order `ORD-1` is
+            /// `10:1:ORD-1`, a quote `14:0:Q-1` and a book `3:0:AAPL` -
+            /// empty where it names none.
             #[getter]
             fn crosscode(&self) -> &str {
                 ::yggdryl::graph::Element::get_crosscode(&self.inner)

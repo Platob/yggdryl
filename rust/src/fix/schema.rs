@@ -50,14 +50,19 @@
 //! them, and a message read back from a row parses it into those entries
 //! through the dictionary again.
 //!
-//! A key the dictionary does not resolve is no field and has no `tag:name`:
-//! it never enters `fixentries`. It lands in the row's `metadata` under the
-//! key as the message spelled it, its value the raw text - a repeated key
-//! the JSON array of its values in arrival order, a nested one its JSON -
-//! beside the namespaced keys a bridge states. Reading a row back restores
-//! it as the entry of tag zero a parse holds it as, so the message read back
-//! re-emits it and digests as the parse did; the row's `metadata` is where
-//! an unmapped key lives, the message's residual is where it is read.
+//! A key the dictionary does not resolve is no field and has no `tag:name`.
+//! It lands in the row's `metadata` under the key as the message spelled it,
+//! its value the raw text - a repeated key the JSON array of its values in
+//! arrival order, a nested one its JSON - beside the namespaced keys a
+//! bridge states, unless an identifier map holds it with its value: a key
+//! naming an identifier - a bridge's `ISINCODE`, `OMS_RICCODE`,
+//! `TECH.CLIENTID`, `PARENTORDERID` - is captured into the set its type
+//! belongs to ([`FixMsg::is_captured`]), and rides `fixentries` under
+//! `0:<key>` as it arrived, so `metadata` holds only what nothing resolved
+//! and the row holds every arrival once. Reading a row back restores either
+//! as the entry of tag zero a parse holds it as, so the message read back
+//! re-emits it and digests as the parse did; the row is where an unmapped
+//! key lives, the message's residual is where it is read.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -946,9 +951,94 @@ fn entries_field() -> Result<Field> {
     field.set_display("FixEntries")?;
     field.set_description(
         "Content no other column represents, keyed by each field's tag:name: a scalar's wire \
-         text, a group or a component as the JSON of what it holds, keyed the same way.",
+         text, a group or a component as the JSON of what it holds, keyed the same way; and, \
+         under 0:key, each key no dictionary resolved that an identifier map holds with its \
+         value, as it arrived.",
     )?;
     Ok(field)
+}
+
+/// The arrivals of one message a row partitions between its `metadata`
+/// cell and its residual record, read once per row: every tag-zero entry by
+/// name then arrival and, where the row has a residual record, the arrivals
+/// an identifier map holds with their value ([`super::FixMsg::is_captured`]) -
+/// captured, riding the record under `0:<key>` and leaving the cell to
+/// what nothing resolved. Held on the stack for every message a desk
+/// writes: sixty-four unresolved entries, sixteen captured names and keys.
+struct Arrivals<'msg> {
+    /// Every tag-zero entry, by name then arrival.
+    unresolved: SmallVec<[&'msg super::FixEntry; 64]>,
+    /// The names among them every occurrence of which is captured, in
+    /// their order.
+    captured_names: SmallVec<[&'msg str; 16]>,
+    /// The metadata keys captured, with their values, in key order.
+    captured_keys: SmallVec<[(&'msg SmolStr, &'msg SmolStr); 16]>,
+}
+
+impl<'msg> Arrivals<'msg> {
+    /// The arrivals of `message`, the ones an identifier map holds set
+    /// apart where the row `captures` them.
+    fn of(message: &'msg super::FixMsg, captures: bool) -> Self {
+        let mut unresolved: SmallVec<[&'msg super::FixEntry; 64]> = message
+            .entries()
+            .iter()
+            .filter(|entry| entry.tag() == 0)
+            .collect();
+        // Every entry is borrowed from the one slice, so its address is its
+        // arrival: an unstable sort on the two is the stable one, with no
+        // buffer of its own.
+        unresolved.sort_unstable_by(|left, right| {
+            left.held_name()
+                .cmp(right.held_name())
+                .then_with(|| std::ptr::from_ref(*left).cmp(&std::ptr::from_ref(*right)))
+        });
+        let mut arrivals = Self {
+            unresolved,
+            captured_names: SmallVec::new(),
+            captured_keys: SmallVec::new(),
+        };
+        if !captures {
+            return arrivals;
+        }
+        let declared = message.declared_identifiers();
+        let memo = message.registry().memo();
+        for (key, value) in message.metadata() {
+            if message.is_captured(memo, declared, key, value) {
+                arrivals.captured_keys.push((key, value));
+            }
+        }
+        // A name is captured whole or not at all: an occurrence a set
+        // refused keeps every occurrence of its name in the cell, as the
+        // leaf keeps the key.
+        for entries in arrivals
+            .unresolved
+            .chunk_by(|left, right| left.held_name() == right.held_name())
+        {
+            let name = entries[0].held_name();
+            if entries.iter().all(|entry| {
+                entry
+                    .value()
+                    .is_some_and(|text| message.is_captured(memo, declared, name, text))
+            }) {
+                arrivals.captured_names.push(name.as_str());
+            }
+        }
+        arrivals
+    }
+
+    /// Whether every tag-zero entry named `name` is captured.
+    fn is_captured_name(&self, name: &str) -> bool {
+        self.captured_names
+            .binary_search_by(|held| (*held).cmp(name))
+            .is_ok()
+    }
+
+    /// Whether the metadata key `key` is captured.
+    fn is_captured_key(&self, key: &str) -> bool {
+        self.captured_keys
+            .binary_search_by(|(held, _)| held.as_str().cmp(key))
+            .is_ok()
+    }
 }
 
 /// The key one residual entry is filed under: its tag and its name,
@@ -1072,19 +1162,34 @@ fn members_json(
 /// stated scalar's text as it is - its JSON string where the text opens the
 /// way JSON does - and anything else as its JSON; a key stated more than once
 /// the JSON array of its values, in arrival order.
+///
+/// The keys are sorted on the stack, each beside its arrival so the unstable
+/// sort is the stable one, and a key stated once is filed as the one entry
+/// it is: only a key stated more than once gathers its run. Sixty-four keys
+/// are held inline.
 fn entries_map<'entry>(
     registry: &FixRegistry,
     entries: impl Iterator<Item = &'entry super::FixEntry>,
 ) -> Result<crate::Scalar> {
-    let mut keyed: std::collections::BTreeMap<SmolStr, Vec<&super::FixEntry>> =
-        std::collections::BTreeMap::new();
-    for entry in entries {
-        keyed.entry(entry_key(entry)).or_default().push(entry);
-    }
+    let mut keyed: SmallVec<[(SmolStr, usize, &super::FixEntry); 64]> = entries
+        .enumerate()
+        .map(|(arrival, entry)| (entry_key(entry), arrival, entry))
+        .collect();
+    keyed.sort_unstable_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
     let mut pairs = Vec::with_capacity(keyed.len());
-    for (key, held) in keyed {
-        let text = keyed_text(registry, &held, entry_key)?;
-        pairs.push((crate::Scalar::from(key), crate::Scalar::from(text)));
+    for run in keyed.chunk_by(|left, right| left.0 == right.0) {
+        let text = match run {
+            [(_, _, entry)] => keyed_text(registry, std::slice::from_ref(entry), entry_key)?,
+            many => {
+                let held: SmallVec<[&super::FixEntry; 4]> =
+                    many.iter().map(|(_, _, entry)| *entry).collect();
+                keyed_text(registry, &held, entry_key)?
+            }
+        };
+        pairs.push((
+            crate::Scalar::from(run[0].0.clone()),
+            crate::Scalar::from(text),
+        ));
     }
     crate::Scalar::from_mapping(pairs)
 }
@@ -1269,11 +1374,10 @@ fn entry_error(
 /// The residual entries one `fixentries` cell holds, in key order: the
 /// inverse of [`entries_map`]. A value opening the way JSON does is read as
 /// JSON, every other one as the text it states. A key is refused unless it is
-/// a resolved field's `tag:name` ([`is_field_key`]), since a key no
-/// dictionary resolved lives in `metadata`, and so is JSON that does not
-/// decode: a message rebuilt with a pair missing is a different message. The
-/// text is copied here, because a row is where a message stops being a range
-/// of a line.
+/// a resolved field's `tag:name` or a tag-zero key no dictionary resolved
+/// ([`is_field_key`]), and so is JSON that does not decode: a message rebuilt
+/// with a pair missing is a different message. The text is copied here,
+/// because a row is where a message stops being a range of a line.
 ///
 /// # Errors
 ///
@@ -1323,10 +1427,12 @@ fn entries_from_map(
 /// entry as - answering to that tag, as its own or an alternate one or as
 /// the counter heading the group it is. A name reaching no field is a tagged
 /// child's own, rebuilt under it. A tag beside another field's name would
-/// rebuild that field while the tag's own column stood aside for it.
+/// rebuild that field while the tag's own column stood aside for it. Tag
+/// zero is a key no dictionary resolved, and a name is all it is: it rebuilds
+/// as the tag-zero entry a parse holds it as, whatever the name reaches.
 fn is_field_key(registry: &FixRegistry, tag: i32, name: &str) -> bool {
-    tag != 0
-        && registry.get_field_by_name(name).is_none_or(|named| {
+    tag == 0
+        || registry.get_field_by_name(name).is_none_or(|named| {
             let (own, counter) = tag_and_counter(registry, named);
             own == Some(tag)
                 || counter == Some(tag)
@@ -2548,7 +2654,11 @@ impl super::FixMsg {
     /// column is omitted from it. Unprojected, conflicting, partially
     /// represented and unreadable content remains there whole, keyed by its
     /// `tag:name`. A key no dictionary resolved is no field: it is stated in
-    /// the `metadata` column under its own spelling, its text intact.
+    /// the `metadata` column under its own spelling, its text intact, unless
+    /// an identifier map holds it with its value (`is_captured`) -
+    /// then it rides the record under `0:<key>` as it arrived, and `metadata`
+    /// holds only what nothing resolved. A row with a `metadata` column and
+    /// no record keeps every unresolved key in `metadata`.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -2559,7 +2669,7 @@ impl super::FixMsg {
     /// # let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     /// let schema = fix_schema(&registry, "fix")?;
     /// let reader = FixCodec::new(Arc::clone(&registry));
-    /// let order = reader.parse_fix_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|")?;
+    /// let order = reader.parse_fix_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|PARENTORDERID=P-1|10=0|")?;
     ///
     /// let row = order.into_row(&schema)?;
     /// let held = row.as_sequence().expect("a row");
@@ -2567,19 +2677,23 @@ impl super::FixMsg {
     /// let at = schema.index_of("msgtype").expect("the msgtype column");
     /// assert_eq!(held[at].as_str(), Some("D"));
     /// // A key no dictionary resolved is stated in the metadata under its own
-    /// // spelling, with its value as it arrived, and never in the record.
+    /// // spelling, with its value as it arrived - unless an identifier map
+    /// // holds it: a bridge's `PARENTORDERID` is the order's `parentorderid`,
+    /// // so it rides the residual record under `0:parentorderid` instead.
     /// let at = schema.index_of("metadata").expect("the metadata column");
     /// let metadata = held[at].as_mapping().expect("a map");
     /// assert!(metadata.iter().any(|(key, value)| key.as_str() == Some("9999") && value.as_str() == Some("x")));
+    /// assert!(metadata.iter().all(|(key, _)| key.as_str() != Some("parentorderid")));
     /// let at = schema.index_of("fixentries").expect("the residual record");
     /// let record = held[at].as_mapping().expect("a map");
-    /// assert!(record.iter().all(|(key, _)| !key.as_str().unwrap().starts_with("0:")));
+    /// assert!(record.iter().any(|(key, value)| key.as_str() == Some("0:parentorderid") && value.as_str() == Some("P-1")));
+    /// assert!(record.iter().all(|(key, _)| key.as_str() != Some("0:9999")));
     /// # Ok(())
     /// # }
     /// ```
     /// A value a column will not hold is that column's null rather than a
-    /// refusal - a five-byte MIC under a four-byte column, an identifier
-    /// whose check digit does not close - and the residual keeps what the
+    /// refusal - a five-byte MIC under a four-byte column, an eleven-byte
+    /// identifier under an `isin` column - and the residual keeps what the
     /// column could not represent. A column that cannot be null keeps the
     /// refusal, which separates an unreadable value from a broken contract.
     ///
@@ -2593,6 +2707,10 @@ impl super::FixMsg {
         let has_residual_columns = columns
             .iter()
             .any(|column| column.name() == FIXENTRIES_COLUMN);
+        // The arrivals an identifier map holds ride the residual record
+        // under `0:<key>` where the row has one, and stay in `metadata`
+        // where it has not: partitioned once, whichever columns the row has.
+        let arrivals = Arrivals::of(self, has_residual_columns);
         let fitted_cell = |index: usize| -> Result<crate::Scalar> {
             let column = &columns[index];
             let planned = &plan[index];
@@ -2608,7 +2726,9 @@ impl super::FixMsg {
                 // else from a content child spelled exactly as it is.
                 // A typed fact is its holder's, whatever shape its
                 // column takes: the identifiers Map is the event's.
-                (Some(tag), _) if tag == super::METADATA_TAG_NAME.0 => self.row_metadata()?,
+                (Some(tag), _) if tag == super::METADATA_TAG_NAME.0 => {
+                    self.row_metadata(&arrivals)?
+                }
                 (Some(tag), _) if super::identity::is_typed_tag(tag) => self.column_value(tag),
                 // The one the crate tags - `sourceurl` - is carried.
                 (Some(tag), _) if super::identity::is_capture_tag(tag) => {
@@ -2740,12 +2860,17 @@ impl super::FixMsg {
                 represented.sort_unstable();
                 represented.dedup();
             }
-            // The residual record is every entry no column represents, but
-            // a key no dictionary resolved: that is no field, and the
-            // metadata states it.
-            let record = columns
+            // The residual record is every entry no column represents, and
+            // every key no dictionary resolved that an identifier map holds
+            // - a tag-zero entry under its own name, a metadata key as the
+            // tag-zero entry it would have been - under `0:<key>`; every
+            // other unresolved key is the metadata's.
+            let captured: SmallVec<[super::FixEntry; 16]> = arrivals
+                .captured_keys
                 .iter()
-                .any(|column| column.name() == FIXENTRIES_COLUMN)
+                .map(|(key, value)| super::FixEntry::new(0, (*key).clone(), Some((*value).clone())))
+                .collect();
+            let record = has_residual_columns
                 .then(|| {
                     entries_map(
                         self.registry(),
@@ -2753,9 +2878,14 @@ impl super::FixMsg {
                             .iter()
                             .enumerate()
                             .filter(|(index, entry)| {
-                                entry.tag() != 0 && represented.binary_search(index).is_err()
+                                if entry.tag() == 0 {
+                                    arrivals.is_captured_name(entry.held_name())
+                                } else {
+                                    represented.binary_search(index).is_err()
+                                }
                             })
-                            .map(|(_, entry)| entry),
+                            .map(|(_, entry)| entry)
+                            .chain(captured.iter()),
                     )
                 })
                 .transpose()?;
@@ -2768,43 +2898,54 @@ impl super::FixMsg {
         })
     }
 
-    /// The `metadata` cell a row states: the message's own map, then every
+    /// The `metadata` cell a row states: the message's own map and every
     /// key no dictionary resolved - a root entry of tag zero - under its own
     /// spelling, as [`keyed_text`] renders it with members under their own
     /// names, a key stated more than once the JSON array of its values in
-    /// arrival order. Where one spelling names both, the message's own value
-    /// stands.
-    fn row_metadata(&self) -> Result<crate::Scalar> {
-        // By name, arrival order kept among one name's occurrences: on the
-        // stack for every message a desk writes.
-        let mut unresolved: SmallVec<[&super::FixEntry; 64]> = self
-            .entries()
+    /// arrival order, less the `arrivals` captured into the residual record;
+    /// null once nothing stays. Where one spelling names both, the message's
+    /// own value stands. The two are merged in key order, so the map is built
+    /// sorted and nothing is copied to sort it.
+    fn row_metadata(&self, arrivals: &Arrivals<'_>) -> Result<crate::Scalar> {
+        let mut keys = self
+            .metadata()
             .iter()
-            .filter(|entry| entry.tag() == 0)
-            .collect();
-        // Every entry is borrowed from the one slice, so its address is its
-        // arrival: an unstable sort on the two is the stable one, with no
-        // buffer of its own.
-        unresolved.sort_unstable_by(|left, right| {
-            left.held_name()
-                .cmp(right.held_name())
-                .then_with(|| std::ptr::from_ref(*left).cmp(&std::ptr::from_ref(*right)))
-        });
-        let mut held: Option<std::collections::BTreeMap<SmolStr, SmolStr>> = None;
-        for entries in unresolved.chunk_by(|left, right| left.held_name() == right.held_name()) {
+            .filter(|(key, _)| !arrivals.is_captured_key(key))
+            .peekable();
+        let mut pairs: Vec<(crate::Scalar, crate::Scalar)> =
+            Vec::with_capacity(self.metadata().len() + arrivals.unresolved.len());
+        for entries in arrivals
+            .unresolved
+            .chunk_by(|left, right| left.held_name() == right.held_name())
+        {
+            let name = entries[0].held_name();
+            if arrivals.is_captured_name(name) {
+                continue;
+            }
+            let mut spelled = false;
+            while let Some((key, value)) = keys.next_if(|(key, _)| *key <= name) {
+                spelled |= key == name;
+                pairs.push((
+                    crate::Scalar::from(key.clone()),
+                    crate::Scalar::from(value.clone()),
+                ));
+            }
+            if spelled {
+                continue;
+            }
             let text = keyed_text(self.registry(), entries, |held| held.held_name().clone())?;
-            held.get_or_insert_with(|| self.metadata().clone())
-                .entry(entries[0].held_name().clone())
-                .or_insert(text);
+            pairs.push((crate::Scalar::from(name.clone()), crate::Scalar::from(text)));
         }
-        match held {
-            None => Ok(self.column_value(super::METADATA_TAG_NAME.0)),
-            Some(metadata) => crate::Scalar::from_mapping(
-                metadata
-                    .into_iter()
-                    .map(|(key, value)| (crate::Scalar::from(key), crate::Scalar::from(value))),
-            ),
+        for (key, value) in keys {
+            pairs.push((
+                crate::Scalar::from(key.clone()),
+                crate::Scalar::from(value.clone()),
+            ));
         }
+        if pairs.is_empty() {
+            return Ok(crate::Scalar::Null);
+        }
+        crate::Scalar::from_mapping(pairs)
     }
 
     /// One group's value, laid out the way the fixed column declares it.
@@ -2958,13 +3099,13 @@ impl super::FixMsg {
 
 /// One column's value as that column holds it, leaf by leaf, best effort.
 ///
-/// A capture is written by systems that disagree with the dictionary about
-/// what a field is: a five-byte MIC where the standard says four, an
-/// identifier whose check digit does not close, a quantity spelled as a
-/// word. A table of ten million rows must not end on one of them. A leaf the
-/// column refuses is that leaf's null, which is the honest answer for a value
-/// nothing could read as the field it landed under, and nothing is lost by
-/// it, because the arrival record beside it carries what arrived verbatim.
+/// A capture is written by systems that disagree with the dictionary about what
+/// a field is: a five-byte MIC where the standard says four, an identifier of
+/// the wrong width, a quantity spelled as a word. A table of ten million rows
+/// must not end on one of them. A leaf the column refuses is that leaf's null,
+/// which is the honest answer for a value nothing could read as the field it
+/// landed under, and nothing is lost by it, because the arrival record beside
+/// it carries what arrived verbatim.
 ///
 /// A nested column keeps everything that does read. The whole value is tried
 /// first, so an ordinary row costs one call and nothing else; only when that
@@ -2996,7 +3137,7 @@ fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
     if let Some(value) = retry
         && let Some(held) = refit(column, value)
     {
-        crate::warning::warned!(
+        crate::logging::warning::warned!(
             "FIX column kept what reads and nulled the rest",
             column.name(),
             "{refusal}"
@@ -3007,7 +3148,7 @@ fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
     // refuses one answers with the refusal the value earned.
     match column.scalar(crate::Scalar::Null) {
         Ok(null) => {
-            crate::warning::warned!(
+            crate::logging::warning::warned!(
                 "FIX column value unreadable, stored as null",
                 column.name(),
                 "{refusal}"

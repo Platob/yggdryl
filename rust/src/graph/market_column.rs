@@ -437,8 +437,10 @@ impl MarketColumn {
                     Scalar::Isin(held) => Some(held.clone()),
                     other => other.as_str().and_then(|text| Isin::new(text).ok()),
                 };
+                // A projection of `securityids`: it fills an absent ISIN,
+                // replaces one ranking below it and leaves another real one
+                // standing - what `insert` decides.
                 if let Some(code) = code
-                    && element.get_isincode().is_none()
                     && let Ok(id) = Identifier::new(IdKey::base(IdType::Isin), code.as_str())
                 {
                     let _ = element.insert_securityid(id);

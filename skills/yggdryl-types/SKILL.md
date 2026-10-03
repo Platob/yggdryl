@@ -36,6 +36,8 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | a schema | `DataType::from(StructType::from_fields([..])?).required_field("row")` | `yggdryl.struct("row", [..], nullable=False)` | `fields.struct('row', [..], { nullable: false })` |
 | schema from a class | `StructType` + typed leaves (`Int64Field::unit`) | `@scalar` class, `Class.into_field()`, `field(obj)` | `static get intoStructField()`, `intoField(Class)` |
 | check a schema root | `root.validate_struct_root()?` | `root.validate_struct_root()` | no `validateStructRoot`: check `f.dtype.id === 'struct' && !f.nullable` (only `intoField(Class)` checks a class's `intoStructField`) |
+| a non-record as a record (a struct answers itself) | `dtype.is_struct()`; `dtype.into_struct_type()?` (`struct<value: ..>`, the child nullable), `field.into_struct_field()?` (a required `row` over the field unchanged), `value.into_struct_scalar()` (`{value: ..}`) | Rust only | Rust only |
+| the record root of any value, no schema | `value.inferred_record_field()?`: rows as `inferred_struct_field`, any other value wrapped under `row` | Rust only (`Scalar.into_struct_field()` is the rows half) | Rust only (`intoStructField()` is the rows half) |
 | a value under a type | `field.scalar(v)?`, `dtype.scalar(v)?` | `field.scalar(v)`, `dtype.scalar(v)` | `field.scalar(v)`, `dtype.scalar(v)` |
 | infer from a host value | `Scalar::from(7_i64)`, `Scalar::from_struct([..])?` | `Scalar.from_(v)`, `Scalar.from_struct({..})` | `Scalar.from(v)` |
 | back to host | `as_i64()`, `as_str()`, `as_decimal()`, ... | `s.as_py()` | `s.asJs()` |
@@ -49,6 +51,7 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | one protocol's keys | `as_iceberg_mut().insert("doc", ..)?` | `field.iceberg["doc"] = ..` | `field.iceberg.set('doc', ..)` |
 | a registered enum (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`) | `DataType::Side.scalar("BUYS")?`, `Side::from_spelling("1")`, `MarketDataKind::Order.code()`, `TimeInForce::from_fix("0")` | `yggdryl.side(name)`, `Side.BUYS` (an `IntEnum`), `MarketDataKind.from_spelling("order")`, `TimeInForce.from_fix("0")` | `fields.side(name)`, `Side.BUYS` (a frozen name-to-code object), `timeInForceFromFix('0')` |
 | a free enum spelling (`order fill`, `Part-Filled`, `pending cxl`) | `State::from_spelling("order fill")` - read by its words once the exact vocabularies miss, cached | `State.from_spelling("order fill")`, `DataType("state").scalar(...)` | `new DataType('state').scalar('order fill')` |
+| a registered code's validity (`isin`, `cusip`, `sedol`, `figi`, `country`, `ccy`, `mic`, `cfi`) | `code.rank()`, `code.is_real()` (`CodeValue`), `IdType::Isin.rank(text)`, `Isin::rank_of(text)`, `Isin::is_closed`, `Isin::is_listed_prefix`, `Isin::NONE`, `Country::is_listed`, `Ccy::is_none`, `Mic::is_none` | Rust only: a value of the right shape is accepted whatever its rank | Rust only |
 | an enumerated column (`FIELD:enum`) | `StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?` + `Field::new("side", DataType::fixed_ascii(4)?, false).try_with_string_enum(&side)?`; `string_enum()?`; `StringEnum::from_logical_name("ccy")?` | `StringEnum("Side", {"BUY": "B", "SELL": "S"})` + `field.set_string_enum(side)`; `field.string_enum`; `StringEnum.from_logical_name("ccy")`; `yggdryl.enums.Ccy` / `Country` bases | `new StringEnum('Side', { BUY: 'B', SELL: 'S' })` + `field.setStringEnum(side)`; `field.stringEnum`; `StringEnum.fromLogicalName('ccy')` |
 | compare, diff | `equals(&o, true)`, `show_diffs(&o, true, false)` | `equals(o, with_metadata=False)`, `show_diffs(o)` | `equals(o, false)`, `showDiffs(o)` |
 | merge two schemas | `a.merge_with(&b, true)?` | `a.merge_with(b)` | `a.mergeWith(b)` |
@@ -95,7 +98,12 @@ string and byte leaves, the legacy `list` words - is in
    accessors (`parquet_field_id`, `comment`, `location`, `display`) and the
    protocol views (`iceberg`, `digest`, `partition`, ...) read and write that
    same map; keep no parallel dict. Every write validates first and a failed
-   one leaves the field unchanged.
+   one leaves the field unchanged. A struct's `by` declarations -
+   `PARTITION:by` (`with_partition_by` / `withPartitionBy` also adds the
+   derived columns), `SORT:by`, `DIGEST:by`, `TRANSFORM:by` - are JSON arrays of
+   expression texts, each stored as its grammar spells it (`Lower(symbol)` is
+   `lower(symbol)`); Python and Node assign them as lists through
+   `field.partition.by`, `field.sort.by` and `field.digest.by`.
 6. **Subscripting a field reaches a child, never metadata.** `field["x"]` is
    the child `x`; metadata is `field.metadata["x"]` (Python) or
    `field.get('x')` (JavaScript). A path string is parsed once by `FieldPath`:
@@ -148,6 +156,29 @@ string and byte leaves, the legacy `list` words - is in
 - A Python `float` into a decimal column is refused (`expected unscaled
   decimal integer, got f64`): pass `Decimal("12.5")`, the text `"12.5"`, or an
   `int`. Same in JavaScript: pass `'12.5'` or a `bigint`.
+- Decimal text is the shortest exact text - `decimal(10,2)` 10.50 writes
+  `"10.5"`, 100.00 writes `"100"` - in every codec and in a cast to text; the
+  scale is the type's. Reading is one grammar for a value, a column cell and
+  `Decimal::parse`: trimmed, a leading sign, the point leading, trailing or
+  absent, an exponent, `_` grouping the digits ahead of the point (`" +10.5 "`,
+  `".5"`, `"5."`, `"1.05e1"`, `"1_250.5"`, `"10.50000"`) at the declared
+  scale. It refuses text stating no number (a bare sign, two points, a
+  letter, `NaN`, `inf`), a comma (`"1,250"` is one and a quarter under a
+  decimal comma), and a non-zero digit past the scale (`"12.505"` under
+  `decimal(10,2)`): dropping a digit off a price is a value change. Empty text
+  entering a decimal column is null (rule 11); `Decimal::parse("")` refuses
+  it. Python's `as_py()` answers a `Decimal` at the column scale
+  (`Decimal("10.50")`).
+- A boolean reads one vocabulary everywhere - a value through
+  `DataType.scalar`, a text column cast to `boolean`, a setting, a flag:
+  `true`, `t`, `tr`, `tru`, `yes`, `y`, `ye`, `on`, `1` and `false`, `f`,
+  `fa`, `fal`, `fals`, `no`, `n`, `off`, `of`, `0`, ASCII case-insensitive and
+  trimmed. Other text is refused (a cast names it: `expected true/false,
+  yes/no, y/n, on/off or 1/0`), or null under a `safe` cast into a nullable
+  column. Inference proves a boolean only from `true`/`false`: a column of
+  `1`/`0` infers as integers. Truthiness (Rust `is_truthy`, Python
+  `bool(scalar)`, JavaScript `isTruthy()`) reads text by the same false set:
+  `"no"`, `"OFF"`, `"0"` and blank text are false, `"n/a"` true.
 - A Python `dict` is a **map**, not a row: `root.scalar({"id": 7})` is refused
   (`expected struct sequence, got map`). Pass a list in declaration order, a
   dataclass instance, or `Scalar.from_struct({...})`. A JavaScript plain
@@ -169,11 +200,16 @@ string and byte leaves, the legacy `list` words - is in
 - A code is not a string: `ccy` is its own datatype (`kind == "code"`,
   `string_parameters is None`), not `fixed_ascii(8)`, and holds ISO 4217's
   three letters or a digital-asset ticker (`USDT`, `BABYDOGE`) of at most eight
-  bytes, case kept; `isin`, `cusip`,
-  `sedol`, `figi` check their digit; these four and `bbg`, `ric` have no
-  default value (`default_scalar()` raises), so a record that omits such a
-  required child is refused rather than defaulted - make the child nullable
-  or always supply it.
+  bytes, case kept. A code is held to its **shape** and its validity is a
+  **rank**, never a refusal: an `isin`, `cusip`, `sedol` or `figi` whose
+  check digit does not close, a masked `XX0000000001`, a `country` ISO 3166
+  does not list, `XXX` and `XXXX` (no currency, no market) are accepted at a
+  lower rank, and a merge keeps the real value whichever was stated first;
+  only another shape (`US037833100`, eleven characters) is refused. `isin`,
+  `cusip`, `sedol`, `figi`, `bbg` and `ric` have no default value
+  (`default_scalar()` raises), so a record that omits such a required child is
+  refused rather than defaulted - make the child nullable or always supply
+  it.
 - A Python `uuid.UUID` passed to `Scalar.from_` infers as text: declare the
   column `uuid` and read through it. A JavaScript `Date` is
   `datetime64(ms,"UTC")` and a `date32` column refuses it.
@@ -213,6 +249,10 @@ string and byte leaves, the legacy `list` words - is in
   field (crossed as IPC, so `c: Utf8` not-null under `yggdryl.ccy` reads back
   as a required `ccy`), a native value, or text; any other object is a
   `TypeError`, never stringified.
+- Python's `Scalar.into_struct_field()` and JavaScript's `intoStructField()` are
+  Rust's `Scalar::inferred_struct_field` (named rows to their root), not
+  `Field::into_struct_field` (any field wrapped as a record root), which no
+  binding reaches.
 - Python has no `DataType.decimal128`/`DataType.index_of`: exact decimal widths
   are field factories (`yggdryl.decimal128(name, p, s)`) and child positions
   are `Field.index_of`. JavaScript has no `DataType.decimal`.

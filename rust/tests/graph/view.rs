@@ -9,8 +9,9 @@ use smol_str::SmolStr;
 use yggdryl::IdKey;
 use yggdryl::arrow::BatchReader;
 use yggdryl::graph::{
-    BookEvent, Element, Event, ExecutionEvent, Market, MarketData, MarketView, Operation,
-    OperationEvent, OperationKind, OrderEvent, QuoteEvent, TradeEvent,
+    BookEvent, BookIterator, Element, Event, ExecutionEvent, Market, MarketData, MarketView,
+    Operation, OperationEvent, OperationKind, OrderEvent, OrderKind, QuoteEvent, SnapshotEvent,
+    TradeEvent,
 };
 use yggdryl::{Decimal, Field, FieldPath, IdType, Identifier, MarketDataKind, Plan, Side, State};
 
@@ -68,7 +69,7 @@ fn trade(unix: i64, code: &str, executions: usize) -> TradeEvent {
     TradeEvent::from_parts(&root, parts).unwrap()
 }
 
-/// A book of one order, one quote and one execution.
+/// A book of one order and one quote.
 fn book(unix: i64) -> BookEvent {
     let mut book = BookEvent::new(unix, "ACME");
     book.add_operations([
@@ -323,7 +324,7 @@ fn every_plan_is_built_as_its_text_reads_back() {
         MarketData::plan(&MarketView::Books, &[])
             .unwrap()
             .to_string(),
-        "select * exclude (executions) where marketdatakind = 'BOOK' and alive is not null"
+        "select * exclude (executions) where marketdatakind = 'BOOK' and deltas is not null"
     );
     assert_eq!(
         MarketData::plan(
@@ -456,6 +457,58 @@ fn a_book_is_one_row_its_alive_entries_and_deltas_kept_nested() {
             "{name}"
         );
     }
+}
+
+/// The books view keeps every book a walk emits - with no grid each stating
+/// its deltas alone, its `alive` cell null - and drops a snapshot control,
+/// which states neither list.
+#[test]
+fn the_books_view_keeps_a_book_stating_its_deltas_alone_and_drops_a_snapshot_control() {
+    let mut values = BookIterator::new(
+        [20, 21]
+            .map(|unix| {
+                MarketData::from(operation::<OrderKind>(
+                    unix,
+                    &format!("O-{unix}"),
+                    "Buy",
+                    "New",
+                ))
+            })
+            .into_iter(),
+        0,
+    )
+    .unwrap()
+    .map(|book| book.map(MarketData::from))
+    .collect::<yggdryl::Result<Vec<_>>>()
+    .unwrap();
+    assert_eq!(
+        values
+            .iter()
+            .map(|book| book.as_book_event().unwrap().is_complete())
+            .collect::<Vec<_>>(),
+        [false, false]
+    );
+    let mut control = OrderEvent::at(22);
+    control.set_crosscode("W-22".to_owned());
+    control.set_ticker(Some(SmolStr::new("ACME")), true);
+    control.finalize();
+    values.push(MarketData::from(SnapshotEvent::snapshot(
+        &control,
+        Some(SmolStr::new("Symbol=ACME")),
+    )));
+    let out = drained(
+        MarketData::apply_view(
+            &MarketView::Books,
+            &[],
+            MarketData::arrow_reader(values, None, None).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(instants(column(&out, "currunix")), [Some(20), Some(21)]);
+    let alive = column(&out, "alive");
+    assert_eq!((alive.is_null(0), alive.is_null(1)), (true, true));
+    assert_eq!(column(&out, "deltas").null_count(), 0);
 }
 
 #[test]
@@ -689,9 +742,9 @@ fn a_lift_by_key_reads_an_identifier_a_party_and_null_where_one_is_absent() {
 }
 
 /// A lifecycle is one chain, named by the exact stored cross code it is
-/// filed under - category, side and base - so the same base under another
-/// side or category is another chain, and the bare base or the old
-/// `BUYS:` spelling names none.
+/// filed under - category, side and base, a quote's side `0` whatever it
+/// tags - so the same base under another side or category is another chain,
+/// and the bare base or the old `BUYS:` spelling names none.
 #[test]
 fn a_lifecycle_is_read_by_the_stored_cross_code_alone() {
     let leaves = |unix: i64| {
@@ -743,7 +796,7 @@ fn a_lifecycle_is_read_by_the_stored_cross_code_alone() {
         ("10:1:X-1", 10),
         ("10:2:X-1", 11),
         ("10:0:X-1", 12),
-        ("14:1:X-1", 13),
+        ("14:0:X-1", 13),
         ("8:2:X-1", 14),
     ] {
         let (rows, codes) = read(stored);

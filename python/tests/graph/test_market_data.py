@@ -487,8 +487,10 @@ def test_the_plans_the_views_are() -> None:
         f"select * exclude ({nested}), securityids['isin'] as isin "
         "where marketdatakind = 'ORDR'"
     )
+    # A book states its deltas - a complete one its alive entries beside
+    # them - where a snapshot control states neither.
     assert str(graph.MarketData.plan("books")) == (
-        "select * exclude (executions) where marketdatakind = 'BOOK' and alive is not null"
+        "select * exclude (executions) where marketdatakind = 'BOOK' and deltas is not null"
     )
     # Applying a view is applying its plan.
     plan = graph.MarketData.plan("trades")

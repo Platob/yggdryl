@@ -40,7 +40,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, Identifier,
+    ArrowCastOptions, DataType, Field, Filter, FixCodec, FixMsg, FixRegistry, IOMedia, Identifier,
     SerieReader, State, StructType, Timezone, Url, fix_schema,
 };
 
@@ -677,7 +677,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         &codec,
         b"8=FIX.4.4|35=W|55=AAPL|262=REQ-1|1021=2|1180=MDP|1181=42|268=3|269=0|278=B1|270=100|271=10|290=1|269=1|278=A1|37=O1|270=101|271=12|290=1|269=2|278=T1|270=100.5|271=2|10=0|",
     );
-    // A trade reaches a book as the sided executions its parse splits off
+    // A trade is market data as the sided executions its parse splits off
     // (A12), and is no leaf of its own: the composite trade is built over
     // those parts, as a caller holding both builds it.
     let trade_row: &[u8] = b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=2|54=1|1427=BUY-EXEC|1009=4|37=BUY-ORDER|11=BUY-CLIENT|54=2|1427=SELL-EXEC|1009=6|37=SELL-ORDER|11=SELL-CLIENT|10=0|";
@@ -749,11 +749,6 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
     dense_update.set_book(Some(book));
     dense_update.finalize();
     let dense_update = MarketData::from(dense_update);
-    let mut dense_execution = ExecutionEvent::try_from(operations[2].clone())
-        .expect("the snapshot fixture's trade entry is an execution");
-    dense_execution.set_currunix(update_unix);
-    dense_execution.finalize();
-    let dense_execution = MarketData::from(dense_execution);
 
     let mut group = criterion.benchmark_group("fix/pipeline/market");
     group.throughput(Throughput::Elements(1));
@@ -810,8 +805,8 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
     });
 
     group.throughput(Throughput::Elements(2));
-    // A two-sided trade row to what a book reads of it: the parse splits
-    // off one execution per side (A12), each one execution leaf.
+    // A two-sided trade row to the market data it is: the parse splits off
+    // one execution per side (A12), each one execution leaf.
     group.bench_function("two_sided_trade_fix_to_executions", |bencher| {
         bencher.iter(|| {
             codec
@@ -829,6 +824,8 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         });
     });
 
+    // The snapshot's three entries, its trade entry (`269=2`) an execution
+    // the book prunes before it folds the bid and the ask.
     group.throughput(Throughput::Elements(operations.len() as u64));
     group.bench_function("book_add_operations", |bencher| {
         bencher.iter_batched(
@@ -848,17 +845,6 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
             |(mut book, update)| {
                 book.add_operations([black_box(update)])
                     .expect("one journaled book update");
-                black_box(book)
-            },
-            BatchSize::LargeInput,
-        );
-    });
-    group.bench_function("book_single_execution_dense", |bencher| {
-        bencher.iter_batched(
-            || (dense_book.clone(), dense_execution.clone()),
-            |(mut book, execution)| {
-                book.add_operations([black_box(execution)])
-                    .expect("one execution-only dense-book update");
                 black_box(book)
             },
             BatchSize::LargeInput,
@@ -891,9 +877,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
                     .expect("a sorted book iterator")
                     .try_fold(0_usize, |count, book| {
                         let book = book?;
-                        Ok::<_, yggdryl::Error>(
-                            count + book.alive().count() + book.executions().len(),
-                        )
+                        Ok::<_, yggdryl::Error>(count + book.alive().count() + book.deltas().len())
                     })
                     .expect("the operation stream builds books")
             },
@@ -906,8 +890,29 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
             || market_messages.clone(),
             |messages| {
                 let rows = codec
-                    .book_arrow_reader(black_box(messages), 0)
+                    .book_arrow_reader(black_box(messages), 0, None)
                     .expect("a FIX book Arrow reader")
+                    .try_fold(0_usize, |rows, batch| {
+                        batch.map(|batch| rows + batch.num_rows())
+                    })
+                    .expect("the FIX messages build Arrow books");
+                assert_eq!(rows, MARKET_REPEATS);
+                black_box(rows)
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same books under a filter keeping the bids: the walk pulls the
+    // snapshots' entries ahead, lays them out as one batch and folds the
+    // bids the expression engine keeps.
+    let bids: Filter = "side = 'BUYS'".parse().expect("a filter over the row");
+    group.bench_function("fix_book_arrow_reader_filtered", |bencher| {
+        bencher.iter_batched(
+            || market_messages.clone(),
+            |messages| {
+                let rows = codec
+                    .book_arrow_reader(black_box(messages), 0, Some(&bids))
+                    .expect("a filtered FIX book Arrow reader")
                     .try_fold(0_usize, |rows, batch| {
                         batch.map(|batch| rows + batch.num_rows())
                     })

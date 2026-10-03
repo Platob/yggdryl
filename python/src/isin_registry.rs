@@ -5,13 +5,14 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
-use yggdryl::{IsinEntry, IsinRegistry};
+use yggdryl::{DataType, IsinEntry, IsinRegistry, Mic, Scalar};
 
 use crate::fix::{PyFixMsg, read_located};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
-use crate::scalar::{as_py, struct_from_entries};
+use crate::scalar::{as_py, from_py, struct_from_entries};
 use crate::value_error;
 
 /// A table of instruments keyed by ISIN - each row the instrument's CFI
@@ -48,6 +49,18 @@ impl PyIsinRegistry {
     /// `None`.
     fn entry_as_py(py: Python<'_>, entry: Option<&IsinEntry>) -> PyResult<Option<Py<PyAny>>> {
         entry.map(|held| as_py(py, &held.into_scalar())).transpose()
+    }
+}
+
+/// The market one argument names - a MIC in any spelling the core reads -
+/// checked through the `mic` datatype's own value contract.
+fn mic_of(value: &Bound<'_, PyAny>) -> PyResult<Mic> {
+    match DataType::Mic.scalar(from_py(value)?).map_err(value_error)? {
+        Scalar::Mic(mic) => Ok(mic),
+        other => Err(PyTypeError::new_err(format!(
+            "expected a market identifier code, got {}",
+            other.kind()
+        ))),
     }
 }
 
@@ -127,6 +140,22 @@ impl PyIsinRegistry {
     /// The row the RIC `ric` names, as a `dict` of its columns, or `None`.
     fn get_by_ric(&self, py: Python<'_>, ric: &str) -> PyResult<Option<Py<PyAny>>> {
         Self::entry_as_py(py, self.lock().get_by_ric(ric))
+    }
+
+    /// The row the ticker `ticker` names on `market`, as a `dict` of its
+    /// columns, or `None`: the one row listing the ticker whose market is
+    /// `market` - a MIC, checked by the `mic` datatype - or whose market or
+    /// `market` is unstated (`None` or `XXXX`). Two rows answering is
+    /// ambiguous, and answers none.
+    #[pyo3(signature = (ticker, market=None))]
+    fn get_by_ticker(
+        &self,
+        py: Python<'_>,
+        ticker: &str,
+        market: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Option<Py<PyAny>>> {
+        let market = market.map(mic_of).transpose()?;
+        Self::entry_as_py(py, self.lock().get_by_ticker(ticker, market.as_ref()))
     }
 
     /// Folds one row - a mapping of column names to cells, `isin` required

@@ -1,6 +1,6 @@
 # yggdryl-records in Python
 
-`from yggdryl import IOBase, RecordOptions, TextOptions`; Iceberg is `from yggdryl.iceberg import Table`. Every record method takes keyword-only `options=` plus the option properties by name (`select=`, `filter=`, `field=`, `merge_by=`, `max_row_size=`, `row_offset=`, `commit_row_size=`, `compression=`, `rowheader=`, ...), each set on a copy.
+`from yggdryl import IOBase, RecordOptions, TextOptions`; Iceberg is `from yggdryl.iceberg import Table`. Every record method takes keyword-only `options=` plus the option properties by name (`select=`, `filter=`, `field=`, `merge_by=`, `max_row_size=`, `row_offset=`, `commit_batch_num=`, `num_threads=`, `compression=`, `rowheader=`, ...), each set on a copy.
 
 ## Which encoding will this handle use?
 
@@ -174,7 +174,7 @@ with pytest.raises(ValueError, match="merge_by"):
 
 ## Choose the write mode at run time
 
-`write_arrow_reader|table|batch` and `write_records` take the mode as a string; `write_arrow`/`read_arrow` take and answer a `SerieReader` and are also the record door of JSON, JSON Lines, YAML, TOML and XML handles.
+`write_arrow_reader|table|batch` and `write_records` take the mode as a string, and so does `write_serie(value, mode="overwrite")`, whose `overwrite_serie`/`append_serie`/`merge_serie` name it: `value` is a `Serie`, a `ChunkedSerie`, a `SerieReader` or anything `SerieReader.from_` reads, and with `read_serie` they are also the record door of JSON, JSON Lines, YAML, TOML and XML handles.
 
 ```python
 import pathlib
@@ -182,7 +182,7 @@ import tempfile
 
 import pyarrow as pa
 
-from yggdryl import IOBase, Serie, SerieReader
+from yggdryl import ChunkedSerie, IOBase, Serie, SerieReader
 
 root = pathlib.Path(tempfile.mkdtemp())
 handle = IOBase(root / "trades.arrows")
@@ -190,17 +190,22 @@ for mode in ("overwrite", "append"):
     handle.write_arrow_table(pa.table({"id": [1, 2]}), mode)
 assert handle.row_size() == 4
 
-# A document handle takes rows through write_arrow, one document per row.
+# The Serie doors take a held column, held chunks, a stream or any columnar value.
+handle.write_serie(Serie.from_(pa.table({"id": [3]})), "append")
+handle.append_serie(ChunkedSerie.from_(pa.table({"id": [4]})))
+assert handle.row_size() == 6
+
+# A document handle takes rows through overwrite_serie, one document per row.
 lines = IOBase(root / "quotes.jsonl")
-lines.write_arrow(pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 200]}))
+lines.overwrite_serie(pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 200]}))
 assert lines.read_bytes().count(b"\n") == 2
-read = lines.read_arrow()
+read = lines.read_serie()
 assert isinstance(read, SerieReader)
 assert len(Serie.from_(read)) == 2
 
-# A document is written whole: write_arrow on it takes "overwrite" only.
+# A document is written whole: write_serie on it takes "overwrite" only.
 try:
-    lines.write_arrow(pa.table({"symbol": ["NVDA"], "size": [300]}), "append")
+    lines.append_serie(pa.table({"symbol": ["NVDA"], "size": [300]}))
     raise AssertionError("append to a document must be refused")
 except ValueError as refused:
     assert "expected overwrite, got append" in str(refused)
@@ -208,7 +213,7 @@ except ValueError as refused:
 
 ## Bound memory on large writes
 
-`commit_row_size=N` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `batch_row_size` bounds the batches a Parquet or Arrow IPC read yields.
+`commit_batch_num=N` publishes every N whole batches, then the remainder (a committed prefix survives a later failure); a cadence never cuts a batch, and native rows are cut into batches by `batch_row_size`. Unset is the destination's own cadence - a file, a folder and an Iceberg table commit once, the table holding every partition's rows under the process spill bound until the source ends; `0` is refused before any input is pulled. `num_threads=n` is how many partition groups an Iceberg commit writes at once, `0` refused naming `$.num_threads`. `batch_row_size` bounds the batches a Parquet or Arrow IPC read yields.
 
 ```python
 import pathlib
@@ -223,14 +228,16 @@ root = pathlib.Path(tempfile.mkdtemp())
 table = pa.table({"id": list(range(10))})
 
 handle = IOBase(root / "trades.parquet")
-handle.overwrite_arrow_table(table, commit_row_size=4)
+# Three batches at two batches a commit: rows 0-7 publish, then rows 8-9.
+batches = pa.Table.from_batches(table.to_batches(max_chunksize=4))
+handle.overwrite_arrow_table(batches, commit_batch_num=2)
 assert handle.row_size() == 10
 
 sizes = [batch.num_rows for batch in handle.read_arrow_reader(batch_row_size=4)]
 assert sum(sizes) == 10 and max(sizes) <= 4
 
-with pytest.raises(ValueError, match="commit_row_size"):
-    handle.overwrite_arrow_table(table, commit_row_size=0)
+with pytest.raises(ValueError, match="commit_batch_num"):
+    handle.overwrite_arrow_table(table, commit_batch_num=0)
 ```
 
 ## Parquet: compression, pruning, footer answers
@@ -440,21 +447,21 @@ assert [child.partitions for child in lake.children_where({"year": "2024"})] == 
 
 ## Derive a partition column from another column
 
-`PARTITION:sources` and `PARTITION:transform` on the derived field; `apply_arrow_batch` on the root fills it where absent or all null and leaves values alone.
+`PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `with_partition_by` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata; `apply_arrow_batch` on the transform view of the root fills it where absent or all null and leaves values alone. A write only casts, so fill the column through `root.transform.apply_arrow_batch` before a partitioned write: a required derived column the rows lack is refused by path, a nullable one lands null.
 
 ```python
 import pyarrow as pa
 
 from yggdryl import DataType, Field
 
-year = Field("year", "int32", nullable=True)
-year.partition.sources = ["event"]
-year.partition.transform = "year"
+root = Field(
+    "row", DataType.from_fields([Field("event", "date32", nullable=False)]), nullable=False
+).with_partition_by(["year(event) as year"])
+assert root.partition_field_names == ["year"]
+assert root.partition_by == ["year(event) as year"]
 
-root = Field("row", DataType.from_fields([Field("event", "date32", nullable=False), year]), nullable=False)
 batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
-
-filled = root.partition.apply_arrow_batch(batch)
+filled = root.transform.apply_arrow_batch(batch)
 assert filled.column_names == ["event", "year"]
 assert filled.column("year").to_pylist() == [2024, 2025]
 ```
@@ -593,7 +600,7 @@ assert read.execute().read_all().column("name").to_pylist() == ["b"]
 
 - Options are keyword-only: `read_arrow_reader(options=o)` or `read_arrow_reader(select=[...])`; a positional options argument is a `TypeError`.
 - A plan's `offset` assigned through `options.plan` is the options' `row_offset`; a merge with one is refused.
-- JSON, JSON Lines, YAML, TOML and XML handles are not `*_records`/`*_arrow_*` targets; use `write_arrow`/`read_arrow`, or the codecs in `yggdryl-documents`. `write_arrow` on them accepts `"overwrite"` only - a document is written whole.
+- JSON, JSON Lines, YAML, TOML and XML handles are not `*_records`/`*_arrow_*` targets; use `overwrite_serie`/`read_serie`, or the codecs in `yggdryl-documents`. `write_serie` on them accepts `"overwrite"` only - a document is written whole - and reads only the declared `field` off the options.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; pass `safe=False` to have it refused.
 - A folder's partition columns come from the path: a leaf read alone does not carry them.
 - A CSV byte role (`separator`, `quote`, `escape`, `comment`) is a one-character `str` or one byte, and `null_values` a list - a bare `str` is a `TypeError`; the role itself (ASCII, no line break, no byte another role holds) is judged by the core, and a CSV property on another encoding's options is `None` to read and a `ValueError` to set.

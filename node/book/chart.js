@@ -290,8 +290,8 @@ export function timeTicks(layout, zone = 'UTC', { measure = APPROXIMATE_MEASURE,
 /**
  * A bucket read out as one sentence, what the chart announces as the
  * keyboard reaches it: its edges in the zone, each side's open, high, low and
- * close, the mid and spread closes, the touch quantities, the counts and the
- * volume - whatever the bucket states.
+ * close, the mid and spread closes, the touch quantities and how many books
+ * it folded - whatever the bucket states.
  */
 export function describeCandle(candle, zone = 'UTC') {
   const start = formatInstant(candle.start, zone, { fraction: 0 })
@@ -307,9 +307,7 @@ export function describeCandle(candle, zone = 'UTC') {
   if (candle.bidqty !== null && candle.bidqty !== undefined) parts.push(`bid quantity ${formatDecimal(candle.bidqty)}`)
   if (candle.askqty !== null && candle.askqty !== undefined) parts.push(`ask quantity ${formatDecimal(candle.askqty)}`)
   const books = candle.books ?? 0
-  const executions = candle.executions ?? 0
-  parts.push(`${books} book${books === 1 ? '' : 's'}, ${executions} execution${executions === 1 ? '' : 's'}`)
-  if (candle.volume !== null && candle.volume !== undefined) parts.push(`volume ${formatDecimal(candle.volume)}`)
+  parts.push(`${books} book${books === 1 ? '' : 's'}`)
   return `${start} to ${sameDay ? end.slice(11) : end}: ${parts.join('; ')}`
 }
 
@@ -576,8 +574,7 @@ function tooltipRows(candle, zone) {
   if (candle.spread) rows.push(['Spread close', formatDecimal(candle.spread.close), 'spread'])
   if (candle.bidqty !== null && candle.bidqty !== undefined) rows.push(['Bid qty', formatDecimal(candle.bidqty), 'bid'])
   if (candle.askqty !== null && candle.askqty !== undefined) rows.push(['Ask qty', formatDecimal(candle.askqty), 'ask'])
-  rows.push(['Books · executions', `${candle.books ?? 0} · ${candle.executions ?? 0}`, null])
-  if (candle.volume !== null && candle.volume !== undefined) rows.push(['Volume', formatDecimal(candle.volume), null])
+  rows.push(['Books', String(candle.books ?? 0), null])
   return { head: `${formatInstant(candle.start, zone)} → ${formatInstant(candle.end, zone)}`, rows }
 }
 

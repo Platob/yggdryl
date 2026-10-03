@@ -8,7 +8,7 @@ from os import PathLike
 from types import EllipsisType
 from typing import IO, Any, ClassVar, Literal, Protocol, SupportsIndex, TypeVar, TypedDict, overload
 
-from typing_extensions import Unpack
+from typing_extensions import Self, Unpack
 
 import builtins
 import pyarrow  # type: ignore[import-untyped]
@@ -24,8 +24,57 @@ _T = TypeVar("_T")
 
 __version__: str
 
-# Drops the cached Python log levels, so a level changed after import applies.
-def refresh_logging() -> None: ...
+# States the core logger's deduplication; `None` takes the ancestors' again.
+def log_deduplicate(name: str, enabled: bool | None = True) -> None: ...
+
+# Whether the core logger deduplicates, as stated or inherited.
+def log_is_deduplicating(name: str) -> bool: ...
+
+# One record as the core's terminal format spells it.
+def log_terminal(
+    name: str,
+    level: int,
+    levelname: str | None,
+    message: str,
+    created: int,
+    pathname: str | None = None,
+    lineno: int | None = None,
+    function: str | None = None,
+    thread: str | None = None,
+    colored: bool = False,
+) -> str: ...
+
+# Whether a stream answering `is_terminal` is written in colour, by the core's rule.
+def log_is_color_enabled(is_terminal: bool) -> bool: ...
+
+# The native half of `yggdryl.logging.Deduplicate`: one table of repeated
+# records, counted by the core's hash.
+class LogRepeats:
+    def __init__(self) -> None: ...
+    def said(self, name: str, level: int, message: str) -> str | None: ...
+    def __len__(self) -> int: ...
+
+# The native half of `yggdryl.logging.FileHandler`: lines held and published
+# through a location's handle.
+class LogFile:
+    def __init__(
+        self,
+        location: str | PathLike[str] | Url | IOBase,
+        mode: str = "append",
+        capacity: int = 0,
+        flush_level: int | str | None = None,
+    ) -> None: ...
+    def write(self, line: str, level: int) -> None: ...
+    def flush(self) -> None: ...
+    def close(self) -> None: ...
+    @property
+    def url(self) -> str | None: ...
+    @property
+    def mode(self) -> str: ...
+    @property
+    def capacity(self) -> int: ...
+    @property
+    def flush_level(self) -> int: ...
 
 CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
@@ -485,6 +534,10 @@ class Serie:
         safe: bool = True,
         representation: Representation = "value",
     ) -> Serie: ...
+    # `length` copies of `value` under `field`: a constant column, the value
+    # proven by the field once, no row laid out until something exports it.
+    @staticmethod
+    def lit(field: object, value: object, length: int) -> Serie: ...
     @staticmethod
     def from_default(field: object, rows: int = 1) -> Serie: ...
     # Any columnar object - a pyarrow scalar, array, chunked array, batch,
@@ -507,6 +560,9 @@ class Serie:
     def dtype(self) -> DataType: ...
     @property
     def is_column(self) -> bool: ...
+    # Whether `lit` built this column: one value and a length.
+    @property
+    def is_lit(self) -> bool: ...
     def null_count(self) -> int: ...
     def is_empty(self) -> bool: ...
     def is_null(self, index: int) -> bool: ...
@@ -544,6 +600,110 @@ class Serie:
         safe: bool = True,
         representation: Representation = "value",
     ) -> Serie: ...
+    # Ordering, uniqueness and grouping, ascending with nulls last unless
+    # stated. The reads answer a new serie under the same field - off the
+    # GIL - and leave this one as it was; the `as_*` writes bring this serie
+    # into the state in place and answer this same object, so calls chain,
+    # a refusal leaving it as it was. `indices` (integers of any width),
+    # `mask` (booleans as long as the serie, an absent row keeping nothing)
+    # and `keys` (as long as the serie) are a `Serie`, any columnar object,
+    # or an iterable of values read through `Scalar`.
+    def sort_indices(
+        self, *, descending: bool = False, nulls_first: bool = False
+    ) -> Serie: ...
+    def is_sorted(self, *, descending: bool = False, nulls_first: bool = False) -> bool: ...
+    def is_unique(self) -> bool: ...
+    def unique_count(self) -> int: ...
+    def into_sorted(
+        self, *, descending: bool = False, nulls_first: bool = False
+    ) -> Serie: ...
+    def into_unique(self) -> Serie: ...
+    def into_reversed(self) -> Serie: ...
+    def into_taken(self, indices: object) -> Serie: ...
+    def into_filtered(self, mask: object) -> Serie: ...
+    # One `(key, rows)` per distinct key in order of first occurrence, an
+    # absent key one value; sorted keys cut every group as a zero-copy slice.
+    def partition_by(self, keys: object) -> list[tuple[Scalar, Serie]]: ...
+    # A record column by the cells its paths reach - one path or several,
+    # each a `FieldPath` or its text - keyed by the run of those cells.
+    def partition_by_paths(
+        self, paths: str | FieldPath | Iterable[str | FieldPath]
+    ) -> list[tuple[Scalar, Serie]]: ...
+    def memory_size(self) -> int: ...
+    # `memory_size` less what lies in a spill file's mapping.
+    def resident_size(self) -> int: ...
+    def is_spilled(self) -> bool: ...
+    # Moves the rows to disk, in place, until the resident bytes are under
+    # the bound: `options` - the process default `SpillOptions.from_env()`
+    # for `None` - with `byte_size` and `folder` set on a copy where given.
+    def spill(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> None: ...
+    # `spill`, answering this serie so calls chain.
+    def as_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Self: ...
+    # A spilled copy; this serie is untouched.
+    def into_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Serie: ...
+    # The `order by` keys the record's root declares (`SORT:by`), each as
+    # that declaration spells it.
+    def declared_order(self) -> list[str] | None: ...
+    # Sorting by `order by` keys: the text of the clause without its
+    # keywords, a list of key texts or `{"term", "descending",
+    # "nulls_first"}` records, or a `Selector`, every projection ascending.
+    # A plain column keys as itself, under its own name.
+    def sort_indices_by(self, by: OrderingsLike) -> Serie: ...
+    def into_sort_by(self, by: OrderingsLike) -> Serie: ...
+    # One record column of the left columns then the right, a key over one
+    # bare column on both sides once under the left name when `coalesce`, a
+    # colliding right name suffixed. `how` is `inner`, `left`, `right`,
+    # `full` (or `outer`), `semi` or `anti`, a trailing `outer` or `join`
+    # read; `other` is anything `Serie.from_` reads; `options` -
+    # `JoinOptions()` for `None` - takes each keyword given on a copy.
+    def join_with(
+        self,
+        other: object,
+        by: JoinKeysLike,
+        how: str = "inner",
+        options: JoinOptions | None = None,
+        *,
+        coalesce: bool | EllipsisType = ...,
+        suffix: str | EllipsisType = ...,
+        build: str | None | EllipsisType = ...,
+        prune: bool | EllipsisType = ...,
+        spill: SpillOptions | None | EllipsisType = ...,
+        pushdown_keys: int | EllipsisType = ...,
+    ) -> Serie: ...
+    def as_sorted(self, *, descending: bool = False, nulls_first: bool = False) -> Self: ...
+    def as_unique(self) -> Self: ...
+    def as_reversed(self) -> Self: ...
+    def as_taken(self, indices: object) -> Self: ...
+    def as_filtered(self, mask: object) -> Self: ...
+    def as_sort_by(self, by: OrderingsLike) -> Self: ...
+    # A window over this serie object, read and written through it.
+    def window(self, offset: int, length: int) -> WindowSerie: ...
+    # The windows of equal adjacent keys, each `(key, window)` - the key a
+    # run of one cell per term - over this serie object at its offsets, or,
+    # where `sorted` gathered rows out of key order, over one new `Serie`
+    # every window shares. Each window states its record as `static_values`.
+    # `sorted=None` is `False`.
+    def window_by(
+        self, by: SelectorLike, sorted: bool | None = False
+    ) -> list[tuple[Scalar, WindowSerie]]: ...
     def into_arrow_scalar(self) -> pyarrow.Scalar: ...
     def into_arrow_array(self) -> pyarrow.Array: ...
     def into_arrow_batch(self) -> pyarrow.RecordBatch: ...
@@ -641,6 +801,107 @@ class StructSerie(Serie):
     # `SerieReader.from_serie` reads - as a `pyarrow.RecordBatch` is.
     def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
 
+class WindowSerie:
+    """A window over a ``Serie``, read and written through it.
+
+    ``serie.window(offset, length)`` holds that serie object, the offset and
+    the length, and nothing else: every call borrows the serie when it is
+    asked and redirects to the core's window over it, every index
+    window-relative. A window ``window_by`` lent also holds the windows of
+    that call and its place among them: it states the record of values
+    constant over its rows - ``static_values`` - which no other window, a
+    narrower one included, states, and the windows of it keep that record.
+    The windows hold the rows they were cut from, buffers shared, so they
+    outlive the serie object. One class is both the shared and the mutable window -
+    a write is checked when it is made - and a window never grows or shrinks
+    what it views: ``splice`` takes exactly as many rows as its range,
+    ``as_taken`` exactly as many indices as the window, and there is no
+    ``as_unique`` or ``as_filtered``. A window past the end of its serie -
+    the serie having shrunk since - is refused naming the serie and both
+    counts. Its rows are its identity, against a window or a ``Serie``; the
+    serie is mutable, so a window is unhashable.
+    """
+
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+    @property
+    def offset(self) -> int: ...
+    @property
+    def serie(self) -> Serie: ...
+    @property
+    def field(self) -> Field | None: ...
+    @property
+    def dtype(self) -> DataType: ...
+    def null_count(self) -> int: ...
+    def is_empty(self) -> bool: ...
+    def is_null(self, index: int) -> bool: ...
+    def scalar(self, index: int) -> Scalar: ...
+    def get(self, index: int) -> Scalar | None: ...
+    def rows(self) -> list[Scalar]: ...
+    def as_py(self) -> list[Any]: ...
+    def memory_size(self) -> int: ...
+    # Read through the serie the window views: a window is never spilled on
+    # its own - spill the serie.
+    def resident_size(self) -> int: ...
+    def is_spilled(self) -> bool: ...
+    def window(self, offset: int, length: int) -> WindowSerie: ...
+    # Where `window_by` lent this window: one struct value - the cells the
+    # window it was cut from states but `windownum` and `rownum`, the key
+    # cells, `windownum` (its place among the windows) and `rownum` (the
+    # number its first row has in what was windowed first, `None` where
+    # `sorted` gathered the rows) - as `window_by` read the rows when it cut
+    # the windows, read by name.
+    @property
+    def static_values(self) -> Scalar | None: ...
+    # `Serie.window_by` over this window's rows, offsets the serie's. A
+    # window `window_by` lent keeps its record through them: its cells
+    # first, the `rownum` absolute.
+    def window_by(
+        self, by: SelectorLike, sorted: bool | None = False
+    ) -> list[tuple[Scalar, WindowSerie]]: ...
+    def into_serie(self) -> Serie: ...
+    def is_sorted(self, *, descending: bool = False, nulls_first: bool = False) -> bool: ...
+    def is_unique(self) -> bool: ...
+    def unique_count(self) -> int: ...
+    def sort_indices(
+        self, *, descending: bool = False, nulls_first: bool = False
+    ) -> Serie: ...
+    def into_sorted(
+        self, *, descending: bool = False, nulls_first: bool = False
+    ) -> Serie: ...
+    # The keys computed over the window's rows alone, positions
+    # window-relative.
+    def sort_indices_by(self, by: OrderingsLike) -> Serie: ...
+    def into_sort_by(self, by: OrderingsLike) -> Serie: ...
+    def into_unique(self) -> Serie: ...
+    def into_reversed(self) -> Serie: ...
+    def into_taken(self, indices: object) -> Serie: ...
+    def into_filtered(self, mask: object) -> Serie: ...
+    def partition_by(self, keys: object) -> list[tuple[Scalar, Serie]]: ...
+    def set(self, index: int, value: object) -> None: ...
+    def fill(self, value: object) -> None: ...
+    def swap(self, left: int, right: int) -> None: ...
+    def copy_from(self, other: WindowSerie | Serie) -> None: ...
+    def splice(self, start: int, end: int, rows: Iterable[object]) -> None: ...
+    def as_sorted(self, *, descending: bool = False, nulls_first: bool = False) -> Self: ...
+    def as_reversed(self) -> Self: ...
+    def as_taken(self, indices: object) -> Self: ...
+    # Every row outside the window untouched; a refusal leaves the serie.
+    def as_sort_by(self, by: OrderingsLike) -> Self: ...
+    def __len__(self) -> int: ...
+    @overload
+    def __getitem__(self, key: SupportsIndex) -> Scalar: ...
+    @overload
+    def __getitem__(self, key: builtins.slice) -> WindowSerie: ...
+    def __setitem__(self, index: SupportsIndex, value: object) -> None: ...
+    def __iter__(self) -> ScalarIterator: ...
+    def __contains__(self, value: object) -> bool: ...
+    def __eq__(self, other: object) -> bool: ...
+    def __ne__(self, other: object) -> bool: ...
+    def __lt__(self, other: WindowSerie | Serie) -> bool: ...
+    def __le__(self, other: WindowSerie | Serie) -> bool: ...
+    def __gt__(self, other: WindowSerie | Serie) -> bool: ...
+    def __ge__(self, other: WindowSerie | Serie) -> bool: ...
+
 class SerieReader(Iterator[Serie]):
     """One record ``Serie`` per batch of an Arrow stream, each cast by one plan.
 
@@ -688,8 +949,69 @@ class SerieReader(Iterator[Serie]):
         safe: bool = True,
         representation: Representation = "value",
     ) -> SerieReader: ...
+    # The held records still to yield; a stream holds none between pulls.
+    def resident_size(self) -> int: ...
+    def is_spilled(self) -> bool: ...
+    # Each held record through `Serie.spill`; a stream is untouched, and a
+    # reader handed over is refused.
+    def spill(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> None: ...
+    # `spill`, answering this reader so calls chain.
+    def as_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Self: ...
+    # The held records spilled, as a new reader; this one is spent.
+    def into_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> SerieReader: ...
+    # Every record not yet pulled, in order, as a new reader; this one is
+    # spent. The stream is drained before the first sorted batch.
+    def into_sorted(
+        self, *, descending: bool = False, nulls_first: bool = False
+    ) -> SerieReader: ...
+    # The keys are read before the stream is: a key no column answers is
+    # refused with no batch pulled.
+    def into_sort_by(self, by: OrderingsLike) -> SerieReader: ...
+    # A stream of the output, one probe batch joined at a time; this reader
+    # is spent. `other` is a `Serie`, a `ChunkedSerie`, a `SerieReader` or
+    # anything `SerieReader.from_` reads; a held side is the one built.
+    def join_with(
+        self,
+        other: object,
+        by: JoinKeysLike,
+        how: str = "inner",
+        options: JoinOptions | None = None,
+        *,
+        coalesce: bool | EllipsisType = ...,
+        suffix: str | EllipsisType = ...,
+        build: str | None | EllipsisType = ...,
+        prune: bool | EllipsisType = ...,
+        spill: SpillOptions | None | EllipsisType = ...,
+        pushdown_keys: int | EllipsisType = ...,
+    ) -> SerieReader: ...
     @property
     def field(self) -> Field: ...
+    # Where `window_by` cut this reader: one struct value named as the root,
+    # read by name - the windowed reader's own cells, the key cells,
+    # `windownum` and `rownum`. Kept by `cast`, never part of a batch.
+    @property
+    def static_values(self) -> Scalar | None: ...
+    # One lazy `SerieReader` per run of equal adjacent keys, read in order;
+    # this reader is spent. `sorted=True` verifies the keys arrive in order.
+    def window_by(self, by: SelectorLike, sorted: bool | None = False) -> SerieReaderWindows: ...
     def __iter__(self) -> SerieReader: ...
     def __next__(self) -> Serie: ...
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader: ...
@@ -697,6 +1019,23 @@ class SerieReader(Iterator[Serie]):
     # cast into a `requested_schema` capsule by the one cast; the reader is
     # spent afterwards, as `into_arrow_reader` spends it.
     def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
+
+class SerieReaderWindows(Iterator[SerieReader]):
+    """The windows of a stream, one lazy ``SerieReader`` per run of equal
+    adjacent keys, in the order they arrive.
+
+    Windows are read in order: taking the next window pulls and drops the
+    open one's unread rows, and a window read after its walk passed rows of
+    it raises once, naming it. Both records are known before the first pull.
+    """
+
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+    @property
+    def field(self) -> Field: ...
+    @property
+    def static_field(self) -> Field: ...
+    def __iter__(self) -> SerieReaderWindows: ...
+    def __next__(self) -> SerieReader: ...
 
 class ChunkedSerie:
     """Many columns under one field, held apart: a chunked array, or a table.
@@ -797,6 +1136,87 @@ class ChunkedSerie:
         safe: bool = True,
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
+    # What a `Serie` answers, across the chunks: `is_sorted` reads every
+    # chunk and every chunk edge with no join; `into_reversed`,
+    # `into_filtered` and `partition_by` work chunk by chunk and keep the
+    # chunks apart; `into_sorted` and `into_sort_by` sort each chunk on its
+    # own and merge them, with no join; `into_unique` keeps each chunk's
+    # first occurrences apart; `sort_indices`, `sort_indices_by`,
+    # `is_unique`, `unique_count` and `into_taken` are the one join, then
+    # the verb. `keys` held in chunks - a `ChunkedSerie`, a
+    # `pyarrow.ChunkedArray` or a table - are grouped chunk beside chunk
+    # with no join where both are cut at the same rows.
+    def sort_indices(
+        self, *, descending: bool = False, nulls_first: bool = False
+    ) -> Serie: ...
+    def is_sorted(self, *, descending: bool = False, nulls_first: bool = False) -> bool: ...
+    def is_unique(self) -> bool: ...
+    def unique_count(self) -> int: ...
+    def into_sorted(
+        self, *, descending: bool = False, nulls_first: bool = False
+    ) -> ChunkedSerie: ...
+    def sort_indices_by(self, by: OrderingsLike) -> Serie: ...
+    def into_sort_by(self, by: OrderingsLike) -> ChunkedSerie: ...
+    def into_unique(self) -> ChunkedSerie: ...
+    def into_reversed(self) -> ChunkedSerie: ...
+    def into_taken(self, indices: object) -> ChunkedSerie: ...
+    def into_filtered(self, mask: object) -> ChunkedSerie: ...
+    def partition_by(self, keys: object) -> list[tuple[Scalar, ChunkedSerie]]: ...
+    # `Serie.window_by` across the chunks, a run crossing an edge one window;
+    # a window states no record - its place is its place in the list.
+    def window_by(
+        self, by: SelectorLike, sorted: bool | None = False
+    ) -> list[tuple[Scalar, ChunkedSerie]]: ...
+    def memory_size(self) -> int: ...
+    def resident_size(self) -> int: ...
+    def is_spilled(self) -> bool: ...
+    # The heaviest chunks spill whole first, so the lightest stay resident.
+    def spill(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> None: ...
+    # `spill`, answering these chunks so calls chain.
+    def as_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Self: ...
+    # A spilled copy; these chunks are untouched.
+    def into_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> ChunkedSerie: ...
+    def declared_order(self) -> list[str] | None: ...
+    # `Serie.join_with` over the chunks, the output batches kept apart;
+    # `other` is anything `ChunkedSerie.from_` reads.
+    def join_with(
+        self,
+        other: object,
+        by: JoinKeysLike,
+        how: str = "inner",
+        options: JoinOptions | None = None,
+        *,
+        coalesce: bool | EllipsisType = ...,
+        suffix: str | EllipsisType = ...,
+        build: str | None | EllipsisType = ...,
+        prune: bool | EllipsisType = ...,
+        spill: SpillOptions | None | EllipsisType = ...,
+        pushdown_keys: int | EllipsisType = ...,
+    ) -> ChunkedSerie: ...
+    def as_sorted(self, *, descending: bool = False, nulls_first: bool = False) -> Self: ...
+    def as_unique(self) -> Self: ...
+    def as_reversed(self) -> Self: ...
+    def as_taken(self, indices: object) -> Self: ...
+    def as_filtered(self, mask: object) -> Self: ...
+    def as_sort_by(self, by: OrderingsLike) -> Self: ...
     def into_arrow_chunked_array(self) -> pyarrow.ChunkedArray: ...
     # One batch per chunk: a record's children, or the one column of a `row`.
     # A record chunk holding an absent row is refused.
@@ -1549,13 +1969,18 @@ class ProtocolField:
     def description(self) -> str | None: ...
     @description.setter
     def description(self, value: str) -> None: ...
-    # The typed `PARTITION:` vocabulary, answered only by `field.partition`.
+    # The ordered `by` list the four declaring protocols answer - the
+    # projections `field.partition` partitions by, the `order by` keys
+    # `field.sort` keeps, the terms `field.digest` and `field.transform` read -
+    # each entry the canonical text the core stores; `None` removes it. A
+    # transform's list is its function's arguments, written beside it by
+    # `term`, so `field.transform.by` is read and never assigned.
     @property
-    def sources(self) -> list[str] | None: ...
-    @sources.setter
-    def sources(self, paths: Iterable[str]) -> None: ...
-    # The typed `DIGEST:` vocabulary, answered only by `field.digest`;
-    # `sources` is the one property both declaring protocols answer.
+    def by(self) -> list[str] | None: ...
+    @by.setter
+    def by(self, entries: Iterable[str] | None) -> None: ...
+    def remove_by(self) -> str | None: ...
+    # The typed `DIGEST:` vocabulary, answered only by `field.digest`.
     def is_holder(self) -> bool: ...
     def set_holder(self) -> None: ...
     def remove_role(self) -> str | None: ...
@@ -1564,7 +1989,6 @@ class ProtocolField:
     @algorithm.setter
     def algorithm(self, algorithm: str) -> None: ...
     def remove_algorithm(self) -> str | None: ...
-    def remove_sources(self) -> str | None: ...
     @property
     def time(self) -> str | None: ...
     @time.setter
@@ -1576,12 +2000,13 @@ class ProtocolField:
     def unit(self, unit: str) -> None: ...
     def remove_unit(self) -> str | None: ...
     def is_coupled(self) -> bool: ...
+    # The term a `TRANSFORM:` column is computed with, answered only by
+    # `field.transform`; assigning `None` removes the declaration.
     @property
     def term(self) -> Term | None: ...
-    @property
-    def transform(self) -> str | None: ...
-    @transform.setter
-    def transform(self, transform: str) -> None: ...
+    @term.setter
+    def term(self, term: Term | str | None) -> None: ...
+    def remove_term(self) -> str | None: ...
     # The typed `PYTHON:` vocabulary, answered only by `field.python`.
     @property
     def class_metadata(self) -> PythonMetadata | None: ...
@@ -1605,8 +2030,8 @@ class ProtocolField:
     def kind(self, kind: str) -> None: ...
     @property
     def import_path(self) -> str | None: ...
-    # Answered by `field.partition` and `field.digest`; every other view
-    # raises `TypeError` naming its own scheme.
+    # Answered by `field.partition`, `field.transform` and `field.digest`;
+    # every other view raises `TypeError` naming its own scheme.
     def apply_arrow_batch(
         self, batch: pyarrow.RecordBatch
     ) -> pyarrow.RecordBatch: ...
@@ -1678,6 +2103,91 @@ class PythonMetadata:
     def __copy__(self) -> PythonMetadata: ...
     def __deepcopy__(self, memo: dict[int, object], /) -> PythonMetadata: ...
     def __reduce__(self) -> tuple[object, tuple[str, str, str]]: ...
+
+# A spill folder: a `LocalFolder` or `LocalPath` handle, a path, or a
+# `file:` URL.
+SpillFolder = LocalFolder | LocalPath | Url | str | PathLike[str]
+
+class SpillOptions:
+    """The bound a column stays resident under, and the folder it spills to.
+
+    ``byte_size`` is the resident bytes a column may hold before it spills:
+    ``NEVER`` spills nothing and ``0`` everything. ``folder`` is where the
+    private, already-unlinked spill files are made, the platform temporary
+    folder when ``None``. Immutable; equal options state one bound over one
+    folder URL.
+    """
+
+    NEVER: ClassVar[int]
+    def __init__(
+        self, byte_size: int = 67108864, folder: SpillFolder | None = None
+    ) -> None: ...
+    # The process default, read once from `YGGDRYL_SPILL_BYTE_SIZE` (a byte
+    # count, or `never`) and `YGGDRYL_SPILL_FOLDER`; every door that lays a
+    # column out settles under it. A refused value raises naming its
+    # variable and leaves the default unresolved.
+    @staticmethod
+    def from_env() -> SpillOptions: ...
+    # States the process default before anything reads it; refused once it
+    # has been read or installed.
+    @staticmethod
+    def install_env(options: SpillOptions) -> None: ...
+    @property
+    def byte_size(self) -> int: ...
+    @property
+    def folder(self) -> LocalFolder | None: ...
+    def is_never(self) -> bool: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __ne__(self, other: object, /) -> bool: ...
+    def __hash__(self) -> int: ...
+    def __repr__(self) -> str: ...
+    def __copy__(self) -> SpillOptions: ...
+    def __deepcopy__(self, memo: Any) -> SpillOptions: ...
+    def __reduce__(self) -> tuple[object, tuple[int, str | None]]: ...
+
+class JoinOptions:
+    """The facts beside a join's keys and kind.
+
+    ``coalesce`` writes a key stated as one bare column on both sides once,
+    under the left name; ``suffix`` is what a colliding right name takes;
+    ``build`` is the side held and hashed - ``"left"``, ``"right"``, or
+    ``None`` for the held side over a stream, else the smaller; ``prune``
+    drops probe rows the build keys cannot match before they are hashed;
+    ``spill`` is the bound the build side and every output batch settle
+    under, the process default for ``None``; ``pushdown_keys`` bounds the
+    build keys pushed into a probe source's filter. Immutable.
+    """
+
+    def __init__(
+        self,
+        coalesce: bool = True,
+        suffix: str = "_right",
+        build: str | None = None,
+        prune: bool = True,
+        spill: SpillOptions | None = None,
+        pushdown_keys: int = 10000,
+    ) -> None: ...
+    @property
+    def coalesce(self) -> bool: ...
+    @property
+    def suffix(self) -> str: ...
+    @property
+    def build(self) -> Literal["left", "right"] | None: ...
+    @property
+    def prune(self) -> bool: ...
+    @property
+    def spill(self) -> SpillOptions | None: ...
+    @property
+    def pushdown_keys(self) -> int: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __ne__(self, other: object, /) -> bool: ...
+    def __hash__(self) -> int: ...
+    def __repr__(self) -> str: ...
+    def __copy__(self) -> JoinOptions: ...
+    def __deepcopy__(self, memo: Any) -> JoinOptions: ...
+    def __reduce__(
+        self,
+    ) -> tuple[object, tuple[bool, str, str | None, bool, SpillOptions | None, int]]: ...
 
 class ArrowCastPlan:
     """One cast from a source field to a target field, compiled once.
@@ -1765,27 +2275,20 @@ class Field:
     def arrow_scalar(
         self, value: object, *, safe: bool = True
     ) -> pyarrow.Scalar: ...
-    # `cast` reconciles the batch to this root, `transform` computes every
-    # column a `TRANSFORM:expression` or a `PARTITION:transform` declares, and
-    # `digest` fills every holder last, over the rows as they finally stand.
+    # The cast onto this root alone; `field.transform` and `field.digest` fill
+    # the columns a declaration derives or holds.
     def apply_arrow_batch(
         self,
         value: pyarrow.RecordBatch,
         *,
-        digest: bool = True,
-        transform: bool = True,
-        cast: bool = True,
         safe: bool = True,
         representation: Representation = "value",
     ) -> pyarrow.RecordBatch: ...
-    # The applied shape, derived from the two schemas without reading a row.
+    # The cast shape, derived from the two schemas without reading a row.
     def apply_arrow_schema(
         self,
         value: pyarrow.Schema,
         *,
-        digest: bool = True,
-        transform: bool = True,
-        cast: bool = True,
         safe: bool = True,
         representation: Representation = "value",
     ) -> pyarrow.Schema: ...
@@ -1793,9 +2296,6 @@ class Field:
         self,
         value: pyarrow.RecordBatchReader,
         *,
-        digest: bool = True,
-        transform: bool = True,
-        cast: bool = True,
         safe: bool = True,
         representation: Representation = "value",
     ) -> pyarrow.RecordBatchReader: ...
@@ -1990,6 +2490,8 @@ class Field:
     @property
     def partition(self) -> ProtocolField: ...
     @property
+    def sort(self) -> ProtocolField: ...
+    @property
     def transform(self) -> ProtocolField: ...
     @property
     def s3(self) -> ProtocolField: ...
@@ -2026,6 +2528,17 @@ class Field:
     def only_partition_fields(self) -> Field: ...
     def without_partition_fields(self) -> Field: ...
     def with_partition_fields(self, names: Iterable[str]) -> Field: ...
+    # Each entry a projection - its text (`venue`, `years(ts)`,
+    # `minutes(ts, 15)`, `truncate(name, 4) as prefix`), a `Term`, or a
+    # `(term, alias)` pair; a derived entry adds a marked column its term computes
+    # through `field.partition.apply_arrow_batch` - a read or a write only casts.
+    def with_partition_by(
+        self, entries: Iterable[str | Term | tuple[str | Term, str]]
+    ) -> Field: ...
+    # The projections the rows partition by, as canonical text: the
+    # `PARTITION:by` declaration, else the marked columns.
+    @property
+    def partition_by(self) -> list[str]: ...
     # Item access on a schema node reaches a nested *child*, never metadata:
     # `field["price"]` and `dtype["price"]` mean the same thing. Metadata
     # is reached through `field.metadata[...]` or the named accessors.
@@ -2673,6 +3186,14 @@ FilterLike = Filter | Term | Expression | str
 SelectorLike = Selector | Term | Expression | str | Iterable[Term | str | tuple[Term | str, str]]
 PlanLike = Plan | Selector | Filter | Expression | Field | str
 OrderingKey = Term | str | tuple[Term | str, str] | tuple[Term | str, str, str]
+# The `order by` keys a sort verb takes, read once as the core reads them:
+# the clause's text without its keywords, a list of key texts or of
+# `{"term", "descending", "nulls_first"}` records, or a `Selector`.
+OrderingsLike = Selector | str | Mapping[str, object] | Sequence[str | Mapping[str, object]]
+# The keys a join takes: the text of a key list (`"id, venue = market"`), a
+# list of key texts or of `[left, right]` term pairs, or a mapping of left
+# terms to right terms.
+JoinKeysLike = str | Mapping[str, str] | Sequence[str | Sequence[str]]
 Row = Mapping[str, object] | Sequence[object] | Scalar | object
 
 class Filter:
@@ -3185,16 +3706,39 @@ class IOBase:
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
     ) -> Field: ...
-    def read_arrow(
+    def read_serie(
         self,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
     ) -> SerieReader: ...
-    def write_arrow(
+    # `value` is a `Serie`, `ChunkedSerie` or `SerieReader`, written as the
+    # batches it holds, or anything `SerieReader.from_` reads.
+    def write_serie(
         self,
         value: object,
         mode: str = "overwrite",
+        *,
+        options: RecordOptionsLike | None = None,
+        **properties: Unpack[RecordProperties],
+    ) -> None: ...
+    def overwrite_serie(
+        self,
+        value: object,
+        *,
+        options: RecordOptionsLike | None = None,
+        **properties: Unpack[RecordProperties],
+    ) -> None: ...
+    def append_serie(
+        self,
+        value: object,
+        *,
+        options: RecordOptionsLike | None = None,
+        **properties: Unpack[RecordProperties],
+    ) -> None: ...
+    def merge_serie(
+        self,
+        value: object,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
@@ -3953,7 +4497,7 @@ class Pages(Iterator[Response]):
 
     def __iter__(self) -> Pages: ...
     def __next__(self) -> Response: ...
-    def read_arrow(self, field: Field | str | None = None) -> SerieReader: ...
+    def read_serie(self, field: Field | str | None = None) -> SerieReader: ...
     def into_arrow_reader(
         self, field: Field | str | None = None, batch_row_size: int = 0
     ) -> pyarrow.RecordBatchReader: ...
@@ -4374,7 +4918,8 @@ class TextProperties(TypedDict, total=False):
     field: FieldLike | None | EllipsisType
     safe: bool | EllipsisType
     batch_row_size: int | None | EllipsisType
-    commit_row_size: int | None | EllipsisType
+    commit_batch_num: int | None | EllipsisType
+    num_threads: int | None | EllipsisType
     max_row_size: int | None | EllipsisType
     row_offset: int | None | EllipsisType
     max_byte_size: int | None | EllipsisType
@@ -4457,9 +5002,13 @@ class RecordOptions:
     @batch_row_size.setter
     def batch_row_size(self, batch_row_size: int | None) -> None: ...
     @property
-    def commit_row_size(self) -> int | None: ...
-    @commit_row_size.setter
-    def commit_row_size(self, commit_row_size: int | None) -> None: ...
+    def commit_batch_num(self) -> int | None: ...
+    @commit_batch_num.setter
+    def commit_batch_num(self, commit_batch_num: int | None) -> None: ...
+    @property
+    def num_threads(self) -> int | None: ...
+    @num_threads.setter
+    def num_threads(self, num_threads: int | None) -> None: ...
     @property
     def max_row_size(self) -> int | None: ...
     @max_row_size.setter
@@ -4590,8 +5139,6 @@ class RecordOptions:
     ) -> pyarrow.RecordBatchReader: ...
     def require_field(self) -> Field: ...
     def remove_field(self) -> Field | None: ...
-    @property
-    def write_batch_row_size(self) -> int | None: ...
     def stable_hash(self) -> int: ...
     def __repr__(self) -> str: ...
     def __eq__(self, other: object, /) -> bool: ...
@@ -4630,9 +5177,13 @@ class TextOptions:
     @batch_row_size.setter
     def batch_row_size(self, batch_row_size: int | None) -> None: ...
     @property
-    def commit_row_size(self) -> int | None: ...
-    @commit_row_size.setter
-    def commit_row_size(self, commit_row_size: int | None) -> None: ...
+    def commit_batch_num(self) -> int | None: ...
+    @commit_batch_num.setter
+    def commit_batch_num(self, commit_batch_num: int | None) -> None: ...
+    @property
+    def num_threads(self) -> int | None: ...
+    @num_threads.setter
+    def num_threads(self, num_threads: int | None) -> None: ...
     @property
     def max_row_size(self) -> int | None: ...
     @max_row_size.setter
@@ -4723,8 +5274,6 @@ class TextOptions:
     ) -> pyarrow.RecordBatchReader: ...
     def require_field(self) -> Field: ...
     def remove_field(self) -> Field | None: ...
-    @property
-    def write_batch_row_size(self) -> int | None: ...
     @property
     def capture_names(self) -> tuple[str, ...]: ...
     def source_field(self) -> Field: ...
@@ -5129,12 +5678,21 @@ class Table:
 
     """An Iceberg table reached entirely through one container handle."""
 
+    # `partition_by` is a `PartitionSpec`, or the `PARTITION:by` entries the
+    # core reads into one: a bare column an identity field, `days(ts)`,
+    # `minutes(ts, 15)`, `weeks(ts)`, `quarters(ts)`, `truncate(name, 4)` a
+    # derived one, `as alias` naming it. Omitted, the schema's own
+    # declaration is read the same way; `None`, like a schema declaring
+    # nothing, is unpartitioned.
     @classmethod
     def create(
         cls,
         root: IOBase,
         schema: FieldLike,
-        partition_by: PartitionSpec | Iterable[str] | None = None,
+        partition_by: PartitionSpec
+        | Iterable[str | Term | tuple[str | Term, str]]
+        | None
+        | EllipsisType = ...,
         *,
         format_version: int | None = None,
     ) -> Table: ...
@@ -5145,7 +5703,10 @@ class Table:
         cls,
         root: IOBase,
         schema: FieldLike,
-        partition_by: PartitionSpec | Iterable[str] | None = None,
+        partition_by: PartitionSpec
+        | Iterable[str | Term | tuple[str | Term, str]]
+        | None
+        | EllipsisType = ...,
         *,
         format_version: int | None = None,
     ) -> Table: ...
@@ -6151,6 +6712,11 @@ class IsinRegistry:
         ...
     def get(self, isin: str) -> dict[str, Any] | None: ...
     def get_by_ric(self, ric: str) -> dict[str, Any] | None: ...
+    def get_by_ticker(self, ticker: str, market: str | None = None) -> dict[str, Any] | None:
+        """The row the ticker names on ``market``: the one row listing it whose
+        market is ``market``, or whose market or ``market`` is unstated; two
+        rows answering is ambiguous, and answers ``None``."""
+        ...
     def merge(self, entry: Mapping[str, object]) -> bool: ...
     def remove(self, isin: str) -> dict[str, Any] | None: ...
     def clear(self) -> None: ...
@@ -6706,9 +7272,9 @@ class FixCodec:
     Ullink, FIXML and pair readers answer one ``FixMsg``. A parse builds the
     message, lifts its typed facts, restates deprecated fields to their
     latest aliases, runs the crate's native derivations, reads the
-    identifier maps off the fields that state them, splits the executions and
-    two-sided quotes a message states into sided messages of their own, and
-    settles the identity - there is no separate enriching step. Nothing a
+    identifier maps off the fields that state them, splits the executions a
+    message states into sided messages of their own - a quote stays one
+    message holding both its legs - and settles the identity - there is no separate enriching step. Nothing a
     capture states is an error: a value that will not type is null beside an
     anomaly, a clock naming no instant is left unstated, and what builds no
     message is left out, each with a ``logging`` warning; only a source's own
@@ -6862,27 +7428,35 @@ class FixCodec:
         self,
         messages: Iterable[FixMsg],
         snapshot_millis: int = 0,
+        filter: FilterLike | None = None,
     ) -> pyarrow.RecordBatchReader:
         """Stream sorted FIX messages into lifted ``marketdata`` book rows.
 
-        Admits ORDR, one-sided QUOT, actual EXEC and BOOK W/X; ignores other
-        records - a trade, a batch and a two-sided quote reach the book as the
-        messages their parse split off. Nothing an admitted message states
-        raises: what cannot stand is left out or defaulted with a warning, an
-        operation dated before its book is left out, and only a source failure
-        raises, after the completed book prefix.
+        A book folds ORDR, QUOT and BOOK W/X; every other record is ignored
+        before it is expanded - a fill moves a book through its order's or
+        quote's report, so an execution, and a trade whose fills are
+        executions, never reach one. A quote is one entry resting on each leg
+        it states. Nothing an admitted message states raises: what cannot
+        stand is left out or defaulted with a warning, an operation dated
+        before its book is left out, and only a source failure raises, after
+        the completed book prefix.
         Lifecycle enrichment is explicit: pass ``codec.lifecycle(messages)``
         when needed. Positive ``snapshot_millis`` enables epoch-aligned
-        snapshots; one book is kept per book key - the ticker, else ``MIC:CFI``.
-        Each leaf carries its message's unmapped fields where
-        ``market_metadata`` says so.
+        snapshots, at which a book is written whole; every other book states
+        its deltas alone. One book is kept per book key - the instrument's
+        ISIN, else its ticker, else ``XX0000000000``. ``filter``, a predicate
+        over the ``marketdata`` row, narrows what the books fold and never
+        admits a kind they do not; ``None`` keeps every booked leaf. Each leaf
+        carries its message's unmapped fields where ``market_metadata`` says
+        so.
         """
         ...
     def market_data(self, messages: Iterable[FixMsg]) -> MarketDataRowIterator:
-        """The capture's market data, in the order a book folds them.
+        """The capture's market data, in the order of their instants.
 
-        Admits what ``book_arrow_reader`` admits and expands each message as
-        ``FixMsg.market_data`` does; ``messages`` is collected when
+        Admits what ``book_arrow_reader`` admits and the executions besides -
+        a trade as the executions its parse split off - and expands each
+        message as ``FixMsg.market_data`` does; ``messages`` is collected when
         this is called and the operations are sorted, stably, by
         ``snapunix`` else ``currunix``. Nothing a message states raises: a
         message its intake refused for what it states is left out with a
@@ -7974,12 +8548,23 @@ class TradeEvent:
 class BookEvent:
     """One coherent view of a market at one exact nanosecond instant.
 
-    The live entries of both sides, the deltas applied since the book before
-    it, the executions at that instant and each side's price levels.
-    Immutable: ``with_operations`` and every verb answer a new book.
+    The live entries of both sides and each side's price levels on a complete
+    book, the deltas applied since the book before it on every book; a book
+    stating its deltas alone is whole again by ``with_previous``. Every book
+    answers its top of book. Immutable: ``with_operations`` and every verb
+    answer a new book.
     """
 
-    def __init__(self, currunix: int, symbol: str) -> None: ...
+    def __init__(self, currunix: int, symbol: str) -> None:
+        """An empty book of the ticker ``symbol``, keyed by it; an empty
+        ``symbol`` keys the book ``XX0000000000`` and states no ticker."""
+        ...
+    @staticmethod
+    def keyed(currunix: int, key: str) -> BookEvent:
+        """An empty book keyed ``key`` - an ISIN, a ticker or ``XX0000000000`` -
+        stating neither a ticker nor an ISIN: the base a code's first book,
+        stating its deltas alone, rebuilds over with ``with_previous``."""
+        ...
     @property
     def curruuid(self) -> Scalar: ...
     @property
@@ -8081,21 +8666,32 @@ class BookEvent:
     @property
     def metadata(self) -> dict[str, str]: ...
     @property
+    def is_complete(self) -> bool:
+        """Whether the book holds its sides rather than its deltas alone."""
+        ...
+    @property
     def alive(self) -> list[MarketData]:
-        """Every live entry: the bid side's best first, then the ask side's."""
+        """Every live entry once: the bid side's best first, then the ask side's;
+        a two-sided quote listed with the bids. Empty on a book stating its
+        deltas alone."""
+        ...
+    def alive_on(self, side: Side | int | str) -> list[MarketData]:
+        """The entries alive on the side ``side`` takes, best price first and the
+        unpriced last; empty for a side that is neither a bid nor an ask, or on
+        a book stating its deltas alone."""
         ...
     @property
     def deltas(self) -> list[MarketData]:
-        """The deltas applied since the book before this one."""
+        """The orders and quotes applied since the book before this one, in the
+        order applied across both sides."""
         ...
-    @property
-    def executions(self) -> list[ExecutionEvent]: ...
     def limits(self, side: Side | int | str) -> list[Scalar]:
         """One limit struct per level of the side ``side`` takes, best first.
 
         Each states its ``price`` (``None`` on the unpriced limit last), the
         ``quantity`` resting there, the ``uuids`` of the entries resting there
-        and whether the level is ``tradable``.
+        and whether the level is ``tradable``. Empty on a book stating its
+        deltas alone.
         """
         ...
     def best_price(self, side: Side | int | str) -> Scalar | None:
@@ -8447,11 +9043,16 @@ class MarketDataRowIterator(Iterator[MarketData]):
 class BookIterator(Iterator[BookEvent]):
     """Books from a sorted stream of leaves, one per book key and effective timestamp.
 
-    Pulling its items lazily from the caller's iterable: order, quote,
-    execution and trade events and snapshot controls fold; any other leaf is
-    refused by its kind. An operation dated before its book, an order or a
-    quote stating neither side and a group the book refuses are left out with
-    a ``logging`` warning, never an error.
+    Pulling its items lazily from the caller's iterable: order and quote
+    events and snapshot controls fold; an execution or a trade is pruned where
+    it is pulled, and any other leaf is refused by its kind. An operation
+    dated before its book, an order or a quote stating neither side and a
+    group the book refuses are left out with a ``logging`` warning, never an
+    error. A book is whole at a snapshot tick - every grid tick when
+    ``snapshot_millis`` is positive, and a snapshot input - and states its
+    deltas alone otherwise. ``filter``, a predicate over the ``marketdata``
+    row bound once, narrows what the walk folds; ``None`` keeps every booked
+    input.
     """
 
     __hash__: ClassVar[None]  # type: ignore[assignment]
@@ -8459,6 +9060,7 @@ class BookIterator(Iterator[BookEvent]):
         self,
         items: Iterable[MarketItem],
         snapshot_millis: int = 0,
+        filter: FilterLike | None = None,
     ) -> None: ...
     def __iter__(self) -> BookIterator: ...
     def __next__(self) -> BookEvent: ...
@@ -8493,8 +9095,8 @@ class Candle:
 
     What the books of one cross code whose instants fell in ``[start, end)``
     read at their best bid, their best ask, their midpoint and their spread,
-    the quantities resting at the touch when the bucket closed, and what
-    traded in it. Immutable; built by ``CandleIterator``, ``candles`` or
+    the quantities resting at the touch when the bucket closed, and how many
+    books it folded. Immutable; built by ``CandleIterator``, ``candles`` or
     ``from_scalar``, never directly.
     """
 
@@ -8525,18 +9127,12 @@ class Candle:
     def askqty(self) -> Scalar | None: ...
     @property
     def books(self) -> int: ...
-    @property
-    def executions(self) -> int:
-        """How many executions the books carried, a trade they carried twice counted twice."""
-    @property
-    def volume(self) -> Scalar:
-        """What traded, as a decimal: each trade counted once within the bucket, at the largest last quantity any of its executions states."""
     @staticmethod
     def field() -> Field:
         """The required struct ``candle`` every candle row is laid out under."""
         ...
     def into_scalar(self) -> Scalar:
-        """The candle as the named struct ``Scalar`` of its twenty-five cells."""
+        """The candle as the named struct ``Scalar`` of its twenty-three cells."""
         ...
     @staticmethod
     def from_scalar(value: Scalar | Mapping[str, Any] | Sequence[Any]) -> Candle:
@@ -8618,8 +9214,12 @@ ULBRIDGE_ROWHEADER: str
 IPC_DICTIONARY_IDS_KEY: str
 DEFAULT_STREAM_BATCH_SIZE: int
 DEFAULT_FETCH_BYTE_SIZE: int
-# The machine this process runs on, read once: the host an in-process
-# location and a buffer's identity name.
+# The bound one column stays resident under before it spills, unless the
+# process environment states another (`SpillOptions.from_env`).
+DEFAULT_SPILL_BYTE_SIZE: int
+# The machine this process runs on, read once by the core: intake reads
+# `file://<HOSTNAME>/x` as the local path, and no URL the core writes
+# names it - in-process storage names `localhost`.
 HOSTNAME: str
 NULL_PARTITION: str
 DEFAULT_RECORD_BATCH_ROW_SIZE: int

@@ -239,6 +239,9 @@ dtype_scalar: pa.Scalar = DataType("int32").arrow_scalar(1)
 field_scalar: pa.Scalar = field.arrow_scalar("payload")
 default_field_serie: Serie = Serie.from_default(field)
 default_field_rows: Serie = Serie.from_default(field, 3)
+lit_serie: Serie = Serie.lit(Field("venue", "utf8", nullable=False), "XNAS", 1_000)
+lit_constant: bool = lit_serie.is_lit
+lit_serie.is_lit = True  # type: ignore[misc]
 default_field_scalar: pa.Scalar = default_field_serie.into_arrow_scalar()
 source_array = pa.array([1, 2], type=pa.int32())
 landed_array: Serie = Serie.from_arrow_array(source_array)
@@ -287,7 +290,7 @@ applied_root = Field(
     "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
 )
 applied_batch: pa.RecordBatch = applied_root.apply_arrow_batch(
-    source_batch, digest=True, transform=True, cast=True
+    source_batch, safe=True, representation="value"
 )
 applied_schema: pa.Schema = applied_root.apply_arrow_schema(source_batch.schema)
 applied_reader: pa.RecordBatchReader = applied_root.apply_arrow_reader(
@@ -297,8 +300,16 @@ applied_partition_batch: pa.RecordBatch = applied_root.partition.apply_arrow_bat
     source_batch
 )
 applied_digest_batch: pa.RecordBatch = applied_root.digest.apply_arrow_batch(source_batch)
-partition_sources: list[str] | None = applied_root.partition.sources
-partition_transform: str | None = applied_root.partition.transform
+partition_by: list[str] | None = applied_root.partition.by
+sort_by: list[str] | None = applied_root.sort.by
+digest_by: list[str] | None = applied_root.digest.by
+transform_by: list[str] | None = applied_root.transform.by
+applied_root.sort.by = ["value desc"]
+applied_root.sort.by = None
+removed_partition_by: str | None = applied_root.partition.remove_by()
+transform_term: Term | None = applied_root.transform.term
+partitioned_root: Field = applied_root.with_partition_by(["value", ("value", "copy")])
+declared_partition_by: list[str] = partitioned_root.partition_by
 filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().apply_arrow_batch(
     Field(
         "rows",
@@ -814,7 +825,10 @@ record_options_reduce: tuple[object, tuple[dict[str, Any]]] = (
 record_options_copy: RecordOptions = hashable_record_options.__copy__()
 record_options_deepcopy: RecordOptions = hashable_record_options.__deepcopy__({})
 record_options.batch_row_size = 1024
-record_options.commit_row_size = 10_000
+record_options.commit_batch_num = 10
+record_options.num_threads = 4
+record_options.num_threads = None
+record_num_threads: int | None = record_options.num_threads
 record_options.name = "trade"
 record_options.safe = True
 record_mime_type: MimeType = record_options.mime_type
@@ -833,6 +847,14 @@ record_handle.write_arrow_reader(record_batches, "overwrite", options=record_opt
 record_handle.write_arrow_reader(record_batches, "invalid")  # type: ignore[arg-type]
 record_handle.overwrite_arrow_reader(ForeignArrowReader())
 record_handle.overwrite_arrow_reader(NotArrowReader())  # type: ignore[arg-type]
+record_series: SerieReader = record_handle.read_serie()
+record_series = record_handle.read_serie(options=record_options, num_threads=2)
+record_handle.write_serie(record_series)
+record_handle.write_serie(record_batches, "append", options=record_options, num_threads=...)
+record_handle.overwrite_serie(lit_serie, commit_batch_num=1)
+record_handle.append_serie(pa.table({"id": [1]}))
+record_handle.merge_serie(record_series, merge_by=["id"])
+record_handle.write_serie(record_series, mode=1)  # type: ignore[arg-type]
 record_options.merge_by = ["id"]
 avro_record_options = RecordOptions("trades.avro")
 avro_block_codec: str | None = avro_record_options.block_codec
@@ -868,6 +890,8 @@ text_autotype: bool = text_record_options.autotype
 text_timezone: Timezone | None = text_record_options.timezone
 text_rownum: int | None = text_record_options.start_rownum
 text_parse_mtime: bool = text_record_options.parse_mtime
+text_record_options.num_threads = 2
+text_num_threads: int | None = text_record_options.num_threads
 regex_dtype: DataType = DataType.from_regex(r"(?<id>\d+)")
 text_handle: IOBase = IOBase(Path("app.log")).into_text(text_record_options)
 line_batches: pa.RecordBatchReader = text_handle.read_arrow_reader(
@@ -1728,6 +1752,12 @@ fix_rows: pa.RecordBatchReader = fix_reader.arrow_reader(fix_root, fix_read_back
 fix_book_rows: pa.RecordBatchReader = fix_reader.book_arrow_reader(
     [fix_read_text], snapshot_millis=0
 )
+fix_book_rows_filtered: pa.RecordBatchReader = fix_reader.book_arrow_reader(
+    [fix_read_text], 0, "side = 'BUYS'"
+)
+fix_book_rows_filter_term: pa.RecordBatchReader = fix_reader.book_arrow_reader(
+    [fix_read_text], filter=Filter("marketdatakind = 'QUOT'")
+)
 fix_reader_market_metadata: bool = fix_reader.market_metadata
 fix_reader_bare: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, market_metadata=False)
 fix_market_data: graph.MarketDataRowIterator = fix_reader.market_data([fix_read_text])
@@ -2106,7 +2136,11 @@ graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
 )
 graph_book_alive: list[graph.MarketData] = graph_book_with_operations.alive
 graph_book_deltas: list[graph.MarketData] = graph_book_with_operations.deltas
-graph_book_executions: list[graph.ExecutionEvent] = graph_book.executions
+graph_book_alive_on: list[graph.MarketData] = graph_book_with_operations.alive_on(Side.BUYS)
+graph_book_alive_on_text: list[graph.MarketData] = graph_book_with_operations.alive_on("SELL")
+graph_book_complete: bool = graph_book_with_operations.is_complete
+graph_book_keyed: graph.BookEvent = graph.BookEvent.keyed(graph_order_event.currunix, "XX0000000000")
+graph_book_rebuilt: graph.BookEvent | None = graph_book_with_operations.with_previous(graph_book_keyed)
 graph_book_limits: list[Scalar] = graph_book_with_operations.limits(Side.BUYS)
 graph_book_best_price: Scalar | None = graph_book_with_operations.best_price("BUYS")
 graph_book_best_quantity: Scalar | None = graph_book_with_operations.best_quantity(Side.BUYS)
@@ -2169,7 +2203,7 @@ graph_candles: list[graph.Candle] = list(graph_candle_walk)
 graph_candles_again: list[graph.Candle] = graph.candles([graph_book], "1m", "Europe/Zurich")
 graph_candle_field: Field = graph.Candle.field()
 graph_candle: graph.Candle = graph.Candle.from_scalar(
-    {"crosscode": "IBM", "start": 0, "end": 60_000_000_000, "books": 1, "executions": 0, "volume": 0}
+    {"crosscode": "IBM", "start": 0, "end": 60_000_000_000, "books": 1}
 )
 graph_candle_crosscode: str = graph_candle.crosscode
 graph_candle_ticker: str | None = graph_candle.ticker
@@ -2178,7 +2212,6 @@ graph_candle_end: int = graph_candle.end
 graph_candle_bid: dict[str, Scalar] | None = graph_candle.bid
 graph_candle_spread: dict[str, Scalar] | None = graph_candle.spread
 graph_candle_bidqty: Scalar | None = graph_candle.bidqty
-graph_candle_volume: Scalar = graph_candle.volume
 graph_candle_books: int = graph_candle.books
 graph_candle_scalar: Scalar = graph_candle.into_scalar()
 graph_candle_read: graph.Candle = graph.Candle.from_scalar(graph_candle_scalar)
@@ -2191,6 +2224,13 @@ graph_book_iterator: graph.BookIterator = graph.BookIterator(
     [graph_order_event, graph_data], snapshot_millis=0
 )
 graph_book_iterator_books: list[graph.BookEvent] = list(graph_book_iterator)
+graph_book_iterator_filtered: graph.BookIterator = graph.BookIterator(
+    [graph_order_event], 0, "side = 'BUYS'"
+)
+graph_book_iterator_filter_term: graph.BookIterator = graph.BookIterator(
+    [graph_order_event], filter=Term("side = 'BUYS'")
+)
+graph_book_iterator_unfiltered: graph.BookIterator = graph.BookIterator([graph_order_event], filter=None)
 
 graph_event_iterator: graph.EventIterator = graph.EventIterator(
     [graph_order_event, graph_book], sorted=True, snapshot_ns=None
@@ -2247,7 +2287,9 @@ assert graph_quote_event_booked.book == graph_book_ref
 assert graph_trade_executions == [graph_fill]
 assert graph_trade_restated == graph_trade
 assert graph_book_alive[0] == graph.MarketData(graph_order_event) and len(graph_book_deltas) == 2
-assert graph_book_executions == [] and not graph_book_crossed
+assert graph_book_complete and not graph_book_crossed
+assert graph_book_alive_on == [graph.MarketData(graph_order_event)]
+assert graph_book_keyed.crosscode == "3:0:XX0000000000" and graph_book_keyed.is_complete
 assert len(graph_book_limits) == 1 and graph_book_depth is not None
 assert graph_book_best_price is not None and graph_book_best_quantity is not None
 assert graph_book_kind is MarketDataKind.BOOK
@@ -2365,6 +2407,185 @@ assert chunked_plan is not None and chunked_serie_plan is not None
 assert chunked_from is not None and chunked_series is not None and chunked_empty.is_empty()
 assert chunked_one is not None and not chunked_equal and not chunked_ordered
 
+# Ordering, uniqueness and grouping: the reads answer a new serie, the
+# `as_*` writes this same object, so calls chain; a window reads and writes
+# through the serie it was taken from.
+order_prices: yggdryl.Serie = yggdryl.Serie.from_scalars(Field("price", "int64"), [3, 1, 2])
+order_indices: yggdryl.Serie = order_prices.sort_indices(descending=True, nulls_first=True)
+order_sorted: bool = order_prices.is_sorted()
+order_unique: bool = order_prices.is_unique()
+order_count: int = order_prices.unique_count()
+order_into: yggdryl.Serie = order_prices.into_sorted(nulls_first=True)
+order_distinct: yggdryl.Serie = order_prices.into_unique()
+order_reversed: yggdryl.Serie = order_prices.into_reversed()
+order_taken: yggdryl.Serie = order_prices.into_taken([2, 0])
+order_kept: yggdryl.Serie = order_prices.into_filtered([True, False, None])
+order_groups: list[tuple[Scalar, yggdryl.Serie]] = order_prices.partition_by(["a", "b", "a"])
+order_record: yggdryl.Serie = yggdryl.Serie.from_(source_batch)
+order_by_paths: list[tuple[Scalar, yggdryl.Serie]] = order_record.partition_by_paths(["value"])
+order_bytes: int = order_prices.memory_size()
+order_chained: yggdryl.Serie = (
+    order_prices.as_sorted().as_unique().as_reversed().as_taken([0]).as_filtered([True])
+)
+order_window: yggdryl.WindowSerie = order_into.window(0, 2)
+order_window_row: Scalar = order_window[0]
+order_window_narrower: yggdryl.WindowSerie = order_window[1:]
+order_window_serie: yggdryl.Serie = order_window.serie
+order_window_whole: yggdryl.Serie = order_window.into_serie()
+order_window_offset: int = order_window.offset
+order_window_written: yggdryl.WindowSerie = order_window.as_sorted(descending=True).as_reversed()
+order_window.set(0, 7)
+order_window.swap(0, 1)
+order_window.fill(4)
+order_window.splice(0, 1, [5])
+order_window.copy_from(order_window)
+order_window_groups: list[tuple[Scalar, yggdryl.Serie]] = order_window.partition_by([1, 1])
+order_window_equal: bool = order_window == order_prices
+chunked_order: yggdryl.ChunkedSerie = chunked_prices.into_sorted(descending=True)
+chunked_order_groups: list[tuple[Scalar, yggdryl.ChunkedSerie]] = chunked_prices.partition_by(
+    chunked_prices
+)
+chunked_order_chained: yggdryl.ChunkedSerie = chunked_prices.as_reversed().as_unique()
+chunked_order_indices: yggdryl.Serie = chunked_prices.sort_indices()
+assert order_indices is not None and order_sorted is False and order_unique and order_count
+assert order_into and order_distinct and order_reversed and order_taken and order_kept
+assert order_groups and order_by_paths and order_bytes and order_chained is order_prices
+assert order_window_row is not None and len(order_window_narrower) == 1
+assert order_window_serie is order_into and order_window_whole is not None
+assert order_window_offset == 0 and order_window_written is order_window
+assert order_window_groups and not order_window_equal
+assert chunked_order is not None and chunked_order_groups and chunked_order_indices is not None
+assert chunked_order_chained is chunked_prices
+
+# Windows of equal adjacent keys: held windows over the serie object, each
+# stating its record as a struct value; a stream's windows are lazy readers.
+window_quotes: yggdryl.Serie = yggdryl.Serie.from_scalars(
+    Field("quote", "struct<venue: utf8, price: int64>", nullable=False),
+    [["XNAS", 1], ["XNAS", 2], ["XNYS", 3]],
+)
+window_by_venue: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window_by("venue")
+window_by_sorted: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window_by(
+    ["venue", yggdryl.Term.column("price")], sorted=True
+)
+window_by_default: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window_by(
+    yggdryl.Selector("venue"), None
+)
+window_record: Scalar | None = window_by_venue[0][1].static_values
+window_quotes.window_by("venue", "yes")  # type: ignore[arg-type]
+window_of_window: list[tuple[Scalar, yggdryl.WindowSerie]] = window_quotes.window(
+    0, 2
+).window_by("price")
+window_chunked: list[tuple[Scalar, yggdryl.ChunkedSerie]] = chunked_prices.window_by(
+    "price", sorted=False
+)
+window_walk: yggdryl.SerieReaderWindows = SerieReader.from_serie(window_quotes).window_by(
+    "venue", True
+)
+window_walk_field: Field = window_walk.field
+window_walk_static: Field = window_walk.static_field
+window_readers: list[SerieReader] = list(window_walk)
+window_reader_record: Scalar | None = window_readers[0].static_values
+assert window_by_venue and window_by_sorted and window_by_default and window_of_window
+assert window_record is not None and window_chunked is not None
+assert window_walk_field is not None and window_walk_static is not None
+assert window_readers and window_reader_record is not None
+
+# Spill, `order by` keys and joins: a bound and a folder as `SpillOptions`
+# or its keywords, keys as one text, a list or a `Selector`, `how` a word.
+spill_default: yggdryl.SpillOptions = yggdryl.SpillOptions()
+spill_stated: yggdryl.SpillOptions = yggdryl.SpillOptions(0, folder="/tmp")
+spill_env: yggdryl.SpillOptions = yggdryl.SpillOptions.from_env()
+spill_bound: int = spill_stated.byte_size + yggdryl.DEFAULT_SPILL_BYTE_SIZE
+spill_folder: yggdryl.holder.LocalFolder | None = spill_stated.folder
+spill_never: bool = yggdryl.SpillOptions(yggdryl.SpillOptions.NEVER).is_never()
+spill_column: yggdryl.Serie = yggdryl.Serie.from_scalars(Field("price", "int64"), [3, 1, 2])
+spill_column.spill()
+spill_column.spill(spill_stated, byte_size=yggdryl.SpillOptions.NEVER, folder=None)
+spill_resident: int = spill_column.resident_size()
+spill_spilled: bool = spill_column.is_spilled()
+spill_chunked: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_serie(spill_column)
+spill_chunked.spill(byte_size=0)
+spill_chunked_resident: int = spill_chunked.resident_size()
+spill_chunked_spilled: bool = spill_chunked.is_spilled()
+spill_window: yggdryl.WindowSerie = spill_column.window(0, 2)
+spill_window_resident: int = spill_window.resident_size()
+spill_window_spilled: bool = spill_window.is_spilled()
+spill_reader: SerieReader = SerieReader.from_serie(spill_column)
+spill_reader.spill(None, folder="/tmp")
+spill_reader_resident: int = spill_reader.resident_size()
+spill_reader_spilled: bool = spill_reader.is_spilled()
+spill_column.spill(byte_size="0")  # type: ignore[arg-type]
+spill_column_chained: yggdryl.Serie = spill_column.as_spilled(byte_size=0).as_spilled()
+spill_column_copy: yggdryl.Serie = spill_column.into_spilled(spill_stated, folder=None)
+spill_chunked_chained: yggdryl.ChunkedSerie = spill_chunked.as_spilled(spill_stated)
+spill_chunked_copy: yggdryl.ChunkedSerie = spill_chunked.into_spilled(byte_size=0)
+spill_reader_chained: SerieReader = spill_reader.as_spilled(byte_size=0)
+spill_reader_moved: SerieReader = spill_reader.into_spilled(spill_stated)
+assert spill_default == spill_env and spill_bound and spill_folder is not None and spill_never
+assert spill_resident >= 0 and spill_spilled in (True, False)
+assert spill_chunked_resident == 0 and spill_chunked_spilled
+assert spill_window_resident >= 0 and spill_window_spilled in (True, False)
+assert spill_reader_resident >= 0 and spill_reader_spilled in (True, False)
+
+order_by_record: yggdryl.Serie = window_quotes.into_sort_by("venue, price desc nulls first")
+order_by_declared: list[str] | None = order_by_record.declared_order()
+order_by_indices: yggdryl.Serie = window_quotes.sort_indices_by(["venue", "price desc"])
+order_by_records: yggdryl.Serie = window_quotes.sort_indices_by(
+    [{"term": "price", "descending": True}]
+)
+order_by_selector: yggdryl.Serie = window_quotes.into_sort_by(yggdryl.Selector("venue"))
+order_by_chained: yggdryl.Serie = order_prices.as_sort_by("price desc").as_reversed()
+order_by_chunked: yggdryl.ChunkedSerie = chunked_prices.into_sort_by("price")
+order_by_chunked_indices: yggdryl.Serie = chunked_prices.sort_indices_by("price desc")
+order_by_chunked_declared: list[str] | None = chunked_prices.declared_order()
+order_by_chunked_chained: yggdryl.ChunkedSerie = chunked_prices.as_sort_by("price")
+order_by_window: yggdryl.Serie = order_into.window(0, 2).into_sort_by("price")
+order_by_window_indices: yggdryl.Serie = order_into.window(0, 2).sort_indices_by("price")
+order_by_window_written: yggdryl.WindowSerie = order_into.window(0, 2).as_sort_by("price")
+order_by_reader: SerieReader = SerieReader.from_serie(window_quotes).into_sort_by("venue")
+order_by_reader_sorted: SerieReader = SerieReader.from_serie(window_quotes).into_sorted(
+    descending=True, nulls_first=True
+)
+window_quotes.sort_indices_by(1)  # type: ignore[arg-type]
+assert order_by_record and order_by_declared and order_by_indices and order_by_records
+assert order_by_selector and order_by_chained is order_prices
+assert order_by_chunked is not None and order_by_chunked_indices is not None
+assert order_by_chunked_declared is None and order_by_chunked_chained is chunked_prices
+assert order_by_window and order_by_window_indices and order_by_window_written is not None
+assert order_by_reader is not None and order_by_reader_sorted is not None
+
+join_options: yggdryl.JoinOptions = yggdryl.JoinOptions(
+    coalesce=False, suffix="_r", build="right", prune=False, spill=spill_stated, pushdown_keys=8
+)
+join_options_facts: tuple[bool, str, str | None, bool, yggdryl.SpillOptions | None, int] = (
+    join_options.coalesce,
+    join_options.suffix,
+    join_options.build,
+    join_options.prune,
+    join_options.spill,
+    join_options.pushdown_keys,
+)
+join_venues: yggdryl.Serie = yggdryl.Serie.from_scalars(
+    Field("venue", "struct<venue: utf8, city: utf8>", nullable=False),
+    [["XNAS", "New York"]],
+)
+join_held: yggdryl.Serie = window_quotes.join_with(join_venues, "venue")
+join_left: yggdryl.Serie = window_quotes.join_with(
+    join_venues, ["venue"], "left", join_options, suffix="_v", build=None, spill=None
+)
+join_pairs: yggdryl.Serie = window_quotes.join_with(join_venues, [["venue", "venue"]], "semi")
+join_mapping: yggdryl.Serie = window_quotes.join_with(join_venues, {"venue": "venue"}, "anti")
+join_chunked: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_serie(window_quotes).join_with(
+    yggdryl.ChunkedSerie.from_serie(join_venues), "venue", "full", coalesce=True
+)
+join_reader: SerieReader = SerieReader.from_serie(window_quotes).join_with(
+    join_venues, "venue", "right", prune=True, pushdown_keys=4
+)
+window_quotes.join_with(join_venues, "venue", coalesce="yes")  # type: ignore[arg-type]
+assert join_options_facts and join_held is not None and join_left is not None
+assert join_pairs is not None and join_mapping is not None
+assert join_chunked is not None and join_reader is not None
+
 # HTTP: the requests-shaped client, the four storage roles, and the server.
 # Nothing below the functions touches the network; the functions are checked,
 # never called.
@@ -2418,7 +2639,7 @@ def _http_client_usage(base: str) -> None:
     pages: yggdryl.http.Pages = session.pages("/orders", records="data")
     first: yggdryl.http.Response = next(pages)
     table: pa.RecordBatchReader = session.pages("/orders").into_arrow_reader()
-    series: SerieReader = session.pages("/orders").read_arrow()
+    series: SerieReader = session.pages("/orders").read_serie()
     prepared = yggdryl.http.Request("GET", f"{base}/orders", session=session)
     answers: list[yggdryl.http.Response] = list(session.send_all([prepared], concurrency=4))
     mixed: list[yggdryl.http.Response] = list(
@@ -2497,6 +2718,8 @@ assert identifiers_dict == {"isin": "US0378331005", "orderid": "O-1"} and not id
 isin_registry: yggdryl.IsinRegistry = yggdryl.IsinRegistry(max_instruments=8)
 isin_registry_merged: bool = isin_registry.merge({"isin": "CH0012214059", "ric": "HOLN.S"})
 isin_registry_row: dict[str, Any] | None = isin_registry.get_by_ric("HOLN.S")
+isin_registry_listed: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN")
+isin_registry_on_market: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN", "XSWX")
 isin_registry_bound: int = isin_registry.max_instruments
 isin_registry_reader: pa.RecordBatchReader = isin_registry.into_arrow_reader()
 isin_registry_loaded: int = yggdryl.IsinRegistry().extend_from_arrow_reader(isin_registry.into_arrow_reader())

@@ -115,8 +115,9 @@ This section renders `assets/fix.json` and needs JavaScript.
 - Direction verbs and surrounding capture prose are outside the emitted frame.
 - For streamed Arrow output, [`write_arrow_reader`](arrow.md#back-to-the-wire)
   rebuilds each row's semantic message from its projected columns, its residual
-  `fixentries` and the keys its `metadata` holds that no dictionary resolved,
-  then writes one line with the codec's separator.
+  `fixentries` - its `0:<key>` entries, the keys no dictionary resolved that an
+  identifier map holds, included - and the keys its `metadata` holds that no
+  dictionary resolved, then writes one line with the codec's separator.
 
 ## Commands
 

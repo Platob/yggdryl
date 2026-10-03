@@ -321,6 +321,53 @@ fn a_non_xml_content_type_is_a_client_fault_under_the_negotiation_header() {
 }
 
 #[test]
+fn a_content_type_is_read_as_a_media_type_never_searched_for_xml() {
+    let (_server, endpoint, _service) = running("media-type");
+    let refusal = "expected an XML content type for a SOAP message";
+    let description = |content_type: &str| {
+        let response = HttpRequest::post(&endpoint.to_string(), "<a/>")
+            .expect("a request builds")
+            .with_header("content-type", content_type)
+            .expect("a header")
+            .send()
+            .expect("the server answers");
+        assert_eq!(response.status(), Status::OK, "{content_type}");
+        let body = response.bytes().expect("a body");
+        let envelope = Envelope::from_bytes(&body).expect("an envelope");
+        let fault = envelope.fault().expect("a fault");
+        XmlaError::from_fault(fault)
+            .first()
+            .map(|error| error.description().to_owned())
+            .unwrap_or_default()
+    };
+    // A media type is case-insensitive (RFC 9110), and `application/xmla+xml`
+    // and any `+xml` suffix are XML's: the body earns whatever its parse says,
+    // never the content type's refusal.
+    for content_type in [
+        "text/xml",
+        "Text/XML",
+        "APPLICATION/XML; charset=utf-8",
+        "application/soap+xml; charset=utf-8",
+        "application/xmla+xml",
+        "application/x-foo+xml",
+    ] {
+        let description = description(content_type);
+        assert!(
+            !description.contains(refusal),
+            "{content_type}: {description}"
+        );
+    }
+    // A substring of the word is no media type of XML's.
+    for content_type in ["text/plain", "text/xmlish", "application/x-xmlfoo", "xml"] {
+        let description = description(content_type);
+        assert!(
+            description.contains(refusal),
+            "{content_type}: {description}"
+        );
+    }
+}
+
+#[test]
 fn an_empty_post_body_answers_a_fault() {
     let (_server, endpoint, _service) = running("empty");
     let response = HttpRequest::post(&endpoint.to_string(), Vec::<u8>::new())

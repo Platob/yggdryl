@@ -35,7 +35,7 @@ const NESTED: [&str; 5] = [ALIVE, DELTAS, EXECUTIONS, BIDLIMITS, ASKLIMITS];
 /// | --- | --- | --- |
 /// | `orders`, `quotes`, `executions` | the undated and dated leaves of that operation kind | every flat root column |
 /// | `trades` | one per execution of a trade | the trade's flat columns, then `execution.<column>` per execution column |
-/// | `books` | one per book | every root column but the executions |
+/// | `books` | one per book | every root column but a trade's `executions` |
 /// | `lifecycle` | every leaf of one `crosscode`, ordered by `currunix`, tied instants in arrival order | every flat root column |
 ///
 /// Lifts are appended after the view's own columns in every view.
@@ -64,7 +64,8 @@ pub enum MarketView {
     Executions,
     /// One row per execution of every trade, the trade's columns beside it.
     Trades,
-    /// One row per book, its alive entries and its deltas kept nested.
+    /// One row per book, its deltas - and a complete book's alive entries
+    /// and levels - kept nested.
     Books,
     /// Every leaf of one element's chain, in the order it happened: ordered
     /// by `currunix`, the leaves that share an instant kept in the order the
@@ -170,10 +171,11 @@ fn category(kind: MarketDataKind) -> Term {
     Term::column(MarketColumn::MarketDataKind.name()).eq(Term::literal(kind.as_str()))
 }
 
-/// `marketdatakind = 'BOOK' and alive is not null`: the books, which state
-/// their alive entries, where a snapshot control states none.
+/// `marketdatakind = 'BOOK' and deltas is not null`: the books, which
+/// state their deltas - a complete one its alive entries beside them -
+/// where a snapshot control states neither.
 fn books() -> Term {
-    category(MarketDataKind::Book).and(Term::column(ALIVE).is_not_null())
+    category(MarketDataKind::Book).and(Term::column(DELTAS).is_not_null())
 }
 
 /// `unnest(<serie>) as <name>`: the projection that lays a serie flat.
@@ -202,8 +204,8 @@ impl MarketData {
                 flat().with_projection(unnested(Term::column(EXECUTIONS), "execution")),
                 category(MarketDataKind::Trade),
             ),
-            // A book keeps its alive entries and its deltas; its executions
-            // are the trades view's to lay flat.
+            // A book keeps its alive entries and its deltas; `executions`
+            // is a trade's column, the trades view's to lay flat.
             MarketView::Books => (Selector::all_except([EXECUTIONS]), books()),
             MarketView::Lifecycle { crosscode } => (
                 flat(),

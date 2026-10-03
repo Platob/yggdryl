@@ -64,9 +64,7 @@ mod columns {
     use yggdryl::txhash::{TxHash, TxHasher};
     use yggdryl::xxhash::Xxh3;
     use yggdryl::xxhash::arrow::{column_digests, row_digests};
-    use yggdryl::{
-        ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, StructType, TimeUnit, Timezone,
-    };
+    use yggdryl::{DataType, DigestAlgorithm, Field, Scalar, StructType, TimeUnit, Timezone};
 
     const INSTANTS: [i64; 3] = [
         1_700_000_000_000_000,
@@ -465,16 +463,8 @@ mod columns {
         assert_eq!(read[1], Some(expected));
         assert_eq!(read[0].unwrap().unix(), INSTANTS[0]);
 
-        // The same fill through the schema pipeline, and it is idempotent.
-        let applied = root
-            .apply_arrow_batch(&source, true, true, true, ArrowCastOptions::new())
-            .unwrap();
-        assert_eq!(applied, filled);
-        assert_eq!(
-            root.apply_arrow_batch(&applied, true, true, true, ArrowCastOptions::new())
-                .unwrap(),
-            applied
-        );
+        // A second fill leaves the written holder alone.
+        assert_eq!(root.as_digest().apply_arrow_batch(&filled).unwrap(), filled);
         // The seeded fill couples the seeded digest.
         let seeded = TxHasher::new(DigestAlgorithm::Xxh3)
             .with_seed(7)
@@ -490,10 +480,10 @@ mod columns {
     }
 
     #[test]
-    fn a_coupled_holder_names_its_sources_unit_and_algorithm() {
+    fn a_coupled_holder_names_its_by_unit_and_algorithm() {
         let symbol = Field::new("symbol", DataType::utf8(), false);
         let mut key = coupled("key", 24, "event");
-        key.as_digest_mut().set_sources(["symbol"]).unwrap();
+        key.as_digest_mut().set_by(["symbol"]).unwrap();
         key.as_digest_mut().set_unit(TimeUnit::Second).unwrap();
         key.as_digest_mut()
             .set_algorithm(DigestAlgorithm::Xxh128)
@@ -642,6 +632,42 @@ mod columns {
     }
 
     #[test]
+    fn a_time_path_naming_a_dotted_column_is_the_quoted_path() {
+        let dotted = Field::new(
+            "event.at",
+            DataType::DateTime64 {
+                unit: UNIT,
+                timezone: Timezone::UTC,
+            },
+            false,
+        );
+        let source = batch(&[dotted.clone(), symbol_field()], vec![events(), symbols()]);
+
+        // Quoted, the path is the one column whose name holds the dot.
+        let quoted = struct_root([
+            dotted.clone(),
+            symbol_field(),
+            coupled("key", 16, "\"event.at\""),
+        ]);
+        let filled = quoted.as_digest().apply_arrow_batch(&source).unwrap();
+        let read = values(filled.column(2).as_ref(), UNIT, DigestAlgorithm::Xxh3);
+        assert_eq!(read[0].unwrap().unix(), INSTANTS[0]);
+
+        // Unquoted, `event.at` is the column `at` inside a Struct `event`,
+        // which this row does not have; it is never the dotted name.
+        let unquoted = struct_root([dotted, symbol_field(), coupled("key", 16, "event.at")]);
+        let error = unquoted
+            .as_digest()
+            .apply_arrow_batch(&source)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("DIGEST:time") && error.contains("event.at"),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn an_instant_that_does_not_fit_the_holder_unit_is_refused_by_cell() {
         let seconds = Field::new(
             "event",
@@ -773,7 +799,7 @@ mod columns {
         let nested = Field::new("nested", inner, false);
         let mut outer = Field::new("digest", DataType::UInt64, false);
         outer.as_digest_mut().set_holder().unwrap();
-        outer.as_digest_mut().set_sources(["nested"]).unwrap();
+        outer.as_digest_mut().set_by(["nested"]).unwrap();
         let root = struct_root([nested.clone(), outer]);
         let struct_fields = match nested.clone().into_arrow_field().unwrap().data_type() {
             ArrowDataType::Struct(fields) => fields.clone(),

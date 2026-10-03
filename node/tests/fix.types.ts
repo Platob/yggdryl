@@ -1,6 +1,7 @@
 import {
   BatchReader,
   Field,
+  Filter,
   IOBase,
   MimeType,
   Scalar,
@@ -534,7 +535,12 @@ const walkedBatches: BatchReader = reader.lifecycleArrowReader(parsedBatches)
 const readBackStream: FixMessages = reader.messages(walkedBatches)
 const rows: BatchReader = reader.arrowReader(field, readBackStream)
 const books: BatchReader = reader.bookArrowReader([fromText], 1000)
-// @ts-expect-error a book walk takes no third argument
+// A filter over the `marketdata` row narrows what the books fold: its text,
+// a `Filter` or a `Term`, or not given.
+const filteredBooks: BatchReader = reader.bookArrowReader([fromText], 0, "side = 'BUYS'")
+const heldFilterBooks: BatchReader = reader.bookArrowReader([fromText], 0, new Filter("side = 'BUYS'"))
+const unfilteredBooks: BatchReader = reader.bookArrowReader([fromText], 0, undefined)
+// @ts-expect-error a filter is a predicate, never a flag
 reader.bookArrowReader([fromText], 1000, false)
 // The sorted door answers a stream of `MarketData`, and its Arrow twins
 // batches of lifted rows.
@@ -565,6 +571,7 @@ void fromLines
 void fromFixml
 void written
 void books
+void [filteredBooks, heldFilterBooks, unfilteredBooks]
 
 // @ts-expect-error a stage is a call, never a flag
 reader.parseLine(Buffer.from('35=D|'), true)

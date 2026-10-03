@@ -140,13 +140,15 @@ pub(crate) fn folded_len(word: &str) -> Option<usize> {
 /// Declares a word vocabulary - [`IdType`] and [`IdSource`]: an enum of the
 /// words the crate names, each with its folded spelling and the aliases
 /// that fold to it, beside the [`IdWord`] any other folded spelling is.
-/// Words order, compare and display by their spelling.
+/// Words order, compare and display by their spelling. A vocabulary
+/// invoked with a trailing `aliases` also lists its aliases as
+/// `ALIASES`, for a reader that walks every spelling it has.
 macro_rules! id_vocabulary {
     (
         $(#[$meta:meta])*
         $name:ident, $what:literal {
             $( $(#[$variant_meta:meta])* $variant:ident => $spelling:literal $(| $alias:literal)* ),* $(,)?
-        }
+        } $(, $listed:ident)?
     ) => {
         $(#[$meta])*
         #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -165,6 +167,8 @@ macro_rules! id_vocabulary {
             /// order.
             pub(crate) const SPELLINGS: [&'static str; [$(id_vocabulary!(@unit $variant)),*].len()] =
                 [$($spelling),*];
+
+            id_vocabulary!(@aliases [$($listed)?] $($($alias)*)*);
 
             /// The folded spelling.
             #[must_use]
@@ -265,6 +269,14 @@ macro_rules! id_vocabulary {
         }
     };
     (@unit $variant:ident) => { () };
+    // A vocabulary invoked with a trailing `aliases` lists them, for the
+    // reader that walks every spelling; one invoked without reads no list.
+    (@aliases [] $($alias:literal)*) => {};
+    (@aliases [aliases] $($alias:literal)*) => {
+        /// Every other spelling the crate reads a word by - the aliases
+        /// beside [`Self::SPELLINGS`] - in declaration order.
+        pub(crate) const ALIASES: &'static [&'static str] = &[$($alias,)*];
+    };
 }
 
 pub(crate) use id_vocabulary;
@@ -283,9 +295,10 @@ fn refusal(what: &'static str, actual: &str, expected: impl fmt::Display) -> Err
 /// The key is an [`IdKey`]: `isin` where nothing names the source,
 /// `ullink:isin` from `ullink`. The value is trimmed text that states
 /// something - an empty or null-like value (`null`, `none`, `n/a`) is no
-/// identifier - held as its type stores it: an ISIN must close on its check
-/// digit and is upper-cased, a pair is canonical
-/// ([`IdType::max_value_width`] bounds every type).
+/// identifier - held as its type stores it: an ISIN is of the number's
+/// shape and upper-cased, its check digit a rank ([`IdType::rank`]) rather
+/// than a refusal, a pair is canonical ([`IdType::max_value_width`] bounds
+/// every type).
 ///
 /// Identifiers order by their key as it is spelled, then by value, which is
 /// the order [`Identifiers`] holds them in, lays them out in and digests them
@@ -298,7 +311,9 @@ fn refusal(what: &'static str, actual: &str, expected: impl fmt::Display) -> Err
 /// assert_eq!(isin.to_string(), "isin=US0378331005");
 /// let bridged = Identifier::new("ullink:isin".parse().unwrap(), "US0378331005").unwrap();
 /// assert_eq!(bridged.to_string(), "ullink:isin=US0378331005");
-/// assert!(Identifier::new(IdKey::base(IdType::Isin), "US0378331006").is_err(), "a check digit");
+/// let typo = Identifier::new(IdKey::base(IdType::Isin), "US0378331006").unwrap();
+/// assert_eq!(IdType::Isin.rank(typo.value()), 1, "a check digit is a rank");
+/// assert!(Identifier::new(IdKey::base(IdType::Isin), "US037833100").is_err(), "the shape");
 /// assert!(Identifier::new(IdKey::base(IdType::OrderId), "n/a").is_err());
 /// ```
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -465,16 +480,23 @@ impl fmt::Display for Identifier {
 ///
 /// | A statement | What moves |
 /// | --- | --- |
-/// | a named source states a type | the base key is filled where it is empty: `ullink:isin=X` alone is also `isin=X` |
-/// | anything but a derivation states a type | the derivation of it, `derived:T`, is taken back first, and the base key it filled leaves with it |
-/// | a derivation, `derived:T` | it lands only where nothing of its type is held, and fills the base key; replaced or removed, the base key follows it while that is all the base key holds |
-/// | the base key itself | it moves only through its own key: [`Self::insert`] fills it, [`Self::set`] replaces it, and removing it removes every key of its type |
+/// | a named source states a type | the base key is filled where it is empty or ranks below: `ullink:isin=X` alone is also `isin=X` |
+/// | anything but a derivation states a type | the derivation of it, `derived:T`, is taken back where it does not outrank the statement, the base key it filled leaving with it; one that outranks it stands, a named statement landing under its own key as evidence and a base one nowhere |
+/// | a derivation, `derived:T` | it lands only where nothing of its type is held or the base key ranks below it, and fills the base key; replaced or removed, the base key follows it while that is all the base key holds |
+/// | the base key itself | it moves only through its own key: [`Self::insert`] fills it or replaces what ranks below, [`Self::set`] replaces it, and removing it removes every key of its type |
 ///
-/// So wherever a type is held, its base key is, and replacing or removing
-/// a named source leaves the base key as it was: a bridge restating the
-/// wire's code under its own name never overwrites or erases the wire's. A
-/// map read back from its scalar is closed by the same rule - a type with no
-/// base key takes its first named source's value in key order, else its
+/// A value's rank ([`IdType::rank`]) is how real it is - a number its
+/// check digit closes over a masked one, a listed country over an
+/// unlisted one - and a higher rank replaces a lower one under a key held,
+/// through [`Self::insert`] and [`Self::merge`], whatever the order they
+/// were stated in; two values of one rank fold by that order, and
+/// [`Self::set`] is the explicit statement. [`Self::carry`] and a read
+/// map's close fill only what is not held, deciding by the same rank. So wherever a type is held, its base key is, and replacing
+/// or removing a named source of one rank leaves the base key as it was:
+/// a bridge restating the wire's code under its own name never overwrites
+/// or erases the wire's. A map read back from its scalar is closed by the
+/// same rule - a type with no base key takes its highest-ranked named
+/// source's value, the first in key order among equals, else its
 /// derivation's - and a map the crate wrote comes back unchanged.
 ///
 /// ```
@@ -496,6 +518,12 @@ impl fmt::Display for Identifier {
 /// ```
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Identifiers(Vec<Identifier>);
+
+/// Whether `id` outranks `held`, a value of the same type: the one reading
+/// of [`IdType::rank`] the map decides a restated key by.
+fn ranks_above(id: &Identifier, held: &Identifier) -> bool {
+    id.kind().rank(id.value()) > held.kind().rank(held.value())
+}
 
 impl Identifiers {
     /// An empty map.
@@ -560,12 +588,13 @@ impl Identifiers {
     }
 
     /// Holds `id`, and its value under the base key of its type where that
-    /// is empty.
+    /// is empty or ranks below it.
     fn put_filling(&mut self, id: Identifier) {
-        let fill = self
-            .position_of(&IdSource::Base, id.kind())
-            .is_err()
-            .then(|| id.clone().into_base());
+        let fill = match self.position_of(&IdSource::Base, id.kind()) {
+            Err(_) => true,
+            Ok(at) => ranks_above(&id, &self.0[at]),
+        }
+        .then(|| id.clone().into_base());
         self.put(id);
         if let Some(fill) = fill {
             self.put(fill);
@@ -632,7 +661,8 @@ impl Identifiers {
 
     /// Takes back the derivation of `kind`, answering it. A base key that
     /// held only it leaves with it, unless a named source of the type is
-    /// still held, whose value it takes.
+    /// still held, whose value it takes - the highest-ranked one, the first
+    /// in key order among equals, as [`Self::close`] chooses.
     fn take_derivation(&mut self, kind: &IdType) -> Option<Identifier> {
         let at = self.position_of(&IdSource::Derived, kind).ok()?;
         let echoed = self.is_derived(kind);
@@ -641,7 +671,16 @@ impl Identifiers {
             let answer = self
                 .position_of(&IdSource::Base, kind)
                 .expect("a derivation's echo is held");
-            let named = self.named(kind).next().map(|held| held.value.clone());
+            let named = self
+                .named(kind)
+                .reduce(|best, candidate| {
+                    if ranks_above(candidate, best) {
+                        candidate
+                    } else {
+                        best
+                    }
+                })
+                .map(|held| held.value.clone());
             match named {
                 Some(value) => self.0[answer].value = value,
                 None => drop(self.0.remove(answer)),
@@ -650,47 +689,99 @@ impl Identifiers {
         Some(taken)
     }
 
-    /// Adds `id` where nothing is held under its key, filling the base key
-    /// of its type where that is empty; whether `id` landed.
+    /// Adds `id` where nothing is held under its key, or where what is held
+    /// there ranks below it ([`IdType::rank`]), filling the base key of its
+    /// type where that is empty or ranks below; whether `id` landed.
     ///
     /// A statement - any source but a derivation - takes back the
-    /// derivation of its type first, and a base `id` over a base key that
-    /// holds only a derivation replaces it. A derivation lands only where
-    /// nothing of its type is held.
+    /// derivation of its type where it does not rank below it, a base `id`
+    /// then replacing the base key that held only the derivation; where the
+    /// derivation outranks the statement - a registry's real number against
+    /// a masked or mistyped one - a base `id` lands nowhere and a named one
+    /// stands under its own key as evidence, the answer unmoved. A
+    /// derivation lands only where nothing of its type is held or the base
+    /// key ranks below it, the named sources it outranks staying as
+    /// evidence. So a real value replaces a placeholder, a masked number or
+    /// a typo whichever was stated first, stated or derived, and two values
+    /// of one rank keep the first.
+    ///
+    /// ```
+    /// use yggdryl::{IdKey, IdType, Identifier, Identifiers};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let id = |value: &str| Identifier::new(IdKey::base(IdType::Isin), value);
+    /// let mut ids = Identifiers::new();
+    /// assert!(ids.insert(id("XX0000000001")?));
+    /// assert!(ids.insert(id("US0378331005")?), "a real number replaces a masked one");
+    /// assert!(!ids.insert(id("XX0000000001")?), "and is never replaced by it");
+    /// assert!(!ids.insert(id("US5949181045")?), "two real numbers keep the first");
+    /// assert_eq!(ids.get(&IdType::Isin), Some("US0378331005"));
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn insert(&mut self, id: Identifier) -> bool {
         match id.src() {
             IdSource::Derived => {
-                if self.contains_kind(id.kind()) {
+                if let Ok(at) = self.position_of(&IdSource::Base, id.kind())
+                    && !ranks_above(&id, &self.0[at])
+                {
                     return false;
                 }
                 self.put_filling(id);
             }
             IdSource::Base => {
-                if self.position(&id.key).is_ok() && !self.is_derived(id.kind()) {
-                    return false;
+                if let Ok(at) = self.position(&id.key) {
+                    let held = &self.0[at];
+                    // A derivation's echo yields to a statement it does not
+                    // outrank; a statement only to one that outranks it.
+                    let stands = if self.is_derived(id.kind()) {
+                        ranks_above(held, &id)
+                    } else {
+                        !ranks_above(&id, held)
+                    };
+                    if stands {
+                        return false;
+                    }
                 }
                 self.take_derivation(id.kind());
                 self.put(id);
             }
             _ => {
-                if self.position(&id.key).is_ok() {
+                if let Ok(at) = self.position(&id.key)
+                    && !ranks_above(&id, &self.0[at])
+                {
                     return false;
                 }
-                self.take_derivation(id.kind());
-                self.put_filling(id);
+                if self.derivation_outranks(&id) {
+                    self.put(id);
+                } else {
+                    self.take_derivation(id.kind());
+                    self.put_filling(id);
+                }
             }
         }
         true
     }
 
+    /// Whether the derivation of `id`'s type is held and outranks `id`: the
+    /// one case a statement does not take a derivation back.
+    fn derivation_outranks(&self, id: &Identifier) -> bool {
+        self.position_of(&IdSource::Derived, id.kind())
+            .ok()
+            .is_some_and(|at| ranks_above(&self.0[at], id))
+    }
+
     /// Holds `id`, replacing the value held under its key, and fills the
-    /// base key of its type where that is empty; whether anything moved.
+    /// base key of its type where that is empty or ranks below it; whether
+    /// anything moved.
     ///
     /// A base `id` replaces the type's answer and leaves its named sources
-    /// alone; a named one leaves the answer as it was. A statement takes
-    /// back the derivation of its type first, and a derivation is refused
-    /// where anything else states its type - replacing one moves the base key
-    /// with it while that is all the base key holds.
+    /// alone; a named one leaves the answer as it was. A base statement
+    /// takes back the derivation of its type first; a named one only where
+    /// the derivation does not outrank it, else it replaces its own key
+    /// alone, as evidence. A derivation is refused where anything else
+    /// states its type - replacing one moves the base key with it while
+    /// that is all the base key holds.
     pub fn set(&mut self, id: Identifier) -> bool {
         if *id.src() == IdSource::Derived {
             if self.states(id.kind()) || self.get_from(&id.key) == Some(id.value()) {
@@ -699,6 +790,13 @@ impl Identifiers {
             let echo = id.clone().into_base();
             self.put(id);
             self.put(echo);
+            return true;
+        }
+        if !id.key.is_base() && self.derivation_outranks(&id) {
+            if self.get_from(&id.key) == Some(id.value()) {
+                return false;
+            }
+            self.put(id);
             return true;
         }
         let derived = self.position_of(&IdSource::Derived, id.kind()).is_ok();
@@ -730,18 +828,24 @@ impl Identifiers {
     }
 
     /// Takes every key `other` holds and this map does not; where both hold
-    /// a key with two values, `other`'s when it is `later`, else this map's.
-    /// A derivation of `other`'s lands only where this map holds nothing of
-    /// its type, and a base key of `other`'s that only echoes its derivation
-    /// comes with it rather than as a statement. Whether anything moved.
+    /// a key with two values, the one that ranks higher
+    /// ([`IdType::rank`]), and between two of one rank `other`'s when it is
+    /// `later`, else this map's - so a later placeholder never replaces a
+    /// real value, stated or derived. A derivation of `other`'s lands only
+    /// where this map holds nothing of its type or a base key ranking below
+    /// it, a base key of `other`'s that only echoes its derivation comes
+    /// with it rather than as a statement, and a statement of `other`'s
+    /// takes back a derivation this map holds only where it does not rank
+    /// below it ([`Self::insert`]). Whether anything moved.
     pub fn merge(&mut self, other: &Self, later: bool) -> bool {
         let mut moved = false;
         for id in other.iter().filter(|id| !other.is_echo(id)) {
-            let replaced = later
-                && *id.src() != IdSource::Derived
-                && self
-                    .get_from(&id.key)
-                    .is_some_and(|held| held != id.value());
+            let replaced = *id.src() != IdSource::Derived
+                && self.position(&id.key).ok().is_some_and(|at| {
+                    let held = &self.0[at];
+                    held.value() != id.value()
+                        && (ranks_above(id, held) || (later && !ranks_above(held, id)))
+                });
             moved |= if replaced {
                 self.set(id.clone())
             } else {
@@ -759,12 +863,17 @@ impl Identifiers {
     /// Carries each identifier `previous` - the same element's map one step
     /// earlier in its chain - holds under a key this map does not, where
     /// `carried` admits it, through [`Self::insert`]: a base key lands only
-    /// where this map holds nothing of its type, and one that only echoes a
-    /// derivation comes with its derivation. Whether any was.
+    /// where this map holds nothing of its type or only a derivation of it -
+    /// which the chain's statement takes back unless the derivation
+    /// outranks it - and one that only echoes a derivation comes with its
+    /// derivation. Whether any was.
     pub fn carry(&mut self, previous: &Self, carried: impl Fn(&Identifier) -> bool) -> bool {
         let mut moved = false;
         for id in previous.iter() {
-            if !previous.is_echo(id) && carried(id) && self.position(&id.key).is_err() {
+            if !previous.is_echo(id)
+                && carried(id)
+                && (self.position(&id.key).is_err() || self.is_echo(id))
+            {
                 moved |= self.insert(id.clone());
             }
         }
@@ -893,8 +1002,10 @@ impl Identifiers {
         moved
     }
 
-    /// Closes a map read raw: each type with no base key takes its first
-    /// named source's value in key order, else its derivation's. A map the
+    /// Closes a map read raw: each type with no base key takes its
+    /// highest-ranked named source's value ([`IdType::rank`]), the first in
+    /// key order among equals, unless its derivation outranks every named
+    /// source, whose value it takes then - or where it has none. A map the
     /// rule kept is closed already and does not move.
     pub(crate) fn close(&mut self) {
         for derivations in [false, true] {
@@ -904,7 +1015,25 @@ impl Identifiers {
                 let source =
                     !held.key.is_base() && (*held.src() == IdSource::Derived) == derivations;
                 if source && let Err(slot) = self.position_of(&IdSource::Base, held.kind()) {
-                    let fill = held.clone().into_base();
+                    // `held` is the first named source of its type in key
+                    // order; a later one answers only where it outranks it,
+                    // and the derivation only where it outranks them all.
+                    let best = if derivations {
+                        held
+                    } else {
+                        let named = self.named(held.kind()).fold(held, |best, candidate| {
+                            if ranks_above(candidate, best) {
+                                candidate
+                            } else {
+                                best
+                            }
+                        });
+                        match self.position_of(&IdSource::Derived, held.kind()) {
+                            Ok(derived) if ranks_above(&self.0[derived], named) => &self.0[derived],
+                            _ => named,
+                        }
+                    };
+                    let fill = best.clone().into_base();
                     self.0.insert(slot, fill);
                     if slot <= at {
                         at += 1;

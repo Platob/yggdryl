@@ -513,6 +513,34 @@ fn a_multiple_value_field_matches_by_token() {
 }
 
 #[test]
+fn a_boolean_field_is_named_by_the_table_every_flag_is_read_by() {
+    let reader = reader();
+    // `OddLot(575)` `Y` is `LotType(1093)` `1`, and `PublishTrdIndicator(852)`
+    // `Y` and `N` are `TradePublishIndicator(1390)` `1` and `0`: the fields
+    // are booleans, which a condition on `Y` names as the flag it is.
+    let odd = restated(&reader, b"8=FIX.4.4|35=D|11=A|575=Y|10=0|");
+    assert_eq!(text(&odd, 1093).as_deref(), Some("1"));
+    assert!(
+        odd.by_tag(575).unwrap().is_null(),
+        "a deprecated field is restated, not kept"
+    );
+    let round = restated(&reader, b"8=FIX.4.4|35=D|11=A|575=N|10=0|");
+    assert_eq!(round.get_by_tag(1093), None, "no rule names `N` for it");
+    assert_eq!(
+        round.by_tag(575).unwrap(),
+        Scalar::from(false),
+        "a flag no rule restates stays as it arrived"
+    );
+    let published = restated(&reader, b"8=FIX.4.4|35=8|37=O1|852=Y|10=0|");
+    assert_eq!(integer(&published, 1390), Some(1));
+    let withheld = restated(&reader, b"8=FIX.4.4|35=8|37=O1|852=N|10=0|");
+    assert_eq!(integer(&withheld, 1390), Some(0));
+    // A value the message stated stands, whatever the flag says.
+    let stated = restated(&reader, b"8=FIX.4.4|35=8|37=O1|852=Y|1390=0|10=0|");
+    assert_eq!(integer(&stated, 1390), Some(0));
+}
+
+#[test]
 fn a_rule_scoped_to_message_types_and_to_groups_applies_only_there() {
     let reader = reader();
     // ClearingBusinessDate inside an allocation instruction is scoped to

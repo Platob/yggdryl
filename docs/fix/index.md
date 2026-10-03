@@ -15,7 +15,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Registry](registry.md) | `FixRegistry`: one-namespace resolution, `FixKey`, mutation, the named code sets the fields read by, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees and `codesets/` under one `IOBase` folder, `from_handle`, `commit`, the tracked seed |
 | [Message](message.md) | `FixMsg`: a market event over a content row - the typed holders, the accessors, `set`/`remove`, the market data it is, what a parse splits off it, `from_row` reading a fixed row back, and what restating a message under the dictionary decides |
-| [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `book_arrow_reader`, `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `write_arrow_reader`: a capture streamed through a dictionary, into books - each execution and each quoted side a parse split off folded once - or back to the wire under bounded Arrow batches |
+| [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `book_arrow_reader`, `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `write_arrow_reader`: a capture streamed through a dictionary, into books of its orders, quotes and `W`/`X` entries - a fill moving its order's or quote's entry - or back to the wire under bounded Arrow batches |
 | [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, what a parse fills in for a message, and the [warnings](capture.md#warnings) it says instead of failing: a day of session log as one table |
 | [Lifecycle](lifecycle.md) | `FixCodec::lifecycle` and the [graph](../graph/event.md#lifecycle-walk)'s one walk: chains named by the cross code, their creation and history, twins folded, and grid snapshots across a stream |
 | [CLI](cli.md) | `yggdryl`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
@@ -222,7 +222,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 
 ## A message type is filed under one category
 
-The committed dictionary files every standard message type under one [`MarketDataKind`](../types/enum/marketdatakind.md) member, written by `scripts/generate_fix_dictionary.py` as the message definition's `FIX:msgcat`; a message whose type is filed under none is `UNKN`. An order, a quote or an execution message stores its cross code under its side ([sided](../types/enum/marketdatakind.md#sided-kinds-and-batches)); a batch message is split at the parse into one message per entry, filed under the batch's item ([Message](message.md#a-batch-splits-per-entry)).
+The committed dictionary files every standard message type under one [`MarketDataKind`](../types/enum/marketdatakind.md) member, written by `scripts/generate_fix_dictionary.py` as the message definition's `FIX:msgcat`; a message whose type is filed under none is `UNKN`. An order or an execution message stores its cross code under its side ([sided](../types/enum/marketdatakind.md#sided-kinds-and-batches)), and every other message - a quote, which holds its bid and its offer and tags a side, among them - under side `0`; a batch message is split at the parse into one message per entry, filed under the batch's item ([Message](message.md#a-batch-splits-per-entry)).
 
 | Category | `MsgType(35)` |
 | --- | --- |

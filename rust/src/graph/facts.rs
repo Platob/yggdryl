@@ -19,8 +19,12 @@
 //! Each holder also carries the [`MarketDataKind`] of the leaf that holds
 //! it, stamped by that leaf - `UNKN` until one does. The kind is what
 //! decides whether the cross code carries the side ([`MarketDataKind::is_sided`]):
-//! only an order's, a quote's and an execution's does. It is never digested:
-//! a leaf feeds its own kind where its identity needs one.
+//! only an order's and an execution's does - a quote holds both its legs
+//! and states its side as a tag - and so whether a side moved withdraws the
+//! leg it left; and whether the element reports fills - an execution, a
+//! trade - so that its quantity is its own rather than what an order has
+//! left. It is never digested: a leaf feeds its own kind where its identity
+//! needs one.
 
 use smol_str::SmolStr;
 
@@ -96,6 +100,18 @@ struct BidAsk {
 }
 
 impl BidAsk {
+    /// The price and the quantity of the leg `side` takes: the bid's for a
+    /// buyer, the ask's for a seller, none for a side taking neither.
+    fn leg(&self, side: Side) -> (Option<Decimal>, Option<Decimal>) {
+        if side.is_bid() {
+            (self.bidpx, self.bidqty)
+        } else if side.is_ask() {
+            (self.askpx, self.askqty)
+        } else {
+            (None, None)
+        }
+    }
+
     /// The price `side` quotes: the bid's for a buyer, the ask's for a
     /// seller, none for a side taking neither.
     fn px_mut(&mut self, side: Side) -> Option<&mut Option<Decimal>> {
@@ -154,11 +170,11 @@ impl Terms {
     }
 }
 
-/// Where a state leaves an order's quantities, one byte: still working -
-/// fresh where nothing can have traded yet, asked for or newly
-/// acknowledged - all filled, or no longer active - canceled, done for the
-/// day, expired, calculated or rejected - with nothing left and, where
-/// someone ended it, the rest of what was ordered canceled.
+/// Where a state leaves an order's quantities, one byte: unstated, where no
+/// state says whether the order still works; still working - fresh where
+/// nothing can have traded yet, asked for or acknowledged - all filled, or
+/// no longer active with nothing left - ended by someone or by the clock,
+/// the rest of what was ordered canceled, or ended any other way.
 ///
 /// A stamp of the state the event holding the facts states, never content:
 /// two holders equal in every fact are equal whatever their stamps say, as
@@ -167,6 +183,7 @@ impl Terms {
 #[repr(u8)]
 enum Standing {
     #[default]
+    Unstated,
     Working,
     Fresh,
     Filled,
@@ -181,19 +198,66 @@ impl PartialEq for Standing {
 }
 
 impl Standing {
-    /// The standing FIX's `OrdStatus(39)` reads a state as: `LeavesQty(151)`
-    /// is `OrderQty(38)` less `CumQty(14)` for an order still working, and
-    /// may be zero for one that is canceled, done for the day, expired,
-    /// calculated or rejected.
-    fn of(state: &State) -> Self {
-        match state {
-            State::Filled => Self::Filled,
-            State::Canceled | State::DoneForDay | State::Expired => Self::Canceled,
-            State::Calculated | State::Rejected => Self::Ended,
-            state if state.is_pending() || *state == State::New => Self::Fresh,
-            _ => Self::Working,
+    /// The standing a state leaves an order's quantities in, read off the
+    /// state's own bands as FIX reads `OrdStatus(39)`: `LeavesQty(151)` is
+    /// `OrderQty(38)` less `CumQty(14)` while the order is live
+    /// ([`State::is_live`]) and nothing once it ended. Filled; ended by
+    /// someone or by the clock - the cancellation band, done for the day,
+    /// expired; ended any other way; asked for or acknowledged and not yet
+    /// working - the pending band and rank `20`; any other live state
+    /// working. [`State::Unknown`] says none of it: an order whose state is
+    /// unstated implies nothing of its quantities until one is, so stating
+    /// the state after them lands what stating it first does.
+    fn of(state: State) -> Self {
+        if state == State::Unknown {
+            Self::Unstated
+        } else if state == State::Filled {
+            Self::Filled
+        } else if state.is_cancelled() || matches!(state, State::DoneForDay | State::Expired) {
+            Self::Canceled
+        } else if !state.is_live() {
+            Self::Ended
+        } else if state.is_pending() || state.rank() == 20 {
+            Self::Fresh
+        } else {
+            Self::Working
         }
     }
+}
+
+/// Whether an element of `kind` reports fills - an execution, a trade or a
+/// batch of either: its state says what it reports, never where an order it
+/// fills stands, so its order quantities imply one another as a working
+/// order's do, and its quantity is the fill's own, never what the order has
+/// left. The one reading the standing, the quantity following what is left
+/// and the settle of an order's quantities share.
+fn reports_fills(kind: MarketDataKind) -> bool {
+    matches!(
+        kind,
+        MarketDataKind::Execution
+            | MarketDataKind::ExecutionBatch
+            | MarketDataKind::Trade
+            | MarketDataKind::TradeBatch
+    )
+}
+
+/// The fact a setter states, which nothing it implies writes back: a
+/// statement - a clear included - stands over every derivation, so a fact
+/// stated as none stays none whatever the others imply.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Fact {
+    Quantity,
+    Displayqty,
+    Hiddenqty,
+    Ordqty,
+    Cumqty,
+    Leavesqty,
+    Cxlqty,
+    Lastpx,
+    Lastqty,
+    Avgpx,
+    Spotrate,
+    Forwardpoints,
 }
 
 impl Default for MarketFacts {
@@ -440,7 +504,7 @@ fn hidden_of(quantity: Option<Decimal>, display: Option<Decimal>) -> Option<Deci
 
 /// A currency as a fact: [`Ccy::none`] is none.
 fn stated_ccy(ccy: &Ccy) -> Option<&Ccy> {
-    (ccy.as_str() != Ccy::none().as_str()).then_some(ccy)
+    (!ccy.is_none()).then_some(ccy)
 }
 
 /// Every redirection is written directly on the fields - never through a
@@ -461,8 +525,8 @@ impl MarketFacts {
     }
 
     /// The quantity moved from `before`: the side's bid or ask quantity
-    /// moves with it, and so does the part an iceberg keeps back.
-    fn quantity_moved(&mut self, before: Option<Decimal>) {
+    /// moves with it, and so does the iceberg it is the whole of.
+    fn quantity_moved(&mut self, before: Option<Decimal>, stated: Option<Fact>) {
         let (after, side) = (self.quantity, self.side);
         if side.is_bid() || side.is_ask() {
             self.set_bidask(|held| {
@@ -473,37 +537,33 @@ impl MarketFacts {
             self.quote_currency();
         }
         let display = self.get_displayqty();
-        self.hidden_moved(hidden_of(before, display));
+        self.iceberg_moved(hidden_of(before, display), stated);
     }
 
-    /// The quantity or its shown part moved, the hidden part having been
-    /// `before`: the hidden part moves to the quantity past the shown one.
-    fn hidden_moved(&mut self, before: Option<Decimal>) {
-        let after = hidden_of(self.quantity, self.get_displayqty());
-        if before.is_none() && after.is_none() {
-            return;
+    /// One of an iceberg's three quantities moved - the whole, the part it
+    /// shows, the part it keeps back - the hidden part having been `before`:
+    /// the hidden part follows the whole past the shown one, then any two
+    /// fill the third - the shown part the whole less the hidden one, the
+    /// whole the two parts together - never the one a setter stated.
+    fn iceberg_moved(&mut self, before: Option<Decimal>, stated: Option<Fact>) {
+        if stated != Some(Fact::Hiddenqty) {
+            let after = hidden_of(self.quantity, self.get_displayqty());
+            if before.is_some() || after.is_some() {
+                self.set_terms(|held| {
+                    follow(&mut held.hiddenqty, before.as_ref(), after.as_ref());
+                });
+            }
         }
-        self.set_terms(|held| {
-            follow(&mut held.hiddenqty, before.as_ref(), after.as_ref());
-        });
-    }
-
-    /// The hidden part is stated: the shown part fills with the quantity
-    /// less it, or - where no quantity is stated - the quantity fills with
-    /// the two parts together.
-    fn hiddenqty_moved(&mut self) {
-        let (quantity, display, hidden) =
-            (self.quantity, self.get_displayqty(), self.get_hiddenqty());
-        match (quantity, display, hidden) {
-            (Some(total), None, Some(kept)) => {
+        match (self.quantity, self.get_displayqty(), self.get_hiddenqty()) {
+            (Some(total), None, Some(kept)) if stated != Some(Fact::Displayqty) => {
                 if let Some(shown) = total.checked_sub(kept).filter(|held| !held.is_negative()) {
                     self.set_terms(|held| held.displayqty = Some(shown));
                 }
             }
-            (None, Some(shown), Some(kept)) => {
+            (None, Some(shown), Some(kept)) if stated != Some(Fact::Quantity) => {
                 if let Some(total) = shown.checked_add(kept) {
                     self.quantity = Some(total);
-                    self.quantity_moved(None);
+                    self.quantity_moved(None, stated);
                 }
             }
             _ => {}
@@ -547,12 +607,45 @@ impl MarketFacts {
         });
     }
 
-    /// The side moved from `before`: the side it left no longer quotes the
-    /// element's price and quantity, the side it takes now does where it
-    /// states none, the element's price and quantity fill from what that
-    /// side quotes, and a sided kind's cross code moves under the side.
+    /// The side moved from `before`, and a sided kind's cross code with it.
+    /// A sided element - an order, an execution - takes one side, so the
+    /// side it left withdraws what it quoted ([`Self::side_left`]); any other
+    /// element states its side as a tag over the legs it holds, so moving
+    /// the tag withdraws no leg ([`Self::tag_moved`]). Then the side it
+    /// takes quotes the price and quantity where it states none, and they
+    /// fill from what that side quotes.
     fn side_moved(&mut self, before: Side) {
+        if self.kind.is_sided() {
+            self.side_left(before);
+        } else {
+            self.tag_moved(before);
+        }
         let (side, price, quantity) = (self.side, self.price, self.quantity);
+        if side.is_bid() || side.is_ask() {
+            let mut quoted = (None, None);
+            self.set_bidask(|held| {
+                if let Some(slot) = held.px_mut(side) {
+                    fill(slot, price.as_ref());
+                    quoted.0 = *slot;
+                }
+                if let Some(slot) = held.qty_mut(side) {
+                    fill(slot, quantity.as_ref());
+                    quoted.1 = *slot;
+                }
+            });
+            fill(&mut self.price, quoted.0.as_ref());
+            if fill(&mut self.quantity, quoted.1.as_ref()) {
+                self.iceberg_moved(None, None);
+            }
+            self.quote_currency();
+        }
+        self.reprefix();
+    }
+
+    /// A sided element left `before`: that side no longer quotes its price
+    /// and quantity, and a leg left with neither states no currency.
+    fn side_left(&mut self, before: Side) {
+        let (price, quantity) = (self.price, self.quantity);
         let currency = stated_ccy(&self.currency).cloned();
         if self.bidask.is_some() && (before.is_bid() || before.is_ask()) {
             self.set_bidask(|held| {
@@ -572,25 +665,27 @@ impl MarketFacts {
                 }
             });
         }
-        if side.is_bid() || side.is_ask() {
-            let mut quoted = (None, None);
-            self.set_bidask(|held| {
-                if let Some(slot) = held.px_mut(side) {
-                    fill(slot, price.as_ref());
-                    quoted.0 = *slot;
-                }
-                if let Some(slot) = held.qty_mut(side) {
-                    fill(slot, quantity.as_ref());
-                    quoted.1 = *slot;
-                }
-            });
-            fill(&mut self.price, quoted.0.as_ref());
-            if fill(&mut self.quantity, quoted.1.as_ref()) {
-                self.hidden_moved(None);
-            }
-            self.quote_currency();
+    }
+
+    /// An unsided element's tag moved from `before`: a quote holds its bid
+    /// and its ask whatever side it tags, so no leg is withdrawn, and the
+    /// price and quantity it read off the leg the old tag took move to the
+    /// leg the new one takes - none where it takes neither or that leg
+    /// states nothing. A price or quantity stated apart from the old leg
+    /// stands.
+    fn tag_moved(&mut self, before: Side) {
+        if !(before.is_bid() || before.is_ask()) {
+            return;
         }
-        self.reprefix();
+        let ((left_px, left_qty), (taken_px, taken_qty)) =
+            self.bidask().map_or(((None, None), (None, None)), |held| {
+                (held.leg(before), held.leg(self.side))
+            });
+        follow(&mut self.price, left_px.as_ref(), taken_px.as_ref());
+        let hidden = hidden_of(self.quantity, self.get_displayqty());
+        if follow(&mut self.quantity, left_qty.as_ref(), taken_qty.as_ref()) {
+            self.iceberg_moved(hidden, None);
+        }
     }
 
     /// A bid or ask price is stated: where the element takes that side, its
@@ -618,18 +713,18 @@ impl MarketFacts {
         if ((bid && self.side.is_bid()) || (!bid && self.side.is_ask()))
             && fill(&mut self.quantity, quoted.as_ref())
         {
-            self.hidden_moved(None);
+            self.iceberg_moved(None, None);
         }
         self.quote_currency();
     }
 
     /// Stamps the standing a state leaves the order's quantities in, and
     /// fills what it implies.
-    pub(crate) fn set_standing(&mut self, state: &State) {
+    pub(crate) fn set_standing(&mut self, state: State) {
         let standing = Standing::of(state);
         if self.standing as u8 != standing as u8 {
             self.standing = standing;
-            self.orders_moved();
+            self.orders_moved(None);
         }
     }
 
@@ -644,23 +739,25 @@ impl MarketFacts {
         let before = self.ordqty();
         if lands(&before, &qty, before.is_none(), overwrite) {
             self.set_terms(|held| held.ordqty = qty);
-            self.orders_moved();
+            self.orders_moved(Some(Fact::Ordqty));
         }
     }
 
-    /// An order's quantities moved - what it ordered, filled and has left,
-    /// its last fill or the standing its state leaves it in: each fills
-    /// what the others imply, never over one stated.
+    /// An order's quantities moved - what it ordered, filled, canceled and
+    /// has left, its last fill or the standing its state leaves it in: each
+    /// fills what the others imply, never over the fact a setter `stated`.
     ///
     /// Working, `LeavesQty` is `OrderQty` less `CumQty`, so any two of the
-    /// three fill the third; filled, nothing is left and all of it traded;
-    /// no longer active, nothing is left, and what someone ended - canceled,
-    /// done for the day, expired - canceled the rest of what was ordered.
-    /// One fill is its own average: where all that traded is the last fill,
-    /// the average price is the last one.
-    fn orders_moved(&mut self) {
+    /// three fill the third, and fresh - asked for or acknowledged - all it
+    /// ordered is left. Filled, nothing is left and all it ordered traded.
+    /// Ended, nothing is left and what it ordered is what traded plus what
+    /// was canceled - and where someone or the clock ended it - canceled,
+    /// done for the day, expired - the rest of what was ordered is what was
+    /// canceled. One fill is its own average: where all that traded is the
+    /// last fill, the average price is the last one.
+    fn orders_moved(&mut self, stated: Option<Fact>) {
         let left = self.leavesqty;
-        self.orders_filled();
+        self.orders_filled(stated);
         self.leaves_moved(left);
     }
 
@@ -668,36 +765,33 @@ impl MarketFacts {
     /// is left where the element states none: what a reader stating each
     /// fact in turn runs once they are all stated.
     pub(crate) fn settle_orders(&mut self) {
-        self.orders_moved();
-        if fill(&mut self.quantity, self.leavesqty.as_ref()) {
-            self.quantity_moved(None);
+        self.orders_moved(None);
+        if !reports_fills(self.kind) && fill(&mut self.quantity, self.leavesqty.as_ref()) {
+            self.quantity_moved(None, None);
         }
     }
 
-    /// What is left moved from `before`: the quantity the element is about
-    /// is what is still open, so it moves with it.
+    /// What is left moved from `before`: the quantity an order is about is
+    /// what it still has open, so it moves with it - never an execution's
+    /// or a trade's, whose quantity is the fill it reports.
     fn leaves_moved(&mut self, before: Option<Decimal>) {
         let after = self.leavesqty;
-        if before != after {
+        if before != after && !reports_fills(self.kind) {
             let was = self.quantity;
             if follow(&mut self.quantity, before.as_ref(), after.as_ref()) {
-                self.quantity_moved(was);
+                self.quantity_moved(was, None);
             }
         }
     }
 
-    /// The fills [`Self::orders_moved`] makes among the order's quantities.
-    fn orders_filled(&mut self) {
+    /// The fills [`Self::orders_moved`] makes among the order's quantities,
+    /// never writing the fact a setter `stated`.
+    fn orders_filled(&mut self, stated: Option<Fact>) {
+        let free = |fact: Fact| stated != Some(fact);
         let (ordered, filled) = (self.ordqty(), self.cumqty);
         // An execution's or a trade's state says what it reports - `FILLED`
         // is the fill it is - never where an order it fills stands.
-        let standing = if matches!(
-            self.kind,
-            MarketDataKind::Execution
-                | MarketDataKind::ExecutionBatch
-                | MarketDataKind::Trade
-                | MarketDataKind::TradeBatch
-        ) {
+        let standing = if reports_fills(self.kind) {
             Standing::Working
         } else {
             self.standing
@@ -709,65 +803,121 @@ impl MarketFacts {
                 .filter(|held| !held.is_negative())
         };
         match standing {
-            // Nothing traded yet: all of what was ordered is left.
+            Standing::Unstated => {}
+            // Nothing traded yet and nothing said to be left: all of what
+            // was ordered is left.
             Standing::Fresh if filled.is_none() && self.leavesqty.is_none() => {
-                self.leavesqty = ordered;
+                if free(Fact::Leavesqty) {
+                    self.leavesqty = ordered;
+                }
             }
             Standing::Working | Standing::Fresh => match (ordered, filled, self.leavesqty) {
                 // What is left moves off all of what was ordered once
                 // something traded.
-                (Some(_), Some(_), left) if left.is_none() || left == ordered => {
+                (Some(_), Some(_), left)
+                    if free(Fact::Leavesqty) && (left.is_none() || left == ordered) =>
+                {
                     self.leavesqty = less(ordered, filled);
                 }
-                (Some(_), None, Some(_)) => self.cumqty = less(ordered, self.leavesqty),
-                (None, Some(cum), Some(left)) => {
+                // What traded is what was ordered less what is left - on a
+                // fresh order only where that is something, since nothing
+                // traded yet is stated as none whichever fact came first.
+                (Some(_), None, Some(_)) if free(Fact::Cumqty) => {
+                    let traded = less(ordered, self.leavesqty);
+                    if standing as u8 == Standing::Working as u8
+                        || traded.is_some_and(|held| held.is_positive())
+                    {
+                        self.cumqty = traded;
+                    }
+                }
+                (None, Some(cum), Some(left)) if free(Fact::Ordqty) => {
                     if let Some(total) = cum.checked_add(left) {
                         self.set_terms(|held| held.ordqty = Some(total));
                     }
                 }
+                // Fresh, nothing traded: what is left is all that was
+                // ordered.
+                (None, None, Some(left))
+                    if standing as u8 == Standing::Fresh as u8 && free(Fact::Ordqty) =>
+                {
+                    self.set_terms(|held| held.ordqty = Some(left));
+                }
                 _ => {}
             },
-            // Nothing is left of an order that states what it ordered or
-            // traded; an execution stating its last fill alone states none.
-            // What was left while it worked - all it ordered, or that less
-            // what traded - moves to nothing.
-            Standing::Filled if ordered.is_some() || filled.is_some() => {
-                let zero = Decimal::from_int(0);
-                follow(
-                    &mut self.leavesqty,
-                    less(ordered, filled).or(ordered).as_ref(),
-                    Some(&zero),
-                );
-                fill(&mut self.cumqty, ordered.as_ref());
-            }
-            Standing::Ended | Standing::Canceled if ordered.is_some() || filled.is_some() => {
-                let zero = Decimal::from_int(0);
-                let was = less(ordered, filled).or(ordered);
-                follow(&mut self.leavesqty, was.as_ref(), Some(&zero));
-                if standing as u8 == Standing::Canceled as u8
-                    && self.get_cxlqty().is_none()
-                    && let Some(rest) = less(ordered, filled).filter(|held| held.is_positive())
+            Standing::Filled | Standing::Ended | Standing::Canceled => {
+                // An order that ended has nothing left, whatever else it
+                // states; any other element only where it states what it
+                // ordered or traded. What was left while it worked - all it
+                // ordered, or that less what traded - moves to nothing.
+                if free(Fact::Leavesqty)
+                    && (self.kind == MarketDataKind::Order || ordered.is_some() || filled.is_some())
                 {
-                    self.set_terms(|held| held.cxlqty = Some(rest));
+                    let zero = Decimal::from_int(0);
+                    let was = less(ordered, filled).or(ordered);
+                    follow(&mut self.leavesqty, was.as_ref(), Some(&zero));
+                }
+                if standing as u8 == Standing::Filled as u8 {
+                    // All it ordered traded.
+                    if free(Fact::Cumqty) {
+                        fill(&mut self.cumqty, ordered.as_ref());
+                    }
+                    if free(Fact::Ordqty) && ordered.is_none() && filled.is_some() {
+                        self.set_terms(|held| held.ordqty = filled);
+                    }
+                } else {
+                    // What it ordered is what traded plus what was canceled,
+                    // and where someone or the clock ended it, the rest was.
+                    let canceled = self.get_cxlqty();
+                    if standing as u8 == Standing::Canceled as u8
+                        && free(Fact::Cxlqty)
+                        && canceled.is_none()
+                        && let Some(rest) = less(ordered, filled).filter(|held| held.is_positive())
+                    {
+                        self.set_terms(|held| held.cxlqty = Some(rest));
+                    }
+                    let canceled = self.get_cxlqty();
+                    if free(Fact::Ordqty)
+                        && ordered.is_none()
+                        && let Some(total) = filled
+                            .zip(canceled)
+                            .and_then(|(done, canceled)| done.checked_add(canceled))
+                    {
+                        self.set_terms(|held| held.ordqty = Some(total));
+                    }
+                    if free(Fact::Cumqty) && filled.is_none() {
+                        self.cumqty = less(ordered, canceled);
+                    }
                 }
             }
-            _ => {}
         }
-        if self.avgpx.is_none() && self.cumqty.is_some() && self.cumqty == self.lastqty {
+        if free(Fact::Avgpx)
+            && self.avgpx.is_none()
+            && self.cumqty.is_some_and(|held| held.is_positive())
+            && self.cumqty == self.lastqty
+        {
             self.avgpx = self.lastpx;
         }
     }
 
-    /// One part of an FX forward price is stated: `LastPx` is the spot rate
+    /// One part of an FX forward price moved: `LastPx` is the spot rate
     /// plus the forward points, so where two of the three are stated the
-    /// third fills from them.
-    fn fx_moved(&mut self) {
+    /// third fills from them - never the part a setter `stated`. Whether the
+    /// last price filled, which the average of one fill then reads.
+    fn fx_moved(&mut self, stated: Fact) -> bool {
         match (self.lastpx, self.spotrate, self.forwardpoints) {
-            (None, Some(spot), Some(points)) => self.lastpx = spot.checked_add(points),
-            (Some(last), None, Some(points)) => self.spotrate = last.checked_sub(points),
-            (Some(last), Some(spot), None) => self.forwardpoints = last.checked_sub(spot),
+            (None, Some(spot), Some(points)) if stated != Fact::Lastpx => {
+                self.lastpx = spot.checked_add(points);
+                return self.lastpx.is_some();
+            }
+            (Some(last), None, Some(points)) if stated != Fact::Spotrate => {
+                self.spotrate = last.checked_sub(points);
+            }
+            (Some(last), Some(spot), None) if stated != Fact::Forwardpoints => {
+                self.forwardpoints = last.checked_sub(spot);
+            }
             _ => {}
         }
+        false
     }
 
     /// The rates held, a map allocated on the first one.
@@ -824,7 +974,7 @@ impl Market for MarketFacts {
             overwrite,
         ) {
             let before = std::mem::replace(&mut self.quantity, quantity);
-            self.quantity_moved(before);
+            self.quantity_moved(before, Some(Fact::Quantity));
         }
     }
 
@@ -837,7 +987,7 @@ impl Market for MarketFacts {
         if lands(&before, &value, before.is_none(), overwrite) {
             let hidden = hidden_of(self.quantity, before);
             self.set_terms(|held| held.displayqty = value);
-            self.hidden_moved(hidden);
+            self.iceberg_moved(hidden, Some(Fact::Displayqty));
         }
     }
 
@@ -849,7 +999,7 @@ impl Market for MarketFacts {
         let before = self.get_hiddenqty();
         if lands(&before, &value, before.is_none(), overwrite) {
             self.set_terms(|held| held.hiddenqty = value);
-            self.hiddenqty_moved();
+            self.iceberg_moved(before, Some(Fact::Hiddenqty));
         }
     }
 
@@ -956,9 +1106,24 @@ impl Market for MarketFacts {
     }
 
     /// A market keeps only a detailed classification: a code that says
-    /// nothing past its category and group is stored as none.
+    /// nothing past its category and group states nothing, so it neither
+    /// fills nor clears; none under `overwrite` clears. A detailed code
+    /// stated over another describing the same instrument takes what that
+    /// one says where it says nothing ([`Cfi::refined`]); over another
+    /// instrument's it stands whole.
     fn set_cficode(&mut self, code: Option<Cfi>, overwrite: bool) {
-        let code = code.filter(|held| Cfi::is_detailed(held.as_str()));
+        if code
+            .as_ref()
+            .is_some_and(|held| !Cfi::is_detailed(held.as_str()))
+        {
+            return;
+        }
+        let code = match (code, &self.cficode) {
+            (Some(stated), Some(held)) if overwrite => Cfi::refined(stated.as_str(), held.as_str())
+                .and_then(|refined| Cfi::new(&refined).ok())
+                .or(Some(stated)),
+            (code, _) => code,
+        };
         if lands(&self.cficode, &code, self.cficode.is_none(), overwrite) {
             self.cficode = code;
         }
@@ -968,8 +1133,11 @@ impl Market for MarketFacts {
         self.miccode.as_ref()
     }
 
+    /// A market stated as none - `None`, or `XXXX` - is unstated, so a
+    /// stated market fills over either.
     fn set_miccode(&mut self, code: Option<Mic>, overwrite: bool) {
-        if lands(&self.miccode, &code, self.miccode.is_none(), overwrite) {
+        let unstated = self.miccode.as_ref().is_none_or(Mic::is_none);
+        if lands(&self.miccode, &code, unstated, overwrite) {
             self.miccode = code;
         }
     }
@@ -991,8 +1159,8 @@ impl Market for MarketFacts {
     fn set_lastpx(&mut self, px: Option<Decimal>, overwrite: bool) {
         if lands(&self.lastpx, &px, self.lastpx.is_none(), overwrite) {
             self.lastpx = px;
-            self.fx_moved();
-            self.orders_moved();
+            self.fx_moved(Fact::Lastpx);
+            self.orders_moved(Some(Fact::Lastpx));
         }
     }
 
@@ -1003,7 +1171,7 @@ impl Market for MarketFacts {
     fn set_lastqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
         if lands(&self.lastqty, &qty, self.lastqty.is_none(), overwrite) {
             self.lastqty = qty;
-            self.orders_moved();
+            self.orders_moved(Some(Fact::Lastqty));
         }
     }
 
@@ -1014,7 +1182,7 @@ impl Market for MarketFacts {
     fn set_avgpx(&mut self, px: Option<Decimal>, overwrite: bool) {
         if lands(&self.avgpx, &px, self.avgpx.is_none(), overwrite) {
             self.avgpx = px;
-            self.orders_moved();
+            self.orders_moved(Some(Fact::Avgpx));
         }
     }
 
@@ -1025,7 +1193,7 @@ impl Market for MarketFacts {
     fn set_cumqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
         if lands(&self.cumqty, &qty, self.cumqty.is_none(), overwrite) {
             self.cumqty = qty;
-            self.orders_moved();
+            self.orders_moved(Some(Fact::Cumqty));
         }
     }
 
@@ -1033,12 +1201,12 @@ impl Market for MarketFacts {
         self.leavesqty
     }
 
-    /// What is left is what the element is about: the quantity moves with
-    /// it ([`Market`]).
+    /// What is left is what an order is about: its quantity moves with it
+    /// ([`Market`]).
     fn set_leavesqty(&mut self, qty: Option<Decimal>, overwrite: bool) {
         if lands(&self.leavesqty, &qty, self.leavesqty.is_none(), overwrite) {
             let before = std::mem::replace(&mut self.leavesqty, qty);
-            self.orders_filled();
+            self.orders_filled(Some(Fact::Leavesqty));
             self.leaves_moved(before);
         }
     }
@@ -1051,7 +1219,7 @@ impl Market for MarketFacts {
         let held = self.get_cxlqty();
         if lands(&held, &value, held.is_none(), overwrite) {
             self.set_terms(|held| held.cxlqty = value);
-            self.orders_moved();
+            self.orders_moved(Some(Fact::Cxlqty));
         }
     }
 
@@ -1082,7 +1250,9 @@ impl Market for MarketFacts {
     fn set_spotrate(&mut self, rate: Option<Decimal>, overwrite: bool) {
         if lands(&self.spotrate, &rate, self.spotrate.is_none(), overwrite) {
             self.spotrate = rate;
-            self.fx_moved();
+            if self.fx_moved(Fact::Spotrate) {
+                self.orders_moved(Some(Fact::Spotrate));
+            }
         }
     }
 
@@ -1098,7 +1268,9 @@ impl Market for MarketFacts {
             overwrite,
         ) {
             self.forwardpoints = points;
-            self.fx_moved();
+            if self.fx_moved(Fact::Forwardpoints) {
+                self.orders_moved(Some(Fact::Forwardpoints));
+            }
         }
     }
 
@@ -1391,7 +1563,7 @@ impl Event for MarketEventFacts {
 
     /// The state stamps the standing it leaves the order's quantities in.
     fn set_state(&mut self, state: State) {
-        self.market.set_standing(&state);
+        self.market.set_standing(state);
         self.state = state;
     }
 
@@ -1824,6 +1996,108 @@ impl OperationEventFacts {
     pub(crate) fn settle_orders(&mut self) {
         self.event.market.settle_orders();
     }
+
+    /// Whether `other` states what this operation states: every fact of the
+    /// statement compared field by field - its kind and type, its cross
+    /// code, every market and operation fact, its state, when it was
+    /// created and when it expires - and nothing about where it stands in
+    /// a chain or a stream: its identities and digests, its sources, the
+    /// standing its state stamps, when it last executed, the previous price
+    /// and quantity its chain gave it, its instant, place, recording,
+    /// predecessor and snapshot. What a book reads to tell a repeat from a
+    /// change, one comparison per field and nothing built.
+    ///
+    /// Each holder is destructured whole, so a fact added to one does not
+    /// compile until it is named here, compared or not.
+    pub(crate) fn same_statement(&self, other: &Self) -> bool {
+        let Self {
+            event:
+                MarketEventFacts {
+                    market:
+                        MarketFacts {
+                            kind,
+                            mdtype,
+                            standing: _,
+                            curruuid: _,
+                            crossuuid: _,
+                            crosscode,
+                            currhashcode: _,
+                            crosshashcode: _,
+                            srcuuids: _,
+                            price,
+                            currency,
+                            quantity,
+                            unit,
+                            side,
+                            securityids,
+                            cficode,
+                            miccode,
+                            execunix: _,
+                            lastpx,
+                            lastqty,
+                            avgpx,
+                            cumqty,
+                            leavesqty,
+                            terms,
+                            prevpx: _,
+                            prevqty: _,
+                            spotrate,
+                            forwardpoints,
+                            fxrates,
+                            bidask,
+                            ticker,
+                            metadata,
+                        },
+                    currunix: _,
+                    state,
+                    seqnum: _,
+                    creaunix,
+                    recdunix: _,
+                    exprunix,
+                    prevunix: _,
+                    prevuuid: _,
+                    snapunix: _,
+                },
+            operation:
+                OperationExtras {
+                    timeinforce,
+                    tradable,
+                    identifiers,
+                    partyids,
+                },
+        } = self;
+        let (market, event, operation) = (&other.event.market, &other.event, &other.operation);
+        *kind == market.kind
+            && *mdtype == market.mdtype
+            && *crosscode == market.crosscode
+            && *price == market.price
+            && *currency == market.currency
+            && *quantity == market.quantity
+            && *unit == market.unit
+            && *side == market.side
+            && *securityids == market.securityids
+            && *cficode == market.cficode
+            && *miccode == market.miccode
+            && *lastpx == market.lastpx
+            && *lastqty == market.lastqty
+            && *avgpx == market.avgpx
+            && *cumqty == market.cumqty
+            && *leavesqty == market.leavesqty
+            && *terms == market.terms
+            && *spotrate == market.spotrate
+            && *forwardpoints == market.forwardpoints
+            && *fxrates == market.fxrates
+            && *bidask == market.bidask
+            && *ticker == market.ticker
+            && *metadata == market.metadata
+            && *state == event.state
+            && *creaunix == event.creaunix
+            && *exprunix == event.exprunix
+            && *timeinforce == operation.timeinforce
+            && *tradable == operation.tradable
+            && *identifiers == operation.identifiers
+            && *partyids == operation.partyids
+    }
 }
 
 /// The cross code a copy of `other` takes: the source's without the
@@ -1868,6 +2142,11 @@ fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
     this.set_snapunix(other.get_snapunix());
 }
 
+/// Copies every market fact `other` states onto `this`, each through its
+/// setter. The copy holds `other`'s kind while it is made - each `From`
+/// below stamps it first - so what the facts imply of one another under it
+/// is what they implied of `other`, and a leaf of another kind restamps its
+/// own afterwards.
 fn copy_market<T: Market + ?Sized, E: Market + ?Sized>(this: &mut T, other: &E) {
     this.set_price(other.get_price(), true);
     this.set_stoppx(other.get_stoppx(), true);
@@ -1915,6 +2194,7 @@ fn copy_operation<T: Operation + ?Sized, E: Operation + ?Sized>(this: &mut T, ot
 impl<E: Element + Market + ?Sized> From<&E> for MarketFacts {
     fn from(other: &E) -> Self {
         let mut this = Self::default();
+        this.set_marketdatakind(other.marketdatakind());
         copy_element(&mut this, other);
         copy_market(&mut this, other);
         let _ = resync_copied(&mut this, other);
@@ -1925,6 +2205,7 @@ impl<E: Element + Market + ?Sized> From<&E> for MarketFacts {
 impl<E: Event + Market + ?Sized> From<&E> for MarketEventFacts {
     fn from(other: &E) -> Self {
         let mut this = Self::default();
+        this.set_marketdatakind(other.marketdatakind());
         copy_element(&mut this, other);
         copy_event(&mut this, other);
         copy_market(&mut this, other);
@@ -1945,6 +2226,7 @@ impl<E: Event + Market + ?Sized> From<&E> for MarketEventFacts {
 impl<E: Element + Operation + ?Sized> From<&E> for OperationFacts {
     fn from(other: &E) -> Self {
         let mut this = Self::default();
+        this.set_marketdatakind(other.marketdatakind());
         copy_element(&mut this, other);
         copy_market(&mut this, other);
         copy_operation(&mut this, other);
@@ -1956,6 +2238,7 @@ impl<E: Element + Operation + ?Sized> From<&E> for OperationFacts {
 impl<E: Event + Operation + ?Sized> From<&E> for OperationEventFacts {
     fn from(other: &E) -> Self {
         let mut this = Self::default();
+        this.set_marketdatakind(other.marketdatakind());
         copy_element(&mut this, other);
         copy_event(&mut this, other);
         copy_market(&mut this, other);

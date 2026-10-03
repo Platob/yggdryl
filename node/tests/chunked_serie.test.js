@@ -9,7 +9,17 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 const binding = require('yggdryl')
-const { BatchReader, ChunkedSerie, DataType, Field, Scalar, Serie, StructSerie, fields } = binding
+const {
+  BatchReader,
+  ChunkedSerie,
+  DataType,
+  Field,
+  Scalar,
+  Serie,
+  SpillOptions,
+  StructSerie,
+  fields,
+} = binding
 
 const trades = () =>
   fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
@@ -445,8 +455,18 @@ test('equality and order are the rows alone, however they are cut', () => {
   assert.equal(cut.compare(ids([1n, 2n, 3n])), 0)
   assert.equal(cut.compare(ChunkedSerie.fromSerie(ids([1n, 3n]))), -1)
   assert.equal(cut.compare(ids([1n, 2n])), 1)
-  assert.throws(() => cut.equals([1n, 2n, 3n]), /ChunkedSerie\.equals takes a ChunkedSerie or a Serie/)
-  assert.throws(() => cut.compare(null), /ChunkedSerie\.compare takes a ChunkedSerie or a Serie/)
+  // A window compares as the serie of its rows.
+  const held = ids([0n, 1n, 2n, 3n])
+  assert.ok(cut.equals(held.window(1, 3)))
+  assert.equal(cut.compare(held.window(1, 2)), 1)
+  assert.throws(
+    () => cut.equals([1n, 2n, 3n]),
+    /ChunkedSerie\.equals takes a ChunkedSerie, a Serie or a WindowSerie/,
+  )
+  assert.throws(
+    () => cut.compare(null),
+    /ChunkedSerie\.compare takes a ChunkedSerie, a Serie or a WindowSerie/,
+  )
 
   // A clone shares the chunks, and appending to it leaves the original alone.
   const copy = cut.clone()
@@ -518,4 +538,398 @@ test('a vector crosses as one chunk per Data, an empty one included', () => {
     [2, 0, 1],
   )
   assert.deepEqual(chunked.asJs(), [1, 2, 3])
+})
+
+// ---------------------------------------------------------------------------
+// Ordering, uniqueness and grouping across the chunks: each case mirrors
+// rust/tests/root/chunked_serie.rs by name.
+// ---------------------------------------------------------------------------
+
+const price = (nullable) => new Field('price', 'int64', nullable)
+
+// `values` cut into chunks of `cut` rows each under the price field; `null`
+// an absent row.
+function chunked(values, cut) {
+  const field = price(values.includes(null))
+  const chunks = []
+  for (let start = 0; start < values.length; start += cut) {
+    chunks.push(Serie.fromScalars(field, values.slice(start, start + cut)))
+  }
+  return ChunkedSerie.fromSeries(chunks, field)
+}
+
+test('isSorted reads each chunk and every chunk edge', () => {
+  const sorted = chunked([1, 2, 2, 3, null], 2)
+  assert.equal(sorted.isSorted(), true)
+  assert.equal(sorted.isSorted({ descending: true }), false)
+  // Each chunk sorted, the edge not: [1, 5] then [2, 3].
+  const edge = chunked([1, 5, 2, 3], 2)
+  assert.equal(edge.isSorted(), false)
+  assert.equal(edge.slice(0, 2).isSorted(), true)
+  // An empty chunk between two is no edge.
+  const field = price(false)
+  const gapped = ChunkedSerie.fromSeries(
+    [Serie.fromScalars(field, [1]), Serie.empty(field), Serie.fromScalars(field, [2])],
+    field,
+  )
+  assert.equal(gapped.isSorted(), true)
+  assert.equal(ChunkedSerie.empty(field).isSorted(), true)
+})
+
+test('sorting merges the chunks and uniqueness keeps each chunk apart, under the field', () => {
+  const prices = chunked([3, null, 1, 3, 2], 2)
+  assert.equal(prices.isUnique(), false)
+  assert.equal(prices.uniqueCount(), 4)
+  const order = prices.sortIndices()
+  assert.ok(order instanceof Serie)
+  assert.deepEqual(order.asJs(), [2, 4, 0, 3, 1])
+  const sorted = prices.intoSorted()
+  assert.ok(sorted instanceof ChunkedSerie)
+  assert.deepEqual([sorted.numChunks, sorted.length], [1, 5])
+  assert.ok(sorted.field.equals(prices.field))
+  assert.equal(sorted.isSorted(), true)
+  assert.deepEqual(sorted.asJs(), [1, 2, 3, 3, null])
+  // Each chunk keeps its own first occurrences: [3, null], [1], [2].
+  const unique = prices.intoUnique()
+  assert.deepEqual([unique.numChunks, unique.length], [3, 4])
+  assert.deepEqual(unique.asJs(), [3, null, 1, 2])
+  assert.equal(unique.isUnique(), true)
+  // The serie is as it was.
+  assert.equal(prices.numChunks, 3)
+  assert.deepEqual(prices.intoTaken([4, 0]).asJs(), [2, 3])
+  assert.deepEqual(prices.intoTaken(new Serie([4, 0])).asJs(), [2, 3])
+  assert.throws(() => prices.intoTaken([5]), /names no row/)
+})
+
+test('reversing and filtering keep the chunks apart', () => {
+  const prices = chunked([1, 2, 3, null, 5], 2)
+  const reversed = prices.intoReversed()
+  assert.equal(reversed.numChunks, 3)
+  assert.deepEqual(reversed.asJs(), [5, null, 3, 2, 1])
+  assert.equal(reversed.chunk(0).length, 1)
+  const kept = prices.intoFiltered([true, false, null, true, true])
+  assert.equal(kept.numChunks, 3)
+  assert.deepEqual(kept.asJs(), [1, null, 5])
+  assert.throws(
+    () => prices.intoFiltered([true]),
+    /a mask of 1 rows cannot filter the 5 rows price holds/,
+  )
+})
+
+test('partitionBy merges each chunk groups in first-occurrence order', () => {
+  const prices = chunked([1, 2, 3, 4, 5], 2)
+  const groups = prices.partitionBy(new Serie(['a', 'b', 'b', 'a', 'c']))
+  assert.equal(groups.length, 3)
+  assert.equal(groups[0][0].asJs(), 'a')
+  assert.ok(groups[0][1] instanceof ChunkedSerie)
+  assert.deepEqual(groups[0][1].asJs(), [1, 4])
+  assert.equal(groups[0][1].numChunks, 2)
+  assert.equal(groups[1][0].asJs(), 'b')
+  assert.deepEqual(groups[1][1].asJs(), [2, 3])
+  assert.equal(groups[2][0].asJs(), 'c')
+  assert.ok(groups[2][1].field.equals(prices.field))
+  // Keys are any iterable of values as long as the whole.
+  assert.equal(prices.partitionBy(['a', 'b', 'b', 'a', 'c']).length, 3)
+  assert.throws(
+    () => prices.partitionBy(['a']),
+    /1 keys cannot partition the 5 rows price holds/,
+  )
+})
+
+test('partitionBy groups keys held in chunks chunk beside chunk', () => {
+  const prices = chunked([1, 2, 3], 2)
+  const venue = new Field('venue', 'utf8', false)
+  const cutAlike = ChunkedSerie.fromSeries(
+    [Serie.fromScalars(venue, ['XNAS', 'XNYS']), Serie.fromScalars(venue, ['XNAS'])],
+    venue,
+  )
+  const cutApart = ChunkedSerie.fromSeries(
+    [Serie.fromScalars(venue, ['XNAS']), Serie.fromScalars(venue, ['XNYS', 'XNAS'])],
+    venue,
+  )
+  // An Apache Arrow JS vector of two Data is keys held in two chunks.
+  const vector = arrow
+    .vectorFromArray(['XNAS', 'XNYS'], new arrow.Utf8())
+    .concat(arrow.vectorFromArray(['XNAS'], new arrow.Utf8()))
+  const expected = [
+    ['XNAS', [1, 3], 2],
+    ['XNYS', [2], 1],
+  ]
+  for (const keys of [cutAlike, cutApart, vector, ['XNAS', 'XNYS', 'XNAS']]) {
+    assert.deepEqual(
+      prices.partitionBy(keys).map(([key, rows]) => [key.asJs(), rows.asJs(), rows.numChunks]),
+      expected,
+    )
+  }
+  assert.throws(
+    () => prices.partitionBy(ChunkedSerie.fromSerie(Serie.fromScalars(venue, ['XNAS']))),
+    /1 keys cannot partition the 3 rows price holds/,
+  )
+  // One grouping door: there is no second spelling for chunked keys.
+  assert.equal('partitionByChunked' in ChunkedSerie.prototype, false)
+})
+
+test('memorySize sums the chunks and the as writes replace them in place', () => {
+  const prices = chunked([3, 1, 2, 2], 2)
+  assert.equal(
+    prices.memorySize(),
+    prices.chunks.reduce((total, chunk) => total + chunk.memorySize(), 0),
+  )
+  assert.ok(prices.memorySize() > 0)
+  assert.strictEqual(prices.asSorted({ descending: true }).asUnique().asReversed(), prices)
+  assert.deepEqual(prices.asJs(), [1, 2, 3])
+  assert.equal(prices.numChunks, 1)
+  prices.asTaken([2, 0]).asFiltered([true, false])
+  assert.deepEqual(prices.asJs(), [3])
+  assert.ok(prices.field.equals(price(false)))
+  // A refused write leaves the serie as it was.
+  assert.throws(() => prices.asTaken([9]))
+  assert.deepEqual(prices.asJs(), [3])
+  const apart = chunked([1, 2, 3], 2)
+  apart.asReversed()
+  assert.deepEqual([apart.numChunks, apart.asJs()], [2, [3, 2, 1]])
+})
+
+test('the chunked ordering natives stay outside the public surface', () => {
+  for (const name of [
+    '_sortIndicesNative',
+    '_isSortedNative',
+    '_intoSortedNative',
+    '_intoTakenNative',
+    '_intoFilteredNative',
+    '_partitionByNative',
+    '_partitionByChunkedNative',
+    '_windowByNative',
+    '_asSortedNative',
+    '_asUniqueNative',
+    '_asReversedNative',
+    '_asTakenNative',
+    '_asFilteredNative',
+    '_sortIndicesByNative',
+    '_intoSortByNative',
+    '_asSortByNative',
+    '_joinWithNative',
+  ]) {
+    assert.equal(name in ChunkedSerie.prototype, false, name)
+  }
+  assert.throws(
+    () => chunked([1], 1).intoSorted({ nullsLast: true }),
+    /ChunkedSerie.intoSorted options take descending and nullsFirst/,
+  )
+})
+
+// The venues of `chunks` as a chunked utf8 column, one chunk per array.
+const venueChunks = (chunks) => {
+  const field = new Field('venue', 'utf8', false)
+  return ChunkedSerie.fromSeries(
+    chunks.map((rows) => Serie.fromScalars(field, rows)),
+    field,
+  )
+}
+
+const windowRows = (windows) =>
+  windows.map(([key, rows]) => [key.asJs(), rows.asJs(), rows.numChunks])
+
+test('windowBy merges a run across a chunk edge', () => {
+  const venues = venueChunks([['XNAS', 'XNAS'], ['XNAS', 'XNYS'], [], ['XNYS']])
+  const windows = venues.windowBy('venue')
+  // XNYS crosses the empty chunk, which the slice keeps.
+  assert.deepEqual(windowRows(windows), [
+    [['XNAS'], ['XNAS', 'XNAS', 'XNAS'], 2],
+    [['XNYS'], ['XNYS', 'XNYS'], 3],
+  ])
+  for (const [, rows] of windows) {
+    assert.ok(rows instanceof ChunkedSerie)
+    assert.ok(rows.field.equals(venues.field))
+  }
+  // `sorted` absent, `undefined` and `null` are its default, `false`.
+  const expected = windows.map(([key, rows]) => [key.asJs(), rows.length])
+  for (const spelled of [
+    venues.windowBy('venue', false),
+    venues.windowBy('venue', undefined),
+    venues.windowBy('venue', null),
+  ]) {
+    assert.deepEqual(
+      spelled.map(([key, rows]) => [key.asJs(), rows.length]),
+      expected,
+    )
+  }
+  // The keys and rows of the joined column, held apart.
+  assert.deepEqual(
+    venues
+      .intoSerie()
+      .windowBy('venue')
+      .map(([key, window]) => [key.asJs(), window.length]),
+    expected,
+  )
+  // No row, no window; an empty key is refused even with no chunk.
+  const empty = ChunkedSerie.empty(venues.field)
+  assert.deepEqual(empty.windowBy('venue'), [])
+  assert.throws(() => empty.windowBy('*'), /empty match key/)
+  assert.throws(() => venues.windowBy('venue', 1), {
+    name: 'TypeError',
+    message: /ChunkedSerie\.windowBy sorted must be a boolean, got number/,
+  })
+})
+
+test('windowBy sorted regroups runs across chunks with no row copied', () => {
+  const venues = venueChunks([
+    ['XNYS', 'XNAS'],
+    ['XNAS', 'XNYS'],
+  ])
+  const windows = venues.windowBy('venue', true)
+  // Each key once, its runs regrouped as pieces of the chunks they lie in.
+  assert.deepEqual(windowRows(windows), [
+    [['XNAS'], ['XNAS', 'XNAS'], 2],
+    [['XNYS'], ['XNYS', 'XNYS'], 2],
+  ])
+  assert.deepEqual(
+    windows.map(([key, rows]) => [key.asJs(), rows.length]),
+    venues
+      .intoSerie()
+      .windowBy('venue', true)
+      .map(([key, window]) => [key.asJs(), window.length]),
+  )
+})
+
+test('windowBy states no record, so a key named windownum is taken', () => {
+  // The key is the first half of each pair and the place its place in the
+  // array: no record names `windownum`, so nothing collides with it.
+  const prices = chunked([1, 1, 2], 2)
+  const windows = prices.windowBy('price as windownum')
+  assert.deepEqual(
+    windows.map(([key, rows]) => [key.asJs(), rows.length]),
+    [
+      [[1], 2],
+      [[2], 1],
+    ],
+  )
+  assert.ok(windows.every(([, rows]) => !('staticValues' in rows)))
+  assert.throws(
+    () => prices.intoSerie().windowBy('price as windownum'),
+    /collides with the static value "windownum"/,
+  )
+})
+
+test('spill moves the heaviest chunks whole first and keeps the lightest resident', () => {
+  const field = price(false)
+  const heavy = Serie.fromScalars(
+    field,
+    Array.from({ length: 1_024 }, (_, index) => index),
+  )
+  const light = Serie.fromScalars(field, [0, 1, 2, 3, 4, 5, 6, 7])
+  const prices = ChunkedSerie.fromSeries([heavy, light], field)
+  assert.equal(prices.residentSize(), prices.memorySize())
+  assert.equal(prices.isSpilled(), false)
+  prices.spill(new SpillOptions({ byteSize: 1_024 }))
+  assert.equal(prices.chunk(0).isSpilled(), true)
+  assert.equal(prices.chunk(1).isSpilled(), false)
+  assert.equal(prices.residentSize(), 64)
+  assert.equal(prices.isSpilled(), false)
+  prices.spill(new SpillOptions({ byteSize: 0 }))
+  assert.equal(prices.isSpilled(), true)
+  assert.equal(prices.residentSize(), 0)
+  assert.equal(prices.scalar(1_030).asJs(), 6)
+  // A chunked serie of no chunk is never spilled; absent options are the
+  // process default, which leaves these rows resident.
+  assert.equal(ChunkedSerie.empty(field).isSpilled(), false)
+  const small = chunked([1, 2, 3], 2)
+  small.spill()
+  assert.equal(small.residentSize(), small.memorySize())
+})
+
+test('asSpilled spills chunks in place and answers them, intoSpilled spills a copy', () => {
+  const zero = new SpillOptions({ byteSize: 0 })
+  const field = price(false)
+  const heavy = Serie.fromScalars(
+    field,
+    Array.from({ length: 1_024 }, (_, index) => index),
+  )
+  const prices = ChunkedSerie.fromSeries([heavy, Serie.fromScalars(field, [0, 1, 2])], field)
+  const copy = prices.intoSpilled(zero)
+  assert.ok(copy instanceof ChunkedSerie)
+  assert.equal(copy.isSpilled(), true)
+  assert.equal(prices.isSpilled(), false)
+  assert.ok(copy.equals(prices))
+  assert.equal(prices.asSpilled(zero), prices)
+  assert.equal(prices.isSpilled(), true)
+  assert.equal(prices.residentSize(), 0)
+  assert.equal(prices.scalar(1_025).asJs(), 1)
+  // Absent options are the process default, which leaves these rows resident.
+  const small = chunked([1, 2, 3], 2)
+  assert.equal(small.asSpilled(), small)
+  assert.equal(small.intoSpilled(null).residentSize(), small.memorySize())
+})
+
+test('sorting by key reads the keys first, merges the rows and joins only the positions', () => {
+  const prices = chunked([3, 1, 2], 2)
+  const order = prices.sortIndicesBy('price desc')
+  assert.ok(order instanceof Serie)
+  assert.deepEqual(order.asJs(), [0, 2, 1])
+  const sorted = prices.intoSortBy('price')
+  assert.ok(sorted instanceof ChunkedSerie)
+  assert.deepEqual([sorted.numChunks, sorted.asJs()], [1, [1, 2, 3]])
+  assert.equal(prices.numChunks, 2)
+  assert.throws(() => prices.intoSortBy('tier'))
+  assert.throws(() => ChunkedSerie.empty(price(false)).intoSortBy('tier'))
+  // A record declares the keys it was sorted by, across every chunk.
+  const root = Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null')
+  const quotes = ChunkedSerie.fromSeries(
+    [
+      Serie.fromScalars(root, [
+        { venue: 'XNYS', price: 2 },
+        { venue: 'XNAS', price: 1 },
+      ]),
+      Serie.fromScalars(root, [{ venue: 'XNYS', price: 1 }]),
+    ],
+    root,
+  )
+  assert.equal(quotes.declaredOrder(), null)
+  const byVenue = quotes.intoSortBy([{ term: 'venue' }, { term: 'price', descending: true }])
+  assert.deepEqual(byVenue.declaredOrder(), ['venue', 'price desc'])
+  assert.deepEqual(byVenue.asJs(), [
+    { venue: 'XNAS', price: 1 },
+    { venue: 'XNYS', price: 2 },
+    { venue: 'XNYS', price: 1 },
+  ])
+  // In place, chaining; a refusal leaves the chunks as they were.
+  assert.strictEqual(quotes.asSortBy('price, venue'), quotes)
+  assert.deepEqual(quotes.asJs(), [
+    { venue: 'XNAS', price: 1 },
+    { venue: 'XNYS', price: 1 },
+    { venue: 'XNYS', price: 2 },
+  ])
+  assert.throws(() => quotes.asSortBy('tier'))
+  assert.equal(quotes.length, 3)
+})
+
+test('joinWith keeps the output batches apart as chunks', () => {
+  const tradeRoot = Field.from('trade: struct<id: int64 not null, venue: utf8 not null> not null')
+  const venueRoot = Field.from('venue: struct<venue: utf8 not null, city: utf8 not null> not null')
+  const trades = ChunkedSerie.fromSeries(
+    [
+      Serie.fromScalars(tradeRoot, [
+        { id: 1, venue: 'XNAS' },
+        { id: 2, venue: 'XNYS' },
+      ]),
+      Serie.fromScalars(tradeRoot, [{ id: 3, venue: 'XNAS' }]),
+    ],
+    tradeRoot,
+  )
+  const venues = ChunkedSerie.fromSerie(
+    Serie.fromScalars(venueRoot, [{ venue: 'XNAS', city: 'New York' }]),
+  )
+  const joined = trades.joinWith(venues, 'venue', 'left')
+  assert.ok(joined instanceof ChunkedSerie)
+  assert.equal(joined.field.name, 'trade')
+  assert.deepEqual(joined.asJs(), [
+    { id: 1, venue: 'XNAS', city: 'New York' },
+    { id: 2, venue: 'XNYS', city: null },
+    { id: 3, venue: 'XNAS', city: 'New York' },
+  ])
+  assert.deepEqual(trades.joinWith(venues, 'venue', 'anti').asJs(), [{ id: 2, venue: 'XNYS' }])
+  assert.throws(
+    () => trades.joinWith(venues.intoSerie(), 'venue'),
+    /ChunkedSerie\.joinWith takes a ChunkedSerie/,
+  )
 })

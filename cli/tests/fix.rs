@@ -33,14 +33,22 @@ impl Workspace {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_yggdryl"))
+        self.run_on(None, args)
+    }
+
+    /// Runs the CLI where `GITHUB_ACTIONS` is `runner`, or is not set.
+    fn run_on(&self, runner: Option<&str>, args: &[&str]) -> Output {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_yggdryl"));
+        command
             .args(["fix", "--root"])
             .arg(self.root())
             .args(args)
-            .env("NO_COLOR", "1")
-            .env_remove("GITHUB_ACTIONS")
-            .output()
-            .expect("run CLI")
+            .env("NO_COLOR", "1");
+        match runner {
+            Some(value) => command.env("GITHUB_ACTIONS", value),
+            None => command.env_remove("GITHUB_ACTIONS"),
+        };
+        command.output().expect("run CLI")
     }
 
     fn success(&self, args: &[&str]) -> Output {
@@ -470,6 +478,13 @@ fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
     );
     workspace.failure(&["fields", "read", "DeskValue"]);
     assert_eq!(workspace.read("fields", "5001").name(), "OtherName");
+    // A tag is its digits alone: a sign or a zero reaches no field, a delete
+    // included, where the name rule finds none.
+    for key in ["+5001", "0", "00"] {
+        workspace.failure(&["fields", "read", key]);
+        workspace.failure(&["fields", "delete", key]);
+    }
+    assert_eq!(workspace.read("fields", "05001").name(), "OtherName");
     workspace.success(&["fields", "delete", "5001"]);
     workspace.failure(&["fields", "read", "5001"]);
     workspace.failure(&["fields", "read", "OtherName"]);
@@ -910,4 +925,58 @@ fn ingest_refuses_a_location_holding_nothing_and_sync_names_the_verb_for_a_cbloc
             .collect::<Vec<_>>(),
         ["venue"]
     );
+}
+
+#[test]
+fn a_runner_variable_turns_annotations_on_by_what_it_says_rather_than_by_being_set() {
+    let workspace = Workspace::new();
+    let folder = workspace.cblocks(&[("a_venue.cfb", &rejection("widget"))]);
+    let file = folder.join("a_venue.cfb");
+    let file = file.to_str().expect("test path");
+    let ingest = ["ingest", file, "--dialect", "venue"];
+    let annotated = |text: &str| {
+        text.lines()
+            .any(|line| line.starts_with("::warning title=fix reader::"))
+    };
+
+    // What a runner sets, and every spelling of true the boolean door reads.
+    for value in ["true", "TRUE", " yes ", "on", "1"] {
+        let output = workspace.run_on(Some(value), &ingest);
+        let text = output_text(&output);
+        assert!(output.status.success(), "{value:?}: {text}");
+        assert!(annotated(&text), "{value:?}: {text}");
+        assert!(
+            !text.contains("warning(s) while reading"),
+            "{value:?}: {text}"
+        );
+    }
+
+    // Set to false, or to nothing, it says no runner, as unset does: the
+    // same findings come as the table.
+    for value in ["false", "False", "no", "off", "0", "", "  "] {
+        let output = workspace.run_on(Some(value), &ingest);
+        let text = output_text(&output);
+        assert!(output.status.success(), "{value:?}: {text}");
+        assert!(!annotated(&text), "{value:?}: {text}");
+        assert!(
+            text.contains("warning(s) while reading"),
+            "{value:?}: {text}"
+        );
+    }
+
+    // The switch is still its own: it turns annotations on whatever the
+    // variable says.
+    let text = output_text(&workspace.run_on(
+        Some("false"),
+        &["ingest", file, "--dialect", "venue", "--annotate"],
+    ));
+    assert!(annotated(&text), "{text}");
+
+    // Text no boolean spells is refused by the variable's name, before any
+    // verb runs and whichever namespace was asked for.
+    let refused = workspace.run_on(Some("maybe"), &ingest);
+    let text = output_text(&refused);
+    assert!(!refused.status.success(), "{text}");
+    assert!(text.contains("GITHUB_ACTIONS"), "{text}");
+    assert!(!text.contains("warning(s) while reading"), "{text}");
 }

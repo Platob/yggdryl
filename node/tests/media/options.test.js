@@ -170,7 +170,7 @@ test('a CSV role byte is one ASCII character no other role holds, refused by nam
   ]) {
     assert.throws(() => {
       options[name] = value
-    }, new RegExp(`expected one ASCII character for ${name}, got `))
+    }, new RegExp(`\\$\\.${name}: expected one character standing for one byte, got `))
   }
   // One character that is not ASCII, a line break, or another role's byte:
   // the core's refusal, at the property's own path.
@@ -247,4 +247,35 @@ test('a CSV setting is absent on another encoding rather than invented', () => {
   }, /\$\.infer_row_size: expected CSV options/)
   assert.throws(() => parquet.withSeparator(';'), /expected CSV options/)
   assert.throws(() => parquet.withComment('#'), /expected CSV options/)
+})
+
+test('a thread count is a setting of its own, set, carried, hashed and cleared', () => {
+  const options = RecordOptions.from('trades.parquet')
+  assert.equal(options.numThreads, null)
+
+  options.numThreads = 4
+  assert.equal(options.numThreads, 4)
+  const copy = options.withNumThreads(2)
+  assert.equal(copy.numThreads, 2)
+  // A `with` is a copy: the options it was taken from keep their count.
+  assert.equal(options.numThreads, 4)
+  // The count is inside the options' identity.
+  assert.equal(options.equals(copy), false)
+  assert.notEqual(options.stableHash(), copy.stableHash())
+  assert.ok(options.equals(options.clone()))
+
+  // Zero is kept for the write preflight to refuse by name; a count that is
+  // no whole number is refused where it is set, and leaves the options alone.
+  options.numThreads = 0
+  assert.equal(options.numThreads, 0)
+  for (const value of [-1, 1.5, Number.NaN]) {
+    assert.throws(() => {
+      options.numThreads = value
+    }, /numThreads/)
+    assert.equal(options.numThreads, 0)
+  }
+  options.numThreads = null
+  assert.ok(options.equals(RecordOptions.from('trades.parquet')))
+  // A property bag sets it by its own setter, as an assignment does.
+  assert.equal(new RecordOptions('trades.parquet', { numThreads: 2 }).numThreads, 2)
 })

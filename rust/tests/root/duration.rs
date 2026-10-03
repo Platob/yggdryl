@@ -132,3 +132,88 @@ mod temporal {
         }
     }
 }
+
+#[cfg(all(feature = "internals", feature = "http"))]
+mod internal {
+    //! The one reader a setting's elapsed length goes through, which no
+    //! caller names; every such setting is the HTTP client's, so the reader
+    //! exists under that feature.
+
+    use std::time::Duration;
+
+    use yggdryl::internals::duration::{DURATION_SPELLINGS, duration_from_text};
+
+    #[test]
+    fn a_setting_reads_seconds_with_a_fraction_and_one_fixed_length_unit() {
+        for (text, expected) in [
+            ("30", Duration::from_secs(30)),
+            (" 30 ", Duration::from_secs(30)),
+            ("+30", Duration::from_secs(30)),
+            ("0", Duration::ZERO),
+            ("-0", Duration::ZERO),
+            ("2.5", Duration::from_millis(2_500)),
+            (".5", Duration::from_millis(500)),
+            ("5.", Duration::from_secs(5)),
+            ("1e3", Duration::from_secs(1_000)),
+            ("1.5e-3", Duration::from_micros(1_500)),
+            ("30s", Duration::from_secs(30)),
+            ("2 S", Duration::from_secs(2)),
+            ("30 seconds", Duration::from_secs(30)),
+            ("250ms", Duration::from_millis(250)),
+            ("0.5ms", Duration::from_micros(500)),
+            ("1500 millis", Duration::from_millis(1_500)),
+            ("7us", Duration::from_micros(7)),
+            ("7\u{b5}s", Duration::from_micros(7)),
+            ("250ns", Duration::from_nanos(250)),
+            ("1d", Duration::from_secs(86_400)),
+            ("1.5 days", Duration::from_secs(129_600)),
+            // A whole count is exact at every magnitude.
+            (
+                "9007199254740993",
+                Duration::from_secs(9_007_199_254_740_993),
+            ),
+            ("18446744073709551615", Duration::from_secs(u64::MAX)),
+            ("18446744073709551615ns", Duration::from_nanos(u64::MAX)),
+        ] {
+            assert_eq!(duration_from_text(text), Some(expected), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_length_no_setting_spells_is_refused_never_a_panic() {
+        for text in [
+            "",
+            " ",
+            "s",
+            "ms",
+            "-1",
+            "-0.5",
+            "-1s",
+            "1m",
+            "1h",
+            "1 min",
+            "1 hour",
+            "1 month",
+            "1e30",
+            "1e30ms",
+            "1e400",
+            "inf",
+            "nan",
+            "1.2.3",
+            "1e",
+            "1 s s",
+            "soon",
+            "1,5",
+            "213503982334602d",
+            "1 year",
+            "PT30S",
+            "00:00:30",
+        ] {
+            assert_eq!(duration_from_text(text), None, "{text:?}");
+        }
+        assert_eq!(
+            DURATION_SPELLINGS,
+            "seconds, with an optional fraction and an optional s, ms, us, ns or d unit"
+        );
+    }
+}

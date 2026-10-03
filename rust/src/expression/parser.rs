@@ -32,13 +32,28 @@
 //! path       := ["."] identifier ("." identifier | "[" segment "]")* ["as" identifier]
 //! ```
 //!
+//! A plan reads its sections around these, each optional and in order -
+//! `create`, a write verb, `select`, `from`, the joins, `where`, `order by`,
+//! `limit`/`offset` - and a join is
+//!
+//! ```text
+//! join       := [ "inner" | "left" ["outer"] | "right" ["outer"]
+//!               | "full" ["outer"] | "outer" | "semi" | "anti" ] "join" source
+//!               ( "on" term ("and" term)* | "using" "(" identifier ("," identifier)* ")" )
+//! source     := target | "(" plan ")"
+//! ```
+//!
+//! where each `on` conjunct is an equality, its left term over the rows so
+//! far and its right term over the source.
+//!
 //! # What is deliberately not here
 //!
-//! No subquery, no join, no aggregate, no window, no ordering. Every one of
-//! those needs a second relation or the whole of one, and this is a projection
-//! and filter tree over rows that stream. A grammar that accepts them and then
-//! refuses them at bind time has told the caller a lie at the point where the
-//! error message was still cheap.
+//! No subquery inside a term, no join inside a term, no aggregate, no window,
+//! no ordering. Every one of those needs a second relation or the whole of
+//! one, and a term is a projection and filter tree over rows that stream; a
+//! second relation enters a plan only as its `from` or a `join`. A grammar
+//! that accepts them and then refuses them at bind time has told the caller a
+//! lie at the point where the error message was still cheap.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -46,6 +61,7 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::display::{is_bare_identifier, is_reserved};
+use super::join::{JoinKey, JoinKeys};
 use super::path::{FieldPath, FieldSegment};
 use super::plan::{Location, Ordering, Plan, Source, Target, Verb, Write};
 use super::selector::{Projection, Selector};
@@ -53,7 +69,10 @@ use super::{
     Comparison, Expression, Filter, Function, Literal, Operator, RECURSION_LIMIT, Safety, Term,
     UserRef,
 };
-use crate::{DataType, Error, Result, Scalar, Url, i256};
+use crate::boolean::{BOOLEAN_SPELLINGS, boolean_from_text};
+use crate::floating::{FLOAT_SPELLINGS, float_from_text};
+use crate::integer::{INTEGER_SPELLINGS, integer_from_text};
+use crate::{DataType, Error, JoinKind, Result, Scalar, Url};
 
 impl FromStr for Term {
     type Err = Error;
@@ -96,6 +115,52 @@ pub(crate) fn parse_projection(input: &str) -> Result<Projection> {
     Ok(projection)
 }
 
+/// Parse one `order by` key: a term, then `asc` or `desc`, then `nulls
+/// first` or `nulls last`.
+pub(crate) fn parse_ordering(input: &str) -> Result<Ordering> {
+    let mut parser = Parser::new(input)?;
+    let ordering = parser.ordering()?;
+    parser.expect_end()?;
+    ordering.term().check_budget()?;
+    Ok(ordering)
+}
+
+/// Parse the keys of an `order by` clause without its keywords: one key or
+/// several separated by `,`, each a term with its optional direction and
+/// nulls placement - `venue, price desc nulls first`.
+pub(crate) fn parse_orderings(input: &str) -> Result<Vec<Ordering>> {
+    let mut parser = Parser::new(input)?;
+    let mut keys = Vec::new();
+    loop {
+        let ordering = parser.ordering()?;
+        ordering.term().check_budget()?;
+        keys.push(ordering);
+        if !parser.eat_symbol(",") {
+            break;
+        }
+    }
+    parser.expect_end()?;
+    Ok(keys)
+}
+
+/// Parse the keys of a join: one or several separated by `,`, each a term
+/// over both sides or an equality of a left term and a right term - `id,
+/// venue = market`.
+pub(crate) fn parse_join_keys(input: &str) -> Result<JoinKeys> {
+    let mut parser = Parser::new(input)?;
+    let mut keys = Vec::new();
+    loop {
+        let term = parser.term()?;
+        term.check_budget()?;
+        keys.push(JoinKey::from_term(term)?);
+        if !parser.eat_symbol(",") {
+            break;
+        }
+    }
+    parser.expect_end()?;
+    Ok(JoinKeys::new(keys))
+}
+
 /// Parse one expression: a plan, or plans separated by `;`.
 ///
 /// A plan spelling only its `select` section is the selector; only its
@@ -125,6 +190,32 @@ pub(crate) fn parse_plan(input: &str) -> Result<Plan> {
     parser.expect_end()?;
     plan.check_budget()?;
     Ok(plan)
+}
+
+/// Parse one write verb, in any spelling the grammar reads, with or without
+/// the word that introduces its target.
+pub(crate) fn parse_verb(input: &str) -> Result<Verb> {
+    let mut parser = Parser::new(input)?;
+    let verb = parser.verb()?.ok_or_else(|| {
+        parse_error(
+            parser.position(),
+            format_smolstr!(
+                "expected a write verb - insert, append, overwrite, replace, upsert, merge or \
+                 delete - got {}",
+                parser.describe()
+            ),
+        )
+    })?;
+    parser.expect_end()?;
+    Ok(verb)
+}
+
+/// Parse one comparison: a symbol, or `is [not] distinct from`.
+pub(crate) fn parse_comparison(input: &str) -> Result<Comparison> {
+    let mut parser = Parser::new(input)?;
+    let comparison = parser.comparison()?;
+    parser.expect_end()?;
+    Ok(comparison)
 }
 
 /// Parse one target: a URL, or a catalog path, with its properties.
@@ -416,6 +507,19 @@ fn is_section_word(word: &str) -> bool {
             | "overwrite"
             | "replace"
     )
+}
+
+/// The operands of a conjunction, nested ones included, in order: what a
+/// join's `on` splits into, one key per equality.
+fn flatten_conjunction(term: Term, out: &mut Vec<Term>) {
+    match term {
+        Term::And(operands) => {
+            for operand in operands.iter() {
+                flatten_conjunction(operand.clone(), out);
+            }
+        }
+        other => out.push(other),
+    }
 }
 
 fn parse_error(position: usize, reason: impl Into<SmolStr>) -> Error {
@@ -723,6 +827,12 @@ impl<'input> Parser<'input> {
             any = true;
             plan = plan.read_from(self.source()?);
         }
+        while let Some(how) = self.join_kind() {
+            any = true;
+            let source = self.source()?;
+            let keys = self.join_keys()?;
+            plan = plan.join(how, source, keys)?;
+        }
         if self.eat_word("where") {
             any = true;
             plan.set_filter(Filter::new(self.term()?));
@@ -757,6 +867,86 @@ impl<'input> Parser<'input> {
             return Err(super::unknown_clause(self.input[start..].trim()));
         }
         Ok(plan)
+    }
+
+    /// Read the words that open a join, answering the kind they name;
+    /// nothing, and nothing consumed, when no join opens here.
+    ///
+    /// A kind word counts only before `join` - or `outer join` - so a word
+    /// that happens to spell a kind is never taken for one.
+    fn join_kind(&mut self) -> Option<JoinKind> {
+        if self.eat_word("join") {
+            return Some(JoinKind::Inner);
+        }
+        let Some(Token::Word(word)) = self.peek() else {
+            return None;
+        };
+        let how = match folded(word).as_str() {
+            "inner" => JoinKind::Inner,
+            "left" => JoinKind::Left,
+            "right" => JoinKind::Right,
+            "full" | "outer" => JoinKind::Full,
+            "semi" => JoinKind::Semi,
+            "anti" => JoinKind::Anti,
+            _ => return None,
+        };
+        // `outer` is a kind of its own and the optional word after `left`,
+        // `right` and `full`; it never follows another kind.
+        let outer = matches!(how, JoinKind::Left | JoinKind::Right)
+            || (how == JoinKind::Full && !self.at_word("outer"));
+        let words = if outer && self.word_at(1, "outer") {
+            2
+        } else {
+            1
+        };
+        if !self.word_at(words, "join") {
+            return None;
+        }
+        self.cursor += words + 1;
+        Some(how)
+    }
+
+    /// Read a join's keys: `on` equalities joined by `and`, or `using` and
+    /// the names both sides share.
+    fn join_keys(&mut self) -> Result<JoinKeys> {
+        if self.eat_word("using") {
+            self.expect_symbol("(")?;
+            let mut keys = Vec::new();
+            loop {
+                keys.push(JoinKey::using(Term::column(self.identifier()?)));
+                if !self.eat_symbol(",") {
+                    break;
+                }
+            }
+            self.expect_symbol(")")?;
+            return Ok(JoinKeys::new(keys));
+        }
+        if !self.eat_word("on") {
+            return Err(parse_error(
+                self.position(),
+                format_smolstr!(
+                    "expected `on` or `using` and the keys a join matches on, got {}",
+                    self.describe()
+                ),
+            ));
+        }
+        let position = self.position();
+        let mut conjuncts = Vec::new();
+        flatten_conjunction(self.term()?, &mut conjuncts);
+        conjuncts
+            .into_iter()
+            .map(|conjunct| match conjunct {
+                Term::Compare(_, Comparison::Eq, _) => JoinKey::from_term(conjunct),
+                other => Err(parse_error(
+                    position,
+                    format_smolstr!(
+                        "expected a join's `on` to be equalities joined by `and`, each a left \
+                         term = a right term, got `{other}`"
+                    ),
+                )),
+            })
+            .collect::<Result<Vec<_>>>()
+            .map(JoinKeys::new)
     }
 
     /// Read a write verb in any spelling this grammar reads, answering its
@@ -1022,14 +1212,8 @@ impl<'input> Parser<'input> {
                     left.is_null()
                 });
             }
-            self.expect_word("distinct")?;
-            self.expect_word("from")?;
+            let comparison = self.distinct_from(negated)?;
             let right = self.additive()?;
-            let comparison = if negated {
-                Comparison::IsNotDistinctFrom
-            } else {
-                Comparison::IsDistinctFrom
-            };
             return Ok(left.compare(comparison, right));
         }
         let negated = self.at_word("not")
@@ -1108,6 +1292,37 @@ impl<'input> Parser<'input> {
             return Ok(left);
         };
         Ok(if negated { built.not() } else { built })
+    }
+
+    /// Read one comparison where one is expected: a symbol, or `is [not]
+    /// distinct from`.
+    fn comparison(&mut self) -> Result<Comparison> {
+        if let Some(comparison) = self.comparison_symbol() {
+            return Ok(comparison);
+        }
+        if self.eat_word("is") {
+            let negated = self.eat_word("not");
+            return self.distinct_from(negated);
+        }
+        Err(parse_error(
+            self.position(),
+            format_smolstr!(
+                "expected a comparison - =, <>, !=, <, <=, >, >= or is [not] distinct from - \
+                 got {}",
+                self.describe()
+            ),
+        ))
+    }
+
+    /// The rest of `is [not] distinct from`, its `is` and `not` already read.
+    fn distinct_from(&mut self, negated: bool) -> Result<Comparison> {
+        self.expect_word("distinct")?;
+        self.expect_word("from")?;
+        Ok(if negated {
+            Comparison::IsNotDistinctFrom
+        } else {
+            Comparison::IsDistinctFrom
+        })
     }
 
     fn comparison_symbol(&mut self) -> Option<Comparison> {
@@ -1705,7 +1920,8 @@ fn number_literal(text: &str, position: usize) -> Result<Term> {
 ///
 /// The text forms are the crate's own: ISO 8601 for every temporal, an exact
 /// decimal string for a decimal, lowercase hex for binary. Nothing here is a
-/// second value parser - each family delegates to the one the codecs use.
+/// second value parser - each family delegates to the reader its root file
+/// owns, the one a column of text is cast through.
 pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> Result<Scalar> {
     use DataType as D;
 
@@ -1715,19 +1931,15 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
             format_smolstr!("expected {expected}, got {text:?}"),
         )
     };
-    let integer = |text: &str| -> Result<Scalar> {
-        text.parse::<i128>()
-            .map(Scalar::from)
-            .map_err(|_| fail("a whole number"))
-    };
     let value = match dtype {
         D::Null => Scalar::Null,
-        D::Boolean => match text {
-            "true" => Scalar::from(true),
-            "false" => Scalar::from(false),
-            _ => return Err(fail("`true` or `false`")),
-        },
-        D::Int8 | D::Int16 | D::Int32 | D::Int64 => integer(text)?,
+        D::Boolean => boolean_from_text(text).ok_or_else(|| fail(BOOLEAN_SPELLINGS))?,
+        // Every width reads the one integer spelling; the closing conversion
+        // narrows it to the declared width and refuses a magnitude or a sign
+        // that width cannot hold.
+        D::Int8 | D::Int16 | D::Int32 | D::Int64 | D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => {
+            integer_from_text(text).ok_or_else(|| fail(INTEGER_SPELLINGS))?
+        }
         // A temporal literal is its classic spelling, never a raw count: the
         // count is a physical detail and the literal is what a person wrote.
         // The reading is the crate's one text reading, so a literal and a
@@ -1739,37 +1951,21 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         | D::DateTime64 { .. }
         | D::Duration32(_)
         | D::Duration64(_) => Scalar::from_temporal_text(dtype, text)?,
-        D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => text
-            .parse::<u128>()
-            .map(Scalar::from)
-            .map_err(|_| fail("a whole number that is not negative"))?,
-        D::Float16 => Scalar::from(half::f16::from_f64(
-            float_from_text(text).ok_or_else(|| fail("a floating-point number"))?,
-        )),
-        D::Float32 => Scalar::from(
-            float_from_text(text).ok_or_else(|| fail("a floating-point number"))? as f32,
-        ),
-        D::Float64 => {
-            Scalar::from(float_from_text(text).ok_or_else(|| fail("a floating-point number"))?)
+        // Every width reads the one float spelling; the closing conversion
+        // rounds it to the declared width.
+        D::Float16 | D::Float32 | D::Float64 => {
+            float_from_text(text).ok_or_else(|| fail(FLOAT_SPELLINGS))?
         }
-        D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
-            Scalar::decimal128(
-                decimal_from_text(text, *scale).ok_or_else(|| {
-                    fail("an exact decimal that fits the declared precision and scale")
-                })?,
-                *scale,
-            )
-        }
-        // The fixed leaves read through the crate's strict text door, which
-        // refuses a digit their scale cannot hold.
-        D::Decimal | D::BigDecimal => Scalar::from_decimal_text(dtype, text)
+        // Every width and both fixed leaves read the one decimal spelling at
+        // the declared scale, a digit past it refused; the closing conversion
+        // holds the coefficient to the declared precision.
+        D::Decimal32 { .. }
+        | D::Decimal64 { .. }
+        | D::Decimal128 { .. }
+        | D::Decimal256 { .. }
+        | D::Decimal
+        | D::BigDecimal => Scalar::from_decimal_text(dtype, text)
             .map_err(|_| fail("an exact decimal that fits the declared precision and scale"))?,
-        D::Decimal256 { scale, .. } => Scalar::decimal256(
-            i256::from_i128(decimal_from_text(text, *scale).ok_or_else(|| {
-                fail("an exact decimal that fits the declared precision and scale")
-            })?),
-            *scale,
-        ),
         crate::string_dtypes!() | D::Uuid | D::Version => Scalar::from(SmolStr::new(text)),
         code if code.is_code() => Scalar::from(SmolStr::new(text)),
         // An enum literal is a spelling its leaf's value door reads.
@@ -1792,63 +1988,6 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
     // cast value can never end up shaped differently.
     super::eval::convert(dtype, &value, super::Safety::Strict)
         .map_err(|error| parse_error(position, format_smolstr!("{error}")))
-}
-
-/// Read a float, accepting the three names the finite grammar cannot spell.
-fn float_from_text(text: &str) -> Option<f64> {
-    match folded(text).as_str() {
-        "nan" => Some(f64::NAN),
-        "inf" | "+inf" | "infinity" => Some(f64::INFINITY),
-        "-inf" | "-infinity" => Some(f64::NEG_INFINITY),
-        _ => text.parse::<f64>().ok(),
-    }
-}
-
-/// Read an exact decimal at a declared scale, refusing a digit that would drop.
-fn decimal_from_text(text: &str, scale: i8) -> Option<i128> {
-    let (sign, digits) = match text.strip_prefix('-') {
-        Some(rest) => (-1_i128, rest),
-        None => (1_i128, text.strip_prefix('+').unwrap_or(text)),
-    };
-    let (whole, fraction) = match digits.split_once('.') {
-        Some((whole, fraction)) => (whole, fraction),
-        None => (digits, ""),
-    };
-    if whole.is_empty() && fraction.is_empty() {
-        return None;
-    }
-    if !whole.bytes().all(|byte| byte.is_ascii_digit())
-        || !fraction.bytes().all(|byte| byte.is_ascii_digit())
-    {
-        return None;
-    }
-    let mut unscaled = whole.parse::<i128>().unwrap_or_default();
-    for byte in fraction.bytes() {
-        unscaled = unscaled
-            .checked_mul(10)?
-            .checked_add(i128::from(byte - b'0'))?;
-    }
-    let written = i32::try_from(fraction.len()).ok()?;
-    let declared = i32::from(scale);
-    match declared.checked_sub(written)? {
-        // The literal has fewer places than the column: pad with zeros.
-        shift if shift > 0 => {
-            for _ in 0..shift {
-                unscaled = unscaled.checked_mul(10)?;
-            }
-        }
-        // The literal has more: only exact trailing zeros may be dropped.
-        shift if shift < 0 => {
-            for _ in 0..-shift {
-                if unscaled % 10 != 0 {
-                    return None;
-                }
-                unscaled /= 10;
-            }
-        }
-        _ => {}
-    }
-    Some(sign * unscaled)
 }
 
 /// Read lowercase or uppercase hex into bytes.

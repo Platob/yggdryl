@@ -112,6 +112,7 @@ pub use partition::{FIRST_PARTITION_ID, PartitionField, PartitionSpec, Transform
 pub use scan::{ScanPlan, ScanTask};
 pub use schema::{assign_field_ids, last_column_id, schema_from_json, schema_into_json};
 pub use snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
+pub(crate) use table::ReplacedPartitions;
 pub use table::{CommitConflict, Compaction, Table};
 pub use types::PrimitiveType;
 
@@ -153,26 +154,10 @@ impl Located {
     ///
     /// The rows were cast when they were shaped, so nothing here is safe or
     /// unsafe: the addressed partitions are replaced by what arrives.
-    pub(crate) fn overwrite_prepared(&mut self, batches: crate::arrow::BatchReader) -> Result<()> {
-        let filters = self.filters.clone();
-        let pairs: Vec<(&str, &str)> = filters
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
-        self.table.commit_overwrite_where(&pairs, batches)
-    }
-
-    /// Publish one already-shaped append cadence.
-    pub(crate) fn append_prepared(&mut self, batches: crate::arrow::BatchReader) -> Result<()> {
-        self.table.commit_append(batches)
-    }
-
-    /// Publish one already-shaped merge cadence.
-    pub(crate) fn merge_prepared(
+    pub(crate) fn overwrite_prepared(
         &mut self,
         batches: crate::arrow::BatchReader,
-        merge_by: &crate::Selector,
-        safe: bool,
+        threads: Option<usize>,
     ) -> Result<()> {
         let filters = self.filters.clone();
         let pairs: Vec<(&str, &str)> = filters
@@ -180,7 +165,39 @@ impl Located {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         self.table
-            .commit_merge_where(&pairs, batches, merge_by, safe)
+            .commit_overwrite_where_on(&pairs, batches, threads)
+    }
+
+    /// Publish one already-shaped append cadence.
+    pub(crate) fn append_prepared(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        threads: Option<usize>,
+    ) -> Result<()> {
+        self.table.commit_append_on(batches, threads)
+    }
+
+    /// Publish one already-shaped merge cadence.
+    ///
+    /// `replaced` is the one write's accumulator of the partitions its
+    /// earlier cadences replaced, so a merge keyed by the partition alone
+    /// replaces each partition once and appends to it after; see
+    /// [`Table::commit_merge_cadence`].
+    pub(crate) fn merge_prepared(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        merge_by: &crate::Selector,
+        safe: bool,
+        replaced: &mut ReplacedPartitions,
+        threads: Option<usize>,
+    ) -> Result<()> {
+        let filters = self.filters.clone();
+        let pairs: Vec<(&str, &str)> = filters
+            .iter()
+            .map(|(column, value)| (column.as_str(), value.as_str()))
+            .collect();
+        self.table
+            .commit_merge_cadence(&pairs, batches, merge_by, safe, replaced, threads)
     }
 
     /// Return the table a container handle addresses, if it addresses one.
@@ -252,7 +269,9 @@ impl Located {
         self.table.read_scoped(scope, options)
     }
 
-    /// Replace the addressed table partition in one commit.
+    /// Replace the addressed table partition: `Table::write_cadenced`
+    /// under [`IOMode::Overwrite`](crate::IOMode::Overwrite), the first
+    /// commit replacing it and every later one appending.
     ///
     /// # Errors
     ///
@@ -262,34 +281,11 @@ impl Located {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        options.require_write_mode(crate::IOMode::Overwrite)?;
-        let commit_row_size = options.require_commit_row_size()?;
-        let stored = self.table.schema()?.clone();
-        let (batches, _, _) =
-            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
-        let filters: Vec<(String, String)> = self.filters.clone();
-        let pairs: Vec<(&str, &str)> = filters
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
-        if commit_row_size.is_none() {
-            return self.table.commit_overwrite_where(&pairs, batches);
-        }
-        let schema = batches.schema();
-        let mut commits = options.commit_arrow_readers(batches)?;
-        let Some(first) = commits.next() else {
-            return self
-                .table
-                .commit_overwrite_where(&pairs, crate::arrow::batch_reader(schema, []));
-        };
-        self.table.commit_overwrite_where(&pairs, first?)?;
-        for commit in commits {
-            self.table.commit_append(commit?)?;
-        }
-        Ok(())
+        self.write_cadenced(batches, crate::IOMode::Overwrite, options)
     }
 
-    /// Add the rows as a new snapshot, keeping every stored file.
+    /// Add the rows: `Table::write_cadenced` under
+    /// [`IOMode::Append`](crate::IOMode::Append).
     ///
     /// # Errors
     ///
@@ -299,33 +295,11 @@ impl Located {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        use crate::media::IORecordOptions;
-
-        options.require_write_mode(crate::IOMode::Append)?;
-        let commit_row_size = options.require_commit_row_size()?;
-        options.require_write_limits()?;
-        if options.write_limit_is_zero() {
-            return Ok(());
-        }
-        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
-            return Ok(());
-        };
-        let stored = self.table.schema()?.clone();
-        let (batches, _, _) =
-            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
-        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
-            return Ok(());
-        };
-        if commit_row_size.is_none() {
-            return self.table.commit_append(batches);
-        }
-        for commit in options.commit_arrow_readers(batches)? {
-            self.table.commit_append(commit?)?;
-        }
-        Ok(())
+        self.write_cadenced(batches, crate::IOMode::Append, options)
     }
 
-    /// Merge rows into the addressed table partition in one commit.
+    /// Merge rows into the addressed table partition:
+    /// `Table::write_cadenced` under [`IOMode::Merge`](crate::IOMode::Merge).
     ///
     /// # Errors
     ///
@@ -335,38 +309,23 @@ impl Located {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        use crate::media::IORecordOptions;
+        self.write_cadenced(batches, crate::IOMode::Merge, options)
+    }
 
-        options.require_write_mode(crate::IOMode::Merge)?;
-        let commit_row_size = options.require_commit_row_size()?;
-        options.require_write_limits()?;
-        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
-            return Ok(());
-        };
-        let stored = self.table.schema()?.clone();
-        let (batches, _, _) =
-            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
-        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
-            return Ok(());
-        };
-        let filters: Vec<(String, String)> = self.filters.clone();
+    /// `Table::write_cadenced` over the partitions this location
+    /// addresses.
+    fn write_cadenced(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        mode: crate::IOMode,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        let filters = self.filters.clone();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        if commit_row_size.is_none() {
-            return self.table.commit_merge_where(
-                &pairs,
-                batches,
-                options.merge_by(),
-                options.safe(),
-            );
-        }
-        for commit in options.commit_arrow_readers(batches)? {
-            self.table
-                .commit_merge_where(&pairs, commit?, options.merge_by(), options.safe())?;
-        }
-        Ok(())
+        self.table.write_cadenced(batches, mode, options, &pairs)
     }
 
     /// Return the rows at the addressed table location.

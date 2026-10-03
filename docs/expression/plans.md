@@ -7,11 +7,11 @@
 | Key | Value |
 | --- | --- |
 | Owns | `Plan`, `Write`, `Verb`, `Ordering`, `Source`, `Target`, `Location`, `IntoPlan`, `Expression::Sequence`, `Holder::from_url` |
-| Sections | `create [target] (schema) [with (...)]`, a write verb with an optional target and `by (keys)`, `select`, `from target \| (plan)`, `where`, `order by`, `limit`, `offset` |
+| Sections | `create [target] (schema) [with (...)]`, a write verb with an optional target and `by (keys)`, `select`, `from target \| (plan)`, zero or more `join` clauses, `where`, `order by`, `limit`, `offset` |
 | Verbs | `insert into` (append), `insert overwrite` (replace), `upsert into ... by (keys)` (merge), `delete from ... where`; every common alias reads and prints canonically |
 | Location | a quoted URL, or a catalog path `catalog.schema.table` whose parts may be quoted with `"`, backticks, or `[...]`; parts resolve against a base URL, a URL stands alone |
-| Target | a location and `with (name = 'value', ...)` properties: `media_type`, `codec`, `safe`, `batch_row_size`, `batch_byte_size`, `commit_row_size`, `max_row_size`, `row_offset`, `max_byte_size`, and whatever a holder reads; `safe = 'false'` refuses what a nullable declared column would otherwise take as null |
-| Execute | `execute()` reads the source through its holder with the read sections pushed down, runs a nested plan first, and writes where the plan says; a plan with no source starts from the empty stream, which is what `create` alone needs |
+| Target | a location and `with (name = 'value', ...)` properties: `media_type`, `codec`, `safe`, `batch_row_size`, `batch_byte_size`, `commit_batch_num`, `num_threads`, `max_row_size`, `row_offset`, `max_byte_size`, and whatever a holder reads; `safe = 'false'` refuses what a nullable declared column would otherwise take as null. `safe` reads the [boolean table](../types/numeric/boolean.md#the-one-text-reader) (`no`, `off`, `0` alike) and the counts the integer grammar, each refused at `$.with.<name>` naming the text when it does not read |
+| Execute | `execute()` reads the source through its holder with the read sections pushed down, runs a nested plan first, joins each `join` source in turn - the source read whole and hashed, the stream probed batch by batch, the first join's distinct keys pushed into the probe's read where the kind lets them - and writes where the plan says; a plan with no source starts from the empty stream, which is what `create` alone needs |
 | Apply | `apply_arrow_reader(reader)` shapes a stream it is given, source or not; `where` and `select` stream, `order by` collects, `offset` and `limit` slice views |
 | Field | `Plan::from_field(field)` is `create name (columns)`; `field()` reads a `create` section back; `field_from(root)` types the read sections against a root |
 | Bindings | Python and JavaScript `Plan` and `Expression`; `execute` and every application in all three |
@@ -158,11 +158,55 @@
 | write | `insert into t`, `insert overwrite t`, `upsert into t by (id)`, `delete from t` | where the shaped stream goes; a verb with no target writes to the handle the plan is given to |
 | `select` | `select id, price * 2 as doubled` | the [selector](selectors.md); `select *` when absent |
 | `from` | `from t`, `from 'file:///lake/t.parquet'`, `from (select ... )` | what `execute` reads, a nested plan running first |
+| `join` | `left join v using (id)`, `join v on t.id = v.id and t.day = v.day`, `anti join (select ...) using (id)` | one [`Serie::join_with`](../types/serie.md#joins) per clause, left to right - each clause's left side the rows so far, its right side the source, read whole and held; `inner` (a bare `join`), `left`, `right`, `full` (`outer`), `semi`, `anti`, each with an optional `outer` before `join`; `on` takes equalities joined by `and`, each term bound against its own side - a path names a column and its children, never a table alias - and `using` bare columns shared by both, coalesced; the output root is the left columns then the right, a collision suffixed `_right` |
 | `where` | `where price > 0` | the [filter](filters.md), pushed into the read |
 | `order by` | `order by id desc nulls first, ccy` | collects the stream and sorts it stably - rows the keys tie keep the order they arrived in; a key may name a column the projection drops, or an alias it publishes |
 | `limit`, `offset` | `limit 10 offset 5` | slice views over the stream; pushed into the read when nothing orders |
 
 `read_sections()` is the plan without its `create`, write and `from`: what a media is handed to push down. A `Plan` with only a `select` or a `where` collapses into that clause through `into_expression`.
+
+## Joins
+
+A plan joins the way a [`Serie`](../types/serie.md#joins) does, under `JoinOptions::new()` - `using` keys coalesced, a colliding right name suffixed `_right`, the right side built - and only what cannot lose a joined row goes down into the left target's read: the first join's key filter, `key in (<the build side's distinct keys>)`, when the join has one key and its kind emits no unmatched left row (`inner`, `right`, `semi`) and the build side holds at most 10,000 distinct keys; and the `where` conjuncts whose columns are all in the left root, when no join is `right` or `full`. Everything else - the rest of the `where`, `select`, `order by`, `limit`, `offset` - runs after the joins, so a `where` or an `order by` may name a right column. A later join probes the stream already in hand and pushes nothing. `explain()` states the kind, the keys, the rung (the row format or the values, when both roots are known without reading), the build side and the pushdown rule. The output schema (`field_from`, `apply_datatype`) is each join's output root in turn, which needs the right root known without reading: a nested plan declaring its columns; a target source as a join's right side is refused by `$.join` there, because typing never reads a source. Record options hold no join section: `RecordOptions::set_plan` refuses a plan with one by `$.join` - run the plan or apply it to the rows.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::expression::{Expression, Plan};
+
+    let plan: Plan = "select * from trades left join venues using (venue) where size > 0 order by id".parse()?;
+    assert_eq!(plan.joins().len(), 1);
+    assert_eq!(plan.joins()[0].how().to_string(), "left");
+    // The canonical text writes `select *` only where nothing else says what is read.
+    assert_eq!(plan.to_string(), "from trades left join venues using (venue) where size > 0 order by id");
+    // A bare `join` is `inner`, written explicitly; `on` keeps both columns.
+    let on: Plan = "select * from t join v on t.id = v.id and t.day = v.day".parse()?;
+    assert_eq!(on.to_string(), "select * from t inner join v on t.id = v.id and t.day = v.day");
+    assert!(Expression::from(on).explain().contains("inner join"));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Plan
+
+    plan = Plan("select * from trades left join venues using (venue) where size > 0 order by id")
+    # The canonical text writes `select *` only where nothing else says what is read.
+    assert str(plan) == "from trades left join venues using (venue) where size > 0 order by id"
+    assert str(Plan("select * from t join v on t.id = v.id")) == "select * from t inner join v on t.id = v.id"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Plan } = require('yggdryl')
+
+    const plan = new Plan('select * from trades left join venues using (venue) where size > 0 order by id')
+    // The canonical text writes `select *` only where nothing else says what is read.
+    assert.equal(plan.toString(), 'from trades left join venues using (venue) where size > 0 order by id')
+    assert.equal(new Plan('select * from t join v on t.id = v.id').toString(), 'select * from t inner join v on t.id = v.id')
+    ```
 
 ## Locations and targets
 
@@ -176,6 +220,8 @@
 `Holder::from_url(url, properties)` is the one builder every target goes through: a `file:` URL is a local path or, with a fragment, a ZIP member; an object-store scheme needs the `s3` feature and reads its credentials from the properties; `media_type` and `codec` type an extensionless resource.
 
 ## Verbs and their aliases
+
+`Verb::from_str` reads the verb of every spelling in this table - `insert`, `append`, `insert overwrite`, `overwrite`, `replace`, `upsert`, `merge`, `delete` - with or without the `into`, `to` or `from` that introduces a target, in any case, the one table the plan grammar reads a verb by; and `Ordering::from_str` reads one `order by` key as the grammar spells it, `price desc nulls first`. Each takes the grammar's words alone and refuses anything past them. Rust only.
 
 | Canonical | Also read as | Does |
 | --- | --- | --- |
@@ -192,6 +238,9 @@
 - `order by` -> the one section that collects; `limit` after it counts sorted rows and stays with it rather than being pushed down.
 - `create (...)` with no target over a stream -> casts the stream to the declared schema under the selector's rule; a `not null` column the stream cannot fill is refused naming it.
 - `from (plan)` nested past the shared depth limit -> refused at parse.
+- `join` -> `on` takes equalities only: ``got `px > 1` `` names the conjunct refused, with its byte position; `using ()` and a missing `on`/`using` are refused; a key binding on neither side is refused naming it; an `on` conjunct that is one equality shared by both sides prints as `(a = b) = (a = b)`, which reads back as one key.
+- `join` over a target left source -> the left holder is opened twice, once for its field and once for its rows, and every join source is read whole into a `ChunkedSerie`; a left-only `where` is pushed down unless a join is `right` or `full`; a pushed key filter never drops a row the kind would keep.
+- An unresolvable join source -> reported at `$.from` (the location's error path), not `$.join`.
 - A section word as a bare location -> refused; a URL stands alone only quoted.
 - `Plan::from_field` -> spells every column with its nullability, so `create trades (id int64 not null, ccy utf8 null)`.
 

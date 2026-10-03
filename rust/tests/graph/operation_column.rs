@@ -91,6 +91,41 @@ fn a_null_clears_and_nothing_stated_is_none() {
 }
 
 #[test]
+fn a_flag_cell_reads_as_every_flag_does_and_an_unreadable_cell_leaves_the_fact() {
+    let mut operation = OrderEvent::at(7);
+    for (cell, expected) in [
+        (Scalar::from(true), Some(true)),
+        (Scalar::from("yes"), Some(true)),
+        (Scalar::from("Y"), Some(true)),
+        (Scalar::from("1"), Some(true)),
+        (Scalar::from(false), Some(false)),
+        (Scalar::from("N"), Some(false)),
+        (Scalar::from(" off "), Some(false)),
+        (Scalar::from("true"), Some(true)),
+    ] {
+        OperationColumn::Tradable.record(&mut operation, &cell);
+        assert_eq!(operation.get_tradable(), expected, "{cell:?}");
+    }
+    // A cell no flag spells is incompatible, so the fact stands: it never
+    // clears, as the doc promises and as the market columns do.
+    operation.set_tradable(Some(false), true);
+    for cell in [Scalar::from("maybe"), Scalar::from(7_i64)] {
+        OperationColumn::Tradable.record(&mut operation, &cell);
+        assert_eq!(operation.get_tradable(), Some(false), "{cell:?}");
+    }
+    operation.set_ordqty(Some(yggdryl::Decimal::from_int(5)), true);
+    OperationColumn::OrdQty.record(&mut operation, &Scalar::from("many"));
+    assert_eq!(
+        operation.get_ordqty(),
+        Some(yggdryl::Decimal::from_int(5)),
+        "an unreadable quantity leaves the fact"
+    );
+    // Only a null clears.
+    OperationColumn::Tradable.record(&mut operation, &Scalar::Null);
+    assert_eq!(operation.get_tradable(), None);
+}
+
+#[test]
 fn operation_column_schema_has_one_owner_and_order() {
     let fields = OperationColumn::fields().unwrap();
     assert_eq!(fields.len(), 5);

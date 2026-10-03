@@ -26,6 +26,7 @@ use arrow_schema::DataType as ArrowDataType;
 
 use super::{Serie, layout, require_range, require_row, require_window};
 use crate::expression::FieldSegment;
+use crate::spill::Backing;
 use crate::value::SerieValue;
 use crate::{DataType, Field, FieldPath, Result, Scalar, StructType};
 
@@ -45,6 +46,8 @@ pub struct StructSerie {
     children: Vec<Serie>,
     nulls: Option<NullBuffer>,
     rows: usize,
+    /// Where the validity lives; every child answers for its own buffers.
+    backing: Backing,
 }
 
 impl StructSerie {
@@ -60,6 +63,7 @@ impl StructSerie {
             children,
             nulls,
             rows,
+            backing: Backing::Heap,
         }
     }
 
@@ -81,6 +85,51 @@ impl StructSerie {
     /// Borrow the validity bitmap, or `None` where no row is absent.
     pub const fn nulls(&self) -> Option<&NullBuffer> {
         self.nulls.as_ref()
+    }
+
+    /// Where this column's own validity lives; each child answers for its
+    /// own buffers.
+    pub(crate) const fn backing(&self) -> &Backing {
+        &self.backing
+    }
+
+    /// State where the whole unit lives: this column's validity and every
+    /// child below it.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        for child in &mut self.children {
+            child.set_backing(backing);
+        }
+        self.backing = backing;
+    }
+
+    /// The bytes this column's own validity spans as its slice counts them,
+    /// and nothing of its children's.
+    pub(crate) fn own_size(&self) -> usize {
+        self.nulls
+            .as_ref()
+            .map_or(0, |nulls| nulls.len().div_ceil(8))
+    }
+
+    /// Borrow every child column mutably, in the field's own order.
+    ///
+    /// The caller keeps each child's field and length - it writes nothing
+    /// that changes either - so the record stays aligned and its field
+    /// stays the one its children are typed by.
+    /// State `field` as this record's, its children and buffers untouched:
+    /// what a verb changing only what the root declares writes through. The
+    /// caller keeps the children's fields as they are, so `field` differs
+    /// from the one held in its root metadata alone.
+    pub(crate) fn set_field(&mut self, field: Arc<Field>) {
+        debug_assert_eq!(
+            field.dtype(),
+            self.field.dtype(),
+            "a relabel keeps the datatype"
+        );
+        self.field = field;
+    }
+
+    pub(crate) fn children_mut(&mut self) -> &mut [Serie] {
+        &mut self.children
     }
 
     /// Replace the child of `child`'s name, or add it, extending the field.
@@ -125,6 +174,7 @@ impl StructSerie {
         } else {
             self.children.push(child);
         }
+        self.backing = Backing::Heap;
         Ok(())
     }
 
@@ -271,6 +321,7 @@ impl StructSerie {
         }
         self.nulls = layout::splice_nulls(self.nulls.take(), self.rows, range.clone(), &present);
         self.rows = self.rows - range.len() + rows.len();
+        self.backing = Backing::Heap;
     }
 
     /// Append `other` child by child, whose field agrees with this one's,
@@ -301,6 +352,7 @@ impl StructSerie {
             .collect();
         self.nulls = layout::splice_nulls(self.nulls.take(), prior, prior..prior, &present);
         self.rows += other.rows;
+        self.backing = Backing::Heap;
         true
     }
 }
@@ -341,17 +393,19 @@ impl SerieValue for StructSerie {
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
         require_window(self.field.name(), offset, length, self.rows)?;
-        let children = self
-            .children
-            .iter()
-            .map(|child| child.slice(offset, length))
-            .collect::<Result<Vec<Serie>>>()?;
-        Ok(Self::new(
-            Arc::clone(&self.field),
+        // Sized once: a fallible collect knows no lower bound and would
+        // grow the vector past four children.
+        let mut children = Vec::with_capacity(self.children.len());
+        for child in &self.children {
+            children.push(child.slice(offset, length)?);
+        }
+        Ok(Self {
+            field: Arc::clone(&self.field),
             children,
-            self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
-            length,
-        ))
+            nulls: self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
+            rows: length,
+            backing: self.backing,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
@@ -363,6 +417,19 @@ impl SerieValue for StructSerie {
         self.check(&range, &canonical)?;
         self.write(range, canonical);
         Ok(())
+    }
+
+    fn resident_size(&self) -> usize {
+        let own = if self.backing().is_mapped() {
+            0
+        } else {
+            self.own_size()
+        };
+        own + self
+            .children
+            .iter()
+            .map(Serie::resident_size)
+            .sum::<usize>()
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
@@ -391,7 +458,7 @@ impl SerieValue for StructSerie {
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        super::Leaf::narrow(value)
+        super::Leaf::narrow_laid(value)
     }
 }
 

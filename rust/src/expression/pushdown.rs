@@ -24,10 +24,12 @@
 //! less - which is why the type they answer in has three values and the one
 //! that means "skip it" is the one that needs proof.
 
+use std::borrow::Cow;
+
 use smol_str::SmolStr;
 
 use super::bind::{Bound, Kind, Node};
-use super::eval::{compare as compare_values, order};
+use super::eval::{compare as compare_values, epoch_value, order};
 use super::{Comparison, Filter, Function};
 use crate::{Field, Scalar};
 
@@ -360,7 +362,7 @@ fn prune(node: &Node, schema: &Field, bounds: &Bounds) -> Certainty {
                 let Some(literal) = item.as_literal() else {
                     return Certainty::Unknown;
                 };
-                match compare_range(value, column, Comparison::Eq, literal) {
+                match compare_range(value, &column, Comparison::Eq, literal) {
                     Certainty::Never => {}
                     _ => certain = Certainty::Unknown,
                 }
@@ -434,14 +436,50 @@ fn oriented<'node>(
 }
 
 /// The statistics of the column a node reads, when it reads exactly one.
+///
+/// An epoch function over a column - `minutes(ts, 15)`, `years(day)` - reads
+/// one column too, and it is monotone over it: every instant of a range
+/// floors into the range of its ends' periods, and a null floors to null. So
+/// its statistics are the column's mapped through the function, and a
+/// predicate on the function prunes by the same rules as one on the column.
+///
+/// A period past `int32` answers null too, so an end whose period is past it
+/// bounds nothing on its side, and the column's null count is the
+/// function's only where both ends' periods fit - every value between them
+/// then does - or where every row is null.
 fn column_bounds<'bounds>(
     node: &Node,
     schema: &Field,
     bounds: &'bounds Bounds,
-) -> Option<&'bounds ColumnBounds> {
+) -> Option<Cow<'bounds, ColumnBounds>> {
+    if let Kind::Function(function, arguments) = &node.kind
+        && let Ok(Some(period)) = function.epoch_period(arguments.iter().map(Node::as_literal))
+        && let Some(argument) = arguments.first()
+    {
+        let column = column_bounds(argument, schema, bounds)?;
+        let mapped = |held: &Option<Scalar>| {
+            held.as_ref()
+                .map(|value| epoch_value(period, value))
+                .filter(|value| !value.is_null())
+        };
+        let minimum = mapped(&column.minimum);
+        let maximum = mapped(&column.maximum);
+        let nulls = if minimum.is_some() && maximum.is_some() {
+            column.nulls
+        } else {
+            column
+                .nulls
+                .filter(|nulls| Some(*nulls) == bounds.row_count())
+        };
+        return Some(Cow::Owned(ColumnBounds {
+            minimum,
+            maximum,
+            nulls,
+        }));
+    }
     let index = node.as_column()?;
     let field = schema.get_field(index)?;
-    bounds.column(field.name())
+    bounds.column(field.name()).map(Cow::Borrowed)
 }
 
 /// Settle one `column op literal` against the column's statistics.
@@ -474,7 +512,7 @@ fn settle(
     {
         return Certainty::Never;
     }
-    let answer = compare_range(node, column, comparison, literal);
+    let answer = compare_range(node, &column, comparison, literal);
     // The extremes describe the non-null rows only. A null row is distinct
     // from every value, so it satisfies `is distinct from` whatever they say,
     // and it satisfies no other comparison, so "every row" also needs a count

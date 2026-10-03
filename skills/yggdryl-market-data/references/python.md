@@ -38,7 +38,7 @@ order = graph.OrderEvent(
     quantity=100,
     currency="USD",
     ticker="AAPL",
-    # An identifier is a source, a type and a value, unique by `src:type`; a code is checked by its type.
+    # An identifier is a source, a type and a value, unique by `src:type`; a code is held to its type's shape.
     securityids=[Identifier("isin", "US0378331005")],
     identifiers=[Identifier("orderid", "O-1001")],
 )
@@ -60,9 +60,10 @@ assert order.marketdatakind is MarketDataKind.ORDR
 
 ## Build undated leaves, quotes and book entries
 
-An undated leaf's identity is its content; `at` dates it. A quote states its
-own side and price, or the bid and ask it quotes as the six `bid*`/`ask*`
-facts; a market-data entry carries a `BookRef`.
+An undated leaf's identity is its content; `at` dates it. A quote is one
+element holding a bid and an ask leg - the six `bid*`/`ask*` facts - stored
+under side `0`; its `side` is a tag, so a quote stating a side and a price
+states the leg that side takes. A market-data entry carries a `BookRef`.
 
 ```python
 from decimal import Decimal
@@ -76,7 +77,7 @@ event = order.at(T)
 assert isinstance(event, graph.OrderEvent) and event.currunix == T
 assert event.into_element() == order
 
-# A two-sided quote: its bid and ask are facts, and it takes no side.
+# A two-sided quote: its bid and ask are its two legs, and it tags no side.
 quote = graph.QuoteEvent(
     T,
     crosscode="Q-7",
@@ -92,8 +93,11 @@ assert (quote.side, quote.crosscode) == (Side.UNKN, "14:0:Q-7")
 assert quote.askpx is not None and quote.askpx.as_py() == Decimal("189.52")
 assert quote.marketdatakind is MarketDataKind.QUOT
 
-# A sided offer, placed in a book by its control; the scope is a fact, the rest walk-time.
+# An offer: tagged `SELL`, its price is its ask leg; a quote's code stays under side 0.
 offer = graph.QuoteEvent(T, crosscode="Q-8", ticker="AAPL", side="SELL", price=Decimal("189.52"), quantity=100)
+assert offer.crosscode == "14:0:Q-8"
+assert offer.askpx is not None and offer.askpx.as_py() == Decimal("189.52")
+# Placed in a book by its control; the scope is a fact, the rest walk-time.
 entry = offer.with_book(graph.BookRef(action="new", position=1, scope="L2"))
 assert (entry.action, entry.book.position, entry.scope) == ("0", 1, "L2")
 assert entry.curruuid != offer.curruuid, "the scope digests"
@@ -141,9 +145,10 @@ assert [source.as_py() for source in merged.srcuuids] == [LINE_1, LINE_2]
 `graph.EventIterator` chains a stream by cross identity (and by a live
 element's `identifiers`), yields a twin as a restatement rather than a successor,
 retires a chain at a terminal state and emits one `EXPIRED` at a deadline.
-An order's, a quote's or an execution's chain is keyed by side, a chain lives
-within one `marketdatakind` (an order and an execution under one cross code are
-two chains), and every walked element leaves stating `creaunix`.
+An order's or an execution's chain is keyed by side - a quote's is one chain
+whatever side it tags - a chain lives within one `marketdatakind` (an order and
+an execution under one cross code are two chains), and every walked element
+leaves stating `creaunix`.
 
 ```python
 from yggdryl import Side, State, graph
@@ -263,9 +268,10 @@ from yggdryl import MarketDataKind, graph
 order = graph.OrderEvent(1_700_000_000_000_000_000, crosscode="O-1001")
 values = [graph.Order(), order, graph.BookEvent(1_700_000_001_000_000_000, "AAPL")]
 
-# 60 columns: 6 element, 9 event, 34 market (marketdatakind first), 5 operation, bookscope, 5 nested.
+# 62 columns: 6 element, 9 event, 34 market (marketdatakind first), 5 operation,
+# the book controls bookscope, bookaction and bookposition, 5 nested.
 field = graph.MarketData.field()
-assert len(list(field)) == 60
+assert len(list(field)) == 62
 assert [child.name for child in field][15] == "marketdatakind"
 reader = graph.MarketData.arrow_reader(values, batch_row_size=1_000)
 assert isinstance(reader, pa.RecordBatchReader)
@@ -315,36 +321,55 @@ with tempfile.TemporaryDirectory() as directory:
 
 ## Fold a sorted stream into books
 
-`graph.BookIterator` folds sorted operations into one `BookEvent` per touched
-instant and book: an input's ticker, else its category `MIC:CFI`. Depth
-persists; deltas and executions are each book's own.
+`graph.BookIterator(items, snapshot_millis=0, filter=None)` folds sorted
+orders and quotes into one `BookEvent` per instant and book key that moved it -
+the instrument's ISIN, else its ticker, else `XX0000000000` - pruning every
+execution and trade. A book is complete (`is_complete`) only at a snapshot
+tick; every other book states its deltas alone beside the top of book they
+settled on, and `with_previous` over the complete book before it rebuilds it
+whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
 
 ```python
 from decimal import Decimal
 
-from yggdryl import graph
+from yggdryl import Identifier, Side, graph
 
 T = 1_700_000_000_000_000_000
 SECOND = 1_000_000_000
 
 def bid(unix: int, code: str, price: str, quantity: int) -> graph.OrderEvent:
-    return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", side="BUYS", price=Decimal(price), quantity=quantity)
+    return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", side="BUYS", price=Decimal(price), quantity=quantity, state="NEW")
 
 fill = graph.ExecutionEvent(T + SECOND, crosscode="E-1", ticker="AAPL", side="BUYS", lastpx=Decimal("189.52"), lastqty=100)
 stream = [bid(T, "B-1", "189.48", 300), bid(T + SECOND, "B-2", "189.49", 200), fill]
 
 books = list(graph.BookIterator(stream))
-assert len(books) == 2, "one book per touched instant"
+assert len(books) == 2, "one book per instant that moved it; the execution folds into none"
+# No grid and no snapshot input: each book states its deltas alone and its top of book.
 last = books[1]
-assert (last.currunix, len(last.alive)) == (T + SECOND, 2), "depth persists"
-assert len(last.deltas) == 1
-assert [execution.crosscode for execution in last.executions] == ["8:1:E-1"]
+assert not last.is_complete
+assert (last.currunix, len(last.deltas), last.alive) == (T + SECOND, 1, [])
+best = last.best_price(Side.BUYS)
+assert best is not None and best.as_py() == Decimal("189.49")
+# Rebuilt whole: the first over the empty book its key starts from, the next over it.
+assert books[0].prevuuid is None
+first = books[0].with_previous(graph.BookEvent.keyed(T, "AAPL"))
+assert first is not None
+whole = last.with_previous(first)
+assert whole is not None and whole.is_complete
+assert (len(whole.alive), whole.curruuid) == (2, last.curruuid), "depth persists"
 
-# A 500 ms grid adds the living book at each crossed tick.
-assert len(list(graph.BookIterator(stream, snapshot_millis=500))) == 3
-# No ticker: the book is the category, `XXXX` or `XXXXXX` for what is unstated.
-[book] = graph.BookIterator([graph.OrderEvent(T, crosscode="L-1", side="SELL", miccode="XNAS")])
-assert (book.crosscode, book.ticker) == ("3:0:XNAS:XXXXXX", None)
+# A 500 ms grid states the whole living book at each crossed tick.
+gridded = list(graph.BookIterator(stream, snapshot_millis=500))
+assert len(gridded) == 3 and all(book.is_complete for book in gridded)
+# A filter narrows what folds, and never admits an execution.
+assert list(graph.BookIterator(stream, filter="marketdatakind = 'EXEC'")) == []
+# The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
+[keyless] = graph.BookIterator([graph.OrderEvent(T, crosscode="L-1", side="SELL")])
+assert (keyless.crosscode, keyless.ticker) == ("3:0:XX0000000000", None)
+listed = graph.OrderEvent(T, crosscode="L-2", side="SELL", ticker="AAPL", securityids=[Identifier("isin", "US0378331005")])
+[book] = graph.BookIterator([listed])
+assert (book.crosscode, book.isincode, book.ticker) == ("3:0:US0378331005", "US0378331005", "AAPL")
 # Out of order is no error: the operation dated before its book is left out,
 # with a warning.
 assert len(list(graph.BookIterator(list(reversed(stream))))) == 1
@@ -352,11 +377,12 @@ assert len(list(graph.BookIterator(list(reversed(stream))))) == 1
 
 ## Read a book
 
-A book answers each side as its `limits` (one per price, best first, the
-unpriced market level last) and the readings of the first level that can
-trade: `best_price`, `best_quantity`, the `bidpx`/`askpx` it states,
-`spread`, `depth`, `imbalance`. A side is a `Side` member, its code or any
-spelling `Side` reads.
+A complete book answers each side as its `limits` (one per price, best
+first, the unpriced market level last) and its entries as `alive_on(side)`;
+every book answers the readings of the first level that can trade:
+`best_price`, `best_quantity`, the `bidpx`/`askpx` it states, `spread`; a
+complete one `depth` and `imbalance` too. A book built by hand is complete. A
+side is a `Side` member, its code or any spelling `Side` reads.
 
 ```python
 from decimal import Decimal
@@ -402,7 +428,10 @@ assert value(book.bbo_midpoint) == Decimal("189.50")
 assert book.price == book.bbo_midpoint
 assert not book.is_locked and not book.is_crossed
 assert value(book.depth("BUYS", 2)) == 310
-assert len(book.alive) == 5
+assert book.is_complete
+assert (len(book.alive), len(book.alive_on(Side.BUYS)), len(book.alive_on("SELL"))) == (5, 4, 1)
+# The deltas are the five orders, in the order applied.
+assert [delta.crosscode for delta in book.deltas] == ["10:1:B-0", "10:1:B-1", "10:1:B-2", "10:2:A-1", "10:1:MKT"]
 ```
 
 ## Replace a scope with a snapshot
@@ -475,8 +504,10 @@ assert chain.column("crosscode").to_pylist() == ["10:1:O-1001"]
 ## Turn a FIX capture into books
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
-message, `book_arrow_reader` folds sorted messages into book rows, and
-`MarketData.from_arrow_reader` reads the books back.
+message, `book_arrow_reader` folds sorted messages into book rows - orders,
+quotes and `W`/`X` entries, a trade entry pruned - and
+`MarketData.from_arrow_reader` reads the books back. A `W` full refresh is a
+snapshot input, so its book is complete; the `X` after it states its delta.
 
 ```python
 from decimal import Decimal
@@ -493,22 +524,26 @@ lines = [
 ]
 capture = list(codec.parse_lines(lines))
 
-rows = codec.book_arrow_reader(codec.lifecycle(capture), snapshot_millis=0)
+rows = codec.book_arrow_reader(codec.lifecycle(capture), snapshot_millis=0, filter=None)
 values = list(graph.MarketData.from_arrow_reader(rows))
 assert [value.marketdatakind for value in values] == [MarketDataKind.BOOK, MarketDataKind.BOOK]
-last = values[1].as_book_event()
+first, last = values[0].as_book_event(), values[1].as_book_event()
+assert first is not None and first.is_complete
 assert last is not None
 best = last.best_price(Side.BUYS)
 assert best is not None and best.as_py() == Decimal(101)
-assert len(last.executions) == 1
+# The bid's change is the one delta; the trade entry (`269=2`) folds into no book.
+assert not last.is_complete and len(last.deltas) == 1
 ```
 
 ## Fold books into candles
 
 `graph.candles(books, interval, timezone=None)` folds books sorted by their
-instant into one `Candle` per cross code and bucket - the best bid, the best
-ask, the mid and the spread each a reading of `open`, `high`, `low`, `close` -
-and `graph.CandleIterator(books, options)` is the same walk, lazy. The
+instant into one `Candle` per book cross code and bucket - the best bid, the
+best ask, the mid and the spread each a reading of `open`, `high`, `low`,
+`close`, the touch when the bucket closed and how many books folded - and
+`graph.CandleIterator(books, options)` is the same walk, lazy. It reads a
+book's top of book alone, so delta books fold as complete ones do. The
 interval is a spelling or a count of nanoseconds; the zone is what the
 buckets' wall clock aligns to.
 
@@ -544,7 +579,7 @@ assert (first.crosscode, first.start, first.end) == ("3:0:AAPL", 1_699_999_980 *
 assert reading(first.bid) == (Decimal("189.48"), Decimal("189.50"), Decimal("189.48"), Decimal("189.50"))
 assert reading(first.spread) == (Decimal("0.04"), Decimal("0.04"), Decimal("0.02"), Decimal("0.02"))
 assert first.bidqty is not None and first.bidqty.as_py() == 200
-assert (first.books, first.executions, first.volume.as_py()) == (2, 0, 0)
+assert first.books == 2
 # A2 undercuts A1: the second bucket's ask opens at 189.51 and the spread narrows.
 assert reading(second.ask) is not None and reading(second.ask)[0] == Decimal("189.51")
 assert reading(second.mid) is not None and reading(second.mid)[3] == Decimal("189.505")
@@ -559,7 +594,7 @@ assert utc.start == 1_699_920_000 * SECOND
 
 # Candles cross as rows of Candle.field(), and read back as the same values.
 field = graph.Candle.field()
-assert len(list(field)) == 25
+assert len(list(field)) == 23
 rows = Serie.from_scalars(field, [candle.into_scalar() for candle in (first, second)])
 assert graph.Candle.from_scalar(rows.scalar(1)) == second
 assert second.as_py()["askopen"] == Decimal("189.51")
@@ -577,12 +612,14 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
   loses the last digits).
 - `crosscode` answers the stored code `{kind}:{side}:{base}`: `"10:1:O-1001"`
   for a buy order (kind 10, side 1), `"10:0:O-1001"` for `Side.UNKN`, and a
-  trade, a book or a snapshot control carries side `0` whatever side it
-  states. The lifecycle view's `crosscode=` names the stored one.
+  quote, a trade, a book or a snapshot control carries side `0` whatever side
+  it states. The lifecycle view's `crosscode=` names the stored one.
 - `side`, `state` and `marketdatakind` are `IntEnum` members: compare with
   `is Side.BUYS`, never `== "BUYS"`; a column stores `int(member)`. A side is
   never `None` - `Side.UNKN` is unstated.
-- `graph.BookIterator(items, snapshot_millis=0)`;
+- `graph.BookIterator(items, snapshot_millis=0, filter=None)` - `filter` a
+  `Filter`, a `Term`, an `Expression` or a predicate's text over the
+  `marketdata` row, refused where it names a column the row does not carry;
   `EventIterator(items, sorted=True, snapshot_ns=None)` defaults to trusting
   the order - an unsorted list is not refused, it yields broken chains (a step
   before its live element yielded as it came, `prevuuid` None); pass
@@ -598,16 +635,24 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
 - Every verb answers a new value: `book.with_operations([...])` does not change
   `book`; only `with_previous` / `merge_with` answer `None` when nothing moved.
 - A book refuses an undated `Order`: `BookIterator` at `$.operation.kind`,
-  `with_operations` at `$.operations[i].kind`. What `BookIterator` finds wrong
-  in the data - an operation dated before its book, an order or a quote
-  stating neither side - it leaves out, with a `logging` warning under
-  `yggdryl.graph.book`, and no error.
+  `with_operations` at `$.operations[i].kind`; an execution or a trade is
+  pruned, no error and no book. What `BookIterator` finds wrong in the data -
+  an operation dated before its book - it leaves out, and an order or a quote
+  stating neither side it places nowhere (still the book's delta), each with a
+  `logging` warning under `yggdryl.graph.book`, and no error.
+- A book from a walk is complete only at a snapshot tick: test
+  `book.is_complete` before reading `alive`, `alive_on`, `limits`, `depth` or
+  `imbalance`, and rebuild a delta book with `book.with_previous(previous)` -
+  over `graph.BookEvent.keyed(unix, key)` for a code's first book, whose
+  `prevuuid` is `None`. `with_operations` on a delta book is refused at
+  `$.alive`.
 - A leaf compares equal to its own class only: compare `value.into_leaf()` or
   `value.as_order_event()` with a leaf, `MarketData` with `MarketData`.
 - `book.limits(side)` answers struct `Scalar`s: `limit.as_py()` is a dict of
-  `price`, `quantity`, `uuids`, `tradable`. `alive`, `deltas`, `executions`,
-  `spread`, `is_crossed` and `is_locked` are properties; `limits`,
-  `best_price`, `best_quantity`, `depth` and `imbalance` take arguments.
+  `price`, `quantity`, `uuids`, `tradable`. `is_complete`, `alive`,
+  `deltas`, `spread`, `is_crossed` and `is_locked` are properties;
+  `alive_on`, `limits`, `best_price`, `best_quantity`, `depth` and
+  `imbalance` take arguments.
 - Identifier verbs (`insert_securityid`, `insert_identifier`, `insert_partyid`, ...)
   are Rust-only: state `securityids=`, `identifiers=` and `partyids=` - a list of
   `Identifier` or an `Identifiers` - when you build. A dict is no identifier

@@ -56,8 +56,8 @@ orders      := expr ["asc" | "desc"] ["nulls" ("first" | "last")] ("," ...)*
 | `delete from t where ...` | `delete t where ...` | remove rows the predicate keeps |
 
 Target properties: `media_type`, `codec`, `safe`, `batch_row_size`,
-`batch_byte_size`, `commit_row_size`, `max_row_size`, `max_byte_size`, plus
-what a holder reads - `t with (media_type = 'text/csv', batch_row_size = '1024')`.
+`batch_byte_size`, `commit_batch_num`, `num_threads`, `max_row_size`,
+`max_byte_size`, plus what a holder reads - `t with (media_type = 'text/csv', batch_row_size = '1024')`.
 
 ## Terms
 
@@ -136,7 +136,7 @@ list, `unnest` inside a term, a `where`, an `order by`, a key or a `create`.
 | --- | --- |
 | null is unknown | a null operand makes a comparison unknown; `where` keeps a row only when the answer is exactly `true` |
 | `and` / `or` | `false and unknown` = false, `true or unknown` = true, `not unknown` = unknown |
-| constants coerce | `i = '1'` on `int64` binds as `i = 1`; `price > 100` on `decimal(9,2)` binds as `price > decimal32(9,2) '100.00'` |
+| constants coerce | `i = '1'` on `int64` binds as `i = 1`; `price > 100` on `decimal(9,2)` binds as `price > decimal32(9,2) '100'` |
 | no common type | compares as text: `s > 1` on `utf8` binds as `s > '1'` |
 | decimals | never implicitly a float; division keeps at least six fractional places; an untyped fractional literal (`price > 9.5`) is `float64`, shares no type with a decimal and compares as text - write `decimal(9,2) '9.50'` or an integer |
 | floats | IEEE totalOrder: `nan = nan`, `nan` sorts above everything |

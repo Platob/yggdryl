@@ -199,7 +199,9 @@ def test_at_dates_an_element_and_into_element_undates_it() -> None:
     element = graph.Quote(crosscode="Q-1", side="SELL", price=D("102"))
     event = element.at(CLOCK)
     assert isinstance(event, graph.QuoteEvent)
-    assert (event.currunix, event.crosscode, event.price) == (CLOCK, "14:2:Q-1", element.price)
+    # A quote is no sided kind: its stored cross code states side 0, its
+    # side a tag.
+    assert (event.currunix, event.crosscode, event.price) == (CLOCK, "14:0:Q-1", element.price)
     back = event.into_element()
     assert isinstance(back, graph.Quote)
     assert back == element
@@ -313,11 +315,13 @@ class TestBookRef:
 
 def test_a_market_elements_cross_code_is_stored_as_its_kind_its_side_and_its_base() -> None:
     # The kind is `MarketDataKind.code()` - order 10, quotation 14, execution 8,
-    # trade 21, book 3 - and the side `Side.code()` for a sided kind alone.
+    # trade 21, book 3 - and the side `Side.code()` for a sided kind alone: an
+    # order or an execution. A quote holds both legs, so its side is a tag and
+    # its code states side 0.
     assert graph.OrderEvent(CLOCK, crosscode="ORD-1", side="BUYS").crosscode == "10:1:ORD-1"
     assert graph.OrderEvent(CLOCK, crosscode="ORD-1", side="SELL").crosscode == "10:2:ORD-1"
     assert graph.OrderEvent(CLOCK, crosscode="ORD-1").crosscode == "10:0:ORD-1", "no side stated, side 0"
-    assert graph.QuoteEvent(CLOCK, crosscode="Q-1", side="BUYS").crosscode == "14:1:Q-1"
+    assert graph.QuoteEvent(CLOCK, crosscode="Q-1", side="BUYS").crosscode == "14:0:Q-1"
     assert graph.ExecutionEvent(CLOCK, crosscode="E-1", side="SELL").crosscode == "8:2:E-1"
     # A book is no sided kind: it states side 0 whatever side it takes, and its
     # base may hold colons.
@@ -356,3 +360,18 @@ def test_a_sequence_of_identifiers_states_the_map_it_makes() -> None:
     assert quote.partyids.get_from("proprietary:executingtrader") == "T-1"
     with pytest.raises(ValueError):
         graph.OrderEvent(CLOCK, identifiers=[ids[0], 1])
+
+
+def test_a_lower_ranked_isin_yields_to_a_higher_one_whichever_leads() -> None:
+    # A number that does not close - a masked line's, a typo's - is a value of
+    # rank below a real one: following a real number, it takes that number
+    # back, and nothing is derived off it.
+    real = graph.OrderEvent(1, crosscode="ORDER", securityids=[Identifier("isin", "US0378331005")])
+    for lower in ("XX0000000001", "US0378331006"):
+        later = graph.OrderEvent(2, crosscode="ORDER", securityids=[Identifier("isin", lower)])
+        assert later.isincode == lower
+        assert later.securityids.get("cusip") is None, lower
+        followed = later.with_previous(real)
+        assert followed is not None
+        assert followed.isincode == "US0378331005", lower
+        assert followed.securityids.get("cusip") == "037833100", lower

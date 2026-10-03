@@ -498,7 +498,7 @@ name, and it imports as its storage. A code rides its own extension name
 ## Charsets and bounds
 
 A bound counts **stored bytes**, not scalars: that is what the buffer holds and
-what Arrow's offsets measure, and [`Charset::encoded_len`](../../media/index.md#charsets)
+what Arrow's offsets measure, and [`Charset::encoded_len`](../../media/charsets.md#write)
 counts it without building them. UTF-8 and US-ASCII are validated repertoires,
 so bytes that are not what they claim are refused naming the charset, and a
 US-ASCII value holds no NUL and no byte above `0x7F`. A windows-1252 leaf is a
@@ -597,7 +597,8 @@ the target charset (a fixed source trimmed of NUL first). Under `safe` a
 failing cell becomes null where the column may hold one; under `safe = false`,
 or in a required column, an error names the row and the column.
 A fixed leaf pads on the way in, and the stored column read back under `utf8`
-trims.
+trims. A struct, serie or map source writes its JSON, which the target's own
+rule then reads like any text ([Nested values as JSON](../cast.md#nested-values-as-json)).
 
 === "Rust"
 
@@ -852,7 +853,7 @@ language builds are on [Codes](../codes/index.md).
 ## Regex captures
 
 `DataType::from_regex` builds one Struct from a byte regex's named captures, in
-capture order, so [plain-text records](../../media/index.md#plain-text) publish a
+capture order, so [plain-text records](../../media/text.md) publish a
 schema before a source is opened. A capture the pattern does not constrain
 stays `utf8`.
 
@@ -903,7 +904,7 @@ stays `utf8`.
 | Fraction sign | either decimal sign ISO 8601 names, `.` or `,` |
 | Fraction width | a capture admitting several widths takes the widest spelling it matches, the only resolution that holds every row it admits |
 | Broad captures | a capture such as `\S+` stays `utf8` |
-| Rows read | none, so [plain-text records](../../media/index.md#plain-text) publish a schema before opening a source |
+| Rows read | none, so [plain-text records](../../media/text.md) publish a schema before opening a source |
 
 ## Edges
 

@@ -8,12 +8,22 @@ import {
   MapSerie,
   Scalar,
   Serie,
+  Selector,
   SerieReader,
+  SerieReaderWindows,
   SerieSerie,
   SerieViewSerie,
+  WindowSerie,
+  SpillOptions,
   StructSerie,
+  Term,
   fields,
   type ArrowCastOptions,
+  type JoinKeys,
+  type JoinOptionsInput,
+  type OrderingKey,
+  type OrderingKeys,
+  type SortOptions,
 } from '..'
 import type {
   RecordBatch as ArrowRecordBatch,
@@ -205,3 +215,174 @@ const chunkedRows: boolean = wide.equals(ChunkedSerie.fromSerie(wide))
 const chunkedOrder: number = wide.compare(ChunkedSerie.fromSerie(wide))
 void chunkedRows
 void chunkedOrder
+
+// Ordering, uniqueness and grouping: the options are an object of two
+// booleans, indices, masks and keys a Serie or any iterable of values, and an
+// `as*` write answers the serie it was called on.
+const descending: SortOptions = { descending: true, nullsFirst: null }
+const order: Serie = wide.sortIndices(descending)
+const ordered: boolean = wide.isSorted()
+const unique: boolean = wide.isUnique()
+const distinct: number = wide.uniqueCount()
+const bytes: number = wide.memorySize()
+const sorted: Serie = wide.intoSorted({ nullsFirst: true })
+const deduplicated: Serie = wide.intoUnique()
+const reversed: Serie = wide.intoReversed()
+const taken: Serie = wide.intoTaken([2, 0])
+const takenBy: Serie = wide.intoTaken(order)
+const filtered: Serie = wide.intoFiltered([true, false])
+const groups: Array<[Scalar, Serie]> = wide.partitionBy(['a', 'b'])
+const byPaths: Array<[Scalar, Serie]> = records.partitionByPaths(['id'])
+const byPath: Array<[Scalar, Serie]> = records.partitionByPaths('id')
+const chained: Serie = wide.asSorted().asUnique().asReversed().asTaken([0]).asFiltered([true])
+const leafChained: StructSerie = records.child('row') as StructSerie
+const sameLeaf: StructSerie = leafChained.asSorted()
+const window: WindowSerie = wide.window(0, 1)
+// @ts-expect-error an ordering option is `descending` or `nullsFirst`
+wide.isSorted({ nullsLast: true })
+// @ts-expect-error an ordering option is a boolean
+wide.intoSorted({ descending: 'yes' })
+// @ts-expect-error a window takes an offset and a length
+wide.window(0)
+// @ts-expect-error the private ordering bridges are hidden
+wide._sortIndicesNative
+
+void [order, ordered, unique, distinct, bytes, sorted, deduplicated, reversed, taken, takenBy,
+  filtered, groups, byPaths, byPath, chained, sameLeaf, window]
+
+// Windows by key: each `[key, window]`, the window stating its record; a
+// stream cuts into one lazy reader per window.
+const windows: Array<[Scalar, WindowSerie]> = records.windowBy('id')
+const sortedWindows: Array<[Scalar, WindowSerie]> = records.windowBy(['id'], true)
+const clearedWindows: Array<[Scalar, WindowSerie]> = records.windowBy(new Selector('id'), null)
+const termWindows: Array<[Scalar, WindowSerie]> = records.windowBy([Term.column('id'), 'id as k'])
+const windowRecord: Scalar | null = windows[0][1].staticValues
+const walk: SerieReaderWindows = SerieReader.fromSerie(records).windowBy('id', false)
+const walkField: Field = walk.field
+const walkStaticField: Field = walk.staticField
+const step: IteratorResult<SerieReader> = walk.next()
+const self: SerieReaderWindows = walk[Symbol.iterator]()
+for (const opened of walk) {
+  const sub: SerieReader = opened
+  const subRecord: Scalar | null = sub.staticValues
+  const nested: SerieReaderWindows = sub.windowBy(Term.column('id'))
+  for (const serie of sub) {
+    const piece: Serie = serie
+    void piece
+  }
+  void [subRecord, nested]
+}
+const readerRecord: Scalar | null = held.staticValues
+// @ts-expect-error `sorted` is a boolean
+records.windowBy('id', 'yes')
+// @ts-expect-error `sorted` is a boolean
+SerieReader.fromSerie(records).windowBy('id', 1)
+// @ts-expect-error a key is a Selector, a Term, a text or an array of them
+records.windowBy(7)
+// @ts-expect-error a reader's record is a getter, not a mutable slot
+held.staticValues = null
+// @ts-expect-error a serie states no record: only a window does
+records.staticValues
+// @ts-expect-error the walk is handed out by a reader, never constructed
+new SerieReaderWindows()
+// @ts-expect-error the private windowing bridges are hidden
+records._windowByNative
+// @ts-expect-error the private windowing bridges are hidden
+walk._nextNative
+
+void [windows, sortedWindows, clearedWindows, termWindows, windowRecord, walkField,
+  walkStaticField, step, self, readerRecord]
+
+// Spill: where the rows live; `spill` takes options or the process default.
+const resident: number = wide.residentSize()
+const spilled: boolean = wide.isSpilled()
+const spilledNothing: void = wide.spill()
+wide.spill(null)
+wide.spill(new SpillOptions({ byteSize: 0 }))
+const readerResident: number = held.residentSize()
+const readerSpilled: boolean = held.isSpilled()
+held.spill(new SpillOptions({ byteSize: 0n }))
+// @ts-expect-error spill takes a SpillOptions, not its init object
+wide.spill({ byteSize: 0 })
+// `asSpilled` answers the value itself, so calls chain; `intoSpilled` a copy -
+// a reader's handing its records over and consuming it.
+const spilledInPlace: Serie = wide.asSpilled(new SpillOptions({ byteSize: 0 })).asReversed()
+const spilledDefault: Serie = wide.asSpilled()
+const spilledCopy: Serie = wide.intoSpilled(null)
+const recordSpilled: StructSerie = (records.child('row') as StructSerie).asSpilled()
+const readerSpilledInPlace: SerieReader = held.asSpilled()
+const readerSpilledCopy: SerieReader = held.intoSpilled(new SpillOptions({ byteSize: 0 }))
+// @ts-expect-error asSpilled takes a SpillOptions, not its init object
+wide.asSpilled({ byteSize: 0 })
+// @ts-expect-error the private spill bridges are hidden
+wide._intoSpilledNative
+// @ts-expect-error the private spill bridges are hidden
+held._asSpilledNative
+
+// A constant column: one value for every row.
+const constant: Serie = Serie.lit(fields.utf8('venue'), 'XNAS', 1_000)
+const constantOfText: Serie = Serie.lit('price: int64', 7n, 3)
+const isConstant: boolean = constant.isLit
+// @ts-expect-error the length is a number of rows
+Serie.lit('price: int64', 7, 3n)
+// @ts-expect-error a constant is a getter, not a mutable slot
+constant.isLit = false
+// @ts-expect-error the private constant bridge is hidden
+Serie._litNative
+
+void [resident, spilled, spilledNothing, readerResident, readerSpilled, spilledInPlace,
+  spilledDefault, spilledCopy, recordSpilled, readerSpilledInPlace, readerSpilledCopy, constant,
+  constantOfText, isConstant]
+
+// Orderings by key: the clause's text, key texts, records or a Selector.
+const declared: string[] | null = records.declaredOrder()
+const key: OrderingKey = { term: 'id', descending: true, nulls_first: false }
+const keys: OrderingKeys = ['id desc', key]
+const orderBy: Serie = records.sortIndicesBy('id desc nulls first')
+const orderByKeys: Serie = records.sortIndicesBy(keys)
+const orderBySelector: Serie = records.sortIndicesBy(new Selector('id'))
+const sortedBy: Serie = records.intoSortBy(key)
+const sortedInPlace: StructSerie = (records.child('row') as StructSerie).asSortBy('id')
+const streamSorted: SerieReader = SerieReader.fromSerie(records).intoSorted({ descending: true })
+const streamSortedBy: SerieReader = SerieReader.fromSerie(records).intoSortBy(['id'])
+const camelFlag: Serie = records.sortIndicesBy([{ term: 'id', nullsFirst: true }])
+const snakeFlag: Serie = records.sortIndicesBy([{ term: 'id', nulls_first: true }])
+// @ts-expect-error a key is text, a record or a Selector
+records.intoSortBy(7)
+// @ts-expect-error the private ordering bridges are hidden
+records._intoSortByNative
+
+void [declared, orderBy, orderByKeys, orderBySelector, sortedBy, sortedInPlace, streamSorted,
+  streamSortedBy]
+
+// Joins: keys as text, pairs or a mapping; the kind a word; options an object.
+const byPair: JoinKeys = [['id', 'trade_id']]
+const joinOptions: JoinOptionsInput = {
+  coalesce: false,
+  suffix: '_r',
+  build: 'left',
+  prune: null,
+  spill: new SpillOptions(),
+  pushdownKeys: 100,
+}
+const joined: Serie = records.joinWith(records, 'id')
+const joinedLeft: Serie = records.joinWith(window, byPair, 'left', joinOptions)
+const joinedMap: Serie = records.joinWith(records, new Map([['id', 'id']]), null, null)
+const joinedObject: Serie = records.joinWith(records, { id: 'id' }, 'left outer join')
+const streamJoined: SerieReader = SerieReader.fromSerie(records).joinWith(
+  SerieReader.fromSerie(records),
+  'id',
+  'semi',
+)
+const streamJoinedHeld: SerieReader = SerieReader.fromSerie(records).joinWith(
+  ChunkedSerie.fromSerie(records),
+  ['id'],
+)
+// @ts-expect-error the build side is `left` or `right`
+records.joinWith(records, 'id', 'inner', { build: 'both' })
+// @ts-expect-error a held serie joins a Serie or a window
+records.joinWith(ChunkedSerie.fromSerie(records), 'id')
+// @ts-expect-error the private join bridge is hidden
+records._joinWithNative
+
+void [joined, joinedLeft, joinedMap, joinedObject, streamJoined, streamJoinedHeld]

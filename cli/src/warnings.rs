@@ -3,47 +3,59 @@
 //! The FIX reader is lenient: a declaration it cannot keep as a file states
 //! it is dropped or read another way, and the reader says so through the
 //! `log` facade - one sentence naming what is wrong, where (line, column, the
-//! element quoted) and what it did about it. The core emits nothing unless
-//! the host installs a logger, so this binary installs one that keeps those
-//! sentences rather than printing them as they arrive: a progress line is
-//! being drawn while the files are read, and a warning written through it
-//! would tear it. [`report`] prints what was kept once the line is done.
+//! element quoted) and what it did about it. This binary makes the core's
+//! logging tree the facade's backend and attaches a handler to its root that
+//! keeps those sentences rather than printing them as they arrive: a
+//! progress line is being drawn while the files are read, and a warning
+//! written through it would tear it. [`report`] prints what was kept once the
+//! line is done.
 
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 
-use log::{Level, LevelFilter, Log, Metadata, Record};
+use yggdryl::logging::{self, Formatter, Handler, HandlerState, Level, Record};
 
 use crate::style;
 
 /// Every warning kept since the last [`drain`], in the order it arrived.
 static HELD: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-/// The logger: keeps the core's warnings and errors, and nothing else.
-struct Collector;
-
-impl Log for Collector {
-    fn enabled(&self, metadata: &Metadata<'_>) -> bool {
-        metadata.level() <= Level::Warn && metadata.target().starts_with("yggdryl")
-    }
-
-    fn log(&self, record: &Record<'_>) {
-        if self.enabled(record.metadata()) {
-            HELD.lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push(record.args().to_string());
-        }
-    }
-
-    fn flush(&self) {}
+/// The handler: keeps the core's warnings and errors, and nothing else.
+struct Collector {
+    state: HandlerState,
 }
 
-/// Installs the collector as the process's logger, before any command runs.
-pub fn install() {
-    // Setting a logger fails only when one is set already, and nothing else
-    // in this binary sets one.
-    if log::set_logger(&Collector).is_ok() {
-        log::set_max_level(LevelFilter::Warn);
+impl Handler for Collector {
+    fn state(&self) -> &HandlerState {
+        &self.state
     }
+
+    fn emit(&self, _record: &Record<'_>, line: &str) -> yggdryl::Result<()> {
+        HELD.lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(line.to_owned());
+        Ok(())
+    }
+}
+
+/// Installs the core's logging tree as the process's logger, its root
+/// keeping the core's own warnings, before any command runs.
+pub fn install() {
+    // Installing fails only when another logger is set, and nothing else in
+    // this binary sets one.
+    if logging::install().is_err() {
+        return;
+    }
+    let collector = Collector {
+        state: HandlerState::new(),
+    };
+    collector.set_level(Level::WARNING);
+    // The report prints each sentence under its own marker, so the line is
+    // the message alone rather than the terminal layout.
+    collector.set_formatter(Formatter::default());
+    collector.add_filter(Arc::new(|record: &Record<'_>| {
+        record.target().starts_with("yggdryl")
+    }));
+    logging::get_logger("").add_handler(Arc::new(collector));
 }
 
 /// Every warning kept so far, leaving none behind.

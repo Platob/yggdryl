@@ -363,13 +363,16 @@ assert_eq!(recorded, [Some(1_767_348_930_250_000_000), Some(1_767_348_930_500_00
 
 `fix_schema` is the one row every message answers as; `arrow_reader` and
 `messages` cross between messages and batches, and `write_arrow_reader` writes
-batches back as wire lines.
+batches back as wire lines. A key no dictionary resolves lands in `metadata`,
+unless it names an identifier the message captures - then it rides
+`fixentries` under `0:<key>`.
 
 ```rust
 use std::sync::Arc;
 
+use yggdryl::graph::Market;
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, fix_column_of, fix_schema};
+use yggdryl::{FixCodec, FixMsg, FixRegistry, IdType, Scalar, fix_column_of, fix_schema};
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -389,6 +392,15 @@ let cell = |name: &str| row.get(schema.index_of(name).expect("a fixed column")).
 assert_eq!(cell("fixentries").get_key_str("18:execinst").and_then(Scalar::as_str), Some("G"));
 assert_eq!(cell("metadata").get_key_str("9999").and_then(Scalar::as_str), Some("x"));
 assert_eq!(FixMsg::from_row(Arc::clone(&registry), &schema, &row)?.into_row(&schema)?, row);
+
+// An unresolved key naming an identifier is captured: held in its set, it rides
+// `fixentries` under `0:<key>` and leaves `metadata`.
+let bridged = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=ORDER-2|55=AAPL|54=1|RICCODE=AAPL.O|10=0|")?;
+assert_eq!(bridged.get_securityids().get(&IdType::Ric), Some("AAPL.O"));
+let captured = bridged.into_row(&schema)?;
+let captured_cell = |name: &str| captured.get(schema.index_of(name).expect("a fixed column")).expect("a cell");
+assert_eq!(captured_cell("fixentries").get_key_str("0:riccode").and_then(Scalar::as_str), Some("AAPL.O"));
+assert!(captured_cell("metadata").get_key_str("riccode").is_none());
 
 // A stream of messages as batches, and the batches as messages again.
 let again: Vec<FixMsg> = codec
@@ -541,19 +553,21 @@ assert_eq!(held(&chained[3]), ["O3", "O2", "O1", "C3", "C2"]);
 assert!(chained.iter().all(|message| message.get_crossuuid() == chained[0].get_crossuuid()));
 ```
 
-## Split fills, two-sided quotes and batches at the parse
+## Split fills and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
-fill or a side twice: an execution report is its order's report (`msgcat`
-`ORDR`, its own state) - one of no fill from its parse - and one that fills
-adds one `EXEC` message reading `FILLED`, chained under its `ExecID(17)` as given, else
-`TradeID=<TradeID(1003)>`; a trade (`AE`) adds one sided execution per
-`NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
-a `BUYS` and a `SELL` quote; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+fill twice: an execution report is its order's report (`msgcat` `ORDR`, its
+own state; `QUOT` where it names a `QuoteID(117)`) - one of no fill from its
+parse - and one that fills adds one `EXEC` message reading `FILLED`, chained
+under its `ExecID(17)` as given, else `TradeID=<TradeID(1003)>`; a trade
+(`AE`) adds one sided execution per `NoSides(552)` occurrence; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
 an order list, a mass order, a cross, a mass quote, a match report) adds one
-message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`),
-chained by the order the entry names and split again as its category is.
-Each split message names its source in `srcuuids`.
+message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`) - a
+mass quote's entry one quote holding both its legs - chained by the order the
+entry names and split again as its category is. Each split message names its
+source in `srcuuids`. A quote is never split: a bid and an offer are the two
+legs of one message, stored under side `0`. An acknowledgement of an execution
+(`BN`, `Q`) states no fact of its order, so it answers no market leaf.
 
 ```rust
 use std::sync::Arc;
@@ -570,25 +584,30 @@ let [report, execution]: [FixMsg; 2] = codec.parse_line(fill)?.collect::<yggdryl
 assert_eq!((report.msgcat(), *report.get_state()), (MarketDataKind::Order, State::PartiallyFilled));
 assert_eq!((execution.msgcat(), *execution.get_state()), (MarketDataKind::Execution, State::Filled));
 assert!(execution.get_srcuuids().contains(&report.get_curruuid()));
-// An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
+// An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert_eq!((report.get_crosscode(), execution.get_crosscode()), ("10:1:O-9", "8:1:E-1"));
 
 let quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|";
-let [quote, bid, ask]: [FixMsg; 3] = codec.parse_line(quote)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("three");
-assert_eq!((quote.get_side(), bid.get_side(), ask.get_side()), (Side::Unknown, Side::Buy, Side::Sell));
-assert_eq!((bid.get_crosscode(), ask.get_crosscode()), ("14:1:Q1", "14:2:Q1"));
-// Each side prices at its own level and keeps the pair its source stated.
-assert_eq!((bid.get_price(), ask.get_price()), (Some("99".parse()?), Some("101".parse()?)));
-assert_eq!((ask.get_bidpx(), ask.get_askqty()), (Some("99".parse()?), Some("8".parse()?)));
-assert_eq!(bid.get_bidccy().map(|ccy| ccy.as_str()), Some("USD"));
+let [quote]: [FixMsg; 1] = codec.parse_line(quote)?.collect::<yggdryl::Result<Vec<_>>>()?.try_into().expect("one");
+assert_eq!((quote.msgcat(), quote.get_side(), quote.get_crosscode()), (MarketDataKind::Quotation, Side::Unknown, "14:0:Q1"));
+// Both legs on the one message, each in its currency; neither is the quote's own price.
+assert_eq!(quote.get_price(), None);
+assert_eq!((quote.get_bidpx(), quote.get_askpx(), quote.get_askqty()), (Some("99".parse()?), Some("101".parse()?), Some("8".parse()?)));
+assert_eq!(quote.get_askccy().map(|ccy| ccy.as_str()), Some("USD"));
+
+// An acknowledgement of an execution states no fact of its order: no market leaf.
+let ack = codec.parse_fix_line(b"8=FIX.4.4|35=BN|52=20260921-10:00:01|17=E-1|37=O-9|1036=2|10=0|")?;
+assert!(ack.market_data()?.is_empty());
 ```
 
 ## Turn FIX into market data and books
 
-`market_data` admits what a book folds - orders, one-sided quotes, executions,
-`W`/`X` book messages - reads each as its one graph leaf (a book message one
-per entry) and sorts them by the instant a book folds them at; `BookIterator`
-then walks them. Compose `lifecycle` in front when predecessor state matters.
+`market_data` admits orders, quotes, executions and `W`/`X` book messages - a
+trade as the executions its parse split off - reads each as its one graph
+leaf (a book message one per entry) and sorts them by the instant a book folds
+them at; `BookIterator` then walks them, pruning the executions.
+`book_arrow_reader` folds the same messages into book rows, one book per book
+key, and takes a `Filter` over the `marketdata` row to narrow what folds. Compose `lifecycle` in front when predecessor state matters.
 `market_arrow_reader` writes the sorted leaves as `marketdata` rows, and
 `market_data_arrow_reader` is its twin over batches of FIX rows already in
 Arrow.
@@ -620,7 +639,7 @@ assert_eq!(books[1].best_price(Side::Buy).map(|price| price.to_string()).as_dere
 
 // The book door does not sort: the same capture out of order is no error - the
 // snapshot dated before the book it would fold into is left out, with a warning.
-assert!(codec.book_arrow_reader(capture.clone(), 0)?.all(|batch| batch.is_ok()));
+assert!(codec.book_arrow_reader(capture.clone(), 0, None)?.all(|batch| batch.is_ok()));
 // The sorted leaves as `marketdata` rows.
 let rows: usize = codec.market_arrow_reader(capture.clone())?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
 assert_eq!(rows, 4);
@@ -743,7 +762,9 @@ std::fs::remove_dir_all(&path)?;
 - Every stream door yields `Result` items, and only a source failure is an
   `Err`: what a line states that cannot be read is defaulted or left out with
   a `log` warning, so `collect::<yggdryl::Result<Vec<_>>>()` stops at a failing
-  source alone. Install a `log` backend (`env_logger`, say) to see the warnings.
+  source alone. Install a `log` backend (`env_logger`, say, or the core's own
+  `yggdryl::logging::basic_config(BasicConfig::new())`, the terminal line on
+  standard error) to see the warnings.
 - The graph getters (`get_crosscode`, `get_side`, `get_currunix`) are trait
   methods: import `yggdryl::graph::{Element, Event, Market}`.
 - `with_exclude_msgtypes([])` needs its types spelled:

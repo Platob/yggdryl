@@ -35,7 +35,10 @@ test('a key or a value that reads as nothing is refused', () => {
     assert.throws(() => new Identifier(key, 'X'), /identifier key/, key)
   }
   assert.throws(() => new Identifier('orderid', 'n/a'), /identifier value/)
-  assert.throws(() => new Identifier('isin', 'US0378331006'))
+  // A check digit that does not close is a rank, never a refusal: the shape
+  // is what a type holds to.
+  assert.equal(new Identifier('isin', 'US0378331006').toString(), 'isin=US0378331006')
+  assert.throws(() => new Identifier('isin', 'US037833100'), /expected twelve characters/)
   assert.equal(new Identifier('forex', 'eur/usd').value, 'EUR/USD')
 })
 
@@ -112,7 +115,16 @@ test('an object reads exactly and closes by the base rule', () => {
   assert.ok(derived.isDerived('cusip'), 'a derivation read back stays one')
   assert.ok(Identifiers.fromObject({}).equals(new Identifiers()))
   assert.throws(() => Identifiers.fromObject({ 'fix:': 'X' }), /fix:/)
-  assert.throws(() => Identifiers.fromObject({ isin: 'US0378331006' }), /isin/)
+  assert.throws(() => Identifiers.fromObject({ isin: 'US037833100' }), /\$\['isin'\]: expected twelve characters/)
+  // A typo is a value of the lowest rank: a map read raw closes each type on
+  // its highest-ranked named source, whatever order the entries came in.
+  assert.deepEqual(Identifiers.fromObject({ isin: 'US0378331006' }).intoObject(), { isin: 'US0378331006' })
+  for (const entries of [
+    { 'abc:isin': 'US0378331006', 'venue:isin': 'US0378331005' },
+    { 'zzz:isin': 'US0378331005', 'abc:isin': 'US0378331006' },
+  ]) {
+    assert.equal(Identifiers.fromObject(entries).get('isin'), 'US0378331005')
+  }
   assert.throws(() => Identifiers.fromObject({ isin: 'US0378331005', 'BASE:ISIN': 'CH0012214059' }), /one value under isin/)
 })
 

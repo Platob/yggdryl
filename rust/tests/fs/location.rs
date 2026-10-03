@@ -7,14 +7,14 @@
 
 use std::sync::Arc;
 
-use yggdryl::HOSTNAME;
 use yggdryl::fs::{BoundLocation, FileSystem, LocalFileSystem, MemoryFileSystem, mask_uri};
 
 use crate::counting_filesystem::CountingFileSystem;
 
 #[test]
-fn an_in_process_filesystem_names_this_machine_and_so_does_everything_bound_from_it() {
-    let host = HOSTNAME.as_str();
+fn an_in_process_filesystem_names_localhost_and_so_does_everything_bound_from_it() {
+    // This machine's one name, whatever the system calls it.
+    let host = "localhost";
     let location =
         BoundLocation::new(Arc::new(MemoryFileSystem::new()), "bucket/table", None).unwrap();
     assert_eq!(
@@ -79,6 +79,21 @@ fn a_local_filesystem_names_no_host_so_its_url_is_the_path() {
     )
     .unwrap();
     assert_eq!(arrow.diagnostic_url().to_string(), "file:///tmp/lake");
+}
+
+#[test]
+fn a_local_drive_path_names_no_host_either() {
+    // Windows reads a named host as a share, so a drive path is spelled
+    // `file:///C:/...` - its colon kept - and never gains one.
+    let location = BoundLocation::new(
+        Arc::new(CountingFileSystem::named("local")),
+        "C:/lake/trades.parquet",
+        None,
+    )
+    .unwrap();
+    let url = location.diagnostic_url();
+    assert_eq!(url.to_string(), "file:///C:/lake/trades.parquet");
+    assert_eq!(url.hostname(), None);
 }
 
 #[test]

@@ -495,6 +495,12 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::read_arrow_field(self.as_ref(), options)
     }
 
+    // Forwarded, because a handle can answer its rows other than through its
+    // bytes - an HTTP request walks the pages of a paginated document.
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
+        IOMedia::read_serie(&**self, options)
+    }
+
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
         IOMedia::read_arrow_reader(self.as_ref(), options)
     }

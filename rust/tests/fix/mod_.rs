@@ -17,6 +17,35 @@ use super::format_target;
 use super::sole_message;
 use super::tag_index;
 
+/// `FixKey::from_text` reads a typed key the way the dictionary's own tag
+/// reader reads a tag, and anything it does not read is a name, so a signed
+/// or zero number reaches no field by tag and a leading zero is kept.
+#[test]
+fn a_typed_key_is_a_tag_by_the_dictionary_tag_reader_and_a_name_otherwise() {
+    use yggdryl::FixKey;
+
+    for (text, tag) in [("35", 35), ("035", 35), ("1", 1), ("2147483647", i32::MAX)] {
+        assert_eq!(FixKey::from_text(text), FixKey::Tag(tag), "{text:?}");
+    }
+    for text in [
+        "+35",
+        "-1",
+        "0",
+        "00",
+        " 35",
+        "35 ",
+        "3_5",
+        "2147483648",
+        "",
+        "MsgType",
+        "Symbol.absent",
+        "35:MsgType",
+        "\u{661}\u{662}",
+    ] {
+        assert_eq!(FixKey::from_text(text), FixKey::Name(text), "{text:?}");
+    }
+}
+
 #[cfg(feature = "internals")]
 mod internal {
     use std::collections::HashSet;

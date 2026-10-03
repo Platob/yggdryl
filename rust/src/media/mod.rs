@@ -55,10 +55,14 @@ pub(crate) mod structured;
 pub use magic::MAGIC_PROBE_LEN;
 /// The root Field name a record surface uses when none is declared.
 pub const DEFAULT_ROOT_NAME: &str = "row";
+/// The child name a value wraps into a struct under when none is declared.
+pub const DEFAULT_VALUE_NAME: &str = "value";
 /// How a partition directory spells an absent value.
 pub const NULL_PARTITION: &str = "null";
-pub(crate) use options::{CommitBuffer, Shaping, WriteLimitState};
-pub use options::{DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions};
+pub(crate) use options::{Cadence, CommitBuffer, Shaping, WriteLimitState};
+pub use options::{
+    DEFAULT_COMMIT_BYTE_SIZE, DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions,
+};
 
 use crate::IOBase;
 use crate::arrow::{Error, Result};

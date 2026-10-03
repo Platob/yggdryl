@@ -3,9 +3,12 @@ import { Buffer } from 'node:buffer'
 
 import {
   BatchReader,
+  ChunkedSerie,
   Filter,
   Plan,
   Selector,
+  Serie,
+  SerieReader,
   Field,
   IOBase,
   MimeType,
@@ -13,6 +16,7 @@ import {
   type BatchSource,
   type RecordOptionsInput,
   type SchemaInput,
+  type SerieSource,
 } from '..'
 
 const schema: SchemaInput = Field.from('row: struct<id: int64> not null')
@@ -40,7 +44,8 @@ const safe: boolean = options.safe
 const batchRowSize: number | null = options.batchRowSize
 const maxRowSize: number | null = options.maxRowSize
 const maxByteSize: number | null = options.maxByteSize
-const commitRowSize: number | null = options.commitRowSize
+const commitBatchNum: number | null = options.commitBatchNum
+const numThreads: number | null = options.numThreads
 const level: number = options.level
 const blockCodec: string | null = options.blockCodec
 const syncMarker: Buffer | null = options.syncMarker
@@ -65,8 +70,10 @@ options.maxRowSize = 10
 options.maxRowSize = null
 options.maxByteSize = 1024
 options.maxByteSize = null
-options.commitRowSize = 1_000
-options.commitRowSize = null
+options.commitBatchNum = 10
+options.commitBatchNum = null
+options.numThreads = 4
+options.numThreads = null
 options.level = 9
 const avroOptions = RecordOptions.from('trades.avro')
 avroOptions.blockCodec = 'zstandard'
@@ -86,7 +93,8 @@ const chained: RecordOptions = options
   .withBatchRowSize(512)
   .withMaxRowSize(10)
   .withMaxByteSize(1024)
-  .withCommitRowSize(1_000)
+  .withCommitBatchNum(10)
+  .withNumThreads(4)
   .withLevel(1)
 const printed: string = chained.toString()
 
@@ -130,6 +138,30 @@ handle.mergeArrowTable(arrowTable, merging)
 handle.overwriteArrowBatch(arrowBatch, options)
 handle.appendArrowBatch(arrowBatch, named)
 handle.mergeArrowBatch(arrowBatch, merging)
+
+// The Serie record doors: a SerieReader out, any shape the rows are held in.
+declare const heldSerie: Serie
+declare const heldChunks: ChunkedSerie
+declare const heldStream: SerieReader
+const serieRead: SerieReader = handle.readSerie()
+const serieReadUnder: SerieReader = handle.readSerie(options, { maxRowSize: 1 })
+const serieReadBag: SerieReader = handle.readSerie({ numThreads: 2 })
+const serieReadNamed: SerieReader = handle.readSerie(named)
+const serieShapes: SerieSource[] = [heldSerie, heldChunks, heldStream, source, arrowTable, arrowBatch, [arrowBatch], new Uint8Array()]
+handle.writeSerie(heldSerie)
+handle.writeSerie(heldChunks, 'append', options)
+handle.writeSerie(heldStream, 'merge', merging, { numThreads: 1 })
+handle.overwriteSerie(arrowTable)
+handle.overwriteSerie(heldSerie, { field: schema as Field })
+handle.appendSerie(arrowBatch, named)
+handle.mergeSerie(source, merging)
+// @ts-expect-error a write's mode is one of the closed IOMode words
+handle.writeSerie(heldSerie, 'upsert')
+// @ts-expect-error rows are a columnar value, never a number
+handle.overwriteSerie(7)
+// @ts-expect-error the native write bridge is hidden
+handle._writeSerieNative
+void [serieRead, serieReadUnder, serieReadBag, serieReadNamed, serieShapes]
 
 // The text row's line and its entries answer text; the ranges stand beside them.
 import { TextLine, TextOptions } from '..'

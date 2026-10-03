@@ -167,6 +167,29 @@ fn a_host_name_that_merely_begins_like_a_loopback_address_is_refused() {
 }
 
 #[test]
+fn an_authority_no_url_reader_reads_is_refused_rather_than_split_by_hand() {
+    // Each of these names a loopback host to a hand split and no host to the
+    // URL grammar, and a gate that presents a token must not read what the
+    // client it hands the URI to may read differently.
+    for url in [
+        "http://[::1/creds",
+        "http://[::1]x/creds",
+        "http://127.0.0.1:99999/creds",
+        "http://127.0.0.1:/creds",
+        "http://127.0.0.1:80:80/creds",
+        "http://[fd00:ec2::23/creds",
+        "http://u:p@w@127.0.0.1/creds",
+        "https://[::1/creds",
+        "https://",
+    ] {
+        assert!(
+            !is_allowed_full_uri(url),
+            "{url} is no URL, so no token travels to it"
+        );
+    }
+}
+
+#[test]
 fn a_scheme_other_than_http_or_https_or_none_at_all_is_refused() {
     for url in [
         "ftp://127.0.0.1/creds",

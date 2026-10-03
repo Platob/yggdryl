@@ -78,6 +78,34 @@ def test_a_row_merges_by_the_update_rule(codec: FixCodec) -> None:
     assert len(registry) == 0
 
 
+def test_a_ticker_leads_back_to_its_isin_on_the_same_market() -> None:
+    # Through the inverse index, gated by the market: the one row listing the
+    # ticker whose market is the one asked, or whose market or the one asked
+    # is unstated; two rows answering is ambiguous, and answers none.
+    novartis = "CH0012005267"
+    registry = IsinRegistry()
+    assert registry.merge({"isin": HOLCIM, "ric": "HOLN.S", "ticker": "HOLN", "miccode": "XSWX"})
+
+    def isin(ticker: str, market: str | None = None) -> str | None:
+        row = registry.get_by_ticker(ticker, market)
+        return None if row is None else str(row["isin"])
+
+    assert isin("HOLN") == isin("HOLN", "XSWX") == HOLCIM
+    assert isin("HOLN", "XXXX") == HOLCIM, "XXXX states no market"
+    assert isin("HOLN", "XLON") is None and isin("ABBN") is None
+    with pytest.raises(ValueError):
+        registry.get_by_ticker("HOLN", "TOOLONG")
+    # Two rows listing one ticker on two markets: a market resolves to its
+    # listing, none resolves to neither.
+    assert registry.merge({"isin": novartis, "ticker": "HOLN", "miccode": "XLON"})
+    assert (isin("HOLN", "XLON"), isin("HOLN", "XSWX")) == (novartis, HOLCIM)
+    assert isin("HOLN") is None, "ambiguous"
+    assert registry.remove(novartis) is not None
+    assert isin("HOLN") == HOLCIM
+    registry.clear()
+    assert isin("HOLN") is None
+
+
 def test_a_new_isin_past_the_bound_is_refused_by_merge() -> None:
     registry = IsinRegistry(max_instruments=1)
     assert registry.max_instruments == 1

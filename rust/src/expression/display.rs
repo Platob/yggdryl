@@ -486,13 +486,14 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         Scalar::Float16(held) => Some(SmolStr::new(float_text(held.as_f64()))),
         Scalar::Float32(held) => Some(SmolStr::new(float_text(held.as_f64()))),
         Scalar::Float64(held) => Some(SmolStr::new(float_text(held.as_f64()))),
+        // Every decimal spells its shortest exact text; the typed literal's
+        // datatype states the scale it reads back at.
         Scalar::Decimal32(_)
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
-        | Scalar::Decimal256(_) => value.into_decimal_utf8().map(SmolStr::new),
-        // The fixed leaves spell their own trimmed text.
-        Scalar::Decimal(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::BigDecimal(held) => Some(SmolStr::new(held.to_string())),
+        | Scalar::Decimal256(_)
+        | Scalar::Decimal(_)
+        | Scalar::BigDecimal(_) => value.into_decimal_utf8().map(SmolStr::new),
         crate::string_scalars!(held) => Some(held.storage().clone()),
         code_scalars!() => value.code_storage().cloned(),
         crate::enum_scalars!() => value.enum_name().map(SmolStr::new_static),

@@ -9,7 +9,8 @@
 use std::collections::HashMap;
 
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either3, Env, Reference, Result,
+    BigInt, Buffer, ClassInstance, Either, Either3, Either4, Env, Null, Reference, Result,
+    Undefined,
 };
 use napi_derive::napi;
 use yggdryl::holder::Holder;
@@ -33,8 +34,13 @@ use crate::napi_error;
 use crate::text::codec::JsScalar;
 use crate::uri::PartitionEntry;
 
-/// A partition spec, or the column names one would be built from.
-pub type PartitionInput<'a> = Either<ClassInstance<'a, JsPartitionSpec>, Vec<String>>;
+/// What a new table partitions by: a spec, the `PARTITION:by` entries one is
+/// read from, `null` for none, or nothing for the schema's own declaration.
+///
+/// `null` and an omitted argument mean two things here, so neither is folded
+/// into an `Option`.
+pub type PartitionInput<'a> =
+    Either4<ClassInstance<'a, JsPartitionSpec>, Vec<String>, Null, Undefined>;
 
 /// A native root `Field`, a field expression, or the child fields of a row.
 pub type TableSchemaInput<'a> =
@@ -567,20 +573,26 @@ fn format_version(value: Option<u32>) -> Result<FormatVersion> {
     }
 }
 
-/// Resolve what a caller partitioned by, defaulting to unpartitioned.
+/// Resolve what a caller partitioned by.
 ///
-/// Column names are the short spelling of the only spec a write can use, so
-/// they build an identity spec against the schema they name columns of.
-fn partition_spec(
-    value: Option<PartitionInput<'_>>,
-    schema: &CoreField,
-) -> Result<CorePartitionSpec> {
+/// An array is the `PARTITION:by` entries the schema root would declare - a
+/// bare column an identity partition, `days(ts)`, `minutes(ts, 15)` or
+/// `truncate(name, 4) as prefix` a derived one - declared on a copy of the
+/// root and read into a spec by the core's one rule, which refuses an entry
+/// no spec can hold by naming it. An omitted argument is the schema's own
+/// declaration read by that rule - a schema declaring nothing unpartitioned -
+/// and `null` is unpartitioned whatever the schema declares.
+fn partition_spec(value: PartitionInput<'_>, schema: &CoreField) -> Result<CorePartitionSpec> {
     match value {
-        None => Ok(CorePartitionSpec::unpartitioned()),
-        Some(Either::A(spec)) => Ok(spec.inner.clone()),
-        Some(Either::B(columns)) => {
-            let names: Vec<&str> = columns.iter().map(String::as_str).collect();
-            CorePartitionSpec::identity(0, schema, &names).map_err(napi_error)
+        Either4::A(spec) => Ok(spec.inner.clone()),
+        Either4::C(Null) => Ok(CorePartitionSpec::unpartitioned()),
+        Either4::D(()) => CorePartitionSpec::from_schema(0, schema).map_err(napi_error),
+        Either4::B(entries) => {
+            let mut root = schema.clone();
+            root.as_partition_mut()
+                .set_by_texts(&entries)
+                .map_err(napi_error)?;
+            CorePartitionSpec::from_schema(0, &root).map_err(napi_error)
         }
     }
 }
@@ -1484,15 +1496,26 @@ impl JsTable {
 impl JsTable {
     /// Create a table, writing its first metadata document.
     ///
-    /// `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the column
-    /// names to partition on, and defaults to unpartitioned. Unnumbered schema
-    /// columns are numbered automatically, so a plain schema works as it is; a
-    /// schema that already carries field identifiers keeps every one of them.
-    #[napi(factory)]
+    /// `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the
+    /// `PARTITION:by` entries to partition on: a bare column - `venue` - is an
+    /// identity partition, and an epoch function over a column - `days(ts)`,
+    /// `hours(ts)`, `minutes(ts, 15)`, `weeks(ts)`, `quarters(ts)` - or
+    /// `truncate(name, 4)` is a derived one, named by its alias
+    /// (`days(ts) as day`) or `{source}_{function}` (`ts_day`). An entry no
+    /// spec can hold is refused, naming it. Omitted, the schema's own
+    /// `PARTITION:by` declaration is read the same way - a schema declaring
+    /// nothing is unpartitioned - and `null` is unpartitioned whatever the
+    /// schema declares. Unnumbered schema columns are numbered automatically,
+    /// so a plain schema works as it is; a schema that already carries field
+    /// identifiers keeps every one of them.
+    #[napi(
+        factory,
+        ts_args_type = "root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null"
+    )]
     pub fn create(
         root: LocationInput<'_>,
         schema: &JsField,
-        partition_by: Option<PartitionInput<'_>>,
+        partition_by: PartitionInput<'_>,
         version: Option<u32>,
     ) -> Result<Self> {
         let schema = numbered_schema(schema.inner.clone())?;
@@ -1517,14 +1540,19 @@ impl JsTable {
 
     /// Open the table if it exists, creating it otherwise.
     ///
-    /// Like [`create`](Self::create), unnumbered schema columns are numbered
-    /// automatically; an existing table is opened as it is and `schema`
-    /// describes only the table this call would create.
-    #[napi(factory)]
+    /// Like [`create`](Self::create), `partitionBy` is a spec, the
+    /// `PARTITION:by` entries one is read from, `null` for none, or - omitted -
+    /// the schema's own declaration, and unnumbered schema columns are
+    /// numbered automatically; an existing table is opened as it is and
+    /// `schema` describes only the table this call would create.
+    #[napi(
+        factory,
+        ts_args_type = "root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null"
+    )]
     pub fn open_or_create(
         root: LocationInput<'_>,
         schema: &JsField,
-        partition_by: Option<PartitionInput<'_>>,
+        partition_by: PartitionInput<'_>,
         version: Option<u32>,
     ) -> Result<Self> {
         let schema = numbered_schema(schema.inner.clone())?;

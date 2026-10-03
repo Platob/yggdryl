@@ -54,7 +54,7 @@ reader, statistics, or media pushdown).
 | resolve a path | `FieldPath::from_str(p)?`, `apply_scalar(&root, &v)` | `FieldPath(p)` | `new FieldPath(p)` |
 | register a function | `register_function(Arc::new(f))?` | `@user_defined_function(namespace=...)` | not bound (parses, bind refuses) |
 | store a derivation on a schema | `sel.into_field(&root)?`, `Selector::from_field(&f)` | `sel.into_field(root)`, `Selector.from_field(f)` | `sel.intoField(root)`, `Selector.fromField(f)` |
-| recompute stored derivations | `stored.apply_arrow_batch(&b, true, true, true, ArrowCastOptions::new())?`, `apply_arrow_reader(r, ..)` | `stored.apply_arrow_batch(b)`, `apply_arrow_reader(r)` | not bound |
+| recompute stored derivations | `stored.as_transform().apply_arrow_batch(&b)?` | `stored.transform.apply_arrow_batch(b)` | not bound |
 | see what runs | `bound.explain()` | `bound.explain()` | `bound.explain()` |
 | canonical text / document | `to_string()`, `into_json()?`, `from_json(s)?` | `str(x)`, `into_json()`, `from_json(s)` | `toString()`, `intoJson()`, `fromJson(s)` |
 
@@ -125,13 +125,14 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
     with the schema's `Field` `stable_hash`, because a `Bound` is resolved
     against one schema.
 12. **A `Field` is a plan holder.** `into_field` stores each derivation as
-    `TRANSFORM:function` + `TRANSFORM:sources` (a call over plain columns) or
-    `TRANSFORM:expression`, and `Field::apply_arrow_batch` /
-    `apply_arrow_reader` (Python `field.apply_arrow_batch(batch)`; not bound
-    in JavaScript) recomputes them on a batch - it runs the field's cast
-    first (cast rules: `yggdryl-arrow` references/cast-rules.md), then
-    `TRANSFORM:`/`PARTITION:`, then `DIGEST:` holders (`yggdryl-hashing`). Keep the source columns in the selector: the stored
-    field is what the recompute reads.
+    `TRANSFORM:function` + `TRANSFORM:by` (a call over plain columns) or
+    `TRANSFORM:expression`, and the transform view's `apply_arrow_batch` (Rust
+    `as_transform()`, Python `field.transform`; not bound in JavaScript)
+    recomputes them on a batch; a stream goes through `Selector::from_field`
+    and its `apply_arrow_reader`. `Field::apply_arrow_batch` is the cast alone
+    (cast rules: `yggdryl-arrow` references/cast-rules.md) and fills no derived
+    column nor `DIGEST:` holder (`yggdryl-hashing`). Keep the source columns in
+    the selector: the stored field is what the recompute reads.
 13. **DuckDB names the vocabulary**: `* exclude (...)`, `unnest`/`explode`,
     `in`, `between`, `is null`, `case when`, `asc`/`desc nulls first`. Joins,
     aggregates, windows and regexes are refused, not emulated.
@@ -181,5 +182,5 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
 - Sibling skills: `yggdryl-records` (where the pushed-down read runs),
   `yggdryl-types` (the `Field` a clause binds against),
   `yggdryl-arrow` (`BatchReader`, `Serie`, casts; references/cast-rules.md
-  for the cast `Field::apply_arrow_batch` runs before `TRANSFORM:`),
-  `yggdryl-hashing` (`stable_hash`, the `DIGEST:` holders it fills last).
+  for the cast `Field::apply_arrow_batch` runs),
+  `yggdryl-hashing` (`stable_hash`, the `DIGEST:` holders its `digest` view fills).

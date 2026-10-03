@@ -45,16 +45,17 @@ test file at the matching path.
 | --- | --- |
 | `rust/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one root file per type - `string.rs`, `bytes.rs`, `integer.rs`, `decimal.rs` with `int256.rs`, the five temporal files with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs`, `code.rs` with the thirteen codes including `bbg.rs`, `ric.rs` and `forex.rs`, `enums.rs` with the enums `state.rs`, `side.rs` and `marketdatakind.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs` | [Types](types/index.md) |
 | `rust/src/iobase.rs`, `rust/src/iobase/`, the `rust/src/io*.rs` roles, `rust/src/holder/`, and one root folder per backend: `rust/src/local/`, `fs/`, `zip/`, `s3/` | [Holder](holder/index.md) |
-| `rust/src/http/` - the client, sessions, requests, responses, streams, pages and the `Server`; its `wire.rs` message grammar | [Holder: HTTP](holder/index.md#http) and [Media: HTTP messages](media/index.md#http-messages) |
-| `rust/src/codec.rs`, `rust/src/coding/`, `rust/src/gzip.rs`, `zlib.rs`, `zstd.rs` | [Media: compression](media/index.md#compression) |
-| `rust/src/charset.rs`, `rust/src/charset/`, `rust/src/utf8.rs`, `ascii.rs`, `cp1252.rs` | [Media: charsets](media/index.md#charsets) |
-| `rust/src/media_type.rs`, `mime_type.rs`, `rust/src/media/`, and one root folder per medium: `rust/src/ipc/`, `parquet/`, `avro/`, `csv/`, `iceberg/`, `text/`, `xmla/`, `excel/` | [Media](media/index.md) |
-| `rust/src/json/`, `toml/`, `yaml/`, `xml/` over the codec machinery in `rust/src/text/` | [Structured documents](media/index.md#json) |
+| `rust/src/http/` - the client, sessions, requests, responses, streams, pages and the `Server`; its `wire.rs` message grammar | [Holder: HTTP](holder/index.md#http) and [Media: HTTP messages](media/http.md) |
+| `rust/src/codec.rs`, `rust/src/coding/`, `rust/src/gzip.rs`, `zlib.rs`, `zstd.rs` | [Media: compression](media/compression.md) |
+| `rust/src/charset.rs`, `rust/src/charset/`, `rust/src/utf8.rs`, `ascii.rs`, `cp1252.rs` | [Media: charsets](media/charsets.md) |
+| `rust/src/media_type.rs`, `mime_type.rs`, `rust/src/media/`, and one root folder per medium: `rust/src/ipc/`, `parquet/`, `avro/`, `csv/`, `iceberg/`, `text/`, `xmla/`, `excel/` | [Media](media/index.md), and the medium's own page beside it |
+| `rust/src/json/`, `toml/`, `yaml/`, `xml/` over the codec machinery in `rust/src/text/` | [JSON](media/json.md), [YAML](media/yaml.md), [TOML](media/toml.md), [XML](media/xml.md) |
 | `rust/src/uri/` | [URI](uri/index.md) |
 | `rust/src/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | [Expression](expression/index.md) |
 | `rust/src/graph/`, `rust/src/limit.rs`, `rust/src/identifier.rs` | [Graph](graph/index.md) |
 | `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | [Hashing](hashing.md) |
+| `rust/src/logging/` | [Logging](logging.md) |
 | `rust/src/fix/` | [FIX](fix/index.md) |
 
 Each shared trait, enum, value or type owns one root `rust/src/<name>.rs`; each implementation owns a root folder or file of its own name; a parent folder holds only what its implementations share. The Python package is laid out the same way and reimplements nothing: one module per type at the package root, one module or package per implementation - `yggdryl.avro`, `yggdryl.iceberg`, `yggdryl.json`, `yggdryl.gzip`, `yggdryl.xxhash`, `yggdryl.txhash` - and a package only where its implementations share something, `media/`, `text/`, `coding/`, `holder/`, `charset/`, `enums/`. Every type is re-exported from `yggdryl` itself, as the crate re-exports each of its root files. JavaScript keeps `xxhash` and `txhash` over the same root `xxhash/` and `txhash/`. Runnable examples live in the documentation, never in an `examples/` directory.
@@ -74,7 +75,7 @@ Each shared trait, enum, value or type owns one root `rust/src/<name>.rs`; each 
 
 - One page per family, one H1, one sentence, then the [page skeleton](architecture.md): Contract, Use, feature sections, Edges, Commands, Performance.
 - One page per type under its family's folder, in the order its core file is written: Contract, DataType, Field, Scalar, Arrow storage, features, Edges, Commands.
-- Media is one page, `docs/media/index.md`: a Read and write overview, then one short section per media type, codec and charset, each led by its example rather than prose and closed by its own `<section> performance` subsection.
+- Media is one page per medium under `docs/media/`, beside `index.md`, the overview of every medium and of the read, write and options surface they share. Each page opens with an Overview - the contract table: what declares the medium, its build, its doors in each language, its settings and refusals - then a Read and a Write section, each led by its example rather than prose, then the sections only that medium has, and closes with its own Performance section. The content codings share `compression.md` and the charsets `charsets.md`.
 - Every example appears in Rust, Python, and JavaScript unless it carries the "Rust only" line, and every block runs under `python scripts/check_docs_examples.py`.
 - The agent skills under `skills/` teach the same surface to agents using the package: a change to a public name, default or refusal a skill teaches updates that skill in the same change, and its blocks run under the same checker.
 - A benchmark table lives on the page that owns the measured method, names host and toolchain, and ends with its regenerate command.

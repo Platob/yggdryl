@@ -474,8 +474,10 @@ fn an_isin_reaches_its_normalized_column_from_wherever_the_message_put_it() {
         assert_eq!(held.get_by_tag(470), None, "{id}");
     }
 
-    // An alternate identifier under another source is not an ISIN, and one
-    // the check digit does not close is nothing at all.
+    // An alternate identifier under another source is not an ISIN; one the
+    // check digit does not close is a statement of the number it is - rank
+    // zero, which fills `SecurityID` and its source as any alternate does
+    // and names no country.
     let cusip = settled(&reader, &alternate("037833100", "1"));
     assert_eq!(isincode(&cusip), None);
     assert_eq!(
@@ -484,9 +486,10 @@ fn an_isin_reaches_its_normalized_column_from_wherever_the_message_put_it() {
     );
     assert_eq!(cusip.get_by_tag(48), None);
     let masked = settled(&reader, &alternate("XX0000000001", "4"));
-    assert_eq!(isincode(&masked), None);
-    assert_eq!(masked.get_by_tag(48), None);
-    assert_eq!(masked.get_by_tag(22), None);
+    assert_eq!(isincode(&masked).as_deref(), Some("XX0000000001"));
+    assert_eq!(text(&masked, 48).as_deref(), Some("XX0000000001"));
+    assert_eq!(text(&masked, 22).as_deref(), Some("4"));
+    assert_eq!(masked.get_by_tag(470), None);
 }
 
 #[test]
@@ -1117,12 +1120,14 @@ fn an_unvalidated_primary_under_the_isin_source_falls_through_to_the_alternate()
     );
     assert_eq!(isincode(&primary).as_deref(), Some("US0378331005"));
     assert_eq!(text(&primary, 470).as_deref(), Some("US"));
-    // Neither closes: silence, and nothing downstream reads a country.
+    // Neither closes: the alternate of the number's shape is the ISIN as
+    // stated, a typo of rank one, and nothing downstream reads a country
+    // off a number that does not close.
     let neither = settled(
         &reader,
         b"8=FIX.4.4|35=D|11=A|22=4|48=NOTANISIN00|454=1|455=CH0012221717|456=4|10=0|",
     );
-    assert_eq!(isincode(&neither), None);
+    assert_eq!(isincode(&neither).as_deref(), Some("CH0012221717"));
     assert_eq!(neither.get_by_tag(470), None);
 }
 
@@ -1661,6 +1666,40 @@ fn a_side_less_follower_states_the_side_of_the_chain_it_joins() {
     )
     .expect("the row reads");
     assert_eq!(again.get_side(), Side::Sell);
+}
+
+/// A quote is unsided, so the side it tags is its own: a status report
+/// following it stating no `Side(54)` takes none from the quote - neither in
+/// the message nor on its wire - and takes the quote's legs instead.
+#[test]
+fn a_quote_follower_inherits_no_side() {
+    use yggdryl::Side;
+    use yggdryl::graph::Element;
+
+    let codec = super::fixed_codec(super::committed_registry());
+    let lines: [&[u8]; 2] = [
+        b"8=FIX.4.4|35=S|49=S|56=T|34=1|52=20260102-10:15:30|117=Q1|55=AAPL|54=1|132=99|134=10|10=0|",
+        b"8=FIX.4.4|35=AI|49=T|56=S|34=2|52=20260102-10:15:31|117=Q1|55=AAPL|297=0|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("two messages");
+    assert_eq!(parsed.len(), 2, "a one-sided quote is one message");
+    let chained: Vec<FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    let status = &chained[1];
+    assert_eq!(status.get_prevuuid(), Some(chained[0].get_curruuid()));
+    assert_eq!(status.get_crosscode(), chained[0].get_crosscode());
+    assert_eq!(status.get_side(), Side::Unknown);
+    assert_eq!(text(status, 54), None);
+    assert_eq!(
+        (status.get_bidpx(), status.get_bidqty()),
+        (Some("99".parse().unwrap()), Some("10".parse().unwrap())),
+        "the leg it states nothing of is its quote's"
+    );
 }
 
 /// The acknowledgement the lifecycle page walks names no side: the side it
@@ -2212,5 +2251,210 @@ mod parentage {
                 [some("D"), some("C"), some("B"), some("A")],
             ]
         );
+    }
+}
+
+/// An order canceled, expired or rejected left nothing whatever it traded,
+/// so `OrderQty(38)` less a `LeavesQty(151)` of nothing is no `CumQty(14)`:
+/// what traded is read only where the report states what was canceled
+/// beside them - `OrderQty - LeavesQty - CxlQty` - or the order still works
+/// or filled, `OrderQty - LeavesQty`.
+#[test]
+fn a_canceled_report_derives_no_cumulative_quantity_from_its_order() {
+    let reader = reader();
+    for status in ["4", "C", "8", "3"] {
+        let line = format!("8=FIX.4.4|35=8|37=A|39={status}|38=100|10=0|");
+        let closed = settled(&reader, line.as_bytes());
+        assert_eq!(closed.by_tag(151).unwrap(), super::decimal("0"), "{status}");
+        assert_eq!(closed.get_by_tag(14), None, "39={status}");
+        assert_eq!(closed.get_cumqty(), None, "39={status}");
+    }
+    let canceled = settled(&reader, b"8=FIX.4.4|35=8|37=A|39=4|38=100|84=60|10=0|");
+    assert_eq!(canceled.by_tag(14).unwrap(), super::decimal("40"));
+    assert_eq!(canceled.get_cxlqty(), Some("60".parse().unwrap()));
+    // Working or filled, what is left is what was ordered less what traded.
+    let working = settled(&reader, b"8=FIX.4.4|35=8|37=A|39=1|38=100|151=60|10=0|");
+    assert_eq!(working.by_tag(14).unwrap(), super::decimal("40"));
+    let filled = settled(&reader, b"8=FIX.4.4|35=8|37=A|39=2|38=100|10=0|");
+    assert_eq!(filled.by_tag(14).unwrap(), super::decimal("100"));
+}
+
+/// An order that ended any way but filled left nothing whatever it ordered,
+/// so the `LeavesQty(151)` of nothing a report's status implies says nothing
+/// of what was ordered: `OrderQty(38)` is what traded plus what was canceled
+/// there, and nothing where the report states no `CxlQty(84)`.
+#[test]
+fn an_ended_report_derives_no_order_quantity_from_what_it_left() {
+    let reader = reader();
+    for (line, expected) in [
+        ("8=FIX.4.4|35=8|37=A|150=8|39=8|14=0|10=0|", None),
+        ("8=FIX.4.4|35=8|37=A|150=4|39=4|14=40|10=0|", None),
+        ("8=FIX.4.4|35=8|37=A|150=3|39=3|14=40|10=0|", None),
+        (
+            "8=FIX.4.4|35=8|37=A|150=4|39=4|14=40|84=60|10=0|",
+            Some("100"),
+        ),
+        // Filled or still working, what it ordered is what traded plus what
+        // is left.
+        ("8=FIX.4.4|35=8|37=A|150=F|39=2|14=40|10=0|", Some("40")),
+        (
+            "8=FIX.4.4|35=8|37=A|150=F|39=1|14=40|151=60|10=0|",
+            Some("100"),
+        ),
+    ] {
+        let report = settled(&reader, line.as_bytes());
+        assert_eq!(
+            report.get_by_tag(38),
+            expected.map(super::decimal),
+            "{line}"
+        );
+    }
+}
+
+/// An order asked for and not yet acknowledged, or accepted for bidding,
+/// still works: what it has left is all it ordered less what traded - as
+/// FIX states for every `OrdStatus(39)` but the ones that ended it, which
+/// leave nothing.
+#[test]
+fn a_pending_new_report_leaves_all_it_ordered() {
+    let reader = reader();
+    for status in ["A", "D", "E", "6", "9"] {
+        let line = format!("8=FIX.4.4|35=8|37=A|39={status}|38=100|14=0|10=0|");
+        let live = settled(&reader, line.as_bytes());
+        assert_eq!(live.by_tag(151).unwrap(), super::decimal("100"), "{status}");
+        assert_eq!(live.get_leavesqty(), Some("100".parse().unwrap()));
+    }
+    let calculated = settled(&reader, b"8=FIX.4.4|35=8|37=A|39=B|38=100|14=100|10=0|");
+    assert_eq!(calculated.by_tag(151).unwrap(), super::decimal("0"));
+    // Stating nothing traded, all it ordered is left all the same.
+    let pending = settled(&reader, b"8=FIX.4.4|35=8|37=A|39=A|38=100|10=0|");
+    assert_eq!(pending.get_leavesqty(), Some("100".parse().unwrap()));
+}
+
+/// A fill's report and the execution split off it each state a quantity of
+/// their own: the report its order's - what it has left open - and the
+/// execution what it states, `Quantity(53)` and none on a report, never what
+/// the order has left: the fill it reports is its `lastqty`, `LastQty(32)`.
+#[test]
+fn a_fill_split_report_keeps_its_leaves_as_its_quantity() {
+    use yggdryl::MarketDataKind;
+
+    let messages: Vec<FixMsg> = reader()
+        .parse_line(
+            b"8=FIX.4.4|35=8|52=20260921-10:00:00|17=E-1|37=O-9|11=C-9|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|10=0|",
+        )
+        .expect("a readable line")
+        .collect::<yggdryl::Result<_>>()
+        .expect("the report and its fill");
+    let [report, execution] = messages.as_slice() else {
+        panic!("the report and its execution, got {}", messages.len())
+    };
+    assert_eq!(report.msgcat(), MarketDataKind::Order);
+    assert_eq!(report.get_leavesqty(), Some("60".parse().unwrap()));
+    assert_eq!(report.get_quantity(), Some("60".parse().unwrap()));
+    assert_eq!(report.get_bidqty(), Some("60".parse().unwrap()));
+    assert_eq!(execution.msgcat(), MarketDataKind::Execution);
+    assert_eq!(execution.get_quantity(), None);
+    assert_eq!(execution.get_bidqty(), None);
+    assert_eq!(execution.get_leavesqty(), Some("60".parse().unwrap()));
+    assert_eq!(execution.get_lastqty(), Some("40".parse().unwrap()));
+
+    // A filled order's report has nothing left; its execution the fill.
+    let messages: Vec<FixMsg> = reader()
+        .parse_line(
+            b"8=FIX.4.4|35=8|17=E-2|37=O-9|39=2|150=F|55=AAPL|54=2|38=100|14=100|32=60|31=10|10=0|",
+        )
+        .expect("a readable line")
+        .collect::<yggdryl::Result<_>>()
+        .expect("the report and its fill");
+    assert_eq!(messages[0].get_quantity(), Some("0".parse().unwrap()));
+    assert_eq!(messages[1].get_quantity(), None);
+    assert_eq!(messages[1].get_lastqty(), Some("60".parse().unwrap()));
+}
+
+/// A dictionary that leaves each tag text - one tagged `utf8` field apiece -
+/// so what crosses it is the spelling the wire carried.
+fn text_registry(tags: &[(&str, i32)]) -> Arc<FixRegistry> {
+    let fields = tags.iter().map(|&(name, tag)| {
+        let mut field = yggdryl::DataType::utf8().nullable_field(name);
+        field.as_fix_mut().set_tag(tag).expect("a tag");
+        field
+    });
+    Arc::new(FixRegistry::from_fields(fields).expect("a dictionary"))
+}
+
+#[test]
+fn the_native_rules_read_a_code_a_dictionary_left_as_text_as_the_number_it_spells() {
+    // `Product(460)` and `PutOrCall(201)` are numbers in the committed
+    // dictionary; one that leaves them text states what the wire spelled,
+    // which the one integer reader reads as it reads a number.
+    let reader = super::fixed_codec(text_registry(&[
+        ("currency", 15),
+        ("settlcurrency", 120),
+        ("product", 460),
+        ("securitytype", 167),
+        ("putorcall", 201),
+        ("cficode", 461),
+    ]));
+    for (body, tag, expected) in [
+        ("460=4|15=EUR|", 120, None),
+        ("460=1|15=EUR|", 120, Some("EUR")),
+        ("460= 4 |120=USD|", 15, None),
+        ("167=OPT|201=1|", 461, Some("OCXXXX")),
+        ("167=OPT|201=0|", 461, Some("OPXXXX")),
+        ("167=OPT|201=abc|", 461, Some("OXXXXX")),
+    ] {
+        let line = format!("8=FIX.4.4|35=D|{body}10=0|");
+        let held = reader.sole_line(line.as_bytes()).expect("a readable line");
+        assert_eq!(text(&held, tag).as_deref(), expected, "{tag} of {line}");
+    }
+}
+
+#[test]
+fn a_resend_flag_a_dictionary_left_as_text_marks_a_replay_as_a_boolean_does() {
+    // The committed dictionary types `PossResend(97)` a boolean; a dictionary
+    // that leaves the tag text states the spelling the wire carried, which
+    // the one boolean reader reads: the retransmission a second later is the
+    // same delivery, dated by the time it names, for every spelling of true
+    // and for none other. A header field the committed dictionary references
+    // is neither removed nor retyped, so that dictionary is built beside it:
+    // every other field under the type the committed one holds, `97` text.
+    let committed = super::committed_registry();
+    let fields = [8, 35, 49, 56, 34, 52, 122, 11, 55, 54, 38, 10]
+        .into_iter()
+        .map(|tag| {
+            let held = committed.field_by_tag(tag).expect("a committed field");
+            let mut field = held.dtype().clone().nullable_field(held.name());
+            field.as_fix_mut().set_tag(tag).expect("a tag");
+            field
+        })
+        .chain(std::iter::once({
+            let mut field = yggdryl::DataType::utf8().nullable_field("possresend");
+            field.as_fix_mut().set_tag(97).expect("a tag");
+            field
+        }));
+    let registry = FixRegistry::from_fields(fields).expect("a dictionary");
+    let codec = super::fixed_codec(Arc::new(registry));
+    let parse = |line: &str| codec.parse_fix_line(line.as_bytes()).expect("a message");
+    let walked = |flag: &str| -> usize {
+        let messages = vec![
+            parse(
+                "8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=A|55=AAPL|54=1|38=100|10=0|",
+            ),
+            parse(&format!(
+                "8=FIX.4.4|35=D|49=S|56=T|34=7|97={flag}|52=20260102-10:15:31|122=20260102-10:15:30|11=A|55=AAPL|54=1|38=100|10=0|"
+            )),
+        ];
+        codec
+            .lifecycle(messages)
+            .collect::<yggdryl::Result<Vec<FixMsg>>>()
+            .expect("the walk")
+            .len()
+    };
+    for flag in ["Y", "yes", "1", "on", "true"] {
+        assert_eq!(walked(flag), 1, "97={flag} is a replay");
+    }
+    for flag in ["N", "no", "0", "maybe"] {
+        assert_eq!(walked(flag), 2, "97={flag} is no replay");
     }
 }

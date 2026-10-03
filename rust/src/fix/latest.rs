@@ -741,10 +741,12 @@ impl<'msg> Restater<'msg> {
     /// Whether one of the table's rules holds at a level: the message type
     /// where the rule names some, the enclosing group where it applies
     /// inside one, and the held value's wire spelling - one of its codes, or
-    /// its length - where it is about one. A boolean holds no text a
-    /// condition could name, so a condition on a boolean field's value does
-    /// not hold, which is what the two boolean retirements - `OddLot(575)`
-    /// and `PublishTrdIndicator(852)` - answer.
+    /// its length - where it is about one. A boolean spells no code but a
+    /// flag: a condition naming its value holds where the table every flag
+    /// in the crate is read by reads the condition's text as the held
+    /// boolean - the two boolean retirements, `OddLot(575)` and
+    /// `PublishTrdIndicator(852)`, fire on `Y` and `N` - and a condition on
+    /// its characters holds nothing.
     fn retired_applies(&self, rule: &Rule, value: &Scalar, group: Option<&str>) -> bool {
         if !rule.msgtypes.is_empty()
             && !self
@@ -756,13 +758,16 @@ impl<'msg> Restater<'msg> {
         if rule.within.is_some_and(|within| group != Some(within)) {
             return false;
         }
-        if matches!(value, Scalar::Boolean(_)) && !matches!(rule.when, When::Any) {
-            return false;
-        }
         match rule.when {
             When::Any => true,
-            When::Equals(text) => wire_text(value).is_some_and(|held| held == text),
-            When::Contains(text) => wire_text(value).is_some_and(|held| held.contains(text)),
+            When::Equals(text) => match value.as_bool() {
+                Some(held) => crate::boolean::bool_from_text(text) == Some(held),
+                None => wire_text(value).is_some_and(|held| held == text),
+            },
+            When::Contains(text) => {
+                value.as_bool().is_none()
+                    && wire_text(value).is_some_and(|held| held.contains(text))
+            }
         }
     }
 

@@ -1390,7 +1390,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(message.byTag(55).asJs(), 'AAPL')
     assert.equal(message.byId(registry.fieldByTag(55).fix.id).asJs(), 'AAPL')
     assert.equal(message.byName('SYMBOL').asJs(), 'AAPL')
-    assert.equal(message.byTag(38).toString(), '"100.000000000000000000"')
+    assert.equal(message.byTag(38).toString(), '"100"')
     assert.equal(message.byPath('parties[0].partyid').asJs(), 'BROKER')
     // An unknown tag is retained under its rendered name, never dropped.
     assert.equal(message.byTag(9999).asJs(), 'custom')
@@ -1878,7 +1878,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       .parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|202=12.5|10=0|'))
       .intoRow(schema)
       .asJs()
-    assert.equal(String(row[schema.indexOf('strikeprice')]), '"12.500000000000000000"', 'a decimal128(38,18) cell')
+    assert.equal(String(row[schema.indexOf('strikeprice')]), '"12.5"', 'a decimal128(38,18) cell')
   })
 
   test('party ids are typed by role and sourced by their id source', () => {
@@ -2219,8 +2219,8 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     ).next().value
     assert.ok(inferred.equals(bridge))
     assert.equal(bridge.byTag(55).toJSON(), 'TTF')
-    assert.equal(bridge.byTag(38).toJSON(), '1200.000000000000000000')
-    assert.equal(bridge.byTag(44).toJSON(), '41.250000000000000000')
+    assert.equal(bridge.byTag(38).toJSON(), '1200')
+    assert.equal(bridge.byTag(44).toJSON(), '41.25')
     assert.equal(bridge.side, 'BUYS')
     assert.equal(bridge.byPath('parties[0].partyid').asJs(), 'BUYSIDE')
     // The counter said two occurrences and one arrived: the group entry
@@ -2341,7 +2341,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     )
   })
 
-  test('a quote states its bid and ask, and a two-sided one splits by side', () => {
+  test('a quote states its bid and ask, and a two-sided one is one message', () => {
     const codec = fixedCodec(seed())
 
     // A bid alone states the bid facts, in the message's currency (A20);
@@ -2364,21 +2364,24 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       [null, '102', '50', null],
     )
 
-    // A13: a two-sided quote parses as itself and one sided quote per side,
-    // each keeping the pair its source stated and taking its side's price.
-    const [two, buy, sell] = codec.parseLine(Buffer.from('8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|'))
+    // A13: a quote is one element holding its two legs, so a two-sided
+    // quote parses as one message - no split by side - stored unsided, and
+    // states no price of its own.
+    const parsed = [...codec.parseLine(Buffer.from('8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|'))]
+    assert.equal(parsed.length, 1)
+    const [two] = parsed
     assert.equal(two.side, 'UNKN')
-    assert.deepEqual([two.crosscode, buy.crosscode, sell.crosscode], ['14:0:Q3', '14:1:Q3', '14:2:Q3'])
-    assert.deepEqual([buy.side, buy.price], ['BUYS', '101'])
-    assert.deepEqual([sell.side, sell.price], ['SELL', '102'])
-    for (const sided of [buy, sell]) {
-      assert.deepEqual([sided.bidpx, sided.askpx], ['101', '102'])
-    }
-    // A stated side stands whatever it quotes, and one side is one message.
+    assert.equal(two.crosscode, '14:0:Q3')
+    assert.deepEqual([two.bidpx, two.askpx], ['101', '102'])
+    assert.equal(two.price, null)
+    // A stated side is a tag: it stands whatever the quote states, its code
+    // stores none, and the bid it tags stands beside it.
     const stated = [...codec.parseLine(Buffer.from('8=FIX.4.4|35=S|117=Q4|55=AAPL|54=2|132=101|10=0|'))]
     assert.equal(stated.length, 1)
     assert.equal(stated[0].side, 'SELL')
-    assert.equal(stated[0].crosscode, '14:2:Q4')
+    assert.equal(stated[0].crosscode, '14:0:Q4')
+    assert.equal(stated[0].bidpx, '101')
+    assert.equal(stated[0].price, null)
   })
 
   test('an execution report stating no execution clock executed at its instant', () => {
@@ -3102,7 +3105,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   const arrow = require('apache-arrow')
 
   const {
-    BatchReader, DataType, Field, MarketDataKind, Scalar, Side, State, TextLine, TextOptions, fields, fix, graph,
+    BatchReader, DataType, Field, Filter, MarketDataKind, Scalar, Side, State, Term, TextLine, TextOptions, fields, fix, graph,
   } = require('yggdryl')
 
   const SEED = path.join(__dirname, '..', '..', 'config', 'fix')
@@ -3592,23 +3595,62 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.deepEqual([...books.getChild('marketdatakind')], [MarketDataKind.BOOK, MarketDataKind.BOOK])
     assert.deepEqual(exactColumn(books, 'price'), [101n * 10n ** 18n, 1015n * 10n ** 17n])
 
-    // The rows read back as the typed books they were written from.
+    // The rows read back as the typed books they were written from: the
+    // full refresh a keyframe holding its sides, the update its deltas alone.
     const [first, second] = [
       ...graph.MarketData.fromArrowReader(codec.bookArrowReader([snapshot, update])),
     ].map((data) => data.asBookEvent())
     assert.ok(first instanceof graph.BookEvent && second instanceof graph.BookEvent)
+    assert.deepEqual([first.isComplete, second.isComplete], [true, false])
     assert.equal(first.bestPrice('BUYS'), '100')
     assert.equal(second.bestPrice('BUYS'), '101')
     // The best tradable levels are the book's own bid and ask (A20, A22).
     assert.deepEqual([first.bidpx, first.askpx, second.bidpx], ['100', '102', '101'])
-    assert.equal(second.executions().length, 1)
-    const live = second.alive()[0].asQuoteEvent()
+    // The update's trade entry (`269=2`) is an execution, which no book
+    // folds: the bid's change is the book's one delta.
+    assert.deepEqual(second.deltas().map((delta) => delta.price), ['101'])
+    assert.deepEqual(second.alive(), [])
+    // Over the book before it, the update is whole again.
+    const whole = second.withPrevious(first)
+    assert.equal(whole.isComplete, true)
+    const live = whole.alive()[0].asQuoteEvent()
     assert.deepEqual(kinds(live.identifiers), { mdentryid: 'B1' })
     assert.equal(live.quantity, '11')
-    assert.deepEqual(second.limits('BUYS').map((limit) => [limit.price, limit.quantity, limit.tradable]), [['101', '11', true]])
+    assert.deepEqual(whole.limits('BUYS').map((limit) => [limit.price, limit.quantity, limit.tradable]), [['101', '11', true]])
   })
 
-  test('a lifecycled two-sided trade streams executions without book depth', () => {
+  test('bookArrowReader narrows its books to what its filter keeps', () => {
+    const codec = reading(seed(), { batchRowSize: 1 })
+    const capture = () => [
+      '8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100|38=5|10=0|',
+      '8=FIX.4.4|35=D|52=20260921-10:00:01|11=C2|55=AAPL|54=2|44=101|38=6|10=0|',
+      '8=FIX.4.4|35=8|52=20260921-10:00:02|17=E1|37=O1|11=C1|39=1|150=F|55=AAPL|54=1|44=100|38=5|14=2|32=2|31=100|10=0|',
+    ].flatMap((line) => [...codec.parseLine(Buffer.from(line))])
+    assert.ok(capture().some((message) => message.msgcat === 'EXEC'))
+    const books = (filter) =>
+      [...graph.MarketData.fromArrowReader(codec.bookArrowReader(capture(), 0, filter))].map((data) => data.asBookEvent())
+
+    // The order and its fill's report: no filter admits the execution the
+    // report splits off.
+    for (const filter of ["side = 'BUYS'", new Filter("side = 'BUYS'"), Term.parse("side = 'BUYS'")]) {
+      const bids = books(filter)
+      assert.equal(bids.length, 2, String(filter))
+      assert.ok(bids.every((book) => book.deltas().every((delta) => delta.marketdatakind === 'ORDR')))
+      assert.ok(bids.every((book) => book.deltas().every((delta) => delta.side === 'BUYS')))
+    }
+    const asks = books("side = 'SELL'")
+    assert.equal(asks.length, 1)
+    assert.equal(asks[0].askpx, '101')
+    assert.equal(books("marketdatakind = 'EXEC'").length, 0)
+    // A filter keeping every row folds what no filter does; not given is none.
+    const all = books(undefined)
+    assert.deepEqual(books('true').map((book) => book.curruuid), all.map((book) => book.curruuid))
+    assert.deepEqual(books(null).map((book) => book.curruuid), all.map((book) => book.curruuid))
+    // A column the row does not carry is refused before a message is read.
+    assert.throws(() => codec.bookArrowReader(capture(), 0, 'nope = 1'), /nope/)
+  })
+
+  test('a lifecycled two-sided trade is market data of its executions and reaches no book', () => {
     const codec = reading(seed(), { batchRowSize: 1 })
     // A12: the trade parses as itself and one sided execution per
     // `NoSides(552)` occurrence, each FILLED (A14) and read from the trade.
@@ -3624,17 +3666,20 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       ['EXEC', 'SELL', 'FILLED'],
     ])
     assert.ok(messages.slice(1).every((execution) => execution.srcuuids.includes(messages[0].curruuid)))
-    const books = codec.bookArrowReader(codec.lifecycle(messages)).intoTable()
-    const executions = books.getChild('executions').get(0)
+    // A book folds no execution - a fill moves it through its order's
+    // report - so a trade and the executions it splits into reach none.
+    assert.equal(codec.bookArrowReader(codec.lifecycle(messages)).intoTable().numRows, 0)
+    // They are market data of their own: one row per execution, the trade
+    // stating none.
+    const rows = codec.marketArrowReader(codec.lifecycle(messages)).intoTable()
+    const executions = Array.from({ length: rows.numRows }, (_, at) => rows.get(at))
     // A row's enum columns store each member's code.
-    const bySide = new Map(Array.from(executions, (execution) => [execution.side, execution]))
+    const bySide = new Map(executions.map((execution) => [execution.side, execution]))
     const buy = bySide.get(Side.BUYS)
     const sell = bySide.get(Side.SELL)
 
-    assert.equal(books.numRows, 1)
-    assert.equal(books.getChild('marketdatakind').get(0), MarketDataKind.BOOK)
     assert.deepEqual([...bySide.keys()].sort(), [Side.BUYS, Side.SELL])
-    // Each execution is in the book once (A12).
+    // Each execution is stated once (A12).
     assert.equal(executions.length, 2)
     assert.equal(buy.marketdatakind, MarketDataKind.EXEC)
     assert.equal(sell.marketdatakind, MarketDataKind.EXEC)
@@ -3656,8 +3701,6 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.notDeepEqual(buy.curruuid, sell.curruuid)
     assert.notDeepEqual(buy.crossuuid, sell.crossuuid)
     assert.notEqual(buy.crosscode, sell.crosscode)
-    assert.equal(books.getChild('alive').get(0).length, 0)
-    assert.equal(books.getChild('deltas').get(0).length, 0)
   })
 
   test('a trade side without Side splits off an execution of side UNKN', () => {
@@ -3669,15 +3712,16 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     )
     // A12: a trade states its fills as the executions its parse splits off,
     // and a side naming no Side(54) is still a fill: of side UNKN, said as
-    // a warning. The trade itself answers no leaf, and its book keeps the
-    // fill among its executions, on neither side.
+    // a warning. The trade itself answers no leaf, and neither it nor the
+    // fill reaches a book, whatever its sides state.
     const messages = [...codec.parseLine(line)]
     assert.deepEqual(
       messages.map((message) => [message.msgcat, message.side]),
       [['TRAD', 'UNKN'], ['EXEC', 'UNKN']],
     )
     assert.deepEqual(messages[0].marketData(), [])
-    assert.equal(codec.bookArrowReader(messages).intoTable().numRows, 1)
+    assert.equal(codec.bookArrowReader(messages).intoTable().numRows, 0)
+    assert.equal(codec.marketArrowReader(messages).intoTable().numRows, 1)
   })
 
   // One book snapshot, one incremental update a second later, and session
@@ -4744,31 +4788,53 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const walked = [...codec.lifecycle(messages)]
     assert.equal(walked.length, 39)
 
-    // Eighteen deliveries reach a book - eight fills, the eight reports they
-    // were split off, now their orders' reports, three orders, less a fill
-    // and a report the window yields once, and the trade capture's fill -
-    // and nothing is refused: the trade itself is no book input, since a
-    // trade's fills are the executions its parse splits off (A12).
+    // Twenty-one deliveries are market data - eight fills, the eight reports
+    // they were split off, now their orders' reports, three orders, less a
+    // fill and a report the window yields once, the trade capture's fill,
+    // and the NOVN order's three steps: the venue's acknowledgement - an
+    // execution report of no fill is now its order's leaf, which is what
+    // moved the count from eighteen - the restatement the walk reads as
+    // `UPDATED`, and the expiry. Nothing is refused: the trade itself is no
+    // market data, since a trade's fills are the executions its parse
+    // splits off (A12).
     const operations = [...codec.marketData(walked)]
-    assert.equal(operations.length, 18)
+    assert.equal(operations.length, 21)
     const census = {}
     for (const operation of operations) census[operation.kind] = (census[operation.kind] ?? 0) + 1
-    assert.deepEqual(census, { execution_event: 8, order_event: 10 })
+    assert.deepEqual(census, { execution_event: 8, order_event: 13 })
     // The two a walk remembering nothing answers beside them each repeat an
     // identity already there.
     const every = [...codec.marketData([...codec.withDedupWindowMs(null).lifecycle(messages)])]
-    assert.equal(every.length, 20)
+    assert.equal(every.length, 23)
     const seen = new Set()
     const once = every.filter((operation) => !seen.has(operation.curruuid) && seen.add(operation.curruuid))
     assert.deepEqual(once.map((operation) => operation.curruuid), operations.map((operation) => operation.curruuid))
 
-    // Every operation folds into a book: eight - one the trade's - the last
-    // holding nothing, its unpriced order having rested and left at one
-    // instant.
+    // Every order folds into a book and every execution is pruned - a fill
+    // moved its book through its order's report already - so a book stands
+    // at every instant an order states and none where only an execution
+    // does: ten books, the NOVN order's three steps each its book's instant,
+    // each stating its deltas alone - with no grid and no snapshot input no
+    // book is whole. The last holds nothing, its unpriced order having
+    // rested and left at one instant.
     const books = [...new graph.BookIterator(operations, 0)]
-    assert.equal(books.length, 8)
+    assert.equal(books.length, 10)
+    assert.ok(books.every((book) => !book.isComplete))
     const last = books[books.length - 1]
     assert.equal(last.ticker, '2454')
+    // Keyed by its instrument's ISIN, which it holds beside the ticker its
+    // first input stated: every book is keyed by the ISIN its inputs state,
+    // else their ticker.
+    assert.equal(last.isincode, 'TW0002454006')
+    assert.equal(last.crosscode, '3:0:TW0002454006')
+    assert.deepEqual([...new Set(books.map((book) => book.crosscode))].sort(), [
+      '3:0:CH0012005267',
+      '3:0:CH0012214059',
+      '3:0:CH0012221716',
+      '3:0:TW0001605004',
+      '3:0:TW0002454006',
+      '3:0:XX0000000001',
+    ])
     assert.deepEqual([last.limits('BUYS'), last.limits('SELL'), last.alive()], [[], [], []])
     assert.deepEqual(last.deltas().map((delta) => delta.price), [null, null])
     // Re-pinned from the run, as `rust/tests/fix/ulbridge.rs` pins it: the
@@ -4786,9 +4852,14 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     // when every type took its base key, spelled as the type alone - the
     // wire's identifiers digest under `base`, beside the base key a named
     // source fills - and when the bridge's `DETAILEDCFICODE` became a name
-    // of `CFICode(461)`, folded into it: the one value
-    // `rust/tests/fix/ulbridge.rs` and the Python binding pin for this log.
-    assert.equal(last.currhashcode, 11_953_173_911_701_746_314n)
+    // of `CFICode(461)`, folded into it. It moved again when a book stopped
+    // holding executions and digested its deltas once, in the order applied;
+    // when a code's first book stopped being whole, stating its deltas alone
+    // and following no book; and when a book came to be keyed by its
+    // instrument's ISIN and to hold it as its `isin` security identifier:
+    // the one value `rust/tests/fix/ulbridge.rs` and the Python binding pin
+    // for this log.
+    assert.equal(last.currhashcode, 9_341_042_899_919_963_577n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {

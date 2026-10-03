@@ -13,18 +13,21 @@
 //! the rest of the file reads `crate::{Error, Result}`, and one scope cannot
 //! hold both names.
 
-use std::sync::Arc;
+use std::cmp::Ordering;
+use std::sync::atomic::{AtomicU8, Ordering as AtomicOrdering};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use arrow_array::builder::make_builder;
 use arrow_array::{
     Array, ArrayRef, OffsetSizeTrait, RecordBatch, RecordBatchIterator, RecordBatchOptions,
     RecordBatchReader, StructArray, new_empty_array,
 };
-use arrow_buffer::{NullBuffer, OffsetBuffer};
+use arrow_buffer::{BooleanBuffer, NullBuffer, OffsetBuffer};
+use smol_str::{SmolStr, format_smolstr};
 
 use super::{
-    Serie, boolean, bytes, enums, mapping, null, primitive, runend, sequence, structure, union,
-    variant,
+    Serie, boolean, bytes, enums, mapping, null, primitive, proven_row, runend, sequence,
+    structure, union, variant,
 };
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, SchemaRef};
 
@@ -33,8 +36,10 @@ use crate::arrow::{
     from_reader_error,
 };
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
+use crate::expression::{BoundSelector, IntoSelector};
 use crate::media::DEFAULT_ROOT_NAME;
-use crate::{DataType, Field, Scalar};
+use crate::window_serie::{WindowRecord, key_cells};
+use crate::{DataType, Field, FieldScalar, Scalar, SortOptions};
 
 /// How many rows this array leaves absent that its parent does not.
 ///
@@ -891,6 +896,27 @@ pub(crate) fn land_planned(resolved: &Resolved, array: ArrayRef, proof: &Proof) 
     .map_err(|refusal| located(&resolved.field, array.as_ref(), refusal))
 }
 
+/// [`land_planned`] beneath the rows a cast node exposes: a row an ancestor
+/// hid says nothing about the array, so it is judged - and read - only
+/// where `parent` is set. The landing draws on the node's own budget.
+pub(crate) fn land_planned_under(
+    resolved: &Resolved,
+    array: ArrayRef,
+    parent: Option<&NullBuffer>,
+    proof: &Proof,
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<Serie> {
+    child_of(
+        Arc::clone(&resolved.field),
+        Arc::clone(&array),
+        parent,
+        proof,
+        budget,
+        Some(resolved),
+    )
+    .map_err(|refusal| located(&resolved.field, array.as_ref(), refusal))
+}
+
 /// Land one child array beneath the validity of the record it sits in: a
 /// row the parent leaves absent says nothing about the child, so a required
 /// child is judged only where the parent is present.
@@ -1174,7 +1200,7 @@ impl Serie {
     ) -> Result<Self> {
         let Some(field) = field else {
             let item = item_field(array.data_type(), array.logical_null_count() != 0)?;
-            return land(Arc::new(item), array, &Proof::Unproven);
+            return Ok(land(Arc::new(item), array, &Proof::Unproven)?.verified_order()?);
         };
         if lands_exactly(field, array.data_type())? {
             let exact = land(
@@ -1183,7 +1209,9 @@ impl Serie {
                 &Proof::Unproven,
             );
             if let Ok(serie) = exact {
-                return Ok(serie);
+                // The rows are the caller's: an order the field declares is
+                // read once before they are believed.
+                return Ok(serie.verified_order()?);
             }
         }
         let source = Arc::new(ArrowField::new(
@@ -1191,8 +1219,9 @@ impl Serie {
             array.data_type().clone(),
             true,
         ));
-        ArrowCastPlan::compile_arrow(&source, field, options, Deferred::default())?
-            .cast_array(array)
+        let cast = ArrowCastPlan::compile_arrow(&source, field, options, Deferred::default())?
+            .cast_array(array)?;
+        Ok(cast.settled()?.verified_order()?)
     }
 
     /// The empty column of `field`.
@@ -1248,11 +1277,46 @@ impl Serie {
             .map(|row| field.scalar(row))
             .collect::<crate::Result<Vec<Scalar>>>()?;
         let borrowed: Vec<&Scalar> = proven.iter().collect();
-        from_canonical_rows(field, &borrowed)
+        from_canonical_rows(field, &borrowed)?
+            .settled()?
+            .verified_order()
+    }
+
+    /// `rows` copies of `value` under `field`: a constant column
+    /// ([`LitSerie`](crate::serie::LitSerie)), the value proven by the
+    /// field once and laid out as one row, the whole array built only when
+    /// something exports it. Reading a cell clones the value, slicing moves
+    /// the count, and nothing is held per row.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let venue = Serie::lit(DataType::utf8().required_field("venue"), Scalar::from("XNAS"), 1_000_000)?;
+    /// assert_eq!(venue.len(), 1_000_000);
+    /// assert_eq!(venue.scalar(999_999)?, Scalar::from("XNAS"));
+    /// assert!(venue.as_lit().is_some());
+    /// assert!(venue.resident_size() < 1_024, "one row, not a million");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the field's refusal of the value - a null under a required
+    /// field, a value of another datatype - or of a field with no Arrow
+    /// projection.
+    pub fn lit(field: impl Into<Arc<Field>>, value: Scalar, rows: usize) -> Result<Self> {
+        Ok(crate::value::SerieValue::into_serie(super::LitSerie::new(
+            field.into(),
+            value,
+            rows,
+        )?))
     }
 
     /// `rows` copies of `field`'s canonical default -
-    /// [`Field::default_value`] - laid out once and repeated by index.
+    /// [`Field::default_value`] - as the constant column [`Self::lit`]
+    /// builds.
     ///
     /// # Errors
     ///
@@ -1261,46 +1325,7 @@ impl Serie {
     pub fn from_default(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self> {
         let field = field.into();
         let default = field.default_value()?;
-        from_canonical_rows(field, &[&default])?.repeat(0, rows)
-    }
-
-    /// Row `row` of this column, `len` times.
-    ///
-    /// The selection is Arrow's `take` over one repeated index, so the rows
-    /// are laid out once and never proven again: they are rows this column
-    /// already holds.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the column when `row` is past the end.
-    pub(crate) fn repeat(&self, row: usize, len: usize) -> Result<Self> {
-        let Some(field) = self.field_ref() else {
-            let value = self.scalar(row)?;
-            return Ok(Self::new(vec![value; len]));
-        };
-        if row >= self.len() {
-            return Err(Error::IncompatibleSchema(format!(
-                "column {:?} has {} rows, so row {row} cannot repeat",
-                field.name(),
-                self.len()
-            )));
-        }
-        let index = u32::try_from(row).map_err(|_| {
-            Error::IncompatibleSchema(format!(
-                "column {:?} row {row} is past what one take can index",
-                field.name()
-            ))
-        })?;
-        let array = self.require_arrow_array()?;
-        let indices = arrow_array::UInt32Array::from(vec![index; len]);
-        let repeated = arrow_select::take::take(array.as_ref(), &indices, None)?;
-        if repeated.len() != len {
-            // Arrow's take answers a zero-width fixed-size list by its child,
-            // which has no rows to count, so the row is laid out instead.
-            let value = self.scalar(row)?;
-            return Ok(from_canonical_rows(Arc::clone(field), &vec![&value; len])?);
-        }
-        land(Arc::clone(field), repeated, &Proof::Proven)
+        Self::lit(field, default, rows)
     }
 
     /// Read one Arrow table as the record column of its rows: of the
@@ -1325,7 +1350,9 @@ impl Serie {
     ) -> Result<Self> {
         let Some(root) = root else {
             let root = field_from_arrow_schema(DEFAULT_ROOT_NAME, batch.schema().as_ref())?;
-            return land_once(Arc::new(root), batch.clone(), &Proof::Unproven);
+            return Ok(
+                land_once(Arc::new(root), batch.clone(), &Proof::Unproven)?.verified_order()?
+            );
         };
         // An exact batch lands as it stands, proven as the identity plan would
         // prove it and with no plan compiled; one the landing refuses - an
@@ -1343,11 +1370,13 @@ impl Serie {
             let resolved = Resolved::of(Arc::new(root.clone()));
             let records = crate::cast::struct_array_from_batch(batch.clone());
             if let Ok(serie) = land_planned(&resolved, records, &Proof::Unproven) {
-                return Ok(serie);
+                return Ok(serie.verified_order()?);
             }
         }
-        ArrowCastPlan::compile_schema(batch.schema_ref(), root, options, Deferred::default())?
-            .cast_batch(batch.clone())
+        let cast =
+            ArrowCastPlan::compile_schema(batch.schema_ref(), root, options, Deferred::default())?
+                .cast_batch(batch.clone())?;
+        Ok(cast.settled()?.verified_order()?)
     }
 
     /// Drain one Arrow batch stream into the record column of its rows.
@@ -1443,21 +1472,54 @@ impl Serie {
 /// At most one source batch is held. After the first failure the inner
 /// reader is dropped - which releases a C stream at the point an early close
 /// would - and the reader is fused.
+///
+/// [`Self::window_by`] cuts the stream into one reader per window, and a
+/// window's reader states [static values](Self::static_values): one record
+/// of values constant over every row it yields - its key and its place,
+/// where the rows come from and never a column of them - so [`Self::field`]
+/// is the same with or without them. No other reader states one.
+/// [`Self::cast`] keeps them; the transport face
+/// ([`Self::into_arrow_reader`]) and a held table built from the reader
+/// carry rows only, and drop them.
 pub struct SerieReader {
     inner: Option<Source>,
     root: Arc<Field>,
     schema: SchemaRef,
+    /// The record of values every yielded row shares, beside the root: a
+    /// window's.
+    statics: Option<Statics>,
+    /// The last row of the stream's batch before, where the root declares
+    /// an order: what the next batch's first row is checked against. A
+    /// held, lazy or windowed source lays out its own rows and keeps none.
+    edge: Option<Serie>,
+}
+
+/// A reader's static values: a non-null record field and its row, proven
+/// under it - laid out by a window's walk from cells a landing already
+/// proved.
+#[derive(Clone, Debug)]
+struct Statics {
+    field: Arc<Field>,
+    row: Scalar,
 }
 
 /// What a [`SerieReader`] yields its columns from.
 enum Source {
     /// A stream: each batch cast by the plan the stream was opened under as
     /// it arrives, then - where the reader was [cast](SerieReader::cast)
-    /// again - by the plan that cast landed. A held source compiles no
-    /// plan at all, so the plans live here and not on the reader.
-    Stream(BatchReader, Box<ArrowCastPlan>, Option<Box<ArrowCastPlan>>),
+    /// again - by the plan each later cast landed, in the order they were
+    /// cast. A held source compiles no plan at all, so the plans live here
+    /// and not on the reader.
+    Stream(BatchReader, Box<ArrowCastPlan>, Vec<ArrowCastPlan>),
     /// Record columns already held, each yielded as it stands.
     Held(std::vec::IntoIter<Serie>),
+    /// One window of a [`SerieReaderWindows`] walk: its rows served piece
+    /// by piece out of the one batch the walk holds.
+    Window(WindowPart),
+    /// Record columns the crate lays out as they are pulled - a join's or a
+    /// sort's output - each already landed under the root, so nothing is
+    /// cast, copied or read on the way out.
+    Lazy(Box<dyn Iterator<Item = Result<Serie>> + Send>),
 }
 
 /// The record root a held column of `field` streams under, shared, and
@@ -1516,9 +1578,11 @@ impl SerieReader {
             ArrowCastPlan::compile_schema(schema.as_ref(), root, options, Deferred::default())?;
         let schema = Arc::clone(plan.target_schema()?);
         Ok(Self {
-            inner: Some(Source::Stream(reader, Box::new(plan), None)),
+            inner: Some(Source::Stream(reader, Box::new(plan), Vec::new())),
             root: Arc::new(root.clone()),
             schema,
+            statics: None,
+            edge: None,
         })
     }
 
@@ -1561,6 +1625,23 @@ impl SerieReader {
         Self::held(root, records)
     }
 
+    /// The stream of record columns `records` lays out as it is pulled, each
+    /// already landed under `root`: what a join or an out-of-core sort
+    /// answers, one settled batch at a time.
+    pub(crate) fn from_landed_iter(
+        root: Arc<Field>,
+        records: impl Iterator<Item = Result<Serie>> + Send + 'static,
+    ) -> Result<Self> {
+        let schema = arrow_schema_from_field(&root)?;
+        Ok(Self {
+            inner: Some(Source::Lazy(Box::new(records))),
+            root,
+            schema,
+            statics: None,
+            edge: None,
+        })
+    }
+
     /// The stream of `records`, each already a record column under `root`.
     fn held(root: Arc<Field>, records: Vec<Serie>) -> Result<Self> {
         let schema = arrow_schema_from_field(&root)?;
@@ -1568,6 +1649,8 @@ impl SerieReader {
             inner: Some(Source::Held(records.into_iter())),
             root,
             schema,
+            statics: None,
+            edge: None,
         })
     }
 
@@ -1579,9 +1662,14 @@ impl SerieReader {
     /// stands. Held records are cast here, once each. A stream's batches
     /// are cast by the plan the stream was opened under and then landed
     /// under `target`, so what the first plan repaired or nulled is what the
-    /// second reads - two plans in sequence, never one that skips the
+    /// second reads - every plan in sequence, never one that skips the
     /// middle - except over an identity first plan, where the one plan from
-    /// the stream's own schema says exactly the same.
+    /// the stream's own schema says exactly the same. A window's pieces are
+    /// cast as they are served, by the plan compiled here after every plan
+    /// an earlier cast compiled, in order.
+    ///
+    /// The [static values](Self::static_values) are kept: they say where
+    /// the rows come from, not a column the root declares.
     ///
     /// # Errors
     ///
@@ -1597,29 +1685,37 @@ impl SerieReader {
         let root = Arc::new(target);
         let schema = arrow_schema_from_field(&root)?;
         let inner = match self.inner {
+            Some(Source::Window(mut part)) => {
+                // Each cast lands what the one before it cast, as a
+                // stream's does: a piece stays typed by the window's root.
+                part.then.push(plan);
+                Some(Source::Window(part))
+            }
             Some(Source::Held(records)) => {
                 let cast = records
                     .map(|record| plan.apply(&record))
                     .collect::<Result<Vec<_>>>()?;
                 Some(Source::Held(cast.into_iter()))
             }
-            Some(Source::Stream(reader, first, None))
-                if first.is_identity() && first.source_schema().is_some() =>
+            Some(Source::Lazy(records)) => {
+                Some(Source::Lazy(Box::new(records.map(move |record| {
+                    record.and_then(|record| plan.apply(&record))
+                }))))
+            }
+            Some(Source::Stream(reader, first, then))
+                if then.is_empty() && first.is_identity() && first.source_schema().is_some() =>
             {
                 let source = first
                     .source_schema()
                     .expect("the identity plan was compiled from a schema");
                 let direct =
                     ArrowCastPlan::compile_schema(source, &root, options, Deferred::default())?;
-                Some(Source::Stream(reader, Box::new(direct), None))
+                Some(Source::Stream(reader, Box::new(direct), then))
             }
-            Some(Source::Stream(reader, first, then)) => {
-                // A second cast lands what the first two cast, in order.
-                let then = match then {
-                    Some(then) => ArrowCastPlan::compile(then.as_target(), &root, options)?,
-                    None => plan,
-                };
-                Some(Source::Stream(reader, first, Some(Box::new(then))))
+            Some(Source::Stream(reader, first, mut then)) => {
+                // Each cast lands what every plan before it cast, in order.
+                then.push(plan);
+                Some(Source::Stream(reader, first, then))
             }
             None => None,
         };
@@ -1627,12 +1723,172 @@ impl SerieReader {
             inner,
             root,
             schema,
+            statics: self.statics,
+            edge: None,
         })
+    }
+
+    /// Every record this reader yields, in sorted order under `options`:
+    /// the stream drained into its chunks
+    /// ([`ChunkedSerie::from_serie_reader`](crate::ChunkedSerie::from_serie_reader),
+    /// each chunk settled as it lands), sorted by
+    /// [`ChunkedSerie::into_sorted`](crate::ChunkedSerie::into_sorted)'s
+    /// merge, and read back as the held stream of the merged chunks
+    /// ([`Self::from_chunked`]) - batches of at most
+    /// [`DEFAULT_RECORD_BATCH_ROW_SIZE`](crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE)
+    /// rows. Every batch of the stream is pulled here, before the first
+    /// sorted one is answered, because the last row pulled may be the
+    /// first in order; what the sort holds while it runs is what the merge
+    /// states. The root is kept, and so are the
+    /// [static values](Self::static_values): sorting moves rows, never
+    /// where they come from.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie, SerieReader, SortOptions, StructType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let root = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Int64.required_field("price"),
+    /// ])?)
+    /// .required_field("quote");
+    /// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    /// let quotes = Serie::from_scalars(root, [quote("XNYS", 2), quote("XNAS", 1), quote("XNYS", 1)])?;
+    /// let sorted = SerieReader::from_serie(quotes)?.into_sorted(SortOptions::descending())?;
+    /// assert_eq!(sorted.field().name(), "quote");
+    /// let rows: Vec<Scalar> = sorted.map(|batch| batch.map(|batch| batch.rows().into_owned())).collect::<Result<Vec<_>, _>>()?.concat();
+    /// assert_eq!(rows, vec![quote("XNYS", 2), quote("XNYS", 1), quote("XNAS", 1)]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The first failure a batch of the stream raises, then
+    /// [`ChunkedSerie::into_sorted`](crate::ChunkedSerie::into_sorted)'s.
+    pub fn into_sorted(mut self, options: SortOptions) -> Result<Self> {
+        let statics = self.statics.take();
+        let sorted = crate::ChunkedSerie::from_serie_reader(self)?.into_sorted(options)?;
+        let mut reader = Self::from_chunked(sorted)?;
+        reader.statics = statics;
+        Ok(reader)
+    }
+
+    /// Every record this reader yields, in the order the `order by` keys
+    /// of `by` state: [`Self::into_sorted`], its drain and its merge, by
+    /// [`ChunkedSerie::into_sort_by`](crate::ChunkedSerie::into_sort_by)'s
+    /// keys, bound against the root - a column of the root keys as itself,
+    /// so `"price desc"` sorts by the root's `price`. The keys are read
+    /// before the stream is: a key no column answers is refused with no
+    /// batch pulled.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie, SerieReader, StructType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let root = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Int64.required_field("price"),
+    /// ])?)
+    /// .required_field("quote");
+    /// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    /// let quotes = Serie::from_scalars(root, [quote("XNYS", 2), quote("XNAS", 1), quote("XNYS", 1)])?;
+    /// let sorted = SerieReader::from_serie(quotes.clone())?.into_sort_by("venue, price desc")?;
+    /// let rows: Vec<Scalar> = sorted.map(|batch| batch.map(|batch| batch.rows().into_owned())).collect::<Result<Vec<_>, _>>()?.concat();
+    /// assert_eq!(rows, vec![quote("XNAS", 1), quote("XNYS", 2), quote("XNYS", 1)]);
+    /// assert!(SerieReader::from_serie(quotes)?.into_sort_by("tier").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The keys' refusals, before any batch is pulled: their parse, none at
+    /// all, an `unnest`, a term reaching no column or two, two keys
+    /// publishing one name. Then [`Self::into_sorted`]'s.
+    pub fn into_sort_by(mut self, by: impl crate::expression::IntoOrderings) -> Result<Self> {
+        let by = by.into_orderings()?;
+        // Refused against the root's empty chunked serie, before a pull.
+        crate::ChunkedSerie::empty(Arc::clone(&self.root))?.into_sort_by(by.as_slice())?;
+        let statics = self.statics.take();
+        let sorted = crate::ChunkedSerie::from_serie_reader(self)?.into_sort_by(by)?;
+        let mut reader = Self::from_chunked(sorted)?;
+        reader.statics = statics;
+        Ok(reader)
     }
 
     /// The record every yielded column is typed by.
     pub fn field(&self) -> &Field {
         &self.root
+    }
+
+    /// The bytes the records this reader holds occupy in memory: the held
+    /// records still to yield, or the batch a window's walk stands in; a
+    /// stream holds no landed batch between pulls and answers zero.
+    pub fn resident_size(&self) -> usize {
+        match &self.inner {
+            Some(Source::Held(records)) => {
+                records.as_slice().iter().map(Serie::resident_size).sum()
+            }
+            Some(Source::Window(part)) => part.walk.lock().map_or(0, |walk| {
+                walk.held
+                    .as_ref()
+                    .map_or(0, |cut| cut.record.resident_size())
+            }),
+            _ => 0,
+        }
+    }
+
+    /// Whether every record this reader holds lies in a spill file: held
+    /// records only, and never a stream, which holds none.
+    pub fn is_spilled(&self) -> bool {
+        match &self.inner {
+            Some(Source::Held(records)) => {
+                let held = records.as_slice();
+                !held.is_empty() && held.iter().all(Serie::is_spilled)
+            }
+            _ => false,
+        }
+    }
+
+    /// Move the records this reader holds to disk under `options`' bound:
+    /// each held record through [`Serie::spill`]; a stream holds none and
+    /// is untouched.
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::spill`]'s refusal of its folder.
+    pub fn spill(&mut self, options: &crate::SpillOptions) -> crate::Result<()> {
+        if let Some(Source::Held(records)) = &mut self.inner {
+            let mut held: Vec<Serie> = std::mem::take(records).collect();
+            for record in &mut held {
+                record.spill(options)?;
+            }
+            *records = held.into_iter();
+        }
+        Ok(())
+    }
+
+    /// [`Self::spill`], answering this reader so calls chain.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::spill`]'s.
+    pub fn as_spilled(&mut self, options: &crate::SpillOptions) -> crate::Result<&mut Self> {
+        self.spill(options)?;
+        Ok(self)
+    }
+
+    /// This reader spilled under `options`' bound: [`Self::spill`] on the
+    /// held records, the reader handed back - a stream owns one source, so
+    /// it moves rather than copies.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::spill`]'s.
+    pub fn into_spilled(mut self, options: &crate::SpillOptions) -> crate::Result<Self> {
+        self.spill(options)?;
+        Ok(self)
     }
 
     /// The record root a held column of `field` crosses into a table under:
@@ -1662,13 +1918,34 @@ impl SerieReader {
     /// never landed, so no row is proven beyond what the cast itself reads.
     ///
     /// Over an identity plan it is the inner reader, handed back untouched.
+    /// A window's pieces cross one batch each, as they are served. A batch
+    /// states a schema only, so the [static values](Self::static_values)
+    /// are dropped here.
     pub fn into_arrow_reader(self) -> BatchReader {
         match self.inner {
-            Some(Source::Stream(inner, plan, None)) if plan.is_identity() => inner,
+            Some(Source::Window(part)) => {
+                let schema = Arc::clone(&self.schema);
+                let pieces = Self {
+                    inner: Some(Source::Window(part)),
+                    root: self.root,
+                    schema: Arc::clone(&self.schema),
+                    statics: None,
+                    edge: None,
+                };
+                let batches = pieces.map(move |piece| {
+                    piece
+                        .and_then(|piece| batch_under(&schema, &piece))
+                        .map_err(|error| ArrowError::ExternalError(Box::new(error)))
+                });
+                Box::new(RecordBatchIterator::new(batches, self.schema))
+            }
+            Some(Source::Stream(inner, plan, then)) if then.is_empty() && plan.is_identity() => {
+                inner
+            }
             Some(Source::Stream(inner, plan, then)) => Box::new(Reconciled {
                 inner: Some(inner),
                 plan: *plan,
-                then: then.map(|then| *then),
+                then,
                 schema: self.schema,
             }),
             Some(Source::Held(records)) => {
@@ -1679,8 +1956,204 @@ impl SerieReader {
                 });
                 Box::new(RecordBatchIterator::new(batches, self.schema))
             }
+            Some(Source::Lazy(records)) => {
+                let schema = Arc::clone(&self.schema);
+                let batches = records.map(move |record| {
+                    record
+                        .and_then(|record| batch_under(&schema, &record))
+                        .map_err(|error| ArrowError::ExternalError(Box::new(error)))
+                });
+                Box::new(RecordBatchIterator::new(batches, self.schema))
+            }
             None => batch_reader(self.schema, []),
         }
+    }
+
+    /// The values constant over every row this reader yields, where it is a
+    /// window [`Self::window_by`] cut: the record field they are typed by -
+    /// [`SerieReaderWindows::static_field`] - and its row, lent with no
+    /// allocation, every cell read through [`FieldScalar`]'s own accessors.
+    /// `None` for every other reader.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie, SerieReader, StructType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let root = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Int64.required_field("price"),
+    /// ])?)
+    /// .required_field("quote");
+    /// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    /// let quotes = Serie::from_scalars(root, [quote("XNAS", 1), quote("XNYS", 2)])?;
+    /// let reader = SerieReader::from_serie(quotes)?;
+    /// assert!(reader.static_values().is_none());
+    ///
+    /// let mut windows = reader.window_by("venue", false)?;
+    /// let _xnas = windows.next().expect("a window")?;
+    /// let xnys = windows.next().expect("a window")?;
+    /// let record = xnys.static_values().expect("a window states its record");
+    /// assert_eq!(record.field(), windows.static_field());
+    /// assert_eq!(
+    ///     record.value(),
+    ///     &Scalar::from_sequence([Scalar::from("XNYS"), Scalar::from(1_u64), Scalar::from(1_u64)])
+    /// );
+    /// let venue = record.field().index_of("venue").and_then(|index| record.get(index));
+    /// assert_eq!(venue.as_deref(), Some(&Scalar::from("XNYS")));
+    /// // It sits beside the root, never a column of it.
+    /// assert_eq!(xnys.field().field_len(), 2);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn static_values(&self) -> Option<FieldScalar<'_>> {
+        let statics = self.statics.as_ref()?;
+        // The row was proven under the field when the walk laid it out.
+        Some(FieldScalar::from_checked(
+            &statics.field,
+            statics.row.clone(),
+        ))
+    }
+
+    /// Cut the stream into windows of equal adjacent keys, one lazy reader
+    /// each, in the order they arrive.
+    ///
+    /// `by` is read as [`Serie::window_by`] reads it, bound once against
+    /// this reader's root before any batch is pulled. Each window is an
+    /// ordinary [`SerieReader`] of the root's rows as they stand in the
+    /// stream, and states as its [static values](Self::static_values) one
+    /// required record named as the root: where this reader is itself a
+    /// window, its record's cells but `windownum` and `rownum`; then the key
+    /// cells named as the key's projections are; then `windownum: uint64` -
+    /// the window's place among this reader's windows, from 0 - and
+    /// `rownum: uint64`, nullable - the number its first row has in the
+    /// stream: this reader's own `rownum` (else 0) plus the rows it yielded
+    /// before it, so it stays absolute through windows of windows, and never
+    /// null, since a stream is never reordered. It is the record a held
+    /// window states ([`WindowSerie::static_values`](crate::WindowSerie::static_values)),
+    /// field and values, for the same rows and key.
+    /// [`SerieReaderWindows::static_field`] names that record before the
+    /// first pull.
+    ///
+    /// The walk holds what this reader holds - at most one batch, dropped
+    /// before the next is pulled - plus that batch's key record (the batch's
+    /// own children for a key of its columns, else one column per key cell,
+    /// each as long as the batch), one bit per row of it and the open
+    /// window's static row; no window is ever held whole. A batch a window
+    /// spans whole is served as the landed batch itself, and only a batch a
+    /// window opens or closes in is sliced. So windows are read in order:
+    /// taking the next window pulls and drops the open one's unread rows,
+    /// and a window read after its walk passed rows of it refuses once,
+    /// naming it, then ends - so collecting the windows before reading them
+    /// is loud, never a silent loss. A window whose rows were all served
+    /// ends, and one dropped unread costs only the pull of its rows. A
+    /// window may outlive its walk and still reads to its end.
+    ///
+    /// `sorted` asks for each key once, in key order - ascending, absent
+    /// keys last - and a stream is never reordered: it verifies that the
+    /// keys arrive in that order and refuses the first window whose key
+    /// orders before the one before it, every window before it delivered
+    /// whole. This differs from
+    /// [`EventIterator::new`](crate::graph::EventIterator::new)'s `sorted`,
+    /// which says the input arrives sorted. Keys grouped in any order are
+    /// already each answered once with `sorted = false`; a stream whose keys
+    /// do not arrive in order is held first -
+    /// [`ChunkedSerie::from_serie_reader`](crate::ChunkedSerie::from_serie_reader)
+    /// then [`ChunkedSerie::window_by`](crate::ChunkedSerie::window_by) -
+    /// to be windowed sorted.
+    ///
+    /// A failure of the stream, of a cast or of a key is the item of
+    /// whichever reader pulled it - the walk or a window - once; then the
+    /// walk and every window end, and the stream is dropped. A window the
+    /// walk was skipping when it failed refuses as passed, so a partial
+    /// window is never presented as complete. A window whose first row's
+    /// number would leave `uint64` is the walk's refusal, naming this
+    /// reader's root, and ends the walk the same way.
+    ///
+    /// ```
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Scalar, Serie, SerieReader, StructType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let root = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Int64.required_field("price"),
+    /// ])?)
+    /// .required_field("quote");
+    /// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    /// // Two batches, XNAS spanning the edge between them.
+    /// let batches = [
+    ///     Serie::from_scalars(root.clone(), [quote("XNAS", 1), quote("XNAS", 2)])?,
+    ///     Serie::from_scalars(root.clone(), [quote("XNAS", 3), quote("XNYS", 4)])?,
+    /// ];
+    /// let stream = SerieReader::from_chunked(ChunkedSerie::from_series(Some(&root), batches, ArrowCastOptions::new())?)?;
+    ///
+    /// let mut windows = stream.window_by("venue", true)?;
+    /// assert_eq!(windows.static_field().field_len(), 3); // venue, windownum, rownum
+    ///
+    /// let xnas = windows.next().expect("a window")?;
+    /// let record = xnas.static_values().expect("its record");
+    /// assert_eq!(record.get(0).as_deref(), Some(&Scalar::from("XNAS")));
+    /// // Read before the next window is taken: one piece per batch it spans.
+    /// let rows: usize = xnas.map(|piece| piece.map(|piece| piece.len())).sum::<Result<_, _>>()?;
+    /// assert_eq!(rows, 3);
+    ///
+    /// let xnys = windows.next().expect("a window")?;
+    /// let record = xnys.static_values().expect("its record");
+    /// let rownum = record.field().index_of("rownum").and_then(|index| record.get(index));
+    /// assert_eq!(rownum.as_deref(), Some(&Scalar::from(3_u64)));
+    /// assert!(windows.next().is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Before any batch is pulled, and in this order: the text's own parse
+    /// error; then, naming this reader's root, a key stating no projection -
+    /// an empty list, or a `*` alone - an `unnest`, and the binder's own
+    /// refusals; and a key cell whose name folds onto one of this reader's
+    /// static values or onto `windownum` or `rownum`, naming both - alias
+    /// it.
+    pub fn window_by(mut self, by: impl IntoSelector, sorted: bool) -> Result<SerieReaderWindows> {
+        let root = Arc::clone(&self.root);
+        let key = by
+            .into_selector()?
+            .bind_key(&root, root.name(), "window by")?;
+        // The root is required, so no key row is absent and every key cell
+        // stays as the key declares it.
+        let record = WindowRecord::new(
+            root.name(),
+            root.name(),
+            self.static_values().as_ref(),
+            key.output().fields(),
+        )?;
+        let Some(base) = record.base else {
+            return Err(Error::internal(
+                "SerieReader::window_by: a stream window's rownum is never null",
+            ));
+        };
+        self.statics = None;
+        let statics = Arc::new(record.field);
+        let schema = Arc::clone(&self.schema);
+        let walk = Walk {
+            source: Some(self),
+            root: Arc::clone(&root),
+            key,
+            sorted,
+            kept: record.kept,
+            base,
+            held: None,
+            batch: 0,
+            before: 0,
+            opened: 0,
+            open: None,
+            done: false,
+        };
+        Ok(SerieReaderWindows {
+            walk: Arc::new(Mutex::new(walk)),
+            root,
+            schema,
+            statics,
+        })
     }
 }
 
@@ -1689,7 +2162,7 @@ impl Iterator for SerieReader {
 
     fn next(&mut self) -> Option<Self::Item> {
         let (reader, plan, then) = match self.inner.as_mut()? {
-            Source::Stream(reader, plan, then) => (reader, &**plan, then.as_deref()),
+            Source::Stream(reader, plan, then) => (reader, &**plan, then.as_slice()),
             Source::Held(records) => {
                 let next = records.next();
                 if next.is_none() {
@@ -1697,12 +2170,26 @@ impl Iterator for SerieReader {
                 }
                 return next.map(Ok);
             }
+            Source::Window(part) => {
+                let piece = part.pull(&self.root);
+                if !matches!(piece, Some(Ok(_))) {
+                    self.inner = None;
+                }
+                return piece;
+            }
+            Source::Lazy(records) => {
+                let next = records.next();
+                if !matches!(next, Some(Ok(_))) {
+                    self.inner = None;
+                }
+                return next;
+            }
         };
         let pulled = reader.next();
         let landed = match pulled {
-            Some(Ok(batch)) => plan.cast_batch(batch).and_then(|landed| match then {
-                Some(then) => then.apply(&landed),
-                None => Ok(landed),
+            Some(Ok(batch)) => plan.cast_batch(batch).and_then(|landed| {
+                then.iter()
+                    .try_fold(landed, |landed, then| then.apply(&landed))
             }),
             Some(Err(error)) => Err(from_reader_error(error)),
             None => {
@@ -1710,10 +2197,47 @@ impl Iterator for SerieReader {
                 return None;
             }
         };
+        let landed = landed.and_then(|landed| self.verified_batch(landed));
         if landed.is_err() {
             self.inner = None;
         }
         Some(landed)
+    }
+}
+
+impl SerieReader {
+    /// A stream's batch checked against the order the root declares: its
+    /// rows, and its first row against the batch before, whose last row the
+    /// reader kept; a root declaring none costs one lookup. The batch is
+    /// foreign - no verb of the crate laid it out in that order - so the
+    /// declaration is read before it is believed.
+    fn verified_batch(&mut self, landed: Serie) -> Result<Serie> {
+        if !self.root.as_sort().declares_order() {
+            return Ok(landed);
+        }
+        let Some(by) = landed.declared_order()? else {
+            return Ok(landed);
+        };
+        if let Some(row) = landed.first_disorder(&by)? {
+            return Err(landed.out_of_order(row, &by).into());
+        }
+        if let Some(edge) = &self.edge
+            && !edge.edge_in_order(&landed, &by)?
+        {
+            return Err(crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new(self.root.name()),
+                reason: smol_str::format_smolstr!(
+                    "a batch of {} opens out of the order its root declares, `{}`, after the batch before",
+                    self.root.name(),
+                    crate::serie::spelled(&by)
+                ),
+            }
+            .into());
+        }
+        if !landed.is_empty() {
+            self.edge = Some(landed.slice(landed.len() - 1, 1)?);
+        }
+        Ok(landed)
     }
 }
 
@@ -1724,8 +2248,513 @@ impl std::fmt::Debug for SerieReader {
         formatter
             .debug_struct("SerieReader")
             .field("field", &self.root)
+            .field("static_values", &self.statics)
             .field("done", &self.inner.is_none())
             .finish()
+    }
+}
+
+/// The windows of a stream: one lazy [`SerieReader`] per run of equal
+/// adjacent keys, in the order they arrive - what
+/// [`SerieReader::window_by`] answers, which states the rules.
+///
+/// Every window is pulled through one walk the windows share, which holds
+/// at most one batch of the stream, that batch's key record (the batch's
+/// own children for a key of its columns, else one column per key cell,
+/// each as long as the batch), one bit per row of it and the open window's
+/// static row; a window's reader is `Send`, and this value is `Send + Sync`.
+/// A pull takes the walk's lock, and a window of a window takes its own
+/// walk's lock before its parent's - a fixed order, which cannot cycle.
+///
+/// ```
+/// use yggdryl::{DataType, Scalar, Serie, SerieReader, StructType};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let root = DataType::from(StructType::from_fields([
+///     DataType::utf8().required_field("venue"),
+///     DataType::Int64.required_field("price"),
+/// ])?)
+/// .required_field("quote");
+/// let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+/// let quotes = Serie::from_scalars(root.clone(), [quote("XNAS", 1), quote("XNYS", 2), quote("XNAS", 3)])?;
+///
+/// let windows = SerieReader::from_serie(quotes)?.window_by("venue", false)?;
+/// // Both records are known before a batch is pulled.
+/// assert_eq!(windows.field(), &root);
+/// let names: Vec<&str> = windows.static_field().fields().iter().map(|field| field.name()).collect();
+/// assert_eq!(names, ["venue", "windownum", "rownum"]);
+///
+/// // A key that comes back opens a window of its own.
+/// let mut places = Vec::new();
+/// for window in windows {
+///     let window = window?;
+///     let statics = window.static_values().expect("every window states them");
+///     let cells = statics.value().sequence_rows().expect("a record row").into_owned();
+///     places.push((cells[0].clone(), cells[2].clone()));
+/// }
+/// assert_eq!(places, [
+///     (Scalar::from("XNAS"), Scalar::from(0_u64)),
+///     (Scalar::from("XNYS"), Scalar::from(1_u64)),
+///     (Scalar::from("XNAS"), Scalar::from(2_u64)),
+/// ]);
+/// # Ok(())
+/// # }
+/// ```
+pub struct SerieReaderWindows {
+    walk: Arc<Mutex<Walk>>,
+    root: Arc<Field>,
+    schema: SchemaRef,
+    statics: Arc<Field>,
+}
+
+impl SerieReaderWindows {
+    /// The record root every window yields: the windowed reader's own.
+    pub fn field(&self) -> &Field {
+        &self.root
+    }
+
+    /// The record every window's [static values](SerieReader::static_values)
+    /// are typed by: the windowed reader's own but `windownum` and
+    /// `rownum`, the key cells, `windownum` and `rownum`.
+    pub fn static_field(&self) -> &Field {
+        &self.statics
+    }
+}
+
+impl Iterator for SerieReaderWindows {
+    type Item = Result<SerieReader>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let opened = match lock(&self.walk) {
+            Ok(mut walk) => walk.step()?,
+            Err(error) => return Some(Err(error)),
+        };
+        Some(opened.map(|(index, row, state)| SerieReader {
+            inner: Some(Source::Window(WindowPart {
+                walk: Arc::clone(&self.walk),
+                state,
+                index,
+                then: Vec::new(),
+            })),
+            root: Arc::clone(&self.root),
+            schema: Arc::clone(&self.schema),
+            edge: None,
+            statics: Some(Statics {
+                field: Arc::clone(&self.statics),
+                row,
+            }),
+        }))
+    }
+}
+
+impl std::iter::FusedIterator for SerieReaderWindows {}
+
+impl std::fmt::Debug for SerieReaderWindows {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SerieReaderWindows")
+            .field("field", &self.root)
+            .field("static_field", &self.statics)
+            .finish_non_exhaustive()
+    }
+}
+
+/// A window the walk opened and neither served to its end nor passed.
+const OPEN: u8 = 0;
+/// A window whose every row was served or that ended unread: its reader
+/// answers `None`.
+const ENDED: u8 = 1;
+/// A window the walk skipped rows of: its reader refuses once.
+const PASSED: u8 = 2;
+
+/// One window's share of its walk: its reader's source.
+struct WindowPart {
+    walk: Arc<Mutex<Walk>>,
+    /// [`OPEN`], [`ENDED`] or [`PASSED`], written under the walk's lock.
+    state: Arc<AtomicU8>,
+    /// The window's place, which a refusal names.
+    index: u64,
+    /// The window reader's casts, applied to each piece in the order they
+    /// were cast, out of the lock.
+    then: Vec<ArrowCastPlan>,
+}
+
+impl WindowPart {
+    /// The window's next piece, cast where the reader was cast.
+    fn pull(&self, root: &Field) -> Option<Result<Serie>> {
+        let piece = match lock(&self.walk) {
+            Ok(mut walk) => walk.serve(&self.state, self.index, root)?,
+            Err(error) => return Some(Err(error)),
+        };
+        Some(piece.and_then(|piece| {
+            self.then
+                .iter()
+                .try_fold(piece, |piece, then| then.apply(&piece))
+        }))
+    }
+}
+
+/// The walk's lock. A pull that panicked while holding it left the walk
+/// half stepped, so the first to find it so fails the walk - its stream
+/// dropped, its open window passed - and answers the one internal error;
+/// every pull after reads the failed walk and ends.
+fn lock(walk: &Mutex<Walk>) -> Result<MutexGuard<'_, Walk>> {
+    match walk.lock() {
+        Ok(guard) => Ok(guard),
+        Err(poisoned) => {
+            let mut guard = poisoned.into_inner();
+            walk.clear_poison();
+            if guard.done {
+                return Ok(guard);
+            }
+            guard.fail();
+            Err(Error::internal(
+                "SerieReaderWindows: a pull panicked while holding its walk",
+            ))
+        }
+    }
+}
+
+/// The walk over a stream's windows, which every window reader shares: the
+/// stream, the key bound once, and the one batch the cursor stands in.
+struct Walk {
+    /// The windowed reader; dropped at its end and on any failure.
+    source: Option<SerieReader>,
+    /// The windowed reader's root, which a refusal of the walk names.
+    root: Arc<Field>,
+    key: BoundSelector,
+    sorted: bool,
+    /// The windowed reader's own static values, `windownum` and `rownum`
+    /// left out: the head of every window's static row.
+    kept: Box<[Scalar]>,
+    /// The windowed reader's `rownum`, else 0.
+    base: u64,
+    /// The batch the cursor stands in.
+    held: Option<Cut>,
+    /// Batches pulled from the stream, empty ones included.
+    batch: u64,
+    /// Rows the stream yielded before the held batch.
+    before: u64,
+    /// Windows opened.
+    opened: u64,
+    /// The last window opened: its key, which the next batch's first row is
+    /// compared against, and its state.
+    open: Option<Open>,
+    done: bool,
+}
+
+/// One batch of the stream, its key and where its windows open.
+struct Cut {
+    record: Serie,
+    keys: Serie,
+    /// One bit per row, set where a window opens - always at row 0, which
+    /// continues the open window where `edge` is `Equal`.
+    starts: BooleanBuffer,
+    /// The first row whose key orders before the row's before it.
+    descent: Option<usize>,
+    /// The open window's key against row 0's: `Less` for the first batch.
+    edge: Ordering,
+    /// The cursor: the first row neither served nor skipped, always a row
+    /// a window opens at, else the batch's end.
+    at: usize,
+}
+
+impl Cut {
+    fn len(&self) -> usize {
+        self.record.len()
+    }
+
+    /// Where the rows from the cursor stop belonging to one window.
+    fn end(&self) -> usize {
+        crate::window_serie::window_end(&self.starts, self.at)
+    }
+}
+
+/// The last window the walk opened.
+struct Open {
+    /// A run view of its static row's key cells.
+    key: Scalar,
+    state: Arc<AtomicU8>,
+}
+
+impl Walk {
+    /// End the walk: drop the stream and the held batch.
+    fn finish(&mut self) {
+        self.source = None;
+        self.held = None;
+        self.done = true;
+    }
+
+    /// End the walk on a failure no pull answered: the open window, if it
+    /// may still have rows, is never presented as complete.
+    fn fail(&mut self) {
+        if let Some(open) = &self.open {
+            let _ = open.state.compare_exchange(
+                OPEN,
+                PASSED,
+                AtomicOrdering::AcqRel,
+                AtomicOrdering::Acquire,
+            );
+        }
+        self.finish();
+    }
+
+    /// Pull the stream's next batch that holds a row: its key computed,
+    /// its windows cut and its first row compared with the open window's
+    /// key. `None` at the stream's end; the end and a failure end the walk.
+    ///
+    /// Every caller pulls once the held batch is spent, so it is dropped
+    /// before the stream is asked for the next: the walk never holds two.
+    fn pull(&mut self) -> Option<Result<()>> {
+        loop {
+            if let Some(cut) = self.held.take() {
+                self.before += cut.len() as u64;
+            }
+            let record = match self.source.as_mut().and_then(Iterator::next) {
+                Some(Ok(record)) => record,
+                Some(Err(error)) => {
+                    self.finish();
+                    return Some(Err(error));
+                }
+                None => {
+                    self.finish();
+                    return None;
+                }
+            };
+            self.batch += 1;
+            if record.is_empty() {
+                continue;
+            }
+            return Some(match self.cut(record) {
+                Ok(cut) => {
+                    self.held = Some(cut);
+                    Ok(())
+                }
+                Err(error) => {
+                    self.finish();
+                    Err(error)
+                }
+            });
+        }
+    }
+
+    /// One batch's key, its windows and its edge.
+    fn cut(&self, record: Serie) -> Result<Cut> {
+        let keys = self.key.apply_serie(&record)?;
+        let cut = keys.window_starts(false)?;
+        let edge = match &self.open {
+            Some(open) => keys.compare_to_row(&open.key, 0, SortOptions::default()),
+            None => Ordering::Less,
+        };
+        Ok(Cut {
+            record,
+            keys,
+            starts: cut.starts,
+            descent: cut.descent,
+            edge,
+            at: 0,
+        })
+    }
+
+    /// Settle the open window before the next one opens: pull and drop
+    /// what is left of its rows, then mark it passed where any were left,
+    /// else ended. Answers the failure a pull met, which passes it.
+    fn close(&mut self) -> Option<Error> {
+        let state = Arc::clone(&self.open.as_ref()?.state);
+        if state.load(AtomicOrdering::Acquire) != OPEN {
+            return None;
+        }
+        let mut skipped = false;
+        loop {
+            if let Some(cut) = self.held.as_mut()
+                && cut.at < cut.len()
+            {
+                skipped = true;
+                cut.at = cut.end();
+                if cut.at < cut.len() {
+                    break;
+                }
+            }
+            match self.pull() {
+                Some(Ok(())) => {
+                    if self
+                        .held
+                        .as_ref()
+                        .is_some_and(|cut| cut.edge != Ordering::Equal)
+                    {
+                        break;
+                    }
+                }
+                Some(Err(error)) => {
+                    state.store(PASSED, AtomicOrdering::Release);
+                    return Some(error);
+                }
+                None => break,
+            }
+        }
+        state.store(
+            if skipped { PASSED } else { ENDED },
+            AtomicOrdering::Release,
+        );
+        None
+    }
+
+    /// Open the next window: its place, its static row and its state.
+    fn step(&mut self) -> Option<Result<(u64, Scalar, Arc<AtomicU8>)>> {
+        if self.done {
+            return None;
+        }
+        if let Some(error) = self.close() {
+            return Some(Err(error));
+        }
+        if self.held.as_ref().is_none_or(|cut| cut.at >= cut.len())
+            && let Err(error) = self.pull()?
+        {
+            return Some(Err(error));
+        }
+        let cut = self.held.as_ref()?;
+        let at = cut.at;
+        let rownum = match self.rownum(at) {
+            Ok(rownum) => rownum,
+            Err(error) => {
+                self.finish();
+                return Some(Err(error));
+            }
+        };
+        // Every start is visited in order and a descent row is a start, so
+        // the first descent is always met here.
+        if self.sorted && ((at == 0 && cut.edge == Ordering::Greater) || cut.descent == Some(at)) {
+            let error = self.descent(cut, rownum);
+            self.finish();
+            return Some(Err(error));
+        }
+        let Some(keys) = cut.keys.as_struct() else {
+            self.finish();
+            return Some(Err(Error::internal(
+                "SerieReaderWindows: a key is a record",
+            )));
+        };
+        let cells = keys.children().len();
+        let index = self.opened;
+        self.opened += 1;
+        let row = Scalar::from_sequence(
+            self.kept
+                .iter()
+                .cloned()
+                .chain(key_cells(keys, at))
+                .chain([Scalar::from(index), Scalar::from(rownum)]),
+        );
+        let key = match &row {
+            Scalar::Serie(Serie::Run(run)) => {
+                Scalar::Serie(Serie::Run(run.slice(self.kept.len(), cells)))
+            }
+            _ => {
+                self.finish();
+                return Some(Err(Error::internal(
+                    "SerieReaderWindows: a static row is a run",
+                )));
+            }
+        };
+        let state = Arc::new(AtomicU8::new(OPEN));
+        self.open = Some(Open {
+            key,
+            state: Arc::clone(&state),
+        });
+        Some(Ok((index, row, state)))
+    }
+
+    /// The number row `at` of the held batch has in the stream: the
+    /// windowed reader's own `rownum`, plus the rows it yielded before the
+    /// batch, plus `at` - refused, naming the root, where a stated `rownum`
+    /// leaves no `uint64` for it.
+    fn rownum(&self, at: usize) -> Result<u64> {
+        self.before
+            .checked_add(at as u64)
+            .and_then(|rows| self.base.checked_add(rows))
+            .ok_or_else(|| {
+                Error::Core(crate::Error::InvalidRecord {
+                    path: SmolStr::new(self.root.name()),
+                    reason: format_smolstr!(
+                        "window {} opens {} rows past the stated rownum {}, beyond the largest \
+                         uint64; state a smaller rownum",
+                        self.opened,
+                        u128::from(self.before) + at as u128,
+                        self.base
+                    ),
+                })
+            })
+    }
+
+    /// The refusal of a key ordering before the one it follows, at the
+    /// stream row `rownum`.
+    fn descent(&self, cut: &Cut, rownum: u64) -> Error {
+        let at = cut.at;
+        // A key is the run of its cells, which a serie writes, bounded as
+        // every caller value a message names is.
+        let text = |key: &Scalar| match key.as_serie() {
+            Some(cells) => crate::text::elide_display(cells).to_string(),
+            None => format!("{key:?}"),
+        };
+        let key = text(&proven_row(&cut.keys, at));
+        let previous = match (at, &self.open) {
+            (0, Some(open)) => text(&open.key),
+            (0, None) => text(&Scalar::Null),
+            _ => text(&proven_row(&cut.keys, at - 1)),
+        };
+        Error::Core(crate::Error::InvalidRecord {
+            path: format_smolstr!("$[{rownum}]"),
+            reason: format_smolstr!(
+                "window by expects keys in order, ascending with absent keys last: batch {} row \
+                 {at} keys {key} after {previous}; window it unsorted, or hold it \
+                 (ChunkedSerie::from_serie_reader) and window it sorted",
+                self.batch - 1
+            ),
+        })
+    }
+
+    /// The open window's next piece, served out of the held batch: up to
+    /// where its rows stop, pulling the next batch where they reach the
+    /// held one's end.
+    fn serve(&mut self, state: &AtomicU8, index: u64, root: &Field) -> Option<Result<Serie>> {
+        match state.load(AtomicOrdering::Acquire) {
+            OPEN => {}
+            PASSED => {
+                return Some(Err(Error::Core(crate::Error::InvalidRecord {
+                    path: SmolStr::new(root.name()),
+                    reason: format_smolstr!(
+                        "window {index} was passed by its walk with rows unread; read each \
+                         window before taking the next"
+                    ),
+                })));
+            }
+            _ => return None,
+        }
+        if self.held.as_ref().is_none_or(|cut| cut.at >= cut.len()) {
+            match self.pull() {
+                Some(Ok(()))
+                    if self
+                        .held
+                        .as_ref()
+                        .is_some_and(|cut| cut.edge == Ordering::Equal) => {}
+                Some(Err(error)) => {
+                    state.store(ENDED, AtomicOrdering::Release);
+                    return Some(Err(error));
+                }
+                // The stream ended, or its next batch opens another window,
+                // which stays held for the walk.
+                _ => {
+                    state.store(ENDED, AtomicOrdering::Release);
+                    return None;
+                }
+            }
+        }
+        let cut = self.held.as_mut()?;
+        let (at, end) = (cut.at, cut.end());
+        cut.at = end;
+        if end < cut.len() {
+            state.store(ENDED, AtomicOrdering::Release);
+        }
+        Some(cut.record.slice(at, end - at).map_err(Error::from))
     }
 }
 
@@ -1734,9 +2763,9 @@ impl std::fmt::Debug for SerieReader {
 struct Reconciled {
     inner: Option<BatchReader>,
     plan: ArrowCastPlan,
-    /// The plan a later [`SerieReader::cast`] landed the first's output
-    /// under, applied as transport after it.
-    then: Option<ArrowCastPlan>,
+    /// The plans each later [`SerieReader::cast`] landed the output before
+    /// it under, applied as transport after it in the order they were cast.
+    then: Vec<ArrowCastPlan>,
     schema: SchemaRef,
 }
 
@@ -1751,13 +2780,11 @@ impl Iterator for Reconciled {
                 return other;
             }
         };
-        let cast = self
-            .plan
-            .reconcile_batch(batch)
-            .and_then(|cast| match &self.then {
-                Some(then) => then.reconcile_batch(cast),
-                None => Ok(cast),
-            });
+        let cast = self.plan.reconcile_batch(batch).and_then(|cast| {
+            self.then
+                .iter()
+                .try_fold(cast, |cast, then| then.reconcile_batch(cast))
+        });
         match cast {
             Ok(cast) => Some(Ok(cast)),
             Err(error) => {
@@ -1777,11 +2804,24 @@ impl RecordBatchReader for Reconciled {
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
-    //! What `rust/tests/allocations.rs` pins and a caller cannot reach.
+    //! What `rust/tests/allocations.rs` and `rust/tests/serie/arrow.rs` pin
+    //! and a caller cannot reach.
 
     use std::sync::Arc;
 
-    use crate::{Field, Scalar, Serie};
+    use crate::{Field, FieldRecord, Scalar, Serie, SerieReader};
+
+    /// `reader` stating `values` as its static values, as a window's walk
+    /// states its record - which no caller can: how the walk's checked
+    /// `rownum` arithmetic is reached near the largest `uint64`.
+    #[must_use]
+    pub fn with_static_values(mut reader: SerieReader, values: FieldRecord<'_>) -> SerieReader {
+        reader.statics = Some(super::Statics {
+            field: Arc::new(values.field().clone()),
+            row: values.into_scalar(),
+        });
+        reader
+    }
 
     /// Lay rows the field's contract already canonicalized out, and land
     /// them proven.

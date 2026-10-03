@@ -1015,3 +1015,17 @@ fn list_view_gathers_struct_items_with_nested_isin_runs() {
         Some("yggdryl.isin")
     );
 }
+
+#[test]
+fn a_freshly_built_run_end_column_is_resident_whole_and_not_spilled() {
+    let column = states();
+    let leaf = column.as_run_end_encoded().expect("a run-end column");
+    assert_eq!(
+        SerieValue::resident_size(leaf),
+        SerieValue::memory_size(leaf)
+    );
+    assert!(!SerieValue::is_spilled(leaf));
+    assert!(column.memory_size() > 0);
+    assert_eq!(column.resident_size(), column.memory_size());
+    assert!(!column.is_spilled());
+}

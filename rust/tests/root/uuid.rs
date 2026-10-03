@@ -680,3 +680,58 @@ mod parameters {
         );
     }
 }
+
+mod text_reading {
+    //! `Uuid::from_str`: the two text spellings and nothing else.
+
+    use yggdryl::{Error, Uuid};
+
+    #[test]
+    fn from_str_reads_the_hyphenated_and_the_compact_spelling_in_either_case() {
+        let value = Uuid::from_v8(0x5c14_6b14_3c52_4afd_938a_375d_0df1_fbf6);
+        for text in [
+            "5c146b14-3c52-8afd-938a-375d0df1fbf6",
+            "5C146B14-3C52-8AFD-938A-375D0DF1FBF6",
+            "5c146b143c528afd938a375d0df1fbf6",
+            "5C146B143C528AFD938A375D0DF1FBF6",
+            " 5c146b14-3c52-8afd-938a-375d0df1fbf6\n",
+        ] {
+            assert_eq!(text.parse::<Uuid>().expect(text), value, "{text:?}");
+        }
+        assert_eq!(value.to_string().parse::<Uuid>().unwrap(), value);
+    }
+
+    #[test]
+    fn from_str_is_text_only_and_names_both_spellings_where_it_refuses() {
+        for text in [
+            // Sixteen characters are never the sixteen stored bytes.
+            "abcdefghijklmnop",
+            "0123456789abcdef",
+            "{5c146b14-3c52-8afd-938a-375d0df1fbf6}",
+            "urn:uuid:5c146b14-3c52-8afd-938a-375d0df1fbf6",
+            "5c146b14-3c52-8afd-938a-375d0df1fbf",
+            "5c146b143c52-8afd-938a-375d0df1fbf6",
+            "5c146b14-3c52-8afd-938a-375d0df1fbf6a",
+            "5c146b14-3c52-8afd-938a-375d0df1fbg6",
+            "",
+            "not-a-uuid",
+        ] {
+            let refused = text.parse::<Uuid>().expect_err(text);
+            assert!(
+                matches!(refused, Error::Parse { target: "uuid", .. }),
+                "{refused:?}"
+            );
+            let message = refused.to_string();
+            assert!(
+                message.contains("32 hexadecimal digits")
+                    && message.contains("36-character hyphenated spelling"),
+                "{message}"
+            );
+        }
+        // The storage door still takes the sixteen bytes themselves.
+        assert_eq!(
+            Uuid::from_bytes(b"0123456789abcdef").unwrap().to_string(),
+            "30313233-3435-3637-3839-616263646566"
+        );
+    }
+}

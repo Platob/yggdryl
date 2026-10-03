@@ -469,7 +469,7 @@ impl PyTextLine {
         crate::enums::PyMimeType::from_core(self.inner.bodytype().clone())
     }
 
-    /// The line itself, as text: the row header included.
+    /// The line past its row header, as text: what `currhashcode` hashes.
     #[getter]
     fn body(&self) -> &str {
         self.inner.body()
@@ -513,7 +513,7 @@ impl PyTextLine {
         self.inner.get_crosscode()
     }
 
-    /// The XXH3-64 of the cross code, the row number and the line's bytes.
+    /// The XXH3-64 of `body` and nothing else.
     #[getter]
     fn currhashcode(&self) -> u64 {
         self.inner.get_currhashcode()

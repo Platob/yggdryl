@@ -1075,7 +1075,7 @@ impl TextLines {
     /// Each line states, as its `prevunix`, the instant the line this read
     /// cut before it was dated by: none for the first line, or after an
     /// undated one, and the same precedence for a `prevunix` capture. No
-    /// `prevuuid` is stated, so no line's identity moves.
+    /// `prevuuid` is stated: a line follows no line.
     fn convert(&mut self, row: RawRow) -> Result<TextLine> {
         let mut line =
             TextLine::from_cut(row.index, row.body, Arc::clone(&self.options), row.header)?;
@@ -1118,12 +1118,7 @@ pub(crate) fn parse_capture(
         DataType::Int64 => crate::integer::integer_from_text(value)
             .and_then(|count| dtype.scalar(count).ok())
             .ok_or_else(invalid),
-        DataType::Float64 => value
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite())
-            .map(Scalar::from)
-            .ok_or_else(invalid),
+        DataType::Float64 => crate::floating::float_from_text(value).ok_or_else(invalid),
         DataType::Date32 | DataType::Time32(_) | DataType::Time64(_) => {
             Scalar::from_temporal_text(dtype, value).map_err(|_| invalid())
         }

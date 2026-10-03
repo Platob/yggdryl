@@ -688,9 +688,11 @@ test('a handler-backed handle is an ordinary handle', () => {
   const handle = IOBase.fromFs(memory(), 'bucket/trades.parquet')
 
   // The file system's own name is the scheme its locations carry, and a file
-  // system answering in this process is on this machine.
-  assert.equal(handle.toString(), `memory://${HOSTNAME}/bucket/trades.parquet`)
-  assert.equal(handle.url.hostname, HOSTNAME)
+  // system answering in this process is on this machine: `localhost`, never
+  // the system's own name, which only intake reads.
+  assert.equal(handle.toString(), 'memory://localhost/bucket/trades.parquet')
+  assert.equal(handle.url.hostname, 'localhost')
+  assert.ok(HOSTNAME && HOSTNAME === HOSTNAME.toLowerCase())
   assert.equal(handle.name, 'trades.parquet')
   assert.equal(handle.mediaType.toString(), 'application/vnd.apache.parquet')
 
@@ -828,7 +830,7 @@ test('folders list, glob, and carry the file system', () => {
   assert.equal(leaf.parent.name, 'month=01')
   assert.equal(
     leaf.toString(),
-    `memory://${HOSTNAME}/lake/year=2024/month=01/part-0.parquet`,
+    `memory://localhost/lake/year=2024/month=01/part-0.parquet`,
   )
   assert.deepEqual(leaf.partitions, [
     { column: 'year', value: '2024' },
@@ -976,9 +978,9 @@ test('handler-backed framed text resets at every leaf', () => {
   assert.deepEqual(
     [...table.getChild('crosscode')],
     [
-      `memory://${HOSTNAME}/bucket/logs/a.txt`,
-      `memory://${HOSTNAME}/bucket/logs/b.txt`,
-      `memory://${HOSTNAME}/bucket/logs/b.txt`,
+      `memory://localhost/bucket/logs/a.txt`,
+      `memory://localhost/bucket/logs/b.txt`,
+      `memory://localhost/bucket/logs/b.txt`,
     ],
   )
   assert.deepEqual(
@@ -1015,15 +1017,21 @@ test('a handler that throws surfaces its own message', () => {
     /the credential chain is empty/,
   )
 
-  // A kind the core has no name for is refused naming the vocabulary.
-  const inventing = {
+  // A kind is read through the core's own kind vocabulary, in any case;
+  // one the core has no name for, or one no filesystem reports, is refused
+  // naming the three a filesystem answers.
+  const spelling = (kind) => ({
     ...memory(),
-    fileInfo: (location) => ({ path: location, kind: 'blob' }),
+    fileInfo: (location) => ({ path: location, kind, ...(kind.trim().toLowerCase() === 'file' ? { size: 0n } : {}) }),
+  })
+  assert.equal(IOBase.fromFs(spelling(' File '), 'bucket/key.bin').info().kind, 'file')
+  assert.equal(IOBase.fromFs(spelling('DIRECTORY'), 'bucket/key').info().kind, 'directory')
+  for (const kind of ['blob', 'table', 'memory']) {
+    assert.throws(
+      () => IOBase.fromFs(spelling(kind), 'bucket/key.bin').info(),
+      new RegExp(`expected file info kind to be 'file', 'directory', or 'not-found', got "${kind}"`),
+    )
   }
-  assert.throws(
-    () => IOBase.fromFs(inventing, 'bucket/key.bin').info(),
-    /file.*directory.*not-found/,
-  )
 })
 
 test('filesystem error codes and sticky stream failures survive the boundary', () => {

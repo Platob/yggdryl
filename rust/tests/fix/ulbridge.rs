@@ -1157,8 +1157,10 @@ mod dataset {
         // A stated value is never a derived one: the line said 260 remain.
         assert_eq!(fill.by_tag(151).unwrap(), super::decimal("260"));
 
-        // An identifier the check digit does not close is no identifier: the
-        // anonymized line names one, and nothing is read off it.
+        // An identifier the check digit does not close is a value of rank
+        // zero: the anonymized line names one, which is read as the ISIN it
+        // states - the lifecycle replaces it by a real one where it learns
+        // one - and nothing is derived off it, the country included.
         let masked = line_messages(&codec)
             .into_iter()
             .find(|message| {
@@ -1170,12 +1172,13 @@ mod dataset {
             .expect("the anonymized line");
         assert_eq!(
             masked.get_securityids().get(&yggdryl::IdType::Isin),
-            None,
-            "no ISIN off a masked one"
+            Some("XX0000000001"),
+            "the masked ISIN, as stated"
         );
+        assert_eq!(yggdryl::IdType::Isin.rank("XX0000000001"), 0);
         assert!(
             masked.get_by_tag(470).is_none_or(|held| held.is_null()),
-            "and no country either"
+            "and no country off it"
         );
     }
 
@@ -1375,7 +1378,7 @@ mod dataset {
 
     #[test]
     fn the_capture_reads_as_market_data_and_folds_into_books() {
-        use std::collections::{BTreeMap, HashMap};
+        use std::collections::{BTreeMap, BTreeSet, HashMap};
 
         use yggdryl::graph::{BookIterator, MarketData};
 
@@ -1415,17 +1418,20 @@ mod dataset {
             .into_iter()
             .map(|held| held.unwrap_err().to_string())
             .collect();
-        // Eighteen of the deliveries reach a book - eight fills, the eight
-        // reports they were split off, now their orders' reports, three
-        // orders, less a fill and a report the window yields once, and the
-        // execution the trade capture of line 112 splits off; the rest are
-        // acknowledgements, rejects, session traffic and bridge rows no book
-        // takes. Nothing is refused: the trade is no book input itself,
-        // since a trade's fills are the executions its parse splits off -
-        // and its single side states no `Side(54)`, so that execution is
-        // of side `UNKN`.
+        // Twenty-one of the deliveries are market data - eight fills, the
+        // eight reports they were split off, now their orders' reports,
+        // three orders, less a fill and a report the window yields once,
+        // the execution the trade capture of line 112 splits off, and the
+        // NOVN order's three steps: the venue's acknowledgement of it - an
+        // execution report of no fill, its order's leaf - the restatement
+        // the walk reads as `UPDATED`, and the expiry the walk dates at its
+        // `ExpireTime(126)`; the rest are rejects, session traffic and
+        // bridge rows no market data holds. Nothing is refused: the trade is no market
+        // data itself, since a trade's fills are the executions its parse
+        // splits off - and its single side states no `Side(54)`, so that
+        // execution is of side `UNKN`.
         assert!(refused.is_empty(), "{refused:?}");
-        assert_eq!(operations.len(), 18);
+        assert_eq!(operations.len(), 21);
         // The two a walk remembering nothing answers beside them each repeat
         // an identity already there.
         let every: Vec<MarketData> = codec
@@ -1439,7 +1445,7 @@ mod dataset {
             )
             .collect::<yggdryl::Result<_>>()
             .expect("every delivery reads");
-        assert_eq!(every.len(), 20);
+        assert_eq!(every.len(), 23);
         let mut seen = std::collections::HashSet::new();
         let once: Vec<&MarketData> = every
             .iter()
@@ -1452,36 +1458,137 @@ mod dataset {
         }
         assert_eq!(
             census,
-            BTreeMap::from([("execution_event", 8), ("order_event", 10)])
+            BTreeMap::from([("execution_event", 8), ("order_event", 13)])
         );
-        assert!(operations.windows(2).all(|pair| {
-            let at = |operation: &MarketData| {
-                let event: &dyn Event = match operation {
-                    MarketData::OrderEvent(event) => event,
-                    MarketData::ExecutionEvent(event) => event,
-                    other => panic!("an order or a fill, got {}", other.kind().as_str()),
-                };
-                event.get_snapunix().unwrap_or_else(|| event.get_currunix())
+        let at = |operation: &MarketData| {
+            let event: &dyn Event = match operation {
+                MarketData::OrderEvent(event) => event,
+                MarketData::ExecutionEvent(event) => event,
+                other => panic!("an order or a fill, got {}", other.kind().as_str()),
             };
-            at(&pair[0]) <= at(&pair[1])
-        }));
+            event.get_snapunix().unwrap_or_else(|| event.get_currunix())
+        };
+        assert!(
+            operations
+                .windows(2)
+                .all(|pair| at(&pair[0]) <= at(&pair[1]))
+        );
 
-        // Every operation folds into a book, read off the `Buffer` source so
-        // no modification time dates a line. The Sell order of `2454` states
-        // no price: it rests at its side's one unpriced level rather than
-        // being refused, and it leaves the side at the same instant, so the
-        // one book of that instant applies both as deltas and holds nothing;
-        // eight books come out - one of them the trade capture's, whose one
-        // execution of side `UNKN` takes neither side - and the last is
-        // that one.
+        // Every order folds into a book and every execution is pruned, read
+        // off the `Buffer` source so no modification time dates a line: a
+        // fill moved its book through its order's report already. Every order
+        // is a delta of its book, so a book stands at every instant an order
+        // states and none where only an execution does. The Sell order of
+        // `2454` states no price: it rests at its side's one unpriced level
+        // rather than being refused, and it leaves the side at the same
+        // instant, so the one book of that instant applies both as deltas and
+        // holds nothing. Ten books come out - the NOVN order's three steps
+        // each its book's instant - each stating its deltas alone - with no
+        // grid and no snapshot input no book is whole, a code's first
+        // following no book - and the last is that one.
         let books: Vec<yggdryl::graph::BookEvent> =
             BookIterator::new(operations.clone().into_iter().map(Ok), 0)
                 .expect("a book iterator")
                 .collect::<yggdryl::Result<Vec<_>>>()
                 .expect("every operation folds");
-        assert_eq!(books.len(), 8);
+        assert_eq!(books.len(), 10);
+        assert!(books.iter().all(|book| !book.is_complete()));
+        let key = |operation: &MarketData| (operation.book_crosscode().to_owned(), at(operation));
+        let stood: BTreeSet<(String, i64)> = books
+            .iter()
+            .map(|book| (book.book_crosscode().to_owned(), book.get_currunix()))
+            .collect();
+        assert_eq!(stood.len(), books.len(), "one book per book and instant");
+        let booked: BTreeSet<(String, i64)> = operations
+            .iter()
+            .filter(|operation| operation.marketdatakind().is_booked())
+            .map(key)
+            .collect();
+        assert_eq!(stood, booked);
+        // Three of those instants each hold one order that ended before its
+        // book held it: two first reported filled, with nothing left to rest
+        // and no live entry to continue, and one restating the fill that
+        // ended an order its book stopped holding at an earlier instant. Each
+        // places nothing - what was alive before it is alive after it - yet
+        // each is the one delta of the book of its instant.
+        let ended: Vec<&MarketData> = operations
+            .iter()
+            .filter(|operation| {
+                let MarketData::OrderEvent(event) = operation else {
+                    return false;
+                };
+                !event.get_state().is_live()
+                    && books
+                        .iter()
+                        .find(|book| {
+                            (book.book_crosscode().to_owned(), book.get_currunix())
+                                == key(operation)
+                        })
+                        .is_some_and(|book| book.deltas().len() == 1)
+            })
+            .collect();
+        assert_eq!(
+            ended.len(),
+            3,
+            "one ended order alone at each of three instants"
+        );
+        for order in ended {
+            let MarketData::OrderEvent(event) = order else {
+                unreachable!("filtered to orders")
+            };
+            assert_eq!(
+                yggdryl::graph::Market::get_quantity(event),
+                Some(yggdryl::Decimal::from_int(0))
+            );
+            let book = books
+                .iter()
+                .find(|book| (book.book_crosscode().to_owned(), book.get_currunix()) == key(order))
+                .expect("the book of its instant");
+            let [delta] = book.deltas().collect::<Vec<_>>()[..] else {
+                panic!("one delta")
+            };
+            assert_eq!(delta.get_crossuuid(), order.get_crossuuid());
+            let MarketData::OrderEvent(delta) = delta else {
+                panic!("an order, got {}", delta.kind().as_str())
+            };
+            assert!(!delta.get_state().is_live());
+        }
+        // The one instant no order states is the trade capture's, which its
+        // execution of side `UNKN` alone touched.
+        let unbooked: Vec<&MarketData> = operations
+            .iter()
+            .filter(|operation| !booked.contains(&key(operation)))
+            .collect();
+        let [MarketData::ExecutionEvent(trade_fill)] = unbooked[..] else {
+            panic!(
+                "the trade capture's execution alone, got {}",
+                unbooked.len()
+            )
+        };
+        assert_eq!(trade_fill.get_side(), yggdryl::Side::Unknown);
         let last = books.last().expect("a last book");
         assert_eq!(last.get_ticker(), Some("2454"));
+        // Keyed by its instrument's ISIN, which it holds as its `isin`
+        // security identifier beside the ticker its first input stated.
+        assert_eq!(last.get_isincode(), Some("TW0002454006"));
+        assert_eq!(last.book_crosscode(), "TW0002454006");
+        assert_eq!(last.get_crosscode(), "3:0:TW0002454006");
+        // Every book is keyed by the ISIN its inputs state, else their
+        // ticker: the masked line's number keys its own book, and the
+        // ticker-only HOLN line stands in Holcim's book through the
+        // registry's ticker index.
+        let keys: BTreeSet<&str> = books.iter().map(|book| book.book_crosscode()).collect();
+        assert_eq!(
+            keys,
+            BTreeSet::from([
+                "CH0012005267",
+                "CH0012214059",
+                "CH0012221716",
+                "TW0001605004",
+                "TW0002454006",
+                "XX0000000001",
+            ])
+        );
         assert!(last.limits(yggdryl::Side::Buy).next().is_none());
         assert!(last.limits(yggdryl::Side::Sell).next().is_none());
         assert_eq!(last.alive().count(), 0);
@@ -1508,7 +1615,7 @@ mod dataset {
         // place of its kind's word and its `marketoperationid` (D2). D8, D9
         // and D1 leave it: the two deltas carry no group for the metadata
         // JSON to render, each lane holds a quantity alone, and the book is
-        // keyed by its ticker. It moved again when a book's sides stopped
+        // was keyed by its ticker. It moved again when a book's sides stopped
         // being leaves: the book digests what each side holds - its entries
         // and deltas - rather than a side summary's identity, and no longer
         // the scopes a snapshot replaced; and the two deltas' identities moved
@@ -1554,13 +1661,39 @@ mod dataset {
         // party's role under `proprietary`, the bridge's `oms` instrument -
         // beside it, in the order the keys spell; and when the bridge's
         // `DETAILEDCFICODE` became a name of `CFICode(461)`, folded into it.
-        assert_eq!(last.get_currhashcode(), 11_953_173_911_701_746_314);
+        // It moved again when a book stopped holding executions and digested
+        // its deltas once, in the order applied, after both sides' entries:
+        // each side feeds its live entries alone - none here - and the two
+        // deltas this book's ask side fed are the book's own feed, counted
+        // and fed after both sides; it held no execution, so none left it.
+        // It held when books came to digest in chain form - the book's own
+        // market event, the book it follows, its instant, each side's live
+        // entries only at a snapshot, then each delta's operation word and
+        // identity - because this book is its code's first: it follows none
+        // and states its instant as its snapshot, so it feeds what it fed.
+        // It moved again when a code's first book stopped being whole: it
+        // states its deltas alone and no snapshot instant, following no book,
+        // so it no longer feeds its two sides' digests. It moved again when
+        // a book came to be keyed by its instrument's ISIN and to hold it as
+        // its `isin` security identifier: the book's stored cross code reads
+        // `3:0:TW0002454006` and its digest feeds that identifier.
+        assert_eq!(last.get_currhashcode(), 9_341_042_899_919_963_577);
 
-        // No leaf keys a typed fact.
+        // No leaf keys a typed fact, save the one the NOVN delivery's hops
+        // disagree on: its rows state two `OMSDEALERORDERID` values, the
+        // walk's statement holds the later under `omsdealer:orderid`, and
+        // the metadata keeps the other as the evidence no set holds.
         for operation in &operations {
             for typed in TYPED {
+                let disagreeing = typed == "omsdealerorderid"
+                    && operation.book_crosscode() == "CH0012005267"
+                    && operation
+                        .get_metadata()
+                        .get(typed)
+                        .map(|value| value.as_str())
+                        == Some("U8NNITE0-00");
                 assert!(
-                    !operation.get_metadata().contains_key(typed),
+                    disagreeing || !operation.get_metadata().contains_key(typed),
                     "{typed} is a typed fact: {:?}",
                     operation.get_metadata()
                 );
@@ -1582,7 +1715,12 @@ mod dataset {
         // 35 of the 83 are such keys - `TECH.CLIENTID`, `TECH.ACCOUNT`,
         // `FIRM.ORIG.CLIENTID`, `ULLINK.CLIENTID`, `CLIENT.CLIENTID`,
         // `ULLINK.INSTRUMENTID` and the eight demoted aliases - and every
-        // other key stays.
+        // other key stays. The NOVN order's three leaves carry eleven keys
+        // each beside them, 116 over the twenty-one: the acknowledgement's
+        // seven identifier keys are read into its sets and its four others
+        // ride, and the restatement and the expiry the delivery's hops
+        // folded each read six and keep five, the `OMSDEALERORDERID` the
+        // hops disagree on among them - 62 kept and 54 read in all.
         let by_sources: HashMap<&[yggdryl::Uuid], &FixMsg> = walked
             .iter()
             .map(|message| (message.get_srcuuids(), message))
@@ -1625,7 +1763,7 @@ mod dataset {
                 lifted += 1;
             }
         }
-        assert_eq!((carried, lifted), (48, 35));
+        assert_eq!((carried, lifted), (62, 54));
         let of_line = |seqnum: u64| {
             lines
                 .iter()
@@ -1716,14 +1854,13 @@ mod dataset {
         // Every observation's leaves, the repeated deliveries among them:
         // nothing walked folds a repeat onto the delivery it repeats. A fill
         // is two leaves since the parse splits its execution off (A12): its
-        // report, now its order's, and the execution - 56 more than 60, the
-        // trade's execution left out above.
-        assert_eq!(direct.len(), 60 + SPLIT - 1);
+        // report, now its order's, and the execution - 56 more than 68, the
+        // trade's execution left out above; the eight rows of the NOVN
+        // acknowledgement are each its order's leaf, an execution report of
+        // no fill being one.
+        assert_eq!(direct.len(), 68 + SPLIT - 1);
         assert_eq!(twin.len(), direct.len());
         for (index, (twin, direct)) in twin.iter().zip(&direct).enumerate() {
-            if index == 114 {
-                eprintln!("DEBUG twin={twin:#?}\nDEBUG direct={direct:#?}");
-            }
             assert_eq!(twin.kind(), direct.kind(), "leaf {index}");
             assert_eq!(twin.get_curruuid(), direct.get_curruuid(), "leaf {index}");
             assert_eq!(

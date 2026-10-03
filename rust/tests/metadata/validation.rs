@@ -421,7 +421,7 @@ mod generic {
 
     #[test]
     fn typed_field_id_rejects_non_i32_metadata_transactionally() {
-        for value in ["", "1.0", " 1", "2147483648", "-2147483649"] {
+        for value in ["", "1.0", "1 0", "0x10", "2147483648", "-2147483649"] {
             assert!(
                 Field::from_parts(
                     "trade",
@@ -463,6 +463,32 @@ mod generic {
             )]),
         );
         assert!(Field::from_arrow_field(&arrow).is_err());
+    }
+
+    #[test]
+    fn a_field_id_reads_blanks_and_a_sign_and_stores_the_canonical_digits() {
+        // The integer reader every count in the crate shares: the blanks and
+        // the sign are not part of the number, and the stored text is the
+        // canonical one whatever was spelled.
+        for (value, stored) in [(" 1", "1"), ("1 ", "1"), ("\t-0007\n", "-7"), ("+17", "17")] {
+            let field = Field::from_parts(
+                "trade",
+                DataType::utf8(),
+                false,
+                [("PARQUET:field_id", value)],
+            )
+            .unwrap_or_else(|error| panic!("{value:?}: {error}"));
+            assert_eq!(
+                field.get_metadata("PARQUET:field_id"),
+                Some(stored),
+                "{value:?}"
+            );
+            assert_eq!(
+                field.parquet_field_id().unwrap(),
+                Some(stored.parse().unwrap()),
+                "{value:?}"
+            );
+        }
     }
 
     #[test]

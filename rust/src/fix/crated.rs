@@ -224,11 +224,12 @@ pub const SEQNUM_TAG_NAME: (i32, &str) = (65_014, "seqnum");
 /// report's code and content digest, one split off a trade on its side's
 /// order and the side's first stated identifier, and a batch entry on the
 /// order or entry it names. It is stored after the codes of the category
-/// the message files under and of the side it takes - `10:1:ORD-1`,
-/// `10:2:ORD-1` - so each category and each side of one identifier is a
-/// chain of its own; one of side `UNKN`, and every kind but an order, a
-/// quote or an execution, states side `0`: `21:0:T-1`. A followed message
-/// carries its chain's.
+/// the message files under and of the side an order or an execution takes,
+/// `10:1:ORD-1` and `10:2:ORD-1`, so each category, and each side of one
+/// order or execution identifier, is a chain of its own; one of side
+/// `UNKN`, and every other kind - a quote, whose side is a tag, among them -
+/// states side `0`: `14:0:Q-1`, `21:0:T-1`. A followed message carries its
+/// chain's.
 pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_003, "crosscode");
 
 /// The tag and name of the Map group carrying what a message stated that
@@ -445,13 +446,14 @@ pub const PREVPX_TAG_NAME: (i32, &str) = (65_024, "prevpx");
 pub const PREVQTY_TAG_NAME: (i32, &str) = (65_025, "prevqty");
 
 /// The tag and name carrying the spot part of an FX forward price, which
-/// the row derives from `LastSpotRate(194)`, or a sided quote's
-/// `BidSpotRate(188)` or `OfferSpotRate(190)`.
+/// the row derives from `LastSpotRate(194)`; a quote's `BidSpotRate(188)`
+/// and `OfferSpotRate(190)` are its legs', which stay its own fields.
 pub const SPOTRATE_TAG_NAME: (i32, &str) = (65_026, "spotrate");
 
 /// The tag and name carrying the forward points of an FX forward price,
-/// which the row derives from `LastForwardPoints(195)`, or a sided quote's
-/// `BidForwardPoints(189)` or `OfferForwardPoints(191)`.
+/// which the row derives from `LastForwardPoints(195)`; a quote's
+/// `BidForwardPoints(189)` and `OfferForwardPoints(191)` are its legs',
+/// which stay its own fields.
 pub const FORWARDPOINTS_TAG_NAME: (i32, &str) = (65_027, "forwardpoints");
 
 /// The tag and name carrying the quantity bid, which the row derives from
@@ -881,9 +883,10 @@ const CRATED: [Crated; 49] = [
          ExecID, else TradeID=<TradeID>, else its report's code and content \
          digest, one split off a trade its side's order and the side's first \
          stated identifier, a batch entry the order or entry it names - \
-         stored after the codes of its category and its side, 10:1:ORD-1, \
-         side 0 on one of side UNKN and on every kind but an order, a quote \
-         or an execution: 21:0:T-1; its chain's once followed.",
+         stored after the codes of its category and of the side an order or \
+         an execution takes, 10:1:ORD-1, side 0 on one of side UNKN and on \
+         every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its \
+         chain's once followed.",
     ),
     Crated::element(CURRHASHCODE_TAG_NAME, ElementColumn::CurrHashCode).saying(
         "The XXH3-64 of what the event states and the named FIX content \
@@ -976,7 +979,7 @@ const CRATED: [Crated; 49] = [
     Crated::derived_market(
         SECURITYIDS_TAG_NAME,
         MarketColumn::SecurityIds,
-        "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent. Derived from the message's fields; a row stating one is the row's word.",
+        "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key, the keyed aliases a bridge states - ISINCODE, OMS_RICCODE, SEDOL_CODE - and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent, and a keyed alias under 0:key. Derived from the message's fields; a row stating one is the row's word.",
     ),
     Crated::own(
         ISINCODE_TAG_NAME,
@@ -1020,12 +1023,12 @@ const CRATED: [Crated; 49] = [
     Crated::derived_market(
         SPOTRATE_TAG_NAME,
         MarketColumn::SpotRate,
-        "The spot part of an FX forward price: LastSpotRate, or a sided quote's BidSpotRate or OfferSpotRate. Derived from the message's fields; a row stating one is the row's word.",
+        "The spot part of an FX forward price: LastSpotRate. Derived from the message's fields; a row stating one is the row's word.",
     ),
     Crated::derived_market(
         FORWARDPOINTS_TAG_NAME,
         MarketColumn::ForwardPoints,
-        "The forward points of an FX forward price: LastForwardPoints, or a sided quote's BidForwardPoints or OfferForwardPoints. Derived from the message's fields; a row stating one is the row's word.",
+        "The forward points of an FX forward price: LastForwardPoints. Derived from the message's fields; a row stating one is the row's word.",
     ),
     Crated::derived_market(
         BIDQTY_TAG_NAME,
@@ -1066,9 +1069,12 @@ const CRATED: [Crated; 49] = [
         METADATA_TAG_NAME,
         || DataType::map_of(DataType::utf8(), DataType::utf8(), true),
         "Metadata",
-        "What a message stated that is no field: a bridge's namespaced keys - \
-         a `TECH.` or an `AMON.` key - and every key no dictionary resolved, \
-         each under the key as it was spelled, folded, in sorted order.",
+        "What a message stated that is no field and no identifier map holds: \
+         a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every \
+         key no dictionary resolved, each under the key as it was spelled, \
+         folded, in sorted order; a key an identifier map holds with its \
+         value - a bridge's TECH.CLIENTID, its PARENTORDERID - rides \
+         fixentries under 0:key as it arrived instead.",
     ),
     Crated::derived_operation(
         ORDQTY_TAG_NAME,
@@ -1083,12 +1089,12 @@ const CRATED: [Crated; 49] = [
     Crated::derived_operation(
         IDENTIFIERS_TAG_NAME,
         OperationColumn::Identifiers,
-        "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap and the parties that name one. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
+        "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap, the parties that name one, and the keys no dictionary resolved whose names spell one - a bridge's PARENTORDERID, its firm.x.ParentOrderID - which ride fixentries under 0:key. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
     ),
     Crated::derived_operation(
         PARTYIDS_TAG_NAME,
         OperationColumn::PartyIds,
-        "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, and Account under AcctIDSource. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
+        "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, Account under AcctIDSource, and the keys no dictionary resolved whose names spell a party - a bridge's OMS_UserID, its TECH.CLIENTID - which ride fixentries under 0:key. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
     ),
     Crated::own(
         MSGPLUGINID_TAG_NAME,

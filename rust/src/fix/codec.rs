@@ -72,9 +72,9 @@ use smallvec::SmallVec;
 use smol_str::SmolStr;
 
 use crate::graph::Element as _;
+use crate::logging::warning::warned;
 use crate::mime_type::line;
 use crate::text::{TextBytes, TextEntries, TextEntry, TextLine, TextOptions};
-use crate::warning::warned;
 use crate::{Error, Field, IsinRegistry, Result, Scalar, Version};
 
 use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};
@@ -1403,11 +1403,12 @@ impl FixCodec {
     /// of a fill is its order's report (`ORDR`, or `QUOT` naming a
     /// `QuoteID(117)`, as a report of no fill is from its parse) followed
     /// by the execution (`EXEC`, `FILLED`, chained under its `ExecID(17)`);
-    /// a trade (`AE`) is followed by one execution
-    /// per side it states; a quote stating a bid and an offer and no side is
-    /// followed by its `BUYS` and its `SELL` quote. Each names its source's
+    /// a trade (`AE`) is followed by one execution per side it states; a
+    /// batch is followed by one message per entry. Each names its source's
     /// identity beside its source's sources as its own and is a row of its
-    /// own; a book reads each fill and each quoted side once. The
+    /// own, so the market data holds each fill once, and a book folds a
+    /// fill through its order's or quote's report. A quote is one message
+    /// holding its bid and its offer, whatever side it tags. The
     /// single-message doors - [`Self::parse_fix_line`] and its siblings -
     /// answer the message as stated.
     ///

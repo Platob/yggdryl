@@ -2458,7 +2458,7 @@ impl<'doc> Parse<'doc> {
         // conditionally required field is one that may be absent.
         let required = self
             .attribute(element, "required")
-            .is_some_and(|held| held.eq_ignore_ascii_case("true"));
+            .is_some_and(|held| crate::boolean::bool_from_text(&held) == Some(true));
         let mut field = held;
         field.set_nullable(!required);
         self.check_validity(closed)?;

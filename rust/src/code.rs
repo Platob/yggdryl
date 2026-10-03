@@ -91,7 +91,7 @@ pub(crate) const fn identifier_value(byte: u8) -> Option<u32> {
 }
 
 macro_rules! code_value {
-    ($leaf:ident, $id:ident, $width:expr $(, merge = $merge:expr)?) => {
+    ($leaf:ident, $id:ident, $width:expr $(, merge = $merge:expr)? $(, rank = $rank:expr, max_rank = $max_rank:expr)?) => {
         impl Value for $leaf {
 
             fn dtype(&self) -> Result<DataType> {
@@ -124,6 +124,14 @@ macro_rules! code_value {
             $(
                 fn merge_with(self, other: &Self) -> Self {
                     $merge(self, other)
+                }
+            )?
+
+            $(
+                const MAX_RANK: u8 = $max_rank;
+
+                fn rank(&self) -> u8 {
+                    $rank(self)
                 }
             )?
         }

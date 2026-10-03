@@ -4,6 +4,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
+use yggdryl::SortOptions;
 use yggdryl::expression::{Expression, Selector, Term};
 use yggdryl::expression::{IntoPlan, Location, Ordering, Plan, Source, Target, Verb, Write};
 use yggdryl::{DataType, Field, Scalar, StructType, Url};
@@ -181,11 +182,66 @@ fn a_target_carries_the_properties_it_is_opened_with() {
     // A knob that does not parse names itself.
     let broken = Target::parse("t with (batch_row_size = 'ten')").unwrap();
     let error = broken
-        .knob::<usize>("batch_row_size", "a row count")
+        .knob_count::<usize>("batch_row_size")
         .unwrap_err()
         .to_string();
     assert!(error.contains("batch_row_size"), "{error}");
     assert!(error.contains("ten"), "{error}");
+}
+
+#[test]
+fn a_flag_knob_reads_every_boolean_spelling_and_a_count_knob_every_integer_one() {
+    let with = |name: &str, value: &str| Target::parse("t").unwrap().with_property(name, value);
+    for (text, expected) in [
+        ("true", true),
+        ("yes", true),
+        (" ON ", true),
+        ("1", true),
+        ("FALSE", false),
+        ("n", false),
+        ("off", false),
+        ("0", false),
+    ] {
+        assert_eq!(
+            with("safe", text).knob_bool("safe").unwrap(),
+            Some(expected),
+            "{text}"
+        );
+    }
+    assert_eq!(Target::parse("t").unwrap().knob_bool("safe").unwrap(), None);
+    let error = with("safe", "maybe")
+        .knob_bool("safe")
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("$.with.safe"), "{error}");
+    assert!(error.contains("yes/no"), "{error}");
+    assert!(error.contains("maybe"), "{error}");
+
+    // A count is a trimmed, signed whole number at the width the option holds.
+    for text in ["10", " 10 ", "+10"] {
+        assert_eq!(
+            with("batch_row_size", text)
+                .knob_count::<usize>("batch_row_size")
+                .unwrap(),
+            Some(10),
+            "{text:?}"
+        );
+    }
+    assert_eq!(
+        Target::parse("t")
+            .unwrap()
+            .knob_count::<u64>("max_row_size")
+            .unwrap(),
+        None
+    );
+    for text in ["ten", "1.5", "-1", "1e3", "512 MB"] {
+        let error = with("max_row_size", text)
+            .knob_count::<u64>("max_row_size")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("$.with.max_row_size"), "{text}: {error}");
+        assert!(error.contains(text), "{text}: {error}");
+    }
 }
 
 #[test]
@@ -330,6 +386,167 @@ fn a_plan_simplifies_and_knows_when_it_does_nothing() {
 }
 
 #[test]
+fn a_join_is_a_read_section_every_accessor_accounts_for() {
+    use yggdryl::JoinKind;
+
+    let plan = Plan::new()
+        .read_from(Target::parse("trades").unwrap())
+        .join(
+            JoinKind::Left,
+            Target::parse("venues").unwrap(),
+            "lower(venue) = mic",
+        )
+        .unwrap()
+        .join(
+            JoinKind::Semi,
+            "select id from flags where kind = :kind"
+                .parse::<Plan>()
+                .unwrap(),
+            "id = coalesce(:pin, id)",
+        )
+        .unwrap()
+        .filter("city is not null")
+        .unwrap();
+    assert_eq!(
+        plan.to_string(),
+        "from trades left join venues on lower(venue) = mic \
+         semi join (select id from flags where kind = :kind) on id = coalesce(:pin, id) \
+         where city is not null"
+    );
+    assert_eq!(plan.to_string().parse::<Plan>().unwrap(), plan);
+    let [left, semi] = plan.joins() else {
+        panic!("expected two joins, got {:?}", plan.joins());
+    };
+    assert_eq!(left.how(), JoinKind::Left);
+    assert_eq!(left.keys().to_string(), "lower(venue) = mic");
+    assert_eq!(
+        semi.source().to_string(),
+        "(select id from flags where kind = :kind)"
+    );
+    // The keys' columns and parameters are the plan's; a nested source's
+    // parameters are its own.
+    assert_eq!(plan.columns(), ["city", "venue", "mic", "id"]);
+    assert_eq!(plan.parameters(), ["pin"]);
+    // A join is never the identity, and it is a read section.
+    assert!(!plan.is_empty());
+    assert!(!plan.is_identity());
+    assert_eq!(
+        plan.read_sections().to_string(),
+        "left join venues on lower(venue) = mic \
+         semi join (select id from flags where kind = :kind) on id = coalesce(:pin, id) \
+         where city is not null"
+    );
+    let mut cleared = plan.clone();
+    cleared.clear_read_sections();
+    assert_eq!(cleared.to_string(), "select * from trades");
+    // A join with no `from` joins whatever stream the plan is applied to,
+    // and reads back as it prints.
+    let streamed = Plan::new()
+        .join(JoinKind::Inner, Target::parse("v").unwrap(), "id")
+        .unwrap();
+    assert!(!streamed.is_identity());
+    assert_eq!(streamed.to_string(), "select * inner join v using (id)");
+    assert_eq!(streamed.to_string().parse::<Plan>().unwrap(), streamed);
+    // Simplifying reaches the keys and a nested source.
+    let plan: Plan =
+        "select * from t join (select * from v where a = 1 or a = 2) on (not not flag) = flag"
+            .parse()
+            .unwrap();
+    assert_eq!(
+        plan.simplify().to_string(),
+        "select * from t inner join (from v where a in (1, 2)) using (flag)"
+    );
+    // The hash is the canonical text's: the kind is part of it.
+    let inner: Plan = "select * from t join v using (id)".parse().unwrap();
+    let outer: Plan = "select * from t left join v using (id)".parse().unwrap();
+    assert_ne!(inner.stable_hash(), outer.stable_hash());
+    assert_eq!(
+        inner.stable_hash(),
+        "select * from t inner join v using (id)"
+            .parse::<Plan>()
+            .unwrap()
+            .stable_hash()
+    );
+    // An empty key list is refused by the builder, before any row.
+    let error = Plan::new()
+        .join(
+            JoinKind::Inner,
+            Target::parse("v").unwrap(),
+            Vec::<&str>::new(),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("at least one key"), "{error}");
+}
+
+#[test]
+fn a_join_types_its_output_where_both_roots_are_stated() {
+    let trades = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().required_field("venue"),
+        DataType::utf8().nullable_field("city"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("trades");
+    let names = |field: &Field| -> Vec<String> {
+        field
+            .fields()
+            .iter()
+            .map(|child| child.name().to_owned())
+            .collect()
+    };
+    // The engine's layout: the left columns, then the right ones, a `using`
+    // key once, a colliding right name suffixed, the optional side nullable.
+    let plan: Plan = "select * from trades \
+                      full join (create (venue utf8 not null, city utf8 not null, mic utf8)) using (venue)"
+        .parse()
+        .unwrap();
+    let out = plan.field_from(&trades).unwrap();
+    assert_eq!(out.name(), "trades");
+    assert_eq!(names(&out), ["id", "venue", "city", "city_right", "mic"]);
+    // A full join makes both sides optional; the coalesced key is present
+    // whichever side holds the row.
+    let nullable: Vec<bool> = out.fields().iter().map(Field::is_nullable).collect();
+    assert_eq!(nullable, [true, false, true, true, true]);
+    // The sections after it type against the joined root, and the datatype
+    // door answers the same.
+    let plan: Plan = "select id, upper(mic) as mic from trades \
+                      join (create (venue utf8 not null, mic utf8 not null)) using (venue) \
+                      where mic is not null"
+        .parse()
+        .unwrap();
+    let out = plan.field_from(&trades).unwrap();
+    assert_eq!(names(&out), ["id", "mic"]);
+    assert!(!out.fields()[1].is_nullable());
+    assert_eq!(
+        plan.apply_datatype(trades.dtype()).unwrap(),
+        out.dtype().clone()
+    );
+    // A semi join keeps the left columns alone.
+    let plan: Plan = "select * from trades semi join (create (id int32 not null)) using (id)"
+        .parse()
+        .unwrap();
+    assert_eq!(
+        names(&plan.field_from(&trades).unwrap()),
+        ["id", "venue", "city"]
+    );
+    // A target's columns are known only once it is read: refused naming it.
+    let plan: Plan = "select * from trades join lake.venues using (venue)"
+        .parse()
+        .unwrap();
+    let error = plan.field_from(&trades).unwrap_err().to_string();
+    assert!(error.contains("lake.venues"), "{error}");
+    assert!(error.contains("$.join"), "{error}");
+    // A key that binds on no side is refused naming it.
+    let plan: Plan = "select * from trades join (create (venue utf8)) on nope = venue"
+        .parse()
+        .unwrap();
+    let error = plan.field_from(&trades).unwrap_err().to_string();
+    assert!(error.contains("nope"), "{error}");
+}
+
+#[test]
 fn an_ordering_key_spells_its_direction_and_where_nulls_go() {
     let key = Ordering::desc(Term::column("a")).nulls_first(true);
     assert_eq!(key.to_string(), "a desc nulls first");
@@ -354,6 +571,36 @@ fn an_ordering_key_spells_its_direction_and_where_nulls_go() {
         built.to_string(),
         "select * from t order by a, b desc limit 3"
     );
+}
+
+#[test]
+fn an_ordering_key_is_read_from_text_and_carries_its_sort_options() {
+    let key: Ordering = "price DESC nulls first".parse().unwrap();
+    assert_eq!(key.term(), &Term::column("price"));
+    assert_eq!(
+        key.options(),
+        SortOptions::descending().with_nulls_first(true)
+    );
+    assert_eq!(key.to_string(), "price desc nulls first");
+    assert_eq!(key, Ordering::desc(Term::column("price")).nulls_first(true));
+    assert_eq!(
+        "lower(b) asc nulls last".parse::<Ordering>().unwrap(),
+        Ordering::new(
+            Term::call(yggdryl::expression::Function::Lower, [Term::column("b")]),
+            SortOptions::default()
+        )
+    );
+    for text in ["", "price desc nulls", "price, size", "price desc desc"] {
+        assert!(text.parse::<Ordering>().is_err(), "{text:?}");
+    }
+    // The document keeps the two facts flat beside the term.
+    let document = serde_json::to_value(&key).unwrap();
+    assert_eq!(document["descending"], serde_json::json!(true));
+    assert_eq!(document["nulls_first"], serde_json::json!(true));
+    assert_eq!(serde_json::from_value::<Ordering>(document).unwrap(), key);
+    let plain = serde_json::to_value(Ordering::asc(Term::column("a"))).unwrap();
+    assert_eq!(plain.get("descending"), None);
+    assert_eq!(plain.get("nulls_first"), None);
 }
 
 #[test]
@@ -803,6 +1050,279 @@ mod streams {
         assert_eq!(ids(&read("select * from '{url}' order by id")), [7, 9]);
     }
 
+    /// Orders: an id and the venue it traded on.
+    fn orders(rows: &[(i64, &str)]) -> RecordBatch {
+        RecordBatch::try_from_iter([
+            (
+                "id",
+                std::sync::Arc::new(Int64Array::from_iter_values(rows.iter().map(|(id, _)| *id)))
+                    as arrow_array::ArrayRef,
+            ),
+            (
+                "venue",
+                std::sync::Arc::new(StringArray::from_iter_values(
+                    rows.iter().map(|(_, venue)| *venue),
+                )),
+            ),
+        ])
+        .unwrap()
+    }
+
+    /// Venues: a venue and its city, some of them unknown.
+    fn venues(rows: &[(&str, Option<&str>)]) -> RecordBatch {
+        RecordBatch::try_from_iter([
+            (
+                "venue",
+                std::sync::Arc::new(StringArray::from_iter_values(
+                    rows.iter().map(|(venue, _)| *venue),
+                )) as arrow_array::ArrayRef,
+            ),
+            (
+                "city",
+                std::sync::Arc::new(StringArray::from_iter(rows.iter().map(|(_, city)| *city))),
+            ),
+        ])
+        .unwrap()
+    }
+
+    /// Write `batch` where `url` names, through a plan.
+    fn stored(url: &str, batch: &RecordBatch) {
+        let plan: Plan = format!("insert overwrite '{url}'").parse().unwrap();
+        collected(plan.apply_arrow_reader(one_batch(batch)).unwrap()).unwrap();
+    }
+
+    /// A batch as the record column it is.
+    fn serie_of(batch: &RecordBatch) -> yggdryl::Serie {
+        yggdryl::Serie::from_arrow_batch(None, batch, yggdryl::ArrowCastOptions::new()).unwrap()
+    }
+
+    /// The names of a batch's columns.
+    fn columns(batch: &RecordBatch) -> Vec<String> {
+        batch
+            .schema()
+            .fields()
+            .iter()
+            .map(|field| field.name().clone())
+            .collect()
+    }
+
+    fn cities(batch: &RecordBatch) -> Vec<String> {
+        batch
+            .column_by_name("city")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap()
+            .iter()
+            .map(|city| city.unwrap_or("<null>").to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn a_plan_joins_two_stores_as_the_serie_join_does() {
+        use yggdryl::{JoinKind, JoinOptions, JoinSide};
+
+        let scratch = Scratch::new("join");
+        let (left_url, right_url) = (scratch.url("orders.arrow"), scratch.url("venues.arrows"));
+        let left = orders(&[
+            (1, "XNAS"),
+            (2, "XPAR"),
+            (3, "XNYS"),
+            (4, "XNAS"),
+            (5, "XLON"),
+        ]);
+        let right = venues(&[
+            ("XNAS", Some("New York")),
+            ("XPAR", Some("Paris")),
+            ("XNYS", None),
+        ]);
+        stored(&left_url, &left);
+        stored(&right_url, &right);
+        // The left streams and probes; the right is held and hashed.
+        let options = JoinOptions::new().with_build(Some(JoinSide::Right));
+        for (word, how) in [
+            ("join", JoinKind::Inner),
+            ("left join", JoinKind::Left),
+            ("semi join", JoinKind::Semi),
+            ("anti join", JoinKind::Anti),
+            ("right join", JoinKind::Right),
+            ("full join", JoinKind::Full),
+        ] {
+            let plan: Plan =
+                format!("select * from '{left_url}' {word} '{right_url}' using (venue)")
+                    .parse()
+                    .unwrap();
+            let out = collected(plan.execute().unwrap()).unwrap();
+            let expected = serie_of(&left)
+                .join_with(&serie_of(&right), "venue", how, &options)
+                .unwrap();
+            assert_eq!(serie_of(&out), expected, "{word}");
+            assert_eq!(
+                columns(&out),
+                columns(&expected.into_arrow_batch().unwrap()),
+                "{word}"
+            );
+        }
+        // An `on` pair keeps both key columns.
+        let plan: Plan =
+            format!("select * from '{left_url}' join '{right_url}' on lower(venue) = lower(venue)")
+                .parse()
+                .unwrap();
+        let out = collected(plan.execute().unwrap()).unwrap();
+        assert_eq!(columns(&out), ["id", "venue", "venue_right", "city"]);
+        assert_eq!(ids(&out), [1, 2, 3, 4]);
+
+        // A `where` naming a right column runs over the joined rows, and so
+        // does an `order by` on one; the projection publishes from them too.
+        let plan: Plan = format!(
+            "select id, city from '{left_url}' left join '{right_url}' using (venue) \
+             where city is not null or id = 5 order by city desc nulls first, id"
+        )
+        .parse()
+        .unwrap();
+        let out = collected(plan.execute().unwrap()).unwrap();
+        assert_eq!(columns(&out), ["id", "city"]);
+        assert_eq!(ids(&out), [5, 2, 1, 4]);
+        assert_eq!(cities(&out), ["<null>", "Paris", "New York", "New York"]);
+        let plan: Plan = format!(
+            "select id from '{left_url}' join '{right_url}' using (venue) \
+             where city = 'New York' order by id desc limit 1"
+        )
+        .parse()
+        .unwrap();
+        assert_eq!(ids(&collected(plan.execute().unwrap()).unwrap()), [4]);
+
+        // Joins chain left to right, each over the rows so far, and a nested
+        // plan is a source like a target.
+        let plan: Plan = format!(
+            "select id, city from '{left_url}' join '{right_url}' using (venue) \
+             anti join (select id from '{left_url}' where id > 3) using (id) order by id"
+        )
+        .parse()
+        .unwrap();
+        let out = collected(plan.execute().unwrap()).unwrap();
+        assert_eq!(ids(&out), [1, 2, 3]);
+        assert_eq!(cities(&out), ["New York", "Paris", "<null>"]);
+        // The same plan applied to a stream joins the stream.
+        let plan: Plan = format!(
+            "select id, city from 'file:///nowhere' join '{right_url}' using (venue) order by id"
+        )
+        .parse()
+        .unwrap();
+        let out = collected(plan.apply_arrow_reader(one_batch(&left)).unwrap()).unwrap();
+        assert_eq!(ids(&out), [1, 2, 3, 4]);
+
+        // A key that binds on no side is refused naming it, before a row is
+        // joined.
+        let plan: Plan = format!("select * from '{left_url}' join '{right_url}' on nope = venue")
+            .parse()
+            .unwrap();
+        let error = plan.execute().map(|_| ()).unwrap_err().to_string();
+        assert!(error.contains("nope"), "{error}");
+    }
+
+    #[test]
+    fn the_first_join_prunes_the_left_read_by_its_held_keys() {
+        // The left is a partitioned folder with a leaf no reader can decode:
+        // a read that reaches it fails, so a plan that succeeds is one whose
+        // read never listed it. One distinct right key is the equality a
+        // partition path answers.
+        let scratch = Scratch::new("pushdown");
+        let lake = scratch.0.join("orders");
+        for (index, venue) in ["XNAS", "XNYS", "XPAR"].into_iter().enumerate() {
+            let batch = orders(
+                &(0..1000)
+                    .filter(|id| id % 3 == index as i64)
+                    .map(|id| (id, venue))
+                    .collect::<Vec<_>>(),
+            );
+            let ids = batch.project(&[0]).unwrap();
+            let folder = lake.join(format!("venue={venue}"));
+            std::fs::create_dir_all(&folder).unwrap();
+            stored(
+                &Url::from_path(folder.join("part-0.arrows"))
+                    .unwrap()
+                    .to_string(),
+                &ids,
+            );
+        }
+        let broken = lake.join("venue=ZZZZ");
+        std::fs::create_dir_all(&broken).unwrap();
+        std::fs::write(broken.join("part-0.arrows"), b"not an arrow stream").unwrap();
+        let lake_url = Url::from_path(&lake).unwrap().to_string();
+        let left =
+            format!("'{lake_url}' with (media_type = 'application/vnd.apache.arrow.stream')");
+        let right_url = scratch.url("venues.arrows");
+        stored(
+            &right_url,
+            &venues(&[("XNYS", Some("New York")), ("XNYS", Some("again"))]),
+        );
+
+        // `inner`, `right` and `semi` emit no unmatched left row: the left
+        // read is filtered by `venue in ('XNYS')` and never reaches the leaf
+        // that cannot be read.
+        for word in ["join", "right join", "semi join"] {
+            let plan: Plan =
+                format!("select id from {left} {word} '{right_url}' using (venue) order by id")
+                    .parse()
+                    .unwrap();
+            let out = collected(plan.execute().unwrap())
+                .unwrap_or_else(|error| panic!("{word}: {error}"));
+            let expected: Vec<i64> = (0..1000)
+                .filter(|id| id % 3 == 1)
+                .flat_map(|id| {
+                    if word == "semi join" {
+                        vec![id]
+                    } else {
+                        vec![id, id]
+                    }
+                })
+                .collect();
+            assert_eq!(ids(&out), expected, "{word}");
+            let explained = Expression::Plan(Box::new(plan)).explain();
+            assert!(
+                explained.contains("pushdown venue in (distinct venue, at most 10000)"),
+                "{explained}"
+            );
+        }
+        // A `left` join emits every left row: nothing is pushed, and the read
+        // reaches the leaf and fails decoding it.
+        let plan: Plan = format!("select id from {left} left join '{right_url}' using (venue)")
+            .parse()
+            .unwrap();
+        let error = plan
+            .execute()
+            .and_then(collected)
+            .map(|_| ())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("codec I/O error"), "{error}");
+        // A `where` conjunct over left columns alone prunes the left read too,
+        // where no join nulls a left column...
+        let plan: Plan = format!(
+            "select id, city from {left} left join '{right_url}' using (venue) \
+             where venue = 'XPAR' and id < 10 order by id"
+        )
+        .parse()
+        .unwrap();
+        let out = collected(plan.execute().unwrap()).unwrap();
+        assert_eq!(ids(&out), [2, 5, 8]);
+        assert_eq!(cities(&out), ["<null>", "<null>", "<null>"]);
+        // ...and not where one does: a `full` join reads the left whole.
+        let plan: Plan = format!(
+            "select id from {left} full join '{right_url}' using (venue) where venue = 'XPAR'"
+        )
+        .parse()
+        .unwrap();
+        let error = plan
+            .execute()
+            .and_then(collected)
+            .map(|_| ())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("codec I/O error"), "{error}");
+    }
+
     #[test]
     fn a_create_with_no_target_declares_what_the_stream_becomes() {
         let batch = trades(&[(1, "a"), (2, "b")]);
@@ -860,6 +1380,32 @@ mod streams {
         let options = target.record_options(&holder).unwrap();
         assert_eq!(options.batch_row_size(), Some(1));
         assert!(!options.safe());
+    }
+
+    #[test]
+    fn a_target_reads_its_commit_cadence_as_a_batch_count() {
+        let scratch = Scratch::new("cadence");
+        let plain = scratch.url("trades.arrows");
+        let holder = Target::parse(&format!("'{plain}'"))
+            .unwrap()
+            .holder(None)
+            .unwrap();
+        // Unstated, the destination keeps its own cadence.
+        let options = Target::parse(&format!("'{plain}'"))
+            .unwrap()
+            .record_options(&holder)
+            .unwrap();
+        assert_eq!(options.commit_batch_num(), None);
+        let target = Target::parse(&format!("'{plain}' with (commit_batch_num = '3')")).unwrap();
+        let options = target.record_options(&holder).unwrap();
+        assert_eq!(options.commit_batch_num(), Some(3));
+        // A cadence that is not a count is refused naming the knob.
+        let broken =
+            Target::parse(&format!("'{plain}' with (commit_batch_num = 'three')")).unwrap();
+        let error = broken.record_options(&holder).unwrap_err().to_string();
+        assert!(error.contains("$.with.commit_batch_num"), "{error}");
+        assert!(error.contains("a whole number"), "{error}");
+        assert!(error.contains("three"), "{error}");
     }
 
     #[test]
@@ -1029,5 +1575,127 @@ fn explain_draws_every_section_as_a_branch() {
             "               └─ literal 'EUR'",
         ]
         .join("\n")
+    );
+}
+
+#[test]
+fn a_verb_reads_every_spelling_the_grammar_reads_and_prints_its_canonical_one() {
+    for (text, verb) in [
+        ("insert", Verb::Insert),
+        ("INSERT INTO", Verb::Insert),
+        (" append ", Verb::Insert),
+        ("append to", Verb::Insert),
+        ("append into", Verb::Insert),
+        ("insert overwrite", Verb::Overwrite),
+        ("insert overwrite into", Verb::Overwrite),
+        ("overwrite", Verb::Overwrite),
+        ("overwrite into", Verb::Overwrite),
+        ("replace", Verb::Overwrite),
+        ("Replace Into", Verb::Overwrite),
+        ("upsert", Verb::Upsert),
+        ("upsert into", Verb::Upsert),
+        ("merge", Verb::Upsert),
+        ("merge into", Verb::Upsert),
+        ("delete", Verb::Delete),
+        ("delete from", Verb::Delete),
+    ] {
+        assert_eq!(text.parse::<Verb>().expect(text), verb, "{text:?}");
+    }
+    for verb in [Verb::Insert, Verb::Overwrite, Verb::Upsert, Verb::Delete] {
+        assert_eq!(verb.as_str().parse::<Verb>().unwrap(), verb);
+        assert_eq!(verb.word().parse::<Verb>().unwrap(), verb);
+    }
+    for text in [
+        "sideways",
+        "",
+        "insert into t",
+        "upsert by (id)",
+        "delete into",
+        "insert overwrite from",
+        "select",
+    ] {
+        let refused = text.parse::<Verb>().expect_err(text).to_string();
+        assert!(
+            refused.contains("write verb") || refused.contains("end of the expression"),
+            "{text:?}: {refused}"
+        );
+    }
+}
+
+#[test]
+fn an_ordering_key_reads_as_the_grammar_spells_one() {
+    let a = || Term::column("a");
+    for (text, key) in [
+        ("a", Ordering::asc(a())),
+        ("a asc", Ordering::asc(a())),
+        ("a ASC NULLS LAST", Ordering::asc(a())),
+        ("a desc", Ordering::desc(a())),
+        ("a desc nulls first", Ordering::desc(a()).nulls_first(true)),
+        ("a nulls first", Ordering::asc(a()).nulls_first(true)),
+    ] {
+        assert_eq!(text.parse::<Ordering>().expect(text), key, "{text:?}");
+    }
+    // Any term the grammar reads is a key, printed back as it was read.
+    let computed: Ordering = "price * 2 desc nulls first".parse().unwrap();
+    assert!(computed.is_descending() && computed.is_nulls_first());
+    assert_eq!(computed.to_string(), "price * 2 desc nulls first");
+    for key in [
+        Ordering::asc(a()),
+        Ordering::desc(a()),
+        Ordering::desc(a()).nulls_first(true),
+        Ordering::asc(a()).nulls_first(true),
+    ] {
+        assert_eq!(key.to_string().parse::<Ordering>().unwrap(), key);
+    }
+    for text in [
+        "",
+        "a, b",
+        "a descending",
+        "a nulls",
+        "a desc first",
+        "a asc desc",
+    ] {
+        assert!(text.parse::<Ordering>().is_err(), "{text:?} read as a key");
+    }
+    // Neither direction word is reserved: alone, it names a column.
+    assert_eq!(
+        "desc".parse::<Ordering>().unwrap(),
+        Ordering::asc(Term::column("desc"))
+    );
+}
+
+#[test]
+fn an_ordering_record_reads_its_nulls_flag_under_either_spelling() {
+    use yggdryl::expression::Ordering;
+    use yggdryl::{Scalar, SortOptions};
+
+    let snake = Scalar::from_struct([
+        ("term", Scalar::from("price")),
+        ("descending", Scalar::from(true)),
+        ("nulls_first", Scalar::from(true)),
+    ])
+    .expect("a record");
+    let camel = Scalar::from_struct([
+        ("term", Scalar::from("price")),
+        ("descending", Scalar::from(true)),
+        ("nullsFirst", Scalar::from(true)),
+    ])
+    .expect("a record");
+    let expected = Ordering::new(
+        "price".parse().expect("a term"),
+        SortOptions::descending().with_nulls_first(true),
+    );
+    assert_eq!(Ordering::from_scalar(&snake).expect("snake case"), expected);
+    assert_eq!(Ordering::from_scalar(&camel).expect("camel case"), expected);
+    let refused = Scalar::from_struct([
+        ("term", Scalar::from("price")),
+        ("nulls", Scalar::from(true)),
+    ])
+    .expect("a record");
+    assert!(
+        Ordering::from_scalar(&refused)
+            .unwrap_err()
+            .to_string()
+            .contains("$.nulls")
     );
 }

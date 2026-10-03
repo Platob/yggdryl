@@ -5198,3 +5198,28 @@ mod internal {
         );
     }
 }
+
+#[test]
+fn required_reads_every_spelling_a_flag_is_read_in_and_a_condition_stays_not_required() {
+    let condition = r#"required="$59 = '6' and empty($126)""#;
+    assert_eq!(CBLOCK.matches(condition).count(), 1);
+    for (spelled, nullable) in [
+        ("true", false),
+        ("TRUE", false),
+        ("yes", false),
+        ("Y", false),
+        ("on", false),
+        ("1", false),
+        ("false", true),
+        ("no", true),
+        ("0", true),
+        // A condition is no flag: it is read as not-required, never refused.
+        ("$59 = '6'", true),
+        ("", true),
+    ] {
+        let body = CBLOCK.replacen(condition, &format!(r#"required="{spelled}""#), 1);
+        let (_, roots) = parse(&body);
+        let fields = roots[0].dtype().as_fields().unwrap();
+        assert_eq!(fields[3].is_nullable(), nullable, "required={spelled:?}");
+    }
+}

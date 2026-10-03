@@ -198,7 +198,7 @@ fn leaves_write_their_interoperable_spellings() {
         "<whole>1.0</whole>",
         "<nan>NaN</nan>",
         "<inf>-INF</inf>",
-        "<decimal>12.50</decimal>",
+        "<decimal>12.5</decimal>",
         "<bytes>AP8=</bytes>",
         "<date>2024-06-02</date>",
         "<time>07:32:00.100</time>",
@@ -247,6 +247,39 @@ fn an_interval_of_several_components_repeats_its_element() {
 
     let at_root = refused(&document("span", day_time_value()));
     assert!(at_root.contains("several components"), "{at_root}");
+}
+
+#[test]
+fn an_interval_component_is_read_by_the_integer_reader() {
+    let month_day_nano = DataType::interval(TimeUnit::MonthDayNano).unwrap();
+    let field = StructType::from_fields([month_day_nano.clone().required_field("span")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let interval = month_day_nano
+        .scalar(Scalar::from_sequence([
+            Scalar::from(1),
+            Scalar::from(2),
+            Scalar::from(3),
+        ]))
+        .unwrap();
+    // A sign and the blanks around the digits are not part of a number.
+    let typed = from_xml_scalar_with_field(
+        "<row><span>+1</span><span> 2 </span><span>\n3\n</span></row>",
+        &field,
+    )
+    .unwrap();
+    assert_eq!(typed, Scalar::from_sequence([interval]));
+
+    // A component the integer reader does not read, or a width the interval
+    // cannot hold, is refused rather than wrapped or kept as text.
+    for component in ["9223372036854775808", "1.5", "abc", "1e3", "0x10"] {
+        let document = format!("<row><span>1</span><span>2</span><span>{component}</span></row>");
+        assert!(
+            from_xml_scalar_with_field(&document, &field).is_err(),
+            "{component}"
+        );
+    }
 }
 
 fn day_time_value() -> Scalar {

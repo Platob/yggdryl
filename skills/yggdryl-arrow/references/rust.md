@@ -9,7 +9,8 @@ Representation}`; stream helpers are in `yggdryl::arrow`.
 ## Build a column from values
 
 `Serie::from_scalars` sends every row through `Field::scalar` once and lays
-the buffers out once; `from_default` repeats the field's canonical default.
+the buffers out once; `from_default` repeats the field's canonical default
+and `lit` any value, each as a constant column holding the one row.
 
 ```rust
 use yggdryl::{DataType, Field, Scalar, Serie};
@@ -31,7 +32,12 @@ assert!(Serie::from_scalars(price.clone(), [Scalar::Null]).is_err());
 assert_eq!(Serie::from_default(price.clone(), 2)?.scalar(1)?, Scalar::from(0_i64));
 assert_eq!(Serie::from_default(Field::new("symbol", DataType::utf8(), true), 2)?.null_count(), 2);
 assert!(Serie::empty(price.clone())?.is_empty());
-assert!(Serie::with_capacity(price, 1024)?.is_empty());
+assert!(Serie::with_capacity(price.clone(), 1024)?.is_empty());
+
+// A constant: one value held once, laid out only when something exports it.
+let constant = Serie::lit(price, Scalar::from(125_i64), 1_000_000)?;
+assert_eq!(constant.scalar(999_999)?, Scalar::from(125_i64));
+assert!(constant.as_lit().is_some() && constant.resident_size() < 1_024);
 ```
 
 ## Land an Arrow array, sharing its buffers
@@ -436,6 +442,208 @@ assert!(refused.is_err());
 assert_eq!(rows.len(), 2); // unchanged
 ```
 
+## Sort, deduplicate, group and window
+
+Every leaf answers every verb in one order - `Scalar`'s total order, absent
+values last unless `SortOptions` says otherwise (the plan's `order by` and
+DuckDB's default, the opposite of Arrow's) - so a column and the run of its
+rows sort, deduplicate and group alike. `into_*` answers a new serie under the
+same field; `as_*` brings the serie into that state in place and chains. A
+`ChunkedSerie` answers the same: `is_sorted`, `into_reversed`, `into_filtered`
+and `partition_by` chunk by chunk, the sorts and `into_unique` by merging the
+chunks each sorted on its own, the rest through one join.
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{ArrayRef, Int64Array};
+use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SortOptions};
+
+let prices = Serie::from_scalars(
+    Field::new("price", DataType::Int64, true),
+    [Scalar::from(3_i64), Scalar::Null, Scalar::from(1_i64), Scalar::from(3_i64)],
+)?;
+
+// The order as positions: stable, absences last unless told otherwise.
+assert_eq!(prices.sort_indices(SortOptions::default())?.rows().to_vec(), [2_u32, 0, 3, 1].map(Scalar::from));
+let first = SortOptions::descending().with_nulls_first(true);
+assert_eq!(prices.sort_indices(first)?.rows().to_vec(), [1_u32, 0, 3, 2].map(Scalar::from));
+
+// The reads answer a new serie; this one is as it was.
+let sorted = prices.into_sorted(SortOptions::default())?;
+assert!(sorted.is_sorted(SortOptions::default()));
+assert_eq!((prices.is_unique(), prices.unique_count()), (false, 3));
+assert_eq!(prices.into_unique()?.len(), 3);
+let picked = Serie::new(vec![Scalar::from(2_u32), Scalar::from(0_u32)]);
+assert_eq!(prices.into_taken(&picked)?.rows().to_vec(), [1_i64, 3].map(Scalar::from));
+let mask = Serie::new([true, false, false, true].map(Scalar::from).to_vec());
+assert_eq!(prices.into_filtered(&mask)?.len(), 2);
+
+// The writes chain in place; a primitive column holding its buffer alone sorts where it stands.
+let mut held = prices.clone();
+held.as_sorted(SortOptions::default())?.as_unique()?.as_reversed()?;
+assert_eq!(held.rows().to_vec(), vec![Scalar::Null, Scalar::from(3_i64), Scalar::from(1_i64)]);
+
+// One (key, rows) per distinct key, in first-occurrence order.
+let venues = Serie::new(["XNAS", "XNYS", "XNAS", "XNYS"].map(Scalar::from).to_vec());
+let groups = prices.partition_by(&venues)?;
+assert_eq!((groups.len(), groups[0].0.clone()), (2, Scalar::from("XNAS")));
+assert_eq!(groups[0].1.rows().to_vec(), [3_i64, 1].map(Scalar::from));
+
+// A window reads and writes a stretch where it stands, window-relative.
+let mut column = Serie::from_scalars(
+    Field::new("price", DataType::Int64, false),
+    [9_i64, 3, 1, 2, 0].map(Scalar::from),
+)?;
+assert_eq!(column.window(1, 3)?.into_sorted(SortOptions::default())?.rows().to_vec(), [1_i64, 2, 3].map(Scalar::from));
+column.window_mut(1, 3)?.as_sorted(SortOptions::default())?;
+assert_eq!(column.rows().to_vec(), [9_i64, 1, 2, 3, 0].map(Scalar::from));
+assert!(column.window(3, 3).is_err()); // past the end
+assert!(column.memory_size() > 0);
+
+// Chunks: the edge between two sorted chunks is read with no join.
+let field = Field::new("price", DataType::Int64, false);
+let chunks = [vec![3_i64, 1], vec![2, 3]].map(|rows| Arc::new(Int64Array::from(rows)) as ArrayRef);
+let chunked = ChunkedSerie::from_arrow_arrays(Some(&field), chunks, ArrowCastOptions::new())?;
+assert!(!chunked.is_sorted(SortOptions::default()));
+assert_eq!(chunked.into_sorted(SortOptions::default())?.num_chunks(), 1);
+assert_eq!(chunked.into_reversed().num_chunks(), 2);
+```
+
+## Sort by keys, read the declared order
+
+`into_sort_by` takes `order by` keys - one text, texts, `Ordering`s or a
+`Selector` - and declares the order it proved as `SORT:by` on the result's
+root; `declared_order` reads it back, and the verbs keep it true.
+
+```rust
+use yggdryl::{DataType, Scalar, Serie, SortOptions, StructType};
+
+let root = DataType::from(StructType::from_fields([
+    DataType::utf8().required_field("venue"),
+    DataType::Int64.required_field("price"),
+])?)
+.required_field("quote");
+let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+let quotes = Serie::from_scalars(root, [quote("XNYS", 1), quote("XNAS", 2), quote("XNYS", 3)])?;
+
+let sorted = quotes.into_sort_by("venue, price desc")?;
+assert_eq!(sorted.rows().to_vec(), vec![quote("XNAS", 2), quote("XNYS", 3), quote("XNYS", 1)]);
+assert_eq!(sorted.field().expect("a record").get_metadata("SORT:by"), Some(r#"["venue","price desc"]"#));
+assert_eq!(sorted.declared_order()?.map(|keys| keys.len()), Some(2));
+
+// Answered off the declaration, no row compared: the identity, a clone.
+assert_eq!(sorted.sort_indices_by("venue")?.rows().to_vec(), [0_u32, 1, 2].map(Scalar::from));
+// Kept by a slice, flipped by a reversal, cleared by a write that breaks it.
+assert!(sorted.slice(1, 2)?.declared_order()?.is_some());
+assert_eq!(sorted.into_reversed().declared_order()?.map(|keys| keys[0].is_descending()), Some(true));
+let mut held = sorted.clone();
+held.push(quote("AAAA", 0))?;
+assert!(held.declared_order()?.is_none());
+assert!(quotes.into_sorted(SortOptions::default())?.is_sorted(SortOptions::default()));
+```
+
+## Spill a column to disk
+
+Every door that lays a column out settles it under the process default; ask
+for more with `spill`, or state the default once with `install_env`.
+
+```rust
+use yggdryl::{DataType, Scalar, Serie, SpillOptions};
+
+let prices = Serie::from_scalars(DataType::Int64.required_field("price"), (0..1_024_i64).map(Scalar::from))?;
+let mut spilled = prices.clone();
+spilled.spill(&SpillOptions::new().with_byte_size(0))?;
+assert!(spilled.is_spilled());
+assert_eq!((spilled.resident_size(), spilled.memory_size()), (0, prices.memory_size()));
+assert_eq!(spilled.scalar(7)?, Scalar::from(7_i64)); // read exactly as resident
+spilled.push(Scalar::from(1_024_i64))?; // a write brings the leaf back
+assert!(!spilled.is_spilled());
+
+// One-liners: a spilled copy, or the spill chained in place.
+let copy = prices.into_spilled(&SpillOptions::new().with_byte_size(0))?;
+assert!(copy.is_spilled() && !prices.is_spilled());
+assert!(spilled.as_spilled(&SpillOptions::new().with_byte_size(0))?.is_spilled());
+```
+
+## Join two record columns
+
+Pin the build side where the output order matters: the probe's rows come out
+in their own order.
+
+```rust
+use yggdryl::{DataType, JoinKind, JoinOptions, JoinSide, Scalar, Serie, StructType};
+
+let record = |name: &str, second: yggdryl::Field| -> yggdryl::Result<yggdryl::Field> {
+    Ok(DataType::from(StructType::from_fields([DataType::Int64.required_field("id"), second])?).required_field(name))
+};
+let trades = Serie::from_scalars(
+    record("trade", DataType::Int64.required_field("size"))?,
+    [(1_i64, 10_i64), (2, 20), (3, 30)].map(|(id, size)| Scalar::from_sequence([Scalar::from(id), Scalar::from(size)])),
+)?;
+let venues = Serie::from_scalars(
+    record("venue", DataType::utf8().required_field("venue"))?,
+    [(1_i64, "XNAS"), (2, "XNYS")].map(|(id, venue)| Scalar::from_sequence([Scalar::from(id), Scalar::from(venue)])),
+)?;
+let built = JoinOptions::new().with_build(Some(JoinSide::Right));
+
+let inner = trades.join_with(&venues, "id", JoinKind::Inner, &built)?; // `using`: id once
+assert_eq!(inner.child("venue").expect("venue").rows().to_vec(), vec![Scalar::from("XNAS"), Scalar::from("XNYS")]);
+let left = trades.join_with(&venues, "id", JoinKind::Left, &built)?;
+assert_eq!(left.child("venue").expect("venue").scalar(2)?, Scalar::Null);
+assert_eq!(trades.join_with(&venues, "id", JoinKind::Anti, &built)?.len(), 1);
+// A stream probes lazily against the held side.
+let streamed = yggdryl::SerieReader::from_serie(trades)?.join_with(venues, "id", JoinKind::Inner, &built)?;
+assert_eq!(streamed.map(|batch| batch.expect("rows").len()).sum::<usize>(), 2);
+```
+
+## Cut rows into windows by key
+
+`window_by(by, sorted)` computes the key once and lends each window as a view
+with the record of its key cells, `windownum` and `rownum`. `sorted = true`
+asks for each key once in key order: keys already in order copy nothing, and
+only a descent gathers the rows once. A `ChunkedSerie` regroups its runs as
+zero-copy pieces and states no record; a stream yields one lazy reader per
+window, read in order. Contract and costs:
+[windows by key](https://platob.github.io/yggdryl/types/serie/#windows-by-key).
+
+```rust
+use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Scalar, Serie, SerieReader, StructType};
+
+let root = DataType::from(StructType::from_fields([
+    DataType::utf8().required_field("venue"),
+    DataType::Int64.required_field("qty"),
+])?)
+.required_field("fill");
+let fill = |venue: &str, qty: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(qty)]);
+let fills = Serie::from_scalars(root.clone(), [fill("XNAS", 5), fill("XNYS", 2), fill("XNAS", 3)])?;
+
+// Each key once, in key order; the record names the window's key.
+let mut totals = Vec::new();
+for (_, window) in &fills.window_by("venue", true)? {
+    let record = window.static_values().ok_or("a window window_by lent states its record")?;
+    let venue = record.get_key_str("venue").cloned();
+    let qty: i64 = window.into_serie().child("qty").and_then(Serie::as_int64).map_or(0, |qty| qty.values().iter().sum());
+    totals.push((venue, qty));
+}
+assert_eq!(totals, [(Some(Scalar::from("XNAS")), 8), (Some(Scalar::from("XNYS")), 2)]);
+
+// Across chunks: zero-copy pieces, no join, no record.
+let chunked = ChunkedSerie::from_series(Some(&root), [fills.slice(0, 2)?, fills.slice(2, 1)?], ArrowCastOptions::new())?;
+let sorted = chunked.window_by("venue", true)?;
+assert_eq!((sorted[0].1.len(), sorted[0].1.num_chunks()), (2, 2));
+
+// A stream: one lazy reader per window - read each before taking the next.
+let mut places = Vec::new();
+for window in SerieReader::from_serie(fills)?.window_by("venue", false)? {
+    let window = window?;
+    let rownum = window.static_values().and_then(|record| record.get_key_str("rownum").cloned());
+    let rows = window.map(|piece| piece.map(|piece| piece.len())).sum::<Result<usize, _>>()?;
+    places.push((rownum, rows));
+}
+assert_eq!(places, [(Some(Scalar::from(0_u64)), 1), (Some(Scalar::from(1_u64)), 1), (Some(Scalar::from(2_u64)), 1)]);
+```
+
 ## Keep chunks and batches apart
 
 `ChunkedSerie` holds arrays or batches without concatenating: a row is a
@@ -481,7 +689,8 @@ assert_eq!(table.child("price").map(|column| column.len()), Some(1));
 ## Hand a held column on as a stream
 
 `SerieReader::from_serie` and `from_chunked` read held data as a stream with
-no plan and no copy - what `IOMedia::write_arrow` takes. `reader.cast`
+no plan and no copy - what `IOMedia::write_serie` does with a held `Serie`
+or `ChunkedSerie` it is handed, so pass those as they are. `reader.cast`
 re-roots the stream under one plan and consumes the reader.
 
 ```rust

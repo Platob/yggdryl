@@ -31,11 +31,11 @@ use crate::arrow::BatchReader;
 use crate::graph::{Element, Event, Market};
 use crate::identifier::{IDENTIFIER_VALUE_WIDTH, IDENTIFIER_WORD_WIDTH, fold_into};
 use crate::idtype::FIX_SECURITY_SOURCES;
+use crate::logging::warning::warned;
 use crate::serie::{DateTimeNanosecondSerie, Utf8StringSerie};
-use crate::warning::warned;
 use crate::{
-    ArrowCastOptions, Cfi, DataType, Error, Field, IOBase, IdKey, IdType, Identifier, Isin, Mic,
-    Result, Scalar, Serie, SerieReader, StructType, TimeUnit, Timezone,
+    ArrowCastOptions, Cfi, CodeValue, DataType, Error, Field, IOBase, IdKey, IdType, Identifier,
+    Isin, Mic, Result, Scalar, Serie, SerieReader, StructType, TimeUnit, Timezone,
 };
 
 /// The name of the record a registry row is.
@@ -47,9 +47,6 @@ const NAMES: [&str; 5] = ["isin", "updunix", "cficode", "miccode", "ticker"];
 /// The most bytes a ticker holds.
 const MAX_TICKER_WIDTH: usize = 64;
 
-/// The market a statement names none of.
-const NO_MARKET: &str = "XXXX";
-
 /// The heap one retained value may take: the widest value any identifier
 /// type admits, behind its `Arc` counters and allocator rounding.
 const MAX_VALUE_HEAP_ALLOWANCE: usize =
@@ -57,8 +54,9 @@ const MAX_VALUE_HEAP_ALLOWANCE: usize =
 
 /// What one instrument's row may take at most: its key and entry twice over
 /// for the B-tree's slack, its codes spilled to the heap with every value at
-/// the widest heap a value takes, its ticker's heap, and its one RIC slot in
-/// the inverse index with that RIC's heap.
+/// the widest heap a value takes, its ticker's heap, its one RIC slot in
+/// the inverse index with that RIC's heap, and its one ticker slot in the
+/// ticker index with that ticker's heap.
 const ENTRY_CHARGE: usize = 3 * 1024;
 
 const _: () = assert!(
@@ -71,6 +69,9 @@ const _: () = assert!(
             + 2 * align_of::<usize>()
             + 4 * (size_of::<(SmolStr, SmolStr)>() + 1)
             + MAX_VALUE_HEAP_ALLOWANCE
+            + MAX_TICKER_WIDTH
+            + size_of::<(SmolStr, SmallVec<[SmolStr; 1]>)>()
+            + 2 * size_of::<usize>()
 );
 
 /// Every `SecurityIDSource(22)` type but the ISIN, in the code set's order:
@@ -254,7 +255,7 @@ impl IsinEntry {
     /// The row's listing on `code`; `XXXX`, no market, is stored as none.
     #[must_use]
     pub fn with_miccode(mut self, code: Option<Mic>) -> Self {
-        self.miccode = code.filter(|code| code.as_str() != NO_MARKET);
+        self.miccode = code.filter(|code| !code.is_none());
         self
     }
 
@@ -506,11 +507,17 @@ impl Statement<'_> {
 fn folded(row: &IsinEntry, statement: &Statement<'_>, leads: bool) -> Option<IsinEntry> {
     let mut next = Cow::Borrowed(row);
     // A column the row lacks is filled whatever the time; one it holds is
-    // replaced only by a newer statement.
+    // never downgraded and upgraded whatever the time ([`IdType::rank`]),
+    // and between two values of one rank replaced only by a newer
+    // statement.
     let fill = |next: &mut Cow<'_, IsinEntry>, kind: &IdType, value: &str| match row.get(kind) {
         Some(held) if held == value => {}
-        Some(_) if !leads => {}
-        _ => next.to_mut().put_code(kind, value),
+        Some(held) => match kind.rank(value).cmp(&kind.rank(held)) {
+            std::cmp::Ordering::Less => {}
+            std::cmp::Ordering::Equal if !leads => {}
+            _ => next.to_mut().put_code(kind, value),
+        },
+        None => next.to_mut().put_code(kind, value),
     };
     for (kind, value) in statement
         .codes
@@ -579,7 +586,10 @@ fn folded(row: &IsinEntry, statement: &Statement<'_>, leads: bool) -> Option<Isi
 /// A plain value: a clone is a snapshot that shares the table, and a write
 /// copies it only while another clone shares it. Learning and filling are
 /// the ordered lifecycle's, or an explicit [`Self::learn`], [`Self::fill`]
-/// or [`Self::enrich`]; a parse never reaches one.
+/// or [`Self::enrich`]; a parse never reaches one. The key is a real ISIN -
+/// closing under a listed prefix ([`CodeValue::is_real`]) - and a RIC or a
+/// ticker leads back to its row through an exact inverse index, the ticker
+/// gated by the market the listing was stated on.
 ///
 /// ```
 /// use yggdryl::graph::{Event, Market, OrderEvent};
@@ -610,6 +620,9 @@ pub struct IsinRegistry {
     rows: Arc<BTreeMap<SmolStr, IsinEntry>>,
     /// Each row's RIC to its ISIN: the exact inverse of the rows' `ric`.
     rics: Arc<HashMap<SmolStr, SmolStr>>,
+    /// Each ticker to the ISINs of the rows listing it, one per listing,
+    /// in ISIN order: the exact inverse of the rows' `ticker`.
+    tickers: Arc<HashMap<SmolStr, SmallVec<[SmolStr; 1]>>>,
     max_instruments: usize,
     /// Whether learning past the bound was warned of already.
     warned: bool,
@@ -618,6 +631,8 @@ pub struct IsinRegistry {
 /// The table every empty registry shares, so making one allocates nothing.
 static EMPTY_ROWS: LazyLock<Arc<BTreeMap<SmolStr, IsinEntry>>> = LazyLock::new(Arc::default);
 static EMPTY_RICS: LazyLock<Arc<HashMap<SmolStr, SmolStr>>> = LazyLock::new(Arc::default);
+static EMPTY_TICKERS: LazyLock<Arc<HashMap<SmolStr, SmallVec<[SmolStr; 1]>>>> =
+    LazyLock::new(Arc::default);
 
 impl Default for IsinRegistry {
     fn default() -> Self {
@@ -639,6 +654,7 @@ impl IsinRegistry {
         Self {
             rows: Arc::clone(&EMPTY_ROWS),
             rics: Arc::clone(&EMPTY_RICS),
+            tickers: Arc::clone(&EMPTY_TICKERS),
             max_instruments: Self::DEFAULT_MAX_INSTRUMENTS,
             warned: false,
         }
@@ -681,6 +697,51 @@ impl IsinRegistry {
         self.rics.get(ric).and_then(|isin| self.rows.get(isin))
     }
 
+    /// The row the ticker `ticker` names on `market`, through the ticker
+    /// index: the one row listing the ticker whose market is `market`, or
+    /// whose market or `market` - none and `XXXX` unstated - is unstated.
+    /// Two rows answering is ambiguous, and answers none.
+    ///
+    /// ```
+    /// use yggdryl::graph::{Market, OrderEvent};
+    /// use yggdryl::{IdKey, IdType, Identifier, IsinRegistry, Mic};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut stated = OrderEvent::default();
+    /// stated.insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "CH0012214059")?)?;
+    /// stated.set_ticker(Some("HOLN".into()), true);
+    /// stated.set_miccode(Some(Mic::new("XSWX")?), true);
+    /// let mut registry = IsinRegistry::new();
+    /// assert!(registry.learn(&stated));
+    /// let isin = |market: Option<&Mic>| {
+    ///     registry.get_by_ticker("HOLN", market).map(|row| row.isin().as_str())
+    /// };
+    /// assert_eq!(isin(None), Some("CH0012214059"));
+    /// assert_eq!(isin(Some(&Mic::new("XSWX")?)), Some("CH0012214059"));
+    /// assert_eq!(isin(Some(&Mic::new("XLON")?)), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn get_by_ticker(&self, ticker: &str, market: Option<&Mic>) -> Option<&IsinEntry> {
+        let market = market.filter(|code| !code.is_none());
+        let mut found = None;
+        for isin in self.tickers.get(ticker)? {
+            let row = self.rows.get(isin)?;
+            let listed = match (market, &row.miccode) {
+                (Some(stated), Some(held)) => stated == held,
+                _ => true,
+            };
+            if listed {
+                if found.is_some() {
+                    return None;
+                }
+                found = Some(row);
+            }
+        }
+        found
+    }
+
     /// Every row, in ISIN order.
     pub fn iter(&self) -> impl Iterator<Item = &IsinEntry> {
         self.rows.values()
@@ -697,14 +758,15 @@ impl IsinRegistry {
     ///
     /// # Errors
     ///
-    /// A `ZZ` ISIN, which names no country's instrument, and a new ISIN past
-    /// [`Self::max_instruments`].
+    /// An ISIN that is not real ([`CodeValue::is_real`]) - a `ZZ` number,
+    /// which names no country's instrument, a masked one, a typo - and a
+    /// new ISIN past [`Self::max_instruments`].
     pub fn merge(&mut self, entry: IsinEntry) -> Result<bool> {
-        if entry.isin.as_str().starts_with("ZZ") {
+        if !entry.isin.is_real() {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.isin"),
                 reason: format_smolstr!(
-                    "expected an ISIN some country numbers, got {}",
+                    "expected an ISIN some agency numbers, got {}",
                     entry.isin.as_str()
                 ),
             });
@@ -721,6 +783,9 @@ impl IsinRegistry {
         if let Some(ric) = removed.get(&IdType::Ric) {
             Arc::make_mut(&mut self.rics).remove(ric);
         }
+        if let Some(ticker) = removed.ticker() {
+            unlist_ticker(Arc::make_mut(&mut self.tickers), ticker, isin);
+        }
         Some(removed)
     }
 
@@ -728,6 +793,7 @@ impl IsinRegistry {
     pub fn clear(&mut self) {
         self.rows = Arc::clone(&EMPTY_ROWS);
         self.rics = Arc::clone(&EMPTY_RICS);
+        self.tickers = Arc::clone(&EMPTY_TICKERS);
     }
 
     /// Folds one statement into its row, keyed by its ISIN; `older` forces
@@ -794,6 +860,8 @@ impl IsinRegistry {
             }
         }
         let ric = next.get(&IdType::Ric).map(SmolStr::new);
+        let held_ticker = current.and_then(|row| row.ticker.clone());
+        let ticker = next.ticker.clone();
         let isin = SmolStr::new(next.isin.as_str());
         let rows = Arc::make_mut(&mut self.rows);
         if let Some(owner) = &taken
@@ -810,25 +878,37 @@ impl IsinRegistry {
                 rics.remove(held);
             }
             if let Some(ric) = ric {
-                rics.insert(ric, isin);
+                rics.insert(ric, isin.clone());
+            }
+        }
+        // The ticker index follows the row's ticker: one slot per listing.
+        if held_ticker != ticker {
+            let tickers = Arc::make_mut(&mut self.tickers);
+            if let Some(held) = &held_ticker {
+                unlist_ticker(tickers, held, &isin);
+            }
+            if let Some(ticker) = ticker {
+                let listed = tickers.entry(ticker).or_default();
+                if let Err(at) = listed.binary_search(&isin) {
+                    listed.insert(at, isin);
+                }
             }
         }
         Ok(true)
     }
 
     /// Learns what `event` states about its instrument: keyed by its stated
-    /// ISIN - canonical and not `ZZ` - else by its stated RIC through the
-    /// inverse index, which only fills; dated at its `currunix`; reading
-    /// its detailed CFI code, its market but `XXXX`, its ticker and each
-    /// equivalent type its map answers, never one it only derived. A new
-    /// ISIN past [`Self::max_instruments`] is not learned, with one warning.
-    /// Whether anything moved.
+    /// ISIN - a real one, closing under a listed prefix - else by its stated
+    /// RIC through the inverse index, which only fills; dated at its
+    /// `currunix`; reading its detailed CFI code, its market but `XXXX`,
+    /// its ticker and each equivalent type its map answers with a real
+    /// value ([`IdType::is_real`]), never one it only derived, a masked
+    /// number or a typo. A new ISIN past [`Self::max_instruments`] is not
+    /// learned, with one warning. Whether anything moved.
     pub fn learn<E: Market + Event + ?Sized>(&mut self, event: &E) -> bool {
         let ids = event.get_securityids();
         let stated = |kind: &IdType| ids.get(kind).filter(|_| !ids.is_derived(kind));
-        let (isin, older) = match stated(&IdType::Isin)
-            .filter(|isin| Isin::is_canonical(isin) && !isin.starts_with("ZZ"))
-        {
+        let (isin, older) = match stated(&IdType::Isin).filter(|isin| IdType::Isin.is_real(isin)) {
             Some(isin) => (Isin::from_proven(isin), false),
             None => match stated(&IdType::Ric).and_then(|ric| self.rics.get(ric)) {
                 Some(isin) => (Isin::from_proven(isin), true),
@@ -841,15 +921,17 @@ impl IsinRegistry {
             cficode: event
                 .get_cficode()
                 .filter(|code| Cfi::is_detailed(code.as_str())),
-            miccode: event
-                .get_miccode()
-                .filter(|code| code.as_str() != NO_MARKET),
+            miccode: event.get_miccode().filter(|code| !code.is_none()),
             ticker: event
                 .get_ticker()
                 .map(str::trim)
                 .filter(|ticker| (1..=MAX_TICKER_WIDTH).contains(&ticker.len())),
             codes: equivalents()
-                .filter_map(|kind| stated(kind).map(|value| (kind, value)))
+                .filter_map(|kind| {
+                    stated(kind)
+                        .filter(|value| kind.is_real(value))
+                        .map(|value| (kind, value))
+                })
                 .take(Self::MAX_EQUIVALENTS)
                 .collect(),
         };
@@ -874,38 +956,42 @@ impl IsinRegistry {
     }
 
     /// Fills what `element` leaves unsaid about its instrument from the row
-    /// its ISIN - stated or derived - names, else the row its RIC names,
-    /// whose ISIN is derived first: each equivalent of a type it holds none
-    /// of as a derived identifier, the listing codes and the ticker only
-    /// where its market - none and `XXXX` unstated - is the row's or either
-    /// is unstated, and its CFI code where it states none or the row's
-    /// refines it. The element is finalized where anything moved, and
+    /// its real ISIN - stated or derived - names, else the row its RIC names,
+    /// else the row its ticker names on its market ([`Self::get_by_ticker`]),
+    /// whose ISIN is derived first - over none, or over a number ranking
+    /// below it, a masked one or a typo: each equivalent of a type it holds
+    /// none of as a derived identifier, the listing codes and the ticker
+    /// only where its market - none and `XXXX` unstated - is the row's or
+    /// either is unstated, and its CFI code where it states none or the
+    /// row's refines it. The element is finalized where anything moved, and
     /// nothing is built where nothing is filled. Whether anything moved.
     pub fn fill<E: Market + Element + ?Sized>(&self, element: &mut E) -> bool {
         let ids = element.get_securityids();
-        let (row, by_ric) = match ids.get(&IdType::Isin) {
-            Some(isin) => (self.rows.get(isin), false),
-            None => (
-                ids.get(&IdType::Ric).and_then(|ric| self.get_by_ric(ric)),
+        let market = element.get_miccode().filter(|code| !code.is_none());
+        let (row, derived) = match ids.get(&IdType::Isin) {
+            Some(isin) if IdType::Isin.is_real(isin) => (self.rows.get(isin), false),
+            _ => (
+                ids.get(&IdType::Ric)
+                    .and_then(|ric| self.get_by_ric(ric))
+                    .or_else(|| {
+                        element
+                            .get_ticker()
+                            .and_then(|ticker| self.get_by_ticker(ticker, market))
+                    }),
                 true,
             ),
         };
         let Some(row) = row else {
             return false;
         };
-        let mut moved = false;
-        if by_ric {
-            moved |= element.derive_securityid(&IdType::Isin, row.isin.as_str());
-        }
-        let same_market = match (
-            element
-                .get_miccode()
-                .filter(|code| code.as_str() != NO_MARKET),
-            &row.miccode,
-        ) {
+        let same_market = match (market, &row.miccode) {
             (Some(stated), Some(held)) => stated == held,
             _ => true,
         };
+        let mut moved = false;
+        if derived {
+            moved |= element.derive_securityid(&IdType::Isin, row.isin.as_str());
+        }
         for (kind, value) in &row.codes {
             if (kind.is_listing() && !same_market) || element.get_securityids().contains_kind(kind)
             {
@@ -1114,8 +1200,18 @@ impl IsinRegistry {
             None,
             None,
             None,
-            None,
         )
+    }
+}
+
+/// Drops `isin` from the listings of `ticker` in the ticker index, and the
+/// ticker with it once nothing lists it.
+fn unlist_ticker(tickers: &mut HashMap<SmolStr, SmallVec<[SmolStr; 1]>>, ticker: &str, isin: &str) {
+    if let Some(listed) = tickers.get_mut(ticker) {
+        listed.retain(|held| held.as_str() != isin);
+        if listed.is_empty() {
+            tickers.remove(ticker);
+        }
     }
 }
 

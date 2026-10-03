@@ -196,9 +196,9 @@ fn dated_line(
 /// exactly one says so here: what the assertions below are about is that one
 /// message, and a fixture that grew a second would otherwise be read as its
 /// first with nobody noticing. What the parse splits off that message (an
-/// execution, a trade's sided executions, a two-sided quote's sided quotes)
-/// follows it, each naming it as its source, and is not a second message
-/// of the fixture.
+/// execution, a trade's sided executions, a batch's entries) follows it,
+/// each naming it as its source, and is not a second message of the
+/// fixture.
 trait SoleMessage {
     fn sole_line(&self, row: &[u8]) -> yggdryl::Result<yggdryl::FixMsg>;
 }

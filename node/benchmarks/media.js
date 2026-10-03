@@ -11,6 +11,8 @@ const {
   IOBase,
   MimeType,
   RecordOptions,
+  Serie,
+  SerieReader,
   fields,
   iceberg,
 } = require('yggdryl')
@@ -45,8 +47,12 @@ function benchmark(name, operation) {
 }
 
 const rows = smoke ? 64 : 10_000
-const commitRowSize = smoke ? 16 : 1_000
 const writeBatchSize = smoke ? 32 : 1_024
+// A cadence counts whole batches, so the committed paths are fed batches small
+// enough that one publication spans several: 100-row batches, ten to a
+// publication, so 10,000 rows publish ten times.
+const commitBatchRowSize = smoke ? 8 : 100
+const commitBatchNum = smoke ? 2 : 10
 // A plain array of bigints, not a `BigInt64Array`: Apache Arrow JS reads a
 // typed array as a column that cannot be null, and the declared root below says
 // every column can be.
@@ -67,6 +73,11 @@ const table = new arrow.Table({
   venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
 })
 const ipc = arrow.tableToIPC(table)
+const commitBatches = []
+for (let start = 0; start < rows; start += commitBatchRowSize) {
+  commitBatches.push(...table.slice(start, start + commitBatchRowSize).batches)
+}
+const commitIpc = arrow.tableToIPC(new arrow.Table(commitBatches))
 const schema = fields.struct(
   'row',
   [Field.from('id: int64'), Field.from('symbol: utf8'), Field.from('venue: utf8')],
@@ -145,8 +156,8 @@ function committed(handle, intent) {
   let options = handle
     .recordOptions()
     .withField(schema)
-    .withBatchRowSize(writeBatchSize)
-    .withCommitRowSize(commitRowSize)
+    .withBatchRowSize(commitBatchRowSize)
+    .withCommitBatchNum(commitBatchNum)
   if (intent === 'merge') options = options.withMergeBy(['id'])
   return options
 }
@@ -161,17 +172,17 @@ benchmark('records/merge_arrow_reader', () => {
   const handle = stored()
   handle.mergeArrowReader(BatchReader.fromIpc(ipc), keyed(handle))
 })
-benchmark('records/overwrite_arrow_reader_commit_rows', () => {
+benchmark('records/overwrite_arrow_reader_commit_batches', () => {
   const handle = stored()
-  handle.overwriteArrowReader(BatchReader.fromIpc(ipc), committed(handle, 'overwrite'))
+  handle.overwriteArrowReader(BatchReader.fromIpc(commitIpc), committed(handle, 'overwrite'))
 })
-benchmark('records/append_arrow_reader_commit_rows', () => {
+benchmark('records/append_arrow_reader_commit_batches', () => {
   const handle = stored()
-  handle.appendArrowReader(BatchReader.fromIpc(ipc), committed(handle, 'append'))
+  handle.appendArrowReader(BatchReader.fromIpc(commitIpc), committed(handle, 'append'))
 })
-benchmark('records/merge_arrow_reader_commit_rows', () => {
+benchmark('records/merge_arrow_reader_commit_batches', () => {
   const handle = stored()
-  handle.mergeArrowReader(BatchReader.fromIpc(ipc), committed(handle, 'merge'))
+  handle.mergeArrowReader(BatchReader.fromIpc(commitIpc), committed(handle, 'merge'))
 })
 
 benchmark('records/overwrite_arrow_table', () => stored().overwriteArrowTable(table))
@@ -199,15 +210,15 @@ function* recordGenerator() {
 benchmark('records/overwrite_record_generator', () =>
   stored().overwriteRecords(recordGenerator()),
 )
-benchmark('records/overwrite_record_generator_commit_rows', () => {
+benchmark('records/overwrite_record_generator_commit_batches', () => {
   const handle = stored()
   handle.overwriteRecords(recordGenerator(), committed(handle, 'overwrite'))
 })
-benchmark('records/append_record_generator_commit_rows', () => {
+benchmark('records/append_record_generator_commit_batches', () => {
   const handle = stored()
   handle.appendRecords(recordGenerator(), committed(handle, 'append'))
 })
-benchmark('records/merge_record_generator_commit_rows', () => {
+benchmark('records/merge_record_generator_commit_batches', () => {
   const handle = stored()
   handle.mergeRecords(recordGenerator(), committed(handle, 'merge'))
 })
@@ -253,6 +264,24 @@ for (const mode of ['overwrite', 'append', 'merge']) {
     )
   })
 }
+
+// The Serie doors: a held column crosses as the one record batch it is, with
+// no IPC and no copy, a stream as itself; the Arrow JS table is the IPC bridge
+// every other Arrow JS write pays, then the same native door.
+const heldRows = Serie.fromArrowBatch(table, schema)
+benchmark('records/read_serie', () => {
+  for (const batch of memory.readSerie()) batch.length
+})
+for (const mode of ['overwrite', 'append', 'merge']) {
+  benchmark(`records/write_serie/${mode}`, () => {
+    const handle = stored()
+    handle.writeSerie(heldRows, mode, mode === 'merge' ? keyed(handle) : undefined)
+  })
+}
+benchmark('records/overwrite_serie_reader', () =>
+  stored().overwriteSerie(SerieReader.fromSerie(heldRows)),
+)
+benchmark('records/overwrite_serie_arrow_table', () => stored().overwriteSerie(table))
 
 // One commit writes a data file, a manifest, a manifest list, and a metadata
 // document, so an Iceberg append is measured separately from a plain write.
@@ -360,7 +389,7 @@ async function* asyncRecordGenerator() {
 }
 
 async function finish() {
-  await benchmarkAsync('records/overwrite_async_records_commit_rows', async () => {
+  await benchmarkAsync('records/overwrite_async_records_commit_batches', async () => {
     const handle = stored()
     await handle.overwriteRecords(
       asyncRecordGenerator(),

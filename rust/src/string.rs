@@ -644,10 +644,12 @@ pub(crate) mod casts {
                 Err(error) => refused(error.to_string()),
             };
         }
-        // A securities identifier carries its own check, and a column of them
-        // holds the canonical spelling: what a cast lets in is what a read
-        // answers, so the check digit and the case are settled here rather
-        // than on every read of the cell.
+        // A column of securities identifiers holds the canonical spelling -
+        // upper case, the type's shape - which is what `new` admits and
+        // what a read answers; the check digit is a reading (`is_closed`) a
+        // merge ranks by, never the gate, so a masked number lands as the
+        // value it is and the case is settled here rather than on every
+        // read of the cell.
         let canonical = match field.dtype() {
             DataType::Isin => crate::Isin::is_canonical(text),
             DataType::Cusip => crate::Cusip::is_canonical(text),

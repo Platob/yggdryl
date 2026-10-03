@@ -451,6 +451,77 @@ fn partition_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// One partition value of a time transform: the period arithmetic a
+/// partitioned write runs once per distinct grouping key - this crate's own
+/// `minutes[15]`, `week` and `quarter` beside the specification's `day` - over
+/// one microsecond instant. The write plan is the crate's own, so the group
+/// is reached through its internals and runs where that feature is on.
+#[cfg(feature = "internals")]
+fn partition_value_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::iceberg::PartitionField;
+    use yggdryl::internals::iceberg_partition::write_transforms;
+    use yggdryl::{TimeUnit, Timezone};
+
+    let mut schema = StructType::from_fields([DataType::DateTime64 {
+        unit: TimeUnit::Microsecond,
+        timezone: Timezone::NAIVE,
+    }
+    .required_field("ts")])
+    .map(DataType::from)
+    .expect("a valid schema")
+    .required_field("row");
+    assign_field_ids(&mut schema, 1).expect("ids assign");
+    // 2017-11-16T22:31:08, the instant Apache Iceberg's own fixtures use.
+    let instant = Scalar::datetime64(
+        1_510_871_468_000_000,
+        TimeUnit::Microsecond,
+        Timezone::NAIVE,
+    )
+    .expect("a valid instant");
+    let mut group = criterion.benchmark_group("iceberg_partition_value");
+    for (name, transform, expected) in [
+        (
+            "minutes_15",
+            Transform::Minutes(15),
+            Scalar::from(1_678_746),
+        ),
+        ("week", Transform::Week, Scalar::from(2_498)),
+        ("quarter", Transform::Quarter, Scalar::from(191)),
+        ("day", Transform::Day, Scalar::date32(17_486)),
+    ] {
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![PartitionField {
+                source_id: 1,
+                field_id: 1000,
+                name: "ts_period".into(),
+                transform,
+            }],
+        };
+        let partition = spec
+            .partition_field(&schema)
+            .expect("the transform reads ts");
+        let plan = write_transforms(&spec, &schema, &partition)
+            .expect("the plan resolves")
+            .remove(0);
+        // Proven once outside the timer: the period is the one the
+        // partition tests pin.
+        assert_eq!(
+            plan.partition_value(instant.clone())
+                .expect("the period computes"),
+            expected,
+            "{name}"
+        );
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| {
+                plan.partition_value(black_box(instant.clone()))
+                    .expect("the period computes")
+            });
+        });
+    }
+    group.finish();
+}
+
 /// Stable structural hashes over representative immutable Iceberg values.
 fn identity_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("identity");
@@ -802,6 +873,99 @@ fn partitioned_commit_batch(partitions: usize, rows_per_partition: usize) -> Rec
         ],
     )
     .expect("the batch matches the schema")
+}
+
+/// A stream of eight batches interleaving every partition, each batch out
+/// of the table's sort order, written through the record door: one commit
+/// of sorted partition files on one thread against four
+/// (`num_threads`), and the same stream paced to a commit every two
+/// batches.
+fn streamed_commit_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::IOMedia;
+    use yggdryl::media::IORecordOptions;
+
+    let mut group = criterion.benchmark_group("commit");
+    group.sample_size(10);
+    let path = scratch(SCRATCH_LABELS[7]);
+    let schema = plan_schema();
+    // Eight batches of every partition, ids descending within each so the
+    // table's ascending order is never the arrival order.
+    let batches: Vec<RecordBatch> = (0..8_usize)
+        .map(|index| {
+            let rows = COMMIT_PARTITIONS * COMMIT_ROWS_PER_PARTITION / 8;
+            let first = i64::try_from(index * rows).expect("the row fits an id");
+            RecordBatch::try_new(
+                schema
+                    .clone()
+                    .into_arrow_schema()
+                    .expect("the schema projects to Arrow"),
+                vec![
+                    Arc::new(Int64Array::from_iter_values(
+                        (0..rows).map(|row| first + i64::try_from(rows - 1 - row).expect("fits")),
+                    )),
+                    Arc::new(StringArray::from_iter_values(
+                        (0..rows).map(|row| venue(row % COMMIT_PARTITIONS)),
+                    )),
+                ],
+            )
+            .expect("the batch matches the schema")
+        })
+        .collect();
+    let rows: usize = batches.iter().map(RecordBatch::num_rows).sum();
+    group.throughput(Throughput::Elements(rows as u64));
+    let sorted = || {
+        let _ = std::fs::remove_dir_all(&path);
+        Table::create_sorted(
+            LocalFolder::new(&path).expect("the scratch directory is addressable"),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column"),
+            SortOrder {
+                order_id: 1,
+                fields: vec![SortField {
+                    source_id: 1,
+                    transform: Transform::Identity,
+                    direction: "asc".into(),
+                    null_order: "nulls-last".into(),
+                }],
+            },
+        )
+        .expect("the scratch table creates")
+    };
+    for (label, threads, cadence) in [
+        ("num_threads-1/one-commit", 1_usize, None),
+        ("num_threads-4/one-commit", 4, None),
+        ("num_threads-4/commit-every-2-batches", 4, Some(2_usize)),
+    ] {
+        group.bench_function(
+            format!("sorted_stream_{COMMIT_PARTITIONS}/{label}"),
+            |bencher| {
+                bencher.iter_batched(
+                    sorted,
+                    |mut table| {
+                        let mut options = table
+                            .record_options()
+                            .expect("the table's encoding")
+                            .with_num_threads(threads);
+                        options.set_commit_batch_num(cadence);
+                        table
+                            .append_arrow_reader(
+                                yggdryl::arrow::batch_reader(batches[0].schema(), batches.clone()),
+                                &options,
+                            )
+                            .expect("the stream appends");
+                        assert_eq!(
+                            table.metadata().snapshots().len(),
+                            cadence.map_or(1, |every| 8 / every),
+                            "one commit per cadence"
+                        );
+                    },
+                    BatchSize::PerIteration,
+                );
+            },
+        );
+    }
+    group.finish();
 }
 
 /// One partitioned commit on one thread against four: the partition groups
@@ -1652,6 +1816,8 @@ pub(crate) fn benchmarks(criterion: &mut Criterion) {
     metadata_benchmarks(criterion);
     manifest_benchmarks(criterion);
     partition_benchmarks(criterion);
+    #[cfg(feature = "internals")]
+    partition_value_benchmarks(criterion);
     identity_benchmarks(criterion);
     compact_benchmarks(criterion);
     merge_benchmarks(criterion);
@@ -1659,6 +1825,7 @@ pub(crate) fn benchmarks(criterion: &mut Criterion) {
     read_benchmarks(criterion);
     contended_commit_benchmarks(criterion);
     parallel_commit_benchmarks(criterion);
+    streamed_commit_benchmarks(criterion);
     catalog_resolve_benchmarks(criterion);
 }
 

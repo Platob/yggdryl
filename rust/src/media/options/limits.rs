@@ -95,7 +95,7 @@ impl WriteLimitState {
         }
         let mut size = 0_u64;
         if let Some(remaining) = self.remaining_bytes {
-            size = u64::try_from(batch.get_array_memory_size()).unwrap_or(u64::MAX);
+            size = u64::try_from(crate::arrow::memory_size(&batch)).unwrap_or(u64::MAX);
             if size > remaining {
                 let fits = u64::try_from(
                     u128::from(remaining) * u128::from(rows) / u128::from(size.max(1)),

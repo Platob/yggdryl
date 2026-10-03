@@ -3330,10 +3330,32 @@ mod committed {
     /// replaces its type's answer, the base key, in place of being stated
     /// from `base`, leading its type - the dictionary regenerated and the
     /// crate's dump written again. No count of the census below moved.
+    /// It last moved when quotes stopped being sided and their parse stopped
+    /// splitting them by side: the description of `crosscode` (65003) came
+    /// to say a code is stored after the side an order or an execution
+    /// takes, side `0` on every other kind - a quote, whose side is a tag,
+    /// among them: `14:0:Q-1` - and the descriptions of `spotrate` (65026)
+    /// and `forwardpoints` (65027) dropped the sided quote's `BidSpotRate`,
+    /// `OfferSpotRate`, `BidForwardPoints` and `OfferForwardPoints` they no
+    /// longer read, the crate's field shard and the fixed row component
+    /// written again over those three texts. No count of the census below
+    /// moved.
+    /// It last moved when a row came to hold each arrival once: the
+    /// description of `metadata` (65035) came to say it holds what no field
+    /// and no identifier map holds - a key a map holds with its value, a
+    /// bridge's `TECH.CLIENTID`, its `PARENTORDERID`, rides `fixentries`
+    /// under `0:key` as it arrived instead - `securityids` (65020) named the
+    /// keyed aliases a bridge states - `ISINCODE`, `OMS_RICCODE`,
+    /// `SEDOL_CODE` - `identifiers` (65038) and `partyids` (65039) the keys
+    /// no dictionary resolved whose names spell one, each riding
+    /// `fixentries` the same way, and the fixed row's `fixentries` member
+    /// the `0:key` entries it carries: the crate's field shard, the
+    /// `metadata` group and the fixed row component written again over
+    /// those five texts. No count of the census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 9_939_505_428_669_861_230);
+        assert_eq!(registry.stable_hash(), 14_756_162_143_663_868_964);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

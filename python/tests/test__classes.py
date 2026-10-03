@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import dataclasses
 import dataclasses as dc
+import datetime
+import decimal
 import inspect
 import sys
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, ClassVar, Generic, TypeVar, TypedDict
 
@@ -151,6 +154,71 @@ def test_exact_leaves_cross_unchanged_and_other_values_still_cast() -> None:
     # A bool is not an int here, however Python ranks the two.
     with pytest.raises(TypeError, match=r"Tick\.n"):
         yggdryl._classes.from_dict(Tick, {"n": True, "px": 1.0, "venue": None, "ok": True})
+
+
+@scalar(frozen=True)
+class Stamped:
+    on: datetime.date
+    at: datetime.time
+    id: uuid.UUID
+    px: decimal.Decimal
+
+
+def test_a_text_leaf_reads_as_a_column_of_its_type_reads_it() -> None:
+    # A spelling crosses its leaf's own value door - the one reader the core
+    # owns for that type - so a class and a column read one text alike, and
+    # a class refuses, naming the field, what the column refuses.
+    def tick(**cells: object) -> Tick:
+        return yggdryl._classes.from_dict(Tick, {"n": 1, "px": 1.0, "venue": None, "ok": True, **cells})
+
+    for spelling, expected in (
+        ("yes", True),
+        (" Y ", True),
+        ("on", True),
+        ("t", True),
+        ("1", True),
+        ("off", False),
+        ("N", False),
+        ("fals", False),
+        ("0", False),
+    ):
+        assert tick(ok=spelling).ok is expected, spelling
+        assert DataType("boolean").scalar(spelling).as_py() is expected, spelling
+    with pytest.raises(TypeError, match=r"Tick\.ok: expected bool, got str \(.*expected boolean"):
+        tick(ok="maybe")
+    for spelling, number in ((" 7 ", 7), ("+5", 5), ("-12", -12)):
+        assert tick(n=spelling).n == number == DataType("int64").scalar(spelling).as_py()
+    for refused in ("1_000", "7.0", "1e3", "9" * 20):
+        with pytest.raises(TypeError, match=r"Tick\.n: expected int, got str \(.*expected int64"):
+            tick(n=refused)
+    for spelling, real in (("1e3", 1000.0), (" 2.5 ", 2.5), ("-0.25", -0.25)):
+        assert tick(px=spelling).px == real == DataType("float64").scalar(spelling).as_py()
+    with pytest.raises(TypeError, match=r"Tick\.px: expected float, got str \(.*expected float64"):
+        tick(px="1_0")
+
+    stamped = yggdryl._classes.from_dict(
+        Stamped,
+        {
+            "on": "2026-08-15",
+            "at": "10:00:00.5",
+            "id": "12345678123456781234567812345678",
+            "px": "1.5",
+        },
+    )
+    assert stamped == Stamped(
+        datetime.date(2026, 8, 15),
+        datetime.time(10, 0, 0, 500_000),
+        uuid.UUID("12345678-1234-5678-1234-567812345678"),
+        decimal.Decimal("1.5"),
+    )
+    # The decimal is the `decimal` column's value, at its scale.
+    assert stamped.px == DataType("decimal").scalar("1.5").as_py()
+    with pytest.raises(TypeError, match=r"Stamped\.px: .*expected an ISO decimal"):
+        yggdryl._classes.from_dict(Stamped, {**dataclasses.asdict(stamped), "px": "1,250"})
+    with pytest.raises(TypeError, match=r"Stamped\.id: .*expected uuid"):
+        yggdryl._classes.from_dict(Stamped, {**dataclasses.asdict(stamped), "id": "not a uuid"})
+    with pytest.raises(TypeError, match=r"Stamped\.on: .*expected an ISO date"):
+        yggdryl._classes.from_dict(Stamped, {**dataclasses.asdict(stamped), "on": "2026-08-15T00:00"})
 
 
 @scalar(frozen=True, slots=True)

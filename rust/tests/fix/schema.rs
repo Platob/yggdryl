@@ -690,6 +690,118 @@ fn the_row_keeps_unrepresented_content_and_projects_explained_values() {
     assert_eq!(restored.into_row(&schema).unwrap(), row);
 }
 
+/// A key no dictionary resolved whose name spells an identifier the message
+/// holds with its value - a bridge's `OMSINSTRUMENTID`, its dotted
+/// `ULLINK.INSTRUMENTID`, a `#`-kept `#ORDERID`, a `VENUEUSERID` - is
+/// captured: it leaves the row's `metadata` cell, which then holds only what
+/// nothing resolved, and rides `fixentries` under `0:<key>` as it arrived, so
+/// the row read back restates the wire, the message's own metadata, its
+/// tag-zero entries, its digest and its identity. A second value under a
+/// captured key, which the set refused, stays in `metadata` as it arrived.
+#[test]
+fn a_captured_key_leaves_the_metadata_cell_rides_the_residual_and_comes_back() {
+    use yggdryl::graph::Operation;
+
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    // The unmapped keys stand in the order a row rebuilds them - the
+    // captured ones by key, then the metadata's by name - so the
+    // order-sensitive digest coincides beside the name-sorted identity.
+    let message = reader
+        .sole_line(
+            b"8=FIX.4.4|35=D|11=A|##ORDERID=345|OMSINSTRUMENTID=dbi;CH0012214059_XSWX_CHF|\
+              ULLINK.INSTRUMENTID=dbi;CH0012214059_XSWX_CHF|VENUEUSERID=t1|9999=x|\
+              ULLINKINSTRUMENTID=dbi;ZZ|10=0|",
+        )
+        .unwrap();
+    let row = message.into_row(&schema).unwrap();
+    assert_eq!(
+        metadata(&row, &schema),
+        [
+            ("9999".to_owned(), "x".to_owned()),
+            ("ullinkinstrumentid".to_owned(), "dbi;ZZ".to_owned()),
+        ]
+    );
+    let captured: Vec<(String, String)> = residual(&row, &schema)
+        .into_iter()
+        .filter(|(key, _)| key.starts_with("0:"))
+        .collect();
+    assert_eq!(
+        captured,
+        [
+            ("0:#orderid".to_owned(), "345".to_owned()),
+            (
+                "0:omsinstrumentid".to_owned(),
+                "dbi;CH0012214059_XSWX_CHF".to_owned()
+            ),
+            (
+                "0:ullink.instrumentid".to_owned(),
+                "dbi;CH0012214059_XSWX_CHF".to_owned()
+            ),
+            ("0:venueuserid".to_owned(), "t1".to_owned()),
+        ]
+    );
+
+    let restored = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(restored.metadata(), message.metadata());
+    let unmapped = |held: &yggdryl::FixMsg| {
+        held.entries()
+            .iter()
+            .filter(|entry| entry.tag() == 0)
+            .map(|entry| (entry.name().to_owned(), entry.value().map(str::to_owned)))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(unmapped(&restored), unmapped(&message));
+    let tokens = |held: &yggdryl::FixMsg| {
+        let mut tokens: Vec<String> = String::from_utf8(held.into_bytes(b'|'))
+            .unwrap()
+            .split('|')
+            .map(str::to_owned)
+            .collect();
+        tokens.sort();
+        tokens
+    };
+    assert_eq!(tokens(&restored), tokens(&message));
+    assert_eq!(restored.digest(), message.digest());
+    assert_eq!(restored.get_currhashcode(), message.get_currhashcode());
+    assert_eq!(restored.get_curruuid(), message.get_curruuid());
+    assert_eq!(restored.get_securityids(), message.get_securityids());
+    assert_eq!(restored.get_identifiers(), message.get_identifiers());
+    assert_eq!(restored.get_partyids(), message.get_partyids());
+    assert_eq!(restored.anomalies().len(), message.anomalies().len());
+    assert_eq!(restored.into_row(&schema).unwrap(), row);
+
+    // A row with a `metadata` column and no `fixentries` keeps a captured
+    // key in `metadata`: nothing a row holds is lost for want of a column.
+    let narrow = Field::new(
+        "fix",
+        DataType::from(
+            StructType::from_fields(
+                ["msgtype", "clordid", "metadata"]
+                    .map(|name| schema.fields()[schema.index_of(name).expect(name)].clone())
+                    .to_vec(),
+            )
+            .unwrap(),
+        ),
+        false,
+    );
+    let row = message.into_row(&narrow).unwrap();
+    let kept = metadata(&row, &narrow);
+    for key in [
+        "#orderid",
+        "omsinstrumentid",
+        "ullink.instrumentid",
+        "venueuserid",
+        "9999",
+        "ullinkinstrumentid",
+    ] {
+        assert!(
+            kept.iter().any(|(held, _)| held == key),
+            "{key} in {kept:?}"
+        );
+    }
+}
+
 /// An unmapped key stated twice is one metadata key holding the JSON array
 /// of its values in arrival order, and a text opening the way JSON does its
 /// JSON string; the row read back holds both occurrences again.
@@ -755,9 +867,10 @@ fn a_residual_group_is_its_json_and_a_json_looking_scalar_its_string() {
     assert_eq!(restored.into_row(&schema).unwrap(), row);
 }
 
-/// A key the record holds must be a resolved field's `tag:name`: a key no
-/// dictionary resolved lives in `metadata`, and a record naming one is
-/// refused where it is spelled.
+/// A key the record holds is a resolved field's `tag:name`, or a key no
+/// dictionary resolved under tag zero - which the row read back restores as
+/// the tag-zero entry a parse holds it as, whatever its name; a key that is
+/// neither is refused where it is spelled.
 #[test]
 fn a_residual_key_that_is_no_resolved_field_is_refused_by_name() {
     let (registry, reader) = reader();
@@ -768,7 +881,24 @@ fn a_residual_key_that_is_no_resolved_field_is_refused_by_name() {
         .into_row(&schema)
         .unwrap();
     let at = schema.index_of("fixentries").unwrap();
-    for key in ["0:venueownthing", "venueownthing", "x:symbol", "55:"] {
+    let mut cells = row.as_sequence().unwrap().to_vec();
+    cells[at] = Scalar::from_mapping([(Scalar::from("0:venueownthing"), Scalar::from("y"))])
+        .expect("a map");
+    let restored = yggdryl::FixMsg::from_row(
+        Arc::clone(&registry),
+        &schema,
+        &Scalar::from_sequence(cells),
+    )
+    .expect("a tag-zero key is a key no dictionary resolved");
+    assert_eq!(
+        restored
+            .entries()
+            .iter()
+            .find(|entry| entry.tag() == 0)
+            .map(|entry| (entry.name().to_owned(), entry.value().map(str::to_owned))),
+        Some(("venueownthing".to_owned(), Some("y".to_owned())))
+    );
+    for key in ["venueownthing", "x:symbol", "55:", "0:"] {
         let mut cells = row.as_sequence().unwrap().to_vec();
         cells[at] = Scalar::from_mapping([(Scalar::from(key), Scalar::from("y"))]).expect("a map");
         let error = yggdryl::FixMsg::from_row(
@@ -914,10 +1044,11 @@ fn the_identifier_columns_are_sorted_maps_from_the_key_to_the_identifier_row() {
 }
 
 /// A row's identifier map is its own word, so one holding a key that reads
-/// as no key, a value its type refuses, or two values under two spellings of
-/// one key is refused on its column - by `FixMsg::from_row`, and by
-/// `FixCodec::messages`, which excludes the row - never read as the set the
-/// fields alone state.
+/// as no key, a value its type refuses by shape - eleven characters where an
+/// ISIN is twelve; a check digit that does not close is a value of rank 0,
+/// not a refusal - or two values under two spellings of one key is refused
+/// on its column - by `FixMsg::from_row`, and by `FixCodec::messages`, which
+/// excludes the row - never read as the set the fields alone state.
 #[test]
 fn an_identifier_column_holding_what_no_map_holds_is_refused_on_its_column() {
     let (registry, codec) = reader();
@@ -930,9 +1061,9 @@ fn an_identifier_column_holding_what_no_map_holds_is_refused_on_its_column() {
     for (name, entries, key, reason) in [
         (
             "securityids",
-            &[("isin", "US0378331006")][..],
+            &[("isin", "US037833100")][..],
             "isin",
-            "US0378331006",
+            "expected twelve characters",
         ),
         (
             "identifiers",

@@ -11,14 +11,14 @@
 | Reading a key | `"text".parse::<IdKey>()` reads exactly: `src:type` is that source and that type, each folded, and a bare word is that type from the base source - `ISIN`, `ISIN_Number`, `base:isin`, `BASE:ISIN` and `fix:isin` are all `isin`, `marketorderid` is the type `marketorderid`. An empty half (`fix:`, `:isin`), a second `:` and a word no fold reads are refused, `expected an identifier key src:type or type`. Nothing is inferred: an inferred reading is [`Identifier::from_key`](#reading-a-name)'s |
 | Words | a source and a type are trimmed and lower-cased, the `_`, `-`, space and `#` a spelling breaks them with dropped - `Executing Trader` and `executing_trader` are `executingtrader` - ASCII letters, digits and `.` only, at most 64 bytes (`IDENTIFIER_WORD_WIDTH`); anything else is refused. A value is never folded to lower case - an ISIN is still `US0378331005` |
 | Members | a word the crate names is a member of the enum - `IdType::Isin`, `IdType::ClOrdId`, `IdSource::Proprietary` - held statically, and every other word is `Other(IdWord)`; `"text".parse::<IdType>()` folds and reads the member a spelling or an alias names (`isinnumber` and `isincode` are `isin`), `as_str()` is the folded word, `is_known()` tells a member from an `Other`, and a word equals a `&str`: `id.kind() == "isin"` |
-| Value | trimmed text that states something, at most 64 bytes (`IDENTIFIER_VALUE_WIDTH`): empty or null-like (`null`, `none`, `n/a`) is no identifier and is refused; then [checked by its type](#per-type-value-checks) |
+| Value | trimmed text that states something, at most 64 bytes (`IDENTIFIER_VALUE_WIDTH`): empty or null-like (`null`, `none`, `n/a`) is no identifier and is refused; then [checked by its type](#per-type-value-checks) - the shape of a code, never whether its check digit closes, which is its [rank](#ranks) |
 | Named sources | `base` (`IdSource::Base`) where nothing names the source - what a FIX field or group states, the standard being the base, so the word `fix` reads as `base` and is never written; `derived` (`IdSource::Derived`) where the crate derived the value rather than read it - the CUSIP, SEDOL, WKN or Valor an ISIN embeds, what a ticker's shape names, a currency pair detected off a symbol, a code an [`IsinRegistry`](isin-registry.md) filled; any other source is the one a message names - a bridge namespace (`oms`, `ullink`), a `PartyIDSource(447)` (`proprietary`) or an `AcctIDSource(660)` (`bic`) |
 | Display | `key=value` - `isin=US0378331005`, `ullink:isin=US0378331005`; a map `[a=b, ...]` in key order |
 | Order, equality | by the key as it is spelled, then by value, so `a.b:c` sorts before `a:z`, which a (source, type) pair would not; equality and hash read the key and the value |
-| `Identifier::new(key, value)` | takes an `IdKey` and validates the value by its type - there is no second constructor for a security; `with_kind(kind)` is the same value under another type of the same source - a parent's own type, a type's parent |
+| `Identifier::new(key, value)` | takes an `IdKey` and checks the value's shape by its type - there is no second constructor for a security; `with_kind(kind)` is the same value under another type of the same source - a parent's own type, a type's parent |
 | `Identifier::from_key(name, value)` | the identifier a name no key spells names, inferred ([Reading a name](#reading-a-name)): an explicit `src:type`, a whole security name, or the identifier name the name ends with under the source before it; `None` / `null` where the name names none, the value states nothing or the type refuses it |
 | Readers | `key`, `src`, `kind` (the property `type` in Python and JavaScript), `value` |
-| `Identifiers` | a sorted map from a key to its value, held as one vector in key order - an empty map holds no backing - kept by [the base rule](#the-base-key): `insert` fills an absent key, `set` replaces, `remove(key)`, `merge(other, later)`, `clear`, `len`, `is_empty`, `iter`, `as_slice`; `carry`, `follow_parents` and `fill_parents` move identifiers along a chain ([Parentage](#parentage)); built from an iterator through `insert`, the first of a key stands |
+| `Identifiers` | a sorted map from a key to its value, held as one vector in key order - an empty map holds no backing - kept by [the base rule](#the-base-key) and [the rank](#ranks): `insert` fills an absent key or one holding a lower-ranked value, `set` replaces, `remove(key)`, `merge(other, later)`, `clear`, `len`, `is_empty`, `iter`, `as_slice`; `carry`, `follow_parents` and `fill_parents` move identifiers along a chain ([Parentage](#parentage)); built from an iterator through `insert`, the first of a key and rank standing |
 | Lookups | `get(kind)` the value of `kind`'s base key - the type's answer, one binary search; `get_from(key)` the value under exactly that key; `contains_kind(kind)` whether anything of the type is held; `of_kind(kind)` every key of the type, the base key included; `is_derived(kind)` whether the base key holds only a derivation |
 | Bindings | Python `Identifier(key, value)`, `Identifier.from_key`, the readers as properties `key`, `src`, `type`, `value`; `Identifiers(ids=[])`, `Identifiers.from_dict(d)`, `into_dict()`, `get(type)`, `get_from(key)`, `contains_kind(type)`, `of_kind(type)`, `is_derived(type)`, iteration, `len`, `str`, equality, hash and pickle. JavaScript `new Identifier(key, value)`, `Identifier.fromKey`, getters `key`, `src`, `type`, `value`, `equals`, `compare`, `toString`; `new Identifiers(ids?)`, `Identifiers.fromObject(o)`, `intoObject()`, `get`, `getFrom(key)`, `containsKind`, `ofKind`, `isDerived`, `toArray`, `length`, `equals`, `toString`. A leaf takes an `Identifiers`, a `dict` / `Map` of key text to value, or a list of `Identifier` for `securityids`, `identifiers` and `partyids`, and answers an `Identifiers`; `IdKey`, the map verbs and the vocabulary enums are Rust-only |
 
@@ -33,7 +33,9 @@
     let isin = Identifier::new(IdKey::base(IdType::Isin), " us0378331005 ")?;
     assert_eq!(isin.to_string(), "isin=US0378331005");
     assert_eq!(isin.key(), "isin");
-    assert!(Identifier::new(IdKey::base(IdType::Isin), "US0378331006").is_err(), "a check digit that does not close");
+    // A check digit that does not close is a rank, not a refusal; the shape is.
+    assert_eq!(IdType::Isin.rank("US0378331006"), 1);
+    assert!(Identifier::new(IdKey::base(IdType::Isin), "US037833100").is_err(), "eleven characters");
 
     // A key's text reads exactly; words fold, a value is trimmed and states something.
     let trader = Identifier::new("Proprietary:Executing Trader".parse()?, " T-1 ")?;
@@ -74,8 +76,10 @@
     # A key is a source and a type; the base source's is the type alone.
     isin = Identifier("isin", " us0378331005 ")
     assert str(isin) == "isin=US0378331005" and isin.key == "isin"
+    # A check digit that does not close is a rank, not a refusal; the shape is.
+    assert Identifier("isin", "US0378331006").value == "US0378331006"
     with pytest.raises(ValueError):
-        Identifier("isin", "US0378331006")
+        Identifier("isin", "US037833100")
 
     # A key's text reads exactly; words fold, a value is trimmed and states something.
     trader = Identifier("Proprietary:Executing Trader", " T-1 ")
@@ -113,7 +117,9 @@
     const isin = new Identifier('isin', ' us0378331005 ')
     assert.equal(isin.toString(), 'isin=US0378331005')
     assert.equal(isin.key, 'isin')
-    assert.throws(() => new Identifier('isin', 'US0378331006'))
+    // A check digit that does not close is a rank, not a refusal; the shape is.
+    assert.equal(new Identifier('isin', 'US0378331006').value, 'US0378331006')
+    assert.throws(() => new Identifier('isin', 'US037833100'))
 
     // A key's text reads exactly; words fold, a value is trimmed and states something.
     const trader = new Identifier('Proprietary:Executing Trader', ' T-1 ')
@@ -146,14 +152,14 @@ Every type a map holds has its base key, and its value is the type's answer: `ge
 
 | A statement | What moves |
 | --- | --- |
-| a named source states a type | the base key is filled where it is empty: `ullink:isin=X` alone is also `isin=X` |
-| anything but a derivation states a type | the derivation of it, `derived:T`, is taken back first, and the base key it filled leaves with it |
-| a derivation, `derived:T` | it lands only where nothing of its type is held, and fills the base key; replaced or removed, the base key follows it while that is all the base key holds |
-| the base key itself | it moves only through its own key: `insert` fills it, `set` replaces it, and `remove(&IdKey::base(T))` removes every key of the type |
-| `merge(other, later)` | a union by key: where both hold a key with two values, `other`'s when `later`, else this map's; a derivation of `other`'s lands only where this map holds nothing of its type |
-| a map read back - `from_scalar`, `from_dict`, `fromObject`, an Arrow row | its entries are read as they are, then closed: a type with no base key takes its first named source's value in key order, else its derivation's; a map the crate wrote comes back unchanged |
+| a named source states a type | the base key is filled where it is empty or [ranks](#ranks) below: `ullink:isin=X` alone is also `isin=X` |
+| anything but a derivation states a type | the derivation of it, `derived:T`, is taken back where it does not outrank the statement, the base key it filled leaving with it; one that outranks it stands - a named statement landing under its own key as evidence, a base one nowhere |
+| a derivation, `derived:T` | it lands only where nothing of its type is held or the base key ranks below it, and fills the base key; replaced or removed, the base key follows it while that is all the base key holds |
+| the base key itself | it moves only through its own key: `insert` fills it or replaces what ranks below, `set` replaces it, and `remove(&IdKey::base(T))` removes every key of the type |
+| `merge(other, later)` | a union by key: where both hold a key with two values, the higher-ranked, and of one rank `other`'s when `later`, else this map's - a later placeholder never replaces a real value; a derivation of `other`'s lands only where this map holds nothing of its type or a base key ranking below it |
+| a map read back - `from_scalar`, `from_dict`, `fromObject`, an Arrow row | its entries are read as they are, then closed: a type with no base key takes its highest-ranked named source's value, the first in key order among equals, unless its derivation outranks them all, else its derivation's; a map the crate wrote comes back unchanged |
 
-Replacing or removing a named source leaves the base key as it was. The wire states base keys, so a bridge restating the wire's code under its own name (`ullink:isin` beside `isin`) is the common case, and following it would let replacing or removing the bridge's copy overwrite or erase the wire's code; `remove(&IdKey::base(T))` is how a caller drops a type.
+Replacing or removing a named source of one rank leaves the base key as it was. The wire states base keys, so a bridge restating the wire's code under its own name (`ullink:isin` beside `isin`) is the common case, and following it would let replacing or removing the bridge's copy overwrite or erase the wire's code; `remove(&IdKey::base(T))` is how a caller drops a type.
 
 === "Rust"
 
@@ -221,6 +227,76 @@ Replacing or removing a named source leaves the base key as it was. The wire sta
     assert.equal(Identifiers.fromObject({ 'oms:isin': 'CH0012214059', 'ullink:isin': 'US0378331005' }).get('isin'), 'CH0012214059')
     ```
 
+## Ranks
+
+A value's rank is how real it is as a value of its type: `IdType::rank(value)` answers from zero to `IdType::max_rank()`, and `IdType::is_real(value)` whether it reaches it. A registered [code](../types/codes/index.md#rank) ranks by its own `CodeValue::rank` - an ISIN two where its check digit closes under a listed prefix, one for a typo under a listed prefix or a closing `ZZ` number, zero for a masked number such as `XX0000000001` or the number that states none, `XX0000000000`; a CUSIP, a SEDOL or a FIGI one where its check digit closes; a CFI code two where detailed and one where it only classifies; an ISO country one where ISO 3166 lists it; an ISO currency zero for `XXX` alone - and every other type one for any value it holds; a value the type refuses is zero. A lower-case spelling ranks as the upper-case one it folds to, and nothing allocates.
+
+| Where | Rule |
+| --- | --- |
+| `insert` | a value lands where nothing is held under its key, or where what is held ranks below it, whatever the order the two were stated in: a real number replaces a masked one or a typo, never the other way; two values of one rank keep the first |
+| A derivation | lands only where nothing of its type is held or the base key ranks below it - a registry's real number over a masked one - and a statement takes it back only where it does not outrank the statement |
+| `merge` | the higher-ranked value wins where two meet under one key; of one rank, `other`'s when `later` |
+| `carry`, a read map's close | fill only what is not held - a key the follower lacks, a type's missing base key - choosing among candidates by the same rank |
+| `set` | the explicit statement: replaces whatever rank is held |
+
+So a real value replaces a placeholder wherever the two meet - a lifecycle, a merge of two statements, a registry fill, a FIX message's fields read in order - and a later placeholder never takes it back.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{IdKey, IdType, Identifier, Identifiers};
+
+    let isin = |value: &str| Identifier::new(IdKey::base(IdType::Isin), value);
+    assert_eq!((IdType::Isin.rank("US0378331005"), IdType::Isin.max_rank()), (2, 2));
+    assert_eq!(IdType::Isin.rank("US0378331006"), 1, "a typo under a listed prefix");
+    assert!(!IdType::Isin.is_real("XX0000000001"), "a masked number");
+
+    let mut ids = Identifiers::new();
+    assert!(ids.insert(isin("XX0000000001")?));
+    assert!(ids.insert(isin("US0378331005")?), "a real number replaces a masked one");
+    assert!(!ids.insert(isin("XX0000000001")?), "and is never replaced by it");
+    assert!(!ids.insert(isin("US5949181045")?), "two real numbers keep the first");
+    assert_eq!(ids.get(&IdType::Isin), Some("US0378331005"));
+
+    // A later placeholder never replaces a real value, whatever leads.
+    let masked: Identifiers = [isin("XX0000000001")?].into_iter().collect();
+    assert!(!ids.merge(&masked, true));
+    let mut placeholder = masked.clone();
+    assert!(placeholder.merge(&ids, false));
+    assert_eq!(placeholder.get(&IdType::Isin), Some("US0378331005"));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Identifier, Identifiers
+
+    # A real number replaces a masked one whichever comes first, and two real
+    # numbers keep the first.
+    ids = Identifiers([Identifier("isin", "XX0000000001"), Identifier("isin", "US0378331005")])
+    assert ids.get("isin") == "US0378331005"
+    ids = Identifiers([Identifier("isin", "US0378331005"), Identifier("isin", "XX0000000001")])
+    assert ids.get("isin") == "US0378331005"
+    ids = Identifiers([Identifier("isin", "US0378331005"), Identifier("isin", "US5949181045")])
+    assert ids.get("isin") == "US0378331005"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Identifier, Identifiers } = require('yggdryl')
+
+    // A real number replaces a masked one whichever comes first, and two real
+    // numbers keep the first.
+    const ids = (...values) => new Identifiers(values.map((value) => new Identifier('isin', value)))
+    assert.equal(ids('XX0000000001', 'US0378331005').get('isin'), 'US0378331005')
+    assert.equal(ids('US0378331005', 'XX0000000001').get('isin'), 'US0378331005')
+    assert.equal(ids('US0378331005', 'US5949181045').get('isin'), 'US0378331005')
+    ```
+
+`rank`, `max_rank` and `is_real` are Rust-only.
+
 ## Reading a name
 
 `Identifier::from_key` infers the identifier a name no key spells names, which is how a bridge's own spelling - `OMS_InstrumentID`, `firm.x.ParentOrderID` - becomes one ([where a FIX message reads them](#where-identifiers-come-from)); a key's own text is read exactly by `IdKey` ([Contract](#contract)). It tries three readings in order and takes the first that answers:
@@ -229,7 +305,7 @@ Replacing or removing a named source leaves the base key as it was. The wire sta
 | --- | --- |
 | Explicit | `src:type`, each half read as a word folds: `oms:clordid`, `firm.x:house code`, `fix:clordid` the base key `clordid` |
 | A whole security name | a key a security type is spelled by - `ISINCode`, `security_cusip`, `#ISINCODE`, a leading `#` dropped - is that type from the base source ([`IdType::from_field_name`](#vocabularies)) |
-| The name it ends with | the key folds - lower case, no `_`, `-`, space or `#` - and the longest identifier name it ends with is the type: a type the crate names whose spelling ends with `id`, or `account`, `isin`, `cusip`, `sedol`, `figi`. A parentage word spelled right before it - `parent`, `orig`, `origin`, `original` - stays in the type. The source is the rest of the folded key with its `.` trimmed at both ends and kept inside, the base source where nothing is left or where it folds to a source the crate reserves - `base`, `fix`, `derived` - which names no namespace: `Derived_ISIN` and `FIX.ISIN` are `isin`, so a namespace spelled before the name never files a code under `derived`, while an explicit `src:type` keeps the source it spells, `derived:isin` included; the source and the type are each a word of at most 64 bytes, never the key they spell together |
+| The name it ends with | the key folds - lower case, no `_`, `-`, space or `#` - and the longest identifier name it ends with is the type: a spelling the crate reads a type by, an [alias](#vocabularies) included, that ends with `id`; `account`, `isin`, `cusip`, `sedol`, `figi`; or a security type's spelling ending with `code`, `symbol`, `number` or `ticker` - `riccode`, `isincode`, `bbgsymbol`, `bloombergticker` - so a bridge's `OMS_RICCODE` names its `ric`. A bare `ric` or `cfi` ends no key - `GENERIC` names nothing - and `ticker` alone is no type's spelling. A parentage word spelled right before it - `parent`, `orig`, `origin`, `original` - stays in the type. The source is the rest of the folded key with its `.` trimmed at both ends and kept inside, the base source where nothing is left or where it folds to a source the crate reserves - `base`, `fix`, `derived` - which names no namespace: `Derived_ISIN` and `FIX.ISIN` are `isin`, so a namespace spelled before the name never files a code under `derived`, while an explicit `src:type` keeps the source it spells, `derived:isin` included; the source and the type are each a word of at most 64 bytes, never the key they spell together |
 
 A security type is refused where another instrument's word - `leg`, `underlying`, `contra`, `related`, `benchmark` - opens the key or ends what the folded key spells before the type, after any namespace, since it names that instrument's code: `UnderlyingISIN`, `OMS_UnderlyingISIN`, `FIX.LegISIN` and `firm.x.ContraCUSIP` name no security identifier. An operation identifier a leg or a counterparty states (`contraorderid`) is the element's own. A key ending with no identifier name - `transversalkey`, `ticker`, `symbol` - names none.
 
@@ -242,9 +318,10 @@ A security type is refused where another instrument's word - `leg`, `underlying`
 | `marketorderid` | `market:orderid` |
 | `OrderID` | `orderid` |
 | `ISINCode` | `isin` |
+| `OMS_RICCODE`, `ULLINK.ISINCODE`, `OMS_BloombergTicker` | `oms:ric`, `ullink:isin`, `oms:bloomberg` |
 | `Derived_ISIN`, `FIX.ISIN` | `isin` |
 | `fix:clordid` | `clordid` |
-| `underlyingisin`, `OMS_UnderlyingISIN`, `FIX.LegISIN`, `transversalkey` | none |
+| `underlyingisin`, `OMS_UnderlyingISIN`, `FIX.LegISIN`, `transversalkey`, `OMS_RIC`, `TICKERCODE` | none |
 
 === "Rust"
 
@@ -262,10 +339,12 @@ A security type is refused where another instrument's word - `leg`, `underlying`
     // A whole security name is that type from the base source; another instrument's is none.
     assert_eq!(read("ISINCode", "US0378331005").as_deref(), Some("isin=US0378331005"));
     assert_eq!(read("underlyingisin", "US0378331005"), None);
+    // A security type's code spelling names it at the end of a key.
+    assert_eq!(read("OMS_RICCODE", "AAPL.O").as_deref(), Some("oms:ric=AAPL.O"));
     // A key naming no identifier, a value stating nothing and a value its type refuses are none.
     assert_eq!(read("transversalkey", "K-1"), None);
     assert_eq!(read("OrderID", "n/a"), None);
-    assert_eq!(read("ISINCode", "US0378331006"), None);
+    assert_eq!(read("ISINCode", "US037833100"), None);
     ```
 
 === "Python"
@@ -289,10 +368,12 @@ A security type is refused where another instrument's word - `leg`, `underlying`
     # A whole security name is that type from the base source; another instrument's is none.
     assert read("ISINCode", "US0378331005") == "isin=US0378331005"
     assert read("underlyingisin", "US0378331005") is None
+    # A security type's code spelling names it at the end of a key.
+    assert read("OMS_RICCODE", "AAPL.O") == "oms:ric=AAPL.O"
     # A key naming no identifier, a value stating nothing and a value its type refuses are none.
     assert read("transversalkey", "K-1") is None
     assert read("OrderID", "n/a") is None
-    assert read("ISINCode", "US0378331006") is None
+    assert read("ISINCode", "US037833100") is None
     ```
 
 === "JavaScript"
@@ -313,10 +394,12 @@ A security type is refused where another instrument's word - `leg`, `underlying`
     // A whole security name is that type from the base source; another instrument's is none.
     assert.equal(read('ISINCode', 'US0378331005'), 'isin=US0378331005')
     assert.equal(read('underlyingisin', 'US0378331005'), null)
+    // A security type's code spelling names it at the end of a key.
+    assert.equal(read('OMS_RICCODE', 'AAPL.O'), 'oms:ric=AAPL.O')
     // A key naming no identifier, a value stating nothing and a value its type refuses are none.
     assert.equal(read('transversalkey', 'K-1'), null)
     assert.equal(read('OrderID', 'n/a'), null)
-    assert.equal(read('ISINCode', 'US0378331006'), null)
+    assert.equal(read('ISINCode', 'US037833100'), null)
     ```
 
 ## Vocabularies
@@ -335,6 +418,28 @@ A security type is refused where another instrument's word - `leg`, `underlying`
 | --- | --- |
 | Where the name came from | `base` nothing names it - a FIX field or group, the standard's own word `fix` reading as it; `derived` the crate derived it |
 | `PartyIDSource(447)` and `AcctIDSource(660)` | `bic`, `generalidentifier`, `proprietary`, `isocountrycode`, `settlemententitylocation`, `mic`, `csdparticipant`, `taxid`, `legalentityidentifier`, `shortcodeidentifier`, `nationalidnaturalperson`, `sidcode`, `tfm`, `omgeo`, `dtcccode`, `spsaid` |
+
+A security type also reads by the spellings a bridge writes its code under, each folded first - `BBG_Code`, `Bloomberg Ticker` and `ISIN_ID` are `bbgcode`, `bloombergticker` and `isinid`:
+
+| Type | Also read as |
+| --- | --- |
+| `isin` | `isinnumber`, `isincode`, `isinid` |
+| `cusip` | `cusipcode`, `cusipnumber`, `cusipid` |
+| `sedol` | `sedolcode`, `sedolnumber`, `sedolid` |
+| `ric` | `riccode`, `ricsymbol`, `reuterscode`, `reuterssymbol`, `reuters` |
+| `bloomberg` | `bbgsymb`, `bloombergsymbol`, `bloombergcode`, `bbg`, `bbgcode`, `bbgsymbol`, `bloombergid`, `bloombergticker` |
+| `figi` | `financialinstrumentglobalidentifier`, `figicode`, `figiid`, `openfigi` |
+| `wkn` | `wertpapier`, `wkncode`, `wknnumber` |
+| `valor` | `valoren`, `valorcode`, `valornumber`, `valorid` |
+| `exchsymb` | `exchangesymbol`, `exchsymbol` |
+| `cta` | `consolidatedtapeassociation`, `ctasymbol`, `consolidatedtapeassociationsymbol` |
+| `isoccy`, `isoctry` | `isocurrencycode`, `isocountrycode` |
+| `common` | `commoncode` |
+| `forex` | `forexcode`, `ccypair`, `currencypair` |
+| `cfi` | `cficode` |
+| `instrumentid` | `instrumentcode` |
+
+Every one ending with `id`, `code`, `symbol`, `number` or `ticker` also names its type at the end of a longer key - `OMS_RICCODE` is `oms:ric` ([Reading a name](#reading-a-name)) - which is how a FIX message captures a bridge's own security keys ([Where identifiers come from](#where-identifiers-come-from)).
 
 Any other source or type is held as a word - `venue`, `firm.x`, `oms`, `housecode` - and works everywhere a member does, but no check runs beyond the generic one.
 
@@ -379,18 +484,18 @@ Two predicates sort a type into the set it belongs to: `IdType::is_security()` i
 
 ## Per-type value checks
 
-A value is held as its type stores it, and a value its type refuses is no identifier.
+A value is held as its type stores it, and a value its type refuses is no identifier. A code is checked for its shape alone; how real it is - a check digit that closes, a listed prefix or country - is its [rank](#ranks), never a refusal.
 
 | Type | Stored as |
 | --- | --- |
-| `isin`, `cusip`, `sedol`, `figi` | upper-cased, and the code must close on its own check digit - twelve, nine, seven and twelve bytes |
-| `cfi` | upper-cased, a six-letter classification that parses |
+| `isin`, `cusip`, `sedol`, `figi` | upper-cased, of the code's shape - twelve, nine, seven and twelve bytes, the check digit in its place - whether that digit closes the code being its rank |
+| `cfi` | upper-cased, six letters; how much it classifies is its rank |
 | `ric` | one token of printable ASCII, its case kept, at most 32 bytes |
 | `bloomberg` | printable ASCII, at most 32 bytes |
 | `wkn` | six of `[0-9A-HJ-NP-Z]`, upper-cased |
 | `valor` | one to nine digits without a leading zero |
 | `forex` | one canonical pair - `eurusd` is `EUR/USD`; `EUR/EUR` is refused |
-| `isoccy`, `isoctry` | upper-cased, a currency ISO 4217 names or a country ISO 3166 names |
+| `isoccy`, `isoctry` | upper-cased, of a currency's or a country's width; a country ISO 3166 lists ranks above one it does not, and the currency `XXX` below every other |
 | every other security type FIX names - an FpML product URL, an index name among them | printable ASCII, at most 64 bytes |
 | every other type | any text, at most 64 bytes |
 
@@ -587,8 +692,8 @@ An element that states where it came from but not what it is now is what it came
 | Holder | Rule |
 | --- | --- |
 | A graph leaf | what a caller states: the `insert_`/`set_`/`remove_` verbs of [`Market`](market.md#security-identifiers) (`insert_securityid`), [`Operation`](operation.md#identifiers) (`insert_identifier`) and [party ids](operation.md#party-identifiers) (`insert_partyid`), or the `securityids`, `identifiers` and `partyids` facts a binding builds a leaf from; finalizing derives the national code a stated ISIN embeds, from `derived`, and fills a type from its parents ([Parentage](#parentage)); an [`IsinRegistry`](isin-registry.md) fills what a lifecycle learned, from `derived` |
-| A FIX message | logical facts read off its fields at every settle, the wire kept as sent and never written back ([FIX](../fix/message.md#the-identifier-maps)): an identifier its field's `FIX:idmap` entry names is the base key of its type (`clordid`, `orderid`), a regulatory trade identifier by its `RegulatoryTradeIDType(1906)` too; a security identifier is `SecurityID(48)` under its `SecurityIDSource(22)`'s type - a `{NAMESPACE}INSTRUMENTID` source an `instrumentid` from that namespace - each `SecAltIDGrp(454)` occurrence, and the codes an ISIN embeds from `derived`. The first value stated under a key fills it, in reading order - the fields, the groups, then the unmapped entries - and a later different value under the same key is dropped as a `dropped_identifier` anomaly, staying on the wire and in the metadata; a caller's write is the message's word and moves no field |
-| A FIX entry no dictionary maps | each `metadata` key and each top-level untagged scalar of the message, and the keys its message type declares under `FIX:identifiers`, is read as [`Identifier::from_key`](#reading-a-name) reads a name: a security type is a `securityids` identifier (a value its type refuses is an anomaly), a party type a `partyids` one, any other type an `identifiers` one (a value either type refuses is no identifier and no anomaly) - `OMS_InstrumentID` is `oms:instrumentid` in `securityids`, `OMS_UserID` `oms:userid` in `partyids`, `firm.x.ParentOrderID` `firm.x:parentorderid` in `identifiers`, each filling its type's base key where nothing states it, and a whole security name such as `#ISINCODE` the base key itself; the entry stays in the metadata and on the wire as it arrived |
+| A FIX message | logical facts read off its fields at every settle, the wire kept as sent and never written back ([FIX](../fix/message.md#the-identifier-maps)): an identifier its field's `FIX:idmap` entry names is the base key of its type (`clordid`, `orderid`), a regulatory trade identifier by its `RegulatoryTradeIDType(1906)` too; a security identifier is `SecurityID(48)` under its `SecurityIDSource(22)`'s type - a `{NAMESPACE}INSTRUMENTID` source an `instrumentid` from that namespace - each `SecAltIDGrp(454)` occurrence, and the codes an ISIN embeds from `derived`. The first value stated under a key fills it, in reading order - the fields, the groups, then the unmapped entries - a later value that [outranks](#ranks) it replaces it, recorded as an anomaly naming what it replaced, and a later different value of no higher rank is dropped as a `dropped_identifier` anomaly, staying on the wire; a caller's write is the message's word and moves no field |
+| A FIX entry no dictionary maps | each `metadata` key and each top-level untagged scalar of the message, and the keys its message type declares under `FIX:identifiers`, is read as [`Identifier::from_key`](#reading-a-name) reads a name: a security type is a `securityids` identifier (a value its type refuses is an anomaly), a party type a `partyids` one, any other type an `identifiers` one (a value either type refuses is no identifier and no anomaly) - `OMS_InstrumentID` is `oms:instrumentid` in `securityids`, `OMS_RICCODE` `oms:ric` and `ULLINK.ISINCODE` `ullink:isin` there too - every key whose folded name ends with a security type's spelling - `OMS_UserID` `oms:userid` in `partyids`, `firm.x.ParentOrderID` `firm.x:parentorderid` in `identifiers`, each filling its type's base key where nothing states it, and a whole security name such as `#ISINCODE` the base key itself. A captured entry leaves the fixed row's `metadata` cell and rides `fixentries` under `0:<key>`, the key as it arrived; it stays on the wire as it arrived |
 | A FIX party | each `Parties(453)` or `RootParties(1116)` occurrence: its `PartyID(448)` typed by its `PartyRole(452)` code's name folded (`ExecutingFirm` is `executingfirm`, a code the set names nothing for `partyrole{code}`, no role `party`), from its `PartyIDSource(447)` code's name folded (`D` is `proprietary`, `C` `generalidentifier`; a spelling the set resolves nothing for is its own spelling where it is a word, `MyVenue` `myvenue`, and a bare code the set names nothing for - one character, or digits - `partyidsource{code}`, `W` `partyidsourcew`; none the base source), so `proprietary:executingtrader` also fills `executingtrader`; `Account(1)` is a party typed `account` from its `AcctIDSource(660)` code's name, by the same rule (`1` is `bic`, a code the set names nothing for `acctidsource{code}`). A second party of one role and source stays on the wire, no anomaly |
 | A leaf a FIX message becomes | the message's sets, a book entry's or a trade side's own party ids leading, plus each unmapped scalar whose key names an identifier - a dictionary-tagged child only by the identifiers its message's type declares (`RefOrderID(1080)`'s `reforderid`), an untagged key by the crate's identifier names too - typed by `Identifier::from_key` and lifted into the set its type belongs to where that set holds its key free or with the same value; otherwise it stays in the leaf's metadata ([What a leaf's metadata holds](../fix/message.md#what-a-leafs-metadata-holds)) |
 
@@ -671,7 +776,7 @@ An element that states where it came from but not what it is now is what it came
 - A key's text is read exactly, a name is inferred: `"marketorderid".parse::<IdKey>()` is the base type `marketorderid`, `Identifier::from_key("marketorderid", ..)` is `market:orderid`. A map read from text or Arrow never infers, so what the crate wrote reads back as itself.
 - A named source and the base key of its type stand side by side - `ullink:isin` and `isin` - and `get` answers the base key whatever sorts around it; `get_from` names the one wanted.
 - A stale base key is by design: replacing or removing a named source leaves the base key it filled, because the wire's own code is indistinguishable from a bridge's copy of it. `remove(&IdKey::base(kind))` removes the type.
-- `insert` keeps a held value, and a statement of a type takes back its derivation: a market element's [`insert_securityid`](market.md#security-identifiers) is `Identifiers::insert` after the security check.
+- `insert` keeps a held value of the same rank or higher, and a statement of a type takes back a derivation it is not outranked by: a market element's [`insert_securityid`](market.md#security-identifiers) is `Identifiers::insert` after the security check.
 - A value past 64 bytes is no identifier: a leaf a FIX message becomes keeps such a metadata scalar in its metadata rather than lifting it.
 - A name is inferred, never trusted: `Identifier::from_key` reads the identifier name a name ends with and nothing else, so a bridge's `transversalkey` is no identifier and stays metadata.
 - Folding is intake only: nothing writes an upper-case word back, and a `FIX:idmap` document is stricter than intake - its `key` must be the folded word (`orderid`) and an upper-case one is refused ([FIX registry](../fix/registry.md#a-field-names-a-message-by-its-identifiers)).

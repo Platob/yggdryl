@@ -503,7 +503,7 @@ fn a_declared_field_reads_numbers_through_its_own_value_contract() {
     ]));
     assert_eq!(
         records(&handle, &options),
-        ["[3,\"12.50\",0.25,\"7\"]", "[4,\"7.00\",1.0,\"1.5\"]"]
+        ["[3,\"12.5\",0.25,\"7\"]", "[4,\"7\",1.0,\"1.5\"]"]
     );
 }
 
@@ -597,6 +597,20 @@ fn text_and_numbers_read_into_a_declared_boolean_column() {
         records(&handle, &options),
         ["[true,true,false]", "[false,false,true]"]
     );
+}
+
+#[test]
+fn a_boolean_cell_reads_every_spelling_the_boolean_reader_reads_into_a_declared_column() {
+    let handle = sheet(&[
+        row(1, &[s("A1", "a"), s("B1", "b")]),
+        row(2, &[b("A2", "yes"), b("B2", " Off ")]),
+        row(3, &[b("A3", "N"), b("B3", "True")]),
+    ]);
+    let options = handle.record_options().unwrap().with_field(root([
+        DataType::Boolean.required_field("a"),
+        DataType::Boolean.required_field("b"),
+    ]));
+    assert_eq!(records(&handle, &options), ["[true,false]", "[false,true]"]);
 }
 
 #[test]

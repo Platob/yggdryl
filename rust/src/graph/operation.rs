@@ -820,8 +820,12 @@ impl<K: OperationKind> Event for OperationEvent<K> {
     fn set_state(&mut self, state: crate::State) {
         self.data.set_state(state);
     }
+    /// An execution reports one whatever its state, and an order or a
+    /// quote where its state does - a partial fill, a fill - as the
+    /// lifecycle reads it: a native leaf has no report kind of its own
+    /// beside its state, so the state speaks.
     fn is_execution(&self) -> bool {
-        matches!(K::KIND, MarketKind::Execution)
+        matches!(K::KIND, MarketKind::Execution) || self.get_state().is_execution()
     }
     fn get_seqnum(&self) -> u64 {
         self.data.get_seqnum()

@@ -281,12 +281,12 @@ function stat(document, label, value, note, key) {
   return tile
 }
 
-function limitsTable(document, title, limits, side) {
+function limitsTable(document, title, limits, side, emptyText) {
   const holder = make(document, 'div', `limits limits-${side}`)
   holder.append(make(document, 'h3', 'limits-title', title))
   const rows = Array.isArray(limits) ? limits.slice(0, 5) : []
   if (rows.length === 0) {
-    holder.append(make(document, 'p', 'empty', 'No limits on this side.'))
+    holder.append(make(document, 'p', 'empty', emptyText))
     return holder
   }
   const table = make(document, 'table', 'grid grid-limits')
@@ -316,8 +316,10 @@ function limitsTable(document, title, limits, side) {
 /**
  * Render the point summary of a book - the two bests and their quantities,
  * the spread, the mid, the imbalance, whether the book is locked or crossed,
- * the alive, delta and execution counts and the top five limits of each side
- * - under `node`; `null` renders the empty state, saying `emptyText`.
+ * the alive and delta counts and the top five limits of each side - under
+ * `node`; `null` renders the empty state, saying `emptyText`. A book the
+ * service could not rebuild (`complete` false) states its deltas alone: its
+ * touch stands, and it is flagged, with no entry and no limit counted.
  */
 export function renderSummary(node, book, { zone = 'UTC', emptyText = 'Select a bucket - click a candle, or focus the chart and press Enter - to read its last book.' } = {}) {
   const document = node.ownerDocument
@@ -327,13 +329,15 @@ export function renderSummary(node, book, { zone = 'UTC', emptyText = 'Select a 
     return
   }
   const head = make(document, 'div', 'summary-head')
-  head.append(make(document, 'span', 'summary-name', `${book.ticker ?? ''}${book.crosscode ? ` · ${book.crosscode}` : ''}`))
+  head.append(make(document, 'span', 'summary-name', [book.ticker ?? book.isincode, book.crosscode].filter(Boolean).join(' · ')))
   head.append(make(document, 'span', 'summary-when', formatInstant(book.currunix, zone, { fraction: 9 })))
   const flags = make(document, 'span', 'summary-flags')
   if (book.iscrossed) flags.append(make(document, 'span', 'chip chip-warn', 'Crossed'))
   else if (book.islocked) flags.append(make(document, 'span', 'chip chip-warn', 'Locked'))
   else if (isEmpty(book.bestbid) || isEmpty(book.bestask)) flags.append(make(document, 'span', 'chip', 'One-sided'))
   else flags.append(make(document, 'span', 'chip chip-ok', 'Two-sided'))
+  const complete = book.complete !== false
+  if (!complete) flags.append(make(document, 'span', 'chip chip-warn', 'Deltas only'))
   head.append(flags)
   node.append(head)
 
@@ -343,14 +347,14 @@ export function renderSummary(node, book, { zone = 'UTC', emptyText = 'Select a 
   stats.append(stat(document, 'Spread', formatDecimal(book.spread), null, 'spread'))
   stats.append(stat(document, 'Mid', formatDecimal(book.midpoint), null, 'mid'))
   stats.append(stat(document, 'Imbalance', formatDecimal(book.imbalance, { fraction: 4 }), 'bid depth less ask, over both'))
-  stats.append(stat(document, 'Alive', String(book.alive ?? 0), 'entries'))
+  stats.append(stat(document, 'Alive', complete ? String(book.alive ?? 0) : '', complete ? 'entries' : 'not rebuilt'))
   stats.append(stat(document, 'Deltas', String(book.deltas ?? 0), 'since the previous book'))
-  stats.append(stat(document, 'Executions', String(book.executions ?? 0), 'in this book'))
   node.append(stats)
 
   const sides = make(document, 'div', 'limit-sides')
-  sides.append(limitsTable(document, 'Top bid limits', book.bidlimits, 'bid'))
-  sides.append(limitsTable(document, 'Top ask limits', book.asklimits, 'ask'))
+  const noLimits = complete ? 'No limits on this side.' : 'Not rebuilt: this book states its deltas alone.'
+  sides.append(limitsTable(document, 'Top bid limits', book.bidlimits, 'bid', noLimits))
+  sides.append(limitsTable(document, 'Top ask limits', book.asklimits, 'ask', noLimits))
   node.append(sides)
 }
 

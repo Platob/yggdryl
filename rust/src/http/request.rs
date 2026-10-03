@@ -1328,7 +1328,7 @@ impl crate::IOMedia for Request {
     /// column per page; one of a single page is the record column its rows
     /// parse into, read off the page already fetched; every other resource
     /// answers what [`crate::IOMedia::read_arrow_reader`] produces.
-    fn read_arrow(
+    fn read_serie(
         &self,
         options: Option<&crate::media::RecordOptions>,
     ) -> Result<crate::SerieReader> {

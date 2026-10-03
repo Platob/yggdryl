@@ -9,7 +9,10 @@
 //! sequence, and a column digest feeds that cell's value. Where the layout
 //! allows it the bytes are read straight from the Arrow buffer into the same
 //! encoding; everything else falls back to the shared scalar boundary, so the
-//! path stays exhaustive over every datatype family. That exhaustiveness is
+//! path stays exhaustive over every datatype family. A `DIGEST:by` entry that
+//! is a bare column path feeds that column's own buffers; any other term is
+//! bound once when the plan is compiled, evaluated once per batch into a
+//! column landed beside the batch's own, and fed from there like any column. That exhaustiveness is
 //! the compiler's: [`DataType`] is matched arm by arm, so a datatype added to
 //! the model cannot reach a digest without a decision here. `variant` is the
 //! one datatype a column refuses, because its binary encoding lands with the
@@ -28,14 +31,17 @@ use arrow_select::zip::zip;
 
 use crate::arrow::{Error, Result};
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, Representation};
-use crate::metadata::is_all_sources;
+use crate::expression::{Bound, FieldPath, FieldSegment, Term};
+use crate::metadata::{is_all_columns, parse_by_term};
 use crate::serie::{Proof, land, land_under};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, Serie, TimeUnit};
+use crate::{
+    DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, Serie, StructType, TimeUnit,
+};
 
 use super::field::{
-    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes,
-    holder_accepts, is_digest_source,
+    DIGEST_ALGORITHM_KEY, DIGEST_BY_KEY, DIGEST_ROLE_KEY, expected_holder_dtypes, holder_accepts,
+    is_digest_source,
 };
 use super::scalar::{
     write_binary, write_bool, write_float, write_null, write_sequence_header, write_signed,
@@ -159,10 +165,7 @@ pub(crate) fn apply_arrow_batch_with<S: ArrowDigestState>(
         batch.schema_ref(),
         root,
         ArrowCastOptions::new(),
-        Deferred {
-            transform: false,
-            digest: true,
-        },
+        Deferred { digest: true },
     )?
     .reconcile_batch(batch)?;
     plan.fill_arrow_batch(prototype, root, batch, force)
@@ -171,8 +174,8 @@ pub(crate) fn apply_arrow_batch_with<S: ArrowDigestState>(
 /// A complete immutable fill plan for one Struct node.
 ///
 /// Every declaration is read and every holder cast compiled here, from the
-/// fields alone, so a stream holding the plan moves only rows per batch.
-pub(crate) struct StructPlan {
+/// fields alone, so the fill itself moves only rows.
+struct StructPlan {
     nested: Vec<(usize, StructPlan)>,
     holders: Vec<HolderPlan>,
 }
@@ -183,12 +186,23 @@ struct HolderPlan {
     algorithm: DigestAlgorithm,
     use_prototype: bool,
     default: Scalar,
-    /// The child steps from this Struct to each value the holder reads.
+    /// The child steps from this Struct to each value the holder reads: a
+    /// first step past the Struct's own columns reaches a computed term.
     selected: Vec<Vec<usize>>,
+    /// The `by` terms that are not bare column paths, in the order they are
+    /// landed after the Struct's own columns.
+    terms: Vec<TermPlan>,
     /// The instant a coupled holder stores in front of its digest.
     time: Option<TimePlan>,
     /// The cast a signed holder stores the unsigned digest's bits through.
     bits: Option<ArrowCastPlan>,
+}
+
+/// One `by` term computed per batch: bound once against the Struct, and the
+/// field its answer lands under.
+struct TermPlan {
+    bound: Bound,
+    field: Arc<Field>,
 }
 
 /// Where a coupled holder reads its instant, and the resolution it keeps.
@@ -204,13 +218,13 @@ struct Selection<'field> {
 
 impl StructPlan {
     /// Plans every holder `root` declares for a prototype of `algorithm`.
-    pub(crate) fn compile(root: &Field, algorithm: DigestAlgorithm) -> Result<Self> {
+    fn compile(root: &Field, algorithm: DigestAlgorithm) -> Result<Self> {
         Self::new(root.fields(), algorithm, "$")
     }
 
     /// Fill the holders in one batch already cast to the `root` this plan was
     /// compiled from, under a prototype of the algorithm it was compiled for.
-    pub(crate) fn fill_arrow_batch<S: ArrowDigestState>(
+    fn fill_arrow_batch<S: ArrowDigestState>(
         &self,
         prototype: &S,
         root: &Field,
@@ -250,8 +264,8 @@ impl StructPlan {
             if !field.is_struct() {
                 reject_unreachable_digests(field.dtype(), &field_path, &field_path)?;
             }
-            let sources = field.as_digest().sources().map_err(|error| {
-                digest_sources_error(&field_path, format!("cannot read stored sources: {error}"))
+            let by = field.as_digest().by().map_err(|error| {
+                digest_by_error(&field_path, format!("cannot read stored by: {error}"))
             })?;
             let declared_algorithm = field.as_digest().algorithm().map_err(|error| {
                 digest_algorithm_error(
@@ -267,10 +281,10 @@ impl StructPlan {
                 )
             })?;
             if !field.as_digest().is_holder() {
-                if sources.is_some() {
-                    return Err(digest_sources_error(
+                if by.is_some() {
+                    return Err(digest_by_error(
                         &field_path,
-                        "DIGEST:sources belongs only to a digest holder",
+                        "DIGEST:by belongs only to a digest holder",
                     ));
                 }
                 if declared_algorithm.is_some() {
@@ -301,7 +315,17 @@ impl StructPlan {
             // source takes, and it must be a leaf an instant can be read from.
             let time = match field.as_digest().time() {
                 Some(path) => {
-                    let selection = resolve_selection(fields, path, &field_path, DIGEST_TIME_KEY)?;
+                    // Read once by the one path parser, then resolved.
+                    let selection = FieldPath::with_schema_segments(path, |segments| {
+                        resolve_selection(fields, segments, &field_path, DIGEST_TIME_KEY)
+                    })
+                    .map_err(|error| {
+                        digest_metadata_error(
+                            DIGEST_TIME_KEY,
+                            &field_path,
+                            format!("cannot read stored time: {error}"),
+                        )
+                    })??;
                     if selection.field.as_digest().is_holder() {
                         return Err(digest_metadata_error(
                             DIGEST_TIME_KEY,
@@ -346,31 +370,64 @@ impl StructPlan {
             };
             // An absent list and the `["*"]` spelling are the same selection:
             // every field of this Struct the holder does not hold. Naming
-            // sources on the holder is what keeps the fields it reads
-            // unmarked.
-            let named = sources.filter(|sources| !is_all_sources(sources));
+            // terms on the holder is what keeps the fields it reads unmarked.
+            let named = by.filter(|by| !is_all_columns(by));
+            let mut terms = Vec::new();
+            let mut root: Option<Field> = None;
             let selected = match named {
-                Some(sources) => sources
-                    .iter()
-                    .map(|path| {
-                        let selection =
-                            resolve_selection(fields, path, &field_path, DIGEST_SOURCES_KEY)?;
-                        if selection
-                            .steps
-                            .first()
-                            .is_some_and(|selected| fields[*selected].as_digest().is_holder())
-                        {
-                            return Err(digest_sources_error(
-                                &field_path,
-                                format!(
-                                    "source {path:?} selects same-Struct digest holder {:?}; holders are outputs, not sources",
-                                    fields[selection.steps[0]].name()
-                                ),
-                            ));
+                Some(by) => {
+                    let mut selected = Vec::with_capacity(by.len());
+                    for entry in &by {
+                        let term = parse_by_term(DIGEST_BY_KEY, entry).map_err(|error| {
+                            digest_by_error(&field_path, format!("cannot read stored by: {error}"))
+                        })?;
+                        if let Some(path) = column_segments(&term) {
+                            let selection =
+                                resolve_selection(fields, path, &field_path, DIGEST_BY_KEY)?;
+                            if selection
+                                .steps
+                                .first()
+                                .is_some_and(|selected| fields[*selected].as_digest().is_holder())
+                            {
+                                return Err(digest_by_error(
+                                    &field_path,
+                                    format!(
+                                        "term {entry:?} selects same-Struct digest holder {:?}; holders are outputs, not sources",
+                                        fields[selection.steps[0]].name()
+                                    ),
+                                ));
+                            }
+                            selected.push(
+                                shortcut_struct_holder(selection, entry, Some(&field_path))?.steps,
+                            );
+                            continue;
                         }
-                        shortcut_struct_holder(selection, path, Some(&field_path))
-                    })
-                    .collect::<Result<Vec<_>>>()?,
+                        // Any other term is computed per batch: bound once
+                        // against this Struct, landed after its columns, and
+                        // read like a column from there.
+                        let root = match &root {
+                            Some(root) => root,
+                            None => root.insert(level_root(fields)?),
+                        };
+                        let bound = term.bind(root).map_err(|error| {
+                            digest_by_error(&field_path, format!("term {entry:?}: {error}"))
+                        })?;
+                        // Landed nullable whatever the typing says: a null
+                        // the term answers is fed as a null, never refused.
+                        let typed = term
+                            .field(root)
+                            .map_err(|error| {
+                                digest_by_error(&field_path, format!("term {entry:?}: {error}"))
+                            })?
+                            .with_nullable(true);
+                        selected.push(vec![fields.len() + terms.len()]);
+                        terms.push(TermPlan {
+                            bound,
+                            field: Arc::new(typed),
+                        });
+                    }
+                    selected
+                }
                 None => fields
                     .iter()
                     .enumerate()
@@ -384,15 +441,16 @@ impl StructPlan {
                             candidate.name(),
                             None,
                         )
+                        .map(|selection| selection.steps)
                     })
                     .collect::<Result<Vec<_>>>()?,
             };
             let mut targets = HashSet::with_capacity(selected.len());
-            for selection in &selected {
-                if !targets.insert(selection.steps.clone()) {
-                    return Err(digest_sources_error(
+            for steps in &selected {
+                if !targets.insert(steps.clone()) {
+                    return Err(digest_by_error(
                         &field_path,
-                        "multiple digest sources resolve to the same selected value",
+                        "multiple digest terms resolve to the same selected value",
                     ));
                 }
             }
@@ -421,10 +479,8 @@ impl StructPlan {
                 algorithm: holder_algorithm,
                 use_prototype: holder_algorithm == algorithm,
                 default,
-                selected: selected
-                    .into_iter()
-                    .map(|selection| selection.steps)
-                    .collect(),
+                selected,
+                terms,
                 time,
                 bits,
             });
@@ -437,8 +493,28 @@ fn child_path(parent: &str, name: &str) -> String {
     format!("{parent}.{name}")
 }
 
-fn digest_sources_error(holder: &str, reason: impl std::fmt::Display) -> Error {
-    digest_metadata_error(DIGEST_SOURCES_KEY, holder, reason)
+/// The names a term reads when it is nothing but a column path: a column,
+/// or struct children beneath one, which the Struct-only descent resolves
+/// and the column feed reads without computing anything.
+fn column_segments(term: &Term) -> Option<&[FieldSegment]> {
+    term.as_path().filter(|segments| {
+        segments
+            .iter()
+            .all(|segment| matches!(segment, FieldSegment::Field(_)))
+    })
+}
+
+/// The struct root a level's terms bind against: its columns, as they stand.
+fn level_root(fields: &[Field]) -> Result<Field> {
+    Ok(Field::new(
+        crate::media::DEFAULT_ROOT_NAME,
+        DataType::from(StructType::from_fields(fields.to_vec())?),
+        false,
+    ))
+}
+
+fn digest_by_error(holder: &str, reason: impl std::fmt::Display) -> Error {
+    digest_metadata_error(DIGEST_BY_KEY, holder, reason)
 }
 
 fn digest_algorithm_error(holder: &str, reason: impl std::fmt::Display) -> Error {
@@ -463,7 +539,7 @@ fn digest_metadata_error(key: &'static str, holder: &str, reason: impl std::fmt:
 /// layout a holder is written by nobody and left at its canonical default,
 /// which a containing holder would then read as though it were an answer. The
 /// declaration is refused where it is written rather than silently ignored,
-/// exactly as a `DIGEST:sources` path that descends through a collection is.
+/// exactly as a `DIGEST:by` path that descends through a collection is.
 fn reject_unreachable_digests(dtype: &DataType, path: &str, container: &str) -> Result<()> {
     // A dictionary encodes a value type rather than a child column, so what it
     // holds carries no name of its own to extend the path with.
@@ -485,15 +561,15 @@ fn reject_unreachable_digests(dtype: &DataType, path: &str, container: &str) -> 
             ));
         }
         if digest
-            .sources()
+            .by()
             .map_err(|error| {
-                digest_sources_error(&child_path, format!("cannot read stored sources: {error}"))
+                digest_by_error(&child_path, format!("cannot read stored by: {error}"))
             })?
             .is_some()
         {
-            return Err(digest_sources_error(
+            return Err(digest_by_error(
                 &child_path,
-                "DIGEST:sources belongs only to a digest holder",
+                "DIGEST:by belongs only to a digest holder",
             ));
         }
         if digest
@@ -587,58 +663,59 @@ fn resolve_holder_algorithm(
     })
 }
 
-/// Resolve an exact-name-first path through Struct children only.
+/// Resolve a path of field names through Struct children only, one step
+/// per name.
 ///
-/// `key` names the property the path was written under, so a refusal points
-/// at `DIGEST:sources` or `DIGEST:time` as the holder spelled it.
+/// The segments are the path as the grammar read it - a `DIGEST:by` term's
+/// or the parsed `DIGEST:time` - so a column whose name holds a dot is the
+/// quoted `"a.b"` and `a.b` is two levels: one reading, no literal prefix
+/// tried after another. `key` names the property the path was written
+/// under, so a refusal points at `DIGEST:by` or `DIGEST:time` as the holder
+/// spelled it.
 fn resolve_selection<'field>(
     fields: &'field [Field],
-    path: &str,
+    path: &[FieldSegment],
     holder: &str,
     key: &'static str,
 ) -> Result<Selection<'field>> {
-    if let Some((index, field)) = fields
-        .iter()
-        .enumerate()
-        .find(|(_, field)| field.name() == path)
-    {
-        return Ok(Selection {
-            steps: vec![index],
-            field,
-        });
-    }
-    let mut offset = 0;
-    let mut blocked = None;
-    while let Some(relative) = path[offset..].find('.') {
-        let boundary = offset + relative;
-        if let Some((index, field)) = fields
+    let refuse = |reason: String| digest_metadata_error(key, holder, reason);
+    let spelled = || FieldPath::new(path.iter().cloned()).to_string();
+    let mut level = fields;
+    let mut steps = Vec::with_capacity(path.len());
+    let mut reached: Option<&'field Field> = None;
+    for segment in path {
+        if let Some(blocked) = reached.filter(|field| !field.is_struct()) {
+            return Err(refuse(format!(
+                "path {:?} cannot descend through non-Struct field {:?} of {}",
+                spelled(),
+                blocked.name(),
+                blocked.dtype()
+            )));
+        }
+        let FieldSegment::Field(name) = segment else {
+            return Err(refuse(format!(
+                "path {:?} reaches a child by {segment}, which is no field name",
+                spelled()
+            )));
+        };
+        let Some((index, field)) = level
             .iter()
             .enumerate()
-            .find(|(_, field)| field.name() == &path[..boundary])
-        {
-            if !field.is_struct() {
-                blocked = Some(format!(
-                    "path {path:?} cannot descend through non-Struct field {:?} of {}",
-                    field.name(),
-                    field.dtype()
-                ));
-                offset = boundary + 1;
-                continue;
-            }
-            if let Ok(mut tail) =
-                resolve_selection(field.fields(), &path[boundary + 1..], holder, key)
-            {
-                tail.steps.insert(0, index);
-                return Ok(tail);
-            }
-        }
-        offset = boundary + 1;
+            .find(|(_, field)| field.name() == name.as_str())
+        else {
+            return Err(refuse(format!(
+                "path {:?} does not name a field",
+                spelled()
+            )));
+        };
+        steps.push(index);
+        level = field.fields();
+        reached = Some(field);
     }
-    Err(digest_metadata_error(
-        key,
-        holder,
-        blocked.unwrap_or_else(|| format!("path {path:?} does not name a field")),
-    ))
+    let Some(field) = reached else {
+        return Err(refuse("a path names no field".to_owned()));
+    };
+    Ok(Selection { steps, field })
 }
 
 /// A selected Struct carrying one direct holder contributes that holder.
@@ -665,7 +742,7 @@ fn shortcut_struct_holder<'field>(
             selection.field.name()
         );
         return Err(match holder_path {
-            Some(holder) => digest_sources_error(holder, reason),
+            Some(holder) => digest_by_error(holder, reason),
             None => Error::IncompatibleSchema(reason),
         });
     }
@@ -764,8 +841,26 @@ fn fill_struct<S: ArrowDigestState>(
             None => None,
         };
         // Each column a selection starts from lands once, beneath the
-        // record's validity, after every holder before this one filled it.
-        let landed = landed_roots(&columns, fields, &holder.selected, parent_nulls)?;
+        // record's validity, after every holder before this one filled it;
+        // a computed term lands after them, evaluated over the same columns.
+        let mut landed = landed_roots(&columns, fields, &holder.selected, parent_nulls)?;
+        if !holder.terms.is_empty() {
+            let level = RecordBatch::try_from_iter(
+                fields
+                    .iter()
+                    .map(Field::name)
+                    .zip(columns.iter().map(Arc::clone)),
+            )?;
+            for term in &holder.terms {
+                let computed = term.bound.evaluate(&level)?;
+                landed.push(Some(land_under(
+                    Arc::clone(&term.field),
+                    computed,
+                    parent_nulls,
+                    &Proof::Unproven,
+                )?));
+            }
+        }
         let mut values = Vec::with_capacity(row_count);
         let mut worker = if holder.use_prototype {
             FillState::Prototype(prototype.clone())
@@ -818,7 +913,13 @@ fn landed_roots(
     parent_nulls: Option<&NullBuffer>,
 ) -> Result<Vec<Option<Serie>>> {
     let mut landed: Vec<Option<Serie>> = vec![None; columns.len()];
-    for root in selected.iter().filter_map(|steps| steps.first().copied()) {
+    // A first step past the batch's own columns reaches a computed term,
+    // which lands after this.
+    for root in selected
+        .iter()
+        .filter_map(|steps| steps.first().copied())
+        .filter(|root| *root < columns.len())
+    {
         if landed[root].is_none() {
             landed[root] = Some(land_under(
                 Arc::new(fields[root].clone()),
@@ -1090,6 +1191,7 @@ fn feed_cell(digester: &mut impl Hasher, column: &Serie, index: usize) -> Result
     }
     match column {
         Serie::Null(_) => write_null(digester),
+        Serie::Lit(held) => return feed_cell(digester, held.row(), 0),
         Serie::Boolean(held) => write_bool(digester, held.value(index).unwrap_or_default()),
         Serie::Int8(held) => write_signed(digester, i128::from(held.values()[index])),
         Serie::Int16(held) => write_signed(digester, i128::from(held.values()[index])),
