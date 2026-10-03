@@ -2,24 +2,32 @@
 //!
 //! Pure: `std`, `sha2` and `hmac` only. A client builds the wire request, hands its parts to
 //! [`Signer::sign`], and adds the headers it gets back. The scope names the service - `s3` for
-//! the object store, `sts` for the exchange that trades a role for a credential set - and S3's
-//! two departures from the generic rules are honored for every service: the canonical URI is the
-//! path exactly as sent (encoded once, never re-encoded), and `x-amz-content-sha256` is always
-//! signed.
+//! the object store, `sts` for the exchange that trades a role for a credential set, `s3tables`
+//! or `execute-api` for a catalog - and the service decides the one rule the two families of
+//! AWS services differ by, which the signer owns:
+//!
+//! - the S3 family ([`is_s3_family`]) signs the canonical URI as the path exactly as sent,
+//!   encoded once and never again;
+//! - every other service signs the path with its dot segments and empty segments removed and
+//!   then percent-encoded once more, so a `%3A` on the wire is `%253A` in the canonical request.
+//!
+//! That is botocore's `S3SigV4Auth` against its `SigV4Auth`. One departure from botocore holds
+//! for every service: `x-amz-content-sha256` is always sent and signed, which S3 requires and
+//! every other service accepts as one more signed header.
 
+use std::borrow::Cow;
 use std::fmt::Write as _;
 use std::sync::{Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
+use smol_str::SmolStr;
 
-/// The `x-amz-content-sha256` value that skips payload hashing (HTTPS only).
 /// What `x-amz-content-sha256` carries when the body is not hashed.
 ///
-/// S3 accepts it in place of a real digest; the transport is then what
-/// guarantees the body arrived intact.
-#[cfg(feature = "s3")]
+/// The S3 family accepts it in place of a real digest; the transport is then
+/// what guarantees the body arrived intact.
 pub(crate) const UNSIGNED_PAYLOAD: &str = "UNSIGNED-PAYLOAD";
 
 /// SHA-256 of the empty payload, lowercase hex.
@@ -34,6 +42,23 @@ const OWNED: [&str; 4] = [
     "x-amz-content-sha256",
     "x-amz-security-token",
 ];
+
+/// The signing names that sign as S3 does: the canonical URI is the path as
+/// sent, and an unhashed payload may be declared.
+///
+/// botocore signs these four through `S3SigV4Auth` and every other name
+/// through `SigV4Auth`. `s3-outposts` is also the signing name of the
+/// `s3outposts` control API, which botocore signs the generic way; its paths
+/// (`/S3Outposts/CreateEndpoint`) hold nothing the two rules encode
+/// differently, so the one answer is exact for both. A name that merely
+/// begins with `s3` - `s3tables`, `s3vectors`, `s3files` - is not of the
+/// family.
+const S3_FAMILY: [&str; 4] = ["s3", "s3express", "s3-object-lambda", "s3-outposts"];
+
+/// Whether `service`, a SigV4 signing name, signs by the S3 rules.
+pub(crate) fn is_s3_family(service: &str) -> bool {
+    S3_FAMILY.contains(&service)
+}
 
 /// Lowercase hex SHA-256 of `bytes`.
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
@@ -80,7 +105,7 @@ pub(crate) fn amz_date(now: SystemTime) -> (String, String) {
     (date, datetime)
 }
 
-/// One credential set bound to a region, with the per-day signing key cached.
+/// One credential set bound to a region and a service, with the per-day signing key cached.
 pub(crate) struct Signer {
     /// The `Credential=` prefix of every authorization header.
     access_key_id: String,
@@ -90,9 +115,10 @@ pub(crate) struct Signer {
     session_token: Option<String>,
     /// The region in every credential scope.
     region: String,
-    /// The service in every credential scope: `s3`, or `sts` for the one
-    /// request that trades a role for a credential set.
-    service: &'static str,
+    /// The service in every credential scope - its SigV4 signing name.
+    service: SmolStr,
+    /// Whether the canonical URI is the path as sent ([`is_s3_family`]).
+    path_as_sent: bool,
     /// (date `YYYYMMDD`, derived signing key) - recomputed when the day changes.
     key: Mutex<Option<(String, [u8; 32])>>,
 }
@@ -115,25 +141,42 @@ impl Signer {
         )
     }
 
-    /// The same, for a service other than S3.
+    /// Bind credentials to `region` for `service`, the SigV4 signing name.
     ///
     /// The service is part of the credential scope and of the signing key, so
-    /// a request to STS signed as `s3` is refused - which is why this exists
-    /// rather than the scope being spelled once.
+    /// a request to STS signed as `s3` is refused; and it decides how the
+    /// canonical URI is made ([`Self::canonical_uri`]).
     pub(crate) fn for_service(
-        service: &'static str,
+        service: impl Into<SmolStr>,
         access_key_id: impl Into<String>,
         secret_access_key: impl Into<String>,
         session_token: Option<String>,
         region: impl Into<String>,
     ) -> Self {
+        let service = service.into();
         Self {
             access_key_id: access_key_id.into(),
             secret_access_key: secret_access_key.into(),
             session_token,
             region: region.into(),
+            path_as_sent: is_s3_family(&service),
             service,
             key: Mutex::new(None),
+        }
+    }
+
+    /// The canonical URI of `path`, the request path as it is on the wire.
+    ///
+    /// The S3 family signs it as sent. Every other service signs it as
+    /// botocore's `SigV4Auth` does: empty and `.` segments dropped, `..`
+    /// taking the segment before it, a trailing `/` kept, and every segment
+    /// percent-encoded again - so an escape already on the wire is escaped
+    /// (`%1F` to `%251F`). The empty path is `/`.
+    fn canonical_uri<'path>(&self, path: &'path str) -> Cow<'path, str> {
+        if self.path_as_sent {
+            Cow::Borrowed(path)
+        } else {
+            Cow::Owned(normalized_path(path))
         }
     }
 
@@ -153,8 +196,8 @@ impl Signer {
     ///
     /// * `method`: e.g. "GET".
     /// * `host`: the `Host` header value exactly as sent (with `:port` when non-default).
-    /// * `path`: absolute request path as sent on the wire, already encoded by [`encode_key`]
-    ///   (S3 canonical URI = the path as sent; do not re-encode). "/" for the root.
+    /// * `path`: absolute request path as sent on the wire, encoded once; the signer makes the
+    ///   canonical URI of it by its service's rule ([`Self::canonical_uri`]). "/" for the root.
     /// * `query`: raw (unencoded) name/value pairs; the canonical query string is built with
     ///   [`canonical_query`].
     /// * `headers`: additional headers to sign, `(name, value)` with any case; the signer
@@ -162,12 +205,11 @@ impl Signer {
     ///   sorts by name, and joins duplicate names with `,`. `host`, `x-amz-date`,
     ///   `x-amz-content-sha256` and (when present) `x-amz-security-token` are always signed even
     ///   when absent from `headers`, and the signer's values win over same-named entries.
-    /// * `payload_hash`: `sha256_hex(body)` or [`EMPTY_PAYLOAD_SHA256`]. S3 also
-    ///   accepts the literal `UNSIGNED-PAYLOAD` over TLS; this crate always signs
-    ///   the real hash, so a store can verify what it received.
+    /// * `payload_hash`: `sha256_hex(body)` or [`EMPTY_PAYLOAD_SHA256`]; the S3 family also
+    ///   accepts [`UNSIGNED_PAYLOAD`], which is the caller's policy to choose.
     /// * `now`: the signing time (injectable for the gold-vector tests).
     ///
-    /// Algorithm: AWS4-HMAC-SHA256, scope `{date}/{region}/s3/aws4_request`, canonical request =
+    /// Algorithm: AWS4-HMAC-SHA256, scope `{date}/{region}/{service}/aws4_request`, canonical request =
     /// method \n canonical URI \n canonical query \n canonical headers (each `name:value\n`) \n
     /// signed headers (`;`-joined) \n payload hash.
     // The argument list is the wire request's parts; a struct would only rename them.
@@ -184,7 +226,13 @@ impl Signer {
     ) -> Vec<(String, String)> {
         let (date, datetime) = amz_date(now);
         let canonical_headers = self.canonical_headers(host, &datetime, payload_hash, headers);
-        let request = canonical_request(method, path, query, &canonical_headers, payload_hash);
+        let request = canonical_request(
+            method,
+            &self.canonical_uri(path),
+            query,
+            &canonical_headers,
+            payload_hash,
+        );
         let scope = format!("{date}/{}/{}/aws4_request", self.region, self.service);
         let signature = hex(&hmac_sha256(
             &self.signing_key(&date),
@@ -242,7 +290,7 @@ impl Signer {
     }
 
     /// The signing key for `date`, derived once per day: HMAC chained over `AWS4{secret}`,
-    /// the date, the region, `s3` and `aws4_request`.
+    /// the date, the region, the service and `aws4_request`.
     fn signing_key(&self, date: &str) -> [u8; 32] {
         let mut cache = self.key.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some((cached, key)) = cache.as_ref()
@@ -252,7 +300,7 @@ impl Signer {
         }
         let secret = format!("AWS4{}", self.secret_access_key);
         let mut key = hmac_sha256(secret.as_bytes(), date.as_bytes());
-        for part in [self.region.as_str(), self.service, "aws4_request"] {
+        for part in [self.region.as_str(), self.service.as_str(), "aws4_request"] {
             key = hmac_sha256(&key, part.as_bytes());
         }
         *cache = Some((date.to_owned(), key));
@@ -260,7 +308,7 @@ impl Signer {
     }
 }
 
-/// The canonical request over an already canonical header list.
+/// The canonical request over an already canonical header list and URI.
 fn canonical_request(
     method: &str,
     path: &str,
@@ -305,9 +353,43 @@ fn collapse_whitespace(value: &str) -> String {
     words.join(" ")
 }
 
+/// The canonical URI of a service outside the S3 family: `path` with its
+/// empty and dot segments removed, each remaining segment percent-encoded.
+///
+/// A request path is absolute, so the result opens with `/` whatever `path`
+/// opens with, and it closes with one only when `path` did and a segment is
+/// left before it.
+fn normalized_path(path: &str) -> String {
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in path.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            kept => segments.push(kept),
+        }
+    }
+    let mut out = String::with_capacity(path.len() + 8);
+    for segment in &segments {
+        out.push('/');
+        encode_into(segment, false, &mut out);
+    }
+    if out.is_empty() || path.ends_with('/') {
+        out.push('/');
+    }
+    out
+}
+
 /// Percent-encode with the `SigV4` unreserved set; `slash_kept` leaves `/` as a separator.
 fn encode(text: &str, slash_kept: bool) -> String {
     let mut out = String::with_capacity(text.len());
+    encode_into(text, slash_kept, &mut out);
+    out
+}
+
+/// [`encode`], appended to `out`.
+fn encode_into(text: &str, slash_kept: bool, out: &mut String) {
     for byte in text.bytes() {
         let kept = byte.is_ascii_alphanumeric()
             || matches!(byte, b'-' | b'_' | b'.' | b'~')
@@ -319,7 +401,6 @@ fn encode(text: &str, slash_kept: bool) -> String {
             let _ = write!(out, "%{byte:02X}");
         }
     }
-    out
 }
 
 /// Lowercase hex of `bytes`.
@@ -344,10 +425,11 @@ pub mod internals {
     //! What `rust/tests/aws/sigv4.rs` pins and a caller cannot reach.
     //!
     //! The signature is what every AWS request stands or falls on, so it is
-    //! pinned against AWS's own published example vectors - which means
-    //! reaching the canonical request and the string to sign, not only the
-    //! headers that come out. Each item here forwards to the real one, so
-    //! nothing in this module is a visibility the crate would otherwise have.
+    //! pinned against AWS's own published example vectors and against vectors
+    //! botocore computed - which means reaching the canonical request and the
+    //! string to sign, not only the headers that come out. Each item here
+    //! forwards to the real one, so nothing in this module is a visibility
+    //! the crate would otherwise have.
     use std::sync::PoisonError;
     use std::time::SystemTime;
 
@@ -355,8 +437,12 @@ pub mod internals {
     pub const EMPTY_PAYLOAD_SHA256: &str = super::EMPTY_PAYLOAD_SHA256;
 
     /// What `x-amz-content-sha256` carries when the body is not hashed.
-    #[cfg(feature = "s3")]
     pub const UNSIGNED_PAYLOAD: &str = super::UNSIGNED_PAYLOAD;
+
+    /// Whether `service` signs by the S3 rules.
+    pub fn is_s3_family(service: &str) -> bool {
+        super::is_s3_family(service)
+    }
 
     /// Lowercase hex SHA-256 of `bytes`.
     pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -400,25 +486,48 @@ pub mod internals {
         super::string_to_sign(datetime, scope, canonical_request)
     }
 
-    /// One credential set bound to a region, forwarding to the real signer.
+    /// One credential set bound to a region and a service, forwarding to
+    /// the real signer.
     pub struct Signer(super::Signer);
 
     impl Signer {
-        /// Bind credentials to `region`; no key is derived until the first
-        /// [`Signer::sign`].
+        /// Bind credentials to `region` for S3; no key is derived until the
+        /// first [`Signer::sign`].
         pub fn new(
             access_key_id: impl Into<String>,
             secret_access_key: impl Into<String>,
             session_token: Option<String>,
             region: impl Into<String>,
         ) -> Self {
-            Self(super::Signer::for_service(
+            Self::for_service(
                 "s3",
                 access_key_id,
                 secret_access_key,
                 session_token,
                 region,
+            )
+        }
+
+        /// Bind credentials to `region` for `service`, the signing name.
+        pub fn for_service(
+            service: &str,
+            access_key_id: impl Into<String>,
+            secret_access_key: impl Into<String>,
+            session_token: Option<String>,
+            region: impl Into<String>,
+        ) -> Self {
+            Self(super::Signer::for_service(
+                service,
+                access_key_id,
+                secret_access_key,
+                session_token,
+                region,
             ))
+        }
+
+        /// The canonical URI this signer signs for `path` as sent.
+        pub fn canonical_uri(&self, path: &str) -> String {
+            self.0.canonical_uri(path).into_owned()
         }
 
         /// The headers to add to the request, in the order they are emitted.
