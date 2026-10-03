@@ -986,3 +986,29 @@ fn a_spilled_column_casts_sorts_takes_and_windows_its_own_rows() {
         }
     }
 }
+
+#[test]
+fn as_spilled_chains_and_into_spilled_leaves_the_original_resident() {
+    let mut column = prices(4_096);
+    let resident = column.resident_size();
+    assert!(
+        column
+            .as_spilled(&everything())
+            .expect("the spill lands")
+            .is_spilled(),
+        "as_spilled answers the serie it spilled"
+    );
+    assert_eq!(column.resident_size(), 0);
+
+    let original = prices(4_096);
+    let copy = original
+        .into_spilled(&everything())
+        .expect("the copy spills");
+    assert!(copy.is_spilled());
+    assert!(
+        !original.is_spilled(),
+        "into_spilled leaves this serie as it was"
+    );
+    assert_eq!(original.resident_size(), resident);
+    assert_same_rows("into_spilled", &original, &copy);
+}

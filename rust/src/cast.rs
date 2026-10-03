@@ -681,6 +681,15 @@ mod plan {
             if self.identity && field == self.target.as_ref() {
                 return Ok(serie.clone());
             }
+            if let Serie::Lit(lit) = serie {
+                // A constant casts once: its one row through this plan, then
+                // the value that landed, repeated under the target. A
+                // constant is in every order, so the target's declaration
+                // needs no reading.
+                let row = self.apply(lit.row())?;
+                let rows = crate::value::SerieValue::len(lit.as_ref());
+                return Serie::lit(Arc::clone(&self.target), row.scalar(0)?, rows);
+            }
             let array = serie.require_arrow_array()?;
             let mut budget = MaterializationBudget::default();
             let cast = self.root.cast(array, true, &mut budget)?;

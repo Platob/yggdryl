@@ -873,6 +873,29 @@ class TestSortByUniqueSpillAndJoin:
         assert state(whole) == [False, False, False]
         assert not ChunkedSerie.empty(price()).is_spilled()
 
+    def test_as_spilled_answers_the_chunks_and_into_spilled_a_copy(self) -> None:
+        def column(rows: int) -> Serie:
+            return Serie.from_scalars(Field("price", "int64", nullable=True), list(range(rows)))
+
+        whole = ChunkedSerie.from_series([column(1_024), column(8)])
+        copied = whole.into_spilled(byte_size=0)
+        assert type(copied) is ChunkedSerie
+        assert copied.is_spilled() and copied.resident_size() == 0
+        assert not whole.is_spilled()
+        assert copied == whole
+        held = copy.copy(whole)
+        assert held.as_spilled(yggdryl.SpillOptions(0)) is held
+        assert held.is_spilled() and held == whole
+        # The chain is the same verb again: a bound it is already under
+        # spills nothing more.
+        assert held.as_spilled(byte_size=yggdryl.SpillOptions.NEVER).is_spilled()
+        # The keywords are read as `spill` reads them, before anything spills.
+        with pytest.raises(TypeError):
+            whole.into_spilled(byte_size="0")  # type: ignore[arg-type]
+        with pytest.raises(TypeError):
+            whole.as_spilled(byte_size="0")  # type: ignore[arg-type]
+        assert not whole.is_spilled()
+
     def test_a_join_keeps_its_output_batches_apart(self) -> None:
         def pairs(name: str, rows: int, keys: int) -> Serie:
             value = "left_value" if name == "l" else "right_value"

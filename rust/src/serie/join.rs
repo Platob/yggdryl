@@ -8,8 +8,9 @@
 
 use std::sync::Arc;
 
+use crate::SerieSource;
 use crate::expression::IntoJoinKeys;
-use crate::join::{JoinKind, JoinOptions, JoinSource, join};
+use crate::join::{JoinKind, JoinOptions, join};
 use crate::{ChunkedSerie, Result, Serie, SerieReader};
 
 impl Serie {
@@ -73,8 +74,8 @@ impl Serie {
         options: &JoinOptions,
     ) -> Result<Self> {
         let output = join(
-            JoinSource::Serie(self.clone()),
-            JoinSource::Serie(other.clone()),
+            SerieSource::Serie(self.clone()),
+            SerieSource::Serie(other.clone()),
             by,
             how,
             options,
@@ -105,8 +106,8 @@ impl ChunkedSerie {
         options: &JoinOptions,
     ) -> Result<Self> {
         let output = join(
-            JoinSource::Chunked(self.clone()),
-            JoinSource::Chunked(other.clone()),
+            SerieSource::Chunked(self.clone()),
+            SerieSource::Chunked(other.clone()),
             by,
             how,
             options,
@@ -131,12 +132,12 @@ impl SerieReader {
     /// [`Serie::join_with`]'s, raised before the first batch is pulled.
     pub fn join_with(
         self,
-        other: impl Into<JoinSource>,
+        other: impl Into<SerieSource>,
         by: impl IntoJoinKeys,
         how: JoinKind,
         options: &JoinOptions,
     ) -> Result<Self> {
-        let output = join(JoinSource::Reader(self), other.into(), by, how, options)?;
+        let output = join(SerieSource::Reader(self), other.into(), by, how, options)?;
         let root = Arc::clone(output.root());
         Ok(Self::from_landed_iter(
             root,

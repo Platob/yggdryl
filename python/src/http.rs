@@ -1747,7 +1747,7 @@ impl PyPages {
     /// Every page as one record column per page, under `field` or the root
     /// the first page's rows infer, as a `SerieReader`.
     #[pyo3(signature = (field = None))]
-    fn read_arrow(
+    fn read_serie(
         &self,
         py: Python<'_>,
         field: Option<&Bound<'_, PyAny>>,

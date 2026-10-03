@@ -53,7 +53,7 @@ use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use arrow_array::{Array, ArrayRef, make_array};
+use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, make_array};
 use arrow_buffer::alloc::Allocation;
 use arrow_buffer::{BooleanBuffer, Buffer, NullBuffer};
 use arrow_data::{ArrayData, ArrayDataBuilder};
@@ -279,8 +279,6 @@ impl Backing {
 /// spilled unit shares, so the mapping outlives the last buffer over it.
 pub(crate) struct Mapping {
     map: Mmap,
-    /// Held so the descriptor outlives the mapping; already unlinked.
-    _file: File,
 }
 
 #[cfg(feature = "internals")]
@@ -533,12 +531,48 @@ pub(crate) fn spill_array(
         node
     };
     // SAFETY: the file is private to this process and already unlinked, so
-    // nothing else can shorten it while the mapping is live; the mapping is
-    // read-only and the file handle is kept beside it for as long as any
-    // buffer reaches it.
+    // nothing else can shorten it while the mapping is live, and the mapping
+    // is read-only. The pages stay mapped once the descriptor closes - a
+    // mapping holds the pages on Unix and its own handle on Windows - so the
+    // descriptor is dropped here rather than held per live spilled unit,
+    // which would cap the spilled units at the process's descriptor limit.
     let map = unsafe { Mmap::map(&file) }.map_err(|error| under(&folder, error))?;
-    let mapping = Arc::new(Mapping { map, _file: file });
+    drop(file);
+    let mapping = Arc::new(Mapping { map });
     let rebuilt = make_array(rebuild(&node, &mapping));
+    Ok(Some((rebuilt, mapping)))
+}
+
+/// Write every column of `batch` to one spill file - the batch walked as the
+/// one record array it is, so a batch is one file and one mapping - and
+/// answer the same batch rebuilt over the file's read-only mapping, with the
+/// mapping its buffers share; every buffer keeps the mapping alive for as
+/// long as it reaches it, so the pair is for reading the cost.
+///
+/// `None` for a batch with no byte to write, which spills nothing.
+///
+/// # Errors
+///
+/// [`spill_array`]'s: the folder named when the file cannot be created,
+/// written or mapped; the batch is untouched.
+pub(crate) fn spill_batch(
+    batch: &RecordBatch,
+    folder: Option<&LocalFolder>,
+) -> Result<Option<(RecordBatch, Arc<Mapping>)>> {
+    let whole: ArrayRef = Arc::new(StructArray::from(batch.clone()));
+    let Some((spilled, mapping)) = spill_array(&whole, folder)? else {
+        return Ok(None);
+    };
+    let spilled = spilled
+        .as_any()
+        .downcast_ref::<StructArray>()
+        .expect("a record array rebuilds as the record array it was");
+    let rebuilt = RecordBatch::try_new_with_options(
+        batch.schema(),
+        spilled.columns().to_vec(),
+        &arrow_array::RecordBatchOptions::new().with_row_count(Some(batch.num_rows())),
+    )
+    .map_err(Error::Arrow)?;
     Ok(Some((rebuilt, mapping)))
 }
 

@@ -98,6 +98,12 @@ pub struct ChunkedSerie {
     /// The row each chunk ends before: `ends[i]` is the first row of chunk
     /// `i + 1`, and the last is the length.
     ends: Vec<usize>,
+    /// [`Self::resident_size`] kept beside the chunks, so a push settles
+    /// against the bound without walking every chunk: summed where the
+    /// chunks are paired with the field, added to per push, read again
+    /// after a spill. Every write replaces the chunks through
+    /// [`Self::from_landed`], which is what keeps it exact.
+    resident: usize,
 }
 
 impl ChunkedSerie {
@@ -106,14 +112,17 @@ impl ChunkedSerie {
     pub(crate) fn from_landed(field: Arc<Field>, chunks: Vec<Serie>) -> Self {
         let mut ends = Vec::with_capacity(chunks.len());
         let mut end = 0;
+        let mut resident = 0;
         for chunk in &chunks {
             end += chunk.len();
             ends.push(end);
+            resident += chunk.resident_size();
         }
         Self {
             field,
             chunks,
             ends,
+            resident,
         }
     }
 
@@ -125,6 +134,7 @@ impl ChunkedSerie {
             field,
             chunks: Vec::with_capacity(capacity),
             ends: Vec::with_capacity(capacity),
+            resident: 0,
         }
     }
 
@@ -326,14 +336,16 @@ impl ChunkedSerie {
     /// Returns the first failure a batch raises, after which the reader is
     /// fused.
     pub fn from_serie_reader(reader: SerieReader) -> crate::arrow::Result<Self> {
-        let root = reader.field().clone();
-        let mut chunks = Vec::new();
+        let mut root = Some(reader.field().clone());
+        let mut chunked = Self::with_chunk_capacity(Arc::new(reader.field().clone()), 0);
         for chunk in reader {
-            chunks.push(chunk?.settled()?);
+            let chunk = chunk?;
+            // The first chunk's field is the one every chunk shares.
+            if let Some(root) = root.take() {
+                chunked.field = chunk.field_ref().map_or_else(|| Arc::new(root), Arc::clone);
+            }
+            chunked.push_landed(chunk)?;
         }
-        let field = Self::field_of(&chunks, || Arc::new(root));
-        let mut chunked = Self::from_landed(field, chunks);
-        chunked.settle()?;
         Ok(chunked)
     }
 
@@ -631,6 +643,39 @@ impl ChunkedSerie {
         self.field.as_sort().by()
     }
 
+    /// Whether the rows are already in the order `by` states, read with no
+    /// copy: the field declares at least `by`, proven where the chunks
+    /// landed, or every chunk's rows and every chunk edge are read once in
+    /// it - what a writer asks before sorting rows that usually arrive in
+    /// order.
+    ///
+    /// # Errors
+    ///
+    /// The binder's refusal of a key.
+    #[cfg(feature = "iceberg")]
+    pub(crate) fn keeps_order(&self, by: &[expression::Ordering]) -> crate::Result<bool> {
+        if by.is_empty() {
+            return Ok(true);
+        }
+        if self
+            .declared_order()?
+            .is_some_and(|declared| declared.starts_with(by))
+        {
+            return Ok(true);
+        }
+        for chunk in &self.chunks {
+            if chunk.first_disorder(by)?.is_some() {
+                return Ok(false);
+            }
+        }
+        for pair in self.chunks.windows(2) {
+            if !pair[0].edge_in_order(&pair[1], by)? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     /// This chunked serie checked at every chunk edge against the order its
     /// field declares - the last row of each chunk against the first of the
     /// next - refusing the first edge out of order by its chunk; a field
@@ -695,12 +740,21 @@ impl ChunkedSerie {
     }
 
     /// Append one chunk already landed under the field, then settle: the
-    /// heaviest chunks spilled once the chunks pass the process bound.
-    fn push_landed(&mut self, landed: Serie) -> crate::Result<()> {
+    /// heaviest chunks spilled once the chunks pass the process bound. The
+    /// bound is read against the running resident total, so a push under it
+    /// walks no chunk.
+    pub(crate) fn push_landed(&mut self, landed: Serie) -> crate::Result<()> {
         let end = self.len() + landed.len();
+        self.resident += landed.resident_size();
         self.chunks.push(landed);
         self.ends.push(end);
-        self.settle()
+        let options = SpillOptions::from_env()?;
+        if options.is_never()
+            || u64::try_from(self.resident).unwrap_or(u64::MAX) <= options.byte_size()
+        {
+            return Ok(());
+        }
+        self.spill(options)
     }
 
     /// Every row as one column: the one join.
@@ -1682,9 +1736,10 @@ impl ChunkedSerie {
     }
 
     /// The bytes the rows occupy in memory: every chunk's
-    /// [`Serie::resident_size`], summed.
+    /// [`Serie::resident_size`], summed - kept beside the chunks, so the
+    /// answer costs no walk.
     pub fn resident_size(&self) -> usize {
-        self.chunks.iter().map(Serie::resident_size).sum()
+        self.resident
     }
 
     /// Whether every chunk's rows lie in a spill file: no byte resident, and
@@ -1742,19 +1797,40 @@ impl ChunkedSerie {
             .collect();
         order.sort_by_key(|(_, bytes)| std::cmp::Reverse(*bytes));
         let whole = options.clone().with_byte_size(0);
-        for (index, _) in order {
-            if resident(&self.chunks) <= bound {
-                break;
+        let outcome = (|| {
+            for (index, _) in order {
+                if resident(&self.chunks) <= bound {
+                    break;
+                }
+                self.chunks[index].spill(&whole)?;
             }
-            self.chunks[index].spill(&whole)?;
-        }
-        Ok(())
+            Ok(())
+        })();
+        self.resident = self.chunks.iter().map(Serie::resident_size).sum();
+        outcome
     }
 
-    /// [`Self::spill`] under the process default: what every door that
-    /// builds chunks answers through.
-    pub(crate) fn settle(&mut self) -> crate::Result<()> {
-        self.spill(SpillOptions::from_env()?)
+    /// [`Self::spill`], answering this serie so calls chain.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::spill`]'s.
+    pub fn as_spilled(&mut self, options: &SpillOptions) -> crate::Result<&mut Self> {
+        self.spill(options)?;
+        Ok(self)
+    }
+
+    /// A copy of this chunked serie spilled under `options`' bound, this
+    /// one untouched: the chunks the bound leaves resident are shared, the
+    /// rest written once and mapped.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::spill`]'s.
+    pub fn into_spilled(&self, options: &SpillOptions) -> crate::Result<Self> {
+        let mut spilled = self.clone();
+        spilled.spill(options)?;
+        Ok(spilled)
     }
 
     /// Sort the rows in place under `options`, answering this serie so

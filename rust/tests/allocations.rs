@@ -9540,3 +9540,46 @@ fn a_merge_join_over_declared_sides_builds_no_table_and_costs_nothing_per_key() 
         "the rows move the count through the pairs vector alone: {merged_costs:?}"
     );
 }
+
+/// A constant column holds one value whatever its length: building it costs
+/// the one row it lays out as and its own cell, never the rows; a cell read
+/// clones the value, a slice is one `Arc`, and the array it exports is
+/// built once and shared after.
+#[test]
+fn a_lit_column_costs_its_one_row_and_nothing_per_row() {
+    let field = DataType::utf8().required_field("venue");
+    let (building, column) = counted(|| {
+        Serie::lit(field.clone(), Scalar::from("XNAS"), 1 << 20).expect("a constant column")
+    });
+    // The one-row landing - its validity, offsets and data buffers, the
+    // leaf and its `Arc` - plus the lit leaf's own `Arc`: a fixed count,
+    // whatever the length.
+    assert_eq!(building, LIT_BUILD, "building a lit of a million rows");
+    let (short, _) =
+        counted(|| Serie::lit(field.clone(), Scalar::from("XNAS"), 2).expect("a constant"));
+    assert_eq!(short, LIT_BUILD, "the length costs nothing");
+
+    free("a lit cell", || {
+        black_box(column.scalar(777_777).expect("a row"));
+    });
+    free("a lit length and order", || {
+        black_box(column.len());
+        black_box(column.is_sorted(SortOptions::default()));
+        black_box(column.unique_count());
+    });
+    costs("a lit slice", 1, || {
+        black_box(column.slice(10, 1_000).expect("a window"));
+    });
+    let built = column.into_arrow_array().expect("the array builds once");
+    // Laid out once, an export is the one `Arc` the array crosses in.
+    costs("a built lit's export", 1, || {
+        black_box(column.into_arrow_array().expect("shared after"));
+    });
+    assert_eq!(built.len(), 1 << 20);
+}
+
+/// What building a lit of any length allocates: the value canonicalized
+/// under the field, the one-row landing - its row vector, the buffers of a
+/// one-row text column, the leaf and its `Arc` - and the lit leaf's own
+/// `Arc`; thirteen in all, and none of them a row.
+const LIT_BUILD: usize = 13;

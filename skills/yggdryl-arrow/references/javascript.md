@@ -9,8 +9,8 @@ so cross whole tables or readers, never a row at a time. Cast options are
 ## Build a column from JavaScript values
 
 `Serie.fromScalars` sends every row through the field's value contract once;
-`fromDefault` repeats the field's canonical default. `int64` rows are
-`bigint` going in.
+`fromDefault` repeats the field's canonical default and `lit` any value, each
+as a constant column holding the one row. `int64` rows are `bigint` going in.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -29,6 +29,12 @@ assert.throws(() => Serie.fromScalars(price, [null]), /\$\.price/)
 assert.deepEqual(Serie.fromDefault(price, 2).asJs(), [0, 0])
 assert.deepEqual(Serie.fromDefault(Field.from('symbol: utf8'), 2).asJs(), [null, null])
 assert.equal(Serie.empty(price).length, 0)
+
+// A constant: one value held once, laid out only when something exports it.
+const constant = Serie.lit(price, 125n, 1_000_000)
+assert.equal(constant.isLit, true)
+assert.equal(constant.scalar(999_999).asJs(), 125)
+assert.ok(constant.residentSize() < 1_024)
 ```
 
 ## Land an Arrow JS vector
@@ -424,6 +430,11 @@ assert.equal(spilled.isSpilled() && spilled.residentSize() === 0, true)
 assert.equal(spilled.scalar(7).asJs(), 7) // read exactly as resident
 spilled.push(1024) // a write brings the leaf back
 assert.equal(spilled.isSpilled(), false)
+
+// One-liners: a spilled copy, or the spill chained in place.
+assert.equal(prices.intoSpilled(new SpillOptions({ byteSize: 0 })).isSpilled(), true)
+assert.equal(prices.isSpilled(), false)
+assert.equal(spilled.asSpilled(new SpillOptions({ byteSize: 0 })).isSpilled(), true)
 ```
 
 ## Join two record columns

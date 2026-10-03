@@ -838,6 +838,29 @@ test('spill moves the heaviest chunks whole first and keeps the lightest residen
   assert.equal(small.residentSize(), small.memorySize())
 })
 
+test('asSpilled spills chunks in place and answers them, intoSpilled spills a copy', () => {
+  const zero = new SpillOptions({ byteSize: 0 })
+  const field = price(false)
+  const heavy = Serie.fromScalars(
+    field,
+    Array.from({ length: 1_024 }, (_, index) => index),
+  )
+  const prices = ChunkedSerie.fromSeries([heavy, Serie.fromScalars(field, [0, 1, 2])], field)
+  const copy = prices.intoSpilled(zero)
+  assert.ok(copy instanceof ChunkedSerie)
+  assert.equal(copy.isSpilled(), true)
+  assert.equal(prices.isSpilled(), false)
+  assert.ok(copy.equals(prices))
+  assert.equal(prices.asSpilled(zero), prices)
+  assert.equal(prices.isSpilled(), true)
+  assert.equal(prices.residentSize(), 0)
+  assert.equal(prices.scalar(1_025).asJs(), 1)
+  // Absent options are the process default, which leaves these rows resident.
+  const small = chunked([1, 2, 3], 2)
+  assert.equal(small.asSpilled(), small)
+  assert.equal(small.intoSpilled(null).residentSize(), small.memorySize())
+})
+
 test('sorting by key reads the keys first, merges the rows and joins only the positions', () => {
   const prices = chunked([3, 1, 2], 2)
   const order = prices.sortIndicesBy('price desc')

@@ -154,15 +154,18 @@ pub struct ParquetOptions {
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
     /// Whole batches published per streamed-write commit, never rows; `None`
-    /// is the destination's own cadence: a leaf or a folder publishes once,
-    /// after the source ends; an Iceberg table each time the held batches
-    /// reach its target file size, then the remainder, an overwrite's first
-    /// commit replacing and every later one appending while every commit of a
-    /// merge merges by its key; a write session by
+    /// is the destination's own cadence: a leaf, a folder and an Iceberg
+    /// table publish once, after the source ends - the table holding every
+    /// partition's rows under the process spill bound until then - an
+    /// overwrite's first commit replacing and every later one appending
+    /// while every commit of a merge merges by its key; a write session by
     /// [`DEFAULT_COMMIT_BYTE_SIZE`](crate::media::DEFAULT_COMMIT_BYTE_SIZE).
     /// The commits completed before a later failure stay published. The rule
     /// is [`IORecordOptions::commit_batch_num`]'s.
     pub commit_batch_num: Option<usize>,
+    /// The threads a write of several parts runs on at once; `None` is the
+    /// destination's own answer.
+    pub num_threads: Option<usize>,
     /// Unused: Parquet compresses pages internally through `compression`.
     pub level: crate::Level,
     /// The threads one file's columns decode or encode on; `None` is what
@@ -198,6 +201,7 @@ struct ParquetOptionsIdentity<'a> {
     row_offset: Option<u64>,
     max_byte_size: Option<u64>,
     commit_batch_num: Option<usize>,
+    num_threads: Option<usize>,
     level: crate::Level,
 }
 
@@ -219,6 +223,7 @@ impl ParquetOptions {
             row_offset: self.row_offset,
             max_byte_size: self.max_byte_size,
             commit_batch_num: self.commit_batch_num,
+            num_threads: self.num_threads,
             level: self.level,
         }
     }
@@ -241,6 +246,7 @@ impl ParquetOptions {
             row_offset: None,
             max_byte_size: None,
             commit_batch_num: None,
+            num_threads: None,
             level: crate::Level::DEFAULT,
             threads: None,
         }

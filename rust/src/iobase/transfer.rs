@@ -18,6 +18,7 @@ pub(crate) fn append_arrow_reader_default(
 
     options.require_write_mode(crate::IOMode::Append)?;
     options.require_commit_batch_num()?;
+    options.require_num_threads()?;
     options.require_write_limits()?;
     if options.write_limit_is_zero() {
         return Ok(());
@@ -61,6 +62,7 @@ pub(crate) fn merge_arrow_reader_default(
 
     options.require_write_mode(crate::IOMode::Merge)?;
     options.require_commit_batch_num()?;
+    options.require_num_threads()?;
     options.require_write_limits()?;
     // Key and limit intent is deterministic and has already been validated;
     // only then may an empty merge end without touching its destination.
@@ -126,6 +128,7 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
 
     options.require_write_mode(crate::IOMode::Overwrite)?;
     options.require_commit_batch_num()?;
+    options.require_num_threads()?;
     let container = handle.is_container();
     if container {
         #[cfg(feature = "iceberg")]
@@ -532,11 +535,19 @@ impl ArrowWriteSession {
             let Some(batch) = self.limit.apply(batch) else {
                 break;
             };
-            if let Some(reader) = self
+            let completed = match self
                 .buffer
                 .as_mut()
                 .expect("a shaped session owns a commit buffer")
                 .push(batch)
+            {
+                Ok(completed) => completed,
+                Err(error) => {
+                    self.abort();
+                    return Err(error);
+                }
+            };
+            if let Some(reader) = completed
                 && let Err(error) = self.publish(handle, reader)
             {
                 self.abort();
@@ -824,13 +835,18 @@ impl ArrowWriteSession {
             ArrowWriteTarget::Iceberg {
                 located, replaced, ..
             } => match mode {
-                crate::IOMode::Overwrite => located.overwrite_prepared(batches)?,
-                crate::IOMode::Append => located.append_prepared(batches)?,
+                crate::IOMode::Overwrite => {
+                    located.overwrite_prepared(batches, self.delegated.num_threads())?;
+                }
+                crate::IOMode::Append => {
+                    located.append_prepared(batches, self.delegated.num_threads())?;
+                }
                 crate::IOMode::Merge => located.merge_prepared(
                     batches,
                     self.delegated.merge_by(),
                     self.delegated.safe(),
                     replaced,
+                    self.delegated.num_threads(),
                 )?,
                 crate::IOMode::ReadOnly | crate::IOMode::Random => {
                     return Err(crate::Error::InvalidRecord {

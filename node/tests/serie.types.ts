@@ -304,8 +304,35 @@ const readerSpilled: boolean = held.isSpilled()
 held.spill(new SpillOptions({ byteSize: 0n }))
 // @ts-expect-error spill takes a SpillOptions, not its init object
 wide.spill({ byteSize: 0 })
+// `asSpilled` answers the value itself, so calls chain; `intoSpilled` a copy -
+// a reader's handing its records over and consuming it.
+const spilledInPlace: Serie = wide.asSpilled(new SpillOptions({ byteSize: 0 })).asReversed()
+const spilledDefault: Serie = wide.asSpilled()
+const spilledCopy: Serie = wide.intoSpilled(null)
+const recordSpilled: StructSerie = (records.child('row') as StructSerie).asSpilled()
+const readerSpilledInPlace: SerieReader = held.asSpilled()
+const readerSpilledCopy: SerieReader = held.intoSpilled(new SpillOptions({ byteSize: 0 }))
+// @ts-expect-error asSpilled takes a SpillOptions, not its init object
+wide.asSpilled({ byteSize: 0 })
+// @ts-expect-error the private spill bridges are hidden
+wide._intoSpilledNative
+// @ts-expect-error the private spill bridges are hidden
+held._asSpilledNative
 
-void [resident, spilled, spilledNothing, readerResident, readerSpilled]
+// A constant column: one value for every row.
+const constant: Serie = Serie.lit(fields.utf8('venue'), 'XNAS', 1_000)
+const constantOfText: Serie = Serie.lit('price: int64', 7n, 3)
+const isConstant: boolean = constant.isLit
+// @ts-expect-error the length is a number of rows
+Serie.lit('price: int64', 7, 3n)
+// @ts-expect-error a constant is a getter, not a mutable slot
+constant.isLit = false
+// @ts-expect-error the private constant bridge is hidden
+Serie._litNative
+
+void [resident, spilled, spilledNothing, readerResident, readerSpilled, spilledInPlace,
+  spilledDefault, spilledCopy, recordSpilled, readerSpilledInPlace, readerSpilledCopy, constant,
+  constantOfText, isConstant]
 
 // Orderings by key: the clause's text, key texts, records or a Selector.
 const declared: string[] | null = records.declaredOrder()

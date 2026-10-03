@@ -875,6 +875,99 @@ fn partitioned_commit_batch(partitions: usize, rows_per_partition: usize) -> Rec
     .expect("the batch matches the schema")
 }
 
+/// A stream of eight batches interleaving every partition, each batch out
+/// of the table's sort order, written through the record door: one commit
+/// of sorted partition files on one thread against four
+/// (`num_threads`), and the same stream paced to a commit every two
+/// batches.
+fn streamed_commit_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::IOMedia;
+    use yggdryl::media::IORecordOptions;
+
+    let mut group = criterion.benchmark_group("commit");
+    group.sample_size(10);
+    let path = scratch(SCRATCH_LABELS[7]);
+    let schema = plan_schema();
+    // Eight batches of every partition, ids descending within each so the
+    // table's ascending order is never the arrival order.
+    let batches: Vec<RecordBatch> = (0..8_usize)
+        .map(|index| {
+            let rows = COMMIT_PARTITIONS * COMMIT_ROWS_PER_PARTITION / 8;
+            let first = i64::try_from(index * rows).expect("the row fits an id");
+            RecordBatch::try_new(
+                schema
+                    .clone()
+                    .into_arrow_schema()
+                    .expect("the schema projects to Arrow"),
+                vec![
+                    Arc::new(Int64Array::from_iter_values(
+                        (0..rows).map(|row| first + i64::try_from(rows - 1 - row).expect("fits")),
+                    )),
+                    Arc::new(StringArray::from_iter_values(
+                        (0..rows).map(|row| venue(row % COMMIT_PARTITIONS)),
+                    )),
+                ],
+            )
+            .expect("the batch matches the schema")
+        })
+        .collect();
+    let rows: usize = batches.iter().map(RecordBatch::num_rows).sum();
+    group.throughput(Throughput::Elements(rows as u64));
+    let sorted = || {
+        let _ = std::fs::remove_dir_all(&path);
+        Table::create_sorted(
+            LocalFolder::new(&path).expect("the scratch directory is addressable"),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column"),
+            SortOrder {
+                order_id: 1,
+                fields: vec![SortField {
+                    source_id: 1,
+                    transform: Transform::Identity,
+                    direction: "asc".into(),
+                    null_order: "nulls-last".into(),
+                }],
+            },
+        )
+        .expect("the scratch table creates")
+    };
+    for (label, threads, cadence) in [
+        ("num_threads-1/one-commit", 1_usize, None),
+        ("num_threads-4/one-commit", 4, None),
+        ("num_threads-4/commit-every-2-batches", 4, Some(2_usize)),
+    ] {
+        group.bench_function(
+            format!("sorted_stream_{COMMIT_PARTITIONS}/{label}"),
+            |bencher| {
+                bencher.iter_batched(
+                    sorted,
+                    |mut table| {
+                        let mut options = table
+                            .record_options()
+                            .expect("the table's encoding")
+                            .with_num_threads(threads);
+                        options.set_commit_batch_num(cadence);
+                        table
+                            .append_arrow_reader(
+                                yggdryl::arrow::batch_reader(batches[0].schema(), batches.clone()),
+                                &options,
+                            )
+                            .expect("the stream appends");
+                        assert_eq!(
+                            table.metadata().snapshots().len(),
+                            cadence.map_or(1, |every| 8 / every),
+                            "one commit per cadence"
+                        );
+                    },
+                    BatchSize::PerIteration,
+                );
+            },
+        );
+    }
+    group.finish();
+}
+
 /// One partitioned commit on one thread against four: the partition groups
 /// are independent, so their files are written concurrently and the
 /// manifest still lists them in group order.
@@ -1732,6 +1825,7 @@ pub(crate) fn benchmarks(criterion: &mut Criterion) {
     read_benchmarks(criterion);
     contended_commit_benchmarks(criterion);
     parallel_commit_benchmarks(criterion);
+    streamed_commit_benchmarks(criterion);
     catalog_resolve_benchmarks(criterion);
 }
 

@@ -1487,6 +1487,98 @@ test('a record spills child by child, heaviest first, and reads back whole', () 
   assert.deepEqual(quotes.asJs()[3], { venue: 'XNYS', price: 3 })
 })
 
+test('asSpilled spills in place and answers the serie, intoSpilled spills a copy', () => {
+  const zero = new SpillOptions({ byteSize: 0 })
+  const prices = Serie.fromScalars(
+    new Field('price', 'int64', false),
+    Array.from({ length: 1_024 }, (_, index) => index),
+  )
+  const copy = prices.intoSpilled(zero)
+  assert.ok(copy instanceof Serie)
+  assert.equal(copy.isSpilled(), true)
+  assert.equal(copy.residentSize(), 0)
+  assert.equal(prices.isSpilled(), false)
+  assert.ok(copy.equals(prices))
+
+  // In place, so calls chain.
+  assert.equal(prices.asSpilled(zero), prices)
+  assert.equal(prices.isSpilled(), true)
+  assert.equal(prices.asSpilled(zero).asReversed().scalar(0).asJs(), 1_023)
+
+  // Absent and null are the process default, which leaves three rows resident.
+  const small = int64Column([3, 1, 2])
+  assert.equal(small.asSpilled(), small)
+  assert.equal(small.asSpilled(null).isSpilled(), false)
+  assert.equal(small.intoSpilled().isSpilled(), false)
+  // A record keeps its leaf class across the copy.
+  const records = quotes([['XNAS', 1], ['XNYS', 2]])
+  const spilledRecords = records.intoSpilled(zero)
+  assert.ok(spilledRecords instanceof StructSerie)
+  assert.deepEqual(spilledRecords.names, ['venue', 'price'])
+  assert.equal(spilledRecords.residentSize(), 0)
+  assert.throws(() => small.asSpilled({ byteSize: 0 }), /SpillOptions/)
+})
+
+test('lit holds one value for every row, laid out only when exported', () => {
+  const field = Field.from('venue: utf8 not null')
+  const venue = Serie.lit(field, 'XNAS', 1_000_000)
+  assert.ok(venue instanceof Serie)
+  assert.equal(venue.isLit, true)
+  assert.equal(venue.length, 1_000_000)
+  assert.ok(venue.field.equals(field))
+  assert.equal(venue.scalar(999_999).asJs(), 'XNAS')
+  const resident = venue.residentSize()
+  assert.ok(resident < 1_024, 'one row, not a million')
+  // The laid-out estimate, answered without laying the column out.
+  assert.ok(venue.memorySize() > resident)
+  assert.equal(venue.residentSize(), resident, 'memorySize builds no array')
+  // A spill forgets the built array and writes nothing: a lit never spills.
+  assert.equal(venue.asSpilled(new SpillOptions({ byteSize: 0 })).isSpilled(), false)
+
+  // A slice moves the count and stays a constant.
+  const three = venue.slice(10, 3)
+  assert.equal(three.isLit, true)
+  assert.deepEqual(three.asJs(), ['XNAS', 'XNAS', 'XNAS'])
+  // A constant is the rows it is: equal to the laid-out column, and exported as it.
+  const laid = Serie.fromScalars(field, ['XNAS', 'XNAS', 'XNAS'])
+  assert.equal(laid.isLit, false)
+  assert.ok(three.equals(laid))
+  assert.deepEqual(three.intoArrowArray().toArray(), ['XNAS', 'XNAS', 'XNAS'])
+
+  // A write of the same value keeps it a constant; another value lays it out.
+  three.push('XNAS')
+  assert.equal(three.isLit, true)
+  assert.equal(three.length, 4)
+  three.set(0, 'XNYS')
+  assert.equal(three.isLit, false)
+  assert.deepEqual(three.asJs(), ['XNYS', 'XNAS', 'XNAS', 'XNAS'])
+
+  // The canonical default is a constant too, and a field expression is a field.
+  const zeros = Serie.fromDefault(Field.from('price: int64 not null'), 3)
+  assert.equal(zeros.isLit, true)
+  assert.deepEqual(zeros.asJs(), [0, 0, 0])
+  assert.deepEqual(Serie.lit('price: int64', 7, 2).asJs(), [7, 7])
+  // A text field reads an integer as the text it spells.
+  assert.deepEqual(Serie.lit('venue: utf8', 42, 2).asJs(), ['42', '42'])
+  assert.equal(Serie.lit('price: int64', null, 2).nullCount(), 2)
+  assert.equal(Serie.lit(field, 'XNAS', 0).length, 0)
+})
+
+test('lit refuses what the field refuses', () => {
+  assert.throws(
+    () => Serie.lit(Field.from('venue: utf8 not null'), null, 3),
+    /\$\.venue: non-nullable field received null/,
+  )
+  assert.throws(
+    () => Serie.lit(Field.from('price: int64 not null'), 'XNAS', 3),
+    /\$\.price: expected int64, got string/,
+  )
+  assert.throws(() => Serie.lit(Field.from('venue: utf8'), [1, 2], 2), /expected utf8, got serie/)
+  for (const length of [-1, 1.5, Number.NaN]) {
+    assert.throws(() => Serie.lit(Field.from('venue: utf8'), 'XNAS', length), /length must be/)
+  }
+})
+
 // ---------------------------------------------------------------------------
 // Orderings by key: `by` read once by the core's own `order by` key rule.
 // ---------------------------------------------------------------------------
@@ -1654,6 +1746,35 @@ test('a reader spills the records it holds and a stream holds none', () => {
 })
 
 const readRows = (reader) => [...reader].flatMap((serie) => serie.asJs())
+
+test('a reader spills in place, or hands its records over spilled and is consumed', () => {
+  const zero = new SpillOptions({ byteSize: 0 })
+  const prices = Serie.fromScalars(
+    new Field('price', 'int64', false),
+    Array.from({ length: 256 }, (_, index) => index),
+  )
+  const held = SerieReader.fromSerie(prices)
+  assert.equal(held.asSpilled(zero), held)
+  assert.equal(held.isSpilled(), true)
+  assert.equal([...held][0].child('price').length, 256)
+
+  const source = SerieReader.fromSerie(prices)
+  const moved = source.intoSpilled(zero)
+  assert.ok(moved instanceof SerieReader)
+  assert.notEqual(moved, source)
+  assert.equal(moved.isSpilled(), true)
+  assert.ok(moved.field.equals(source.field))
+  assert.throws(() => [...source], /already been consumed/)
+  assert.throws(() => source.intoSpilled(zero), /already been consumed/)
+  assert.throws(() => source.asSpilled(zero), /already been consumed/)
+  assert.equal([...moved][0].child('price').scalar(255).asJs(), 255)
+
+  // A stream holds no landed batch: spilling it moves it untouched.
+  const stream = SerieReader.fromArrowReader(BatchReader.from(narrow([1], ['AAPL'])), trades())
+  const streamed = stream.intoSpilled()
+  assert.equal([...streamed].length, 1)
+})
+
 
 test('a reader sorts by draining and merging, its root kept and the reader consumed', () => {
   const held = () => quotes([['XNYS', 2], ['XNAS', 1], ['XNYS', 1]])

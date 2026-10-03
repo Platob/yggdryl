@@ -97,10 +97,10 @@ Python, `readArrowReader({ rowheader })` in JavaScript.
    the object; compile an `ArrowCastPlan` once per stream; bind an expression
    once. Anything parsed or compiled inside a row or batch loop is a defect.
 2. **Stream; never collect.** Record reads answer a batch reader
-   (`read_arrow_reader`; `read_arrow` for a `SerieReader` in Rust and Python -
-   Node has no `readArrow`, so wrap
-   `SerieReader.fromArrowReader(handle.readArrowReader())`); keep it a reader
-   end to end. Nothing streamable should become a list of batches or rows
+   (`read_arrow_reader`; `read_serie` / `readSerie` for a `SerieReader`), and
+   `write_serie` with its three intents takes a held `Serie`, a `ChunkedSerie`
+   or a `SerieReader` as the batches it already is; keep it a reader end to
+   end. Nothing streamable should become a list of batches or rows
    unless the caller asked for one.
 3. **Values enter through their type.** `DataType.scalar`/`Field.scalar` check
    and canonicalize (width narrowed, decimal rescaled, time at its unit, text

@@ -1455,6 +1455,7 @@ Object.defineProperties(Scalar.prototype, {
 const nativeSerie = Object.freeze({
   fromScalars: NativeSerie._fromScalarsNative.bind(NativeSerie),
   fromDefault: NativeSerie._fromDefaultNative.bind(NativeSerie),
+  lit: NativeSerie._litNative.bind(NativeSerie),
   fromArrowArray: NativeSerie._fromArrowArrayIpcNative.bind(NativeSerie),
   fromArrowBatch: NativeSerie._fromArrowBatchIpcNative.bind(NativeSerie),
   leaf: Object.getOwnPropertyDescriptor(NativeSerie.prototype, '_leafNative').get,
@@ -1502,6 +1503,8 @@ const nativeSerie = Object.freeze({
   intoSortBy: NativeSerie.prototype._intoSortByNative,
   asSortBy: NativeSerie.prototype._asSortByNative,
   joinWith: NativeSerie.prototype._joinWithNative,
+  asSpilled: NativeSerie.prototype._asSpilledNative,
+  intoSpilled: NativeSerie.prototype._intoSpilledNative,
   window: NativeSerie.prototype._windowNative,
   windowBy: NativeSerie.prototype._windowByNative,
   // The natives that answer a serie, each handed out as its leaf's class.
@@ -1574,6 +1577,8 @@ for (const name of [
   '_intoSortByNative',
   '_asSortByNative',
   '_joinWithNative',
+  '_asSpilledNative',
+  '_intoSpilledNative',
   '_windowNative',
   '_windowByNative',
 ]) {
@@ -1716,6 +1721,7 @@ const Serie = publicNativeClass(
   new Set([
     '_fromScalarsNative',
     '_fromDefaultNative',
+    '_litNative',
     '_fromArrowArrayIpcNative',
     '_fromArrowBatchIpcNative',
     '_emptyNative',
@@ -1862,6 +1868,15 @@ Object.defineProperties(Serie, {
       return describedSerie(
         nativeSerie.fromDefault(field instanceof NativeField ? field : Field.from(field), rows),
       )
+    },
+  },
+  // A constant column: `value` typed by the field's own contract once and
+  // held as one row for `length` rows.
+  lit: {
+    configurable: true,
+    value(field, value, length) {
+      const native = field instanceof NativeField ? field : Field.from(field)
+      return describedSerie(nativeSerie.lit(native, serieValue(value, native), length))
     },
   },
   fromArrowArray: {
@@ -2150,6 +2165,23 @@ Object.defineProperties(Serie.prototype, {
     value() {
       Reflect.apply(nativeSerie.asReversed, this, [])
       return this
+    },
+  },
+  // Spilled in place under the bound `options` states, the process default
+  // where absent, answering this serie; `intoSpilled` a spilled copy.
+  asSpilled: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      Reflect.apply(nativeSerie.asSpilled, this, [options])
+      return this
+    },
+  },
+  intoSpilled: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return describedSerie(Reflect.apply(nativeSerie.intoSpilled, this, [options]))
     },
   },
   asTaken: {
@@ -2565,6 +2597,8 @@ const nativeSerieReader = Object.freeze({
   intoSorted: NativeSerieReader.prototype._intoSortedNative,
   intoSortBy: NativeSerieReader.prototype._intoSortByNative,
   joinWith: NativeSerieReader.prototype._joinWithNative,
+  asSpilled: NativeSerieReader.prototype._asSpilledNative,
+  intoSpilled: NativeSerieReader.prototype._intoSpilledNative,
 })
 for (const name of [
   '_nextNative',
@@ -2573,6 +2607,8 @@ for (const name of [
   '_intoSortedNative',
   '_intoSortByNative',
   '_joinWithNative',
+  '_asSpilledNative',
+  '_intoSpilledNative',
 ]) {
   delete NativeSerieReader.prototype[name]
 }
@@ -2646,6 +2682,21 @@ Object.defineProperties(SerieReader.prototype, {
     configurable: true,
     value(by) {
       return Reflect.apply(nativeSerieReader.intoSortBy, this, [orderingKeys(by)])
+    },
+  },
+  // The records this reader holds spilled in place, answering this reader;
+  // `intoSpilled` hands them over as a new reader, this one consumed.
+  asSpilled: {
+    configurable: true,
+    value(options) {
+      Reflect.apply(nativeSerieReader.asSpilled, this, [options])
+      return this
+    },
+  },
+  intoSpilled: {
+    configurable: true,
+    value(options) {
+      return Reflect.apply(nativeSerieReader.intoSpilled, this, [options])
     },
   },
   // The stream joined with a held column, a chunked one or another stream,
@@ -2743,6 +2794,8 @@ const nativeChunkedSerie = Object.freeze({
   intoSortBy: NativeChunkedSerie.prototype._intoSortByNative,
   asSortBy: NativeChunkedSerie.prototype._asSortByNative,
   joinWith: NativeChunkedSerie.prototype._joinWithNative,
+  asSpilled: NativeChunkedSerie.prototype._asSpilledNative,
+  intoSpilled: NativeChunkedSerie.prototype._intoSpilledNative,
 })
 for (const name of [
   '_chunksNative',
@@ -2772,6 +2825,8 @@ for (const name of [
   '_intoSortByNative',
   '_asSortByNative',
   '_joinWithNative',
+  '_asSpilledNative',
+  '_intoSpilledNative',
 ]) {
   delete NativeChunkedSerie.prototype[name]
 }
@@ -3078,6 +3133,23 @@ Object.defineProperties(ChunkedSerie.prototype, {
     value() {
       Reflect.apply(nativeChunkedSerie.asReversed, this, [])
       return this
+    },
+  },
+  // Chunks spilled in place, answering this chunked serie; `intoSpilled` a
+  // spilled copy.
+  asSpilled: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      Reflect.apply(nativeChunkedSerie.asSpilled, this, [options])
+      return this
+    },
+  },
+  intoSpilled: {
+    configurable: true,
+    writable: true,
+    value(options) {
+      return Reflect.apply(nativeChunkedSerie.intoSpilled, this, [options])
     },
   },
   asTaken: {
@@ -4825,10 +4897,12 @@ delete binding.ArrowWriteSession
 const { installRecords } = require('./records.js')
 const { icebergBatchReader, icebergCallOptions, intoField } = installRecords({
   BatchReader,
+  ChunkedSerie,
   Field,
   IcebergOptions: binding.IcebergOptions,
   IOBase,
   RecordOptions,
+  Serie,
   SerieReader,
   TextOptions,
   Table: binding.Table,

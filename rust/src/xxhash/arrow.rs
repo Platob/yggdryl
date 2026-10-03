@@ -1187,6 +1187,7 @@ fn feed_cell(digester: &mut impl Hasher, column: &Serie, index: usize) -> Result
     }
     match column {
         Serie::Null(_) => write_null(digester),
+        Serie::Lit(held) => return feed_cell(digester, held.row(), 0),
         Serie::Boolean(held) => write_bool(digester, held.value(index).unwrap_or_default()),
         Serie::Int8(held) => write_signed(digester, i128::from(held.values()[index])),
         Serie::Int16(held) => write_signed(digester, i128::from(held.values()[index])),

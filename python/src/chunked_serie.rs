@@ -653,6 +653,40 @@ impl PyChunkedSerie {
         slf.borrow_mut().inner.spill(&options).map_err(value_error)
     }
 
+    /// `spill`, answering this chunked serie so calls chain.
+    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
+    fn as_spilled<'py>(
+        slf: &Bound<'py, Self>,
+        options: Option<PyRef<'_, PySpillOptions>>,
+        byte_size: Py<PyAny>,
+        folder: Py<PyAny>,
+    ) -> PyResult<Bound<'py, Self>> {
+        let py = slf.py();
+        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
+        slf.borrow_mut()
+            .inner
+            .as_spilled(&options)
+            .map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// A copy of these chunks spilled under the bound, these untouched: the
+    /// chunks the bound leaves resident are shared, the rest written once
+    /// and mapped.
+    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
+    fn into_spilled(
+        slf: &Bound<'_, Self>,
+        options: Option<PyRef<'_, PySpillOptions>>,
+        byte_size: Py<PyAny>,
+        folder: Py<PyAny>,
+    ) -> PyResult<Self> {
+        let py = slf.py();
+        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
+        Self::detached(slf, move |chunked| chunked.into_spilled(&options)).map(Self::from_inner)
+    }
+
     /// The `order by` keys the field declares the rows keep across every
     /// chunk (`SORT:by`), each as that declaration spells it, or `None`.
     fn declared_order(&self) -> PyResult<Option<Vec<String>>> {

@@ -33,8 +33,8 @@ use napi_derive::napi;
 use serde_json::Value as JsonValue;
 use yggdryl::expression::{IntoOrderings as _, Ordering};
 use yggdryl::{
-    ArrowCastOptions, Field as CoreField, FieldPath, FieldScalar, JoinSource, Scalar, Serie,
-    SerieReader, SerieReaderWindows, SerieValue, SortOptions,
+    ArrowCastOptions, Field as CoreField, FieldPath, FieldScalar, Scalar, Serie, SerieReader,
+    SerieReaderWindows, SerieSource, SerieValue, SortOptions,
 };
 
 use crate::chunked_serie::JsChunkedSerie;
@@ -319,6 +319,24 @@ impl JsSerie {
         Serie::with_capacity(field.inner.clone(), position(rows, "rows")?)
             .map(Self::from_core)
             .map_err(napi_error)
+    }
+
+    /// `length` copies of `value` under `field`: a constant column, the
+    /// value proven by the field once and held as one row, the whole array
+    /// built only when something exports it.
+    #[napi(factory, js_name = "_litNative", skip_typescript)]
+    pub fn lit_native(
+        field: ClassInstance<'_, JsField>,
+        value: &JsScalar,
+        length: f64,
+    ) -> Result<Self> {
+        Serie::lit(
+            field.inner.clone(),
+            value.inner.clone(),
+            position(length, "length")?,
+        )
+        .map(Self::from_core)
+        .map_err(napi_error)
     }
 
     /// `rows` copies of `field`'s canonical default.
@@ -845,6 +863,41 @@ impl JsSerie {
         self.inner.spill(bound).map_err(napi_error)
     }
 
+    /// Spill the rows in place under the bound `options` states - the
+    /// process default where it is `undefined` or `null` - as `spill` does;
+    /// the loader answers this serie.
+    #[napi(js_name = "_asSpilledNative", skip_typescript)]
+    pub fn as_spilled_native(
+        &mut self,
+        options: Option<ClassInstance<'_, JsSpillOptions>>,
+    ) -> Result<()> {
+        let bound = spill_bound(options.as_deref())?;
+        self.inner.as_spilled(bound).map(|_| ()).map_err(napi_error)
+    }
+
+    /// A copy of this serie spilled under the bound `options` states, this
+    /// one untouched: the buffers the bound leaves resident are shared, the
+    /// rest written once and mapped.
+    #[napi(js_name = "_intoSpilledNative", skip_typescript)]
+    pub fn into_spilled_native(
+        &self,
+        options: Option<ClassInstance<'_, JsSpillOptions>>,
+    ) -> Result<Self> {
+        let bound = spill_bound(options.as_deref())?;
+        self.inner
+            .into_spilled(bound)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Whether this column is a constant: one value held once for every
+    /// row, as `Serie.lit` and `Serie.fromDefault` build it. A write of
+    /// another value lays it out as its field's leaf, and it is no longer.
+    #[napi(getter)]
+    pub fn is_lit(&self) -> bool {
+        self.inner.as_lit().is_some()
+    }
+
     /// The `order by` keys this record's root declares its rows keep, most
     /// significant first, each as the key grammar spells it (`price desc`):
     /// `SORT:by` on the root, a proven order the sorts write and the writes
@@ -1278,10 +1331,31 @@ fn serie_reader_consumed() -> napi::Error {
     napi_error("this SerieReader has already been consumed; a stream is read once")
 }
 
+/// Rows in any shape the crate holds them, as the core's one intake: a held
+/// column and held chunks share their buffers, and a stream is taken - the
+/// reader is consumed, and one already consumed is refused.
+pub(crate) fn serie_source(
+    value: Either3<
+        ClassInstance<'_, JsSerie>,
+        ClassInstance<'_, JsChunkedSerie>,
+        ClassInstance<'_, JsSerieReader>,
+    >,
+) -> Result<SerieSource> {
+    Ok(match value {
+        Either3::A(serie) => SerieSource::from(serie.inner.clone()),
+        Either3::B(chunked) => SerieSource::from(chunked.inner.clone()),
+        Either3::C(mut reader) => {
+            let taken = reader.inner.take().ok_or_else(serie_reader_consumed)?;
+            reader.taken = true;
+            SerieSource::from(taken)
+        }
+    })
+}
+
 impl JsSerieReader {
     /// Wrap one undrained core reader, keeping the root it names and the
     /// record it states.
-    fn from_core(inner: SerieReader) -> Result<Self> {
+    pub(crate) fn from_core(inner: SerieReader) -> Result<Self> {
         Ok(Self {
             root: inner.field().clone(),
             statics: static_record(inner.static_values())?,
@@ -1450,6 +1524,40 @@ impl JsSerieReader {
         }
     }
 
+    /// Spill the records this reader holds in place, as `spill` does; the
+    /// loader answers this reader. Refused once the reader was taken.
+    #[napi(js_name = "_asSpilledNative", skip_typescript)]
+    pub fn as_spilled_native(
+        &mut self,
+        options: Option<ClassInstance<'_, JsSpillOptions>>,
+    ) -> Result<()> {
+        if self.taken {
+            return Err(serie_reader_consumed());
+        }
+        let bound = spill_bound(options.as_deref())?;
+        match self.inner.as_mut() {
+            Some(reader) => reader.as_spilled(bound).map(|_| ()).map_err(napi_error),
+            None => Ok(()),
+        }
+    }
+
+    /// This reader with the records it holds spilled under the bound
+    /// `options` states, handed over as a new reader: a stream owns one
+    /// source, so it moves rather than copies, and this reader is consumed.
+    #[napi(js_name = "_intoSpilledNative", skip_typescript)]
+    pub fn into_spilled_native(
+        &mut self,
+        options: Option<ClassInstance<'_, JsSpillOptions>>,
+    ) -> Result<Self> {
+        let bound = spill_bound(options.as_deref())?;
+        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        self.taken = true;
+        reader
+            .into_spilled(bound)
+            .map_err(napi_error)
+            .and_then(Self::from_core)
+    }
+
     /// Every record this reader yields in sorted order under the options:
     /// the stream drained into its chunks, each settled as it lands, merged,
     /// and read back as the held stream of the merged chunks. The root and
@@ -1506,15 +1614,7 @@ impl JsSerieReader {
         if self.taken || self.inner.is_none() {
             return Err(serie_reader_consumed());
         }
-        let other = match other {
-            Either3::A(serie) => JoinSource::from(serie.inner.clone()),
-            Either3::B(chunked) => JoinSource::from(chunked.inner.clone()),
-            Either3::C(mut reader) => {
-                let taken = reader.inner.take().ok_or_else(serie_reader_consumed)?;
-                reader.taken = true;
-                JoinSource::from(taken)
-            }
-        };
+        let other = serie_source(other)?;
         let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
         self.taken = true;
         reader

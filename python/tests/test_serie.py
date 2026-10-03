@@ -340,6 +340,89 @@ class TestProtocols:
         assert pickle.loads(pickle.dumps(Serie([1, "a"]))) == Serie([1, "a"])
 
 
+def venue() -> Field:
+    return Field("venue", "utf8", nullable=False)
+
+
+class TestLit:
+    """The constant column - mirrors ``rust/tests/serie/lit.rs`` through
+    ``Serie.lit`` and ``is_lit``."""
+
+    def test_a_lit_holds_one_value_once_and_reads_every_row_as_it(self) -> None:
+        column = Serie.lit(venue(), "XNAS", 1_000_000)
+        assert column.is_lit and column.is_column
+        assert len(column) == 1_000_000
+        assert column.field == venue()
+        assert column.null_count() == 0
+        assert column[0].as_py() == "XNAS"
+        assert column[-1].as_py() == "XNAS"
+        assert column.scalar(999_999) == Scalar.from_("XNAS")
+        with pytest.raises(IndexError):
+            column[1_000_000]
+        # One row resident, not a million; the laid-out estimate counts them.
+        assert column.resident_size() < 1_024
+        assert column.memory_size() >= 1_000_000
+        assert not column.is_spilled()
+        # Identity is the rows alone.
+        assert Serie.lit(venue(), "XNAS", 16) == Serie.from_scalars(venue(), ["XNAS"] * 16)
+        assert not Serie.from_scalars(venue(), ["XNAS"]).is_lit
+
+    def test_the_value_is_proven_by_the_field(self) -> None:
+        with pytest.raises(ValueError):
+            Serie.lit(venue(), None, 3)
+        absent = Serie.lit(Field("venue", "utf8"), None, 3)
+        assert absent.null_count() == 3 and absent.as_py() == [None, None, None]
+        # A text field reads an integer as its text; a sequence it cannot read.
+        assert Serie.lit(venue(), 1, 2).as_py() == ["1", "1"]
+        with pytest.raises(ValueError):
+            Serie.lit(venue(), [1], 3)
+        # The value lands canonical under the field, and a `Scalar` crosses as
+        # itself.
+        narrow = DataType("int32").scalar(7)
+        count = Serie.lit(Field("n", "int64", nullable=False), narrow, 2)
+        assert count.scalar(1).dtype == DataType("int64")
+        assert count.as_py() == [7, 7]
+        assert len(Serie.lit(venue(), "XNAS", 0)) == 0
+        assert Serie.from_default(price(), 3).is_lit
+
+    def test_a_slice_stays_lit_and_the_export_is_the_laid_out_column(self) -> None:
+        column = Serie.lit(venue(), "XNAS", 5)
+        window = column[1:4]
+        assert window.is_lit and len(window) == 3
+        assert column.slice(1, 2).is_lit
+        array = column.into_arrow_array()
+        assert array.equals(pa.array(["XNAS"] * 5, pa.utf8()))
+        assert column.into_arrow_array().equals(array)
+        assert window.into_arrow_array().equals(pa.array(["XNAS"] * 3, pa.utf8()))
+        assert column.is_lit
+        assert column.as_py() == ["XNAS"] * 5
+
+    def test_a_write_of_the_value_moves_the_count_and_another_lays_the_column_out(
+        self,
+    ) -> None:
+        column = Serie.lit(venue(), "XNAS", 3)
+        column.push("XNAS")
+        assert column.is_lit and len(column) == 4
+        column.remove(0)
+        assert column.is_lit and len(column) == 3
+        with pytest.raises(ValueError):
+            column.set(0, [1])
+        assert column.is_lit
+        column.set(1, "XLON")
+        assert not column.is_lit
+        assert column.as_py() == ["XNAS", "XLON", "XNAS"]
+        assert type(column) is Serie
+
+    def test_a_spill_forgets_the_built_array_and_writes_nothing(self) -> None:
+        column = Serie.lit(venue(), "XNAS", 1_000)
+        column.into_arrow_array()
+        built = column.resident_size()
+        assert column.as_spilled(byte_size=0) is column
+        assert column.is_lit and not column.is_spilled()
+        assert column.resident_size() < built
+        assert column[3].as_py() == "XNAS"
+
+
 class TestWrites:
     def test_every_write_is_spelled_over_splice(self) -> None:
         column = Serie.empty(price())
@@ -891,61 +974,9 @@ class TestChunked:
     ) -> None:
         records = ChunkedSerie.from_arrow_reader(pa.Table.from_batches([quotes(), quotes()]))
         handle = IOBase(tmp_path / "quotes.arrows")
-        handle.write_arrow(records)
-        assert [len(serie) for serie in handle.read_arrow()] == [2, 2]
-        assert Serie.from_(handle.read_arrow()) == records
-
-
-class TestHandles:
-    @pytest.mark.parametrize(
-        "name", ["quotes.json", "quotes.jsonl", "quotes.yaml", "quotes.toml"]
-    )
-    def test_every_structured_format_round_trips_a_table(
-        self, tmp_path: pathlib.Path, name: str
-    ) -> None:
-        handle = IOBase(tmp_path / name)
-        handle.write_arrow(quote_table())
-
-        read = handle.read_arrow(field=quote_root())
-        assert isinstance(read, SerieReader)
-        assert Serie.from_(read).as_py() == [
-            {"symbol": "AAPL", "size": 100},
-            {"symbol": "MSFT", "size": 250},
-        ]
-
-    def test_a_record_encoding_answers_its_stream(self, tmp_path: pathlib.Path) -> None:
-        handle = IOBase(tmp_path / "quotes.arrows")
-        handle.write_arrow(quote_table())
-
-        read = handle.read_arrow()
-        assert isinstance(read, SerieReader)
-        assert read.into_arrow_reader().read_all().num_rows == 2
-
-    def test_a_document_is_written_whole_so_only_an_overwrite_applies(
-        self, tmp_path: pathlib.Path
-    ) -> None:
-        handle = IOBase(tmp_path / "quotes.json")
-        with pytest.raises(ValueError, match="overwrite"):
-            handle.write_arrow(quote_table(), "append")
-
-    def test_a_record_encoding_appends(self, tmp_path: pathlib.Path) -> None:
-        handle = IOBase(tmp_path / "quotes.arrows")
-        handle.write_arrow(quote_table())
-        handle.write_arrow(quote_table(), "append")
-        assert handle.read_arrow().into_arrow_reader().read_all().num_rows == 4
-
-    def test_a_frame_a_serie_and_a_reader_reach_the_same_publication_path(
-        self, tmp_path: pathlib.Path
-    ) -> None:
-        handle = IOBase(tmp_path / "quotes.jsonl")
-        handle.write_arrow(quote_table().to_pandas())
-        assert len(Serie.from_(handle.read_arrow(field=quote_root()))) == 2
-
-        column = IOBase(tmp_path / "column.arrows")
-        column.write_arrow(Serie.from_(quote_table()))
-        copied = IOBase(tmp_path / "copied.arrows")
-        copied.write_arrow(column.read_arrow())
-        assert copied.read_arrow().into_arrow_reader().read_all().equals(quote_table())
+        handle.write_serie(records)
+        assert [len(serie) for serie in handle.read_serie()] == [2, 2]
+        assert Serie.from_(handle.read_serie()) == records
 
 
 def declared_batch(keys_sorted: bool) -> tuple[Field, pa.RecordBatch]:
@@ -2185,6 +2216,33 @@ class TestSpill:
         assert records.resident_size() == kept.memory_size()
         assert records.as_py()[3] == {"big": "x" * 64, "small": 3}
 
+    def test_as_spilled_answers_the_serie_and_into_spilled_a_copy_of_its_class(self) -> None:
+        column = spill_prices(1_024)
+        copied = column.into_spilled(byte_size=0)
+        assert copied.is_spilled() and copied.resident_size() == 0
+        assert not column.is_spilled()
+        assert copied == column
+        assert column.as_spilled(SpillOptions(0)) is column
+        assert column.is_spilled() and column == copied
+        records = Serie.from_scalars(
+            Field("row", "struct<big: utf8 not null>", nullable=False),
+            [["x" * 64] for _ in range(64)],
+        )
+        spilled = records.into_spilled(byte_size=0)
+        assert type(spilled) is StructSerie
+        assert spilled.as_py() == records.as_py()
+        assert records.as_spilled(byte_size=SpillOptions.NEVER) is records
+        assert not records.is_spilled()
+        # A run spills nothing either way, and a refused keyword spills nothing.
+        run = Serie([1, 2, 3])
+        assert not run.into_spilled(byte_size=0).is_spilled()
+        fresh = spill_prices(64)
+        with pytest.raises(TypeError):
+            fresh.into_spilled(byte_size="0")  # type: ignore[arg-type]
+        with pytest.raises(TypeError):
+            fresh.as_spilled(byte_size="0")  # type: ignore[arg-type]
+        assert not fresh.is_spilled()
+
 
 class TestSortBy:
     def test_sort_indices_by_keys_a_record_by_its_terms_and_a_column_by_itself(self) -> None:
@@ -2485,6 +2543,32 @@ class TestReaderOrderSpillAndJoin:
         assert not stream.is_spilled()
         with pytest.raises(ValueError, match="handed over"):
             stream.spill(byte_size=0)
+
+    def test_a_reader_spills_in_a_chain_and_into_a_reader_that_takes_its_records(self) -> None:
+        column = quote_rows([("XNYS", index) for index in range(512)])
+        reader = SerieReader.from_serie(column)
+        assert reader.as_spilled(byte_size=0) is reader
+        assert reader.is_spilled()
+        assert next(reader) == column
+        moved = SerieReader.from_serie(column)
+        # A refused keyword is read before the reader is taken.
+        with pytest.raises(TypeError):
+            moved.into_spilled(byte_size="0")  # type: ignore[arg-type]
+        spilled = moved.into_spilled(SpillOptions(0))
+        assert spilled.is_spilled() and spilled.field == moved.field
+        assert [record.is_spilled() for record in spilled] == [True]
+        # The reader it was taken from is handed over, and refuses both.
+        assert moved.resident_size() == 0
+        with pytest.raises(ValueError, match="handed over"):
+            moved.into_spilled(byte_size=0)
+        with pytest.raises(ValueError, match="handed over"):
+            moved.as_spilled(byte_size=0)
+        # A stream holds no record between pulls, so it spills none.
+        pulled: list[int] = []
+        stream = counted_pairs("l", 1, 3, pulled).into_spilled(byte_size=0)
+        assert pulled == []
+        assert not stream.is_spilled()
+        assert not next(stream).is_spilled()
 
     def test_a_stream_probes_one_batch_at_a_time_and_collects_nothing(self) -> None:
         pulled: list[int] = []

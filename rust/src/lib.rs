@@ -122,6 +122,7 @@ pub mod securityid;
 pub mod sedol;
 pub(crate) mod serde;
 pub mod serie;
+mod serie_source;
 pub mod side;
 pub mod soap;
 mod sort_options;
@@ -213,9 +214,7 @@ pub use iokind::IOKind;
 pub use iomedia::IOMedia;
 pub use iomode::IOMode;
 pub use iopath::IOPath;
-pub use join::{
-    DEFAULT_JOIN_SUFFIX, DEFAULT_PUSHDOWN_KEYS, JoinKind, JoinOptions, JoinSide, JoinSource,
-};
+pub use join::{DEFAULT_JOIN_SUFFIX, DEFAULT_PUSHDOWN_KEYS, JoinKind, JoinOptions, JoinSide};
 pub use listing::Listing;
 pub use media_type::MediaType;
 pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
@@ -232,6 +231,7 @@ pub use protocol::{
     TransformFieldMut, UrnField, UrnFieldMut,
 };
 pub use scheme::Scheme;
+pub use serie_source::SerieSource;
 pub use sort_options::SortOptions;
 pub use spill::{DEFAULT_SPILL_BYTE_SIZE, SpillOptions};
 pub use text::{Format, Limits, ScalarIter};
@@ -449,6 +449,7 @@ pub mod internals {
     pub use crate::json::field::internals as json_field;
     pub use crate::local::internals as local;
     pub use crate::media::merge::internals as media_merge;
+    pub use crate::media::options::commit::internals as media_options_commit;
     pub use crate::media::options::internals as media_options;
     pub use crate::media::partition::internals as media_partition;
     pub use crate::merge::internals as merge;

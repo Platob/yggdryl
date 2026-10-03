@@ -175,5 +175,9 @@ const chunkJoined: ChunkedSerie = wide.joinWith(wide, 'id', 'left', { coalesce: 
 wide.joinWith(new Serie([1]), 'id')
 // @ts-expect-error the private join bridge is hidden
 wide._joinWithNative
+const chunkSpilledInPlace: ChunkedSerie = wide.asSpilled(new SpillOptions({ byteSize: 0 })).asReversed()
+const chunkSpilledCopy: ChunkedSerie = wide.intoSpilled()
+// @ts-expect-error the private spill bridges are hidden
+wide._asSpilledNative
 void [chunkResident, chunkSpilled, chunkDeclared, chunkOrderBy, chunkSortedBy,
-  chunkSortedInPlace, chunkJoined]
+  chunkSortedInPlace, chunkJoined, chunkSpilledInPlace, chunkSpilledCopy]

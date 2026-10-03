@@ -98,6 +98,53 @@ impl Serie {
         self.spill_under(options.byte_size(), options)
     }
 
+    /// [`Self::spill`], answering this serie so calls chain.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie, SpillOptions};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let field = DataType::Int64.required_field("price");
+    /// let mut prices = Serie::from_scalars(field, (0..1_024_i64).map(Scalar::from))?;
+    /// assert!(prices.as_spilled(&SpillOptions::new().with_byte_size(0))?.is_spilled());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Self::spill`]'s.
+    pub fn as_spilled(&mut self, options: &SpillOptions) -> Result<&mut Self> {
+        self.spill(options)?;
+        Ok(self)
+    }
+
+    /// A copy of this serie spilled under `options`' bound, this one
+    /// untouched: the buffers the bound leaves resident are shared, the
+    /// rest written once and mapped.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie, SpillOptions};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let field = DataType::Int64.required_field("price");
+    /// let prices = Serie::from_scalars(field, (0..1_024_i64).map(Scalar::from))?;
+    /// let spilled = prices.into_spilled(&SpillOptions::new().with_byte_size(0))?;
+    /// assert!(spilled.is_spilled() && !prices.is_spilled());
+    /// assert_eq!(spilled, prices);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Self::spill`]'s.
+    pub fn into_spilled(&self, options: &SpillOptions) -> Result<Self> {
+        let mut spilled = self.clone();
+        spilled.spill(options)?;
+        Ok(spilled)
+    }
+
     /// This serie settled under the process default: spilled where it passes
     /// [`SpillOptions::from_env`]'s bound, untouched otherwise.
     ///
@@ -137,6 +184,12 @@ impl Serie {
         }
         let resident = bytes(self.resident_size());
         if resident <= budget {
+            return Ok(());
+        }
+        if let Self::Lit(lit) = self {
+            // A constant's whole content is its value: the built array is
+            // what it may forget, and nothing of it is written to disk.
+            Arc::make_mut(lit).forget_built();
             return Ok(());
         }
         let children = child_count(self);

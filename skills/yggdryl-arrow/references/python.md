@@ -9,7 +9,7 @@ pyarrow; cast options are the keywords `safe=True` and
 
 `Serie.from_scalars` sends every row through the field's value contract once
 and lays the buffers out once; `from_default` repeats the field's canonical
-default.
+default and `lit` any value, each as a constant column holding the one row.
 
 ```python
 from yggdryl import Field, Serie
@@ -31,6 +31,11 @@ else:
 assert Serie.from_default(price, 2).as_py() == [0, 0]
 assert Serie.from_default(Field("symbol", "utf8"), 2).as_py() == [None, None]
 assert len(Serie.empty(price)) == 0
+
+# A constant: one value held once, laid out only when something exports it.
+constant = Serie.lit(price, 125, 1_000_000)
+assert constant.is_lit and constant[999_999].as_py() == 125
+assert constant.resident_size() < 1_024
 ```
 
 ## Land a pyarrow array, sharing its buffers
@@ -457,6 +462,10 @@ assert spilled.is_spilled() and spilled.resident_size() == 0
 assert spilled[7].as_py() == 7  # read exactly as resident
 spilled.push(1_024)  # a write brings the leaf back
 assert not spilled.is_spilled()
+
+# One-liners: a spilled copy, or the spill chained in place.
+assert prices.into_spilled(byte_size=0).is_spilled() and not prices.is_spilled()
+assert spilled.as_spilled(byte_size=0) is spilled and spilled.is_spilled()
 ```
 
 ## Join two record columns

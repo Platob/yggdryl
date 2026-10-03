@@ -485,6 +485,10 @@ class Serie:
         safe: bool = True,
         representation: Representation = "value",
     ) -> Serie: ...
+    # `length` copies of `value` under `field`: a constant column, the value
+    # proven by the field once, no row laid out until something exports it.
+    @staticmethod
+    def lit(field: object, value: object, length: int) -> Serie: ...
     @staticmethod
     def from_default(field: object, rows: int = 1) -> Serie: ...
     # Any columnar object - a pyarrow scalar, array, chunked array, batch,
@@ -507,6 +511,9 @@ class Serie:
     def dtype(self) -> DataType: ...
     @property
     def is_column(self) -> bool: ...
+    # Whether `lit` built this column: one value and a length.
+    @property
+    def is_lit(self) -> bool: ...
     def null_count(self) -> int: ...
     def is_empty(self) -> bool: ...
     def is_null(self, index: int) -> bool: ...
@@ -587,6 +594,22 @@ class Serie:
         byte_size: int | EllipsisType = ...,
         folder: SpillFolder | None | EllipsisType = ...,
     ) -> None: ...
+    # `spill`, answering this serie so calls chain.
+    def as_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Self: ...
+    # A spilled copy; this serie is untouched.
+    def into_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Serie: ...
     # The `order by` keys the record's root declares (`SORT:by`), each as
     # that declaration spells it.
     def declared_order(self) -> list[str] | None: ...
@@ -889,6 +912,22 @@ class SerieReader(Iterator[Serie]):
         byte_size: int | EllipsisType = ...,
         folder: SpillFolder | None | EllipsisType = ...,
     ) -> None: ...
+    # `spill`, answering this reader so calls chain.
+    def as_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Self: ...
+    # The held records spilled, as a new reader; this one is spent.
+    def into_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> SerieReader: ...
     # Every record not yet pulled, in order, as a new reader; this one is
     # spent. The stream is drained before the first sorted batch.
     def into_sorted(
@@ -1090,6 +1129,22 @@ class ChunkedSerie:
         byte_size: int | EllipsisType = ...,
         folder: SpillFolder | None | EllipsisType = ...,
     ) -> None: ...
+    # `spill`, answering these chunks so calls chain.
+    def as_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Self: ...
+    # A spilled copy; these chunks are untouched.
+    def into_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> ChunkedSerie: ...
     def declared_order(self) -> list[str] | None: ...
     # `Serie.join_with` over the chunks, the output batches kept apart;
     # `other` is anything `ChunkedSerie.from_` reads.
@@ -3602,16 +3657,39 @@ class IOBase:
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
     ) -> Field: ...
-    def read_arrow(
+    def read_serie(
         self,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
     ) -> SerieReader: ...
-    def write_arrow(
+    # `value` is a `Serie`, `ChunkedSerie` or `SerieReader`, written as the
+    # batches it holds, or anything `SerieReader.from_` reads.
+    def write_serie(
         self,
         value: object,
         mode: str = "overwrite",
+        *,
+        options: RecordOptionsLike | None = None,
+        **properties: Unpack[RecordProperties],
+    ) -> None: ...
+    def overwrite_serie(
+        self,
+        value: object,
+        *,
+        options: RecordOptionsLike | None = None,
+        **properties: Unpack[RecordProperties],
+    ) -> None: ...
+    def append_serie(
+        self,
+        value: object,
+        *,
+        options: RecordOptionsLike | None = None,
+        **properties: Unpack[RecordProperties],
+    ) -> None: ...
+    def merge_serie(
+        self,
+        value: object,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
@@ -4370,7 +4448,7 @@ class Pages(Iterator[Response]):
 
     def __iter__(self) -> Pages: ...
     def __next__(self) -> Response: ...
-    def read_arrow(self, field: Field | str | None = None) -> SerieReader: ...
+    def read_serie(self, field: Field | str | None = None) -> SerieReader: ...
     def into_arrow_reader(
         self, field: Field | str | None = None, batch_row_size: int = 0
     ) -> pyarrow.RecordBatchReader: ...
@@ -4792,6 +4870,7 @@ class TextProperties(TypedDict, total=False):
     safe: bool | EllipsisType
     batch_row_size: int | None | EllipsisType
     commit_batch_num: int | None | EllipsisType
+    num_threads: int | None | EllipsisType
     max_row_size: int | None | EllipsisType
     row_offset: int | None | EllipsisType
     max_byte_size: int | None | EllipsisType
@@ -4877,6 +4956,10 @@ class RecordOptions:
     def commit_batch_num(self) -> int | None: ...
     @commit_batch_num.setter
     def commit_batch_num(self, commit_batch_num: int | None) -> None: ...
+    @property
+    def num_threads(self) -> int | None: ...
+    @num_threads.setter
+    def num_threads(self, num_threads: int | None) -> None: ...
     @property
     def max_row_size(self) -> int | None: ...
     @max_row_size.setter
@@ -5048,6 +5131,10 @@ class TextOptions:
     def commit_batch_num(self) -> int | None: ...
     @commit_batch_num.setter
     def commit_batch_num(self, commit_batch_num: int | None) -> None: ...
+    @property
+    def num_threads(self) -> int | None: ...
+    @num_threads.setter
+    def num_threads(self, num_threads: int | None) -> None: ...
     @property
     def max_row_size(self) -> int | None: ...
     @max_row_size.setter

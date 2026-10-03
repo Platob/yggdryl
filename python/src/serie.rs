@@ -42,8 +42,8 @@ use yggdryl::arrow::BatchReader;
 use yggdryl::expression::{IntoOrderings, Ordering as CoreOrdering};
 use yggdryl::media::RecordOptions;
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, JoinSource, MimeType, Scalar,
-    Serie, SerieReader, SerieReaderWindows, SortOptions,
+    ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, MimeType, Scalar, Serie,
+    SerieReader, SerieReaderWindows, SerieSource, SortOptions,
 };
 
 use crate::chunked_serie::{PyChunkedSerie, chunked_from_arrays};
@@ -935,7 +935,25 @@ impl PySerie {
         described(py, serie)
     }
 
-    /// `rows` copies of `field`'s canonical default, laid out once.
+    /// `length` copies of `value` under `field`: a constant column, the
+    /// value proven by the field once and held as one row, the whole array
+    /// laid out only when something exports it. Reading a cell answers the
+    /// value, slicing moves the count, and writing another value lays the
+    /// column out as its field's leaf first.
+    #[staticmethod]
+    fn lit(
+        py: Python<'_>,
+        field: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+        length: usize,
+    ) -> PyResult<Py<PyAny>> {
+        let field = core_field_from_value(field)?;
+        let value = from_py_under(&field, value)?;
+        described(py, Serie::lit(field, value, length).map_err(value_error)?)
+    }
+
+    /// `rows` copies of `field`'s canonical default, as the constant column
+    /// `lit` builds.
     #[staticmethod]
     #[pyo3(signature = (field, rows = 1))]
     fn from_default(py: Python<'_>, field: &Bound<'_, PyAny>, rows: usize) -> PyResult<Py<PyAny>> {
@@ -1005,6 +1023,13 @@ impl PySerie {
     #[getter]
     fn is_column(&self) -> bool {
         self.inner.is_column()
+    }
+
+    /// Whether this is a constant column `lit` built: one value and a
+    /// length, no row laid out until something exports it.
+    #[getter]
+    fn is_lit(&self) -> bool {
+        self.inner.as_lit().is_some()
     }
 
     fn null_count(&self) -> usize {
@@ -1356,6 +1381,43 @@ impl PySerie {
         let py = slf.py();
         let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
         slf.borrow_mut().inner.spill(&options).map_err(value_error)
+    }
+
+    /// `spill`, answering this serie so calls chain; a refused folder
+    /// leaves it as it was.
+    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
+    fn as_spilled<'py>(
+        slf: &Bound<'py, Self>,
+        options: Option<PyRef<'_, PySpillOptions>>,
+        byte_size: Py<PyAny>,
+        folder: Py<PyAny>,
+    ) -> PyResult<Bound<'py, Self>> {
+        let py = slf.py();
+        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
+        slf.borrow_mut()
+            .inner
+            .as_spilled(&options)
+            .map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// A copy of this serie spilled under the bound, this one untouched:
+    /// the buffers the bound leaves resident are shared, the rest written
+    /// once and mapped. `options` and the keywords read as `spill` reads
+    /// them.
+    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
+    fn into_spilled(
+        slf: &Bound<'_, Self>,
+        options: Option<PyRef<'_, PySpillOptions>>,
+        byte_size: Py<PyAny>,
+        folder: Py<PyAny>,
+    ) -> PyResult<Py<PyAny>> {
+        let py = slf.py();
+        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
+        let spilled = Self::detached(slf, move |serie| serie.into_spilled(&options))?;
+        described(py, spilled)
     }
 
     /// The `order by` keys a record's root declares its rows keep
@@ -1777,18 +1839,19 @@ fn handed_over() -> PyErr {
     PyValueError::new_err("SerieReader was already handed over by into_arrow_reader")
 }
 
-/// Read the other side of a stream's join, once: a held column, held chunks
-/// and a stream keep their shape - a held side is the one built and hashed
-/// - and any other value is what `SerieReader.from_` reads it as.
-fn join_source_of(value: &Bound<'_, PyAny>) -> PyResult<JoinSource> {
+/// Read rows in any shape the crate holds them, once: a held column, held
+/// chunks and a stream keep their shape - a held side of a join is the one
+/// built and hashed, a held write is its batches as they stand - and any
+/// other value is what `SerieReader.from_` reads it as.
+pub(crate) fn serie_source_of(value: &Bound<'_, PyAny>) -> PyResult<SerieSource> {
     let Some(columnar) = columnar(value)? else {
-        return serie_reader_from_py(value, None, ArrowCastOptions::new()).map(JoinSource::from);
+        return serie_reader_from_py(value, None, ArrowCastOptions::new()).map(SerieSource::from);
     };
     Ok(match columnar {
-        Columnar::Held(serie) | Columnar::Pinned(serie) => JoinSource::from(serie),
-        Columnar::Chunked(chunked) => JoinSource::from(chunked),
-        Columnar::Reader(reader) => JoinSource::from(*reader),
-        Columnar::Stream(stream) => JoinSource::from(
+        Columnar::Held(serie) | Columnar::Pinned(serie) => SerieSource::from(serie),
+        Columnar::Chunked(chunked) => SerieSource::from(chunked),
+        Columnar::Reader(reader) => SerieSource::from(*reader),
+        Columnar::Stream(stream) => SerieSource::from(
             SerieReader::from_arrow_reader(None, stream, ArrowCastOptions::new())
                 .map_err(value_error)?,
         ),
@@ -1923,6 +1986,45 @@ impl PySerieReader {
         }
     }
 
+    /// `spill`, answering this reader so calls chain; a reader handed over
+    /// is refused.
+    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
+    fn as_spilled<'py>(
+        slf: &Bound<'py, Self>,
+        options: Option<PyRef<'_, PySpillOptions>>,
+        byte_size: Py<PyAny>,
+        folder: Py<PyAny>,
+    ) -> PyResult<Bound<'py, Self>> {
+        let py = slf.py();
+        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
+        match slf.borrow_mut().held() {
+            Some(reader) => reader.as_spilled(&options).map_err(value_error)?,
+            None => return Err(handed_over()),
+        };
+        Ok(slf.clone())
+    }
+
+    /// This reader's records spilled under the bound, as a new reader; this
+    /// one is spent, as every consuming verb spends it. The options are
+    /// resolved before the reader is taken, so a refused one leaves it
+    /// usable.
+    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
+    fn into_spilled(
+        &mut self,
+        py: Python<'_>,
+        options: Option<PyRef<'_, PySpillOptions>>,
+        byte_size: Py<PyAny>,
+        folder: Py<PyAny>,
+    ) -> PyResult<Self> {
+        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
+        let reader = self.take()?;
+        py.detach(move || reader.into_spilled(&options))
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
     /// Every record not yet pulled, in sorted order, as a new reader; this
     /// one is spent. The stream is drained before the first sorted batch,
     /// because the last row pulled may be the first in order; the root and
@@ -2002,7 +2104,7 @@ impl PySerieReader {
         }
         .resolve(py, options.as_deref())?;
         self.require_held()?;
-        let other = join_source_of(other)?;
+        let other = serie_source_of(other)?;
         let reader = self.take()?;
         py.detach(move || reader.join_with(other, keys, how, &options))
             .map(Self::from_inner)

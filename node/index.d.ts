@@ -4772,6 +4772,17 @@ export declare class IOBase {
    */
   readArrowReader(options?: JsRecordOptions | undefined | null): JsBatchReader
   /**
+   * Read this resource's rows as a `SerieReader`, one record serie per
+   * batch.
+   *
+   * Absent options are the handle's own: the encoding its media type
+   * names, a container's the table beneath it, and a structured text
+   * document - JSON, JSON Lines, YAML, TOML, XML - the one record column
+   * its rows parse into, of which a declared field is the only option it
+   * reads.
+   */
+  readSerie(options?: JsRecordOptions | undefined | null): JsSerieReader
+  /**
    * Decode this resource into typed text lines.
    *
    * The one decode entry point for plain text: every record method routes
@@ -7104,9 +7115,9 @@ export declare class RecordOptions {
    * A positive count publishes every that many batches of the shaped
    * stream, then the final remainder; a batch is one the source yields,
    * cut by `batchRowSize` where records are converted, never by the
-   * cadence. `null` is the destination's own cadence: a file or folder
-   * publishes once after the source ends, an Iceberg table each time the
-   * batches it holds reach its target file size.
+   * cadence. `null` is the destination's own cadence: a file, a folder
+   * and an Iceberg table each publish once after the source ends, what
+   * they hold in between kept under the process spill bound.
    */
   get commitBatchNum(): number | null
   /**
@@ -7117,6 +7128,24 @@ export declare class RecordOptions {
    * cadence.
    */
   set commitBatchNum(commitBatchNum: number | undefined | null)
+  /**
+   * The threads a write of several parts runs on at once, when set.
+   *
+   * The parts are an Iceberg commit's partition groups, written side by
+   * side; a leaf of one file reads it as the bound on its encoding's
+   * threads. `null` is the destination's own answer: an Iceberg table's
+   * `write.parallelism`, else its `read.parallelism`, else every thread
+   * the host offers.
+   */
+  get numThreads(): number | null
+  /**
+   * Set the threads a write of several parts runs on at once.
+   *
+   * Zero is retained so the write preflight refuses it by name, naming
+   * `$.num_threads`, before a one-shot source is touched. `null` restores
+   * the destination's own answer.
+   */
+  set numThreads(numThreads: number | undefined | null)
   /** The compression level on the shared 0-to-9 scale. */
   get level(): number
   /** Set the compression level on the shared 0-to-9 scale. */
@@ -7344,6 +7373,8 @@ export declare class RecordOptions {
   withMaxByteSize(maxByteSize: number): RecordOptions
   /** Return these options with a publication every `commitBatchNum` batches. */
   withCommitBatchNum(commitBatchNum: number): RecordOptions
+  /** Return these options running a write of several parts on `numThreads`. */
+  withNumThreads(numThreads: number): RecordOptions
   /** Return these options with a different compression level. */
   withLevel(level: number): RecordOptions
   /** Return these options with the keys a write matches stored rows on. */
@@ -7944,6 +7975,12 @@ export declare class Serie {
    * and leaves the serie as it was.
    */
   spill(options?: JsSpillOptions | undefined | null): void
+  /**
+   * Whether this column is a constant: one value held once for every
+   * row, as `Serie.lit` and `Serie.fromDefault` build it. A write of
+   * another value lays it out as its field's leaf, and it is no longer.
+   */
+  get isLit(): boolean
   /**
    * The `order by` keys this record's root declares its rows keep, most
    * significant first, each as the key grammar spells it (`price desc`):
@@ -9380,6 +9417,13 @@ export declare class TextOptions {
   get commitBatchNum(): number | null
   /** Set or clear the streamed-write commit cadence, in whole batches. */
   set commitBatchNum(value: number | undefined | null)
+  /** Return the threads a write of several parts runs on at once. */
+  get numThreads(): number | null
+  /**
+   * Set or clear the threads a write of several parts runs on at once;
+   * zero is retained for the write preflight to refuse by name.
+   */
+  set numThreads(value: number | undefined | null)
   /** Return the total result-row bound. */
   get maxRowSize(): number | null
   /** Set or clear the total result-row bound. */
@@ -9516,6 +9560,8 @@ export declare class TextOptions {
   withBatchRowSize(size: number): TextOptions
   /** Return a copy publishing every `commitBatchNum` batches. */
   withCommitBatchNum(batches: number): TextOptions
+  /** Return a copy running a write of several parts on `numThreads`. */
+  withNumThreads(threads: number): TextOptions
   /** Return a copy skipping the given leading result rows. */
   withRowOffset(rows: number): TextOptions
   /** Return a copy with a total result-row bound. */

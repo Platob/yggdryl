@@ -758,7 +758,7 @@ macro_rules! primitive_leaf {
             }
 
             fn from_serie(serie: &Serie) -> Option<&PrimitiveSerie<Self>> {
-                super::Leaf::narrow(serie)
+                super::Leaf::narrow_laid(serie)
             }
         }
     };

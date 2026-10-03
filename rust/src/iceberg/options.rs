@@ -363,7 +363,10 @@ impl IcebergOptions {
     /// table that reads with four threads writes with four unless told
     /// otherwise. A value of 1 writes the groups one after another on the
     /// calling thread. Whatever the value, a commit's manifest lists the
-    /// files in partition-group order, never in completion order.
+    /// files in partition-group order, never in completion order. This is
+    /// the table's own layer: a write stating
+    /// [`num_threads`](crate::media::IORecordOptions::num_threads) on its
+    /// record options runs on that count instead, for that write alone.
     pub fn write_parallelism(&self) -> usize {
         self.write_parallelism
             .unwrap_or_else(|| self.read_parallelism())

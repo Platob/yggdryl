@@ -134,10 +134,31 @@ fn from_scalars_settles_what_it_lays_out() {
 }
 
 #[test]
-fn from_default_settles_the_repeated_default() {
+fn from_default_is_a_constant_column_the_bound_never_reaches() {
     installed();
     let column = Serie::from_default(price(), ROWS).expect("defaults");
-    assert_settled("from_default", &column, &vec![Scalar::from(0_i64); ROWS]);
+    assert!(
+        column.as_lit().is_some(),
+        "a default is one value, held once"
+    );
+    assert!(!column.is_spilled(), "nothing of it lies in a file");
+    assert!(
+        column.resident_size() < BOUND as usize,
+        "{}",
+        column.resident_size()
+    );
+    assert_eq!(xs(&column), vec![Scalar::from(0_i64); ROWS]);
+    // Laid out for a typed reader, it still spills nothing: the layout is
+    // forgotten under the bound rather than written.
+    assert_eq!(
+        column
+            .as_int64()
+            .expect("laid out on demand")
+            .values()
+            .len(),
+        ROWS
+    );
+    assert!(!column.is_spilled());
 }
 
 #[test]
@@ -542,10 +563,6 @@ fn a_column_under_the_bound_is_never_spilled_by_any_door() {
             Serie::from_scalars(price(), few.clone()).expect("rows"),
         ),
         (
-            "from_default",
-            Serie::from_default(price(), FEW).expect("defaults"),
-        ),
-        (
             "from_arrow_array, cast",
             Serie::from_arrow_array(Some(&price()), narrow, ArrowCastOptions::new())
                 .expect("a cast"),
@@ -631,5 +648,112 @@ fn a_held_join_past_one_output_batch_keeps_a_stated_never_bound() {
     assert!(
         settled.is_spilled(),
         "the same join settles under the process default"
+    );
+}
+
+/// A write holds its cadence under the bound too: eight batches past it
+/// are published whole through an IPC leaf, the rows all there, whatever the
+/// window spilled on the way.
+#[test]
+fn a_write_cadence_held_past_the_bound_publishes_every_row_it_was_handed() {
+    installed();
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{IOMedia, IOMode, SerieSource, Url};
+
+    let batches: Vec<RecordBatch> = (0..8).map(|_| batch(ROWS, false)).collect();
+    let schema = batches[0].schema();
+    let stream = SerieReader::from_arrow_reader(
+        Some(&quote_root()),
+        yggdryl::arrow::batch_reader(schema, batches),
+        ArrowCastOptions::new(),
+    )
+    .expect("a stream");
+    let mut target = Buffer::new().with_media_type(
+        Url::from_str("file:///quotes.arrows")
+            .expect("a url")
+            .media_type(),
+    );
+    let mut options = target.record_options().expect("the IPC encoding");
+    options.set_commit_batch_num(Some(3));
+    target
+        .write_serie(SerieSource::from(stream), IOMode::Overwrite, Some(&options))
+        .expect("the stream writes in three cadences");
+    let rows: usize = target
+        .read_serie(None)
+        .expect("the rows read")
+        .map(|column| column.expect("a batch").len())
+        .sum();
+    assert_eq!(rows, 8 * ROWS);
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    //! The publication window's residency, which no caller can read.
+
+    use super::*;
+    use yggdryl::internals::media_options_commit::residency_after;
+
+    #[test]
+    fn a_write_cadence_held_past_the_bound_spills_its_heaviest_batches() {
+        installed();
+        let batches: Vec<RecordBatch> = (0..8).map(|_| batch(ROWS, false)).collect();
+        let held = residency_after(batches[0].schema(), batches, 16).expect("the window holds");
+        assert_eq!(
+            held,
+            (0, 8),
+            "every eight-kilobyte batch passes a 256-byte bound on its own"
+        );
+
+        let few: Vec<RecordBatch> = (0..2).map(|_| batch(FEW, false)).collect();
+        let (resident, spilled) =
+            residency_after(few[0].schema(), few, 16).expect("the window holds");
+        assert_eq!(spilled, 0, "two three-row batches stay under the bound");
+        assert!(resident > 0 && resident <= BOUND, "{resident}");
+
+        // A completed cadence is taken, so nothing is held after it.
+        let batches: Vec<RecordBatch> = (0..4).map(|_| batch(ROWS, false)).collect();
+        assert_eq!(
+            residency_after(batches[0].schema(), batches, 4).expect("the window holds"),
+            (0, 0)
+        );
+    }
+}
+
+/// A constant column holds its value once whatever its length, so the bound
+/// never reaches it: the default a door lays out is a lit, resident and
+/// never spilled, and exporting it builds the array without a spill.
+#[test]
+fn a_constant_column_is_never_spilled_whatever_its_length() {
+    installed();
+    let defaults = Serie::from_default(price(), ROWS).expect("a default column");
+    assert!(
+        defaults.as_lit().is_some(),
+        "a default is a constant column"
+    );
+    assert!(!defaults.is_spilled());
+    assert!(
+        defaults.resident_size() < BOUND as usize,
+        "{}",
+        defaults.resident_size()
+    );
+    let constant = || Serie::lit(price(), Scalar::from(7_i64), ROWS).expect("a constant column");
+    let exported = constant();
+    let array = exported.into_arrow_array().expect("the array builds");
+    assert_eq!(array.len(), ROWS);
+    assert!(!exported.is_spilled(), "exporting builds, it never spills");
+    assert!(
+        exported.resident_size() > defaults.resident_size(),
+        "the layout is held"
+    );
+    // The one join of chunks of constants lands as rows the crate laid out
+    // and settles like any other column.
+    let chunked =
+        ChunkedSerie::from_series(Some(&price()), [constant(), constant()], Default::default())
+            .expect("two constant chunks");
+    assert_eq!(chunked.resident_size(), 2 * defaults.resident_size());
+    assert!(
+        chunked.into_serie().expect("one join").is_spilled(),
+        "the join passes the bound"
     );
 }

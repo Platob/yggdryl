@@ -22,6 +22,8 @@ mod join;
 #[cfg(feature = "internals")]
 #[path = "serie/layout.rs"]
 mod layout;
+#[path = "serie/lit.rs"]
+mod lit;
 #[path = "serie/mapping.rs"]
 mod mapping;
 #[path = "serie/null.rs"]

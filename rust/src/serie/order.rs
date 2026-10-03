@@ -804,6 +804,10 @@ impl Serie {
     /// builds.
     pub(crate) fn sorted_order(&self, options: SortOptions) -> Result<Vec<u32>> {
         let len = require_indexable(self)? as usize;
+        if matches!(self, Self::Lit(_)) {
+            // Every row is the one value: the order is the one they stand in.
+            return Ok((0..len as u32).collect());
+        }
         if let Some(whole) = self.whole_row_order(options)
             && self.declares_at_least(&whole)
         {
@@ -985,6 +989,9 @@ impl Serie {
     /// assert!(!prices.is_sorted(SortOptions::ascending().with_nulls_first(true)));
     /// ```
     pub fn is_sorted(&self, options: SortOptions) -> bool {
+        if matches!(self, Self::Lit(_)) {
+            return true;
+        }
         if let Some(whole) = self.whole_row_order(options)
             && self.declares_at_least(&whole)
         {
@@ -1047,6 +1054,9 @@ impl Serie {
     /// assert!(!Serie::new(vec![Scalar::Null, Scalar::Null]).is_unique());
     /// ```
     pub fn is_unique(&self) -> bool {
+        if let Self::Lit(lit) = self {
+            return crate::value::SerieValue::len(lit.as_ref()) <= 1;
+        }
         let mut unique = true;
         self.walk_distinct(|_, first| {
             unique = first;
@@ -1064,6 +1074,9 @@ impl Serie {
     /// assert_eq!(venues.unique_count(), 2);
     /// ```
     pub fn unique_count(&self) -> usize {
+        if let Self::Lit(lit) = self {
+            return crate::value::SerieValue::len(lit.as_ref()).min(1);
+        }
         let mut count = 0;
         self.walk_distinct(|_, first| {
             count += usize::from(first);
@@ -1187,6 +1200,10 @@ impl Serie {
     /// ```
     pub fn into_reversed(&self) -> Self {
         let len = self.len();
+        if matches!(self, Self::Lit(_)) {
+            // Every row is the one value, so the column reversed is itself.
+            return self.clone();
+        }
         if let Self::Run(run) = self {
             let mut values = run.as_slice().to_vec();
             values.reverse();
@@ -1271,6 +1288,12 @@ impl Serie {
     /// The rows at `order`, every position already checked.
     pub(crate) fn taken(&self, order: &[u32]) -> Result<Self> {
         match self {
+            // Every row is the one value: the pick is the count.
+            Self::Lit(lit) => Ok(Self::lit(
+                Arc::clone(crate::value::SerieValue::field_ref(lit.as_ref())),
+                lit.value().clone(),
+                order.len(),
+            )?),
             Self::Run(run) => {
                 let values = run.as_slice();
                 Ok(Self::new(
@@ -1355,6 +1378,12 @@ impl Serie {
     /// The rows `keep` marks, which is as long as this serie.
     pub(crate) fn filtered(&self, keep: &[bool]) -> Result<Self> {
         match self {
+            // Every row is the one value: the kept rows are a count.
+            Self::Lit(lit) => Ok(Self::lit(
+                Arc::clone(crate::value::SerieValue::field_ref(lit.as_ref())),
+                lit.value().clone(),
+                keep.iter().filter(|kept| **kept).count(),
+            )?),
             Self::Run(run) => Ok(Self::new(
                 run.as_slice()
                     .iter()
@@ -1798,6 +1827,9 @@ impl Serie {
     pub fn memory_size(&self) -> usize {
         match self {
             Self::Run(run) => run.as_slice().iter().map(scalar_memory_size).sum(),
+            // A constant states its estimate from the one row it holds and
+            // builds nothing, so sizing a column never lays it out.
+            Self::Lit(lit) => crate::value::SerieValue::memory_size(lit.as_ref()),
             column => array_memory_size(
                 &column
                     .into_arrow_array()
@@ -2102,7 +2134,7 @@ impl Serie {
         let Some(field) = self.field() else {
             return Ok(None);
         };
-        if self.as_struct().is_none() || !field.as_sort().declares_order() {
+        if field.dtype().as_fields().is_none() || !field.as_sort().declares_order() {
             return Ok(None);
         }
         field.as_sort().by()

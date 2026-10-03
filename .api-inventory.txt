@@ -2624,8 +2624,11 @@ pub trait IOMedia: Send
   fn read_parquet_geospatial_statistics( &self, column: &str, ) -> Result<crate::parquet::GeospatialStatistics>
   fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field>
   fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader>
-  fn read_arrow(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader>  (one record Serie per batch; a structured text document is the one column its rows parse into)
-  fn write_arrow( &mut self, value: crate::SerieReader, mode: crate::IOMode, options: Option<&RecordOptions>, ) -> Result<()>  (the reader's transport face to write_arrow_reader; a structured text document is overwritten whole)
+  fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader>  (one record Serie per batch; None the handle's own record_options() - a container the table its leaves hold; a structured text document is the one column its rows parse into, reading only the declared field off the options; forwarded by Holder, Uri, Box<dyn IOBase> and delegate_iomedia!, the HTTP request walking its pages)
+  fn write_serie( &mut self, value: crate::SerieSource, mode: crate::IOMode, options: Option<&RecordOptions>, ) -> Result<()>  (the source as the stream of the batches it already is - SerieSource::into_reader, nothing copied or re-landed - to write_arrow_reader as its transport face; None the handle's own record_options(); a structured text document overwritten whole, its rows cast onto the declared field and no other option read, any other mode refused at $.mode; a run or a record holding an absent row refused before the destination is touched; what a cadence holds between publications held under the process spill bound)
+  fn overwrite_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<()>  (write_serie under IOMode::Overwrite)
+  fn append_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<()>  (write_serie under IOMode::Append)
+  fn merge_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<()>  (write_serie under IOMode::Merge, keyed by the options' merge_by)
   fn write_arrow_reader( &mut self, batches: crate::arrow::BatchReader, mode: crate::IOMode, options: &RecordOptions, ) -> Result<()>
   fn overwrite_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<()>
   fn overwrite_prepared_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<()>
@@ -3384,6 +3387,8 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   fn set_max_byte_size(&mut self, max_byte_size: Option<u64>)
   fn commit_batch_num(&self) -> Option<usize>
   fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>)
+  fn num_threads(&self) -> Option<usize>  (the parts a write of several parts runs at once - an Iceberg commit's partition groups, each group's file encoding its columns on its share - None the destination's own: write.parallelism, else read.parallelism, else the host; a leaf of one file is written on the thread that writes it and reads nothing from it; zero refused at every write door; inside the options' identity)
+  fn set_num_threads(&mut self, num_threads: Option<usize>)
   fn level(&self) -> Level
   fn set_level(&mut self, level: Level)
   fn merge_by(&self) -> &Selector
@@ -3419,6 +3424,7 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   fn with_max_row_size(mut self, max_row_size: u64) -> Self
   fn with_max_byte_size(mut self, max_byte_size: u64) -> Self
   fn with_commit_batch_num(mut self, commit_batch_num: usize) -> Self
+  fn with_num_threads(mut self, num_threads: usize) -> Self
   fn with_level(mut self, level: Level) -> Self
   fn with_merge_by(mut self, merge_by: impl IntoSelector) -> Result<Self>
   fn require_merge_by(&self) -> Result<()>
@@ -3464,6 +3470,7 @@ pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024  (the cadence a push-
   pub fn set_csv_infer_row_size(&mut self, infer_row_size: usize) -> Result<()>
   pub fn require_write_mode(&self, mode: IOMode) -> Result<()>
   pub fn require_commit_batch_num(&self) -> Result<Option<usize>>
+  pub fn require_num_threads(&self) -> Result<Option<usize>>  (#[doc(hidden)], for the bindings: zero refused naming $.num_threads before a write pulls its source)
   pub fn for_media_type(media_type: &MediaType) -> Result<Self>
   pub fn for_mime_type(base: &MimeType) -> Result<Self>  (`text/csv` -> `Csv(CsvOptions::new())`, `text/tab-separated-values` -> `Csv(CsvOptions::tsv())`)
   pub const fn mime_type(&self) -> MimeType  (a `Csv` under a tab separator `TSV`, else `CSV`)
@@ -3908,7 +3915,7 @@ pub struct SpillOptions  (the bound in bytes and the folder the spill files are 
   pub fn from_env() -> Result<&'static Self>  (the process default, read once from YGGDRYL_SPILL_BYTE_SIZE and YGGDRYL_SPILL_FOLDER - both unset is new() - and held for the process; a value that is not a byte count or a folder path is refused naming the variable; what every door the crate lays a column out at settles under)
   pub fn install_env(options: Self) -> Result<()>  (states the process default before anything reads it; refused by name once from_env has answered or install_env has been called)
 
-### yggdryl::root::join  [rust/src/join.rs]  (the hash join engine: the kinds, the sides, the options and the sources of a join, re-exported at the root; the plan, the build table, the key range prune, the grace partitions and the output iterator are crate-private and reached through the three join_with verbs and the plan's join clause)
+### yggdryl::root::join  [rust/src/join.rs]  (the hash join engine: the kinds, the sides and the options of a join, re-exported at the root, its sides any SerieSource; the plan, the build table, the key range prune, the grace partitions and the output iterator are crate-private and reached through the three join_with verbs and the plan's join clause)
 pub const DEFAULT_JOIN_SUFFIX: &str  ("_right": what a right column colliding with a left name is suffixed by)
 pub const DEFAULT_PUSHDOWN_KEYS: usize  (10_000: the most distinct build keys a plan pushes down into the probe's read as `key in (...)`)
 pub enum JoinKind  (Inner, Left, Right, Full, Semi, Anti; Copy, Eq/Ord/Hash, Display the word, FromStr the word with an optional trailing `outer` or `join` - `outer` alone is Full)
@@ -3935,10 +3942,6 @@ pub struct JoinOptions  (what a join is run under: Clone, Debug, Eq, Default = n
   pub fn with_spill(mut self, spill: SpillOptions) -> Self
   pub const fn pushdown_keys(&self) -> usize
   pub const fn with_pushdown_keys(mut self, keys: usize) -> Self
-pub enum JoinSource  (Serie(Serie), Chunked(ChunkedSerie), Reader(SerieReader): the three shapes a side arrives as; From<Serie>, From<ChunkedSerie>, From<SerieReader>)
-  pub fn root(&self) -> Result<Field>  (SerieReader::root_of the side's field)
-  pub const fn is_held(&self) -> bool  (a serie or a chunked serie)
-  pub fn memory_size(&self) -> Option<usize>  (a held side's bytes, None for a stream)
 
 ### yggdryl::root::scheme  [rust/src/scheme.rs]
 pub struct Scheme(SchemeWire);
@@ -4276,6 +4279,13 @@ pub struct Element<'a>
   pub fn child(&self, namespace: Option<&str>, local: &str) -> Option<Element<'_>>
   pub fn child_in(&self, namespace: &str, local: &str) -> Option<Element<'_>>
   pub fn one_child_in(&self, namespace: &str, local: &str) -> Result<Element<'_>>
+
+### yggdryl::root::serie_source  [rust/src/serie_source.rs]  (the one intake every verb that reads rows from a caller takes - a record write and a stream join's other side; re-exported at the root)
+pub enum SerieSource  (Serie(Serie), Chunked(ChunkedSerie), Reader(SerieReader): rows in any of the three shapes the crate holds them; Debug; From<Serie>, From<ChunkedSerie>, From<SerieReader>, so a caller writes `serie.into()` and names no variant)
+  pub fn root(&self) -> Result<crate::Field>  (the record root the rows are read under: a record column's own, any other column the one child of a row record (SerieReader::root_of), a stream's own; a run refused)
+  pub const fn is_held(&self) -> bool  (a serie or a chunked serie)
+  pub fn memory_size(&self) -> Option<usize>  (a held source's bytes, None for a stream)
+  pub fn into_reader(self) -> Result<SerieReader>  (the stream of the batches the rows already are: a held column one record batch (SerieReader::from_serie), chunks one each (SerieReader::from_chunked), a stream itself; nothing cast, copied or read; a run and a record column holding an absent row refused)
 
 ### yggdryl::root::window_serie  [rust/src/window_serie.rs]  (a window over a serie that reads and writes through the serie's own implementation, every index window-relative; re-exported at the root)
 pub struct WindowSerie<'a>  (a reference to a serie, an offset, a length and, on a window SerieWindows::iter lent, where its record comes from; 40 bytes, pinned by a const assert; Copy; Eq/Ord/Hash over the window's rows alone, PartialEq with Serie either side; Display the serie's name - $ for a run - and the window's rows, Debug the name, offset, len and nulls; IntoIterator for &WindowSerie)
@@ -5670,7 +5680,8 @@ pub struct ProtocolField<'field>
   pub fn empty(field: impl Into<Arc<Field>>) -> Result<Self>  (the empty column of field; a union of no member, wherever it lies, refused)
   pub fn with_capacity(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self>  (the empty column whose buffers reserve rows; an encoding reserves nothing)
   pub fn from_scalars(field: impl Into<Arc<Field>>, rows: impl IntoIterator<Item = Scalar>) -> Result<Self>  (every row through Field::scalar, laid out once, landed proven with no second read)
-  pub fn from_default(field: impl Into<Arc<Field>>, rows: usize) -> crate::arrow::Result<Self>  (Field::default_value laid out once and repeated by index; a required null field has no default)
+  pub fn lit(field: impl Into<Arc<Field>>, value: Scalar, rows: usize) -> crate::arrow::Result<Self>  (rows copies of value as one constant column, LitSerie: the value proven by Field::scalar once - a text field reads an integer as its text, a sequence refused - and laid out as one row, the whole array built only when something exports it)
+  pub fn from_default(field: impl Into<Arc<Field>>, rows: usize) -> crate::arrow::Result<Self>  (Field::default_value as the constant column lit builds; a required null field has no default)
   pub fn from_arrow_array(field: Option<&Field>, array: ArrayRef, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (None: the array's own field, named item, nullable where it holds a logical null, no buffer copied, each non-contract row read once; Some: one ArrowCastPlan compiled and applied, an exact layout the identity plan sharing the buffers)
   pub fn from_arrow_batch(root: Option<&Field>, batch: &RecordBatch, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (None: a record column named DEFAULT_ROOT_NAME whose children share the batch's columns; Some: cast into a non-null record root)
   pub fn from_arrow_reader(root: Option<&Field>, reader: BatchReader, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (ChunkedSerie::from_arrow_reader joined by ChunkedSerie::into_serie: the whole stream is held, the bound is the stream)
@@ -5691,7 +5702,9 @@ pub struct ProtocolField<'field>
   pub fn resident_size(&self) -> usize  (the held records still to yield, or the batch a window's walk stands in; a stream holds no landed batch between pulls and answers zero)
   pub fn is_spilled(&self) -> bool  (held records only, every one of them; never a stream)
   pub fn spill(&mut self, options: &crate::SpillOptions) -> crate::Result<()>  (each held record through Serie::spill; a stream holds none and is untouched)
-  pub fn join_with(self, other: impl Into<JoinSource>, by: impl IntoJoinKeys, how: JoinKind, options: &JoinOptions) -> crate::Result<SerieReader>  (Serie::join_with over a stream: the held side - or, of two streams, the right one, drained first - is built before a batch is pulled, then each probe batch answers its own output batches as it is pulled, nothing collected; a build side past the spill bound reads the probe whole into spooled partitions)
+  pub fn as_spilled(&mut self, options: &crate::SpillOptions) -> crate::Result<&mut Self>  (spill, answering this reader so calls chain)
+  pub fn into_spilled(mut self, options: &crate::SpillOptions) -> crate::Result<Self>  (spill on the held records, the reader handed back: a stream owns one source, so it moves rather than copies)
+  pub fn join_with(self, other: impl Into<SerieSource>, by: impl IntoJoinKeys, how: JoinKind, options: &JoinOptions) -> crate::Result<SerieReader>  (Serie::join_with over a stream: the held side - or, of two streams, the right one, drained first - is built before a batch is pulled, then each probe batch answers its own output batches as it is pulled, nothing collected; a build side past the spill bound reads the probe whole into spooled partitions)
   pub fn into_sorted(self, options: SortOptions) -> crate::Result<SerieReader>  (the stream drained into settled chunks, ChunkedSerie::into_sorted's merge, and the merged chunks streamed back; a window's static values kept)
   pub fn into_sort_by(self, by: impl IntoOrderings) -> crate::Result<SerieReader>  (the same over the `order by` keys of by, refused before any pull where they do not bind)
   pub struct SerieReaderWindows  (the windows of a stream: Iterator<Item = crate::arrow::Result<SerieReader>>, FusedIterator, Debug; Send + Sync, every window Send; a failure is the item of whichever reader pulled it, once, then the walk and every window end)
@@ -5730,6 +5743,8 @@ pub struct ProtocolField<'field>
   pub fn memory_size(&self) -> usize  (a column's buffers as its own slice counts them, a run's values as the row estimator charges them)
   pub fn resident_size(&self) -> usize  (the bytes memory_size counts that still sit on the heap: a mapped leaf's buffers count nothing, a nested leaf its own unmapped buffers beside its children's answer, a run its values; read off the buffers, allocating nothing)
   pub fn is_spilled(&self) -> bool  (memory_size() > 0 && resident_size() == 0; an empty column and a run never)
+  pub fn as_spilled(&mut self, options: &SpillOptions) -> Result<&mut Self>  (spill, answering this serie so calls chain)
+  pub fn into_spilled(&self, options: &SpillOptions) -> Result<Self>  (a copy spilled, this one untouched: the buffers the bound leaves resident shared, the rest written once and mapped)
   pub fn spill(&mut self, options: &SpillOptions) -> Result<()>  (writes buffers to one private unlinked file yggdryl-spill-<pid>-<seq> under options.folder(), 64-byte aligned, and lands the same column over the mapping, in place, until resident_size() is under options.byte_size(): a run is left alone, a column under the bound untouched, a flat column or one whose own buffers alone pass the bound spilled whole, any other child by child heaviest first, each under what the bound leaves once everything else stays resident; a write through a leaf brings that leaf back to the heap, a clone or a slice shares the mapping - but a sliced offsets leaf rebuilds its offsets on the heap and so is not spilled; refuses a folder that cannot hold the file by name)
   pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self>  (in place, chaining: a primitive column holding its buffer alone sorts the native slice where it stands and rewrites its validity, a boolean column its two bitmaps, a run its values; any other leaf replaces its buffers by the kernel's one copy; a refusal leaves the serie as it was)
   pub fn as_sort_by(&mut self, by: impl IntoOrderings) -> Result<&mut Self>  (in place, chaining: into_sort_by replacing this serie; a refusal leaves it as it was)
@@ -5762,6 +5777,8 @@ pub struct ProtocolField<'field>
   pub fn resize(&mut self, len: usize, value: Scalar) -> Result<()>  (proves value once and writes clones)
   pub fn set_child(&mut self, child: Self) -> Result<()>  (a record column only: replaces the child of child's name or adds one, extending the field; refuses a run, a length other than len and a non-record column, each by name)
   pub fn set_cell(&mut self, path: &FieldPath, index: usize, value: Scalar) -> Result<()>  (a record column only: descends path through record children by name and writes one slot in place; refuses an absent row on the way)
+  pub fn as_lit(&self) -> Option<&LitSerie>  (the constant column this is, None for any other leaf)
+  pub fn get_lit_mut(&mut self) -> Option<&mut LitSerie>  (through Arc::make_mut)
   pub fn as_null(&self) -> Option<&NullSerie>  // and as_boolean, as_struct, as_map (Map and SortedMap), as_union, as_run_end_encoded, as_variant, as_int8 .. as_uint64, as_float16/32/64, as_decimal32/64/128/256, as_date32, as_date64, as_time32_second, as_time32_millisecond, as_time64_microsecond, as_time64_nanosecond, as_datetime_second/millisecond/microsecond/nanosecond, as_duration_second/millisecond/microsecond/nanosecond, as_interval_year_month/day_time/month_day_nano, as_utf8, as_large_utf8, as_utf8_view, as_binary_string, as_large_binary_string, as_binary_view_string, as_fixed_string, as_binary, as_large_binary, as_binary_view, as_fixed_bytes, as_serie, as_large_serie, as_serie_view, as_large_serie_view, as_fixed_size_serie, as_dictionary: one per leaf, a direct match on its variant - as_utf8 also reaches the code, Version, Url, Urn, Timezone, MimeType and MediaType variants, as_fixed_bytes Uuid, as_binary Geometry and Geography; as_serie narrows a column to its SerieSerie leaf, where Scalar::as_serie borrows the whole Serie a value holds; allocation free
   pub fn get_null_mut(&mut self) -> Option<&mut NullSerie>  // and get_<leaf>_mut for every as_<leaf> above: through Arc::make_mut, the leaf struct copied once when the column is shared; only the typed writers of a leaf can write through it, and they validate nullability
   impl Value for Serie
@@ -5823,8 +5840,10 @@ pub struct ProtocolField<'field>
   pub fn partition_by_chunked(&self, keys: &Self) -> Result<Vec<(Scalar, Self)>>  (partition_by over keys held as chunks: cut at the same rows, chunk i of the keys groups chunk i with no join; cut elsewhere, the keys joined once and cut per chunk; refuses another length naming the field)
   pub fn window_by(&self, by: impl IntoSelector, sorted: bool) -> crate::Result<Vec<(Scalar, Self)>>  (the windows Serie::window_by cuts the joined column into, each zero-copy pieces of the chunks: a run crossing a chunk edge one window, the pending key compared in place at each edge; sorted regroups runs stably by key, never rows, with no join; no window states a record - the key is the item's first half, the place its index - so a key cell named windownum or rownum is taken; Serie::window_by's other refusals, naming the field, before any row is read)
   pub fn memory_size(&self) -> usize  (the chunks summed)
-  pub fn resident_size(&self) -> usize  (every chunk's Serie::resident_size, summed)
+  pub fn resident_size(&self) -> usize  (every chunk's Serie::resident_size, summed - kept beside the chunks, so the answer is a read)
   pub fn is_spilled(&self) -> bool  (no byte resident and some bytes, read in that order; a chunked serie of no chunk never)
+  pub fn as_spilled(&mut self, options: &SpillOptions) -> crate::Result<&mut Self>  (spill, answering this chunked serie so calls chain)
+  pub fn into_spilled(&self, options: &SpillOptions) -> crate::Result<Self>  (a copy spilled, this one untouched: the chunks the bound leaves resident shared, the rest written once and mapped)
   pub fn spill(&mut self, options: &SpillOptions) -> crate::Result<()>  (the heaviest chunks spilled whole first, each through Serie::spill, the sum read again after each, until the resident bytes are under the bound; a chunked serie under it untouched; a refusal leaves the chunks spilled so far mapped)
   pub fn as_sorted(&mut self, options: SortOptions) -> Result<&mut Self>  (in place, chaining: into_sorted's merged chunks replacing the chunks; a refusal leaves the serie as it was)
   pub fn sort_indices_by(&self, by: impl IntoOrderings) -> Result<Serie>  (the keys resolved, then the one join, then Serie::sort_indices_by: the positions are one column addressing every row, so they stay the join)
@@ -5868,6 +5887,15 @@ pub struct ProtocolField<'field>
   pub fn set_value(&mut self, index: usize, value: Option<bool>) -> Result<()>  (one bit write in place)
   pub fn splice_values(&mut self, range: Range<usize>, values: Vec<Option<bool>>) -> Result<()>
   impl SerieValue for BooleanSerie
+
+### yggdryl::serie::lit  [rust/src/serie/lit.rs]  (the constant column: one field, one value, a length, and the Arrow array it lays out as, built on the first export and shared after)
+  pub struct LitSerie  (Clone is pointer bumps; Debug via debug_column; identity, serde and the digest are the rows it is - equal to and written as the laid-out column)
+  pub const fn value(&self) -> &Scalar  (the value every row holds, canonical under the field)
+  pub const fn row(&self) -> &Serie  (the value laid out once as a one-row column of the field)
+  pub fn is_built(&self) -> bool  (whether the column has been laid out whole and is held)
+  pub fn laid_out(&self) -> &Serie  (the column laid out as its field's own leaf, the one row taken `rows` times: built on the first call and shared by every later one; what a typed narrowing - as_int64, as_utf8 - reads a constant through)
+  pub fn array(&self) -> ArrayRef  (laid_out's buffers)
+  impl SerieValue for LitSerie  (scalar clones the value; slice moves the count, a slice of a built column sharing its buffers; splice of the value moves the count, of another value a conflict - Serie::splice lays the column out first; memory_size the laid-out estimate, one row's bytes times the rows; resident_size the one row and the built array while held; is_spilled never; spill forgets the built array and writes nothing)
 
 ### yggdryl::serie::null  [rust/src/serie/null.rs]  (one column of nulls: a length, and no buffer at all)
   pub struct NullSerie

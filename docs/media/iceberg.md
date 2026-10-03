@@ -11,7 +11,7 @@ Apache Iceberg tables in a folder: `metadata/` and `data/`, no catalog required,
 | Rust | `yggdryl::iceberg`: `Table` (`create`, `open`, `open_or_create`, `scan`, `scan_matching`, `plan_matching`, `commit_append`, `commit_overwrite`, `commit_merge`, `update_schema`, `compact`), `PartitionSpec`, `PartitionField`, `Transform`, `SortOrder`, `SchemaUpdate`, `IcebergOptions` and the `Catalog` over folders of tables |
 | Python | `yggdryl.iceberg`: `Table` (`create`, `open`, `scan`, `scan_matching`, `plan_matching`, `append`, `overwrite`, `merge`, `update_schema`, `compact`), `PartitionSpec`, `SchemaUpdate`, `IcebergOptions`, `Catalog` |
 | JavaScript | `iceberg`: `Table` (`create`, `open`, `scan`, `scanMatching`, `planMatching`, `append`, `overwrite`, `merge`, `updateSchema`, `compact`), `PartitionSpec`, `IcebergOptions`, `Catalog` |
-| Settings | `IcebergOptions`, each resolved from the call, then the table property, then the default: `read.parallelism`, `write.parallelism`, `write.target-file-size-bytes` and the commit retries among them |
+| Settings | `IcebergOptions`, each resolved from the call, then the table property, then the default: `read.parallelism`, `write.parallelism`, `write.target-file-size-bytes` and the commit retries among them; a write's `RecordOptions` add `commit_batch_num` and `num_threads` |
 
 A table lives in one folder: `metadata/` and `data/`, no catalog required.
 Iceberg's type strings - `timestamptz`, `fixed[16]`, `list<fixed[16]>`, the
@@ -154,9 +154,9 @@ A table is opened from its folder - its newest metadata document, through the ve
 
 ## Write
 
-A write commits a snapshot: an append keeps every row the table holds, an overwrite replaces them, and a merge updates the rows its key matches and appends the rest. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row, and cuts each partition's rows into data files of about the target file size (`write.target-file-size-bytes`) as `yggdryl::arrow::memory_size` measures them before encoding - one file for a partition under it; a commit shares `write.parallelism` between its partitions and their columns. New data files are Parquet unless `data_mime_type` names another encoding, and a scan reads each file as its manifest entry records, so one table can mix them.
+A write commits a snapshot: an append keeps every row the table holds, an overwrite replaces them, and a merge updates the rows its key matches and appends the rest. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row, and cuts each partition's rows into data files of about the target file size (`write.target-file-size-bytes`) as `yggdryl::arrow::memory_size` measures them before encoding - one file for a partition under it; the target cuts files, never commits. A commit writes its partition groups on `num_threads` threads at once where the write's options state it, else on `write.parallelism`, else `read.parallelism`, else every thread the host offers, each group's file encoding its columns on its share of them. New data files are Parquet unless `data_mime_type` names another encoding, and a scan reads each file as its manifest entry records, so one table can mix them.
 
-A streamed write with no `commit_batch_num` commits a snapshot each time the batches it holds reach the table's target file size (`write.target-file-size-bytes`, `IcebergOptions`' `target_file_size`) as `yggdryl::arrow::memory_size` measures them, then the remainder, so a stream of any length holds at most one target file of rows before each commit; `commit_batch_num = N` commits every `N` whole batches instead. An overwrite's first commit replaces and the rest append; an append or a merge keeps its intent in every commit.
+A write through the record doors - `write_serie` and its three intents, the `*_arrow_reader` family, a folder addressing the table - commits **once**, when its source ends: every partition's rows are held as the chunks they arrived in - a batch falling whole in one partition the batch itself, a run of its rows a slice, interleaved rows one take - settled under the process [spill bound](../types/serie.md#spilling-to-disk) as they arrive, so an overwrite of any length is one atomic snapshot and its memory is the bound, not the stream. `commit_batch_num = N` commits every `N` whole batches instead, which paces a stream whose rows would outgrow the spill folder; an overwrite's first commit then replaces and the rest append, and an append or a merge keeps its intent in every commit. Where the table declares a sort order, each partition's rows are sorted as a whole by it - stable, through [`ChunkedSerie::into_sort_by`](../types/chunked-serie.md#sorting-uniqueness-and-partitions), each chunk sorted on its own and the chunks merged - unless the group is already in that order: a stream whose root [declares](../types/serie.md#a-declared-order) it, proven as it lands, or a group read once chunk by chunk and edge by edge, is written as it arrived. The Python and JavaScript `Table.append` and `Table.overwrite` hold their rows under the same bound and commit once too.
 
 A commit beaten by another writer rebases where that is safe: an append and a metadata-only commit reload the winner and re-apply their intent, with jittered backoff bounded by `commit_retries` and `commit_total_timeout_ms`. An overwrite, a merge or a compaction cannot - it planned against files the winner may have replaced, and its input is already consumed - so after the same bounded waits it fails with `CommitConflict` naming both versions, the table left as the winner made it, and the caller re-reads and retries. A failed commit changes nothing a reader sees; at worst it leaves data files no snapshot names.
 
@@ -678,6 +678,14 @@ The manifest rows share that host and toolchain.
 
 ```bash
 cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/'
+```
+
+### One commit per write
+
+The `commit` group streams eight batches through `append_arrow_reader` into a fresh table partitioned by `venue` into 32 partitions and sorted by `id` ascending, every batch interleaving every partition and descending within each, so no group arrives in the table's order: one commit of sorted partition files on one thread (`num_threads = 1`), the same on four (`num_threads = 4`), and the same stream paced to a commit every two batches (`commit_batch_num = 2`). Each measured write asserts the snapshots it made - one, or four under the cadence. No result is published here yet: the table is regenerated by a release run of the command below on the machine it names.
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- "^commit/"
 ```
 
 ### Against PyIceberg

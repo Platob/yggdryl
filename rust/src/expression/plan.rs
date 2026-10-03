@@ -2074,8 +2074,8 @@ mod arrow {
     use crate::holder::Holder;
     use crate::media::{IORecordOptions, RecordOptions};
     use crate::{
-        ArrowCastOptions, ChunkedSerie, Field, IOMedia, JoinOptions, JoinSide, JoinSource, Result,
-        SerieReader, Url,
+        ArrowCastOptions, ChunkedSerie, Field, IOMedia, JoinOptions, JoinSide, Result, SerieReader,
+        SerieSource, Url,
     };
 
     impl Target {
@@ -2108,6 +2108,9 @@ mod arrow {
             }
             if let Some(bytes) = self.knob("batch_byte_size", "a byte count")? {
                 options.set_batch_byte_size(Some(bytes));
+            }
+            if let Some(threads) = self.knob("num_threads", "a thread count")? {
+                options.set_num_threads(Some(threads));
             }
             if let Some(batches) = self.knob("commit_batch_num", "a batch count")? {
                 options.set_commit_batch_num(Some(batches));
@@ -2327,7 +2330,7 @@ mod arrow {
                     None => join.held()?,
                 };
                 rows = rows.join_with(
-                    JoinSource::Chunked(held),
+                    SerieSource::Chunked(held),
                     &join.keys,
                     join.how,
                     &JoinOptions::new(),
@@ -2622,10 +2625,15 @@ mod arrow {
                 plan.set_merge_by(self.merge_by().clone());
             }
             options.set_plan(plan)?;
+            // One dispatcher: the verb is the write mode it names, and the
+            // handle's own `write_arrow_reader` validates it against the
+            // options before the reader is pulled.
             let outcome = match verb {
-                Verb::Overwrite => holder.overwrite_arrow_reader(reader, &options),
-                Verb::Insert => holder.append_arrow_reader(reader, &options),
-                Verb::Upsert => holder.merge_arrow_reader(reader, &options),
+                Verb::Overwrite => {
+                    holder.write_arrow_reader(reader, crate::IOMode::Overwrite, &options)
+                }
+                Verb::Insert => holder.write_arrow_reader(reader, crate::IOMode::Append, &options),
+                Verb::Upsert => holder.write_arrow_reader(reader, crate::IOMode::Merge, &options),
                 Verb::Delete => self.delete_from(&mut holder, &options),
             };
             outcome.map_err(|error| super::unreachable(target, error))?;
@@ -2643,16 +2651,28 @@ mod arrow {
 
         /// Remove the stored rows the `where` section keeps.
         ///
-        /// The rows kept are read back, which collects the stream: the store
-        /// is rewritten from what it held, and a rewrite cannot read the same
-        /// resource it is replacing one batch at a time.
+        /// The rows kept are read back and held before the store is
+        /// rewritten from them, because a rewrite cannot read the same
+        /// resource it is replacing one batch at a time. They are held as a
+        /// [`ChunkedSerie`] - one chunk per batch, settled under the process
+        /// spill bound as each lands - so a table larger than the bound is
+        /// deleted from under it rather than collected whole.
         fn delete_from(&self, holder: &mut Holder, options: &RecordOptions) -> Result<()> {
             let mut reading = options.clone();
             let mut kept = Self::new();
             kept.filter = self.filter.clone().not();
             reading.set_plan(kept)?;
-            let remaining = collected(holder.read_arrow_reader(&reading)?)?;
-            holder.overwrite_arrow_reader(one_batch(&remaining), options)
+            let remaining =
+                ChunkedSerie::from_serie_reader(crate::SerieReader::from_arrow_reader(
+                    None,
+                    holder.read_arrow_reader(&reading)?,
+                    ArrowCastOptions::default(),
+                )?)?;
+            holder.write_serie(
+                SerieSource::from(remaining),
+                crate::IOMode::Overwrite,
+                Some(options),
+            )
         }
     }
 

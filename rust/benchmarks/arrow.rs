@@ -22,6 +22,7 @@ use yggdryl::SerieValue as _;
 use arrow_array::{ArrayRef, Decimal128Array, RecordBatch};
 use arrow_schema::SchemaRef;
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
+use yggdryl::SerieSource;
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
@@ -631,7 +632,11 @@ fn structured_benchmarks(criterion: &mut Criterion) {
         for (format, name) in [("json", "trades.json"), ("jsonl", "trades.jsonl")] {
             let mut source = handle(name);
             source
-                .write_arrow(written(&root, &batch), IOMode::Overwrite, None)
+                .write_serie(
+                    SerieSource::from(written(&root, &batch)),
+                    IOMode::Overwrite,
+                    None,
+                )
                 .expect("the Arrow rows write");
             let options = declaring(&root);
             let bytes = source.read_all_bytes().expect("the document reads back");
@@ -647,12 +652,12 @@ fn structured_benchmarks(criterion: &mut Criterion) {
             );
 
             group.throughput(Throughput::Bytes(bytes.len() as u64));
-            group.bench_function(format!("write_arrow/{format}/{count}"), |bencher| {
+            group.bench_function(format!("write_serie/{format}/{count}"), |bencher| {
                 bencher.iter_batched(
                     || (handle(name), written(&root, &batch)),
                     |(mut target, value)| {
                         target
-                            .write_arrow(value, IOMode::Overwrite, None)
+                            .write_serie(SerieSource::from(value), IOMode::Overwrite, None)
                             .expect("the Arrow rows write");
                     },
                     BatchSize::SmallInput,
@@ -669,10 +674,10 @@ fn structured_benchmarks(criterion: &mut Criterion) {
                     BatchSize::SmallInput,
                 );
             });
-            group.bench_function(format!("read_arrow/{format}/{count}"), |bencher| {
+            group.bench_function(format!("read_serie/{format}/{count}"), |bencher| {
                 bencher.iter(|| {
                     black_box(&source)
-                        .read_arrow(Some(black_box(&options)))
+                        .read_serie(Some(black_box(&options)))
                         .expect("the document reads as rows")
                         .map(|column| column.expect("the document is a record column").len())
                         .sum::<usize>()

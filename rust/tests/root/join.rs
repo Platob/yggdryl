@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use arrow_array::cast::AsArray;
 use yggdryl::expression::{IntoJoinKeys, JoinKey, JoinKeys, Term};
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, JoinKind, JoinOptions, JoinSide, JoinSource,
-    Scalar, Serie, SerieReader, SpillOptions, StructType,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, JoinKind, JoinOptions, JoinSide, Scalar,
+    Serie, SerieReader, SpillOptions, StructType,
 };
 
 fn record(name: &str, fields: Vec<Field>) -> Field {
@@ -176,35 +176,6 @@ fn the_options_default_as_the_docs_say_and_each_setter_moves_one_fact() {
     assert!(moved.spill().expect("a bound").is_never());
     assert_eq!(moved.pushdown_keys(), 7);
     assert_ne!(moved, options);
-}
-
-#[test]
-fn a_source_names_its_root_and_whether_it_is_held() {
-    let held = JoinSource::from(trades());
-    assert!(held.is_held());
-    assert_eq!(held.root().expect("a record root").name(), "trade");
-    assert!(held.memory_size().is_some());
-
-    // A plain column keys as the one child of a `row` record.
-    let plain = JoinSource::from(
-        Serie::from_scalars(DataType::Int64.required_field("id"), [int(1)]).expect("a column"),
-    );
-    let root = plain.root().expect("a record root");
-    assert_eq!(root.name(), "row");
-    assert_eq!(
-        names(&Serie::empty(root.clone()).expect("an empty record")),
-        ["id"]
-    );
-
-    let chunked = JoinSource::from(yggdryl::ChunkedSerie::from_serie(trades()).expect("one chunk"));
-    assert!(chunked.is_held());
-    let stream = JoinSource::from(yggdryl::SerieReader::from_serie(trades()).expect("a stream"));
-    assert!(!stream.is_held());
-    assert_eq!(stream.memory_size(), None);
-    assert_eq!(stream.root().expect("the stream's root").name(), "trade");
-
-    let run = JoinSource::from(Serie::new(vec![int(1)]));
-    assert!(run.root().is_err(), "a run names no column to key by");
 }
 
 #[test]

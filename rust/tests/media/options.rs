@@ -571,7 +571,7 @@ fn a_structured_document_is_refused_as_an_encoding_naming_its_own_doors() {
         message.contains("a json document is one value"),
         "{message}"
     );
-    assert!(message.contains("read_arrow"), "{message}");
+    assert!(message.contains("read_serie"), "{message}");
     // Any other media type is refused with the encodings alone.
     let orc = yggdryl::MediaType::new(yggdryl::MimeType::ORC);
     let message = RecordOptions::for_media_type(&orc).unwrap_err().to_string();
@@ -931,6 +931,51 @@ fn the_default_cadences_are_the_batch_rows_and_the_session_bytes() {
     assert_eq!(yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE, 64 * 1024 * 1024);
     // A one-shot write with no stated cadence publishes once at the end.
     assert_eq!(IpcOptions::new().commit_batch_num(), None);
+}
+
+#[test]
+fn every_concrete_options_type_carries_the_same_thread_count() {
+    fn assert_threads(mut options: impl IORecordOptions) {
+        assert_eq!(options.num_threads(), None, "the destination's own answer");
+        options.set_num_threads(Some(3));
+        assert_eq!(options.num_threads(), Some(3));
+        options.set_num_threads(None);
+        assert_eq!(options.num_threads(), None);
+    }
+
+    assert_threads(IpcOptions::new());
+    assert_threads(yggdryl::avro::AvroOptions::new());
+    assert_threads(yggdryl::text::TextOptions::new());
+    assert_threads(ExcelOptions::new());
+    assert_threads(yggdryl::csv::CsvOptions::new());
+    assert_threads(yggdryl::xmla::XmlaOptions::new());
+    #[cfg(feature = "parquet")]
+    assert_threads(yggdryl::parquet::ParquetOptions::new());
+
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_num_threads(2);
+    assert_eq!(options.num_threads(), Some(2));
+    // The count is a fact of the options: two options differing in it differ.
+    assert_ne!(options, RecordOptions::Ipc(IpcOptions::new()));
+    let RecordOptions::Ipc(inner) = options else {
+        unreachable!()
+    };
+    assert_eq!(inner.num_threads, Some(2));
+}
+
+#[test]
+fn zero_num_threads_is_a_typed_preflight_error() {
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_num_threads(0);
+    let message = options.require_num_threads().unwrap_err().to_string();
+    assert!(message.contains("$.num_threads"), "{message}");
+    assert!(message.contains("non-zero thread count"), "{message}");
+    assert!(message.contains("got 0"), "{message}");
+    assert_eq!(
+        RecordOptions::Ipc(IpcOptions::new())
+            .with_num_threads(4)
+            .require_num_threads()
+            .unwrap(),
+        Some(4)
+    );
 }
 
 #[test]

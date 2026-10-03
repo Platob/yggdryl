@@ -51,7 +51,7 @@
 //! # }
 //! ```
 
-mod commit;
+pub(crate) mod commit;
 mod dispatch;
 mod limits;
 
@@ -293,13 +293,16 @@ pub trait IORecordOptions: Sized {
     /// `None` is the destination's own best cadence. A leaf of any
     /// encoding and a partitioned folder publish once, after the source
     /// ends: a leaf append is a rewrite, so a periodic commit on one would
-    /// be a rewrite per commit. An Iceberg table publishes a commit each
-    /// time the batches it holds reach its target file size
-    /// (`write.target-file-size-bytes`) as
-    /// [`memory_size`](crate::arrow::memory_size) measures them, then the
-    /// remainder, so a streamed write of any length holds at most one
-    /// target file of rows before each commit. A resumable write session
-    /// publishes by [`DEFAULT_COMMIT_BYTE_SIZE`].
+    /// be a rewrite per commit. An Iceberg table publishes once too, the
+    /// rows of every partition held under the process spill bound
+    /// ([`SpillOptions::from_env`](crate::SpillOptions::from_env)) until the
+    /// source ends, so a streamed write of any length is one snapshot and
+    /// its memory is the bound, not the stream; a stated cadence paces a
+    /// stream whose rows would outgrow the spill folder. A resumable write
+    /// session publishes by [`DEFAULT_COMMIT_BYTE_SIZE`]. Whatever holds a
+    /// cadence between publications - a leaf's, a session's, a table's
+    /// partition holds - is held under that same bound, the heaviest batches
+    /// spilled first.
     ///
     /// Whichever cadence applies, an overwrite's first commit replaces and
     /// every later one appends, an append appends on every commit, and every
@@ -311,6 +314,22 @@ pub trait IORecordOptions: Sized {
 
     /// Set the publication cadence for a streamed write, in batches.
     fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>);
+
+    /// Return the threads a write of several parts runs on at once.
+    ///
+    /// `Some(n)` is the most parts written side by side - an Iceberg
+    /// commit's partition groups, each group's files encoded on its own
+    /// thread with its share of `n` for the file's columns - and `None` is
+    /// the destination's own answer: an Iceberg table's `write.parallelism`
+    /// property, else its `read.parallelism`, else every thread the host
+    /// offers. Zero is not a thread count and is rejected before a write
+    /// pulls its source, at every write door. A leaf of one file is written
+    /// on the thread that writes it and reads nothing from this; the count
+    /// stays inside the options' identity wherever they travel.
+    fn num_threads(&self) -> Option<usize>;
+
+    /// Set the threads a write of several parts runs on at once.
+    fn set_num_threads(&mut self, num_threads: Option<usize>);
 
     /// Return the compression level applied to a declared content coding.
     fn level(&self) -> Level;
@@ -709,6 +728,13 @@ pub trait IORecordOptions: Sized {
     #[must_use]
     fn with_commit_batch_num(mut self, commit_batch_num: usize) -> Self {
         self.set_commit_batch_num(Some(commit_batch_num));
+        self
+    }
+
+    /// Return a copy running a write of several parts on `num_threads`.
+    #[must_use]
+    fn with_num_threads(mut self, num_threads: usize) -> Self {
+        self.set_num_threads(Some(num_threads));
         self
     }
 
@@ -1179,6 +1205,14 @@ macro_rules! record_options_fields {
 
         fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>) {
             self.commit_batch_num = commit_batch_num;
+        }
+
+        fn num_threads(&self) -> Option<usize> {
+            self.num_threads
+        }
+
+        fn set_num_threads(&mut self, num_threads: Option<usize>) {
+            self.num_threads = num_threads;
         }
 
         fn level(&self) -> $crate::Level {
@@ -1743,6 +1777,27 @@ impl RecordOptions {
         }
     }
 
+    /// Validate the optional thread count of a write of several parts.
+    ///
+    /// This is public only for the workspace bindings, which must reject a
+    /// zero count before converting or pulling a runtime iterator.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming `$.num_threads` for a count of zero.
+    #[doc(hidden)]
+    pub fn require_num_threads(&self) -> Result<Option<usize>> {
+        match self.num_threads() {
+            Some(0) => Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.num_threads"),
+                reason: SmolStr::new_static(
+                    "expected num_threads to be a non-zero thread count, got 0",
+                ),
+            }),
+            num_threads => Ok(num_threads),
+        }
+    }
+
     /// The cadence a write publishes by: the batch count these options
     /// state, or `default`, the destination's own, where they state none.
     ///
@@ -1838,8 +1893,8 @@ impl RecordOptions {
         let reason = match crate::text::Format::from_mime_type(base) {
             Ok(format) => crate::text::expected_got(
                 format_args!(
-                    "{encodings}; a {} document is one value, read with read_arrow or \
-                     read_scalar and written with write_arrow (overwrite) or write_scalar",
+                    "{encodings}; a {} document is one value, read with read_serie or \
+                     read_scalar and written with write_serie (overwrite) or write_scalar",
                     format.as_str()
                 ),
                 base,

@@ -494,6 +494,45 @@ mod internal {
         );
     }
 
+    /// The descriptors this process holds open, read off `/proc/self/fd`.
+    #[cfg(target_os = "linux")]
+    fn open_descriptors() -> usize {
+        std::fs::read_dir("/proc/self/fd")
+            .expect("the process lists its descriptors")
+            .count()
+    }
+
+    /// A mapping holds the pages, never the file: the descriptor the spill
+    /// wrote through is closed once the file is mapped, so the live spilled
+    /// units of a process are bounded by memory and disk, not by its
+    /// descriptor limit.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_live_mapping_holds_no_descriptor() {
+        let array: ArrayRef = Arc::new(Int64Array::from((0..64_i64).collect::<Vec<_>>()));
+        let before = open_descriptors();
+        let held = (0..64)
+            .map(|_| {
+                spill_array(&array, None)
+                    .expect("the numbers spill")
+                    .expect("the numbers have bytes")
+            })
+            .collect::<Vec<_>>();
+        let during = open_descriptors();
+        assert_eq!(
+            during,
+            before,
+            "sixty-four live mappings opened {} descriptors",
+            during.saturating_sub(before)
+        );
+        for (rebuilt, mapping) in &held {
+            assert_eq!(rebuilt.len(), 64);
+            assert!(mapping.len() >= 64 * 8, "the sixty-four values are mapped");
+        }
+        drop(held);
+        assert_eq!(open_descriptors(), before);
+    }
+
     fn some(text: &str) -> Option<OsString> {
         Some(OsString::from(text))
     }

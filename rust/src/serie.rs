@@ -212,6 +212,7 @@ mod datatype;
 mod enums;
 mod join;
 pub(crate) mod layout;
+mod lit;
 mod mapping;
 mod null;
 mod order;
@@ -233,6 +234,7 @@ pub use bytes::{
 };
 pub use datatype::{Run, SerieType};
 pub use enums::DictionarySerie;
+pub use lit::LitSerie;
 pub use mapping::MapSerie;
 pub use null::NullSerie;
 pub use primitive::{
@@ -442,6 +444,9 @@ pub enum Serie {
     Run(Run),
     /// A column of nulls: a length, and no buffer at all.
     Null(Arc<NullSerie>),
+    /// A constant column: one value under its field, a length, and the
+    /// array it lays out as built on demand.
+    Lit(Arc<LitSerie>),
     /// A column of booleans.
     Boolean(Arc<BooleanSerie>),
     /// A column of `int8` values.
@@ -622,6 +627,7 @@ macro_rules! column {
         match $self {
             Serie::Run($run) => $bare,
             Serie::Null($column) => $answer,
+            Serie::Lit($column) => $answer,
             Serie::Boolean($column) => $answer,
             Serie::Int8($column) => $answer,
             Serie::Int16($column) => $answer,
@@ -718,6 +724,10 @@ macro_rules! column_mut {
         match $self {
             Serie::Run($run) => $bare,
             Serie::Null(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Lit(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -1069,6 +1079,11 @@ pub(crate) trait Leaf: Sized {
     /// Borrow this column out of the root to write, copying the leaf struct
     /// once when it is shared; `None` for any other leaf.
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self>;
+    /// [`Self::narrow`] through a constant column's layout: a lit lays
+    /// itself out once and narrows as the leaf it laid out as.
+    fn narrow_laid(serie: &Serie) -> Option<&Self> {
+        Self::narrow(serie.laid_out())
+    }
 }
 
 impl Leaf for NullSerie {
@@ -1086,6 +1101,26 @@ impl Leaf for NullSerie {
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
             Serie::Null(held) => Some(Arc::make_mut(held)),
+            _ => None,
+        }
+    }
+}
+
+impl Leaf for LitSerie {
+    fn root(self) -> Serie {
+        Serie::Lit(Arc::new(self))
+    }
+
+    fn narrow(serie: &Serie) -> Option<&Self> {
+        match serie {
+            Serie::Lit(held) => Some(held.as_ref()),
+            _ => None,
+        }
+    }
+
+    fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
+        match serie {
+            Serie::Lit(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2506,9 +2541,9 @@ impl Serie {
     /// string leaf its field declares - never a code, a version, a URI, a
     /// zone or a MIME or media type, which hold the same buffers under a
     /// variant of their own.
-    pub(crate) const fn is_string_storage(&self) -> bool {
+    pub(crate) fn is_string_storage(&self) -> bool {
         matches!(
-            self,
+            self.laid_out(),
             Self::Utf8String(_)
                 | Self::LargeUtf8String(_)
                 | Self::Utf8ViewString(_)
@@ -2522,9 +2557,9 @@ impl Serie {
     /// Whether this is one of the four byte storage layouts - never a UUID
     /// or a geospatial reading, which hold the same buffers under a variant
     /// of their own.
-    pub(crate) const fn is_byte_storage(&self) -> bool {
+    pub(crate) fn is_byte_storage(&self) -> bool {
         matches!(
-            self,
+            self.laid_out(),
             Self::Binary(_) | Self::LargeBinary(_) | Self::BinaryView(_) | Self::FixedBytes(_)
         )
     }
@@ -2541,7 +2576,7 @@ impl Serie {
     /// [`Self::is_string_storage`] / [`Self::is_byte_storage`] or by matching
     /// those variants - because a `None` here does not say which it was.
     pub(crate) fn value_bytes(&self, index: usize) -> Option<&[u8]> {
-        match self {
+        match self.laid_out() {
             Self::Utf8String(column) => column.value(index).map(str::as_bytes),
             Self::LargeUtf8String(column) => column.value(index).map(str::as_bytes),
             Self::Utf8ViewString(column) => column.value(index).map(str::as_bytes),
@@ -2757,6 +2792,18 @@ impl Serie {
         // A removal takes rows out of an order it cannot break, so only a
         // write of rows is read against the declaration.
         let declares = !rows.is_empty() && self.declares_order();
+        // A constant column takes its own value by count; any other value
+        // lays it out as its field's leaf first, and the write lands there.
+        if let Self::Lit(lit) = &*self
+            && !rows.is_empty()
+            && let Ok(canonical) = rows
+                .iter()
+                .map(|row| lit.field().scalar(row.clone()))
+                .collect::<Result<Vec<Scalar>>>()
+            && !lit.holds(&canonical)
+        {
+            *self = lit.materialized()?;
+        }
         column_mut!(
             self,
             run => {
@@ -2921,6 +2968,7 @@ impl Serie {
     pub(crate) fn append(&mut self, other: &Self) -> bool {
         match (self, other) {
             (Self::Null(mine), Self::Null(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Lit(mine), Self::Lit(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Boolean(mine), Self::Boolean(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Int8(mine), Self::Int8(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Int16(mine), Self::Int16(theirs)) => Arc::make_mut(mine).append(theirs),
@@ -3167,8 +3215,18 @@ impl Serie {
         )
     }
 
-    /// Write canonical `rows` over a checked `range`, never re-proving.
+    /// Write canonical `rows` over a checked `range`, never re-proving. A
+    /// constant column takes rows of another value by laying itself out as
+    /// its field's leaf first: its one row is a landed column of that
+    /// field, so the layout cannot be refused.
     pub(crate) fn write(&mut self, range: Range<usize>, rows: Vec<Scalar>) {
+        if let Self::Lit(lit) = &*self
+            && !lit.holds(&rows)
+        {
+            *self = lit
+                .materialized()
+                .expect("a lit column's row is a landed column of its field");
+        }
         column_mut!(
             self,
             run => splice_run(run, range, rows),
@@ -3220,10 +3278,30 @@ impl Hash for Serie {
 }
 
 impl Serie {
+    /// This column as the leaf its buffers lay out in: itself, or a
+    /// constant column laid out once ([`LitSerie::laid_out`]) and kept, so
+    /// every typed narrowing and every reader of buffers sees the layout
+    /// and never the constant.
+    pub(crate) fn laid_out(&self) -> &Self {
+        match self {
+            Self::Lit(lit) => lit.laid_out(),
+            other => other,
+        }
+    }
+
+    /// [`Self::laid_out`] to write: a constant column becomes the leaf it
+    /// laid out as, so the write lands in buffers.
+    pub(crate) fn lay_out_mut(&mut self) -> &mut Self {
+        if let Self::Lit(lit) = &*self {
+            *self = lit.laid_out().clone();
+        }
+        self
+    }
+
     /// Borrow the [`NullSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_null(&self) -> Option<&NullSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`NullSerie`] this is to write, through `Arc::make_mut`: the
@@ -3231,13 +3309,25 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_null_mut(&mut self) -> Option<&mut NullSerie> {
+        Leaf::narrow_mut(self.lay_out_mut())
+    }
+
+    /// Borrow the [`LitSerie`] this is - a constant column - `None` for any
+    /// other leaf.
+    #[must_use]
+    pub fn as_lit(&self) -> Option<&LitSerie> {
+        Leaf::narrow(self)
+    }
+
+    /// Borrow the [`LitSerie`] this is to write, through `Arc::make_mut`.
+    pub fn get_lit_mut(&mut self) -> Option<&mut LitSerie> {
         Leaf::narrow_mut(self)
     }
 
     /// Borrow the [`BooleanSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_boolean(&self) -> Option<&BooleanSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`BooleanSerie`] this is to write, through `Arc::make_mut`: the
@@ -3245,13 +3335,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_boolean_mut(&mut self) -> Option<&mut BooleanSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Int8Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_int8(&self) -> Option<&Int8Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Int8Serie`] this is to write, through `Arc::make_mut`: the
@@ -3259,13 +3349,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_int8_mut(&mut self) -> Option<&mut Int8Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Int16Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_int16(&self) -> Option<&Int16Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Int16Serie`] this is to write, through `Arc::make_mut`: the
@@ -3273,13 +3363,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_int16_mut(&mut self) -> Option<&mut Int16Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Int32Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_int32(&self) -> Option<&Int32Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Int32Serie`] this is to write, through `Arc::make_mut`: the
@@ -3287,13 +3377,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_int32_mut(&mut self) -> Option<&mut Int32Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Int64Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_int64(&self) -> Option<&Int64Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Int64Serie`] this is to write, through `Arc::make_mut`: the
@@ -3301,13 +3391,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_int64_mut(&mut self) -> Option<&mut Int64Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`UInt8Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_uint8(&self) -> Option<&UInt8Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`UInt8Serie`] this is to write, through `Arc::make_mut`: the
@@ -3315,13 +3405,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_uint8_mut(&mut self) -> Option<&mut UInt8Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`UInt16Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_uint16(&self) -> Option<&UInt16Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`UInt16Serie`] this is to write, through `Arc::make_mut`: the
@@ -3329,13 +3419,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_uint16_mut(&mut self) -> Option<&mut UInt16Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`UInt32Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_uint32(&self) -> Option<&UInt32Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`UInt32Serie`] this is to write, through `Arc::make_mut`: the
@@ -3343,13 +3433,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_uint32_mut(&mut self) -> Option<&mut UInt32Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`UInt64Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_uint64(&self) -> Option<&UInt64Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`UInt64Serie`] this is to write, through `Arc::make_mut`: the
@@ -3357,13 +3447,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_uint64_mut(&mut self) -> Option<&mut UInt64Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Float16Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_float16(&self) -> Option<&Float16Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Float16Serie`] this is to write, through `Arc::make_mut`: the
@@ -3371,13 +3461,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_float16_mut(&mut self) -> Option<&mut Float16Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Float32Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_float32(&self) -> Option<&Float32Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Float32Serie`] this is to write, through `Arc::make_mut`: the
@@ -3385,13 +3475,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_float32_mut(&mut self) -> Option<&mut Float32Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Float64Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_float64(&self) -> Option<&Float64Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Float64Serie`] this is to write, through `Arc::make_mut`: the
@@ -3399,13 +3489,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_float64_mut(&mut self) -> Option<&mut Float64Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Date32Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_date32(&self) -> Option<&Date32Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Date32Serie`] this is to write, through `Arc::make_mut`: the
@@ -3413,13 +3503,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_date32_mut(&mut self) -> Option<&mut Date32Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Date64Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_date64(&self) -> Option<&Date64Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Date64Serie`] this is to write, through `Arc::make_mut`: the
@@ -3427,13 +3517,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_date64_mut(&mut self) -> Option<&mut Date64Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Utf8StringSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_utf8(&self) -> Option<&Utf8StringSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Utf8StringSerie`] this is to write, through `Arc::make_mut`: the
@@ -3441,13 +3531,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_utf8_mut(&mut self) -> Option<&mut Utf8StringSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`FixedBytesSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_fixed_bytes(&self) -> Option<&FixedBytesSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`FixedBytesSerie`] this is to write, through `Arc::make_mut`: the
@@ -3455,13 +3545,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_fixed_bytes_mut(&mut self) -> Option<&mut FixedBytesSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`SerieSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_serie(&self) -> Option<&SerieSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`SerieSerie`] this is to write, through `Arc::make_mut`: the
@@ -3469,13 +3559,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_serie_mut(&mut self) -> Option<&mut SerieSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`SerieViewSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_serie_view(&self) -> Option<&SerieViewSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`SerieViewSerie`] this is to write, through `Arc::make_mut`: the
@@ -3483,13 +3573,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_serie_view_mut(&mut self) -> Option<&mut SerieViewSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`FixedSizeSerieSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_fixed_size_serie(&self) -> Option<&FixedSizeSerieSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`FixedSizeSerieSerie`] this is to write, through `Arc::make_mut`: the
@@ -3497,13 +3587,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_fixed_size_serie_mut(&mut self) -> Option<&mut FixedSizeSerieSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`LargeSerieSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_large_serie(&self) -> Option<&LargeSerieSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`LargeSerieSerie`] this is to write, through `Arc::make_mut`: the
@@ -3511,13 +3601,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_large_serie_mut(&mut self) -> Option<&mut LargeSerieSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`LargeSerieViewSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_large_serie_view(&self) -> Option<&LargeSerieViewSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`LargeSerieViewSerie`] this is to write, through `Arc::make_mut`: the
@@ -3525,13 +3615,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_large_serie_view_mut(&mut self) -> Option<&mut LargeSerieViewSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`StructSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_struct(&self) -> Option<&StructSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`StructSerie`] this is to write, through `Arc::make_mut`: the
@@ -3539,13 +3629,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_struct_mut(&mut self) -> Option<&mut StructSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`UnionSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_union(&self) -> Option<&UnionSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`UnionSerie`] this is to write, through `Arc::make_mut`: the
@@ -3553,13 +3643,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_union_mut(&mut self) -> Option<&mut UnionSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`DictionarySerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_dictionary(&self) -> Option<&DictionarySerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`DictionarySerie`] this is to write, through `Arc::make_mut`: the
@@ -3567,13 +3657,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_dictionary_mut(&mut self) -> Option<&mut DictionarySerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Decimal32Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_decimal32(&self) -> Option<&Decimal32Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Decimal32Serie`] this is to write, through `Arc::make_mut`: the
@@ -3581,13 +3671,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_decimal32_mut(&mut self) -> Option<&mut Decimal32Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Decimal64Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_decimal64(&self) -> Option<&Decimal64Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Decimal64Serie`] this is to write, through `Arc::make_mut`: the
@@ -3595,13 +3685,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_decimal64_mut(&mut self) -> Option<&mut Decimal64Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Decimal128Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_decimal128(&self) -> Option<&Decimal128Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Decimal128Serie`] this is to write, through `Arc::make_mut`: the
@@ -3609,13 +3699,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_decimal128_mut(&mut self) -> Option<&mut Decimal128Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Decimal256Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_decimal256(&self) -> Option<&Decimal256Serie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Decimal256Serie`] this is to write, through `Arc::make_mut`: the
@@ -3623,13 +3713,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_decimal256_mut(&mut self) -> Option<&mut Decimal256Serie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`MapSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_map(&self) -> Option<&MapSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`MapSerie`] this is to write, through `Arc::make_mut`: the
@@ -3637,13 +3727,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_map_mut(&mut self) -> Option<&mut MapSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`RunEndEncodedSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_run_end_encoded(&self) -> Option<&RunEndEncodedSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`RunEndEncodedSerie`] this is to write, through `Arc::make_mut`: the
@@ -3651,13 +3741,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_run_end_encoded_mut(&mut self) -> Option<&mut RunEndEncodedSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`VariantSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_variant(&self) -> Option<&VariantSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`VariantSerie`] this is to write, through `Arc::make_mut`: the
@@ -3665,13 +3755,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_variant_mut(&mut self) -> Option<&mut VariantSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`BinarySerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_binary(&self) -> Option<&BinarySerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`BinarySerie`] this is to write, through `Arc::make_mut`: the
@@ -3679,13 +3769,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_binary_mut(&mut self) -> Option<&mut BinarySerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Time32SecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_time32_second(&self) -> Option<&Time32SecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Time32SecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3693,13 +3783,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_time32_second_mut(&mut self) -> Option<&mut Time32SecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Time32MillisecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_time32_millisecond(&self) -> Option<&Time32MillisecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Time32MillisecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3707,13 +3797,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_time32_millisecond_mut(&mut self) -> Option<&mut Time32MillisecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Time64MicrosecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_time64_microsecond(&self) -> Option<&Time64MicrosecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Time64MicrosecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3721,13 +3811,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_time64_microsecond_mut(&mut self) -> Option<&mut Time64MicrosecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Time64NanosecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_time64_nanosecond(&self) -> Option<&Time64NanosecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Time64NanosecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3735,13 +3825,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_time64_nanosecond_mut(&mut self) -> Option<&mut Time64NanosecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`DateTimeSecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_datetime_second(&self) -> Option<&DateTimeSecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`DateTimeSecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3749,13 +3839,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_datetime_second_mut(&mut self) -> Option<&mut DateTimeSecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`DateTimeMillisecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_datetime_millisecond(&self) -> Option<&DateTimeMillisecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`DateTimeMillisecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3763,13 +3853,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_datetime_millisecond_mut(&mut self) -> Option<&mut DateTimeMillisecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`DateTimeMicrosecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_datetime_microsecond(&self) -> Option<&DateTimeMicrosecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`DateTimeMicrosecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3777,13 +3867,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_datetime_microsecond_mut(&mut self) -> Option<&mut DateTimeMicrosecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`DateTimeNanosecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_datetime_nanosecond(&self) -> Option<&DateTimeNanosecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`DateTimeNanosecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3791,13 +3881,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_datetime_nanosecond_mut(&mut self) -> Option<&mut DateTimeNanosecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`DurationSecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_duration_second(&self) -> Option<&DurationSecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`DurationSecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3805,13 +3895,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_duration_second_mut(&mut self) -> Option<&mut DurationSecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`DurationMillisecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_duration_millisecond(&self) -> Option<&DurationMillisecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`DurationMillisecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3819,13 +3909,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_duration_millisecond_mut(&mut self) -> Option<&mut DurationMillisecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`DurationMicrosecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_duration_microsecond(&self) -> Option<&DurationMicrosecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`DurationMicrosecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3833,13 +3923,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_duration_microsecond_mut(&mut self) -> Option<&mut DurationMicrosecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`DurationNanosecondSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_duration_nanosecond(&self) -> Option<&DurationNanosecondSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`DurationNanosecondSerie`] this is to write, through `Arc::make_mut`: the
@@ -3847,13 +3937,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_duration_nanosecond_mut(&mut self) -> Option<&mut DurationNanosecondSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`IntervalYearMonthSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_interval_year_month(&self) -> Option<&IntervalYearMonthSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`IntervalYearMonthSerie`] this is to write, through `Arc::make_mut`: the
@@ -3861,13 +3951,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_interval_year_month_mut(&mut self) -> Option<&mut IntervalYearMonthSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`IntervalDayTimeSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_interval_day_time(&self) -> Option<&IntervalDayTimeSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`IntervalDayTimeSerie`] this is to write, through `Arc::make_mut`: the
@@ -3875,13 +3965,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_interval_day_time_mut(&mut self) -> Option<&mut IntervalDayTimeSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`IntervalMonthDayNanoSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_interval_month_day_nano(&self) -> Option<&IntervalMonthDayNanoSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`IntervalMonthDayNanoSerie`] this is to write, through `Arc::make_mut`: the
@@ -3889,13 +3979,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_interval_month_day_nano_mut(&mut self) -> Option<&mut IntervalMonthDayNanoSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`LargeUtf8StringSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_large_utf8(&self) -> Option<&LargeUtf8StringSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`LargeUtf8StringSerie`] this is to write, through `Arc::make_mut`: the
@@ -3903,13 +3993,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_large_utf8_mut(&mut self) -> Option<&mut LargeUtf8StringSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`Utf8ViewStringSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_utf8_view(&self) -> Option<&Utf8ViewStringSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`Utf8ViewStringSerie`] this is to write, through `Arc::make_mut`: the
@@ -3917,13 +4007,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_utf8_view_mut(&mut self) -> Option<&mut Utf8ViewStringSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`BinaryStringSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_binary_string(&self) -> Option<&BinaryStringSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`BinaryStringSerie`] this is to write, through `Arc::make_mut`: the
@@ -3931,13 +4021,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_binary_string_mut(&mut self) -> Option<&mut BinaryStringSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`LargeBinaryStringSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_large_binary_string(&self) -> Option<&LargeBinaryStringSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`LargeBinaryStringSerie`] this is to write, through `Arc::make_mut`: the
@@ -3945,13 +4035,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_large_binary_string_mut(&mut self) -> Option<&mut LargeBinaryStringSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`BinaryViewStringSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_binary_view_string(&self) -> Option<&BinaryViewStringSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`BinaryViewStringSerie`] this is to write, through `Arc::make_mut`: the
@@ -3959,13 +4049,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_binary_view_string_mut(&mut self) -> Option<&mut BinaryViewStringSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`FixedStringSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_fixed_string(&self) -> Option<&FixedStringSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`FixedStringSerie`] this is to write, through `Arc::make_mut`: the
@@ -3973,13 +4063,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_fixed_string_mut(&mut self) -> Option<&mut FixedStringSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`LargeBinarySerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_large_binary(&self) -> Option<&LargeBinarySerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`LargeBinarySerie`] this is to write, through `Arc::make_mut`: the
@@ -3987,13 +4077,13 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_large_binary_mut(&mut self) -> Option<&mut LargeBinarySerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 
     /// Borrow the [`BinaryViewSerie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_binary_view(&self) -> Option<&BinaryViewSerie> {
-        Leaf::narrow(self)
+        Leaf::narrow(self.laid_out())
     }
 
     /// Borrow the [`BinaryViewSerie`] this is to write, through `Arc::make_mut`: the
@@ -4001,7 +4091,7 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_binary_view_mut(&mut self) -> Option<&mut BinaryViewSerie> {
-        Leaf::narrow_mut(self)
+        Leaf::narrow_mut(self.lay_out_mut())
     }
 }
 

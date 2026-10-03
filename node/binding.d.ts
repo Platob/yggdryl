@@ -939,8 +939,15 @@ declare module './index' {
     function empty(field: Field | string): Serie
     /** The empty column of `field`, with room for `rows` rows. */
     function withCapacity(field: Field | string, rows: number): Serie
-    /** `rows` copies of `field`'s canonical default, one by default. */
+    /** `rows` copies of `field`'s canonical default, one by default: a constant column. */
     function fromDefault(field: Field | string, rows?: number): Serie
+    /**
+     * `length` copies of `value` under `field`: a constant column, the value
+     * typed by the field's own contract once and held as one row, the whole
+     * array built only when something exports it. A null under a required
+     * field, a value of another datatype and a sequence are refused.
+     */
+    function lit(field: Field | string, value: unknown, length: number): Serie
     /**
      * One Apache Arrow JS vector as a column: of its own layout under the
      * field `item`, nullable only where a row is null, or cast once into
@@ -1097,6 +1104,18 @@ declare module './index' {
     intoSortBy(by: OrderingKeys): Serie
     /** Sort the rows in place by the keys of `by` and answer this serie; a refusal leaves it as it was. */
     asSortBy(by: OrderingKeys): this
+    /**
+     * Spill the rows in place under the bound `options` states - the process
+     * default (`SpillOptions.fromEnv()`) where it is absent or null - as
+     * `spill` does, and answer this serie.
+     */
+    asSpilled(options?: SpillOptions | null): this
+    /**
+     * A copy of this serie spilled under the bound `options` states, this
+     * one untouched: the buffers the bound leaves resident are shared, the
+     * rest written once and mapped.
+     */
+    intoSpilled(options?: SpillOptions | null): Serie
     /**
      * This serie joined with `other` - a Serie, or a window as the serie of
      * its rows - on `by`, under `how` (`inner` when absent or null): one
@@ -1293,6 +1312,18 @@ declare module './index' {
       how?: JoinHow | null,
       options?: JoinOptionsInput | null,
     ): SerieReader
+    /**
+     * Spill the records this reader holds in place under the bound `options`
+     * states, as `spill` does, and answer this reader; a stream holds none
+     * and is untouched. Refused once the reader was consumed.
+     */
+    asSpilled(options?: SpillOptions | null): this
+    /**
+     * This reader with the records it holds spilled under the bound
+     * `options` states, handed over as a new reader: a stream moves rather
+     * than copies, so this reader is consumed.
+     */
+    intoSpilled(options?: SpillOptions | null): SerieReader
   }
 
   interface SerieReaderWindows extends IterableIterator<SerieReader> {
@@ -1454,6 +1485,16 @@ declare module './index' {
     intoSortBy(by: OrderingKeys): ChunkedSerie
     /** Sort the rows in place by the keys of `by` - the merged chunks replace the chunks - and answer this chunked serie. */
     asSortBy(by: OrderingKeys): this
+    /**
+     * Spill chunks in place under the bound `options` states, the heaviest
+     * whole first, as `spill` does, and answer this chunked serie.
+     */
+    asSpilled(options?: SpillOptions | null): this
+    /**
+     * A copy of this chunked serie spilled under the bound `options` states,
+     * this one untouched: the chunks the bound leaves resident are shared.
+     */
+    intoSpilled(options?: SpillOptions | null): ChunkedSerie
     /**
      * This chunked serie joined with `other` on `by`, under `how` (`inner`
      * when absent or null), by `Serie.joinWith`'s rules: the output batches
@@ -4365,6 +4406,44 @@ declare module './index' {
     ): void
 
     /**
+     * Read this resource's rows as a `SerieReader`, one record serie per
+     * batch. Absent options are the handle's own - a container's the table
+     * beneath it, a structured text document the record column its rows
+     * parse into, of which the declared field is the one option it reads.
+     */
+    readSerie(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): SerieReader
+    /**
+     * Write rows in any shape they are held - a Serie, a ChunkedSerie, a
+     * SerieReader (consumed), or any value `BatchReader.from` accepts -
+     * under `mode`, `overwrite` when absent. A structured text document
+     * takes `overwrite` alone, and of the options the declared field alone.
+     */
+    writeSerie(
+      value: SerieSource,
+      mode?: IOMode,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
+    ): void
+    /** Replace this resource's rows with `value`'s: `writeSerie` under `overwrite`. */
+    overwriteSerie(
+      value: SerieSource,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
+    ): void
+    /** Add `value`'s rows after this resource's: `writeSerie` under `append`. */
+    appendSerie(
+      value: SerieSource,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
+    ): void
+    /** Merge `value`'s rows by the non-empty `options.mergeBy` keys: `writeSerie` under `merge`. */
+    mergeSerie(
+      value: SerieSource,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
+    ): void
+
+    /**
      * Read this resource's rows as records: plain objects, or instances of
      * the class you pass, whose constructor receives one plain row.
      */
@@ -4659,6 +4738,11 @@ export type BatchSource =
   | Buffer
   | Uint8Array
   | ArrayBuffer
+/**
+ * Rows the `Serie` record writes take: a held column, held chunks, a stream
+ * (consumed), or any value `BatchReader.from` accepts.
+ */
+export type SerieSource = Serie | ChunkedSerie | SerieReader | BatchSource
 /** One row accepted by the record-specific write entry points. */
 // `& object` is what keeps a primitive out: every JavaScript value carries a
 // `constructor`, so a bare number structurally satisfies StructFieldInstance.

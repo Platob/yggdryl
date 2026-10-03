@@ -16,7 +16,7 @@ Many [`Serie`](serie.md) columns under one [`Field`](field.md), in order and hel
 | Cast | `cast(target, options)` is one [`ArrowCastPlan`](cast.md#compiled-plans) compiled and applied to every chunk; a chunked serie already under the target is itself, its chunks shared |
 | Stream | `SerieReader::from_chunked` reads the chunks as a stream, one record column per chunk, nothing cast, copied or read |
 | Order, uniqueness, partitions | the [verbs a `Serie` answers](serie.md#sorting-uniqueness-and-partitions), across the chunks: `is_sorted` reads each chunk and every chunk edge with no join, an edge compared on the rung the chunks sort on; `into_reversed`, `into_filtered`, `partition_by` and `partition_by_chunked` work chunk by chunk and keep the chunks apart; `into_sorted`, `into_sort_by` and `into_unique` sort each chunk on its own and [merge](#sorting-uniqueness-and-partitions) the sorted chunks with no join - the output cut into chunks of at most `DEFAULT_RECORD_BATCH_ROW_SIZE` rows, each settled, uniqueness filtering every chunk by its own mask and keeping it apart; `sort_indices`, `sort_indices_by`, `is_unique`, `unique_count` and `into_taken` are the one join then the verb, because their answer is one column addressing every row; `memory_size` sums the chunks; the `as_*` writes replace the chunks in place. A sorted result's field and every chunk [declare](serie.md#a-declared-order) the order, and `declared_order` reads it |
-| Spill | `resident_size`, `is_spilled` and `spill(options)` as a [`Serie`](serie.md#spilling-to-disk) answers them, the heaviest chunks spilled whole first until the resident bytes are under the bound; `into_serie` over several chunks, `push_chunk`, the merge's output and a join's output batches settle under the process default |
+| Spill | `resident_size`, `is_spilled`, `spill(options)`, `as_spilled(options)` and `into_spilled(options)` as a [`Serie`](serie.md#spilling-to-disk) answers them, the heaviest chunks [spilled](#spilling-to-disk) whole first until the resident bytes are under the bound, and `resident_size` a read of the total kept beside the chunks; `into_serie` over several chunks, `push_chunk`, the merge's output and a join's output batches settle under the process default |
 | Join | `join_with(other, by, how, options)` is [`Serie::join_with`](serie.md#joins) with the output batches kept apart as chunks, one per probe chunk answering rows, then the build side's unmatched rows where the kind keeps them |
 | Windows by key | [`window_by(by, sorted)`](#windows-by-key) cuts the rows as `Serie::window_by` cuts the joined column, every window zero-copy pieces of the chunks, a run crossing an edge one window, `sorted` regrouping runs and never rows; no window states a record |
 | Bindings | Rust, Python and JavaScript. Python crosses the C Data Interface and shares buffers: a `pyarrow.ChunkedArray`'s chunks and a `pyarrow.Table`'s batches are kept as chunks, and go back out as a `ChunkedArray` and a `Table`. JavaScript crosses as copied IPC: an Apache Arrow JS `Vector`'s `Data` are the chunks, and so are a `Table`'s batches. The [ordering, uniqueness and grouping verbs](#sorting-uniqueness-and-partitions) are bound in both, `partition_by` taking chunked keys where Rust spells `partition_by_chunked`. `field_ref`, `from_serie_reader` (Python reaches it through `ChunkedSerie.from_`), the `ChunkedRows` iterator type and `Hash` are Rust only: the Python class is mutable and unhashable |
@@ -680,7 +680,7 @@ A chunked array is one layout in pieces, so every array must lay out as the firs
 
 ## Streams
 
-`SerieReader::from_chunked` reads a held chunked serie as the stream of its chunks, one record column per chunk: a record's chunks are the batches they are, and a leaf field's chunks are each the one child of a `row` record, named as it is - the rule [`SerieReader::from_serie`](serie.md#arrow-an-array-a-batch-a-reader) states, applied per chunk. Nothing is cast, copied or read, no plan is compiled, and a chunked serie of no chunk is the empty stream of its root; a stream under another root is [`SerieReader::cast`](serie.md#arrow-an-array-a-batch-a-reader), one plan over every chunk. Coming back, `from_serie_reader` collects a stream, one chunk per batch, none joined. Because Python's `SerieReader.from_` reads a chunked serie as that stream, `IOBase.write_arrow` takes one as it is, and a `ChunkedSerie` answers `__arrow_c_stream__` - a record's chunks as those batches, any other field's as the column a `pyarrow.ChunkedArray` streams - so `pa.table` and `pa.chunked_array` read one directly.
+`SerieReader::from_chunked` reads a held chunked serie as the stream of its chunks, one record column per chunk: a record's chunks are the batches they are, and a leaf field's chunks are each the one child of a `row` record, named as it is - the rule [`SerieReader::from_serie`](serie.md#arrow-an-array-a-batch-a-reader) states, applied per chunk. Nothing is cast, copied or read, no plan is compiled, and a chunked serie of no chunk is the empty stream of its root; a stream under another root is [`SerieReader::cast`](serie.md#arrow-an-array-a-batch-a-reader), one plan over every chunk. Coming back, `from_serie_reader` collects a stream, one chunk per batch, none joined. A [write to a handle](serie.md#writing-a-serie-to-a-handle) takes a chunked serie as it is - `write_serie` and its three intents write one batch per chunk, nothing joined - and a `ChunkedSerie` answers `__arrow_c_stream__` - a record's chunks as those batches, any other field's as the column a `pyarrow.ChunkedArray` streams - so `pa.table` and `pa.chunked_array` read one directly.
 
 === "Rust"
 
@@ -744,10 +744,10 @@ A chunked array is one layout in pieces, so every array must lay out as the firs
     assert [len(chunk) for chunk in SerieReader.from_chunked(quotes)] == [2, 1]
     assert SerieReader.from_(quotes).into_arrow_reader().read_all().equals(table)
 
-    # A write takes it through SerieReader.from_, one batch per chunk.
+    # A write takes it as it is, one batch per chunk.
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "quotes.jsonl")
-    handle.write_arrow(quotes)
-    assert len(ChunkedSerie.from_(handle.read_arrow())) == 3
+    handle.overwrite_serie(quotes)
+    assert len(ChunkedSerie.from_(handle.read_serie())) == 3
     ```
 
 === "JavaScript"
@@ -868,6 +868,75 @@ A chunked array is one layout in pieces, so every array must lay out as the firs
     assert.equal(plan.apply(prices).numChunks, 3)
     ```
 
+## Spilling to disk
+
+A chunked serie [spills](serie.md#spilling-to-disk) chunk by chunk: `spill(options)` moves the heaviest chunks to disk whole first, each through `Serie::spill`, reading the resident sum again after each, so a chunked serie under the bound is untouched and one over it keeps its lightest chunks resident. `resident_size` is a read - the total is kept beside the chunks and moved by every door that changes them - and `is_spilled` is "some bytes, none of them resident". `as_spilled(options)` is `spill` answering the chunked serie so calls chain, and `into_spilled(options)` a spilled copy, this one untouched, the chunks the bound leaves resident shared. A refused folder leaves the chunks spilled so far mapped and the rest as they were.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Scalar, Serie, SpillOptions};
+
+    let field = DataType::Int64.required_field("price");
+    let heavy = Serie::from_scalars(field.clone(), (0..1_024_i64).map(Scalar::from))?;
+    let light = Serie::from_scalars(field.clone(), (0..8_i64).map(Scalar::from))?;
+    let prices = ChunkedSerie::from_series(Some(&field), [heavy, light], ArrowCastOptions::new())?;
+
+    // The heaviest chunk spills first; the light one stays under the bound.
+    let spilled = prices.into_spilled(&SpillOptions::new().with_byte_size(1_024))?;
+    assert!(spilled.chunk(0).expect("the heavy chunk").is_spilled());
+    assert!(!spilled.chunk(1).expect("the light chunk").is_spilled());
+    assert!(!prices.is_spilled(), "into_spilled leaves its source resident");
+    assert_eq!(spilled, prices);
+
+    // In place, chaining: a bound of zero spills every chunk.
+    let mut all = prices.clone();
+    assert!(all.as_spilled(&SpillOptions::new().with_byte_size(0))?.is_spilled());
+    assert_eq!(all.resident_size(), 0);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import ChunkedSerie, Field, Serie
+
+    field = Field("price", "int64", nullable=False)
+    heavy = Serie.from_scalars(field, range(1_024))
+    light = Serie.from_scalars(field, range(8))
+    prices = ChunkedSerie.from_series([heavy, light], field)
+
+    # The heaviest chunk spills first; the light one stays under the bound.
+    spilled = prices.into_spilled(byte_size=1_024)
+    assert spilled.chunk(0).is_spilled() and not spilled.chunk(1).is_spilled()
+    assert not prices.is_spilled()
+    assert spilled == prices
+
+    # In place, chaining: a bound of zero spills every chunk.
+    assert prices.as_spilled(byte_size=0) is prices
+    assert prices.is_spilled() and prices.resident_size() == 0
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { ChunkedSerie, Field, Serie, SpillOptions } = require('yggdryl')
+
+    const field = Field.from('price: int64 not null')
+    const heavy = Serie.fromScalars(field, Array.from({ length: 1_024 }, (_, index) => index))
+    const prices = ChunkedSerie.fromSeries([heavy, Serie.fromScalars(field, [0, 1, 2])], field)
+
+    // A copy spilled; this one stays resident.
+    const spilled = prices.intoSpilled(new SpillOptions({ byteSize: 0 }))
+    assert.equal(spilled.isSpilled(), true)
+    assert.equal(prices.isSpilled(), false)
+    assert.ok(spilled.equals(prices))
+
+    // In place, chaining.
+    assert.equal(prices.asSpilled(new SpillOptions({ byteSize: 0 })), prices)
+    assert.equal(prices.residentSize(), 0)
+    ```
+
 ## Edges
 
 - A run declares no field, so `from_serie`, `from_series` and `push_chunk` refuse one: `invalid record value at $: a schema-free run declares no field`.
@@ -895,6 +964,7 @@ A chunked array is one layout in pieces, so every array must lay out as the firs
     cargo test -p yggdryl --test root chunked_serie
     cargo test -p yggdryl --test serie arrow
     cargo test -p yggdryl --test allocations chunked
+    cargo test -p yggdryl --test serie spill
     cargo test -p yggdryl --test allocations -- a_chunked_window_by a_chunked_sorted_window_by
     cargo bench -p yggdryl --bench arrow -- arrow_chunked_serie
     cargo bench -p yggdryl --bench types -- serie/chunked_

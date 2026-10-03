@@ -3951,3 +3951,31 @@ fn a_sorted_stream_yields_a_root_declaring_its_order() {
         assert!(Serie::from_scalars(declaring, rows).is_ok(), "{text}");
     }
 }
+
+#[test]
+fn a_held_reader_spills_its_records_through_as_spilled_and_into_spilled() {
+    use yggdryl::{ChunkedSerie, DataType, Scalar, Serie, SerieReader, SpillOptions};
+
+    let field = DataType::Int64.required_field("price");
+    let chunk = || Serie::from_scalars(field.clone(), (0..1_024_i64).map(Scalar::from)).unwrap();
+    let everything = SpillOptions::new().with_byte_size(0);
+    let held = || {
+        SerieReader::from_chunked(
+            ChunkedSerie::from_series(Some(&field), [chunk(), chunk()], Default::default())
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    let mut reader = held();
+    assert!(reader.as_spilled(&everything).unwrap().is_spilled());
+    let records: Vec<Serie> = reader.collect::<Result<_, _>>().unwrap();
+    assert!(records.iter().all(Serie::is_spilled));
+    assert_eq!(records.iter().map(Serie::len).sum::<usize>(), 2_048);
+
+    let reader = held().into_spilled(&everything).unwrap();
+    assert!(reader.is_spilled());
+    assert_eq!(
+        reader.map(|record| record.unwrap().len()).sum::<usize>(),
+        2_048
+    );
+}

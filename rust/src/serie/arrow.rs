@@ -1282,8 +1282,41 @@ impl Serie {
             .verified_order()
     }
 
+    /// `rows` copies of `value` under `field`: a constant column
+    /// ([`LitSerie`](crate::serie::LitSerie)), the value proven by the
+    /// field once and laid out as one row, the whole array built only when
+    /// something exports it. Reading a cell clones the value, slicing moves
+    /// the count, and nothing is held per row.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let venue = Serie::lit(DataType::utf8().required_field("venue"), Scalar::from("XNAS"), 1_000_000)?;
+    /// assert_eq!(venue.len(), 1_000_000);
+    /// assert_eq!(venue.scalar(999_999)?, Scalar::from("XNAS"));
+    /// assert!(venue.as_lit().is_some());
+    /// assert!(venue.resident_size() < 1_024, "one row, not a million");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the field's refusal of the value - a null under a required
+    /// field, a value of another datatype - or of a field with no Arrow
+    /// projection.
+    pub fn lit(field: impl Into<Arc<Field>>, value: Scalar, rows: usize) -> Result<Self> {
+        Ok(crate::value::SerieValue::into_serie(super::LitSerie::new(
+            field.into(),
+            value,
+            rows,
+        )?))
+    }
+
     /// `rows` copies of `field`'s canonical default -
-    /// [`Field::default_value`] - laid out once and repeated by index.
+    /// [`Field::default_value`] - as the constant column [`Self::lit`]
+    /// builds.
     ///
     /// # Errors
     ///
@@ -1292,48 +1325,7 @@ impl Serie {
     pub fn from_default(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self> {
         let field = field.into();
         let default = field.default_value()?;
-        Ok(from_canonical_rows(field, &[&default])?
-            .repeat(0, rows)?
-            .settled()?)
-    }
-
-    /// Row `row` of this column, `len` times.
-    ///
-    /// The selection is Arrow's `take` over one repeated index, so the rows
-    /// are laid out once and never proven again: they are rows this column
-    /// already holds.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the column when `row` is past the end.
-    pub(crate) fn repeat(&self, row: usize, len: usize) -> Result<Self> {
-        let Some(field) = self.field_ref() else {
-            let value = self.scalar(row)?;
-            return Ok(Self::new(vec![value; len]));
-        };
-        if row >= self.len() {
-            return Err(Error::IncompatibleSchema(format!(
-                "column {:?} has {} rows, so row {row} cannot repeat",
-                field.name(),
-                self.len()
-            )));
-        }
-        let index = u32::try_from(row).map_err(|_| {
-            Error::IncompatibleSchema(format!(
-                "column {:?} row {row} is past what one take can index",
-                field.name()
-            ))
-        })?;
-        let array = self.require_arrow_array()?;
-        let indices = arrow_array::UInt32Array::from(vec![index; len]);
-        let repeated = arrow_select::take::take(array.as_ref(), &indices, None)?;
-        if repeated.len() != len {
-            // Arrow's take answers a zero-width fixed-size list by its child,
-            // which has no rows to count, so the row is laid out instead.
-            let value = self.scalar(row)?;
-            return Ok(from_canonical_rows(Arc::clone(field), &vec![&value; len])?);
-        }
-        land(Arc::clone(field), repeated, &Proof::Proven)
+        Self::lit(field, default, rows)
     }
 
     /// Read one Arrow table as the record column of its rows: of the
@@ -1875,6 +1867,28 @@ impl SerieReader {
             *records = held.into_iter();
         }
         Ok(())
+    }
+
+    /// [`Self::spill`], answering this reader so calls chain.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::spill`]'s.
+    pub fn as_spilled(&mut self, options: &crate::SpillOptions) -> crate::Result<&mut Self> {
+        self.spill(options)?;
+        Ok(self)
+    }
+
+    /// This reader spilled under `options`' bound: [`Self::spill`] on the
+    /// held records, the reader handed back - a stream owns one source, so
+    /// it moves rather than copies.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::spill`]'s.
+    pub fn into_spilled(mut self, options: &crate::SpillOptions) -> crate::Result<Self> {
+        self.spill(options)?;
+        Ok(self)
     }
 
     /// The record root a held column of `field` crosses into a table under:

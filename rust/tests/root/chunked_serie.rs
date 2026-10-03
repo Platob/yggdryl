@@ -3075,3 +3075,23 @@ fn a_chunked_reversal_flips_and_a_disordered_take_clears_the_fields_declaration(
         .expect("taken");
     assert_eq!(kept.field(), &root);
 }
+
+#[test]
+fn as_spilled_and_into_spilled_move_the_chunks_as_spill_does() {
+    use yggdryl::{ChunkedSerie, DataType, Scalar, Serie, SpillOptions};
+
+    let field = DataType::Int64.required_field("price");
+    let chunk = || Serie::from_scalars(field.clone(), (0..1_024_i64).map(Scalar::from)).unwrap();
+    let everything = SpillOptions::new().with_byte_size(0);
+    let mut chunked =
+        ChunkedSerie::from_series(Some(&field), [chunk(), chunk()], Default::default()).unwrap();
+    assert!(chunked.as_spilled(&everything).unwrap().is_spilled());
+    assert_eq!(chunked.resident_size(), 0);
+
+    let original =
+        ChunkedSerie::from_series(Some(&field), [chunk(), chunk()], Default::default()).unwrap();
+    let copy = original.into_spilled(&everything).unwrap();
+    assert!(copy.is_spilled() && !original.is_spilled());
+    assert_eq!(copy.rows(), original.rows());
+    assert_eq!(copy.num_chunks(), 2, "the chunks stay apart");
+}

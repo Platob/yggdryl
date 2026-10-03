@@ -225,11 +225,11 @@ def _read_jsonl_baseline() -> int:
 
 
 def _read_stream_value() -> int:
-    return STREAM.read_arrow().into_arrow_reader().read_all().num_rows
+    return STREAM.read_serie().into_arrow_reader().read_all().num_rows
 
 
 def _read_lines_value() -> int:
-    return len(Serie.from_(LINES.read_arrow(field=TEXT_ROOT)))
+    return len(Serie.from_(LINES.read_serie(field=TEXT_ROOT)))
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
@@ -531,26 +531,26 @@ def _cases(
         ("len", lambda: len(HELD_BATCH), small),
         ("field", lambda: HELD_BATCH.field, small),
         (
-            "write_arrow arrows (yggdryl)",
-            lambda: STREAM.write_arrow(TABLE),
+            "write_serie arrows (yggdryl)",
+            lambda: STREAM.write_serie(TABLE),
             io,
         ),
-        ("write_arrow arrows (pyarrow)", _write_ipc_baseline, io),
-        ("read_arrow arrows (yggdryl)", _read_stream_value, io),
-        ("read_arrow arrows (pyarrow)", _read_ipc_baseline, io),
+        ("write_serie arrows (pyarrow)", _write_ipc_baseline, io),
+        ("read_serie arrows (yggdryl)", _read_stream_value, io),
+        ("read_serie arrows (pyarrow)", _read_ipc_baseline, io),
         (
-            f"write_arrow jsonl {TEXT_ROW_COUNT:,} (yggdryl)",
-            lambda: LINES.write_arrow(TEXT_TABLE),
+            f"write_serie jsonl {TEXT_ROW_COUNT:,} (yggdryl)",
+            lambda: LINES.write_serie(TEXT_TABLE),
             io,
         ),
         (
-            f"write_arrow jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
+            f"write_serie jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
             _write_jsonl_baseline,
             io,
         ),
-        (f"read_arrow jsonl {TEXT_ROW_COUNT:,} (yggdryl)", _read_lines_value, io),
+        (f"read_serie jsonl {TEXT_ROW_COUNT:,} (yggdryl)", _read_lines_value, io),
         (
-            f"read_arrow jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
+            f"read_serie jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
             _read_jsonl_baseline,
             io,
         ),
@@ -595,8 +595,8 @@ def main() -> None:
             HELD_MAP_BATCH.into_arrow_reader().read_next_batch(),
         ):
             assert exported.equals(MAP_BATCH, check_metadata=True)
-        STREAM.write_arrow(TABLE)
-        LINES.write_arrow(TEXT_TABLE)
+        STREAM.write_serie(TABLE)
+        LINES.write_serie(TEXT_TABLE)
         _write_jsonl_baseline()
         _write_ipc_baseline()
         # A pair that reads two different documents measures the documents,

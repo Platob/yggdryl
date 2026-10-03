@@ -317,6 +317,32 @@ impl IORecordOptions for RecordOptions {
         }
     }
 
+    fn num_threads(&self) -> Option<usize> {
+        match self {
+            Self::Ipc(options) => options.num_threads(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.num_threads(),
+            Self::Avro(options) => options.num_threads(),
+            Self::Text(options) => options.num_threads(),
+            Self::Xmla(options) => options.num_threads(),
+            Self::Csv(options) => options.num_threads(),
+            Self::Excel(options) => options.num_threads(),
+        }
+    }
+
+    fn set_num_threads(&mut self, num_threads: Option<usize>) {
+        match self {
+            Self::Ipc(options) => options.set_num_threads(num_threads),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_num_threads(num_threads),
+            Self::Avro(options) => options.set_num_threads(num_threads),
+            Self::Text(options) => options.set_num_threads(num_threads),
+            Self::Xmla(options) => options.set_num_threads(num_threads),
+            Self::Csv(options) => options.set_num_threads(num_threads),
+            Self::Excel(options) => options.set_num_threads(num_threads),
+        }
+    }
+
     fn level(&self) -> Level {
         match self {
             Self::Ipc(options) => options.level(),

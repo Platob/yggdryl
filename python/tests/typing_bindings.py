@@ -239,6 +239,9 @@ dtype_scalar: pa.Scalar = DataType("int32").arrow_scalar(1)
 field_scalar: pa.Scalar = field.arrow_scalar("payload")
 default_field_serie: Serie = Serie.from_default(field)
 default_field_rows: Serie = Serie.from_default(field, 3)
+lit_serie: Serie = Serie.lit(Field("venue", "utf8", nullable=False), "XNAS", 1_000)
+lit_constant: bool = lit_serie.is_lit
+lit_serie.is_lit = True  # type: ignore[misc]
 default_field_scalar: pa.Scalar = default_field_serie.into_arrow_scalar()
 source_array = pa.array([1, 2], type=pa.int32())
 landed_array: Serie = Serie.from_arrow_array(source_array)
@@ -823,6 +826,9 @@ record_options_copy: RecordOptions = hashable_record_options.__copy__()
 record_options_deepcopy: RecordOptions = hashable_record_options.__deepcopy__({})
 record_options.batch_row_size = 1024
 record_options.commit_batch_num = 10
+record_options.num_threads = 4
+record_options.num_threads = None
+record_num_threads: int | None = record_options.num_threads
 record_options.name = "trade"
 record_options.safe = True
 record_mime_type: MimeType = record_options.mime_type
@@ -841,6 +847,14 @@ record_handle.write_arrow_reader(record_batches, "overwrite", options=record_opt
 record_handle.write_arrow_reader(record_batches, "invalid")  # type: ignore[arg-type]
 record_handle.overwrite_arrow_reader(ForeignArrowReader())
 record_handle.overwrite_arrow_reader(NotArrowReader())  # type: ignore[arg-type]
+record_series: SerieReader = record_handle.read_serie()
+record_series = record_handle.read_serie(options=record_options, num_threads=2)
+record_handle.write_serie(record_series)
+record_handle.write_serie(record_batches, "append", options=record_options, num_threads=...)
+record_handle.overwrite_serie(lit_serie, commit_batch_num=1)
+record_handle.append_serie(pa.table({"id": [1]}))
+record_handle.merge_serie(record_series, merge_by=["id"])
+record_handle.write_serie(record_series, mode=1)  # type: ignore[arg-type]
 record_options.merge_by = ["id"]
 avro_record_options = RecordOptions("trades.avro")
 avro_block_codec: str | None = avro_record_options.block_codec
@@ -876,6 +890,8 @@ text_autotype: bool = text_record_options.autotype
 text_timezone: Timezone | None = text_record_options.timezone
 text_rownum: int | None = text_record_options.start_rownum
 text_parse_mtime: bool = text_record_options.parse_mtime
+text_record_options.num_threads = 2
+text_num_threads: int | None = text_record_options.num_threads
 regex_dtype: DataType = DataType.from_regex(r"(?<id>\d+)")
 text_handle: IOBase = IOBase(Path("app.log")).into_text(text_record_options)
 line_batches: pa.RecordBatchReader = text_handle.read_arrow_reader(
@@ -2480,6 +2496,12 @@ spill_reader.spill(None, folder="/tmp")
 spill_reader_resident: int = spill_reader.resident_size()
 spill_reader_spilled: bool = spill_reader.is_spilled()
 spill_column.spill(byte_size="0")  # type: ignore[arg-type]
+spill_column_chained: yggdryl.Serie = spill_column.as_spilled(byte_size=0).as_spilled()
+spill_column_copy: yggdryl.Serie = spill_column.into_spilled(spill_stated, folder=None)
+spill_chunked_chained: yggdryl.ChunkedSerie = spill_chunked.as_spilled(spill_stated)
+spill_chunked_copy: yggdryl.ChunkedSerie = spill_chunked.into_spilled(byte_size=0)
+spill_reader_chained: SerieReader = spill_reader.as_spilled(byte_size=0)
+spill_reader_moved: SerieReader = spill_reader.into_spilled(spill_stated)
 assert spill_default == spill_env and spill_bound and spill_folder is not None and spill_never
 assert spill_resident >= 0 and spill_spilled in (True, False)
 assert spill_chunked_resident == 0 and spill_chunked_spilled
@@ -2598,7 +2620,7 @@ def _http_client_usage(base: str) -> None:
     pages: yggdryl.http.Pages = session.pages("/orders", records="data")
     first: yggdryl.http.Response = next(pages)
     table: pa.RecordBatchReader = session.pages("/orders").into_arrow_reader()
-    series: SerieReader = session.pages("/orders").read_arrow()
+    series: SerieReader = session.pages("/orders").read_serie()
     prepared = yggdryl.http.Request("GET", f"{base}/orders", session=session)
     answers: list[yggdryl.http.Response] = list(session.send_all([prepared], concurrency=4))
     mixed: list[yggdryl.http.Response] = list(

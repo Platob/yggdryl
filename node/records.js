@@ -11,7 +11,10 @@
 // Write intent and representation are both explicit. Each of ArrowReader,
 // ArrowTable, ArrowBatch, and Records has overwrite/append/merge entry
 // points. The representation-specific adapter widens to one native reader and
-// the intent-specific call redirects to the matching Rust primitive.
+// the intent-specific call redirects to the matching Rust primitive. The
+// Serie verbs are the one generic door: rows in any shape the crate holds
+// them - a Serie, a ChunkedSerie, a SerieReader - or any columnar value a
+// BatchReader is built from, read back as a SerieReader.
 
 const { arrow, ipcBytes } = require('./values.js')
 const optionProperties = require('./properties.js')
@@ -74,10 +77,12 @@ function arrowKind(value) {
 
 function installRecords({
   BatchReader,
+  ChunkedSerie,
   Field,
   IcebergOptions,
   IOBase,
   RecordOptions,
+  Serie,
   SerieReader,
   TextOptions,
   Table,
@@ -129,6 +134,11 @@ function installRecords({
     }
     delete IOBase.prototype[name]
   }
+  const writeSerieNative = IOBase.prototype._writeSerieNative
+  if (typeof writeSerieNative !== 'function') {
+    throw new TypeError('native binding is missing IOBase._writeSerieNative')
+  }
+  delete IOBase.prototype._writeSerieNative
 
   // One batch arrives as its own IPC stream, so its schema travels with it and
   // Arrow JS needs no separate handshake. That per-batch header is what a
@@ -924,6 +934,109 @@ function installRecords({
     configurable: true,
     value(options, properties) {
       return readTextLines.call(this, readRecordOptions(this, options, properties))
+    },
+  })
+
+  // The Serie verbs keep an absent options value absent, so the core resolves
+  // the handle's own - a container's the table beneath it, a structured text
+  // document the record column its rows parse into. A property bag lands on
+  // a copy of the options given, else of the handle's own, else - for a
+  // handle naming no record encoding, as a structured document does, which
+  // reads the declared field alone - of Arrow stream options.
+  const ARROW_STREAM_MIME_TYPE = 'application/vnd.apache.arrow.stream'
+
+  function serieOptionsBase(handle, options) {
+    if (options !== undefined && options !== null) return propertyBase(handle, options)
+    try {
+      return handle.recordOptions()
+    } catch {
+      return new RecordOptions(ARROW_STREAM_MIME_TYPE)
+    }
+  }
+
+  function serieRecordOptions(handle, options, properties) {
+    if (isPropertyBag(options)) {
+      properties = options
+      options = undefined
+    }
+    if (properties === undefined || properties === null) return recordOptions(options)
+    return recordOptions(withProperties(serieOptionsBase(handle, options), properties))
+  }
+
+  // Rows in any shape the crate holds them cross as they are; every other
+  // columnar value is the stream of its batches - a native BatchReader as it
+  // is, an Arrow JS table, batch or batches and IPC bytes through
+  // `BatchReader.from` - read under one plan.
+  function serieSource(source, rootName) {
+    if (
+      source instanceof Serie ||
+      source instanceof ChunkedSerie ||
+      source instanceof SerieReader
+    ) {
+      return source
+    }
+    if (!isArrowShaped(source)) {
+      throw new TypeError(
+        'value must be a Serie, a ChunkedSerie, a SerieReader, a BatchReader, an Apache Arrow JS Table or RecordBatch, or Arrow IPC bytes',
+      )
+    }
+    return SerieReader.fromArrowReader(batchReader(source, rootName))
+  }
+
+  // The one generic write: preflighted, bounded and typed exactly as the
+  // other record writes are, the rows' own root standing in for a field the
+  // options do not declare. An absent options value crosses absent.
+  function writeSerie(handle, source, intent, options, properties) {
+    const settings = serieRecordOptions(handle, options, properties)
+    if (settings === undefined || settings === null) {
+      return Reflect.apply(writeSerieNative, handle, [serieSource(source), intent, undefined])
+    }
+    preflightWriteIntent(settings, intent)
+    if (writeLimitIsZero(settings)) {
+      if (intent === 'append') return undefined
+      // A limited merge was rejected by preflight. An overwrite bounded to no
+      // row publishes the declared field's empty value without reading the
+      // source; with no field declared, the source's own root names it.
+      if (settings.field !== null) {
+        const converted = emptyRecordsReader(settings)
+        return Reflect.apply(writeSerieNative, handle, [
+          SerieReader.fromArrowReader(converted.reader),
+          intent,
+          converted.settings,
+        ])
+      }
+    }
+    return Reflect.apply(writeSerieNative, handle, [
+      serieSource(source, settings.name),
+      intent,
+      settings,
+    ])
+  }
+
+  const readSerie = IOBase.prototype.readSerie
+  if (typeof readSerie !== 'function') {
+    throw new TypeError('native binding is missing IOBase.readSerie')
+  }
+  Object.defineProperty(IOBase.prototype, 'readSerie', {
+    configurable: true,
+    value(options, properties) {
+      return readSerie.call(this, serieRecordOptions(this, options, properties))
+    },
+  })
+
+  for (const intent of intents) {
+    Object.defineProperty(IOBase.prototype, `${intent}Serie`, {
+      configurable: true,
+      value(value, options, properties) {
+        return writeSerie(this, value, intent, options, properties)
+      },
+    })
+  }
+
+  Object.defineProperty(IOBase.prototype, 'writeSerie', {
+    configurable: true,
+    value(value, mode = 'overwrite', options, properties) {
+      return writeSerie(this, value, writeMode(mode), options, properties)
     },
   })
 

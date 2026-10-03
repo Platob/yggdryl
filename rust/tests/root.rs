@@ -157,6 +157,8 @@ mod sedol;
 mod serde;
 #[path = "root/serie.rs"]
 mod serie;
+#[path = "root/serie_source.rs"]
+mod serie_source;
 #[path = "root/side.rs"]
 mod side;
 #[path = "root/sort_options.rs"]

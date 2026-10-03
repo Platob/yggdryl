@@ -9,7 +9,8 @@ Representation}`; stream helpers are in `yggdryl::arrow`.
 ## Build a column from values
 
 `Serie::from_scalars` sends every row through `Field::scalar` once and lays
-the buffers out once; `from_default` repeats the field's canonical default.
+the buffers out once; `from_default` repeats the field's canonical default
+and `lit` any value, each as a constant column holding the one row.
 
 ```rust
 use yggdryl::{DataType, Field, Scalar, Serie};
@@ -31,7 +32,12 @@ assert!(Serie::from_scalars(price.clone(), [Scalar::Null]).is_err());
 assert_eq!(Serie::from_default(price.clone(), 2)?.scalar(1)?, Scalar::from(0_i64));
 assert_eq!(Serie::from_default(Field::new("symbol", DataType::utf8(), true), 2)?.null_count(), 2);
 assert!(Serie::empty(price.clone())?.is_empty());
-assert!(Serie::with_capacity(price, 1024)?.is_empty());
+assert!(Serie::with_capacity(price.clone(), 1024)?.is_empty());
+
+// A constant: one value held once, laid out only when something exports it.
+let constant = Serie::lit(price, Scalar::from(125_i64), 1_000_000)?;
+assert_eq!(constant.scalar(999_999)?, Scalar::from(125_i64));
+assert!(constant.as_lit().is_some() && constant.resident_size() < 1_024);
 ```
 
 ## Land an Arrow array, sharing its buffers
@@ -553,6 +559,11 @@ assert_eq!((spilled.resident_size(), spilled.memory_size()), (0, prices.memory_s
 assert_eq!(spilled.scalar(7)?, Scalar::from(7_i64)); // read exactly as resident
 spilled.push(Scalar::from(1_024_i64))?; // a write brings the leaf back
 assert!(!spilled.is_spilled());
+
+// One-liners: a spilled copy, or the spill chained in place.
+let copy = prices.into_spilled(&SpillOptions::new().with_byte_size(0))?;
+assert!(copy.is_spilled() && !prices.is_spilled());
+assert!(spilled.as_spilled(&SpillOptions::new().with_byte_size(0))?.is_spilled());
 ```
 
 ## Join two record columns
@@ -678,7 +689,8 @@ assert_eq!(table.child("price").map(|column| column.len()), Some(1));
 ## Hand a held column on as a stream
 
 `SerieReader::from_serie` and `from_chunked` read held data as a stream with
-no plan and no copy - what `IOMedia::write_arrow` takes. `reader.cast`
+no plan and no copy - what `IOMedia::write_serie` does with a held `Serie`
+or `ChunkedSerie` it is handed, so pass those as they are. `reader.cast`
 re-roots the stream under one plan and consumes the reader.
 
 ```rust

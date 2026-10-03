@@ -40,7 +40,7 @@
 //!     "struct<symbol: utf8 not null, size: int32, price: decimal(10, 2) not null>",
 //! )?
 //! .required_field("trade");
-//! let rows = handle.read_arrow(Some(&options.with_field(declared)))?
+//! let rows = handle.read_serie(Some(&options.with_field(declared)))?
 //!     .map(|batch| batch.map(|batch| batch.len()))
 //!     .sum::<yggdryl::arrow::Result<usize>>()?;
 //! assert_eq!(rows, 2);

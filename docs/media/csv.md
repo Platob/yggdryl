@@ -52,7 +52,7 @@ The header names the columns. A declared `field` types every cell, each read thr
     ])?)
     .required_field("trade");
     let mut symbols = Vec::new();
-    for records in handle.read_arrow(Some(&dialect.clone().with_field(field)))? {
+    for records in handle.read_serie(Some(&dialect.clone().with_field(field)))? {
         let records = records?;
         let symbol = records.child("symbol").expect("a symbol column");
         for row in 0..symbol.len() {

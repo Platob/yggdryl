@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use arrow_array::{Int64Array, RecordBatch, RecordBatchIterator};
 use yggdryl::arrow::BatchReader;
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, JoinKind, JoinOptions, JoinSource, Scalar,
-    Serie, SerieReader, SpillOptions, StructType,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, JoinKind, JoinOptions, Scalar, Serie,
+    SerieReader, SerieSource, SpillOptions, StructType,
 };
 
 fn record(name: &str, fields: Vec<Field>) -> Field {
@@ -244,7 +244,7 @@ fn a_stream_against_a_stream_holds_the_right_one() {
     .expect("a stream");
     let joined = left
         .join_with(
-            JoinSource::Reader(right),
+            SerieSource::Reader(right),
             "id",
             JoinKind::Left,
             &JoinOptions::new(),

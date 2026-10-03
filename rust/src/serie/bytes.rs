@@ -680,7 +680,7 @@ macro_rules! byte_leaf {
             fn from_serie(
                 serie: &$crate::Serie,
             ) -> Option<&$crate::serie::bytes::ByteSerie<Self, $marker>> {
-                $crate::serie::Leaf::narrow(serie)
+                $crate::serie::Leaf::narrow_laid(serie)
             }
         }
     };
@@ -990,7 +990,7 @@ macro_rules! view_leaf {
             fn from_serie(
                 serie: &$crate::Serie,
             ) -> Option<&$crate::serie::bytes::ByteViewSerie<Self, $marker>> {
-                $crate::serie::Leaf::narrow(serie)
+                $crate::serie::Leaf::narrow_laid(serie)
             }
         }
     };
@@ -1311,7 +1311,7 @@ macro_rules! fixed_leaf {
             }
 
             fn from_serie(serie: &$crate::Serie) -> Option<&Self> {
-                $crate::serie::Leaf::narrow(serie)
+                $crate::serie::Leaf::narrow_laid(serie)
             }
         }
     };

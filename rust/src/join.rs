@@ -2,7 +2,7 @@
 //! through the crate's own `Term`, `Filter` and `Selector` vocabulary.
 //!
 //! [`JoinKind`] is DuckDB's six kinds, [`JoinOptions`] the facts beside
-//! them, [`JoinSource`] what either side may be, and the engine here is what
+//! them, [`SerieSource`] what either side may be, and the engine here is what
 //! [`Serie::join_with`], [`ChunkedSerie::join_with`] and
 //! [`SerieReader::join_with`] run: the keys bound once against each side's
 //! root and cast to their common datatype, the build side held - every chunk
@@ -49,7 +49,10 @@ use crate::expression::{Bound, IntoJoinKeys, JoinKey, JoinKeys, Term};
 use crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE;
 use crate::serie::{Proof, land};
 use crate::spill::SpillOptions;
-use crate::{ChunkedSerie, DataType, Error, Field, Result, Scalar, Serie, SerieReader, StructType};
+use crate::{
+    ChunkedSerie, DataType, Error, Field, Result, Scalar, Serie, SerieReader, SerieSource,
+    StructType,
+};
 
 /// The suffix a right column takes when its name collides with a left one.
 pub const DEFAULT_JOIN_SUFFIX: &str = "_right";
@@ -414,96 +417,6 @@ impl Default for JoinOptions {
     }
 }
 
-/// Either side of a join: a held column, a chunked one, or a stream.
-#[derive(Debug)]
-pub enum JoinSource {
-    /// One held column.
-    Serie(Serie),
-    /// Held chunks under one field.
-    Chunked(ChunkedSerie),
-    /// A stream, read one batch at a time.
-    Reader(SerieReader),
-}
-
-impl JoinSource {
-    /// The record root this side's rows are joined under: a record column's
-    /// own, any other column the one child of a `row` record
-    /// ([`SerieReader::root_of`]), a stream's own root.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for a run, which names no column to key by.
-    pub fn root(&self) -> Result<Field> {
-        match self {
-            Self::Serie(serie) => SerieReader::root_of(serie.require_field()?),
-            Self::Chunked(chunked) => SerieReader::root_of(chunked.field()),
-            Self::Reader(reader) => Ok(reader.field().clone()),
-        }
-    }
-
-    /// Whether this side is held rather than streamed.
-    #[must_use]
-    pub const fn is_held(&self) -> bool {
-        !matches!(self, Self::Reader(_))
-    }
-
-    /// The bytes a held side occupies; `None` for a stream.
-    #[must_use]
-    pub fn memory_size(&self) -> Option<usize> {
-        match self {
-            Self::Serie(serie) => Some(serie.memory_size()),
-            Self::Chunked(chunked) => Some(chunked.memory_size()),
-            Self::Reader(_) => None,
-        }
-    }
-
-    /// This side as the stream of its record chunks: a held column one
-    /// record batch, chunks one each, a stream itself.
-    /// The order this side's root declares its rows keep, proven: a held
-    /// column's or chunked column's own, a stream's root's - its batches are
-    /// verified in that order as they are pulled - and `None` where none is
-    /// declared.
-    fn declared_order(&self) -> Result<Option<Vec<crate::expression::Ordering>>> {
-        match self {
-            Self::Serie(serie) => serie.declared_order(),
-            Self::Chunked(chunked) => chunked.declared_order(),
-            Self::Reader(reader) => {
-                let root = reader.field();
-                if root.dtype().as_fields().is_none() || !root.as_sort().declares_order() {
-                    return Ok(None);
-                }
-                root.as_sort().by()
-            }
-        }
-    }
-
-    fn into_reader(self) -> Result<SerieReader> {
-        Ok(match self {
-            Self::Serie(serie) => SerieReader::from_serie(serie)?,
-            Self::Chunked(chunked) => SerieReader::from_chunked(chunked)?,
-            Self::Reader(reader) => reader,
-        })
-    }
-}
-
-impl From<Serie> for JoinSource {
-    fn from(serie: Serie) -> Self {
-        Self::Serie(serie)
-    }
-}
-
-impl From<ChunkedSerie> for JoinSource {
-    fn from(chunked: ChunkedSerie) -> Self {
-        Self::Chunked(chunked)
-    }
-}
-
-impl From<SerieReader> for JoinSource {
-    fn from(reader: SerieReader) -> Self {
-        Self::Reader(reader)
-    }
-}
-
 /// Where one output column comes from.
 #[derive(Clone, Copy, Debug)]
 enum Column {
@@ -638,11 +551,11 @@ impl JoinPlan {
     /// declared order ([`Serie::declared_order`]) opening with the join keys
     /// of its side, every key ascending, no key cast, and the row-format
     /// rung. A declaring stream counts: its batches are verified in order.
-    fn merges(&self, left: &JoinSource, right: &JoinSource) -> Result<bool> {
+    fn merges(&self, left: &SerieSource, right: &SerieSource) -> Result<bool> {
         if self.rung != KeyRung::Buffers || self.keys.iter().any(|key| key.cast) {
             return Ok(false);
         }
-        let declares = |source: &JoinSource, side: JoinSide| -> Result<bool> {
+        let declares = |source: &SerieSource, side: JoinSide| -> Result<bool> {
             let Some(declared) = source.declared_order()? else {
                 return Ok(false);
             };
@@ -698,7 +611,7 @@ impl JoinPlan {
     /// Run the join: the build side held and hashed - partitioned where it
     /// passes the spill bound - the probe side read batch by batch, the
     /// output one record column per batch.
-    pub(crate) fn run(mut self, left: JoinSource, right: JoinSource) -> Result<JoinOutput> {
+    pub(crate) fn run(mut self, left: SerieSource, right: SerieSource) -> Result<JoinOutput> {
         self.merge = self.merges(&left, &right)?;
         let (build, probe) = match self.build {
             JoinSide::Left => (left, right),
@@ -1911,8 +1824,8 @@ impl std::iter::FusedIterator for JoinOutput {}
 
 /// Resolve and run one join over two sources.
 pub(crate) fn join(
-    left: JoinSource,
-    right: JoinSource,
+    left: SerieSource,
+    right: SerieSource,
     by: impl IntoJoinKeys,
     how: JoinKind,
     options: &JoinOptions,

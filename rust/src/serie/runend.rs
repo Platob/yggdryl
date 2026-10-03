@@ -531,7 +531,7 @@ impl SerieValue for RunEndEncodedSerie {
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        super::Leaf::narrow(value)
+        super::Leaf::narrow_laid(value)
     }
 }
 

@@ -250,6 +250,18 @@ benchmark('serie/spill', () => {
   spilling.spill(spillEverything)
   spilling.set(0, spilledBack)
 })
+// The chaining door costs the spill and nothing more: it answers the serie,
+// whose write-back drops the mapping, so every call holds one file at most. A
+// spilled copy is not timed here: each holds its file until the collector
+// drops it, which a loop outruns.
+benchmark('serie/as_spilled', () => {
+  spilling.asSpilled(spillEverything).set(0, spilledBack)
+})
+// A constant column holds its one value once, whatever its length: the cost
+// is the value's proof, not the rows.
+const litField = fields.utf8('venue', { nullable: false })
+const litValue = Scalar.from('XNAS')
+benchmark('serie/lit', () => Serie.lit(litField, litValue, 1_000_000))
 // A window reads and writes through the serie it holds at each call.
 const windowed = orderPrices.intoSorted()
 const window = windowed.window(8, 32)

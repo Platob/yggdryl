@@ -504,6 +504,32 @@ impl JsChunkedSerie {
         self.inner.spill(bound).map_err(napi_error)
     }
 
+    /// Spill chunks in place under the bound `options` states, as `spill`
+    /// does; the loader answers this chunked serie.
+    #[napi(js_name = "_asSpilledNative", skip_typescript)]
+    pub fn as_spilled_native(
+        &mut self,
+        options: Option<ClassInstance<'_, JsSpillOptions>>,
+    ) -> Result<()> {
+        let bound = spill_bound(options.as_deref())?;
+        self.inner.as_spilled(bound).map(|_| ()).map_err(napi_error)
+    }
+
+    /// A copy of this chunked serie spilled under the bound `options`
+    /// states, this one untouched: the chunks the bound leaves resident are
+    /// shared, the rest written once and mapped.
+    #[napi(js_name = "_intoSpilledNative", skip_typescript)]
+    pub fn into_spilled_native(
+        &self,
+        options: Option<ClassInstance<'_, JsSpillOptions>>,
+    ) -> Result<Self> {
+        let bound = spill_bound(options.as_deref())?;
+        self.inner
+            .into_spilled(bound)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
     /// The `order by` keys this chunked record's field declares its rows
     /// keep across every chunk, each as the key grammar spells it; `null`
     /// where it declares none or is no record.

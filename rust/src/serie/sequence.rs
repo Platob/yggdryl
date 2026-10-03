@@ -787,7 +787,7 @@ macro_rules! offset_leaf {
             }
 
             fn from_serie(serie: &Serie) -> Option<&OffsetSerie<Self>> {
-                super::Leaf::narrow(serie)
+                super::Leaf::narrow_laid(serie)
             }
 
             fn into_view_serie(column: OffsetViewSerie<Self>) -> Serie {
@@ -795,7 +795,7 @@ macro_rules! offset_leaf {
             }
 
             fn from_view_serie(serie: &Serie) -> Option<&OffsetViewSerie<Self>> {
-                super::Leaf::narrow(serie)
+                super::Leaf::narrow_laid(serie)
             }
         }
     };
@@ -1052,7 +1052,7 @@ impl SerieValue for FixedSizeSerieSerie {
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        super::Leaf::narrow(value)
+        super::Leaf::narrow_laid(value)
     }
 }
 

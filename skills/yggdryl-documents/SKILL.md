@@ -63,7 +63,7 @@ field's columns, and refuses what does not fit with a located error.
    total. For a large trusted stream raise `max_documents` / `max_input_bytes`
    (`maxDocuments` / `maxInputBytes`; Rust
    `json::from_lines_reader_iter_with_limits(&mut r, Limits::new(128, usize::MAX, 1_000_000, usize::MAX))`).
-   For bulk rows, use `read_arrow` from `yggdryl-records`.
+   For bulk rows, use `read_serie` from `yggdryl-records`.
 4. **Bound untrusted input.** Defaults are depth 128 (48 in JavaScript,
    which is also its ceiling for reads and writes), 64 MiB, 1,000,000 nodes,
    1,024 documents; lower them for untrusted payloads. YAML alias
@@ -138,7 +138,7 @@ field's columns, and refuses what does not fit with a located error.
   JavaScript and Rust; JSON is interchange, template with YAML or TOML.
 - Reading rows from a `.jsonl`/`.yaml`/`.xml` handle with
   `read_arrow_reader` / `*_records` - not a record encoding; use these codecs,
-  or `read_arrow` / `write_arrow` from `yggdryl-records`.
+  or `read_serie` / `overwrite_serie` from `yggdryl-records`.
 - Expecting a `set` or `uuid.UUID` back: a document carries shapes, never
   class names; a set reads as a list, a UUID as text. Rebuild with `cls=`.
 - Rust: calling `get_key_str` on a field-typed record - with a field the
@@ -153,7 +153,7 @@ field's columns, and refuses what does not fit with a located error.
 - More than 1,024 values through Python `dumps_all` / `dump_all` or
   JavaScript `dumpAll` - refused, and no option lifts the cap (`maxDocuments`
   is ignored on write). Write chunks of at most 1,024 to one open stream, or
-  write records with `write_arrow` (`yggdryl-records`). Rust
+  write records with `overwrite_serie` (`yggdryl-records`). Rust
   `json::into_writer_all` has no cap.
 - Writing back a field-typed row (`*_with_field`, `read_scalar(Some(&field))`,
   `cls=Scalar` / `{ scalar: true }` with a field) - it emits a positional
@@ -175,4 +175,4 @@ field's columns, and refuses what does not fit with a located error.
 - XML (mapping, record medium): https://platob.github.io/yggdryl/media/xml/
 - Structured values on a handle: https://platob.github.io/yggdryl/holder/#structured-values
 - Values and fields: https://platob.github.io/yggdryl/types/scalar/, https://platob.github.io/yggdryl/types/field/
-- Sibling skills: `yggdryl-types` (fields, dataclasses, `Scalar`), `yggdryl-storage` (handles, `read_scalar`, codings, charsets), `yggdryl-records` (rows in Arrow IPC, Parquet, Avro, text, Iceberg; `write_arrow` for document rows).
+- Sibling skills: `yggdryl-types` (fields, dataclasses, `Scalar`), `yggdryl-storage` (handles, `read_scalar`, codings, charsets), `yggdryl-records` (rows in Arrow IPC, Parquet, Avro, text, Iceberg; `overwrite_serie` for document rows).
