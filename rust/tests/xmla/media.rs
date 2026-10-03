@@ -1092,7 +1092,7 @@ fn read_arrow_reader_reads_the_rows_as_one_batch() {
 
     // The column-shaped read answers the same rows.
     let columns = media
-        .read_arrow(None)
+        .read_serie(None)
         .expect("a serie reader")
         .collect::<Result<Vec<_>, _>>()
         .expect("the columns");

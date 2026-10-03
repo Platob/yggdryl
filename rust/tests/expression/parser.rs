@@ -163,3 +163,188 @@ mod grammar {
         assert!(format!("{error}").contains("hard limit"), "{error}");
     }
 }
+
+mod joins {
+    use yggdryl::JoinKind;
+    use yggdryl::expression::{Expression, JoinKey, Plan, Source, Term};
+
+    /// Parse, print, parse again: the second reading is the first.
+    fn round_trip(text: &str) -> Plan {
+        let parsed: Plan = text
+            .parse()
+            .unwrap_or_else(|error| panic!("{text}: {error}"));
+        let printed = parsed.to_string();
+        let again: Plan = printed
+            .parse()
+            .unwrap_or_else(|error| panic!("{printed}: {error}"));
+        assert_eq!(parsed, again, "{text} printed as {printed}");
+        parsed
+    }
+
+    #[test]
+    fn a_join_clause_without_its_keys_is_refused_naming_what_was_expected() {
+        for (text, expected) in [
+            ("select * from trades join venues", "`on` or `using`"),
+            (
+                "select * from trades left join venues where id = 1",
+                "`on` or `using`",
+            ),
+            (
+                "select * from trades join venues using ()",
+                "expected a name",
+            ),
+            ("select * from trades join venues using id", "\"(\""),
+            (
+                "select * from trades join venues on",
+                "the end of the expression",
+            ),
+            ("select * from trades join", "a location"),
+        ] {
+            let error = text.parse::<Plan>().unwrap_err().to_string();
+            assert!(error.contains(expected), "{text}: {error}");
+            assert!(error.contains("at byte "), "{text}: {error}");
+        }
+    }
+
+    #[test]
+    fn an_on_conjunct_that_is_not_an_equality_is_refused_by_name() {
+        for (text, named) in [
+            ("select * from t join v on id = vid and px > 1", "px > 1"),
+            ("select * from t join v on id", "id"),
+            (
+                "select * from t join v on id = vid or a = b",
+                "id = vid or a = b",
+            ),
+            ("select * from t join v on id != vid", "id <> vid"),
+        ] {
+            let error = text.parse::<Plan>().unwrap_err().to_string();
+            assert!(error.contains(&format!("`{named}`")), "{text}: {error}");
+            assert!(error.contains("equalit"), "{text}: {error}");
+        }
+    }
+
+    #[test]
+    fn every_join_kind_prints_one_way_and_reads_back() {
+        for (text, canonical, how) in [
+            ("join", "inner join", JoinKind::Inner),
+            ("inner join", "inner join", JoinKind::Inner),
+            ("INNER JOIN", "inner join", JoinKind::Inner),
+            ("left join", "left join", JoinKind::Left),
+            ("left outer join", "left join", JoinKind::Left),
+            ("right join", "right join", JoinKind::Right),
+            ("Right Outer Join", "right join", JoinKind::Right),
+            ("full join", "full join", JoinKind::Full),
+            ("full outer join", "full join", JoinKind::Full),
+            ("outer join", "full join", JoinKind::Full),
+            ("semi join", "semi join", JoinKind::Semi),
+            ("anti join", "anti join", JoinKind::Anti),
+        ] {
+            let plan = round_trip(&format!("select * from trades {text} venues using (venue)"));
+            assert_eq!(
+                plan.to_string(),
+                format!("select * from trades {canonical} venues using (venue)"),
+                "{text}"
+            );
+            let [join] = plan.joins() else {
+                panic!("{text}: expected one join, got {:?}", plan.joins());
+            };
+            assert_eq!(join.how(), how, "{text}");
+            assert_eq!(join.keys().to_string(), "venue");
+        }
+    }
+
+    #[test]
+    fn using_names_its_columns_and_on_its_equalities() {
+        let plan = round_trip("select * from trades join venues using (venue, \"odd name\")");
+        assert_eq!(
+            plan.to_string(),
+            "select * from trades inner join venues using (venue, \"odd name\")"
+        );
+        let keys = plan.joins()[0].keys();
+        assert!(keys.iter().all(JoinKey::is_using));
+        assert_eq!(keys.keys()[1].using_column(), Some("odd name"));
+        // Two equalities are two keys; an `on` of bare columns on both sides
+        // is the same plan `using` spells.
+        let plan = round_trip(
+            "select * from trades join venues on venue = mic and lower(desk) = desk where px > 0",
+        );
+        assert_eq!(
+            plan.to_string(),
+            "from trades inner join venues on venue = mic and lower(desk) = desk where px > 0"
+        );
+        let keys = plan.joins()[0].keys();
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys.keys()[0].left().to_string(), "venue");
+        assert_eq!(keys.keys()[0].right().to_string(), "mic");
+        assert_eq!(keys.keys()[1].left().to_string(), "lower(desk)");
+        assert_eq!(
+            round_trip("select * from t join v on id = id and k = k"),
+            round_trip("select * from t join v using (id, k)")
+        );
+        // A key mixing a pair and a shared column prints every key as an
+        // equality.
+        let plan = round_trip("select * from t join v on id = id and venue = mic");
+        assert_eq!(
+            plan.to_string(),
+            "select * from t inner join v on id = id and venue = mic"
+        );
+        // An `or` inside one side stays inside it.
+        let plan = round_trip("select * from t join v on (a or b) = flag");
+        assert_eq!(
+            plan.joins()[0].keys().keys()[0].left(),
+            &"a or b".parse::<Term>().unwrap()
+        );
+    }
+
+    #[test]
+    fn a_plan_joining_on_a_shared_equality_reads_back_as_it_prints() {
+        // The key list's own spelling is `tests/expression/join.rs`'s; here
+        // the `on` clause carries it.
+        let shared = JoinKey::using("a = b".parse::<Term>().unwrap());
+        let plan = Plan::new()
+            .read_from(Source::Plan(Box::new("select * from t".parse().unwrap())))
+            .join(
+                JoinKind::Inner,
+                "select * from v".parse::<Plan>().unwrap(),
+                [shared],
+            )
+            .unwrap();
+        assert_eq!(
+            plan.to_string(),
+            "select * from (select * from t) inner join (select * from v) on (a = b) = (a = b)"
+        );
+        assert_eq!(round_trip(&plan.to_string()), plan);
+    }
+
+    #[test]
+    fn joins_chain_left_to_right_over_targets_and_nested_plans() {
+        let plan = round_trip(
+            "select id, city from 'file:///lake/trades.parquet' with (media_type = 'application/vnd.apache.parquet') \
+             left join (select venue, city from venues where active) using (venue) \
+             semi join lake.flags on id = trade_id \
+             where city is not null order by id limit 3",
+        );
+        assert_eq!(
+            plan.to_string(),
+            "select id, city from 'file:///lake/trades.parquet' with (media_type = \
+             'application/vnd.apache.parquet') left join (select venue, city from venues where \
+             active) using (venue) semi join lake.flags on id = trade_id where city is not null \
+             order by id limit 3"
+        );
+        let [left, semi] = plan.joins() else {
+            panic!("expected two joins, got {:?}", plan.joins());
+        };
+        assert_eq!(left.how(), JoinKind::Left);
+        assert!(matches!(left.source(), Source::Plan(_)));
+        assert_eq!(semi.how(), JoinKind::Semi);
+        assert_eq!(semi.source().to_string(), "lake.flags");
+        // A plan in a sequence keeps its joins.
+        let expression: Expression = "select * from t join v using (id); select id"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            expression.to_string().parse::<Expression>().unwrap(),
+            expression
+        );
+    }
+}

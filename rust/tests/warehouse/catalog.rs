@@ -228,7 +228,7 @@ fn a_catalogs_byte_verbs_are_not_atomic_and_its_record_verbs_name_a_table() {
         "invalid record value at $.market: expected a table, got the catalog `market`; name a \
          table under it"
     );
-    assert!(catalog.read_arrow(None).is_err());
+    assert!(catalog.read_serie(None).is_err());
     assert!(
         IOBase::remove(&mut catalog, true).is_err(),
         "a catalog is not removed through its handle"

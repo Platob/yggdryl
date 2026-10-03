@@ -68,11 +68,12 @@ impl Authority {
             .map_or(host_port, |(host, _)| host)
     }
 
-    /// The authority naming this machine, sharing [`HOSTNAME`](crate::HOSTNAME)'s
-    /// own text: already a valid host with no escape to normalize, so a clone
-    /// of it is the whole cost.
+    /// The authority naming this machine: `localhost`, the one name the crate
+    /// writes for it and the one every resolver reads as the machine it runs
+    /// on (RFC 6761). Static, so it costs nothing to build, and the same on
+    /// every machine.
     pub(crate) fn this_machine() -> Self {
-        Self(crate::HOSTNAME.clone())
+        Self(SmolStr::new_static("localhost"))
     }
 
     /// Return whether this authority names the machine this process runs on:

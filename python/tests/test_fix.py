@@ -35,7 +35,6 @@ from yggdryl import (
     TextOptions,
     Timezone,
     Url,
-    refresh_logging,
 )
 from yggdryl.fix import (
     ULBRIDGE_ROWHEADER,
@@ -2560,7 +2559,6 @@ def test_a_cblock_warns_about_the_declaration_it_dropped(
         ]
 
     caplog.set_level(logging.WARNING)
-    refresh_logging()
 
     # A tag named by no decimal is no tag: the warning says what was wrong,
     # where the file says it, which dialect's file it is and what the reader

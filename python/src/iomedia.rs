@@ -1356,15 +1356,16 @@ pub(crate) fn string_pairs_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<
     Ok(pairs)
 }
 
-/// Read a `commit_batch_num` value: an integer batch count, never a `bool`.
+/// Read a `commit_batch_num` or `num_threads` value, `name`: an integer
+/// count, never a `bool`.
 ///
 /// Zero is kept, so the write refuses it by name before it pulls a one-shot
 /// source.
-fn commit_batch_count(value: &Bound<'_, PyAny>) -> PyResult<usize> {
+fn whole_count(value: &Bound<'_, PyAny>, name: &str) -> PyResult<usize> {
     if value.is_instance_of::<PyBool>() {
-        return Err(PyTypeError::new_err(
-            "commit_batch_num must be an integer or None, not bool",
-        ));
+        return Err(PyTypeError::new_err(format!(
+            "{name} must be an integer or None, not bool"
+        )));
     }
     value.extract::<usize>()
 }
@@ -1536,6 +1537,7 @@ impl PyRecordOptions {
         state.set_item("safe", self.inner.safe())?;
         state.set_item("batch_row_size", self.inner.batch_row_size())?;
         state.set_item("commit_batch_num", self.inner.commit_batch_num())?;
+        state.set_item("num_threads", self.inner.num_threads())?;
         state.set_item("max_row_size", self.inner.max_row_size())?;
         state.set_item("row_offset", self.inner.row_offset())?;
         state.set_item("max_byte_size", self.inner.max_byte_size())?;
@@ -1622,6 +1624,7 @@ impl PyRecordOptions {
             "safe" => self.set_safe(value.extract()?)?,
             "batch_row_size" => self.set_batch_row_size(value.extract()?)?,
             "commit_batch_num" => self.set_commit_batch_num(given)?,
+            "num_threads" => self.set_num_threads(given)?,
             "max_row_size" => self.set_max_row_size(value.extract()?)?,
             "row_offset" => self.set_row_offset(value.extract()?)?,
             "max_byte_size" => self.set_max_byte_size(value.extract()?)?,
@@ -1817,6 +1820,9 @@ impl PyRecordOptions {
         let commit_batch_num =
             required_record_pickle_item(state, "commit_batch_num")?.extract::<Option<usize>>()?;
         options.inner.set_commit_batch_num(commit_batch_num);
+        let num_threads =
+            required_record_pickle_item(state, "num_threads")?.extract::<Option<usize>>()?;
+        options.inner.set_num_threads(num_threads);
         options.set_max_row_size(required_record_pickle_item(state, "max_row_size")?.extract()?)?;
         options.set_row_offset(required_record_pickle_item(state, "row_offset")?.extract()?)?;
         options
@@ -2001,8 +2007,33 @@ impl PyRecordOptions {
         commit_batch_num: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
         self.require_mutable()?;
-        let commit_batch_num = commit_batch_num.map(commit_batch_count).transpose()?;
+        let commit_batch_num = commit_batch_num
+            .map(|value| whole_count(value, "commit_batch_num"))
+            .transpose()?;
         self.inner.set_commit_batch_num(commit_batch_num);
+        Ok(())
+    }
+
+    /// The threads a write of several parts runs on at once.
+    ///
+    /// `Some(n)` writes at most `n` parts side by side - an Iceberg commit's
+    /// partition groups - and `None` is the destination's own answer: an
+    /// Iceberg table's `write.parallelism`, else its `read.parallelism`,
+    /// else every thread the host offers. Zero is retained so a write can
+    /// reject it, naming `$.num_threads`, before inspecting a one-shot
+    /// Python input.
+    #[getter]
+    fn num_threads(&self) -> Option<usize> {
+        self.inner.num_threads()
+    }
+
+    #[setter]
+    fn set_num_threads(&mut self, num_threads: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let num_threads = num_threads
+            .map(|value| whole_count(value, "num_threads"))
+            .transpose()?;
+        self.inner.set_num_threads(num_threads);
         Ok(())
     }
 
@@ -2591,6 +2622,7 @@ impl PyTextOptions {
             "safe" => self.set_safe(value.extract()?)?,
             "batch_row_size" => self.set_batch_row_size(value.extract()?)?,
             "commit_batch_num" => self.set_commit_batch_num(given)?,
+            "num_threads" => self.set_num_threads(given)?,
             "max_row_size" => self.set_max_row_size(value.extract()?)?,
             "row_offset" => self.set_row_offset(value.extract()?)?,
             "max_byte_size" => self.set_max_byte_size(value.extract()?)?,
@@ -2710,8 +2742,25 @@ impl PyTextOptions {
     #[setter]
     fn set_commit_batch_num(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         self.require_mutable()?;
-        let batches = value.map(commit_batch_count).transpose()?;
+        let batches = value
+            .map(|value| whole_count(value, "commit_batch_num"))
+            .transpose()?;
         self.inner.set_commit_batch_num(batches);
+        Ok(())
+    }
+
+    #[getter]
+    fn num_threads(&self) -> Option<usize> {
+        self.inner.num_threads()
+    }
+
+    #[setter]
+    fn set_num_threads(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let threads = value
+            .map(|value| whole_count(value, "num_threads"))
+            .transpose()?;
+        self.inner.set_num_threads(threads);
         Ok(())
     }
 

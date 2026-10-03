@@ -340,7 +340,7 @@ def _read_stamped_class_records() -> object:
 
 
 def _stamped_column_as_py() -> object:
-    return sum(len(serie.child("at").as_py()) for serie in STAMPED_FILE.read_arrow())
+    return sum(len(serie.child("at").as_py()) for serie in STAMPED_FILE.read_serie())
 
 
 def _fresh_row_size() -> object:

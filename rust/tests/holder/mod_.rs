@@ -219,7 +219,7 @@ mod vocabulary {
         assert_eq!(held.column_size().unwrap(), 2);
 
         let rows: Vec<String> = held
-            .read_arrow(Some(&options))
+            .read_serie(Some(&options))
             .unwrap()
             .flat_map(|serie| {
                 let serie = serie.unwrap();

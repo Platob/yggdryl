@@ -39,12 +39,15 @@ mod iceberg;
 mod identifier;
 mod iobase;
 mod iomedia;
+mod join;
+mod logging;
 mod media;
 mod text;
 mod timezone;
 // These private exports are discovered through NAPI's generated registration
 // inventory rather than ordinary Rust call sites.
 mod serie;
+mod spill;
 mod window_serie;
 // Discovered through NAPI's generated registration inventory, like `enums`.
 #[allow(dead_code)]
@@ -112,6 +115,7 @@ pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBas
 pub use iomedia::JsBatchReader;
 pub use media::options::JsRecordOptions;
 pub use serie::{JsSerie, JsSerieIterator, JsSerieReader, JsSerieReaderWindows};
+pub use spill::JsSpillOptions;
 pub use text::codec::{
     CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,
     codec_normalize_format, json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
@@ -444,42 +448,20 @@ impl JsDifferenceIterator {
     }
 }
 
-/// The core's warnings - a value a FIX parse, a market read or a lifecycle
-/// walk passed over, said once and then counted - written to standard
-/// error: an addon brings no logger of its own, so nothing else would say
-/// them.
-struct Warnings;
-
-impl log::Log for Warnings {
-    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
-        metadata.level() <= log::Level::Warn
-    }
-
-    fn log(&self, record: &log::Record<'_>) {
-        if self.enabled(record.metadata()) {
-            eprintln!("yggdryl: {}", record.args());
-        }
-    }
-
-    fn flush(&self) {}
-}
-
-/// The machine this process runs on, read once by the core: the host an
-/// in-process location and a buffer's identity name. `HOSTNAME` is where a
-/// caller reads it; this is the half that carries the text across.
+/// The machine this process runs on, read once by the core: intake reads
+/// `file://<HOSTNAME>/x` as the local path, and no URL the core writes names
+/// it - in-process storage names `localhost`. `HOSTNAME` is where a caller
+/// reads it; this is the half that carries the text across.
 #[napi(js_name = "_hostnameNative", skip_typescript)]
 pub fn hostname_native() -> &'static str {
     yggdryl::HOSTNAME.as_str()
 }
 
-/// Installs [`Warnings`] as the process's logger when the addon loads,
-/// unless something in the process already installed one.
+/// Installs the core's logging tree as the process's logger when the addon
+/// loads, unless something in the process already installed one.
 #[napi_derive::module_init]
-fn install_warnings() {
-    static WARNINGS: Warnings = Warnings;
-    if log::set_logger(&WARNINGS).is_ok() {
-        log::set_max_level(log::LevelFilter::Warn);
-    }
+fn install_logging() {
+    logging::install();
 }
 
 impl Generator for JsDifferenceIterator {

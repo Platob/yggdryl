@@ -13,8 +13,8 @@ paths the work happens in, so `logging.getLogger("yggdryl")` is the one switch.
 Debug is an operation starting, info is one done and carries the counts a
 monitor watches - a table opened, a scan planned and what its filters pruned,
 a snapshot's rows and files, a commit and the version it landed. Nothing is
-reported per row, per batch, or per file. A level changed after import reaches
-the bridge through `refresh_logging`.
+reported per row, per batch, or per file. A level changed at any time applies
+to the next record; `yggdryl.logging` says how.
 """
 
 from . import (
@@ -36,6 +36,7 @@ from . import (
     iceberg,
     integer,
     json,
+    logging,
     media,
     nested,
     temporal,
@@ -54,6 +55,7 @@ from ._native import (
     AVRO_MAX_SCHEMA_DEPTH,
     DEFAULT_FETCH_BYTE_SIZE,
     DEFAULT_RECORD_BATCH_ROW_SIZE,
+    DEFAULT_SPILL_BYTE_SIZE,
     DEFAULT_STREAM_BATCH_SIZE,
     HOSTNAME,
     IPC_DICTIONARY_IDS_KEY,
@@ -63,15 +65,16 @@ from ._native import (
     DataType,
     Field,
     FieldPath,
+    JoinOptions,
     ProtocolField,
     PythonMetadata,
+    SpillOptions,
     StringEnum,
     StringParameters,
     Timezone,
     UnknownPropertyWarning,
     __version__,
     combined,
-    refresh_logging,
 )
 from .expression import (
     Bound,
@@ -311,6 +314,7 @@ __all__ = [
     "CusipField",
     "DEFAULT_FETCH_BYTE_SIZE",
     "DEFAULT_RECORD_BATCH_ROW_SIZE",
+    "DEFAULT_SPILL_BYTE_SIZE",
     "DEFAULT_STREAM_BATCH_SIZE",
     "DataType",
     "HOSTNAME",
@@ -355,6 +359,7 @@ __all__ = [
     "IntervalField",
     "Ipc",
     "IsinField",
+    "JoinOptions",
     "LargeSerieField",
     "LargeSerieSerie",
     "LargeSerieViewField",
@@ -401,6 +406,7 @@ __all__ = [
     "SerieViewField",
     "SerieViewSerie",
     "SideField",
+    "SpillOptions",
     "StateField",
     "StringEnum",
     "StringField",
@@ -510,6 +516,7 @@ __all__ = [
     "interval",
     "isin",
     "json",
+    "logging",
     "large_ascii",
     "large_ascii_view",
     "large_binary",
@@ -528,7 +535,6 @@ __all__ = [
     "mimetype",
     "nested",
     "null",
-    "refresh_logging",
     "ric",
     "run_end_encoded",
     "scalar",

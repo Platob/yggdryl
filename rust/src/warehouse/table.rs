@@ -379,8 +379,8 @@ impl IOMedia for Table {
         IOMedia::read_arrow_reader(self.as_media(), options)
     }
 
-    fn read_arrow(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
-        IOMedia::read_arrow(self.as_media(), options)
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
+        IOMedia::read_serie(self.as_media(), options)
     }
 
     fn overwrite_arrow_reader(

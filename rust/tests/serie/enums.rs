@@ -390,3 +390,19 @@ fn an_invalid_dictionary_value_is_ignored_only_when_every_key_is_under_a_null_st
         .expect_err("one visible reference must prove the shared value");
     assert!(refusal.to_string().contains("isin"), "{refusal}");
 }
+
+#[test]
+fn a_freshly_built_dictionary_column_is_resident_as_its_two_columns_and_not_spilled() {
+    let column = symbols();
+    let leaf = column.as_dictionary().expect("a dictionary column");
+    // The keys and the vocabulary as their own slices count them; the
+    // column's memory size charges the vocabulary's whole Arrow allocation
+    // instead, so it is the larger of the two.
+    let parts = leaf.keys().memory_size() + leaf.values().memory_size();
+    assert!(parts > 0);
+    assert_eq!(SerieValue::resident_size(leaf), parts);
+    assert_eq!(column.resident_size(), parts);
+    assert!(column.resident_size() <= column.memory_size());
+    assert!(!SerieValue::is_spilled(leaf));
+    assert!(!column.is_spilled());
+}

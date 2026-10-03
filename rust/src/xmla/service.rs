@@ -936,24 +936,15 @@ impl Service {
         Ok(Execution::Rowset { rowset, rows })
     }
 
-    /// The plan with every table it names resolved to the location that
-    /// holds it, under the catalog `default` names when a name has no
-    /// catalog part.
+    /// The plan with every table it names - its `from` and each join's
+    /// source, nested plans included - resolved to the location that holds
+    /// it, under the catalog `default` names when a name has no catalog
+    /// part.
     fn resolved(&self, plan: Plan, default: Option<&str>) -> Result<Plan> {
-        let source = match plan.source() {
-            Some(Source::Target(target)) => {
-                Some(Source::Target(self.resolve_target(target, default)?))
-            }
-            Some(Source::Plan(inner)) => Some(Source::Plan(Box::new(
-                self.resolved(inner.as_ref().clone(), default)?,
-            ))),
-            None => None,
-        };
-        let plan = match source {
-            Some(source) => plan.read_from(source),
-            None => plan,
-        };
-        Ok(plan)
+        plan.map_sources(|source| match source {
+            Source::Target(target) => Ok(Source::Target(self.resolve_target(&target, default)?)),
+            Source::Plan(inner) => Ok(Source::Plan(Box::new(self.resolved(*inner, default)?))),
+        })
     }
 
     /// One target resolved: a dotted path to the whole path of the table it

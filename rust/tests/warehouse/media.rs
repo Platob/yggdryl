@@ -305,7 +305,7 @@ fn every_write_verb_reaches_the_handle() {
         .expect("appended");
     assert_eq!(table.row_size().expect("rows"), 6);
     let read = table
-        .read_arrow(None)
+        .read_serie(None)
         .expect("a serie reader under the table's own options")
         .map(|serie| serie.map(|serie| serie.len()))
         .collect::<Result<Vec<_>, _>>()

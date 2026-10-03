@@ -105,17 +105,23 @@ fn a_struct_counts_its_children_and_a_list_the_child_range_it_spans() {
 }
 
 #[test]
-fn a_dictionary_counts_its_keys_sliced_and_its_values_whole() {
+fn a_dictionary_counts_its_keys_sliced_and_its_values_as_their_slice_reaches_them() {
     let values = StringArray::from(vec!["XNAS", "XLON", "XNYS"]);
     let keys = Int8Array::from(vec![0_i8, 1, 2, 0, 1, 2, 0, 1]);
-    let dictionary: ArrayRef = Arc::new(DictionaryArray::new(
-        keys,
-        Arc::new(values.clone()) as ArrayRef,
-    ));
-    let whole_values = values.get_array_memory_size();
-    assert_eq!(array_memory_size(&dictionary), 8 + whole_values);
-    // The keys slice; the values are shared by every row and count whole.
-    assert_eq!(array_memory_size(&dictionary.slice(0, 2)), 2 + whole_values);
+    let values: ArrayRef = Arc::new(values);
+    let dictionary: ArrayRef = Arc::new(DictionaryArray::new(keys, Arc::clone(&values)));
+    // The values are shared by every row and count as the one slice the
+    // array holds reaches them - four offsets and twelve bytes - never their
+    // buffers' capacity, which `get_array_memory_size` reports and which a
+    // spilled column would otherwise count resident.
+    let reached_values = array_memory_size(&values);
+    assert_eq!(reached_values, 4 * 4 + 12);
+    assert_eq!(array_memory_size(&dictionary), 8 + reached_values);
+    // The keys slice; the values stay whole.
+    assert_eq!(
+        array_memory_size(&dictionary.slice(0, 2)),
+        2 + reached_values
+    );
 }
 
 #[test]

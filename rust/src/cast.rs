@@ -681,10 +681,33 @@ mod plan {
             if self.identity && field == self.target.as_ref() {
                 return Ok(serie.clone());
             }
+            if let Serie::Lit(lit) = serie {
+                // A constant casts once: its one row through this plan, then
+                // the value that landed, repeated under the target. A
+                // constant is in every order, so the target's declaration
+                // needs no reading.
+                let row = self.apply(lit.row())?;
+                let rows = crate::value::SerieValue::len(lit.as_ref());
+                return Serie::lit(Arc::clone(&self.target), row.scalar(0)?, rows);
+            }
             let array = serie.require_arrow_array()?;
             let mut budget = MaterializationBudget::default();
             let cast = self.root.cast(array, true, &mut budget)?;
-            land_planned(&self.resolved, cast, &self.serie)
+            let landed = land_planned(&self.resolved, cast, &self.serie)?.settled()?;
+            // An order the target declares that the source does not already
+            // prove is a new claim about these rows: read once here.
+            match landed.declared_order()? {
+                // The source's proof carries over only where the values it
+                // was ordered by are the ones landed: a key cast to another
+                // datatype may order otherwise, so it is read again.
+                Some(by)
+                    if serie.declares_at_least(&by) && field.dtype() == self.target.dtype() =>
+                {
+                    Ok(landed)
+                }
+                Some(_) => Ok(landed.verified_order()?),
+                None => Ok(landed),
+            }
         }
 
         /// Casts every chunk of a chunked column whose field lays out as
@@ -706,7 +729,7 @@ mod plan {
             for chunk in chunked.chunks() {
                 chunks.push(self.apply(chunk)?);
             }
-            Ok(ChunkedSerie::from_landed(Arc::clone(&self.target), chunks))
+            Ok(ChunkedSerie::from_landed(Arc::clone(&self.target), chunks).verified_edges()?)
         }
 
         /// Refuse a field that does not lay out as the source, naming both.

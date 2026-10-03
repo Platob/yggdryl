@@ -54,6 +54,7 @@ mod display;
 pub(crate) mod eval;
 mod explain;
 mod filter;
+mod join;
 mod literal;
 mod parser;
 mod path;
@@ -76,11 +77,14 @@ use crate::{Error, Field, Result};
 pub use bind::Bound;
 pub(crate) use display::{write_identifier, write_text_literal};
 pub use filter::{Filter, IntoFilter};
+pub use join::{IntoJoinKeys, JoinKey, JoinKeys};
 pub use literal::Literal;
 pub use parser::needs_quoting;
 pub use path::{FieldPath, FieldSegment};
 pub(crate) use path::{resolve_index, resolve_range};
-pub use plan::{IntoPlan, Location, Ordering, Plan, Source, Target, Verb, Write};
+pub use plan::{
+    IntoOrderings, IntoPlan, Join, Location, Ordering, Plan, Source, Target, Verb, Write,
+};
 pub use pushdown::{Bounds, ColumnBounds, Residual};
 pub use records::Records;
 pub use selector::{BoundSelector, IntoSelector, Projection, Selector};
@@ -89,6 +93,7 @@ pub(crate) use transform::{
     TRANSFORM_BY_KEY, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_KEYS,
     canonicalize_transform_expression, canonicalize_transform_function,
 };
+pub(crate) use typing::common_type;
 pub use user::{
     FunctionSignature, UserFunction, UserRef, lookup_function, register_function,
     registered_functions, unregister_function,

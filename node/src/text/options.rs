@@ -146,6 +146,25 @@ impl JsTextOptions {
         Ok(())
     }
 
+    /// Return the threads a write of several parts runs on at once.
+    #[napi(getter)]
+    pub fn num_threads(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner.num_threads().map(|threads| threads as f64)
+    }
+
+    /// Set or clear the threads a write of several parts runs on at once;
+    /// zero is retained for the write preflight to refuse by name.
+    #[napi(setter)]
+    pub fn set_num_threads(&mut self, value: Option<f64>) -> Result<()> {
+        let threads = match value {
+            Some(threads) => Some(crate::media::options::thread_count(threads)?),
+            None => None,
+        };
+        self.inner.set_num_threads(threads);
+        Ok(())
+    }
+
     /// Return the total result-row bound.
     #[napi(getter)]
     pub fn max_row_size(&self) -> Option<f64> {
@@ -598,6 +617,14 @@ impl JsTextOptions {
     pub fn with_commit_batch_num(&self, batches: f64) -> Result<Self> {
         let mut options = self.clone();
         options.set_commit_batch_num(Some(batches))?;
+        Ok(options)
+    }
+
+    /// Return a copy running a write of several parts on `numThreads`.
+    #[napi]
+    pub fn with_num_threads(&self, threads: f64) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_num_threads(Some(threads))?;
         Ok(options)
     }
 

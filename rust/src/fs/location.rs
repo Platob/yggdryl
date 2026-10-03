@@ -404,9 +404,10 @@ fn hex(byte: u8) -> Option<u8> {
 /// opens with its bucket, which a store URL spells as its host, and its root,
 /// naming no bucket, is the store's published endpoint: the store answers
 /// where it is configured to, never on this machine. Every other filesystem -
-/// one in memory, one a binding hands over - answers in this process, so its
-/// host is [`HOSTNAME`](crate::HOSTNAME). A child, a listed entry and a
-/// parent are bound through here too, so each names the host its parent does.
+/// one in memory, one a binding hands over - is taken to answer in this
+/// process, so its host is `localhost`, the one name the crate writes for this
+/// machine. A child, a listed entry and a parent are bound through here too,
+/// so each names the host its parent does.
 fn diagnostic_url(filesystem: &dyn FileSystem, path: &str) -> Result<Url> {
     let scheme = match filesystem.type_name() {
         "local" => Scheme::FILE,
@@ -422,9 +423,8 @@ fn diagnostic_url(filesystem: &dyn FileSystem, path: &str) -> Result<Url> {
         // A drive letter keeps its colon, which `file:///C:/x` spells as is.
         encode_component_into(&mut encoded, component, local && index == 0);
     }
-    // Built from its parts rather than parsed from text, the machine's host
-    // shared rather than copied: what a location costs is the same on every
-    // machine, whatever its name's length.
+    // Built from its parts rather than parsed from text, the host static:
+    // what a location costs is the same on every machine.
     let (authority, rest) = if local {
         (Authority::from_str("")?, encoded.as_str())
     } else if scheme.has_container() {

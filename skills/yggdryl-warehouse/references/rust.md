@@ -33,7 +33,7 @@ assert_eq!(trades.row_size()?, 2);
 
 // Every record verb is the table's: a `SerieReader` under its own options.
 let mut rows = 0;
-for serie in trades.read_arrow(None)? {
+for serie in trades.read_serie(None)? {
     rows += serie?.len();
 }
 assert_eq!(rows, 2);

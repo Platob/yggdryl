@@ -41,7 +41,7 @@ import pyarrow as pa
 
 import yggdryl
 from yggdryl import IOBase
-from yggdryl.iceberg import Table
+from yggdryl.iceberg import IcebergTable
 
 XMLA = "urn:schemas-microsoft-com:xml-analysis"
 
@@ -119,7 +119,7 @@ def main() -> None:
 
     columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     warehouse = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-release-"))
-    table = Table.create(IOBase(warehouse / "smoke"), columns)
+    table = IcebergTable.create(IOBase(warehouse / "smoke"), columns)
     table.append(pa.record_batch({"id": [1, 2]}, schema=columns))
     assert table.scan().read_all().column("id").to_pylist() == [1, 2]
     serve_over_xmla(warehouse)

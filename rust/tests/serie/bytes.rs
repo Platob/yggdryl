@@ -4,7 +4,9 @@
 
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray};
+use arrow_array::{
+    Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray, StringViewArray,
+};
 use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, SerieValue, Uuid};
 
 /// A nullable binary column of three runs, one of them absent, straight off
@@ -429,4 +431,168 @@ fn a_uuid_column_is_a_fixed_width_byte_leaf_of_sixteen() {
     assert_eq!(column.scalar(0).unwrap(), Scalar::Uuid(one));
     assert_eq!(column.pop().unwrap(), Some(Scalar::Uuid(two)));
     assert_eq!(column.len(), 1);
+}
+
+#[test]
+fn a_fresh_byte_column_is_resident_whole_and_not_spilled() {
+    let binary = raw();
+    let views = Serie::from_scalars(
+        Field::new("raw", DataType::binary_view(), true),
+        [
+            Scalar::from(b"a run longer than twelve bytes".as_slice()),
+            Scalar::Null,
+        ],
+    )
+    .expect("two runs");
+    let fixed = pairs();
+
+    let binary = binary.as_binary().expect("a binary column");
+    let views = views.as_binary_view().expect("a binary view column");
+    let fixed = fixed.as_fixed_bytes().expect("a fixed-width column");
+    for (memory, resident, spilled) in [
+        (
+            SerieValue::memory_size(binary),
+            SerieValue::resident_size(binary),
+            SerieValue::is_spilled(binary),
+        ),
+        (
+            SerieValue::memory_size(views),
+            SerieValue::resident_size(views),
+            SerieValue::is_spilled(views),
+        ),
+        (
+            SerieValue::memory_size(fixed),
+            SerieValue::resident_size(fixed),
+            SerieValue::is_spilled(fixed),
+        ),
+    ] {
+        assert!(memory > 0, "a column of rows occupies bytes");
+        assert_eq!(resident, memory, "a fresh column lies on the heap whole");
+        assert!(!spilled);
+    }
+}
+
+#[test]
+fn value_reads_the_bytes_arrow_reads_absent_and_sliced_rows_included() {
+    // Arrow's own reading - pyarrow's `as_py` over the same buffers - is the
+    // oracle: every row of every layout, a window of the leaf, and a column
+    // landed off an array already sliced, so no read can lean on the first
+    // offset being zero or the first view being the buffer's.
+    let utf8 = StringArray::from(vec![
+        Some("AAPL"),
+        None,
+        Some("a symbol past twelve bytes"),
+        Some(""),
+    ]);
+    let field = Field::new("symbol", DataType::utf8(), true);
+    let column = Serie::from_arrow_array(
+        Some(&field),
+        Arc::new(utf8.clone()),
+        ArrowCastOptions::new(),
+    )
+    .expect("a utf8 column");
+    let leaf = column.as_utf8().expect("a utf8 column");
+    for index in 0..utf8.len() {
+        assert_eq!(
+            leaf.value(index),
+            utf8.is_valid(index).then(|| utf8.value(index))
+        );
+    }
+    assert_eq!(leaf.value(0), Some("AAPL"));
+    assert_eq!(leaf.value(1), None);
+    assert_eq!(leaf.value(3), Some(""));
+    assert_eq!(leaf.value(4), None);
+    let window = leaf.slice(1, 3).expect("rows 1..4");
+    assert_eq!(window.value(0), None);
+    assert_eq!(window.value(1), Some("a symbol past twelve bytes"));
+    assert_eq!(window.value(2), Some(""));
+    assert_eq!(window.value(3), None);
+    let landed = Serie::from_arrow_array(
+        Some(&field),
+        Arc::new(utf8.slice(2, 2)),
+        ArrowCastOptions::new(),
+    )
+    .expect("a sliced utf8 column");
+    let landed = landed.as_utf8().expect("a utf8 column");
+    assert_eq!(landed.value(0), Some("a symbol past twelve bytes"));
+    assert_eq!(landed.value(1), Some(""));
+
+    // Twelve bytes lie in the view itself, thirteen in a payload buffer.
+    let views = StringViewArray::from(vec![
+        Some("short"),
+        None,
+        Some("twelve_bytes"),
+        Some("thirteen_byte"),
+        Some("a run well past twelve bytes"),
+    ]);
+    let field = Field::new("symbol", DataType::utf8_view(), true);
+    let column = Serie::from_arrow_array(
+        Some(&field),
+        Arc::new(views.clone()),
+        ArrowCastOptions::new(),
+    )
+    .expect("a utf8 view column");
+    let leaf = column.as_utf8_view().expect("a utf8 view column");
+    for index in 0..views.len() {
+        assert_eq!(
+            leaf.value(index),
+            views.is_valid(index).then(|| views.value(index))
+        );
+    }
+    assert_eq!(leaf.value(0), Some("short"));
+    assert_eq!(leaf.value(1), None);
+    assert_eq!(leaf.value(2), Some("twelve_bytes"));
+    assert_eq!(leaf.value(3), Some("thirteen_byte"));
+    assert_eq!(leaf.value(4), Some("a run well past twelve bytes"));
+    assert_eq!(leaf.value(5), None);
+    let window = leaf.slice(1, 3).expect("rows 1..4");
+    assert_eq!(window.value(0), None);
+    assert_eq!(window.value(1), Some("twelve_bytes"));
+    assert_eq!(window.value(2), Some("thirteen_byte"));
+    let landed = Serie::from_arrow_array(
+        Some(&field),
+        Arc::new(views.slice(2, 3)),
+        ArrowCastOptions::new(),
+    )
+    .expect("a sliced utf8 view column");
+    let landed = landed.as_utf8_view().expect("a utf8 view column");
+    assert_eq!(landed.value(0), Some("twelve_bytes"));
+    assert_eq!(landed.value(2), Some("a run well past twelve bytes"));
+
+    let fixed = FixedSizeBinaryArray::try_from_sparse_iter_with_size(
+        [Some([1_u8; 16]), None, Some([3_u8; 16])].into_iter(),
+        16,
+    )
+    .expect("three slots of sixteen bytes");
+    let field = Field::new("id", DataType::fixed_binary(16).unwrap(), true);
+    let column = Serie::from_arrow_array(
+        Some(&field),
+        Arc::new(fixed.clone()),
+        ArrowCastOptions::new(),
+    )
+    .expect("a fixed-width column");
+    let leaf = column.as_fixed_bytes().expect("a fixed-width column");
+    for index in 0..fixed.len() {
+        assert_eq!(
+            leaf.value(index),
+            fixed.is_valid(index).then(|| fixed.value(index))
+        );
+    }
+    assert_eq!(leaf.value(0), Some([1_u8; 16].as_slice()));
+    assert_eq!(leaf.value(1), None);
+    assert_eq!(leaf.value(2), Some([3_u8; 16].as_slice()));
+    assert_eq!(leaf.value(3), None);
+    let window = leaf.slice(1, 2).expect("rows 1..3");
+    assert_eq!(window.value(0), None);
+    assert_eq!(window.value(1), Some([3_u8; 16].as_slice()));
+    assert_eq!(window.payload().len(), 32);
+    let landed = Serie::from_arrow_array(
+        Some(&field),
+        Arc::new(fixed.slice(2, 1)),
+        ArrowCastOptions::new(),
+    )
+    .expect("a sliced fixed-width column");
+    let landed = landed.as_fixed_bytes().expect("a fixed-width column");
+    assert_eq!(landed.value(0), Some([3_u8; 16].as_slice()));
+    assert_eq!(landed.value(1), None);
 }

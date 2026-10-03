@@ -285,3 +285,59 @@ fn the_general_splice_rebuilds_from_prefix_replacement_and_suffix() {
     assert!(column.splice(4..9, vec![]).is_err());
     assert_eq!(column.len(), 5);
 }
+
+#[test]
+fn a_write_over_a_shared_buffer_copies_it_once_under_the_fields_own_arrow_datatype() {
+    let field = Field::new("amount", DataType::decimal128(10, 2).unwrap(), false);
+    let projected = field.as_arrow_field_ref().unwrap().data_type().clone();
+    let original = Serie::from_scalars(
+        field,
+        [
+            Scalar::Decimal128(Decimal128::new(12_500, 2)),
+            Scalar::Decimal128(Decimal128::new(13_000, 2)),
+        ],
+    )
+    .unwrap();
+    let mut shared = original.clone();
+    let mut sliced = original.slice(1, 1).expect("row 1");
+
+    shared
+        .push(Scalar::Decimal128(Decimal128::new(14_000, 2)))
+        .expect("a copied buffer");
+    sliced
+        .set(0, Scalar::Decimal128(Decimal128::new(13_500, 2)))
+        .expect("a copied slot");
+
+    let leaf = |serie: &Serie| serie.as_decimal128().expect("decimal128").values().to_vec();
+    assert_eq!(leaf(&shared), vec![12_500, 13_000, 14_000]);
+    assert_eq!(leaf(&sliced), vec![13_500]);
+    assert_eq!(
+        leaf(&original),
+        vec![12_500, 13_000],
+        "the original kept its buffer"
+    );
+    for serie in [&shared, &sliced] {
+        assert_eq!(serie.into_arrow_array().unwrap().data_type(), &projected);
+    }
+}
+
+#[test]
+fn a_column_built_sliced_or_written_is_resident_whole_and_never_spilled() {
+    let mut column = counts();
+    let leaf = column.as_int64().expect("an int64 column");
+
+    assert!(leaf.memory_size() > 0);
+    assert_eq!(leaf.resident_size(), leaf.memory_size());
+    assert!(!leaf.is_spilled());
+    // The array is rebuilt around the buffers the column holds.
+    assert_eq!(leaf.array().values().as_ptr(), leaf.values().as_ptr());
+
+    let window = leaf.slice(1, 3).expect("rows 1..4");
+    assert_eq!(window.resident_size(), window.memory_size());
+    assert!(!window.is_spilled());
+
+    column.push(Scalar::from(7_i64)).expect("a present row");
+    let written = column.as_int64().expect("an int64 column");
+    assert_eq!(written.resident_size(), written.memory_size());
+    assert!(!written.is_spilled());
+}

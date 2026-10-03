@@ -238,6 +238,7 @@ nav:
     - Plans: expression/plans.md
     - Evaluate: expression/evaluate.md
   - Hashing: hashing.md
+  - Logging: logging.md
   - Graph:
     - graph/index.md
     - Element: graph/element.md

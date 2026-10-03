@@ -6,6 +6,7 @@ import {
   Scalar,
   Serie,
   SerieReader,
+  SpillOptions,
   fields,
   type ArrowCastOptions,
 } from '..'
@@ -159,3 +160,24 @@ void [chunkWindows, chunkSortedWindows, chunkClearedWindows]
 void [chunkOrder, chunkOrdered, chunkUnique, chunkDistinct, chunkBytes, chunkSorted,
   chunkDeduplicated, chunkReversed, chunkTaken, chunkFiltered, chunkGroups, chunkKeyGroups,
   vectorKeyGroups, chunkChained]
+
+// Spill, orderings by key and joins across the chunks.
+const chunkResident: number = wide.residentSize()
+const chunkSpilled: boolean = wide.isSpilled()
+wide.spill(new SpillOptions({ byteSize: 1_024 }))
+wide.spill()
+const chunkDeclared: string[] | null = wide.declaredOrder()
+const chunkOrderBy: Serie = wide.sortIndicesBy('id desc')
+const chunkSortedBy: ChunkedSerie = wide.intoSortBy([{ term: 'id', descending: true }])
+const chunkSortedInPlace: ChunkedSerie = wide.asSortBy('id').asReversed()
+const chunkJoined: ChunkedSerie = wide.joinWith(wide, 'id', 'left', { coalesce: false })
+// @ts-expect-error a chunked serie joins a chunked serie
+wide.joinWith(new Serie([1]), 'id')
+// @ts-expect-error the private join bridge is hidden
+wide._joinWithNative
+const chunkSpilledInPlace: ChunkedSerie = wide.asSpilled(new SpillOptions({ byteSize: 0 })).asReversed()
+const chunkSpilledCopy: ChunkedSerie = wide.intoSpilled()
+// @ts-expect-error the private spill bridges are hidden
+wide._asSpilledNative
+void [chunkResident, chunkSpilled, chunkDeclared, chunkOrderBy, chunkSortedBy,
+  chunkSortedInPlace, chunkJoined, chunkSpilledInPlace, chunkSpilledCopy]

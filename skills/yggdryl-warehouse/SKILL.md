@@ -41,7 +41,7 @@ cross-language conventions are in `yggdryl`.
 | open one | `tables.get("eu.fills")?` | `tables["eu.fills"]` (`KeyError` when absent), `tables.get(name, default)` | `tables.get('eu.fills')`, `tables.get(['eu west', 'fills'])` |
 | open or create | `tables.open_or_create(name, &field, &props)?` | `tables.open_or_create(name, field, **props)` | `tables.openOrCreate(name, field, props)` |
 | write through the view | `tables.append_arrow_reader(name, reader)?`, `overwrite_arrow_reader`, `*_with_options` | `tables.append(name, data, options=, **props)`, `overwrite` | `tables.append(name, data, options?)`, `overwrite` |
-| the rows | `table.read_arrow(None)?`, `read_arrow_reader(&options)?`, `row_size()?` (`IOMedia`) | `table.read_arrow_reader().read_all()`, `read_records()`, `row_size()` | `IOBase.from(table).readArrowReader().intoTable()`, `.rowSize()` |
+| the rows | `table.read_serie(None)?`, `read_arrow_reader(&options)?`, `row_size()?` (`IOMedia`) | `table.read_arrow_reader().read_all()`, `read_records()`, `row_size()` | `IOBase.from(table).readArrowReader().intoTable()`, `.rowSize()` |
 | the schema, no row read | `table.field()?` (`TableValue`) | `table.field()` | `table.field()` |
 | what holds the rows | `table.storage()` -> media type, `directory`, `table` | `table.storage` | `table.storage` |
 | identity | `name()`, `path()`, `kind()` -> `IOKind`, `to_string()` dotted (`ObjectValue`) | `name`, `path` (tuple), `kind()` -> `"catalog"`, `str(obj)` | `name`, `path`, `kind` -> `'catalog'`, `String(obj)`, `implementation` |

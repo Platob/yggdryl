@@ -292,6 +292,8 @@ Every cell is read through [`FieldScalar`](field.md)'s own accessors - `get_key_
 | `window_by` | what [`Serie::window_by`](serie.md#cost) costs over the window's rows, plus one slice per key cell the key reads where it stands - never the window as a serie of its own; windowing a window `window_by` lent copies its record's cells once a call |
 | `static_values` | built on each call: one run of the cells, plus the text of a cell past what a value holds inline; `None` costs nothing, and a walk that reads no record pays nothing for it |
 | `memory_size` | a column's window as its own slice counts it; a run's values as the row estimator charges them |
+| `resident_size`, `is_spilled` | the serie's own answer over the rows the window views: a window is never spilled on its own - [spill the serie](serie.md#spilling-to-disk); a run counts its values and is never spilled |
+| `sort_indices_by`, `into_sort_by` | [`Serie::sort_indices_by`](serie.md#sort-by-keys) over the window's rows, window-relative positions, a serie of its own |
 | `is_sorted`, `is_unique`, `unique_count`, `sort_indices`, `into_*`, `partition_by` | one boxed leaf - the window's serie, for a column sharing the buffers - plus [what the serie's verb costs](serie.md#what-each-ask-costs) over it |
 
 ## Writes
@@ -304,6 +306,8 @@ Every cell is read through [`FieldScalar`](field.md)'s own accessors - `get_key_
 | `copy_from(window)`, `splice(range, rows)` | `Serie::splice` on the rebased range, every row through the field's contract; refused by name when the counts differ |
 | `as_sorted(options)`, `as_reversed()` | a primitive or boolean column held alone: the window of the native slice, or of the boolean's two bitmaps, sorted or reversed where it stands, absent rows gathered to the end the options name - Arrow's builder handshake and never a row; a run held alone: its values in place; any other leaf: the ordered rows written back through `splice` |
 | `as_taken(indices)` | the rearranged rows written back through `splice`; exactly as many indices as the window |
+| `as_sort_by(by)` | the window's rows sorted by the keys and written back through `splice` on the rebased range |
+| any write on a serie declaring an [order](serie.md#a-declared-order) | the serie's rule: the written rows compared against their neighbours, the declaration kept where the order holds and cleared otherwise |
 
 ## Edges
 

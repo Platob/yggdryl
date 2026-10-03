@@ -164,7 +164,7 @@ assert!(refused.contains("$.v"), "{refused}");
 
 ## Write and read rows as values
 
-`*_records` takes anything `Into<Scalar>` in the field's column order; `read_arrow` answers a `SerieReader`, one record `Serie` per batch, whose children are the columns.
+`*_records` takes anything `Into<Scalar>` in the field's column order; `read_serie` answers a `SerieReader`, one record `Serie` per batch, whose children are the columns.
 
 ```rust
 use yggdryl::holder::Buffer;
@@ -191,7 +191,7 @@ handle.overwrite_records([Trade(1, "XNAS"), Trade(2, "XNYS")], &options)?;
 handle.append_records([Trade(3, "XLON")], &options)?;
 
 let mut venues = Vec::new();
-for records in handle.read_arrow(Some(&options.clone().with_filter("id >= 2")?))? {
+for records in handle.read_serie(Some(&options.clone().with_filter("id >= 2")?))? {
     let records = records?;
     let venue = records.child("venue").expect("a venue column");
     for row in 0..venue.len() {
@@ -241,12 +241,12 @@ assert!(refused.to_string().contains("merge_by"), "{refused}");
 
 ## Choose the write mode at run time
 
-`write_arrow_reader`/`write_arrow_batch`/`write_records` take an `IOMode`; `write_arrow`/`read_arrow` take and answer a `SerieReader` and are also the record door of JSON, JSON Lines, YAML, TOML and XML handles.
+`write_arrow_reader`/`write_arrow_batch`/`write_records` take an `IOMode`, and so does `write_serie`, whose `overwrite_serie`/`append_serie`/`merge_serie` name it: they take a `Serie`, a `ChunkedSerie` or a `SerieReader` as one `SerieSource` (`.into()`), written as the batches it already is, and with `read_serie` are also the record door of JSON, JSON Lines, YAML, TOML and XML handles. `None` options are the handle's own.
 
 ```rust
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Serie, SerieReader, StructType, Url};
+use yggdryl::{ChunkedSerie, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Serie, SerieReader, StructType, Url};
 
 let root = DataType::from(StructType::from_fields([
     DataType::utf8().required_field("symbol"),
@@ -265,20 +265,25 @@ for mode in [IOMode::Overwrite, IOMode::Append] {
 }
 assert_eq!(stream.row_size()?, 2);
 
-// A JSON Lines handle takes rows as documents through write_arrow.
-let mut lines = Buffer::new().with_media_type(Url::from_str("file:///quotes.jsonl")?.media_type());
-lines.write_arrow(SerieReader::from_serie(rows.clone())?, IOMode::Overwrite, None)?;
-let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(root);
-assert_eq!(lines.read_arrow(Some(&declared))?.collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
+// The Serie doors take a held column, held chunks or a stream; None options are the handle's own.
+stream.write_serie(rows.clone().into(), IOMode::Append, None)?;
+stream.append_serie(ChunkedSerie::from_serie(rows.clone())?.into(), None)?;
+assert_eq!(stream.row_size()?, 4);
 
-// A document is written whole: write_arrow on it takes IOMode::Overwrite only.
-let refused = lines.write_arrow(SerieReader::from_serie(rows)?, IOMode::Append, None).unwrap_err();
+// A JSON Lines handle takes rows as documents through overwrite_serie.
+let mut lines = Buffer::new().with_media_type(Url::from_str("file:///quotes.jsonl")?.media_type());
+lines.overwrite_serie(SerieReader::from_serie(rows.clone())?.into(), None)?;
+let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(root);
+assert_eq!(lines.read_serie(Some(&declared))?.collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
+
+// A document is written whole: write_serie on it takes IOMode::Overwrite only.
+let refused = lines.append_serie(rows.into(), None).unwrap_err();
 assert!(refused.to_string().contains("expected overwrite, got append"), "{refused}");
 ```
 
 ## Bound memory on large writes
 
-`with_commit_batch_num(N)` publishes every N whole batches, then the remainder (a committed prefix survives a later failure); a cadence never cuts a batch. Unset is the destination's own cadence - a leaf or folder commits once, an Iceberg table each time its held batches reach the target file size; `0` is refused before any input is pulled. `with_batch_row_size` bounds the batches any record read yields - Parquet, Arrow IPC, Avro, and plain text alike.
+`with_commit_batch_num(N)` publishes every N whole batches, then the remainder (a committed prefix survives a later failure); a cadence never cuts a batch. Unset is the destination's own cadence - a leaf, a folder and an Iceberg table commit once, the table holding every partition's rows under the process spill bound until the source ends; what any cadence holds between publications is held under that bound, heaviest batches spilled first; `0` is refused before any input is pulled. `with_num_threads(n)` is how many partition groups an Iceberg commit writes at once (unset: `write.parallelism`, else `read.parallelism`, else the host), `0` refused naming `$.num_threads`. `with_batch_row_size` bounds the batches any record read yields - Parquet, Arrow IPC, Avro, and plain text alike.
 
 ```rust
 use std::sync::Arc;
@@ -446,7 +451,7 @@ text_options.set_rowheader(Some(r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "))?;
 text_options.set_framing(true);
 let text = source.into_text_with(text_options);
 
-let records = text.read_arrow(Some(&text.record_options()?))?.next().expect("one batch")?;
+let records = text.read_serie(None)?.next().expect("one batch")?;
 let body = records.child("body").expect("the body column");
 let id = records.child("id").expect("a capture column");
 assert_eq!(body.scalar(0)?, Scalar::from("first\n detail A"));
@@ -489,7 +494,7 @@ assert_eq!((handle.row_size()?, handle.column_size()?), (3, 2));
 
 // Declared, every cell crosses the column's contract; a null and "" stay apart.
 let mut symbols = Vec::new();
-for records in handle.read_arrow(Some(&declared))? {
+for records in handle.read_serie(Some(&declared))? {
     let records = records?;
     let symbol = records.child("symbol").expect("a symbol column");
     for row in 0..symbol.len() {
@@ -732,11 +737,11 @@ std::fs::remove_dir_all(&root)?;
 ## Gotchas in Rust
 
 - `IOBase`, `IOMedia` and `IORecordOptions` are traits: import them or the methods do not resolve.
-- Every verb that decodes, casts, or writes rows takes `&RecordOptions`; get it from `handle.record_options()?` so the variant matches the encoding. `row_size()`, `column_size()`, `record_options()` and `read_parquet_statistics()` take none: they derive their own options internally. `read_arrow`/`write_arrow` take `Option<&RecordOptions>`.
+- Every verb that decodes, casts, or writes rows takes `&RecordOptions`; get it from `handle.record_options()?` so the variant matches the encoding. `row_size()`, `column_size()`, `record_options()` and `read_parquet_statistics()` take none: they derive their own options internally. `read_serie` and the `*_serie` writes take `Option<&RecordOptions>`, `None` the handle's own.
 - `with_select`, `with_filter`, `with_merge_by` and `with_plan` parse and return `Result`; `with_field`, `with_max_row_size`, `with_commit_batch_num` do not.
 - `with_plan` keeps a plan's `limit` as `max_row_size` and its `offset` as `row_offset`; a merge with a `row_offset` is refused.
-- `write_arrow` on a JSON, JSON Lines, YAML, TOML or XML handle takes `IOMode::Overwrite` only: a document is written whole.
+- `write_serie` on a JSON, JSON Lines, YAML, TOML or XML handle takes `IOMode::Overwrite` only - `overwrite_serie` - and reads only the declared `field` off the options: a document is written whole. A run, or a record holding an absent row, is refused before any handle is touched.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; `with_safe(false)` refuses it.
-- There is no `read_records` in Rust: rows out are `read_arrow` columns (`child`, `scalar(i)`) or the `RecordBatch`es themselves.
+- There is no `read_records` in Rust: rows out are `read_serie` columns (`child`, `scalar(i)`) or the `RecordBatch`es themselves.
 - A CSV byte role is a `u8` (`b';'`), one ASCII byte that is no line break and no other role's; `set_csv_*` on another encoding's options is an error, and `csv_*` on them answers `None`. `linesep` is `CsvOptions::with_linesep` only.
 - Parquet, Iceberg and S3 do not exist without their Cargo features; a Parquet-only setter on another encoding's options is an error, not a no-op.

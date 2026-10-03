@@ -1140,8 +1140,34 @@ export declare class ChunkedSerie {
    */
   memorySize(): number
   /**
-   * The first occurrence of every value across the chunks, as a chunked
-   * serie of one chunk.
+   * The bytes the rows occupy in memory: every chunk's `residentSize`,
+   * summed.
+   */
+  residentSize(): number
+  /**
+   * Whether every chunk's rows lie in a spill file: no byte resident, and
+   * some bytes. A chunked serie of no chunk is never spilled.
+   */
+  isSpilled(): boolean
+  /**
+   * Move chunks to disk until the resident bytes are under the bound
+   * `options` states - the process default where it is `undefined` or
+   * `null` - the heaviest chunks whole first, so a chunked serie under the
+   * bound is untouched and one over it keeps its lightest chunks
+   * resident. A refused folder is named, the chunks spilled so far kept
+   * mapped.
+   */
+  spill(options?: JsSpillOptions | undefined | null): void
+  /**
+   * The `order by` keys this chunked record's field declares its rows
+   * keep across every chunk, each as the key grammar spells it; `null`
+   * where it declares none or is no record.
+   */
+  declaredOrder(): Array<string> | null
+  /**
+   * The first occurrence of every value across the chunks, with no
+   * join: each chunk filtered by its own first occurrences and kept
+   * apart, a chunk left with no row dropped.
    */
   intoUnique(): ChunkedSerie
   /**
@@ -2681,6 +2707,39 @@ export declare class FieldPath {
 }
 export type JsFieldPath = FieldPath
 
+/**
+ * Writes each record as one line through a location's handle, one append
+ * per publish.
+ */
+export declare class FileHandler {
+  /** A handler writing to `location` - a path, a `Url` or an `IOBase`. */
+  constructor(location: LocationInput, options?: FileHandlerOptions | undefined | null)
+  /** The location written to, `null` for one with no URL. */
+  get url(): string | null
+  /** `append` or `overwrite`. */
+  get mode(): string
+  /** The bytes held back before a publish. */
+  get capacity(): number
+  /** The level that publishes what is held at once. */
+  get flushLevel(): number
+  /** The level the handler emits from. */
+  get level(): number
+  /** Emits records at `level` and above. */
+  setLevel(level: LoggingLevelInput): void
+  /** The formatter records are spelled with. */
+  get formatter(): Formatter
+  /** Spells records with `formatter`. */
+  setFormatter(formatter: Formatter): void
+  /** Publishes what is held. */
+  flush(): void
+  /**
+   * Publishes what is held and lets go of the handle; a later record
+   * reopens it.
+   */
+  close(): void
+}
+export type JsFileHandler = FileHandler
+
 /** A `where` clause: one predicate over rows. */
 export declare class Filter {
   /**
@@ -4018,6 +4077,26 @@ export declare class FixRegistry {
 }
 export type JsFixRegistry = FixRegistry
 
+/** A `%`-style format and the date format `asctime` takes. */
+export declare class Formatter {
+  /** A formatter over `format` - `%(message)s` when absent. */
+  constructor(format?: string | undefined | null, options?: FormatterOptions | undefined | null)
+  /**
+   * The prebuilt terminal formatter: the timestamp, the level's glyph and
+   * name in its colour, the thread, the logger, the call site and the
+   * message - the default of `basicConfig` and of the last resort.
+   */
+  static terminal(): Formatter
+  /** The format, as it was spelled. */
+  get format(): string
+  /** The date format, `null` for the default. */
+  get datefmt(): string | null
+  /** The zone instants are rendered in. */
+  get timezone(): string
+  toString(): string
+}
+export type JsFormatter = Formatter
+
 /**
  * An immutable, case-insensitive HTTP header map.
  *
@@ -5281,6 +5360,17 @@ export declare class IOBase {
    */
   readArrowReader(options?: JsRecordOptions | undefined | null): JsBatchReader
   /**
+   * Read this resource's rows as a `SerieReader`, one record serie per
+   * batch.
+   *
+   * Absent options are the handle's own: the encoding its media type
+   * names, a container's the table beneath it, and a structured text
+   * document - JSON, JSON Lines, YAML, TOML, XML - the one record column
+   * its rows parse into, of which a declared field is the only option it
+   * reads.
+   */
+  readSerie(options?: JsRecordOptions | undefined | null): JsSerieReader
+  /**
    * Decode this resource into typed text lines.
    *
    * The one decode entry point for plain text: every record method routes
@@ -5377,6 +5467,65 @@ export declare class Listing {
   next(): IOBase | null
 }
 export type JsListing = Listing
+
+/** A named logger of the process's tree; `logging.getLogger` answers one. */
+export declare class Logger {
+  /** The logger's dotted name; `root` for the root. */
+  get name(): string
+  /** The logger this one hangs from; `null` for the root. */
+  get parent(): Logger | null
+  /** The logger named `suffix` below this one. */
+  getChild(suffix: string): Logger
+  /** The level stated on this logger; `0` when it takes its ancestors'. */
+  get level(): number
+  /** States `level` on this logger; `NOTSET` takes the ancestors' again. */
+  setLevel(level: LoggingLevelInput): void
+  /** The level this logger handles from. */
+  getEffectiveLevel(): number
+  /** Whether a record at `level` would be handled. */
+  isEnabledFor(level: LoggingLevelInput): boolean
+  /** Whether records go on to the ancestors' handlers. */
+  get propagate(): boolean
+  set propagate(propagate: boolean)
+  /** Whether the logger drops every record logged on it. */
+  get disabled(): boolean
+  set disabled(disabled: boolean)
+  /**
+   * Whether this logger states its own deduplication: `true` drops
+   * repeated records, `false` passes every record, `null` takes the
+   * nearest ancestor's.
+   */
+  get deduplicating(): boolean | null
+  set deduplicating(deduplicating: boolean | undefined | null)
+  /**
+   * Whether records logged here are deduplicated, as stated here or by
+   * the nearest ancestor: the first occurrence is said, the 10th, 100th,
+   * 1000th as `message (seen N times)`, every other reaches no handler.
+   */
+  isDeduplicating(): boolean
+  /** Attaches `handler`, once. */
+  addHandler(handler: LoggingHandlerInput): void
+  /** Detaches `handler`; answers whether it was attached. */
+  removeHandler(handler: LoggingHandlerInput): boolean
+  /** Whether this logger or an ancestor its records reach has a handler. */
+  hasHandlers(): boolean
+  /** Logs `message` at `level` when the level is enabled. */
+  log(level: LoggingLevelInput, message: string): void
+  /** Logs `message` at `DEBUG`. */
+  debug(message: string): void
+  /** Logs `message` at `INFO`. */
+  info(message: string): void
+  /** Logs `message` at `WARNING`. */
+  warning(message: string): void
+  /** Logs `message` at `ERROR`. */
+  error(message: string): void
+  /** Logs `message` at `CRITICAL`. */
+  critical(message: string): void
+  /** Whether `other` is this very logger. */
+  equals(other: Logger): boolean
+  toString(): string
+}
+export type JsLogger = Logger
 
 /** One manifest of the current snapshot. */
 export declare class ManifestFile {
@@ -6031,6 +6180,16 @@ export declare class Namespaces {
   openOrCreate(name: string, properties?: Record<string, string | number | boolean> | null): Namespace
 }
 export type JsWarehouseNamespaces = Namespaces
+
+/** Takes every record and writes none. */
+export declare class NullHandler {
+  constructor()
+  /** The level the handler takes records from. */
+  get level(): number
+  /** Takes records at `level` and above. */
+  setLevel(level: LoggingLevelInput): void
+}
+export type JsNullHandler = NullHandler
 
 /**
  * The children of a catalog or a namespace, one at a time.
@@ -7682,9 +7841,9 @@ export declare class RecordOptions {
    * A positive count publishes every that many batches of the shaped
    * stream, then the final remainder; a batch is one the source yields,
    * cut by `batchRowSize` where records are converted, never by the
-   * cadence. `null` is the destination's own cadence: a file or folder
-   * publishes once after the source ends, an Iceberg table each time the
-   * batches it holds reach its target file size.
+   * cadence. `null` is the destination's own cadence: a file, a folder
+   * and an Iceberg table each publish once after the source ends, what
+   * they hold in between kept under the process spill bound.
    */
   get commitBatchNum(): number | null
   /**
@@ -7695,6 +7854,24 @@ export declare class RecordOptions {
    * cadence.
    */
   set commitBatchNum(commitBatchNum: number | undefined | null)
+  /**
+   * The threads a write of several parts runs on at once, when set.
+   *
+   * The parts are an Iceberg commit's partition groups, written side by
+   * side; a leaf of one file reads it as the bound on its encoding's
+   * threads. `null` is the destination's own answer: an Iceberg table's
+   * `write.parallelism`, else its `read.parallelism`, else every thread
+   * the host offers.
+   */
+  get numThreads(): number | null
+  /**
+   * Set the threads a write of several parts runs on at once.
+   *
+   * Zero is retained so the write preflight refuses it by name, naming
+   * `$.num_threads`, before a one-shot source is touched. `null` restores
+   * the destination's own answer.
+   */
+  set numThreads(numThreads: number | undefined | null)
   /** The compression level on the shared 0-to-9 scale. */
   get level(): number
   /** Set the compression level on the shared 0-to-9 scale. */
@@ -7922,6 +8099,8 @@ export declare class RecordOptions {
   withMaxByteSize(maxByteSize: number): RecordOptions
   /** Return these options with a publication every `commitBatchNum` batches. */
   withCommitBatchNum(commitBatchNum: number): RecordOptions
+  /** Return these options running a write of several parts on `numThreads`. */
+  withNumThreads(numThreads: number): RecordOptions
   /** Return these options with a different compression level. */
   withLevel(level: number): RecordOptions
   /** Return these options with the keys a write matches stored rows on. */
@@ -8502,6 +8681,40 @@ export declare class Serie {
    * them, a run's values as the row estimator charges them.
    */
   memorySize(): number
+  /**
+   * The bytes the rows occupy in memory: `memorySize` less what lies in a
+   * spill file's mapping, read off the buffers.
+   */
+  residentSize(): number
+  /**
+   * Whether the rows lie in a spill file: some bytes, none of them
+   * resident. A run and an empty column are never spilled.
+   */
+  isSpilled(): boolean
+  /**
+   * Move the rows to disk until the resident bytes are under the bound
+   * `options` states - the process default (`SpillOptions.fromEnv()`)
+   * where it is `undefined` or `null` - the heaviest leaves first, each
+   * written once to a private file and mapped back read-only, so every
+   * later read reaches the mapping and a write copies the buffer it
+   * touches back once. A run spills nothing; a refused folder is named
+   * and leaves the serie as it was.
+   */
+  spill(options?: JsSpillOptions | undefined | null): void
+  /**
+   * Whether this column is a constant: one value held once for every
+   * row, as `Serie.lit` and `Serie.fromDefault` build it. A write of
+   * another value lays it out as its field's leaf, and it is no longer.
+   */
+  get isLit(): boolean
+  /**
+   * The `order by` keys this record's root declares its rows keep, most
+   * significant first, each as the key grammar spells it (`price desc`):
+   * `SORT:by` on the root, a proven order the sorts write and the writes
+   * that break it clear. `null` for a run, a column that is no record,
+   * and a root declaring none.
+   */
+  declaredOrder(): Array<string> | null
 }
 export type JsSerie = Serie
 
@@ -8541,6 +8754,25 @@ export declare class SerieReader {
    * consumed; never a column, and dropped at the Arrow face.
    */
   get staticValues(): Scalar | null
+  /**
+   * The bytes the records this reader holds occupy in memory: the held
+   * records still to yield, or the batch a window's walk stands in; a
+   * stream holds no landed batch between pulls, and a consumed reader
+   * nothing, and both answer zero.
+   */
+  residentSize(): number
+  /**
+   * Whether every record this reader holds lies in a spill file: held
+   * records only, never a stream, which holds none.
+   */
+  isSpilled(): boolean
+  /**
+   * Move the records this reader holds to disk under the bound `options`
+   * states - the process default where it is `undefined` or `null` -
+   * each held record as `Serie.spill` moves it; a stream holds none and
+   * is untouched. Refused once the reader was taken.
+   */
+  spill(options?: JsSpillOptions | undefined | null): void
   /**
    * The stream's batches reconciled to the root as a native
    * `BatchReader`, never landed; the reader is consumed.
@@ -9049,6 +9281,87 @@ export declare class SnapshotRef {
   clone(): SnapshotRef
 }
 export type JsSnapshotRef = SnapshotRef
+
+/**
+ * The bound a column stays resident under, and the folder it spills to.
+ *
+ * `byteSize` is the resident bytes a column may hold before it spills;
+ * `SpillOptions.NEVER` spills nothing and `0` everything. `folder` is where
+ * the files are created, the platform temporary folder when `null`. Every
+ * spill file is private to the process and gone from the folder as soon as
+ * it is opened, so a crash leaves nothing behind.
+ */
+export declare class SpillOptions {
+  /**
+   * The bound and the folder `options` states, each `undefined` or `null`
+   * the default: 64 MiB over the platform temporary folder. A folder that
+   * is not local is refused naming it.
+   */
+  constructor(options?: SpillOptionsInit | undefined | null)
+  /**
+   * The options the process environment states, read on the first call
+   * and the same value after: `YGGDRYL_SPILL_BYTE_SIZE` the bound - a byte
+   * count, or `never` in any case - and `YGGDRYL_SPILL_FOLDER` the folder,
+   * either unset or empty the default. A refused variable is named, and
+   * the next call reads the environment again.
+   */
+  static fromEnv(): SpillOptions
+  /**
+   * State the options every later `fromEnv` - and every verb settling
+   * under the process default - answers, before anything resolves them;
+   * refused once they were read or installed, so the value every caller
+   * saw cannot change underneath them.
+   */
+  static installEnv(options: SpillOptions): void
+  /** The resident bytes a column may hold before it spills. */
+  get byteSize(): bigint
+  /**
+   * The folder spill files are created in, as the local container handle
+   * it is, or `null` for the platform temporary folder.
+   */
+  get folder(): IOBase | null
+  /** Whether the bound is `SpillOptions.NEVER`: nothing spills. */
+  isNever(): boolean
+  /**
+   * Whether `other` states the same bound over the same folder: two
+   * folders are one when they name one location.
+   */
+  equals(other: SpillOptions): boolean
+  /** A cheap native clone. */
+  clone(): SpillOptions
+  /**
+   * The bound - `never` for `SpillOptions.NEVER` - then the folder's URL
+   * where one is stated: `SpillOptions(byteSize=0, folder=file:///spill)`.
+   */
+  toString(): string
+}
+export type JsSpillOptions = SpillOptions
+
+/** Writes each record as one line to standard error or standard output. */
+export declare class StreamHandler {
+  /** A handler on `stream`: `stderr`, the default, or `stdout`. */
+  constructor(stream?: string | undefined | null)
+  /** The level the handler emits from. */
+  get level(): number
+  /** Emits records at `level` and above. */
+  setLevel(level: LoggingLevelInput): void
+  /** The formatter records are spelled with. */
+  get formatter(): Formatter
+  /** Spells records with `formatter`. */
+  setFormatter(formatter: Formatter): void
+  /**
+   * Whether the formatter's styles are spelled: decided from the stream
+   * when the handler was built - a colour terminal, `NO_COLOR`,
+   * `FORCE_COLOR`, `CLICOLOR_FORCE`, `TERM=dumb` - until set.
+   */
+  get colored(): boolean
+  set colored(colored: boolean)
+  /** Flushes the stream. */
+  flush(): void
+  /** Flushes the stream; a stream is never closed. */
+  close(): void
+}
+export type JsStreamHandler = StreamHandler
 
 /**
  * The enum a string field's values name: one value per member name.
@@ -9616,6 +9929,13 @@ export declare class TextOptions {
   get commitBatchNum(): number | null
   /** Set or clear the streamed-write commit cadence, in whole batches. */
   set commitBatchNum(value: number | undefined | null)
+  /** Return the threads a write of several parts runs on at once. */
+  get numThreads(): number | null
+  /**
+   * Set or clear the threads a write of several parts runs on at once;
+   * zero is retained for the write preflight to refuse by name.
+   */
+  set numThreads(value: number | undefined | null)
   /** Return the total result-row bound. */
   get maxRowSize(): number | null
   /** Set or clear the total result-row bound. */
@@ -9752,6 +10072,8 @@ export declare class TextOptions {
   withBatchRowSize(size: number): TextOptions
   /** Return a copy publishing every `commitBatchNum` batches. */
   withCommitBatchNum(batches: number): TextOptions
+  /** Return a copy running a write of several parts on `numThreads`. */
+  withNumThreads(threads: number): TextOptions
   /** Return a copy skipping the given leading result rows. */
   withRowOffset(rows: number): TextOptions
   /** Return a copy with a total result-row bound. */
@@ -10754,6 +11076,16 @@ export declare class WindowSerie {
   /** The bytes the window's rows occupy, as its own slice counts them. */
   memorySize(): number
   /**
+   * The bytes the window's rows occupy in memory, read through the serie
+   * it views: a window is never spilled on its own - spill the serie.
+   */
+  residentSize(): number
+  /**
+   * Whether the window's rows lie in a spill file: the serie's own
+   * answer over the rows it views.
+   */
+  isSpilled(): boolean
+  /**
    * Whether no two window rows hold one value; two absent rows are a
    * repeat.
    */
@@ -11168,6 +11500,21 @@ export interface FieldSummaryView {
   lowerBound?: Buffer
   /** Serialized maximum across the manifest's files. */
   upperBound?: Buffer
+}
+
+/** What a `FileHandler` takes beside its location. */
+export interface FileHandlerOptions {
+  /** `append`, the default, or `overwrite`. */
+  mode?: string
+  /**
+   * The bytes held back before a publish; `0`, the default, publishes
+   * each record as it arrives.
+   */
+  capacity?: number
+  /** The level that publishes what is held at once; `ERROR` by default. */
+  flushLevel?: LoggingLevelInput
+  /** The level the handler emits from; `NOTSET` by default. */
+  level?: LoggingLevelInput
 }
 
 /** Options for one filesystem listing. */
@@ -11604,6 +11951,14 @@ export interface FixTimeInForce {
   timeinforce: string
 }
 
+/** What a `Formatter` takes beside its format. */
+export interface FormatterOptions {
+  /** The `strftime` date format `asctime` is spelled in. */
+  datefmt?: string
+  /** The zone instants are rendered in, UTC when absent. */
+  timezone?: string
+}
+
 /**
  * A credential, spelled one way at a time.
  *
@@ -11932,6 +12287,44 @@ export interface IntoSerieOptions {
 }
 
 /**
+ * The options of one join, each slot `undefined` or `null` where not given,
+ * which is its default.
+ */
+export interface JoinOptionsInput {
+  /**
+   * Whether a key stated as the same bare column on both sides appears
+   * once, under the left name, left value else right; `true` by default.
+   */
+  coalesce?: boolean | null
+  /**
+   * What a right column whose name collides with a left one is suffixed
+   * with; `_right` by default.
+   */
+  suffix?: string | null
+  /**
+   * Which side is held and hashed: `left` or `right`, or by default the
+   * held side over a stream, else the smaller, else the right.
+   */
+  build?: 'left' | 'right' | null
+  /**
+   * Whether probe rows and batches the build keys cannot match are
+   * dropped before they are hashed - the answer is the same either way;
+   * `true` by default.
+   */
+  prune?: boolean | null
+  /**
+   * The bound the build side and every output batch settle under; the
+   * process default (`SpillOptions.fromEnv()`) by default.
+   */
+  spill?: SpillOptions | null
+  /**
+   * The largest distinct build key set pushed into a probe source's
+   * filter; 10,000 by default.
+   */
+  pushdownKeys?: number | null
+}
+
+/**
  * One member of the core's market data kind enum - FIX's `MsgCat` code set:
  * its stored name, the code a `marketdatakind` column stores, and what it
  * means.
@@ -12070,6 +12463,25 @@ export interface SideMember {
   fixCode?: string
   isBid: boolean
   isAsk: boolean
+}
+
+/**
+ * What a `SpillOptions` is built from, each slot `undefined` or `null` where
+ * not given: the bound and the folder.
+ */
+export interface SpillOptionsInit {
+  /**
+   * The resident bytes a column may hold before it spills: a whole
+   * `number` or a `bigint`; `SpillOptions.NEVER` spills nothing and `0`
+   * everything. The core's 64 MiB when unstated.
+   */
+  byteSize?: number | bigint | null
+  /**
+   * The local folder spill files are created in: a path, a `Url`, a
+   * `Uri`, `Urn` or `Arn` naming one, or an `IOBase`. The platform
+   * temporary folder when unstated.
+   */
+  folder?: IOBase | Url | Uri | Urn | Arn | string | null
 }
 
 /**

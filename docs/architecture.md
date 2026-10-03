@@ -40,9 +40,10 @@ Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs
 | [Expression](expression/index.md) | `expression/`: parsing, binding, row evaluation, Arrow evaluation, and pushdown; a target's `with (...)` clause is the warehouse's one `Properties` bag |
 | [Graph](graph/index.md) | `graph/element.rs`: the `Element` and `Event` traits - an element's `Uuid`, the identity it has elsewhere, its sources' UUIDs, an event's instant, state and place among the events of its instant - as signatures a value implements; `graph/market.rs` the `Market` and `Operation` traits - the instrument, the side, the price and the quantity, the stated bid and ask, the FX rates, then the operation's time in force, whether it trades and its identifiers and party ids - with the readings of an `Event` that is one of them provided on the traits themselves; `graph/operation.rs` the operation leaves - `Order`, `Quote`, `Execution` and their dated `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, one generic pair over a sealed `OperationKind` - and their book control, `graph/trade.rs` the `TradeEvent`, `graph/book.rs` the `BookEvent`, `SnapshotEvent` and the book fold, `graph/market_data.rs` the one `MarketData` enum over every leaf and `graph/kind.rs` its `MarketKind`, `graph/arrow.rs` the lifted Arrow row, `graph/view.rs` the six `MarketView` readings of it, each one `Plan`, `graph/candle.rs` the `Candle` a bucket of books folds into and the `CandleIterator` that folds them, `graph/serve.rs` the `BookService` that answers a market-data table as candles, books and audits over HTTP (the `http` feature; `yggdryl market serve` is its terminal), and `graph/iterator.rs` the one walk; the root `limit.rs` holds `Limit`, one price level of a book side, which a book states under `bidlimits` and `asklimits`, and the root `identifier.rs` holds `Identifier` and `Identifiers`, the sets a market element names its security (`securityids`), itself (`identifiers`) and its parties (`partyids`) by - each identifier a source, a type and a value, unique by `src:type`, its words the `IdSource` and `IdType` of the root `idsource.rs` and `idtype.rs`. |
 | [Hashing](hashing.md) | `digest.rs` (`Digest`, `DigestAlgorithm`, `Digester`), `hashing/` (the private stable-hash adapters), `xxhash/`: digest values, one-shot and resumable hashes, streams, handles, and row hashes; `txhash/`: an instant coupled with a digest - the sortable value, its instant intake, coupled columns, and the `DIGEST:time` holder |
+| [Logging](logging.md) | `logging/`: Python's `logging` owned by the core, behind the `log` facade - `Logger` and `get_logger`, `Level`, `Record`, `Formatter`, the `Handler` trait with `StreamHandler`, `NullHandler` and `FileHandler` over any `IOBase`, the `Host` a binding attaches its runtime's own logging with, `install`, `basic_config` and `shutdown`; `logging/warning.rs`, the deduplicated warnings the data doors raise |
 | [FIX](fix/index.md) | `fix/`: FIX vocabulary over core `Field` values and `IOBase` registry storage |
 
-Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several pages, `docs/<tab>.md` for a single-page tab such as Hashing - so one name finds a concept's contract, validation, boundary, and page, whichever root files answer it. Source and tests are not: the Python package and both binding crates repeat the crate's own layout, one file per type at the root and one per implementation beside it, and every test file sits at the path of the source file it pins.
+Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several pages, `docs/<tab>.md` for a single-page tab such as Hashing or Logging - so one name finds a concept's contract, validation, boundary, and page, whichever root files answer it. Source and tests are not: the Python package and both binding crates repeat the crate's own layout, one file per type at the root and one per implementation beside it, and every test file sits at the path of the source file it pins.
 
 ## Rules the layers share
 
@@ -63,21 +64,83 @@ Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several
 
 ## Watching what the core does
 
-The native core narrates its work through Rust's `log` facade, so a Rust caller
-installs any `log` implementation. Python bridges it into `logging` under the
-package's own logger: a record's name is the Rust module path it came from, so
-`yggdryl.iceberg.table` and its siblings all hang off `yggdryl` and one
-`setLevel` is the whole switch. The Node addon writes warnings to standard
-error as `yggdryl: <message>` when it loads, unless the process already
-installed a logger, and the `yggdryl` command writes them to standard error
-prefixed `!`. What a data door passes over is said once per kind and then
-counted ([Warnings](fix/capture.md#warnings)).
+The native core owns a Python-like logging tree, `yggdryl::logging`, behind
+Rust's `log` facade: a record's logger is named after the Rust module path it
+came from, so `yggdryl.iceberg.table` and its siblings all hang off `yggdryl`
+and one level on `yggdryl` is the whole switch. A Rust caller installs the tree
+(`install`, or `basic_config` for a handler on standard error) or any other
+`log` backend. Wherever no format is stated - `basic_config`, a handler with
+no formatter, the last resort - a record is the
+[terminal line](logging.md#terminal): the time, the level's glyph and name,
+`[thread]`, the logger, the call site, ` › `, the message, coloured only where
+the [colour rule](logging.md#colour) says - a colour terminal, `NO_COLOR`,
+`FORCE_COLOR`, `CLICOLOR_FORCE` and `TERM=dumb` honoured. Python hosts the
+tree in `logging`: each Rust logger is the Python logger of the same name, and
+a level changed at any time applies to the next record
+([Python: hosted by logging](logging.md#python-hosted-by-logging)). The Node
+addon installs the tree when it loads, and its last resort writes warnings to
+standard error as that line, from `[main]` or `[worker-N]`
+([JavaScript](logging.md#javascript)). The `yggdryl` command keeps the core's
+warnings and prints them on standard output once the command's progress line is
+done: one `!` line counting them, then each as a `·` note. What a data door
+passes over is said once per kind and then counted
+([Warnings](fix/capture.md#warnings)). Loggers, levels, handlers and the
+formatter are one contract, on [Logging](logging.md).
 
 Debug is an operation starting; info is one done, carrying the counts a monitor
 watches. Nothing is reported per row, per batch, or per file: a commit is the
 unit, so ten times the rows is the same handful of records. A dependency of the
-build reaches `logging` only at warning and above, so enabling debug narrates
-this project and nothing else.
+build reaches the tree only at warning and above, in Python and in JavaScript
+([The log facade](logging.md#the-log-facade)), so enabling debug narrates this
+project and nothing else.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch};
+    use yggdryl::holder::Buffer;
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::logging::{self, FileHandler, Formatter, Handler, Level};
+    use yggdryl::{arrow, DataType, IOBase, StructType};
+
+    // The tree is the `log` facade's backend. A handler on `yggdryl.iceberg`
+    // holds the narration of every table, one line per record.
+    logging::install()?;
+    let held = Arc::new(FileHandler::new(Buffer::new()));
+    held.set_formatter(Formatter::from_str("%(levelname)s %(name)s %(message)s")?);
+    let narration: Arc<dyn Handler> = held.clone();
+    let watcher = logging::get_logger("yggdryl.iceberg");
+    watcher.set_level(Level::INFO);
+    watcher.set_propagating(false);
+    watcher.add_handler(narration.clone());
+
+    let mut schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+        .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-architecture-logging");
+    let _ = std::fs::remove_dir_all(&path);
+
+    let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), PartitionSpec::unpartitioned())?;
+    let batch = RecordBatch::try_new(schema.into_arrow_schema()?, vec![Arc::new(Int64Array::from(vec![1_i64, 2, 3]))])?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+
+    // Other tables narrated meanwhile land in the same handler, so the lines
+    // are read for this table's folder.
+    let said = String::from_utf8(held.io().read_all_bytes()?)?;
+    let folder = "yggdryl-docs-architecture-logging";
+    assert!(said.lines().any(|line| {
+        line.starts_with("INFO yggdryl.iceberg.table created iceberg table at") && line.contains(folder)
+    }));
+    assert!(said.lines().any(|line| {
+        line.starts_with("INFO yggdryl.iceberg.table wrote 3 rows as") && line.contains(folder)
+    }));
+
+    watcher.remove_handler(&narration);
+    let _ = std::fs::remove_dir_all(&path);
+    ```
 
 === "Python"
 
@@ -88,7 +151,7 @@ this project and nothing else.
 
     import pyarrow as pa
 
-    from yggdryl import IOBase, refresh_logging
+    from yggdryl import IOBase
     from yggdryl.iceberg import IcebergTable, assign_field_ids
 
     said: list[str] = []
@@ -102,9 +165,6 @@ this project and nothing else.
     watcher = logging.getLogger("yggdryl")
     watcher.addHandler(Collect())
     watcher.setLevel(logging.INFO)
-    # The bridge caches each logger's effective level, so a level set after
-    # import reaches it only through this call.
-    refresh_logging()
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     with tempfile.TemporaryDirectory() as folder:
@@ -114,6 +174,41 @@ this project and nothing else.
 
     assert any(message.startswith("created iceberg table at") for message in said)
     assert any("wrote 3 rows as" in message for message in said)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg, logging } = require('yggdryl')
+
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const narration = path.join(folder, 'narration.log')
+
+    // Every record hangs off `yggdryl`, so one level there is the whole switch;
+    // a file handler holds the narration, one line per record.
+    const handler = new logging.FileHandler(narration)
+    handler.setFormatter(new logging.Formatter('%(levelname)s %(name)s %(message)s'))
+    const watcher = logging.getLogger('yggdryl')
+    watcher.addHandler(handler)
+    watcher.setLevel(logging.INFO)
+
+    const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
+    const table = iceberg.IcebergTable.create(path.join(folder, 'trades'), schema, iceberg.PartitionSpec.unpartitioned())
+    table.append(new arrow.Table({ id: arrow.vectorFromArray([1n, 2n, 3n], new arrow.Int64()) }))
+    assert.equal(table.scan().intoTable().numRows, 3)
+
+    const said = fs.readFileSync(narration, 'utf8')
+    assert.match(said, /^INFO yggdryl\.iceberg\.table created iceberg table at/m)
+    assert.match(said, /^INFO yggdryl\.iceberg\.table wrote 3 rows as/m)
+
+    watcher.removeHandler(handler)
+    handler.close()
+    fs.rmSync(folder, { recursive: true, force: true })
     ```
 
 | Reported | Level | Carries |

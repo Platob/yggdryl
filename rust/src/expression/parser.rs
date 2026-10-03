@@ -32,13 +32,28 @@
 //! path       := ["."] identifier ("." identifier | "[" segment "]")* ["as" identifier]
 //! ```
 //!
+//! A plan reads its sections around these, each optional and in order -
+//! `create`, a write verb, `select`, `from`, the joins, `where`, `order by`,
+//! `limit`/`offset` - and a join is
+//!
+//! ```text
+//! join       := [ "inner" | "left" ["outer"] | "right" ["outer"]
+//!               | "full" ["outer"] | "outer" | "semi" | "anti" ] "join" source
+//!               ( "on" term ("and" term)* | "using" "(" identifier ("," identifier)* ")" )
+//! source     := target | "(" plan ")"
+//! ```
+//!
+//! where each `on` conjunct is an equality, its left term over the rows so
+//! far and its right term over the source.
+//!
 //! # What is deliberately not here
 //!
-//! No subquery, no join, no aggregate, no window, no ordering. Every one of
-//! those needs a second relation or the whole of one, and this is a projection
-//! and filter tree over rows that stream. A grammar that accepts them and then
-//! refuses them at bind time has told the caller a lie at the point where the
-//! error message was still cheap.
+//! No subquery inside a term, no join inside a term, no aggregate, no window,
+//! no ordering. Every one of those needs a second relation or the whole of
+//! one, and a term is a projection and filter tree over rows that stream; a
+//! second relation enters a plan only as its `from` or a `join`. A grammar
+//! that accepts them and then refuses them at bind time has told the caller a
+//! lie at the point where the error message was still cheap.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -46,6 +61,7 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::display::{is_bare_identifier, is_reserved};
+use super::join::{JoinKey, JoinKeys};
 use super::path::{FieldPath, FieldSegment};
 use super::plan::{Location, Ordering, Plan, Source, Target, Verb, Write};
 use super::selector::{Projection, Selector};
@@ -53,7 +69,7 @@ use super::{
     Comparison, Expression, Filter, Function, Literal, Operator, RECURSION_LIMIT, Safety, Term,
     UserRef,
 };
-use crate::{DataType, Error, Result, Scalar, Url};
+use crate::{DataType, Error, JoinKind, Result, Scalar, Url};
 
 impl FromStr for Term {
     type Err = Error;
@@ -104,6 +120,42 @@ pub(crate) fn parse_ordering(input: &str) -> Result<Ordering> {
     parser.expect_end()?;
     ordering.term().check_budget()?;
     Ok(ordering)
+}
+
+/// Parse the keys of an `order by` clause without its keywords: one key or
+/// several separated by `,`, each a term with its optional direction and
+/// nulls placement - `venue, price desc nulls first`.
+pub(crate) fn parse_orderings(input: &str) -> Result<Vec<Ordering>> {
+    let mut parser = Parser::new(input)?;
+    let mut keys = Vec::new();
+    loop {
+        let ordering = parser.ordering()?;
+        ordering.term().check_budget()?;
+        keys.push(ordering);
+        if !parser.eat_symbol(",") {
+            break;
+        }
+    }
+    parser.expect_end()?;
+    Ok(keys)
+}
+
+/// Parse the keys of a join: one or several separated by `,`, each a term
+/// over both sides or an equality of a left term and a right term - `id,
+/// venue = market`.
+pub(crate) fn parse_join_keys(input: &str) -> Result<JoinKeys> {
+    let mut parser = Parser::new(input)?;
+    let mut keys = Vec::new();
+    loop {
+        let term = parser.term()?;
+        term.check_budget()?;
+        keys.push(JoinKey::from_term(term)?);
+        if !parser.eat_symbol(",") {
+            break;
+        }
+    }
+    parser.expect_end()?;
+    Ok(JoinKeys::new(keys))
 }
 
 /// Parse one expression: a plan, or plans separated by `;`.
@@ -503,6 +555,19 @@ fn is_section_word(word: &str) -> bool {
     )
 }
 
+/// The operands of a conjunction, nested ones included, in order: what a
+/// join's `on` splits into, one key per equality.
+fn flatten_conjunction(term: Term, out: &mut Vec<Term>) {
+    match term {
+        Term::And(operands) => {
+            for operand in operands.iter() {
+                flatten_conjunction(operand.clone(), out);
+            }
+        }
+        other => out.push(other),
+    }
+}
+
 fn parse_error(position: usize, reason: impl Into<SmolStr>) -> Error {
     Error::Parse {
         target: "expression",
@@ -809,6 +874,12 @@ impl<'input> Parser<'input> {
             any = true;
             plan = plan.read_from(self.source()?);
         }
+        while let Some(how) = self.join_kind() {
+            any = true;
+            let source = self.source()?;
+            let keys = self.join_keys()?;
+            plan = plan.join(how, source, keys)?;
+        }
         if self.eat_word("where") {
             any = true;
             plan.set_filter(Filter::new(self.term()?));
@@ -843,6 +914,86 @@ impl<'input> Parser<'input> {
             return Err(super::unknown_clause(self.input[start..].trim()));
         }
         Ok(plan)
+    }
+
+    /// Read the words that open a join, answering the kind they name;
+    /// nothing, and nothing consumed, when no join opens here.
+    ///
+    /// A kind word counts only before `join` - or `outer join` - so a word
+    /// that happens to spell a kind is never taken for one.
+    fn join_kind(&mut self) -> Option<JoinKind> {
+        if self.eat_word("join") {
+            return Some(JoinKind::Inner);
+        }
+        let Some(Token::Word(word)) = self.peek() else {
+            return None;
+        };
+        let how = match folded(word).as_str() {
+            "inner" => JoinKind::Inner,
+            "left" => JoinKind::Left,
+            "right" => JoinKind::Right,
+            "full" | "outer" => JoinKind::Full,
+            "semi" => JoinKind::Semi,
+            "anti" => JoinKind::Anti,
+            _ => return None,
+        };
+        // `outer` is a kind of its own and the optional word after `left`,
+        // `right` and `full`; it never follows another kind.
+        let outer = matches!(how, JoinKind::Left | JoinKind::Right)
+            || (how == JoinKind::Full && !self.at_word("outer"));
+        let words = if outer && self.word_at(1, "outer") {
+            2
+        } else {
+            1
+        };
+        if !self.word_at(words, "join") {
+            return None;
+        }
+        self.cursor += words + 1;
+        Some(how)
+    }
+
+    /// Read a join's keys: `on` equalities joined by `and`, or `using` and
+    /// the names both sides share.
+    fn join_keys(&mut self) -> Result<JoinKeys> {
+        if self.eat_word("using") {
+            self.expect_symbol("(")?;
+            let mut keys = Vec::new();
+            loop {
+                keys.push(JoinKey::using(Term::column(self.identifier()?)));
+                if !self.eat_symbol(",") {
+                    break;
+                }
+            }
+            self.expect_symbol(")")?;
+            return Ok(JoinKeys::new(keys));
+        }
+        if !self.eat_word("on") {
+            return Err(parse_error(
+                self.position(),
+                format_smolstr!(
+                    "expected `on` or `using` and the keys a join matches on, got {}",
+                    self.describe()
+                ),
+            ));
+        }
+        let position = self.position();
+        let mut conjuncts = Vec::new();
+        flatten_conjunction(self.term()?, &mut conjuncts);
+        conjuncts
+            .into_iter()
+            .map(|conjunct| match conjunct {
+                Term::Compare(_, Comparison::Eq, _) => JoinKey::from_term(conjunct),
+                other => Err(parse_error(
+                    position,
+                    format_smolstr!(
+                        "expected a join's `on` to be equalities joined by `and`, each a left \
+                         term = a right term, got `{other}`"
+                    ),
+                )),
+            })
+            .collect::<Result<Vec<_>>>()
+            .map(JoinKeys::new)
     }
 
     /// Read a write verb in any spelling this grammar reads, answering its

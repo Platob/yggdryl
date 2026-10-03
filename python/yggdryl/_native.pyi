@@ -24,8 +24,57 @@ _T = TypeVar("_T")
 
 __version__: str
 
-# Drops the cached Python log levels, so a level changed after import applies.
-def refresh_logging() -> None: ...
+# States the core logger's deduplication; `None` takes the ancestors' again.
+def log_deduplicate(name: str, enabled: bool | None = True) -> None: ...
+
+# Whether the core logger deduplicates, as stated or inherited.
+def log_is_deduplicating(name: str) -> bool: ...
+
+# One record as the core's terminal format spells it.
+def log_terminal(
+    name: str,
+    level: int,
+    levelname: str | None,
+    message: str,
+    created: int,
+    pathname: str | None = None,
+    lineno: int | None = None,
+    function: str | None = None,
+    thread: str | None = None,
+    colored: bool = False,
+) -> str: ...
+
+# Whether a stream answering `is_terminal` is written in colour, by the core's rule.
+def log_is_color_enabled(is_terminal: bool) -> bool: ...
+
+# The native half of `yggdryl.logging.Deduplicate`: one table of repeated
+# records, counted by the core's hash.
+class LogRepeats:
+    def __init__(self) -> None: ...
+    def said(self, name: str, level: int, message: str) -> str | None: ...
+    def __len__(self) -> int: ...
+
+# The native half of `yggdryl.logging.FileHandler`: lines held and published
+# through a location's handle.
+class LogFile:
+    def __init__(
+        self,
+        location: str | PathLike[str] | Url | IOBase,
+        mode: str = "append",
+        capacity: int = 0,
+        flush_level: int | str | None = None,
+    ) -> None: ...
+    def write(self, line: str, level: int) -> None: ...
+    def flush(self) -> None: ...
+    def close(self) -> None: ...
+    @property
+    def url(self) -> str | None: ...
+    @property
+    def mode(self) -> str: ...
+    @property
+    def capacity(self) -> int: ...
+    @property
+    def flush_level(self) -> int: ...
 
 CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
@@ -485,6 +534,10 @@ class Serie:
         safe: bool = True,
         representation: Representation = "value",
     ) -> Serie: ...
+    # `length` copies of `value` under `field`: a constant column, the value
+    # proven by the field once, no row laid out until something exports it.
+    @staticmethod
+    def lit(field: object, value: object, length: int) -> Serie: ...
     @staticmethod
     def from_default(field: object, rows: int = 1) -> Serie: ...
     # Any columnar object - a pyarrow scalar, array, chunked array, batch,
@@ -507,6 +560,9 @@ class Serie:
     def dtype(self) -> DataType: ...
     @property
     def is_column(self) -> bool: ...
+    # Whether `lit` built this column: one value and a length.
+    @property
+    def is_lit(self) -> bool: ...
     def null_count(self) -> int: ...
     def is_empty(self) -> bool: ...
     def is_null(self, index: int) -> bool: ...
@@ -574,11 +630,70 @@ class Serie:
         self, paths: str | FieldPath | Iterable[str | FieldPath]
     ) -> list[tuple[Scalar, Serie]]: ...
     def memory_size(self) -> int: ...
+    # `memory_size` less what lies in a spill file's mapping.
+    def resident_size(self) -> int: ...
+    def is_spilled(self) -> bool: ...
+    # Moves the rows to disk, in place, until the resident bytes are under
+    # the bound: `options` - the process default `SpillOptions.from_env()`
+    # for `None` - with `byte_size` and `folder` set on a copy where given.
+    def spill(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> None: ...
+    # `spill`, answering this serie so calls chain.
+    def as_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Self: ...
+    # A spilled copy; this serie is untouched.
+    def into_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Serie: ...
+    # The `order by` keys the record's root declares (`SORT:by`), each as
+    # that declaration spells it.
+    def declared_order(self) -> list[str] | None: ...
+    # Sorting by `order by` keys: the text of the clause without its
+    # keywords, a list of key texts or `{"term", "descending",
+    # "nulls_first"}` records, or a `Selector`, every projection ascending.
+    # A plain column keys as itself, under its own name.
+    def sort_indices_by(self, by: OrderingsLike) -> Serie: ...
+    def into_sort_by(self, by: OrderingsLike) -> Serie: ...
+    # One record column of the left columns then the right, a key over one
+    # bare column on both sides once under the left name when `coalesce`, a
+    # colliding right name suffixed. `how` is `inner`, `left`, `right`,
+    # `full` (or `outer`), `semi` or `anti`, a trailing `outer` or `join`
+    # read; `other` is anything `Serie.from_` reads; `options` -
+    # `JoinOptions()` for `None` - takes each keyword given on a copy.
+    def join_with(
+        self,
+        other: object,
+        by: JoinKeysLike,
+        how: str = "inner",
+        options: JoinOptions | None = None,
+        *,
+        coalesce: bool | EllipsisType = ...,
+        suffix: str | EllipsisType = ...,
+        build: str | None | EllipsisType = ...,
+        prune: bool | EllipsisType = ...,
+        spill: SpillOptions | None | EllipsisType = ...,
+        pushdown_keys: int | EllipsisType = ...,
+    ) -> Serie: ...
     def as_sorted(self, *, descending: bool = False, nulls_first: bool = False) -> Self: ...
     def as_unique(self) -> Self: ...
     def as_reversed(self) -> Self: ...
     def as_taken(self, indices: object) -> Self: ...
     def as_filtered(self, mask: object) -> Self: ...
+    def as_sort_by(self, by: OrderingsLike) -> Self: ...
     # A window over this serie object, read and written through it.
     def window(self, offset: int, length: int) -> WindowSerie: ...
     # The windows of equal adjacent keys, each `(key, window)` - the key a
@@ -724,6 +839,10 @@ class WindowSerie:
     def rows(self) -> list[Scalar]: ...
     def as_py(self) -> list[Any]: ...
     def memory_size(self) -> int: ...
+    # Read through the serie the window views: a window is never spilled on
+    # its own - spill the serie.
+    def resident_size(self) -> int: ...
+    def is_spilled(self) -> bool: ...
     def window(self, offset: int, length: int) -> WindowSerie: ...
     # Where `window_by` lent this window: one struct value - the cells the
     # window it was cut from states but `windownum` and `rownum`, the key
@@ -749,6 +868,10 @@ class WindowSerie:
     def into_sorted(
         self, *, descending: bool = False, nulls_first: bool = False
     ) -> Serie: ...
+    # The keys computed over the window's rows alone, positions
+    # window-relative.
+    def sort_indices_by(self, by: OrderingsLike) -> Serie: ...
+    def into_sort_by(self, by: OrderingsLike) -> Serie: ...
     def into_unique(self) -> Serie: ...
     def into_reversed(self) -> Serie: ...
     def into_taken(self, indices: object) -> Serie: ...
@@ -762,6 +885,8 @@ class WindowSerie:
     def as_sorted(self, *, descending: bool = False, nulls_first: bool = False) -> Self: ...
     def as_reversed(self) -> Self: ...
     def as_taken(self, indices: object) -> Self: ...
+    # Every row outside the window untouched; a refusal leaves the serie.
+    def as_sort_by(self, by: OrderingsLike) -> Self: ...
     def __len__(self) -> int: ...
     @overload
     def __getitem__(self, key: SupportsIndex) -> Scalar: ...
@@ -823,6 +948,59 @@ class SerieReader(Iterator[Serie]):
         *,
         safe: bool = True,
         representation: Representation = "value",
+    ) -> SerieReader: ...
+    # The held records still to yield; a stream holds none between pulls.
+    def resident_size(self) -> int: ...
+    def is_spilled(self) -> bool: ...
+    # Each held record through `Serie.spill`; a stream is untouched, and a
+    # reader handed over is refused.
+    def spill(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> None: ...
+    # `spill`, answering this reader so calls chain.
+    def as_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Self: ...
+    # The held records spilled, as a new reader; this one is spent.
+    def into_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> SerieReader: ...
+    # Every record not yet pulled, in order, as a new reader; this one is
+    # spent. The stream is drained before the first sorted batch.
+    def into_sorted(
+        self, *, descending: bool = False, nulls_first: bool = False
+    ) -> SerieReader: ...
+    # The keys are read before the stream is: a key no column answers is
+    # refused with no batch pulled.
+    def into_sort_by(self, by: OrderingsLike) -> SerieReader: ...
+    # A stream of the output, one probe batch joined at a time; this reader
+    # is spent. `other` is a `Serie`, a `ChunkedSerie`, a `SerieReader` or
+    # anything `SerieReader.from_` reads; a held side is the one built.
+    def join_with(
+        self,
+        other: object,
+        by: JoinKeysLike,
+        how: str = "inner",
+        options: JoinOptions | None = None,
+        *,
+        coalesce: bool | EllipsisType = ...,
+        suffix: str | EllipsisType = ...,
+        build: str | None | EllipsisType = ...,
+        prune: bool | EllipsisType = ...,
+        spill: SpillOptions | None | EllipsisType = ...,
+        pushdown_keys: int | EllipsisType = ...,
     ) -> SerieReader: ...
     @property
     def field(self) -> Field: ...
@@ -961,11 +1139,13 @@ class ChunkedSerie:
     # What a `Serie` answers, across the chunks: `is_sorted` reads every
     # chunk and every chunk edge with no join; `into_reversed`,
     # `into_filtered` and `partition_by` work chunk by chunk and keep the
-    # chunks apart; `sort_indices`, `is_unique`, `unique_count`,
-    # `into_sorted`, `into_unique` and `into_taken` are the one join, then
-    # the verb, answering one chunk. `keys` held in chunks - a
-    # `ChunkedSerie`, a `pyarrow.ChunkedArray` or a table - are grouped
-    # chunk beside chunk with no join where both are cut at the same rows.
+    # chunks apart; `into_sorted` and `into_sort_by` sort each chunk on its
+    # own and merge them, with no join; `into_unique` keeps each chunk's
+    # first occurrences apart; `sort_indices`, `sort_indices_by`,
+    # `is_unique`, `unique_count` and `into_taken` are the one join, then
+    # the verb. `keys` held in chunks - a `ChunkedSerie`, a
+    # `pyarrow.ChunkedArray` or a table - are grouped chunk beside chunk
+    # with no join where both are cut at the same rows.
     def sort_indices(
         self, *, descending: bool = False, nulls_first: bool = False
     ) -> Serie: ...
@@ -975,6 +1155,8 @@ class ChunkedSerie:
     def into_sorted(
         self, *, descending: bool = False, nulls_first: bool = False
     ) -> ChunkedSerie: ...
+    def sort_indices_by(self, by: OrderingsLike) -> Serie: ...
+    def into_sort_by(self, by: OrderingsLike) -> ChunkedSerie: ...
     def into_unique(self) -> ChunkedSerie: ...
     def into_reversed(self) -> ChunkedSerie: ...
     def into_taken(self, indices: object) -> ChunkedSerie: ...
@@ -986,11 +1168,55 @@ class ChunkedSerie:
         self, by: SelectorLike, sorted: bool | None = False
     ) -> list[tuple[Scalar, ChunkedSerie]]: ...
     def memory_size(self) -> int: ...
+    def resident_size(self) -> int: ...
+    def is_spilled(self) -> bool: ...
+    # The heaviest chunks spill whole first, so the lightest stay resident.
+    def spill(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> None: ...
+    # `spill`, answering these chunks so calls chain.
+    def as_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> Self: ...
+    # A spilled copy; these chunks are untouched.
+    def into_spilled(
+        self,
+        options: SpillOptions | None = None,
+        *,
+        byte_size: int | EllipsisType = ...,
+        folder: SpillFolder | None | EllipsisType = ...,
+    ) -> ChunkedSerie: ...
+    def declared_order(self) -> list[str] | None: ...
+    # `Serie.join_with` over the chunks, the output batches kept apart;
+    # `other` is anything `ChunkedSerie.from_` reads.
+    def join_with(
+        self,
+        other: object,
+        by: JoinKeysLike,
+        how: str = "inner",
+        options: JoinOptions | None = None,
+        *,
+        coalesce: bool | EllipsisType = ...,
+        suffix: str | EllipsisType = ...,
+        build: str | None | EllipsisType = ...,
+        prune: bool | EllipsisType = ...,
+        spill: SpillOptions | None | EllipsisType = ...,
+        pushdown_keys: int | EllipsisType = ...,
+    ) -> ChunkedSerie: ...
     def as_sorted(self, *, descending: bool = False, nulls_first: bool = False) -> Self: ...
     def as_unique(self) -> Self: ...
     def as_reversed(self) -> Self: ...
     def as_taken(self, indices: object) -> Self: ...
     def as_filtered(self, mask: object) -> Self: ...
+    def as_sort_by(self, by: OrderingsLike) -> Self: ...
     def into_arrow_chunked_array(self) -> pyarrow.ChunkedArray: ...
     # One batch per chunk: a record's children, or the one column of a `row`.
     # A record chunk holding an absent row is refused.
@@ -1877,6 +2103,91 @@ class PythonMetadata:
     def __copy__(self) -> PythonMetadata: ...
     def __deepcopy__(self, memo: dict[int, object], /) -> PythonMetadata: ...
     def __reduce__(self) -> tuple[object, tuple[str, str, str]]: ...
+
+# A spill folder: a `LocalFolder` or `LocalPath` handle, a path, or a
+# `file:` URL.
+SpillFolder = LocalFolder | LocalPath | Url | str | PathLike[str]
+
+class SpillOptions:
+    """The bound a column stays resident under, and the folder it spills to.
+
+    ``byte_size`` is the resident bytes a column may hold before it spills:
+    ``NEVER`` spills nothing and ``0`` everything. ``folder`` is where the
+    private, already-unlinked spill files are made, the platform temporary
+    folder when ``None``. Immutable; equal options state one bound over one
+    folder URL.
+    """
+
+    NEVER: ClassVar[int]
+    def __init__(
+        self, byte_size: int = 67108864, folder: SpillFolder | None = None
+    ) -> None: ...
+    # The process default, read once from `YGGDRYL_SPILL_BYTE_SIZE` (a byte
+    # count, or `never`) and `YGGDRYL_SPILL_FOLDER`; every door that lays a
+    # column out settles under it. A refused value raises naming its
+    # variable and leaves the default unresolved.
+    @staticmethod
+    def from_env() -> SpillOptions: ...
+    # States the process default before anything reads it; refused once it
+    # has been read or installed.
+    @staticmethod
+    def install_env(options: SpillOptions) -> None: ...
+    @property
+    def byte_size(self) -> int: ...
+    @property
+    def folder(self) -> LocalFolder | None: ...
+    def is_never(self) -> bool: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __ne__(self, other: object, /) -> bool: ...
+    def __hash__(self) -> int: ...
+    def __repr__(self) -> str: ...
+    def __copy__(self) -> SpillOptions: ...
+    def __deepcopy__(self, memo: Any) -> SpillOptions: ...
+    def __reduce__(self) -> tuple[object, tuple[int, str | None]]: ...
+
+class JoinOptions:
+    """The facts beside a join's keys and kind.
+
+    ``coalesce`` writes a key stated as one bare column on both sides once,
+    under the left name; ``suffix`` is what a colliding right name takes;
+    ``build`` is the side held and hashed - ``"left"``, ``"right"``, or
+    ``None`` for the held side over a stream, else the smaller; ``prune``
+    drops probe rows the build keys cannot match before they are hashed;
+    ``spill`` is the bound the build side and every output batch settle
+    under, the process default for ``None``; ``pushdown_keys`` bounds the
+    build keys pushed into a probe source's filter. Immutable.
+    """
+
+    def __init__(
+        self,
+        coalesce: bool = True,
+        suffix: str = "_right",
+        build: str | None = None,
+        prune: bool = True,
+        spill: SpillOptions | None = None,
+        pushdown_keys: int = 10000,
+    ) -> None: ...
+    @property
+    def coalesce(self) -> bool: ...
+    @property
+    def suffix(self) -> str: ...
+    @property
+    def build(self) -> Literal["left", "right"] | None: ...
+    @property
+    def prune(self) -> bool: ...
+    @property
+    def spill(self) -> SpillOptions | None: ...
+    @property
+    def pushdown_keys(self) -> int: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __ne__(self, other: object, /) -> bool: ...
+    def __hash__(self) -> int: ...
+    def __repr__(self) -> str: ...
+    def __copy__(self) -> JoinOptions: ...
+    def __deepcopy__(self, memo: Any) -> JoinOptions: ...
+    def __reduce__(
+        self,
+    ) -> tuple[object, tuple[bool, str, str | None, bool, SpillOptions | None, int]]: ...
 
 class ArrowCastPlan:
     """One cast from a source field to a target field, compiled once.
@@ -2875,6 +3186,14 @@ FilterLike = Filter | Term | Expression | str
 SelectorLike = Selector | Term | Expression | str | Iterable[Term | str | tuple[Term | str, str]]
 PlanLike = Plan | Selector | Filter | Expression | Field | str
 OrderingKey = Term | str | tuple[Term | str, str] | tuple[Term | str, str, str]
+# The `order by` keys a sort verb takes, read once as the core reads them:
+# the clause's text without its keywords, a list of key texts or of
+# `{"term", "descending", "nulls_first"}` records, or a `Selector`.
+OrderingsLike = Selector | str | Mapping[str, object] | Sequence[str | Mapping[str, object]]
+# The keys a join takes: the text of a key list (`"id, venue = market"`), a
+# list of key texts or of `[left, right]` term pairs, or a mapping of left
+# terms to right terms.
+JoinKeysLike = str | Mapping[str, str] | Sequence[str | Sequence[str]]
 Row = Mapping[str, object] | Sequence[object] | Scalar | object
 
 class Filter:
@@ -3388,16 +3707,39 @@ class IOBase:
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
     ) -> Field: ...
-    def read_arrow(
+    def read_serie(
         self,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
     ) -> SerieReader: ...
-    def write_arrow(
+    # `value` is a `Serie`, `ChunkedSerie` or `SerieReader`, written as the
+    # batches it holds, or anything `SerieReader.from_` reads.
+    def write_serie(
         self,
         value: object,
         mode: str = "overwrite",
+        *,
+        options: RecordOptionsLike | None = None,
+        **properties: Unpack[RecordProperties],
+    ) -> None: ...
+    def overwrite_serie(
+        self,
+        value: object,
+        *,
+        options: RecordOptionsLike | None = None,
+        **properties: Unpack[RecordProperties],
+    ) -> None: ...
+    def append_serie(
+        self,
+        value: object,
+        *,
+        options: RecordOptionsLike | None = None,
+        **properties: Unpack[RecordProperties],
+    ) -> None: ...
+    def merge_serie(
+        self,
+        value: object,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
@@ -4156,7 +4498,7 @@ class Pages(Iterator[Response]):
 
     def __iter__(self) -> Pages: ...
     def __next__(self) -> Response: ...
-    def read_arrow(self, field: Field | str | None = None) -> SerieReader: ...
+    def read_serie(self, field: Field | str | None = None) -> SerieReader: ...
     def into_arrow_reader(
         self, field: Field | str | None = None, batch_row_size: int = 0
     ) -> pyarrow.RecordBatchReader: ...
@@ -4578,6 +4920,7 @@ class TextProperties(TypedDict, total=False):
     safe: bool | EllipsisType
     batch_row_size: int | None | EllipsisType
     commit_batch_num: int | None | EllipsisType
+    num_threads: int | None | EllipsisType
     max_row_size: int | None | EllipsisType
     row_offset: int | None | EllipsisType
     max_byte_size: int | None | EllipsisType
@@ -4663,6 +5006,10 @@ class RecordOptions:
     def commit_batch_num(self) -> int | None: ...
     @commit_batch_num.setter
     def commit_batch_num(self, commit_batch_num: int | None) -> None: ...
+    @property
+    def num_threads(self) -> int | None: ...
+    @num_threads.setter
+    def num_threads(self, num_threads: int | None) -> None: ...
     @property
     def max_row_size(self) -> int | None: ...
     @max_row_size.setter
@@ -4834,6 +5181,10 @@ class TextOptions:
     def commit_batch_num(self) -> int | None: ...
     @commit_batch_num.setter
     def commit_batch_num(self, commit_batch_num: int | None) -> None: ...
+    @property
+    def num_threads(self) -> int | None: ...
+    @num_threads.setter
+    def num_threads(self, num_threads: int | None) -> None: ...
     @property
     def max_row_size(self) -> int | None: ...
     @max_row_size.setter
@@ -9054,8 +9405,12 @@ ULBRIDGE_ROWHEADER: str
 IPC_DICTIONARY_IDS_KEY: str
 DEFAULT_STREAM_BATCH_SIZE: int
 DEFAULT_FETCH_BYTE_SIZE: int
-# The machine this process runs on, read once: the host an in-process
-# location and a buffer's identity name.
+# The bound one column stays resident under before it spills, unless the
+# process environment states another (`SpillOptions.from_env`).
+DEFAULT_SPILL_BYTE_SIZE: int
+# The machine this process runs on, read once by the core: intake reads
+# `file://<HOSTNAME>/x` as the local path, and no URL the core writes
+# names it - in-process storage names `localhost`.
 HOSTNAME: str
 NULL_PARTITION: str
 DEFAULT_RECORD_BATCH_ROW_SIZE: int

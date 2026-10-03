@@ -25,14 +25,17 @@ use crate::datatype::{
 };
 use crate::expression::selector_from_value;
 use crate::field::{PyField, core_field_from_value};
+use crate::graph::ellipsis;
 use crate::iomedia::{
     Frames, core_root_field_from_value, frame_from_reader, rooted_reader_to_pyarrow, type_name,
 };
+use crate::join::{JoinKeywords, PyJoinOptions, join_keys_of, join_kind_of};
 use crate::scalar::{PyScalar, PyScalarIterator, as_py_with_field, from_py};
 use crate::serie::{
-    PySerie, columnar, described, field_of, reader_capsule, requested_field, serie_argument,
-    serie_from_value, sort_options, stream_of, target_of,
+    PySerie, columnar, declared_texts, described, field_of, orderings_of, reader_capsule,
+    requested_field, serie_argument, serie_from_value, sort_options, stream_of, target_of,
 };
+use crate::spill::{PySpillOptions, spill_options_of};
 use crate::{cast_options, compare, normalize_index, value_error};
 
 /// Many columns under one field, held apart: a chunked array, or a table.
@@ -528,14 +531,35 @@ impl PyChunkedSerie {
         Self::detached(slf, |chunked| Ok(chunked.unique_count()))
     }
 
-    /// The rows in sorted order, as a chunked serie of one chunk.
+    /// The rows in sorted order, with no join: each chunk sorted on its own,
+    /// then the sorted chunks merged into output chunks of at most
+    /// `DEFAULT_RECORD_BATCH_ROW_SIZE` rows.
     #[pyo3(signature = (*, descending = false, nulls_first = false))]
     fn into_sorted(slf: &Bound<'_, Self>, descending: bool, nulls_first: bool) -> PyResult<Self> {
         let options = sort_options(descending, nulls_first);
         Self::detached(slf, move |chunked| chunked.into_sorted(options)).map(Self::from_inner)
     }
 
-    /// The first occurrence of every value, as a chunked serie of one chunk.
+    /// The row positions across every chunk in the order the `order by`
+    /// keys of `by` state, as a `uint32` column named `index`: the keys
+    /// resolved, then the one join, then the sort.
+    fn sort_indices_by(slf: &Bound<'_, Self>, by: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let by = orderings_of(by)?;
+        let order = Self::detached(slf, move |chunked| chunked.sort_indices_by(by))?;
+        described(slf.py(), order)
+    }
+
+    /// The rows in the order the `order by` keys of `by` state, with no
+    /// join: each chunk sorted on its own, then the sorted chunks merged, as
+    /// `into_sorted` merges them; the field declares that order.
+    fn into_sort_by(slf: &Bound<'_, Self>, by: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let by = orderings_of(by)?;
+        Self::detached(slf, move |chunked| chunked.into_sort_by(by)).map(Self::from_inner)
+    }
+
+    /// The first occurrence of every value, in order of first occurrence,
+    /// with no join: each chunk keeps its own first occurrences, kept apart,
+    /// and a chunk left with no row is dropped.
     fn into_unique(slf: &Bound<'_, Self>) -> PyResult<Self> {
         Self::detached(slf, |chunked| chunked.into_unique()).map(Self::from_inner)
     }
@@ -601,8 +625,127 @@ impl PyChunkedSerie {
         self.inner.memory_size()
     }
 
-    /// Sort the rows in place, one chunk replacing the chunks, answering
-    /// this chunked serie.
+    /// The bytes the rows occupy in memory: every chunk's `resident_size`.
+    fn resident_size(&self) -> usize {
+        self.inner.resident_size()
+    }
+
+    /// Whether every chunk's rows lie in a spill file: no byte resident,
+    /// and some bytes. No chunk is never spilled.
+    fn is_spilled(&self) -> bool {
+        self.inner.is_spilled()
+    }
+
+    /// Move chunks to disk until the resident bytes are under the bound, in
+    /// place: the heaviest chunks spill whole first, so the lightest stay
+    /// resident. `options` - the process default for `None` - takes
+    /// `byte_size` and `folder` on a copy where given.
+    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
+    fn spill(
+        slf: &Bound<'_, Self>,
+        options: Option<PyRef<'_, PySpillOptions>>,
+        byte_size: Py<PyAny>,
+        folder: Py<PyAny>,
+    ) -> PyResult<()> {
+        let py = slf.py();
+        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
+        slf.borrow_mut().inner.spill(&options).map_err(value_error)
+    }
+
+    /// `spill`, answering this chunked serie so calls chain.
+    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
+    fn as_spilled<'py>(
+        slf: &Bound<'py, Self>,
+        options: Option<PyRef<'_, PySpillOptions>>,
+        byte_size: Py<PyAny>,
+        folder: Py<PyAny>,
+    ) -> PyResult<Bound<'py, Self>> {
+        let py = slf.py();
+        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
+        slf.borrow_mut()
+            .inner
+            .as_spilled(&options)
+            .map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// A copy of these chunks spilled under the bound, these untouched: the
+    /// chunks the bound leaves resident are shared, the rest written once
+    /// and mapped.
+    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
+    fn into_spilled(
+        slf: &Bound<'_, Self>,
+        options: Option<PyRef<'_, PySpillOptions>>,
+        byte_size: Py<PyAny>,
+        folder: Py<PyAny>,
+    ) -> PyResult<Self> {
+        let py = slf.py();
+        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
+        Self::detached(slf, move |chunked| chunked.into_spilled(&options)).map(Self::from_inner)
+    }
+
+    /// The `order by` keys the field declares the rows keep across every
+    /// chunk (`SORT:by`), each as that declaration spells it, or `None`.
+    fn declared_order(&self) -> PyResult<Option<Vec<String>>> {
+        declared_texts(self.inner.declared_order())
+    }
+
+    /// These chunks joined with `other` on `by`, under `how`: the output
+    /// batches kept apart as chunks. `other` is a `ChunkedSerie` or
+    /// anything `ChunkedSerie.from_` reads; `Serie.join_with` states the
+    /// keys, the kinds and the options.
+    #[pyo3(signature = (
+        other,
+        by,
+        how = "inner",
+        options = None,
+        *,
+        coalesce = ellipsis(),
+        suffix = ellipsis(),
+        build = ellipsis(),
+        prune = ellipsis(),
+        spill = ellipsis(),
+        pushdown_keys = ellipsis(),
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
+    fn join_with(
+        slf: &Bound<'_, Self>,
+        other: &Bound<'_, PyAny>,
+        by: &Bound<'_, PyAny>,
+        how: &str,
+        options: Option<PyRef<'_, PyJoinOptions>>,
+        coalesce: Py<PyAny>,
+        suffix: Py<PyAny>,
+        build: Py<PyAny>,
+        prune: Py<PyAny>,
+        spill: Py<PyAny>,
+        pushdown_keys: Py<PyAny>,
+    ) -> PyResult<Self> {
+        let py = slf.py();
+        let keys = join_keys_of(by)?;
+        let how = join_kind_of(how)?;
+        let options = JoinKeywords {
+            coalesce,
+            suffix,
+            build,
+            prune,
+            spill,
+            pushdown_keys,
+        }
+        .resolve(py, options.as_deref())?;
+        let other = chunked_from_py(other, None, ArrowCastOptions::new())?;
+        Self::detached(slf, move |chunked| {
+            chunked.join_with(&other, keys, how, &options)
+        })
+        .map(Self::from_inner)
+    }
+
+    /// Sort the rows in place, the merged chunks replacing the chunks,
+    /// answering this chunked serie.
     #[pyo3(signature = (*, descending = false, nulls_first = false))]
     fn as_sorted<'py>(
         slf: &Bound<'py, Self>,
@@ -617,7 +760,20 @@ impl PyChunkedSerie {
         Ok(slf.clone())
     }
 
-    /// Keep the first occurrence of every value, in place.
+    /// Sort the rows in place in the order the `order by` keys of `by`
+    /// state, the merged chunks replacing the chunks, answering this
+    /// chunked serie; a refusal leaves it as it was.
+    fn as_sort_by<'py>(
+        slf: &Bound<'py, Self>,
+        by: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, Self>> {
+        let by = orderings_of(by)?;
+        slf.borrow_mut().inner.as_sort_by(by).map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// Keep the first occurrence of every value, in place, each chunk
+    /// filtered where it stands.
     fn as_unique<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Self>> {
         slf.borrow_mut().inner.as_unique().map_err(value_error)?;
         Ok(slf.clone())

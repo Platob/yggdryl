@@ -412,7 +412,7 @@ macro_rules! container_object_io {
                 Err(super::namespace::no_table(self))
             }
 
-            fn read_arrow(&self, _options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
+            fn read_serie(&self, _options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
                 Err(super::namespace::no_table(self))
             }
 

@@ -31,7 +31,8 @@ use crate::expression::{SelectorInput, selector_from_input};
 use crate::field::JsField;
 use crate::napi_error;
 use crate::serie::{
-    JsSerie, JsSerieIterator, count, groups, position, rows_of, sort_options, static_record,
+    JsSerie, JsSerieIterator, OrderingsInput, count, groups, orderings_of, position, rows_of,
+    sort_options, static_record,
 };
 use crate::text::codec::{
     JsScalar, checked_depth, value_to_transport, value_to_transport_with_field,
@@ -267,6 +268,20 @@ impl JsWindowSerie {
         Ok(count(self.window()?.memory_size()))
     }
 
+    /// The bytes the window's rows occupy in memory, read through the serie
+    /// it views: a window is never spilled on its own - spill the serie.
+    #[napi]
+    pub fn resident_size(&self) -> Result<f64> {
+        Ok(count(self.window()?.resident_size()))
+    }
+
+    /// Whether the window's rows lie in a spill file: the serie's own
+    /// answer over the rows it views.
+    #[napi]
+    pub fn is_spilled(&self) -> Result<bool> {
+        Ok(self.window()?.is_spilled())
+    }
+
     /// Whether the window's rows are in sorted order under the options.
     #[napi(js_name = "_isSortedNative", skip_typescript)]
     pub fn is_sorted_native(
@@ -303,6 +318,29 @@ impl JsWindowSerie {
     ) -> Result<JsSerie> {
         self.window()?
             .sort_indices(sort_options(descending, nulls_first))
+            .map(JsSerie::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The window-relative row positions in the order the `order by` keys
+    /// of `by` state, as a `uint32` column named `index`: the keys computed
+    /// over the window's rows alone.
+    #[napi(js_name = "_sortIndicesByNative", skip_typescript)]
+    pub fn sort_indices_by_native(&self, by: OrderingsInput<'_>) -> Result<JsSerie> {
+        let by = orderings_of(&by)?;
+        self.window()?
+            .sort_indices_by(by)
+            .map(JsSerie::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The window's rows in the order the `order by` keys of `by` state, as
+    /// a new serie declaring them.
+    #[napi(js_name = "_intoSortByNative", skip_typescript)]
+    pub fn into_sort_by_native(&self, by: OrderingsInput<'_>) -> Result<JsSerie> {
+        let by = orderings_of(&by)?;
+        self.window()?
+            .into_sort_by(by)
             .map(JsSerie::from_core)
             .map_err(napi_error)
     }
@@ -509,6 +547,18 @@ impl JsWindowSerie {
     ) -> Result<()> {
         self.window_mut()?
             .as_sorted(sort_options(descending, nulls_first))
+            .map(|_| ())
+            .map_err(napi_error)
+    }
+
+    /// Sort the window's rows in place in the order the `order by` keys of
+    /// `by` state, written back over the window's own range: every row
+    /// outside it untouched, and a refusal leaves the serie as it was.
+    #[napi(js_name = "_asSortByNative", skip_typescript)]
+    pub fn as_sort_by_native(&mut self, by: OrderingsInput<'_>) -> Result<()> {
+        let by = orderings_of(&by)?;
+        self.window_mut()?
+            .as_sort_by(by)
             .map(|_| ())
             .map_err(napi_error)
     }

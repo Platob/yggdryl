@@ -472,9 +472,9 @@ impl PyIOBase {
         })
     }
 
-    /// The options a shape-free Arrow read or write runs under: `None` when
-    /// nothing was given, so a structured text document - which has no
-    /// record options of its own - is read or written whole; otherwise the
+    /// The options a `*_serie` read or write runs under: `None` when nothing
+    /// was given, so the core runs under the handle's own - a container's
+    /// table beneath it, a structured text document whole; otherwise the
     /// resolved options, carried for a document by any record encoding's,
     /// because the declared field is all a document reads off them.
     fn arrow_options(
@@ -528,6 +528,7 @@ impl PyIOBase {
         let options = self.resolve_options(options, properties)?;
         options.require_write_mode(mode).map_err(value_error)?;
         options.require_commit_batch_num().map_err(value_error)?;
+        options.require_num_threads().map_err(value_error)?;
         options.require_write_limits().map_err(value_error)?;
         if options.write_limit_is_zero() {
             if mode == IOMode::Overwrite {
@@ -602,6 +603,35 @@ impl PyIOBase {
         self.inner_mut()?
             .write_arrow_reader(batches, mode, options)
             .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// The one write every `*_serie` method is: the options resolved and
+    /// their zero counts refused before `value` is read, so no refusal pulls
+    /// a one-shot source; then `value` read once as the shape it holds and
+    /// written by the core - off the GIL when the rows are native, under it
+    /// when they are a Python stream, whose every pull would take it back.
+    fn write_source(
+        &mut self,
+        value: &Bound<'_, PyAny>,
+        mode: IOMode,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let py = value.py();
+        let options = self.arrow_options(options, properties)?;
+        if let Some(options) = &options {
+            options.require_commit_batch_num().map_err(value_error)?;
+            options.require_num_threads().map_err(value_error)?;
+        }
+        let source = crate::serie::serie_source_of(value)?;
+        let native = matches!(
+            source,
+            yggdryl::SerieSource::Serie(_) | yggdryl::SerieSource::Chunked(_)
+        ) || value.is_instance_of::<crate::serie::PySerieReader>();
+        let inner = self.inner_mut()?;
+        let write = move || inner.write_serie(source, mode, options.as_ref());
+        let written = if native { py.detach(write) } else { write() };
+        written.map_err(crate::holder::fs::storage_error)
     }
 }
 
@@ -1553,14 +1583,15 @@ impl PyIOBase {
     ///
     /// The column-shaped sibling of `read_scalar`, and the one read that does
     /// not need the caller to know first what the resource is: a record
-    /// encoding answers its batch stream and a structured text document
-    /// answers the one record column its rows parse into.
+    /// encoding answers its batch stream, a container the table its leaves
+    /// hold, and a structured text document the one record column its rows
+    /// parse into.
     ///
     /// `options` and the properties beside it shape the read as they shape
     /// every record read; a structured text document reads only the declared
-    /// `field` off them. Neither given, the handle is read whole.
+    /// `field` off them. Neither given, the handle's own options apply.
     #[pyo3(signature = (*, options = None, **properties))]
-    fn read_arrow(
+    fn read_serie(
         &self,
         py: Python<'_>,
         options: Option<&Bound<'_, PyAny>>,
@@ -1568,38 +1599,70 @@ impl PyIOBase {
     ) -> PyResult<crate::serie::PySerieReader> {
         let options = self.arrow_options(options, properties)?;
         let inner = self.inner()?;
-        py.detach(|| inner.read_arrow(options.as_ref()))
+        py.detach(|| inner.read_serie(options.as_ref()))
             .map(crate::serie::PySerieReader::from)
             .map_err(crate::holder::fs::storage_error)
     }
 
-    /// Write any Arrow-convertible object as this resource's rows.
+    /// Write rows in any shape as this resource's rows, under one `mode`.
     ///
-    /// The value crosses as a `SerieReader`, so a `Serie`, a `pyarrow`
-    /// container, a pandas or polars frame, a `NumPy` array, and an Arrow C
-    /// stream exporter all reach the same publication path. A structured text
+    /// `value` is a `Serie`, a `ChunkedSerie` or a `SerieReader` - written
+    /// as the batches it already holds, nothing re-landed - or anything
+    /// `SerieReader.from_` reads: a `pyarrow` container, a pandas or polars
+    /// frame, a `NumPy` array, an Arrow C stream exporter. A structured text
     /// document is one frame around its rows, so only `overwrite` applies to
-    /// one.
+    /// one, and of the options only the declared `field`.
     ///
-    /// This is the generic write: whatever shape the value holds reaches the
-    /// primitive that takes it as it stands, so `options` and the properties
-    /// beside it - `field`, `select`, `filter`, `merge_by`, a row bound -
-    /// apply exactly as they do to every record write.
+    /// This is the generic write: `options` and the properties beside it -
+    /// `field`, `select`, `filter`, `merge_by`, a row bound, a cadence -
+    /// apply exactly as they do to every record write, and neither given,
+    /// the handle's own apply.
     #[pyo3(signature = (value, mode = "overwrite", *, options = None, **properties))]
-    fn write_arrow(
+    fn write_serie(
         &mut self,
         value: &Bound<'_, PyAny>,
         mode: &str,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let options = self.arrow_options(options, properties)?;
-        let value =
-            crate::serie::serie_reader_from_py(value, None, yggdryl::ArrowCastOptions::new())?;
-        let mode = yggdryl::IOMode::from_str(mode).map_err(crate::value_error)?;
-        self.inner_mut()?
-            .write_arrow(value, mode, options.as_ref())
-            .map_err(crate::holder::fs::storage_error)
+        let mode = IOMode::from_str(mode).map_err(value_error)?;
+        self.write_source(value, mode, options, properties)
+    }
+
+    /// Replace this resource's rows with `value`'s: `write_serie` under
+    /// `overwrite`.
+    #[pyo3(signature = (value, *, options = None, **properties))]
+    fn overwrite_serie(
+        &mut self,
+        value: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        self.write_source(value, IOMode::Overwrite, options, properties)
+    }
+
+    /// Add `value`'s rows after this resource's: `write_serie` under
+    /// `append`.
+    #[pyo3(signature = (value, *, options = None, **properties))]
+    fn append_serie(
+        &mut self,
+        value: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        self.write_source(value, IOMode::Append, options, properties)
+    }
+
+    /// Merge `value`'s rows into this resource's by the `merge_by` key:
+    /// `write_serie` under `merge`.
+    #[pyo3(signature = (value, *, options = None, **properties))]
+    fn merge_serie(
+        &mut self,
+        value: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        self.write_source(value, IOMode::Merge, options, properties)
     }
 
     /// Replace what is here with `data`, as `Path.write_bytes`.

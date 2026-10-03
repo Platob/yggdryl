@@ -1,6 +1,6 @@
 # yggdryl-records in Python
 
-`from yggdryl import IOBase, RecordOptions, TextOptions`; Iceberg is `from yggdryl.iceberg import IcebergTable`. Every record method takes keyword-only `options=` plus the option properties by name (`select=`, `filter=`, `field=`, `merge_by=`, `max_row_size=`, `row_offset=`, `commit_batch_num=`, `compression=`, `rowheader=`, ...), each set on a copy.
+`from yggdryl import IOBase, RecordOptions, TextOptions`; Iceberg is `from yggdryl.iceberg import IcebergTable`. Every record method takes keyword-only `options=` plus the option properties by name (`select=`, `filter=`, `field=`, `merge_by=`, `max_row_size=`, `row_offset=`, `commit_batch_num=`, `num_threads=`, `compression=`, `rowheader=`, ...), each set on a copy.
 
 ## Which encoding will this handle use?
 
@@ -174,7 +174,7 @@ with pytest.raises(ValueError, match="merge_by"):
 
 ## Choose the write mode at run time
 
-`write_arrow_reader|table|batch` and `write_records` take the mode as a string; `write_arrow`/`read_arrow` take and answer a `SerieReader` and are also the record door of JSON, JSON Lines, YAML, TOML and XML handles.
+`write_arrow_reader|table|batch` and `write_records` take the mode as a string, and so does `write_serie(value, mode="overwrite")`, whose `overwrite_serie`/`append_serie`/`merge_serie` name it: `value` is a `Serie`, a `ChunkedSerie`, a `SerieReader` or anything `SerieReader.from_` reads, and with `read_serie` they are also the record door of JSON, JSON Lines, YAML, TOML and XML handles.
 
 ```python
 import pathlib
@@ -182,7 +182,7 @@ import tempfile
 
 import pyarrow as pa
 
-from yggdryl import IOBase, Serie, SerieReader
+from yggdryl import ChunkedSerie, IOBase, Serie, SerieReader
 
 root = pathlib.Path(tempfile.mkdtemp())
 handle = IOBase(root / "trades.arrows")
@@ -190,17 +190,22 @@ for mode in ("overwrite", "append"):
     handle.write_arrow_table(pa.table({"id": [1, 2]}), mode)
 assert handle.row_size() == 4
 
-# A document handle takes rows through write_arrow, one document per row.
+# The Serie doors take a held column, held chunks, a stream or any columnar value.
+handle.write_serie(Serie.from_(pa.table({"id": [3]})), "append")
+handle.append_serie(ChunkedSerie.from_(pa.table({"id": [4]})))
+assert handle.row_size() == 6
+
+# A document handle takes rows through overwrite_serie, one document per row.
 lines = IOBase(root / "quotes.jsonl")
-lines.write_arrow(pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 200]}))
+lines.overwrite_serie(pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 200]}))
 assert lines.read_bytes().count(b"\n") == 2
-read = lines.read_arrow()
+read = lines.read_serie()
 assert isinstance(read, SerieReader)
 assert len(Serie.from_(read)) == 2
 
-# A document is written whole: write_arrow on it takes "overwrite" only.
+# A document is written whole: write_serie on it takes "overwrite" only.
 try:
-    lines.write_arrow(pa.table({"symbol": ["NVDA"], "size": [300]}), "append")
+    lines.append_serie(pa.table({"symbol": ["NVDA"], "size": [300]}))
     raise AssertionError("append to a document must be refused")
 except ValueError as refused:
     assert "expected overwrite, got append" in str(refused)
@@ -208,7 +213,7 @@ except ValueError as refused:
 
 ## Bound memory on large writes
 
-`commit_batch_num=N` publishes every N whole batches, then the remainder (a committed prefix survives a later failure); a cadence never cuts a batch, and native rows are cut into batches by `batch_row_size`. Unset is the destination's own cadence - a file or folder commits once, an Iceberg table each time its held batches reach the target file size; `0` is refused before any input is pulled. `batch_row_size` bounds the batches a Parquet or Arrow IPC read yields.
+`commit_batch_num=N` publishes every N whole batches, then the remainder (a committed prefix survives a later failure); a cadence never cuts a batch, and native rows are cut into batches by `batch_row_size`. Unset is the destination's own cadence - a file, a folder and an Iceberg table commit once, the table holding every partition's rows under the process spill bound until the source ends; `0` is refused before any input is pulled. `num_threads=n` is how many partition groups an Iceberg commit writes at once, `0` refused naming `$.num_threads`. `batch_row_size` bounds the batches a Parquet or Arrow IPC read yields.
 
 ```python
 import pathlib
@@ -595,7 +600,7 @@ assert read.execute().read_all().column("name").to_pylist() == ["b"]
 
 - Options are keyword-only: `read_arrow_reader(options=o)` or `read_arrow_reader(select=[...])`; a positional options argument is a `TypeError`.
 - A plan's `offset` assigned through `options.plan` is the options' `row_offset`; a merge with one is refused.
-- JSON, JSON Lines, YAML, TOML and XML handles are not `*_records`/`*_arrow_*` targets; use `write_arrow`/`read_arrow`, or the codecs in `yggdryl-documents`. `write_arrow` on them accepts `"overwrite"` only - a document is written whole.
+- JSON, JSON Lines, YAML, TOML and XML handles are not `*_records`/`*_arrow_*` targets; use `overwrite_serie`/`read_serie`, or the codecs in `yggdryl-documents`. `write_serie` on them accepts `"overwrite"` only - a document is written whole - and reads only the declared `field` off the options.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; pass `safe=False` to have it refused.
 - A folder's partition columns come from the path: a leaf read alone does not carry them.
 - A CSV byte role (`separator`, `quote`, `escape`, `comment`) is a one-character `str` or one byte, and `null_values` a list - a bare `str` is a `TypeError`; the role itself (ASCII, no line break, no byte another role holds) is judged by the core, and a CSV property on another encoding's options is `None` to read and a `ValueError` to set.

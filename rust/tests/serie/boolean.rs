@@ -134,3 +134,24 @@ fn a_column_built_by_pushes_is_the_from_scalars_column_buffer_for_buffer() {
     );
     assert_eq!(pushed, laid_out);
 }
+
+#[test]
+fn a_column_built_sliced_or_written_is_resident_whole_and_never_spilled() {
+    let mut column = flags();
+    let leaf = column.as_boolean().expect("a boolean column");
+
+    assert!(leaf.memory_size() > 0);
+    assert_eq!(leaf.resident_size(), leaf.memory_size());
+    assert!(!leaf.is_spilled());
+    // The array is rebuilt around the bitmaps the column holds.
+    assert!(leaf.array().values().inner().ptr_eq(leaf.values().inner()));
+
+    let window = leaf.slice(1, 3).expect("rows 1..4");
+    assert_eq!(window.resident_size(), window.memory_size());
+    assert!(!window.is_spilled());
+
+    column.push(Scalar::from(true)).expect("a present row");
+    let written = column.as_boolean().expect("a boolean column");
+    assert_eq!(written.resident_size(), written.memory_size());
+    assert!(!written.is_spilled());
+}

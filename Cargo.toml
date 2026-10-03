@@ -17,9 +17,9 @@ license = "Apache-2.0"
 repository = "https://github.com/platob/yggdryl"
 
 [workspace.dependencies]
-# `ffi` on the Arrow crates and `std` on `log` are what the Python extension's
-# own dependencies (`arrow-pyarrow`, `pyo3-log`) switch on anyway, and they add
-# no crate to any graph. Declared here, they give the core one feature set under
+# `ffi` on the Arrow crates is what the Python extension's own `arrow-pyarrow`
+# switches on anyway, and neither it nor `std` on `log` adds a crate to any
+# graph. Declared here, they give the core one feature set under
 # every member, so a release job compiles it once for the wheels and the Node.js
 # module beside them; a feature only one binding enabled gave each its own core.
 arrow-array = { version = "59.2.0", features = ["ffi"] }

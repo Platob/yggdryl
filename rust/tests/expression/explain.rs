@@ -167,3 +167,131 @@ mod grammar {
         assert_eq!(lines.len(), 5, "{explained}");
     }
 }
+
+/// A join is a node of the plan tree: its kind, its source, each key as an
+/// equality, the rung the keys hash on where both roots are stated, the side
+/// held, and the filter the first join over a target prunes the left read by.
+mod joins {
+    use yggdryl::Expression;
+
+    #[test]
+    fn a_join_over_targets_states_its_build_side_and_its_pushdown_rule() {
+        let plan: Expression = "select id, city from trades \
+                                join 'file:///lake/venues.parquet' with (media_type = 'application/vnd.apache.parquet') \
+                                on venue = mic \
+                                left join flags using (id) \
+                                where city is not null"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            plan.explain(),
+            [
+                "plan",
+                "├─ from",
+                "│  └─ trades",
+                "├─ inner join",
+                "│  ├─ 'file:///lake/venues.parquet'",
+                "│  ├─ with",
+                "│  │  └─ media_type = \"application/vnd.apache.parquet\"",
+                "│  ├─ on",
+                "│  │  └─ venue = mic",
+                "│  ├─ build right",
+                "│  └─ pushdown venue in (distinct mic, at most 10000)",
+                "├─ left join",
+                "│  ├─ flags",
+                "│  ├─ on",
+                "│  │  └─ id = id",
+                "│  └─ build right",
+                "├─ where",
+                "│  └─ is not null",
+                "│     └─ column city",
+                "└─ select",
+                "   ├─ column id",
+                "   └─ column city",
+            ]
+            .join("\n")
+        );
+        // A kind that keeps every left row, or several keys, push nothing.
+        for text in [
+            "select * from trades left join venues using (venue)",
+            "select * from trades anti join venues using (venue)",
+            "select * from trades full join venues using (venue)",
+            "select * from trades join venues using (venue, desk)",
+        ] {
+            let plan: Expression = text.parse().unwrap();
+            assert!(!plan.explain().contains("pushdown"), "{text}");
+        }
+        for text in [
+            "select * from trades right join venues using (venue)",
+            "select * from trades semi join venues using (venue)",
+        ] {
+            let plan: Expression = text.parse().unwrap();
+            assert!(plan.explain().contains("pushdown venue in"), "{text}");
+        }
+        // A nested `from` is read by running it: nothing is pushed into it.
+        let plan: Expression = "select * from (select * from trades) join venues using (venue)"
+            .parse()
+            .unwrap();
+        assert!(!plan.explain().contains("pushdown"));
+    }
+
+    #[test]
+    fn a_join_over_stated_roots_states_its_rung() {
+        // Every source declares its columns, so each join's roots are
+        // stated: the left one is the output of the join before it.
+        let plan: Expression = "select id, city \
+                                from (create (id int64 not null, venue utf8 not null, ccy ccy)) \
+                                left join (create (venue utf8 not null, city utf8)) using (venue) \
+                                semi join (create (ccy ccy not null)) using (ccy)"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            plan.explain(),
+            [
+                "plan",
+                "├─ from",
+                "│  └─ plan",
+                "│     └─ create",
+                "│        ├─ id : int64 not null",
+                "│        │  └─ column id",
+                "│        ├─ venue : utf8 not null",
+                "│        │  └─ column venue",
+                "│        └─ ccy : ccy",
+                "│           └─ column ccy",
+                "├─ left join",
+                "│  ├─ plan",
+                "│  │  └─ create",
+                "│  │     ├─ venue : utf8 not null",
+                "│  │     │  └─ column venue",
+                "│  │     └─ city : utf8",
+                "│  │        └─ column city",
+                "│  ├─ on",
+                "│  │  └─ venue = venue",
+                "│  ├─ rung row format",
+                "│  └─ build right",
+                "├─ semi join",
+                "│  ├─ plan",
+                "│  │  └─ create",
+                "│  │     └─ ccy : ccy not null",
+                "│  │        └─ column ccy",
+                "│  ├─ on",
+                "│  │  └─ ccy = ccy",
+                "│  ├─ rung values",
+                "│  └─ build right",
+                "└─ select",
+                "   ├─ column id",
+                "   └─ column city",
+            ]
+            .join("\n")
+        );
+        // A key that binds on neither side leaves the rung unstated, not
+        // the plan unexplained.
+        let plan: Expression = "select * from (create (id int64 not null)) \
+                                join (create (id int64 not null)) on nope = id"
+            .parse()
+            .unwrap();
+        let explained = plan.explain();
+        assert!(!explained.contains("rung"), "{explained}");
+        assert!(explained.contains("nope = id"), "{explained}");
+    }
+}

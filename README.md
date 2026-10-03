@@ -36,7 +36,7 @@ page per family in that layer, so the site tree and source tree agree:
 | Storage handles and backends | [holder](docs/holder/index.md) |
 | Record encodings, tables, documents, codings, charsets | [media](docs/media/index.md) |
 | Identifiers | [uri](docs/uri/index.md) |
-| Arrow, expressions, hashing, graph, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [hashing](docs/hashing.md), [graph](docs/graph/index.md), [fix](docs/fix/index.md) |
+| Arrow, expressions, hashing, logging, graph, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [hashing](docs/hashing.md), [logging](docs/logging.md), [graph](docs/graph/index.md), [fix](docs/fix/index.md) |
 
 Cross-runtime examples use linked tabs: choose Rust, Python, or JavaScript once
 and the site keeps that context while you move between pages.
@@ -85,6 +85,8 @@ rust/                    The core crate
                          book display's HTTP service - FIX
   src/hashing/           The private stable-hash adapters; xxhash/ and
                          txhash/ are one folder each
+  src/logging/           Python's logging owned by the core: loggers, levels,
+                         handlers and formatters behind the log facade
   tests/                 One test file per source file, at the mirrored path
   benchmarks/            Criterion targets, grouped by theme
 python/                  The Python extension
@@ -180,10 +182,12 @@ not expose a C Data consumer.
 Every value crossing Arrow is a `Serie` - one row, a column or a held table,
 carrying the exact `Field` that types it - a `ChunkedSerie` where a chunked
 column or a table of several batches stays apart - a `pyarrow.ChunkedArray`,
-`Serie` columns of one `Field` - or a `SerieReader`, a stream of them. `IOMedia::read_arrow`/`write_arrow`
-read and write a `SerieReader` whatever the handle holds - a record encoding
-as its batch stream, a JSON, JSON Lines, YAML, TOML, or XML document as the one
-batch its rows parse into. In Python `Serie.from_`, `ChunkedSerie.from_` and
+`Serie` columns of one `Field` - or a `SerieReader`, a stream of them.
+`IOMedia::read_serie` reads a `SerieReader` whatever the handle holds - a
+record encoding as its batch stream, a JSON, JSON Lines, YAML, TOML, or XML
+document as the one batch its rows parse into - and `write_serie`,
+`overwrite_serie`, `append_serie` and `merge_serie` write any of the three as
+the batches it already is. In Python `Serie.from_`, `ChunkedSerie.from_` and
 `SerieReader.from_` share the one recognition every columnar runtime crosses: a `pyarrow` container, a
 pandas or polars frame or series, a NumPy array, or anything exporting the
 Arrow C data or stream protocol, the declared `Field` casting it in Rust. The

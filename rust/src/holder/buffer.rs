@@ -12,10 +12,10 @@ use crate::{IOBase, MediaType, MimeType, Result, Uri, Url};
 /// the final length is known.
 ///
 /// A buffer has no persisted location. [`IOBase::url`] reports a synthetic
-/// `mem:` identity naming this machine as its host, then this process and the
-/// allocation's address - `mem://<host>/<pid>/<address>` - which is enough to
-/// tell two live buffers apart, on one machine or across several, in a log or
-/// an error without pretending the bytes live anywhere.
+/// `mem:` identity naming `localhost` as its host, then this process and the
+/// allocation's address - `mem://localhost/<pid>/<address>` - which is enough
+/// to tell two live buffers on this machine apart, in a log or an error,
+/// without pretending the bytes live anywhere.
 ///
 /// [`IOBase::media_type`] is lazy: unless one is set explicitly, it is inferred
 /// from the stored bytes' leading signature the first time it is asked for, and
@@ -192,11 +192,12 @@ impl IOBase for Buffer {
 
     fn url(&self) -> Option<&Url> {
         // A buffer is not stored anywhere, so this is an identity rather than
-        // a location: the machine is its host, and the process id the scope
+        // a location: this machine is its host, and the process id the scope
         // that makes an address unique on it.
-        Some(self.identity.get_or_init(|| {
-            crate::hostname::memory_identity(std::process::id(), self.bytes.as_ptr())
-        }))
+        Some(
+            self.identity
+                .get_or_init(|| memory_identity(std::process::id(), self.bytes.as_ptr())),
+        )
     }
 
     fn media_type(&self) -> &MediaType {
@@ -259,4 +260,28 @@ impl AsRef<[u8]> for Buffer {
     fn as_ref(&self) -> &[u8] {
         self.as_slice()
     }
+}
+
+/// The `mem:` identity of bytes held at `address` by process `pid` on this
+/// machine: `mem://localhost/<pid>/<address>`, what a buffer answers for a
+/// location it does not have.
+///
+/// Built from its parts rather than parsed from text, the host static, so
+/// what an identity costs is the same on every machine.
+pub(crate) fn memory_identity<T>(pid: u32, address: *const T) -> Url {
+    let path = smol_str::format_smolstr!("/{pid}/{address:p}");
+    crate::UriPath::from_str(&path)
+        .and_then(|path| {
+            Uri::from_parts(
+                crate::Scheme::from_str("mem")?,
+                crate::Authority::this_machine(),
+                path,
+                None,
+                None,
+            )
+        })
+        .and_then(Url::from_uri)
+        // The host is spelled to parse and the path is digits, so this holds;
+        // a diagnostic accessor still never panics.
+        .unwrap_or_else(|_| unreachable!("a digit path under this machine's host is a URL"))
 }

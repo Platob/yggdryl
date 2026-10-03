@@ -26,7 +26,7 @@ Each medium has a page of its own - what declares it, how it reads, how it write
 
 ## Read
 
-A read returns an [`arrow::BatchReader`](../arrow/readers.md); only the current batch is alive. Rows come back as native values through Python `read_records` and JavaScript `readRecords`; Rust has no `read_records` and reads rows through `read_arrow`, a `SerieReader` of one record `Serie` per batch - the [write example](#write) reads its rows back each way.
+A read returns an [`arrow::BatchReader`](../arrow/readers.md); only the current batch is alive. Rows come back as native values through Python `read_records` and JavaScript `readRecords`; Rust has no `read_records` and reads rows through `read_serie`, a `SerieReader` of one record `Serie` per batch - the [write example](#write) reads its rows back each way. `read_serie` with no options reads under the handle's own, in every language: `read_serie()` in Python, `readSerie()` in JavaScript.
 
 === "Rust"
 
@@ -118,7 +118,7 @@ A folder, a location ending in `/` and a glob read as the one table their leaves
 
 ## Write
 
-Every write states its intent: `overwrite_*` replaces the stored rows, `append_*` keeps them and adds its own after them, and `merge_*` updates the rows whose `merge_by` key matches and appends the rest. `overwrite_records`, `append_records` and `merge_records` write native rows; the `*_arrow_reader` and `*_arrow_batch` twins - and `*_arrow_table` in the bindings - write Arrow batches, streamed and never collected.
+Every write states its intent: `overwrite_*` replaces the stored rows, `append_*` keeps them and adds its own after them, and `merge_*` updates the rows whose `merge_by` key matches and appends the rest. `overwrite_records`, `append_records` and `merge_records` write native rows; the `*_arrow_reader` and `*_arrow_batch` twins - and `*_arrow_table` in the bindings - write Arrow batches, streamed and never collected; and `overwrite_serie`, `append_serie` and `merge_serie` - `write_serie` with the mode named - write a held `Serie`, a `ChunkedSerie` or a `SerieReader` as the batches it already is ([Writing a serie to a handle](../types/serie.md#writing-a-serie-to-a-handle)), absent options being the handle's own.
 
 === "Rust"
 
@@ -150,7 +150,7 @@ Every write states its intent: `overwrite_*` replaces the stored rows, `append_*
     // Rust reads Arrow as a stream of record columns, one per batch, and a
     // record column lends each child column by name.
     let mut venues = Vec::new();
-    for records in handle.read_arrow(Some(&options.clone().with_field(field.clone())))? {
+    for records in handle.read_serie(Some(&options.clone().with_field(field.clone())))? {
         let venue = records?.child("venue").cloned().expect("a venue column");
         for row in 0..venue.len() {
             venues.push(venue.scalar(row)?);
@@ -228,7 +228,12 @@ Every write states its intent: `overwrite_*` replaces the stored rows, `append_*
 
 ## Options
 
-One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`, `batch_row_size`, `merge_by`, `safe`, `level`, the row bounds `row_offset`, `max_row_size` and `max_byte_size` ([Limits](../holder/index.md#limits)), plus the settings one encoding owns. A JSON, YAML, TOML or XML document is one value rather than a stream of batches, so it has no `RecordOptions`: it reads through `read_arrow` or `read_scalar` and writes, whole, through `write_arrow` or `write_scalar`. The declared `field` and the field a write completes onto are both declarations and cast by [one rule](../types/cast.md#required-columns): a nullable column takes a value it cannot convert as null while `safe` (the default) holds, and a not-null column refuses that value, a null and a missing column by name rather than storing its canonical default. A `TRANSFORM:`, `PARTITION:` or `DIGEST:` declaration on either field is metadata the cast carries, never a column a read or write fills: a derived or holder column the rows do not carry lands null where nullable and is refused by path where required, and the caller fills it first through the field's `transform` or `digest` view ([Applying a schema](../types/field.md#applying-a-schema)).
+One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`, `batch_row_size`, `merge_by`, `safe`, `level`, the row bounds `row_offset`, `max_row_size` and `max_byte_size` ([Limits](../holder/index.md#limits)), the publication cadence `commit_batch_num` ([Commit cadence](../holder/index.md#commit-cadence)) and the write's `num_threads`, plus the settings one encoding owns. A JSON, YAML, TOML or XML document is one value rather than a stream of batches, so it has no `RecordOptions` of its own: it reads through `read_serie` or `read_scalar` and writes, whole, through `overwrite_serie` or `write_scalar`, taking of a record encoding's options only the declared `field`. The declared `field` and the field a write completes onto are both declarations and cast by [one rule](../types/cast.md#required-columns): a nullable column takes a value it cannot convert as null while `safe` (the default) holds, and a not-null column refuses that value, a null and a missing column by name rather than storing its canonical default. A `TRANSFORM:`, `PARTITION:` or `DIGEST:` declaration on either field is metadata the cast carries, never a column a read or write fills: a derived or holder column the rows do not carry lands null where nullable and is refused by path where required, and the caller fills it first through the field's `transform` or `digest` view ([Applying a schema](../types/field.md#applying-a-schema)).
+
+| Write setting | Unset | Set |
+| --- | --- | --- |
+| `commit_batch_num` | the destination's own cadence: a leaf, a plain folder and an Iceberg table publish once, when the source ends - the table holding every partition's rows under the process [spill bound](../types/serie.md#spilling-to-disk) until then, so an overwrite of any length is one atomic snapshot | a publication every `N` whole batches, then the remainder; `0` is refused before the source is pulled ([Commit cadence](../holder/index.md#commit-cadence)) |
+| `num_threads` | the destination's own answer: an Iceberg table's `write.parallelism`, else its `read.parallelism`, else every thread the host offers | the most parts a write of several parts runs at once - an Iceberg commit's [partition groups](iceberg.md#write) - while a leaf of one file is written on the thread that writes it and reads nothing from it; `0` is refused naming `$.num_threads` before the source is pulled |
 
 === "Rust"
 
@@ -240,7 +245,8 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
 
     let options = RecordOptions::for_media_type(&Url::from_str("file:///trades.parquet")?.media_type())?
         .with_field(schema.clone())
-        .with_batch_row_size(1024);
+        .with_batch_row_size(1024)
+        .with_num_threads(4);
 
     assert_eq!(options.mime_type(), MimeType::PARQUET);
     assert_eq!(options.field(), Some(schema.clone()));
@@ -248,6 +254,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     assert!(options.select().is_all());
     assert!(options.filter().is_always_true());
     assert_eq!(options.batch_row_size(), Some(1024));
+    assert_eq!(options.num_threads(), Some(4));
     assert_eq!(options.stable_hash(), options.clone().stable_hash());
     ```
 
@@ -265,6 +272,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     options.field = schema
     options.batch_row_size = 1024
     options.commit_batch_num = 10
+    options.num_threads = 4
 
     assert str(options.mime_type) == "application/vnd.apache.parquet"
     assert options.name == "row"
@@ -273,6 +281,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     assert options.filter.is_always_true
     assert options.batch_row_size == 1024
     assert options.commit_batch_num == 10
+    assert options.num_threads == 4
 
     # A setting one encoding has reads as None on an encoding that has none.
     assert options.max_row_group_size == 1_048_576
@@ -296,6 +305,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     const options = RecordOptions.from('trades.parquet')
       .withField(schema)
       .withBatchRowSize(1024)
+      .withNumThreads(4)
 
     assert.equal(String(options.mimeType), 'application/vnd.apache.parquet')
     assert.equal(options.name, 'row')
@@ -303,6 +313,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     assert.ok(options.select.isAll)
     assert.ok(options.filter.isAlwaysTrue)
     assert.equal(options.batchRowSize, 1024)
+    assert.equal(options.numThreads, 4)
 
     // A setting one encoding has reads as null on an encoding that has none.
     assert.equal(options.maxRowGroupSize, 1_048_576)

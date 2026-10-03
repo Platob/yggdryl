@@ -40,7 +40,7 @@ One abstraction for every place that answers "which tables are there, and how do
 
     // The table is a handle: every record verb reads its rows.
     let mut rows = 0;
-    for serie in trades.read_arrow(None)? {
+    for serie in trades.read_serie(None)? {
         rows += serie?.len();
     }
     assert_eq!(rows, 2);

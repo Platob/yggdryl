@@ -520,13 +520,13 @@ impl IOMedia for MediaTable {
         IOMedia::read_arrow_reader(self.handle()?, options)
     }
 
-    fn read_arrow(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
         match options {
-            Some(options) => IOMedia::read_arrow(self.handle()?, Some(options)),
+            Some(options) => IOMedia::read_serie(self.handle()?, Some(options)),
             // The table's own options carry its declared field and its name.
             None => {
                 let options = self.options()?;
-                IOMedia::read_arrow(self.handle()?, Some(&options))
+                IOMedia::read_serie(self.handle()?, Some(&options))
             }
         }
     }

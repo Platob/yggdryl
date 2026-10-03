@@ -12,11 +12,17 @@ use arrow_array::{
 };
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
-use yggdryl::expression::Selector;
+use yggdryl::expression::{IntoOrderings, Ordering as OrderBy, Selector};
 use yggdryl::{
     ArrowCastOptions, DataType, Error, Field, FieldPath, Scalar, Serie, SerieReader, SerieWindows,
     SortOptions, StructType, TimeUnit, Timezone,
 };
+
+/// `field` without the order its root declares: what a sort leaves equal
+/// to the field it sorted, the `SORT:by` it wrote aside.
+fn without_order(field: Option<&Field>) -> Option<Field> {
+    field.map(|field| field.clone().with_metadata_removed("SORT:by"))
+}
 
 fn i64s(values: &[i64]) -> Vec<Scalar> {
     values.iter().map(|value| Scalar::from(*value)).collect()
@@ -546,7 +552,11 @@ fn every_layout_answers_every_verb_through_the_ladder() {
         assert_eq!(order.len(), 4, "{what}");
         let sorted = column.into_sorted(SortOptions::default()).expect(&what);
         assert!(sorted.is_sorted(SortOptions::default()), "{what}: {sorted}");
-        assert_eq!(sorted.field(), column.field(), "{what}");
+        assert_eq!(
+            without_order(sorted.field()),
+            column.field().cloned(),
+            "{what}"
+        );
         // The sort agrees with the values' own order, absences last.
         let mut by_value = column.rows().to_vec();
         by_value.sort_by(|left, right| match (left.is_null(), right.is_null()) {
@@ -584,7 +594,11 @@ fn every_layout_answers_every_verb_through_the_ladder() {
             .as_reversed()
             .expect(&what);
         assert_eq!(written.len(), 3, "{what}");
-        assert_eq!(written.field(), column.field(), "{what}");
+        assert_eq!(
+            without_order(written.field()),
+            column.field().cloned(),
+            "{what}"
+        );
         // Ascending with absences last, reversed, is descending with
         // absences first.
         assert!(
@@ -1778,7 +1792,11 @@ fn cuts_as_its_values_do(serie: &Serie, by: &str, keys: &[Scalar]) {
             !gathered,
             "{what}: the serie is borrowed exactly when nothing is gathered"
         );
-        assert_eq!(windows.serie().field(), serie.field(), "{what}");
+        assert_eq!(
+            without_order(windows.serie().field()),
+            serie.field().cloned(),
+            "{what}"
+        );
         let taken = serie
             .into_taken(&Serie::new(u32s(&order)))
             .expect("the reference order");
@@ -1921,7 +1939,10 @@ fn window_by_sorted_gathers_the_rows_once_in_stable_key_order() {
     assert!(!std::ptr::eq(windows.serie(), &quotes));
     let stable = Serie::new(u32s(&[1, 4, 0, 2, 3]));
     let taken = quotes.into_taken(&stable).expect("taken");
-    assert_eq!(windows.serie().field(), quotes.field());
+    assert_eq!(
+        without_order(windows.serie().field()),
+        quotes.field().cloned()
+    );
     assert_eq!(windows.serie().rows(), taken.rows());
     for (_, window) in &windows {
         assert!(std::ptr::eq(window.serie(), windows.serie()));
@@ -2286,4 +2307,1157 @@ fn the_record_rung_agrees_with_its_run_under_every_ordering() {
     agrees_with_its_run(&fills);
     let orders = fills.child("order").expect("a child");
     agrees_with_its_run(orders);
+}
+
+/// The record `book{venue: utf8?, price: int64?, qty: int64}`, its root
+/// nullable so a row may be absent.
+fn book_field(venue: DataType) -> Field {
+    StructType::from_fields([
+        venue.nullable_field("venue"),
+        DataType::Int64.nullable_field("price"),
+        DataType::Int64.required_field("qty"),
+    ])
+    .map(DataType::from)
+    .expect("three children")
+    .nullable_field("book")
+}
+
+/// The book's venues, prices and quantities, row 8 absent.
+const BOOK: [(Option<&str>, Option<i64>, i64); 9] = [
+    (Some("XNYS"), Some(5), 1),
+    (Some("XNAS"), None, 2),
+    (Some("XNAS"), Some(7), 3),
+    (None, Some(3), 4),
+    (Some("XNYS"), Some(5), 5),
+    (Some("XNAS"), Some(7), 6),
+    (Some("XNYS"), None, 7),
+    (Some("XNAS"), Some(2), 8),
+    (Some("AAAA"), Some(99), 9),
+];
+
+/// [`BOOK`] off Arrow buffers, its absent row holding a venue and a price
+/// that would sort first were they read: an absent row is absent in every
+/// cell.
+fn book() -> Serie {
+    let field = book_field(DataType::utf8());
+    let ArrowDataType::Struct(fields) = field
+        .as_arrow_field_ref()
+        .expect("a projection")
+        .data_type()
+        .clone()
+    else {
+        unreachable!("a record field projects to a struct")
+    };
+    let venues: ArrayRef = Arc::new(StringArray::from(
+        BOOK.iter().map(|row| row.0).collect::<Vec<_>>(),
+    ));
+    let prices: ArrayRef = Arc::new(Int64Array::from(
+        BOOK.iter().map(|row| row.1).collect::<Vec<_>>(),
+    ));
+    let quantities: ArrayRef = Arc::new(Int64Array::from(
+        BOOK.iter().map(|row| row.2).collect::<Vec<_>>(),
+    ));
+    let records = arrow_array::StructArray::try_new(
+        fields,
+        vec![venues, prices, quantities],
+        Some(NullBuffer::from(
+            (0..BOOK.len()).map(|row| row != 8).collect::<Vec<_>>(),
+        )),
+    )
+    .expect("a struct array");
+    Serie::from_arrow_array(Some(&field), Arc::new(records), ArrowCastOptions::new())
+        .expect("a record column")
+}
+
+/// [`BOOK`] laid out row by row under `venue`, row 8 absent.
+fn book_of(venue: DataType) -> Serie {
+    let field = book_field(venue);
+    let rows = BOOK
+        .iter()
+        .enumerate()
+        .map(|(row, (venue, price, qty))| {
+            if row == 8 {
+                return Scalar::Null;
+            }
+            field
+                .scalar(Scalar::from_sequence([
+                    venue.map_or(Scalar::Null, Scalar::from),
+                    price.map_or(Scalar::Null, Scalar::from),
+                    Scalar::from(*qty),
+                ]))
+                .expect("a book row")
+        })
+        .collect::<Vec<_>>();
+    Serie::from_scalars(field, rows).expect("book rows")
+}
+
+/// The order `cells` - per row, one leaf cell per key - sort into under
+/// `options`, one per key: a stable sort by the first key whose cells
+/// differ, each absent cell where its key puts an absence. The reference
+/// every `order by` rung is pinned to.
+fn reference_order(cells: &[Vec<Scalar>], options: &[SortOptions]) -> Vec<u32> {
+    let mut order: Vec<u32> = (0..cells.len() as u32).collect();
+    order.sort_by(|left, right| {
+        let (left, right) = (&cells[*left as usize], &cells[*right as usize]);
+        left.iter()
+            .zip(right)
+            .zip(options)
+            .map(|((left, right), options)| {
+                let absent = if options.is_nulls_first() {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                };
+                match (left.is_null(), right.is_null()) {
+                    (true, true) => Ordering::Equal,
+                    (true, false) => absent,
+                    (false, true) => absent.reverse(),
+                    (false, false) if options.is_descending() => value_order(left, right).reverse(),
+                    (false, false) => value_order(left, right),
+                }
+            })
+            .find(|step| *step != Ordering::Equal)
+            .unwrap_or(Ordering::Equal)
+    });
+    order
+}
+
+/// The cells at `at` of every row of `records`, an absent row's all null.
+fn cells_at(records: &Serie, at: &[usize]) -> Vec<Vec<Scalar>> {
+    records
+        .rows()
+        .iter()
+        .map(|row| {
+            at.iter()
+                .map(|cell| {
+                    row.as_serie()
+                        .map_or(Scalar::Null, |run| run.scalar(*cell).expect("a cell"))
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn order_of(serie: &Serie, by: &str) -> Vec<Scalar> {
+    serie
+        .sort_indices_by(by)
+        .unwrap_or_else(|error| panic!("{by}: {error}"))
+        .rows()
+        .into_owned()
+}
+
+#[test]
+fn sort_by_orders_a_record_by_every_key_in_turn_stable_over_ties() {
+    let book = book();
+    // XNAS by price descending, absent first; then XNYS; then the absent
+    // venue and the absent row, which reads absent in every cell.
+    assert_eq!(
+        order_of(&book, "venue, price desc nulls first"),
+        u32s(&[1, 2, 5, 7, 6, 0, 4, 8, 3])
+    );
+    assert_eq!(
+        order_of(&book, "venue desc nulls first, price"),
+        u32s(&[3, 8, 0, 4, 6, 7, 2, 5, 1])
+    );
+    // An index column, as `sort_indices` answers.
+    let order = book.sort_indices_by("venue, price").expect("an order");
+    assert_eq!(order.field().map(Field::name), Some("index"));
+    assert_eq!(order.field().map(Field::dtype), Some(&DataType::UInt32));
+
+    // Every pair of orderings against the reference, on the row format's
+    // rung (utf8 and int64 cells) and on the values' own (a windows-1252
+    // venue): one order, rows of equal keys kept in arrival order.
+    let cp1252 = book_of(DataType::cp1252());
+    for first in ORDERINGS {
+        for second in ORDERINGS {
+            let by = format!("venue{first}, price{second}");
+            let expected = u32s(&reference_order(
+                &cells_at(&book, &[0, 1]),
+                &[first, second],
+            ));
+            assert_eq!(order_of(&book, &by), expected, "{by}");
+            assert_eq!(order_of(&cp1252, &by), expected, "{by} over windows-1252");
+            // Two stable sorts, the least significant key first, are the
+            // same order.
+            let mut held = book.clone();
+            held.as_sort_by(format!("price{second}"))
+                .expect("by price")
+                .as_sort_by(format!("venue{first}"))
+                .expect("by venue");
+            assert_eq!(
+                held.rows(),
+                book.into_sort_by(by.as_str()).expect("sorted").rows(),
+                "{by}"
+            );
+        }
+    }
+}
+
+#[test]
+fn into_sort_by_takes_the_rows_under_the_same_field_and_leaves_the_serie() {
+    let book = book();
+    let before = book.rows().into_owned();
+    let order = book
+        .sort_indices_by("venue, price desc nulls first")
+        .expect("an order");
+    let sorted = book
+        .into_sort_by("venue, price desc nulls first")
+        .expect("sorted");
+    assert_eq!(without_order(sorted.field()), book.field().cloned());
+    assert_eq!(
+        sorted.rows(),
+        book.into_taken(&order).expect("taken").rows()
+    );
+    assert_eq!(book.rows().into_owned(), before);
+}
+
+#[test]
+fn a_plain_column_sorts_by_its_own_name_as_into_sorted_does() {
+    let prices = int64_column(vec![Some(3), None, Some(1), Some(2), Some(1)]);
+    for options in ORDERINGS {
+        let by = format!("price{options}");
+        assert_eq!(
+            prices
+                .sort_indices_by(by.as_str())
+                .expect("an order")
+                .rows(),
+            prices.sort_indices(options).expect("an order").rows(),
+            "{by}"
+        );
+        assert_eq!(
+            prices.into_sort_by(by.as_str()).expect("sorted").rows(),
+            prices.into_sorted(options).expect("sorted").rows(),
+            "{by}"
+        );
+    }
+    let values = Serie::from_scalars(
+        Field::new("value", DataType::Int64, false),
+        i64s(&[2, 9, 4]),
+    )
+    .expect("a column");
+    assert_eq!(
+        values
+            .into_sort_by("value desc")
+            .expect("sorted")
+            .rows()
+            .to_vec(),
+        i64s(&[9, 4, 2])
+    );
+    // A computed term over the column's own name.
+    assert_eq!(order_of(&values, "value * -1"), u32s(&[1, 2, 0]));
+}
+
+#[test]
+fn a_computed_key_orders_by_what_it_computes() {
+    let book = book();
+    assert_eq!(
+        order_of(&book, "price * 2 desc"),
+        order_of(&book, "price desc")
+    );
+    assert_eq!(
+        order_of(&book, "venue, price * 2 desc nulls first"),
+        u32s(&[1, 2, 5, 7, 6, 0, 4, 8, 3])
+    );
+    let field = StructType::from_fields([
+        DataType::utf8().required_field("venue"),
+        DataType::Int64.required_field("qty"),
+    ])
+    .map(DataType::from)
+    .expect("two children")
+    .required_field("fill");
+    let fills = Serie::from_scalars(
+        field,
+        [("XNYS", 1_i64), ("xnas", 2), ("XNAS", 3), ("xnys", 4)]
+            .map(|(venue, qty)| Scalar::from_sequence([Scalar::from(venue), Scalar::from(qty)])),
+    )
+    .expect("fills");
+    // Folded, the two spellings of a venue tie and the quantity decides;
+    // as stored, upper case sorts first.
+    assert_eq!(
+        order_of(&fills, "lower(venue), qty desc"),
+        u32s(&[2, 1, 3, 0])
+    );
+    assert_eq!(order_of(&fills, "venue"), u32s(&[2, 0, 1, 3]));
+}
+
+#[test]
+fn a_key_off_the_row_format_sorts_by_its_values_beside_the_others() {
+    // A version orders by its numbers: the values' own rung, beside an
+    // integer on the comparator's.
+    let field = StructType::from_fields([
+        DataType::Version.required_field("release"),
+        DataType::Int64.required_field("build"),
+    ])
+    .map(DataType::from)
+    .expect("two children")
+    .required_field("ship");
+    let ship = |release: &str, build: i64| {
+        field
+            .scalar(Scalar::from_sequence([
+                Scalar::from(release),
+                Scalar::from(build),
+            ]))
+            .expect("a ship row")
+    };
+    let ships = Serie::from_scalars(
+        field.clone(),
+        [
+            ship("1.10.0", 1),
+            ship("1.9.0", 2),
+            ship("1.10.0", 3),
+            ship("1.2.0", 4),
+            ship("1.9.0", 5),
+        ],
+    )
+    .expect("ships");
+    assert_eq!(
+        order_of(&ships, "release desc, build"),
+        u32s(&[0, 2, 1, 4, 3])
+    );
+    for first in ORDERINGS {
+        for second in ORDERINGS {
+            let by = format!("release{first}, build{second}");
+            assert_eq!(
+                order_of(&ships, &by),
+                u32s(&reference_order(
+                    &cells_at(&ships, &[0, 1]),
+                    &[first, second]
+                )),
+                "{by}"
+            );
+        }
+    }
+
+    // A registered code and a float holding foreign NaN payloads, under a
+    // root with an absent row whose cells hold values: each cell on its own
+    // rung, the absent row absent in every key.
+    let quotes = coded_quotes();
+    assert_eq!(
+        order_of(&quotes, "venue desc, qty"),
+        u32s(&[0, 3, 6, 1, 2, 4, 5, 8, 7])
+    );
+    assert_eq!(
+        order_of(&quotes, "qty desc"),
+        u32s(&[8, 6, 5, 4, 3, 2, 1, 0, 7])
+    );
+    assert_eq!(
+        order_of(&quotes, "qty desc nulls first"),
+        u32s(&[7, 8, 6, 5, 4, 3, 2, 1, 0])
+    );
+    // Every NaN one value above every number, -0.0 below 0.0, and the
+    // absent row's 1.0 never read.
+    assert_eq!(
+        order_of(&quotes, "px desc, qty"),
+        u32s(&[3, 4, 5, 8, 0, 2, 1, 6, 7])
+    );
+    for options in ORDERINGS {
+        let by = format!("px{options}, qty desc");
+        let mut held = quotes.clone();
+        held.as_sort_by("qty desc")
+            .expect("by qty")
+            .as_sort_by(format!("px{options}"))
+            .expect("by px");
+        assert_eq!(
+            quotes.into_sort_by(by.as_str()).expect("sorted").rows(),
+            held.rows(),
+            "{by}"
+        );
+    }
+
+    // A record key compares child by child, absent where its row is.
+    let fills = ordered_quotes();
+    for first in ORDERINGS {
+        for second in ORDERINGS {
+            let by = format!("order{first}, qty{second}");
+            let mut held = fills.clone();
+            held.as_sort_by(format!("qty{second}"))
+                .expect("by qty")
+                .as_sort_by(format!("order{first}"))
+                .expect("by order");
+            assert_eq!(
+                fills.into_sort_by(by.as_str()).expect("sorted").rows(),
+                held.rows(),
+                "{by}"
+            );
+            assert_eq!(
+                fills
+                    .into_sort_by(format!("order{first}"))
+                    .expect("sorted")
+                    .rows(),
+                fills
+                    .child("order")
+                    .expect("a child")
+                    .sort_indices(first)
+                    .and_then(|order| fills.into_taken(&order))
+                    .expect("sorted")
+                    .rows(),
+                "{by}"
+            );
+        }
+    }
+}
+
+#[test]
+fn every_spelling_of_the_keys_answers_one_order() {
+    let book = book();
+    let expected = u32s(&[1, 2, 5, 7, 6, 0, 4, 8, 3]);
+    let keys: Vec<OrderBy> = ["venue", "price desc nulls first"]
+        .into_iter()
+        .map(|text| text.parse().expect("a key"))
+        .collect();
+    let record = |entries: Vec<(&str, Scalar)>| Scalar::from_struct(entries).expect("a record");
+    let orders = [
+        book.sort_indices_by("venue, price desc nulls first"),
+        book.sort_indices_by(String::from("venue, price desc nulls first")),
+        book.sort_indices_by(["venue", "price desc nulls first"]),
+        book.sort_indices_by(vec!["venue", "price desc nulls first"]),
+        book.sort_indices_by(keys.clone()),
+        book.sort_indices_by(keys.as_slice()),
+        book.sort_indices_by(Scalar::from("venue, price desc nulls first")),
+        book.sort_indices_by(Scalar::from_sequence([
+            Scalar::from("venue"),
+            Scalar::from("price desc nulls first"),
+        ])),
+        book.sort_indices_by(Scalar::from_sequence([
+            record(vec![("term", Scalar::from("venue"))]),
+            record(vec![
+                ("term", Scalar::from("price")),
+                ("descending", Scalar::from(true)),
+                ("nulls_first", Scalar::from(true)),
+            ]),
+        ])),
+    ];
+    for (spelling, order) in orders.into_iter().enumerate() {
+        assert_eq!(
+            order.expect("an order").rows().into_owned(),
+            expected,
+            "spelling {spelling}"
+        );
+    }
+    // A selector keys every projection ascending.
+    assert_eq!(
+        book.sort_indices_by("venue, price".parse::<Selector>().expect("a selector"))
+            .expect("an order")
+            .rows(),
+        book.sort_indices_by("venue, price")
+            .expect("an order")
+            .rows()
+    );
+    assert_eq!(
+        "venue, price".into_orderings().expect("keys"),
+        ["venue", "price"].into_orderings().expect("keys")
+    );
+}
+
+#[test]
+fn sort_by_refuses_by_name_before_any_row() {
+    let book = book();
+    let empty = book_of(DataType::utf8())
+        .into_filtered(&Serie::new(vec![Scalar::from(false); BOOK.len()]))
+        .expect("no row");
+    for serie in [&book, &empty] {
+        let what = format!("{} rows", serie.len());
+        // No key at all.
+        for refused in [
+            serie.sort_indices_by(Vec::<OrderBy>::new()),
+            serie.sort_indices_by(Selector::new(Vec::new())),
+        ] {
+            assert_eq!(
+                invalid_record(refused.unwrap_err()),
+                (
+                    "book".to_owned(),
+                    "expected at least one `order by` key to sort book by, got none".to_owned()
+                ),
+                "{what}"
+            );
+        }
+        // Text that is not a list of keys: the parse error itself.
+        assert_eq!(
+            serie.sort_indices_by("venue,").unwrap_err().to_string(),
+            "venue,".into_orderings().unwrap_err().to_string(),
+            "{what}"
+        );
+        // An unnest is one row per element, never one key per row.
+        let refused = serie
+            .sort_indices_by("unnest(items)")
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("unnest"), "{what}: {refused}");
+        // A column the record does not hold: the binder's own text.
+        let root = SerieReader::root_of(serie.field().expect("a column")).expect("a root");
+        let unknown = "tier".parse::<Selector>().expect("a selector");
+        assert_eq!(
+            serie.sort_indices_by("tier desc").unwrap_err().to_string(),
+            unknown.bind(&root).unwrap_err().to_string(),
+            "{what}"
+        );
+        // Two keys publishing one name.
+        let refused = serie
+            .sort_indices_by("price, price desc")
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("twice"), "{what}: {refused}");
+        // Every refusal of the write leaves the serie as it was.
+        let mut held = serie.clone();
+        for by in ["venue,", "tier", "price, price desc", "unnest(items)"] {
+            assert!(held.as_sort_by(by).is_err(), "{what}: {by}");
+            assert_eq!(held.rows(), serie.rows(), "{what}: {by}");
+        }
+    }
+    // A run has no field for a term to read.
+    for run in [Serie::new(i64s(&[1, 2])), Serie::new(Vec::new())] {
+        assert_eq!(
+            invalid_record(run.sort_indices_by("price").unwrap_err()),
+            (
+                "$".to_owned(),
+                "a schema-free run sorts by no term".to_owned()
+            )
+        );
+    }
+}
+
+#[test]
+fn as_sort_by_sorts_in_place_and_chains() {
+    let book = book();
+    let mut held = book.clone();
+    held.as_sort_by("venue, price desc nulls first")
+        .expect("sorted")
+        .as_reversed()
+        .expect("reversed");
+    assert_eq!(
+        held.rows(),
+        book.into_sort_by("venue, price desc nulls first")
+            .expect("sorted")
+            .into_reversed()
+            .rows()
+    );
+    assert_eq!(without_order(held.field()), book.field().cloned());
+}
+
+// ---------------------------------------------------------------------------
+// The declared order: `SORT:by` on a record's root, written by the sorts,
+// kept by what keeps the order, flipped by a reversal, cleared by a write
+// that breaks it, and read before any row is compared.
+// ---------------------------------------------------------------------------
+
+/// The `SORT:by` text a serie's root carries.
+fn sort_by(serie: &Serie) -> Option<String> {
+    serie
+        .field()
+        .and_then(|field| field.get_metadata("SORT:by"))
+        .map(str::to_owned)
+}
+
+/// The keys a serie declares, each as the grammar writes it.
+fn declared_keys(serie: &Serie) -> Option<Vec<String>> {
+    serie
+        .declared_order()
+        .expect("a well-formed declaration")
+        .map(|keys| keys.iter().map(ToString::to_string).collect())
+}
+
+/// Whether two records lend the very same buffers, child by child.
+fn shares_children(left: &Serie, right: &Serie) -> bool {
+    let buffers = |child: &Serie| {
+        child
+            .into_arrow_array()
+            .expect("a column")
+            .to_data()
+            .buffers()
+            .to_vec()
+    };
+    left.children().len() == right.children().len()
+        && left
+            .children()
+            .iter()
+            .zip(right.children())
+            .all(|(mine, theirs)| {
+                let (mine, theirs) = (buffers(mine), buffers(theirs));
+                !mine.is_empty()
+                    && mine.len() == theirs.len()
+                    && mine
+                        .iter()
+                        .zip(&theirs)
+                        .all(|(left, right)| left.ptr_eq(right))
+            })
+}
+
+fn quote_row(venue: &str, price: i64) -> Scalar {
+    Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)])
+}
+
+/// What [`declared_quotes`] declares.
+const DECLARED: &str = r#"["venue","price desc"]"#;
+
+/// XNAS 3, XNAS 1, XNYS 2, XNYS 1: the quotes sorted by `venue, price
+/// desc`, the root declaring it.
+fn declared_quotes() -> Serie {
+    let sorted = quotes(&[("XNYS", 1), ("XNAS", 1), ("XNYS", 2), ("XNAS", 3)])
+        .into_sort_by("venue, price desc")
+        .expect("sorted");
+    assert_eq!(
+        sorted.rows().to_vec(),
+        vec![
+            quote_row("XNAS", 3),
+            quote_row("XNAS", 1),
+            quote_row("XNYS", 2),
+            quote_row("XNYS", 1),
+        ]
+    );
+    sorted
+}
+
+/// Whether `rows` land under `field` - which a declaring root verifies.
+fn lands_under(field: &Field, rows: Vec<Scalar>) -> bool {
+    Serie::from_scalars(field.clone(), rows).is_ok()
+}
+
+#[test]
+fn a_whole_row_sort_of_a_record_declares_every_child_under_its_options() {
+    let unsorted = quotes(&[("XNYS", 1), ("XNAS", 1), ("XNYS", 2), ("XNAS", 3)]);
+    assert!(unsorted.declared_order().expect("none").is_none());
+    for (options, text) in [
+        (SortOptions::default(), r#"["venue","price"]"#),
+        (SortOptions::descending(), r#"["venue desc","price desc"]"#),
+        (
+            SortOptions::ascending().with_nulls_first(true),
+            r#"["venue nulls first","price nulls first"]"#,
+        ),
+        (
+            SortOptions::descending().with_nulls_first(true),
+            r#"["venue desc nulls first","price desc nulls first"]"#,
+        ),
+    ] {
+        let sorted = unsorted.into_sorted(options).expect("sorted");
+        assert_eq!(sort_by(&sorted).as_deref(), Some(text), "{options:?}");
+        let keys = sorted
+            .declared_order()
+            .expect("well formed")
+            .expect("declared");
+        assert_eq!(
+            keys.iter()
+                .map(|key| (key.term().to_string(), key.options()))
+                .collect::<Vec<_>>(),
+            vec![("venue".to_owned(), options), ("price".to_owned(), options)],
+            "{options:?}"
+        );
+        // In place, the same declaration and the same rows.
+        let mut held = unsorted.clone();
+        held.as_sorted(options).expect("sorted");
+        assert_eq!(sort_by(&held).as_deref(), Some(text), "{options:?}");
+        assert_eq!(held.rows(), sorted.rows(), "{options:?}");
+        // The rows sorted are what the declaration says, and the serie
+        // sorted is left declaring nothing.
+        assert!(sorted.is_sorted(options), "{options:?}");
+        assert!(
+            lands_under(
+                sorted.field().expect("a record"),
+                sorted.rows().into_owned()
+            ),
+            "{options:?}"
+        );
+        assert!(sort_by(&unsorted).is_none());
+    }
+}
+
+#[test]
+fn a_sort_by_keys_declares_exactly_its_keys_as_the_grammar_spells_them() {
+    let unsorted = quotes(&[("XNYS", 1), ("XNAS", 1), ("XNYS", 2), ("XNAS", 3)]);
+    for (by, text) in [
+        ("venue, price desc", r#"["venue","price desc"]"#),
+        ("price desc nulls first", r#"["price desc nulls first"]"#),
+        (
+            "venue desc nulls last, price asc",
+            r#"["venue desc","price"]"#,
+        ),
+        ("price * -1", r#"["price * -1"]"#),
+    ] {
+        let sorted = unsorted.into_sort_by(by).expect("sorted");
+        assert_eq!(sort_by(&sorted).as_deref(), Some(text), "{by}");
+        let mut held = unsorted.clone();
+        held.as_sort_by(by).expect("sorted");
+        assert_eq!(sort_by(&held).as_deref(), Some(text), "{by}");
+        assert_eq!(held.rows(), sorted.rows(), "{by}");
+        assert!(
+            lands_under(
+                sorted.field().expect("a record"),
+                sorted.rows().into_owned()
+            ),
+            "{by}"
+        );
+    }
+    // The keys a declaration reads back are the ones the sort was given.
+    let sorted = unsorted.into_sort_by("venue, price desc").expect("sorted");
+    assert_eq!(
+        declared_keys(&sorted),
+        Some(vec!["venue".to_owned(), "price desc".to_owned()])
+    );
+    assert_eq!(
+        sorted.declared_order().expect("well formed"),
+        Some("venue, price desc".into_orderings().expect("two keys"))
+    );
+}
+
+#[test]
+fn a_column_that_is_not_a_record_and_a_run_declare_nothing() {
+    let prices = int64_column(vec![Some(3), None, Some(1)]);
+    let mut held = prices.clone();
+    held.as_sorted(SortOptions::default())
+        .expect("sorted")
+        .as_sort_by("price desc")
+        .expect("sorted")
+        .as_reversed()
+        .expect("reversed");
+    for (what, sorted) in [
+        (
+            "into_sorted",
+            prices.into_sorted(SortOptions::default()).expect("sorted"),
+        ),
+        (
+            "into_sort_by",
+            prices.into_sort_by("price desc").expect("sorted"),
+        ),
+        ("into_reversed", prices.into_reversed()),
+        ("the writes in place", held),
+    ] {
+        assert!(sorted.declared_order().expect("none").is_none(), "{what}");
+        assert_eq!(sorted.field(), prices.field(), "{what}");
+    }
+    let run = Serie::new(i64s(&[3, 1, 2]));
+    for sorted in [
+        run.into_sorted(SortOptions::default()).expect("sorted"),
+        run.into_reversed(),
+    ] {
+        assert!(sorted.declared_order().expect("none").is_none());
+        assert!(sorted.field().is_none());
+    }
+    // A leaf field stating `SORT:by` is no record: it declares nothing, so
+    // nothing reads its rows against it.
+    let stated = Field::new("price", DataType::Int64, false)
+        .try_with_metadata("SORT:by", r#"["price"]"#)
+        .expect("the key is well formed");
+    let leaf = Serie::from_scalars(stated, i64s(&[3, 1, 2])).expect("no order is read");
+    assert!(leaf.declared_order().expect("none").is_none());
+    assert_eq!(
+        leaf.sort_indices(SortOptions::default())
+            .expect("an order")
+            .rows()
+            .to_vec(),
+        u32s(&[1, 2, 0])
+    );
+}
+
+#[test]
+fn what_the_declaration_states_is_answered_with_the_identity_and_the_same_buffers() {
+    let sorted = declared_quotes();
+    let identity = u32s(&[0, 1, 2, 3]);
+    // The whole declaration, and every prefix of it.
+    for by in ["venue, price desc", "venue"] {
+        assert_eq!(
+            sorted
+                .sort_indices_by(by)
+                .expect("an order")
+                .rows()
+                .to_vec(),
+            identity,
+            "{by}"
+        );
+        let again = sorted.into_sort_by(by).expect("sorted");
+        assert!(shares_children(&again, &sorted), "{by}: the same buffers");
+        // The clone keeps the declaration it had, the longer one.
+        assert_eq!(sort_by(&again).as_deref(), Some(DECLARED), "{by}");
+        let mut held = sorted.clone();
+        held.as_sort_by(by).expect("sorted");
+        assert!(shares_children(&held, &sorted), "{by}: in place, untouched");
+    }
+    // What the declaration does not begin with is sorted, and declared.
+    let by_price = sorted.into_sort_by("price desc").expect("sorted");
+    assert!(!shares_children(&by_price, &sorted));
+    assert_eq!(sort_by(&by_price).as_deref(), Some(r#"["price desc"]"#));
+    assert_eq!(
+        sorted
+            .sort_indices_by("price desc")
+            .expect("an order")
+            .rows()
+            .to_vec(),
+        u32s(&[0, 2, 1, 3])
+    );
+    let longer = sorted
+        .into_sort_by("venue, price desc, venue desc")
+        .err()
+        .map(|error| error.to_string());
+    assert!(
+        longer.is_some(),
+        "a key named twice is the binder's refusal"
+    );
+
+    // A whole-row declaration answers `is_sorted`, `sort_indices` and
+    // `into_sorted` under its options; any other options are read.
+    let whole = quotes(&[("XNYS", 1), ("XNAS", 1), ("XNYS", 2)])
+        .into_sorted(SortOptions::default())
+        .expect("sorted");
+    assert!(whole.is_sorted(SortOptions::default()));
+    assert!(!whole.is_sorted(SortOptions::descending()));
+    assert_eq!(
+        whole
+            .sort_indices(SortOptions::default())
+            .expect("an order")
+            .rows()
+            .to_vec(),
+        u32s(&[0, 1, 2])
+    );
+    let again = whole.into_sorted(SortOptions::default()).expect("sorted");
+    assert!(shares_children(&again, &whole));
+    let mut held = whole.clone();
+    held.as_sorted(SortOptions::default()).expect("sorted");
+    assert!(shares_children(&held, &whole));
+    let descending = whole
+        .into_sorted(SortOptions::descending())
+        .expect("sorted");
+    assert_eq!(
+        sort_by(&descending).as_deref(),
+        Some(r#"["venue desc","price desc"]"#)
+    );
+    // `venue, price desc` is no whole-row order: `is_sorted` reads it.
+    assert!(!sorted.is_sorted(SortOptions::default()));
+}
+
+#[test]
+fn the_verbs_that_keep_the_order_keep_the_declaration() {
+    let sorted = declared_quotes();
+    let mask = Serie::new([true, false, true, true].map(Scalar::from).to_vec());
+    let increasing = Serie::new(u32s(&[0, 2, 3]));
+    let mut filtered = sorted.clone();
+    filtered.as_filtered(&mask).expect("filtered");
+    let mut unique = sorted.clone();
+    unique.as_unique().expect("unique");
+    let mut taken = sorted.clone();
+    taken.as_taken(&increasing).expect("taken");
+    let mut spilled = sorted.clone();
+    spilled
+        .spill(&yggdryl::SpillOptions::new().with_byte_size(0))
+        .expect("spilled");
+    assert!(spilled.is_spilled());
+    for (what, kept) in [
+        ("slice", sorted.slice(1, 2).expect("a slice")),
+        (
+            "window",
+            sorted.window(1, 3).expect("a window").into_serie(),
+        ),
+        (
+            "into_filtered",
+            sorted.into_filtered(&mask).expect("filtered"),
+        ),
+        ("as_filtered", filtered),
+        ("into_unique", sorted.into_unique().expect("unique")),
+        ("as_unique", unique),
+        ("clone", sorted.clone()),
+        ("spill", spilled),
+        (
+            "into_taken increasing",
+            sorted.into_taken(&increasing).expect("taken"),
+        ),
+        ("as_taken increasing", taken),
+    ] {
+        assert_eq!(sort_by(&kept).as_deref(), Some(DECLARED), "{what}");
+        assert!(
+            lands_under(kept.field().expect("a record"), kept.rows().into_owned()),
+            "{what}: the rows kept are in the order kept"
+        );
+    }
+    // A pick that is not strictly increasing - out of order, or a row
+    // twice - could break the order, so the declaration goes.
+    for indices in [u32s(&[2, 0]), u32s(&[0, 0, 1]), u32s(&[3, 2, 1, 0])] {
+        let picks = Serie::new(indices.clone());
+        let taken = sorted.into_taken(&picks).expect("taken");
+        assert!(sort_by(&taken).is_none(), "{indices:?}");
+        let mut held = sorted.clone();
+        held.as_taken(&picks).expect("taken");
+        assert!(sort_by(&held).is_none(), "{indices:?}");
+        assert_eq!(held.rows(), taken.rows(), "{indices:?}");
+    }
+}
+
+#[test]
+fn a_reversal_flips_every_key_its_direction_and_its_nulls() {
+    let sorted = declared_quotes();
+    let flipped = r#"["venue desc nulls first","price nulls first"]"#;
+    let reversed = sorted.into_reversed();
+    assert_eq!(sort_by(&reversed).as_deref(), Some(flipped));
+    let mut held = sorted.clone();
+    held.as_reversed().expect("reversed");
+    assert_eq!(sort_by(&held).as_deref(), Some(flipped));
+    assert_eq!(held.rows(), reversed.rows());
+    // The flipped declaration is true of the reversed rows, and a second
+    // reversal is the first declaration again.
+    assert!(lands_under(
+        reversed.field().expect("a record"),
+        reversed.rows().into_owned()
+    ));
+    assert_eq!(
+        sort_by(&reversed.into_reversed()).as_deref(),
+        Some(DECLARED)
+    );
+    // A whole-row declaration flips to the whole-row order the other way.
+    let whole = quotes(&[("XNYS", 1), ("XNAS", 1)])
+        .into_sorted(SortOptions::default())
+        .expect("sorted")
+        .into_reversed();
+    assert_eq!(
+        sort_by(&whole).as_deref(),
+        Some(r#"["venue desc nulls first","price desc nulls first"]"#)
+    );
+    assert!(whole.is_sorted(SortOptions::descending().with_nulls_first(true)));
+}
+
+/// Run `write` on [`declared_quotes`] and pin whether the declaration
+/// stayed - and that it stays exactly where the rows still land under it.
+fn after_write(what: &str, keeps: bool, write: impl FnOnce(&mut Serie) -> yggdryl::Result<()>) {
+    let mut held = declared_quotes();
+    write(&mut held).unwrap_or_else(|error| panic!("{what}: {error}"));
+    assert_eq!(
+        sort_by(&held).as_deref(),
+        keeps.then_some(DECLARED),
+        "{what}: {held}"
+    );
+    // The root as written, declaring the order again: its rows land under
+    // it exactly where the write kept the declaration.
+    let declaring = without_order(held.field())
+        .expect("a record")
+        .try_with_metadata("SORT:by", DECLARED)
+        .expect("the declaration");
+    assert_eq!(
+        lands_under(&declaring, held.rows().into_owned()),
+        keeps,
+        "{what}: the rows written are in the declared order exactly when it is kept"
+    );
+}
+
+#[test]
+fn a_row_write_keeps_the_declaration_where_the_order_holds_and_clears_it_where_it_breaks() {
+    after_write("set, between its neighbours", true, |serie| {
+        serie.set(1, quote_row("XNAS", 2))
+    });
+    after_write("set, past its neighbour", false, |serie| {
+        serie.set(1, quote_row("XNAS", 4))
+    });
+    after_write("set, the last row", false, |serie| {
+        serie.set(3, quote_row("XNYS", 3))
+    });
+    after_write("push, after the last", true, |serie| {
+        serie.push(quote_row("XNYS", 0))
+    });
+    after_write("push, before the last", false, |serie| {
+        serie.push(quote_row("XNAS", 9))
+    });
+    after_write("insert, in its place", true, |serie| {
+        serie.insert(2, quote_row("XNAS", 0))
+    });
+    after_write("insert, out of its place", false, |serie| {
+        serie.insert(0, quote_row("XNYS", 9))
+    });
+    after_write("splice, in order", true, |serie| {
+        serie.splice(1..3, vec![quote_row("XNAS", 2), quote_row("XNYS", 5)])
+    });
+    after_write("splice, out of order", false, |serie| {
+        serie.splice(0..1, vec![quote_row("ZZZZ", 1)])
+    });
+    after_write(
+        "splice, out of order within the rows written",
+        false,
+        |serie| serie.splice(4..4, vec![quote_row("XPAR", 1), quote_row("XPAR", 2)]),
+    );
+    after_write("extend, in order", true, |serie| {
+        serie.extend(vec![quote_row("XNYS", 1), quote_row("XPAR", 9)])
+    });
+    after_write("extend, out of order", false, |serie| {
+        serie.extend(vec![quote_row("XPAR", 1), quote_row("AAAA", 1)])
+    });
+    after_write("resize, growing with an equal row", true, |serie| {
+        serie.resize(6, quote_row("XNYS", 1))
+    });
+    after_write("resize, growing out of order", false, |serie| {
+        serie.resize(6, quote_row("AAAA", 1))
+    });
+    after_write("resize, shrinking", true, |serie| {
+        serie.resize(2, quote_row("AAAA", 1))
+    });
+    let price = "price".parse::<FieldPath>().expect("a path");
+    after_write("set_cell, in order", true, |serie| {
+        serie.set_cell(&price, 0, Scalar::from(5_i64))
+    });
+    after_write("set_cell, out of order", false, |serie| {
+        serie.set_cell(&price, 1, Scalar::from(9_i64))
+    });
+    let prices = |values: &[i64]| {
+        Serie::from_scalars(DataType::Int64.required_field("price"), i64s(values))
+            .expect("a price column")
+    };
+    after_write("set_child, the same key values", true, |serie| {
+        serie.set_child(prices(&[9, 3, 7, 0]))
+    });
+    after_write("set_child, a key out of order", false, |serie| {
+        serie.set_child(prices(&[1, 3, 2, 1]))
+    });
+    after_write("set_child, a child no key reads", true, |serie| {
+        serie.set_child(
+            Serie::from_scalars(DataType::Int64.required_field("qty"), i64s(&[4, 1, 3, 2]))
+                .expect("a qty column"),
+        )
+    });
+    // Removals leave rows in the order they were.
+    after_write("remove", true, |serie| serie.remove(1).map(drop));
+    after_write("pop", true, |serie| serie.pop().map(drop));
+    after_write("truncate", true, |serie| serie.truncate(1));
+    after_write("clear", true, Serie::clear);
+}
+
+#[test]
+fn a_refused_write_leaves_the_declaration_as_it_was() {
+    let mut held = declared_quotes();
+    let before = held.rows().into_owned();
+    assert!(held.set(0, Scalar::from(1_i64)).is_err());
+    assert!(held.push(Scalar::from("XNAS")).is_err());
+    assert_eq!(held.rows().into_owned(), before);
+    assert_eq!(sort_by(&held).as_deref(), Some(DECLARED));
+}
+
+#[test]
+fn extend_from_serie_trusts_an_order_the_other_declares_and_reads_any_other() {
+    let declared = |rows: &[(&str, i64)]| {
+        quotes(rows)
+            .into_sort_by("venue, price desc")
+            .expect("sorted")
+    };
+    // A serie declaring the same order: in order across the edge, and out
+    // of it.
+    after_write("a declaring serie, its edge in order", true, |serie| {
+        serie.extend_from_serie(&declared(&[("XPAR", 5), ("XNYS", 0)]))
+    });
+    after_write("a declaring serie, its edge out of order", false, |serie| {
+        serie.extend_from_serie(&declared(&[("AAAA", 1), ("ZZZZ", 1)]))
+    });
+    // A plain serie is read row by row.
+    after_write("a plain serie in order", true, |serie| {
+        serie.extend_from_serie(&quotes(&[("XNYS", 0), ("XPAR", 5)]))
+    });
+    after_write("a plain serie out of order", false, |serie| {
+        serie.extend_from_serie(&quotes(&[("XPAR", 5), ("XNYS", 0)]))
+    });
+    // A serie declaring another order proves nothing about this one.
+    after_write("a serie declaring another order", false, |serie| {
+        serie.extend_from_serie(
+            &quotes(&[("XPAR", 9), ("XPAR", 5)])
+                .into_sort_by("price")
+                .expect("sorted"),
+        )
+    });
+    // A record declaring nothing takes a declaring serie's rows and still
+    // declares nothing.
+    let mut plain = quotes(&[("XNAS", 1)]);
+    plain
+        .extend_from_serie(&declared(&[("XNYS", 2)]))
+        .expect("appended");
+    assert!(sort_by(&plain).is_none());
+}
+
+#[test]
+fn a_computed_key_is_cleared_by_any_row_write() {
+    let quotes = quote_column(vec![
+        quote(Some("XNAS"), 1, 0),
+        quote(Some("XNAS"), 2, 14),
+        quote(Some("XNYS"), 3, 15),
+    ])
+    .into_sort_by("minutes(ts, 15)")
+    .expect("sorted");
+    assert_eq!(sort_by(&quotes).as_deref(), Some(r#"["minutes(ts, 15)"]"#));
+    // A row in the order the key states still clears it: a write does not
+    // evaluate a computed key.
+    let mut held = quotes.clone();
+    held.push(quote(Some("XNYS"), 4, 31)).expect("pushed");
+    assert!(sort_by(&held).is_none());
+    let mut held = quotes.clone();
+    held.set(2, quote(Some("XNYS"), 3, 16)).expect("set");
+    assert!(sort_by(&held).is_none());
+    // The verbs that move no row keep it.
+    assert_eq!(
+        sort_by(&quotes.slice(1, 2).expect("a slice")),
+        sort_by(&quotes)
+    );
+    assert_eq!(
+        sort_by(&quotes.into_reversed()).as_deref(),
+        Some(r#"["minutes(ts, 15) desc nulls first"]"#)
+    );
+}
+
+#[test]
+fn a_removal_keeps_even_a_computed_key() {
+    // Rows taken out of rows in order leave them in order, whatever the key
+    // computes: a removal is no row write.
+    let quotes = quote_column(vec![
+        quote(Some("XNAS"), 1, 0),
+        quote(Some("XNAS"), 2, 14),
+        quote(Some("XNYS"), 3, 15),
+    ])
+    .into_sort_by("minutes(ts, 15)")
+    .expect("sorted");
+    type Removal = fn(&mut Serie) -> yggdryl::Result<()>;
+    let removals: [(&str, Removal); 4] = [
+        ("remove", |serie| serie.remove(1).map(drop)),
+        ("pop", |serie| serie.pop().map(drop)),
+        ("truncate", |serie| serie.truncate(1)),
+        ("clear", Serie::clear),
+    ];
+    for (what, removal) in removals {
+        let mut held = quotes.clone();
+        removal(&mut held).expect(what);
+        assert_eq!(sort_by(&held), sort_by(&quotes), "{what}");
+    }
+}
+
+#[test]
+fn an_absent_row_is_written_where_the_declaration_puts_absence() {
+    // Absent rows sort last under the default: an absent row pushed after
+    // every present one keeps the declaration, one inserted first breaks it.
+    let quotes = quote_column(vec![
+        quote(Some("XNYS"), 1, 0),
+        quote(Some("XNAS"), 2, 14),
+        quote(None, 3, 15),
+    ])
+    .into_sort_by("venue, count")
+    .expect("sorted");
+    assert_eq!(sort_by(&quotes).as_deref(), Some(r#"["venue","count"]"#));
+    let declaring = quotes.field().expect("a record").clone();
+    for (what, keeps, write) in [
+        (
+            "an absent row last",
+            true,
+            Box::new(|serie: &mut Serie| serie.push(Scalar::Null))
+                as Box<dyn Fn(&mut Serie) -> yggdryl::Result<()>>,
+        ),
+        (
+            "an absent row first",
+            false,
+            Box::new(|serie: &mut Serie| serie.insert(0, Scalar::Null)),
+        ),
+        (
+            "an absent venue last",
+            true,
+            Box::new(|serie: &mut Serie| serie.push(quote(None, 9, 0))),
+        ),
+        (
+            "an absent venue first",
+            false,
+            Box::new(|serie: &mut Serie| serie.insert(0, quote(None, 0, 0))),
+        ),
+    ] {
+        let mut held = quotes.clone();
+        write(&mut held).expect(what);
+        assert_eq!(sort_by(&held).is_some(), keeps, "{what}: {held}");
+        assert_eq!(
+            lands_under(&declaring, held.rows().into_owned()),
+            keeps,
+            "{what}: kept exactly where the rows land under it"
+        );
+    }
 }

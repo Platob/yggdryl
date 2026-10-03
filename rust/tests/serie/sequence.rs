@@ -1071,3 +1071,60 @@ fn null_sequence_rows_mask_their_physical_items_during_inferred_batch_landing() 
         );
     }
 }
+
+#[test]
+fn a_freshly_built_serie_column_is_resident_whole_and_not_spilled() {
+    let item = || Field::new("item", DataType::Int64, false);
+    let legs = legs_column();
+    let large = Serie::from_scalars(
+        Field::new("legs", DataType::large_serie(item()), true),
+        leg_rows(),
+    )
+    .expect("a large serie column");
+    let views = Serie::from_scalars(
+        Field::new("legs", DataType::serie_view(item()), true),
+        leg_rows(),
+    )
+    .expect("a serie-view column");
+    let pairs = Serie::from_scalars(
+        pairs_field(),
+        [
+            Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
+            Scalar::Null,
+        ],
+    )
+    .expect("a fixed-size serie column");
+
+    let leaf = legs.as_serie().expect("a serie column");
+    assert_eq!(
+        SerieValue::resident_size(leaf),
+        SerieValue::memory_size(leaf)
+    );
+    assert!(!SerieValue::is_spilled(leaf));
+    let leaf = large.as_large_serie().expect("a large serie column");
+    assert_eq!(
+        SerieValue::resident_size(leaf),
+        SerieValue::memory_size(leaf)
+    );
+    assert!(!SerieValue::is_spilled(leaf));
+    let leaf = views.as_serie_view().expect("a serie-view column");
+    assert_eq!(
+        SerieValue::resident_size(leaf),
+        SerieValue::memory_size(leaf)
+    );
+    assert!(!SerieValue::is_spilled(leaf));
+    let leaf = pairs
+        .as_fixed_size_serie()
+        .expect("a fixed-size serie column");
+    assert_eq!(
+        SerieValue::resident_size(leaf),
+        SerieValue::memory_size(leaf)
+    );
+    assert!(!SerieValue::is_spilled(leaf));
+
+    for column in [&legs, &large, &views, &pairs] {
+        assert!(column.memory_size() > 0);
+        assert_eq!(column.resident_size(), column.memory_size());
+        assert!(!column.is_spilled());
+    }
+}

@@ -421,9 +421,9 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
 
 ### Addresses
 
-`uri` is the identifier the bytes are reached through; `url` narrows it when it names a place. A buffer is stored nowhere and still answers a `mem://<host>/<pid>/<address>` identity. `mtime()` (Rust only) answers UTC nanoseconds for a store that records one, and `None` otherwise.
+`uri` is the identifier the bytes are reached through; `url` narrows it when it names a place. A buffer is stored nowhere and still answers a `mem://localhost/<pid>/<address>` identity. `mtime()` (Rust only) answers UTC nanoseconds for a store that records one, and `None` otherwise.
 
-No host is ever made up. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `HOSTNAME` in JavaScript) is this machine's own name, read once from the operating system and spelled as a URL host - lower case, each byte a host cannot hold as `-`, `localhost` when the system reports nothing a host can spell. A buffer and a location on a filesystem that answers in this process name it. A local file names none: `file:///path` is this machine by RFC 8089, and `file://localhost/path` or `file://<HOSTNAME>/path` read as that same local path (on Unix; Windows keeps `\\localhost\share` the share it names). A remote store names its own: the bucket of `s3://bucket/key`, the endpoint its URL states, else its environment (`AWS_ENDPOINT_URL_S3`, `STORAGE_EMULATOR_HOST`, `AZURE_STORAGE_BLOB_ENDPOINT`), else its published endpoint. A child, a parent and every handle `ls` or `glob` answers name the host of the handle they came from.
+No host is ever made up. A local file names none: `file:///path` is this machine by RFC 8089 on every platform, so no host is added to a file URL that did not state one, and `file://localhost/path` or `file://<HOSTNAME>/path` read as that same local path (on Unix; Windows keeps `\\localhost\share` the share it names). A buffer and a location on a filesystem that answers in this process name `localhost`, the one name the crate writes for this machine. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `HOSTNAME` in JavaScript) is the machine's own name, read once from the operating system and spelled as a URL host - lower case, each byte a host cannot hold as `-`, `localhost` when the system reports nothing a host can spell; intake reads it as this machine, and no URL the crate writes names it. A remote store names its own: the bucket of `s3://bucket/key`, the endpoint its URL states, else its environment (`AWS_ENDPOINT_URL_S3`, `STORAGE_EMULATOR_HOST`, `AZURE_STORAGE_BLOB_ENDPOINT`), else its published endpoint. A child, a parent and every handle `ls` or `glob` answers name the host of the handle they came from.
 
 === "Rust"
 
@@ -443,7 +443,7 @@ No host is ever made up. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `H
     // this machine.
     let buffer = Buffer::from_bytes(b"symbol\n".to_vec());
     assert_eq!(buffer.uri().unwrap().scheme().as_str(), "mem");
-    assert_eq!(buffer.url().unwrap().hostname(), Some(yggdryl::HOSTNAME.as_str()));
+    assert_eq!(buffer.url().unwrap().hostname(), Some("localhost"));
     // A local file names no host: `file:///...` is this machine.
     assert_eq!(IOBase::url(&folder).unwrap().hostname(), None);
     ```
@@ -464,11 +464,9 @@ No host is ever made up. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `H
 
     # A buffer is addressed by its identity rather than by a place, on this
     # machine; a local file names no host.
-    from yggdryl import HOSTNAME
-
     buffer = IOBase.from_bytes(b"symbol\n")
     assert buffer.uri.scheme == "mem"
-    assert buffer.url.hostname == HOSTNAME
+    assert buffer.url.hostname == "localhost"
     assert handle.url.hostname is None
     ```
 
@@ -479,7 +477,7 @@ No host is ever made up. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `H
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { HOSTNAME, IOBase } = require('yggdryl')
+    const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-uri-'))
     fs.writeFileSync(path.join(root, 'ticks.csv'), 'symbol\n')
@@ -488,7 +486,7 @@ No host is ever made up. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `H
     assert.equal(handle.uri.toString(), handle.url.toString())
     assert.equal(handle.uri.scheme, 'file')
     assert.equal(IOBase.fromBytes(Buffer.from('symbol\n')).uri.scheme, 'mem')
-    assert.equal(IOBase.fromBytes(Buffer.from('symbol\n')).url.hostname, HOSTNAME)
+    assert.equal(IOBase.fromBytes(Buffer.from('symbol\n')).url.hostname, 'localhost')
     assert.equal(handle.url.hostname, null)
     ```
 
@@ -1384,7 +1382,7 @@ cargo bench --bench coding -- io_pstream
 
 ## Values
 
-Whole-value conveniences derive from `pread`/`pwrite`. The bindings spell them `read_bytes`/`read_text` and `write_bytes`/`write_text`; `read_range_bytes` and `append_bytes` keep the core name. `append_bytes`, like `write_all_bytes`, is a complete operation: it ends with a flush and publishes on return, on every backend - a remote object written, a memory-mapped `LocalFile`'s growth slack trimmed - with no `flush`/`close` left to the caller. Bare `pwrite` is the one call that stages without publishing.
+Whole-value conveniences derive from `pread`/`pwrite`. The bindings spell them `read_bytes`/`read_text` and `write_bytes`/`write_text`; `read_range_bytes` and `append_bytes` keep the core name. `append_bytes`, like `write_all_bytes`, is a complete operation: it ends with a flush and publishes on return, on every backend - a remote object written, a memory-mapped `LocalFile`'s growth slack trimmed - with no `flush`/`close` left to the caller. Bare `pwrite` is the one call that stages without publishing. A log written through a handle is one such append per publish, so a handler over a remote store holds records back to a capacity ([Logging: Handlers](../logging.md#handlers)).
 
 ```text
 fn read_all_bytes(&self) -> Result<Vec<u8>>
@@ -1620,6 +1618,10 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     write_arrow_reader(&mut self, reader: BatchReader, mode: IOMode, options: &RecordOptions) -> Result<()>
     write_arrow_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<()>
     write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<()>
+
+    read_serie(&self, options: Option<&RecordOptions>) -> Result<SerieReader>   // None: the handle's own
+    write_serie(&mut self, value: SerieSource, mode: IOMode, options: Option<&RecordOptions>) -> Result<()>
+    overwrite|append|merge_serie(&mut self, value: SerieSource, options: Option<&RecordOptions>) -> Result<()>
     ```
 
 === "Python"
@@ -1633,6 +1635,9 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|merge_records(records, *, options=None) -> None
     write_arrow_reader|table|batch(value, mode, *, options=None) -> None
     write_records(records, mode, *, options=None) -> None
+    read_serie(*, options=None) -> SerieReader
+    write_serie(value, mode="overwrite", *, options=None) -> None
+    overwrite|append|merge_serie(value, *, options=None) -> None
     ```
 
 === "JavaScript"
@@ -1646,9 +1651,12 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     overwrite|append|mergeRecords(records, options?) -> void | Promise<void>
     writeArrowReader|Table|Batch(value, mode, options?) -> void
     writeRecords(records, mode, options?) -> void | Promise<void>
+    readSerie(options?) -> SerieReader
+    writeSerie(value, mode?, options?) -> void
+    overwrite|append|mergeSerie(value, options?) -> void
     ```
 
-Default append and merge shape once and delegate to `overwrite_arrow_reader`. `read_arrow` / `write_arrow` answer and take a [`SerieReader`](../types/serie.md#a-handle-reads-and-writes-it-whatever-it-holds) whatever the handle holds.
+Default append and merge shape once and delegate to `overwrite_arrow_reader`. `read_serie` answers a [`SerieReader`](../types/serie.md#writing-a-serie-to-a-handle) whatever the handle holds, and `write_serie` with its three intents takes a `Serie`, a `ChunkedSerie` or a `SerieReader` as one `SerieSource`, written as the batches it already is; absent options are the handle's own for both.
 
 === "Rust"
 
@@ -2276,11 +2284,11 @@ Overwrite replaces, append keeps the stored rows, merge updates matching `merge_
 
 | `commit_batch_num` | publication |
 | --- | --- |
-| unset | the destination's own cadence: a leaf or a plain folder once, when the source ends; an Iceberg table each time the batches it holds reach its target file size (`write.target-file-size-bytes`), then the remainder |
+| unset | the destination's own cadence: a leaf, a plain folder and an Iceberg table once, when the source ends - the table holding every partition's rows under the process spill bound until then, so an overwrite of any length is one atomic snapshot |
 | `N > 0` | every `N` batches, then the remainder |
 | `0` | rejected before any input is pulled |
 
-Whatever the cadence, an overwrite's first commit replaces and every later one appends, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a stream longer than the target keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement.
+Whatever the cadence, an overwrite's first commit replaces and every later one appends, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a paced stream keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement. Whatever holds a cadence between publications - a leaf's, a write session's, an Iceberg table's partition holds - is held under the process [spill bound](../types/serie.md#spilling-to-disk), the heaviest batches spilled first, so a cadence of any size costs that bound in memory; `commit_batch_num` paces a stream whose rows would outgrow the spill folder.
 
 A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/iceberg.md). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
 
@@ -3509,7 +3517,7 @@ A reader takes a handle, not a path, so one function runs over a file, a `Buffer
 
 `yggdryl::fs::FileSystem` is the one Arrow-compatible storage seam; `from_fs` binds a filesystem and an opaque path, which is never parsed, decoded or normalized - `bucket/v=a%2Fb.bin` reaches the store literally. `MemoryFileSystem` and `LocalFileSystem` ship as references; Python binds `pyarrow.fs`, JavaScript a synchronous handler protocol.
 
-A bound handle's `url` is diagnostic, credentials masked: its scheme is the filesystem's `type_name` (`fs` where that is no scheme), and its host is where the filesystem answers ([no host is made up](#addresses)) - none for `file` and Arrow's `local` (`file:///tmp/lake`), the bucket for a store (`s3://bucket/key` from `s3`, `gcs`, `abfs`), the store's published endpoint for a root naming no bucket (`s3://s3.amazonaws.com/`), and [`HOSTNAME`](#addresses) for every filesystem answering in this process (`memory://<host>/bucket/x`, a handler's `fs://<host>/...`).
+A bound handle's `url` is diagnostic, credentials masked: its scheme is the filesystem's `type_name` (`fs` where that is no scheme), and its host is where the filesystem answers ([no host is made up](#addresses)) - none for `file` and Arrow's `local` (`file:///tmp/lake`), the bucket for a store (`s3://bucket/key` from `s3`, `gcs`, `abfs`), the store's published endpoint for a root naming no bucket (`s3://s3.amazonaws.com/`), and `localhost` for every other filesystem, which is taken to answer in this process (`memory://localhost/bucket/x`, a handler's `fs://localhost/...`).
 
 ```text
 trait FileSystem: Send + Sync {
@@ -4628,7 +4636,7 @@ assert_eq!(requests[1].headers.get("if-range"), stream.headers().get("etag"));
 
 ### Pages
 
-`request.pages()` walks a paginated resource, one `GET` and one `Response` per page, and `Pages::into_arrow_reader(field, batch_row_size)` lays the rows out as one Arrow batch per page under one root - `field` when given, else the record the first page's rows infer. `read_arrow_reader` on a structured resource whose first page paginates is that walk, reading the first page once. The rows are at the declared `records` path, else a top-level sequence, else the first of `data`, `items`, `results`, `records`, `value`, `rows`, `entries`, `elements`, `content`, `hits.hits`, else the largest top-level sequence.
+`request.pages()` walks a paginated resource, one `GET` and one `Response` per page, and `Pages::into_arrow_reader(field, batch_row_size)` lays the rows out as one Arrow batch per page under one root - `field` when given, else the record the first page's rows infer. `read_arrow_reader` and `read_serie` on a structured resource whose first page paginates are that walk, reading the first page once; Python's `Pages.read_serie(field=None)` answers the walk as a `SerieReader`, one record column per page. The rows are at the declared `records` path, else a top-level sequence, else the first of `data`, `items`, `results`, `records`, `value`, `rows`, `entries`, `elements`, `content`, `hits.hits`, else the largest top-level sequence.
 
 `Pagination` says how the next page is found; `Auto`, the default, tries in order:
 

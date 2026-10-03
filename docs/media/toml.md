@@ -11,7 +11,7 @@ A TOML document as one [`Scalar`](../types/scalar.md): its root is always a reco
 | Rust | `yggdryl::toml`: `from_utf8`, `from_bytes`, `from_reader` and their `_with_field` and `_with_limits` forms; `into_utf8`, `into_bytes`, `into_writer`; `from_toml_scalar`, `from_toml_scalar_with_field` and `into_toml_scalar` at the crate root; placeholders through `yggdryl::text::from_utf8_with` and a `Loading` |
 | Python | `yggdryl.toml`: `loads`, `dumps`, `dump` |
 | JavaScript | `toml`: `loads`, `load`, `dumps`, `dump`, and `loadStream`/`dumpStream` - the one document over a Node stream |
-| Handle | a `.toml` handle reads through `read_scalar` or `read_arrow` and writes whole through `write_scalar` or `write_arrow` ([Structured values](../holder/index.md#structured-values)) |
+| Handle | a `.toml` handle reads through `read_scalar` or `read_serie` and writes whole through `write_scalar` or `overwrite_serie` ([Structured values](../holder/index.md#structured-values)) |
 | Limits | one document, so no multi-document doors (`*_all`); a record at the root; integers within `i64`; no null |
 
 ## Read

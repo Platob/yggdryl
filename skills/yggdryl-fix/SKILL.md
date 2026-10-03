@@ -193,9 +193,13 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     projection, the lifecycle and the book walk default what a message states
     that they cannot read - a value that will not type is null beside a
     `FixAnomaly`, a clock naming no instant is unstated - or leave the item
-    out, each with a deduplicated warning: Rust `log` at `WARN`, Python
-    `logging` under `yggdryl.<module path>`, standard error in JavaScript and
-    the CLI. Only a reader, store or runtime that could not answer is an error
+    out, each with a deduplicated warning: Rust `log` at `WARN` (the core's
+    `yggdryl::logging` tree or any `log` backend), Python `logging` under
+    `yggdryl.<module path>`, JavaScript standard error as the core's terminal
+    line (`... ! WARNING  [main] yggdryl.fix.build build:<line> › FIX clock
+    left unstated: ...`) unless a handler on `logging.getLogger('yggdryl')`
+    takes them, and the CLI on standard output once its progress line is
+    done. Only a reader, store or runtime that could not answer is an error
     item, yielded after the messages before it, and it ends the stream.
 
 ## Pitfalls

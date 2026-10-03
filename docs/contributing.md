@@ -56,6 +56,7 @@ test file at the matching path.
 | `rust/src/expression/` | [Expression](expression/index.md) |
 | `rust/src/graph/`, `rust/src/limit.rs`, `rust/src/identifier.rs` | [Graph](graph/index.md) |
 | `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | [Hashing](hashing.md) |
+| `rust/src/logging/` | [Logging](logging.md) |
 | `rust/src/fix/` | [FIX](fix/index.md) |
 
 Each shared trait, enum, value or type owns one root `rust/src/<name>.rs`; each implementation owns a root folder or file of its own name; a parent folder holds only what its implementations share. The Python package is laid out the same way and reimplements nothing: one module per type at the package root, one module or package per implementation - `yggdryl.avro`, `yggdryl.iceberg`, `yggdryl.json`, `yggdryl.gzip`, `yggdryl.xxhash`, `yggdryl.txhash` - and a package only where its implementations share something, `media/`, `text/`, `coding/`, `holder/`, `charset/`, `enums/`. Every type is re-exported from `yggdryl` itself, as the crate re-exports each of its root files. JavaScript keeps `xxhash` and `txhash` over the same root `xxhash/` and `txhash/`. Runnable examples live in the documentation, never in an `examples/` directory.

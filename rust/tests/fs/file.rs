@@ -213,4 +213,49 @@ mod fs {
             b"value"
         );
     }
+
+    /// A text line names the object it came from by its handle's URL, which
+    /// is what a written table keeps: Arrow's own local filesystem, which
+    /// calls itself `local`, is a `file` naming no host, and a filesystem
+    /// answering in this process is `localhost` - never a made-up host.
+    #[test]
+    fn a_text_line_names_its_file_by_the_url_its_filesystem_answers() {
+        use arrow_array::Array as _;
+        use arrow_array::cast::AsArray as _;
+        use yggdryl::IOMedia as _;
+        use yggdryl::media::RecordOptions;
+        use yggdryl::text::TextOptions;
+
+        let local: Arc<dyn FileSystem> = Arc::new(
+            crate::counting_filesystem::CountingFileSystem::named("local"),
+        );
+        let memory: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
+        for (filesystem, expected) in [
+            (local, "file:///logs/app.log"),
+            (memory, "memory://localhost/logs/app.log"),
+        ] {
+            let mut file =
+                FsFile::new(BoundLocation::new(filesystem, "/logs/app.log", None).unwrap());
+            file.write_all_bytes(b"alpha\nbeta\n").unwrap();
+            let options: RecordOptions = TextOptions::new().into();
+            let batches = file
+                .read_arrow_reader(&options)
+                .unwrap()
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .unwrap();
+            let crosscodes = batches
+                .iter()
+                .flat_map(|batch| {
+                    let column = batch
+                        .column_by_name("crosscode")
+                        .expect("a crosscode column");
+                    let column = column.as_string::<i32>();
+                    (0..column.len())
+                        .map(|row| column.value(row).to_owned())
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(crosscodes, [expected, expected], "{expected}");
+        }
+    }
 }
