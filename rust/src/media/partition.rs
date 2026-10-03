@@ -17,7 +17,7 @@
 //! is a container, which is what lets a caller address a lake and one file with
 //! the same call.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch, StringArray, UInt32Array};
@@ -29,13 +29,16 @@ use arrow_schema::{
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema, rebuilt_batch};
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
 use crate::holder::Holder;
-use crate::media::{IORecordOptions, RecordOptions};
+use crate::media::{Cadence, CommitBuffer, IORecordOptions, RecordOptions};
 use crate::string::is_text_storage;
 use crate::{DataType, Error, Field, Result, Url};
 use crate::{IOBase, IOMedia, Listing};
 
 /// One partition's `column=value` pairs and the rows that belong to it.
 type PartitionGroup = (Vec<(String, String)>, RecordBatch);
+
+/// One partition's held rows of one cadence, in arrival order.
+type PartitionRows = (Vec<(String, String)>, Vec<RecordBatch>);
 
 pub use super::NULL_PARTITION;
 
@@ -671,18 +674,14 @@ fn split_by_partition(
 
 /// Return the relative location of the leaf holding one partition.
 ///
-/// The deterministic leaf for one partition.
-///
-/// A fixed name lets a write route a row without first collecting the folder's
-/// existing leaves. Other leaves remain readable; append leaves them untouched,
-/// while overwrite drains and clears them before publishing this one.
-fn leaf_name(
-    existing: &HashMap<Vec<(String, String)>, String>,
-    pairs: &[(String, String)],
-    options: &RecordOptions,
-) -> String {
-    if let Some(name) = existing.get(pairs) {
-        return name.clone();
+/// A stored partition's first leaf, else the deterministic `part-0` under the
+/// directories its pairs spell. A fixed name lets a write route a row without
+/// collecting anything beyond the one listing it began with. Other leaves of
+/// the partition remain readable; append leaves them untouched, while an
+/// overwrite clears them once this one is published.
+fn leaf_name(stored: Option<&str>, pairs: &[(String, String)], options: &RecordOptions) -> String {
+    if let Some(name) = stored {
+        return name.to_owned();
     }
     let extension = options.mime_type().extension().unwrap_or("bin");
     let mut relative = String::new();
@@ -900,35 +899,70 @@ fn part_reader(
     .into_arrow_reader())
 }
 
-/// One stable routing plan for every cadence of a folder write.
+/// One routing plan for every cadence of a folder write.
 ///
-/// An incoming reader is consumed one batch at a time and each batch is split
-/// by partition before it is written, so a write across a lake costs one batch
-/// of memory rather than one per partition. The price is paid on the other
-/// side: these encodings rewrite a whole leaf, so a partition touched by five
-/// batches is rewritten five times. The first batch to reach a leaf performs the
-/// caller's operation and the rest append to it, which is what keeps an
-/// overwrite an overwrite without buffering the whole write first.
+/// A cadence is held split by partition before anything is published, so each
+/// leaf it reaches is written once per cadence rather than once per batch:
+/// these encodings rewrite a whole leaf, and appending batch by batch would
+/// rewrite a partition touched by five batches five times. What is held is the
+/// cadence's own rows, kept under the process spill bound ([`CommitBuffer`]),
+/// so an unset cadence publishes every leaf once when the source ends and a
+/// source failing before then publishes nothing of that cadence.
+///
+/// An overwrite replaces what it touches: a partition is replaced - its first
+/// stored leaf rewritten and every other leaf of it cleared - the first time a
+/// cadence of the write reaches it, and appended to by every later one, while
+/// a partition no row reaches keeps its leaves. An overwrite whose `where`
+/// pins partition columns (`partition_pairs`) replaces every stored partition
+/// it selects as well, rows or not. A folder with no partition columns is one
+/// partition, so its overwrite replaces every leaf.
 ///
 /// Publications are atomic per leaf, not across the folder: [`IOBase`] has no
 /// transaction, rename, or compare-and-swap primitive spanning independent
 /// child handles. A second handle can therefore observe a completed prefix of
 /// a multi-partition write. Table formats provide their own snapshot commit
 /// and are redirected before reaching this writer.
-/// This per-leaf publication is also the explicit exception to an unset
-/// cadence's single-publication rule: materializing an unbounded source merely
-/// to approximate a folder transaction would violate the streaming contract,
-/// while [`IOBase`] supplies no cross-leaf atomic primitive.
 ///
 /// Layout discovery drains the tree once at top-level preflight. Reusing this
 /// value keeps `commit_batch_num = 1` from turning one listing into one
 /// listing per batch, and prevents rows in the same operation from observing different
 /// layouts if another writer changes the folder between publications.
 pub(crate) struct FolderWriter {
-    existing: HashMap<Vec<(String, String)>, String>,
-    parts: Vec<Holder>,
+    /// Every stored leaf of the encoding, in URL order.
+    leaves: Vec<StoredLeaf>,
+    /// The stored leaves of each partition, as indices into `leaves`, in URL
+    /// order; the first is the one a write reuses.
+    existing: HashMap<Vec<(String, String)>, Vec<usize>>,
     columns: Vec<String>,
+    /// The `where` equalities on partition columns, in the stored spelling.
+    scope: Vec<(String, String)>,
     options: RecordOptions,
+    /// Set by the write's first overwrite cadence: every later cadence of the
+    /// same write continues it.
+    overwriting: bool,
+    /// The partitions this overwrite has replaced, which later cadences
+    /// append to.
+    replaced: HashSet<Vec<(String, String)>>,
+}
+
+/// One leaf the folder stored when the write began.
+struct StoredLeaf {
+    holder: Holder,
+    /// The leaf's path beneath the folder, when the folder has a location
+    /// that holds it.
+    relative: Option<String>,
+    /// The partition pairs that path spells.
+    pairs: Vec<(String, String)>,
+    state: LeafState,
+}
+
+/// What the current write has done to a stored leaf.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum LeafState {
+    Stored,
+    Cleared,
+    /// Rewritten by this write, so nothing later in it may clear it.
+    Written,
 }
 
 impl FolderWriter {
@@ -948,21 +982,51 @@ impl FolderWriter {
             .filter(|entry| !entry.is_container() && entry.media_type().base() == &encoding)
             .collect();
         parts.sort_by_key(|part| part.url().map(ToString::to_string));
-        let mut existing = HashMap::new();
-        for part in &parts {
-            let Some(url) = part.url() else { continue };
-            let Some(relative) = root.as_ref().and_then(|root| url.segments_under(root)) else {
-                continue;
-            };
-            existing
-                .entry(pairs_under(part, root.as_ref()))
-                .or_insert_with(|| relative.join("/"));
+        let mut leaves = Vec::with_capacity(parts.len());
+        let mut existing: HashMap<Vec<(String, String)>, Vec<usize>> = HashMap::new();
+        for holder in parts {
+            let pairs = pairs_under(&holder, root.as_ref());
+            let relative = holder
+                .url()
+                .and_then(|url| root.as_ref().and_then(|root| url.segments_under(root)))
+                .map(|segments| segments.join("/"));
+            if relative.is_some() {
+                existing
+                    .entry(pairs.clone())
+                    .or_default()
+                    .push(leaves.len());
+            }
+            leaves.push(StoredLeaf {
+                holder,
+                relative,
+                pairs,
+                state: LeafState::Stored,
+            });
         }
+        // The caller's `where` is read here, before the shaping pass hands the
+        // writer options it has already consumed.
+        let scope = if columns.is_empty() {
+            Vec::new()
+        } else {
+            options
+                .partition_pairs()
+                .into_iter()
+                .filter_map(|(column, value)| {
+                    columns
+                        .iter()
+                        .find(|stored| stored.eq_ignore_ascii_case(&column))
+                        .map(|stored| (stored.clone(), value))
+                })
+                .collect()
+        };
         Ok(Self {
+            leaves,
             existing,
-            parts,
             columns,
+            scope,
             options: options.clone(),
+            overwriting: false,
+            replaced: HashSet::new(),
         })
     }
 
@@ -974,25 +1038,31 @@ impl FolderWriter {
     }
 
     /// Publish one overwrite cadence.
+    ///
+    /// The first call opens the overwrite; a later call, or an
+    /// [`append`](Self::append) after it, is a later cadence of the same
+    /// write.
     pub(crate) fn overwrite(
         &mut self,
         folder: &(impl IOBase + ?Sized),
         batches: BatchReader,
     ) -> Result<()> {
+        let first = !std::mem::replace(&mut self.overwriting, true);
         let schema = batches.schema();
         match crate::iobase::non_empty_arrow_reader(batches)? {
-            Some(batches) => self.write(folder, batches, false),
-            None => self.overwrite_empty(folder, schema),
+            Some(batches) => self.write(folder, batches, first),
+            None if first => self.overwrite_empty(folder, schema),
+            None => Ok(()),
         }
     }
 
-    /// Publish one append cadence.
+    /// Publish one append cadence, or a later cadence of an overwrite.
     pub(crate) fn append(
         &mut self,
         folder: &(impl IOBase + ?Sized),
         batches: BatchReader,
     ) -> Result<()> {
-        self.write(folder, batches, true)
+        self.write(folder, batches, false)
     }
 
     /// Publish one merge cadence.
@@ -1027,41 +1097,39 @@ impl FolderWriter {
         })
     }
 
-    /// Clear the addressed rows while leaving one decodable schema carrier.
+    /// Publish an overwrite that carries no row.
     ///
-    /// Zero-byte leaves cannot answer an inferred field. A flat folder uses
-    /// `part-0`; an existing partitioned folder reuses its first leaf so the
-    /// path still supplies its constant partition columns. A brand-new
-    /// partitioned layout has no values with which to name such a path and is
-    /// refused before any existing leaf is cleared.
+    /// No row touches a partition, so a partitioned folder replaces only what
+    /// its `where` selects, and nothing when it selects nothing. A folder
+    /// with no partition columns is replaced whole. What is replaced keeps
+    /// one decodable schema carrier, because a zero-byte leaf cannot answer an
+    /// inferred field: the first replaced leaf, or `part-0` in a flat folder
+    /// holding none.
     fn overwrite_empty(
         &mut self,
         folder: &(impl IOBase + ?Sized),
         schema: SchemaRef,
     ) -> Result<()> {
-        let selected = self
-            .existing
+        let selected: Vec<usize> = if self.columns.is_empty() {
+            (0..self.leaves.len()).collect()
+        } else {
+            self.scoped()
+        };
+        let carrier = selected
             .iter()
-            .min_by(|left, right| left.1.cmp(right.1))
-            .map(|(pairs, relative)| (pairs.clone(), relative.clone()));
-        let (pairs, relative) = match selected {
-            Some(selected) => selected,
-            None if self.columns.is_empty() => {
-                let pairs = Vec::new();
-                let relative = leaf_name(&self.existing, &pairs, &self.options);
-                (pairs, relative)
-            }
+            .copied()
+            .find(|&index| self.leaves[index].relative.is_some());
+        let (relative, pairs) = match carrier {
+            Some(index) => (
+                self.leaves[index].relative.clone().unwrap_or_default(),
+                self.leaves[index].pairs.clone(),
+            ),
+            None if self.columns.is_empty() => (leaf_name(None, &[], &self.options), Vec::new()),
             None => {
-                return Err(Error::InvalidRecord {
-                    path: smol_str::SmolStr::new_static("$"),
-                    reason: crate::text::expected_got(
-                        "at least one row or stored partition path to publish an empty partitioned folder",
-                        format_args!(
-                            "an empty stream for partition columns [{}]",
-                            self.columns.join(", ")
-                        ),
-                    ),
-                });
+                for index in selected {
+                    self.clear(index)?;
+                }
+                return Ok(());
             }
         };
 
@@ -1074,30 +1142,46 @@ impl FolderWriter {
         // logical declaration here would repeat the top-level cast.
         leaf.take_field();
 
-        for part in &mut self.parts {
-            part.clear()?;
-        }
         let mut handle = folder.child_by_path(&relative)?;
         handle.overwrite_arrow_reader(crate::arrow::batch_reader(leaf_schema, []), &leaf)?;
-        handle.flush()
+        handle.flush()?;
+        if let Some(index) = carrier {
+            self.leaves[index].state = LeafState::Written;
+        }
+        for index in selected {
+            self.clear(index)?;
+        }
+        Ok(())
     }
 
+    /// Publish one cadence: held whole, then written leaf by leaf.
     fn write(
         &mut self,
         folder: &(impl IOBase + ?Sized),
         batches: BatchReader,
-        append: bool,
+        first: bool,
     ) -> Result<()> {
-        let merging = !self.options.merge_by().is_empty();
-        if !append && !merging {
-            // An overwrite replaces the tree, so a partition the incoming rows
-            // never mention has to end up empty rather than keeping stale rows.
-            for part in &mut self.parts {
-                part.clear()?;
+        for (pairs, held) in self.hold(batches)? {
+            self.publish(folder, pairs, held)?;
+        }
+        if first {
+            // After the touched partitions, so a scoped leaf this cadence
+            // rewrote is never emptied first.
+            for index in self.scoped() {
+                self.clear(index)?;
             }
         }
+        Ok(())
+    }
 
-        let mut written: std::collections::HashSet<String> = std::collections::HashSet::new();
+    /// Split one cadence by partition and hold it under the process spill
+    /// bound, partitions in first-appearance order.
+    fn hold(&self, batches: BatchReader) -> Result<Vec<PartitionRows>> {
+        let mut order: Vec<Vec<(String, String)>> = Vec::new();
+        let mut positions: HashMap<Vec<(String, String)>, usize> = HashMap::new();
+        // The partition of each held piece, in the order the window holds them.
+        let mut owners: Vec<usize> = Vec::new();
+        let mut window: Option<CommitBuffer> = None;
         let mut renderings = PlanCache::new();
         for batch in batches {
             let batch = batch.map_err(crate::arrow::from_reader_error)?;
@@ -1107,34 +1191,119 @@ impl FolderWriter {
             let rendering = renderings.get_or_compile(batch.schema_ref().fields(), || {
                 Ok(Rendering::compile(batch.schema_ref(), &self.columns)?)
             })?;
-            for (pairs, part) in split_by_partition(&batch, &self.columns, rendering)? {
-                let relative = leaf_name(&self.existing, &pairs, &self.options);
-                let mut leaf = leaf_options(&self.options, &pairs)?;
-                // The folder entry point cast the whole incoming stream before
-                // it split path columns. Pop the declaration before encoding.
-                leaf.take_field();
-                let mut handle = folder.child_by_path(&relative)?;
-                let first = written.insert(relative);
-                let replacing = !leaf.merge_by().is_empty() || (!append && first);
-                if replacing {
-                    // A replace and a merge are idempotent, so a fresh reader
-                    // can replay the same bounded partition on a transient race.
-                    retried(|| {
-                        let reader = crate::arrow::batch_reader(part.schema(), [part.clone()]);
-                        if leaf.merge_by().is_empty() {
-                            handle.overwrite_arrow_reader(reader, &leaf)?;
-                        } else {
-                            handle.merge_arrow_reader(reader, &leaf)?;
-                        }
-                        handle.flush()
-                    })?;
-                } else {
-                    // Append is not idempotent: retrying could duplicate rows.
-                    let reader = crate::arrow::batch_reader(part.schema(), [part]);
-                    handle.append_arrow_reader(reader, &leaf)?;
-                    handle.flush()?;
-                }
+            for (pairs, piece) in split_by_partition(&batch, &self.columns, rendering)? {
+                let owner = match positions.get(&pairs) {
+                    Some(owner) => *owner,
+                    None => {
+                        order.push(pairs.clone());
+                        positions.insert(pairs, order.len() - 1);
+                        order.len() - 1
+                    }
+                };
+                let window =
+                    window.get_or_insert_with(|| CommitBuffer::new(piece.schema(), Cadence::Once));
+                // A once-only window is never full, so a push completes no
+                // cadence; it only spills what passes the bound.
+                let _ = window.push(piece)?;
+                owners.push(owner);
             }
+        }
+        let mut held: Vec<Vec<RecordBatch>> = vec![Vec::new(); order.len()];
+        if let Some(pieces) = window.as_mut().and_then(CommitBuffer::finish) {
+            for (piece, owner) in pieces.zip(owners) {
+                held[owner].push(piece.map_err(crate::arrow::from_reader_error)?);
+            }
+        }
+        Ok(order.into_iter().zip(held).collect())
+    }
+
+    /// Write one partition's held rows of one cadence to its leaf.
+    fn publish(
+        &mut self,
+        folder: &(impl IOBase + ?Sized),
+        pairs: Vec<(String, String)>,
+        held: Vec<RecordBatch>,
+    ) -> Result<()> {
+        let Some(schema) = held.first().map(RecordBatch::schema) else {
+            return Ok(());
+        };
+        let stored = self
+            .existing
+            .get(&pairs)
+            .and_then(|leaves| leaves.first().copied());
+        let relative = leaf_name(
+            stored.and_then(|index| self.leaves[index].relative.as_deref()),
+            &pairs,
+            &self.options,
+        );
+        let mut leaf = leaf_options(&self.options, &pairs)?;
+        // The folder entry point cast the whole incoming stream before
+        // it split path columns. Pop the declaration before encoding.
+        leaf.take_field();
+        let mut handle = folder.child_by_path(&relative)?;
+        let merging = !leaf.merge_by().is_empty();
+        let replacing = !merging && self.overwriting && self.replaced.insert(pairs.clone());
+        if merging || replacing {
+            // A replace and a merge are idempotent, so a fresh reader over the
+            // held rows can replay them on a transient race.
+            retried(|| {
+                let reader = crate::arrow::batch_reader(Arc::clone(&schema), held.clone());
+                if merging {
+                    handle.merge_arrow_reader(reader, &leaf)?;
+                } else {
+                    handle.overwrite_arrow_reader(reader, &leaf)?;
+                }
+                handle.flush()
+            })?;
+        } else {
+            // Append is not idempotent: retrying could duplicate rows.
+            handle.append_arrow_reader(crate::arrow::batch_reader(schema, held), &leaf)?;
+            handle.flush()?;
+        }
+        if let Some(index) = stored {
+            self.leaves[index].state = LeafState::Written;
+        }
+        if replacing {
+            for index in self.leaves_of(&pairs) {
+                self.clear(index)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The stored leaves of one partition; every leaf of a folder with no
+    /// partition columns.
+    fn leaves_of(&self, pairs: &[(String, String)]) -> Vec<usize> {
+        if self.columns.is_empty() {
+            return (0..self.leaves.len()).collect();
+        }
+        self.existing.get(pairs).cloned().unwrap_or_default()
+    }
+
+    /// The stored leaves whose path names every value the `where` scope pins.
+    fn scoped(&self) -> Vec<usize> {
+        if self.scope.is_empty() {
+            return Vec::new();
+        }
+        (0..self.leaves.len())
+            .filter(|&index| {
+                self.scope.iter().all(|(column, value)| {
+                    self.leaves[index]
+                        .pairs
+                        .iter()
+                        .any(|(key, held)| key.eq_ignore_ascii_case(column) && held == value)
+                })
+            })
+            .collect()
+    }
+
+    /// Empty one stored leaf, once per write, and never one the write
+    /// rewrote.
+    fn clear(&mut self, index: usize) -> Result<()> {
+        let leaf = &mut self.leaves[index];
+        if leaf.state == LeafState::Stored {
+            leaf.holder.clear()?;
+            leaf.state = LeafState::Cleared;
         }
         Ok(())
     }
