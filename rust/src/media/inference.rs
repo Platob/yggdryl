@@ -147,6 +147,23 @@ impl Scalar {
     /// and named `row` - a named record its own struct, a leaf the `value`
     /// child of one.
     ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// // Rows of named records answer the inferred struct root.
+    /// let rows = Scalar::from_sequence([Scalar::from_struct([("id", Scalar::from(1_i64))])?]);
+    /// assert_eq!(rows.inferred_record_field()?, rows.inferred_struct_field()?);
+    ///
+    /// // Any other value is its inferred field wrapped once: a leaf is the `value`
+    /// // child of a required `row`.
+    /// let root = Scalar::from(1_i64).inferred_record_field()?;
+    /// assert_eq!((root.name(), root.is_nullable()), ("row", false));
+    /// assert_eq!(root.get_field_at(0), Some(&DataType::Int64.required_field("value")));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns the error either inference answers, or the wrap's refusal

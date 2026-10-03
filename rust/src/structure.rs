@@ -664,6 +664,21 @@ impl DataType {
     }
 
     /// Reports whether this datatype is the Struct shape.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl::StructType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let row = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?);
+    /// assert!(row.is_struct());
+    ///
+    /// // The shape alone: a leaf or a serie of records is no struct.
+    /// assert!(!DataType::Int64.is_struct());
+    /// assert!(!DataType::serie(row.required_field("item")).is_struct());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn is_struct(&self) -> bool {
         matches!(self, Self::Struct(_))
     }
@@ -671,6 +686,24 @@ impl DataType {
     /// This datatype as a struct: itself when it already is one, else the
     /// one-child `struct<value: self>`, the child nullable so that a null
     /// value wraps too.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl::StructType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// // A leaf is the nullable `value` child of a one-child struct.
+    /// let wrapped = DataType::Int64.into_struct_type()?;
+    /// assert_eq!(
+    ///     wrapped,
+    ///     DataType::from(StructType::from_fields([DataType::Int64.nullable_field("value")])?),
+    /// );
+    ///
+    /// // A struct is answered as it is.
+    /// assert_eq!(wrapped.into_struct_type()?, wrapped);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -767,11 +800,34 @@ impl Field {
         self.dtype().is_struct()
     }
 
-    /// This field as a record root: itself when it is a struct, its
-    /// nullability and metadata kept, else the required
-    /// [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME) struct whose one
-    /// child is this field unchanged - the root a non-record column crosses
-    /// into a table under.
+    /// This field as a struct field: itself when it is a struct, its name,
+    /// nullability and metadata kept, so a nullable struct stays nullable -
+    /// else the required [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME)
+    /// struct whose one child is this field unchanged. The record root a
+    /// column crosses into a table under is
+    /// [`SerieReader::root_of`](crate::SerieReader::root_of)'s, the door that
+    /// forces a struct required.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl::SerieReader;
+    /// use yggdryl::StructType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// // A leaf is the one child, unchanged, of a required `row`.
+    /// let venue = DataType::utf8().nullable_field("venue");
+    /// let root = venue.into_struct_field()?;
+    /// assert_eq!((root.name(), root.is_nullable()), ("row", false));
+    /// assert_eq!(root.get_field_at(0), Some(&venue));
+    ///
+    /// // A struct is answered as it is, nullable included; `root_of` forces it required.
+    /// let line = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+    ///     .nullable_field("line");
+    /// assert_eq!(line.into_struct_field()?, line);
+    /// assert!(!SerieReader::root_of(&line)?.is_nullable());
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -2083,6 +2139,23 @@ impl Scalar {
     /// This value as a named record: a [`Scalar::Struct`] as it is, else the
     /// one-entry `{value: self}` - the named input shape the wrapped field's
     /// `scalar` canonicalizes - a null becoming `{value: null}`.
+    ///
+    /// ```
+    /// use yggdryl::Scalar;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(
+    ///     Scalar::from(5_i64).into_struct_scalar(),
+    ///     Scalar::from_struct([("value", Scalar::from(5_i64))])?,
+    /// );
+    /// assert_eq!(Scalar::Null.into_struct_scalar(), Scalar::from_struct([("value", Scalar::Null)])?);
+    ///
+    /// // A named record is answered as it is.
+    /// let record = Scalar::from_struct([("id", Scalar::from(1_i64))])?;
+    /// assert_eq!(record.into_struct_scalar(), record);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn into_struct_scalar(&self) -> Scalar {
         match self {
             Self::Struct(_) => self.clone(),
