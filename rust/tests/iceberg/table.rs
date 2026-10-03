@@ -651,6 +651,446 @@ mod iceberg {
         assert_eq!(table.data_files().unwrap().len(), 2, "one file per venue");
         let _ = std::fs::remove_dir_all(&path);
     }
+
+    /// One quote: its venue, its instant and its id.
+    type Quote = (&'static str, i64, i64);
+
+    /// The quotes schema - `venue`, `ts`, `id` - numbered, declaring `sort`
+    /// as the order a table created from it keeps.
+    fn quotes_schema(sort: &[&str]) -> Field {
+        let mut schema = StructType::from_fields([
+            DataType::utf8().required_field("venue"),
+            DataType::Int64.required_field("ts"),
+            DataType::Int64.required_field("id"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        if !sort.is_empty() {
+            schema.as_sort_mut().set_by_texts(sort).unwrap();
+        }
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema
+    }
+
+    /// One commit's quotes, under a schema declaring nothing.
+    fn quotes(rows: &[Quote]) -> BatchReader {
+        let schema = Arc::new(arrow_schema::Schema::new(vec![
+            arrow_schema::Field::new("venue", arrow_schema::DataType::Utf8, false),
+            arrow_schema::Field::new("ts", arrow_schema::DataType::Int64, false),
+            arrow_schema::Field::new("id", arrow_schema::DataType::Int64, false),
+        ]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(StringArray::from(
+                    rows.iter().map(|row| row.0).collect::<Vec<_>>(),
+                )),
+                Arc::new(Int64Array::from(
+                    rows.iter().map(|row| row.1).collect::<Vec<_>>(),
+                )),
+                Arc::new(Int64Array::from(
+                    rows.iter().map(|row| row.2).collect::<Vec<_>>(),
+                )),
+            ],
+        )
+        .unwrap();
+        yggdryl::arrow::batch_reader(schema, [batch])
+    }
+
+    /// A venue-partitioned quotes table under `order` - the schema's own
+    /// where `None` - with one commit per entry of `commits`.
+    fn quotes_table(
+        label: &str,
+        schema: &Field,
+        order: Option<SortOrder>,
+        commits: &[&[Quote]],
+    ) -> IcebergTable<LocalFolder> {
+        let folder = LocalFolder::new(root(label)).unwrap();
+        let spec = PartitionSpec::identity(1, schema, &["venue"]).unwrap();
+        let mut table = match order {
+            Some(order) => {
+                IcebergTable::create_sorted(folder, FormatVersion::V2, schema.clone(), spec, order)
+            }
+            None => IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec),
+        }
+        .unwrap();
+        for commit in commits {
+            table.commit_append(quotes(commit)).unwrap();
+        }
+        table
+    }
+
+    /// Every row of `batches` as `(venue, ts, id)`, in the order they came.
+    fn quote_rows<'a>(
+        batches: impl IntoIterator<Item = &'a RecordBatch>,
+    ) -> Vec<(String, i64, i64)> {
+        let mut rows = Vec::new();
+        for batch in batches {
+            let column = |name: &str| Arc::clone(batch.column_by_name(name).unwrap());
+            let (venues, instants, ids) = (column("venue"), column("ts"), column("id"));
+            let venues = venues.as_any().downcast_ref::<StringArray>().unwrap();
+            let instants = instants.as_any().downcast_ref::<Int64Array>().unwrap();
+            let ids = ids.as_any().downcast_ref::<Int64Array>().unwrap();
+            for row in 0..batch.num_rows() {
+                rows.push((
+                    venues.value(row).to_owned(),
+                    instants.value(row),
+                    ids.value(row),
+                ));
+            }
+        }
+        rows
+    }
+
+    /// The ids of `rows`, in order.
+    fn ids_of(rows: &[(String, i64, i64)]) -> Vec<i64> {
+        rows.iter().map(|row| row.2).collect()
+    }
+
+    /// The records a whole-table record read yields, each as its batch.
+    fn records_of(reader: yggdryl::SerieReader) -> Vec<RecordBatch> {
+        reader
+            .map(|record| record.unwrap().into_arrow_batch().unwrap())
+            .collect()
+    }
+
+    /// The `order by` keys a record declares, as text.
+    fn declared_keys(record: &yggdryl::Serie) -> Vec<String> {
+        record
+            .declared_order()
+            .unwrap()
+            .unwrap_or_default()
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    /// A record read yields partition after partition in ascending tuple
+    /// order, each partition's rows in the table's order across every file
+    /// that stores it - the files of one partition that overlap merged, the
+    /// files that follow one another read as they are - and the root, every
+    /// record, the transport schema and a schema read all declare it.
+    #[test]
+    fn a_record_read_yields_partitions_in_order_each_in_the_table_order() {
+        use arrow_array::RecordBatchReader as _;
+        use yggdryl::IOMedia;
+
+        let order = Some(r#"["venue","ts","id"]"#);
+        let table = quotes_table(
+            "ordered-read",
+            &quotes_schema(&["venue", "ts", "id"]),
+            None,
+            &[
+                &[("XNYS", 30, 1), ("XNAS", 20, 2), ("XNAS", 10, 3)],
+                &[("XLON", 5, 4), ("XNAS", 15, 5), ("XNYS", 10, 6)],
+                &[("XNAS", 12, 7), ("XNYS", 20, 8), ("XLON", 1, 9)],
+            ],
+        );
+        let expected = [9, 4, 3, 7, 5, 2, 6, 8, 1];
+
+        let reader = table.read_serie(None).unwrap();
+        assert_eq!(reader.field().get_metadata("SORT:by"), order);
+        let records: Vec<yggdryl::Serie> = reader.map(Result::unwrap).collect();
+        for record in &records {
+            assert_eq!(declared_keys(record), ["venue", "ts", "id"]);
+        }
+        let batches: Vec<RecordBatch> = records
+            .iter()
+            .map(|record| record.into_arrow_batch().unwrap())
+            .collect();
+        assert_eq!(ids_of(&quote_rows(&batches)), expected);
+        // XLON's two files and XNYS's three each cover a later stretch than
+        // the one opened before them, so each is a record of its own; two of
+        // XNAS's overlap, so its four rows are merged into one.
+        assert_eq!(
+            records.iter().map(yggdryl::Serie::len).collect::<Vec<_>>(),
+            [1, 1, 4, 1, 1, 1]
+        );
+
+        // The transport face is the same stream under the same declaration,
+        // and a schema read declares what the stream does.
+        let options = table.record_options().unwrap();
+        let transport = table.read_arrow_reader(&options).unwrap();
+        assert_eq!(
+            transport
+                .schema()
+                .metadata()
+                .get("SORT:by")
+                .map(String::as_str),
+            order
+        );
+        let batches: Vec<RecordBatch> = transport.map(Result::unwrap).collect();
+        assert_eq!(ids_of(&quote_rows(&batches)), expected);
+        assert_eq!(
+            table
+                .read_arrow_field(&options)
+                .unwrap()
+                .get_metadata("SORT:by"),
+            order
+        );
+        // The table still reports the order its writers keep, and a scan
+        // door still reads the files as the manifests list them, commit
+        // after commit.
+        assert_eq!(table.schema().unwrap().get_metadata("SORT:by"), order);
+        let scan = table.scan(None).unwrap();
+        assert_eq!(scan.schema().metadata().get("SORT:by"), None);
+        let scanned: Vec<RecordBatch> = scan.map(Result::unwrap).collect();
+        let mut scanned = ids_of(&quote_rows(&scanned));
+        assert_ne!(scanned, expected);
+        assert_eq!(scanned[..3].iter().max(), Some(&3));
+        scanned.sort_unstable();
+        assert_eq!(scanned, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    }
+
+    /// A partition whose commits each cover an earlier stretch than the one
+    /// before is opened by its files' bounds, not their commit order, and so
+    /// arrives in order with nothing merged: one record per data file, each
+    /// the file's own rows.
+    #[test]
+    fn a_partition_whose_files_follow_one_another_is_read_without_a_merge() {
+        use yggdryl::IOMedia;
+
+        let table = quotes_table(
+            "ordered-no-merge",
+            &quotes_schema(&["venue", "ts", "id"]),
+            None,
+            &[
+                &[("XNAS", 51, 1), ("XLON", 50, 2), ("XNAS", 50, 3)],
+                &[("XNAS", 31, 4), ("XLON", 30, 5), ("XNAS", 30, 6)],
+                &[("XNAS", 11, 7), ("XLON", 10, 8), ("XNAS", 10, 9)],
+            ],
+        );
+        let records: Vec<yggdryl::Serie> = table
+            .read_serie(None)
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(records.len(), table.data_files().unwrap().len());
+        assert_eq!(
+            records.iter().map(yggdryl::Serie::len).collect::<Vec<_>>(),
+            [1, 1, 1, 2, 2, 2]
+        );
+        let batches: Vec<RecordBatch> = records
+            .iter()
+            .map(|record| record.into_arrow_batch().unwrap())
+            .collect();
+        assert_eq!(ids_of(&quote_rows(&batches)), [8, 5, 2, 9, 7, 6, 4, 3, 1]);
+    }
+
+    /// A `where` window prunes the files its bounds rule out and the rest
+    /// still arrive in order; a row limit decodes the first partition and
+    /// opens no file of the next.
+    #[test]
+    fn a_window_prunes_files_and_a_limit_reads_only_the_first_partition() {
+        use crate::counting_filesystem::counted_folder;
+        use yggdryl::IOMedia;
+        use yggdryl::media::IORecordOptions;
+
+        let schema = quotes_schema(&["venue", "ts", "id"]);
+        let (filesystem, folder) = counted_folder("ordered-window");
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec).unwrap();
+        let commits: [&[Quote]; 3] = [
+            &[("XNAS", 1, 1), ("XLON", 2, 2), ("XNYS", 3, 3)],
+            &[("XNAS", 11, 4), ("XLON", 12, 5), ("XNYS", 13, 6)],
+            &[("XNAS", 21, 7), ("XLON", 22, 8), ("XNYS", 23, 9)],
+        ];
+        for commit in commits {
+            table.commit_append(quotes(commit)).unwrap();
+        }
+
+        // The window holds the middle commit's files alone: the other six
+        // are excluded on their bounds, never opened.
+        let window = "ts >= 10 and ts < 20";
+        let plan = table.plan_matching(window).unwrap();
+        assert_eq!((plan.tasks.len(), plan.files_skipped()), (3, 6));
+        let windowed = table.record_options().unwrap().with_filter(window).unwrap();
+        let reader = table.read_serie(Some(&windowed)).unwrap();
+        assert_eq!(
+            reader.field().get_metadata("SORT:by"),
+            Some(r#"["venue","ts","id"]"#)
+        );
+        assert_eq!(ids_of(&quote_rows(&records_of(reader))), [5, 4, 6]);
+
+        // A whole read opens the manifest list, the three manifests and all
+        // nine data files, each of those sized five times on its way to a
+        // reader; one row is the first partition's first, and only that
+        // partition's three files are opened to answer it.
+        let options = table.record_options().unwrap();
+        let whole = filesystem.costs(|| {
+            let rows = quote_rows(&records_of(table.read_serie(Some(&options)).unwrap()));
+            assert_eq!(rows.len(), 9);
+        });
+        // Ordering costs no call: the bounds it opens files by are the
+        // manifests' own, so a record read costs what a scan does.
+        let scanned = filesystem.costs(|| {
+            assert_eq!(table.scan(None).unwrap().map(Result::unwrap).count(), 9);
+        });
+        assert_eq!(scanned, whole);
+        let limited = options.clone().with_max_row_size(1);
+        let first = filesystem.costs(|| {
+            let rows = quote_rows(&records_of(table.read_serie(Some(&limited)).unwrap()));
+            assert_eq!(ids_of(&rows), [2]);
+        });
+        assert_eq!(
+            (whole.as_str(), first.as_str()),
+            (
+                "file_info=45 open_input_stream=13",
+                "file_info=15 open_input_stream=7"
+            )
+        );
+    }
+
+    /// An unsorted table and one sorted by its partition column alone hold
+    /// nothing: their files stream in tuple order, each partition's in the
+    /// order its commits wrote them. The first declares no order; the
+    /// second its partition column, which the tuple order proves.
+    #[test]
+    fn a_table_sorted_by_no_more_than_its_partitions_streams_them_in_tuple_order() {
+        use yggdryl::IOMedia;
+
+        let commits: &[&[Quote]] = &[
+            &[("XNYS", 3, 1), ("XNAS", 1, 2)],
+            &[("XLON", 2, 3), ("XNAS", 0, 4)],
+        ];
+        let unsorted = quotes_table(
+            "ordered-unsorted",
+            &quotes_schema(&[]),
+            Some(SortOrder::unsorted()),
+            commits,
+        );
+        let reader = unsorted.read_serie(None).unwrap();
+        assert_eq!(reader.field().get_metadata("SORT:by"), None);
+        assert_eq!(ids_of(&quote_rows(&records_of(reader))), [3, 2, 4, 1]);
+        let options = unsorted.record_options().unwrap();
+        assert_eq!(
+            unsorted
+                .read_arrow_field(&options)
+                .unwrap()
+                .get_metadata("SORT:by"),
+            None
+        );
+
+        // A partitioned table declaring no order keeps its partition
+        // column's, ascending with nulls first.
+        let by_venue = quotes_table("ordered-by-venue", &quotes_schema(&[]), None, commits);
+        let reader = by_venue.read_serie(None).unwrap();
+        assert_eq!(
+            reader.field().get_metadata("SORT:by"),
+            Some(r#"["venue nulls first"]"#)
+        );
+        let records: Vec<yggdryl::Serie> = reader.map(Result::unwrap).collect();
+        for record in &records {
+            assert_eq!(declared_keys(record), ["venue nulls first"]);
+        }
+        let batches: Vec<RecordBatch> = records
+            .iter()
+            .map(|record| record.into_arrow_batch().unwrap())
+            .collect();
+        assert_eq!(ids_of(&quote_rows(&batches)), [3, 2, 4, 1]);
+    }
+
+    /// A `select` keeps the part of the order whose columns it publishes
+    /// unchanged: dropping `ts` leaves the partition column declared, each
+    /// partition's rows in its files' order, and the stream re-landed
+    /// behind the selector proves that declaration batch by batch.
+    #[test]
+    fn a_select_keeps_the_part_of_the_order_it_publishes() {
+        use yggdryl::IOMedia;
+        use yggdryl::media::IORecordOptions;
+
+        let table = quotes_table(
+            "ordered-select",
+            &quotes_schema(&["venue", "ts", "id"]),
+            None,
+            &[
+                &[("XNAS", 20, 1), ("XLON", 5, 2)],
+                &[("XNAS", 10, 3), ("XLON", 1, 4)],
+            ],
+        );
+        let options = table
+            .record_options()
+            .unwrap()
+            .with_select("venue, id")
+            .unwrap();
+        let reader = table.read_serie(Some(&options)).unwrap();
+        assert_eq!(reader.field().get_metadata("SORT:by"), Some(r#"["venue"]"#));
+        let mut rows: Vec<(String, i64)> = Vec::new();
+        for batch in records_of(reader) {
+            assert_eq!(batch.num_columns(), 2);
+            let venues = Arc::clone(batch.column_by_name("venue").unwrap());
+            let venues = venues.as_any().downcast_ref::<StringArray>().unwrap();
+            let ids = Arc::clone(batch.column_by_name("id").unwrap());
+            let ids = ids.as_any().downcast_ref::<Int64Array>().unwrap();
+            for row in 0..batch.num_rows() {
+                rows.push((venues.value(row).to_owned(), ids.value(row)));
+            }
+        }
+        // Each partition's files open by where their `ts` starts.
+        let expected: Vec<(String, i64)> = [("XLON", 4), ("XLON", 2), ("XNAS", 3), ("XNAS", 1)]
+            .into_iter()
+            .map(|(venue, id)| (venue.to_owned(), id))
+            .collect();
+        assert_eq!(rows, expected);
+        assert_eq!(
+            table
+                .read_arrow_field(&options)
+                .unwrap()
+                .get_metadata("SORT:by"),
+            Some(r#"["venue"]"#)
+        );
+    }
+
+    /// The same read under one decode thread and under four yields the
+    /// same records, row for row and record for record.
+    #[test]
+    fn a_parallel_record_read_yields_what_a_sequential_one_does() {
+        use yggdryl::IOMedia;
+
+        let venues = ["XLON", "XNAS", "XNYS"];
+        let commits: Vec<Vec<Quote>> = (0..4_i64)
+            .map(|commit| {
+                (0..9_i64)
+                    .map(|row| {
+                        let venue = venues[usize::try_from(row % 3).unwrap()];
+                        (venue, (7 * commit + 5 * row) % 13, commit * 9 + row)
+                    })
+                    .collect()
+            })
+            .collect();
+        let commits: Vec<&[Quote]> = commits.iter().map(Vec::as_slice).collect();
+        let mut table = quotes_table(
+            "ordered-parallel",
+            &quotes_schema(&["venue", "ts", "id"]),
+            None,
+            &commits,
+        );
+        let mut read = |threads: usize| {
+            table.set_options(
+                IcebergOptions::new()
+                    .try_with_read_parallelism(threads)
+                    .unwrap()
+                    .with_read_parallel_min_files(2)
+                    .with_read_parallel_min_file_size_bytes(0),
+            );
+            let records = records_of(table.read_serie(None).unwrap());
+            (
+                records
+                    .iter()
+                    .map(RecordBatch::num_rows)
+                    .collect::<Vec<_>>(),
+                quote_rows(&records),
+            )
+        };
+        let sequential = read(1);
+        let parallel = read(4);
+        assert_eq!(sequential, parallel);
+        let rows = sequential.1;
+        assert_eq!(rows.len(), 36);
+        assert!(rows.windows(2).all(|pair| pair[0] <= pair[1]), "{rows:?}");
+    }
 }
 
 mod derived_columns {

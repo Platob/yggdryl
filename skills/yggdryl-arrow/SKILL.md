@@ -185,8 +185,11 @@ the record `row`.
     reversal flips it, a take out of position or a write that breaks it
     clears it, and foreign rows landing under a declaring root are read
     once and refused by row. Never write `SORT:by` onto rows you have not
-    sorted: the next landing refuses them by name. An Iceberg scan's root
-    drops the table's `SORT:by` because files are sorted one by one.
+    sorted: the next landing refuses them by name. An Iceberg table's
+    record read (`read_serie`) yields each partition sorted, partitions in
+    tuple order, and declares the order only where that proves it - the
+    identity partition columns leading the order; its scan doors read files
+    in plan order and declare none.
 18. **Spill, do not shrink.** Every door that lays a column out settles it
     under `SpillOptions::from_env()` - 64 MiB resident by default,
     `YGGDRYL_SPILL_BYTE_SIZE`/`YGGDRYL_SPILL_FOLDER`, or

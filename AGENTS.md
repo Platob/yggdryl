@@ -1499,6 +1499,16 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   column `long`, and its tuple is read back under the header as written.
 - `IcebergTable` answers the same `IOMedia` surface as a leaf - a table format is a
   media wrapper, not a second record API.
+- A record read (`read_serie`, `read_arrow_reader` its transport) yields
+  partition after partition in ascending tuple order, each sorted by the
+  table's order through the two calls a write sorts a group by
+  (`keeps_order`, else `ChunkedSerie::into_sort_by`), lazily - one partition
+  held at once, under the process spill bound, none opened before the one
+  before it is yielded - its files opened by their leading key's manifest
+  bound so files that follow one another are never merged; its root, and
+  `read_arrow_field`, declare the order that proves only where the spec's
+  identity columns lead the order ascending and the metadata holds one spec.
+  The scan doors, compaction and a merge's stored side keep plan order.
 - A write through `IOMedia` commits once when its source ends unless
   `commit_batch_num` paces it: every partition's rows held as spilled chunks
   under the process spill bound, each group sorted as a whole by the table's

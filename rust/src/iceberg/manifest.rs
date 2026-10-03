@@ -2546,6 +2546,18 @@ pub fn read_manifest_for_plan<H: IOBase + ?Sized>(
     handle: &H,
     with_stats: bool,
 ) -> Result<Vec<ManifestEntry>> {
+    read_planned_manifest(handle, with_stats, None)
+}
+
+/// [`read_manifest_for_plan`], keeping the bounds of the column `ordered`
+/// names whatever `with_stats` says: an ordered record read opens a
+/// partition's files by where their leading sort key starts, which the
+/// entries already read carry, so keeping it costs no call.
+pub(super) fn read_planned_manifest<H: IOBase + ?Sized>(
+    handle: &H,
+    with_stats: bool,
+    ordered: Option<i32>,
+) -> Result<Vec<ManifestEntry>> {
     let mut entries = read_manifest(handle)?;
     for entry in &mut entries {
         let file = &mut entry.data_file;
@@ -2562,8 +2574,8 @@ pub fn read_manifest_for_plan<H: IOBase + ?Sized>(
             file.null_value_counts.clear();
             // A float bound is trusted only beside a NaN count of zero.
             file.nan_value_counts.clear();
-            file.lower_bounds.clear();
-            file.upper_bounds.clear();
+            file.lower_bounds.retain(|(id, _)| Some(*id) == ordered);
+            file.upper_bounds.retain(|(id, _)| Some(*id) == ordered);
         }
     }
     Ok(entries)

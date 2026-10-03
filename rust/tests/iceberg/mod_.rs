@@ -4647,8 +4647,15 @@ mod handles {
         assert_eq!(field.name(), options.name());
         assert_eq!(field.fields()[0].parquet_field_id().unwrap(), Some(1));
         assert_eq!(field.fields()[2].parquet_field_id().unwrap(), Some(3));
+        // A declared schema comes back as it stands, declaring the order a
+        // record read proves: the venue partitions arrive in tuple order.
         let declared = options.clone().with_field(trade_schema());
-        assert_eq!(table.read_arrow_field(&declared).unwrap(), trade_schema());
+        let mut ordered = trade_schema();
+        ordered
+            .as_sort_mut()
+            .set_by_texts(["venue nulls first"])
+            .unwrap();
+        assert_eq!(table.read_arrow_field(&declared).unwrap(), ordered);
 
         // Writing through the generic surface is one commit each, and the
         // in-memory metadata follows without reopening anything.

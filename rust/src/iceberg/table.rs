@@ -777,19 +777,9 @@ impl<H: IOBase> IcebergTable<H> {
     /// read cannot be reached or decoded.
     pub fn plan_matching(&self, filter: impl crate::expression::IntoFilter) -> Result<ScanPlan> {
         let filter = filter.into_filter()?;
-        let conjuncts = super::scan::conjuncts(self.schema()?, &filter)?;
-        let schema = self.read_root()?;
-        self.planned(&conjuncts, &schema, false)
-    }
-
-    /// The root a scan's rows land under: the schema without its `SORT:by`.
-    /// A table's sort order is how its writers lay each data file out, and
-    /// a scan reads the files in plan order, so the stream across them
-    /// states no order - a root declaring one would have every batch and
-    /// every batch edge checked, and refused where two files meet.
-    /// [`Self::schema`] keeps reporting the order the table declares.
-    fn read_root(&self) -> Result<Field> {
-        Ok(self.schema()?.clone().with_metadata_removed("SORT:by"))
+        let schema = self.schema()?;
+        let conjuncts = super::scan::conjuncts(schema, &filter)?;
+        self.planned(&conjuncts, schema, false)
     }
 
     /// Plan a scan of one retained snapshot rather than the current one.
@@ -811,7 +801,7 @@ impl<H: IOBase> IcebergTable<H> {
         let conjuncts = super::scan::conjuncts(schema, &filter)?;
         let schema = schema.clone();
         let manifests = self.manifests_at(snapshot)?;
-        self.plan_manifests(&manifests, &conjuncts, &schema, false)
+        self.plan_manifests(&manifests, &conjuncts, &schema, false, None)
     }
 
     /// Read one retained snapshot's rows: time travel as an ordinary scan.
@@ -837,8 +827,8 @@ impl<H: IOBase> IcebergTable<H> {
         let filter = pairs_predicate(&stored, filters);
         let conjuncts = super::scan::conjuncts(&stored, &filter)?;
         let manifests = self.manifests_at(snapshot)?;
-        let plan = self.plan_manifests(&manifests, &conjuncts, &stored, true)?;
-        self.reader(plan.tasks, &stored, field, &filter, false)
+        let plan = self.plan_manifests(&manifests, &conjuncts, &stored, true, None)?;
+        self.reader(plan.tasks, &stored, field, &filter)
     }
 
     /// Return one retained snapshot, or say which ids are retained.
@@ -883,16 +873,19 @@ impl<H: IOBase> IcebergTable<H> {
         for_read: bool,
     ) -> Result<ScanPlan> {
         let manifests = self.manifests()?;
-        self.plan_manifests(&manifests, conjuncts, schema, for_read)
+        self.plan_manifests(&manifests, conjuncts, schema, for_read, None)
     }
 
-    /// Plan one set of manifests under one set of resolved filters.
+    /// Plan one set of manifests under one set of resolved filters,
+    /// keeping the bounds of the column `ordered` names on a read-only plan
+    /// (see [`super::scan::plan`]).
     fn plan_manifests(
         &self,
         manifests: &[ManifestFile],
         conjuncts: &[crate::expression::Bound],
         schema: &Field,
         for_read: bool,
+        ordered: Option<i32>,
     ) -> Result<ScanPlan> {
         let location = self.opened()?.metadata.location();
         log::debug!(
@@ -915,6 +908,7 @@ impl<H: IOBase> IcebergTable<H> {
             conjuncts,
             schema,
             for_read,
+            ordered,
         )?;
         // How much the filters removed is the read signal worth watching: a
         // plan that opens every file is a plan whose predicate bought nothing.
@@ -1293,15 +1287,11 @@ impl<H: IOBase> IcebergTable<H> {
         filter: impl crate::expression::IntoFilter,
         field: Option<&Field>,
     ) -> Result<BatchReader> {
-        self.scan_with(filter.into_filter()?, field, false)
-    }
-
-    /// [`Self::scan_matching`], decoding lazily on one thread when `lazy`.
-    fn scan_with(&self, filter: Filter, field: Option<&Field>, lazy: bool) -> Result<BatchReader> {
+        let filter = filter.into_filter()?;
         let stored = self.schema()?.clone();
         let conjuncts = super::scan::conjuncts(&stored, &filter)?;
         let plan = self.planned(&conjuncts, &stored, true)?;
-        self.reader(plan.tasks, &stored, field, &filter, lazy)
+        self.reader(plan.tasks, &stored, field, &filter)
     }
 
     /// Build the reader over one set of planned files.
@@ -1311,21 +1301,20 @@ impl<H: IOBase> IcebergTable<H> {
         stored: &Field,
         field: Option<&Field>,
         filter: &crate::Filter,
-        lazy: bool,
     ) -> Result<BatchReader> {
-        let root = field.map_or_else(|| stored.clone(), Clone::clone);
+        // The files are read in plan order, so the rows state no order
+        // across them: the root drops the `SORT:by` the writers keep.
+        let root = field.map_or_else(
+            || stored.clone().with_metadata_removed("SORT:by"),
+            Clone::clone,
+        );
         let read_root = super::scan::read_root(&root, stored, filter)?;
         // The residual conjuncts run against the read root, which carries the
         // predicate's own columns even when the caller projected them away.
         let predicates = super::scan::conjuncts(&read_root, filter)?;
         let parts = self.scan_parts(tasks, stored, &read_root)?;
-        let mut parallel =
+        let parallel =
             IcebergOptions::read_settings(self.options.as_ref(), &self.opened()?.metadata)?;
-        if lazy {
-            // A limited read decodes one file at a time, on one thread, so it
-            // stops where its limit does rather than decoding ahead of it.
-            parallel.parallelism = 1;
-        }
         super::scan::reader(
             parts,
             root,
@@ -1385,7 +1374,9 @@ impl<H: IOBase> IcebergTable<H> {
         Ok(parts)
     }
 
-    /// Read the rows the record options ask for, under one more predicate.
+    /// Read the rows the record options ask for, under one more predicate:
+    /// [`Self::read_rows`] as transport, the selector and the limit wrapping
+    /// it.
     ///
     /// This is the one door every options-driven read takes: the `where`
     /// clause and `scope` - the partition a folder handle addresses - are
@@ -1400,34 +1391,184 @@ impl<H: IOBase> IcebergTable<H> {
         scope: Filter,
         options: &RecordOptions,
     ) -> Result<BatchReader> {
-        let stored = self.schema()?.clone();
-        let filter = options.filter();
-        let select = options.select();
-        let late = crate::expression::filter_after_select(
-            filter,
-            select,
-            stored.fields().iter().map(Field::name),
-        );
-        let root = match options.field() {
-            Some(field) => Some(field),
-            None => options
-                .apply_columns()
-                .and_then(|columns| projected_root(&stored, &columns)),
-        };
-        let lazy = options.max_row_size().is_some();
+        let (rows, late) = self.read_rows(scope, options)?;
+        let reader = rows.into_arrow_reader();
         if late {
-            let reader = self.scan_with(scope, root.as_ref(), lazy)?;
             return options.limit_arrow_reader(options.apply_arrow_expressions(reader)?);
         }
-        let pushed = if scope.is_always_true() {
+        // The limit wraps last, as on every handle, so it counts result rows
+        // and a satisfied read opens no partition past the one that
+        // satisfied it.
+        options.limit_arrow_reader(options.select().apply_arrow_reader(reader)?)
+    }
+
+    /// The rows an options-driven read yields before the `select`, a `where`
+    /// that runs after it and the row bounds wrap them - partition after
+    /// partition in ascending tuple order, each partition's rows in the
+    /// table's default sort order - and whether that `where` runs after the
+    /// `select` (`true`) or was pushed into the plan whole with `scope`.
+    ///
+    /// The plan is grouped by partition tuple ([`super::scan::partition_groups`]);
+    /// a group is decoded only when the one before it has been yielded, its
+    /// files read through the ordinary scan - in parallel where the plan is
+    /// worth it - and, where the order names a key the group does not hold
+    /// constant, landed into one chunked serie under the process spill bound
+    /// and sorted unless it already keeps the order: at most one partition
+    /// is held at once. A key the root does not read is not sorted on, nor
+    /// is any key after it. A table with no such key - unsorted, or sorted
+    /// only by its identity partition columns - streams its files in group
+    /// order and holds nothing. A plan holding a file of another partition
+    /// spec than the default reads in plan order and proves nothing.
+    ///
+    /// The root declares what the stream proves ([`Self::read_order`]),
+    /// which [`IOMedia::read_arrow_field`] declares too.
+    fn read_rows(
+        &self,
+        scope: Filter,
+        options: &RecordOptions,
+    ) -> Result<(crate::SerieReader, bool)> {
+        let stored = self.schema()?.clone();
+        let filter = options.filter();
+        let late = crate::expression::filter_after_select(
+            filter,
+            options.select(),
+            stored.fields().iter().map(Field::name),
+        );
+        let (landing, given) = self.read_landing(options)?;
+        let pushed = if late {
+            scope
+        } else if scope.is_always_true() {
             filter.clone()
         } else {
             Filter::all([scope, filter.clone()])
         };
-        let reader = self.scan_with(pushed, root.as_ref(), lazy)?;
-        // The limit wraps last, as on every handle, so it counts result rows
-        // and a satisfied scan stops decoding data files.
-        options.limit_arrow_reader(select.apply_arrow_reader(reader)?)
+        let metadata = &self.opened()?.metadata;
+        let spec = metadata.default_spec()?;
+        let order = metadata.default_sort_order()?;
+        let conjuncts = super::scan::conjuncts(&stored, &pushed)?;
+        let plan = self.plan_manifests(
+            &self.manifests()?,
+            &conjuncts,
+            &stored,
+            true,
+            super::scan::leading_key_id(order, spec, &stored),
+        )?;
+        let read_root = super::scan::read_root(&landing, &stored, &pushed)?;
+        // The residual conjuncts run against the read root, which carries the
+        // predicate's own columns even when the caller projected them away.
+        let predicates = super::scan::conjuncts(&read_root, &pushed)?;
+        let (groups, sorting, proven) =
+            match super::scan::partition_groups(plan.tasks, spec, order, &stored) {
+                Ok(groups) => {
+                    let sorting = self.read_sorting(&landing)?;
+                    let proven = self.read_order(&landing, options.select(), sorting.len())?;
+                    (groups, sorting, proven)
+                }
+                Err(tasks) => {
+                    log::debug!(
+                        "reading iceberg table {} in plan order: a planned file belongs to a \
+                         partition spec other than the default {}, whose tuples do not compare",
+                        metadata.location(),
+                        spec.spec_id
+                    );
+                    (vec![tasks], Vec::new(), Vec::new())
+                }
+            };
+        let groups = groups
+            .into_iter()
+            .map(|tasks| self.scan_parts(tasks, &stored, &read_root))
+            .collect::<Result<Vec<_>>>()?;
+        let mut parallel = IcebergOptions::read_settings(self.options.as_ref(), metadata)?;
+        if options.max_row_size().is_some() {
+            // A limited read decodes one file at a time, on one thread, so it
+            // stops where its limit does rather than decoding ahead of it.
+            parallel.parallelism = 1;
+        }
+        let root = std::sync::Arc::new(super::scan::declaring(landing.clone(), proven)?);
+        let partitions = super::scan::Partitions::new(
+            groups,
+            super::scan::GroupScan {
+                target: given.then(|| landing.clone()),
+                root: landing,
+                read_root,
+                predicates,
+                parallel,
+                renamed: columns_renamed(metadata),
+            },
+            sorting,
+            std::sync::Arc::clone(&root),
+        );
+        // Lazy, so no record is verified again on its way out: every group
+        // was proven in its order where it was held - `keeps_order` read it
+        // chunk by chunk and edge by edge, or `into_sort_by` laid it out -
+        // and the groups arrive in tuple order, which is the order's own
+        // leading keys wherever the root declares one.
+        let rows = crate::SerieReader::from_landed_iter(root, partitions)?;
+        Ok((rows, late))
+    }
+
+    /// The root an options-driven read lands its rows under, declaring no
+    /// order, and whether the caller gave it: the declared field, else the
+    /// stored schema narrowed to the columns the clauses read and named as
+    /// the options name the root.
+    fn read_landing(&self, options: &RecordOptions) -> Result<(Field, bool)> {
+        if let Some(field) = options.field() {
+            return Ok((field.with_metadata_removed("SORT:by"), true));
+        }
+        let stored = self.schema()?;
+        let projected = options
+            .apply_columns()
+            .and_then(|columns| projected_root(stored, &columns));
+        let given = projected.is_some();
+        let root = projected
+            .unwrap_or_else(|| stored.clone())
+            .with_name(options.name());
+        Ok((root.with_metadata_removed("SORT:by"), given))
+    }
+
+    /// The keys a record read sorts each partition group by: the table's
+    /// default order without the columns a group holds constant, while
+    /// `landing` reads them. An order naming a column the schema no longer
+    /// has sorts nothing - the rows are still read, in tuple order.
+    fn read_sorting(&self, landing: &Field) -> Result<Vec<crate::expression::Ordering>> {
+        let metadata = &self.opened()?.metadata;
+        let Ok((keys, _)) = sort_orderings(
+            metadata.default_sort_order()?,
+            metadata.default_spec()?,
+            self.schema()?,
+        ) else {
+            return Ok(Vec::new());
+        };
+        Ok(keys
+            .into_iter()
+            .take_while(|key| key.term().bind(landing).is_ok())
+            .collect())
+    }
+
+    /// The order a record read of rows landing under `landing`, groups
+    /// sorted on `sorted` keys, proves once `select` has run
+    /// ([`super::scan::proven_order`]) - and none for a table whose
+    /// metadata holds a partition spec besides the default, so the root a
+    /// schema read answers from metadata alone declares exactly what the
+    /// stream does, whichever files a filter plans.
+    fn read_order(
+        &self,
+        landing: &Field,
+        select: &Selector,
+        sorted: usize,
+    ) -> Result<Vec<crate::expression::Ordering>> {
+        let metadata = &self.opened()?.metadata;
+        if metadata.partition_specs().len() != 1 {
+            return Ok(Vec::new());
+        }
+        Ok(super::scan::proven_order(
+            metadata.default_spec()?,
+            metadata.default_sort_order()?,
+            self.schema()?,
+            landing,
+            select,
+            sorted,
+        ))
     }
 
     /// Append `batches` as a new snapshot, keeping everything already stored.
@@ -1932,13 +2073,7 @@ impl<H: IOBase> IcebergTable<H> {
             self.opened()?.metadata.location(),
         );
         let schema = self.schema()?.clone();
-        let rows = self.reader(
-            selected,
-            &schema,
-            None,
-            &crate::Filter::always_true(),
-            false,
-        )?;
+        let rows = self.reader(selected, &schema, None, &crate::Filter::always_true())?;
         let writes = self.partition_writes(rows, false)?;
         let files_after = self.commit(
             writes,
@@ -2963,16 +3098,23 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
 
     /// The stored schema as the metadata declares it, no data file opened.
     ///
-    /// A declared schema is returned as it stands, as on every handle.
-    /// Otherwise the answer is [`IcebergTable::schema`] renamed to the options' root
-    /// name - field identifiers and protocol metadata included - where the
-    /// base implementation would build a reader and take the shape off its
-    /// batches.
+    /// A declared schema is returned as it stands, as on every handle, but
+    /// for its `SORT:by`. Otherwise the answer is [`IcebergTable::schema`]
+    /// renamed to the options' root name - field identifiers and protocol
+    /// metadata included - where the base implementation would build a
+    /// reader and take the shape off its batches. Either way its `SORT:by`
+    /// is the order a record read of these options proves, which the
+    /// stream's root declares - none where it proves none - rather than the
+    /// order the table's writers keep.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
-        if let Some(field) = options.field() {
-            return Ok(field);
-        }
-        Ok(self.read_root()?.with_name(options.name()))
+        let (landing, _) = self.read_landing(options)?;
+        let sorted = self.read_sorting(&landing)?.len();
+        let proven = self.read_order(&landing, options.select(), sorted)?;
+        let root = match options.field() {
+            Some(field) => field,
+            None => self.schema()?.clone().with_name(options.name()),
+        };
+        super::scan::declaring(root.with_metadata_removed("SORT:by"), proven)
     }
 
     /// Scan the current snapshot, the whole `where` clause answered by the plan.
@@ -2981,9 +3123,44 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
     /// it, so every spelling the expression language has prunes: `venue in
     /// ('XNAS', 'XLON')` and `ts between ... and ...` skip the same manifests
     /// and files an equality does. The read decodes only the columns the
-    /// `select` and the `where` name.
+    /// `select` and the `where` name. The rows arrive as [`Self::read_serie`]
+    /// yields them - partition after partition, each in the table's sort
+    /// order - as transport.
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<BatchReader> {
         self.read_scoped(Filter::always_true(), options)
+    }
+
+    /// The table's rows partition after partition, in ascending partition
+    /// tuple order, each partition's rows in the table's default sort order,
+    /// the root declaring the order the stream proves.
+    ///
+    /// One partition is held at a time, spilled under the process bound,
+    /// and decoded only once the one before it has been yielded. A read the
+    /// options shape - a `select`, a row bound - is
+    /// [`Self::read_arrow_reader`]'s stream landed again, its declared order
+    /// checked batch by batch as any stream's is.
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
+        let owned;
+        let options = match options {
+            Some(options) => options,
+            None => {
+                owned = self.record_options()?;
+                &owned
+            }
+        };
+        let bounded = options.max_row_size().is_some()
+            || options.max_byte_size().is_some()
+            || options.row_offset().is_some_and(|rows| rows != 0);
+        // Under `*` the whole `where` clause was pushed into the plan, so the
+        // rows need nothing past what the read itself yields.
+        if options.select().is_all() && !bounded {
+            return Ok(self.read_rows(Filter::always_true(), options)?.0);
+        }
+        Ok(crate::SerieReader::from_arrow_reader(
+            None,
+            self.read_scoped(Filter::always_true(), options)?,
+            crate::ArrowCastOptions::default(),
+        )?)
     }
 
     /// Replace the partitions the rows fall in - the partitions the
