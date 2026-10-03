@@ -2,7 +2,7 @@
 
 // Plain-text records through the generic JavaScript record/media boundary.
 //
-//     npm run --prefix node bench:text -- --records 5000 --iterations 3
+//     npm run --prefix node bench:media:text -- --records 5000 --iterations 3
 //
 // Build the release addon first. Every BatchReader batch crosses as copied
 // Arrow IPC because Arrow JS has no C Data consumer.

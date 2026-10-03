@@ -17,6 +17,7 @@ use std::fmt::Write as _;
 use smol_str::format_smolstr;
 
 use super::Headers;
+use crate::mime_type::is_http_token_byte;
 use crate::timezone::days_from_civil;
 use crate::{Error, Result, Url};
 
@@ -117,7 +118,7 @@ impl Cookie {
         if name.is_empty() {
             return Err(refusal(0, "expected a cookie name before `=`"));
         }
-        if let Some(offset) = name.bytes().position(|byte| !is_token_byte(byte)) {
+        if let Some(offset) = name.bytes().position(|byte| !is_http_token_byte(byte)) {
             return Err(refusal(
                 pair.find(name).unwrap_or(0) + offset,
                 "a cookie name is a token: no separators, spaces or controls",
@@ -565,28 +566,6 @@ fn days_in_month(year: i32, month: u32) -> u32 {
         2 => 28,
         _ => 0,
     }
-}
-
-/// RFC 9110 token bytes, which a cookie name is made of.
-const fn is_token_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric()
-        || matches!(
-            byte,
-            b'!' | b'#'
-                | b'$'
-                | b'%'
-                | b'&'
-                | b'\''
-                | b'*'
-                | b'+'
-                | b'-'
-                | b'.'
-                | b'^'
-                | b'_'
-                | b'`'
-                | b'|'
-                | b'~'
-        )
 }
 
 /// A `Set-Cookie` refusal at `position`.

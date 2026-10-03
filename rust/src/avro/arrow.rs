@@ -12,6 +12,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::string::is_text_storage;
 use crate::{DataType, Field, Result, Scalar, StructType, TimeUnit};
 
+use super::batch::locate_column;
 use super::datum::invalid;
 use super::schema::{Node, Schema};
 
@@ -169,7 +170,7 @@ fn record_json(name: &str, fields: &[Field], counter: &mut usize) -> Result<Scal
     let mut entries = Vec::with_capacity(fields.len());
     for field in fields {
         let mut declared = node_json(field.dtype(), field.name(), counter)
-            .map_err(|error| locate(error, field.name()))?;
+            .map_err(|error| locate_column(error, field.name()))?;
         // A null-typed column is already the null it would be wrapped in; a
         // ["null","null"] union is illegal, so the wrap is skipped.
         if field.is_nullable() && declared.as_str() != Some("null") {
@@ -384,22 +385,6 @@ fn unspellable(dtype: &DataType) -> crate::Error {
     invalid(format_smolstr!(
         "expected a datatype Avro can spell, got {dtype}"
     ))
-}
-
-/// Locate a schema-rendering failure at its column.
-fn locate(error: crate::Error, column: &str) -> crate::Error {
-    match error {
-        crate::Error::Codec {
-            format,
-            position,
-            reason,
-        } => crate::Error::Codec {
-            format,
-            position,
-            reason: format_smolstr!("{column}: {reason}"),
-        },
-        other => other,
-    }
 }
 
 #[cfg(feature = "internals")]

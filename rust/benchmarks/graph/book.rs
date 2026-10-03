@@ -88,12 +88,6 @@ pub fn benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| black_box(&book).imbalance(black_box(levels)));
         });
         group.throughput(Throughput::Elements(1));
-        group.bench_function(format!("spread_{levels}"), |bencher| {
-            bencher.iter(|| black_box(&book).spread());
-        });
-        group.bench_function(format!("best_price_{levels}"), |bencher| {
-            bencher.iter(|| black_box(&book).best_price(bid));
-        });
         // One replacement of the entry at the touch; the book's clone is
         // outside the timer and handed back rather than dropped inside it.
         let update = entry(1, "Buy", 0, 2);

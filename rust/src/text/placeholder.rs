@@ -538,28 +538,16 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
         // hex of its bytes - rather than refusing, because the value holds
         // exactly those bytes and hiding them would make the document
         // unwritable over one broken buffer.
-        Scalar::Geometry(value) => {
-            crate::wkb::into_wkt(value.as_bytes()).unwrap_or_else(|_| hex_text(value.as_bytes()))
-        }
-        Scalar::Geography(value) => {
-            crate::wkb::into_wkt(value.as_bytes()).unwrap_or_else(|_| hex_text(value.as_bytes()))
-        }
-        crate::bytes_scalars!(value) => hex_text(value.as_bytes()),
+        Scalar::Geometry(value) => crate::wkb::into_wkt(value.as_bytes())
+            .unwrap_or_else(|_| crate::bytes::hex_text(value.as_bytes())),
+        Scalar::Geography(value) => crate::wkb::into_wkt(value.as_bytes())
+            .unwrap_or_else(|_| crate::bytes::hex_text(value.as_bytes())),
+        crate::bytes_scalars!(value) => crate::bytes::hex_text(value.as_bytes()),
         // Null included: rendering "nothing" into the middle of a path is how a
         // configuration silently points somewhere wrong.
         _ => return None,
     };
     Some(Cow::Owned(owned))
-}
-
-/// The lossless hex spelling of bytes no other renderer can read.
-fn hex_text(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-    let mut text = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        let _ = write!(text, "{byte:02x}");
-    }
-    text
 }
 
 fn time_text(count: i64, unit: crate::TimeUnit, zone: &crate::Timezone) -> Option<String> {

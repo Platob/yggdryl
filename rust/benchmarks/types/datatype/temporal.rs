@@ -7,7 +7,6 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, StringArray};
-use arrow_schema::{IntervalUnit as ArrowIntervalUnit, TimeUnit as ArrowTimeUnit};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 use yggdryl::{DataType, DateTimeType, Scalar, Serie, TemporalValue as _, TimeUnit, Timezone};
@@ -240,18 +239,6 @@ pub(crate) fn time_unit_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| {
             TimeUnit::from_str(black_box("MonthDayNano"))
                 .expect("the static Arrow interval unit name must parse")
-        });
-    });
-    group.bench_function("to_arrow_time_unit", |bencher| {
-        bencher.iter(|| {
-            ArrowTimeUnit::try_from(black_box(TimeUnit::Nanosecond))
-                .expect("nanosecond is an Arrow time unit")
-        });
-    });
-    group.bench_function("to_arrow_interval_unit", |bencher| {
-        bencher.iter(|| {
-            ArrowIntervalUnit::try_from(black_box(TimeUnit::MonthDayNano))
-                .expect("month-day-nano is an Arrow interval unit")
         });
     });
     group.finish();

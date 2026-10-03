@@ -301,18 +301,6 @@ pub(crate) fn object_path_from_value(
         .map_err(value_error)
 }
 
-/// A folder layout by its canonical name.
-fn folder_layout_from_str(text: &str) -> PyResult<FolderLayout> {
-    match text {
-        "leaf" => Ok(FolderLayout::Leaf),
-        "folder" => Ok(FolderLayout::Folder),
-        "format" => Ok(FolderLayout::Format),
-        other => Err(PyValueError::new_err(format!(
-            "expected a layout of leaf, folder or format, got {other:?}"
-        ))),
-    }
-}
-
 /// The object a Python value is: a `Catalog`, a `Namespace` or a `Table`
 /// handle, whose description is taken as the core's own value.
 fn object_from_value(value: &Bound<'_, PyAny>) -> PyResult<Object> {
@@ -1003,7 +991,7 @@ impl PyMediaTable {
             table = table.with_description(description);
         }
         if let Some(layout) = layout {
-            table = table.with_layout(folder_layout_from_str(layout)?);
+            table = table.with_layout(layout.parse::<FolderLayout>().map_err(value_error)?);
         }
         Ok(table_base(Table::from(table)).add_subclass(Self))
     }

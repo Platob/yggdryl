@@ -76,11 +76,6 @@ pub use sts::{AssumedRole, CredentialSource};
 /// The lowercase hex SHA-1 of `text`, which is how the AWS tools name every
 /// file in the caches this module shares with them.
 pub(crate) fn sha1_hex(text: &str) -> String {
-    use std::fmt::Write as _;
     let digest = ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, text.as_bytes());
-    let mut hex = String::with_capacity(40);
-    for byte in digest.as_ref() {
-        let _ = write!(hex, "{byte:02x}");
-    }
-    hex
+    crate::bytes::hex_text(digest.as_ref())
 }

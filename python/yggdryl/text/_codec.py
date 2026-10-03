@@ -190,19 +190,6 @@ def prepare_source(
     return _normalize_format(_native._codec_infer(content)), content
 
 
-def _source_needs_content_inference(source: Source) -> bool:
-    """Return whether generic decoding must retain and inspect source content."""
-
-    if isinstance(source, os.PathLike):
-        return False
-    if isinstance(source, str):
-        return True
-    if isinstance(source, (bytes, bytearray, memoryview)):
-        return True
-    name = getattr(source, "name", None)
-    return not isinstance(name, (str, bytes))
-
-
 def _decode_inferred(
     source: Source,
     *,

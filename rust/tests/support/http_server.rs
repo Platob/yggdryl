@@ -820,16 +820,6 @@ pub fn header<'a>(recorded: &'a Recorded, name: &str) -> Option<&'a str> {
     recorded.headers.get(name)
 }
 
-/// Every header of a recorded request as `(name, value)` pairs, the way the
-/// earlier fixture listed them.
-pub fn header_pairs(recorded: &Recorded) -> Vec<(String, String)> {
-    recorded
-        .headers
-        .iter()
-        .map(|(name, value)| (name.to_owned(), value.to_owned()))
-        .collect()
-}
-
 /// One `Range` header's single byte range.
 struct ByteRange {
     /// First byte; `None` for a suffix range.

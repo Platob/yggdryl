@@ -53,25 +53,11 @@ impl Source {
         reference: CellRef,
     ) -> Result<std::borrow::Cow<'a, str>> {
         if cell.kind == CellKind::SharedString && cell.has_content {
-            let index: usize = cell.content.trim().parse().map_err(|_| {
-                self.refuse(
-                    reference,
-                    format_smolstr!("expected a shared string index, got {:?}", cell.content),
-                )
-            })?;
             return self
                 .strings
-                .get(index)
+                .resolve(&cell.content)
                 .map(|text| std::borrow::Cow::Borrowed(text.as_str()))
-                .ok_or_else(|| {
-                    self.refuse(
-                        reference,
-                        format_smolstr!(
-                            "expected a shared string index below {}, got {index}",
-                            self.strings.len()
-                        ),
-                    )
-                });
+                .map_err(|reason| self.refuse(reference, reason));
         }
         Ok(std::borrow::Cow::Borrowed(cell.content.as_str()))
     }

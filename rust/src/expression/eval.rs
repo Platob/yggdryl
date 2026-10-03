@@ -30,11 +30,12 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::bind::{Kind, Node, StepKind};
 use super::path::{FieldSegment, resolve_range, struct_values};
-use super::typing::{decimal_parts, is_binary, is_text, temporal_parts, unwrap_dictionary};
+use super::typing::{is_binary, is_text, unwrap_dictionary};
 use super::{Comparison, Function, Literal, Operator, Safety};
 use crate::cast::text::{encoded_value_of, is_blank_text};
 use crate::floating::f64_from_text;
 use crate::integer::integer_from_text_as;
+use crate::temporal::{TemporalKind, temporal_target};
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
 
 /// One row's worth of context: its column values.
@@ -420,11 +421,11 @@ pub(crate) fn compare(
 /// Order two non-null values that share one declared datatype.
 pub(crate) fn order(dtype: &DataType, left: &Scalar, right: &Scalar) -> Option<Ordering> {
     let dtype = unwrap_dictionary(dtype);
-    if let Some((_, scale)) = decimal_parts(dtype) {
+    if let Some((_, scale)) = dtype.decimal_parts() {
         return Some(unscaled_at(left, scale)?.cmp(&unscaled_at(right, scale)?));
     }
-    if let Some((family, unit)) = temporal_parts(dtype) {
-        return Some(temporal_at(left, family, unit)?.cmp(&temporal_at(right, family, unit)?));
+    if let Some((_, unit)) = temporal_target(dtype) {
+        return Some(temporal_at(left, unit)?.cmp(&temporal_at(right, unit)?));
     }
     match dtype {
         DataType::Boolean => Some(left.as_bool()?.cmp(&right.as_bool()?)),
@@ -493,9 +494,8 @@ pub(crate) fn unscaled_at(value: &Scalar, scale: i8) -> Option<i256> {
 /// This value's temporal count in one family's unit, dates included.
 ///
 /// A date carries no unit of its own, so [`Scalar::temporal_count_at`] declines
-/// it; here the family says it is a day count and the answer is the day.
-pub(crate) fn temporal_at(value: &Scalar, family: u8, unit: TimeUnit) -> Option<i64> {
-    let _ = family;
+/// it, and its count is read as the day it is.
+pub(crate) fn temporal_at(value: &Scalar, unit: TimeUnit) -> Option<i64> {
     value.temporal_count_at(unit).or_else(|| value.as_i64())
 }
 
@@ -1093,7 +1093,7 @@ pub(crate) fn epoch_value(period: EpochPeriod, value: &Scalar) -> Scalar {
 
 /// Floor a value to a unit or to a multiple.
 fn truncate(value: &Scalar, unit: &Scalar, dtype: &DataType) -> Result<Scalar> {
-    if let Some((family, held_unit)) = temporal_parts(unwrap_dictionary(dtype)) {
+    if let Some((family, held_unit)) = temporal_target(unwrap_dictionary(dtype)) {
         let Some(name) = unit.as_str() else {
             return Err(missing(
                 "a unit name such as 'hour' for a temporal truncate",
@@ -1102,12 +1102,8 @@ fn truncate(value: &Scalar, unit: &Scalar, dtype: &DataType) -> Result<Scalar> {
         let Some(count) = value.temporal_count_at(held_unit) else {
             return Ok(Scalar::Null);
         };
-        let per_second = match held_unit {
-            TimeUnit::Second => 1_i64,
-            TimeUnit::Millisecond => 1_000,
-            TimeUnit::Microsecond => 1_000_000,
-            TimeUnit::Nanosecond => 1_000_000_000,
-            _ => return Ok(Scalar::Null),
+        let Some(per_second) = crate::temporal::per_second(held_unit) else {
+            return Ok(Scalar::Null);
         };
         let seconds = match name.to_ascii_lowercase().as_str() {
             "second" => 1_i64,
@@ -1123,7 +1119,11 @@ fn truncate(value: &Scalar, unit: &Scalar, dtype: &DataType) -> Result<Scalar> {
             }
         };
         // A date already counts in days, so it truncates to itself.
-        let step = if family == 0 { 1 } else { seconds * per_second };
+        let step = if family == TemporalKind::Date {
+            1
+        } else {
+            seconds * per_second
+        };
         let floored = count.div_euclid(step) * step;
         return temporal_value(unwrap_dictionary(dtype), floored, held_unit).or(Ok(Scalar::Null));
     }
@@ -1222,7 +1222,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         Err(_) if safety.is_safe() => Ok(Scalar::Null),
         Err(error) => Err(error),
     };
-    if let Some((precision, scale)) = decimal_parts(target) {
+    if let Some((precision, scale)) = target.decimal_parts() {
         // A string is a spelling, and the datatype's own value door reads it
         // exactly as a column of text is cast: at the declared scale, a digit
         // past it refused, never rounded.
@@ -1261,7 +1261,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         };
         return canonical(candidate);
     }
-    if let Some((family, unit)) = temporal_parts(target) {
+    if let Some((_, unit)) = temporal_target(target) {
         if let Some(text) = value.as_str() {
             // One text reading of a temporal serves both tiers: the Arrow
             // cast leaf reads a column of spellings through the same call,
@@ -1271,7 +1271,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                 Err(_) => refuse("a temporal in its classic text spelling"),
             };
         }
-        let Some(count) = temporal_at(value, family, unit) else {
+        let Some(count) = temporal_at(value, unit) else {
             return refuse("a temporal of the same family");
         };
         return temporal_value(target, count, unit)

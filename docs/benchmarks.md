@@ -78,6 +78,8 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/types/serie.py --iterations 1000
+    python/.venv/bin/python python/benchmarks/types/version.py --iterations 10000
     python/.venv/bin/python python/benchmarks/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/holder.py --min-time 0.2 --repeat 7
     python/.venv/bin/python python/benchmarks/holder/io.py --iterations 10000
@@ -88,6 +90,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/media/parquet.py --repeat 7
     python/.venv/bin/python python/benchmarks/media/avro.py --repeat 5
     python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
+    python/.venv/bin/python python/benchmarks/media/excel.py --repeat 5
     YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     python/.venv/bin/python python/benchmarks/uri.py --iterations 2000
@@ -96,6 +99,8 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/logger.py --iterations 20000
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
     python/.venv/bin/python python/benchmarks/graph.py --iterations 2000
+    python/.venv/bin/python python/benchmarks/warehouse.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/udf.py --rows 200000 --repeat 5
     python/.venv/bin/python scripts/bench_avro_baseline.py
     ```
 
@@ -118,6 +123,7 @@ Results live beside the method they measure. Each page's Performance section nam
     npm run --prefix node bench:logging
     npm run --prefix node bench:fix
     npm run --prefix node bench:graph
+    npm run --prefix node bench:warehouse
     ```
 
 ## What each Rust target isolates

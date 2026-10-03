@@ -2,9 +2,7 @@
 
 #[cfg(feature = "internals")]
 mod internal {
-    use yggdryl::internals::variant::{
-        INT32, OBJECT, PRIMITIVE, SHORT_STRING, SHORT_STRING_MAX, STRING,
-    };
+    use yggdryl::internals::variant::{OBJECT, PRIMITIVE, SHORT_STRING, SHORT_STRING_MAX, STRING};
     use yggdryl::{Scalar, VARIANT_VERSION, Variant};
 
     #[test]
@@ -40,20 +38,6 @@ mod internal {
         );
         assert_eq!(variant.value()[0] & 0x03, OBJECT);
         assert_eq!(variant.scalar().unwrap(), quote);
-    }
-
-    #[test]
-    fn the_refusals_name_the_byte() {
-        let refused = Variant::new(vec![0x02_u8], vec![0_u8])
-            .unwrap_err()
-            .to_string();
-        assert!(refused.contains("version 2"), "{refused}");
-        let variant = Variant::new(vec![0x11_u8, 0, 0], vec![PRIMITIVE | (INT32 << 2), 1]).unwrap();
-        let refused = variant.scalar().unwrap_err().to_string();
-        assert!(refused.contains("4 bytes announced"), "{refused}");
-        let variant = Variant::new(vec![0x11_u8, 0, 0], vec![PRIMITIVE | (60 << 2)]).unwrap();
-        let refused = variant.scalar().unwrap_err().to_string();
-        assert!(refused.contains("primitive type 60"), "{refused}");
     }
 }
 

@@ -465,12 +465,6 @@ impl Error {
     pub const fn is_unsupported(&self) -> bool {
         matches!(self, Self::Unsupported { .. })
     }
-
-    /// Return whether checked division or remainder received a zero divisor.
-    #[must_use]
-    pub const fn is_division_by_zero(&self) -> bool {
-        matches!(self, Self::DivisionByZero { .. })
-    }
 }
 
 /// The result type returned by Yggdryl core operations.

@@ -365,10 +365,11 @@ fn parenthesized_pair(rest: &str, keyword: &str) -> Result<(i64, i64)> {
     Ok((parse_number(left, keyword)?, parse_number(right, keyword)?))
 }
 
-/// Read `[n]` or `(n)` after a type keyword.
-fn parenthesized_one(rest: &str, keyword: &str) -> Result<u32> {
+/// The text inside `[n]` or `(n)` after a keyword: how a type states its
+/// length and a partition transform its parameter.
+pub(crate) fn bracketed_text(rest: &str) -> Option<&str> {
     let trimmed = rest.trim();
-    let inner = trimmed
+    trimmed
         .strip_prefix('[')
         .and_then(|value| value.strip_suffix(']'))
         .or_else(|| {
@@ -376,11 +377,15 @@ fn parenthesized_one(rest: &str, keyword: &str) -> Result<u32> {
                 .strip_prefix('(')
                 .and_then(|value| value.strip_suffix(')'))
         })
-        .ok_or_else(|| {
-            parse_error(format_smolstr!(
-                "expected {keyword}[length], got {keyword}{rest}"
-            ))
-        })?;
+}
+
+/// Read `[n]` or `(n)` after a type keyword.
+fn parenthesized_one(rest: &str, keyword: &str) -> Result<u32> {
+    let inner = bracketed_text(rest).ok_or_else(|| {
+        parse_error(format_smolstr!(
+            "expected {keyword}[length], got {keyword}{rest}"
+        ))
+    })?;
     let value = parse_number(inner, keyword)?;
     u32::try_from(value).map_err(|_| {
         parse_error(format_smolstr!(

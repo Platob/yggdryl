@@ -17,7 +17,7 @@ mod field {
     use smol_str::{SmolStr, format_smolstr};
 
     use crate::Scalar;
-    use crate::serde::{deserialize_flag, flag, integer, invalid, key};
+    use crate::serde::{deserialize_flag, flag, integer, invalid, key, text_of};
     use crate::{DataType, Error, Field, Metadata, Result};
 
     impl Field {
@@ -444,17 +444,6 @@ mod field {
                 formatting,
             )?)
         }
-    }
-
-    /// A dumped document as text, or the encoder's own UTF-8 failure.
-    ///
-    /// Every writer here emits UTF-8 by construction, so this only ever converts.
-    fn text_of(bytes: Vec<u8>) -> Result<String> {
-        String::from_utf8(bytes).map_err(|error| Error::Codec {
-            format: "text",
-            position: 0,
-            reason: smol_str::format_smolstr!("expected UTF-8 output, got {error}"),
-        })
     }
 }
 

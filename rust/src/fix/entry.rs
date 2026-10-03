@@ -202,17 +202,15 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
         | Scalar::Null => None,
         crate::bytes_scalars!(held) => Some(SmolStr::new(String::from_utf8_lossy(held.as_bytes()))),
         Scalar::Version(held) => Some(smol_str::format_smolstr!("{held}")),
-        Scalar::DateTime64(_) => {
-            let (count, unit, _) = value.as_datetime64()?;
-            Some(fix_timestamp(count.checked_mul(nanos_per(unit)?)?))
-        }
+        Scalar::DateTime64(_) => Some(fix_timestamp(
+            value.temporal_count_at(crate::TimeUnit::Nanosecond)?,
+        )),
         Scalar::Date32(_) => {
             let (days, _, _) = value.as_date32()?;
             Some(fix_date(i64::from(days)))
         }
         Scalar::Date64(_) => {
-            let (count, unit, _) = value.as_date64()?;
-            let nanos = count.checked_mul(nanos_per(unit)?)?;
+            let nanos = value.temporal_count_at(crate::TimeUnit::Nanosecond)?;
             Some(fix_date(nanos.div_euclid(NANOS_PER_DAY)))
         }
         // Every other number and duration writes its leaf's own canonical
@@ -224,21 +222,6 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
 }
 
 const NANOS_PER_DAY: i64 = 86_400_000_000_000;
-
-/// How many nanoseconds one count of `unit` is, for the clock units; a
-/// calendar unit counts no nanoseconds and answers nothing.
-const fn nanos_per(unit: crate::TimeUnit) -> Option<i64> {
-    match unit {
-        crate::TimeUnit::Second => Some(1_000_000_000),
-        crate::TimeUnit::Millisecond => Some(1_000_000),
-        crate::TimeUnit::Microsecond => Some(1_000),
-        crate::TimeUnit::Nanosecond => Some(1),
-        crate::TimeUnit::Day => Some(NANOS_PER_DAY),
-        crate::TimeUnit::YearMonth | crate::TimeUnit::DayTime | crate::TimeUnit::MonthDayNano => {
-            None
-        }
-    }
-}
 
 /// One day since the epoch as FIX spells it: `YYYYMMDD`.
 fn fix_date(days: i64) -> SmolStr {

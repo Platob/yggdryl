@@ -230,7 +230,12 @@ impl Stated {
             levels: options.levels.map(|levels| levels as usize),
             field: options.field.map(field_from_input).transpose()?,
             dtype: options.dtype.map(dtype_from_input).transpose()?,
-            layout: options.layout.as_deref().map(layout_from_str).transpose()?,
+            layout: options
+                .layout
+                .as_deref()
+                .map(str::parse::<FolderLayout>)
+                .transpose()
+                .map_err(napi_error)?,
             objects: options
                 .objects
                 .unwrap_or_default()
@@ -263,18 +268,6 @@ impl Stated {
             }
         }
         Ok(())
-    }
-}
-
-/// The layout a name spells.
-fn layout_from_str(value: &str) -> Result<FolderLayout> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "leaf" => Ok(FolderLayout::Leaf),
-        "folder" => Ok(FolderLayout::Folder),
-        "format" => Ok(FolderLayout::Format),
-        other => Err(napi_error(format!(
-            "expected a layout of `leaf`, `folder` or `format`, got {other:?}"
-        ))),
     }
 }
 

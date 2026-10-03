@@ -294,7 +294,7 @@ fn uuid_digits(value: &[u8]) -> std::result::Result<[u8; UUID_BYTES], SmolStr> {
             in_group = 0;
             continue;
         }
-        let Some(nibble) = hex_nibble(*byte) else {
+        let Some(nibble) = crate::bytes::hex_value(*byte) else {
             return Err(format_smolstr!("a non-hexadecimal byte at {position}"));
         };
         if written == digits.len() {
@@ -355,15 +355,6 @@ pub(crate) fn uuid_rendered<'a>(
     }
     // Every byte written is one of `HEX` or a hyphen, so the slot is ASCII.
     std::str::from_utf8(slot).unwrap_or_default()
-}
-
-const fn hex_nibble(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 fn uuid_refusal(value: &[u8], actual: SmolStr) -> Error {

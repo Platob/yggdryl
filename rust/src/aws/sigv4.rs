@@ -14,6 +14,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 
+use crate::bytes::hex_text;
+
 /// The `x-amz-content-sha256` value that skips payload hashing (HTTPS only).
 /// What `x-amz-content-sha256` carries when the body is not hashed.
 ///
@@ -37,7 +39,7 @@ const OWNED: [&str; 4] = [
 
 /// Lowercase hex SHA-256 of `bytes`.
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
-    hex(&Sha256::digest(bytes))
+    hex_text(&Sha256::digest(bytes))
 }
 
 /// Percent-encode one raw object key for the request path: every segment is encoded with the
@@ -186,7 +188,7 @@ impl Signer {
         let canonical_headers = self.canonical_headers(host, &datetime, payload_hash, headers);
         let request = canonical_request(method, path, query, &canonical_headers, payload_hash);
         let scope = format!("{date}/{}/{}/aws4_request", self.region, self.service);
-        let signature = hex(&hmac_sha256(
+        let signature = hex_text(&hmac_sha256(
             &self.signing_key(&date),
             string_to_sign(&datetime, &scope, &request).as_bytes(),
         ));
@@ -318,15 +320,6 @@ fn encode(text: &str, slash_kept: bool) -> String {
             // The Result of writing into a String is always Ok.
             let _ = write!(out, "%{byte:02X}");
         }
-    }
-    out
-}
-
-/// Lowercase hex of `bytes`.
-fn hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        let _ = write!(out, "{byte:02x}");
     }
     out
 }

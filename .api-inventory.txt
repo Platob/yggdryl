@@ -55,7 +55,6 @@ pub enum Charset  (#[non_exhaustive])
   pub fn transcribe(self, input: &[u8]) -> Cow<'_, str>
   pub fn transcribe_smol(self, input: &[u8]) -> SmolStr
   pub fn decode_into(self, input: &[u8], target: &mut String) -> Result<()>
-  pub fn decode_bytes_into(self, input: &[u8], target: &mut Vec<u8>) -> Result<()>
   pub fn encoded_len(self, input: &str) -> usize
   pub fn encode(self, input: &str) -> Result<Cow<'_, [u8]>>
   pub fn encode_into(self, input: &str, target: &mut Vec<u8>) -> Result<()>
@@ -1929,7 +1928,6 @@ pub struct ZipEntry
   pub const fn restarts(&self) -> &Restarts
   pub fn is_directory(&self) -> bool
   pub const fn is_encrypted(&self) -> bool
-  pub const fn has_data_descriptor(&self) -> bool
 
 ### yggdryl::zip::leaf  [rust/src/zip/leaf.rs]
 pub struct ZipLeaf
@@ -1989,8 +1987,6 @@ pub struct ZipPath
   pub const fn max_single_put(&self) -> u64
   pub const fn max_delete_batch(&self) -> usize
   pub const fn max_list_page(&self) -> u16
-  pub const fn default_list_page(&self) -> u16
-  pub const fn defaults_to_virtual_hosting(&self) -> bool
   impl Display, FromStr
 
   pub struct S3Path / S3Folder / S3File
@@ -2721,7 +2717,7 @@ pub struct MemoryNamespace  (the same one level down; a path of at least two par
   pub fn registered(&self) -> &[Object]
 
 ### yggdryl::warehouse::folder  [rust/src/warehouse/folder.rs]
-pub enum FolderLayout  (Leaf, Folder, Format: how a table a folder catalog lists holds its rows; Display)
+pub enum FolderLayout  (Leaf, Folder, Format: how a table a folder catalog lists holds its rows; Display, and FromStr of the canonical name - ASCII case ignored, trimmed - which both bindings' `layout` argument reads)
   pub const fn as_str(self) -> &'static str
 pub struct FolderCatalog  (a container read as a catalog: folders namespaces while levels remain, else tables read as the rows beneath them; a table format's folder a table at any depth, decided by one listing of its `metadata/` and never a read; a leaf a table when a record medium reads its media type; named by the file name less every extension a media type claims; nothing cached but the container handle)
   pub const DEFAULT_LEVELS: usize = 1
@@ -3191,7 +3187,6 @@ pub enum WriteStaging
   Off
   Folder(Url)
   pub fn from_str(text: &str) -> Result<Self>
-  pub const fn is_off(&self) -> bool
   pub const fn folder(&self) -> Option<&Url>
   impl std::str::FromStr for WriteStaging
   impl std::fmt::Display for WriteStaging
@@ -3218,7 +3213,6 @@ pub const FIRST_PARTITION_ID: i32 = 1000;
   pub fn mark_partitions(&self, schema: &Field) -> Result<Field>
   pub fn is_unpartitioned(&self) -> bool
   pub fn last_field_id(&self) -> i32
-  pub fn source_names(&self, schema: &Field) -> Result<Vec<SmolStr>>
   pub fn require_writable(&self) -> Result<()>
   pub fn partition_field(&self, schema: &Field) -> Result<Field>
   pub fn partition_path(&self, values: &[Scalar]) -> Result<String>
@@ -4802,7 +4796,6 @@ pub mod code  (the `ErrorCode` values the provider's faults carry)
   pub const UNSUPPORTED_COMMAND: u32 = 0x0009
   pub const EXECUTION_FAILED: u32 = 0x000A
   pub const CATALOG_FAILED: u32 = 0x000B
-  pub const BAD_SESSION: u32 = 0x000C
 pub struct ServiceOptions
   pub fn new() -> Self
   pub fn with_url(mut self, url: impl Into<String>) -> Self

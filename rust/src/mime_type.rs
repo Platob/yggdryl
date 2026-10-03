@@ -1173,7 +1173,10 @@ fn skip_ows(bytes: &[u8], cursor: &mut usize) {
     }
 }
 
-const fn is_http_token_byte(byte: u8) -> bool {
+/// A byte of RFC 9110's `tchar` (section 5.6.2): what a token is made of -
+/// a media type and its parameter names here, and a header, a cookie or a
+/// link parameter name wherever HTTP reads one.
+pub(crate) const fn is_http_token_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric()
         || matches!(
             byte,

@@ -1558,8 +1558,6 @@ pub mod internals {
     pub const SHORT_STRING: u8 = super::SHORT_STRING;
     /// The basic type of a keyed object.
     pub const OBJECT: u8 = super::OBJECT;
-    /// The primitive type of a four-byte signed integer.
-    pub const INT32: u8 = super::INT32;
     /// The primitive type of a length-prefixed string.
     pub const STRING: u8 = super::STRING;
     /// The longest string whose length folds into its header byte.

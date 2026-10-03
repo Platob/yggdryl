@@ -23,6 +23,7 @@
 //!   the name is a conflict.
 
 use std::fmt;
+use std::str::FromStr;
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -64,6 +65,26 @@ impl FolderLayout {
 impl fmt::Display for FolderLayout {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
+    }
+}
+
+impl FromStr for FolderLayout {
+    type Err = Error;
+
+    /// Read a layout by its canonical name, ASCII case ignored and the
+    /// surrounding blanks not part of it: the one reader of a layout a
+    /// binding's argument names.
+    fn from_str(value: &str) -> Result<Self> {
+        [Self::Leaf, Self::Folder, Self::Format]
+            .into_iter()
+            .find(|layout| value.trim().eq_ignore_ascii_case(layout.as_str()))
+            .ok_or_else(|| Error::Parse {
+                target: "folder layout",
+                position: 0,
+                reason: format_smolstr!(
+                    "expected a layout of `leaf`, `folder` or `format`, got {value:?}"
+                ),
+            })
     }
 }
 

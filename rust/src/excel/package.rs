@@ -204,7 +204,8 @@ impl Relationships {
 /// segments folded. Percent escapes in the target are decoded, since a
 /// member name is the archive's own text.
 pub(crate) fn resolve_target(source: &str, target: &str) -> SmolStr {
-    let decoded = percent_decode(target);
+    let decoded = crate::uri::percent_decode_lenient(target);
+    let decoded = String::from_utf8_lossy(&decoded);
     let mut segments: Vec<&str> = Vec::new();
     if !decoded.starts_with('/')
         && let Some((folder, _)) = source.rsplit_once('/')
@@ -221,34 +222,6 @@ pub(crate) fn resolve_target(source: &str, target: &str) -> SmolStr {
         }
     }
     SmolStr::new(segments.join("/"))
-}
-
-/// Decode `%HH` escapes, leaving anything else as it stands.
-fn percent_decode(text: &str) -> Cow<'_, str> {
-    if !text.contains('%') {
-        return Cow::Borrowed(text);
-    }
-    let bytes = text.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut at = 0;
-    while at < bytes.len() {
-        // Two hex digits after the `%`, checked as bytes: a `%` before a
-        // multi-byte character is kept as it stands, never sliced through.
-        if bytes[at] == b'%'
-            && at + 2 < bytes.len()
-            && bytes[at + 1].is_ascii_hexdigit()
-            && bytes[at + 2].is_ascii_hexdigit()
-        {
-            let high = char::from(bytes[at + 1]).to_digit(16).unwrap_or(0);
-            let low = char::from(bytes[at + 2]).to_digit(16).unwrap_or(0);
-            decoded.push(u8::try_from(high * 16 + low).unwrap_or(0));
-            at += 3;
-            continue;
-        }
-        decoded.push(bytes[at]);
-        at += 1;
-    }
-    Cow::Owned(String::from_utf8_lossy(&decoded).into_owned())
 }
 
 /// Write `_rels/.rels`: the one relationship to the workbook part.

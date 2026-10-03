@@ -6,6 +6,7 @@ use std::borrow::Cow;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::mime_type::is_http_token_byte;
 use crate::{Error, Result};
 
 /// One link value of a `Link` header: `<target>; rel="next"; title="x"`.
@@ -213,7 +214,7 @@ impl<'a> Cursor<'a> {
 
     fn token(&mut self) -> Result<&'a str> {
         let start = self.position;
-        while self.peek().is_some_and(is_token_byte) {
+        while self.peek().is_some_and(is_http_token_byte) {
             self.position += 1;
         }
         if self.position == start {
@@ -273,25 +274,4 @@ impl<'a> Cursor<'a> {
             }
         }
     }
-}
-
-const fn is_token_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric()
-        || matches!(
-            byte,
-            b'!' | b'#'
-                | b'$'
-                | b'%'
-                | b'&'
-                | b'\''
-                | b'*'
-                | b'+'
-                | b'-'
-                | b'.'
-                | b'^'
-                | b'_'
-                | b'`'
-                | b'|'
-                | b'~'
-        )
 }

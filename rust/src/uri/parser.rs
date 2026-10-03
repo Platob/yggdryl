@@ -1,6 +1,7 @@
 //! Shared URI component and platform-path parsing.
 
 use super::*;
+use crate::bytes::hex_value;
 
 pub(super) fn parse_error(target: &'static str, position: usize, reason: &'static str) -> Error {
     Error::Parse {
@@ -665,6 +666,35 @@ pub(crate) fn percent_decode<'a>(value: &'a str, target: &'static str) -> Result
     })
 }
 
+/// Decode every well-formed percent escape and keep a malformed one as it is
+/// written: the reading of text another party escaped - a relationship
+/// target, a key a listing answered, a query name - where refusing, as
+/// [`percent_decode`] does, would lose what the text still names. Borrowed
+/// when there is nothing to decode.
+pub(crate) fn percent_decode_lenient(value: &str) -> Cow<'_, [u8]> {
+    let bytes = value.as_bytes();
+    if !bytes.contains(&b'%') {
+        return Cow::Borrowed(bytes);
+    }
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%'
+            && let (Some(high), Some(low)) = (
+                bytes.get(index + 1).and_then(|byte| hex_value(*byte)),
+                bytes.get(index + 2).and_then(|byte| hex_value(*byte)),
+            )
+        {
+            decoded.push((high << 4) | low);
+            index += 3;
+            continue;
+        }
+        decoded.push(bytes[index]);
+        index += 1;
+    }
+    Cow::Owned(decoded)
+}
+
 /// Answer one component as raw text or as the text its escapes stand for.
 pub(super) fn decoded_component<'a>(
     value: &'a str,
@@ -749,15 +779,6 @@ pub(super) fn encoded_position_for_decoded_byte(value: &str, decoded_position: u
         decoded += 1;
     }
     encoded
-}
-
-pub(super) const fn hex_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 pub(super) fn canonicalize_file_drive(

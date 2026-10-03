@@ -105,11 +105,6 @@ pub(crate) fn variant_benchmarks(criterion: &mut Criterion) {
                 .expect("the fixture projects")
         });
     });
-    group.bench_function("scalar_from_variant/int64", |bencher| {
-        bencher.iter(|| {
-            Scalar::from_variant(black_box(&primitive_variant)).expect("the fixture decodes")
-        });
-    });
 
     let rows = corpus(1024, 16);
     let encoded_rows: Vec<Scalar> = (0..rows)

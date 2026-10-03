@@ -152,7 +152,7 @@ class TestConstructors:
 
         folder = MediaTable("lake.eu", root / "eu", layout="folder")
         assert folder.storage == "directory"
-        with pytest.raises(ValueError, match="leaf, folder or format"):
+        with pytest.raises(ValueError, match="expected a layout of `leaf`, `folder` or `format`"):
             MediaTable("lake.eu", root / "eu", layout="heap")
 
     def test_a_namespace_path_names_its_catalog_first(self, root: pathlib.Path) -> None:

@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::io::Write;
 
 use quick_xml::events::Event;
+use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Result, Str};
 
@@ -116,6 +117,19 @@ impl SharedStrings {
     /// How many items the table holds.
     pub(crate) fn len(&self) -> usize {
         self.items.len()
+    }
+
+    /// The text a shared-string cell names: its content read as an index
+    /// into the table, or the reason it names none.
+    pub(crate) fn resolve(&self, content: &str) -> std::result::Result<&Str, SmolStr> {
+        let index = crate::integer::integer_from_text_as::<usize>(content)
+            .ok_or_else(|| format_smolstr!("expected a shared string index, got {content:?}"))?;
+        self.get(index).ok_or_else(|| {
+            format_smolstr!(
+                "expected a shared string index below {}, got {index}",
+                self.len()
+            )
+        })
     }
 }
 

@@ -26,15 +26,8 @@ from ._native import (
 )
 from ._classes import _adopt_materialized_schema
 
-_INTEGER_KINDS = frozenset(
-    ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64")
-)
-_FLOAT_KINDS = frozenset(("float16", "float32", "float64"))
 _SERIE_KINDS = frozenset(
     ("serie", "serie_view", "fixed_size_serie", "large_serie", "large_serie_view")
-)
-_DECIMAL_KINDS = frozenset(
-    ("decimal32", "decimal64", "decimal128", "decimal256", "decimal", "bigdecimal")
 )
 #: The only ordinary name a generated class owns: every other name it carries -
 #: `__slots__`, the schema cache, the decoration markers - is dunder-shaped and
@@ -146,11 +139,12 @@ def _hint_from_datatype(
         return type(None)
     if kind == "boolean":
         return bool
-    if kind in _INTEGER_KINDS:
+    # The datatype answers its numeric family, so no width is listed here.
+    if dtype.is_integer:
         return int
-    if kind in _FLOAT_KINDS:
+    if dtype.is_floating:
         return float
-    if kind in _DECIMAL_KINDS:
+    if dtype.is_decimal:
         return Decimal
     if kind == "datetime64":
         return dt.datetime

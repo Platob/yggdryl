@@ -1804,3 +1804,23 @@ fn a_catalog_over_a_zip_archive_names_each_table_by_its_member() {
         trades_field().with_name("fills")
     );
 }
+
+#[test]
+fn a_layout_reads_its_canonical_name_in_any_case_and_refuses_any_other() {
+    for layout in [
+        FolderLayout::Leaf,
+        FolderLayout::Folder,
+        FolderLayout::Format,
+    ] {
+        assert_eq!(layout.to_string().parse::<FolderLayout>().unwrap(), layout);
+    }
+    assert_eq!(
+        " Folder ".parse::<FolderLayout>().unwrap(),
+        FolderLayout::Folder
+    );
+    let refused = "bogus".parse::<FolderLayout>().unwrap_err().to_string();
+    assert!(
+        refused.contains("expected a layout of `leaf`, `folder` or `format`, got \"bogus\""),
+        "{refused}"
+    );
+}

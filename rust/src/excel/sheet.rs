@@ -808,25 +808,11 @@ impl Sheet {
                 // A shared string's content is its index, resolved to the
                 // table's text; nothing is copied either way.
                 let content: &str = if raw.kind == CellKind::SharedString && raw.has_content {
-                    let index: usize =
-                        raw.content
-                            .trim()
-                            .parse()
-                            .map_err(|_| Error::InvalidRecord {
-                                path: format_smolstr!("{}!{reference}", sheet.name),
-                                reason: format_smolstr!(
-                                    "expected a shared string index, got {:?}",
-                                    raw.content
-                                ),
-                            })?;
                     strings
-                        .get(index)
-                        .ok_or_else(|| Error::InvalidRecord {
+                        .resolve(&raw.content)
+                        .map_err(|reason| Error::InvalidRecord {
                             path: format_smolstr!("{}!{reference}", sheet.name),
-                            reason: format_smolstr!(
-                                "expected a shared string index below {}, got {index}",
-                                strings.len()
-                            ),
+                            reason,
                         })?
                         .as_str()
                 } else {

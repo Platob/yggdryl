@@ -174,14 +174,6 @@ impl ZipEntry {
         self.flags & format::FLAG_ENCRYPTED != 0
     }
 
-    /// Whether the sizes follow the member's bytes instead of preceding them.
-    ///
-    /// The central directory states the true sizes either way, so this only
-    /// describes how the local header was written.
-    pub const fn has_data_descriptor(&self) -> bool {
-        self.flags & format::FLAG_DATA_DESCRIPTOR != 0
-    }
-
     /// The general purpose bit flags the record carries.
     pub(super) const fn flags(&self) -> u16 {
         self.flags

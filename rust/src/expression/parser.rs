@@ -2048,7 +2048,8 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         // An enum literal is a spelling its leaf's value door reads.
         held if held.is_enum() => Scalar::from(SmolStr::new(text)),
         crate::bytes_dtypes!() => Scalar::from(
-            bytes_from_hex(text).ok_or_else(|| fail("an even-length run of hex digits"))?,
+            crate::bytes::bytes_from_hex(text)
+                .ok_or_else(|| fail("an even-length run of hex digits"))?,
         ),
         other => {
             return Err(parse_error(
@@ -2065,21 +2066,6 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
     // cast value can never end up shaped differently.
     super::eval::convert(dtype, &value, super::Safety::Strict)
         .map_err(|error| parse_error(position, format_smolstr!("{error}")))
-}
-
-/// Read lowercase or uppercase hex into bytes.
-fn bytes_from_hex(text: &str) -> Option<Vec<u8>> {
-    if !text.len().is_multiple_of(2) {
-        return None;
-    }
-    let bytes = text.as_bytes();
-    let mut decoded = Vec::with_capacity(text.len() / 2);
-    for pair in bytes.as_chunks::<2>().0 {
-        let high = char::from(pair[0]).to_digit(16)?;
-        let low = char::from(pair[1]).to_digit(16)?;
-        decoded.push(u8::try_from(high * 16 + low).ok()?);
-    }
-    Some(decoded)
 }
 
 /// Return whether a name needs quoting to survive a round trip.

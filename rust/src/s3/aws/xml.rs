@@ -159,43 +159,10 @@ fn decode_url(text: &str) -> String {
     if !text.contains(['%', '+']) {
         return text.to_owned();
     }
-    let bytes = text.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'+' => {
-                decoded.push(b' ');
-                index += 1;
-            }
-            b'%' if index + 2 < bytes.len() => match hex_byte(&bytes[index + 1..index + 3]) {
-                Some(byte) => {
-                    decoded.push(byte);
-                    index += 3;
-                }
-                None => {
-                    decoded.push(bytes[index]);
-                    index += 1;
-                }
-            },
-            byte => {
-                decoded.push(byte);
-                index += 1;
-            }
-        }
-    }
-    String::from_utf8(decoded).unwrap_or_else(|_| text.to_owned())
-}
-
-/// One `%XX` pair as the byte it spells.
-fn hex_byte(pair: &[u8]) -> Option<u8> {
-    let digit = |byte: u8| match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    };
-    Some(digit(*pair.first()?)? * 16 + digit(*pair.get(1)?)?)
+    // A `+` is a space before any escape is read, so `%2B` stays a `+`.
+    let spaced = text.replace('+', " ");
+    String::from_utf8(crate::uri::percent_decode_lenient(&spaced).into_owned())
+        .unwrap_or_else(|_| text.to_owned())
 }
 
 #[cfg(feature = "internals")]

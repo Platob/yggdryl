@@ -1413,10 +1413,7 @@ impl Borrow<[u8]> for Bytes {
 
 impl fmt::Display for Bytes {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for byte in self.as_bytes() {
-            write!(formatter, "{byte:02x}")?;
-        }
-        Ok(())
+        write_hex(formatter, self.as_bytes())
     }
 }
 
@@ -1918,6 +1915,49 @@ pub(crate) fn into_base64(payload: &[u8]) -> String {
     use base64::Engine as _;
 
     base64::engine::general_purpose::STANDARD.encode(payload)
+}
+
+/// The value of one hexadecimal digit, in either case, `None` for a byte no
+/// digit is: the one digit reader every hex spelling in the crate reads - a
+/// binary literal, a UUID, a percent escape.
+pub(crate) const fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Read the payload hex spells, two digits a byte in either case: what
+/// [`write_hex`] writes. `None` for an odd length or a byte no digit is.
+pub(crate) fn bytes_from_hex(text: &str) -> Option<Vec<u8>> {
+    let (pairs, rest) = text.as_bytes().as_chunks::<2>();
+    if !rest.is_empty() {
+        return None;
+    }
+    pairs
+        .iter()
+        .map(|[high, low]| Some((hex_value(*high)? << 4) | hex_value(*low)?))
+        .collect()
+}
+
+/// Write a payload as lowercase hex, two digits a byte: how a [`Bytes`] and
+/// a geospatial value display and how a binary literal is spelled.
+pub(crate) fn write_hex(target: &mut impl fmt::Write, payload: &[u8]) -> fmt::Result {
+    for byte in payload {
+        write!(target, "{byte:02x}")?;
+    }
+    Ok(())
+}
+
+/// [`write_hex`] as one string of its own.
+#[must_use]
+pub(crate) fn hex_text(payload: &[u8]) -> String {
+    let mut text = String::with_capacity(payload.len() * 2);
+    // Writing into a `String` cannot fail.
+    let _ = write_hex(&mut text, payload);
+    text
 }
 
 #[cfg(feature = "internals")]

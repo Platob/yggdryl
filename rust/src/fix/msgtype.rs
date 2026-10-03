@@ -83,9 +83,8 @@ pub(super) fn wire_value(spelling: &str) -> &str {
 pub(super) fn derived_name(wire: &str) -> String {
     let mut name = String::with_capacity(7 + 2 * wire.len());
     name.push_str("message");
-    for byte in wire.bytes() {
-        name.push_str(&format!("{byte:02x}"));
-    }
+    // Writing into a `String` cannot fail.
+    let _ = crate::bytes::write_hex(&mut name, wire.as_bytes());
     name
 }
 

@@ -50,15 +50,5 @@ pub(crate) fn version_benchmarks(criterion: &mut Criterion) {
                 .expect("the widest numeric components")
         });
     });
-    group.bench_function("native_parts", |bencher| {
-        bencher.iter(|| {
-            let version = black_box(Version::new(65535, 65535, Some("65535")));
-            black_box((
-                version.major(),
-                version.minor(),
-                version.patch().map(str::len),
-            ))
-        });
-    });
     group.finish();
 }
