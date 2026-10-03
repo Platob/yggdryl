@@ -163,7 +163,7 @@ Each lookup exists by position, by path, or either:
 
 ## As a struct
 
-`into_struct_field` answers this field as a struct field: a struct as it is, nullability and metadata kept, anything else unchanged under a required `row` root; the root a column crosses into a table under is `SerieReader::root_of`'s, which forces a struct root required.md#as-a-struct). A struct field is answered as it is, name, nullability and metadata kept - so a nullable struct stays nullable and `validate_struct_root` still refuses it. Any other field becomes the one child, unchanged, of a required struct named `media::DEFAULT_ROOT_NAME` (`row`) that carries no metadata. The wrap's refusals are the datatype's, naming this field where the datatype names `$`. `Field::is_struct` is `dtype().is_struct()`.
+`into_struct_field` is the field's side of [`DataType::into_struct_type`](datatype.md#as-a-struct); the root a column crosses into a table under is `SerieReader::root_of`'s, which forces a struct root required. A struct field is answered as it is, name, nullability and metadata kept - so a nullable struct stays nullable and `validate_struct_root` still refuses it. Any other field becomes the one child, unchanged, of a required struct named `media::DEFAULT_ROOT_NAME` (`row`) that carries no metadata. The wrap's refusals are the datatype's, naming this field where the datatype names `$`. `Field::is_struct` is `dtype().is_struct()`.
 
 === "Rust"
 
