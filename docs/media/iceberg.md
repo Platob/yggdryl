@@ -185,7 +185,7 @@ A commit beaten by another writer rebases where that is safe: an append and a me
     let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
 
     // A table that has never been written to has no current snapshot.
-    assert!(table.current_snapshot().is_none());
+    assert!(table.current_snapshot()?.is_none());
     assert_eq!(table.scan(None)?.count(), 0);
 
     let batch = RecordBatch::try_new(
@@ -197,7 +197,7 @@ A commit beaten by another writer rebases where that is safe: an append and a me
     )?;
     table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
-    let snapshot = table.current_snapshot().expect("a snapshot");
+    let snapshot = table.current_snapshot()?.expect("a snapshot");
     assert_eq!(snapshot.operation(), "append");
     assert_eq!(table.data_files()?.len(), 2, "one file per venue");
 
@@ -471,7 +471,7 @@ A table is also created from what its schema declares. `PartitionSpec::from_sche
     let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-declared");
     let _ = std::fs::remove_dir_all(&path);
     let table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema, spec)?;
-    assert_eq!(table.metadata().default_sort_order()?.fields[0].direction, "desc");
+    assert_eq!(table.metadata()?.default_sort_order()?.fields[0].direction, "desc");
     assert_eq!(table.schema()?.get_metadata("PARTITION:by"), Some(r#"["venue","minutes(ts, 15)"]"#));
     assert_eq!(table.schema()?.get_metadata("SORT:by"), Some(r#"["ts desc","id"]"#));
     let _ = std::fs::remove_dir_all(&path);
@@ -588,13 +588,13 @@ A `SchemaUpdate` records column operations - add, rename, drop, promote - and on
     let batch = RecordBatch::try_new(schema.into_arrow_schema()?, vec![Arc::new(Int32Array::from(vec![1]))])?;
     table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
-    let mut update = SchemaUpdate::from_metadata(table.metadata())?;
+    let mut update = SchemaUpdate::from_metadata(table.metadata()?)?;
     update.add_column("", DataType::utf8().nullable_field("note"));
     update.update_type("id", DataType::Int64);
     assert_eq!(table.update_schema(&update)?, 1);
 
     // Nothing recorded, nothing written: the current id comes back.
-    let unchanged = SchemaUpdate::from_metadata(table.metadata())?;
+    let unchanged = SchemaUpdate::from_metadata(table.metadata()?)?;
     assert_eq!(table.update_schema(&unchanged)?, 1);
 
     let first = table.scan(None)?.next().expect("one batch")?;

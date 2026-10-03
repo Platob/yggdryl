@@ -84,7 +84,7 @@ impl Hash for Site {
 /// kept for the object's life.
 ///
 /// Every object holds one beside its description, and an
-/// [`IcebergTable`](crate::iceberg::IcebergTable) held by a [`Table`](crate::Table)
+/// `IcebergTable` held by a [`Table`](crate::Table)
 /// is rooted on one - which is why the type is public: a holder in hand is
 /// not clonable, and an object is. It answers every [`IOBase`] and
 /// [`IOMedia`] verb as the handle it resolves to - a verb that returns a
@@ -222,7 +222,7 @@ impl Handle {
 impl From<Holder> for Handle {
     /// A holder in hand, its site read off it for a clone, which opens under
     /// no properties: how a caller roots an
-    /// [`IcebergTable`](crate::iceberg::IcebergTable) on a handle it built.
+    /// `IcebergTable` on a handle it built.
     fn from(holder: Holder) -> Self {
         let what = holder
             .url()

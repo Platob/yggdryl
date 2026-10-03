@@ -638,10 +638,10 @@ let path = LocalFolder::temporary()?.path()?.join("yggdryl-skill-records-iceberg
 let _ = std::fs::remove_dir_all(&path);
 let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
 let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
-assert!(table.current_snapshot().is_none());
+assert!(table.current_snapshot()?.is_none());
 
 table.commit_append(rows(vec![1, 2, 3], vec!["XNAS", "XNYS", "XNAS"], vec![1.0, 2.0, 3.0]))?;
-let first = table.current_snapshot().expect("a snapshot").snapshot_id;
+let first = table.current_snapshot()?.expect("a snapshot").snapshot_id;
 table.commit_merge(rows(vec![3, 4], vec!["XNAS", "XNAS"], vec![30.0, 4.0]), &"id".parse::<Selector>()?, true)?;
 
 assert_eq!(count(table.scan(None)?)?, 4);
@@ -650,7 +650,7 @@ assert_eq!(table.plan_matching("venue = 'XNYS'")?.tasks.len(), 1);
 assert_eq!(count(table.scan_at(first, &[], None)?)?, 3); // time travel
 
 let reopened = IcebergTable::open(LocalFolder::new(&path)?)?;
-assert_eq!(reopened.current_snapshot().expect("a snapshot").operation(), "overwrite");
+assert_eq!(reopened.current_snapshot()?.expect("a snapshot").operation(), "overwrite");
 let _ = std::fs::remove_dir_all(&path);
 ```
 
@@ -675,11 +675,11 @@ let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2
 let batch = RecordBatch::try_new(schema.into_arrow_schema()?, vec![Arc::new(Int32Array::from(vec![1]))])?;
 table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
-let mut update = SchemaUpdate::from_metadata(table.metadata())?;
+let mut update = SchemaUpdate::from_metadata(table.metadata()?)?;
 update.add_column("", DataType::utf8().nullable_field("note"));
 update.update_type("id", DataType::Int64);
 let schema_id = table.update_schema(&update)?;
-assert_eq!(schema_id, table.metadata().current_schema_id());
+assert_eq!(schema_id, table.metadata()?.current_schema_id());
 
 assert_eq!(table.schema()?.field_len(), 2);
 let first = table.scan(None)?.next().expect("one batch")?;
