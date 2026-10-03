@@ -31,9 +31,6 @@ then start item 1.
   `ChunkedSerie` have no `into_struct_serie`; `SerieReader::root_of` and
   `serie/arrow.rs`'s `record_root` are not rerouted; the Python and Node
   `"row"` literals still stand.
-- Abandoned by the user, never to be revived: spilled series, memory-mapped
-  spill stores, automatic spilling, a `HolderSerie` or any serie accumulated
-  on `IOBase`. Nothing of it is in the tree.
 
 ## 1. Struct conversions, part 2
 
@@ -61,8 +58,7 @@ pins, docs, decisions). In one sentence each:
 
 ## 2. The castings-first duplicate-logic review
 
-Run `.handoff/next/DEDUP_REVIEW_PROMPT.md` as written: it is the prompt, with
-its exclusions re-scoped now that nothing of the spill change lands.
+Run `.handoff/next/DEDUP_REVIEW_PROMPT.md` as written: it is the prompt.
 
 ## 3. Clear `.handoff/`
 
