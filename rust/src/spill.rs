@@ -61,6 +61,7 @@ use arrow_schema::DataType as ArrowDataType;
 use memmap2::Mmap;
 use smol_str::format_smolstr;
 
+use crate::integer::{INTEGER_SPELLINGS, integer_from_text_as};
 use crate::local::LocalFolder;
 use crate::{DEFAULT_STREAM_BATCH_SIZE, Error, Result};
 
@@ -218,13 +219,14 @@ impl SpillOptions {
             if trimmed.eq_ignore_ascii_case("never") {
                 options.byte_size = Self::NEVER;
             } else if !trimmed.is_empty() {
-                options.byte_size = trimmed.parse::<u64>().map_err(|error| Error::Codec {
-                    format: "text",
-                    position: 0,
-                    reason: format_smolstr!(
-                        "expected a byte count or `never` in {BYTE_SIZE_VARIABLE}, got {trimmed:?}: {error}"
-                    ),
-                })?;
+                options.byte_size =
+                    integer_from_text_as::<u64>(trimmed).ok_or_else(|| Error::Codec {
+                        format: "text",
+                        position: 0,
+                        reason: format_smolstr!(
+                            "expected {INTEGER_SPELLINGS} of bytes or `never` in {BYTE_SIZE_VARIABLE}, got {trimmed:?}"
+                        ),
+                    })?;
             }
         }
         if let Some(value) = folder

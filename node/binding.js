@@ -5576,6 +5576,11 @@ binding.FixCodec.prototype.writeArrowReader = function writeArrowReader(source, 
       },
     }[name]
   }
+  const nativeGetByTicker = NativeIsinRegistry.prototype.getByTicker
+  NativeIsinRegistry.prototype.getByTicker = function getByTicker(ticker, market) {
+    const row = nativeGetByTicker.call(this, ticker, market)
+    return row === null ? null : row.asJs()
+  }
   const nativeMerge = NativeIsinRegistry.prototype.merge
   NativeIsinRegistry.prototype.merge = function merge(entry) {
     return nativeMerge.call(this, asScalar(entry))

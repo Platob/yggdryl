@@ -117,3 +117,33 @@ test('a codec shares the caller\'s registry with every lifecycle', () => {
   for (const _ of codec.lifecycle([stated()])) void _
   assert.equal(registry.length, 1, 'a codec without one learns into its own')
 })
+
+test('a ticker leads back to its ISIN on the same market', () => {
+  // Through the inverse index, gated by the market: the one row listing the
+  // ticker whose market is the one asked, or whose market or the one asked
+  // is unstated; two rows answering is ambiguous, and answers none.
+  const novartis = 'CH0012005267'
+  const registry = new IsinRegistry()
+  assert.ok(registry.merge({ isin: HOLCIM, ric: 'HOLN.S', ticker: 'HOLN', miccode: 'XSWX' }))
+  const isin = (ticker, market) => {
+    const row = registry.getByTicker(ticker, market)
+    return row === null ? null : String(row.isin)
+  }
+
+  assert.equal(isin('HOLN'), HOLCIM)
+  assert.equal(isin('HOLN', 'XSWX'), HOLCIM)
+  assert.equal(isin('HOLN', null), HOLCIM)
+  assert.equal(isin('HOLN', 'XXXX'), HOLCIM, 'XXXX states no market')
+  assert.equal(isin('HOLN', 'XLON'), null)
+  assert.equal(isin('ABBN'), null)
+  assert.throws(() => registry.getByTicker('HOLN', 'TOOLONG'))
+  // Two rows listing one ticker on two markets: a market resolves to its
+  // listing, none resolves to neither.
+  assert.ok(registry.merge({ isin: novartis, ticker: 'HOLN', miccode: 'XLON' }))
+  assert.deepEqual([isin('HOLN', 'XLON'), isin('HOLN', 'XSWX')], [novartis, HOLCIM])
+  assert.equal(isin('HOLN'), null, 'ambiguous')
+  assert.notEqual(registry.remove(novartis), null)
+  assert.equal(isin('HOLN'), HOLCIM)
+  registry.clear()
+  assert.equal(isin('HOLN'), null)
+})

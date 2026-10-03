@@ -103,11 +103,13 @@ impl FromStr for Level {
     fn from_str(value: &str) -> Result<Self> {
         let text = value.trim();
         if !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit()) {
-            return text.parse::<u8>().map(Self).map_err(|_| Error::Parse {
-                target: "log level",
-                position: 0,
-                reason: format_smolstr!("expected a level from 0 to 255, got {value:?}"),
-            });
+            return crate::integer::integer_from_text_as::<u8>(text)
+                .map(Self)
+                .ok_or_else(|| Error::Parse {
+                    target: "log level",
+                    position: 0,
+                    reason: format_smolstr!("expected a level from 0 to 255, got {value:?}"),
+                });
         }
         let named = match text.to_ascii_uppercase().as_str() {
             "NOTSET" => Self::NOTSET,

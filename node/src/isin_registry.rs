@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use napi::bindgen_prelude::Result;
 use napi_derive::napi;
-use yggdryl::{IsinEntry, IsinRegistry};
+use yggdryl::{DataType, IsinEntry, IsinRegistry, Mic, Scalar};
 
 use crate::fix::JsFixMsg;
 use crate::iobase::{LocationInput, located_from_input};
@@ -25,6 +25,21 @@ fn bound_of(max_instruments: Option<f64>) -> Result<usize> {
     };
     let max = crate::exact_i64(max, "maxInstruments")?;
     usize::try_from(max).map_err(|_| napi_error("maxInstruments must not be negative"))
+}
+
+/// A market identifier code as the `mic` datatype reads one, as Python's
+/// registry reads it.
+fn mic_of(text: &str) -> Result<Mic> {
+    match DataType::Mic
+        .scalar(Scalar::from(text))
+        .map_err(napi_error)?
+    {
+        Scalar::Mic(mic) => Ok(mic),
+        other => Err(napi_error(format!(
+            "expected a market identifier code, got {}",
+            other.kind()
+        ))),
+    }
 }
 
 /// A table of instruments keyed by ISIN - each row the instrument's CFI
@@ -151,6 +166,23 @@ impl JsIsinRegistry {
     #[napi(ts_return_type = "Record<string, unknown> | null")]
     pub fn get_by_ric(&self, ric: String) -> Option<JsScalar> {
         Self::row(self.lock().get_by_ric(&ric))
+    }
+
+    /// The row the ticker `ticker` names on `market`, as a plain object of
+    /// its columns, or `null`: the one row listing the ticker whose market
+    /// is `market` - a MIC, checked by the `mic` datatype - or whose market
+    /// or `market` is unstated (`null` or `XXXX`). Two rows answering is
+    /// ambiguous, and answers none.
+    #[napi(ts_return_type = "Record<string, unknown> | null")]
+    pub fn get_by_ticker(
+        &self,
+        ticker: String,
+        market: Option<String>,
+    ) -> Result<Option<JsScalar>> {
+        let market = market.as_deref().map(mic_of).transpose()?;
+        Ok(Self::row(
+            self.lock().get_by_ticker(&ticker, market.as_ref()),
+        ))
     }
 
     /// Folds one row - an object of column names to cells, `isin` required

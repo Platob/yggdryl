@@ -738,8 +738,9 @@ impl Ordering {
 impl Ordering {
     /// Read one key from the scalar that spells it: text in the `order by`
     /// key grammar, or a record of `term` - text, or the literal it is, as
-    /// [`Term::from_scalar`] reads - beside the optional booleans
-    /// `descending` and `nulls_first`. This is the reading every binding's
+    /// [`Term::from_scalar`] reads - beside the optional flags `descending`
+    /// and `nulls_first`, each a boolean or the text the crate's one boolean
+    /// table reads (`"yes"`, `"0"`). This is the reading every binding's
     /// keys cross through, so `{"term": "price", "descending": true}` and
     /// `"price desc"` are one key.
     ///
@@ -747,7 +748,7 @@ impl Ordering {
     ///
     /// Returns a parse error for text that is not a key, and an error naming
     /// the shape for a record without a `term`, with a key it does not know,
-    /// or with a flag that is not a boolean.
+    /// or with a flag that spells no boolean.
     pub fn from_scalar(value: &crate::Scalar) -> Result<Self> {
         if let Some(text) = value.as_str() {
             return text.parse();
@@ -776,9 +777,9 @@ impl Ordering {
         let mut options = SortOptions::default();
         for (key, held) in entries {
             let flag = || {
-                held.as_bool().ok_or_else(|| Error::InvalidRecord {
+                crate::boolean::bool_of(held).ok_or_else(|| Error::InvalidRecord {
                     path: format_smolstr!("$.{key}"),
-                    reason: crate::text::expected_got("a boolean", format_args!("{held:?}")),
+                    reason: crate::text::expected_got(BOOLEAN_SPELLINGS, format_args!("{held:?}")),
                 })
             };
             match key {

@@ -1698,4 +1698,21 @@ fn an_ordering_record_reads_its_nulls_flag_under_either_spelling() {
             .to_string()
             .contains("$.nulls")
     );
+    // A flag is a boolean or the text the crate's one boolean table reads.
+    let spelled = Scalar::from_struct([
+        ("term", Scalar::from("price")),
+        ("descending", Scalar::from("yes")),
+        ("nulls_first", Scalar::from("0")),
+    ])
+    .expect("a record");
+    assert_eq!(
+        Ordering::from_scalar(&spelled).expect("spelled flags"),
+        Ordering::new("price".parse().expect("a term"), SortOptions::descending())
+    );
+    for flag in [Scalar::from("maybe"), Scalar::from(1_i64)] {
+        let record = Scalar::from_struct([("term", Scalar::from("price")), ("descending", flag)])
+            .expect("a record");
+        let refused = Ordering::from_scalar(&record).unwrap_err().to_string();
+        assert!(refused.contains("$.descending"), "{refused}");
+    }
 }

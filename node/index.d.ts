@@ -5031,6 +5031,14 @@ export declare class IsinRegistry {
    */
   getByRic(ric: string): Record<string, unknown> | null
   /**
+   * The row the ticker `ticker` names on `market`, as a plain object of
+   * its columns, or `null`: the one row listing the ticker whose market
+   * is `market` - a MIC, checked by the `mic` datatype - or whose market
+   * or `market` is unstated (`null` or `XXXX`). Two rows answering is
+   * ambiguous, and answers none.
+   */
+  getByTicker(ticker: string, market?: string | undefined | null): Record<string, unknown> | null
+  /**
    * Folds one row - an object of column names to cells, `isin` required
    * - into the row of its ISIN by the update rule: a column the row
    * lacks is filled, one it holds is replaced by a statement at or after

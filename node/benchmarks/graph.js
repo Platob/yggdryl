@@ -118,10 +118,18 @@ const IDENTIFIERS_OBJECT = Object.fromEntries([
 ])
 const IDENTIFIERS = Identifiers.fromObject(IDENTIFIERS_OBJECT)
 const REGISTRY = new IsinRegistry()
-REGISTRY.merge({ isin: 'CH0012214059', ric: 'HOLN.S', bloomberg: 'HOLN SW Equity', cficode: 'ESVUFR' })
+REGISTRY.merge({
+  isin: 'CH0012214059',
+  ric: 'HOLN.S',
+  bloomberg: 'HOLN SW Equity',
+  cficode: 'ESVUFR',
+  ticker: 'HOLN',
+  miccode: 'XSWX',
+})
 benchmark(`identifiers fromObject/${IDENTIFIERS.length}`, () => Identifiers.fromObject(IDENTIFIERS_OBJECT))
 benchmark(`identifiers intoObject/${IDENTIFIERS.length}`, () => IDENTIFIERS.intoObject())
 benchmark('isin registry getByRic', () => REGISTRY.getByRic('HOLN.S'))
+benchmark('isin registry getByTicker', () => REGISTRY.getByTicker('HOLN', 'XSWX'))
 benchmark('market view plan', () => graph.MarketData.plan('orders', ["securityids['isin'] as isin"]))
 benchmarkStreams(`market view orders/${FOLD_OPERATION_COUNT}`, () =>
   graph.MarketData.applyView('orders', graph.MarketData.arrowReader(FOLD_OPERATIONS)).intoIpc())
