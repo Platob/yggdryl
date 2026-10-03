@@ -1404,7 +1404,10 @@ impl PyIcebergTable {
         })
     }
 
-    /// Replace every row with `batches` as a new snapshot.
+    /// Replace the partitions `batches` fall in as a new snapshot: every
+    /// row of an unpartitioned table, and of a partitioned one the
+    /// partitions the rows touch - no row replaces nothing there, and
+    /// `overwrite_where(None, [])` empties it.
     ///
     /// `options` configures this write as it does
     /// [`append`](Self::append).

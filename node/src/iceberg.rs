@@ -1942,7 +1942,10 @@ impl JsTable {
         })
     }
 
-    /// Replace every row with `batches` as a new snapshot.
+    /// Replace the partitions `batches` fall in as a new snapshot: every
+    /// row of an unpartitioned table, and of a partitioned one the
+    /// partitions the rows touch - no row replaces nothing there, and
+    /// `overwriteWhere(null, [])` empties it.
     ///
     /// The previous snapshot stays readable; only the current pointer moves.
     /// `options` configures this one write, exactly as on
