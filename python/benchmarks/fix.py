@@ -230,8 +230,9 @@ def _catalog() -> FixRegistry:
     registry.insert(group)
     group = registry.field_by_name("Parties")
     group.fix.group = "Parties"
-    counter.fix.field_ref = "NoPartyIDs"
-    message = Field("NewOrderSingle", DataType.from_fields([counter, group]), nullable=False)
+    # A group is its list alone: the counter is the dictionary's field and no
+    # member of the message beside it.
+    message = Field("NewOrderSingle", DataType.from_fields([group]), nullable=False)
     message.fix.msgtype = "D"
     registry.insert(message)
     return registry
@@ -242,7 +243,7 @@ CATALOG_JSON = CATALOG.into_json()
 CATALOG_PICKLE = pickle.dumps(CATALOG)
 CODEC = FixCodec(SEED_REGISTRY)
 NUMERIC_GROUP = b"8=FIX.4.4|35=D|453=1|448=BROKER|447=D|452=1|10=0|"
-assert CODEC.parse_fix_line(NUMERIC_GROUP).by_tag(453).as_py() == 1
+assert len(CODEC.parse_fix_line(NUMERIC_GROUP).by_name("parties").as_py()) == 1
 assert CODEC.parse_fix_line(NUMERIC_GROUP).by_path("Parties[0].PartyID").as_py() == "BROKER"
 assert FixRegistry.from_json(CATALOG_JSON) == CATALOG
 assert pickle.loads(CATALOG_PICKLE) == CATALOG
