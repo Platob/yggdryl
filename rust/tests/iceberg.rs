@@ -37,6 +37,9 @@ mod official;
 #[path = "iceberg/partition.rs"]
 mod partition;
 #[cfg(feature = "iceberg")]
+#[path = "iceberg/pointer.rs"]
+mod pointer;
+#[cfg(feature = "iceberg")]
 #[path = "iceberg/scan.rs"]
 mod scan;
 #[cfg(feature = "iceberg")]

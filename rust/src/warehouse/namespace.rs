@@ -71,6 +71,10 @@ pub enum Namespace {
     /// A folder of an Iceberg warehouse, nested to any depth.
     #[cfg(feature = "iceberg")]
     Iceberg(Box<crate::iceberg::IcebergNamespace>),
+    /// A namespace of an Amazon S3 Tables table bucket: the Iceberg tables
+    /// it holds.
+    #[cfg(feature = "s3tables")]
+    S3Tables(Box<crate::s3tables::S3TablesNamespace>),
 }
 
 impl Namespace {
@@ -82,6 +86,8 @@ impl Namespace {
             Self::Folder(namespace) => namespace.as_ref(),
             #[cfg(feature = "iceberg")]
             Self::Iceberg(namespace) => namespace.as_ref(),
+            #[cfg(feature = "s3tables")]
+            Self::S3Tables(namespace) => namespace.as_ref(),
         }
     }
 
@@ -112,13 +118,15 @@ impl Namespace {
     }
 
     /// The implementation's own name: `MemoryNamespace`, `FolderNamespace`,
-    /// `IcebergNamespace`.
+    /// `IcebergNamespace`, `S3TablesNamespace`.
     pub(crate) const fn implementation_name(&self) -> &'static str {
         match self {
             Self::Memory(_) => "MemoryNamespace",
             Self::Folder(_) => "FolderNamespace",
             #[cfg(feature = "iceberg")]
             Self::Iceberg(_) => "IcebergNamespace",
+            #[cfg(feature = "s3tables")]
+            Self::S3Tables(_) => "S3TablesNamespace",
         }
     }
 
@@ -129,6 +137,8 @@ impl Namespace {
             Self::Folder(namespace) => Self::Folder(Box::new(namespace.inheriting(parent))),
             #[cfg(feature = "iceberg")]
             Self::Iceberg(namespace) => Self::Iceberg(Box::new(namespace.inheriting(parent))),
+            #[cfg(feature = "s3tables")]
+            Self::S3Tables(namespace) => Self::S3Tables(Box::new(namespace.inheriting(parent))),
         }
     }
 }
@@ -229,6 +239,13 @@ impl From<FolderNamespace> for Namespace {
 impl From<crate::iceberg::IcebergNamespace> for Namespace {
     fn from(namespace: crate::iceberg::IcebergNamespace) -> Self {
         Self::Iceberg(Box::new(namespace))
+    }
+}
+
+#[cfg(feature = "s3tables")]
+impl From<crate::s3tables::S3TablesNamespace> for Namespace {
+    fn from(namespace: crate::s3tables::S3TablesNamespace) -> Self {
+        Self::S3Tables(Box::new(namespace))
     }
 }
 

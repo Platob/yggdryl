@@ -791,6 +791,32 @@ mod components {
         assert_eq!(path.extension(), Some("csv"));
     }
 
+    /// Below an authority an empty path joins as `/`, as RFC 3986 merges
+    /// one: a bucket's root reaches its keys, and a pathless host its paths.
+    #[test]
+    fn a_join_below_an_authority_with_no_path_is_absolute() {
+        let bucket = Url::from_str("s3://abc--table-s3").unwrap();
+        assert_eq!(
+            bucket
+                .joinpath("metadata/v1.metadata.json")
+                .unwrap()
+                .to_string(),
+            "s3://abc--table-s3/metadata/v1.metadata.json"
+        );
+        assert_eq!(
+            bucket.joinpath(".").unwrap().to_string(),
+            "s3://abc--table-s3/"
+        );
+        let host = Uri::from_str("https://example.test").unwrap();
+        assert_eq!(
+            host.joinpath("a/../b").unwrap().to_string(),
+            "https://example.test/b"
+        );
+        // A relative URI with no authority stays relative.
+        let relative = Uri::from_str("a").unwrap();
+        assert_eq!(relative.joinpath("b").unwrap().path().as_str(), "a/b");
+    }
+
     #[test]
     fn specialized_values_validate() {
         assert!(Url::from_str("https://example.test").is_ok());

@@ -464,6 +464,73 @@ fn a_create_through_the_catalog_takes_the_schema_as_iceberg_expresses_it() {
     assert!(!catalog.tables().contains("nyc.unholdable").unwrap());
 }
 
+/// A create takes the format version its `format-version` property states,
+/// else the lowest that states the schema: 3 for a nanosecond timestamp, a
+/// variant or an unknown column, which no v2 reader takes, and 2 otherwise.
+#[test]
+fn a_create_takes_the_stated_format_version_else_the_lowest_the_schema_needs() {
+    use yggdryl::iceberg::FormatVersion;
+
+    let (path, catalog) = warehouse("format-version");
+    namespaces(&catalog, "nyc");
+    let row = |dtype: DataType| {
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            dtype.nullable_field("x"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    };
+    let version = |name: &str, field: &Field, properties: &Properties| {
+        iceberg(catalog.tables().create(name, field, properties).unwrap())
+            .metadata()
+            .unwrap()
+            .format_version()
+    };
+    let nanos = DataType::DateTime64 {
+        unit: yggdryl::TimeUnit::Nanosecond,
+        timezone: yggdryl::Timezone::UTC,
+    };
+    let micros = DataType::DateTime64 {
+        unit: yggdryl::TimeUnit::Microsecond,
+        timezone: yggdryl::Timezone::UTC,
+    };
+    assert_eq!(
+        version("nyc.micros", &row(micros), &none()),
+        FormatVersion::V2
+    );
+    assert_eq!(
+        version("nyc.nanos", &row(nanos.clone()), &none()),
+        FormatVersion::V3
+    );
+    assert_eq!(
+        version("nyc.variant", &row(DataType::Variant), &none()),
+        FormatVersion::V3
+    );
+    let stated = Properties::new().with_property("format-version", "3");
+    assert_eq!(
+        version("nyc.stated", &taxi_schema(), &stated),
+        FormatVersion::V3
+    );
+
+    // A version no format has is refused by the property, nothing created.
+    let error = catalog
+        .tables()
+        .create(
+            "nyc.refused",
+            &taxi_schema(),
+            &Properties::new().with_property("format-version", "9"),
+        )
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("$.with.format-version"),
+        "{error}"
+    );
+    assert!(!catalog.tables().contains("nyc.refused").unwrap());
+    let _ = std::fs::remove_dir_all(&path);
+}
+
 #[test]
 fn append_creates_on_first_write_and_appends_on_the_second() {
     let (_path, catalog) = warehouse("append-creates");

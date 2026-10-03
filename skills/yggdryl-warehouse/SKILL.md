@@ -27,7 +27,8 @@ cross-language conventions are in `yggdryl`.
 | a folder as a catalog, a handle in hand | `FolderCatalog::bound(name, holder)` | `FolderCatalog(name, IOBase(p))` | `warehouse.Catalog.folder(name, new IOBase(p))` |
 | a folder as a catalog, by location | `FolderCatalog::new(name, url)?` (`.with_levels(n)`, `.with_properties(bag)`) | `FolderCatalog(name, path_or_url, levels=1, **properties)` | `warehouse.Catalog.folder(name, location, { levels, properties })`, `new warehouse.FolderCatalog(...)` |
 | a catalog from a URL and a property bag | `Catalog::from_url(&url, &properties)?` | `Catalog.from_url(url, type="memory", name="m")` | `warehouse.Catalog.fromUrl(url, { type, name })` |
-| an Iceberg warehouse folder as a catalog - the one implementation that creates | `IcebergCatalog::bound(name, holder)`, `::new(name, url)?`, `Catalog::from_url` with `type = hadoop` (`iceberg` feature) | `IcebergCatalog(name, location, **properties)` from `yggdryl.iceberg` | `new iceberg.IcebergCatalog(name, location, { description, properties })`, `.intoCatalog()` to register |
+| an Iceberg warehouse folder as a catalog - it creates | `IcebergCatalog::bound(name, holder)`, `::new(name, url)?`, `Catalog::from_url` with `type = hadoop` (`iceberg` feature) | `IcebergCatalog(name, location, **properties)` from `yggdryl.iceberg` | `new iceberg.IcebergCatalog(name, location, { description, properties })`, `.intoCatalog()` to register |
+| an Amazon S3 Tables table bucket as a catalog - it creates, and commits through the control plane | `S3TablesCatalog::new(name, S3Tables::new(session), bucket_arn)?`, `Catalog::from_url(&url, &props)?` for `s3tables://<bucket>` (`s3tables` feature) | `Catalog.from_url("arn:aws:s3tables:<region>:<account>:bucket/<name>", region=..., profile=..., warehouse=<arn>)` - the plain `Catalog` class | `warehouse.Catalog.fromUrl(arn, { region, profile, warehouse: arn })` - `implementation` `'Catalog'` |
 | a namespace of registered objects | `MemoryNamespace::new("lake.eu")?.with_object(t)?` | `MemoryNamespace("lake.eu", objects=[t])` | `warehouse.Namespace.memory('lake.eu', { objects: [t] })` |
 | a folder as a standalone namespace | `FolderNamespace::new("lake.eu", url)?`, `::bound(path, holder)?` | `FolderNamespace("lake.eu", location, levels=0)` | `warehouse.Namespace.folder('lake.eu', location)` |
 | a table at any location | `MediaTable::new("lake.eu.trades", url)?` (`.with_field`, `.with_dtype`, `.with_layout`) | `MediaTable(path, location, field=, dtype=, layout="leaf", **properties)` | `warehouse.Table.media(path, location, { field, dtype, layout, properties })` |
@@ -82,7 +83,11 @@ cross-language conventions are in `yggdryl`.
    an existing table, or register a `MediaTable` at the path first and write
    through it - the handle creates the leaf. An Iceberg catalog creates,
    through existing namespaces only: make `sales` before `sales.orders`, or
-   `tables.create("sales.orders", ..)` is the absence of `sales`.
+   `tables.create("sales.orders", ..)` is the absence of `sales`. So does an
+   S3 Tables catalog, one namespace level deep: `catalog.namespaces.create("desk")`
+   then `desk.tables.create("quotes", field)` - the format version is the
+   `format-version` property, else 3 for a nanosecond timestamp, a variant or
+   an unknown column, else 2 (both Iceberg catalogs).
 6. **Registration builds memory levels only.** A table registered at
    `lake.eu.trades` creates the memory catalog `lake` and namespace `eu` as
    needed; a path under a folder catalog, a folder namespace or a table is
@@ -138,7 +143,9 @@ cross-language conventions are in `yggdryl`.
 | `new warehouse.Catalog(...)` in JavaScript | `warehouse.Catalog.memory(...)`, `.folder(...)`, `.fromUrl(...)`, or `new warehouse.MemoryCatalog(...)` |
 | `table.kind()` on a Rust `Table` with `IOBase` and `ObjectValue` both imported | `ObjectValue::kind(&table)` or `IOBase::kind(&table)` |
 | cloning a `MediaTable::bound(path, Holder::buffer(..))` and reading the clone | keep the original; a buffer has no location to rebuild from |
-| `Catalog::from_url` with `type = 'rest'` | this build has `memory` and `folder` catalogs, and `hadoop` under `iceberg`; the refusal names them |
+| `Catalog::from_url` with `type = 'rest'` | this build has `memory` and `folder` catalogs, `hadoop` under `iceberg`, and the scheme `s3tables://` under `s3tables`; the refusal names them |
+| an S3 Tables ARN through `Catalog.from_url` with no region | the location drops the ARN's region and account: state `region=` (or `s3tables.region`), and `warehouse=<arn>` or `account_id=` to skip the one `ListTableBuckets` that finds the bucket |
+| expecting an S3 Tables table's warehouse to be listed or cleaned | a commit writes files and publishes one document through `UpdateTableMetadataLocation`; nothing lists or deletes there - a failed commit's files stay for the bucket's own removal |
 | registering `lake` on `SystemWarehouse` in a test | a name unique to the process (`format!("test_{}", std::process::id())`), unregistered after |
 
 ## Language references

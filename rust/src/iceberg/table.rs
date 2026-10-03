@@ -79,6 +79,14 @@
 //! shrink that window; they cannot close it. Serialized writers - a catalog,
 //! a lock, one writer per table - are what closes it.
 //!
+//! A table opened or created through a [`MetadataPointer`]
+//! ([`IcebergTable::open_pointed`], [`IcebergTable::create_pointed`]) has
+//! that compare-and-swap: the pointer names its current document and
+//! publishes the next one on condition it still stands where the last
+//! reading left it, so nothing is listed, no hint is written, and a commit
+//! that lost is told rather than overwritten. Nothing a pointed commit wrote
+//! is removed when it fails: its store need not take a delete.
+//!
 //! # Branches and tags
 //!
 //! [`IcebergTable::create_branch`], [`IcebergTable::create_tag`], [`IcebergTable::remove_snapshot_ref`],
@@ -91,7 +99,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{BuildHasherDefault, Hash, Hasher};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, UInt32Array};
 use arrow_row::{Row, RowConverter, SortField};
@@ -104,6 +112,7 @@ use super::manifest::{
 use super::metadata::{FormatVersion, SortOrder, TableMetadata, now_ms, uuid};
 use super::options::{CommitSettings, IcebergOptions, WriteSettings, WriteStaging};
 use super::partition::PartitionSpec;
+use super::pointer::{MetadataPointer, PointerState};
 use super::scan::{ScanPart, ScanPlan, ScanTask, identity_column};
 use super::snapshot::{Snapshot, SnapshotRef};
 use super::staging::{Staging, container, leaf, sized};
@@ -152,6 +161,10 @@ pub struct IcebergTable<H: IOBase> {
     opened: OnceLock<Opened>,
     /// An explicit options override the resolvers consult before properties.
     options: Option<IcebergOptions>,
+    /// What names the current document, when the folder does not: `None`
+    /// is the folder contract - the hint, else a listing of `metadata/`.
+    /// Shared by every clone, and never part of the table's identity.
+    pointer: Option<Arc<dyn MetadataPointer>>,
 }
 
 /// The current metadata document of a table, as read: what every reader
@@ -164,6 +177,11 @@ struct Opened {
     version: u32,
     /// The exact discovered metadata filename, including UUID and compression.
     metadata_file_name: SmolStr,
+    /// Where the pointer stood when the document was read or published - the
+    /// location it names and the token the next publication is conditioned
+    /// on - for a pointed table; `None` under the folder contract. A pointed
+    /// table created in memory and not yet published states no location.
+    pointed: Option<PointerState>,
 }
 
 impl IcebergTable<Handle> {
@@ -189,9 +207,14 @@ impl IcebergTable<Handle> {
         self
     }
 
-    /// Whether anything is at the table's location now.
+    /// Whether anything is at the table's location now: for a pointed
+    /// table, whether its pointer answers - a store that takes no listing
+    /// is never asked whether its folder holds anything.
     pub(crate) fn exists(&self) -> bool {
-        self.root.exists()
+        match &self.pointer {
+            Some(pointer) => self.opened.get().is_some() || pointer.current().is_ok(),
+            None => self.root.exists(),
+        }
     }
 }
 
@@ -207,6 +230,7 @@ impl<H: IOBase + Clone> Clone for IcebergTable<H> {
             description: self.description.clone(),
             opened: OnceLock::new(),
             options: self.options.clone(),
+            pointer: self.pointer.clone(),
         }
     }
 }
@@ -249,6 +273,87 @@ fn path_of<H: IOBase>(root: &H) -> Vec<SmolStr> {
     )]
 }
 
+/// The default sort order a created table keeps: the one the schema's
+/// `SORT:by` declares, else the spec's source columns.
+fn default_order(schema: &mut Field, spec: &PartitionSpec) -> Result<SortOrder> {
+    if schema.as_sort().declares_order() {
+        // An order names its columns by identifier, so the schema is
+        // numbered here exactly as the metadata document numbers it.
+        let start = super::last_column_id(schema)?.saturating_add(1);
+        super::assign_field_ids(schema, start)?;
+        SortOrder::from_schema(1, schema)
+    } else {
+        Ok(SortOrder::for_spec(spec))
+    }
+}
+
+/// Read the document `pointer` names under `root`: one answer of the
+/// pointer and one read of the document, nothing listed. A pointer naming
+/// no document yet is `None`.
+fn read_pointed<H: IOBase>(root: &H, pointer: &dyn MetadataPointer) -> Result<Option<Opened>> {
+    let state = pointer.current()?;
+    let Some(location) = state.location() else {
+        return Ok(None);
+    };
+    let base = root.url().ok_or_else(|| {
+        invalid(SmolStr::new_static(
+            "expected a located container to read a pointed table from, got a handle with no URL",
+        ))
+    })?;
+    let named = location.to_string();
+    let relative = relative_location(&base.to_string(), &named)?;
+    let bytes = leaf(root.child_by_path(&relative)?)?.read_all_bytes()?;
+    if bytes.is_empty() {
+        return Err(invalid(format_smolstr!(
+            "expected the Iceberg metadata document the table's pointer names at {named}, \
+             got nothing there"
+        )));
+    }
+    let metadata = TableMetadata::from_json(&parse_metadata_bytes(&bytes)?)?;
+    let metadata_file_name = SmolStr::new(location.file_name().unwrap_or_default());
+    // The number Iceberg's catalogs write a document under; a name that
+    // states none is read as the first.
+    let version = metadata_version_from_name(&metadata_file_name).unwrap_or(0);
+    log::debug!(
+        "opened iceberg table {} at the pointed metadata version {version}",
+        metadata.location(),
+    );
+    Ok(Some(Opened {
+        metadata,
+        version,
+        metadata_file_name,
+        pointed: Some(state),
+    }))
+}
+
+/// The version the next document of a pointed table is written under: one
+/// above the document held, `0` when the pointer names none yet.
+fn next_pointed_version(held: &Opened) -> Result<u32> {
+    if held
+        .pointed
+        .as_ref()
+        .and_then(PointerState::location)
+        .is_none()
+    {
+        return Ok(0);
+    }
+    held.version.checked_add(1).ok_or_else(|| {
+        invalid(format_smolstr!(
+            "cannot commit metadata after version {}: the version overflows u32",
+            held.version
+        ))
+    })
+}
+
+/// Report a pointer that names no document for the table at `root`.
+fn missing_pointed<H: IOBase>(root: &H) -> Error {
+    invalid(format_smolstr!(
+        "expected the metadata pointer of the table at {} to name a document, got none",
+        root.url()
+            .map_or_else(|| "an unlocated folder".to_owned(), ToString::to_string)
+    ))
+}
+
 /// Read the current metadata document under `root`, when there is one:
 /// the one `metadata/version-hint.text` names, else the highest-numbered
 /// `*.metadata.json`.
@@ -267,6 +372,7 @@ fn read_current<H: IOBase>(root: &H) -> Result<Option<Opened>> {
         metadata,
         version,
         metadata_file_name,
+        pointed: None,
     }))
 }
 
@@ -299,16 +405,36 @@ impl<H: IOBase> IcebergTable<H> {
         mut schema: Field,
         spec: PartitionSpec,
     ) -> Result<Self> {
-        let order = if schema.as_sort().declares_order() {
-            // An order names its columns by identifier, so the schema is
-            // numbered here exactly as the metadata document numbers it.
-            let start = super::last_column_id(&schema)?.saturating_add(1);
-            super::assign_field_ids(&mut schema, start)?;
-            SortOrder::from_schema(1, &schema)?
-        } else {
-            SortOrder::for_spec(&spec)
-        };
+        let order = default_order(&mut schema, &spec)?;
         Self::create_sorted(root, format_version, schema, spec, order)
+    }
+
+    /// Create a table whose current document `pointer` names, writing and
+    /// publishing its first document.
+    ///
+    /// This is [`Self::create`] for a table a catalog service keeps: the
+    /// pointer is read once, must name no document yet, and the first
+    /// document - `metadata/00000-{uuid}.metadata.json`, version 0 - is
+    /// published under the token it answered. Nothing is listed, no hint is
+    /// written, and every later commit publishes through the pointer the
+    /// same way ([`MetadataPointer`]). The default sort order is the one the
+    /// schema's `SORT:by` declares, else the spec's source columns, as
+    /// [`Self::create`] makes it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Conflict`] when the pointer already names a
+    /// document or moved before the first one was published, the pointer's
+    /// own failure, and the [`Self::create`] failures.
+    pub fn create_pointed(
+        root: H,
+        format_version: FormatVersion,
+        mut schema: Field,
+        spec: PartitionSpec,
+        pointer: Arc<dyn MetadataPointer>,
+    ) -> Result<Self> {
+        let order = default_order(&mut schema, &spec)?;
+        Self::create_with(root, format_version, schema, spec, order, Some(pointer))
     }
 
     /// Create a table whose data files keep `order`, writing its first document.
@@ -330,6 +456,19 @@ impl<H: IOBase> IcebergTable<H> {
         spec: PartitionSpec,
         order: SortOrder,
     ) -> Result<Self> {
+        Self::create_with(root, format_version, schema, spec, order, None)
+    }
+
+    /// The one creation: the first document under the folder contract, or
+    /// published through `pointer`.
+    fn create_with(
+        root: H,
+        format_version: FormatVersion,
+        schema: Field,
+        spec: PartitionSpec,
+        order: SortOrder,
+        pointer: Option<Arc<dyn MetadataPointer>>,
+    ) -> Result<Self> {
         let location = root.url().map(ToString::to_string).ok_or_else(|| {
             invalid(SmolStr::new_static(
                 "expected a located container to create a table in, got a handle with no URL",
@@ -337,12 +476,34 @@ impl<H: IOBase> IcebergTable<H> {
         })?;
         let metadata = TableMetadata::new_sorted(format_version, location, schema, spec, order)?;
         let mut table = Self::at(path_of(&root), root);
-        table.adopt(Opened {
-            metadata,
-            version: 0,
-            metadata_file_name: SmolStr::new_static(""),
-        });
-        table.create_metadata()?;
+        match pointer {
+            None => {
+                table.adopt(Opened {
+                    metadata,
+                    version: 0,
+                    metadata_file_name: SmolStr::new_static(""),
+                    pointed: None,
+                });
+                table.create_metadata()?;
+            }
+            Some(pointer) => {
+                // The pointer is read once: a table it already names a
+                // document for was created by someone else, and is never
+                // replaced by a second first document.
+                let state = pointer.current()?;
+                if let Some(named) = state.location() {
+                    return Err(Error::conflict("Iceberg table", "Iceberg table", named));
+                }
+                table.adopt(Opened {
+                    metadata,
+                    version: 0,
+                    metadata_file_name: SmolStr::new_static(""),
+                    pointed: Some(state),
+                });
+                table.publish_pointed(pointer.as_ref(), None)?;
+                table.pointer = Some(pointer);
+            }
+        }
         log::info!(
             "created iceberg table at {} (format v{}, {} columns)",
             table.opened()?.metadata.location(),
@@ -371,6 +532,7 @@ impl<H: IOBase> IcebergTable<H> {
             description: None,
             opened: OnceLock::new(),
             options: None,
+            pointer: None,
         }
     }
 
@@ -387,6 +549,13 @@ impl<H: IOBase> IcebergTable<H> {
         self
     }
 
+    /// The table whose current document `pointer` names, touching nothing:
+    /// what a catalog service's listing answers, read on first use.
+    pub(crate) fn pointed(mut self, pointer: Arc<dyn MetadataPointer>) -> Self {
+        self.pointer = Some(pointer);
+        self
+    }
+
     /// The table over `f` of its root, everything else kept - the document
     /// it has read included: how a table created over a handle in hand is
     /// re-rooted on the handle a catalog keeps.
@@ -399,6 +568,7 @@ impl<H: IOBase> IcebergTable<H> {
             description: self.description,
             opened: self.opened,
             options: self.options,
+            pointer: self.pointer,
         }
     }
 
@@ -407,13 +577,19 @@ impl<H: IOBase> IcebergTable<H> {
         if let Some(opened) = self.opened.get() {
             return Ok(opened);
         }
-        let opened = match read_current(&self.root)? {
-            Some(opened) => opened,
-            None => {
-                return Err(missing_metadata(&container(
-                    self.root.child_by_path(METADATA_DIR)?,
-                )?));
-            }
+        let opened = match &self.pointer {
+            Some(pointer) => match read_pointed(&self.root, pointer.as_ref())? {
+                Some(opened) => opened,
+                None => return Err(missing_pointed(&self.root)),
+            },
+            None => match read_current(&self.root)? {
+                Some(opened) => opened,
+                None => {
+                    return Err(missing_metadata(&container(
+                        self.root.child_by_path(METADATA_DIR)?,
+                    )?));
+                }
+            },
         };
         Ok(self.opened.get_or_init(|| opened))
     }
@@ -453,6 +629,24 @@ impl<H: IOBase> IcebergTable<H> {
             Ok(table) => Ok(table),
             Err(root) => Err(missing_metadata(&root.child_by_path(METADATA_DIR)?)),
         }
+    }
+
+    /// Open the table whose current document `pointer` names, under `root`.
+    ///
+    /// One answer of the pointer and one read of the document it names -
+    /// its location taken relative to the root's - and nothing else: no
+    /// hint is read and nothing is listed. Every commit through the table
+    /// publishes through the pointer ([`MetadataPointer`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns the pointer's own failure, an error when it names no
+    /// document or one outside the root, and the read or parse failure of
+    /// the document.
+    pub fn open_pointed(root: H, pointer: Arc<dyn MetadataPointer>) -> Result<Self> {
+        let table = Self::at(path_of(&root), root).pointed(pointer);
+        table.opened()?;
+        Ok(table)
     }
 
     /// Open the table a handle addresses, or say plainly that it is not one.
@@ -524,7 +718,10 @@ impl<H: IOBase> IcebergTable<H> {
         Ok(&self.opened()?.metadata)
     }
 
-    /// Return the version number of the current metadata document.
+    /// Return the version number of the current metadata document: the
+    /// number its name states - `v3.metadata.json` and
+    /// `00003-{uuid}.metadata.json` are both version 3. A pointed table's
+    /// first document is version 0.
     ///
     /// # Errors
     ///
@@ -549,6 +746,10 @@ impl<H: IOBase> IcebergTable<H> {
     /// As [`Self::metadata`].
     pub fn metadata_location(&self) -> Result<String> {
         let opened = self.opened()?;
+        // A pointed table's document is wherever the pointer names it.
+        if let Some(named) = opened.pointed.as_ref().and_then(PointerState::location) {
+            return Ok(named.to_string());
+        }
         Ok(format!(
             "{}/{METADATA_DIR}/{}",
             opened.metadata.location.trim_end_matches('/'),
@@ -1019,6 +1220,9 @@ impl<H: IOBase> IcebergTable<H> {
         mut apply: impl FnMut(&Self) -> Result<TableMetadata>,
         staging: Option<&Staging>,
     ) -> Result<()> {
+        if let Some(pointer) = self.pointer.clone() {
+            return self.commit_pointed(pointer.as_ref(), on_conflict, apply, staging);
+        }
         let settings =
             IcebergOptions::commit_settings(self.options.as_ref(), &self.opened()?.metadata)?;
         let saved = self.opened()?.clone();
@@ -1053,6 +1257,7 @@ impl<H: IOBase> IcebergTable<H> {
                         metadata,
                         version,
                         metadata_file_name,
+                        pointed: None,
                     });
                 }
                 Ok(None) | Err(_) => table.adopt(saved.clone()),
@@ -1092,6 +1297,7 @@ impl<H: IOBase> IcebergTable<H> {
                                 metadata: fresh,
                                 version,
                                 metadata_file_name,
+                                pointed: None,
                             }),
                             Err(error) => return restore(self, error),
                         }
@@ -1148,6 +1354,7 @@ impl<H: IOBase> IcebergTable<H> {
                         metadata,
                         version,
                         metadata_file_name,
+                        pointed: None,
                     });
                 }
                 log::debug!(
@@ -2358,20 +2565,7 @@ impl<H: IOBase> IcebergTable<H> {
         })?;
         let mut metadata = held.metadata.clone();
         metadata.finalize_official(previous)?;
-        let compression = metadata.metadata_compression_codec()?;
-        let document = metadata.clone().into_json()?;
-        let encoded = crate::json::into_bytes(&document)?;
-        let (suffix, encoded) = match compression {
-            iceberg_official::compression::CompressionCodec::None => ("", encoded),
-            iceberg_official::compression::CompressionCodec::Gzip(_) => {
-                (".gz", crate::gzip::dump(&encoded)?)
-            }
-            other => {
-                return Err(invalid(format_smolstr!(
-                    "unsupported Iceberg metadata compression codec {other}; expected none or gzip"
-                )));
-            }
-        };
+        let (suffix, encoded) = encoded_document(&metadata)?;
         let attempt = format_smolstr!("{next_version:05}-{}{suffix}.metadata.json", uuid());
         let metadata_dir = container(self.root.child_by_path(METADATA_DIR)?)?;
         let mut handle = leaf(
@@ -2445,6 +2639,161 @@ impl<H: IOBase> IcebergTable<H> {
             metadata,
             version: next_version,
             metadata_file_name: name,
+            pointed: None,
+        });
+        Ok(())
+    }
+
+    /// [`Self::commit_document`] for a pointed table: the pointer is the
+    /// version check and the publication in one.
+    ///
+    /// Each attempt applies the change to the document held, writes the
+    /// next document and publishes it under the token held - nothing is
+    /// read first, the pointer's condition being the check. A refused
+    /// publication reads the pointer again, one answer and one document: a
+    /// commit that may rebase adopts that document and applies again, under
+    /// the folder contract's retry budget; one that may not is a
+    /// [`CommitConflict`] at once - versions never move back - unless the
+    /// pointer still names the document it planned against, a token moved
+    /// by a change that wrote no document, which it publishes again under
+    /// the new token. Nothing an attempt wrote is removed, and a failure
+    /// restores the document and the token held before the commit.
+    fn commit_pointed(
+        &mut self,
+        pointer: &dyn MetadataPointer,
+        on_conflict: OnConflict,
+        mut apply: impl FnMut(&Self) -> Result<TableMetadata>,
+        staging: Option<&Staging>,
+    ) -> Result<()> {
+        let settings =
+            IcebergOptions::commit_settings(self.options.as_ref(), &self.opened()?.metadata)?;
+        let saved = self.opened()?.clone();
+        let planned = saved
+            .pointed
+            .as_ref()
+            .and_then(PointerState::location)
+            .cloned();
+        let expected_version = next_pointed_version(&saved)?;
+        let restore = |table: &mut Self, error: Error| {
+            table.adopt(saved.clone());
+            Err(error)
+        };
+        let mut beaten: u32 = 0;
+        let mut backoff_spent_ms = 0_u64;
+        loop {
+            let updated = match apply(self) {
+                Ok(updated) => updated,
+                Err(error) => return restore(self, error),
+            };
+            self.opened_mut()?.metadata = updated;
+            let refused = match self.publish_pointed(pointer, staging) {
+                Ok(()) => {
+                    let committed = self.opened()?;
+                    log::info!(
+                        "published iceberg metadata version {} of {}{}",
+                        committed.version,
+                        committed.metadata.location(),
+                        match committed.metadata.current_snapshot() {
+                            Some(snapshot) => format!(", snapshot {}", snapshot.snapshot_id),
+                            None => String::new(),
+                        },
+                    );
+                    return Ok(());
+                }
+                Err(error) if error.is_conflict() => error,
+                Err(error) => return restore(self, error),
+            };
+            // The pointer moved: where it stands now decides.
+            let fresh = match read_pointed(&self.root, pointer) {
+                Ok(Some(fresh)) => fresh,
+                Ok(None) => return restore(self, refused),
+                Err(error) => return restore(self, error),
+            };
+            let moved = fresh.pointed.as_ref().and_then(PointerState::location) != planned.as_ref();
+            if on_conflict == OnConflict::Fail && moved {
+                let conflict = CommitConflict {
+                    expected_version,
+                    beaten: beaten.saturating_add(1),
+                    last_seen_version: fresh.version,
+                };
+                return restore(self, conflict.into());
+            }
+            let wait = match retry_wait_ms(
+                &settings,
+                &mut beaten,
+                &mut backoff_spent_ms,
+                expected_version,
+                fresh.version,
+            ) {
+                Ok(wait) => wait,
+                Err(error) => return restore(self, error),
+            };
+            log::debug!(
+                "iceberg commit of {} found its pointer at version {}; retry {beaten}, \
+                 waiting {wait} ms",
+                fresh.metadata.location(),
+                fresh.version,
+            );
+            self.adopt(fresh);
+            if wait > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(wait));
+            }
+        }
+    }
+
+    /// Write the held metadata as the next document of a pointed table and
+    /// publish it under the token held: one write and one publication.
+    ///
+    /// The document is `metadata/{version:05}-{uuid}.metadata.json`, the
+    /// name Iceberg's catalogs write, its version one above the document
+    /// held and `00000` for the first. A publication refused because the
+    /// pointer moved is that conflict; one that fails otherwise is in doubt,
+    /// since the store may have taken it, so the pointer is read once more,
+    /// and a pointer naming this document is the commit made.
+    fn publish_pointed(
+        &mut self,
+        pointer: &dyn MetadataPointer,
+        staging: Option<&Staging>,
+    ) -> Result<()> {
+        let held = self.opened()?;
+        held.metadata.validate()?;
+        let state = held.pointed.clone().ok_or_else(|| {
+            invalid(SmolStr::new_static(
+                "expected a pointed table to hold where its pointer stands, got nothing",
+            ))
+        })?;
+        let next_version = next_pointed_version(held)?;
+        let previous = state.location().map(ToString::to_string);
+        let mut metadata = held.metadata.clone();
+        metadata.finalize_official(previous)?;
+        let (suffix, encoded) = encoded_document(&metadata)?;
+        let name = format_smolstr!("{next_version:05}-{}{suffix}.metadata.json", uuid());
+        let mut document = leaf(self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?)?;
+        document.write_all_bytes(&encoded)?;
+        let location = crate::Url::from_str(&self.location_of(METADATA_DIR, &name)?)?;
+        let published = match pointer.publish(state.token(), &location) {
+            Ok(published) => published,
+            Err(error) if error.is_conflict() => return Err(error),
+            Err(error) => match pointer.current() {
+                // The store took the publication and its answer was lost.
+                Ok(current) if current.location() == Some(&location) => current,
+                _ => return Err(error),
+            },
+        };
+        // The pointer names the document: every file it names is the
+        // table's now.
+        if let Some(staging) = staging {
+            staging.commit();
+        }
+        let published = match published.location() {
+            Some(_) => published,
+            None => PointerState::new(Some(location), published.token()),
+        };
+        self.adopt(Opened {
+            metadata,
+            version: next_version,
+            metadata_file_name: name,
+            pointed: Some(published),
         });
         Ok(())
     }
@@ -2505,6 +2854,13 @@ impl<H: IOBase> IcebergTable<H> {
         // Every file below goes through the one staging, so a failure
         // anywhere before the document is published rolls all of them back.
         let staging = Staging::begin(settings.staging.as_ref(), self.is_remote(), snapshot_id)?;
+        // A pointed table's store need not take a delete: what a failed
+        // commit wrote stays, unreferenced, rather than being removed.
+        let staging = if self.pointer.is_some() {
+            staging.keeping()
+        } else {
+            staging
+        };
 
         let write = CommitWrite {
             snapshot_id,
@@ -4894,6 +5250,23 @@ fn source_value(
     )
     .and_then(|source| Ok(source.scalar(0)?))
     .map_err(|error| invalid(format_smolstr!("{error}")))
+}
+
+/// The bytes of one metadata document as its compression codec writes them,
+/// and the suffix its name carries before `.metadata.json` for it.
+fn encoded_document(metadata: &TableMetadata) -> Result<(&'static str, Vec<u8>)> {
+    let compression = metadata.metadata_compression_codec()?;
+    let document = metadata.clone().into_json()?;
+    let encoded = crate::json::into_bytes(&document)?;
+    match compression {
+        iceberg_official::compression::CompressionCodec::None => Ok(("", encoded)),
+        iceberg_official::compression::CompressionCodec::Gzip(_) => {
+            Ok((".gz", crate::gzip::dump(&encoded)?))
+        }
+        other => Err(invalid(format_smolstr!(
+            "unsupported Iceberg metadata compression codec {other}; expected none or gzip"
+        ))),
+    }
 }
 
 /// Return the current metadata document with its exact name and number.

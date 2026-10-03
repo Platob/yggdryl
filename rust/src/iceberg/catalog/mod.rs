@@ -61,7 +61,9 @@
 //!   rename that re-copied every data file would be a copy wearing a rename's
 //!   name.
 //! - No catalog service here: a REST catalog is a network client, and it is
-//!   its own implementation.
+//!   its own implementation; an Amazon S3 Tables table bucket is the
+//!   `s3tables` feature's `S3TablesCatalog`, whose tables commit through a
+//!   [`MetadataPointer`](super::MetadataPointer) rather than this layout.
 
 mod namespace;
 
@@ -516,9 +518,61 @@ fn create_namespace(
     }
 }
 
+/// The property a create states the format version it asks for under, as
+/// Iceberg's catalogs read it.
+const FORMAT_VERSION_PROPERTY: &str = "format-version";
+
+/// The format version a catalog creates a table at: the `format-version`
+/// property when the create states one, else the lowest version that can
+/// state `schema` - 3 when it holds a nanosecond timestamp, a variant or an
+/// unknown column, which no v2 reader takes, and 2 otherwise.
+///
+/// `schema` is the schema as Iceberg expresses it, after
+/// [`Field::into_scheme_compat`].
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidRecord`] at `$.with.format-version` when the
+/// property is stated and is not 1, 2 or 3.
+pub(crate) fn format_version_for(schema: &Field, properties: &Properties) -> Result<FormatVersion> {
+    if let Some(number) = properties.knob_count::<i64>(FORMAT_VERSION_PROPERTY)? {
+        return FormatVersion::from_number(number).map_err(|_| Error::InvalidRecord {
+            path: SmolStr::new_static("$.with.format-version"),
+            reason: format_smolstr!(
+                "expected an Iceberg format version of 1, 2 or 3, got {number}"
+            ),
+        });
+    }
+    Ok(if states_v3_types(schema) {
+        FormatVersion::V3
+    } else {
+        FormatVersion::V2
+    })
+}
+
+/// Whether any column below `node` is of a type the format added in v3: a
+/// nanosecond timestamp, a variant, or an unknown - a null column, or a
+/// variant its field declares `unknown`.
+fn states_v3_types(node: &Field) -> bool {
+    (0..node.dtype().field_len())
+        .filter_map(|index| node.dtype().get_field(index))
+        .any(|child| {
+            matches!(
+                child.dtype(),
+                crate::DataType::Null
+                    | crate::DataType::Variant
+                    | crate::DataType::DateTime64 {
+                        unit: crate::TimeUnit::Nanosecond,
+                        ..
+                    }
+            ) || states_v3_types(child)
+        })
+}
+
 /// Create the table `name` under `folder`, writing its first metadata
 /// document: the schema numbered above the highest identifier it carries,
-/// the partition spec derived from the columns it marks, format version 2.
+/// the partition spec derived from the columns it marks, and the format
+/// version [`format_version_for`] answers.
 ///
 /// Writing the first metadata document is what creates every missing
 /// ancestor folder - nothing checks for them and nothing makes them in
@@ -544,7 +598,8 @@ fn create_table(
             let start = super::last_column_id(&schema)?.saturating_add(1);
             super::assign_field_ids(&mut schema, start)?;
             let spec = PartitionSpec::from_schema(0, &schema)?;
-            let table = IcebergTable::create(child, FormatVersion::V2, schema, spec)?
+            let version = format_version_for(&schema, properties)?;
+            let table = IcebergTable::create(child, version, schema, spec)?
                 .map_root(|root| Handle::bound(root, false, &below, Properties::new()))
                 .placed(below)
                 .with_properties(properties.clone())

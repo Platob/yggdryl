@@ -118,15 +118,21 @@ fn from_url_refuses_a_type_this_build_has_no_catalog_for_and_a_nameless_url() {
         error.to_string(),
         format!("invalid record value at $.with.type: expected {expected}, got \"glue\"")
     );
-    let error = Catalog::from_url(
-        &Url::from_str("s3tables://lake").expect("a URL"),
-        &Properties::new(),
-    )
-    .expect_err("no REST client in this build");
-    assert_eq!(
-        error.to_string(),
-        "filesystem \"s3tables\" does not support holding an S3 Tables catalog in this build"
-    );
+    // A table bucket's location is its S3 Tables catalog where the build
+    // has one, which `rust/tests/s3tables/catalog.rs` pins, and refused by
+    // name where it does not.
+    #[cfg(not(feature = "s3tables"))]
+    {
+        let error = Catalog::from_url(
+            &Url::from_str("s3tables://lake").expect("a URL"),
+            &Properties::new(),
+        )
+        .expect_err("no S3 Tables catalog in this build");
+        assert_eq!(
+            error.to_string(),
+            "filesystem \"s3tables\" does not support holding an S3 Tables catalog in this build"
+        );
+    }
     let error = Catalog::from_url(
         &Url::from_str("file:///").expect("a URL"),
         &Properties::new(),

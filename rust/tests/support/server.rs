@@ -140,6 +140,14 @@ impl FakeS3 {
         }
     }
 
+    /// Create the bucket a write addresses when it is not there (`true`), as
+    /// a store whose buckets something else makes - an S3 Tables table's
+    /// warehouse - is seen from a client; `false`, the default, answers
+    /// `NoSuchBucket`.
+    pub fn create_buckets_on_write(&self, creates: bool) {
+        self.inner.store().creates_buckets = creates;
+    }
+
     /// Create `bucket`; existing is kept.
     pub fn create_bucket(&self, bucket: &str) {
         self.inner
@@ -592,6 +600,8 @@ struct Store {
     /// Chunks staged by the other two dialects, by the name each gives one:
     /// a session for Google, a blob for Azure.
     staged: HashMap<String, Staged>,
+    /// Whether a write to an absent bucket creates it.
+    creates_buckets: bool,
 }
 
 /// Bytes staged under one name, waiting to be assembled.
@@ -618,6 +628,7 @@ impl Default for Store {
             next_upload: 0,
             address: String::new(),
             staged: HashMap::new(),
+            creates_buckets: false,
         }
     }
 }
@@ -925,6 +936,9 @@ impl Store {
     /// `If-None-Match: *` refuses to overwrite; `If-Match` refuses a
     /// different or missing object. Both answer 412.
     fn put_object(&mut self, bucket: &str, key: &str, request: &mut Request) -> Response {
+        if self.creates_buckets {
+            self.buckets.entry(bucket.to_owned()).or_default();
+        }
         let Some(objects) = self.buckets.get_mut(bucket) else {
             return no_such_bucket();
         };
@@ -987,6 +1001,9 @@ impl Store {
     }
 
     fn initiate_upload(&mut self, bucket: &str, key: &str, request: &Request) -> Response {
+        if self.creates_buckets {
+            self.buckets.entry(bucket.to_owned()).or_default();
+        }
         if !self.buckets.contains_key(bucket) {
             return no_such_bucket();
         }

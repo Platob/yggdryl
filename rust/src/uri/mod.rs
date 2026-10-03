@@ -881,13 +881,18 @@ impl Uri {
     ///
     /// Scheme, authority, query, and fragment are preserved. An absolute
     /// `value` replaces the path; otherwise it extends it, resolving `.` and
-    /// `..`.
+    /// `..`. Below an authority an empty path extends as `/`, as RFC 3986's
+    /// merge does, so `s3://bucket` joined with `a/b` is `s3://bucket/a/b`.
     ///
     /// # Errors
     ///
     /// Returns an error when the joined path is invalid for this URI.
     pub fn joinpath(&self, value: &str) -> Result<Self> {
-        let path = self.path.joinpath(value)?;
+        let path = if self.has_authority && self.path.as_str().is_empty() {
+            UriPath(SmolStr::new_static("/")).joinpath(value)?
+        } else {
+            self.path.joinpath(value)?
+        };
         let mut candidate = self.clone();
         candidate.state_path(path);
         candidate.validate()?;

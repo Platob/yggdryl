@@ -128,12 +128,14 @@
 //! `s3` and `iceberg`.
 
 mod bucket;
+mod catalog;
 pub(crate) mod client;
 mod listing;
 mod namespace;
 mod table;
 
 pub use bucket::TableBucket;
+pub use catalog::{S3TablesCatalog, S3TablesNamespace};
 pub use client::S3Tables;
 pub use listing::{NamespaceSummaries, TableBuckets, TableSummaries};
 pub use namespace::NamespaceSummary;

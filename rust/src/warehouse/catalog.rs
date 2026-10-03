@@ -38,6 +38,11 @@ pub enum Catalog {
     /// and tables laid out as the format lays them out.
     #[cfg(feature = "iceberg")]
     Iceberg(Box<crate::iceberg::IcebergCatalog>),
+    /// An Amazon S3 Tables table bucket: namespaces one level below it,
+    /// Iceberg tables below them, every commit published through the
+    /// control plane.
+    #[cfg(feature = "s3tables")]
+    S3Tables(Box<crate::s3tables::S3TablesCatalog>),
 }
 
 impl Catalog {
@@ -45,11 +50,14 @@ impl Catalog {
     ///
     /// The explicit `type` property decides first - `memory`, `folder`, or
     /// `hadoop`, an Iceberg warehouse folder, PyIceberg's spelling - and
-    /// otherwise the scheme does: every location a byte backend holds is a
+    /// otherwise the scheme does: an `s3tables://<bucket>` location - what a
+    /// table bucket's ARN locates - is that bucket's
+    /// [`S3TablesCatalog`](crate::s3tables::S3TablesCatalog) under the
+    /// `s3tables` feature, and every location a byte backend holds is a
     /// folder catalog over the container it names. The catalog is called
-    /// what the `name` property says, else the location's last segment. A
-    /// property this door does not read travels on to every handle under
-    /// the catalog.
+    /// what the `name` property says, else the location's last segment, or
+    /// its bucket. A property this door does not read travels on to every
+    /// handle under the catalog.
     ///
     /// # Errors
     ///
@@ -83,6 +91,7 @@ impl Catalog {
                 });
             }
         }
+        #[cfg(not(feature = "s3tables"))]
         if kind.is_none() && url.scheme().is_s3_tables() {
             return Err(Error::unsupported(
                 "holding an S3 Tables catalog in this build",
@@ -93,6 +102,12 @@ impl Catalog {
             Some(name) if !name.is_empty() => SmolStr::new(name),
             _ => catalog_name(url)?,
         };
+        #[cfg(feature = "s3tables")]
+        if kind.is_none() && url.scheme().is_s3_tables() {
+            return Ok(Self::S3Tables(Box::new(
+                crate::s3tables::S3TablesCatalog::from_location(name, url, properties)?,
+            )));
+        }
         if kind == Some("memory") {
             return Ok(Self::Memory(
                 MemoryCatalog::new(name).with_properties(properties.clone()),
@@ -111,13 +126,15 @@ impl Catalog {
     }
 
     /// The implementation's own name: `MemoryCatalog`, `FolderCatalog`,
-    /// `IcebergCatalog`.
+    /// `IcebergCatalog`, `S3TablesCatalog`.
     pub(crate) const fn implementation_name(&self) -> &'static str {
         match self {
             Self::Memory(_) => "MemoryCatalog",
             Self::Folder(_) => "FolderCatalog",
             #[cfg(feature = "iceberg")]
             Self::Iceberg(_) => "IcebergCatalog",
+            #[cfg(feature = "s3tables")]
+            Self::S3Tables(_) => "S3TablesCatalog",
         }
     }
 
@@ -128,6 +145,8 @@ impl Catalog {
             Self::Folder(catalog) => catalog.as_ref(),
             #[cfg(feature = "iceberg")]
             Self::Iceberg(catalog) => catalog.as_ref(),
+            #[cfg(feature = "s3tables")]
+            Self::S3Tables(catalog) => catalog.as_ref(),
         }
     }
 
@@ -254,6 +273,13 @@ impl From<FolderCatalog> for Catalog {
 impl From<crate::iceberg::IcebergCatalog> for Catalog {
     fn from(catalog: crate::iceberg::IcebergCatalog) -> Self {
         Self::Iceberg(Box::new(catalog))
+    }
+}
+
+#[cfg(feature = "s3tables")]
+impl From<crate::s3tables::S3TablesCatalog> for Catalog {
+    fn from(catalog: crate::s3tables::S3TablesCatalog) -> Self {
+        Self::S3Tables(Box::new(catalog))
     }
 }
 

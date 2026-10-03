@@ -23,6 +23,7 @@ yggdryl = { path = "../rust", default-features = false, features = [
     "http3",
     "iceberg",
     "s3",
+    "s3tables",
 ] }
 serde_json = "1"
 

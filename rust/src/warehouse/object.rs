@@ -290,6 +290,20 @@ impl From<crate::iceberg::IcebergTable<super::Handle>> for Object {
     }
 }
 
+#[cfg(feature = "s3tables")]
+impl From<crate::s3tables::S3TablesCatalog> for Object {
+    fn from(catalog: crate::s3tables::S3TablesCatalog) -> Self {
+        Self::Catalog(Catalog::S3Tables(Box::new(catalog)))
+    }
+}
+
+#[cfg(feature = "s3tables")]
+impl From<crate::s3tables::S3TablesNamespace> for Object {
+    fn from(namespace: crate::s3tables::S3TablesNamespace) -> Self {
+        Self::Namespace(Namespace::S3Tables(Box::new(namespace)))
+    }
+}
+
 /// Write a path as the plan grammar spells it: parts joined by `.`, each
 /// quoted only where the grammar needs it.
 pub(crate) fn write_path(formatter: &mut fmt::Formatter<'_>, parts: &[SmolStr]) -> fmt::Result {

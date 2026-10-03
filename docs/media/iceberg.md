@@ -660,7 +660,7 @@ A `SchemaUpdate` records column operations - add, rename, drop, promote - and on
 
 A warehouse folder is a catalog on the [warehouse](../warehouse/index.md) abstraction, laid out the way `HadoopCatalog` lays one out: `IcebergCatalog` is the `Catalog` implementation, a folder under the warehouse an `IcebergNamespace`, a folder laid out as a table the `IcebergTable` a generic `Table` holds, so `lake.nyc.taxis` is the folder `nyc/taxis` under the warehouse registered as `lake`. The views, the dotted descent, the registry and a plan's `from lake.nyc.taxis` are the generic ones; what the implementation adds is the storage. Namespaces nest to any depth, so a catalog states no `namespace_levels`. Each level keeps its stored properties in its own document - `metadata/catalog.json` under the warehouse, `metadata/namespace.json` under a namespace - read beneath what was stated and written by `update_properties`, which refuses the reserved `ICEBERG:` prefix; a table's properties ride its metadata document, so its `update_properties` is refused in favour of `commit_metadata_changes`, and what was stated for it at creation is answered over them and written nowhere. Constructing any of the three touches nothing, and every verb runs against the folder when it is asked, so two catalogs over one folder see the same tables. `Catalog::from_url` answers one under `type = hadoop`, PyIceberg's spelling.
 
-A listing classifies each entry with one listing of its `metadata/` and no read: a folder holding a `version-hint.text` or a `*.metadata.json` is a table, every other folder a namespace, the reserved `metadata` name skipped and refused as a name. A table answered is described at its folder and reads its current document on the first verb that needs it. `create_namespace` writes the namespace document; `create_table` is `IcebergTable::create` under `PartitionSpec::from_schema`, over the schema as Iceberg expresses it (`into_scheme_compat`): a dictionary layout is stored as the string it encodes and the rows cast to it on the way in, `float16` is widened to `float`, and a type Iceberg lacks - an interval - is refused by path with nothing created. A create descends through existing namespaces only: `tables().create("sales.eu.orders", ..)` under a missing `sales` is the absence of `sales`, never a namespace made on the way, and the view's `append` and `overwrite` create the table from the rows' own schema under the same rule.
+A listing classifies each entry with one listing of its `metadata/` and no read: a folder holding a `version-hint.text` or a `*.metadata.json` is a table, every other folder a namespace, the reserved `metadata` name skipped and refused as a name. A table answered is described at its folder and reads its current document on the first verb that needs it. `create_namespace` writes the namespace document; `create_table` is `IcebergTable::create` under `PartitionSpec::from_schema` at the format version the create's `format-version` property states - else the lowest that states the schema, 3 where it holds a nanosecond timestamp, a variant or an unknown column and 2 otherwise - over the schema as Iceberg expresses it (`into_scheme_compat`): a dictionary layout is stored as the string it encodes and the rows cast to it on the way in, `float16` is widened to `float`, and a type Iceberg lacks - an interval - is refused by path with nothing created. A create descends through existing namespaces only: `tables().create("sales.eu.orders", ..)` under a missing `sales` is the absence of `sales`, never a namespace made on the way, and the view's `append` and `overwrite` create the table from the rows' own schema under the same rule.
 
 === "Rust"
 
@@ -819,104 +819,109 @@ The cost is stated in store calls and pinned in `rust/tests/iceberg/catalog/mod_
 | `tables().create("a.b.c.orders", ..)` | three levels at that cost, the namespace's document for what the table inherits, then the create: one presence answer, one listing of `metadata/`, and the writes with the missing parent repaired once - `create_dir=1 delete_file=1 file_info=4 list=4 open_input_stream=4 open_output_stream=4`; nothing walks the ancestry twice |
 | `tables().open_or_create(..)` | absent, the get to the missing child then the create, `list=3` where the create alone lists four; present, exactly what `get` costs, because it is the same attempt |
 
-## Performance
+### A table a catalog service names
 
-Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1. The fastavro and PyIceberg baseline over the same manifest reads sits on [Avro](avro.md#performance).
+A table laid out as `HadoopTables` lays one out names its current document itself - `metadata/version-hint.text`, else the highest number a listing of `metadata/` shows - and commits by writing the next one there. A table a catalog service keeps is named by the service instead, and its folder need take neither a listing nor a delete. `MetadataPointer` is that service reduced to its two questions - `current()`, the document named now and the token a publication is conditioned on, and `publish(token, location)`, which names the next document on condition the pointer still stands at the token - and `IcebergTable::open_pointed` and `IcebergTable::create_pointed` are the doors beside `open` and `create`.
 
-| Metadata operation | Median | Throughput |
-| --- | ---: | ---: |
-| Parse 100 snapshots and three 50-column schemas | 12.168 ms | 2.8613 MiB/s |
-| Expire 99 of 100 snapshots | 9.5145 ms | 3.6592 MiB/s |
-| Stable hash of the same metadata | 61.634 us | - |
-
-```bash
-cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^metadata/'
-cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^identity/'
+```text
+trait MetadataPointer: Debug + Send + Sync {
+    fn current(&self) -> Result<PointerState>;                               // its location - none before the first document - and its token
+    fn publish(&self, token: &str, location: &Url) -> Result<PointerState>;  // a moved pointer is a conflict
+}
+IcebergTable::open_pointed(root, pointer) -> Result<IcebergTable<H>>         // one answer, one read of the document it names
+IcebergTable::create_pointed(root, format_version, schema, spec, pointer)    // version 0, published under the token read
 ```
 
-The manifest rows share that host and toolchain.
-
-| Manifest operation, 100,000 entries | Median | Throughput |
-| --- | ---: | ---: |
-| Full official-validated decode | 5.8718 s | 17.031 K entries/s |
-| Spec/header only; entries untouched | 190.02 us | 526.26 M nominal entries/s |
-
-```bash
-cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/'
-```
-
-### One commit per write
-
-The `commit` group streams eight batches through `append_arrow_reader` into a fresh table partitioned by `venue` into 32 partitions and sorted by `id` ascending, every batch interleaving every partition and descending within each, so no group arrives in the table's order: one commit of sorted partition files on one thread (`num_threads = 1`), the same on four (`num_threads = 4`), and the same stream paced to a commit every two batches (`commit_batch_num = 2`). Each measured write asserts the snapshots it made - one, or four under the cadence. No result is published here yet: the table is regenerated by a release run of the command below on the machine it names.
-
-```bash
-cargo bench --features "parquet iceberg" -p yggdryl --bench media -- "^commit/"
-```
-
-### Against PyIceberg
-
-One run of `python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5` beside PyIceberg 0.11.1 with its SQLite catalog, on one local warehouse: Intel Xeon @ 2.10 GHz, 4 cores, a shared virtual host; rustc 1.97.0, CPython 3.11.15, PyArrow 25.0.1, release wheel. Each append writes 1,048,576 six-column rows, one second apart so they span fourteen UTC days, into a fresh table in three layouts: unpartitioned, eight partitions by `symbol`, fourteen by `day(ts)`. Both readers then read the table PyIceberg wrote, so they decode the same files, and what both read is compared before anything is timed. The ratio is PyIceberg's median over this crate's, so above one is in this crate's favor. On this host the median of an unchanged scan moved by up to a quarter between runs, so a ratio that close to one is a tie.
-
-| append | this crate | PyIceberg | ratio |
-| --- | ---: | ---: | ---: |
-| unpartitioned | 136.04 ms | 246.92 ms | 1.82 |
-| 8 partitions by `symbol` | 280.12 ms | 320.94 ms | 1.15 |
-| 14 partitions by `day(ts)` | 209.32 ms | 189.34 ms | 0.90 |
-
-Each read cell is this crate's median, then PyIceberg's, then the ratio.
-
-| read | unpartitioned | 8 partitions by `symbol` | 14 partitions by `day(ts)` |
-| --- | ---: | ---: | ---: |
-| open | 0.99 / 0.65 ms, 0.66 | 1.11 / 0.69 ms, 0.62 | 1.46 / 0.70 ms, 0.48 |
-| scan everything | 29.52 / 56.49 ms, 1.91 | 33.12 / 45.26 ms, 1.37 | 37.98 / 53.26 ms, 1.40 |
-| scan `symbol = 'AAPL'` | 36.77 / 62.10 ms, 1.69 | 8.33 / 24.92 ms, 2.99 | 40.88 / 63.06 ms, 1.54 |
-| scan `price > 900` | 31.57 / 62.98 ms, 2.00 | 39.58 / 54.21 ms, 1.37 | 38.41 / 63.90 ms, 1.66 |
-| scan `id, price` | 24.65 / 25.83 ms, 1.05 | 21.36 / 27.33 ms, 1.28 | 26.99 / 38.43 ms, 1.42 |
-| scan one day of `ts` | 33.52 / 77.15 ms, 2.30 | 31.99 / 51.38 ms, 1.61 | 7.91 / 20.32 ms, 2.57 |
-
-The appends pay one thing PyIceberg's do not: every file published on local storage is flushed to the device before the metadata that names it, so a crash cannot leave the table pointing at a file the disk never received. A file costs about 2 ms of that here, which is why the gap narrows as the files multiply. An unpartitioned file also encodes its columns on every thread, while a partitioned append writes its groups one file per thread. A group's rows are sliced where they are one run of a batch, as every day of these rows is, and gathered where partitions interleave, as `symbol` does. A group already in the table's sort order is neither joined nor copied.
-
-Opening is the one row behind. PyIceberg is handed the metadata location, while this crate finds it - a table PyIceberg's catalog wrote has no version hint, so the metadata folder is listed - and parses the document twice, once as a value and once through the official crate's validating reader.
-
-The script ends with the same rows appended into a table partitioned by `minutes(ts, 15)`, a transform PyIceberg cannot write. That append is 1,166 data files, and a scan of one hour of `ts` keeps four of them and skips 1,162.
-
-| `minutes(ts, 15)`, this crate alone | median |
-| --- | ---: |
-| append | 993.95 ms |
-| scan one hour of `ts` | 97.62 ms |
-
-About 90 ms of that scan is planning: the one manifest's 1,166 entries are decoded to keep four, at the full-decode rate the manifest table above states.
-
-```bash
-python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
-```
-
-### Iceberg over S3
-
-The same table over the in-process S3 the S3 backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `accounting::iceberg` in `rust/tests/s3/mod_.rs`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
-
-| operation | requests before | requests after | median before | median after |
-| --- | ---: | ---: | ---: | ---: |
-| append, one partition, 5,000 rows | 25 | 9 | 7.81 ms | 7.41 ms |
-| append, eight partitions, 40,000 rows | 67 | 16 | 56.7 ms | 35.0 ms |
-| upsert of 10 rows into one partition of eight | 37 | 13 | 16.6 ms | 8.93 ms |
-| full scan, eight files | 30 | 10 | 8.70 ms | 5.42 ms |
-| pruned scan, one file of eight | 9 | 3 | 4.11 ms | 2.40 ms |
-| `.log` object read as text, 2,304 lines | 6 | 6 | 36.2 ms | 25.0 ms |
-| FIX rows parsed, enriched and written back | 61 | 20 | 3.99 s | 2.81 s |
-
-Every request left is the metadata chain - the hint, the manifest list, one manifest per commit that survives the summaries, one `GET` per data file - one upload per file a commit writes, and the one listing that claims a version; the loopback timing only shows that nothing else hides between them. On a real store each request is a round trip of 1-20 ms, which is what the counts are worth.
-
-```bash
-cargo bench --features "iceberg s3" -p yggdryl --bench media -- 's3/' --quick
-```
+A pointed table reads the one document the pointer names, its location taken relative to the root's, and writes each next one as `metadata/{version:05}-{uuid}.metadata.json` - the name Iceberg's own catalogs write, the first `00000` - which it publishes under the token the last reading or publication answered, so a commit is its files, one document and one publication, with nothing read first. The pointer is the compare-and-swap plain storage lacks: a publication refused because the pointer moved reads it again, one answer and one document, and an append or a metadata-only commit applies again onto the winner under the retry budget the folder contract keeps, while an overwrite, a merge or a compaction is a `CommitConflict` at once - unless the pointer still names the document it planned against, a token moved by a change that wrote no document, which it publishes again under the new token. A publication that fails otherwise is in doubt, so the pointer is read once more and a pointer naming the attempt is the commit made. Nothing is listed, no hint is written or read, and nothing is removed on any path: a failed commit's files and its document stay, unreferenced. `metadata_version` is the number the document's name states, and the table's path, equality and hash are what they are under the folder contract - the pointer is not its identity. Rust only: a binding reaches a pointed table through the [S3 Tables catalog](#iceberg-on-amazon-s3-tables).
 
 ### Iceberg on Amazon S3 Tables
 
-`python/benchmarks/media/s3tables.py` is the same question against the real service, beside PyIceberg. It takes a table bucket ARN in `YGGDRYL_S3TABLES_ARN`, has PyIceberg create a table there partitioned by `symbol`, append 65,536 rows in four partitions through the service's catalog - the only door a commit to S3 Tables has - and then opens the same table both ways: PyIceberg through the catalog's REST load, this crate through the warehouse `s3:` location that load answers, with the region the ARN carries and the credentials the catalog vended. Opening the table, a full scan to Arrow, and a scan pruned to one partition of four are each timed on both sides, after the rows both read have been compared; the table is dropped afterwards. The ratio column is PyIceberg's median over this crate's, so above one is in this crate's favor. No table is published here: the run needs an account's own table bucket, and the numbers are those of a network round trip to it, which is why the request counts pinned above are the part that travels.
+An Amazon S3 Tables table bucket is a catalog on the [warehouse](../warehouse/index.md) abstraction, behind the `s3tables` feature (which implies `s3` and `iceberg`): `S3TablesCatalog` is the bucket, its namespaces one level below it (`namespace_levels` is `Some(1)`), each an `S3TablesNamespace` holding Iceberg tables, and each table the `IcebergTable` a generic `Table::Iceberg` holds, rooted on a `Handle` on the warehouse `s3:` location the service chose (`s3://<id>--table-s3`), opened through the [S3 backend](../holder/index.md#object-stores) under the catalog's session, in the bucket's region and under the catalog's properties - so the store's own names (`s3.endpoint`, `s3.region`, ...) stated on the catalog reach every table's files. The service names a table's current document, so every table is [pointed](#a-table-a-catalog-service-names) at it: `GetTableMetadataLocation` is `current()` and `UpdateTableMetadataLocation` is `publish`, whose `409 ConflictException` - a version token the table moved past - is the commit conflict. The warehouse location takes `PutObject` and `GetObject`, and nothing here asks it for more: no listing, no hint, no delete - a failed commit's files are the bucket's unreferenced-file removal's to collect.
+
+`create_table` runs the steps `IcebergCatalog`'s runs, against the control plane: the schema as Iceberg states it (`into_scheme_compat`), numbered above the highest identifier it carries, partitioned by `PartitionSpec::from_schema` - a derived `PARTITION:by` entry included - and sorted by its `SORT:by`; then `CreateTable` registers the table with no schema, `GetTableMetadataLocation` answers its warehouse and token, and its first document is written and published under that token, so the document the table keeps is the crate's own rather than one the service wrote. A first document that is not published removes the registration again under its token, which a publication that took has moved past. Both catalogs create at the format version the create's `format-version` property states, else the lowest that states the schema: 3 where it holds a nanosecond timestamp, a variant or an unknown column, 2 otherwise. The service keeps no properties for a bucket or a namespace, so theirs are what was stated; a table's ride its metadata, as on any Iceberg table.
+
+`Catalog::from_url` answers one for an `s3tables://<bucket>` location, which is what a table bucket's ARN locates - its region and account dropped. Who signs is `Session::from_properties` over the properties, PyIceberg's `s3tables.`-prefixed names (`s3tables.profile-name`, `s3tables.access-key-id`, ...) read after the bare ones; `s3tables.region` and `s3tables.endpoint` are the client's region and endpoint. The bucket's ARN is the `s3tables.warehouse` or `warehouse` property where one names it, else built from the `account_id` property and the client's region, else found by name among the caller's own table buckets in that region by one `ListTableBuckets` on first use. A location naming a table below a bucket is refused at `$.url`, an ARN naming another bucket at `$.with.warehouse`; creating a namespace under a namespace, or a table directly under the catalog, is refused by implementation name.
+
+| Operation | Requests |
+| --- | --- |
+| building the catalog, a namespace or a table description | none |
+| the bucket's ARN, named by its location alone | 1 `ListTableBuckets` per page, once |
+| `children()` of the catalog | 1 `ListNamespaces` per page |
+| `get` of a namespace | 1 `GetNamespace` |
+| `create_namespace` | 1 `CreateNamespace` |
+| `children()` of a namespace | 1 `ListTables` per page, 1 `GetTableMetadataLocation` per table as its turn comes |
+| `get` of a table - `catalog.table("desk.quotes")` adds the namespace's `GetNamespace` | 1 `GetTableMetadataLocation` |
+| `create_table` | `CreateTable`, `GetTableMetadataLocation`, 1 `PutObject` and `UpdateTableMetadataLocation` |
+| a table's first read | 1 `GetTableMetadataLocation` and 1 `GetObject` |
+| a commit | its files' `PutObject`s and 1 `UpdateTableMetadataLocation`; a refused one 1 `GetTableMetadataLocation` and 1 `GetObject` more |
+
+The counts are pinned in `rust/tests/s3tables/catalog.rs` against the fake control plane, each table's warehouse a bucket of the fake object store the `s3` suites run on, whose log shows no listing and no delete; the pointer's own suite, over a pointer in memory and a counting filesystem, is `rust/tests/iceberg/pointer.rs`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::aws::{Credentials, Session};
+    use yggdryl::s3tables::{S3Tables, S3TablesCatalog};
+    use yggdryl::{Arn, Catalog, CatalogValue, ObjectValue, Properties, Url};
+
+    // A session that states everything consults nothing: no file, no variable, no socket.
+    let session = Session::new()
+        .with_environment(false)
+        .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "a-secret"));
+    let lake = Arn::from_str("arn:aws:s3tables:eu-west-3:123456789012:bucket/lake")?;
+
+    // The bucket is a catalog of namespaces of Iceberg tables; building one sends nothing.
+    let catalog = Catalog::from(S3TablesCatalog::new("lake", S3Tables::new(session), lake.clone())?);
+    assert_eq!(catalog.namespace_levels(), Some(1));
+    assert_eq!(catalog.url().map(ToString::to_string).as_deref(), Some("s3tables://lake"));
+
+    // An ARN locates its bucket's catalog with its account and region dropped:
+    // a `warehouse` property states the ARN, so no listing finds it.
+    let location = Url::from_location(&lake.to_string())?;
+    let properties = Properties::new()
+        .with_property("warehouse", lake.to_string())
+        .with_property("region", "eu-west-3");
+    let Catalog::S3Tables(bucket) = Catalog::from_url(&location, &properties)? else {
+        unreachable!("an s3tables location is an S3 Tables catalog");
+    };
+    assert_eq!(bucket.bucket_arn()?, &lake);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Catalog
+
+    # A table bucket's ARN locates its catalog with its account and region
+    # dropped: the region is stated, and `warehouse` states the ARN, so no
+    # listing of the caller's own buckets finds it.
+    lake = "arn:aws:s3tables:eu-west-3:123456789012:bucket/lake"
+    catalog = Catalog.from_url(lake, region="eu-west-3", warehouse=lake)
+    assert type(catalog) is Catalog
+    assert catalog.name == "lake"
+    assert catalog.namespace_levels == 1
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { warehouse } = require('yggdryl')
+
+    // A table bucket's ARN locates its catalog with its account and region
+    // dropped: the region is stated, and `warehouse` states the ARN, so no
+    // listing of the caller's own buckets finds it.
+    const lake = 'arn:aws:s3tables:eu-west-3:123456789012:bucket/lake'
+    const catalog = warehouse.Catalog.fromUrl(lake, { region: 'eu-west-3', warehouse: lake })
+    assert.equal(catalog.implementation, 'Catalog')
+    assert.equal(catalog.name, 'lake')
+    assert.equal(catalog.namespaceLevels, 1)
+    ```
+
+An ignored test runs a table's life in the catalog against the live service, in a table bucket the operator names: a namespace, a table from a schema with a nanosecond instant, a UUID and a quarter-hour partition, an append, an overwrite and a read back through the catalog; it removes the table and the namespace however it ended, and leaves the files to the bucket's own removal.
 
 ```bash
-YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
+YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> cargo test -p yggdryl --features s3tables --test s3tables catalog::live -- --ignored --nocapture
 ```
 
 #### The table bucket's catalog
@@ -1027,4 +1032,104 @@ An ignored test runs a table's whole life - a bucket, a namespace read and liste
 
 ```bash
 YGGDRYL_S3TABLES_PROFILE=<profile> cargo test -p yggdryl --features s3tables --test s3tables live -- --ignored --nocapture
+```
+
+## Performance
+
+Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1. The fastavro and PyIceberg baseline over the same manifest reads sits on [Avro](avro.md#performance).
+
+| Metadata operation | Median | Throughput |
+| --- | ---: | ---: |
+| Parse 100 snapshots and three 50-column schemas | 12.168 ms | 2.8613 MiB/s |
+| Expire 99 of 100 snapshots | 9.5145 ms | 3.6592 MiB/s |
+| Stable hash of the same metadata | 61.634 us | - |
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^metadata/'
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^identity/'
+```
+
+The manifest rows share that host and toolchain.
+
+| Manifest operation, 100,000 entries | Median | Throughput |
+| --- | ---: | ---: |
+| Full official-validated decode | 5.8718 s | 17.031 K entries/s |
+| Spec/header only; entries untouched | 190.02 us | 526.26 M nominal entries/s |
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/'
+```
+
+### One commit per write
+
+The `commit` group streams eight batches through `append_arrow_reader` into a fresh table partitioned by `venue` into 32 partitions and sorted by `id` ascending, every batch interleaving every partition and descending within each, so no group arrives in the table's order: one commit of sorted partition files on one thread (`num_threads = 1`), the same on four (`num_threads = 4`), and the same stream paced to a commit every two batches (`commit_batch_num = 2`). Each measured write asserts the snapshots it made - one, or four under the cadence. No result is published here yet: the table is regenerated by a release run of the command below on the machine it names.
+
+```bash
+cargo bench --features "parquet iceberg" -p yggdryl --bench media -- "^commit/"
+```
+
+### Against PyIceberg
+
+One run of `python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5` beside PyIceberg 0.11.1 with its SQLite catalog, on one local warehouse: Intel Xeon @ 2.10 GHz, 4 cores, a shared virtual host; rustc 1.97.0, CPython 3.11.15, PyArrow 25.0.1, release wheel. Each append writes 1,048,576 six-column rows, one second apart so they span fourteen UTC days, into a fresh table in three layouts: unpartitioned, eight partitions by `symbol`, fourteen by `day(ts)`. Both readers then read the table PyIceberg wrote, so they decode the same files, and what both read is compared before anything is timed. The ratio is PyIceberg's median over this crate's, so above one is in this crate's favor. On this host the median of an unchanged scan moved by up to a quarter between runs, so a ratio that close to one is a tie.
+
+| append | this crate | PyIceberg | ratio |
+| --- | ---: | ---: | ---: |
+| unpartitioned | 136.04 ms | 246.92 ms | 1.82 |
+| 8 partitions by `symbol` | 280.12 ms | 320.94 ms | 1.15 |
+| 14 partitions by `day(ts)` | 209.32 ms | 189.34 ms | 0.90 |
+
+Each read cell is this crate's median, then PyIceberg's, then the ratio.
+
+| read | unpartitioned | 8 partitions by `symbol` | 14 partitions by `day(ts)` |
+| --- | ---: | ---: | ---: |
+| open | 0.99 / 0.65 ms, 0.66 | 1.11 / 0.69 ms, 0.62 | 1.46 / 0.70 ms, 0.48 |
+| scan everything | 29.52 / 56.49 ms, 1.91 | 33.12 / 45.26 ms, 1.37 | 37.98 / 53.26 ms, 1.40 |
+| scan `symbol = 'AAPL'` | 36.77 / 62.10 ms, 1.69 | 8.33 / 24.92 ms, 2.99 | 40.88 / 63.06 ms, 1.54 |
+| scan `price > 900` | 31.57 / 62.98 ms, 2.00 | 39.58 / 54.21 ms, 1.37 | 38.41 / 63.90 ms, 1.66 |
+| scan `id, price` | 24.65 / 25.83 ms, 1.05 | 21.36 / 27.33 ms, 1.28 | 26.99 / 38.43 ms, 1.42 |
+| scan one day of `ts` | 33.52 / 77.15 ms, 2.30 | 31.99 / 51.38 ms, 1.61 | 7.91 / 20.32 ms, 2.57 |
+
+The appends pay one thing PyIceberg's do not: every file published on local storage is flushed to the device before the metadata that names it, so a crash cannot leave the table pointing at a file the disk never received. A file costs about 2 ms of that here, which is why the gap narrows as the files multiply. An unpartitioned file also encodes its columns on every thread, while a partitioned append writes its groups one file per thread. A group's rows are sliced where they are one run of a batch, as every day of these rows is, and gathered where partitions interleave, as `symbol` does. A group already in the table's sort order is neither joined nor copied.
+
+Opening is the one row behind. PyIceberg is handed the metadata location, while this crate finds it - a table PyIceberg's catalog wrote has no version hint, so the metadata folder is listed - and parses the document twice, once as a value and once through the official crate's validating reader.
+
+The script ends with the same rows appended into a table partitioned by `minutes(ts, 15)`, a transform PyIceberg cannot write. That append is 1,166 data files, and a scan of one hour of `ts` keeps four of them and skips 1,162.
+
+| `minutes(ts, 15)`, this crate alone | median |
+| --- | ---: |
+| append | 993.95 ms |
+| scan one hour of `ts` | 97.62 ms |
+
+About 90 ms of that scan is planning: the one manifest's 1,166 entries are decoded to keep four, at the full-decode rate the manifest table above states.
+
+```bash
+python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
+```
+
+### Iceberg over S3
+
+The same table over the in-process S3 the S3 backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `accounting::iceberg` in `rust/tests/s3/mod_.rs`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
+
+| operation | requests before | requests after | median before | median after |
+| --- | ---: | ---: | ---: | ---: |
+| append, one partition, 5,000 rows | 25 | 9 | 7.81 ms | 7.41 ms |
+| append, eight partitions, 40,000 rows | 67 | 16 | 56.7 ms | 35.0 ms |
+| upsert of 10 rows into one partition of eight | 37 | 13 | 16.6 ms | 8.93 ms |
+| full scan, eight files | 30 | 10 | 8.70 ms | 5.42 ms |
+| pruned scan, one file of eight | 9 | 3 | 4.11 ms | 2.40 ms |
+| `.log` object read as text, 2,304 lines | 6 | 6 | 36.2 ms | 25.0 ms |
+| FIX rows parsed, enriched and written back | 61 | 20 | 3.99 s | 2.81 s |
+
+Every request left is the metadata chain - the hint, the manifest list, one manifest per commit that survives the summaries, one `GET` per data file - one upload per file a commit writes, and the one listing that claims a version; the loopback timing only shows that nothing else hides between them. On a real store each request is a round trip of 1-20 ms, which is what the counts are worth.
+
+```bash
+cargo bench --features "iceberg s3" -p yggdryl --bench media -- 's3/' --quick
+```
+
+### Against PyIceberg on Amazon S3 Tables
+
+`python/benchmarks/media/s3tables.py` is the same question against the real service, beside PyIceberg. It takes a table bucket ARN in `YGGDRYL_S3TABLES_ARN`, has PyIceberg create a table there partitioned by `symbol`, append 65,536 rows in four partitions through the service's catalog - the only door a commit to S3 Tables has - and then opens the same table both ways: PyIceberg through the catalog's REST load, this crate through the warehouse `s3:` location that load answers, with the region the ARN carries and the credentials the catalog vended. Opening the table, a full scan to Arrow, and a scan pruned to one partition of four are each timed on both sides, after the rows both read have been compared; the table is dropped afterwards. The ratio column is PyIceberg's median over this crate's, so above one is in this crate's favor. A write from this crate commits through [`S3TablesCatalog`](#iceberg-on-amazon-s3-tables); the run times reads. No table is published here: the run needs an account's own table bucket, and the numbers are those of a network round trip to it, which is why the request counts pinned above are the part that travels.
+
+```bash
+YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
 ```

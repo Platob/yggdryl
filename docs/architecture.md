@@ -237,7 +237,7 @@ No feature is on by default (`default = []`); Arrow arrays, batches, IPC and cas
 | `http3` | HTTP/3 under the same client, once an origin advertises it in `Alt-Svc`; implies `http2` |
 | `aws` | the AWS identity: credential chain, shared configuration, SSO, STS, Signature Version 4; implies `http` |
 | `s3` | the Amazon S3, Google Cloud Storage and Azure Blob Storage backend; implies `aws` |
-| `s3tables` | the client of the Amazon S3 Tables catalog: table buckets, namespaces, tables and the metadata location a commit moves ([the table bucket's catalog](media/iceberg.md#the-table-buckets-catalog)); implies `s3` and `iceberg`, Rust only |
+| `s3tables` | Amazon S3 Tables: a table bucket as a warehouse catalog whose Iceberg tables commit through the control plane ([`S3TablesCatalog`](media/iceberg.md#iceberg-on-amazon-s3-tables), what `Catalog::from_url` answers for an `s3tables://` location in every language), and the client of that control plane ([the table bucket's catalog](media/iceberg.md#the-table-buckets-catalog), Rust only); implies `s3` and `iceberg` |
 | `internals` | `yggdryl::internals`, reached by `rust/tests/` alone; no published build turns it on |
 
 Every build - the default one, `s3`, `iceberg` and both bindings - compiles on Rust 1.94.

@@ -21,6 +21,16 @@ pub(crate) enum Site {
     Url(Url),
     /// A caller's filesystem and a path on it, re-held as it was bound.
     Bound(BoundLocation),
+    /// An object-store location opened under the session its owner signs
+    /// with - a catalog service's warehouse, reached as the catalog is - in
+    /// the region the owner knows it is in, the object's effective
+    /// properties read over both.
+    #[cfg(feature = "s3")]
+    Store {
+        url: Url,
+        session: crate::aws::Session,
+        region: String,
+    },
 }
 
 impl Site {
@@ -43,6 +53,8 @@ impl Site {
         match self {
             Self::Url(url) => url,
             Self::Bound(bound) => bound.diagnostic_url(),
+            #[cfg(feature = "s3")]
+            Self::Store { url, .. } => url,
         }
     }
 
@@ -51,6 +63,21 @@ impl Site {
         match self {
             Self::Url(url) => Holder::from_url(url, properties),
             Self::Bound(bound) => Ok(crate::fs::located(bound.clone())),
+            #[cfg(feature = "s3")]
+            Self::Store {
+                url,
+                session,
+                region,
+            } => {
+                // A session that consults nothing outside itself seals the
+                // store's own options too.
+                let options = crate::s3::S3Options::default()
+                    .with_environment(session.reads_environment())
+                    .with_session(session.clone())
+                    .with_region(region.clone())
+                    .with_properties(properties.iter())?;
+                crate::s3::located_with(&url.to_string(), options)
+            }
         }
     }
 }
@@ -60,6 +87,8 @@ impl PartialEq for Site {
         match (self, other) {
             (Self::Url(left), Self::Url(right)) => left == right,
             (Self::Bound(left), Self::Bound(right)) => left.same_location(right),
+            #[cfg(feature = "s3")]
+            (Self::Store { url: left, .. }, Self::Store { url: right, .. }) => left == right,
             _ => false,
         }
     }
@@ -75,6 +104,8 @@ impl Hash for Site {
                 bound.diagnostic_url().hash(state);
                 bound.path().hash(state);
             }
+            #[cfg(feature = "s3")]
+            Self::Store { url, .. } => url.hash(state),
         }
     }
 }

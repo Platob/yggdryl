@@ -73,9 +73,12 @@
 //!
 //! # Scope
 //!
-//! Yggdryl supplies storage and publication, not a remote catalog client.
-//! [`IcebergTable::open`] resolves `metadata/version-hint.text`, then falls back to the
-//! highest-numbered metadata document.
+//! Yggdryl supplies storage and publication. [`IcebergTable::open`] resolves
+//! `metadata/version-hint.text`, then falls back to the highest-numbered
+//! metadata document; a table whose current document a catalog service names
+//! is opened through a [`MetadataPointer`] instead
+//! ([`IcebergTable::open_pointed`]), which is how the Amazon S3 Tables
+//! catalog commits.
 //!
 //! Writes support `bucket`, `truncate`, `year`, `month`, `day`, `hour`,
 //! `identity`, and `void` through the official scalar transform contract.
@@ -90,6 +93,7 @@ pub(crate) mod metadata;
 mod official;
 pub(crate) mod options;
 pub(crate) mod partition;
+mod pointer;
 pub(crate) mod scan;
 mod schema;
 pub(crate) mod snapshot;
@@ -99,6 +103,8 @@ pub(crate) mod table;
 mod types;
 pub(crate) mod value;
 
+#[cfg_attr(not(feature = "s3tables"), allow(unused_imports))]
+pub(crate) use catalog::format_version_for;
 pub use catalog::{IcebergCatalog, IcebergNamespace};
 pub use evolve::{SchemaUpdate, can_promote};
 pub use manifest::{
@@ -109,6 +115,7 @@ pub use manifest::{
 pub use metadata::{FormatVersion, SortField, SortOrder, TableMetadata};
 pub use options::{IcebergOptions, WriteStaging};
 pub use partition::{FIRST_PARTITION_ID, PartitionField, PartitionSpec, Transform};
+pub use pointer::{MetadataPointer, PointerState};
 pub use scan::{ScanPlan, ScanTask};
 pub use schema::{assign_field_ids, last_column_id, schema_from_json, schema_into_json};
 pub use snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};

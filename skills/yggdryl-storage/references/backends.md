@@ -18,7 +18,7 @@ how a location is spelled, what configures it, and what each call costs.
 | `file:///x.zip#member/path` | ZIP member | `zip::from_url(&url)`, `zip::mount(holder)` | Rust only | Rust only |
 | `urn:ns:a:b` | the path the name spells, under the working directory | `Uri::locator` then a backend | `IOBase(Urn(...))` | `new IOBase(new Urn(...))` |
 | `arn:aws:s3:::bucket/key` | the `s3:` URL it names | `Arn::locator` | `IOBase(Arn(...))` | `new IOBase(new Arn(...))` |
-| `s3tables://...` | refused: no byte backend speaks S3 Tables; the catalog is `s3tables::S3Tables` over a table bucket's ARN (`s3tables` feature), and a table's files are at the `s3:` warehouse location it answers | | Rust only | Rust only |
+| `s3tables://...` | no byte backend: a table bucket's location is its catalog - `Catalog::from_url` answers `S3TablesCatalog` (`s3tables` feature), whose tables commit through the control plane, their files at the `s3:` warehouse location it answers; `s3tables::S3Tables` is the control plane's client | `Catalog::from_url(&url, &props)?` | `Catalog.from_url(arn, region=..., warehouse=arn)` | `warehouse.Catalog.fromUrl(arn, { region, warehouse: arn })` |
 
 A handle reports the spelling it was handed (`s3a://` stays `s3a://`), and a
 child keeps its parent's spelling.
