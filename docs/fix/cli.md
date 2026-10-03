@@ -19,7 +19,7 @@
 | Enums | A named [code set](registry.md#a-field-names-the-code-set-it-reads-by) the dictionary holds: `--codes` on a field names one, `codesets write --codes '<json>'` states its members, and the set is stated before a field names it |
 | Direction rules | Tag 385's `FIX:directions` metadata; `--directions` accepts its canonical JSON document |
 | Identifiers | A component's direct scalar members; repeat `--identifiers` for names, aliases or decimal tags, resolved by the native setter into member order |
-| Output | Plain stable text when redirected; terminal styling only when supported and `NO_COLOR` is unset |
+| Output | Plain stable text when redirected; colour where the core's [colour rule](../logging.md#colour) says - a colour terminal, off under `NO_COLOR` or `TERM=dumb`, brought into a pipe by `FORCE_COLOR` or `CLICOLOR_FORCE` - and box drawing and the spinner only on a terminal it colours, so a forced colour never writes frames or box characters into a pipe |
 | Workflow | `--annotate`, also enabled by `GITHUB_ACTIONS`, prints workflow findings; failed checks and refused commands exit nonzero |
 
 ## Use
@@ -241,7 +241,7 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 - Every location this tool is given resolves against the working directory before it becomes a URL, so a bare relative name works wherever a path is taken.
 - A malformed code document on `codesets write`, invalid direction rules, unresolved references, a dialect name that cannot be a membership, a set name no store could file, and malformed native documents carry native located errors.
 - A registry mutation is atomic; persistence publishes separate documents and follows the backend's write semantics.
-- Interactive mode requires a terminal; piped one-shot commands emit plain text.
+- Interactive mode requires a terminal; piped one-shot commands emit plain text, coloured only when `FORCE_COLOR` or `CLICOLOR_FORCE` asks.
 
 ## Commands
 

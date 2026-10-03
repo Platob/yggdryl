@@ -43,7 +43,7 @@
 
 use smol_str::format_smolstr;
 
-use crate::warning::warned;
+use crate::logging::warning::warned;
 use crate::{Cusip, DataType, Decimal, IdType, Isin, Scalar, Sedol, StringEnum};
 
 use super::msg::FixMsg;

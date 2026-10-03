@@ -18,7 +18,7 @@ use crate::graph::{
     BookIterator, BookRef, Element, Event, ExecutionKind, Market, MarketData, MdUpdateAction,
     Operation, OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent,
 };
-use crate::warning::warned;
+use crate::logging::warning::warned;
 use crate::{
     DataType, Decimal, Error, IdSource, IdType, Identifier, Identifiers, MarketDataKind, Result,
     Scalar, Side, State, TimeUnit,
@@ -971,7 +971,7 @@ fn batch_entries(batch: &FixMsg) -> Vec<FixMsg> {
     let mut answer = Vec::new();
     for (index, occurrence) in rows.iter().enumerate() {
         let Some(values) = occurrence.as_sequence() else {
-            crate::warning::warned!(
+            crate::logging::warning::warned!(
                 "FIX batch entry excluded: its row is not a record",
                 batch.header().msgtype(),
                 "{name}[{index}] holds {}",
@@ -1023,7 +1023,7 @@ fn batch_entry(
     let crosscode = entry_crosscode(batch, &members, place);
     let mut entry = batch.clone();
     if let Err(error) = entry.remove(FixKey::Name(group)) {
-        crate::warning::warned!(
+        crate::logging::warning::warned!(
             "FIX batch entry excluded: its batch group could not be taken off",
             batch.header().msgtype(),
             "{group} at {place}: {error}"
@@ -1033,7 +1033,7 @@ fn batch_entry(
     // A member the root cannot hold is passed over, as the lenient write
     // passes it: the entry keeps what reads.
     if let Err(error) = entry.set_each(members.iter().map(Member::write)) {
-        crate::warning::warned!(
+        crate::logging::warning::warned!(
             "FIX batch entry excluded: its members do not make a message",
             batch.header().msgtype(),
             "{group} at {place}: {error}"

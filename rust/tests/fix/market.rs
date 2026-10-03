@@ -2932,7 +2932,7 @@ fn a_book_folds_one_instants_steps_of_a_chain_in_the_chains_order() {
 #[cfg(feature = "internals")]
 mod internal {
     use yggdryl::fix::FixMarketIterator;
-    use yggdryl::internals::warning::count;
+    use yggdryl::internals::logging_warning::count;
     use yggdryl::{FixMsg, MarketDataKind};
 
     use super::{

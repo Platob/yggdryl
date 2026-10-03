@@ -70,8 +70,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator, Market};
+use crate::logging::warning::warned;
 use crate::securityid::SecurityIdRegistry;
-use crate::warning::warned;
 use crate::{Error, Result, Scalar, Side, State, Uuid};
 
 use super::msg::FixMsg;

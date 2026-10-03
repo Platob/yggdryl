@@ -630,7 +630,9 @@ fs.rmSync(folder, { recursive: true, force: true })
 - `FixMessages` is a one-shot iterable: spread it once (`[...codec.parseLines(x)]`);
   it throws only for a source failure, where the iteration reaches it. What a
   line states that cannot be read is defaulted or left out, and the addon
-  writes a warning to standard error as `yggdryl: <message>`, once per kind.
+  writes a warning to standard error as the core's terminal line
+  (`... ! WARNING  [main] yggdryl.fix.build build:<line> › ...`), once per
+  kind, unless a handler on `logging.getLogger('yggdryl')` takes them.
 - Arrow JS interop is copied IPC with bounded cursors, never zero copy; keep
   bulk work inside `parseTextArrowReader` / `arrowReader` / `writeArrowReader`
   and cross into Arrow JS once at the end (`intoTable()`).

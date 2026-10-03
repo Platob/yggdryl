@@ -94,6 +94,7 @@ pub mod json;
 pub mod limit;
 mod listing;
 pub mod local;
+pub mod logging;
 pub mod mapping;
 pub mod marketdatakind;
 pub mod marketdatatype;
@@ -147,7 +148,6 @@ mod valuestream;
 mod variant;
 pub mod version;
 mod vocabulary;
-pub(crate) mod warning;
 mod window_serie;
 pub mod wkb;
 pub mod xml;
@@ -442,6 +442,9 @@ pub mod internals {
     pub use crate::json::column::internals as json_column;
     pub use crate::json::field::internals as json_field;
     pub use crate::local::internals as local;
+    pub use crate::logging::logger::internals as logging_logger;
+    pub use crate::logging::terminal::internals as logging_terminal;
+    pub use crate::logging::warning::internals as logging_warning;
     pub use crate::media::merge::internals as media_merge;
     pub use crate::media::options::internals as media_options;
     pub use crate::media::partition::internals as media_partition;
@@ -492,7 +495,6 @@ pub mod internals {
     pub use crate::valuestream::internals as valuestream;
     pub use crate::variant::internals as variant;
     pub use crate::version::internals as version;
-    pub use crate::warning::internals as warning;
     #[cfg(feature = "aws")]
     pub use crate::xml::scanner::internals as xml_scanner;
     pub use crate::xxhash::internals as xxhash;

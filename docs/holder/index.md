@@ -1383,7 +1383,7 @@ cargo bench --bench coding -- io_pstream
 
 ## Values
 
-Whole-value conveniences derive from `pread`/`pwrite`. The bindings spell them `read_bytes`/`read_text` and `write_bytes`/`write_text`; `read_range_bytes` and `append_bytes` keep the core name. `append_bytes`, like `write_all_bytes`, is a complete operation: it ends with a flush and publishes on return, on every backend - a remote object written, a memory-mapped `LocalFile`'s growth slack trimmed - with no `flush`/`close` left to the caller. Bare `pwrite` is the one call that stages without publishing.
+Whole-value conveniences derive from `pread`/`pwrite`. The bindings spell them `read_bytes`/`read_text` and `write_bytes`/`write_text`; `read_range_bytes` and `append_bytes` keep the core name. `append_bytes`, like `write_all_bytes`, is a complete operation: it ends with a flush and publishes on return, on every backend - a remote object written, a memory-mapped `LocalFile`'s growth slack trimmed - with no `flush`/`close` left to the caller. Bare `pwrite` is the one call that stages without publishing. A log written through a handle is one such append per publish, so a handler over a remote store holds records back to a capacity ([Logging: Handlers](../logging.md#handlers)).
 
 ```text
 fn read_all_bytes(&self) -> Result<Vec<u8>>

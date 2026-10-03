@@ -12,21 +12,33 @@
 //! a terminal a person is watching. Redirected to a file, piped to `grep`, or
 //! run under a CI runner that sets `NO_COLOR`, every one of them turns off
 //! and the same command prints plain, stable, greppable text. That is what
-//! makes one command usable both at a desk and in a workflow.
+//! makes one command usable both at a desk and in a workflow. `FORCE_COLOR`
+//! or `CLICOLOR_FORCE` brings the colour back into a pipe, and only the
+//! colour.
 
 use std::io::{IsTerminal, Write};
 use std::time::{Duration, Instant};
 
 use crossterm::style::Stylize;
+use yggdryl::logging::Level;
 
-/// Whether the terminal should be drawn on rather than written to.
-///
-/// `NO_COLOR` is honoured because it is the convention every other tool a
-/// person has in their shell honours, and a pipe is honoured because nothing
-/// downstream of one wants escape codes.
+/// Whether standard output is written in colour: the core's colour rule,
+/// the one its log handlers follow. `NO_COLOR`, `FORCE_COLOR`,
+/// `CLICOLOR_FORCE` and `TERM=dumb` are the conventions every other tool a
+/// person has in their shell honours, and a pipe is honoured because
+/// nothing downstream of one wants escape codes unless it asked for them.
+#[must_use]
+pub fn colored() -> bool {
+    yggdryl::logging::is_color_enabled(std::io::stdout().is_terminal())
+}
+
+/// Whether the terminal should be drawn on rather than written to - box
+/// drawing and animation: only a terminal a person watches, coloured, ever
+/// is. A forced colour asks for escape codes in a pipe, never for a
+/// spinner's frames in it.
 #[must_use]
 pub fn decorated() -> bool {
-    std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none()
+    std::io::stdout().is_terminal() && colored()
 }
 
 /// One string in a colour, or plainly where colour is not wanted.
@@ -35,7 +47,7 @@ macro_rules! paint {
         #[doc = concat!("Renders `text` ", stringify!($name), ", where colour is wanted.")]
         #[must_use]
         pub fn $name(text: &str) -> String {
-            if decorated() {
+            if colored() {
                 text.$method().to_string()
             } else {
                 text.to_owned()
@@ -116,9 +128,10 @@ pub fn entry(key: &str, value: &str) {
     outln!("  {:<18} {value}", dim(key));
 }
 
-/// A note the reader should see but not act on.
+/// A note the reader should see but not act on: marked as the core's log
+/// lines mark a record below `INFO`.
 pub fn note(text: &str) {
-    outln!("{} {text}", dim("·"));
+    outln!("{} {text}", dim(Level::DEBUG.glyph()));
 }
 
 /// A statement that something is right.
@@ -126,14 +139,15 @@ pub fn good(text: &str) {
     outln!("{} {text}", green("✓"));
 }
 
-/// A statement that something needs attention but is not a failure.
+/// A statement that something needs attention but is not a failure: the
+/// core's `WARNING` glyph.
 pub fn warn(text: &str) {
-    outln!("{} {text}", yellow("!"));
+    outln!("{} {text}", yellow(Level::WARNING.glyph()));
 }
 
-/// A statement that something is wrong.
+/// A statement that something is wrong: the core's `ERROR` glyph.
 pub fn bad(text: &str) {
-    outln!("{} {text}", red("✗"));
+    outln!("{} {text}", red(Level::ERROR.glyph()));
 }
 
 /// How wide one cell renders, counted in what a terminal shows.

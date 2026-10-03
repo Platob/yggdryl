@@ -1,7 +1,7 @@
-//! `rust/src/warning.rs`: deduplicated warnings, keyed by where one is
+//! `rust/src/logging/warning.rs`: deduplicated warnings, keyed by where one is
 //! raised, what went wrong and what it is about - never by the value.
 
-use yggdryl::internals::warning::{count, is_tenfold, warn};
+use yggdryl::internals::logging_warning::{count, is_tenfold, warn};
 
 /// One key counts every occurrence, and another subject or reason is a key
 /// of its own: a stream repeating one fault is one warning.

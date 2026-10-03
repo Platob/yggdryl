@@ -22,6 +22,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Holder | [Values](holder/index.md#values-performance) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |
 | Holder | [Call counts](holder/index.md#call-counts-performance) | One run of each operation over a 4 MiB in-memory value, wall clock beside the `IOBase` calls it makes |
 | Holder | [ZIP](holder/index.md#zip-performance) | `io_zip`: positional, whole and streamed member reads and writes, restart strides and a 2,000-member archive; one containerized x86_64 Linux release run |
+| Logging | [Logging](logging.md#performance) | The `logging` Criterion target: a disabled record on a logger and at the facade's ceiling, the `%`-style formatter and the terminal line, plain and coloured, beside a `std::fmt` baseline, an enabled facade record spelled into a sink, a repeat on a deduplicating logger, and a `FileHandler` publishing per record and per 64 KiB capacity; one release run, Linux x86_64, Intel Xeon 2.10 GHz, rustc 1.97.0 |
 | Media | [gzip](media/compression.md#gzip-performance) | One containerized x86_64 Linux run of the Python binding against the standard library's `gzip`, over 1,080,... |
 | Media | [zlib](media/compression.md#zlib-performance) | `python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JS... |
 | Media | [zstd](media/compression.md#zstd-performance) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |
@@ -61,6 +62,7 @@ Results live beside the method they measure. Each page's Performance section nam
     cargo bench --bench charset
     cargo bench --bench coding
     cargo bench --bench hashing
+    cargo bench --bench logging
     cargo bench --bench fix
     cargo bench --bench fix_allocations
     cargo bench --bench holder --features "parquet s3"
@@ -88,6 +90,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/uri.py --iterations 2000
     python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/txhash.py --min-time 0.2 --repeat 5
+    python/.venv/bin/python python/benchmarks/logger.py --iterations 20000
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
     python/.venv/bin/python python/benchmarks/graph.py --iterations 2000
     python/.venv/bin/python scripts/bench_avro_baseline.py
@@ -109,6 +112,7 @@ Results live beside the method they measure. Each page's Performance section nam
     npm run --prefix node bench:text
     npm run --prefix node bench:hashing:xxhash
     npm run --prefix node bench:hashing:txhash
+    npm run --prefix node bench:logging
     npm run --prefix node bench:fix
     npm run --prefix node bench:graph
     ```
@@ -129,6 +133,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | `fix` | registry lookup, mutation, storage, and binding crossings |
 | `fix_allocations` | what each `fix/ulbridge` stage allocates per message - requests under `fix/allocations`, bytes under `fix/allocated_bytes` - counted through the test binaries' allocator, never timed |
 | `hashing` | digest throughput per algorithm and size, wrapper overhead, handle reads, the value feed, Arrow row digests, the time coupling beside the digest it wraps, the value's projections, instant intake, coupled columns, and the coupled holder fill |
+| `logging` | what a record costs refused on a logger and at the facade's ceiling, the `%`-style formatter beside `std::fmt`, an enabled record spelled into a sink, a repeat counted and dropped on a deduplicating logger, and a file handler's publishes per record and per capacity |
 
 ## Rules
 

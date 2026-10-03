@@ -320,7 +320,7 @@ assert.equal([...new graph.BookIterator(stream, 500)].length, 3)
 const [book] = new graph.BookIterator([new graph.OrderEvent(T, { crosscode: 'L-1', side: 'SELL', miccode: 'XNAS' })])
 assert.deepEqual([book.crosscode, book.ticker], ['3:0:XNAS:XXXXXX', null])
 // Out of order is no error: the operation dated before its book is left out,
-// with a warning on standard error.
+// with a warning on standard error (unless a `logging` handler takes it).
 assert.equal([...new graph.BookIterator([...stream].reverse())].length, 1)
 ```
 
@@ -572,4 +572,5 @@ assert.equal(typeof book.serve, 'function')
   `$.operations[i].kind` (`BookIterator` at `$.operation.kind`). What
   `BookIterator` finds wrong in the data - an operation dated before its book,
   an order or a quote stating neither side - it leaves out, with a warning on
-  standard error, and no error.
+  standard error (unless a handler on `logging.getLogger('yggdryl')` takes
+  it), and no error.
