@@ -1451,7 +1451,7 @@ mod derived_columns {
     }
 
     #[test]
-    fn rows_that_carry_a_written_value_keep_it() {
+    fn a_value_the_rows_carry_under_a_derived_name_is_computed_again() {
         let path = root("written");
         let schema = declared();
         let spec = PartitionSpec::from_schema(1, &schema).unwrap();
@@ -1463,7 +1463,8 @@ mod derived_columns {
         )
         .unwrap();
         // The stored layout, `part` included and stating another quarter
-        // than the term would: a written value is never recomputed.
+        // than the term answers: the table owns the derivation, so what it
+        // stores is what its schema says, whatever the rows carried.
         let stored = table.schema().unwrap().clone().into_arrow_schema().unwrap();
         let columns: Vec<Arc<dyn Array>> = stored
             .fields()
@@ -1478,7 +1479,59 @@ mod derived_columns {
         table
             .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap();
-        assert_eq!(read(&table), [(5 * QUARTER, QUARTER + 1, 1)]);
+        assert_eq!(read(&table), [(QUARTER, QUARTER + 1, 1)]);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_window_on_the_source_prunes_by_the_bucket_it_falls_in() {
+        let path = root("pruned");
+        let schema = declared();
+        let spec = PartitionSpec::from_schema(1, &schema).unwrap();
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V3,
+            schema,
+            spec,
+        )
+        .unwrap();
+        // One commit a quarter: one manifest each, summarizing one bucket.
+        for quarter in 0..4_i64 {
+            table
+                .commit_append(rows(
+                    &[quarter * QUARTER + 5, quarter * QUARTER + 9],
+                    &[quarter * 10, quarter * 10 + 1],
+                ))
+                .unwrap();
+        }
+        assert_eq!(table.manifests().unwrap().len(), 4);
+
+        // The window names `ts` alone. Every row's `part` is the bucket its
+        // `ts` falls in, so a manifest's summary of `part` bounds `ts`: the
+        // three other quarters are ruled out unopened.
+        let window = "ts >= '1970-01-01T00:15:00Z' and ts < '1970-01-01T00:30:00Z'";
+        let plan = table.plan_matching(window).unwrap();
+        assert_eq!(plan.manifests_read, 1);
+        assert_eq!(plan.skipped.len(), 3);
+        assert_eq!(plan.tasks.len(), 1);
+        let options = table.record_options().unwrap().with_filter(window).unwrap();
+        let read: usize = table
+            .read_serie(Some(&options))
+            .unwrap()
+            .map(|record| record.unwrap().len())
+            .sum();
+        assert_eq!(read, 2);
+
+        // A bucket bounds its source by its whole range, not its start: a
+        // window closing the first quarter and opening the second keeps both
+        // manifests, and the first quarter's file is then ruled out by its
+        // own statistics of `ts`.
+        let plan = table
+            .plan_matching("ts >= '1970-01-01T00:14:59Z' and ts < '1970-01-01T00:15:06Z'")
+            .unwrap();
+        assert_eq!(plan.manifests_read, 2);
+        assert_eq!(plan.skipped.len(), 2);
+        assert_eq!(plan.tasks.len(), 1);
         let _ = std::fs::remove_dir_all(&path);
     }
 }

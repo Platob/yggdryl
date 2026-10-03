@@ -37,8 +37,8 @@ use super::partition::{PartitionSpec, Transform};
 use super::value::single_to_value;
 use crate::arrow::BatchReader;
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
-use crate::expression::eval::EpochPeriod;
-use crate::expression::{Bound, Bounds};
+use crate::expression::eval::{EpochPeriod, TimeBucket};
+use crate::expression::{Bound, Bounds, Function, Term};
 use crate::holder::Holder;
 use crate::integer::integer_from_text_as;
 use crate::{DataType, Error, Field, Filter, Result, Scalar, StructType};
@@ -195,6 +195,62 @@ pub(super) fn period_column<'schema>(
 ) -> Option<(&'schema Field, EpochPeriod)> {
     let period = spec.fields.get(position)?.transform.epoch_period()?;
     Some((source_column(spec, position, schema)?, period))
+}
+
+/// The column a derived partition column floors, with the bucket it floors
+/// to.
+///
+/// A table computes the columns its schema derives for every row written to
+/// it, so a column declaring `time_bucket(width, x)` holds the bucket `x`
+/// falls in: its partition value bounds `x` as the range
+/// `[start, start + width)`, exactly as a time transform's period bounds its
+/// source ([`period_column`]). That is what lets a window on `x` rule out a
+/// manifest by its summary of the bucket, without the predicate naming the
+/// bucket at all. Only a declaration over one top-level column of the
+/// bucket's own datatype answers.
+pub(super) fn bucket_column<'schema>(
+    column: &Field,
+    schema: &'schema Field,
+) -> Option<(&'schema Field, TimeBucket)> {
+    let term = column.as_transform().term().ok()??;
+    let Term::Function(Function::TimeBucket, arguments) = &term else {
+        return None;
+    };
+    let [width, source] = &arguments[..] else {
+        return None;
+    };
+    let source = source.as_column()?;
+    let source = schema.fields().iter().find(|held| held.name() == source)?;
+    if source.dtype() != column.dtype() {
+        return None;
+    }
+    let bucket = TimeBucket::new(width.as_literal()?.value(), source.dtype()).ok()?;
+    Some((source, bucket))
+}
+
+/// The inclusive range of source values the buckets from `lower` to `upper`
+/// hold: from the first bucket's start to the last instant of the last one.
+fn bucket_range(
+    bucket: TimeBucket,
+    source: &DataType,
+    lower: Option<&Scalar>,
+    upper: Option<&Scalar>,
+) -> (Option<Scalar>, Option<Scalar>) {
+    let at = |count: i64| match source {
+        DataType::Date32 => i32::try_from(count).ok().map(Scalar::date32),
+        DataType::DateTime64 { unit, timezone } => Scalar::datetime64(count, *unit, *timezone).ok(),
+        _ => None,
+    };
+    let count = |value: &Scalar| match value {
+        Scalar::Date32(date) => Some(i64::from(date.count())),
+        other => other.temporal_count(),
+    };
+    let minimum = lower.and_then(count).and_then(at);
+    let maximum = upper
+        .and_then(count)
+        .and_then(|start| start.checked_add(bucket.step() - 1))
+        .and_then(at);
+    (minimum, maximum)
 }
 
 /// The top-level schema column a partition field reads.
@@ -370,6 +426,13 @@ pub(super) fn manifest_bounds(
             } else {
                 (None, None)
             };
+            // The bucket of a null is null and of a value a value, so the
+            // summary says the same of the column it floors.
+            if let Some((source, bucket)) = bucket_column(column, schema) {
+                let (lowest, highest) =
+                    bucket_range(bucket, source.dtype(), minimum.as_ref(), maximum.as_ref());
+                gather(&mut ranges, source, lowest, highest, nulls);
+            }
             gather(&mut ranges, column, minimum, maximum, nulls);
             continue;
         }
@@ -423,9 +486,20 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
             .unwrap_or(Scalar::Null);
         if let Some(column) = identity_column(spec, position, schema) {
             settled.push(column.name());
+            // A bucket bounds the column it floors as a period does: every
+            // row's source lies in it, and a null bucket is a null source.
+            let floored = bucket_column(column, schema);
             if value.is_null() {
+                if let Some((source, _)) = floored {
+                    gather(&mut periods, source, None, None, rows);
+                }
                 bounds = bounds.with_column(column.name(), None, None, rows);
                 continue;
+            }
+            if let Some((source, bucket)) = floored {
+                let (minimum, maximum) =
+                    bucket_range(bucket, source.dtype(), Some(&value), Some(&value));
+                gather(&mut periods, source, minimum, maximum, Some(0));
             }
             bounds = bounds.with_column(column.name(), Some(value.clone()), Some(value), Some(0));
             continue;

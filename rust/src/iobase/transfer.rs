@@ -281,8 +281,9 @@ pub(crate) fn prepare_arrow_write_onto(
 /// columns `stored` declares are computed from the rows as the declared
 /// field leaves them, before the `where` and the `select` read them and
 /// before the stored cast - so a clause may name a derived column, and a
-/// required one is never refused as missing. A stored field deriving
-/// nothing costs nothing.
+/// required one is never refused as missing. The table owns what it
+/// derives, so a value the rows carry under a derived name is computed
+/// again; a stored field deriving nothing costs nothing.
 #[cfg(feature = "iceberg")]
 pub(crate) fn prepare_arrow_write_deriving(
     batches: crate::arrow::BatchReader,
@@ -296,7 +297,10 @@ pub(crate) fn prepare_arrow_write_deriving(
         Some(declared) => declared.apply_arrow_reader(batches, cast)?,
         None => batches,
     };
-    let batches = stored.as_transform().apply_arrow_reader(batches)?;
+    let batches = match crate::expression::Derivation::owning(stored)? {
+        Some(derivation) => derivation.apply_arrow_reader(batches)?,
+        None => batches,
+    };
     let batches = options.apply_arrow_expressions(batches)?;
     let batches = stored.apply_arrow_reader(batches, cast)?;
     options.limit_arrow_reader(batches)

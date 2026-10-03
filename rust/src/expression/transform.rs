@@ -8,7 +8,9 @@
 //! applying the field itself, or reading and writing under it, only casts.
 //! The one writer that computes is the table that owns the declaration: an
 //! Iceberg table derives the columns its stored schema declares for every
-//! row written to it, as it computes every other partition value.
+//! row written to it, as it computes every other partition value - and for
+//! every row, whatever it carries under the column's name, so what the
+//! table stores is what its schema says and a reader may rely on it.
 //! That is the same declaration a [`Selector`](super::Selector) projection
 //! makes - `year(event) as year` - so
 //! [`Selector::into_field`](super::Selector::into_field) writes one and
@@ -318,7 +320,8 @@ mod arrow {
         pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch> {
             let root = self.as_field();
             root.require_struct()?;
-            Ok(filled_struct(root, &Level::new(root), batch)?.unwrap_or_else(|| batch.clone()))
+            Ok(filled_struct(root, &Level::new(root, false), batch)?
+                .unwrap_or_else(|| batch.clone()))
         }
 
         /// Add the derived columns this schema declares to every batch of a
@@ -389,18 +392,35 @@ mod arrow {
     impl Derivation {
         /// The derivations `root` declares, `None` when it declares none at
         /// any level - a schema computing nothing costs its writer nothing.
+        /// A column the rows carry written is left as it came.
         ///
         /// # Errors
         ///
         /// Returns an error when `root` is not a struct.
         pub(crate) fn of(root: &Field) -> Result<Option<Self>> {
+            Self::planned(root, false)
+        }
+
+        /// The derivations `root` declares, computed for every row whatever
+        /// it carries under a derived column's name: what the owner of a
+        /// declaration - a table - writes, so that what it stores is what
+        /// its schema says.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when `root` is not a struct.
+        pub(crate) fn owning(root: &Field) -> Result<Option<Self>> {
+            Self::planned(root, true)
+        }
+
+        fn planned(root: &Field, owning: bool) -> Result<Option<Self>> {
             root.require_struct()?;
             if !derives(root) {
                 return Ok(None);
             }
             Ok(Some(Self {
                 declared: root.clone(),
-                plan: Level::new(root),
+                plan: Level::new(root, owning),
             }))
         }
 
@@ -428,7 +448,13 @@ mod arrow {
             Ok(filled_struct(&self.declared, &self.plan, &batch)?.unwrap_or(batch))
         }
 
-        fn apply_arrow_reader(self, reader: BatchReader) -> Result<BatchReader> {
+        /// Every batch of `reader` through [`Self::apply`], the filled
+        /// columns stated in the schema before a batch is pulled.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::schema`]'s.
+        pub(crate) fn apply_arrow_reader(self, reader: BatchReader) -> Result<BatchReader> {
             let schema = self.schema(&reader.schema())?;
             Ok(Box::new(Filled {
                 inner: reader,
@@ -481,6 +507,9 @@ mod arrow {
         /// The columns this level's batches carry, as the root its terms bind
         /// against.
         stored: Mutex<PlanCache<Arc<Stored>>>,
+        /// Whether a derived column is computed even where the rows carry it
+        /// written: the owner of the declaration states its own value.
+        owning: bool,
     }
 
     /// One declared child: the level it declares when it is a struct, the
@@ -498,18 +527,19 @@ mod arrow {
     }
 
     impl Level {
-        fn new(declared: &Field) -> Self {
+        fn new(declared: &Field, owning: bool) -> Self {
             Self {
                 children: declared
                     .fields()
                     .iter()
                     .map(|child| Child {
-                        nested: child.is_struct().then(|| Self::new(child)),
+                        nested: child.is_struct().then(|| Self::new(child, owning)),
                         term: OnceLock::new(),
                         cast: ColumnCast::default(),
                     })
                     .collect(),
                 stored: Mutex::new(PlanCache::new()),
+                owning,
             }
         }
 
@@ -635,6 +665,7 @@ mod arrow {
             };
             let held = batch.schema().index_of(child.name()).ok();
             if let Some(index) = held
+                && !plan.owning
                 && !is_unwritten(child, &columns[index], rows)?
             {
                 continue;

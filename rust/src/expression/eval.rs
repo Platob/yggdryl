@@ -1207,6 +1207,13 @@ impl TimeBucket {
     pub(crate) const fn unit(self) -> TimeUnit {
         self.unit
     }
+
+    /// The bucket's width, in [`Self::unit`]: every value of the bucket
+    /// starting at `start` lies in `start..start + step`.
+    #[cfg(feature = "iceberg")]
+    pub(crate) const fn step(self) -> i64 {
+        self.step
+    }
 }
 
 fn bucket_error(reason: SmolStr) -> Error {

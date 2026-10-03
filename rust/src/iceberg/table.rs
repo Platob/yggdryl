@@ -1591,15 +1591,20 @@ impl<H: IOBase> IcebergTable<H> {
 
     /// The rows of `batches` with every column the schema derives computed.
     ///
-    /// A stored column declaring `TRANSFORM:expression` that the rows do not
-    /// carry, or carry unwritten, is computed from the columns they do carry
-    /// before anything is cast or grouped - a table partitioned by a column
-    /// it derives fills that column for every writer, as it computes every
-    /// other partition value. A schema deriving nothing hands the reader
-    /// back. The public commit doors and the record doors derive; the
-    /// crate's `_on` and cadence forms take rows already derived.
+    /// A stored column declaring `TRANSFORM:expression` is computed from the
+    /// columns the rows carry before anything is cast or grouped, whatever
+    /// the rows carry under its own name - a table partitioned by a column
+    /// it derives states that column for every writer, as it computes every
+    /// other partition value, so what it stores is what its schema says and
+    /// a scan may bound the source by the partition. A schema deriving
+    /// nothing hands the reader back. The public commit doors and the
+    /// record doors derive; the crate's `_on` and cadence forms take rows
+    /// already derived.
     fn derived(&self, batches: BatchReader) -> Result<BatchReader> {
-        self.schema()?.as_transform().apply_arrow_reader(batches)
+        match crate::expression::Derivation::owning(self.schema()?)? {
+            Some(derivation) => derivation.apply_arrow_reader(batches),
+            None => Ok(batches),
+        }
     }
 
     /// [`Self::commit_append`] with its partition groups written on

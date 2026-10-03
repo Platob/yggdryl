@@ -1430,11 +1430,15 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   left whole - through `apply_arrow_batch`, or `apply_arrow_reader` under
   one plan for a stream. The one writer that derives is the table that owns
   the declaration: an Iceberg table computes the `TRANSFORM:` columns its
-  stored schema declares for every row written to it - after the options'
-  declared field, before their clauses - keeps each term as the table
-  property `yggdryl.transform.<column>`, and reads a derived `PARTITION:by`
-  entry no Iceberg transform spells as the identity partition of the column
-  `with_partition_by` materialized.
+  stored schema declares for every row written to it, whatever the row
+  carries under the column's name - after the options' declared field,
+  before their clauses - keeps each term as the table property
+  `yggdryl.transform.<column>`, and reads a derived `PARTITION:by` entry no
+  Iceberg transform spells as the identity partition of the column
+  `with_partition_by` materialized. What the table stores is therefore what
+  its schema says, and a scan bounds the source of a `time_bucket` partition
+  column by the bucket's range at the manifest summary and at the file, as
+  it bounds a time transform's source by its period.
   `Plan::from_field` moves `SORT:by` into its `order by` section and writes
   it back; an Iceberg spec and sort order read the two keys
   (`PartitionSpec::from_schema`, `SortOrder::from_schema`) and write them

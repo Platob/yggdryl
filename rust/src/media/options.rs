@@ -968,7 +968,7 @@ impl Shaping {
             None => None,
         };
         let derived = match existing.filter(|_| derive) {
-            Some(stored) => crate::expression::Derivation::of(stored)?,
+            Some(stored) => crate::expression::Derivation::owning(stored)?,
             None => None,
         };
         if let Some(derivation) = &derived {
