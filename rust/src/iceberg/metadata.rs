@@ -1119,12 +1119,12 @@ impl TableMetadata {
             .and_then(Scalar::as_sequence)
             .unwrap_or_default()
         {
-            schemas.push(schema_from_json("row", entry)?);
+            schemas.push(schema_from_json(crate::media::DEFAULT_ROOT_NAME, entry)?);
         }
         if schemas.is_empty()
             && let Some(schema) = document.get_key_str("schema")
         {
-            schemas.push(schema_from_json("row", schema)?);
+            schemas.push(schema_from_json(crate::media::DEFAULT_ROOT_NAME, schema)?);
         }
         if schemas.is_empty() {
             return Err(invalid(SmolStr::new_static(

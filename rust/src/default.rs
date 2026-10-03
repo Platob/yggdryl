@@ -145,6 +145,141 @@ pub(crate) fn preflight_schema(dtype: &DataType, kind: &'static str) -> Result<(
     dtype.validate()
 }
 
+/// The two shape refusals a schema walk answers, each sentence spelled here
+/// and nowhere else: [`preflight_schema_shape`] and [`nesting_exceeds`] both
+/// read it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum NestingRefusal {
+    /// A node sits at or past [`DataType::PARSE_RECURSION_LIMIT`].
+    Depth,
+    /// The walk visited more than [`MAX_DEFAULT_NODES`] nodes.
+    Nodes,
+}
+
+impl NestingRefusal {
+    pub(crate) fn text(self) -> SmolStr {
+        match self {
+            Self::Depth => format_smolstr!(
+                "schema nesting exceeds the hard limit of {}",
+                DataType::PARSE_RECURSION_LIMIT
+            ),
+            Self::Nodes => {
+                format_smolstr!("schema exceeds the {MAX_DEFAULT_NODES} node safety limit")
+            }
+        }
+    }
+
+    /// The refusal as the typed error `preflight_schema_shape` writes, under
+    /// the root `kind` being built and the `path` the walk started at.
+    pub(crate) fn refuse(self, kind: &'static str, path: &str) -> Error {
+        schema_preflight_error(kind, path, self.text())
+    }
+}
+
+/// The allocation-free half of [`preflight_schema_shape`]: whether a datatype
+/// standing at `depth` nests past the limit or, with its children, takes the
+/// shared `visited` count past the node budget.
+///
+/// The children are enumerated exactly as `preflight_schema_shape` enumerates
+/// them and the counter is the same budget, which is what bounds a subtree
+/// shared through an `Arc` - `struct<a: X, b: X>` over one `Arc` per level is
+/// a tree exponential in its depth that a depth check alone would walk without
+/// end. Recursive, so the stack is bounded by the depth limit and nothing is
+/// allocated; a caller wrapping a datatype starts it at `(1, &mut 1)`, the
+/// wrapper being the first visit.
+pub(crate) fn nesting_exceeds(
+    dtype: &DataType,
+    depth: usize,
+    visited: &mut usize,
+) -> Option<NestingRefusal> {
+    if depth >= DataType::PARSE_RECURSION_LIMIT {
+        return Some(NestingRefusal::Depth);
+    }
+    *visited = visited.saturating_add(1);
+    if *visited > MAX_DEFAULT_NODES {
+        return Some(NestingRefusal::Nodes);
+    }
+    let child_depth = depth + 1;
+    match dtype {
+        DataType::Serie(field)
+        | DataType::SerieView(field)
+        | DataType::FixedSizeSerie(field, _)
+        | DataType::LargeSerie(field)
+        | DataType::LargeSerieView(field) => nesting_exceeds(field.dtype(), child_depth, visited),
+        DataType::Struct(fields) => fields
+            .iter()
+            .find_map(|field| nesting_exceeds(field.dtype(), child_depth, visited)),
+        DataType::Union(fields, _) => fields
+            .iter()
+            .find_map(|(_, field)| nesting_exceeds(field.dtype(), child_depth, visited)),
+        DataType::Dictionary(dictionary) => nesting_exceeds(dictionary.key(), child_depth, visited)
+            .or_else(|| nesting_exceeds(dictionary.value(), child_depth, visited)),
+        DataType::Map(map) | DataType::SortedMap(map) => {
+            nesting_exceeds(map.entries().dtype(), child_depth, visited)
+        }
+        DataType::RunEndEncoded(encoded) => {
+            nesting_exceeds(encoded.run_ends().dtype(), child_depth, visited)
+                .or_else(|| nesting_exceeds(encoded.values().dtype(), child_depth, visited))
+        }
+        DataType::Null
+        | DataType::Boolean
+        | DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
+        | DataType::Int64
+        | DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
+        | DataType::UInt64
+        | DataType::Float16
+        | DataType::Float32
+        | DataType::Float64
+        | DataType::DateTime64 { .. }
+        | DataType::Date32
+        | DataType::Date64
+        | DataType::Time32(_)
+        | DataType::Time64(_)
+        | DataType::Duration32(_)
+        | DataType::Duration64(_)
+        | DataType::Interval(_)
+        | crate::bytes_dtypes!()
+        | crate::string_dtypes!()
+        | DataType::Country
+        | DataType::Ccy
+        | DataType::Mic
+        | DataType::Cfi
+        | DataType::Isin
+        | DataType::Cusip
+        | DataType::Sedol
+        | DataType::Bbg
+        | DataType::Ric
+        | DataType::Figi
+        | DataType::Side
+        | DataType::State
+        | DataType::MarketDataKind
+        | DataType::MarketDataType
+        | DataType::TimeInForce
+        | DataType::Unit
+        | DataType::Forex
+        | DataType::Uuid
+        | DataType::Version
+        | DataType::Url
+        | DataType::Urn
+        | DataType::Timezone
+        | DataType::MimeType
+        | DataType::MediaType
+        | DataType::Decimal32 { .. }
+        | DataType::Decimal64 { .. }
+        | DataType::Decimal128 { .. }
+        | DataType::Decimal256 { .. }
+        | DataType::Decimal
+        | DataType::BigDecimal
+        | DataType::Variant
+        | DataType::Geometry(_)
+        | DataType::Geography(_) => None,
+    }
+}
+
 pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Result<()> {
     let mut pending = Vec::new();
     reserve_pending(&mut pending, 0, 1, kind)?;
@@ -152,14 +287,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
     let mut visited = 0_usize;
     while let Some((current, depth)) = pending.pop() {
         if depth >= DataType::PARSE_RECURSION_LIMIT {
-            return Err(schema_preflight_error(
-                kind,
-                "$",
-                format_smolstr!(
-                    "schema nesting exceeds the hard limit of {}",
-                    DataType::PARSE_RECURSION_LIMIT
-                ),
-            ));
+            return Err(NestingRefusal::Depth.refuse(kind, "$"));
         }
         visited = visited.checked_add(1).ok_or_else(|| {
             schema_preflight_error(
@@ -169,11 +297,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             )
         })?;
         if visited > MAX_DEFAULT_NODES {
-            return Err(schema_preflight_error(
-                kind,
-                "$",
-                format_smolstr!("schema exceeds the {MAX_DEFAULT_NODES} node safety limit"),
-            ));
+            return Err(NestingRefusal::Nodes.refuse(kind, "$"));
         }
         let child_depth = depth + 1;
         match current {
@@ -283,19 +407,11 @@ fn reserve_pending(
             "schema node count overflowed the platform size".into(),
         )
     })?;
-    let remaining = MAX_DEFAULT_NODES.checked_sub(discovered).ok_or_else(|| {
-        schema_preflight_error(
-            kind,
-            "$",
-            format_smolstr!("schema exceeds the {MAX_DEFAULT_NODES} node safety limit"),
-        )
-    })?;
+    let remaining = MAX_DEFAULT_NODES
+        .checked_sub(discovered)
+        .ok_or_else(|| NestingRefusal::Nodes.refuse(kind, "$"))?;
     if additional > remaining {
-        return Err(schema_preflight_error(
-            kind,
-            "$",
-            format_smolstr!("schema exceeds the {MAX_DEFAULT_NODES} node safety limit"),
-        ));
+        return Err(NestingRefusal::Nodes.refuse(kind, "$"));
     }
     pending.try_reserve(additional).map_err(|error| {
         schema_preflight_error(

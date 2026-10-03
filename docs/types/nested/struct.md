@@ -483,6 +483,16 @@ and `with_fields` is the whole-collection form, which keeps the count.
     assert.deepEqual(row.keys(), ['venue'])
     ```
 
+## As a struct
+
+`is_struct` asks whether a datatype or a field is this shape, and the `into_struct_*` doors make one of anything else - a struct answered as it is, any other datatype, field or value wrapped as the one child of a struct. They are Rust only, each documented where its type is owned:
+
+| door | owned by |
+| --- | --- |
+| `DataType::into_struct_type`, `DataType::is_struct` | [DataType](../datatype.md#as-a-struct) |
+| `Field::into_struct_field` | [Field](../field.md#as-a-struct) |
+| `Scalar::into_struct_scalar`, and `Scalar::inferred_record_field` with no schema | [Scalar](../scalar.md#as-a-struct), [Inferred fields](../scalar.md#inferred-fields) |
+
 ## What a struct is read through
 
 A struct is the node every recursive walk crosses, and each walk is documented
@@ -514,7 +524,7 @@ where it is owned rather than restated here:
     ```bash
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test expression -- path::nested
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test metadata -- validation::generic
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- datatype_kind::nested field::generic field::nested mapping::nested merge::nested metadata::generic parser::generic parser::nested protocol::generic protocol::nested serde::generic structure::nested union::variants
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- datatype_kind::nested field::generic field::nested mapping::nested merge::nested metadata::generic parser::generic parser::nested protocol::generic protocol::nested serde::generic structure::nested structure::struct_pair union::variants
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(struct_from_fields_1024|nested_datatype_clone|nested_validate)'
     ```
 
