@@ -1017,15 +1017,21 @@ test('a handler that throws surfaces its own message', () => {
     /the credential chain is empty/,
   )
 
-  // A kind the core has no name for is refused naming the vocabulary.
-  const inventing = {
+  // A kind is read through the core's own kind vocabulary, in any case;
+  // one the core has no name for, or one no filesystem reports, is refused
+  // naming the three a filesystem answers.
+  const spelling = (kind) => ({
     ...memory(),
-    fileInfo: (location) => ({ path: location, kind: 'blob' }),
+    fileInfo: (location) => ({ path: location, kind, ...(kind.trim().toLowerCase() === 'file' ? { size: 0n } : {}) }),
+  })
+  assert.equal(IOBase.fromFs(spelling(' File '), 'bucket/key.bin').info().kind, 'file')
+  assert.equal(IOBase.fromFs(spelling('DIRECTORY'), 'bucket/key').info().kind, 'directory')
+  for (const kind of ['blob', 'table', 'memory']) {
+    assert.throws(
+      () => IOBase.fromFs(spelling(kind), 'bucket/key.bin').info(),
+      new RegExp(`expected file info kind to be 'file', 'directory', or 'not-found', got "${kind}"`),
+    )
   }
-  assert.throws(
-    () => IOBase.fromFs(inventing, 'bucket/key.bin').info(),
-    /file.*directory.*not-found/,
-  )
 })
 
 test('filesystem error codes and sticky stream failures survive the boundary', () => {

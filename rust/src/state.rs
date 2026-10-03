@@ -352,6 +352,7 @@ impl State {
     ///
     /// assert_eq!(State::from_fix_msgtype("D"), Some(State::PendingNew));
     /// assert_eq!(State::from_fix_msgtype("F"), Some(State::PendingCancel));
+    /// assert_eq!(State::from_fix_msgtype("Z"), Some(State::PendingCancel));
     /// assert_eq!(State::from_fix_msgtype("j"), Some(State::Rejected));
     /// assert_eq!(State::from_fix_msgtype("8"), None);
     /// ```
@@ -360,8 +361,9 @@ impl State {
         Some(match msgtype {
             // New orders: single, list, cross, multileg.
             "D" | "E" | "s" | "AB" => Self::PendingNew,
-            // A cancel and a cancel-replace request, single and cross.
-            "F" | "u" => Self::PendingCancel,
+            // A cancel request, single and cross, and a quote cancel.
+            "F" | "u" | "Z" => Self::PendingCancel,
+            // A cancel-replace request, single, cross and multileg.
             "G" | "t" | "AC" => Self::PendingReplace,
             // A request for a quote, and a quote answering one.
             "R" => Self::Pending,

@@ -952,8 +952,8 @@ pub use protocol::ProtocolMetadata;
 use validation::*;
 pub(crate) use validation::{
     ALL_COLUMNS, is_all_columns, parse_by_list, parse_by_ordering, parse_by_projection,
-    parse_by_term, parse_content_length, parse_field_id, parse_reserved_bool, parse_string_enum,
-    property_key, property_name, protocol_metadata_prefix, render_by_list, write_json_string,
+    parse_by_term, parse_content_length, parse_field_id, parse_string_enum, property_key,
+    property_name, protocol_metadata_prefix, render_by_list, write_json_string,
 };
 
 #[cfg(feature = "internals")]

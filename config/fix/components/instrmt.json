@@ -34,17 +34,6 @@
         }
       },
       {
-        "name": "norelatedinstruments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedinstruments",
-          "FIX:tag": "1647"
-        }
-      },
-      {
         "name": "relatedinstruments",
         "dtype": {
           "type": "null"

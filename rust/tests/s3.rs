@@ -1,8 +1,8 @@
 //! One test file per file under `rust/src/s3/` that pins something of its
 //! own, mirrored file for file: [`client`], [`encryption`], [`file`],
 //! [`folder`], [`options`], [`path`], [`properties`], [`provider`] and
-//! [`xml`] here, and the files each dialect owns under [`aws`] and
-//! [`azure`]. Who a request signs as - the credential chain, the profile, a
+//! [`xml`] here, and the files each dialect owns under [`aws`],
+//! [`azure`] and [`google`]. Who a request signs as - the credential chain, the profile, a
 //! role, a sign-in - and the Signature Version 4 signing itself are the root
 //! `aws` module's, so they are pinned under `rust/tests/aws/` (the signing in
 //! `rust/tests/aws/sigv4.rs`); what stays here is how the S3 backend wires a
@@ -42,6 +42,9 @@ mod file;
 #[cfg(feature = "s3")]
 #[path = "s3/folder.rs"]
 mod folder;
+#[cfg(feature = "s3")]
+#[path = "s3/google/mod_.rs"]
+mod google;
 #[cfg(feature = "s3")]
 #[path = "s3/mod_.rs"]
 mod mod_;

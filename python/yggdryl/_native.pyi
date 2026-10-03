@@ -6875,36 +6875,41 @@ class Version:
     def __reduce__(self) -> tuple[object, tuple[int, int, str | None]]: ...
 
 class Identifier:
-    """One identifier: a source, a type and a value, unique by its key.
+    """One identifier: a value under a key, ``src:type``.
 
-    The source and the type are words folded to lower case without their
-    breaks; ``base`` names no source and ``derived`` one the crate derived.
-    Its key is ``src:type`` and it displays ``src:type=value``; identifiers
-    order by that key as spelled, then by value.
+    The key is read exactly: ``src:type`` with each word folded to lower case
+    without its breaks, or a type alone for the base source, whose key is
+    spelled as its type (``isin``); ``base:isin`` and ``fix:isin`` read as
+    ``isin`` too, and ``derived`` names a value the crate derived. It
+    displays ``key=value``; identifiers order by the key as spelled, then by
+    value.
     """
 
-    def __init__(self, src: str, type: str, value: str) -> None: ...
+    def __init__(self, key: str, value: str) -> None: ...
     @staticmethod
     def from_key(key: str, value: str) -> Identifier | None:
-        """The identifier a key names, or ``None`` where it names none.
+        """The identifier a name no key spells names, or ``None``.
 
-        An explicit ``src:type`` is read as it is. Otherwise a whole name a
+        An explicit ``src:type`` keeps its source. Otherwise a whole name a
         security type is spelled by (``ISINCode``, ``security_cusip``) is
-        that type from ``base``, and a security type is never read off a key
-        that names another instrument's (``underlyingisin``, ``legisin``).
-        Otherwise the key folds (lower case, no ``_``, ``-``, space or
-        ``#``) and the longest identifier name it ends with is the type: a
-        type the crate names whose spelling ends with ``id``, ``account``,
-        ``isin``, ``cusip``, ``sedol`` or ``figi``, a parentage word
-        (``parent``, ``orig``, ``origin``, ``original``) right before it kept
-        inside the type. The source is the rest of the folded key, its dots
-        trimmed at both ends and kept inside, ``base`` where nothing is left.
+        that type from the base source, and a security type is never read
+        off a name that names another instrument's (``underlyingisin``,
+        ``legisin``). Otherwise the name folds (lower case, no ``_``, ``-``,
+        space or ``#``) and the longest identifier name it ends with is the
+        type: a type the crate names whose spelling ends with ``id``,
+        ``account``, ``isin``, ``cusip``, ``sedol`` or ``figi``, a parentage
+        word (``parent``, ``orig``, ``origin``, ``original``) right before it
+        kept inside the type. The source is the rest of the folded name, its
+        dots trimmed at both ends and kept inside, the base source where
+        nothing is left or where it folds to a source the crate reserves
+        (``base``, ``fix``, ``derived``), which names no namespace:
+        ``Derived_ISIN`` is ``isin``.
 
         ``firm.x.ParentOrderID`` is ``firm.x:parentorderid``,
         ``OMS_InstrumentID`` ``oms:instrumentid``, ``marketorderid``
-        ``market:orderid``, ``ISINCode`` ``base:isin``; ``underlyingisin``
-        and ``transversalkey`` name none. ``None`` as well where the value
-        states nothing or its type refuses it.
+        ``market:orderid``, ``ISINCode`` ``isin``; ``underlyingisin`` and
+        ``transversalkey`` name none. ``None`` as well where the value states
+        nothing or its type refuses it.
         """
         ...
     @property
@@ -6915,9 +6920,8 @@ class Identifier:
     def value(self) -> str: ...
     @property
     def key(self) -> str:
-        """The unique key, ``src:type``, an ``Identifiers`` keys it by."""
+        """The key as an ``Identifiers`` map spells it: ``src:type``, the type alone for the base source."""
         ...
-    def is_of(self, src: str, type: str) -> bool: ...
     def __str__(self) -> str: ...
     def __repr__(self) -> str: ...
     def __eq__(self, other: object, /) -> bool: ...
@@ -6929,22 +6933,38 @@ class Identifier:
     def __hash__(self) -> int: ...
     def __copy__(self) -> Identifier: ...
     def __deepcopy__(self, memo: Any) -> Identifier: ...
-    def __reduce__(self) -> tuple[object, tuple[str, str, str]]: ...
+    def __reduce__(self) -> tuple[object, tuple[str, str]]: ...
 
 class Identifiers:
-    """A sorted map of identifiers, one per unique key ``src:type``.
+    """A sorted map from a key to its value, iterated in key order.
 
-    Iterating yields the identifiers in key order, the key as spelled; a
-    second identifier under a key already held is a statement of the same
-    name and the first stands.
+    The base key of a type is the type's answer: a named source fills it
+    where it is empty, so ``ullink:isin`` alone is also ``isin``; a
+    statement takes back the type's derivation (``derived:<type>``); the
+    base key moves only through its own key, and removing it removes the
+    type. A second identifier under a key already held is a statement of the
+    same name and the first stands.
     """
 
     def __init__(self, ids: Iterable[Identifier] = ...) -> None: ...
-    def get(self, type: str) -> str | None: ...
-    def get_identifier(self, type: str) -> Identifier | None: ...
-    def get_from(self, src: str, type: str) -> str | None: ...
+    @staticmethod
+    def from_dict(entries: Mapping[str, str]) -> Identifiers:
+        """The map a ``dict`` from each key's text to its value states, closed by the base rule."""
+        ...
+    def into_dict(self) -> dict[str, str]:
+        """The map as a ``dict`` from each key's text to its value, in key order."""
+        ...
+    def get(self, type: str) -> str | None:
+        """The value of the type's base key: its answer, whichever source stated it."""
+        ...
+    def get_from(self, key: str) -> str | None:
+        """The value held under exactly ``key`` (``"isin"``, ``"ullink:isin"``)."""
+        ...
     def contains_kind(self, type: str) -> bool: ...
     def of_kind(self, type: str) -> list[Identifier]: ...
+    def is_derived(self, type: str) -> bool:
+        """Whether the type's base key holds only a derivation, which no named source states."""
+        ...
     def __iter__(self) -> Iterator[Identifier]: ...
     def __len__(self) -> int: ...
     def __bool__(self) -> bool: ...
@@ -6954,7 +6974,56 @@ class Identifiers:
     def __hash__(self) -> int: ...
     def __copy__(self) -> Identifiers: ...
     def __deepcopy__(self, memo: Any) -> Identifiers: ...
-    def __reduce__(self) -> tuple[object, tuple[list[Identifier]]]: ...
+    def __reduce__(self) -> tuple[object, tuple[dict[str, str]]]: ...
+
+class IsinRegistry:
+    """A table of instruments keyed by ISIN, shared behind one lock.
+
+    Each row holds the instrument's ``isin``, ``updunix`` (when the statement
+    that last moved it happened), detailed ``cficode``, the ``miccode`` its
+    listing facts belong to, its ``ticker`` and one code per
+    ``SecurityIDSource(22)`` type but the ISIN. A lifecycle learns into it -
+    keyed by a stated ISIN, else a stated RIC, which only fills - and fills
+    from it what a message leaves unsaid; the latest statement leads column
+    by column and an older one only fills. Equal only to itself; never
+    hashed or pickled: its rows cross out as an Arrow stream.
+    """
+
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+
+    def __init__(self, max_instruments: int = 16384) -> None: ...
+    @staticmethod
+    def from_handle(location: object, max_instruments: int = 16384) -> IsinRegistry:
+        """A registry read from a holder: an Arrow IPC file, Parquet, a folder of either, an object store."""
+        ...
+    @staticmethod
+    def from_arrow_reader(reader: object, max_instruments: int = 16384) -> IsinRegistry:
+        """A registry read from any Arrow stream."""
+        ...
+    def extend_from_handle(self, location: object) -> int: ...
+    def extend_from_arrow_reader(self, reader: object) -> int: ...
+    def into_arrow_reader(self) -> pyarrow.RecordBatchReader:
+        """The rows as a snapshot stream in ISIN order, under the registry's row field."""
+        ...
+    def get(self, isin: str) -> dict[str, Any] | None: ...
+    def get_by_ric(self, ric: str) -> dict[str, Any] | None: ...
+    def get_by_ticker(self, ticker: str, market: str | None = None) -> dict[str, Any] | None:
+        """The row the ticker names on ``market``: the one row listing it whose
+        market is ``market``, or whose market or ``market`` is unstated; two
+        rows answering is ambiguous, and answers ``None``."""
+        ...
+    def merge(self, entry: Mapping[str, object]) -> bool: ...
+    def remove(self, isin: str) -> dict[str, Any] | None: ...
+    def clear(self) -> None: ...
+    @property
+    def max_instruments(self) -> int: ...
+    def learn(self, message: FixMsg) -> bool: ...
+    def fill(self, message: FixMsg) -> bool: ...
+    def enrich(self, message: FixMsg) -> bool: ...
+    def __len__(self) -> int: ...
+    def __bool__(self) -> bool: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __repr__(self) -> str: ...
 
 class FixFieldIterator(Iterator[Field]):
     __hash__: ClassVar[None]  # type: ignore[assignment]
@@ -7072,7 +7141,6 @@ class FixRegistry:
     def add_cfb_files(
         self,
         location: IOBase | Url | str | PathLike[str],
-        pattern: str,
         dialect: str | None = None,
     ) -> dict[str, Any]: ...
     def add_json_file(
@@ -7499,9 +7567,9 @@ class FixCodec:
     Ullink, FIXML and pair readers answer one ``FixMsg``. A parse builds the
     message, lifts its typed facts, restates deprecated fields to their
     latest aliases, runs the crate's native derivations, reads the
-    identifier maps off the fields that state them, splits the executions and
-    two-sided quotes a message states into sided messages of their own, and
-    settles the identity - there is no separate enriching step. Nothing a
+    identifier maps off the fields that state them, splits the executions a
+    message states into sided messages of their own - a quote stays one
+    message holding both its legs - and settles the identity - there is no separate enriching step. Nothing a
     capture states is an error: a value that will not type is null beside an
     anomaly, a clock naming no instant is left unstated, and what builds no
     message is left out, each with a ``logging`` warning; only a source's own
@@ -7566,6 +7634,7 @@ class FixCodec:
         sorted_lifecycle: bool = False,
         official_time_delay_ms: int | None = None,
         dedup_window_ms: int | None | EllipsisType = ...,
+        isin_registry: IsinRegistry | None = None,
         market_metadata: bool = True,
     ) -> None: ...
     @property
@@ -7598,6 +7667,10 @@ class FixCodec:
     def dedup_window_ms(self) -> int | None: ...
     def with_dedup_window_ms(self, dedup_window_ms: int | None) -> FixCodec: ...
     @property
+    def isin_registry(self) -> IsinRegistry | None:
+        """The registry every ``lifecycle`` shares, the caller's own table, or ``None``."""
+        ...
+    @property
     def market_metadata(self) -> bool: ...
     @property
     def include_msgtypes(self) -> list[str]: ...
@@ -7622,6 +7695,7 @@ class FixCodec:
         sorted_lifecycle: bool = False,
         official_time_delay_ms: int | None = None,
         dedup_window_ms: int | None | EllipsisType = ...,
+        isin_registry: IsinRegistry | None = None,
         market_metadata: bool = True,
     ) -> FixCodec: ...
     @staticmethod
@@ -7649,27 +7723,35 @@ class FixCodec:
         self,
         messages: Iterable[FixMsg],
         snapshot_millis: int = 0,
+        filter: FilterLike | None = None,
     ) -> pyarrow.RecordBatchReader:
         """Stream sorted FIX messages into lifted ``marketdata`` book rows.
 
-        Admits ORDR, one-sided QUOT, actual EXEC and BOOK W/X; ignores other
-        records - a trade, a batch and a two-sided quote reach the book as the
-        messages their parse split off. Nothing an admitted message states
-        raises: what cannot stand is left out or defaulted with a warning, an
-        operation dated before its book is left out, and only a source failure
-        raises, after the completed book prefix.
+        A book folds ORDR, QUOT and BOOK W/X; every other record is ignored
+        before it is expanded - a fill moves a book through its order's or
+        quote's report, so an execution, and a trade whose fills are
+        executions, never reach one. A quote is one entry resting on each leg
+        it states. Nothing an admitted message states raises: what cannot
+        stand is left out or defaulted with a warning, an operation dated
+        before its book is left out, and only a source failure raises, after
+        the completed book prefix.
         Lifecycle enrichment is explicit: pass ``codec.lifecycle(messages)``
         when needed. Positive ``snapshot_millis`` enables epoch-aligned
-        snapshots; one book is kept per book key - the ticker, else ``MIC:CFI``.
-        Each leaf carries its message's unmapped fields where
-        ``market_metadata`` says so.
+        snapshots, at which a book is written whole; every other book states
+        its deltas alone. One book is kept per book key - the instrument's
+        ISIN, else its ticker, else ``XX0000000000``. ``filter``, a predicate
+        over the ``marketdata`` row, narrows what the books fold and never
+        admits a kind they do not; ``None`` keeps every booked leaf. Each leaf
+        carries its message's unmapped fields where ``market_metadata`` says
+        so.
         """
         ...
     def market_data(self, messages: Iterable[FixMsg]) -> MarketDataRowIterator:
-        """The capture's market data, in the order a book folds them.
+        """The capture's market data, in the order of their instants.
 
-        Admits what ``book_arrow_reader`` admits and expands each message as
-        ``FixMsg.market_data`` does; ``messages`` is collected when
+        Admits what ``book_arrow_reader`` admits and the executions besides -
+        a trade as the executions its parse split off - and expands each
+        message as ``FixMsg.market_data`` does; ``messages`` is collected when
         this is called and the operations are sorted, stably, by
         ``snapunix`` else ``currunix``. Nothing a message states raises: a
         message its intake refused for what it states is left out with a
@@ -8761,12 +8843,23 @@ class TradeEvent:
 class BookEvent:
     """One coherent view of a market at one exact nanosecond instant.
 
-    The live entries of both sides, the deltas applied since the book before
-    it, the executions at that instant and each side's price levels.
-    Immutable: ``with_operations`` and every verb answer a new book.
+    The live entries of both sides and each side's price levels on a complete
+    book, the deltas applied since the book before it on every book; a book
+    stating its deltas alone is whole again by ``with_previous``. Every book
+    answers its top of book. Immutable: ``with_operations`` and every verb
+    answer a new book.
     """
 
-    def __init__(self, currunix: int, symbol: str) -> None: ...
+    def __init__(self, currunix: int, symbol: str) -> None:
+        """An empty book of the ticker ``symbol``, keyed by it; an empty
+        ``symbol`` keys the book ``XX0000000000`` and states no ticker."""
+        ...
+    @staticmethod
+    def keyed(currunix: int, key: str) -> BookEvent:
+        """An empty book keyed ``key`` - an ISIN, a ticker or ``XX0000000000`` -
+        stating neither a ticker nor an ISIN: the base a code's first book,
+        stating its deltas alone, rebuilds over with ``with_previous``."""
+        ...
     @property
     def curruuid(self) -> Scalar: ...
     @property
@@ -8868,21 +8961,32 @@ class BookEvent:
     @property
     def metadata(self) -> dict[str, str]: ...
     @property
+    def is_complete(self) -> bool:
+        """Whether the book holds its sides rather than its deltas alone."""
+        ...
+    @property
     def alive(self) -> list[MarketData]:
-        """Every live entry: the bid side's best first, then the ask side's."""
+        """Every live entry once: the bid side's best first, then the ask side's;
+        a two-sided quote listed with the bids. Empty on a book stating its
+        deltas alone."""
+        ...
+    def alive_on(self, side: Side | int | str) -> list[MarketData]:
+        """The entries alive on the side ``side`` takes, best price first and the
+        unpriced last; empty for a side that is neither a bid nor an ask, or on
+        a book stating its deltas alone."""
         ...
     @property
     def deltas(self) -> list[MarketData]:
-        """The deltas applied since the book before this one."""
+        """The orders and quotes applied since the book before this one, in the
+        order applied across both sides."""
         ...
-    @property
-    def executions(self) -> list[ExecutionEvent]: ...
     def limits(self, side: Side | int | str) -> list[Scalar]:
         """One limit struct per level of the side ``side`` takes, best first.
 
         Each states its ``price`` (``None`` on the unpriced limit last), the
         ``quantity`` resting there, the ``uuids`` of the entries resting there
-        and whether the level is ``tradable``.
+        and whether the level is ``tradable``. Empty on a book stating its
+        deltas alone.
         """
         ...
     def best_price(self, side: Side | int | str) -> Scalar | None:
@@ -9187,9 +9291,9 @@ class MarketData:
 
         ``view`` is one of ``enums.MARKET_VIEWS``, read ignoring ASCII case;
         each lift, a ``FieldPath`` or its text such as
-        ``"identifiers['fix:clordid'].value as clordid"`` (an identifier
-        column is a map keyed ``src:type``), is appended after the view's own
-        columns; ``None`` is no lifts. ``crosscode`` is the stored cross code
+        ``"identifiers['clordid'] as clordid"`` (an identifier column is a
+        map from the key's text, ``src:type`` or the type alone for the base
+        source, to the value), is appended after the view's own columns; ``None`` is no lifts. ``crosscode`` is the stored cross code
         (``"10:1:ORD-1"``, the exact code of the chain) ``lifecycle``
         follows: that view needs one and every other view refuses one.
         """
@@ -9234,11 +9338,16 @@ class MarketDataRowIterator(Iterator[MarketData]):
 class BookIterator(Iterator[BookEvent]):
     """Books from a sorted stream of leaves, one per book key and effective timestamp.
 
-    Pulling its items lazily from the caller's iterable: order, quote,
-    execution and trade events and snapshot controls fold; any other leaf is
-    refused by its kind. An operation dated before its book, an order or a
-    quote stating neither side and a group the book refuses are left out with
-    a ``logging`` warning, never an error.
+    Pulling its items lazily from the caller's iterable: order and quote
+    events and snapshot controls fold; an execution or a trade is pruned where
+    it is pulled, and any other leaf is refused by its kind. An operation
+    dated before its book, an order or a quote stating neither side and a
+    group the book refuses are left out with a ``logging`` warning, never an
+    error. A book is whole at a snapshot tick - every grid tick when
+    ``snapshot_millis`` is positive, and a snapshot input - and states its
+    deltas alone otherwise. ``filter``, a predicate over the ``marketdata``
+    row bound once, narrows what the walk folds; ``None`` keeps every booked
+    input.
     """
 
     __hash__: ClassVar[None]  # type: ignore[assignment]
@@ -9246,6 +9355,7 @@ class BookIterator(Iterator[BookEvent]):
         self,
         items: Iterable[MarketItem],
         snapshot_millis: int = 0,
+        filter: FilterLike | None = None,
     ) -> None: ...
     def __iter__(self) -> BookIterator: ...
     def __next__(self) -> BookEvent: ...
@@ -9280,8 +9390,8 @@ class Candle:
 
     What the books of one cross code whose instants fell in ``[start, end)``
     read at their best bid, their best ask, their midpoint and their spread,
-    the quantities resting at the touch when the bucket closed, and what
-    traded in it. Immutable; built by ``CandleIterator``, ``candles`` or
+    the quantities resting at the touch when the bucket closed, and how many
+    books it folded. Immutable; built by ``CandleIterator``, ``candles`` or
     ``from_scalar``, never directly.
     """
 
@@ -9312,18 +9422,12 @@ class Candle:
     def askqty(self) -> Scalar | None: ...
     @property
     def books(self) -> int: ...
-    @property
-    def executions(self) -> int:
-        """How many executions the books carried, a trade they carried twice counted twice."""
-    @property
-    def volume(self) -> Scalar:
-        """What traded, as a decimal: each trade counted once within the bucket, at the largest last quantity any of its executions states."""
     @staticmethod
     def field() -> Field:
         """The required struct ``candle`` every candle row is laid out under."""
         ...
     def into_scalar(self) -> Scalar:
-        """The candle as the named struct ``Scalar`` of its twenty-five cells."""
+        """The candle as the named struct ``Scalar`` of its twenty-three cells."""
         ...
     @staticmethod
     def from_scalar(value: Scalar | Mapping[str, Any] | Sequence[Any]) -> Candle:

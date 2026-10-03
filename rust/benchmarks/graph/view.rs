@@ -87,9 +87,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let schema = batches[0].schema();
     let rows = u64::try_from(steps * 3).expect("a bench corpus");
     group.throughput(Throughput::Elements(rows));
-    let isin: FieldPath = "securityids['base:isin'].value as isin"
-        .parse()
-        .expect("a lift");
+    let isin: FieldPath = "securityids['isin'] as isin".parse().expect("a lift");
     for (name, view, lifts) in [
         ("orders", MarketView::Orders, vec![]),
         ("orders_lifted", MarketView::Orders, vec![isin.clone()]),

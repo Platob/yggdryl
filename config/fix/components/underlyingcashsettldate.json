@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nounderlyingcashsettldatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcashsettldatebusinesscenters",
-          "FIX:tag": "42788"
-        }
-      },
-      {
         "name": "underlyingcashsettldatebusinesscenters",
         "dtype": {
           "type": "null"

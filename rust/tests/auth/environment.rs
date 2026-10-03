@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use yggdryl::internals::auth_environment::{Environment, is_true};
+use yggdryl::internals::auth_environment::Environment;
 
 fn given(pairs: &[(&str, &str)]) -> Environment {
     Environment::Given(
@@ -38,15 +38,40 @@ fn the_process_environment_is_the_process_s_own() {
 }
 
 #[test]
-fn a_flag_reads_every_spelling_the_cloud_tools_accept() {
-    for spelling in ["true", "TRUE", "1", "yes", "on", " Yes "] {
-        assert!(is_true(spelling), "{spelling:?}");
+fn a_flag_reads_every_spelling_the_one_boolean_table_reads() {
+    for spelling in [
+        "true", "TRUE", "t", "tr", "tru", "1", "yes", "y", "Y", "ye", "on", " Yes ", "\tON\n",
+    ] {
+        assert_eq!(
+            given(&[("A", spelling)]).flag("A"),
+            Some(true),
+            "{spelling:?}"
+        );
     }
-    for spelling in ["false", "0", "no", "off", "", "maybe"] {
-        assert!(!is_true(spelling), "{spelling:?}");
+    for spelling in [
+        "false", "f", "fa", "fal", "fals", "0", "no", "n", "N", "off", "of", " NO ",
+    ] {
+        assert_eq!(
+            given(&[("A", spelling)]).flag("A"),
+            Some(false),
+            "{spelling:?}"
+        );
     }
-    let environment = given(&[("A", "on"), ("B", "off")]);
-    assert_eq!(environment.flag("A"), Some(true));
-    assert_eq!(environment.flag("B"), Some(false));
-    assert_eq!(environment.flag("C"), None);
+}
+
+#[test]
+fn a_flag_no_spelling_reads_is_false_and_a_blank_or_missing_one_is_unset() {
+    // A toggle nobody can read is not one that was set: false, never a
+    // refusal and never unset, which would let the next source answer.
+    for spelling in ["maybe", "2", "yeah", "truee", "-1"] {
+        assert_eq!(
+            given(&[("A", spelling)]).flag("A"),
+            Some(false),
+            "{spelling:?}"
+        );
+    }
+    for spelling in ["", "   "] {
+        assert_eq!(given(&[("A", spelling)]).flag("A"), None, "{spelling:?}");
+    }
+    assert_eq!(given(&[]).flag("C"), None);
 }

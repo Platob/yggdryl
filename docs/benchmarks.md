@@ -13,6 +13,8 @@ Results live beside the method they measure. Each page's Performance section nam
 | FIX | [Message](fix/message.md) | the `fix/ulbridge/step/*` cases measure one `FixMsg` step each - `with_registry`, `set_text`, `insert_securityid` - one security identifier, no field written - and `entries` |
 | FIX | [Registry](fix/registry.md) | Lookups and mutations over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | FIX | [Store](fix/store.md) | Folder loads, snapshots and writes over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
+| Graph | [Identifier](graph/identifier.md#performance) | `graph/identifier`: an `IdKey` spelled and read, an `Identifiers` map crossing a `Scalar` and built entry by entry, and the identifier columns of a `marketdata` batch written and read; one containerized x86_64 Linux release run |
+| Graph | [IsinRegistry](graph/isin-registry.md#performance) | `graph/isin_registry` and `fix/pipeline/decoded_lifecycle_shared_registry`: learning, filling, the snapshot stream, a load and an IPC round trip, and the lifecycle walk with a shared registry beside the walk-local one; one containerized x86_64 Linux release run |
 | Hashing | [Hashing](hashing.md) | The `hashing` Criterion target, `python/benchmarks/digest.py` and `txhash.py`, and `node/benchmarks/hashing/`: digest throughput per algorithm and size, handle reads and write-through, the value feed, Arrow row digests, the coupling beside the digest it wraps, and coupled column and holder costs, with both bindings; containerized x86_64 Linux runs on one host |
 | Holder | [Buffered](holder/index.md#buffered-performance) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
 | Holder | [Filesystems](holder/index.md#filesystems-performance) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
@@ -65,6 +67,7 @@ Results live beside the method they measure. Each page's Performance section nam
     cargo bench --bench logging
     cargo bench --bench fix
     cargo bench --bench fix_allocations
+    cargo bench --bench graph
     cargo bench --bench holder --features "parquet s3"
     cargo bench --bench media --features "parquet iceberg"
     ```
@@ -132,6 +135,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | `expression` | binding, row and Arrow evaluation, and statistics pushdown |
 | `fix` | registry lookup, mutation, storage, and binding crossings |
 | `fix_allocations` | what each `fix/ulbridge` stage allocates per message - requests under `fix/allocations`, bytes under `fix/allocated_bytes` - counted through the test binaries' allocator, never timed |
+| `graph` | the market-data graph: book folds, candles, the `MarketView` plans, identifier keys and maps, and the ISIN registry |
 | `hashing` | digest throughput per algorithm and size, wrapper overhead, handle reads, the value feed, Arrow row digests, the time coupling beside the digest it wraps, the value's projections, instant intake, coupled columns, and the coupled holder fill |
 | `logging` | what a record costs refused on a logger and at the facade's ceiling, the `%`-style formatter beside `std::fmt`, an enabled record spelled into a sink, a repeat counted and dropped on a deduplicating logger, and a file handler's publishes per record and per capacity |
 

@@ -40,10 +40,74 @@ use std::fmt;
 pub(crate) use arrow::{arrow_storage, from_arrow_storage};
 use smol_str::format_smolstr;
 
+#[cfg(feature = "http")]
+use crate::floating::f64_from_text;
+#[cfg(feature = "http")]
+use crate::integer::integer_from_text_as;
 use crate::temporal::scalars::require;
 use crate::temporal::{temporal_leaf, validate_duration_unit};
 use crate::value::DataTypeValue;
 use crate::{DataType, DataTypeId, Error, Result, Scalar, TimeUnit, Timezone};
+
+/// What every refusal of an elapsed-length spelling names.
+#[cfg(feature = "http")]
+pub(crate) const DURATION_SPELLINGS: &str =
+    "seconds, with an optional fraction and an optional s, ms, us, ns or d unit";
+
+/// Read an elapsed length out of the text a setting spells one with: a
+/// non-negative number, with a fraction or an exponent, then an optional
+/// unit, blanks allowed between.
+///
+/// A bare number is seconds. The unit is one [`TimeUnit`] reads that is a
+/// fixed length - `s`, `ms`, `us`, `ns` and `d`, with their long spellings -
+/// so `30s`, `250ms`, `1.5`, `1e3` and `1d` all read, and `1m` does not,
+/// because a minute and a month share that letter and nothing here picks
+/// between them. A whole count is exact at every magnitude, read through
+/// [`integer_from_text_as`]; a fraction or an exponent reads through
+/// [`f64_from_text`] and lands at nanosecond resolution. Negative, not
+/// finite or past what a [`std::time::Duration`] holds is `None`, never a
+/// panic. The one reader every timeout, pause and lease length in the crate
+/// reads through - every one of them a setting of the HTTP client or of what
+/// rides on it, which is why the reader exists under that feature alone.
+#[cfg(feature = "http")]
+pub(crate) fn duration_from_text(text: &str) -> Option<std::time::Duration> {
+    use std::time::Duration;
+
+    let text = text.trim();
+    let split = text
+        .bytes()
+        .position(|byte| !matches!(byte, b'0'..=b'9' | b'.' | b'+' | b'-' | b'e' | b'E'))
+        .unwrap_or(text.len());
+    let (number, unit) = text.split_at(split);
+    let unit = unit.trim_start();
+    let unit = if unit.is_empty() {
+        TimeUnit::Second
+    } else {
+        unit.parse::<TimeUnit>().ok()?
+    };
+    if let Some(count) = integer_from_text_as::<u64>(number) {
+        return match unit {
+            TimeUnit::Day => count.checked_mul(86_400).map(Duration::from_secs),
+            TimeUnit::Second => Some(Duration::from_secs(count)),
+            TimeUnit::Millisecond => Some(Duration::from_millis(count)),
+            TimeUnit::Microsecond => Some(Duration::from_micros(count)),
+            TimeUnit::Nanosecond => Some(Duration::from_nanos(count)),
+            TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => None,
+        };
+    }
+    let seconds_per_unit = match unit {
+        TimeUnit::Day => 86_400.0,
+        TimeUnit::Second => 1.0,
+        TimeUnit::Millisecond => 1e-3,
+        TimeUnit::Microsecond => 1e-6,
+        TimeUnit::Nanosecond => 1e-9,
+        TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => return None,
+    };
+    let seconds = f64_from_text(number)? * seconds_per_unit;
+    (seconds >= 0.0)
+        .then(|| Duration::try_from_secs_f64(seconds).ok())
+        .flatten()
+}
 
 // ------------------------------------------------------------------------
 // The duration payload: two widths over the fixed-length units.
@@ -395,5 +459,21 @@ impl Scalar {
             Self::Duration64(value) => Some((value.count(), value.unit(), &value.timezone)),
             _ => None,
         }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/duration.rs` pins and a caller cannot reach: the
+    //! one reader a setting's elapsed length goes through.
+    /// What every refusal of an elapsed-length spelling names.
+    #[cfg(feature = "http")]
+    pub const DURATION_SPELLINGS: &str = super::DURATION_SPELLINGS;
+
+    /// Read an elapsed length out of the text a setting spells one with.
+    #[cfg(feature = "http")]
+    pub fn duration_from_text(text: &str) -> Option<std::time::Duration> {
+        super::duration_from_text(text)
     }
 }

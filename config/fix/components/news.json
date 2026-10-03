@@ -35,17 +35,6 @@
         }
       },
       {
-        "name": "nonewsrefids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonewsrefids",
-          "FIX:tag": "1475"
-        }
-      },
-      {
         "name": "newsrefids",
         "dtype": {
           "type": "null"
@@ -133,17 +122,6 @@
         }
       },
       {
-        "name": "noroutingids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noroutingids",
-          "FIX:tag": "215"
-        }
-      },
-      {
         "name": "routingids",
         "dtype": {
           "type": "null"
@@ -176,17 +154,6 @@
         }
       },
       {
-        "name": "norelatedsym",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedsym",
-          "FIX:tag": "146"
-        }
-      },
-      {
         "name": "instrmtgrp",
         "dtype": {
           "type": "null"
@@ -194,17 +161,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "instrmtgrp"
-        }
-      },
-      {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
         }
       },
       {
@@ -218,17 +174,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -236,17 +181,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "undinstrmtgrp"
-        }
-      },
-      {
-        "name": "nolinesoftext",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nolinesoftext",
-          "FIX:tag": "33"
         }
       },
       {

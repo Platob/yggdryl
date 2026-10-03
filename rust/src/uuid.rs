@@ -8,6 +8,7 @@
 //! rendering is the canonical lowercase hyphenated text.
 
 use std::fmt;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
@@ -267,6 +268,18 @@ pub(crate) fn uuid_parse(value: &[u8]) -> Result<[u8; UUID_BYTES]> {
     if let Ok(stored) = <[u8; UUID_BYTES]>::try_from(value) {
         return Ok(stored);
     }
+    uuid_digits(value).map_err(|actual| uuid_refusal(value, actual))
+}
+
+/// The two text spellings of an identifier, which [`Uuid::from_str`] names
+/// where it refuses text that is neither.
+pub(crate) const UUID_SPELLINGS: &str =
+    "32 hexadecimal digits or the 36-character hyphenated spelling, in either case";
+
+/// The sixteen stored bytes one text spelling states - 32 hexadecimal
+/// digits, or 36 bytes in the 8-4-4-4-12 hyphenated shape, in either case -
+/// or what was found instead of one.
+fn uuid_digits(value: &[u8]) -> std::result::Result<[u8; UUID_BYTES], SmolStr> {
     let mut digits = [0_u8; UUID_BYTES * 2];
     let mut written = 0;
     let mut group = 0;
@@ -275,33 +288,24 @@ pub(crate) fn uuid_parse(value: &[u8]) -> Result<[u8; UUID_BYTES]> {
     for (position, byte) in value.iter().enumerate() {
         if *byte == b'-' && hyphenated {
             if group >= GROUPS.len() - 1 || in_group != GROUPS[group] {
-                return Err(uuid_refusal(
-                    value,
-                    format_smolstr!("a hyphen at {position}"),
-                ));
+                return Err(format_smolstr!("a hyphen at {position}"));
             }
             group += 1;
             in_group = 0;
             continue;
         }
         let Some(nibble) = hex_nibble(*byte) else {
-            return Err(uuid_refusal(
-                value,
-                format_smolstr!("a non-hexadecimal byte at {position}"),
-            ));
+            return Err(format_smolstr!("a non-hexadecimal byte at {position}"));
         };
         if written == digits.len() {
-            return Err(uuid_refusal(
-                value,
-                SmolStr::new_static("more than 32 digits"),
-            ));
+            return Err(SmolStr::new_static("more than 32 digits"));
         }
         digits[written] = nibble;
         written += 1;
         in_group += 1;
     }
     if written != digits.len() || (hyphenated && (group, in_group) != (GROUPS.len() - 1, 12)) {
-        return Err(uuid_refusal(value, format_smolstr!("{written} digits")));
+        return Err(format_smolstr!("{written} digits"));
     }
     let mut stored = [0_u8; UUID_BYTES];
     for (index, byte) in stored.iter_mut().enumerate() {
@@ -620,6 +624,33 @@ impl Uuid {
     /// ```
     pub fn render(self, slot: &mut [u8; Self::TEXT_LEN]) -> &str {
         crate::uuid_rendered(&self.0.to_be_bytes(), slot)
+    }
+}
+
+impl FromStr for Uuid {
+    type Err = Error;
+
+    /// Read the text spelling of an identifier: 32 hexadecimal digits, or
+    /// the 36-character hyphenated shape, in either case, the surrounding
+    /// blanks not part of it. Text only - sixteen characters are never read
+    /// as the sixteen stored bytes, which [`Uuid::from_bytes`] takes - so a
+    /// table's or a document's UUID argument is a spelling or a refusal.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming both spellings and what was found.
+    fn from_str(text: &str) -> Result<Self> {
+        let text = text.trim();
+        uuid_digits(text.as_bytes())
+            .map(|stored| Self(u128::from_be_bytes(stored)))
+            .map_err(|actual| Error::Parse {
+                target: "uuid",
+                position: 0,
+                reason: crate::text::expected_got(
+                    UUID_SPELLINGS,
+                    format_args!("{actual} in {} bytes", text.len()),
+                ),
+            })
     }
 }
 

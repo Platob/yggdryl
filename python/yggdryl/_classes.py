@@ -82,9 +82,16 @@ _TRANSPARENT_ORIGINS = tuple(
     )
     if value is not None
 )
-_TRUE_STRINGS = frozenset(("true", "1", "yes", "on"))
-_FALSE_STRINGS = frozenset(("false", "0", "no", "off"))
-_INTEGER = re.compile(r"[+-]?[0-9]+\Z")
+# The value doors a text spelling of a leaf annotation crosses: each the
+# core's one reader of its type, so a class reads ``yes``, ``+5`` or ``1e3``
+# exactly as a column of that type does and refuses what the column refuses.
+_BOOLEAN_TYPE = DataType(bool)
+_INTEGER_TYPE = DataType(int)
+_FLOAT_TYPE = DataType(float)
+_DECIMAL_TYPE = DataType(Decimal)
+_UUID_TYPE = DataType(uuid.UUID)
+_DATE_TYPE = DataType(dt.date)
+_TIME_TYPE = DataType(dt.time)
 _SCHEMA_LOCK = threading.RLock()
 _SCOPE_TOKEN_NAME = "__yggdryl_field_invocation_token__"
 
@@ -1336,25 +1343,33 @@ def _unwrap_hint_uncached(hint: Any, owner: type[Any]) -> Any:
         return hint
 
 
+def _read_text(dtype: DataType, value: str, path: str, expected: object) -> Any:
+    """``value`` read by ``dtype``'s own value door, as its native value.
+
+    The refusal is the core's, naming what the door expected, raised as the
+    ``TypeError`` every conversion of this module raises.
+    """
+    try:
+        return dtype.scalar(value).as_py()
+    except ValueError as error:
+        raise _error(path, expected, value, str(error)) from error
+
+
 def _convert_bool(value: object, path: str) -> bool:
     if type(value) is bool:
         return value
     if type(value) is int and value in (0, 1):
         return bool(value)
     if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in _TRUE_STRINGS:
-            return True
-        if normalized in _FALSE_STRINGS:
-            return False
-    raise _error(path, bool, value, "accepted values are true/false, 1/0, yes/no, or on/off")
+        return bool(_read_text(_BOOLEAN_TYPE, value, path, bool))
+    raise _error(path, bool, value)
 
 
 def _convert_int(value: object, path: str) -> int:
     if type(value) is int:
         return value
-    if isinstance(value, str) and _INTEGER.fullmatch(value.strip()):
-        return int(value, 10)
+    if isinstance(value, str):
+        return int(_read_text(_INTEGER_TYPE, value, path, int))
     if isinstance(value, float) and value.is_integer():
         return int(value)
     if isinstance(value, Decimal) and value.is_finite():
@@ -1376,10 +1391,7 @@ def _convert_float(value: object, path: str) -> float:
         except (OverflowError, ValueError) as error:
             raise _error(path, float, value, "representable float required") from error
     if isinstance(value, str):
-        try:
-            return float(value.strip())
-        except ValueError:
-            pass
+        return float(_read_text(_FLOAT_TYPE, value, path, float))
     raise _error(path, float, value)
 
 
@@ -1873,17 +1885,24 @@ def _convert(
     if hint is Decimal:
         if isinstance(value, bool):
             raise _error(path, Decimal, value)
+        if isinstance(value, Decimal):
+            return value
+        if isinstance(value, str):
+            return _read_text(_DECIMAL_TYPE, value, path, Decimal)
         try:
-            return value if isinstance(value, Decimal) else Decimal(str(value))
+            # A native number crosses as the digits its own repr writes.
+            return Decimal(str(value))
         except (ValueError, ArithmeticError) as error:
             raise _error(path, Decimal, value) from error
     if hint is uuid.UUID:
         if isinstance(value, uuid.UUID):
             return value
         try:
-            return uuid.UUID(str(value))
-        except (ValueError, AttributeError) as error:
-            raise _error(path, uuid.UUID, value) from error
+            # The core's uuid door reads the text or the sixteen bytes; its
+            # answer is the canonical hyphenated spelling.
+            return uuid.UUID(str(_UUID_TYPE.scalar(value).as_py()))
+        except (TypeError, ValueError) as error:
+            raise _error(path, uuid.UUID, value, str(error)) from error
     if hint is dt.datetime:
         if isinstance(value, dt.datetime):
             converted_datetime = value
@@ -1902,19 +1921,14 @@ def _convert(
         if isinstance(value, dt.date) and not isinstance(value, dt.datetime):
             return value
         if isinstance(value, str):
-            try:
-                return dt.date.fromisoformat(value)
-            except ValueError as error:
-                raise _error(path, dt.date, value, "ISO-8601 value required") from error
+            converted_date: dt.date = _read_text(_DATE_TYPE, value, path, dt.date)
+            return converted_date
         raise _error(path, dt.date, value)
     if hint is dt.time:
         if isinstance(value, dt.time):
             converted_time = value
         elif isinstance(value, str):
-            try:
-                converted_time = dt.time.fromisoformat(value)
-            except ValueError as error:
-                raise _error(path, dt.time, value, "ISO-8601 value required") from error
+            converted_time = _read_text(_TIME_TYPE, value, path, dt.time)
         else:
             raise _error(path, dt.time, value)
         _validate_physical_temporal(converted_time, physical_field, path=path)

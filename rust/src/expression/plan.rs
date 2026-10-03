@@ -261,14 +261,25 @@ impl Target {
         self.properties.get(name)
     }
 
-    /// Read one property as the type a knob has: [`Properties::knob`].
+    /// Read one property as a flag: [`Properties::knob_bool`].
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`] at `$.with.<name>` when the value is
-    /// set and does not parse.
-    pub fn knob<T: std::str::FromStr>(&self, name: &str, expected: &str) -> Result<Option<T>> {
-        self.properties.knob(name, expected)
+    /// set and spells no boolean.
+    pub fn knob_bool(&self, name: &str) -> Result<Option<bool>> {
+        self.properties.knob_bool(name)
+    }
+
+    /// Read one property as a count at the width `T` of the option it
+    /// shapes: [`Properties::knob_count`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] at `$.with.<name>` when the value is
+    /// set and is not a whole number `T` holds.
+    pub fn knob_count<T: TryFrom<i128> + TryFrom<u128>>(&self, name: &str) -> Result<Option<T>> {
+        self.properties.knob_count(name)
     }
 
     /// Write the `with (...)` clause, when there is one.
@@ -411,6 +422,19 @@ impl Verb {
 impl fmt::Display for Verb {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for Verb {
+    type Err = Error;
+
+    /// Read a write verb in any spelling the grammar reads - `insert`,
+    /// `append`, `insert overwrite`, `overwrite`, `replace`, `upsert`,
+    /// `merge`, `delete` - with or without the `into`, `to` or `from` that
+    /// introduces a target, in any case; the one table the plan grammar and
+    /// the bindings share.
+    fn from_str(input: &str) -> Result<Self> {
+        super::parser::parse_verb(input)
     }
 }
 
@@ -685,8 +709,9 @@ impl Ordering {
 impl Ordering {
     /// Read one key from the scalar that spells it: text in the `order by`
     /// key grammar, or a record of `term` - text, or the literal it is, as
-    /// [`Term::from_scalar`] reads - beside the optional booleans
-    /// `descending` and `nulls_first`. This is the reading every binding's
+    /// [`Term::from_scalar`] reads - beside the optional flags `descending`
+    /// and `nulls_first`, each a boolean or the text the crate's one boolean
+    /// table reads (`"yes"`, `"0"`). This is the reading every binding's
     /// keys cross through, so `{"term": "price", "descending": true}` and
     /// `"price desc"` are one key.
     ///
@@ -694,7 +719,7 @@ impl Ordering {
     ///
     /// Returns a parse error for text that is not a key, and an error naming
     /// the shape for a record without a `term`, with a key it does not know,
-    /// or with a flag that is not a boolean.
+    /// or with a flag that spells no boolean.
     pub fn from_scalar(value: &crate::Scalar) -> Result<Self> {
         if let Some(text) = value.as_str() {
             return text.parse();
@@ -723,9 +748,12 @@ impl Ordering {
         let mut options = SortOptions::default();
         for (key, held) in entries {
             let flag = || {
-                held.as_bool().ok_or_else(|| Error::InvalidRecord {
+                crate::boolean::bool_of(held).ok_or_else(|| Error::InvalidRecord {
                     path: format_smolstr!("$.{key}"),
-                    reason: crate::text::expected_got("a boolean", format_args!("{held:?}")),
+                    reason: crate::text::expected_got(
+                        crate::boolean::BOOLEAN_SPELLINGS,
+                        format_args!("{held:?}"),
+                    ),
                 })
             };
             match key {
@@ -767,6 +795,9 @@ impl fmt::Display for Ordering {
 impl FromStr for Ordering {
     type Err = Error;
 
+    /// Read one `order by` key as the grammar spells it: a term, then an
+    /// optional `asc` or `desc`, then an optional `nulls first` or `nulls
+    /// last` - `price desc nulls first`.
     fn from_str(input: &str) -> Result<Self> {
         super::parser::parse_ordering(input)
     }
@@ -2197,28 +2228,28 @@ mod arrow {
         /// property that shapes the write does not parse as its knob.
         pub fn record_options(&self, holder: &Holder) -> Result<RecordOptions> {
             let mut options = holder.record_options()?;
-            if let Some(safe) = self.knob::<bool>("safe", "`true` or `false`")? {
+            if let Some(safe) = self.knob_bool("safe")? {
                 options.set_safe(safe);
             }
-            if let Some(rows) = self.knob("batch_row_size", "a row count")? {
+            if let Some(rows) = self.knob_count("batch_row_size")? {
                 options.set_batch_row_size(Some(rows));
             }
-            if let Some(bytes) = self.knob("batch_byte_size", "a byte count")? {
+            if let Some(bytes) = self.knob_count("batch_byte_size")? {
                 options.set_batch_byte_size(Some(bytes));
             }
-            if let Some(threads) = self.knob("num_threads", "a thread count")? {
+            if let Some(threads) = self.knob_count("num_threads")? {
                 options.set_num_threads(Some(threads));
             }
-            if let Some(batches) = self.knob("commit_batch_num", "a batch count")? {
+            if let Some(batches) = self.knob_count("commit_batch_num")? {
                 options.set_commit_batch_num(Some(batches));
             }
-            if let Some(rows) = self.knob("max_row_size", "a row count")? {
+            if let Some(rows) = self.knob_count("max_row_size")? {
                 options.set_max_row_size(Some(rows));
             }
-            if let Some(rows) = self.knob("row_offset", "a row count")? {
+            if let Some(rows) = self.knob_count("row_offset")? {
                 options.set_row_offset(Some(rows));
             }
-            if let Some(bytes) = self.knob("max_byte_size", "a byte count")? {
+            if let Some(bytes) = self.knob_count("max_byte_size")? {
                 options.set_max_byte_size(Some(bytes));
             }
             Ok(options)

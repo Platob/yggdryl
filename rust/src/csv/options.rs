@@ -136,6 +136,43 @@ impl CsvOptions {
         options
     }
 
+    /// The one byte a dialect role - the separator, the quote, the escape,
+    /// the comment - is spelled as in text: one character standing for one
+    /// byte, its scalar value. Whether that byte may play the role is the
+    /// role's own setter's refusal; this reads the spelling alone, so a
+    /// binding's text and a setting's text read alike.
+    ///
+    /// ```
+    /// use yggdryl::csv::CsvOptions;
+    ///
+    /// assert_eq!(CsvOptions::byte_from_text(";", "separator").unwrap(), b';');
+    /// assert_eq!(CsvOptions::byte_from_text("\t", "separator").unwrap(), b'\t');
+    /// assert!(CsvOptions::byte_from_text(";;", "separator").is_err());
+    /// assert!(CsvOptions::byte_from_text("€", "quote").is_err());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] at `$.<setting>` for text that is not
+    /// one character, or one past what a byte holds.
+    pub fn byte_from_text(text: &str, setting: &str) -> Result<u8> {
+        let mut characters = text.chars();
+        match (characters.next(), characters.next()) {
+            (Some(character), None) => u8::try_from(u32::from(character)).ok(),
+            _ => None,
+        }
+        .ok_or_else(|| Error::InvalidRecord {
+            path: format_smolstr!("$.{setting}"),
+            reason: expected_got(
+                "one character standing for one byte",
+                format_args!(
+                    "{:?}",
+                    crate::text::elide_to(text, crate::text::ERROR_TEXT_LIMIT)
+                ),
+            ),
+        })
+    }
+
     /// The byte between two cells of one record.
     #[must_use]
     pub const fn separator(&self) -> u8 {

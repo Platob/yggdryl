@@ -1378,6 +1378,55 @@ mod provider {
     }
 }
 
+mod isin_registry {
+    use std::sync::Arc;
+
+    use yggdryl::holder::Buffer;
+    use yggdryl::holder::counted::Counted;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{IOBase, IOMedia, IOMode, IdType, Isin, IsinEntry, IsinRegistry, MimeType};
+
+    use super::costs;
+
+    /// A registry is read from a holder in exactly the calls one record read
+    /// of it makes: the encoding, then the stream, and nothing of its own.
+    #[test]
+    fn an_isin_registry_reads_a_holder_in_the_calls_of_one_record_read() {
+        let mut registry = IsinRegistry::new();
+        registry
+            .merge(
+                IsinEntry::new(Isin::new("CH0012214059").unwrap())
+                    .try_with_code(IdType::Ric, "HOLN.S")
+                    .unwrap(),
+            )
+            .unwrap();
+        let mut sink = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+        let options = sink
+            .record_options()
+            .unwrap()
+            .with_field(IsinEntry::field());
+        sink.write_arrow_reader(
+            registry.into_arrow_reader().unwrap(),
+            IOMode::Overwrite,
+            &options,
+        )
+        .unwrap();
+        let mut source = Buffer::from_bytes(sink.read_all_bytes().unwrap());
+        source.set_media_type(MimeType::ARROW_STREAM.into());
+        let handle = Counted::new(source);
+        let calls = Arc::clone(handle.calls());
+        calls.reset();
+        let options = handle.record_options().unwrap();
+        for batch in handle.read_arrow_reader(&options).unwrap() {
+            batch.unwrap();
+        }
+        let one_read = calls.snapshot().to_string();
+        costs("an isin registry read", &calls, &one_read, || {
+            assert_eq!(IsinRegistry::from_handle(&handle).unwrap().len(), 1);
+        });
+    }
+}
+
 /// What the warehouse costs the store: describing and resolving registered
 /// objects nothing, a folder namespace's children one listing plus one
 /// listing of `metadata/` per folder entry, a path one listing per level it

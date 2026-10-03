@@ -600,6 +600,20 @@ fn text_and_numbers_read_into_a_declared_boolean_column() {
 }
 
 #[test]
+fn a_boolean_cell_reads_every_spelling_the_boolean_reader_reads_into_a_declared_column() {
+    let handle = sheet(&[
+        row(1, &[s("A1", "a"), s("B1", "b")]),
+        row(2, &[b("A2", "yes"), b("B2", " Off ")]),
+        row(3, &[b("A3", "N"), b("B3", "True")]),
+    ]);
+    let options = handle.record_options().unwrap().with_field(root([
+        DataType::Boolean.required_field("a"),
+        DataType::Boolean.required_field("b"),
+    ]));
+    assert_eq!(records(&handle, &options), ["[true,false]", "[false,true]"]);
+}
+
+#[test]
 fn a_serial_reads_into_the_declared_temporal_at_its_unit_whatever_the_cells_style() {
     let handle = sheet(&[
         row(1, &[s("A1", "day"), s("B1", "stamp"), s("C1", "clock")]),

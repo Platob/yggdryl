@@ -168,17 +168,6 @@
         }
       },
       {
-        "name": "noorders",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noorders",
-          "FIX:tag": "73"
-        }
-      },
-      {
         "name": "ordallocgrp",
         "dtype": {
           "type": "null"
@@ -186,17 +175,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "ordallocgrp"
-        }
-      },
-      {
-        "name": "noexecs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noexecs",
-          "FIX:tag": "124"
         }
       },
       {
@@ -284,17 +262,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -302,17 +269,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "undinstrmtgrp"
-        }
-      },
-      {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
         }
       },
       {
@@ -367,17 +323,6 @@
         "metadata": {
           "FIX:field": "allocgroupremainingquantity",
           "FIX:tag": "1737"
-        }
-      },
-      {
-        "name": "noallocgroupsubqtys",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocgroupsubqtys",
-          "FIX:tag": "2975"
         }
       },
       {
@@ -465,17 +410,6 @@
         "metadata": {
           "FIX:field": "pricetype",
           "FIX:tag": "423"
-        }
-      },
-      {
-        "name": "nopricequalifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricequalifiers",
-          "FIX:tag": "2709"
         }
       },
       {
@@ -573,17 +507,6 @@
         "metadata": {
           "FIX:field": "avgpxprecision",
           "FIX:tag": "74"
-        }
-      },
-      {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
         }
       },
       {
@@ -861,17 +784,6 @@
         }
       },
       {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
-        }
-      },
-      {
         "name": "stipulations",
         "dtype": {
           "type": "null"
@@ -889,17 +801,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "yielddata"
-        }
-      },
-      {
-        "name": "noposamt",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noposamt",
-          "FIX:tag": "753"
         }
       },
       {
@@ -932,17 +833,6 @@
         "metadata": {
           "FIX:field": "lastfragment",
           "FIX:tag": "893"
-        }
-      },
-      {
-        "name": "noallocs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocs",
-          "FIX:tag": "78"
         }
       },
       {

@@ -39,6 +39,7 @@ mod iceberg;
 mod identifier;
 mod iobase;
 mod iomedia;
+mod isin_registry;
 mod join;
 mod logging;
 mod media;

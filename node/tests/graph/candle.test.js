@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { Identifier, Scalar, Timezone, graph } = require('yggdryl')
+const { Scalar, Timezone, graph } = require('yggdryl')
 
 const SECOND = 1_000_000_000n
 const MINUTE = 60n * SECOND
@@ -22,10 +22,6 @@ const OFFSET_DAY = 1_767_607_200n * SECOND
 
 function quote(unix, ticker, code, side, price, quantity, state = 'NEW') {
   return new graph.QuoteEvent(unix, { crosscode: code, ticker, side, price, quantity, state })
-}
-
-function execution(unix, ticker, code, side, lastqty) {
-  return new graph.ExecutionEvent(unix, { crosscode: code, ticker, side, price: '100', lastqty, state: 'FILLED' })
 }
 
 function books(operations) {
@@ -55,13 +51,10 @@ function minute() {
     quote(10n * SECOND, 'ACME', 'B', 'BUY', '100', 5),
     quote(10n * SECOND, 'ACME', 'A', 'SELL', '103', 7),
     quote(20n * SECOND, 'ACME', 'B', 'BUY', '102', 5),
-    execution(20n * SECOND, 'ACME', 'E1', 'BUY', 4),
     quote(30n * SECOND, 'ACME', 'A', 'SELL', '102.5', 7),
     quote(30n * SECOND, 'ACME', 'B', 'BUY', '99', 5),
     quote(40n * SECOND, 'ACME', 'B', 'BUY', '101', 8),
     quote(40n * SECOND, 'ACME', 'A', 'SELL', '103.5', 9),
-    execution(40n * SECOND, 'ACME', 'E2', 'SELL', 6),
-    execution(40n * SECOND, 'ACME', 'E3', 'SELL', undefined),
   ]
 }
 
@@ -142,8 +135,9 @@ test('the OHLC of every reading over one minute', () => {
   assert.equal(candle.bidqty, '8')
   assert.equal(candle.askqty, '9')
   assert.equal(candle.books, 4)
-  assert.equal(candle.executions, 3)
-  assert.equal(candle.volume, '10')
+  // A candle counts the books it folded; what traded is no book's.
+  assert.equal('executions' in candle, false)
+  assert.equal('volume' in candle, false)
   assert.equal(candle.toString(), 'Candle("3:0:ACME", start=0, end=60000000000)')
   // The same walk, spelled through its options or its own iterator.
   assert.ok(candles(operations, new graph.CandleOptions(MINUTE))[0].equals(candle))
@@ -171,46 +165,33 @@ test('a one-sided book states no mid or spread', () => {
   assert.equal(candle.bidqty, '6')
   assert.equal(candle.askqty, null)
   assert.equal(candle.books, 2)
-  assert.equal(candle.executions, 0)
-  assert.equal(candle.volume, '0')
 })
 
-test('the volume counts each trade once at what it traded', () => {
-  // The order's quantity; what the fill traded is its last quantity.
-  const fill = (unix, code, side, lastqty, identifiers = {}) => new graph.ExecutionEvent(unix, {
-    crosscode: code, ticker: 'ACME', side, price: '100', quantity: 600, lastqty, state: 'FILLED',
-    identifiers: Object.entries(identifiers).map(([kind, value]) => new Identifier('fix', kind, value)),
-  })
-  // A fill delivered twice under one `execid`, the two sides of a trade
-  // under one `tradeid`, and a fill stating no last quantity, which adds
-  // nothing whatever its order's quantity: six executions, three trades.
-  const [candle] = candles([
-    fill(10n * SECOND, 'X-1', 'BUY', 21, { execid: 'X-1' }),
-    fill(10n * SECOND, 'X-2', 'BUY', 57, { execid: 'X-2' }),
-    fill(11n * SECOND, 'X-2', 'BUY', 57, { execid: 'X-2' }),
-    fill(20n * SECOND, 'S-1', 'BUY', 100, { execid: 'S-1', tradeid: 'T-1' }),
-    fill(20n * SECOND, 'S-2', 'SELL', 100, { execid: 'S-2', tradeid: 'T-1' }),
-    fill(30n * SECOND, 'X-3', 'SELL', undefined),
-  ], '1m')
-  assert.deepEqual([candle.books, candle.executions, candle.volume], [4, 6, '178'])
-
-  // A trade report's two sides named by its `tradereportid` alone, and a
-  // fill naming its `execid` and the trade's `tradeid` delivered again
-  // naming the `execid` alone: two trades.
-  const [named] = candles([
-    fill(10n * SECOND, 'SX-B', 'BUY', 100, { execid: 'SX-B', tradereportid: 'TR-1' }),
-    fill(10n * SECOND, 'SX-S', 'SELL', 100, { execid: 'SX-S', tradereportid: 'TR-1' }),
-    fill(20n * SECOND, 'E-1', 'BUY', 57, { execid: 'E-1', tradeid: 'T-1' }),
-    fill(21n * SECOND, 'E-1', 'BUY', 57, { execid: 'E-1' }),
-  ], '1m')
-  assert.deepEqual([named.executions, named.volume], [4, '157'])
-
-  // Delivered again in the next minute, a fill adds nothing there.
-  const [first, second] = candles([
-    fill(10n * SECOND, 'X-1', 'BUY', 21, { execid: 'X-1' }),
-    fill(70n * SECOND, 'X-1', 'BUY', 21, { execid: 'X-1' }),
-  ], '1m')
-  assert.deepEqual([first.volume, second.volume], ['21', '0'])
+test('candles from delta books equal candles from the books rebuilt whole', () => {
+  // With no grid a walk emits every book as its deltas alone, the first
+  // following no book; a candle reads each book's top of book, which a
+  // delta book states, so rebuilding them changes no candle.
+  const operations = [
+    quote(OFFSET_DAY + SECOND, 'ACME', 'B-1', 'BUY', '100', 10),
+    quote(OFFSET_DAY + SECOND, 'ACME', 'A-1', 'SELL', '102', 5),
+    quote(OFFSET_DAY + 20n * SECOND, 'ACME', 'B-2', 'BUY', '101', 4),
+    quote(OFFSET_DAY + 70n * SECOND, 'ACME', 'A-1', 'SELL', '103', 5),
+    quote(OFFSET_DAY + 90n * SECOND, 'ACME', 'B-1', 'BUY', '99', 1),
+    quote(OFFSET_DAY + 130n * SECOND, 'ACME', 'A-2', 'SELL', '101.5', 2),
+  ]
+  const deltas = books(operations)
+  assert.ok(deltas.every((book) => !book.isComplete))
+  const whole = []
+  for (const book of deltas) {
+    const previous = whole.at(-1) ?? graph.BookEvent.keyed(book.currunix, 'ACME')
+    whole.push(book.withPrevious(previous))
+  }
+  assert.ok(whole.every((book) => book.isComplete))
+  const folded = graph.candles(deltas, '1m')
+  const rebuilt = graph.candles(whole, '1m')
+  assert.equal(folded.length, 3)
+  assert.equal(rebuilt.length, 3)
+  folded.forEach((candle, at) => assert.ok(candle.equals(rebuilt[at]), `candle ${at}`))
 })
 
 test('a reading a later book lacks keeps the earlier ones', () => {
@@ -276,10 +257,11 @@ test('two cross codes interleave and emit in cross-code order', () => {
   )
   assert.deepEqual(folded[1].bid, ohlc('100', '101', '100', '101'))
   assert.equal(folded[1].ticker, 'IBM')
-  // A book stating no ticker states none on its candle.
+  // A book stating no ticker states none on its candle, and an empty symbol
+  // keys the book by the ISIN that states none.
   const [bare] = graph.candles([new graph.BookEvent(10n * SECOND, '')], '1m')
   assert.equal(bare.ticker, null)
-  assert.equal(bare.crosscode, '')
+  assert.equal(bare.crosscode, '3:0:XX0000000000')
 })
 
 test('buckets align to the zone: a half-hour offset, a spring forward, a fall back', () => {
@@ -426,7 +408,7 @@ test('Candle.field declares every cell', () => {
   for (const reading of ['bid', 'ask', 'mid', 'spread']) {
     for (const cell of ['open', 'high', 'low', 'close']) expected.push(`${reading}${cell}: decimal`)
   }
-  expected.push('bidqty: decimal', 'askqty: decimal', 'books: uint64 not null', 'executions: uint64 not null', 'volume: decimal not null')
+  expected.push('bidqty: decimal', 'askqty: decimal', 'books: uint64 not null')
   assert.deepEqual(declared, expected)
 })
 
@@ -434,7 +416,7 @@ test('a candle round trips through its scalar and its JSON', () => {
   const [candle] = candles(minute(), '1m')
   const scalar = candle.intoScalar()
   assert.ok(scalar instanceof Scalar)
-  assert.equal(scalar.length, 25)
+  assert.equal(scalar.length, 23)
   assert.ok(graph.Candle.fromScalar(scalar).equals(candle))
   assert.ok(candle.clone().equals(candle))
   assert.ok(!candle.equals(candles(minute(), '30s')[0]))
@@ -450,8 +432,6 @@ test('a candle round trips through its scalar and its JSON', () => {
     bidlow: '100.5',
     bidclose: '100.5',
     books: 1,
-    executions: 0,
-    volume: 0,
   })
   assert.deepEqual(read.bid, ohlc('100.5', '100.5', '100.5', '100.5'))
   assert.equal(read.ticker, null)
@@ -459,7 +439,6 @@ test('a candle round trips through its scalar and its JSON', () => {
   assert.equal(read.start, 0n)
   assert.equal(read.end, MINUTE)
   assert.equal(read.books, 1)
-  assert.equal(read.volume, '0')
 
   // The JSON is the flat row under `Candle.field()`: instants as ISO 8601
   // text, decimals as text, counts as numbers - what `JSON.stringify` writes
@@ -471,8 +450,7 @@ test('a candle round trips through its scalar and its JSON', () => {
   assert.equal(json.bidopen, '100')
   assert.equal(json.midlow, '100.75')
   assert.equal(json.books, 4)
-  assert.equal(json.volume, '10')
-  assert.equal(Object.keys(json).length, 25)
+  assert.equal(Object.keys(json).length, 23)
   assert.ok(graph.Candle.fromJSON(json).equals(candle))
   assert.ok(graph.Candle.fromJSON(JSON.stringify(candle)).equals(candle))
   assert.deepEqual(JSON.parse(JSON.stringify([candle]))[0], json)
@@ -480,7 +458,7 @@ test('a candle round trips through its scalar and its JSON', () => {
   const [bare] = graph.candles([new graph.BookEvent(10n * SECOND, '')], '1m')
   assert.equal(bare.toJSON().bidopen, null)
   assert.equal(bare.toJSON().ticker, null)
-  assert.equal(bare.toJSON().crosscode, '')
+  assert.equal(bare.toJSON().crosscode, '3:0:XX0000000000')
   assert.ok(graph.Candle.fromJSON(bare.toJSON()).equals(bare))
   assert.ok(graph.Candle.fromScalar(bare.intoScalar()).equals(bare))
 

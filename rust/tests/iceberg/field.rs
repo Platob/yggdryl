@@ -43,6 +43,56 @@ fn only_the_word_unknown_declares_a_column_unknown() {
     assert!(!payload.as_iceberg().is_unknown());
 }
 
+#[test]
+fn an_identifier_reads_as_every_integer_reads_and_a_refusal_names_its_key() {
+    let mut root = DataType::Int64.required_field("root");
+    for (name, text) in [
+        ("schema-id", " 3 "),
+        ("spec-id", "+4"),
+        ("partition-source-id", "-5"),
+    ] {
+        root.as_iceberg_mut().insert(name, text).unwrap();
+    }
+    assert_eq!(root.as_iceberg().schema_id().unwrap(), Some(3));
+    assert_eq!(root.as_iceberg().spec_id().unwrap(), Some(4));
+    assert_eq!(root.as_iceberg().partition_source_id().unwrap(), Some(-5));
+
+    // Text no integer spells, and one past thirty-two bits, is refused naming
+    // the key and the text.
+    for text in ["1.0", "three", "2147483648"] {
+        root.as_iceberg_mut().insert("schema-id", text).unwrap();
+        let message = root.as_iceberg().schema_id().unwrap_err().to_string();
+        assert!(message.contains("schema-id"), "{text}: {message}");
+        assert!(message.contains(text), "{text}: {message}");
+    }
+}
+
+#[test]
+fn the_identifier_columns_read_each_member_as_an_integer_and_skip_the_blanks() {
+    let mut root = DataType::Int64.required_field("root");
+    assert!(root.as_iceberg().identifier_field_ids().unwrap().is_empty());
+    root.as_iceberg_mut()
+        .insert("identifier-field-ids", " 1 , +2,,3 ")
+        .unwrap();
+    assert_eq!(root.as_iceberg().identifier_field_ids().unwrap(), [1, 2, 3]);
+
+    for text in ["1,x", "1.5", "2147483648"] {
+        root.as_iceberg_mut()
+            .insert("identifier-field-ids", text)
+            .unwrap();
+        let message = root
+            .as_iceberg()
+            .identifier_field_ids()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("identifier-field-ids"),
+            "{text}: {message}"
+        );
+        assert!(message.contains(text), "{text}: {message}");
+    }
+}
+
 /// A decimal default travels in the spec's single-value form, its fraction
 /// digits stating the column's scale - the one decimal text written at its
 /// scale, because a reader that checks it, as Java's does, refuses any

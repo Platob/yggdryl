@@ -1,4 +1,3 @@
-use base64::Engine as _;
 use serde::ser::{Error as _, SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
 
@@ -63,12 +62,15 @@ impl Serialize for JsonRef<'_> {
                 let mut slot = [0_u8; crate::Uuid::TEXT_LEN];
                 serializer.serialize_str(value.render(&mut slot))
             }
-            bytes_scalars!(value) => serializer
-                .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
-            Scalar::Geometry(value) => serializer
-                .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
-            Scalar::Geography(value) => serializer
-                .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
+            bytes_scalars!(value) => {
+                serializer.serialize_str(&crate::bytes::into_base64(value.as_bytes()))
+            }
+            Scalar::Geometry(value) => {
+                serializer.serialize_str(&crate::bytes::into_base64(value.as_bytes()))
+            }
+            Scalar::Geography(value) => {
+                serializer.serialize_str(&crate::bytes::into_base64(value.as_bytes()))
+            }
             Scalar::Date32(value) => {
                 if value.unit() == TimeUnit::Day
                     && let Some(text) = crate::temporal::format_date(value.count())

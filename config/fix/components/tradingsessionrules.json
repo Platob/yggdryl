@@ -4,17 +4,6 @@
     "type": "struct",
     "fields": [
       {
-        "name": "noordtyperules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noordtyperules",
-          "FIX:tag": "1237"
-        }
-      },
-      {
         "name": "ordtyperules",
         "dtype": {
           "type": "null"
@@ -22,17 +11,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "ordtyperules"
-        }
-      },
-      {
-        "name": "notimeinforcerules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notimeinforcerules",
-          "FIX:tag": "1239"
         }
       },
       {
@@ -46,17 +24,6 @@
         }
       },
       {
-        "name": "noexecinstrules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noexecinstrules",
-          "FIX:tag": "1232"
-        }
-      },
-      {
         "name": "execinstrules",
         "dtype": {
           "type": "null"
@@ -64,17 +31,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "execinstrules"
-        }
-      },
-      {
-        "name": "noauctiontyperules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noauctiontyperules",
-          "FIX:tag": "2548"
         }
       },
       {
@@ -88,17 +44,6 @@
         }
       },
       {
-        "name": "nomatchrules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomatchrules",
-          "FIX:tag": "1235"
-        }
-      },
-      {
         "name": "matchrules",
         "dtype": {
           "type": "null"
@@ -106,17 +51,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "matchrules"
-        }
-      },
-      {
-        "name": "nomdfeedtypes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomdfeedtypes",
-          "FIX:tag": "1141"
         }
       },
       {

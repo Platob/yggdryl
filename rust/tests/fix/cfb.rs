@@ -468,7 +468,6 @@ fn a_grammar_becomes_one_root_flattened_across_part() {
             "msgtype",
             "timeinforce",
             "avgpx",
-            "nolegs",
             "legs",
             "beginstring2"
         ],
@@ -477,7 +476,7 @@ fn a_grammar_becomes_one_root_flattened_across_part() {
     // The duplicate keeps the tag, which is what recovers it.
     let fields = root.dtype().as_fields().unwrap();
     assert_eq!(fields[0].as_fix().tag().unwrap(), Some(8));
-    assert_eq!(fields[7].as_fix().tag().unwrap(), Some(8));
+    assert_eq!(fields[6].as_fix().tag().unwrap(), Some(8));
 }
 
 #[test]
@@ -500,12 +499,14 @@ fn required_decides_nullability_and_an_expression_counts_as_absent() {
 }
 
 #[test]
-fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
+fn a_nested_grammar_is_its_group_alone_and_its_counter_a_dictionary_field() {
+    // The counter heads the group on the wire and is no member of the
+    // grammar's root: the group is its list alone, its length the count,
+    // and the counter's tag stands on the group as `FIX:counter` while the
+    // dictionary keeps the counter as a field of its own.
     let (registry, roots) = parse(CBLOCK);
     let fields = roots[0].dtype().as_fields().unwrap();
-    let count = fields.iter().find(|held| held.name() == "nolegs").unwrap();
-    assert_eq!(count.dtype(), &DataType::Int32);
-    assert_eq!(count.as_fix().tag().unwrap(), Some(555));
+    assert!(fields.iter().all(|held| held.name() != "nolegs"));
     assert_eq!(
         registry.field_by_tag(555).unwrap().dtype(),
         &DataType::Int32
@@ -523,17 +524,19 @@ fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
     let members = item.dtype().as_fields().expect("an item struct");
     assert_eq!(
         members.iter().map(yggdryl::Field::name).collect::<Vec<_>>(),
-        ["legcurrency", "nolegsecurityaltid", "legsecurityaltidgrp"]
+        ["legcurrency", "legsecurityaltidgrp"]
     );
     assert!(!members[0].is_nullable(), "556 is required");
-    assert_eq!(members[1].dtype(), &DataType::Int32);
-    assert_eq!(members[1].as_fix().tag().unwrap(), Some(604));
-    let DataType::Serie(inner) = members[2].dtype() else {
-        panic!("a nested serie, got {}", members[2].dtype());
+    assert_eq!(
+        registry.field_by_tag(604).unwrap().dtype(),
+        &DataType::Int32
+    );
+    let DataType::Serie(inner) = members[1].dtype() else {
+        panic!("a nested serie, got {}", members[1].dtype());
     };
-    assert_eq!(members[2].as_fix().tag().unwrap(), None);
-    assert_eq!(members[2].as_fix().counter().unwrap(), Some(604));
-    assert_eq!(members[2].display(), Some("LegSecurityAltIDGrp"));
+    assert_eq!(members[1].as_fix().tag().unwrap(), None);
+    assert_eq!(members[1].as_fix().counter().unwrap(), Some(604));
+    assert_eq!(members[1].display(), Some("LegSecurityAltIDGrp"));
     assert_eq!(inner.display(), Some("LegSecurityAltIDComponent"));
     assert_eq!(
         inner
@@ -1366,17 +1369,28 @@ fn nesting_past_the_guard_is_dropped_rather_than_overflowing() {
     assert!(rendered.contains("deep"), "{rendered}");
     // The message it nested in, because a file binds hundreds of them.
     assert!(rendered.contains("message \"0\""), "{rendered}");
-    // The guard stops the reader descending; it does not throw the file away.
-    // This message goes with it, because thirty grammars over one tag are
-    // thirty definitions of one name and the catalog holds one - which is its
-    // own warning, named as one.
-    assert!(roots.is_empty());
+    // The guard stops the reader descending; it does not throw the file away,
+    // nor the message: thirty grammars over one tag are thirty shapes of one
+    // name, and each is a definition of its own, split for the message in the
+    // order it declares them.
+    assert_eq!(roots.len(), 1, "{warnings:?}");
     assert!(
-        warnings
-            .iter()
-            .any(|held| held.contains("one CBlock definition per context")),
+        !warnings.iter().any(|held| held.contains("per context")),
         "{warnings:?}"
     );
+    for name in [
+        "legs",
+        "legs_message30",
+        "legs_message30_2",
+        "legs_message30_29",
+    ] {
+        assert!(
+            registry
+                .get_definition(yggdryl::FixCategory::Groups, name)
+                .is_some(),
+            "{name}"
+        );
+    }
     // The vocabulary the file declared is still a dictionary.
     assert_eq!(registry.field_by_tag(555).unwrap().name(), "nolegs");
 }
@@ -1616,17 +1630,20 @@ fn a_map_reaches_the_field_it_spells_and_one_entry_never_refuses_the_file() {
 
     // Whitespace around a name is not a spelling, so it neither breaks the
     // match nor flips the orientation. An entry stating nothing on a side is
-    // dropped whether it says so with an empty attribute or with none, and so
-    // is one repeating a name an earlier entry claimed: a code set may not
-    // name one member twice, and one contradictory entry is not a reason to
-    // refuse the file.
+    // dropped whether it says so with an empty attribute or with none. One
+    // repeating a name an earlier entry claimed loses the name and keeps its
+    // wire value under none: a code set may not name one member twice, the
+    // value is still a fact about the wire, and one contradictory entry is
+    // not a reason to refuse the file.
     let timeinforce = registry.field_by_tag(59).expect("TimeInForce");
     let view = registry
         .codeset_of(timeinforce)
         .expect("the set it reads by");
     assert_eq!(view.code_value("day"), Some("0"));
     assert_eq!(view.code_value("goodtilldate"), Some("6"));
-    assert_eq!(view.codes().count(), 2);
+    assert_eq!(view.code_name("1"), Some("1"));
+    assert_eq!(view.code_name("2"), None);
+    assert_eq!(view.codes().count(), 3);
 
     // Two names for one wire value is an alias rather than a contradiction,
     // so the second is kept as one rather than dropped or made a second code.
@@ -3049,7 +3066,7 @@ fn a_glob_folds_every_cblock_it_selects_under_each_file_s_own_dialect() {
         merged,
         ..
     } = registry
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .add_cfb_files(std::slice::from_ref(&tree), None)
         .expect("two readable CBlocks");
 
     // The pattern is the filter: the text file is not selected, and the two
@@ -3065,7 +3082,7 @@ fn a_glob_folds_every_cblock_it_selects_under_each_file_s_own_dialect() {
     // A name supplied here stamps every matched file with the one membership.
     let mut named = FixRegistry::new();
     named
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), Some("venues"))
+        .add_cfb_files(std::slice::from_ref(&tree), Some("venues"))
         .expect("two readable CBlocks");
     assert_eq!(branches(named.field_by_tag(9001).unwrap()), ["venues"]);
     assert_eq!(branches(named.field_by_tag(9002).unwrap()), ["venues"]);
@@ -3074,7 +3091,7 @@ fn a_glob_folds_every_cblock_it_selects_under_each_file_s_own_dialect() {
     let mut empty = FixRegistry::new();
     assert_eq!(
         empty
-            .add_cfb_files(tree.glob("*.xml", false).unwrap(), None)
+            .add_cfb_files(&[tree.child_by_path("*.xml").expect("a glob")], None)
             .map(|merge| (merge.sources, merge.added, merge.merged))
             .unwrap(),
         (0, 0, 0)
@@ -3083,22 +3100,46 @@ fn a_glob_folds_every_cblock_it_selects_under_each_file_s_own_dialect() {
 }
 
 #[test]
-fn one_unreadable_cblock_among_many_leaves_the_dictionary_exactly_as_it_was() {
+fn one_unreadable_cblock_among_many_is_left_out_and_the_rest_still_fold() {
     let tree = cblock_tree(&[
         ("aaa.cfb", &one_tag(9001, "GoodRef")),
-        ("zzz.cfb", "<cplugin-configuration><vocabulary>"),
+        ("mmm.cfb", "<cplugin-configuration><vocabulary>"),
+        ("zzz.cfb", &one_tag(9002, "LateRef")),
     ]);
     let mut registry = FixRegistry::new();
-    let before = registry.stable_hash();
-    let error = registry
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
-        .expect_err("the second file stops inside an element");
+    let merge = registry
+        .add_cfb_files(std::slice::from_ref(&tree), None)
+        .expect("one bad file is one file");
 
-    // The refusal names the file among the matched ones, and nothing the
-    // first file declared was adopted: one copy, one mutation.
-    assert!(error.to_string().contains("zzz.cfb"), "{error}");
-    assert_eq!(registry.stable_hash(), before);
-    assert!(registry.get_field_by_tag(9001).is_none());
+    // The file that stops inside an element is left out and named, with what
+    // the reader stopped on; the files around it fold as if it were not
+    // there, and the count says how many did.
+    assert_eq!(merge.sources, 2);
+    assert_eq!(merge.failed.len(), 1, "{:?}", merge.failed);
+    let failure = merge.failed[0].to_string();
+    assert!(
+        merge.failed[0]
+            .source
+            .as_deref()
+            .is_some_and(|source| source.ends_with("mmm.cfb")),
+        "{failure}"
+    );
+    assert!(failure.contains("a closed <vocabulary>"), "{failure}");
+    assert!(!merge.is_clean());
+    assert_eq!(branches(registry.field_by_tag(9001).unwrap()), ["aaa"]);
+    assert_eq!(branches(registry.field_by_tag(9002).unwrap()), ["zzz"]);
+
+    // Nothing of the left-out file is held: the dictionary is the one the
+    // two good files make on their own.
+    let good = cblock_tree(&[
+        ("aaa.cfb", &one_tag(9001, "GoodRef")),
+        ("zzz.cfb", &one_tag(9002, "LateRef")),
+    ]);
+    let mut alone = FixRegistry::new();
+    alone
+        .add_cfb_files(std::slice::from_ref(&good), None)
+        .expect("two readable CBlocks");
+    assert_eq!(registry, alone);
 }
 
 /// One CBlock declaring tag 532 as `type` and binding it in message `r`.
@@ -3132,7 +3173,7 @@ fn counterparties_typing_one_tag_two_ways_fold_whole_and_name_the_file_passed_ov
     ]);
     let mut registry = FixRegistry::new();
     let merge = registry
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .add_cfb_files(std::slice::from_ref(&tree), None)
         .expect("every file folds");
     assert_eq!(merge.sources, 3);
     assert_eq!(merge.dropped.len(), 1, "{:?}", merge.dropped);
@@ -3207,7 +3248,7 @@ fn a_field_passed_over_by_its_name_takes_the_members_reading_it_along() {
     let tree = cblock_tree(&[("a.cfb", first), ("b.cfb", second)]);
     let mut registry = FixRegistry::new();
     let merge = registry
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .add_cfb_files(std::slice::from_ref(&tree), None)
         .expect("both files fold");
     let passed: Vec<(&str, Option<i32>)> = merge
         .dropped
@@ -3295,7 +3336,7 @@ fn a_group_one_dialect_split_for_a_message_folds_into_the_group_that_message_rea
     );
     let mut registry = FixRegistry::new();
     let merge = registry
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .add_cfb_files(std::slice::from_ref(&tree), None)
         .expect("both dialects fold");
     assert!(merge.is_clean(), "{:?}", merge.dropped);
     let held = registry.definition(Components, "underlying").unwrap();
@@ -3320,7 +3361,9 @@ fn a_group_one_dialect_split_for_a_message_folds_into_the_group_that_message_rea
     );
 
     // A group on another counter is another group, which is not folded: the
-    // member D holds stays, and the other reading is named.
+    // member D holds stays, and the other reading stands beside it as a
+    // member of its own, named for its counter - two counters are two tags
+    // on the wire, so the one message carries both groups.
     let recounted = underlyings("")
         .replace(
             r#"<vocabulary-tag name="879" alt="UnderlyingQty" type="float" />"#,
@@ -3337,23 +3380,34 @@ fn a_group_one_dialect_split_for_a_message_folds_into_the_group_that_message_rea
     let tree = cblock_tree(&[("a.cfb", &underlyings("")), ("c.cfb", &recounted)]);
     let mut registry = FixRegistry::new();
     let merge = registry
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .add_cfb_files(std::slice::from_ref(&tree), None)
         .expect("both dialects fold");
-    let passed: Vec<String> = merge.dropped.iter().map(ToString::to_string).collect();
-    assert_eq!(passed.len(), 1, "{passed:?}");
-    assert!(
-        passed[0].contains("c.cfb: ")
-            && passed[0].contains("newordersingle.underlyings")
-            && passed[0].contains("underlyings_newordersingle"),
-        "{passed:?}"
-    );
+    assert!(merge.is_clean(), "{:?} {:?}", merge.dropped, merge.failed);
     let message = registry.msgtype("D").unwrap().as_field();
-    assert!(
-        message
-            .fields()
-            .iter()
-            .any(|member| member.as_fix().group() == Some("underlyings")),
-        "D reads the group it held"
+    let groups: Vec<(&str, Option<&str>)> = message
+        .fields()
+        .iter()
+        .filter(|member| member.as_fix().group().is_some())
+        .map(|member| (member.name(), member.as_fix().group()))
+        .collect();
+    assert_eq!(
+        groups,
+        [
+            ("underlyings", Some("underlyings")),
+            ("underlyings_712", Some("underlyings_newordersingle"))
+        ],
+        "D reads the group it held, and the other beside it"
+    );
+    // Folding the same files again places nothing beside twice: the member
+    // already standing beside reads the same group, so it is that member.
+    let once = registry.clone();
+    let merge = registry
+        .add_cfb_files(std::slice::from_ref(&tree), None)
+        .expect("both dialects fold again");
+    assert!(merge.is_clean(), "{:?} {:?}", merge.dropped, merge.failed);
+    assert_eq!(
+        registry, once,
+        "a second fold of the same files changes nothing"
     );
     assert_eq!(
         registry
@@ -3388,7 +3442,7 @@ fn a_field_merged_by_its_name_is_read_by_the_members_of_its_file_under_the_held_
     let tree = cblock_tree(&[("a.cfb", first), ("b.cfb", second)]);
     let mut registry = FixRegistry::new();
     let merge = registry
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .add_cfb_files(std::slice::from_ref(&tree), None)
         .expect("both files fold");
     assert!(merge.is_clean(), "{:?}", merge.dropped);
     let held = registry.field_by_tag(9002).unwrap();
@@ -3426,7 +3480,7 @@ fn a_spelling_another_field_holds_is_passed_over_with_the_members_reading_it() {
     let tree = cblock_tree(&[("a.cfb", first), ("b.cfb", second)]);
     let mut registry = FixRegistry::new();
     let merge = registry
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .add_cfb_files(std::slice::from_ref(&tree), None)
         .expect("both files fold");
     let passed: Vec<(&str, Option<i32>)> = merge
         .dropped
@@ -3461,19 +3515,75 @@ fn a_spelling_another_field_holds_is_passed_over_with_the_members_reading_it() {
 }
 
 #[test]
-fn a_group_counted_by_a_field_held_as_text_is_passed_over_with_its_members() {
+fn a_group_counted_by_a_field_held_as_text_retypes_it_whichever_file_sorts_first() {
     // The first dialect binds 711 plainly and types it as text; the second
-    // counts `Underlyings` by it. A group counts by an int32 field, and this
-    // dictionary holds 711 as text: the second file's counter and its group
-    // are passed over, and so is the member of its message reading the group.
-    let first = r#"<cplugin-configuration fix-version="4.4">
+    // counts `Underlyings` by it. A group is counted by NumInGroup, an int32,
+    // and text said less than the counter did: the field held is retyped,
+    // the group stands and the message reads it - whichever of the two files
+    // sorts first, so one dictionary answers both orders.
+    let text = r#"<cplugin-configuration fix-version="4.4">
       <vocabulary><vocabulary-tag name="711" alt="NoUnderlyings" type="string" /></vocabulary>
     </cplugin-configuration>"#;
-    let tree = cblock_tree(&[("a.cfb", first), ("b.cfb", &underlyings(""))]);
-    let mut registry = FixRegistry::new();
+    let group = underlyings("");
+    let mut answers = Vec::new();
+    for files in [
+        [("a.cfb", text), ("b.cfb", group.as_str())],
+        [("b.cfb", text), ("a.cfb", group.as_str())],
+    ] {
+        let tree = cblock_tree(&files);
+        let mut registry = FixRegistry::new();
+        let (merge, warnings) = super::warned::during(|| {
+            registry.add_cfb_files(std::slice::from_ref(&tree), Some("venue"))
+        });
+        let merge = merge.expect("both files fold");
+        assert!(merge.is_clean(), "{:?} {:?}", merge.dropped, merge.failed);
+        assert_eq!(
+            registry.field_by_tag(711).unwrap().dtype(),
+            &DataType::Int32
+        );
+        assert!(
+            registry
+                .get_definition(yggdryl::FixCategory::Groups, "underlyings")
+                .is_some()
+        );
+        let message = registry.msgtype("D").unwrap().as_field();
+        assert!(
+            message
+                .fields()
+                .iter()
+                .any(|member| member.as_fix().group() == Some("underlyings")),
+            "D reads the group"
+        );
+        // Retyping a field another dialect declared is said, not done
+        // silently - only where the text file folded first, since a counter
+        // already held as one has nothing to retype.
+        if files.contains(&("a.cfb", text)) {
+            assert!(
+                warnings.iter().any(|warning| warning.contains(
+                    "tag 711 counts a repeating group, so nounderlyings is retyped int32 from utf8"
+                )),
+                "{warnings:?}"
+            );
+        }
+        answers.push(registry);
+    }
+    assert_eq!(
+        answers[0], answers[1],
+        "the order the files sort in decides nothing"
+    );
+
+    // A field held as a decimal is no coarser count but a quantity: the group
+    // a source counts by it is passed over and named, and so is the member
+    // of its message reading it.
+    let mut held = DataType::decimal(38, 18)
+        .unwrap()
+        .nullable_field("nounderlyings");
+    held.as_fix_mut().set_tag(711).unwrap();
+    let mut registry = FixRegistry::from_fields([held]).unwrap();
+    let tree = cblock_tree(&[("b.cfb", &underlyings(""))]);
     let merge = registry
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
-        .expect("both files fold");
+        .add_cfb_files(std::slice::from_ref(&tree), None)
+        .expect("the file folds");
     let passed: Vec<String> = merge.dropped.iter().map(ToString::to_string).collect();
     assert!(
         passed
@@ -3489,20 +3599,12 @@ fn a_group_counted_by_a_field_held_as_text_is_passed_over_with_its_members() {
     );
     assert_eq!(
         registry.field_by_tag(711).unwrap().dtype(),
-        &DataType::utf8()
+        &DataType::decimal(38, 18).unwrap()
     );
     assert!(
         registry
             .get_definition(yggdryl::FixCategory::Groups, "underlyings")
             .is_none()
-    );
-    let message = registry.msgtype("D").unwrap().as_field();
-    assert!(
-        message
-            .fields()
-            .iter()
-            .all(|member| member.as_fix().group().is_none()),
-        "no member reads a group nothing holds"
     );
 }
 
@@ -3525,7 +3627,7 @@ fn a_message_name_another_wire_code_holds_is_named_for_its_own_code() {
     let tree = cblock_tree(&[("a.cfb", &custom("U7")), ("b.cfb", &custom("U8"))]);
     let mut registry = FixRegistry::new();
     let merge = registry
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .add_cfb_files(std::slice::from_ref(&tree), None)
         .expect("both files fold");
     assert!(merge.is_clean(), "{:?}", merge.dropped);
     assert_eq!(registry.msgtype("U7").unwrap().name(), "customreport");
@@ -4160,13 +4262,21 @@ fn two_maps_naming_one_code_two_ways_fold_into_the_committed_set() {
     // code 8 is `none`, and once the FIX way, where it is `rejected` - and
     // the dictionary already names code 8 `Rejected`. Folding it is never a
     // refusal of the file: the value is the committed code's, and the name
-    // the file's last map gives it is one more spelling of that code.
+    // the file's maps give it is one more spelling of that code - but `none`
+    // is a venue writing that it has no name to give, so it is no spelling
+    // of anything, whichever map is last.
     let committed = super::committed_registry();
-    for (last, none) in [("ORDSTATUS", Some("8")), ("OrdStatus", None)] {
+    for last in ["ORDSTATUS", "OrdStatus"] {
         let mut seeded = committed.as_ref().clone();
-        let merge = seeded
-            .add_cfb_file(&named_handle(&two_maps(last), "blpfix44.cfb"), None)
-            .expect("two maps of one tag never refuse the file");
+        let (merge, warnings) = super::warned::during(|| {
+            seeded.add_cfb_file(&named_handle(&two_maps(last), "blpfix44.cfb"), None)
+        });
+        let merge = merge.expect("two maps of one tag never refuse the file");
+        assert!(
+            warnings.iter().any(|warning| warning
+                .contains(r#"code set ordstatuscodeset: 1 map entry spelling none, null or nothing: "ORDSTATUS" key "none" value "8""#)),
+            "{warnings:?}"
+        );
         assert!(merge.dropped.is_empty(), "{:?}", merge.dropped);
         let status = seeded.field_by_tag(39).unwrap();
         let set = seeded.codeset_of(status).expect("the committed set");
@@ -4182,7 +4292,7 @@ fn two_maps_naming_one_code_two_ways_fold_into_the_committed_set() {
         );
         assert_eq!(set.code_name("8"), Some("Rejected"));
         assert_eq!(set.code_name("0"), Some("New"));
-        assert_eq!(set.code_value("none"), none, "last map {last}");
+        assert_eq!(set.code_value("none"), None, "last map {last}");
         assert_eq!(set.code_value("rejected"), Some("8"));
     }
 }
@@ -4208,7 +4318,7 @@ fn an_unnamed_tag_in_one_file_is_the_field_another_file_names() {
         let tree = cblock_tree(&files);
         let mut registry = FixRegistry::new();
         let merge = registry
-            .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+            .add_cfb_files(std::slice::from_ref(&tree), None)
             .expect("both files fold");
         assert!(merge.dropped.is_empty(), "{:?}", merge.dropped);
         let held: Vec<&Field> = registry
@@ -4279,7 +4389,7 @@ fn a_field_arriving_on_a_held_tag_lends_the_holder_no_name() {
     ]);
     let mut registry = FixRegistry::new();
     let merge = registry
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .add_cfb_files(std::slice::from_ref(&tree), None)
         .expect("both files fold");
     assert!(merge.dropped.is_empty(), "{:?}", merge.dropped);
     let held: Vec<&Field> = registry
@@ -4321,7 +4431,7 @@ fn a_stem_is_read_as_the_file_is_named() {
     let tree = cblock_tree(&[("Morgan Stanley.cfb", &body)]);
     let mut globbed = FixRegistry::new();
     globbed
-        .add_cfb_files(tree.glob("*.cfb", false).unwrap(), None)
+        .add_cfb_files(std::slice::from_ref(&tree), None)
         .expect("a readable CBlock");
     assert_eq!(globbed, folded);
 
@@ -4335,6 +4445,711 @@ fn a_stem_is_read_as_the_file_is_named() {
     assert!(comma.dialects().is_empty());
 }
 
+/// A venue's CBlock folded into the committed dictionary under its own stem,
+/// with the warnings the fold logged.
+fn fold_committed(
+    body: &str,
+    name: &str,
+) -> (yggdryl::Result<yggdryl::FixMerge>, FixRegistry, Vec<String>) {
+    let mut seeded = super::committed_registry().as_ref().clone();
+    let (merge, warnings) =
+        super::warned::during(|| seeded.add_cfb_file(&named_handle(body, name), None));
+    (merge, seeded, warnings)
+}
+
+/// One vocabulary tag and the map a venue decodes it by, in the shape the
+/// Avaloq and FrontArena exports state `DateRollConvention`.
+fn date_roll(entries: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="40922" alt="DateRollConvention" type="string" />
+	</vocabulary>
+	<maps>
+		<map name="DateRollConvention">
+			{entries}
+		</map>
+	</maps>
+</cplugin-configuration>"#
+    )
+}
+
+#[test]
+fn a_map_entry_spelling_nothing_states_no_code_and_is_named_once_per_code_set() {
+    // `<entry key="0" value="none"/>` is a venue writing that it has no code
+    // to state. The dictionary already holds a code named after its own
+    // value `NONE`, and folding `none` beside it used to refuse the whole
+    // batch over a name the writer counts twice. It states no code: the file
+    // folds clean and the committed set is untouched.
+    let committed = super::committed_registry();
+    let held = committed
+        .codeset("daterollconventioncodeset")
+        .unwrap()
+        .document()
+        .to_owned();
+    let (merge, seeded, warnings) = fold_committed(
+        &date_roll(r#"<entry key="0" value="none" />"#),
+        "Avaloq_FIX44_BuySide_FX.cfb",
+    );
+    let merge = merge.expect("a sentinel entry refuses nothing");
+    assert!(merge.is_clean(), "{:?}", merge.dropped);
+    let set = seeded.codeset("daterollconventioncodeset").unwrap();
+    assert_eq!(set.document(), held, "the committed set is untouched");
+    assert_eq!(set.code("0"), None);
+    assert_eq!(set.code_value("NONE"), Some("NONE"));
+    let named: Vec<&String> = warnings
+        .iter()
+        .filter(|warning| warning.contains("spelling none, null or nothing"))
+        .collect();
+    assert_eq!(named.len(), 1, "{warnings:?}");
+    assert!(
+        named[0].starts_with("Avaloq_FIX44_BuySide_FX.cfb ")
+            && named[0].contains(
+                r#"tag 40922 "DateRollConvention", code set daterollconventioncodeset: 1 map entry"#
+            )
+            && named[0].contains(r#""DateRollConvention" key "0" value "none""#),
+        "{named:?}"
+    );
+
+    // Every spelling of nothing - any case, a separator, blank, or an
+    // attribute the entry never states - on either side of an entry, and in
+    // two maps of one tag: one warning for the one code set, counting them
+    // all, and the codes the maps do state still fold.
+    let (merge, seeded, warnings) = fold_committed(
+        &date_roll(
+            r#"<entry key="0" value="NULL" />
+			<entry key="  " value="FirstDay" />
+			<entry key="31" value="N_o-N e" />
+			<entry value="SecondDay" />
+			<entry key="EOM" value="EndOfMonth" />
+		</map>
+		<map name="DATEROLLCONVENTION">
+			<entry key="none" value="5" />"#,
+        ),
+        "venue.cfb",
+    );
+    assert!(merge.expect("sentinels refuse nothing").is_clean());
+    let named: Vec<&String> = warnings
+        .iter()
+        .filter(|warning| warning.contains("spelling none, null or nothing"))
+        .collect();
+    assert_eq!(named.len(), 1, "{warnings:?}");
+    assert!(named[0].contains(": 5 map entries spelling"), "{named:?}");
+    let set = seeded.codeset("daterollconventioncodeset").unwrap();
+    assert_eq!(set.code_value("EndOfMonth"), Some("EOM"));
+    assert_eq!(set.code("31"), None);
+}
+
+#[test]
+fn a_name_folding_onto_a_held_placeholder_keeps_its_code_unnamed_rather_than_refusing() {
+    // The committed set names `EOM` after its own value. A venue naming a
+    // new value `eom` states a name a lookup of `EOM` would reach two ways,
+    // which the writer refuses: the fold keeps the value under no name and
+    // says so, rather than refusing the file - or the files beside it.
+    let tree = cblock_tree(&[
+        ("a.cfb", &date_roll(r#"<entry key="99" value="eom" />"#)),
+        ("b.cfb", &one_tag(9001, "GoodRef")),
+    ]);
+    let mut seeded = super::committed_registry().as_ref().clone();
+    let (merge, warnings) =
+        super::warned::during(|| seeded.add_cfb_files(std::slice::from_ref(&tree), None));
+    let merge = merge.expect("one name refuses nothing");
+    assert_eq!(merge.sources, 2);
+    assert!(merge.is_clean(), "{:?} {:?}", merge.dropped, merge.failed);
+    let set = seeded.codeset("daterollconventioncodeset").unwrap();
+    assert_eq!(set.code_name("99"), Some("99"));
+    assert_eq!(set.code_value("EOM"), Some("EOM"));
+    assert!(seeded.get_field_by_tag(9001).is_some());
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains(r#"value "99" keeps no name"#)),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn two_fields_a_fold_lands_on_one_held_field_are_two_members_of_one_message() {
+    // Predator binds tag 37, which it leaves unnamed, and a custom 9037 it
+    // calls `OrderID`. The fold lands both on the committed `orderid`: the
+    // name reaches it, and the bare tag is its own. The message reads the one
+    // field twice, in wire order, as a duplicate constraint does - never a
+    // refusal of the whole file over a struct naming a member twice. The
+    // file names type 8 nothing readable, so its message is filed under the
+    // name the wire value derives.
+    let body = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration fix-version="4.4">
+  <message-types><message-type value="8" description="Execution Report" supported="true" /></message-types>
+  <vocabulary>
+    <vocabulary-tag name="35" alt="MsgType" type="string" />
+    <vocabulary-tag name="37" type="string" />
+    <vocabulary-tag name="9037" alt="OrderID" type="string" />
+  </vocabulary>
+  <grammar-binding type="8">
+    <grammar checkordering="false">
+      <tag-constraint name="35" part="header" required="true" />
+      <tag-constraint name="37" part="body" required="true" />
+      <tag-constraint name="9037" part="body" required="false" />
+    </grammar>
+  </grammar-binding>
+</cplugin-configuration>"#;
+    let (merge, seeded, _) = fold_committed(body, "Predator_FIX_44_BuySide0101.cfb");
+    let merge = merge.expect("one message, one field twice");
+    assert!(merge.is_clean(), "{:?}", merge.dropped);
+    let held = seeded.field_by_tag(9037).unwrap();
+    assert_eq!(held.name(), "orderid");
+    assert_eq!(held.as_fix().tag().unwrap(), Some(37));
+    let message = seeded
+        .definition(yggdryl::FixCategory::Components, "message38")
+        .unwrap();
+    let reading: Vec<(&str, Option<&str>, Option<i32>)> = message
+        .fields()
+        .iter()
+        .filter(|member| member.as_fix().field_ref() == Some("orderid"))
+        .map(|member| {
+            (
+                member.name(),
+                member.as_fix().field_ref(),
+                member.as_fix().tag().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        reading,
+        [
+            ("orderid", Some("orderid"), Some(37)),
+            ("orderid2", Some("orderid"), Some(37))
+        ]
+    );
+}
+
+#[test]
+fn a_field_passed_over_on_a_held_tag_leaves_its_members_reading_the_held_field() {
+    // One venue types DealerID(9691) as an integer in its dealers group; the
+    // next leaves 9691 unnamed and types it a flag. The flag contradicts the
+    // integer and is passed over - and the next venue's group member reads
+    // the field the dictionary keeps, rather than a field named `9691` that
+    // nothing holds, which used to refuse the whole file.
+    let first = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="35" alt="MsgType" type="string" />
+        <vocabulary-tag name="9690" alt="NoDealers" type="integer" />
+        <vocabulary-tag name="9691" alt="DealerID" type="integer" />
+      </vocabulary>
+      <grammar-binding type="8"><grammar>
+        <grammar rg-name="Dealers"><tag-constraint name="9690" /><tag-constraint name="9691" /></grammar>
+      </grammar></grammar-binding>
+    </cplugin-configuration>"#;
+    let second = first.replace(
+        r#"<vocabulary-tag name="9691" alt="DealerID" type="integer" />"#,
+        r#"<vocabulary-tag name="9691" type="boolean" />"#,
+    );
+    let tree = cblock_tree(&[("a.cfb", first), ("b.cfb", &second)]);
+    let mut registry = FixRegistry::new();
+    let merge = registry
+        .add_cfb_files(std::slice::from_ref(&tree), None)
+        .expect("a contradiction is one declaration");
+    assert!(merge.failed.is_empty(), "{:?}", merge.failed);
+    let passed: Vec<String> = merge.dropped.iter().map(ToString::to_string).collect();
+    assert_eq!(passed.len(), 1, "{passed:?}");
+    assert!(
+        passed[0].contains("b.cfb: ")
+            && passed[0].contains("int32 stored for dealerid (9691), got boolean"),
+        "{passed:?}"
+    );
+    let dealer = registry
+        .definition(yggdryl::FixCategory::Components, "dealer")
+        .unwrap();
+    assert_eq!(
+        dealer
+            .fields()
+            .iter()
+            .map(|member| (member.name(), member.as_fix().field_ref()))
+            .collect::<Vec<_>>(),
+        [("dealerid", Some("dealerid"))]
+    );
+}
+
+/// A trade capture report counting its regulatory trade identifiers by
+/// `counter`, spelled `spelling`, under `rg-name` where one is given.
+fn regulatory(counter: i32, spelling: &str, declared: Option<&str>) -> String {
+    let declared = declared.map_or_else(String::new, |name| format!(r#" rg-name="{name}""#));
+    let spelling = if spelling.is_empty() {
+        String::new()
+    } else {
+        format!(r#" alt="{spelling}""#)
+    };
+    format!(
+        r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration fix-version="4.4">
+  <message-types><message-type value="AE" description="Trade Capture Report" supported="true" /></message-types>
+  <vocabulary>
+    <vocabulary-tag name="35" alt="MsgType" type="string" />
+    <vocabulary-tag name="571" alt="TradeReportID" type="string" />
+    <vocabulary-tag name="{counter}"{spelling} type="integer" />
+    <vocabulary-tag name="1903" alt="RegulatoryTradeID" type="string" />
+    <vocabulary-tag name="1905" alt="RegulatoryTradeIDSource" type="string" />
+  </vocabulary>
+  <grammar-binding type="AE">
+    <grammar checkordering="false">
+      <tag-constraint name="35" part="header" required="true" />
+      <tag-constraint name="571" part="body" required="true" />
+      <grammar{declared}>
+        <tag-constraint name="{counter}" required="false" />
+        <tag-constraint name="1903" required="false" />
+        <tag-constraint name="1905" required="false" />
+      </grammar>
+    </grammar>
+  </grammar-binding>
+</cplugin-configuration>"#
+    )
+}
+
+#[test]
+fn a_group_counted_by_a_field_merged_onto_another_tag_counts_the_held_group() {
+    // A venue counts RegulatoryTradeIDGrp by NoRegulatoryTradeIDs on its own
+    // tag 20001. The name reaches the committed counter on 1907, so 20001 is
+    // that field spelled with another number - and the venue's group, read
+    // under the counter that holds it now, is the committed group rather
+    // than an unknown one passed over with every member reading it.
+    let (merge, seeded, _) = fold_committed(
+        &regulatory(20001, "NoRegulatoryTradeIDs", None),
+        "venue.cfb",
+    );
+    let merge = merge.expect("one group, one counter");
+    assert!(merge.is_clean(), "{:?}", merge.dropped);
+    assert_eq!(
+        seeded.field_by_tag(20001).unwrap().as_fix().tag().unwrap(),
+        Some(1907)
+    );
+    let message = seeded
+        .definition(yggdryl::FixCategory::Components, "message4145")
+        .unwrap();
+    assert!(
+        message
+            .fields()
+            .iter()
+            .any(|member| member.as_fix().group() == Some("regulatorytradeids")),
+        "the venue's AE reads the committed group"
+    );
+}
+
+#[test]
+fn a_group_counted_by_a_count_s_alternate_tag_counts_the_held_group() {
+    // One venue spells NoRegulatoryTradeIDs with its own 20001, so 20001 is
+    // that count spelled with another number. Another counts the same group
+    // by an unnamed 20001: a count on a count's alternate is that count, so
+    // the group folds into the held one as the first venue's did.
+    let tree = cblock_tree(&[
+        ("a.cfb", &regulatory(20001, "NoRegulatoryTradeIDs", None)),
+        ("b.cfb", &regulatory(20001, "", None)),
+    ]);
+    let mut seeded = super::committed_registry().as_ref().clone();
+    let merge = seeded
+        .add_cfb_files(std::slice::from_ref(&tree), None)
+        .expect("one group, one counter");
+    assert!(merge.is_clean(), "{:?} {:?}", merge.dropped, merge.failed);
+    assert_eq!(merge.sources, 2);
+    let message = seeded
+        .definition(yggdryl::FixCategory::Components, "message4145")
+        .unwrap();
+    assert!(
+        message
+            .fields()
+            .iter()
+            .any(|member| member.as_fix().group() == Some("regulatorytradeids")),
+        "both venues' AE read the committed group"
+    );
+}
+
+#[test]
+fn a_group_held_under_its_name_on_another_counter_arrives_under_its_counter() {
+    // A venue names its own NoRegTradeIDs(20001) group RegulatoryTradeIDGrp,
+    // which the dictionary holds on 1907. Two counters are two groups: the
+    // venue's arrives named for its counter, and the message member reading
+    // it stands beside the one AE already reads, rather than being passed
+    // over. A second venue's AE reading the committed group folds into the
+    // first venue's message, and the two members stand side by side there.
+    let tree = cblock_tree(&[
+        ("a.cfb", &regulatory(1907, "NoRegulatoryTradeIDs", None)),
+        (
+            "b.cfb",
+            &regulatory(20001, "NoRegTradeIDs", Some("RegulatoryTradeIDGrp")),
+        ),
+    ]);
+    let mut seeded = super::committed_registry().as_ref().clone();
+    let merge = seeded.add_cfb_files(std::slice::from_ref(&tree), None);
+    let merge = merge.expect("two groups, two counters");
+    assert!(merge.is_clean(), "{:?}", merge.dropped);
+    let group = seeded
+        .definition(yggdryl::FixCategory::Groups, "regulatorytradeids_20001")
+        .expect("the venue's group under its counter");
+    assert_eq!(group.as_fix().counter().unwrap(), Some(20001));
+    let message = seeded
+        .definition(yggdryl::FixCategory::Components, "message4145")
+        .unwrap();
+    let groups: Vec<(&str, Option<&str>)> = message
+        .fields()
+        .iter()
+        .filter(|member| {
+            member
+                .as_fix()
+                .group()
+                .is_some_and(|name| name.starts_with("regulatorytradeids"))
+        })
+        .map(|member| (member.name(), member.as_fix().group()))
+        .collect();
+    assert_eq!(
+        groups,
+        [
+            ("regulatorytradeids", Some("regulatorytradeids")),
+            ("regulatorytradeids_20001", Some("regulatorytradeids_20001"))
+        ]
+    );
+}
+
+#[test]
+fn a_group_counted_by_another_field_s_alternate_tag_is_passed_over_and_the_field_kept() {
+    // One venue spells Text with its own 9001, so the dictionary reads 9001
+    // as Text's value. Another counts a group by an unnamed 9001: that
+    // contradicts the dictionary, so the counter is passed over and named -
+    // never Text retyped int32, nor the group moved onto 58, either of which
+    // would read every Text on the wire as a count.
+    let tree = cblock_tree(&[
+        ("a.cfb", &one_tag(9001, "Text")),
+        ("b.cfb", &regulatory(9001, "", None)),
+    ]);
+    let committed = super::committed_registry();
+    let mut seeded = committed.as_ref().clone();
+    let merge = seeded
+        .add_cfb_files(std::slice::from_ref(&tree), None)
+        .expect("one contradiction refuses nothing");
+    assert_eq!(merge.sources, 2);
+    assert!(merge.failed.is_empty(), "{:?}", merge.failed);
+    let text = seeded.field_by_tag(58).unwrap();
+    assert_eq!(text.dtype(), committed.field_by_tag(58).unwrap().dtype());
+    assert!(text.as_fix().tags().unwrap().contains(&9001));
+    let passed: Vec<String> = merge.dropped.iter().map(ToString::to_string).collect();
+    assert!(
+        passed
+            .iter()
+            .any(|drop| drop.contains("the alternate tag of text (58), held as utf8")),
+        "{passed:?}"
+    );
+    assert!(
+        seeded
+            .definitions(yggdryl::FixCategory::Groups)
+            .all(|group| group.as_fix().counter().unwrap() != Some(58)),
+        "no group is counted by Text"
+    );
+}
+
+#[test]
+fn a_time_of_day_against_a_held_instant_is_passed_over_saying_why() {
+    // MaturityTime(1079) is a TZTimeOnly, which the dictionary reads as an
+    // instant on the epoch day - and a bare clock as null. A CBlock has no
+    // word for it but `utc-time-only`, a time of day: the two read disjoint
+    // spellings, so the declaration stays a contradiction, and the reason
+    // says what each reading accepts.
+    let body = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary><vocabulary-tag name="1079" alt="MaturityTime" type="utc-time-only" /></vocabulary>
+    </cplugin-configuration>"#;
+    let (merge, seeded, _) = fold_committed(body, "SmartTrade_EventFeed.cfb");
+    let merge = merge.expect("one contradiction refuses nothing");
+    let passed: Vec<String> = merge.dropped.iter().map(ToString::to_string).collect();
+    assert_eq!(passed.len(), 1, "{passed:?}");
+    assert!(
+        passed[0].contains(r#"expected the datatype datetime64(ns,"UTC") stored for maturitytime (1079), got time64(ns): the stored instant reads a clock only with its offset, a bare time of day as null"#),
+        "{passed:?}"
+    );
+    assert_eq!(
+        seeded.field_by_tag(1079).unwrap().dtype(),
+        super::committed_registry()
+            .field_by_tag(1079)
+            .unwrap()
+            .dtype()
+    );
+}
+
+#[test]
+fn a_spelling_no_catalog_name_holds_is_folded_and_kept_as_the_display() {
+    // Bloomberg and Fidessa spell fields, normalizations and groups with
+    // spaces and brackets. A reference names a catalog name, so each folds
+    // to one - lower case, every run of anything else one `_` - and keeps
+    // the spelling as its display: no message is dropped over a name.
+    let body = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" />
+		<vocabulary-tag name="9701" alt="OTC Trade Flags" type="string" />
+		<vocabulary-tag name="9705" alt="(BloombergCustomTag05)" type="string" />
+		<vocabulary-tag name="9720" alt="No Fidessa Legs" type="integer" />
+		<vocabulary-tag name="9721" alt="FidessaLegRef" type="string" />
+		<vocabulary-tag name="9740" type="string" />
+		<vocabulary-tag name="9750" alt="???" type="string" />
+	</vocabulary>
+	<maps>
+		<map name="(BloombergCustomTag05)"><entry key="A" value="alpha" /></map>
+	</maps>
+	<grammar-binding type="8"><grammar>
+		<tag-constraint name="9701" />
+		<tag-constraint name="9705" />
+		<tag-constraint name="9740" />
+		<tag-constraint name="9750" />
+		<grammar rg-name="(Fidessa Legs)">
+			<tag-constraint name="9720" />
+			<tag-constraint name="9721" />
+		</grammar>
+	</grammar></grammar-binding>
+	<normalization-binding>
+		<normalization type="inbound">
+			<tag-normalization tag-name="Fidessa Msg Type">
+				<mapping-expression><expression value="$9740" /></mapping-expression>
+			</tag-normalization>
+		</normalization>
+	</normalization-binding>
+</cplugin-configuration>"#;
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(body), Some(DIALECT)));
+    let (registry, roots) = read.expect("a readable CBlock");
+    assert_eq!(roots.len(), 1, "{warnings:?}");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    for (tag, name, display) in [
+        (9701, "otc_trade_flags", Some("OTC Trade Flags")),
+        (9705, "bloombergcustomtag05", Some("(BloombergCustomTag05)")),
+        (9720, "no_fidessa_legs", Some("No Fidessa Legs")),
+        (9740, "fidessa_msg_type", Some("Fidessa Msg Type")),
+        (9750, "9750", Some("???")),
+    ] {
+        let field = registry.field_by_tag(tag).unwrap();
+        assert_eq!(
+            (field.name(), field.display()),
+            (name, display),
+            "tag {tag}"
+        );
+    }
+    // The map decodes the field its spelling names, filed under the name.
+    let set = registry
+        .codeset_of(registry.field_by_tag(9705).unwrap())
+        .expect("the set the map decodes");
+    assert_eq!(set.name(), "bloombergcustomtag05codeset");
+    assert_eq!(set.code_value("alpha"), Some("A"));
+    let group = registry
+        .definition(yggdryl::FixCategory::Groups, "fidessa_legs")
+        .expect("the group the rg-name names");
+    assert_eq!(group.display(), Some("(Fidessa Legs)"));
+    let message = registry.msgtype("8").unwrap().as_field();
+    assert!(
+        message
+            .fields()
+            .iter()
+            .any(|member| member.as_fix().field_ref() == Some("otc_trade_flags"))
+    );
+}
+
+#[test]
+fn a_message_declaring_one_group_in_several_shapes_takes_a_split_per_shape() {
+    use yggdryl::FixCategory::{Components, Groups};
+
+    // Message 8 declares Parties one way. Z declares them a second way at
+    // its root and a third inside its legs, and `b` twice more beside each
+    // other: every shape is a definition of its own, split for the message
+    // in the order it declares them, and no message is dropped.
+    let parties = |members: &str| {
+        format!(
+            r#"<grammar rg-name="Parties"><tag-constraint name="453" /><tag-constraint name="448" />{members}</grammar>"#
+        )
+    };
+    let body = format!(
+        r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" />
+		<vocabulary-tag name="453" alt="NoPartyIDs" type="integer" />
+		<vocabulary-tag name="448" alt="PartyID" type="string" />
+		<vocabulary-tag name="447" alt="PartyIDSource" type="char" />
+		<vocabulary-tag name="452" alt="PartyRole" type="integer" />
+		<vocabulary-tag name="555" alt="NoLegs" type="integer" />
+		<vocabulary-tag name="600" alt="LegSymbol" type="string" />
+	</vocabulary>
+	<grammar-binding type="8"><grammar>{plain}</grammar></grammar-binding>
+	<grammar-binding type="Z"><grammar>{source}
+		<grammar rg-name="Legs"><tag-constraint name="555" /><tag-constraint name="600" />{role}</grammar>
+	</grammar></grammar-binding>
+</cplugin-configuration>"#,
+        plain = parties(""),
+        source = parties(r#"<tag-constraint name="447" />"#),
+        role = parties(r#"<tag-constraint name="452" />"#),
+    );
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(&body), Some(DIALECT)));
+    let (registry, roots) = read.expect("a readable CBlock");
+    assert_eq!(roots.len(), 2, "{warnings:?}");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    for (name, member) in [
+        ("party", None),
+        ("party_message5a", Some("partyidsource")),
+        ("party_message5a_2", Some("partyrole")),
+    ] {
+        let component = registry.definition(Components, name).expect(name);
+        if let Some(member) = member {
+            assert!(component.get_field(member).is_some(), "{name} {member}");
+        }
+    }
+    assert!(
+        registry
+            .get_definition(Groups, "parties_message5a_2")
+            .is_some()
+    );
+}
+
+#[test]
+fn a_second_binding_of_one_wire_type_folds_into_the_first_member_by_member() {
+    // `S Inbound` and `S Outbound` are one message, S, bound twice with legs
+    // of two shapes on one counter. The second folds into the first: the
+    // legs S reads gain what only the second declared, and the message is
+    // one message rather than one binding dropped.
+    let body = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" />
+		<vocabulary-tag name="555" alt="NoLegs" type="integer" />
+		<vocabulary-tag name="600" alt="LegSymbol" type="string" />
+		<vocabulary-tag name="624" alt="LegSide" type="char" />
+		<vocabulary-tag name="687" alt="LegQty" type="float" />
+		<vocabulary-tag name="686" alt="LegPriceType" type="integer" />
+	</vocabulary>
+	<grammar-binding type="8"><grammar>
+		<grammar rg-name="Legs"><tag-constraint name="555" /><tag-constraint name="600" /><tag-constraint name="624" /></grammar>
+	</grammar></grammar-binding>
+	<grammar-binding type="S Inbound"><grammar>
+		<grammar rg-name="Legs"><tag-constraint name="555" /><tag-constraint name="600" /><tag-constraint name="687" /></grammar>
+	</grammar></grammar-binding>
+	<grammar-binding type="S Outbound"><grammar>
+		<grammar rg-name="Legs"><tag-constraint name="555" /><tag-constraint name="600" /><tag-constraint name="686" /></grammar>
+	</grammar></grammar-binding>
+</cplugin-configuration>"#;
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(body), Some(DIALECT)));
+    let (registry, roots) = read.expect("a readable CBlock");
+    assert_eq!(roots.len(), 3, "one root per binding: {warnings:?}");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let message = registry.msgtype("S").unwrap().as_field();
+    let legs = message
+        .fields()
+        .iter()
+        .find(|member| member.name() == "legs")
+        .expect("S reads its legs");
+    let group = registry
+        .definition(yggdryl::FixCategory::Groups, legs.as_fix().group().unwrap())
+        .unwrap();
+    let component = registry
+        .definition(
+            yggdryl::FixCategory::Components,
+            group.as_fix().component().unwrap(),
+        )
+        .unwrap();
+    for member in ["legsymbol", "legqty", "legpricetype"] {
+        assert!(component.get_field(member).is_some(), "{member}");
+    }
+    assert!(
+        component.get_field("legside").is_none(),
+        "8's legs stay 8's"
+    );
+}
+
+#[test]
+fn a_location_is_read_for_what_it_holds() {
+    // A folder holds the .cfb files directly inside it, a glob what it
+    // matches, a file itself - and nothing at all, nothing. Several
+    // locations are one fold, and a file reached twice folds once.
+    let root = yggdryl::local::LocalFolder::temporary()
+        .unwrap()
+        .path()
+        .unwrap()
+        .join(format!("yggdryl-cfb-locations-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("cblocks/nested")).unwrap();
+    std::fs::write(root.join("cblocks/MSFIX44.cfb"), one_tag(9001, "MsRef")).unwrap();
+    std::fs::write(root.join("cblocks/blpfix44.CFB"), one_tag(9002, "BlpRef")).unwrap();
+    std::fs::write(root.join("cblocks/notes.txt"), "not a dictionary").unwrap();
+    std::fs::write(
+        root.join("cblocks/nested/deep.cfb"),
+        one_tag(9003, "DeepRef"),
+    )
+    .unwrap();
+    std::fs::write(root.join("venue.xml"), one_tag(9004, "XmlRef")).unwrap();
+    let held = |path: &std::path::Path| yggdryl::holder::Holder::local(path).unwrap();
+    let tags = |registry: &FixRegistry| {
+        [9001, 9002, 9003, 9004].map(|tag| registry.get_field_by_tag(tag).is_some())
+    };
+    for (locations, sources, expected) in [
+        (
+            vec![held(&root.join("cblocks"))],
+            2,
+            [true, true, false, false],
+        ),
+        (
+            vec![held(&root.join("cblocks/*.cfb"))],
+            1,
+            [true, false, false, false],
+        ),
+        (
+            vec![held(&root.join("cblocks/**/*.cfb"))],
+            2,
+            [true, false, true, false],
+        ),
+        (
+            vec![held(&root.join("venue.xml"))],
+            1,
+            [false, false, false, true],
+        ),
+        (
+            vec![held(&root.join("nothing.cfb"))],
+            0,
+            [false, false, false, false],
+        ),
+        (
+            vec![
+                held(&root.join("cblocks")),
+                held(&root.join("cblocks/MSFIX44.cfb")),
+            ],
+            2,
+            [true, true, false, false],
+        ),
+    ] {
+        let mut registry = FixRegistry::new();
+        let merge = registry
+            .add_cfb_files(&locations, None)
+            .expect("a readable location");
+        assert_eq!(
+            (merge.sources, tags(&registry)),
+            (sources, expected),
+            "{locations:?}"
+        );
+    }
+    // A location holding no file beside one that holds some adds nothing,
+    // and says so rather than folding the rest without a word.
+    let (merge, warnings) = super::warned::during(|| {
+        FixRegistry::new().add_cfb_files(
+            &[
+                held(&root.join("cblocks")),
+                held(&root.join("cblocks/*.fix")),
+            ],
+            None,
+        )
+    });
+    assert_eq!(merge.expect("a readable location").sources, 2);
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("*.fix: holds no .cfb file")),
+        "{warnings:?}"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
 #[cfg(feature = "internals")]
 mod internal {
     use yggdryl::FixRegistry;
@@ -4342,17 +5157,21 @@ mod internal {
 
     #[test]
     fn a_stored_set_stating_one_name_twice_heals_when_a_cblock_folds_into_it() {
-        // What an earlier loader filed: one set naming two codes `none`,
+        // What an earlier loader filed: one set naming two codes `pending`,
         // which answers the spelling for neither.
         let mut registry = FixRegistry::new();
         create_codeset(
             &mut registry,
             "ordstatuscodeset",
-            r#"[{"value":"8","name":"none"},{"value":"9","name":"none"}]"#.to_owned(),
+            r#"[{"value":"8","name":"pending"},{"value":"9","name":"pending"}]"#.to_owned(),
         )
         .expect("a loader files what it is handed");
         let stored = registry.codeset("ordstatuscodeset").unwrap();
-        assert_eq!(stored.code_value("none"), None, "two codes, one spelling");
+        assert_eq!(
+            stored.code_value("pending"),
+            None,
+            "two codes, one spelling"
+        );
 
         // Folding a file that decodes the tag by that set is not refused: the
         // first code keeps the name, the second keeps its value and no name,
@@ -4369,16 +5188,41 @@ mod internal {
             .codeset_of(registry.field_by_tag(39).unwrap())
             .expect("the set tag 39 reads by");
         assert_eq!(set.name(), "ordstatuscodeset");
-        assert_eq!(set.code_name("8"), Some("none"));
+        assert_eq!(set.code_name("8"), Some("pending"));
         assert_eq!(set.code_name("9"), Some("9"), "the second keeps its value");
-        assert_eq!(set.code_value("none"), Some("8"));
+        assert_eq!(set.code_value("pending"), Some("8"));
         assert_eq!(set.code_value("new"), Some("0"));
         assert!(
             warnings
                 .iter()
                 .any(|warning| warning.contains("value \"9\" keeps no name")
-                    && warning.contains("\"none\" already names value \"8\"")),
+                    && warning.contains("\"pending\" already names value \"8\"")),
             "{warnings:?}"
         );
+    }
+}
+
+#[test]
+fn required_reads_every_spelling_a_flag_is_read_in_and_a_condition_stays_not_required() {
+    let condition = r#"required="$59 = '6' and empty($126)""#;
+    assert_eq!(CBLOCK.matches(condition).count(), 1);
+    for (spelled, nullable) in [
+        ("true", false),
+        ("TRUE", false),
+        ("yes", false),
+        ("Y", false),
+        ("on", false),
+        ("1", false),
+        ("false", true),
+        ("no", true),
+        ("0", true),
+        // A condition is no flag: it is read as not-required, never refused.
+        ("$59 = '6'", true),
+        ("", true),
+    ] {
+        let body = CBLOCK.replacen(condition, &format!(r#"required="{spelled}""#), 1);
+        let (_, roots) = parse(&body);
+        let fields = roots[0].dtype().as_fields().unwrap();
+        assert_eq!(fields[3].is_nullable(), nullable, "required={spelled:?}");
     }
 }

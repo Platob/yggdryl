@@ -16,11 +16,12 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use super::credentials::Credentials;
 use super::sso::Sso;
 use super::sts::{AssumedRole, CredentialSource};
+use crate::boolean::bool_from_text;
+use crate::duration::{DURATION_SPELLINGS, duration_from_text};
 use crate::{Error, Result};
 
 /// One entry of a section: a value, or the table an indented block spells.
@@ -183,9 +184,12 @@ impl Profile {
         text(&self.values, &key.to_ascii_lowercase())
     }
 
-    /// A boolean value, in the spellings the AWS tools accept.
+    /// A boolean value, read through the one table every flag in the crate
+    /// reads (`true`, `yes`, `y`, `on`, `1` and their opposites, in any
+    /// case); text it does not spell is false, as the AWS tools read it.
     pub fn flag(&self, key: &str) -> Option<bool> {
-        self.get(key).map(crate::auth::is_true)
+        self.get(key)
+            .map(|value| bool_from_text(value).unwrap_or(false))
     }
 
     /// A value of the indented table under `table`, such as `s3`.
@@ -281,12 +285,12 @@ impl Profile {
             role = role.with_mfa_serial(serial);
         }
         if let Some(seconds) = self.get("duration_seconds") {
-            let seconds: u64 = seconds.parse().map_err(|_| {
+            let duration = duration_from_text(seconds).ok_or_else(|| {
                 self.refusal(format!(
-                    "expected a number of seconds in duration_seconds, got {seconds:?}"
+                    "expected {DURATION_SPELLINGS} in duration_seconds, got {seconds:?}"
                 ))
             })?;
-            role = role.with_duration(Duration::from_secs(seconds));
+            role = role.with_duration(duration);
         }
         if let Some(token_file) = self.get("web_identity_token_file") {
             role = role.with_web_identity_token_file(token_file);

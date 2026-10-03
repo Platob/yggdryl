@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nounderlyingcomplexeventschedules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcomplexeventschedules",
-          "FIX:tag": "41750"
-        }
-      },
-      {
         "name": "underlyingcomplexeventschedules",
         "dtype": {
           "type": "null"
@@ -47,17 +36,6 @@
         }
       },
       {
-        "name": "nounderlyingcomplexeventperioddatetimes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcomplexeventperioddatetimes",
-          "FIX:tag": "41726"
-        }
-      },
-      {
         "name": "underlyingcomplexeventperioddatetimes",
         "dtype": {
           "type": "null"
@@ -65,17 +43,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingcomplexeventperioddatetimes"
-        }
-      },
-      {
-        "name": "nounderlyingcomplexeventaveragingobservations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcomplexeventaveragingobservations",
-          "FIX:tag": "41713"
         }
       },
       {

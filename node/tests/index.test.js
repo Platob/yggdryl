@@ -145,11 +145,14 @@ test('generic write mode is required and validated before input inspection', (t)
   const handle = new IOBase(path.join(root, 'generic-preflight.arrows'))
   handle.overwriteArrowTable(table())
 
-  for (const mode of [undefined, null, 'replace']) {
+  // A mode is read by the core's `IOMode` vocabulary, and one that writes
+  // nothing is refused as a write mode.
+  const refused = /mode must be|expected one of overwrite, append, merge|expected a write mode - overwrite, append, merge - got readonly/
+  for (const mode of [undefined, null, 'replace', 'readonly']) {
     const reader = BatchReader.from(table())
     assert.throws(
       () => handle.writeArrowReader(reader, mode),
-      /mode must be|unknown write mode/,
+      refused,
     )
     assert.equal(reader.consumed, false, `reader mode=${String(mode)}`)
 
@@ -163,11 +166,14 @@ test('generic write mode is required and validated before input inspection', (t)
       })
       assert.throws(
         () => handle[`write${suffix}`](untouched, mode),
-        /mode must be|unknown write mode/,
+        refused,
       )
       assert.equal(accesses, 0, `${suffix} mode=${String(mode)}`)
     }
   }
+  // Any case and surrounding blanks spell the same mode.
+  handle.writeArrowTable(table(), ' APPEND ')
+  assert.equal(rowsOf(handle).numRows, table().numRows * 2)
 })
 
 test('commit cadence has parity across every synchronous representation and intent', (t) => {

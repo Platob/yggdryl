@@ -30,28 +30,105 @@ fn classified(held: &FixMsg) -> Option<String> {
         .map(str::to_owned)
 }
 
-#[test]
-fn two_readings_of_one_instrument_merge_where_they_agree_and_forget_where_they_do_not() {
-    // Same category and group, so the attributes merge position by position.
-    assert_eq!(Cfi::merged("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
-    assert_eq!(Cfi::merged("ESVUFR", "ESXXXX").as_deref(), Some("ESVUFR"));
-    // Two voices, two answers: picking one would be a guess, so the position
-    // says it does not know.
-    assert_eq!(Cfi::merged("ESVUFR", "ESVTFR").as_deref(), Some("ESVXFR"));
-    assert_eq!(Cfi::merged("ESVUFR", "ESVUFR").as_deref(), Some("ESVUFR"));
+/// The wire a message re-emits, `|`-separated.
+fn wire(held: &FixMsg) -> String {
+    String::from_utf8(held.into_bytes(b'|')).expect("a text wire")
 }
 
 #[test]
-fn a_merge_across_a_different_category_or_group_is_no_merge_at_all() {
-    // The attributes of `ES` and `DB` mean different things, so merging them
-    // position by position would be reading one standard's answer under
-    // another's question.
-    assert_eq!(Cfi::merged("ESXXXX", "DBXXXX"), None, "two categories");
-    assert_eq!(Cfi::merged("ESXXXX", "EPXXXX"), None, "two groups");
-    // And a code that is not one is not half of one.
-    assert_eq!(Cfi::merged("ESXXXX", "nonsense"), None);
-    assert_eq!(Cfi::merged("", "ESXXXX"), None);
-    assert_eq!(Cfi::merged("ESXXX", "ESXXXX"), None, "five is not six");
+fn a_bridges_detailed_code_is_a_name_of_461_and_fills_the_unknowns_it_left() {
+    // `DETAILEDCFICODE` is one of `CFICode(461)`'s names: beside a coarse
+    // 461 it fills the `X` the code left, whichever arrives first, `#`-marked
+    // or not, and a coarse 461 repeated with the detail is the same fold. One
+    // statement stands - on the wire once, nothing kept in the metadata, no
+    // anomaly - and the market keeps it.
+    for line in [
+        &b"8=FIX.4.4|35=D|11=A1|55=AAPL|461=ESXXXX|DETAILEDCFICODE=ESVTFR|10=0|"[..],
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|DETAILEDCFICODE=ESVTFR|461=ESXXXX|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|461=ESXXXX|#DETAILEDCFICODE=ESVTFR|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|461=ESXXXX|461=ESVTFR|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|461=XXXXXX|DETAILEDCFICODE=ESVTFR|10=0|",
+    ] {
+        let held = enriched(line);
+        assert_eq!(
+            held.by_tag(461).expect("the classification").as_str(),
+            Some("ESVTFR"),
+            "{line:?}"
+        );
+        assert_eq!(classified(&held).as_deref(), Some("ESVTFR"), "{line:?}");
+        assert_eq!(
+            held.get_cficode().map(ToString::to_string).as_deref(),
+            Some("ESVTFR"),
+            "{line:?}"
+        );
+        assert_eq!(held.metadata().get("detailedcficode"), None, "{line:?}");
+        assert!(
+            held.anomalies().is_empty(),
+            "{line:?}: {:?}",
+            held.anomalies()
+        );
+        let wire = wire(&held);
+        assert_eq!(wire.matches("|461=").count(), 1, "{wire}");
+        assert!(wire.contains("|461=ESVTFR|"), "{wire}");
+        assert!(
+            !wire.to_ascii_lowercase().contains("detailedcficode"),
+            "{wire}"
+        );
+    }
+}
+
+#[test]
+fn a_row_nested_in_a_data_field_refines_the_lines_code_and_replaces_only_a_contradiction() {
+    // The row a frame carries in its `XmlData(213)` restates the message's
+    // fields; its statements of the classification fold into the line's as
+    // the line's own would, so a re-emitted capture reads back as it was
+    // read, and only a code contradicting the line's replaces it.
+    for (line, code) in [
+        (
+            &b"8=FIX.4.2|35=8|461=ESVTFR|213=#CFICODE=ESXXXX|#DETAILEDCFICODE=ESVTFR|CFICODE=ESXXXX|10=0|"[..],
+            "ESVTFR",
+        ),
+        (
+            b"8=FIX.4.2|35=8|461=ESXXXX|213=#DETAILEDCFICODE=ESVTFR|CFICODE=ESXXXX|10=0|",
+            "ESVTFR",
+        ),
+        (b"8=FIX.4.2|35=8|461=ESVUFR|213=CFICODE=ESNUFR|10=0|", "ESNUFR"),
+    ] {
+        let held = enriched(line);
+        assert_eq!(
+            held.by_tag(461).expect("the classification").as_str(),
+            Some(code),
+            "{line:?}"
+        );
+    }
+}
+
+#[test]
+fn a_detailed_code_contradicting_461_stays_beside_it_under_the_alias_rule() {
+    // Two different letters at one position are two instruments' attributes:
+    // the code of record stands, and the name that lost stays in the
+    // metadata beside an anomaly naming it.
+    let held = enriched(b"8=FIX.4.4|35=D|11=A1|55=AAPL|461=ESVUFR|DETAILEDCFICODE=ESNUFR|10=0|");
+    assert_eq!(
+        held.by_tag(461).expect("the classification").as_str(),
+        Some("ESVUFR")
+    );
+    assert_eq!(
+        held.metadata()
+            .get("detailedcficode")
+            .map(ToString::to_string)
+            .as_deref(),
+        Some("ESNUFR")
+    );
+    let anomalies: Vec<&str> = held.anomalies().iter().map(|held| held.field()).collect();
+    assert_eq!(anomalies, ["detailedcficode"]);
+    // Another group is no refinement either.
+    let held = enriched(b"8=FIX.4.4|35=D|11=A1|55=AAPL|461=ESXXXX|DETAILEDCFICODE=DBFNFB|10=0|");
+    assert_eq!(
+        held.by_tag(461).expect("the classification").as_str(),
+        Some("ESXXXX")
+    );
+    assert_eq!(held.anomalies().len(), 1, "{:?}", held.anomalies());
 }
 
 #[test]
@@ -129,10 +206,11 @@ fn the_column_states_fixs_code_and_the_event_holds_the_detailed_classification()
         Some("ESVTFR")
     );
 
-    // A bridge states the detailed code beside the coarse one: the column
-    // keeps what FIX stated, the event takes the detail.
+    // A bridge states the detailed code beside the coarse one: one of 461's
+    // names, folded into it, so the column and the event both hold the
+    // detail.
     let held = enriched(b"8=FIX.4.4|35=D|11=A1|55=AAPL|461=ESXXXX|DETAILEDCFICODE=ESVTFR|10=0|");
-    assert_eq!(classified(&held).as_deref(), Some("ESXXXX"));
+    assert_eq!(classified(&held).as_deref(), Some("ESVTFR"));
     assert_eq!(
         held.get_cficode().map(ToString::to_string).as_deref(),
         Some("ESVTFR")

@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nounderlyingpaymentstreamresetdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentstreamresetdatebusinesscenters",
-          "FIX:tag": "40970"
-        }
-      },
-      {
         "name": "underlyingpaymentstreamresetdatebusinesscenters",
         "dtype": {
           "type": "null"
@@ -99,17 +88,6 @@
         "metadata": {
           "FIX:field": "underlyingpaymentstreaminitialfixingdatebusinessdayconvention",
           "FIX:tag": "40599"
-        }
-      },
-      {
-        "name": "nounderlyingpaymentstreaminitialfixingdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentstreaminitialfixingdatebusinesscenters",
-          "FIX:tag": "40971"
         }
       },
       {
@@ -186,17 +164,6 @@
         "metadata": {
           "FIX:field": "underlyingpaymentstreamfixingdatebusinessdayconvention",
           "FIX:tag": "40606"
-        }
-      },
-      {
-        "name": "nounderlyingpaymentstreamfixingdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentstreamfixingdatebusinesscenters",
-          "FIX:tag": "40972"
         }
       },
       {
@@ -284,17 +251,6 @@
         "metadata": {
           "FIX:field": "underlyingpaymentstreamratecutoffdateoffsetdaytype",
           "FIX:tag": "40614"
-        }
-      },
-      {
-        "name": "nounderlyingpaymentstreamfixingdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentstreamfixingdates",
-          "FIX:tag": "42955"
         }
       },
       {

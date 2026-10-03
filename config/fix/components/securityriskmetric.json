@@ -157,17 +157,6 @@
         }
       },
       {
-        "name": "norelativevalues",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelativevalues",
-          "FIX:tag": "2529"
-        }
-      },
-      {
         "name": "relativevalues",
         "dtype": {
           "type": "null"

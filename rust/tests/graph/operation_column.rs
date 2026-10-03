@@ -2,17 +2,19 @@
 //! on the market is stated in beside the market's thirty-four, each
 //! stating back exactly the fact it read.
 
+use yggdryl::IdKey;
+
 use yggdryl::graph::{Operation, OperationColumn, OrderEvent};
-use yggdryl::{DataType, IdSource, IdType, Identifier, Identifiers, Scalar, TimeInForce};
+use yggdryl::{DataType, IdType, Identifier, Identifiers, Scalar, TimeInForce};
 
 /// One identifier of a plain holder: a value of `kind` from `fix`.
 fn identifier(kind: IdType, value: &str) -> Identifier {
-    Identifier::new(IdSource::Fix, kind, value).unwrap()
+    Identifier::new(IdKey::base(kind), value).unwrap()
 }
 
 /// One party: a value of `role` from `base`.
 fn party(role: IdType, value: &str) -> Identifier {
-    Identifier::new(IdSource::Base, role, value).unwrap()
+    Identifier::new(IdKey::base(role), value).unwrap()
 }
 
 #[test]
@@ -89,6 +91,41 @@ fn a_null_clears_and_nothing_stated_is_none() {
 }
 
 #[test]
+fn a_flag_cell_reads_as_every_flag_does_and_an_unreadable_cell_leaves_the_fact() {
+    let mut operation = OrderEvent::at(7);
+    for (cell, expected) in [
+        (Scalar::from(true), Some(true)),
+        (Scalar::from("yes"), Some(true)),
+        (Scalar::from("Y"), Some(true)),
+        (Scalar::from("1"), Some(true)),
+        (Scalar::from(false), Some(false)),
+        (Scalar::from("N"), Some(false)),
+        (Scalar::from(" off "), Some(false)),
+        (Scalar::from("true"), Some(true)),
+    ] {
+        OperationColumn::Tradable.record(&mut operation, &cell);
+        assert_eq!(operation.get_tradable(), expected, "{cell:?}");
+    }
+    // A cell no flag spells is incompatible, so the fact stands: it never
+    // clears, as the doc promises and as the market columns do.
+    operation.set_tradable(Some(false), true);
+    for cell in [Scalar::from("maybe"), Scalar::from(7_i64)] {
+        OperationColumn::Tradable.record(&mut operation, &cell);
+        assert_eq!(operation.get_tradable(), Some(false), "{cell:?}");
+    }
+    operation.set_ordqty(Some(yggdryl::Decimal::from_int(5)), true);
+    OperationColumn::OrdQty.record(&mut operation, &Scalar::from("many"));
+    assert_eq!(
+        operation.get_ordqty(),
+        Some(yggdryl::Decimal::from_int(5)),
+        "an unreadable quantity leaves the fact"
+    );
+    // Only a null clears.
+    OperationColumn::Tradable.record(&mut operation, &Scalar::Null);
+    assert_eq!(operation.get_tradable(), None);
+}
+
+#[test]
 fn operation_column_schema_has_one_owner_and_order() {
     let fields = OperationColumn::fields().unwrap();
     assert_eq!(fields.len(), 5);
@@ -110,7 +147,7 @@ fn operation_column_schema_has_one_owner_and_order() {
     );
     assert_eq!(
         OperationColumn::Identifiers.datatype(),
-        Identifiers::dtype("identifier"),
+        Identifiers::dtype(),
         "the identifiers are a sorted map from the key src:type to the source, type, value row"
     );
     assert_eq!(OperationColumn::Identifiers.name(), "identifiers");
@@ -123,10 +160,7 @@ fn operation_column_schema_has_one_owner_and_order() {
         OperationColumn::of_name("partyids"),
         Some(OperationColumn::PartyIds)
     );
-    assert_eq!(
-        OperationColumn::PartyIds.datatype(),
-        Identifiers::dtype("partyid")
-    );
+    assert_eq!(OperationColumn::PartyIds.datatype(), Identifiers::dtype());
     assert_eq!(OperationColumn::PartyIds.name(), "partyids");
     assert_eq!(OperationColumn::PartyIds.display(), "Party IDs");
     assert_eq!(OperationColumn::of_name("parties"), None);

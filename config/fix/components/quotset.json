@@ -58,17 +58,6 @@
         }
       },
       {
-        "name": "noquoteentries",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "noquoteentries",
-          "FIX:tag": "295"
-        }
-      },
-      {
         "name": "quotentrygrp",
         "dtype": {
           "type": "null"

@@ -47,9 +47,9 @@
 //!
 //! An absent input answers nothing, so the target stays unfilled; a
 //! condition that does not hold answers nothing the same way. A value the
-//! target's field refuses - an identifier whose check digit does not close,
-//! a spelling a code set does not read - is dropped with a deduplicated
-//! warning naming the field. The cost of a dropped value is a null column;
+//! target's field refuses - an identifier of the wrong width, a spelling a
+//! code set does not read - is dropped with a deduplicated warning naming
+//! the field. The cost of a dropped value is a null column;
 //! the cost of a guess is a wrong number nobody can tell from a sent one.
 //!
 //! # The pass never refuses the message
@@ -71,27 +71,27 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator, Market};
 use crate::logging::warning::warned;
-use crate::securityid::SecurityIdRegistry;
-use crate::{Error, Result, Scalar, Side, State, Uuid};
+use crate::{Error, IsinRegistry, Result, Scalar, Side, State, Uuid};
 
-use super::msg::FixMsg;
+use super::msg::{FixMsg, Viewed};
 use super::registry::FixRegistry;
 
 /// Fills what `msg` implies, leaving what it stated alone.
 ///
 /// Three steps in order, and the last step of every parse. The message is
-/// restated under the dictionary the registry holds; the crate's
-/// derivations fill what the message implies, to a fixpoint; and the
-/// component's identifier declaration fills the names the message goes by.
-/// Every answer lands
-/// where the fact lives - a typed fact on its holder, anything else in the
-/// row, typed by the dictionary's own field for the tag - so a derived
-/// value is indistinguishable from a stated one, and a value the field
-/// refuses, such as an identifier whose check digit does not close, is
-/// dropped with a warning. A declared identifier that cannot spell text is
-/// left out rather than allowed to refuse the message. A step the rebuild
-/// refuses leaves the message as the step found it, beside a warning.
-pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
+/// restated under the dictionary the registry holds; the crate's derivations
+/// fill what the message implies, to a fixpoint; and the component's identifier
+/// declaration fills the names the message goes by. Every answer lands where
+/// the fact lives - a typed fact on its holder, anything else in the row, typed
+/// by the dictionary's own field for the tag - so a derived value is
+/// indistinguishable from a stated one, and a value the field refuses, such as
+/// an identifier of the wrong width, is dropped with a warning. A declared
+/// identifier that cannot spell text is left out rather than allowed to refuse
+/// the message. A step the rebuild refuses leaves the message as the step found
+/// it, beside a warning. The views of the security identifiers the line stated,
+/// `viewed`, are resolved once all of that is filled, before the one settle
+/// ([`FixMsg::resolve_views`]).
+pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> FixMsg {
     // Restatement first, and not as a step a caller may skip: every
     // derivation reads a child by its tag or its canonical name, and a child
     // stored under an alias is invisible until it has been canonicalized.
@@ -103,26 +103,37 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
             "{error}"
         );
     }
-    enrich_restated(registry, held)
+    enrich_restated(registry, held, viewed)
 }
 
 /// [`enrich`] past its restatement, for a message whose row is already
 /// restated: a message redated keeps the row it was built with, and what
 /// its new clock can move is a derivation and its identity - never a rule,
 /// which reads the row and not the clock.
-pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
+pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> FixMsg {
     let mut held = msg;
     // The currency pair a symbol names is detected first, so the rules read
     // the cells it fills.
     detect_forex(registry, &mut held);
-    enrich_detected(held)
+    enrich_detected(registry, held, viewed)
 }
 
 /// [`enrich_restated`] past FX detection: the rules to their fixpoint, then
-/// the one settle.
-fn enrich_detected(msg: FixMsg) -> FixMsg {
+/// the one settle. A `Symbol(55)` a rule fills is detected as a stated one
+/// is: landed alone and detected before any other rule reads the cells its
+/// detection fills, the rules then run over what detection filled.
+fn enrich_detected(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> FixMsg {
     let mut held = msg;
-    super::native_derivations::fill_all(&mut held);
+    let landed = super::native_derivations::derive_all(&held);
+    if let Some(symbol) = landed.iter().find(|(tag, _)| *tag == 55).cloned()
+        && held.set_each([symbol]).is_ok()
+    {
+        detect_forex(registry, &mut held);
+        super::native_derivations::fill_all(&mut held);
+    } else {
+        super::native_derivations::land(&mut held, landed);
+    }
+    held.resolve_views(viewed, false);
     // Settled once, at the end: a built message arrives unsettled, a
     // restatement leaves it so and the writes above land unsettled - so
     // every message is settled here, once, after everything the pass wrote.
@@ -157,7 +168,7 @@ fn detect_forex(registry: &FixRegistry, msg: &mut FixMsg) -> bool {
 pub(super) fn redated(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
     let mut held = msg;
     if detect_forex(registry, &mut held) || super::native_derivations::lands_anything(&held) {
-        return enrich_detected(held);
+        return enrich_detected(registry, held, Viewed::default());
     }
     held.settle_clock();
     held
@@ -221,12 +232,9 @@ fn delivery_key(message: &FixMsg) -> DeliveryKey {
         };
     };
     let replay = header.possdupflag() == Some(true)
-        || message.get_by_tag(97).is_some_and(|value| {
-            value.as_bool() == Some(true)
-                || value
-                    .as_str()
-                    .is_some_and(|value| value.eq_ignore_ascii_case("Y"))
-        });
+        || message
+            .get_by_tag(97)
+            .is_some_and(|value| crate::boolean::bool_of(&value) == Some(true));
     let sending_time = if header.stated_sendingtime() {
         header.sendingtime()
     } else {
@@ -267,19 +275,21 @@ fn session_event_key(message: &FixMsg) -> Option<SmolStr> {
         return None;
     }
     // One delivery the parse split holds several messages - a report and
-    // its execution, a trade and its sided executions, a quote and its
-    // sided quotes - which are never observations of one another: the
-    // category, the side and an execution's own chain keep them apart.
+    // its execution, a trade and its sided executions - which are never
+    // observations of one another: the category, the side a sided kind is
+    // keyed by and an execution's own chain keep them apart. An unsided
+    // message's side is a tag, which keys nothing.
     let identifier = message.session_event_identifier()?;
     let chain = if message.is_execution() {
         message.get_crosscode()
     } else {
         ""
     };
+    let kind = message.msgcat();
     Some(format_smolstr!(
         "{identifier}\u{1f}{}\u{1f}{}\u{1f}{chain}",
-        message.msgcat().code(),
-        message.get_side().code()
+        kind.code(),
+        kind.stored_side(message.get_side()).code()
     ))
 }
 
@@ -360,11 +370,21 @@ fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
     }
     held.others.push(held.message);
     held.others.sort_by(reference_order);
+    // Every observation's sources, named once: a fold unions them, and a
+    // source reaches neither the code nor the identity, so the reference
+    // takes the whole union before the first fold and no fold below finds
+    // one to add - or settles again for one.
+    let sources: Vec<crate::Uuid> = held
+        .others
+        .iter()
+        .flat_map(|observation| observation.get_srcuuids().iter().copied())
+        .collect();
     let mut observations = held.others.into_iter();
     // The first is the reference, chosen once over every observation:
     // each fold keeps the earliest recording, so deciding again at
     // every pair would rank the rest against that instead.
     let mut reference = observations.next().expect("one session-event observation");
+    reference.set_srcuuids(sources);
     // The distinct contents already merged: a capture logs one event
     // at every hop, mostly as the same row, and merging a content
     // again fills nothing - so a repeat folds its facts alone.
@@ -397,14 +417,17 @@ fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
 
 /// A message stating no `Side(54)` restated with the side of the chain it
 /// follows, answering whether it was: the walk joined it to the one live
-/// side of its order - where its kind is sided, the side its cross code is
-/// stored under - so its content states it too, and a row read back, a book
+/// side of its order - a sided kind's, the side its cross code is stored
+/// under - so its content states it too, and a row read back, a book
 /// folding it, reads the side the walk gave it. A side the message states
-/// always stands, and a chain stating none lends none. A write the rebuild
-/// refuses leaves the side the message stated, `UNKN`, beside a warning.
+/// always stands, a chain stating none lends none, and an unsided chain - a
+/// quote's, whose side is each statement's own tag - lends none either. A
+/// write the rebuild refuses leaves the side the message stated, `UNKN`,
+/// beside a warning.
 fn inherit_side(current: &mut FixMsg, previous: &FixMsg) -> bool {
     let side = previous.get_side();
-    if side == Side::Unknown
+    if !previous.is_sided()
+        || side == Side::Unknown
         || current.get_side() != Side::Unknown
         || current.get_by_tag(54).is_some_and(|held| !held.is_null())
     {
@@ -554,9 +577,16 @@ impl Element for LifecycleMessage {
 }
 
 impl Event for LifecycleMessage {
+    /// A twin is the live message's arrival again, so what following wrote
+    /// into the live one's content - the order links, the side - is
+    /// written into the twin's too, before it restates: the two digest
+    /// alike.
     fn restating(self, live: &Self) -> Self {
+        let mut message = self.message;
+        inherit_order_links(&mut message, &live.message);
+        inherit_side(&mut message, &live.message);
         Self {
-            message: self.message.restating(&live.message),
+            message: message.restating(&live.message),
         }
     }
 
@@ -637,11 +667,38 @@ impl Event for LifecycleMessage {
     }
 }
 
+/// The instrument registry a walk learns into and fills from: its own,
+/// starting empty - a second walk learns nothing the first did - or one a
+/// codec shares across the walks it runs one after another, locked once per
+/// message.
+enum Codes {
+    Walk(IsinRegistry),
+    Shared(Arc<Mutex<IsinRegistry>>),
+}
+
+impl Codes {
+    /// Learns what `message` states about its instrument, then fills what
+    /// it left unstated ([`IsinRegistry::enrich`]).
+    fn enrich(&mut self, message: &mut FixMsg) {
+        match self {
+            Self::Walk(registry) => {
+                registry.enrich(message);
+            }
+            Self::Shared(registry) => {
+                registry
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .enrich(message);
+            }
+        }
+    }
+}
+
 /// Sorted messages prepared in lifecycle order: retransmissions removed and
 /// missing instrument codes learned only from messages already observed.
 struct Prepared<I> {
     source: Intake<I>,
-    codes: SecurityIdRegistry,
+    codes: Codes,
     /// At most one key per distinct delivery in this already collected finite
     /// capture. A late retransmission must remain a repeat after any number of
     /// intervening deliveries; retaining only a recent window loses that fact.
@@ -649,15 +706,13 @@ struct Prepared<I> {
 }
 
 impl<I> Prepared<I> {
-    fn new(source: Intake<I>) -> Self {
+    fn new(source: Intake<I>, registry: Option<Arc<Mutex<IsinRegistry>>>) -> Self {
         // Reserve a small capture once, without reserving a giant repeated
         // capture's upper bound. Growth beyond this hint follows unique keys.
         let capacity = source.len_hint().min(4_096);
-        // A bridge's instrument key states a listing - `dbi;ISIN_MIC_CCY` -
-        // and is no association of the ISIN alone.
         Self {
             source,
-            codes: SecurityIdRegistry::with_listings([crate::IdType::InstrumentId]),
+            codes: registry.map_or_else(|| Codes::Walk(IsinRegistry::new()), Codes::Shared),
             seen: HashSet::with_capacity(capacity),
         }
     }
@@ -672,7 +727,7 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Prepared<I> {
             if !self.seen.insert(delivery_key(&message)) {
                 continue;
             }
-            crate::securityid::enrich(&mut self.codes, &mut message);
+            self.codes.enrich(&mut message);
             return Some(message.into());
         }
     }
@@ -921,8 +976,16 @@ impl<I: Iterator<Item = Result<FixMsg>>> Walked<I> {
     /// The walk of `source`: collected and sorted whole, or, where `sorted`
     /// says the source is already in instant order, read as it comes and
     /// held one hour at a time ([`Hourly`]); a positive `window_ns` yields
-    /// each identity once within that span of event time ([`Window`]).
-    pub(super) fn new(source: I, snapshot_ns: i64, sorted: bool, window_ns: i64) -> Self {
+    /// each identity once within that span of event time ([`Window`]). The
+    /// instruments are learned into `registry` where one is shared, else
+    /// into the walk's own.
+    pub(super) fn new(
+        source: I,
+        snapshot_ns: i64,
+        sorted: bool,
+        window_ns: i64,
+        registry: Option<Arc<Mutex<IsinRegistry>>>,
+    ) -> Self {
         let mut failure = None;
         let mut reading = None;
         let intake = if sorted {
@@ -954,7 +1017,7 @@ impl<I: Iterator<Item = Result<FixMsg>>> Walked<I> {
             Intake::Whole(messages.into_iter())
         };
         Self {
-            walk: EventIterator::new(Prepared::new(intake), true)
+            walk: EventIterator::new(Prepared::new(intake, registry), true)
                 .with_snapshot_ns(snapshot_ns)
                 .with_placing(true),
             window: Window::new(window_ns),
@@ -1016,6 +1079,6 @@ pub mod internals {
             return msg;
         }
         let registry = Arc::clone(msg.registry());
-        super::enrich_restated(&registry, msg)
+        super::enrich_restated(&registry, msg, Default::default())
     }
 }

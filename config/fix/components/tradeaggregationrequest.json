@@ -113,17 +113,6 @@
         }
       },
       {
-        "name": "noorders",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noorders",
-          "FIX:tag": "73"
-        }
-      },
-      {
         "name": "orderaggregationgrp",
         "dtype": {
           "type": "null"
@@ -131,17 +120,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "orderaggregationgrp"
-        }
-      },
-      {
-        "name": "noexecs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noexecs",
-          "FIX:tag": "124"
         }
       },
       {
@@ -173,17 +151,6 @@
         "nullable": false,
         "metadata": {
           "FIX:component": "instrument"
-        }
-      },
-      {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
         }
       },
       {

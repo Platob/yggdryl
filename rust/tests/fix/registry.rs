@@ -151,9 +151,7 @@ mod lenient {
         registry.insert(group).unwrap();
         let mut group = registry.field_by_name("Parties").unwrap().clone();
         group.as_fix_mut().set_group("Parties").unwrap();
-        let mut counter = registry.field(453).unwrap().clone();
-        counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
-        let mut message = StructType::from_fields([counter, group])
+        let mut message = StructType::from_fields([group])
             .map(DataType::from)
             .unwrap()
             .required_field("NewOrderSingle");
@@ -468,7 +466,7 @@ mod lenient {
         assert!(!registry.add_field(order).unwrap());
         let order = registry.msgtype("D").unwrap();
         assert_eq!(order.as_str(), "D");
-        assert_eq!(names(order.as_field()), ["NoPartyIDs", "Parties", "Text"]);
+        assert_eq!(names(order.as_field()), ["Parties", "Text"]);
     }
 
     #[test]
@@ -778,6 +776,45 @@ mod lenient {
                 .dtype(),
             &DataType::Int32
         );
+    }
+
+    #[test]
+    fn a_member_reading_an_arrival_passed_over_onto_a_holder_reads_the_name_it_takes_later() {
+        // The target holds 9001 under no name. The source holds two fields on
+        // it - `Flag`, a boolean the held count contradicts, as the tag's
+        // holder, then `VenueRef`, text restating the count, beside it - and
+        // a component reading `Flag`. Flag is passed over onto the holder and
+        // VenueRef then names it, so the member reads the holder under that
+        // name rather than the bare tag nothing answers to by the time the
+        // definitions fold, and the source still folds.
+        let mut target = FixRegistry::from_fields([tagged("9001", 9001, DataType::Int32)]).unwrap();
+        let mut source = FixRegistry::from_fields([
+            tagged("Flag", 9001, DataType::Boolean),
+            tagged("VenueRef", 9001, DataType::utf8()),
+        ])
+        .unwrap();
+        let mut member = source.field_by_name("Flag").unwrap().clone();
+        member.as_fix_mut().set_field_ref("Flag").unwrap();
+        source
+            .insert(
+                StructType::from_fields([member])
+                    .map(DataType::from)
+                    .unwrap()
+                    .required_field("Venue"),
+            )
+            .unwrap();
+
+        let merge = target
+            .merge_with(&source)
+            .expect("one contradiction refuses nothing");
+        let passed: Vec<String> = merge.dropped.iter().map(ToString::to_string).collect();
+        assert_eq!(passed.len(), 1, "{passed:?}");
+        assert!(passed[0].contains("at Flag"), "{passed:?}");
+        let held = target.field(9001).unwrap();
+        assert!(held.name().eq_ignore_ascii_case("VenueRef"), "{held:?}");
+        assert_eq!(held.dtype(), &DataType::Int32);
+        let venue = target.field_by_name("Venue").unwrap();
+        assert_eq!(venue.fields()[0].as_fix().field_ref(), Some("venueref"));
     }
 
     #[test]
@@ -1452,7 +1489,7 @@ mod lenient {
         assert!(!registry.add_field(restated).unwrap());
         let order = registry.msgtype("D").unwrap();
         assert_eq!(order.name(), "NewOrderSingle");
-        assert_eq!(names(order.as_field()), ["NoPartyIDs", "Parties", "Text"]);
+        assert_eq!(names(order.as_field()), ["Parties", "Text"]);
         assert_eq!(super::msgtypes(&registry).count(), 2);
         assert_eq!(
             FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
@@ -1473,10 +1510,7 @@ mod lenient {
         assert_eq!(target.msgtype("D").unwrap().name(), "NewOrderSingle");
         assert_eq!(target.msgtype("VenueOrder").unwrap().as_str(), "D");
         assert_eq!(super::msgtypes(&target).count(), 2);
-        assert_eq!(
-            names(target.msgtype("D").unwrap().as_field()),
-            ["NoPartyIDs", "Parties"]
-        );
+        assert_eq!(names(target.msgtype("D").unwrap().as_field()), ["Parties"]);
     }
 
     #[test]

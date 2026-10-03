@@ -36,17 +36,6 @@
         }
       },
       {
-        "name": "nobidcomponents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nobidcomponents",
-          "FIX:tag": "420"
-        }
-      },
-      {
         "name": "bidcomprspgrp",
         "dtype": {
           "type": "null"

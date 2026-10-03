@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nostreamcommoditysettltimes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreamcommoditysettltimes",
-          "FIX:tag": "41286"
-        }
-      },
-      {
         "name": "streamcommoditysettltimes",
         "dtype": {
           "type": "null"

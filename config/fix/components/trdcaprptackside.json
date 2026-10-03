@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -124,17 +113,6 @@
         }
       },
       {
-        "name": "nolimitamts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolimitamts",
-          "FIX:tag": "1630"
-        }
-      },
-      {
         "name": "limitamts",
         "dtype": {
           "type": "null"
@@ -164,17 +142,6 @@
         "metadata": {
           "FIX:field": "oddlot",
           "FIX:tag": "575"
-        }
-      },
-      {
-        "name": "noclearinginstructions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noclearinginstructions",
-          "FIX:tag": "576"
         }
       },
       {
@@ -385,17 +352,6 @@
         }
       },
       {
-        "name": "nocommissions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocommissions",
-          "FIX:tag": "2639"
-        }
-      },
-      {
         "name": "commissions",
         "dtype": {
           "type": "null"
@@ -582,17 +538,6 @@
         }
       },
       {
-        "name": "nocontamts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocontamts",
-          "FIX:tag": "518"
-        }
-      },
-      {
         "name": "contamts",
         "dtype": {
           "type": "null"
@@ -603,17 +548,6 @@
         }
       },
       {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
-        }
-      },
-      {
         "name": "stipulations",
         "dtype": {
           "type": "null"
@@ -621,17 +555,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "stipulations"
-        }
-      },
-      {
-        "name": "nomiscfees",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomiscfees",
-          "FIX:tag": "136"
         }
       },
       {
@@ -653,17 +576,6 @@
         "metadata": {
           "FIX:field": "exchangerule",
           "FIX:tag": "825"
-        }
-      },
-      {
-        "name": "nosettldetails",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosettldetails",
-          "FIX:tag": "1158"
         }
       },
       {
@@ -809,17 +721,6 @@
         }
       },
       {
-        "name": "noallocs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocs",
-          "FIX:tag": "78"
-        }
-      },
-      {
         "name": "trdallocgrp",
         "dtype": {
           "type": "null"
@@ -950,17 +851,6 @@
         }
       },
       {
-        "name": "nosidetrdregts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosidetrdregts",
-          "FIX:tag": "1016"
-        }
-      },
-      {
         "name": "sidetrdregts",
         "dtype": {
           "type": "null"
@@ -993,17 +883,6 @@
         }
       },
       {
-        "name": "norelatedtrades",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedtrades",
-          "FIX:tag": "1855"
-        }
-      },
-      {
         "name": "relatedtrades",
         "dtype": {
           "type": "null"
@@ -1011,17 +890,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "relatedtrades"
-        }
-      },
-      {
-        "name": "norelatedpositions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedpositions",
-          "FIX:tag": "1861"
         }
       },
       {

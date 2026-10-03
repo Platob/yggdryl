@@ -192,7 +192,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let files = tree(&body);
     let mut globbed = FixRegistry::new();
     let merge = globbed
-        .add_cfb_files(files.glob("*.cfb", false).expect("a glob"), None)
+        .add_cfb_files(std::slice::from_ref(&files), None)
         .expect("every file folds");
     assert_eq!(merge.sources, FILES);
     assert!(merge.is_clean(), "{:?}", merge.dropped);
@@ -228,7 +228,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter_batched(
             FixRegistry::new,
             |mut held| {
-                held.add_cfb_files(files.glob("*.cfb", false).expect("a glob"), None)
+                held.add_cfb_files(std::slice::from_ref(&files), None)
                     .expect("every file folds")
             },
             BatchSize::LargeInput,

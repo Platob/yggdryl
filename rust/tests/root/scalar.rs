@@ -484,6 +484,24 @@ mod values {
     }
 
     #[test]
+    fn a_mapping_in_ascending_key_order_is_unique_and_a_repeat_after_it_is_named() {
+        // Strictly ascending keys are distinct by that alone, short or wide;
+        // the key that repeats the last of them is refused at its own index.
+        for len in [4_u64, 128] {
+            let mut entries = (0..len)
+                .map(|index| (Scalar::from(index), Scalar::from(index)))
+                .collect::<Vec<_>>();
+            assert!(Scalar::from_mapping(entries.clone()).is_ok(), "{len}");
+            entries.push((Scalar::from(len - 1), Scalar::Null));
+            let refused = Scalar::from_mapping(entries).unwrap_err();
+            assert!(
+                matches!(refused, yggdryl::Error::Codec { position, .. } if position == usize::try_from(len).unwrap()),
+                "{len}: {refused}"
+            );
+        }
+    }
+
+    #[test]
     fn collection_iteration_matches_python_sequence_and_mapping_semantics() {
         let sequence = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]);
         assert_eq!(
@@ -1754,17 +1772,18 @@ fn truthiness_reads_the_text_a_column_spells_false_with() {
         );
     }
 
-    // The cast reader stays strict - this coercion does not widen it.
-    assert!(
-        yggdryl::DataType::Boolean
-            .scalar(Scalar::from("off"))
-            .is_err()
-    );
+    // The value door reads what a column cast reads, and refuses what no
+    // boolean spells; this coercion still answers for any text.
     assert_eq!(
         yggdryl::DataType::Boolean
-            .scalar(Scalar::from("false"))
+            .scalar(Scalar::from("off"))
             .unwrap(),
         Scalar::from(false)
+    );
+    assert!(
+        yggdryl::DataType::Boolean
+            .scalar(Scalar::from("n/a"))
+            .is_err()
     );
 }
 

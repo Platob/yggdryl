@@ -36,17 +36,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -123,17 +112,6 @@
         }
       },
       {
-        "name": "nomdentrytypes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nomdentrytypes",
-          "FIX:tag": "267"
-        }
-      },
-      {
         "name": "mdentrytypes",
         "dtype": {
           "type": "null"
@@ -141,17 +119,6 @@
         "nullable": false,
         "metadata": {
           "FIX:group": "mdentrytypes"
-        }
-      },
-      {
-        "name": "nomarketsegments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomarketsegments",
-          "FIX:tag": "1310"
         }
       },
       {
@@ -165,17 +132,6 @@
         }
       },
       {
-        "name": "norelatedsym",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "norelatedsym",
-          "FIX:tag": "146"
-        }
-      },
-      {
         "name": "instrmtmdreqgrp",
         "dtype": {
           "type": "null"
@@ -183,17 +139,6 @@
         "nullable": false,
         "metadata": {
           "FIX:group": "instrmtmdreqgrp"
-        }
-      },
-      {
-        "name": "notradingsessions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradingsessions",
-          "FIX:tag": "386"
         }
       },
       {

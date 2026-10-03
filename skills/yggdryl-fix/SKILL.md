@@ -18,9 +18,9 @@ Each message states its `msgcat` - the `MarketDataKind` its type files under
 (`ORDR`, `QUOT`, `EXEC`, `TRAD`, `BOOK`, the batches `ORDB`, `QUOB`, `TRDB`,
 ...) - and the parse splits what it reports once: an execution report is its
 order's report (`ORDR`, `QUOT` naming a `QuoteID`), a filling one adds its
-`EXEC` message, a trade one execution per side, a two-sided quote a `BUYS` and
-a `SELL` quote, a batch one message per entry. A lifecycle chains within one
-`msgcat`, so a fill never follows its order.
+`EXEC` message, a trade one execution per side, a batch one message per
+entry. A quote is one message holding both its legs. A lifecycle chains
+within one `msgcat`, so a fill never follows its order.
 
 Hold two speeds apart. **Decoding is per message**: each frame is parsed on its
 own, in parallel (`threads`), answers in input order, and never reads another
@@ -31,7 +31,7 @@ capture, sorts it by event time, folds duplicate deliveries, places each
 message by content among the messages of its instant (a content repeated
 there keeps its place), chains it to the live one of its order within its own `msgcat` (`crossuuid`,
 `prevuuid`; an order and an execution under one cross code are two chains), takes every bridge `metadata` key of the chain it does not state
-and the ids its dictionary follows, and learns instrument associations.
+and the ids its dictionary follows, each with its parents, and learns instrument associations.
 Nothing chains unasked.
 
 The dictionary is data, not code: the committed FIX Latest dictionary
@@ -53,7 +53,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | a field's code set | `registry.codeset_of(field)`, `set_codeset(name, &[FixCode])?` | `codeset_of(field)`, `set_codeset(name, [{...}])` | `codesetOf(field)`, `setCodeset(name, [...])` |
 | persist a dictionary | `registry.commit(&mut folder)?` | `registry.commit(path)` | `registry.commit(path)` |
 | read a venue CBlock (`.cfb`) | `FixRegistry::from_cfb_file(&LocalFile::new(path)?, Some("venue"))?` | `FixRegistry.from_cfb_file(path, "venue")` | `fix.FixRegistry.fromCfbFile(path, 'venue')` |
-| fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `registry.add_cfb_files(folder.glob("*.cfb", false)?, None)?`, `merge_with(&other)?` - each answering a `FixMerge` | `registry.add_cfb_file(path)`, `add_cfb_files(folder, "*.cfb")` - answering a `dict` | not bound (`yggdryl fix ingest`) |
+| fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `registry.add_cfb_files(&[Holder::local("cblocks")?], None)?` (a file, a folder or a glob each), `merge_with(&other)?` - each answering a `FixMerge` | `registry.add_cfb_file(path)`, `add_cfb_files(folder)` or `add_cfb_files(folder / "*.cfb")` - answering a `dict` | not bound (`yggdryl fix ingest`) |
 | a codec for a run | `FixCodec::new(Arc::new(registry)).with_threads(4)` | `FixCodec(registry, threads=4)` | `new fix.FixCodec(registry, { threads: 4 })` |
 | read only some types | `.with_include_msgtypes(["D", "8"])` | `FixCodec(r, include_msgtypes=[...])` | `{ includeMsgtypes: [...] }` |
 | sniff a line's type, no dictionary | `FixCodec::infer_msgtype_bytes(bytes)` | `FixCodec.infer_msgtype_bytes(bytes)` | `fix.FixCodec.inferMsgtypeBytes(buffer)` |
@@ -78,9 +78,10 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | batches back to the wire | `codec.write_arrow_reader(reader, &mut sink)?` | `codec.write_arrow_reader(reader, sink)` | `codec.writeArrowReader(reader, { write })` |
 | chain order lifecycles | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` |
 | chain rows already in Arrow | `codec.lifecycle_arrow_reader(reader)?` | `codec.lifecycle_arrow_reader(reader)` | `codec.lifecycleArrowReader(reader)` |
+| share what lifecycles learn about instruments | `codec.with_isin_registry(Arc::new(Mutex::new(IsinRegistry::from_handle(&file)?)))` | `FixCodec(registry, isin_registry=IsinRegistry.from_handle(path))` | `new fix.FixCodec(registry, { isinRegistry: IsinRegistry.fromHandle(path) })` |
 | one message as graph leaves | `msg.market_data()?`, `msg.into_market_data()?` | `msg.market_data()` | `msg.marketData()` |
 | sorted market data | `codec.market_data(messages)` | `codec.market_data(messages)` | `codec.marketData(messages)` |
-| books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0)?` | `codec.book_arrow_reader(msgs, snapshot_millis=0)` | `codec.bookArrowReader(msgs, 0)` |
+| books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0, None)?`, `Some(&filter)` to narrow | `codec.book_arrow_reader(msgs, snapshot_millis=0, filter=None)` | `codec.bookArrowReader(msgs, 0, filter)` |
 | sorted market data as `marketdata` rows | `codec.market_arrow_reader(msgs)?` | `codec.market_arrow_reader(messages)` | `codec.marketArrowReader(messages)` |
 | FIX rows in Arrow to `marketdata` rows | `codec.market_data_arrow_reader(reader)?` | `codec.market_data_arrow_reader(reader)` | `codec.marketDataArrowReader(reader)` |
 | manage a dictionary from a shell | `yggdryl fix --root <dir> ...` ([cli](references/cli.md)) | same binary, shipped in the wheel | same binary |
@@ -119,10 +120,17 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    consumer keyed by `curruuid` needs no dedup of its own.
 6. Market hand-off is `market_data(lifecycle(messages))`: the walk settles
    each message, the sorted door orders every leaf by the instant a book folds
-   it. One message is one leaf - an order, a one-sided quote, an execution -
-   and a `W`/`X` message one per entry; a trade, a batch and a two-sided quote
-   reach the book as the messages their parse split off, never twice.
-   `book_arrow_reader` does not sort - an operation dated before its book is
+   it. One message is one leaf - an order, a quote holding both its legs, an
+   execution - and a `W`/`X` message one per entry; a trade and a batch reach
+   the book as the messages their parse split off, never twice. An
+   `ExecutionReport` (`8`) of no fill is its order's leaf (its quote's, naming
+   a `QuoteID(117)`), so a venue's cancel, reject or expiry moves the book; an
+   `ExecutionAcknowledgement` (`BN`) and a `DontKnowTrade` (`Q`) answer no
+   leaf - they state no fact of the order. `book_arrow_reader` folds orders,
+   quotes and `W`/`X` entries, pruning executions and trades before a book
+   sees them, one book per book key - the instrument's ISIN, else the ticker,
+   else `XX0000000000` - and its `filter` narrows what folds, never admitting
+   an execution back. It does not sort - an operation dated before its book is
    left out with a warning - and neither door runs the lifecycle for you. For a capture already landed as FIX rows,
    `market_data_arrow_reader` reads each row as its message (no line parsed
    again) and sorts its leaves; it runs no lifecycle either, and a
@@ -155,22 +163,34 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     integer against an enum, a date against a datetime (a CBlock's `float`
     against `decimal128`, `string` against `ccy`) - folds under it and is
     counted in `restated`; a contradiction (`boolean` against `int32`, a
-    time of day against a timestamp), a member a held definition declares in
-    another shape and a group on another counter are passed over, each named
-    in the answered `FixMerge` rather than refusing the whole source. A field
-    named by nothing but its tag (a CBlock tag no `alt` or binding names) is
-    unnamed: one on a held tag folds into the holder, and the first name to
-    arrive on its tag names it. A field on a held tag under another name
-    stands beside the holder, and neither learns the other's name. A fold
-    refuses whole only where nothing is left to keep (malformed XML or JSON,
-    a source whose own catalog does not validate); what a CBlock states that
-    the reader cannot keep is dropped, or kept another way (an unread type
-    word types the tag string), with a `log` warning naming the line, the
-    column, the element and what the reader did instead. `add_cfb_files`
-    folds in ascending URL order, so where two files type one tag two ways the
-    first-sorting file's declaration is held, and a code set only widens (the
-    held name wins a shared value; a new value under a taken name stays
-    unnamed).
+    time of day against an instant), a member a held definition declares in
+    another shape, a code set that does not fold and a definition whose fold
+    refuses are passed over, each named in `dropped` rather than refusing the
+    whole source. The one datatype a fold changes is a group's counter: held
+    as unbounded text, a float or another integer width, it is retyped
+    `int32` with a warning; a counter on the alternate tag of a field that is
+    no count is that field's value on the wire, so its group is passed over
+    instead. A group
+    on another counter than the held group of its name stands beside it as
+    `{name}_{counter}`, read by one member per counter. A field named by nothing
+    but its tag (a CBlock tag no `alt` or binding names) is unnamed: one on a
+    tag a held field answers, as its own or as an alternate, folds into that
+    field, and the first name to arrive on its tag names it. A field on a held
+    tag under another name stands beside the holder, and neither learns the
+    other's name. `add_cfb_file` and `merge_with` refuse whole only where
+    nothing is left to keep (malformed XML or JSON, a source whose own catalog
+    does not validate); `add_cfb_files` folds each file as one mutation, so
+    such a file is left out alone and named in `failed` while the rest fold,
+    and `is_clean()` means `dropped` and `failed` are both empty. What a
+    CBlock states that the reader cannot keep is dropped, or kept another way
+    (an unread type word types the tag string), with a `log` warning naming
+    the line, the column, the element and what the reader did instead; a map
+    entry whose key or value is blank, `none` or `null` states no code and is
+    skipped, named once per code set. `add_cfb_files` folds in ascending URL
+    order, so where two files type one tag two ways the first-sorting file's
+    declaration is held, and a code set only widens (the held name wins a
+    shared value; a new value under a name another code claims keeps no
+    name).
 11. Mutations are atomic: a refused `insert`, `set` or `set_codeset` leaves the
     registry or message unchanged. A registry shared by a codec or message is
     frozen in the bindings; mutate first, then build codecs.
@@ -180,12 +200,23 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
     component as JSON keyed the same way, a repeated key as the JSON array of
     its occurrences. A key the dictionary does not resolve is no field: it
     lands in the row's `metadata` under its own spelling, and a row read back
-    restores it, so the wire re-emits it. `write_arrow_reader` rebuilds each
-    message from the row and refuses a batch with no `fixentries`. A group
-    holding no occurrence is stated by its count alone: `802=0` is an entry
-    and re-emits, while `[]` beside a null counter - what a table such as
-    PyIceberg reads an absent list back as - states nothing, so a row read
-    back keeps its `currhashcode` and folds with the delivery it was.
+    restores it, so the wire re-emits it. `from_row` refuses a row that
+    disagrees with itself - a `fixentries` key naming another field than its
+    tag (`55:securityid`), an identifier map holding a key that reads as none
+    or two spellings of one key with two values - and `messages` leaves such a
+    row out with a
+    warning. `write_arrow_reader` rebuilds each
+    message from the row and refuses a batch with no `fixentries`. A group is
+    one entry filed under its counter's tag (`453:parties`), valued its
+    length: the count is no field of its own and the wire re-emits `453=N`
+    from the list. A list holding nothing is the group stated empty (`802=0`
+    re-emits) and a null list is the group absent; a table column holds a
+    group as null or as at least one occurrence, so a stated zero rides the
+    residual `fixentries` record, and `[]` read back where the row held null -
+    what a table such as PyIceberg does - states nothing, so a row read back
+    keeps its `currhashcode` and folds with the delivery it was. A miscount
+    (`453=2`, one occurrence) is no anomaly: the group holds what arrived and
+    re-emits `453=1`.
 13. The derived fills and the retired-field restatements are native code: a
     registry carries no rule of its own, and nothing in `FIX:` metadata
     changes how a field is filled.
@@ -219,8 +250,12 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   source no member names is kept as stated - a private `100` is the type
   `100`, `Z` is `z` - while `ticker`, an order's or a party's identifier
   (`ClOrdID`, `Exchange`) and a spelling no word holds (`House/Key`) are
-  anomalies, left on the wire; an `isoccy` or `isoctry` value must be a code
-  ISO names, else it is an anomaly.
+  anomalies, left on the wire. A code is held to its type's shape and its
+  validity is a rank, never a refusal: an ISIN whose check digit does not
+  close, a masked `XX0000000001`, an `isoctry` ISO does not list or an
+  `isoccy` of `XXX` is a value of a lower rank, which a real value - stated or
+  derived, earlier or later - replaces wherever two meet; only another shape
+  (an eleven-character ISIN) is an anomaly.
 - A bare integer is always a **tag**: `registry.field(55)`, `msg.get(55)`. A
   field identity (`FixId`, the signed XXH32 of tag + folded name) is only
   reached through `field_by_id` / `get_by_id` (`FixKey::Id` in Rust).
@@ -241,8 +276,19 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 - A coded value reads as its name (`by_tag(54)` -> `BUYS`; Python answers the
   `Side.BUYS` member) but emits as its wire code (`54=1`); set it with the wire
   code or any spelling the code set resolves.
+- A status the dictionary types as an integer (`QuoteStatus(297)`) states the
+  message's state as its code reads, whether the column holds an integer or
+  text: a `QuoteStatusReport` (`AI`) stating `297=4` reads `CANCELED`, and
+  through the lifecycle takes the quote off its book, while the `QuoteCancel`
+  (`Z`) before it reads `PENDING_CANCEL` and keeps it there.
 - A group member needs its index on a message: `Parties[0].PartyID`;
-  `Parties.PartyID` is the schema spelling and misses on a value.
+  `Parties.PartyID` is the schema spelling and misses on a value. A group is
+  its list and its length is its count: `by_tag(453)` reaches nothing on a
+  message (`get_by_tag(453)` is `None`/`null`). Read Rust
+  `by_name("parties")?.as_sequence().map(<[Scalar]>::len)`, Python
+  `len(by_name("parties").as_py())`, JavaScript `byName('parties').length`.
+  A message root built by hand lists no counter beside its group, and a
+  registry definition that does is refused.
 - `into_text` output reflects what the dictionary derived (a day order's
   `59=0`), minus facts supplied at intake (an unstated `SendingTime`); it is
   canonical wire, not a byte-for-byte copy of the input.
@@ -255,34 +301,57 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   spelling: no code names, no groups, no `fixentries`.
 - A message's `crosscode` is stored `{kind}:{side}:{base}` - `msgcat` code, side
   code, then the code as the message names it: an order `A1` buying is
-  `10:1:A1`, a quote `14:1:Q1` / `14:2:Q1` for its bid and ask, an execution
-  `8:1:E-1`. Only an order, a quote or an execution states its side there;
-  every other message stores side `0`, whatever side it states. A derived
-  execution is chained under its `ExecID(17)` as given (`8:1:E-1`), else
-  `TradeID=<TradeID(1003)>`. Count messages after the parse, not lines: one
-  filling report is two messages.
+  `10:1:A1`, an execution `8:1:E-1`, a quote `14:0:Q1` whatever side it
+  states. Only an order or an execution states its side there; every other
+  message stores side `0`. A quote stating a bid and an offer is one message
+  of side `UNKN`, no `price` of its own, its `bidpx`/`bidqty` and
+  `askpx`/`askqty` the two legs; one stating `Side(54)` tags the leg it
+  quotes. A derived execution is chained under its `ExecID(17)` as given
+  (`8:1:E-1`), else `TradeID=<TradeID(1003)>`. Count messages after the
+  parse, not lines: one filling report is two messages.
 - A message's identifiers are logical `Identifiers` maps keyed `src:type`, read
-  off its fields, the wire kept as sent, each identifier `src:type=value` in
-  lower-case words: `securityids` (`SecurityID(48)` under its
-  `SecurityIDSource(22)`'s type and each `SecAltIDGrp(454)` occurrence, from
-  `fix`; an ISIN's embedded codes and a symbol's FX pair from `derived`),
-  `identifiers` (each `FIX:idmap` field a type from `fix`; regulatory trade ids
-  under `regtradeid`, `tvtic`, ...) and `partyids` - each `PartyID(448)` typed by its
-  `PartyRole(452)` code's name folded (`executingtrader`; an unnamed code
-  `partyrole{code}`, none `party`) from its `PartyIDSource(447)` code's name
-  (`D` `proprietary`, `C` `generalidentifier`, none `base`), the first of a
-  source and role standing, and `Account(1)` an `account` from its
-  `AcctIDSource(660)`. An entry no dictionary resolves - a bridge's
-  `FIRM.X.PARENTORDERID=`, `OMS_InstrumentID=` - names the identifier it ends
-  with and the source before it (`firm.x:parentorderid`, `base:instrumentid`).
+  off its fields, the wire kept as sent, each identifier `key=value` in
+  lower-case words, a FIX field's under the base key spelled as its type alone
+  (`isin=US0378331005`, `clordid=C1`): `securityids` (`SecurityID(48)` under its
+  `SecurityIDSource(22)`'s type and each `SecAltIDGrp(454)` occurrence - a
+  `{NAMESPACE}INSTRUMENTID` source an `instrumentid` from that namespace,
+  `ULLINK.INSTRUMENTID` `ullink`, a reserved `base`, `derived` or `fix`
+  namespace none, so the base `instrumentid`; an ISIN's embedded codes and a
+  symbol's FX pair from `derived`; `get(type)` answers the base key, which a
+  named source fills where nothing states it), `identifiers` (each
+  `FIX:idmap` field its type's base key; regulatory trade ids under
+  `regtradeid`, `tvtic`, ...) and `partyids` - each `PartyID(448)` typed by its
+  `PartyRole(452)` code's name folded (`executingtrader`, `21`
+  `clearingorganization`; an unnamed code `partyrole{code}`, none `party`) from
+  its `PartyIDSource(447)` code's name (`D` `proprietary`, `C`
+  `generalidentifier`; an unnamed word itself, an unnamed bare code
+  `partyidsource{code}`; none the base source), the first of a source and
+  role standing, a named source filling the role's base key, and `Account(1)` an `account` from its `AcctIDSource(660)` by the
+  same rule (`acctidsource{code}`). An entry no dictionary resolves - a
+  bridge's `FIRM.X.PARENTORDERID=`, `OMS_InstrumentID=` - names the identifier
+  it ends with and the source before it (`firm.x:parentorderid`,
+  `oms:instrumentid`), a reserved `base`, `derived` or `fix` namespace naming
+  none (`Derived_ISIN` is `isin`), and
+  another instrument's word before a security type naming no identifier
+  (`OMS_UnderlyingISIN`, `FIX.LegISIN`); one naming an operation's or a party's
+  identifier whose value its type refuses stays on the wire, no anomaly. Such
+  an entry is **captured**: one whose folded name ends with a security type's
+  spelling (`ISINCODE`, `RICCODE`, `OMS_CUSIPCODE`, `SEDOLCODE`,
+  `BLOOMBERGCODE`, `OMS_InstrumentID`) lands in `securityids`, an operation's
+  or a party's identifier in `identifiers` or `partyids`; a captured entry
+  leaves the fixed row's `metadata` cell and rides `fixentries` under
+  `0:<key>` (`RICCODE=AAPL.O` is `0:riccode`), so the row holds every arrival
+  once, and a row read back restores it on the wire. A value its type refuses
+  by shape stays in `metadata`.
   A field states `FIX:parents`, the types holding the parents of its identifier
   nearest first (`ClOrdID(11)` has `["origclordid"]`); a follower and every
-  settle fill a base from its nearest stated parent (`orderid` from
+  settle fill the parent's own type from its nearest stated parent (`orderid` from
   `parentorderid`, else `origorderid`); a follower whose `orderid` changed keeps
-  the previous value as `parentorderid` and the chain's first as `origorderid`. A caller's
+  the previous value as `parentorderid` and the chain's first as `origorderid`,
+  and one naming no `orderid` carries the chain's with both. A caller's
   `insert_*`/`set_*` is the message's word and writes no field: to change the
   wire, write the field. `SecurityID(48)`, `SecurityIDSource(22)`,
-  `Parties(453)` and `SecAltIDGrp(454)` are no columns of the fixed row (152
+  `Parties(453)` and `SecAltIDGrp(454)` are no columns of the fixed row (150
   columns): `fixentries` keeps them as sent (`453:parties`, the group's own name).
 - A graph leaf (`market_data`) carries in its `metadata` what its message
   states that no typed column reads and none of the leaf's identifier maps
@@ -296,7 +365,34 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   `marketMetadata: false` turns both off and moves the leaf's identity.
 - A `Symbol(55)` naming one currency pair - `EUR/USD`, `EURUSD`, `EUR-USD 1M`,
   a RIC's `EURUSD=` - states the derived security identifier `derived:forex=EUR/USD`
-  (the `forexcode` column); a pair a row states is stated, never re-derived.
+  (the `forexcode` column).
+  A row's `isincode`, `figicode`, `bloombergcode` and `forexcode` are views:
+  each the code `get` answered when the row was written, resolved once as
+  the row is read: a view is its type's base key. The symbol's derivation
+  reads back from `derived` (the pair alone follows a written symbol, the
+  cells detection wrote reading back as the row's word). Without the
+  `securityids` column a narrow row is lossy: a code any entry of its type in
+  the reading (the wire's, a bridge key's) holds states nothing; any other
+  replaces the type's base key, its named sources staying as evidence, and a
+  view disagreeing with a held base key it may not replace is dropped with an
+  anomaly naming the view column - whether a code was derived is lost (a
+  registry- or caller-derived code reads back stated). Write `securityids` for
+  a round trip that keeps sources.
+- Instrument enrichment is the lifecycle's, never the parse's: each walk learns
+  every message's ISIN (else its RIC, which only fills), CFI code, market,
+  ticker and security codes into an `IsinRegistry` and fills what later
+  messages of that instrument leave unsaid, as `derived` identifiers and the
+  CFI, ticker and market facts - never the wire or `CFICode(461)`. Without
+  `isin_registry=` each walk learns into its own, starting empty; pass one
+  registry (loaded from a golden Arrow or Parquet file with `from_handle`, saved
+  with an `IOBase`'s `write_arrow_reader(registry.into_arrow_reader())`) to
+  share it across walks run one after another. A Bloomberg symbol is an
+  equivalent, never a key.
+- `DETAILEDCFICODE`, the bridge's detailed classification, is a name of
+  `CFICode(461)`: one message stating both folds them into the one 461 value
+  through `Cfi::refined` - the leading code's letters kept, its `X` positions
+  filled from the other - and two codes that contradict keep the 461 value,
+  the other staying in `metadata` beside an anomaly.
 - A row header that stops matching silently changes lifecycle results: the
   line keeps its body but is dated by its file's modification time and
   carries no session context (no delivery folding); assert the matched-line

@@ -4,17 +4,16 @@
 //! its field, its scalar, the options that bucket instants in a zone and
 //! the walk that folds books into candles.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::iter::FusedIterator;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::market::base_crosscode;
-use super::{BookEvent, Element, Event, ExecutionEvent, Market, Operation};
+use super::{BookEvent, Element, Event, Market};
 use crate::arrow::BatchReader;
 use crate::text::expected_got;
 use crate::{
-    DataType, Decimal, Error, Field, IdType, Result, Scalar, Side, StructType, TimeUnit, Timezone,
+    DataType, Decimal, Error, Field, Result, Scalar, Side, StructType, TimeUnit, Timezone,
 };
 
 /// Nanoseconds in one second: what splits an instant into the seconds a
@@ -39,7 +38,7 @@ const UNITS: [(&str, i64); 8] = [
 ];
 
 /// The cells a candle states, in the order its datatype declares them.
-const NAMES: [&str; 25] = [
+const NAMES: [&str; 23] = [
     "crosscode",
     "ticker",
     "start",
@@ -63,41 +62,10 @@ const NAMES: [&str; 25] = [
     "bidqty",
     "askqty",
     "books",
-    "executions",
-    "volume",
 ];
 
 /// The path a refusal of the stream's order or range is located at.
 const BOOK_UNIX: &str = "$.book.currunix";
-
-/// The alternate identifiers an execution names the trade it reports by,
-/// each a kind of name of its own - a `tradeid` and an `execid` spelled
-/// alike name two trades: FIX's `TradeID(1003)` and `TradeReportID(571)`,
-/// which every side a trade report's parse splits off keeps, and a trading
-/// venue's transaction identification code, which every side of one venue
-/// trade states; then `ExecID(17)`, which every statement of one fill
-/// states - a side split off a trade report states its `SideExecID(1427)`
-/// there.
-const TRADE_NAMES: [IdType; 4] = [
-    IdType::TradeId,
-    IdType::TradeReportId,
-    IdType::Tvtic,
-    IdType::ExecId,
-];
-
-/// The kind of name an execution stating none of [`TRADE_NAMES`] goes by:
-/// the base of its cross code, which the two sides of one identifier share.
-const BASE_CODE: usize = TRADE_NAMES.len();
-
-/// How many kinds of name a trade is found by: [`TRADE_NAMES`], then the
-/// base code.
-const NAME_KINDS: usize = BASE_CODE + 1;
-
-/// Of [`TRADE_NAMES`], the kinds each of which names one trade and no
-/// other - a trade identifier and a venue's transaction code - so two
-/// trades stating different names of one of these kinds are two, whatever
-/// else they share.
-const DISTINCT: [usize; 2] = [0, 2];
 
 /// One reading's open, high, low and close over a bucket.
 ///
@@ -163,7 +131,7 @@ impl Ohlc {
 /// One OHLC of one book over one bucket: what the books of one cross code
 /// whose instants fell in `[start, end)` read at their best bid, their best
 /// ask, their midpoint and their spread, the quantities resting at the
-/// touch when the bucket closed, and what traded in it.
+/// touch when the bucket closed, and how many books it folded.
 ///
 /// A candle is a value of its own rather than a datatype: its datatype is
 /// the struct [`Self::field`] declares, its scalar the named struct
@@ -195,39 +163,6 @@ pub struct Candle {
     pub askqty: Option<Decimal>,
     /// How many books folded into the bucket.
     pub books: u64,
-    /// How many executions the folded books carried, a trade they carried
-    /// twice counted twice.
-    pub executions: u64,
-    /// What traded in the bucket: the exact sum, over the trades those
-    /// executions report, of the quantity each traded - an execution's
-    /// [`Market::get_lastqty`], what its fill traded, one stating none
-    /// adding nothing, never the order's [`Market::get_quantity`] - each
-    /// trade counted once, at the largest last quantity any of its
-    /// executions states.
-    ///
-    /// An execution names the trade it reports by what its
-    /// [`Operation::get_identifiers`] state under `tradeid`, `tradereportid`,
-    /// `tvtic` and `execid` - FIX's `TradeID(1003)` and
-    /// `TradeReportID(571)`, which every side a trade report's parse splits
-    /// off keeps, a venue's transaction code, which every side of one venue
-    /// trade states, and `ExecID(17)`, which every statement of one fill
-    /// states (`SideExecID(1427)` on a side split off a trade report) - each
-    /// a kind of name of its own; one stating none of them by the base of
-    /// its cross code, which the two sides of one identifier share
-    /// (`8:1:X`, `8:2:X`). Executions sharing a name report one trade, and
-    /// so do the trades one execution names together, save that two trades
-    /// stating different `tradeid`s, or different `tvtic`s, stay two. So the
-    /// two sides of a trade report and a fill delivered twice count once,
-    /// even where one statement names what another does not, while fills
-    /// naming nothing in common - even at one instant, price and quantity -
-    /// are trades of their own.
-    ///
-    /// A candle knows the trades its own bucket names and those the bucket
-    /// just before it named for the same cross code: a trade named again in
-    /// the next bucket adds there only what it states past what was counted,
-    /// so one restated bucket after bucket counts once in all, while one
-    /// named again only after a bucket that did not name it counts again.
-    pub volume: Decimal,
 }
 
 impl Candle {
@@ -235,9 +170,8 @@ impl Candle {
     /// utf8`, `start` and `end` as `datetime64(ns, UTC) not null`, then the
     /// four cells of each reading - `bidopen`, `bidhigh`, `bidlow`,
     /// `bidclose`, and the same under `ask`, `mid` and `spread` - as a
-    /// nullable `decimal` each, `bidqty` and `askqty` the same, `books` and
-    /// `executions` as `uint64 not null` and `volume` as `decimal not
-    /// null`.
+    /// nullable `decimal` each, `bidqty` and `askqty` the same, and `books`
+    /// as `uint64 not null`.
     ///
     /// ```
     /// use yggdryl::graph::Candle;
@@ -246,7 +180,7 @@ impl Candle {
     /// let field = Candle::field()?;
     /// assert_eq!(field.name(), "candle");
     /// assert!(!field.is_nullable());
-    /// assert_eq!(field.field_len(), 25);
+    /// assert_eq!(field.field_len(), 23);
     /// assert_eq!(field.fields()[2].name(), "start");
     /// assert_eq!(field.fields()[2].dtype().to_string(), "datetime64(ns,\"UTC\")");
     /// assert!(field.fields()[4].is_nullable());
@@ -270,8 +204,6 @@ impl Candle {
                 .map(|name| DataType::Decimal.nullable_field(*name)),
         );
         fields.push(DataType::UInt64.required_field(NAMES[22]));
-        fields.push(DataType::UInt64.required_field(NAMES[23]));
-        fields.push(DataType::Decimal.required_field(NAMES[24]));
         Ok(DataType::Struct(StructType::from_fields(fields)?).required_field("candle"))
     }
 
@@ -299,10 +231,8 @@ impl Candle {
             optional(self.bidqty),
             optional(self.askqty),
             Scalar::from(self.books),
-            Scalar::from(self.executions),
-            Scalar::from(self.volume),
         ]);
-        Scalar::from_struct(NAMES.iter().copied().zip(cells)).expect("twenty-five distinct names")
+        Scalar::from_struct(NAMES.iter().copied().zip(cells)).expect("twenty-three distinct names")
     }
 
     /// Reads a candle back from the named struct [`Self::into_scalar`]
@@ -317,8 +247,8 @@ impl Candle {
     /// # Errors
     ///
     /// The refusal [`Self::field`]'s [`Field::scalar`] answers, located
-    /// under `$.candle`: a null or missing cross code, start, end, count or
-    /// volume, a cell of another datatype, a name the struct should not
+    /// under `$.candle`: a null or missing cross code, start, end or count,
+    /// a cell of another datatype, a name the struct should not
     /// hold, a row of another width or a value of another shape; and a
     /// reading stating some of its four cells and not the others, since a
     /// bucket that saw a value saw an open, a high, a low and a close.
@@ -363,8 +293,6 @@ impl Candle {
             bidqty: decimal(&cells[20]).ok_or_else(unread)?,
             askqty: decimal(&cells[21]).ok_or_else(unread)?,
             books: count(&cells[22]).ok_or_else(unread)?,
-            executions: count(&cells[23]).ok_or_else(unread)?,
-            volume: decimal(&cells[24]).ok_or_else(unread)?.ok_or_else(unread)?,
         })
     }
 
@@ -392,8 +320,6 @@ impl Candle {
     ///     bidqty: Some(Decimal::from_int(300)),
     ///     askqty: None,
     ///     books: 1,
-    ///     executions: 0,
-    ///     volume: Decimal::ZERO,
     /// };
     /// let mut batches = Candle::arrow_reader([Ok(candle.clone())], None)?;
     /// let batch = batches.next().expect("one batch")?;
@@ -722,219 +648,6 @@ impl Bucket {
     }
 }
 
-/// One trade as a fold knows it: what its statements stated and what the
-/// bucket before counted of it.
-#[derive(Debug)]
-struct Slot {
-    /// The slot this one was found to be; its own index while it stands.
-    parent: usize,
-    /// The largest last quantity any statement of the trade states, where
-    /// one does.
-    stated: Option<Decimal>,
-    /// What the buckets before the open one counted of it: zero for a
-    /// trade first stated in the open bucket.
-    counted: Decimal,
-    /// Whether a statement of the open bucket named it.
-    named: bool,
-    /// The [`DISTINCT`] names it states, where it does, in that order.
-    distinct: [Option<SmolStr>; DISTINCT.len()],
-}
-
-impl Slot {
-    /// A trade first named in the open bucket, at index `at`.
-    const fn opened(at: usize) -> Self {
-        Self {
-            parent: at,
-            stated: None,
-            counted: Decimal::ZERO,
-            named: true,
-            distinct: [None, None],
-        }
-    }
-
-    /// What the trade adds to the open bucket's volume: what it states past
-    /// what the buckets before counted, never less than nothing; none where
-    /// that difference spells past `decimal`.
-    fn adds(&self) -> Option<Decimal> {
-        match self.stated {
-            Some(stated) if stated > self.counted => stated.checked_sub(self.counted),
-            _ => Some(Decimal::ZERO),
-        }
-    }
-}
-
-/// The trades one cross code's executions reported, as [`Candle::volume`]
-/// names them: those of the open bucket, and those the bucket just before
-/// it counted, carried in.
-///
-/// A name is looked up borrowed, so a statement of a trade whose names are
-/// all known allocates nothing; a name first seen is held once, and past
-/// `SmolStr`'s inline width that costs one allocation.
-#[derive(Debug, Default)]
-struct Trades {
-    /// Each name a statement stated, one map per kind - [`TRADE_NAMES`],
-    /// then the base code - to a slot of the trade it names.
-    names: [HashMap<SmolStr, usize>; NAME_KINDS],
-    /// One slot per trade, a trade found to be another pointing at it.
-    slots: Vec<Slot>,
-}
-
-impl Trades {
-    /// Whether no trade is held.
-    fn is_empty(&self) -> bool {
-        self.slots.is_empty()
-    }
-
-    /// The slot `slot` was found to be, the path to it shortened.
-    fn root(&mut self, slot: usize) -> usize {
-        let mut root = slot;
-        while self.slots[root].parent != root {
-            root = self.slots[root].parent;
-        }
-        let mut at = slot;
-        while self.slots[at].parent != root {
-            let next = self.slots[at].parent;
-            self.slots[at].parent = root;
-            at = next;
-        }
-        root
-    }
-
-    /// Counts one statement of a trade, which names it by `names` - one per
-    /// kind - and states `quantity`: answers what the trades it reaches
-    /// added to the open bucket before it and what the trade they are adds
-    /// after it; none where a sum spells past `decimal`.
-    ///
-    /// The trades its names reach are one, taken in the order of the kinds,
-    /// save one stating a [`DISTINCT`] name that differs from the
-    /// statement's or from those already taken, which stays apart and keeps
-    /// the name that reached it.
-    fn state(
-        &mut self,
-        names: [Option<&str>; NAME_KINDS],
-        quantity: Option<Decimal>,
-    ) -> Option<(Decimal, Decimal)> {
-        let mut reached = [None; NAME_KINDS];
-        for (kind, name) in names.iter().enumerate() {
-            if let Some(&slot) = name.and_then(|name| self.names[kind].get(name)) {
-                reached[kind] = Some(self.root(slot));
-            }
-        }
-        let mut joined = [0; NAME_KINDS];
-        let mut count = 0;
-        let mut distinct = DISTINCT.map(|kind| names[kind]);
-        for root in reached.into_iter().flatten() {
-            if joined[..count].contains(&root) {
-                continue;
-            }
-            let held = &self.slots[root].distinct;
-            let agrees = distinct.iter().zip(held).all(|pair| match pair {
-                (Some(ours), Some(theirs)) => *ours == theirs.as_str(),
-                _ => true,
-            });
-            if agrees {
-                for (ours, theirs) in distinct.iter_mut().zip(held) {
-                    if ours.is_none() {
-                        *ours = theirs.as_deref();
-                    }
-                }
-                joined[count] = root;
-                count += 1;
-            }
-        }
-        let before = joined[..count]
-            .iter()
-            .try_fold(Decimal::ZERO, |sum, root| {
-                sum.checked_add(self.slots[*root].adds()?)
-            })?;
-        let trade = if count == 0 {
-            self.slots.push(Slot::opened(self.slots.len()));
-            self.slots.len() - 1
-        } else {
-            for other in joined[1..count].iter().copied() {
-                self.merge(joined[0], other)?;
-            }
-            joined[0]
-        };
-        for (at, kind) in DISTINCT.iter().enumerate() {
-            if let (Some(name), None) = (names[*kind], &self.slots[trade].distinct[at]) {
-                self.slots[trade].distinct[at] = Some(SmolStr::new(name));
-            }
-        }
-        let slot = &mut self.slots[trade];
-        slot.stated = slot.stated.max(quantity);
-        slot.named = true;
-        let after = slot.adds()?;
-        for (map, name) in self.names.iter_mut().zip(names) {
-            if let Some(name) = name.filter(|name| !map.contains_key(*name)) {
-                map.insert(SmolStr::new(name), trade);
-            }
-        }
-        Some((before, after))
-    }
-
-    /// Makes the trade at `other` the one at `into`: the larger stated
-    /// quantity, what the buckets before counted of both, the names either
-    /// states; none where that count spells past `decimal`.
-    fn merge(&mut self, into: usize, other: usize) -> Option<()> {
-        let taken = std::mem::replace(&mut self.slots[other], Slot::opened(into));
-        let slot = &mut self.slots[into];
-        slot.stated = slot.stated.max(taken.stated);
-        slot.counted = slot.counted.checked_add(taken.counted)?;
-        slot.named |= taken.named;
-        for (held, name) in slot.distinct.iter_mut().zip(taken.distinct) {
-            if held.is_none() {
-                *held = name;
-            }
-        }
-        Some(())
-    }
-
-    /// The trades the next bucket carries in once the open one closes: each
-    /// a statement of the closing bucket named, counted at what it and the
-    /// buckets before counted of it; none where that count spells past
-    /// `decimal`. A trade carried in and named by nothing here is let go,
-    /// so what is held is one bucket's trades beside the open one's.
-    fn carried(mut self) -> Option<Self> {
-        let roots: Vec<usize> = (0..self.slots.len()).map(|slot| self.root(slot)).collect();
-        let mut moved = vec![None; self.slots.len()];
-        let mut slots = Vec::new();
-        for (at, slot) in self.slots.into_iter().enumerate() {
-            if roots[at] != at || !slot.named {
-                continue;
-            }
-            let counted = slot.counted.checked_add(slot.adds()?)?;
-            moved[at] = Some(slots.len());
-            slots.push(Slot {
-                parent: slots.len(),
-                stated: Some(counted),
-                counted,
-                named: false,
-                distinct: slot.distinct,
-            });
-        }
-        let mut names = self.names;
-        for map in &mut names {
-            map.retain(|_, slot| match moved[roots[*slot]] {
-                Some(to) => {
-                    *slot = to;
-                    true
-                }
-                None => false,
-            });
-        }
-        Some(Self { names, slots })
-    }
-}
-
-/// The refusal of a volume `sum` spells past `decimal`.
-fn past_decimal(sum: SmolStr) -> Error {
-    Error::InvalidRecord {
-        path: SmolStr::new_static("$.candle.volume"),
-        reason: expected_got("a volume within decimal", sum),
-    }
-}
-
 /// The candle of one cross code as it is folded.
 #[derive(Debug)]
 struct Fold {
@@ -946,18 +659,11 @@ struct Fold {
     bidqty: Option<Decimal>,
     askqty: Option<Decimal>,
     books: u64,
-    executions: u64,
-    volume: Decimal,
-    /// The trades the bucket's books reported, beside those the bucket
-    /// just before counted: held so a later statement of one adds only what
-    /// it states past what was counted.
-    trades: Trades,
 }
 
 impl Fold {
-    /// An empty fold stating the ticker of the first book it will see, over
-    /// the trades the bucket just before carries in.
-    fn opened(book: &BookEvent, trades: Trades) -> Self {
+    /// An empty fold stating the ticker of the first book it will see.
+    fn opened(book: &BookEvent) -> Self {
         Self {
             ticker: book.get_ticker().map(SmolStr::new),
             bid: None,
@@ -967,15 +673,11 @@ impl Fold {
             bidqty: None,
             askqty: None,
             books: 0,
-            executions: 0,
-            volume: Decimal::ZERO,
-            trades,
         }
     }
 
-    /// Folds one more book: its readings, its touch quantities, its
-    /// executions and what they traded.
-    fn fold(&mut self, book: &BookEvent) -> Result<()> {
+    /// Folds one more book: its readings and its touch quantities.
+    fn fold(&mut self, book: &BookEvent) {
         Ohlc::folded(&mut self.bid, book.best_price(Side::Buy));
         Ohlc::folded(&mut self.ask, book.best_price(Side::Sell));
         Ohlc::folded(&mut self.mid, book.bbo_midpoint());
@@ -983,44 +685,11 @@ impl Fold {
         self.bidqty = book.best_quantity(Side::Buy);
         self.askqty = book.best_quantity(Side::Sell);
         self.books += 1;
-        self.executions += book.executions().len() as u64;
-        book.executions()
-            .iter()
-            .try_for_each(|execution| self.traded(execution))
     }
 
-    /// Counts what `execution` traded into the volume: the first statement
-    /// of its trade adds its last quantity, a later one what it states past
-    /// the largest counted before it, any other nothing.
-    fn traded(&mut self, execution: &ExecutionEvent) -> Result<()> {
-        let identifiers = execution.get_identifiers();
-        let mut names = [None; NAME_KINDS];
-        for (name, kind) in names.iter_mut().zip(&TRADE_NAMES) {
-            *name = identifiers.get(kind);
-        }
-        if names.iter().all(Option::is_none) {
-            names[BASE_CODE] = Some(base_crosscode(execution.get_crosscode()));
-        }
-        let volume = self.volume;
-        let quantity = execution.get_lastqty();
-        let (before, after) = self.trades.state(names, quantity).ok_or_else(|| {
-            past_decimal(format_smolstr!(
-                "{volume} + {}",
-                quantity.unwrap_or(Decimal::ZERO)
-            ))
-        })?;
-        self.volume = volume
-            .checked_sub(before)
-            .and_then(|volume| volume.checked_add(after))
-            .ok_or_else(|| past_decimal(format_smolstr!("{volume} - {before} + {after}")))?;
-        Ok(())
-    }
-
-    /// The candle this fold states over `bucket`, and the trades the bucket
-    /// after it carries in; none where a count spells past `decimal`, which
-    /// the volume already refused.
-    fn into_candle(self, crosscode: SmolStr, bucket: Bucket) -> (Candle, Option<Trades>) {
-        let candle = Candle {
+    /// The candle this fold states over `bucket`.
+    fn into_candle(self, crosscode: SmolStr, bucket: Bucket) -> Candle {
+        Candle {
             crosscode,
             ticker: self.ticker,
             start: bucket.start,
@@ -1032,26 +701,24 @@ impl Fold {
             bidqty: self.bidqty,
             askqty: self.askqty,
             books: self.books,
-            executions: self.executions,
-            volume: self.volume,
-        };
-        (candle, self.trades.carried())
+        }
     }
 }
 
 /// Candles from a sorted stream of books, one per cross code and bucket.
+/// A candle reads a book's top of book alone, which a book states whether
+/// it is complete or holds only its deltas, so a walk's books fold as they
+/// are emitted, none rebuilt.
 ///
 /// Books must arrive sorted by [`Event::get_currunix`]; a regression is
 /// refused at `$.book.currunix`. The candles of a bucket are emitted, in
 /// cross-code order, when the stream moves past the bucket and at its end;
 /// an empty bucket yields no candle. The open bucket holds one fold per
-/// cross code, each with the trades its books reported ([`Candle::volume`]),
-/// until the bucket closes; the trades a closed bucket counted are held
-/// until the next bucket closes, for the cross codes it folds. An error - the source's, a regression,
-/// an instant the zone cannot read, a volume past `decimal` - ends the walk
-/// after the candles of every bucket the stream moved past: the bucket that
-/// was open is dropped rather than emitted incomplete, the error is the last
-/// item, and the iterator fuses.
+/// cross code until the bucket closes. An error - the source's, a
+/// regression, an instant the zone cannot read - ends the walk after the
+/// candles of every bucket the stream moved past: the bucket that was open
+/// is dropped rather than emitted incomplete, the error is the last item,
+/// and the iterator fuses.
 ///
 /// ```
 /// use yggdryl::graph::{BookIterator, CandleIterator, CandleOptions, Element, Event, Market, MarketData, QuoteEvent};
@@ -1097,9 +764,6 @@ pub struct CandleIterator<I> {
     options: CandleOptions,
     bucket: Option<Bucket>,
     open: BTreeMap<SmolStr, Fold>,
-    /// The trades the bucket that closed last carries into the one after
-    /// it, per cross code, and where that bucket ended.
-    carried: (BTreeMap<SmolStr, Trades>, Option<i64>),
     pending: VecDeque<Candle>,
     /// The refusal that ended the walk, answered once `pending` is drained.
     failed: Option<Error>,
@@ -1119,7 +783,6 @@ where
             options,
             bucket: None,
             open: BTreeMap::new(),
-            carried: (BTreeMap::new(), None),
             pending: VecDeque::new(),
             failed: None,
             last_unix: None,
@@ -1133,21 +796,14 @@ where
         &self.options
     }
 
-    /// Emits the open bucket's candles, in cross-code order, holding the
-    /// trades each carries into the bucket after it.
+    /// Emits the open bucket's candles, in cross-code order.
     fn flush(&mut self) {
         let Some(bucket) = self.bucket.take() else {
             return;
         };
-        let mut carried = BTreeMap::new();
         for (crosscode, fold) in std::mem::take(&mut self.open) {
-            let (candle, trades) = fold.into_candle(crosscode, bucket);
-            if let Some(trades) = trades.filter(|trades| !trades.is_empty()) {
-                carried.insert(candle.crosscode.clone(), trades);
-            }
-            self.pending.push_back(candle);
+            self.pending.push_back(fold.into_candle(crosscode, bucket));
         }
-        self.carried = (carried, Some(bucket.end));
     }
 
     /// Folds one book into its bucket, closing the bucket before it.
@@ -1162,24 +818,18 @@ where
         self.last_unix = Some(unix);
         if !self.bucket.is_some_and(|bucket| bucket.contains(unix)) {
             self.flush();
-            let bucket = self.options.bucket(unix)?;
-            // Only the bucket just before carries its trades in.
-            if self.carried.1 != Some(bucket.start) {
-                self.carried.0.clear();
-            }
-            self.bucket = Some(bucket);
+            self.bucket = Some(self.options.bucket(unix)?);
         }
         let crosscode = book.get_crosscode();
         match self.open.get_mut(crosscode) {
             Some(fold) => fold.fold(book),
             None => {
-                let trades = self.carried.0.remove(crosscode).unwrap_or_default();
-                let mut fold = Fold::opened(book, trades);
-                fold.fold(book)?;
+                let mut fold = Fold::opened(book);
+                fold.fold(book);
                 self.open.insert(SmolStr::new(crosscode), fold);
-                Ok(())
             }
         }
+        Ok(())
     }
 }
 
@@ -1212,7 +862,6 @@ where
             if let Err(error) = folded {
                 self.done = true;
                 self.open.clear();
-                self.carried.0.clear();
                 self.bucket = None;
                 self.failed = Some(error);
             }

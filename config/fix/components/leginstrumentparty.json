@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "noleginstrumentpartysubids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noleginstrumentpartysubids",
-          "FIX:tag": "2258"
-        }
-      },
-      {
         "name": "leginstrumentpartysubids",
         "dtype": {
           "type": "null"

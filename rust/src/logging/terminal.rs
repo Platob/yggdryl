@@ -11,8 +11,9 @@ pub(crate) const RESET: &str = "\x1b[0m";
 
 /// Whether output to a stream that `is_terminal` answers for is written in
 /// colour: `NO_COLOR` set to anything but the empty text turns colour off,
-/// `FORCE_COLOR` or `CLICOLOR_FORCE` set to anything but the empty text,
-/// `0` or `false` turns it on, `TERM=dumb` turns it off, and otherwise a
+/// `FORCE_COLOR` or `CLICOLOR_FORCE` set to anything but the empty text or
+/// a false spelling of the crate's one boolean table (`0`, `false`, `no`,
+/// `off`) turns it on, `TERM=dumb` turns it off, and otherwise a
 /// terminal is coloured and a file or a pipe is not - the conventions every
 /// tool in a shell honours.
 ///
@@ -32,7 +33,9 @@ fn colors(is_terminal: bool, variable: impl Fn(&str) -> Option<std::ffi::OsStrin
     if set("NO_COLOR").is_some() {
         return false;
     }
-    let forced = |name: &str| set(name).is_some_and(|value| value != "0" && value != "false");
+    let forced = |name: &str| {
+        set(name).is_some_and(|value| crate::boolean::truthy_text(&value.to_string_lossy()))
+    };
     if forced("FORCE_COLOR") || forced("CLICOLOR_FORCE") {
         return true;
     }

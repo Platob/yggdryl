@@ -14,7 +14,10 @@ impl DataType {
     /// complete expression may miss a row, and a capture may sit in an
     /// optional branch. With `autotype`, a capture whose regex constrains its
     /// complete language to a supported scalar format becomes Boolean, Int64,
-    /// Float64, Date32, Time32/Time64, or DateTime64. A clock's fraction is
+    /// Float64, Date32, Time32/Time64, or DateTime64. A Boolean is a capture
+    /// whose every literal prints one - `true` or `false`, the case and the
+    /// surrounding blanks not part of the spelling - as a CSV column is
+    /// typed. A clock's fraction is
     /// read at either decimal sign ISO 8601 names, and a capture admitting
     /// several widths takes the widest spelling it matches, the only
     /// resolution that holds every row it admits. Broad captures such as
@@ -151,10 +154,13 @@ fn boolean_dtype(capture: &Hir) -> Result<Option<DataType>> {
     let Some(words) = finite_literals(capture, 0) else {
         return Ok(None);
     };
+    // A literal is a flag when it prints one, the case and the blanks not part
+    // of the spelling - the reading a CSV column is typed by - and a literal
+    // that is not UTF-8 prints nothing.
     if words.is_empty()
         || words
             .iter()
-            .any(|word| word.as_slice() != b"true" && word.as_slice() != b"false")
+            .any(|word| !std::str::from_utf8(word).is_ok_and(crate::boolean::prints_boolean))
     {
         return Ok(None);
     }

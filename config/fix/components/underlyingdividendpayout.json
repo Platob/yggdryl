@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nounderlyingdividendpayments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingdividendpayments",
-          "FIX:tag": "42855"
-        }
-      },
-      {
         "name": "underlyingdividendpayments",
         "dtype": {
           "type": "null"

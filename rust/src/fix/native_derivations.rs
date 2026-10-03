@@ -10,18 +10,18 @@
 //! | target | fills with |
 //! | --- | --- |
 //! | `AvgPx(6)` | `LastPx`, on a report whose `CumQty` equals a positive `LastQty` |
-//! | `CumQty(14)` | `OrderQty - LeavesQty` on a report, never negative |
+//! | `CumQty(14)` | `OrderQty - LeavesQty` on a report of an order still live or filled, `OrderQty - LeavesQty - CxlQty` on one that ended otherwise and states what it canceled, never negative |
 //! | `Currency(15)` / `SettlCurrency(120)` | each other, except on a currency product (`Product` 4) |
-//! | `SecurityIDSource(22)` | `4`, `1` or `2` where `SecurityID` closes as an ISIN, a CUSIP or a SEDOL |
+//! | `SecurityIDSource(22)` | `4` where `SecurityID` - stated, or filled by the next rule - is the first ISIN alternate's code, whatever its shape, else `S` where it is twelve bytes behind `BBG` a FIGI closes, else `4`, `1` or `2` where it closes as an ISIN, a CUSIP or a SEDOL |
 //! | `LastPx(31)`, `BidPx(132)`, `OfferPx(133)` | spot rate plus forward points |
-//! | `OrderQty(38)` | `CumQty + CxlQty` on a canceled report, else `CumQty + LeavesQty`, else `CumQty + CxlQty` |
+//! | `OrderQty(38)` | `CumQty + CxlQty` on a report of an order that ended any way but filled, or on one stating a positive `CxlQty` and no `LeavesQty` left; else `CumQty + LeavesQty`, else `CumQty + CxlQty` |
 //! | `OrdStatus(39)` | the `ExecType` both spell alike, or a trade's filled or partial status |
-//! | `SecurityID(48)` | the first ISIN `secaltids` states |
+//! | `SecurityID(48)` | the first ISIN `secaltids` states, where `SecurityIDSource` states no source or an ISIN's |
 //! | `Symbol(55)` | `SecurityID` under source `8` or `A`, else the `secaltids` identifier under `8` |
 //! | `TimeInForce(59)` | `0`, a day order, on a `D`, `G` or `8` message |
 //! | `SettlCurrAmt(119)` | `GrossTradeAmt * SettlCurrFxRate` at scale nine |
 //! | `OrigSendingTime(122)` | `SendingTime` on a possible duplicate |
-//! | `LeavesQty(151)` | `0` on a closed report, `OrderQty - CumQty` on a working one |
+//! | `LeavesQty(151)` | `0` on a report of an order that ended, `OrderQty - CumQty` on a live one, as `OrdStatus` reads ([`State::is_live`]) |
 //! | `SecurityType(167)` | the type the CFI code's category names (Appendix 6-D) |
 //! | `PutOrCall(201)` | an option CFI code's call or put |
 //! | `GrossTradeAmt(381)` | `LastQty * LastPx` at scale nine on a report |
@@ -36,16 +36,19 @@
 //! | `TotalTradeMultipliedQty(2370)` | `TotalTradeQty * ContractMultiplier` at scale nine |
 //! | `CurrencyCodeSource(2897)` | `6`, ISO 4217, wherever `Currency` states a code ISO 4217 lists |
 //!
-//! A report is `MsgType` `8` or `9`. Arithmetic that overflows and an input
-//! the message does not state are silence, never a guess; a value the
-//! target's field refuses is dropped with a deduplicated warning naming the
-//! field.
+//! A report is `MsgType` `8` or `9`, and where an order stands is the state
+//! its `OrdStatus(39)` reads as ([`State::from_fix_status`]): the one table
+//! the market's own order quantities read too. Arithmetic that overflows and
+//! an input the message does not state are silence, never a guess; a value
+//! the target's field refuses is dropped with a deduplicated warning naming
+//! the field.
 
 use smol_str::format_smolstr;
 
 use crate::logging::warning::warned;
-use crate::{Cusip, DataType, Decimal, IdType, Isin, Scalar, Sedol, StringEnum};
+use crate::{Cusip, DataType, Decimal, Figi, IdType, Isin, Scalar, Sedol, State, StringEnum};
 
+use super::identity::integer_of;
 use super::msg::FixMsg;
 
 /// How many targets [`derive_once`] fills: the bound on the sweeps a
@@ -58,13 +61,23 @@ const DECIMAL9: DataType = DataType::Decimal128 {
 const DECIMAL18: DataType = DataType::DECIMAL;
 
 /// Fill every derivation to a fixpoint and rebuild the message once.
+pub(super) fn fill_all(msg: &mut FixMsg) {
+    let landed = derive_all(msg);
+    land(msg, landed);
+}
+
+/// What every rule answers for `msg` at the fixpoint, for [`land`].
+pub(super) fn derive_all(msg: &FixMsg) -> Vec<(i32, Scalar)> {
+    NativeRow::new(msg).settle()
+}
+
+/// Lands the answers [`derive_all`] gave for `msg` with one rebuild.
 ///
 /// Where the rebuild refuses the answers together - which no single value
 /// causes - each lands on its own, and one the rebuild refuses alone is
 /// dropped beside a warning naming its tag, so the rest still land and the
 /// message keeps what it stated.
-pub(super) fn fill_all(msg: &mut FixMsg) {
-    let landed = NativeRow::new(msg).settle();
+pub(super) fn land(msg: &mut FixMsg, landed: Vec<(i32, Scalar)>) {
     if landed.is_empty() || msg.set_each(landed).is_ok() {
         return;
     }
@@ -85,7 +98,7 @@ pub(super) fn fill_all(msg: &mut FixMsg) {
 /// Whether any rule answers for `msg` anew: false where the fixpoint
 /// already stands, which one sweep proves.
 pub(super) fn lands_anything(msg: &FixMsg) -> bool {
-    !NativeRow::new(msg).settle().is_empty()
+    !derive_all(msg).is_empty()
 }
 
 /// The message plus answers landed during this pass. Reading landed answers
@@ -236,7 +249,7 @@ fn derive_once(row: &mut NativeRow<'_>) {
     fill!(31, add(row, 194, 195));
     fill!(38, order_quantity(row));
     fill!(39, order_status(row));
-    fill!(48, alternate_isin(row).map(Scalar::from));
+    fill!(48, security_id(row));
     fill!(55, symbol(row));
     fill!(59, time_in_force(row));
     fill!(119, scaled_product(row, 381, 155, 9));
@@ -262,8 +275,6 @@ fn derive_once(row: &mut NativeRow<'_>) {
 
 const REPORTS: &[&str] = &["8", "9"];
 const TIMED: &[&str] = &["D", "G", "8"];
-const WORKING: &[&str] = &["0", "1", "6", "E", "5", "7", "9"];
-const CLOSED: &[&str] = &["2", "3", "4", "8", "C"];
 const AGREED: &[&str] = &["0", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "E"];
 const TRADES: &[&str] = &["F", "G"];
 
@@ -282,35 +293,76 @@ fn average_price(row: &NativeRow<'_>) -> Option<Scalar> {
 /// message stated as a currency product (`product is distinct from 4`),
 /// where the two are the two legs of the pair.
 fn the_other_currency(row: &NativeRow<'_>, other: i32) -> Option<Scalar> {
-    let currency_product = row.get(460).and_then(|value| value.as_i128()) == Some(4);
+    let currency_product = row.get(460).and_then(|value| integer_of::<i64>(&value)) == Some(4);
     (!currency_product).then(|| row.get(other)).flatten()
 }
 
+/// Where the order a report is about stands: the state its
+/// `OrdStatus(39)` reads as, where it states one.
+fn order_state(row: &NativeRow<'_>) -> Option<State> {
+    row.with_text(39, |code| State::from_fix_status(39, code))
+        .flatten()
+}
+
+/// `LeavesQty(151)` is `OrderQty(38)` less `CumQty(14)` while the order is
+/// live and once it filled, so what traded is what was ordered less what is
+/// left. An order that ended any other way leaves nothing whatever traded:
+/// what traded is what was ordered less what was canceled, `CxlQty(84)`,
+/// and nothing where the report states none.
 fn cumulative_quantity(row: &NativeRow<'_>) -> Option<Scalar> {
     if !row.text_in(35, REPORTS) {
         return None;
     }
-    let difference = subtract(row, 38, 151)?;
+    let state = order_state(row)?;
+    let difference = if state.is_live() || state == State::Filled {
+        subtract(row, 38, 151)?
+    } else {
+        subtract(row, 38, 151)?.checked_sub(&row.get(84)?).ok()?
+    };
     (!Decimal::from_scalar(&difference)?.is_negative()).then_some(difference)
 }
 
 fn security_id_source(row: &NativeRow<'_>) -> Option<Scalar> {
     let identifier = row.get(48)?;
     let text = identifier.as_str()?;
-    if Isin::new(text).is_ok() {
+    // A code that is the first ISIN alternate's - stated, or filled from
+    // it - names its source whatever its shape. Otherwise a FIGI may close ISO 6166's digit too, so twelve
+    // bytes behind `BBG` a FIGI's digit closes are a FIGI, as a symbol's
+    // shape reads them, and a Barbados ISIN behind `BBG` is still an ISIN.
+    if alternate_isin(row).is_some_and(|isin| isin.as_str() == text) {
+        return Some(Scalar::from("4"));
+    }
+    // Inferring a source off a bare identifier needs the number to close:
+    // a shape alone is a typo's too, and a masked number names nothing.
+    if text.len() == 12
+        && text.starts_with("BBG")
+        && Figi::new(text).is_ok_and(|code| Figi::is_closed(code.as_str()))
+    {
+        return Some(Scalar::from("S"));
+    }
+    if Isin::new(text).is_ok_and(|code| Isin::is_closed(code.as_str())) {
         Some(Scalar::from("4"))
-    } else if Cusip::new(text).is_ok() {
+    } else if Cusip::new(text).is_ok_and(|code| Cusip::is_closed(code.as_str())) {
         Some(Scalar::from("1"))
-    } else if Sedol::new(text).is_ok() {
+    } else if Sedol::new(text).is_ok_and(|code| Sedol::is_closed(code.as_str())) {
         Some(Scalar::from("2"))
     } else {
         None
     }
 }
 
+/// `OrderQty(38)` is what traded plus what is left while the order is live
+/// and once it filled, else plus what was canceled. An order that ended any
+/// other way left nothing whatever it ordered - the `LeavesQty(151)` of
+/// nothing [`leaves_quantity`] reads off its status says nothing of what it
+/// ordered - so what it ordered is what traded plus what was canceled, and
+/// nothing where the report states no `CxlQty(84)`.
 fn order_quantity(row: &NativeRow<'_>) -> Option<Scalar> {
     if !row.text_in(35, REPORTS) {
         return None;
+    }
+    if order_state(row).is_some_and(|state| !state.is_live() && state != State::Filled) {
+        return add(row, 14, 84);
     }
     let canceled = row.decimal(84);
     let leaves = row.decimal(151);
@@ -355,6 +407,16 @@ fn alternate_isin(row: &NativeRow<'_>) -> Option<Isin> {
     Isin::new(alternate.as_str()?).ok()
 }
 
+/// The first ISIN `secaltids` states, where the message states no
+/// `SecurityIDSource(22)` or an ISIN's: under another source `SecurityID`
+/// is that source's type, which an ISIN is not.
+fn security_id(row: &NativeRow<'_>) -> Option<Scalar> {
+    if row.get(22).is_some() && !row.source_in(22, &[IdType::Isin]) {
+        return None;
+    }
+    alternate_isin(row).map(Scalar::from)
+}
+
 fn symbol(row: &NativeRow<'_>) -> Option<Scalar> {
     if row.source_in(22, &[IdType::ExchSymb, IdType::Bloomberg])
         && let Some(identifier) = row.get(48)
@@ -369,20 +431,20 @@ fn time_in_force(row: &NativeRow<'_>) -> Option<Scalar> {
 }
 
 fn original_sending_time(row: &NativeRow<'_>) -> Option<Scalar> {
-    (row.get(43)?.as_bool() == Some(true))
+    (crate::boolean::bool_of(&row.get(43)?) == Some(true))
         .then(|| row.get(52))
         .flatten()
 }
 
+/// FIX: `LeavesQty(151)` is `OrderQty(38)` less `CumQty(14)` while the
+/// order is live, and nothing once it ended - filled, canceled, done for the
+/// day, expired, calculated or rejected.
 fn leaves_quantity(row: &NativeRow<'_>) -> Option<Scalar> {
     if !row.text_in(35, REPORTS) {
         return None;
     }
-    if row.text_in(39, CLOSED) {
+    if !order_state(row)?.is_live() {
         return Some(Scalar::from(0_i32));
-    }
-    if !row.text_in(39, WORKING) {
-        return None;
     }
     let difference = subtract(row, 38, 14)?;
     (!Decimal::from_scalar(&difference)?.is_negative()).then_some(difference)
@@ -588,8 +650,11 @@ fn currency_code_source(row: &NativeRow<'_>) -> Option<Scalar> {
         .then(|| Scalar::from("6"))
 }
 
+/// The country of a stated ISIN's prefix, where the number closes - a
+/// masked number or a typo names no country - and the prefix is one ISO
+/// 3166 lists: an agency's is no country.
 fn country_of_issue(row: &NativeRow<'_>) -> Option<Scalar> {
-    let isin = stated_isin(row)?;
+    let isin = stated_isin(row).filter(|isin| Isin::is_closed(isin.as_str()))?;
     let prefix = isin.prefix();
     StringEnum::COUNTRIES
         .binary_search(&prefix)
@@ -613,7 +678,7 @@ fn stated_isin(row: &NativeRow<'_>) -> Option<Isin> {
 }
 
 fn exercise(row: &NativeRow<'_>) -> char {
-    match row.get(201).and_then(|value| value.as_i128()) {
+    match row.get(201).and_then(|value| integer_of::<i64>(&value)) {
         Some(1) => 'C',
         Some(0) => 'P',
         _ => 'X',

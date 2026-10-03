@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nounderlyingsettlmethodelectiondatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingsettlmethodelectiondatebusinesscenters",
-          "FIX:tag": "43074"
-        }
-      },
-      {
         "name": "underlyingsettlmethodelectiondatebusinesscenters",
         "dtype": {
           "type": "null"

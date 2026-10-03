@@ -54,7 +54,7 @@ test file at the matching path.
 | `rust/src/uri/` | [URI](uri/index.md) |
 | `rust/src/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | [Expression](expression/index.md) |
-| `rust/src/graph/`, `rust/src/limit.rs`, `rust/src/identifier.rs` | [Graph](graph/index.md) |
+| `rust/src/graph/`, `rust/src/limit.rs`, `rust/src/identifier.rs`, `rust/src/idkey.rs`, `rust/src/idtype.rs`, `rust/src/idsource.rs`, `rust/src/isin_registry.rs` | [Graph](graph/index.md) |
 | `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | [Hashing](hashing.md) |
 | `rust/src/logging/` | [Logging](logging.md) |
 | `rust/src/fix/` | [FIX](fix/index.md) |

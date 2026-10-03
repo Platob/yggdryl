@@ -436,7 +436,8 @@ mod exact {
             assert_eq!(Decimal::from_f64(f64::NAN), None);
             assert_eq!(Decimal::from_f64(f64::INFINITY), None);
             // A float is an inexact reading and rounds half away from zero at
-            // the eighteenth digit; the same digits as text are exact and cut.
+            // the eighteenth digit; the same digits as text are exact, so a
+            // nineteenth one that is not a zero is refused rather than cut.
             assert_eq!(
                 Decimal::from_f64(5.5e-19).unwrap().to_string(),
                 "0.000000000000000001"
@@ -446,9 +447,10 @@ mod exact {
                 "-0.000000000000000001"
             );
             assert_eq!(Decimal::from_f64(4.5e-19), Some(Decimal::ZERO));
+            assert!(Decimal::parse("0.00000000000000000055").is_err());
             assert_eq!(
-                Decimal::parse("0.00000000000000000055").unwrap(),
-                Decimal::ZERO
+                Decimal::parse("0.00000000000000000100").unwrap(),
+                Decimal::parse("0.000000000000000001").unwrap()
             );
         }
 
@@ -852,17 +854,26 @@ mod exact {
                 assert!(Decimal::parse(text).is_err(), "{text:?}");
                 assert!(BigDecimal::parse(text).is_err(), "{text:?}");
             }
-            // A negative one leaves nothing past the eighteenth digit, and a
-            // zero mantissa is zero whatever the exponent says.
+            // A negative one moves a digit past the eighteenth, which text
+            // never rounds away: refused, never wrapped and never zero.
             for text in [
                 "1e-2147483648",
                 "1e-99999999999999999999",
                 "1e-2000000000",
                 "0.00000000000000000001e-2147483647",
+                "1e-19",
+            ] {
+                assert!(Decimal::parse(text).is_err(), "{text:?}");
+                assert!(BigDecimal::parse(text).is_err(), "{text:?}");
+            }
+            // A zero mantissa is zero whatever the exponent says.
+            for text in [
                 "0e2147483647",
                 "0e2000000000",
                 "-0.0e99999999999999999999",
                 "0e5000",
+                "0e-5000",
+                "0.000e-2147483648",
             ] {
                 assert_eq!(Decimal::parse(text).unwrap(), Decimal::ZERO, "{text:?}");
                 assert_eq!(
@@ -884,6 +895,10 @@ mod exact {
             assert!(Decimal::parse("1e20").is_err());
             assert_eq!(
                 BigDecimal::from_scalar(&Scalar::from("1e-2000000000")),
+                None
+            );
+            assert_eq!(
+                BigDecimal::from_scalar(&Scalar::from("0e-2000000000")),
                 Some(BigDecimal::ZERO)
             );
         }
@@ -959,46 +974,56 @@ mod exact {
         }
 
         #[test]
-        fn fixed_text_is_read_as_leniently_as_a_number_can_be() {
+        fn fixed_text_is_read_exactly_through_the_one_decimal_grammar() {
+            // What the value door reads, `parse` reads: trimmed, signed, a
+            // point that may lead or trail, an exponent, and nothing else.
             for (text, expected) in [
-                ("", "0"),
                 ("  82.5\t", "82.5"),
                 ("+1.50", "1.5"),
                 ("-0.000000000000000001", "-0.000000000000000001"),
                 (".5", "0.5"),
                 ("5.", "5"),
-                ("1,250,000.25", "1250000.25"),
-                ("1_000", "1000"),
-                ("1'000", "1000"),
-                ("1 000", "1000"),
+                ("-.5", "-0.5"),
                 ("2.5e3", "2500"),
                 ("2.5E+3", "2500"),
                 ("1E-2", "0.01"),
                 ("125e-1", "12.5"),
-                // Digits past the eighteenth fractional one are truncated.
-                ("0.1234567890123456789", "0.123456789012345678"),
-                ("-0.9999999999999999999", "-0.999999999999999999"),
-                ("1e-30", "0"),
+                ("0.1234567890123456780000", "0.123456789012345678"),
+                ("1.50000000000000000000000000", "1.5"),
+                ("0", "0"),
+                ("-0", "0"),
                 (
                     "99999999999999999999.999999999999999999",
                     "99999999999999999999.999999999999999999",
                 ),
-                // Whitespace is any the language trims, and a run of digits
-                // longer than the units hold is cut below them: the point an
-                // exponent moves back brings them into range.
+                // Whitespace is any the language trims, and zeros past what
+                // the units hold only say where the point is: the exponent
+                // moving it back brings the number into range.
                 ("\u{a0}1.5\u{a0}", "1.5"),
                 (
-                    "090293633924813269670312865403781063472970561.6e-38",
-                    "902936.339248132696703128",
+                    "1000000000000000000000000000000000000000000e-30",
+                    "1000000000000",
                 ),
+                ("1_250.5", "1250.5"),
             ] {
                 assert_eq!(
                     Decimal::parse(text).unwrap().to_string(),
                     expected,
                     "{text:?}"
                 );
+                assert_eq!(
+                    BigDecimal::parse(text).unwrap().to_string(),
+                    expected,
+                    "{text:?}"
+                );
             }
+            // Text that states no number, a grouping that reads two ways or
+            // stands anywhere but between the digits ahead of the point, a
+            // digit the scale cannot hold and a value past the width are all
+            // refusals; the explicit cut is `truncated`.
             for refused in [
+                "",
+                "  ",
                 "-",
                 "+",
                 ".",
@@ -1011,20 +1036,50 @@ mod exact {
                 "1e1.5",
                 ",1",
                 "1..",
+                "1,250,000.25",
+                "_1000",
+                "1.000_5",
+                "1'000",
+                "1 000",
+                "1,5",
+                "0.1234567890123456789",
+                "-0.9999999999999999999",
+                "090293633924813269670312865403781063472970561.6e-38",
+                "1e-30",
                 "100000000000000000000",
                 "1e21",
                 "1e400",
             ] {
-                assert!(Decimal::parse(refused).is_err(), "{refused:?}");
+                let error = Decimal::parse(refused).expect_err(refused).to_string();
+                assert!(
+                    error.contains(&format!("{refused:?}")),
+                    "{refused:?}: {error}"
+                );
             }
-            // Text held as a scalar reads the same way.
             assert_eq!(
-                Decimal::from_scalar(&Scalar::from("1,250.5"))
+                Decimal::parse("0.1234567890123456789")
+                    .expect_err("a nineteenth digit")
+                    .to_string(),
+                "invalid decimal expression at byte 0: decimal has more fractional digits than \
+                 the field allows: \"0.1234567890123456789\""
+            );
+            assert_eq!(
+                Decimal::parse("1,5").expect_err("a grouping").to_string(),
+                "invalid decimal expression at byte 0: expected a decimal: \"1,5\""
+            );
+            // Text held as a scalar reads the same way, and only a string is a
+            // spelling.
+            assert_eq!(
+                Decimal::from_scalar(&Scalar::from("82.5"))
                     .unwrap()
                     .to_string(),
-                "1250.5"
+                "82.5"
             );
+            assert_eq!(Decimal::from_scalar(&Scalar::from("1,250.5")), None);
+            assert_eq!(Decimal::from_scalar(&Scalar::from("")), None);
             assert_eq!(Decimal::from_scalar(&Scalar::from("x")), None);
+            assert_eq!(BigDecimal::from_scalar(&Scalar::from("1,250.5")), None);
+            assert_eq!(BigDecimal::from_scalar(&Scalar::from("")), None);
         }
     }
 

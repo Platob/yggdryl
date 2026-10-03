@@ -81,17 +81,6 @@
         }
       },
       {
-        "name": "noallocregulatorytradeids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocregulatorytradeids",
-          "FIX:tag": "1908"
-        }
-      },
-      {
         "name": "allocregulatorytradeids",
         "dtype": {
           "type": "null"
@@ -110,17 +99,6 @@
         "metadata": {
           "FIX:field": "firmmnemonic",
           "FIX:tag": "1729"
-        }
-      },
-      {
-        "name": "nonested2partyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonested2partyids",
-          "FIX:tag": "756"
         }
       },
       {
@@ -255,17 +233,6 @@
         }
       },
       {
-        "name": "notradeallocamts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradeallocamts",
-          "FIX:tag": "1844"
-        }
-      },
-      {
         "name": "tradeallocamts",
         "dtype": {
           "type": "null"
@@ -383,17 +350,6 @@
         "metadata": {
           "FIX:field": "allocrefrisklimitcheckidtype",
           "FIX:tag": "2393"
-        }
-      },
-      {
-        "name": "noalloccommissions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noalloccommissions",
-          "FIX:tag": "2653"
         }
       },
       {

@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::{DataType, Error, Field, Result, Scalar};
@@ -305,10 +304,20 @@ pub(crate) fn holds_byte_leaf(dtype: &DataType) -> bool {
 /// Decode the base64 a document spells a byte payload with.
 pub(crate) fn base64_payload(value: Scalar, field: &Field) -> Result<Scalar> {
     match value {
-        crate::string_scalars!(encoded) => base64::engine::general_purpose::STANDARD
-            .decode(encoded.as_str().as_bytes())
+        crate::string_scalars!(encoded) => crate::Bytes::from_base64(encoded.as_str())
             .map(Scalar::from)
-            .map_err(|_| invalid(field, "expected base64 text")),
+            .ok_or_else(|| {
+                invalid(
+                    field,
+                    crate::text::expected_got(
+                        crate::Bytes::BASE64_SPELLING,
+                        format_args!(
+                            "{:?}",
+                            crate::text::elide_to(encoded.as_str(), crate::text::ERROR_TEXT_LIMIT)
+                        ),
+                    ),
+                )
+            }),
         value => Ok(value),
     }
 }

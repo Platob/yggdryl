@@ -59,6 +59,14 @@ const ROLE: &str = "role";
 /// The keys one entry may state, in the order it states them.
 pub(super) const KEYS: [&str; 4] = [MAP, KEY, FOLLOW, ROLE];
 
+/// What a role is: a `PartyRole(452)` code, ASCII letters and digits.
+const ROLE_CODE: &str = "a PartyRole code";
+
+/// Whether `role` is a `PartyRole(452)` code the document can state.
+fn is_role_code(role: &str) -> bool {
+    !role.is_empty() && role.bytes().all(|byte| byte.is_ascii_alphanumeric())
+}
+
 /// The identifier map an operation answers that a field's value names a
 /// message by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -180,11 +188,9 @@ impl FixIdSource {
     /// Holds this source to what the document can state: a role that is a
     /// code of ASCII letters and digits.
     fn validate(&self) -> Result<()> {
-        if let Some(role) = self.role()
-            && (role.is_empty() || !role.bytes().all(|byte| byte.is_ascii_alphanumeric()))
-        {
+        if let Some(role) = self.role().filter(|role| !is_role_code(role)) {
             return Err(refused(format_smolstr!(
-                "expected {ROLE:?} to be a PartyRole code, got {role:?}"
+                "expected {ROLE:?} to be {ROLE_CODE}, got {role:?}"
             )));
         }
         Ok(())
@@ -274,10 +280,28 @@ impl<'field> FixIdSources<'field> {
         let mut next = 0;
         loop {
             match KEYS[self.cursor.read_key(&KEYS, &mut next)?] {
-                MAP => map = Some(self.cursor.read_word(MAP)?),
-                KEY => key = Some(self.cursor.read_word(KEY)?),
+                MAP => {
+                    map = Some(self.read_as(MAP, "an identifier map", |word| word.parse().ok())?);
+                }
+                // A stored key is the folded word its type spells, no alias
+                // of it.
+                KEY => {
+                    key = Some(self.read_as(
+                        KEY,
+                        "the folded word of an identifier type",
+                        |word| {
+                            word.parse::<IdType>()
+                                .ok()
+                                .filter(|kind| kind.as_str() == word)
+                        },
+                    )?);
+                }
                 FOLLOW => follow = self.cursor.read_flag(FOLLOW)?,
-                _ => role = Some(self.cursor.read_word(ROLE)?),
+                _ => {
+                    role = Some(
+                        self.read_as(ROLE, ROLE_CODE, |word| is_role_code(word).then_some(word))?,
+                    )
+                }
             }
             if !self.cursor.next_property()? {
                 break;
@@ -285,21 +309,28 @@ impl<'field> FixIdSources<'field> {
         }
         let map = map.ok_or(Refusal::MissingKey(MAP))?;
         let key = key.ok_or(Refusal::MissingKey(KEY))?;
-        let map = map
-            .parse::<FixIdMapKind>()
-            .map_err(|_| Refusal::NotAWord(MAP))?;
-        // A stored key is the folded word its type spells, no alias of it.
-        let key = key
-            .parse::<IdType>()
-            .ok()
-            .filter(|kind| kind.as_str() == key)
-            .ok_or(Refusal::NotAWord(KEY))?;
         let mut source = FixIdSource::new(map, key).with_follow(follow);
         if let Some(role) = role {
             source = source.with_role(role);
         }
-        source.validate().map_err(|_| Refusal::NotAWord(KEY))?;
         Ok(source)
+    }
+
+    /// Reads the word `key` holds as what `read` makes of it, refused as
+    /// `expected` - the cursor back on the word, which the refusal quotes -
+    /// where it makes nothing.
+    fn read_as<T>(
+        &mut self,
+        key: &'static str,
+        expected: &'static str,
+        read: impl FnOnce(&'field str) -> Option<T>,
+    ) -> Scan<T> {
+        let at = self.cursor.position();
+        let word = self.cursor.read_word(key)?;
+        read(word).ok_or_else(|| {
+            self.cursor.seek(at);
+            Refusal::Unexpected(key, expected)
+        })
     }
 }
 

@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nopaymentstreamnondeliverablefixingdatesbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentstreamnondeliverablefixingdatesbusinesscenters",
-          "FIX:tag": "40946"
-        }
-      },
-      {
         "name": "paymentstreamnondeliverablefixingdatesbusinesscenters",
         "dtype": {
           "type": "null"
@@ -101,17 +90,6 @@
         }
       },
       {
-        "name": "nonondeliverablefixingdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonondeliverablefixingdates",
-          "FIX:tag": "40825"
-        }
-      },
-      {
         "name": "nondeliverablefixingdates",
         "dtype": {
           "type": "null"
@@ -119,17 +97,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "nondeliverablefixingdates"
-        }
-      },
-      {
-        "name": "nosettlratefallbacks",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosettlratefallbacks",
-          "FIX:tag": "40085"
         }
       },
       {

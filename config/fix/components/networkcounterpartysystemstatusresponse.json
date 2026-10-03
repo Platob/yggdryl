@@ -58,17 +58,6 @@
         }
       },
       {
-        "name": "nocompids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nocompids",
-          "FIX:tag": "936"
-        }
-      },
-      {
         "name": "compidstatgrp",
         "dtype": {
           "type": "null"

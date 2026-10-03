@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "noreturnrateprices",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noreturnrateprices",
-          "FIX:tag": "42765"
-        }
-      },
-      {
         "name": "returnrateprices",
         "dtype": {
           "type": "null"
@@ -88,17 +77,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "returnrateprices"
-        }
-      },
-      {
-        "name": "noreturnratefxconversions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noreturnratefxconversions",
-          "FIX:tag": "42731"
         }
       },
       {
@@ -244,17 +222,6 @@
         }
       },
       {
-        "name": "noreturnrateinformationsources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noreturnrateinformationsources",
-          "FIX:tag": "42761"
-        }
-      },
-      {
         "name": "returnrateinformationsources",
         "dtype": {
           "type": "null"
@@ -284,17 +251,6 @@
         "metadata": {
           "FIX:field": "returnratecashflowtype",
           "FIX:tag": "42755"
-        }
-      },
-      {
-        "name": "noreturnratedates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noreturnratedates",
-          "FIX:tag": "42709"
         }
       },
       {

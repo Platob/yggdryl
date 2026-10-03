@@ -728,6 +728,56 @@ def test_a_plan_is_built_section_by_section() -> None:
         Plan().with_ordering([(price, "sideways")])
 
 
+def test_a_write_verb_an_ordering_key_and_a_comparison_read_as_the_grammar_spells_them() -> None:
+    # Each word crosses the core's own reader of it - the one table the plan
+    # grammar reads - so every spelling the grammar takes is taken here, in
+    # any case, and nothing else is.
+    for text, verb in (
+        ("insert", "insert into"),
+        ("Append To", "insert into"),
+        ("insert overwrite into", "insert overwrite"),
+        ("OVERWRITE", "insert overwrite"),
+        ("Replace Into", "insert overwrite"),
+        ("upsert", "upsert into"),
+        ("merge into", "upsert into"),
+        ("delete from", "delete from"),
+    ):
+        assert Plan().with_write(text).verb == verb, text
+    for refused in ("sideways", "", "insert into t", "delete into", "select"):
+        with pytest.raises(ValueError):
+            Plan().with_write(refused)
+
+    # An ordering key is the text of one, a term, or a term beside its words.
+    for key in ("a", "a asc", "a ASC NULLS LAST", "a desc", "a desc nulls first", "a nulls first"):
+        assert Plan().with_ordering([key]) == Plan(f"select * order by {key}"), key
+    a = Term.column("a")
+    assert Plan().with_ordering([(a, "DESC")]).ordering == [(a, "desc", "last")]
+    assert Plan().with_ordering([(a, "desc nulls first")]).ordering == [(a, "desc", "first")]
+    assert Plan().with_ordering([("a", "asc", "FIRST")]).ordering == [(a, "asc", "first")]
+    assert str(Plan().with_ordering(["price * 2 desc nulls first"])) == (
+        "select * order by price * 2 desc nulls first"
+    )
+    for refused_key in ("", "a, b", "a descending", "a nulls", "a desc first", "a asc desc"):
+        with pytest.raises(ValueError):
+            Plan().with_ordering([refused_key])
+    for refused_words in (("descending",), ("desc", "middle"), ("desc nulls first", "last")):
+        with pytest.raises(ValueError):
+            Plan().with_ordering([(a, *refused_words)])
+
+    price = Term.column("price")
+    for spelling, written in (
+        ("=", "price = 1"),
+        ("<>", "price <> 1"),
+        ("!=", "price <> 1"),
+        (" >= ", "price >= 1"),
+        ("IS NOT DISTINCT FROM", "price is not distinct from 1"),
+    ):
+        assert str(price.compare(spelling, 1)) == written, spelling
+    for refused_comparison in ("approximately", "==", "is distinct"):
+        with pytest.raises(ValueError):
+            price.compare(refused_comparison, 1)
+
+
 def test_a_field_is_a_plan_and_a_plan_is_a_field() -> None:
     root = Field(
         "trades",

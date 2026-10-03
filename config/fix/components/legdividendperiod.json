@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nolegdividendperiodbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegdividendperiodbusinesscenters",
-          "FIX:tag": "42386"
-        }
-      },
-      {
         "name": "legdividendperiodbusinesscenters",
         "dtype": {
           "type": "null"

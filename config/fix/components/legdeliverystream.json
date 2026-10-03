@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nolegdeliverystreamcommoditysources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegdeliverystreamcommoditysources",
-          "FIX:tag": "41460"
-        }
-      },
-      {
         "name": "legdeliverystreamcommoditysources",
         "dtype": {
           "type": "null"
@@ -165,17 +154,6 @@
         "metadata": {
           "FIX:field": "legdeliverystreamriskapportionmentsource",
           "FIX:tag": "41219"
-        }
-      },
-      {
-        "name": "nolegdeliverystreamcycles",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegdeliverystreamcycles",
-          "FIX:tag": "41456"
         }
       },
       {

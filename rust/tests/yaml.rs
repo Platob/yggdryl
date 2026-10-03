@@ -2,3 +2,6 @@
 
 #[path = "yaml/mod_.rs"]
 mod mod_;
+
+#[path = "yaml/parser.rs"]
+mod parser;

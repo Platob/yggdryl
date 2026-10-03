@@ -186,8 +186,8 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
         .unwrap();
 
     // Two regulatory trade identifiers, each member where the group
-    // definition puts it, and the counter counting them.
-    assert_eq!(at(&row, &schema, "noregulatorytradeids").as_i128(), Some(2));
+    // definition puts it, the group's length the count.
+    assert!(schema.index_of("noregulatorytradeids").is_none());
     let occurrences = at(&row, &schema, "regulatorytradeids")
         .as_sequence()
         .expect("the regulatory trade identifiers");
@@ -210,7 +210,7 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
         yggdryl::Identifiers::from_scalar(at(&row, &schema, "partyids"))
             .expect("the partyids")
             .to_string(),
-        "[proprietary:executingfirm=P1, proprietary:orderoriginationtrader=P2]"
+        "[executingfirm=P1, orderoriginationtrader=P2, proprietary:executingfirm=P1, proprietary:orderoriginationtrader=P2]"
     );
 }
 

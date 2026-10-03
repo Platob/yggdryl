@@ -12,7 +12,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::metadata::{
     ALIAS_KEY, COMMENT_KEY, DESCRIPTION_KEY, DISPLAY_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY,
     LOCATION_KEY, MetadataIter, PARQUET_FIELD_ID_KEY, PropertyIter, for_each_well_known_protocol,
-    parse_field_id, parse_reserved_bool, property_key, write_json_string as write_quoted,
+    parse_field_id, property_key, write_json_string as write_quoted,
 };
 use crate::{
     BbgType, BooleanType, BytesType, CcyType, CfiType, CountryType, CusipType, DateTimeType,
@@ -321,15 +321,12 @@ impl<D: DataTypeValue> FieldOf<D> {
     /// The reserved `FIELD:init` metadata key is absent for an ordinary field,
     /// which reports `true`. Set it to `false` to mark a field that a schema
     /// still declares but a constructor must not accept, such as a value
-    /// derived after construction.
-    ///
-    /// # Errors
-    ///
-    /// Generic metadata construction validates this reserved key, so an error
-    /// can only originate from externally corrupted serialized state.
-    pub fn is_init(&self) -> Result<bool> {
-        self.get_metadata(FIELD_INIT_KEY)
-            .map_or(Ok(true), |value| parse_reserved_bool(FIELD_INIT_KEY, value))
+    /// derived after construction. Metadata intake reads the flag through the
+    /// boolean reader and stores `true` or `false`, so this compares the stored
+    /// text and cannot fail.
+    #[must_use]
+    pub fn is_init(&self) -> bool {
+        self.get_metadata(FIELD_INIT_KEY) != Some("false")
     }
 
     /// Parses the canonical location metadata as a typed URL.
@@ -1157,7 +1154,7 @@ macro_rules! field_leaves {
                 match self { $($(Self::$variant(field) => field.parquet_field_id(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(is_init), "`].")]
-            pub fn is_init(&self) -> Result<bool> {
+            pub fn is_init(&self) -> bool {
                 match self { $($(Self::$variant(field) => field.is_init(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(location), "`].")]

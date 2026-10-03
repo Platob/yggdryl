@@ -8,14 +8,14 @@ Field metadata the library reads: reserved keys, `SCHEME:name` properties behind
 | --- | --- |
 | `PARQUET:field_id` | i32, canonicalized on write |
 | `FIELD:enum` | the `StringEnum` document ([Codes](codes/index.md)); accepted on a fixed US-ASCII string of at most sixteen bytes or a registered code, refused by name elsewhere. A second key beside it rather than a copy of it is FIX's `FIX:codeset`, which holds no members at all: it names the [code set](../fix/registry.md#a-field-names-the-code-set-it-reads-by) the dictionary holds them under, and a field may carry both |
-| `FIELD:init` | boolean, absent by default; `false` = declared but refused by constructors |
-| `FIELD:partition` | boolean; `true` on partition columns, absent elsewhere |
+| `FIELD:init` | boolean, absent by default; `false` = declared but refused by constructors. Read at intake by the one [boolean reader](numeric/boolean.md#the-one-text-reader) - `no`, `False`, `0` - and stored `true` or `false`, so `is_init` compares the stored text and cannot fail |
+| `FIELD:partition` | boolean, read and stored as `FIELD:init` is; `true` on partition columns, absent elsewhere |
 | `location` | [`Url`](../uri/url-urn.md), a straight key |
 | `alias`, `comment`, `display` | validated text; views fall back to straight `comment` and `display` |
 | `SCHEME:name` | protocol property; the prefix is a known [`Scheme`](scalar.md) spelled upper case, as `ARROW:extension:name` and `PARQUET:field_id` spell theirs, and a key written in any case folds to it |
 | `ICEBERG:table_name` | catalog coordinates are protocol properties, never straight keys |
 | `DIGEST:role` | `holder`; anything else refused |
-| `DIGEST:time`, `DIGEST:unit` | a holder's coupled instant: one field path, and `s` / `ms` / `us` / `ns` canonicalized; the storage must be a coupled `fixed_size_binary` ([Hashing](../hashing.md)) |
+| `DIGEST:time`, `DIGEST:unit` | a holder's coupled instant: one [field path](paths.md) of field names - a column whose name holds a dot the quoted `"a.b"` - refused at `set_time` otherwise, and `s` / `ms` / `us` / `ns` canonicalized; the storage must be a coupled `fixed_size_binary` ([Hashing](../hashing.md#coupled-holders)) |
 | `DIGEST:by`, `PARTITION:by`, `SORT:by`, `TRANSFORM:by` | one shape, a JSON array of expression texts, each read by the grammar its key names and stored as that grammar spells it: a term for `DIGEST:by` (`["*"]` and absence selecting every non-holder column) and for `TRANSFORM:by` (a function's arguments), a term with an optional alias for `PARTITION:by`, an `order by` key for `SORT:by`; an empty, repeated or unparseable entry is refused naming the key |
 | `PYTHON:module`, `PYTHON:qualname` | the declaring Python class, as dotted names Python itself could have written; `<locals>` is the one non-identifier segment a qualified name may carry |
 | `PYTHON:kind` | `field`, `dataclass`, `typed_dict`, `named_tuple`, `enum`, `newtype`, `type_alias`, or `class`; anything else refused |
@@ -191,7 +191,7 @@ Typed accessors parse and canonicalize both ways.
 
     assert_eq!(field.parquet_field_id()?, Some(17));
     assert_eq!(field.get_metadata("PARQUET:field_id"), Some("17"));
-    assert!(!field.is_init()?);
+    assert!(!field.is_init());
     assert_eq!(field.get_metadata("FIELD:init"), Some("false"));
 
     // A straight key belongs to no protocol, so every protocol falls back to it.

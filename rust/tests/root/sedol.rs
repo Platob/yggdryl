@@ -1,18 +1,18 @@
-//! `rust/src/sedol.rs`: the two securities identifiers beside `isin`:
-//! `cusip` and `sedol`.
+//! `rust/src/sedol.rs`: the SEDOL securities identifier beside `isin`.
 //!
-//! Each is a registered code closed by its own check digit, so a value is an
-//! identifier or is refused, never a typo stored as a security. What the
-//! generic code invariants in `coded` cannot pin is the check itself, the
-//! case fold, and the canonical spelling a column is held to; those are
-//! here, once per identifier, with the ISIN rule as the reference.
+//! A registered code held by its shape and ranked by its own check digit,
+//! so a typo is a value every merge replaces by a closing one rather than
+//! a refusal. What the generic code invariants in `coded` cannot pin is the
+//! check itself, the case fold, and the canonical spelling a column is held
+//! to; those are here, once per identifier, with the ISIN rule as the
+//! reference.
 
 mod securities {
 
-    use yggdryl::Sedol;
+    use yggdryl::{CodeValue, Sedol};
 
     #[test]
-    fn a_sedol_is_seven_characters_closed_by_its_check_digit() {
+    fn a_sedol_is_seven_characters_ranked_by_its_check_digit() {
         // Six alphanumerics weighted 1, 3, 1, 7, 3, 9 and the modulus-10 digit
         // that closes the weighted sum.
         let held = Sedol::new("B0YBKJ7").unwrap();
@@ -25,23 +25,31 @@ mod securities {
         assert_eq!(Sedol::closing_digit("B0YBKJ"), Some(7));
         assert_eq!(Sedol::closing_digit("026349"), Some(4));
         assert_eq!(Sedol::closing_digit("B1F3M5"), Some(9));
-        assert!(Sedol::is_valid("B0YBKJ7"));
-        assert!(Sedol::is_valid("b0ybkj7"));
+        // The readings answer without building a value: canonical is the
+        // upper-case shape, closing the check digit.
+        assert!(Sedol::is_closed("B0YBKJ7"));
+        assert!(!Sedol::is_closed("b0ybkj7"), "lower case closes nothing");
         assert!(Sedol::is_canonical("B0YBKJ7"));
         assert!(!Sedol::is_canonical("b0ybkj7"));
+        assert!(Sedol::is_canonical("B0YBKJ8"), "a typo is a spelling");
 
         // Lower case is the upper case it spells, and stores as that.
         assert_eq!(Sedol::new("b0ybkj7").unwrap(), held);
         assert_eq!(Sedol::new("b0ybkj7").unwrap().as_str(), "B0YBKJ7");
 
-        // One digit off is a typo, and the refusal names the identifier.
-        let refused = Sedol::new("B0YBKJ8").unwrap_err().to_string();
-        assert!(refused.contains("sedol"), "{refused}");
-        assert!(
-            refused.contains("check digit does not close the identifier"),
-            "{refused}"
-        );
-        assert!(!Sedol::is_valid("B0YBKJ8"));
+        // One digit off is a typo: a value that does not close, of rank
+        // zero, which a closing one replaces whichever leads.
+        let typo = Sedol::new("B0YBKJ8").unwrap();
+        assert!(!Sedol::is_closed(typo.as_str()));
+        assert_eq!(typo.rank(), 0);
+        assert!(!typo.is_real());
+        assert_eq!(held.rank(), 1);
+        assert!(held.is_real());
+        assert_eq!(<Sedol as CodeValue>::MAX_RANK, 1);
+        assert_eq!(typo.clone().merge_with(&held), held);
+        assert_eq!(held.clone().merge_with(&typo), held);
+        let other = Sedol::new("0263494").unwrap();
+        assert_eq!(held.clone().merge_with(&other), held);
         // The wrong length, in both directions.
         let short = Sedol::new("B0YBKJ").unwrap_err().to_string();
         assert!(short.contains("expected seven characters"), "{short}");

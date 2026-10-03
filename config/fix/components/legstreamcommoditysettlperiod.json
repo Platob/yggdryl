@@ -125,17 +125,6 @@
         }
       },
       {
-        "name": "nolegstreamcommoditysettldays",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstreamcommoditysettldays",
-          "FIX:tag": "41680"
-        }
-      },
-      {
         "name": "legstreamcommoditysettldays",
         "dtype": {
           "type": "null"

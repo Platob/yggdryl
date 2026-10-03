@@ -134,17 +134,6 @@
         }
       },
       {
-        "name": "nosecurityriskmetrics",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosecurityriskmetrics",
-          "FIX:tag": "2995"
-        }
-      },
-      {
         "name": "securityriskmetrics",
         "dtype": {
           "type": "null"

@@ -6,7 +6,6 @@
 //! the token would be; [`Authorization::header_value`] is the one place the
 //! text is spelled out, for the wire.
 
-use base64::Engine as _;
 use smol_str::SmolStr;
 
 use crate::Url;
@@ -102,10 +101,7 @@ impl Authorization {
         match self {
             Self::Basic { username, password } => {
                 let pair = format!("{username}:{}", password.expose());
-                format!(
-                    "Basic {}",
-                    base64::engine::general_purpose::STANDARD.encode(pair.as_bytes())
-                )
+                format!("Basic {}", crate::bytes::into_base64(pair.as_bytes()))
             }
             Self::Bearer(token) => format!("Bearer {}", token.expose()),
             Self::Header { value, .. } => value.expose().to_owned(),

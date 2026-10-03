@@ -14,17 +14,6 @@
         }
       },
       {
-        "name": "noattachments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noattachments",
-          "FIX:tag": "2104"
-        }
-      },
-      {
         "name": "attachments",
         "dtype": {
           "type": "null"

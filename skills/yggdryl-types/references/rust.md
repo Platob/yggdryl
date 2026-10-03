@@ -149,6 +149,13 @@ assert!(qty.scalar(70_000_i64).is_err());     // never wraps
 assert!(DataType::Float64.scalar(100_i64).is_err());
 assert_eq!(DataType::Float64.scalar(100.0_f64)?.kind(), "f64");
 assert!(Field::new("note", DataType::utf8(), true).scalar(Scalar::Null)?.is_null());
+
+// A boolean reads one vocabulary, case-insensitive and trimmed: true/t/yes/y/on/1, false/f/no/n/off/0.
+assert_eq!(DataType::Boolean.scalar(" Yes ")?, Scalar::from(true));
+assert_eq!(DataType::Boolean.scalar("off")?, Scalar::from(false));
+assert!(DataType::Boolean.scalar("n/a").is_err());
+// Truthiness reads text by the same false set; other text is present, so true.
+assert!(!Scalar::from("no").is_truthy() && Scalar::from("n/a").is_truthy());
 ```
 
 ## Build a row
@@ -305,6 +312,11 @@ assert_eq!(Scalar::from_decimal(i256::from_i128(1_250), 2), Scalar::decimal128(1
 let amount = Field::new("amount", DataType::decimal(10, 2)?, true);
 assert_eq!(amount.scalar("12.5")?.decimal_unscaled_at(2), Some(1_250));
 assert!(amount.scalar(12.5_f64).is_err()); // a float is inexact: refused
+// One text grammar: `_` groups digits ahead of the point; a comma, NaN and a digit past the scale are refused.
+assert_eq!(amount.scalar("1_250.5")?.decimal_unscaled_at(2), Some(125_050));
+assert_eq!(amount.scalar(" .5 ")?.decimal_unscaled_at(2), Some(50));
+assert!(amount.scalar("1,250.50").is_err() && amount.scalar("NaN").is_err());
+assert!(amount.scalar("12.505").is_err()); // dropping a digit changes the value
 
 assert_eq!(Scalar::decimal128(1, 0).checked_div(&Scalar::decimal128(2, 0))?, Scalar::decimal128(5, 1));
 assert!(Scalar::decimal128(1, 0).checked_div(&Scalar::decimal128(3, 0)).is_err()); // inexact
@@ -353,10 +365,12 @@ assert_eq!(
 
 A string value keeps the leaf of its column but compares by its characters; a
 bound counts stored bytes. A registered code is its own datatype and value,
-never a string.
+never a string: its type admits its shape, and how real a value is - a check
+digit that closes, a listed prefix - is its rank (`CodeValue::rank`), which a
+merge decides by and nothing refuses.
 
 ```rust
-use yggdryl::{DataType, Scalar, Str, Uuid};
+use yggdryl::{Ccy, CodeValue, Country, DataType, IdType, Isin, Mic, Scalar, Str, Uuid};
 
 let bounded = DataType::sized_ascii(4)?;
 let usd = bounded.scalar("USD")?;
@@ -376,7 +390,16 @@ assert_eq!(ccy.scalar("USD")?.kind(), "ccy");
 assert_eq!(ccy.scalar("USDT")?.as_str(), Some("USDT")); // a ticker, up to eight bytes
 assert!(ccy.scalar("BABYDOGES").is_err());
 assert_ne!(ccy.scalar("USD")?, Scalar::from("USD")); // a code is not a string
-assert!(DataType::Isin.scalar("US0378331006").is_err()); // check digit
+// A code holds its shape; whether it is real is its rank, never a refusal.
+assert_eq!(DataType::Isin.scalar("US0378331006")?.as_str(), Some("US0378331006")); // a digit off
+assert!(DataType::Isin.scalar("US037833100").is_err()); // eleven characters: not an ISIN's shape
+assert_eq!((Isin::rank_of("US0378331005"), Isin::rank_of("US0378331006"), Isin::rank_of(Isin::NONE)), (2, 1, 0));
+assert!(Isin::is_closed("US0378331005") && Isin::is_listed_prefix("US0378331005"));
+let (masked, apple) = (Isin::new("XX0000000001")?, Isin::new("US0378331005")?);
+assert!(!masked.is_real() && apple.is_real());
+assert_eq!(masked.merge_with(&apple), apple); // the real one, whichever leads
+assert_eq!(IdType::Isin.rank("us0378331005"), 2); // a spelling ranks as the value it stores
+assert!(!Country::new("XX")?.is_listed() && Ccy::none().is_none() && Mic::none().is_none());
 // A currency pair: every spelling a feed writes, one stored `CCY/CCY`.
 assert_eq!(DataType::forex().code_width(), Some(7));
 assert_eq!(DataType::forex().scalar("eurusd")?, DataType::forex().scalar("EUR-USD")?);

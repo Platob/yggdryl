@@ -2759,6 +2759,9 @@ fn a_date_time_column_whose_first_value_spells_a_zone_reads_as_utc_instants() {
             " 2024-01-01T09:30:00.000000Z ",
             "2024-01-01T10:00:00.000000+00:00",
         ),
+        // The compact offsets ISO 8601 spells and the crate's timestamp
+        // reader reads state an instant as well.
+        ("2024-01-01T11:30:00+0200", "2024-01-01T12:00:00+02"),
     ] {
         let (rowset, back) = read_root(
             &document(
@@ -2822,6 +2825,24 @@ fn a_date_time_column_whose_first_value_is_a_wall_reading_stays_naive() {
             ]
         )
     );
+}
+
+#[test]
+fn a_zoned_first_value_no_timestamp_reader_reads_leaves_the_column_naive() {
+    // The decision is the timestamp reader's: a first value stating a zone it
+    // cannot read as an instant - month thirteen - keeps the leaf naive, and
+    // the value is refused by the naive reader at its row.
+    let message = read_root(
+        &document(
+            "<xsd:element sql:field=\"at\" name=\"at\" type=\"xsd:dateTime\"/>",
+            "<row><at>2024-13-01T09:30:00Z</at></row>",
+        ),
+        None,
+    )
+    .expect_err("no reader reads month thirteen")
+    .to_string();
+    assert!(message.contains("$[0]"), "{message}");
+    assert!(message.contains("at"), "{message}");
 }
 
 #[test]

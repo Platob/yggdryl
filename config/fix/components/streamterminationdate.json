@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nostreamterminationdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreamterminationdatebusinesscenters",
-          "FIX:tag": "40961"
-        }
-      },
-      {
         "name": "streamterminationdatebusinesscenters",
         "dtype": {
           "type": "null"

@@ -31,7 +31,8 @@
 //! they are what makes a batch a lossless capture rather than one reader's
 //! summary of it. A caller wanting facets alone projects the batch
 //! afterwards, which already exists. A key no dictionary resolved is no
-//! field, and `metadata` holds it.
+//! field: `metadata` holds it, or `fixentries` under `0:<key>` where an
+//! identifier map holds it with its value.
 //!
 //! A column per tag seen is deliberately not the shape: it makes the schema
 //! depend on the data, gives a mixed capture a thousand mostly-null columns,
@@ -101,15 +102,17 @@ impl FixCodec {
     /// warning; the source reader's own failure ends the reader after the
     /// completed prefix.
     ///
-    /// One thread reads rows where they stand. Several threads hand one owned
-    /// input batch to each worker, at most one batch per worker ahead, then
-    /// flatten its rows in source order before this reader closes output.
+    /// One thread reads rows where they stand. Several threads hand each
+    /// worker one job, at most one job per worker ahead - an input batch, or
+    /// one of the row ranges a batch past twice
+    /// [`Self::PARALLEL_JOB_ROWS`] rows is cut into - then flatten its rows
+    /// in source order before this reader closes output.
     /// A message's [place](crate::graph::Event::get_seqnum) among the
     /// messages of its instant is known only once the rows before it are
-    /// read, so a worker places and fills every row past its batch's first
+    /// read, so a worker places and fills every row past its job's first
     /// instant, and the messages of that first instant - which may continue
-    /// the run the batch before ended on - are placed and filled where the
-    /// batches meet.
+    /// the run the job before ended on - are placed and filled where the
+    /// jobs meet.
     ///
     /// # Errors
     ///
@@ -134,14 +137,14 @@ impl FixCodec {
         // A row is parsed and every message it carries filled into its
         // fixed row on the one thread that was handed the row, so no
         // message crosses a thread between the two halves - but the messages
-        // of a batch's first instant, which cross once to be placed.
+        // of a job's first instant, which cross once to be placed.
         let worker = schema.clone();
         let batches = crate::parallel::ordered(
-            SourceBatches::over(Some(source)),
+            SourceJobs::over(source, self.threads()),
             self.threads(),
             1,
             move |held| -> SeamedBatch {
-                match held.and_then(|batch| reader.land(batch)) {
+                match held.and_then(|(batch, start)| reader.land(batch, start)) {
                     Err(error) => SeamedBatch::of(std::iter::once(Err(error)), &worker),
                     Ok(landed) => SeamedBatch::of(
                         landed.iter().flat_map(|batch| {
@@ -211,9 +214,11 @@ impl FixCodec {
     /// parse nothing is refused before a row is read rather than answered
     /// as empty messages.
     ///
-    /// One thread reads rows where they stand. Several threads hand one owned
-    /// input batch to each worker, at most one batch per worker ahead, and
-    /// flatten each worker's rows in source order.
+    /// One thread reads rows where they stand. Several threads hand each
+    /// worker one job, at most one job per worker ahead - an input batch, or
+    /// one of the row ranges a batch past twice
+    /// [`Self::PARALLEL_JOB_ROWS`] rows is cut into - and flatten each
+    /// worker's rows in source order.
     pub fn parse_arrow_messages(
         &self,
         source: BatchReader,
@@ -241,11 +246,11 @@ impl FixCodec {
             })));
         }
         let rows = crate::parallel::ordered(
-            SourceBatches::over(Some(source)),
+            SourceJobs::over(source, threads),
             threads,
             1,
             move |held| -> Vec<Result<FixMsg>> {
-                match held.and_then(|batch| reader.land(batch)) {
+                match held.and_then(|(batch, start)| reader.land(batch, start)) {
                     Err(error) => vec![Err(error)],
                     Ok(landed) => {
                         let rows = landed.iter().map(|batch| batch.records.len()).sum();
@@ -415,8 +420,8 @@ impl FixCodec {
     /// A stream of messages as a stream of batches of FIX rows under `schema`.
     ///
     /// Each message fills one row through [`FixMsg::into_row`]: the schema's
-    /// columns in its order, each by its tag or its group's counter, a column
-    /// carrying neither by the child of its name. The other half of what the
+    /// columns in its order, each by its tag or, for a group, by the counter
+    /// tag that names it, a column carrying neither by the child of its name. The other half of what the
     /// Arrow twins compose; [`fix_schema`](super::fix_schema) is the schema a
     /// parsed message fills whole, and a schema read off a batch by
     /// [`Self::messages`] is the one its messages return to. Batches close on
@@ -607,8 +612,10 @@ impl FixCodec {
     /// pinned, else [`SOH`], then a newline. The wire combines projected
     /// ordinary fields with residual entries; residual content owns any
     /// overlapping tag or group. Represented content may reorder or normalize.
-    /// A key no dictionary resolved is the row's `metadata` and no field, so
-    /// it is not written, exactly as a bridge's namespaced keys are not.
+    /// A key no dictionary resolved is restored from the row's `metadata`,
+    /// or from `fixentries` under `0:<key>` where an identifier map holds
+    /// it, as the tag-zero entry a parse holds and is written as it arrived;
+    /// a bridge's namespaced key is the message's metadata and is not.
     /// A batch without the
     /// [`FIXENTRIES_COLUMN`](super::FIXENTRIES_COLUMN) cannot be written and says
     /// so before a row is read. A row in is a line out - a row whose message
@@ -900,10 +907,10 @@ fn charged(message: Result<FixMsg>, schema: &Field) -> Option<Result<Charged>> {
     }
 }
 
-/// One capture batch's messages as a worker read them: those of the
-/// batch's first instant still to place, because the run the batch before
-/// ended on may continue into them, then every row past that instant
-/// placed and filled here, and the run the batch ends on.
+/// One capture job's messages as a worker read them - a batch's, or a row
+/// range's of one: those of the job's first instant still to place, because
+/// the run the job before ended on may continue into them, then every row
+/// past that instant placed and filled here, and the run the job ends on.
 struct SeamedBatch {
     head: Vec<Result<FixMsg>>,
     rest: Vec<Result<Charged>>,
@@ -945,8 +952,8 @@ impl SeamedBatch {
     }
 }
 
-/// The rows of seamed batches in source order: each batch's first instant
-/// placed after the run the batch before ended on, and filled here, then
+/// The rows of seamed jobs in source order: each job's first instant
+/// placed after the run the job before ended on, and filled here, then
 /// the rows its worker filled.
 struct Seams<I> {
     batches: I,
@@ -1046,10 +1053,11 @@ struct RowReader {
 }
 
 impl RowReader {
-    /// Land one batch under the carrier - whole, or the rows the landing
-    /// accepts - narrowing each landed column's payload once.
-    fn land(&self, batch: RecordBatch) -> Result<SmallVec<[Landed; 1]>> {
-        Ok(landed(&self.root, batch)?
+    /// Land one batch - or the rows of one from its row `start` - under the
+    /// carrier, whole or the rows the landing accepts, narrowing each landed
+    /// column's payload once.
+    fn land(&self, batch: RecordBatch, start: usize) -> Result<SmallVec<[Landed; 1]>> {
+        Ok(landed(&self.root, batch, start)?
             .into_iter()
             .map(|records| {
                 let payload = Payload::of(&records.children()[self.columns.payload]);
@@ -1144,7 +1152,7 @@ impl RowReader {
 
 /// The batches one source reader yields, each of the schema it declared:
 /// what every door reading batches pulls through, before the rows are landed
-/// on one thread or a batch is handed to a worker whole.
+/// on one thread or a batch is handed to the workers as [`SourceJobs`].
 ///
 /// Every cell is read by the position the declared schema gave it, so a
 /// batch of another schema is excluded with a warning. A failure of the
@@ -1190,6 +1198,66 @@ impl Iterator for SourceBatches {
     }
 }
 
+/// The jobs the Arrow capture pools hand their workers, each beside the row
+/// of its source batch it starts at: every batch [`SourceBatches`] yields,
+/// whole, or - past twice [`FixCodec::PARALLEL_JOB_ROWS`] rows - cut into
+/// near-equal row ranges, four per thread or fewer where a range would hold
+/// fewer rows than that.
+///
+/// A cut is a zero-copy slice, so a worker holds part of one input batch and
+/// never more; a job never spans two batches, so never a source failure nor
+/// a batch excluded for its schema; and jobs are never joined, so the first
+/// answer waits on no batch after its own.
+struct SourceJobs {
+    batches: SourceBatches,
+    /// The most jobs one batch is cut into.
+    most: usize,
+    /// The batch being cut, the row its next job starts at, and how many
+    /// jobs are still to cut from it.
+    cutting: Option<(RecordBatch, usize, usize)>,
+}
+
+impl SourceJobs {
+    fn over(source: BatchReader, threads: usize) -> Self {
+        Self {
+            batches: SourceBatches::over(Some(source)),
+            most: threads.saturating_mul(4),
+            cutting: None,
+        }
+    }
+}
+
+impl Iterator for SourceJobs {
+    type Item = Result<(RecordBatch, usize)>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cutting.is_none() {
+            let batch = match self.batches.next()? {
+                Ok(batch) => batch,
+                Err(error) => return Some(Err(error)),
+            };
+            let rows = batch.num_rows();
+            if rows <= 2 * FixCodec::PARALLEL_JOB_ROWS {
+                return Some(Ok((batch, 0)));
+            }
+            let jobs = self.most.min(rows / FixCodec::PARALLEL_JOB_ROWS);
+            self.cutting = Some((batch, 0, jobs));
+        }
+        let (batch, start, left) = self.cutting.as_mut()?;
+        // Near-equal: the rows still uncut over the jobs still to cut, so
+        // no two jobs of a batch differ by more than a row.
+        let at = *start;
+        let rows = (batch.num_rows() - at).div_ceil(*left);
+        let job = batch.slice(at, rows);
+        *start += rows;
+        *left -= 1;
+        if *left == 0 {
+            self.cutting = None;
+        }
+        Some(Ok((job, at)))
+    }
+}
+
 /// The failure a reader's `error` is, where it is the source's own; none
 /// once a refusal of the batch it read is warned about.
 fn read_failure(error: ArrowError) -> Option<Error> {
@@ -1208,8 +1276,14 @@ fn read_failure(error: ArrowError) -> Option<Error> {
 /// One batch landed under `root`: whole where it lands, else row by row,
 /// each row the landing refuses - a code no registry holds - excluded with a
 /// warning naming it, so one cell no column accepts costs its row and never
-/// its batch. Only a batch holding a refused row is landed twice.
-fn landed(root: &Resolved, batch: RecordBatch) -> crate::arrow::Result<SmallVec<[Serie; 1]>> {
+/// its batch. Only a batch holding a refused row is landed twice. `batch`
+/// is its source batch's rows from `start`, so the warning names the row of
+/// the source batch whatever range of it a job was cut to.
+fn landed(
+    root: &Resolved,
+    batch: RecordBatch,
+    start: usize,
+) -> crate::arrow::Result<SmallVec<[Serie; 1]>> {
     match land_batch(root, batch.clone(), &Proof::Unproven) {
         Ok(records) => return Ok(smallvec::smallvec![records]),
         Err(error) if error.is_source_failure() => return Err(error),
@@ -1223,7 +1297,8 @@ fn landed(root: &Resolved, batch: RecordBatch) -> crate::arrow::Result<SmallVec<
             Err(error) => warned!(
                 "FIX row excluded: the landing refuses a cell of it",
                 landing_subject(&error),
-                "{error}, in row {row} of its batch"
+                "{error}, in row {} of its batch",
+                start + row
             ),
         }
     }
@@ -1287,7 +1362,7 @@ impl Iterator for BatchRows {
             // The batch is spent, or none is held yet: the next validated one
             // is pulled, landed, and the spent one dropped.
             self.held = None;
-            match self.source.next().map(|batch| self.reader.land(batch?)) {
+            match self.source.next().map(|batch| self.reader.land(batch?, 0)) {
                 Some(Ok(landed)) => self.pending = landed.into_iter(),
                 Some(Err(error)) => return Some(Err(error)),
                 None => return None,
@@ -1343,7 +1418,7 @@ impl Iterator for StructRows {
             match self
                 .source
                 .next()
-                .map(|batch| -> Result<_> { Ok(landed(root, batch?)?) })
+                .map(|batch| -> Result<_> { Ok(landed(root, batch?, 0)?) })
             {
                 Some(Ok(landed)) => self.pending = landed.into_iter(),
                 Some(Err(error)) => return Some(Err(error)),

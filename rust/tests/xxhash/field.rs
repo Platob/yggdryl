@@ -348,7 +348,22 @@ mod xxhash_arrow {
     }
 
     #[test]
-    fn digest_by_tries_later_literal_prefixes_and_allows_terminal_collections() {
+    fn digest_by_reads_an_unquoted_dot_as_a_level_and_never_as_part_of_a_name() {
+        // One reading only: `a.b.c` is a -> b -> c, never the column `a.b`.
+        let dotted = StructType::from_fields([DataType::Int64.required_field("c")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("a.b");
+        let mut digest = holder("digest", DataType::UInt64);
+        digest.as_digest_mut().set_by(["a.b.c"]).unwrap();
+        let error = Xxh3::new()
+            .apply_arrow_batch(&root([dotted, digest]), empty_batch(), false)
+            .unwrap_err();
+        assert_metadata_error(error, "DIGEST:by", "$.digest");
+    }
+
+    #[test]
+    fn digest_by_reads_a_quoted_name_as_one_level_and_allows_terminal_collections() {
         let scalar_prefix = DataType::Int64.required_field("a");
         let dotted_prefix = StructType::from_fields([DataType::Int64.required_field("c")])
             .map(DataType::from)
@@ -358,7 +373,10 @@ mod xxhash_arrow {
             .unwrap()
             .required_field("items");
         let mut digest = holder("digest", DataType::UInt64);
-        digest.as_digest_mut().set_by(["a.b.c", "items"]).unwrap();
+        digest
+            .as_digest_mut()
+            .set_by(["\"a.b\".c", "items"])
+            .unwrap();
         let root = root([scalar_prefix, dotted_prefix, items, digest]);
         let item_value = Scalar::from_sequence([Scalar::from(3), Scalar::from(4)]);
         let rows = Scalar::from_sequence([Scalar::from_sequence([

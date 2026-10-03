@@ -135,17 +135,6 @@
         }
       },
       {
-        "name": "nobiddescriptors",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nobiddescriptors",
-          "FIX:tag": "398"
-        }
-      },
-      {
         "name": "biddescriptors",
         "dtype": {
           "type": "null"
@@ -153,17 +142,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "biddescriptors"
-        }
-      },
-      {
-        "name": "nobidcomponents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nobidcomponents",
-          "FIX:tag": "420"
         }
       },
       {

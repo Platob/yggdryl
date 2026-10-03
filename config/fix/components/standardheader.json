@@ -323,17 +323,6 @@
         }
       },
       {
-        "name": "nohops",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nohops",
-          "FIX:tag": "627"
-        }
-      },
-      {
         "name": "hops",
         "dtype": {
           "type": "null"

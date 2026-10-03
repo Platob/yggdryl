@@ -8,18 +8,18 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | --- | --- |
 | Owns | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `book_arrow_reader`, `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `write_arrow_reader`, `FixCodec::DEFAULT_BATCH_BYTE_SIZE`, `DEFAULT_PAYLOAD_COLUMN`, `SOH` |
 | Returns | `BatchReader`, the one type every encoding in the crate returns; Python gets a `pyarrow.RecordBatchReader`, JavaScript a `BatchReader` |
-| Schema | answered before the first row is read, from the source's schema and the [dictionary](registry.md) alone, never from the data; `lifecycle_arrow_reader` answers the schema it read, `arrow_reader` the one it was given, `book_arrow_reader` the graph's lifted [`MarketData::field()`](../graph/market-data.md#arrow), one row per book, its `marketdatakind` `BOOK`, and `market_arrow_reader` and `market_data_arrow_reader` the same field, one row per operation. `fix_schema(&registry, "fix")` answers the [fixed row](capture.md#the-columns-are-the-folded-names): 152 columns |
+| Schema | answered before the first row is read, from the source's schema and the [dictionary](registry.md) alone, never from the data; `lifecycle_arrow_reader` answers the schema it read, `arrow_reader` the one it was given, `book_arrow_reader` the graph's lifted [`MarketData::field()`](../graph/market-data.md#arrow), one row per book, its `marketdatakind` `BOOK`, and `market_arrow_reader` and `market_data_arrow_reader` the same field, one row per operation. `fix_schema(&registry, "fix")` answers the [fixed row](capture.md#the-columns-are-the-folded-names): 150 columns |
 | Order | the element, event, market and operation columns every generated schema opens with lead the row, the source's own columns follow them, and the rest of the [fixed columns](capture.md#the-columns-are-the-folded-names) close it |
 | Clash | a carried column whose folded name a FIX column takes is dropped in front and lands in that column, never renamed and never duplicated |
 | Rows | one row per message, never one per line: a line carrying two frames is two rows, a message the parse [split another off](message.md#a-parse-splits-what-a-message-reports) is followed by its row, a JSON document is one row holding an `unknown` message with no entries, a payload that would not parse is one row holding an empty message, and a line carrying no message at all is no row - [what a line carries](decode.md) is the codec's rule; a row's carried source columns repeat over every message it answers |
 | Batches | closed by estimated landed bytes against the codec's `batch_byte_size`, `DEFAULT_BATCH_BYTE_SIZE` (128 MiB), or by rows against `batch_row_size`, `DEFAULT_BATCH_ROW_SIZE` (32,768), whichever it reaches first, unless pinned: several small input batches accumulate into one, one larger than the target splits by rows in proportion, and a batch always holds at least one row |
 | Pins | on the codec, for the whole run: `with_payload_column`, `with_capture_names`, `with_separator`, `with_null_values`, `try_with_direction`, `try_with_default_sending_time`, `with_batch_byte_size`, `with_batch_row_size`, `with_threads`, `with_include_msgtypes`, `with_exclude_msgtypes`, `with_snapshot_ns`, `with_sorted_lifecycle`, `with_official_time_delay_ms`, `with_dedup_window_ms`, `with_market_metadata`; no dialect pin, because the registry is one namespace, and no version pin, because a version is what a line said |
-| Stages | a call, never a flag: `FixCodec::lifecycle` composes over `messages` and `arrow_reader`, and `lifecycle_arrow_reader` is the walk composed for you; `book_arrow_reader` composes `FixMarketIterator`, `BookIterator` and `MarketData::arrow_reader`, one `BOOK` row per book, but does not infer or apply lifecycle enrichment; `market_data` admits what `book_arrow_reader` admits and sorts the operations, `market_arrow_reader` writes them and `market_data_arrow_reader` reads them from FIX rows, none of them running the lifecycle either; Rust-only `FixDedup` drops an adjacent republication, while lifecycle keeps finite-capture history and yields each identity once within its `dedup_window_ms` in [Lifecycle](lifecycle.md) |
+| Stages | a call, never a flag: `FixCodec::lifecycle` composes over `messages` and `arrow_reader`, and `lifecycle_arrow_reader` is the walk composed for you; `book_arrow_reader` composes `FixMarketIterator`, `BookIterator` - under its `filter`, where given - and `MarketData::arrow_reader`, one `BOOK` row per book, but does not infer or apply lifecycle enrichment; `market_data` admits what `book_arrow_reader` admits and the executions besides, and sorts the operations, `market_arrow_reader` writes them and `market_data_arrow_reader` reads them from FIX rows, none of them running the lifecycle either; Rust-only `FixDedup` drops an adjacent republication, while lifecycle keeps finite-capture history and yields each identity once within its `dedup_window_ms` in [Lifecycle](lifecycle.md) |
 | Doors | capture Arrow parsing pools its whole input by batch, then merges rows in source order under the output byte and row closing targets; `arrow_reader` and `book_arrow_reader` stream; `lifecycle` collects a finite capture to sort its history before it emits chained messages, and `market_data` one to sort its operations; only a source's own failure is an error item |
 | Per row | `beginstring` and `msgdirection` are parameters read from the row; a `sourceurl` column is neither a parameter nor a fill - it is [the capture's own](message.md#a-row-is-a-message-again) and is restated onto the output row from the source row; any other column named after a field - `msgpluginid` among them - fills it where the message did not state it; a capture `timestamp` is carried context, never a FIX clock |
 | Errors | typed I/O and schema failures, a schema that makes no FIX row first among them, refused before a row is read; what the data refuses is left out with a [warning](capture.md#warnings) and the rest read - a source batch of another schema than the first, a `state` code no member takes, a message the row will not hold; a source's own failure is yielded after the completed prefix, in source order under pooled parsing, and fuses the reader; dropping a pooled reader joins dispatched work |
-| Lazy | one worker parses with no pool; capture Arrow parsing pools batches, while line, message and write doors retain bounded 64-row chunks, two per worker; lifecycle retains finite-capture history |
-| Wire | `write_arrow_reader` rebuilds every semantic message from its projected columns, its residual `fixentries` and the keys its `metadata` holds that no dictionary resolved; a batch without that residual column is refused before a row is read |
+| Lazy | one worker parses with no pool; capture Arrow parsing pools batches and the row ranges a large one is cut into, while line, message and write doors retain bounded 64-row chunks, two per worker; lifecycle retains finite-capture history |
+| Wire | `write_arrow_reader` rebuilds every semantic message from its projected columns, its residual `fixentries` - its `0:<key>` entries, the keys no dictionary resolved that an identifier map holds, included - and the keys its `metadata` holds that no dictionary resolved; a batch without that residual column is refused before a row is read |
 | Bindings | Rust; Python (`FixCodec.parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `book_arrow_reader`, `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `write_arrow_reader`, and the `market_metadata=` keyword); JavaScript (`parseTextArrowReader`, `lifecycleArrowReader`, `messages`, `arrowReader`, `bookArrowReader`, `marketData`, `marketArrowReader`, `marketDataArrowReader`, `writeArrowReader`, and `{ marketMetadata }`); `FixDedup` is Rust-only |
 
 ## Use
@@ -180,17 +180,17 @@ One column of frames in, batches out, the capture's own columns carried right af
 
 ## FIX market books
 
-`FixCodec::book_arrow_reader(messages, snapshot_millis)` is the centralized Rust path from semantic messages to Arrow books. The composed reader admits orders, one-sided quotes, actual executions and `W`/`X`; it ignores administration, requests, acknowledgements, non-executing reports, trades, batches and two-sided quotes before projection - a trade's fills, a batch's entries and a quote's sides reach the book as the messages the parse [split off](message.md#a-parse-splits-what-a-message-reports), so each execution is folded exactly once. Ignored records do not advance book time. `FixMarketIterator` lazily turns each admitted sorted message into `MarketData` values - one direct `OrderEvent`, `QuoteEvent` or `ExecutionEvent`, or the operations and the `SnapshotEvent` of a `W` / `X` market-data group - while retaining at most that message's expansion; an operation dated before one it already yielded is yielded all the same, with a warning, and the book leaves it out. [`BookIterator`](../graph/book.md#book-fold) applies those operations atomically by effective timestamp, one book per [book key](../graph/book.md#books-by-key) - the ticker, else the market and classification - and [`MarketData::arrow_reader`](../graph/market-data.md#arrow) writes each emitted book as one row of `MarketData::field()`, its `marketdatakind` `BOOK`, closing batches under the codec's row and byte limits. Nothing a message states fails the door: what cannot stand is [warned about](capture.md#warnings) and left out or defaulted, as [the message](message.md#market-data) and [the book fold](../graph/book.md#book-fold) say; only a source failure is an error item, once after the completed book prefix, and the reader fuses. The call deliberately does not run [`lifecycle`](lifecycle.md): pass enriched messages when predecessor state is required.
+`FixCodec::book_arrow_reader(messages, snapshot_millis, filter)` is the centralized Rust path from semantic messages to Arrow books. The composed reader admits what a book folds - orders, quotes and `W`/`X`, the kinds [`MarketDataKind::is_booked`](../types/enum/marketdatakind.md#sided-kinds-and-batches) admits - and ignores every other record before it is expanded: administration, requests, an acknowledgement of an execution, executions, trades and batches. A fill moves a book through its order's or quote's report, which the parse [split off](message.md#a-parse-splits-what-a-message-reports) the execution, so no execution reaches a book, and a book message's trade entries (`269=2`) are pruned by the same rule; a venue's acknowledgement, cancel, reject, expiry or replace is its order's report and moves the entry it names. A quote is one entry, resting on each leg it states. Ignored records do not advance book time. `FixMarketIterator` lazily turns each admitted sorted message into `MarketData` values - one direct `OrderEvent` or `QuoteEvent`, or the operations and the `SnapshotEvent` of a `W` / `X` market-data group - while retaining at most that message's expansion; an operation dated before one it already yielded is yielded all the same, with a warning, and the book leaves it out. [`BookIterator`](../graph/book.md#book-fold) applies those operations atomically by effective timestamp, one book per [book key](../graph/book.md#books-by-key) - the instrument's ISIN, whatever its rank, else its ticker, else `XX0000000000`, the number that states none - and [`MarketData::arrow_reader`](../graph/market-data.md#arrow) writes each emitted book as one row of `MarketData::field()`, its `marketdatakind` `BOOK`, closing batches under the codec's row and byte limits. `filter`, where given, is an expression [`Filter`](../expression/filters.md) over that row, bound once: it narrows what the books fold and never admits a kind the rule above prunes, and one naming a column the row does not carry, or answering anything but a boolean, is refused when the reader is built. Nothing a message states fails the door: what cannot stand is [warned about](capture.md#warnings) and left out or defaulted, as [the message](message.md#market-data) and [the book fold](../graph/book.md#book-fold) say; only a source failure is an error item, once after the completed book prefix, and the reader fuses. The call deliberately does not run [`lifecycle`](lifecycle.md): pass enriched messages when predecessor state is required.
 
-`snapshot_millis=0` disables epoch-aligned book snapshots; a positive value enables them. A book row nests what the book is at that instant - its live entries, the deltas applied since the book before it, the executions at that instant, each a row of the same market data shape, and each side's [price levels](../graph/book.md#limits), best first - and states its best tradable bid and ask as its [`bidpx`, `bidqty`, `askpx` and `askqty`](../graph/market.md#bid-and-ask). Python exposes the same path as `book_arrow_reader(messages, snapshot_millis=0) -> pyarrow.RecordBatchReader`, read back as typed books by `graph.MarketData.from_arrow_reader`; JavaScript exposes `bookArrowReader(messages, snapshotMillis = 0) -> BatchReader`, read back by `graph.MarketData.fromArrowReader`. Neither binding reimplements the split, operation conversion, matching, book summaries or Arrow encoding.
+Every booked input is a delta. A book row is emitted where its instant applied a delta, or at a snapshot tick where the book holds a live entry - a snapshot emptying a book is emitted too, empty and complete - and states the deltas its instant applied, in the order applied, each a row of the same market data shape, beside its best tradable bid and ask as its [`bidpx`, `bidqty`, `askpx` and `askqty`](../graph/market.md#bid-and-ask). Only a snapshot tick emits a complete book, nesting its live entries and each side's [price levels](../graph/book.md#limits), best first: every grid tick a positive `snapshot_millis` crosses, and a snapshot input - a `W` full refresh, an empty `W`, inputs stating `snapunix`. Every other book is a delta book: its `alive`, `bidlimits` and `asklimits` cells are null, its `prevuuid` names the book it follows - none for a book key's first book - and [`with_previous`](../graph/book.md#book-fold) over the complete book before it rebuilds it whole. With `snapshot_millis = 0` and no `W`, every book is a delta book. A book row's `executions` cell is null. Python exposes the same path as `book_arrow_reader(messages, snapshot_millis=0, filter=None) -> pyarrow.RecordBatchReader` and JavaScript as `bookArrowReader(messages, snapshotMillis = 0, filter = undefined) -> BatchReader`, `filter` a `Filter`, a `Term` or the text of a predicate; both read back as typed books by `graph.MarketData.from_arrow_reader` / `graph.MarketData.fromArrowReader`. Neither binding reimplements the split, operation conversion, matching, book summaries or Arrow encoding.
 
-`FixCodec::market_data(messages)` is the sorted door. It collects a finite capture, admits exactly what `book_arrow_reader` admits, expands each admitted message into its leaves as [`into_market_data`](message.md#market-data) does - each carrying its message's unmapped fields where the codec's `market_metadata` says so - and stably sorts the operations by the instant a book folds them at, the snapshot instant a walk stated else the event's own, which is the key `FixMarketIterator` and [`BookIterator`](../graph/book.md#book-fold) check. Sorting the operations rather than the messages is what places an entry whose own clock stands before an earlier message's, so the answer never regresses. Nothing a message states fails the capture: a message its intake refused for what it states is left out with a warning. A source failure ends the capture where it happens - yielded after the operations of every message before it, no later message read - and the iterator is fused. `market_arrow_reader(messages)` writes those operations as `MarketData::field()` rows under the codec's row and byte bounds, every row of the capture read before a source failure and then that failure, and `market_data_arrow_reader(source)` is its twin over batches of FIX rows, refusing a schema that makes no root before a row is read. The twin reads each row as its own message, its market facts derived from what the row states, so over rows no walk wrote it answers the leaves `market_arrow_reader` answers for their messages. Neither runs [`lifecycle`](lifecycle.md): `codec.market_data(codec.lifecycle(messages))` - or `market_arrow_reader` over the same walk - is the sorted handoff when the walk's enrichment is wanted, and a walked capture reaches it as messages, never as the rows `lifecycle_arrow_reader` writes: what the walk settles from a message's predecessors - `prevpx`, `prevqty`, a side or ticker it carries forward, an execution instant - is no cell of the row, and the twin reads a walked row without it.
+`FixCodec::market_data(messages)` is the sorted door. It collects a finite capture, admits what `book_arrow_reader` admits and the executions besides - a trade as the executions its parse split off - which stay market data of their own, expands each admitted message into its leaves as [`into_market_data`](message.md#market-data) does - each carrying its message's unmapped fields where the codec's `market_metadata` says so - and stably sorts the operations by the instant each stands at, the snapshot instant a walk stated else the event's own, which is the key `FixMarketIterator` and [`BookIterator`](../graph/book.md#book-fold) check. Sorting the operations rather than the messages is what places an entry whose own clock stands before an earlier message's, so the answer never regresses. Nothing a message states fails the capture: a message its intake refused for what it states is left out with a warning. A source failure ends the capture where it happens - yielded after the operations of every message before it, no later message read - and the iterator is fused. `market_arrow_reader(messages)` writes those operations as `MarketData::field()` rows under the codec's row and byte bounds, every row of the capture read before a source failure and then that failure, and `market_data_arrow_reader(source)` is its twin over batches of FIX rows, refusing a schema that makes no root before a row is read. The twin reads each row as its own message, its market facts derived from what the row states, so over rows no walk wrote it answers the leaves `market_arrow_reader` answers for their messages. Neither runs [`lifecycle`](lifecycle.md): `codec.market_data(codec.lifecycle(messages))` - or `market_arrow_reader` over the same walk - is the sorted handoff when the walk's enrichment is wanted, and a walked capture reaches it as messages, never as the rows `lifecycle_arrow_reader` writes: what the walk settles from a message's predecessors - `prevpx`, `prevqty`, a side or ticker it carries forward, an execution instant - is no cell of the row, and the twin reads a walked row without it.
 
 ```text
 FixCodec::market_data(&self, messages) -> impl FusedIterator<Item = Result<MarketData>> + Send + 'static
 FixCodec::market_arrow_reader(&self, messages) -> Result<BatchReader>
 FixCodec::market_data_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>
-FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64) -> Result<BatchReader>
+FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64, filter: Option<&Filter>) -> Result<BatchReader>
 ```
 
 === "Rust"
@@ -200,7 +200,7 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64) -> Result<Bat
 
     use yggdryl::graph::{BookIterator, MarketData, MarketKind};
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, Side, fix_schema};
+    use yggdryl::{Filter, FixCodec, FixMsg, FixRegistry, Side, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -213,7 +213,8 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64) -> Result<Bat
     ];
     let capture: Vec<FixMsg> = codec.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
 
-    // The sorted door sorts every operation by the instant a book folds it at.
+    // The sorted door sorts every operation by the instant it stands at; the
+    // trade entry is market data of its own.
     let operations: Vec<MarketData> =
         codec.market_data(capture.clone()).collect::<yggdryl::Result<_>>()?;
     let kinds: Vec<MarketKind> = operations.iter().map(MarketData::kind).collect();
@@ -221,20 +222,28 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64) -> Result<Bat
         kinds,
         [MarketKind::QuoteEvent, MarketKind::QuoteEvent, MarketKind::QuoteEvent, MarketKind::ExecutionEvent]
     );
+    // The book walk prunes the trade: the snapshot is a complete book, the
+    // bid's change a delta book over it.
     let books = BookIterator::new(operations.into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
     assert_eq!(books.len(), 2);
+    assert!(books[0].is_complete() && !books[1].is_complete());
+    assert_eq!(books[1].deltas().len(), 1);
     assert_eq!(books[1].best_price(Side::Buy).map(|price| price.to_string()).as_deref(), Some("101"));
 
     // The book door does not sort: the same capture, out of order, leaves the
     // snapshot out with a warning - dated before the book it would fold into -
     // and no batch is an error.
-    let mut lenient = codec.book_arrow_reader(capture.clone(), 0)?;
+    let mut lenient = codec.book_arrow_reader(capture.clone(), 0, None)?;
     assert!(lenient.all(|batch| batch.is_ok()));
 
-    // The same operations as rows, from the messages or from their FIX rows.
     let rows = |reader: yggdryl::arrow::BatchReader| -> usize {
         reader.map(|batch| batch.expect("a batch").num_rows()).sum()
     };
+    // A filter narrows what the books fold and never admits an execution.
+    let executions: Filter = "marketdatakind = 'EXEC'".parse()?;
+    assert_eq!(rows(codec.book_arrow_reader(capture.clone(), 0, Some(&executions))?), 0);
+
+    // The same operations as rows, from the messages or from their FIX rows.
     assert_eq!(rows(codec.market_arrow_reader(capture.clone())?), 4);
     let fixed = codec.arrow_reader(fix_schema(&registry, "fix")?, capture)?;
     assert_eq!(rows(codec.market_data_arrow_reader(fixed)?), 4);
@@ -259,7 +268,8 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64) -> Result<Bat
     ]
     capture = list(codec.parse_lines(lines))
 
-    # The sorted door sorts every operation by the instant a book folds it at.
+    # The sorted door sorts every operation by the instant it stands at; the
+    # trade entry is market data of its own.
     operations = list(codec.market_data(capture))
     assert [value.kind for value in operations] == [
         "quote_event",
@@ -267,10 +277,16 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64) -> Result<Bat
         "quote_event",
         "execution_event",
     ]
+    # The book walk prunes the trade: the snapshot is a complete book, the
+    # bid's change a delta book over it.
     books = list(graph.BookIterator(operations))
     assert len(books) == 2
+    assert books[0].is_complete and not books[1].is_complete
     best = books[1].best_price(Side.BUYS)
     assert best is not None and best.as_py() == Decimal(101)
+
+    # A filter narrows what the books fold and never admits an execution.
+    assert codec.book_arrow_reader(capture, 0, "marketdatakind = 'EXEC'").read_all().num_rows == 0
 
     # The same operations as rows, from the messages or from their FIX rows.
     assert codec.market_arrow_reader(capture).read_all().num_rows == 4
@@ -295,15 +311,22 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64) -> Result<Bat
     ].map((line) => Buffer.from(line))
     const capture = [...codec.parseLines(lines)]
 
-    // The sorted door sorts every operation by the instant a book folds it at.
+    // The sorted door sorts every operation by the instant it stands at; the
+    // trade entry is market data of its own.
     const operations = [...codec.marketData(capture)]
     assert.deepEqual(
       operations.map((value) => value.kind),
       ['quote_event', 'quote_event', 'quote_event', 'execution_event'],
     )
+    // The book walk prunes the trade: the snapshot is a complete book, the
+    // bid's change a delta book over it.
     const books = [...new graph.BookIterator(operations)]
     assert.equal(books.length, 2)
+    assert.ok(books[0].isComplete && !books[1].isComplete)
     assert.equal(books[1].bestPrice('BUYS'), '101')
+
+    // A filter narrows what the books fold and never admits an execution.
+    assert.equal(codec.bookArrowReader(capture, 0, "marketdatakind = 'EXEC'").intoTable().numRows, 0)
 
     // The same operations as rows, from the messages or from their FIX rows.
     assert.equal(codec.marketArrowReader(capture).intoTable().numRows, 4)
@@ -327,7 +350,7 @@ What holds for a whole run is pinned on the codec once, and each pin is the per-
 | `direction` | `try_with_direction` | the set's `Send` code, `S` | the code of tag 385's set a line that states none of its own takes on the batch door - no `msgdirection` column stating one, and no [rule of tag 385's `FIX:directions`](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) matching the prose in front of its payload; any spelling of a code of the set, resolved once, and `None` or `""` pins nothing |
 | `batch_byte_size` | `with_batch_byte_size` | `DEFAULT_BATCH_BYTE_SIZE`, 128 MiB | the estimated landed bytes one output batch targets |
 | `batch_row_size` | `with_batch_row_size` | `DEFAULT_BATCH_ROW_SIZE`, 32,768 | the rows one output batch targets; a batch closes on whichever bound it reaches first |
-| `threads` | `with_threads` | available CPUs | workers for parsing and row conversion. Capture Arrow parse doors pool the whole input by batch, capped at this count; the concurrency bound is input batch count, never bytes. They merge ordered output using the closing targets `batch_byte_size` and `batch_row_size`; early reader drop joins dispatched work. Line, message and write doors instead retain 64-row chunks, at most two per worker. One uses no pool, zero reads as one, and `lifecycle` remains one ordered finite-capture walk. |
+| `threads` | `with_threads` | available CPUs | workers for parsing and row conversion. Capture Arrow parse doors hand each worker one job, at most one ahead: an input batch, or one of the near-equal row ranges a batch of more than twice `PARALLEL_JOB_ROWS` (256) rows is cut into without a copy - four per worker, none under that many rows - so one large batch keeps every worker busy and a worker holds at most part of one input batch. They merge ordered output using the closing targets `batch_byte_size` and `batch_row_size`; early reader drop joins dispatched work. Line, message and write doors instead retain 64-row chunks, at most two per worker. One uses no pool, zero reads as one, and `lifecycle` remains one ordered finite-capture walk. |
 | `exclude_msgtypes` | `with_exclude_msgtypes` | `DEFAULT_REFUSED_MSGTYPES`: `Heartbeat`, `TestRequest`, the untyped row | the types [no row is built for](decode.md#a-type-nobody-asked-for-is-never-built) |
 | `include_msgtypes` | `with_include_msgtypes` | empty, which reads every type the refusals leave | the types read, naming any clearing the default refusals |
 | `capture_names` | `with_capture_names` | none | what a run's row-header captures are called, in the order a line answers them, so [`parse_text_line`](capture.md#a-reader-is-the-whole-parse-surface) reads a capture by position rather than by name |
@@ -572,7 +595,7 @@ A source row is read for every message it carries, so a capture answers one row 
 
 ## Rows are messages again, and messages rows
 
-`messages` reads a stream of batches back as semantic messages, each row through [`FixMsg::from_row`](message.md#a-row-is-a-message-again) under the source schema: projected columns, residual `fixentries` and the keys `metadata` holds that no dictionary resolved rebuild the message without parsing. Its recorded identity cells remain stated while market getters refill from the reconstructed content. `arrow_reader` is the other direction: a stream of messages into batches under a schema, each through `FixMsg::into_row`, closed on the bytes each row lands as. The two invert each other at the canonical row: `messages` reads each row's own cells into the message it makes, carried and never content, and `into_row` states them again at their columns, so a `messages` -> stage -> `arrow_reader` composition keeps them whatever order the stage answers in - `lifecycle_arrow_reader` and `format_arrow_reader` are that composition spelled once. It is what lets a stage run over a capture already landed in Arrow; the example ends [back on the wire](#back-to-the-wire). One thread holds one source batch at a time. Several threads retain bounded 64-row chunks, at most two per worker, which can span input batches and still answer messages in source order.
+`messages` reads a stream of batches back as semantic messages, each row through [`FixMsg::from_row`](message.md#a-row-is-a-message-again) under the source schema: projected columns, residual `fixentries` - `0:<key>` entries included - and the keys `metadata` holds that no dictionary resolved rebuild the message without parsing. Its recorded identity cells remain stated while market getters refill from the reconstructed content. `arrow_reader` is the other direction: a stream of messages into batches under a schema, each through `FixMsg::into_row`, closed on the bytes each row lands as. The two invert each other at the canonical row: `messages` reads each row's own cells into the message it makes, carried and never content, and `into_row` states them again at their columns, so a `messages` -> stage -> `arrow_reader` composition keeps them whatever order the stage answers in - `lifecycle_arrow_reader` and `format_arrow_reader` are that composition spelled once. It is what lets a stage run over a capture already landed in Arrow; the example ends [back on the wire](#back-to-the-wire). One thread holds one source batch at a time. Several threads retain bounded 64-row chunks, at most two per worker, which can span input batches and still answer messages in source order.
 
 === "Rust"
 
@@ -679,7 +702,7 @@ A source row is read for every message it carries, so a capture answers one row 
 
 ## Back to the wire
 
-`write_arrow_reader` streams a batch back out as lines, one per row and so [one per message](#one-row-per-message). It first rebuilds each semantic message from its projected columns, its residual `fixentries` and the unresolved keys of its `metadata`, then calls [`into_bytes`](encode.md) with the codec's `separator`, `SOH` unless pinned, and a newline. The output is canonical message wire rather than a promise to reproduce original arrival order. The count of lines is answered; the [round trip above](#rows-are-messages-again-and-messages-rows) ends there. A batch carrying no `fixentries` column cannot be written and says so before a row is read. One batch is pulled, its rows written, and it is dropped; no buffer bigger than a row is held.
+`write_arrow_reader` streams a batch back out as lines, one per row and so [one per message](#one-row-per-message). It first rebuilds each semantic message from its projected columns, its residual `fixentries` - `0:<key>` entries included - and the unresolved keys of its `metadata`, then calls [`into_bytes`](encode.md) with the codec's `separator`, `SOH` unless pinned, and a newline. The output is canonical message wire rather than a promise to reproduce original arrival order. The count of lines is answered; the [round trip above](#rows-are-messages-again-and-messages-rows) ends there. A batch carrying no `fixentries` column cannot be written and says so before a row is read. One batch is pulled, its rows written, and it is dropped; no buffer bigger than a row is held.
 
 ## Chained where it sits
 
@@ -744,6 +767,7 @@ A carried column returns to its place because the message carries it: a message 
 - A fill never overrides what the frame stated: a `msgseqnum` capture beside a frame carrying `34=` leaves that field to the frame.
 - A fill is row-only: never an entry, never in `fixentries`, never re-emitted by `write_arrow_reader`, never in the arrival digest.
 - `messages` reads a row carrying the settled values - `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - as a replayable message; a row leaving one of them null is left out with a [warning](capture.md#warnings), since the fixed row declares them required.
+- `messages` on a row whose `securityids`, `identifiers` or `partyids` cell holds a key that reads as none, a value its type refuses or two spellings of one key with two values, or whose `fixentries` holds a key naming another field than its tag (`55:securityid`) -> that row left out with a [warning](capture.md#warnings), because [`FixMsg::from_row`](message.md#a-row-is-a-message-again) refuses it: a row's identifier map is its word, never replaced by what its fields state.
 - A batch closes on the bytes each row lands as - the leaves of every column the row fills and a per-row width - so a source batch of any size splits by what its messages land as, and a line answering two messages is charged twice, once per row.
 - A `batch_byte_size` of `0` or `1` is a batch a row: the target is where a batch closes, never a bound a row must fit under.
 - `parse_text_arrow_reader` on a source with no column named as the payload column, or one holding neither text nor bytes under it -> refused before a row is read, naming the column. `parse_text_line` has no column to name: a line's body is a typed field, so a line whose body is empty answers no message at all and nothing else is refusable.
@@ -800,12 +824,12 @@ with the sentence in the pin that says why.
 
 | stage, per message | `bridge_pipe` | `frame_pipe` | `frame_packed` |
 | --- | ---: | ---: | ---: |
-| `parse`, the codec over the body | 628 | 230 | 1,029 |
-| `into_row`, a fresh clone against the fixed schema | 77 | 57 | 243 |
-| `landing`, the row as a one-row `Serie` under the warm root | 1,381 | 1,362 | 1,398 |
-| `batch`, the `Serie` built into a `RecordBatch` | 190 | 190 | 190 |
-| `digest`, the arrival record's hash | 24 | 24 | 16 |
-| `lifecycle`, the walk over one message | 8 | 7 | 7 |
+| `parse`, the codec over the body | 556 | 223 | 1,022 |
+| `into_row`, a fresh clone against the fixed schema | 88 | 64 | 250 |
+| `landing`, the row as a one-row `Serie` under the warm root | 1,502 | 1,482 | 1,520 |
+| `batch`, the `Serie` built into a `RecordBatch` | 210 | 210 | 210 |
+| `digest`, the arrival record's hash | 1 | 1 | 1 |
+| `lifecycle`, the walk over one message | 10 | 10 | 10 |
 
 The `fix_allocations` target reports the same dimension over the whole capture,
 one copy on one thread, per message: `fix/allocations` counts requests and

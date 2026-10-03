@@ -86,10 +86,12 @@ const LINES_PER_COPY: u64 = 144;
 /// their parse splits off - `rust/tests/fix/ulbridge.rs` pins the same.
 const MESSAGES_PER_COPY: u64 = 79 + 57;
 
-/// The market operations one copy projects to once walked - the 18 the
+/// The market operations one copy projects to once walked - the 21 the
 /// capture's own walk reaches a book with, which `rust/tests/fix/ulbridge.rs`
-/// pins. A copy the walk took for a repeat of another would answer fewer.
-const OPERATIONS_PER_COPY: u64 = 18;
+/// pins: the NOVN order's acknowledgement, restatement and expiry among them,
+/// since an execution report of no fill is its order's leaf. A copy the walk
+/// took for a repeat of another would answer fewer.
+const OPERATIONS_PER_COPY: u64 = 21;
 
 /// The uncompressed size `YGGDRYL_SCALE_BYTES` stands for when it is set
 /// and empty: twenty gibibytes, about ninety-nine thousand copies.

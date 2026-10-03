@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nounderlyingpricingdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpricingdatebusinesscenters",
-          "FIX:tag": "41947"
-        }
-      },
-      {
         "name": "underlyingpricingdatebusinesscenters",
         "dtype": {
           "type": "null"

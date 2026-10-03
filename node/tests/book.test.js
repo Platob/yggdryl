@@ -31,8 +31,6 @@ const CANDLES = [
     bidqty: '300',
     askqty: '250',
     books: 4,
-    executions: 1,
-    volume: '300',
   },
   {
     start: zurich('2026-08-14T14:47:00'),
@@ -44,8 +42,6 @@ const CANDLES = [
     bidqty: '100',
     askqty: null,
     books: 2,
-    executions: 0,
-    volume: '0',
   },
   {
     start: zurich('2026-08-14T14:49:00'),
@@ -57,8 +53,6 @@ const CANDLES = [
     bidqty: '50',
     askqty: '75',
     books: 3,
-    executions: 2,
-    volume: '125',
   },
 ]
 
@@ -288,8 +282,6 @@ test('layoutCandles places every column from its own edges, so buckets of unequa
     mid: null,
     spread: null,
     books: 1,
-    executions: 0,
-    volume: '0',
   }))
   assert.equal(parseInstant(days[0].end) - parseInstant(days[0].start), 25 * 3_600_000)
   const layout = layoutCandles(days, { width: 900, height: 300 })
@@ -318,10 +310,10 @@ test('candles with no bid, ask or mid keep their columns and the time axis, and 
   assert.ok(texts.includes('No bid or ask in this range'), texts.join(' | '))
   assert.ok(!texts.includes('No candles in this range'))
   assert.ok(texts.includes('14 Aug 14:46'), 'the time axis stands')
-  // The counts stay reachable: hovering a column reads its books, executions and volume.
+  // The count stays reachable: hovering a column reads how many books it folded.
   chart.hover(0)
   const rows = dom.tooltip.children[1].children.filter((node) => node.tag === 'dd').map((node) => node.textContent)
-  assert.deepEqual(rows, ['4 · 1', '300'])
+  assert.deepEqual(rows, ['4'])
 })
 
 test('nearestCandle answers the column under a position inside the plot and nothing outside it', async () => {
@@ -483,7 +475,7 @@ test('drawCandles paints the scene at the device ratio, answers hover and keys, 
   assert.equal(dom.tooltip.hidden, false)
   assert.equal(dom.tooltip.children[0].textContent, '2026-08-14 14:46:00.000 → 2026-08-14 14:47:00.000')
   const rows = dom.tooltip.children[1].children.filter((node) => node.tag === 'dd').map((node) => node.textContent)
-  assert.deepEqual(rows, ['72.2 · 72.3 · 72.1 · 72.25', '72.3 · 72.4 · 72.25 · 72.35', '72.3', '0.1', '300', '250', '4 · 1', '300'])
+  assert.deepEqual(rows, ['72.2 · 72.3 · 72.1 · 72.25', '72.3 · 72.4 · 72.25 · 72.35', '72.3', '0.1', '300', '250', '4'])
   assert.deepEqual(hovered, [CANDLES[0].start])
   dom.listeners.get('click')({ clientX: 10 + first.center, clientY: 40 })
   assert.deepEqual(selected, [0])
@@ -516,9 +508,9 @@ test('drawCandles paints the scene at the device ratio, answers hover and keys, 
 
   assert.equal(
     describeCandle(CANDLES[0], 'Europe/Zurich'),
-    '2026-08-14 14:46:00 to 14:47:00: bid open 72.2, high 72.3, low 72.1, close 72.25; ask open 72.3, high 72.4, low 72.25, close 72.35; mid close 72.3; spread close 0.1; bid quantity 300; ask quantity 250; 4 books, 1 execution; volume 300',
+    '2026-08-14 14:46:00 to 14:47:00: bid open 72.2, high 72.3, low 72.1, close 72.25; ask open 72.3, high 72.4, low 72.25, close 72.35; mid close 72.3; spread close 0.1; bid quantity 300; ask quantity 250; 4 books',
   )
-  assert.equal(describeCandle({ ...CANDLES[1], executions: 0, books: 1 }, 'UTC'), '2026-08-14 12:47:00 to 12:48:00: bid open 72.25, high 72.45, low 72.2, close 72.4; bid quantity 100; 1 book, 0 executions; volume 0')
+  assert.equal(describeCandle({ ...CANDLES[1], books: 1 }, 'UTC'), '2026-08-14 12:47:00 to 12:48:00: bid open 72.25, high 72.45, low 72.2, close 72.4; bid quantity 100; 1 book')
 
   // An empty set paints the message and installs the same handlers.
   const empty = fakeDom()
@@ -800,6 +792,47 @@ function fakeDocument() {
   return document
 }
 
+test('the summary names a book by its ticker else its ISIN, and flags one the service could not rebuild', async () => {
+  const { renderSummary } = await load('audit.js')
+  const document = fakeDocument()
+  const node = new FakeElement(document, 'div')
+  document.body.append(node)
+  const book = {
+    currunix: '2026-08-14T12:46:59.999999999Z',
+    ticker: 'HOLN',
+    isincode: 'CH0012214059',
+    crosscode: '3:0:CH0012214059',
+    bestbid: '72.25',
+    bestask: '72.35',
+    bidqty: '300',
+    askqty: '250',
+    complete: true,
+    alive: 2,
+    deltas: 1,
+    bidlimits: [{ price: '72.25', quantity: '300', uuids: ['a'], tradable: true }],
+    asklimits: [{ price: '72.35', quantity: '250', uuids: ['b'], tradable: true }],
+  }
+  renderSummary(node, book)
+  const [name] = node.findAll((element) => element.className === 'summary-name')
+  assert.equal(name.textContent, 'HOLN · 3:0:CH0012214059')
+  const labels = () => node.findAll((element) => element.className === 'stat-label').map((element) => element.textContent)
+  // A book holds no execution, so none is counted.
+  assert.deepEqual(labels(), ['Best bid', 'Best ask', 'Spread', 'Mid', 'Imbalance', 'Alive', 'Deltas'])
+  assert.doesNotMatch(node.textContent, /Deltas only/)
+  assert.match(node.textContent, /Alive2entries/)
+
+  // A book the service answers `complete: false` states its deltas alone: its
+  // touch stands, and it is flagged, with no entry or limit counted; one
+  // stating no ticker is named by its ISIN.
+  renderSummary(node, { ...book, ticker: null, complete: false, alive: 0, bidlimits: [], asklimits: [] })
+  assert.equal(node.findAll((element) => element.className === 'summary-name')[0].textContent, 'CH0012214059 · 3:0:CH0012214059')
+  const flags = node.findAll((element) => element.className === 'chip chip-warn').map((element) => element.textContent)
+  assert.deepEqual(flags, ['Deltas only'])
+  assert.match(node.textContent, /Best bid72\.25/)
+  assert.match(node.textContent, /Alive–not rebuilt/)
+  assert.equal(node.findAll((element) => element.className === 'empty').map((element) => element.textContent).join('|'), 'Not rebuilt: this book states its deltas alone.|Not rebuilt: this book states its deltas alone.')
+})
+
 test('sorting an audit column keeps the focus on its heading', async () => {
   const { renderEvents } = await load('audit.js')
   const document = fakeDocument()
@@ -1074,9 +1107,10 @@ test('serve rejects with the refusal the command itself prints on stdout', { ski
     assert.equal(error.message, '✗ invalid record value at $.capture: a capture needs a table to land in: expected a TABLE beside --capture, got none')
     return true
   })
-  // What the argument parser refuses it writes on stderr, and that is the message.
+  // What the argument parser refuses it writes on stderr, and that is the
+  // message: the crate's own reading of a timeout, which bounds it.
   await assert.rejects(book.serve({ bin, args: ['--read-timeout', '0'] }), (error) => {
-    assert.match(error.message, /^error: invalid value '0' for '--read-timeout <SECONDS>': 0 is not in 1\.\.=86400\n/)
+    assert.match(error.message, /^error: invalid value '0' for '--read-timeout <SECONDS>': 0 is not above zero and at most 86400 seconds\n/)
     return true
   })
 })
@@ -1186,20 +1220,25 @@ function serviceCandles(tz) {
     bidqty: '300',
     askqty: '250',
     books: 4,
-    executions: 1,
-    volume: '300',
   }))
 }
 
 const SERVICE = Object.freeze({
   'api/tables': [{ name: 'books', url: 'file:///books' }],
   'api/timezones': ['UTC', 'America/New_York', 'Europe/Zurich'],
+  // One book per key, by key: a ticker-keyed one, an ISIN-keyed one stating
+  // its ticker, and the one keyed by the ISIN that states none.
   'api/tickers': [
-    { ticker: 'ABBN.S', crosscode: 'ABBN.S', from: '2026-08-14T12:46:39.000000000Z', to: '2026-08-14T21:59:47.000000000Z', books: 33 },
-    { ticker: 'HOLN', crosscode: 'HOLN', from: '2026-08-14T12:46:39.000000000Z', to: '2026-08-14T12:49:40.000000000Z', books: 9 },
+    { key: 'ABBN.S', ticker: 'ABBN.S', crosscode: '3:0:ABBN.S', from: '2026-08-14T12:46:39.000000000Z', to: '2026-08-14T21:59:47.000000000Z', books: 33 },
+    { key: 'CH0012214059', ticker: 'HOLN', crosscode: '3:0:CH0012214059', from: '2026-08-14T12:46:39.000000000Z', to: '2026-08-14T12:49:40.000000000Z', books: 9 },
+    { key: 'XX0000000000', ticker: null, crosscode: '3:0:XX0000000000', from: '2026-08-14T12:46:39.000000000Z', to: '2026-08-14T12:47:00.000000000Z', books: 2 },
   ],
   'api/candles': (request) => ({ table: request.params.table, ticker: request.params.ticker, candles: serviceCandles(request.params.tz) }),
-  'api/book': (request) => ({ currunix: request.params.at, ticker: request.params.ticker, crosscode: request.params.ticker, bestbid: '72.25', bestask: '72.35', alive: 2, deltas: 1, executions: 0, bidlimits: [], asklimits: [] }),
+  'api/book': (request) => {
+    const listed = SERVICE['api/tickers'].find((entry) => entry.key === request.params.ticker)
+    const isincode = /^[A-Z]{2}[0-9A-Z]{9}[0-9]$/.test(request.params.ticker) ? request.params.ticker : null
+    return { currunix: request.params.at, ticker: listed?.ticker ?? null, isincode, crosscode: listed?.crosscode ?? null, bestbid: '72.25', bestask: '72.35', complete: true, alive: 2, deltas: 1, bidlimits: [], asklimits: [] }
+  },
   'api/events': (request) => ({ rows: [{ currunix: request.params.from, role: 'alive', side: request.params.side === 'bid' ? 'BUYS' : 'SELL', price: '72.25', crosscode: `${request.params.ticker}-${request.params.side}` }], truncated: false }),
 })
 
@@ -1368,10 +1407,36 @@ test('the page sends the range as instants: a ticker span, a minute input, a zon
   }
 })
 
+test('the book list is keyed by the book key the service lists and labelled by its ticker, else its key', async () => {
+  const page = await openPage()
+  try {
+    const options = page.byId('ticker').children
+    assert.deepEqual(options.map((option) => option.value), ['ABBN.S', 'CH0012214059', 'XX0000000000'])
+    assert.deepEqual(options.map((option) => option.textContent), ['ABBN.S · 33 books', 'HOLN · 9 books', 'XX0000000000 · 2 books'])
+    // Every query names the book by its key, under the service's `ticker` parameter.
+    page.byId('ticker').value = 'CH0012214059'
+    page.byId('ticker').dispatch('change')
+    await page.idle()
+    const candles = page.asked('api/candles').at(-1).params
+    assert.deepEqual([candles.ticker, candles.from, candles.to], ['CH0012214059', '2026-08-14T12:46:39Z', '2026-08-14T12:49:40Z'])
+    assert.equal(page.byId('chart-title').textContent, 'HOLN · 1m · UTC')
+    assert.match(page.window.location.hash, /ticker=CH0012214059/)
+    page.byId('ticker').value = 'XX0000000000'
+    page.byId('ticker').dispatch('change')
+    await page.idle()
+    assert.equal(page.asked('api/candles').at(-1).params.ticker, 'XX0000000000')
+    assert.equal(page.byId('chart-title').textContent, 'XX0000000000 · 1m · UTC')
+  } finally {
+    page.close()
+  }
+})
+
 test('a selected bucket reads its last book strictly before its end, in every zone', async () => {
+  // A link naming the ticker of one listed book reads that book by its key,
+  // as the service reads its `ticker` parameter.
   const page = await openPage({ zone: 'Europe/Zurich', hash: '#table=books&ticker=HOLN' })
   try {
-    assert.equal(page.asked('api/candles').at(-1).params.ticker, 'HOLN')
+    assert.equal(page.asked('api/candles').at(-1).params.ticker, 'CH0012214059')
     selectFirstBucket(page)
     await page.idle()
     const book = page.asked('api/book').at(-1).params
@@ -1389,7 +1454,7 @@ test('a selected bucket reads its last book strictly before its end, in every zo
 })
 
 test('a shared link opens on its selected bucket', async () => {
-  const hash = '#table=books&ticker=HOLN&from=2026-08-14T12%3A45%3A00Z&to=2026-08-14T13%3A15%3A00Z&tz=UTC&interval=1m&at=2026-08-14T12%3A47%3A00Z'
+  const hash = '#table=books&ticker=CH0012214059&from=2026-08-14T12%3A45%3A00Z&to=2026-08-14T13%3A15%3A00Z&tz=UTC&interval=1m&at=2026-08-14T12%3A47%3A00Z'
   const page = await openPage({ hash })
   try {
     assert.equal(page.asked('api/book').length, 1, 'the book of the linked bucket is read')
@@ -1412,7 +1477,7 @@ test('a shared link opens on its selected bucket', async () => {
 
 test('a bucket read that lands after the view moved on is dropped', async () => {
   const held = []
-  const hold = (answer) => (request) => (request.params.ticker === 'HOLN' ? new Promise((done) => held.push(() => done(answer(request)))) : answer(request))
+  const hold = (answer) => (request) => (request.params.ticker === 'CH0012214059' ? new Promise((done) => held.push(() => done(answer(request)))) : answer(request))
   const page = await openPage({ hash: '#table=books&ticker=HOLN', routes: { 'api/book': hold(SERVICE['api/book']), 'api/events': hold(SERVICE['api/events']) } })
   try {
     selectFirstBucket(page)
@@ -1424,8 +1489,8 @@ test('a bucket read that lands after the view moved on is dropped', async () => 
     held.forEach((release) => release())
     await page.idle()
     assert.equal(page.asked('api/candles').at(-1).params.ticker, 'ABBN.S')
-    assert.doesNotMatch(page.byId('summary').textContent, /HOLN/)
-    assert.doesNotMatch(page.byId('bid-events').textContent, /HOLN/)
+    assert.doesNotMatch(page.byId('summary').textContent, /HOLN|CH0012214059/)
+    assert.doesNotMatch(page.byId('bid-events').textContent, /HOLN|CH0012214059/)
     assert.doesNotMatch(page.window.location.hash, /at=/)
     assert.equal(page.byId('readout').textContent, '', 'the live region holds no reading of the view before')
   } finally {

@@ -69,17 +69,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -145,17 +134,6 @@
         }
       },
       {
-        "name": "noregistdtls",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noregistdtls",
-          "FIX:tag": "473"
-        }
-      },
-      {
         "name": "rgstdtls",
         "dtype": {
           "type": "null"
@@ -163,17 +141,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "rgstdtls"
-        }
-      },
-      {
-        "name": "nodistribinsts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodistribinsts",
-          "FIX:tag": "510"
         }
       },
       {

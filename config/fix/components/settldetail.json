@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nosettlpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosettlpartyids",
-          "FIX:tag": "781"
-        }
-      },
-      {
         "name": "settlparties",
         "dtype": {
           "type": "null"

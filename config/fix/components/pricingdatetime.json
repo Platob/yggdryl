@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nopricingdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricingdatebusinesscenters",
-          "FIX:tag": "41230"
-        }
-      },
-      {
         "name": "pricingdatebusinesscenters",
         "dtype": {
           "type": "null"

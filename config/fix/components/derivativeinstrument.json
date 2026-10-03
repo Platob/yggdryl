@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "noderivativesecurityaltid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noderivativesecurityaltid",
-          "FIX:tag": "1218"
-        }
-      },
-      {
         "name": "derivativesecurityaltidgrp",
         "dtype": {
           "type": "null"
@@ -761,17 +750,6 @@
         }
       },
       {
-        "name": "noderivativeevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noderivativeevents",
-          "FIX:tag": "1286"
-        }
-      },
-      {
         "name": "derivativeevents",
         "dtype": {
           "type": "null"
@@ -779,17 +757,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "derivativeevents"
-        }
-      },
-      {
-        "name": "noderivativeinstrumentparties",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noderivativeinstrumentparties",
-          "FIX:tag": "1292"
         }
       },
       {

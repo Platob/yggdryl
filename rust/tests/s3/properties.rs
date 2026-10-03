@@ -360,7 +360,7 @@ fn the_aws_files_and_endpoint_switches_reach_the_session() {
     }
     let refused = S3Options::from_properties([("sts_regional_endpoints", "sometimes")])
         .expect_err("a refusal");
-    assert!(refused.to_string().contains("boolean"), "{refused}");
+    assert!(refused.to_string().contains("true/false"), "{refused}");
 }
 
 #[test]
@@ -445,7 +445,7 @@ fn the_sse_properties_name_each_of_the_three_kinds() {
 fn a_value_that_will_not_parse_is_heard_here_rather_than_at_the_store() {
     for (name, value, expected) in [
         ("s3.request-timeout", "soon", "seconds"),
-        ("anonymous", "perhaps", "boolean"),
+        ("anonymous", "perhaps", "true/false"),
         ("max_attempts", "many", "whole number"),
         ("part_size", "big", "byte count"),
         ("s3.sse.type", "rot13", "sse type"),
@@ -499,6 +499,112 @@ fn sizes_may_carry_the_unit_a_configuration_file_writes_them_with() {
     assert_eq!(options.multipart_threshold(), 32 * 1024 * 1024);
     assert_eq!(options.list_page_size(), 500);
     assert_eq!(options.max_attempts(), 5, "four retries is five attempts");
+}
+
+#[test]
+fn a_flag_reads_the_one_boolean_table_every_flag_in_the_crate_reads() {
+    for spelling in ["true", "T", "tr", "tru", "yes", "Y", "ye", "on", "1"] {
+        let options = S3Options::from_properties([("anonymous", spelling)]).expect(spelling);
+        assert!(options.anonymous(), "{spelling:?}");
+    }
+    for spelling in [
+        "false", "f", "fa", "fal", "fals", "no", "N", "off", "of", "0",
+    ] {
+        let options = S3Options::from_properties([("anonymous", spelling)]).expect(spelling);
+        assert!(!options.anonymous(), "{spelling:?}");
+    }
+    // Text outside the table is refused naming the property, the value and
+    // the spellings that are read.
+    for spelling in ["perhaps", "2", "truthy"] {
+        let refused = S3Options::from_properties([("anonymous", spelling)])
+            .expect_err(spelling)
+            .to_string();
+        assert!(refused.contains("anonymous"), "{refused}");
+        assert!(refused.contains(spelling), "{refused}");
+        assert!(
+            refused.contains("true/false, yes/no, y/n, on/off or 1/0"),
+            "{refused}"
+        );
+    }
+}
+
+#[test]
+fn a_duration_reads_seconds_with_the_units_every_setting_reads() {
+    for (spelling, expected) in [
+        ("30", Duration::from_secs(30)),
+        ("2.5", Duration::from_millis(2500)),
+        ("30s", Duration::from_secs(30)),
+        ("250ms", Duration::from_millis(250)),
+        ("1e1", Duration::from_secs(10)),
+    ] {
+        let options = S3Options::from_properties([("timeout", spelling)]).expect(spelling);
+        assert_eq!(options.timeout(), expected, "{spelling:?}");
+    }
+    // A length no `Duration` holds was a panic; every one of these is a
+    // refusal naming the property.
+    for spelling in ["-1", "1e30", "1e30ms", "nan", "inf", "1m", "soon"] {
+        let refused = S3Options::from_properties([("connect_timeout", spelling)])
+            .expect_err(spelling)
+            .to_string();
+        assert!(refused.contains("connect_timeout"), "{refused}");
+        assert!(
+            refused.contains("seconds, with an optional fraction"),
+            "{refused}"
+        );
+    }
+}
+
+#[test]
+fn a_count_and_a_byte_count_read_the_one_integer_reader_and_refuse_what_it_does_not() {
+    let options = S3Options::from_properties([("max_attempts", "+3"), ("part_size", "+2MiB")])
+        .expect("signed counts");
+    assert_eq!(options.max_attempts(), 3);
+    assert_eq!(options.part_size(), 2 * 1024 * 1024);
+    for (name, spelling, expected) in [
+        ("max_attempts", "3.5", "whole number"),
+        ("max_attempts", "-1", "whole number"),
+        ("max_attempts", "4294967296", "whole number"),
+        ("part_size", "1.5MiB", "byte count"),
+        ("part_size", "-1", "byte count"),
+        // A bound the unit multiplies past a `u64` is refused, never
+        // saturated into a limit that is none.
+        ("part_size", "99999999999GiB", "byte count"),
+    ] {
+        let refused = S3Options::from_properties([(name, spelling)])
+            .expect_err(spelling)
+            .to_string();
+        assert!(refused.contains(name), "{refused}");
+        assert!(refused.contains(expected), "{name}={spelling}: {refused}");
+    }
+}
+
+#[test]
+fn an_azure_connection_string_reads_its_development_switch_as_a_boolean() {
+    for spelling in ["true", "True", "yes", "y", "on", "1"] {
+        let options = S3Options::from_properties([(
+            "connection_string",
+            format!("UseDevelopmentStorage={spelling}"),
+        )])
+        .expect("readable properties");
+        assert_eq!(
+            options.azure().account(),
+            Some("devstoreaccount1"),
+            "UseDevelopmentStorage={spelling}"
+        );
+    }
+    // A switch no spelling reads, or one that says no, is not the emulator.
+    for spelling in ["false", "no", "0", "maybe"] {
+        let options = S3Options::from_properties([(
+            "connection_string",
+            format!("UseDevelopmentStorage={spelling}"),
+        )])
+        .expect("readable properties");
+        assert_eq!(
+            options.azure().account(),
+            None,
+            "UseDevelopmentStorage={spelling}"
+        );
+    }
 }
 
 #[test]

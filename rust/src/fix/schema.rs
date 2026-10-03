@@ -50,14 +50,19 @@
 //! them, and a message read back from a row parses it into those entries
 //! through the dictionary again.
 //!
-//! A key the dictionary does not resolve is no field and has no `tag:name`:
-//! it never enters `fixentries`. It lands in the row's `metadata` under the
-//! key as the message spelled it, its value the raw text - a repeated key
-//! the JSON array of its values in arrival order, a nested one its JSON -
-//! beside the namespaced keys a bridge states. Reading a row back restores
-//! it as the entry of tag zero a parse holds it as, so the message read back
-//! re-emits it and digests as the parse did; the row's `metadata` is where
-//! an unmapped key lives, the message's residual is where it is read.
+//! A key the dictionary does not resolve is no field and has no `tag:name`.
+//! It lands in the row's `metadata` under the key as the message spelled it,
+//! its value the raw text - a repeated key the JSON array of its values in
+//! arrival order, a nested one its JSON - beside the namespaced keys a
+//! bridge states, unless an identifier map holds it with its value: a key
+//! naming an identifier - a bridge's `ISINCODE`, `OMS_RICCODE`,
+//! `TECH.CLIENTID`, `PARENTORDERID` - is captured into the set its type
+//! belongs to ([`FixMsg::is_captured`]), and rides `fixentries` under
+//! `0:<key>` as it arrived, so `metadata` holds only what nothing resolved
+//! and the row holds every arrival once. Reading a row back restores either
+//! as the entry of tag zero a parse holds it as, so the message read back
+//! re-emits it and digests as the parse did; the row is where an unmapped
+//! key lives, the message's residual is where it is read.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -127,6 +132,9 @@ pub const BODY_TAGS: [i32; 54] = [
 /// and what the instrument's other identifiers were are the prefix's
 /// `parties` and `secaltids`, so `Parties(453)` and `SecAltIDGrp(454)` are
 /// no columns: a message stating them keeps them in `fixentries` as sent.
+/// Each tag is the group's counter and lands as the group's column alone -
+/// `trdregtimestamps`, `regulatorytradeids` - never as a NumInGroup column
+/// beside it: the list's length is the count.
 pub const GROUP_TAGS: [i32; 2] = [768, 1907];
 
 /// The column holding the residual record: a sorted `map<utf8, utf8>` from
@@ -472,7 +480,12 @@ pub(super) fn rooted(
 ) -> Result<Field> {
     let mut fields: Vec<Field> = Vec::with_capacity(tags.len() + 1);
     for tag in tags {
-        if let Some(held) = registry.get_field_by_tag(tag) {
+        // A tag counting a repeating group is no column: the group's own
+        // list stands under it below, its length the count.
+        if let Some(held) = registry
+            .get_field_by_tag(tag)
+            .filter(|_| !registry.is_counter_tag(tag))
+        {
             let mut held = held.clone();
             // The scalar's canonical name is folded; its display preserves
             // the dictionary's spelling independently of that identity.
@@ -510,7 +523,8 @@ pub(super) fn rooted(
                 fields.push(held);
             }
         }
-        // A native Map group owns its counter; no scalar has to precede it.
+        // A group stands alone, of any kind: its length is the count, and
+        // the counter tag it is filed under frames it on the wire.
         if let Some(group) = registry.get_group_by_tag(tag) {
             let mut group = group.clone();
             group.set_nullable(true);
@@ -651,14 +665,15 @@ pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize> {
         .position(|column| column_tag(column) == Some(tag))
 }
 
-/// The tag one column answers for: the one its field declares, else the one
-/// its name spells.
+/// The tag one column answers for: a group's counter, the tag it is filed
+/// under on the wire, else the one its field declares, else the one its name
+/// spells.
 fn column_tag(column: &Field) -> Option<i32> {
-    column
-        .as_fix()
-        .tag()
+    let view = column.as_fix();
+    view.counter()
         .ok()
         .flatten()
+        .or_else(|| view.tag().ok().flatten())
         .or_else(|| super::field::parse_tag(column.name()))
 }
 
@@ -709,6 +724,7 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
             schema.dtype(),
         ));
     };
+    refuse_counters_beside_groups(registry, schema.fields(), &crate::path::Path::root())?;
     let mut columns = Vec::with_capacity(fields.len());
     for column in fields.iter() {
         let tag = super::identity::resolve_tag(column, registry)?;
@@ -738,6 +754,48 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
         });
     }
     Ok(Arc::from(columns))
+}
+
+/// Refuses a NumInGroup counter standing beside the group it counts, at the
+/// level `fields` make and inside every occurrence and component below it:
+/// a group's count is its length, so a counter beside it would state one
+/// fact twice, and the two could disagree. Read once per shape, with the
+/// plan.
+fn refuse_counters_beside_groups(
+    registry: &FixRegistry,
+    fields: &[Field],
+    path: &crate::path::Path<'_>,
+) -> Result<()> {
+    let facts = member_facts(registry, fields);
+    for (field, (tag, counter)) in fields.iter().zip(&facts) {
+        let Some(tag) = tag.filter(|_| counter.is_none() && !field.dtype().is_nested()) else {
+            continue;
+        };
+        if let Some((group, _)) = fields
+            .iter()
+            .zip(&facts)
+            .find(|(held, (_, counts))| held.dtype().is_nested() && *counts == Some(tag))
+        {
+            return Err(crate::Error::InvalidRecord {
+                path: path.field(field.name()).render().into(),
+                reason: crate::text::expected_got(
+                    "a group alone, its length the count",
+                    format_args!(
+                        "`{}` ({tag}) counting the group `{}` beside it",
+                        field.name(),
+                        group.name()
+                    ),
+                ),
+            });
+        }
+    }
+    for field in fields {
+        let members = item_fields(field).or_else(|| field.dtype().as_fields());
+        if let Some(members) = members {
+            refuse_counters_beside_groups(registry, members, &path.field(field.name()))?;
+        }
+    }
+    Ok(())
 }
 
 /// One schema's plan as this thread read it, beside the schema and a weak
@@ -878,29 +936,62 @@ pub(super) fn tag_and_counter(registry: &FixRegistry, field: &Field) -> (Option<
     }
 }
 
-/// Whether `value`, held by the child `field` of the level `fields` and
-/// `values` make, is a list holding nothing that no counter of that level
-/// states a count for: no entry, the group absent.
+/// `value` as a group column holds it: null where the group lists no
+/// occurrence, and every group an occurrence holds the same, at any depth.
 ///
-/// A group holding no occurrence is stated by its count alone - the parse
-/// holds `NoPartySubIDs(802)=0` as the counter stating zero beside the
-/// empty list, which is the group's entry - while a table may store a null
-/// list as an empty one: PyIceberg reads a null list of structs back as
-/// `[]`, its counter still null.
-pub(super) fn is_unstated_group(
-    registry: &FixRegistry,
-    field: &Field,
-    value: &crate::Scalar,
-    fields: &[Field],
-    values: &[crate::Scalar],
-) -> bool {
-    matches!(field.dtype(), DataType::Serie(_) | DataType::LargeSerie(_))
-        && value.as_serie().is_some_and(crate::Serie::is_empty)
-        && !tag_and_counter(registry, field).1.is_some_and(|counter| {
-            fields.iter().zip(values).any(|(held, stated)| {
-                !stated.is_null()
-                    && !held.dtype().is_nested()
-                    && tag_and_counter(registry, held).0 == Some(counter)
+/// A group's length is its count, so a column cannot tell a group stated
+/// empty - `NoPartySubIDs(802)=0` - from one never stated, and a table may
+/// read a null list of structs back as `[]`, as PyIceberg does. A column
+/// therefore holds a group as null or as at least one occurrence, and a
+/// stated zero stays in the residual record. `field` is the column's own: a
+/// list of anything but occurrences is no group and passes as it is. Reads
+/// without allocating, and builds only where it empties something.
+pub(super) fn without_empty_groups(field: &Field, value: crate::Scalar) -> crate::Scalar {
+    if !holds_empty_group(field, &value) {
+        return value;
+    }
+    let (Some(members), Some(occurrences)) = (group_members(field), value.as_serie()) else {
+        return value;
+    };
+    if occurrences.is_empty() {
+        return crate::Scalar::Null;
+    }
+    crate::Scalar::from_sequence(occurrences.iter().map(|occurrence| {
+        match occurrence.as_sequence() {
+            Some(cells) => crate::Scalar::from_sequence(
+                members
+                    .iter()
+                    .zip(cells)
+                    .map(|(member, cell)| without_empty_groups(member, cell.clone())),
+            ),
+            None => occurrence.into_owned(),
+        }
+    }))
+}
+
+/// The members of one occurrence of `field`, where `field` is a group: a
+/// list of occurrences.
+fn group_members(field: &Field) -> Option<&[Field]> {
+    if matches!(field.dtype(), DataType::Serie(_) | DataType::LargeSerie(_)) {
+        item_fields(field)
+    } else {
+        None
+    }
+}
+
+/// Whether `value`, held under `field`, is a group listing no occurrence or
+/// holds one at any depth.
+fn holds_empty_group(field: &Field, value: &crate::Scalar) -> bool {
+    let (Some(members), Some(occurrences)) = (group_members(field), value.as_serie()) else {
+        return false;
+    };
+    occurrences.is_empty()
+        || occurrences.iter().any(|occurrence| {
+            occurrence.as_sequence().is_some_and(|cells| {
+                members
+                    .iter()
+                    .zip(cells)
+                    .any(|(member, cell)| holds_empty_group(member, cell))
             })
         })
 }
@@ -946,9 +1037,94 @@ fn entries_field() -> Result<Field> {
     field.set_display("FixEntries")?;
     field.set_description(
         "Content no other column represents, keyed by each field's tag:name: a scalar's wire \
-         text, a group or a component as the JSON of what it holds, keyed the same way.",
+         text, a group or a component as the JSON of what it holds, keyed the same way; and, \
+         under 0:key, each key no dictionary resolved that an identifier map holds with its \
+         value, as it arrived.",
     )?;
     Ok(field)
+}
+
+/// The arrivals of one message a row partitions between its `metadata`
+/// cell and its residual record, read once per row: every tag-zero entry by
+/// name then arrival and, where the row has a residual record, the arrivals
+/// an identifier map holds with their value ([`super::FixMsg::is_captured`]) -
+/// captured, riding the record under `0:<key>` and leaving the cell to
+/// what nothing resolved. Held on the stack for every message a desk
+/// writes: sixty-four unresolved entries, sixteen captured names and keys.
+struct Arrivals<'msg> {
+    /// Every tag-zero entry, by name then arrival.
+    unresolved: SmallVec<[&'msg super::FixEntry; 64]>,
+    /// The names among them every occurrence of which is captured, in
+    /// their order.
+    captured_names: SmallVec<[&'msg str; 16]>,
+    /// The metadata keys captured, with their values, in key order.
+    captured_keys: SmallVec<[(&'msg SmolStr, &'msg SmolStr); 16]>,
+}
+
+impl<'msg> Arrivals<'msg> {
+    /// The arrivals of `message`, the ones an identifier map holds set
+    /// apart where the row `captures` them.
+    fn of(message: &'msg super::FixMsg, captures: bool) -> Self {
+        let mut unresolved: SmallVec<[&'msg super::FixEntry; 64]> = message
+            .entries()
+            .iter()
+            .filter(|entry| entry.tag() == 0)
+            .collect();
+        // Every entry is borrowed from the one slice, so its address is its
+        // arrival: an unstable sort on the two is the stable one, with no
+        // buffer of its own.
+        unresolved.sort_unstable_by(|left, right| {
+            left.held_name()
+                .cmp(right.held_name())
+                .then_with(|| std::ptr::from_ref(*left).cmp(&std::ptr::from_ref(*right)))
+        });
+        let mut arrivals = Self {
+            unresolved,
+            captured_names: SmallVec::new(),
+            captured_keys: SmallVec::new(),
+        };
+        if !captures {
+            return arrivals;
+        }
+        let declared = message.declared_identifiers();
+        let memo = message.registry().memo();
+        for (key, value) in message.metadata() {
+            if message.is_captured(memo, declared, key, value) {
+                arrivals.captured_keys.push((key, value));
+            }
+        }
+        // A name is captured whole or not at all: an occurrence a set
+        // refused keeps every occurrence of its name in the cell, as the
+        // leaf keeps the key.
+        for entries in arrivals
+            .unresolved
+            .chunk_by(|left, right| left.held_name() == right.held_name())
+        {
+            let name = entries[0].held_name();
+            if entries.iter().all(|entry| {
+                entry
+                    .value()
+                    .is_some_and(|text| message.is_captured(memo, declared, name, text))
+            }) {
+                arrivals.captured_names.push(name.as_str());
+            }
+        }
+        arrivals
+    }
+
+    /// Whether every tag-zero entry named `name` is captured.
+    fn is_captured_name(&self, name: &str) -> bool {
+        self.captured_names
+            .binary_search_by(|held| (*held).cmp(name))
+            .is_ok()
+    }
+
+    /// Whether the metadata key `key` is captured.
+    fn is_captured_key(&self, key: &str) -> bool {
+        self.captured_keys
+            .binary_search_by(|(held, _)| held.as_str().cmp(key))
+            .is_ok()
+    }
 }
 
 /// The key one residual entry is filed under: its tag and its name,
@@ -1072,19 +1248,34 @@ fn members_json(
 /// stated scalar's text as it is - its JSON string where the text opens the
 /// way JSON does - and anything else as its JSON; a key stated more than once
 /// the JSON array of its values, in arrival order.
+///
+/// The keys are sorted on the stack, each beside its arrival so the unstable
+/// sort is the stable one, and a key stated once is filed as the one entry
+/// it is: only a key stated more than once gathers its run. Sixty-four keys
+/// are held inline.
 fn entries_map<'entry>(
     registry: &FixRegistry,
     entries: impl Iterator<Item = &'entry super::FixEntry>,
 ) -> Result<crate::Scalar> {
-    let mut keyed: std::collections::BTreeMap<SmolStr, Vec<&super::FixEntry>> =
-        std::collections::BTreeMap::new();
-    for entry in entries {
-        keyed.entry(entry_key(entry)).or_default().push(entry);
-    }
+    let mut keyed: SmallVec<[(SmolStr, usize, &super::FixEntry); 64]> = entries
+        .enumerate()
+        .map(|(arrival, entry)| (entry_key(entry), arrival, entry))
+        .collect();
+    keyed.sort_unstable_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
     let mut pairs = Vec::with_capacity(keyed.len());
-    for (key, held) in keyed {
-        let text = keyed_text(registry, &held, entry_key)?;
-        pairs.push((crate::Scalar::from(key), crate::Scalar::from(text)));
+    for run in keyed.chunk_by(|left, right| left.0 == right.0) {
+        let text = match run {
+            [(_, _, entry)] => keyed_text(registry, std::slice::from_ref(entry), entry_key)?,
+            many => {
+                let held: SmallVec<[&super::FixEntry; 4]> =
+                    many.iter().map(|(_, _, entry)| *entry).collect();
+                keyed_text(registry, &held, entry_key)?
+            }
+        };
+        pairs.push((
+            crate::Scalar::from(run[0].0.clone()),
+            crate::Scalar::from(text),
+        ));
     }
     crate::Scalar::from_mapping(pairs)
 }
@@ -1269,17 +1460,18 @@ fn entry_error(
 /// The residual entries one `fixentries` cell holds, in key order: the
 /// inverse of [`entries_map`]. A value opening the way JSON does is read as
 /// JSON, every other one as the text it states. A key is refused unless it is
-/// a resolved field's `tag:name`, since a key no dictionary resolved lives in
-/// `metadata`, and so is JSON that does not decode: a message rebuilt with a
-/// pair missing is a different message. The text is copied here, because a
-/// row is where a message stops being a range of a line.
+/// a resolved field's `tag:name` or a tag-zero key no dictionary resolved
+/// ([`is_field_key`]), and so is JSON that does not decode: a message rebuilt
+/// with a pair missing is a different message. The text is copied here,
+/// because a row is where a message stops being a range of a line.
 ///
 /// # Errors
 ///
 /// Returns [`crate::Error::InvalidRecord`] at the entry's path for a cell
-/// that is not a map of text, a key that is not `tag:name` with a positive
-/// tag, or a value that does not decode.
+/// that is not a map of text, a key [`is_field_key`] refuses, or a value
+/// that does not decode.
 fn entries_from_map(
+    registry: &FixRegistry,
     value: &crate::Scalar,
     path: &crate::path::Path<'_>,
 ) -> Result<Vec<super::FixEntry>> {
@@ -1296,7 +1488,7 @@ fn entries_from_map(
             .ok_or_else(|| entry_error(path, "a text key", key.kind()))?;
         let here = path.field(key);
         let (tag, name) = parse_key(key, &here)?;
-        if tag == 0 {
+        if !is_field_key(registry, tag, name) {
             return Err(entry_error(&here, "a resolved field's tag:name", key));
         }
         if text.is_null() {
@@ -1316,19 +1508,41 @@ fn entries_from_map(
     Ok(entries)
 }
 
+/// Whether a residual key's tag and name are one field: a positive tag, and
+/// the field its name reaches - which [`child_from_entry`] rebuilds the
+/// entry as - answering to that tag, as its own or an alternate one or as
+/// the counter heading the group it is. A name reaching no field is a tagged
+/// child's own, rebuilt under it. A tag beside another field's name would
+/// rebuild that field while the tag's own column stood aside for it. Tag
+/// zero is a key no dictionary resolved, and a name is all it is: it rebuilds
+/// as the tag-zero entry a parse holds it as, whatever the name reaches.
+fn is_field_key(registry: &FixRegistry, tag: i32, name: &str) -> bool {
+    tag == 0
+        || registry.get_field_by_name(name).is_none_or(|named| {
+            let (own, counter) = tag_and_counter(registry, named);
+            own == Some(tag)
+                || counter == Some(tag)
+                || registry
+                    .get_field_by_tag(tag)
+                    .is_some_and(|tagged| std::ptr::eq(tagged, named))
+        })
+}
+
 /// The content row an arrival record rebuilds: one child per entry, typed
 /// through the dictionary as the builder types a pair, in the order the
 /// record holds them. Two entries one fold names keep the first.
 fn content_from_entries(
     registry: &FixRegistry,
     entries: &[super::FixEntry],
+    tags: &TagCounts,
 ) -> Result<(Vec<Field>, Vec<crate::Scalar>)> {
     let mut fields: Vec<Field> = Vec::with_capacity(entries.len());
     let mut values: Vec<crate::Scalar> = Vec::with_capacity(entries.len());
+    let mut folds = FoldIndex::default();
     for entry in entries {
         let (mut field, value) = child_from_entry(registry, entry, None)?;
-        preserve_contended_name(entries, entry, &mut field);
-        push_child(registry, &mut fields, &mut values, field, value);
+        preserve_contended_name(tags, entry, &mut field);
+        push_child(&mut fields, &mut values, &mut folds, field, value);
     }
     Ok((fields, values))
 }
@@ -1336,53 +1550,169 @@ fn content_from_entries(
 /// Keeps distinct names when several residual entries contend for one tag.
 /// The registry still supplies their datatype and metadata; the row name is
 /// the fact that keeps both children addressable instead of collapsing them.
-fn preserve_contended_name(
-    entries: &[super::FixEntry],
-    entry: &super::FixEntry,
-    field: &mut Field,
-) {
+fn preserve_contended_name(tags: &TagCounts, entry: &super::FixEntry, field: &mut Field) {
     if entry.tag() != 0
-        && entries
-            .iter()
-            .filter(|held| held.tag() == entry.tag())
-            .count()
-            > 1
+        && tags.count(entry.tag()) > 1
         && !crate::folds_equal(field.name(), entry.name())
     {
         field.set_name(entry.held_name().clone());
     }
 }
 
+/// How many of one level's entries state each tag, and which states it
+/// first: counted once per level, so whether a name is contended, whether a
+/// column's tag is stated twice and which entry owns it are each a binary
+/// search rather than a pass over every entry.
+///
+/// Held on the stack up to 64 distinct tags - the widest residual the
+/// crate's suites rebuild states 27 - and spilling to the heap past it.
+struct TagCounts {
+    /// Each tag stated, the position of its first entry and how many
+    /// entries state it, sorted by tag.
+    counted: SmallVec<[(i32, usize, usize); 64]>,
+}
+
+impl TagCounts {
+    /// The counts of `entries`, in one pass.
+    fn of(entries: &[super::FixEntry]) -> Self {
+        let mut counted: SmallVec<[(i32, usize, usize); 64]> = SmallVec::new();
+        for (at, entry) in entries.iter().enumerate() {
+            match counted.binary_search_by_key(&entry.tag(), |held| held.0) {
+                Ok(slot) => counted[slot].2 += 1,
+                Err(slot) => counted.insert(slot, (entry.tag(), at, 1)),
+            }
+        }
+        Self { counted }
+    }
+
+    /// How many entries state `tag`.
+    fn count(&self, tag: i32) -> usize {
+        self.held(tag).map_or(0, |held| held.2)
+    }
+
+    /// The position of the first entry stating `tag`.
+    fn first(&self, tag: i32) -> Option<usize> {
+        self.held(tag).map(|held| held.1)
+    }
+
+    fn held(&self, tag: i32) -> Option<&(i32, usize, usize)> {
+        self.counted
+            .binary_search_by_key(&tag, |held| held.0)
+            .ok()
+            .map(|slot| &self.counted[slot])
+    }
+}
+
+/// The children of one level by the fold of their names, so whether a level
+/// already holds a name is a binary search rather than a
+/// [`crate::folds_equal`] against every child.
+///
+/// A level shorter than [`Self::SCANNED_BELOW`] is scanned as it stands: the
+/// digests are taken the first time the level is asked past that bound, and
+/// every change after it goes through the method naming it - a push, a
+/// rename, a replacement, a swap - so they stay in step with the children. A
+/// [`crate::fold_digest`] only proposes a child: each is confirmed with
+/// [`crate::folds_equal`], and the lowest position confirmed answers.
+///
+/// The digests are held on the stack up to 256 children - the fixed row
+/// with the widest message content the crate's suites rebuild is 176 - and
+/// spill to the heap past it.
+#[derive(Default)]
+struct FoldIndex {
+    /// Each child's fold digest beside its position, sorted.
+    digests: SmallVec<[(u64, usize); 256]>,
+    /// Whether `digests` holds every child: false until the level is asked
+    /// past [`Self::SCANNED_BELOW`].
+    built: bool,
+}
+
+impl FoldIndex {
+    /// The level size from which digests answer faster than a scan.
+    const SCANNED_BELOW: usize = 16;
+
+    /// The first of `fields` whose name folds to `name`.
+    fn first(&mut self, fields: &[Field], name: &str) -> Option<usize> {
+        if !self.built {
+            if fields.len() < Self::SCANNED_BELOW {
+                return fields
+                    .iter()
+                    .position(|held| crate::folds_equal(held.name(), name));
+            }
+            self.digests = fields
+                .iter()
+                .enumerate()
+                .map(|(at, held)| (crate::fold_digest(held.name()), at))
+                .collect();
+            self.digests.sort_unstable();
+            self.built = true;
+        }
+        let digest = crate::fold_digest(name);
+        let from = self.digests.partition_point(|held| held.0 < digest);
+        self.digests[from..]
+            .iter()
+            .take_while(|held| held.0 == digest)
+            .map(|held| held.1)
+            .find(|at| crate::folds_equal(fields[*at].name(), name))
+    }
+
+    /// Appends `field` to `fields`.
+    fn push(&mut self, fields: &mut Vec<Field>, field: Field) {
+        self.named(field.name(), fields.len());
+        fields.push(field);
+    }
+
+    /// Renames the child at `at`.
+    fn rename(&mut self, fields: &mut [Field], at: usize, name: String) {
+        self.unnamed(fields[at].name(), at);
+        self.named(&name, at);
+        fields[at].set_name(name);
+    }
+
+    /// Swaps the children at `left` and `right`.
+    fn swap(&mut self, fields: &mut [Field], left: usize, right: usize) {
+        if left == right {
+            return;
+        }
+        self.unnamed(fields[left].name(), left);
+        self.unnamed(fields[right].name(), right);
+        self.named(fields[left].name(), right);
+        self.named(fields[right].name(), left);
+        fields.swap(left, right);
+    }
+
+    /// Records `name` at `at`, once the digests are taken.
+    fn named(&mut self, name: &str, at: usize) {
+        if self.built {
+            let held = (crate::fold_digest(name), at);
+            let slot = self.digests.partition_point(|probe| *probe < held);
+            self.digests.insert(slot, held);
+        }
+    }
+
+    /// Forgets `name` at `at`, once the digests are taken.
+    fn unnamed(&mut self, name: &str, at: usize) {
+        if self.built
+            && let Ok(slot) = self.digests.binary_search(&(crate::fold_digest(name), at))
+        {
+            self.digests.remove(slot);
+        }
+    }
+}
+
 /// Adds one rebuilt child to a level, as the builder adds one: a group
-/// arrives behind its counter's own child, which the group entry's count
-/// fills, and two children one fold names keep the first.
+/// stands alone, its length the count, and two children one fold names keep
+/// the first.
 fn push_child(
-    registry: &FixRegistry,
     fields: &mut Vec<Field>,
     values: &mut Vec<crate::Scalar>,
+    folds: &mut FoldIndex,
     field: Field,
     value: crate::Scalar,
 ) {
-    let taken = |fields: &[Field], name: &str| {
-        fields
-            .iter()
-            .any(|held| crate::folds_equal(held.name(), name))
-    };
-    if let Some(counter) = field.as_fix().counter().ok().flatten()
-        && let Some(scalar) = registry.get_scalar_by_tag(counter)
-        && !taken(fields, scalar.name())
-    {
-        let count = value.as_serie().map_or(0, crate::Serie::len);
-        let count = super::build::typed_spelling(registry, scalar, &count.to_string());
-        let mut scalar = scalar.clone();
-        scalar.set_nullable(count.is_null());
-        fields.push(scalar);
-        values.push(count);
-    }
-    if taken(fields, field.name()) {
+    if folds.first(fields, field.name()).is_some() {
         return;
     }
-    fields.push(field);
+    folds.push(fields, field);
     values.push(value);
 }
 
@@ -1405,9 +1735,9 @@ fn member_facts(registry: &FixRegistry, fields: &[Field]) -> Vec<(Option<i32>, O
         .collect()
 }
 
-/// The one declared member an entry owns. A group column owns its counter's
-/// entry before the scalar counter beside it; that scalar is the same fact,
-/// checked separately against the occurrence count.
+/// The one declared member an entry owns. A group owns the entry of the
+/// counter it is filed under - no scalar counter stands beside it - before
+/// any member whose own tag that is.
 ///
 /// `facts` is [`tag_and_counter`] of each of `fields`, resolved once by the
 /// caller for every entry it asks about.
@@ -1540,48 +1870,21 @@ fn covers_members(
             return false;
         }
         owned[word] |= mask;
-        // An empty list beside no count stated for it represents no entry.
-        if is_unstated_group(registry, &fields[index], &values[index], fields, values)
-            || !covers_entry(registry, &fields[index], &values[index], entry)
-        {
+        // A group stated empty is null in its column, so it is represented
+        // by no column and stays whole in the record.
+        if !covers_entry(registry, &fields[index], &values[index], entry) {
             return false;
         }
     }
+    // Every member the fitting stated is one an entry owns: a group's count
+    // is its length, never a member of its own.
     values
         .iter()
-        .zip(facts)
         .enumerate()
-        .filter(|(_, (value, _))| !value.is_null())
-        .all(|(index, (value, (tag, counter)))| {
+        .filter(|(_, value)| !value.is_null())
+        .all(|(index, _)| {
             let (word, mask) = bit(index);
-            if owned[word] & mask != 0 {
-                return true;
-            }
-            // A group's scalar counter is represented by the same entry
-            // as its Serie. It is covered only when both fitted values say
-            // the same occurrence count.
-            let Some(tag) = tag.filter(|_| counter.is_none()) else {
-                return false;
-            };
-            let mut groups = facts
-                .iter()
-                .enumerate()
-                .filter(|(_, (_, held))| *held == Some(tag));
-            let Some((group_index, _)) = groups.next() else {
-                return false;
-            };
-            if groups.next().is_some() {
-                return false;
-            }
-            let mut owners = entries.iter().filter(|entry| entry.tag() == tag);
-            let Some(owner) = owners.next() else {
-                return false;
-            };
-            owners.next().is_none()
-                && covered_member_index(fields, facts, owner) == Some(group_index)
-                && values[group_index].as_serie().is_some_and(|occurrences| {
-                    value.as_i128() == i128::try_from(occurrences.len()).ok()
-                })
+            owned[word] & mask != 0
         })
 }
 
@@ -1687,12 +1990,13 @@ fn group_from_entry(
     for occurrence in entry.entries() {
         let mut fields = Vec::with_capacity(occurrence.entries().len());
         let mut values = Vec::with_capacity(occurrence.entries().len());
+        let (tags, mut folds) = (TagCounts::of(occurrence.entries()), FoldIndex::default());
         for member in occurrence.entries() {
             let slot = covered_member_index(declared, &facts, member)
                 .and_then(|index| declared.get(index));
             let (mut field, value) = child_from_entry(registry, member, slot)?;
-            preserve_contended_name(occurrence.entries(), member, &mut field);
-            push_child(registry, &mut fields, &mut values, field, value);
+            preserve_contended_name(&tags, member, &mut field);
+            push_child(&mut fields, &mut values, &mut folds, field, value);
         }
         let mut members = Vec::with_capacity(fields.len());
         for (field, value) in fields.into_iter().zip(values) {
@@ -1868,10 +2172,11 @@ fn unknown_nested_from_entry(
     }
     let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
     let mut values: Vec<crate::Scalar> = Vec::with_capacity(entry.entries().len());
+    let (tags, mut folds) = (TagCounts::of(entry.entries()), FoldIndex::default());
     for member in entry.entries() {
         let (mut field, value) = child_from_entry(registry, member, None)?;
-        preserve_contended_name(entry.entries(), member, &mut field);
-        push_child(registry, &mut fields, &mut values, field, value);
+        preserve_contended_name(&tags, member, &mut field);
+        push_child(&mut fields, &mut values, &mut folds, field, value);
     }
     let named: Vec<(SmolStr, crate::Scalar)> = fields
         .iter()
@@ -1997,12 +2302,13 @@ fn child_from_entry(
             let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
             let mut values: Vec<crate::Scalar> = Vec::with_capacity(entry.entries().len());
             let facts = member_facts(registry, known.fields());
+            let (tags, mut folds) = (TagCounts::of(entry.entries()), FoldIndex::default());
             for member in entry.entries() {
                 let slot = covered_member_index(known.fields(), &facts, member)
                     .and_then(|index| known.fields().get(index));
                 let (mut field, value) = child_from_entry(registry, member, slot)?;
-                preserve_contended_name(entry.entries(), member, &mut field);
-                push_child(registry, &mut fields, &mut values, field, value);
+                preserve_contended_name(&tags, member, &mut field);
+                push_child(&mut fields, &mut values, &mut folds, field, value);
             }
             let named: Vec<(SmolStr, crate::Scalar)> = fields
                 .iter()
@@ -2112,8 +2418,13 @@ impl super::FixMsg {
     ///
     /// Returns the schema's refusal when the row does not fit, or
     /// [`crate::Error::InvalidRecord`] at the entry's path when the entries
-    /// column holds a key that is not a resolved field's `tag:name` or a value
-    /// whose JSON does not decode.
+    /// column holds a key that is not a resolved field's `tag:name` - a name
+    /// reaching a field its tag does not answer to, as its own or as the
+    /// counter heading the group it names - or a value whose JSON does not
+    /// decode,
+    /// and at the column's path when an identifier column - `securityids`,
+    /// `identifiers`, `partyids` - holds a key that reads as no key, a value
+    /// its type refuses, or two values under two spellings of one key.
     pub fn from_row(
         registry: Arc<FixRegistry>,
         schema: &Field,
@@ -2150,7 +2461,11 @@ impl super::FixMsg {
         for ((column, planned), value) in schema.fields().iter().zip(plan.iter()).zip(held) {
             if column.name() == FIXENTRIES_COLUMN {
                 let root = crate::path::Path::root();
-                residual = Some(entries_from_map(value, &root.field(FIXENTRIES_COLUMN))?);
+                residual = Some(entries_from_map(
+                    &registry,
+                    value,
+                    &root.field(FIXENTRIES_COLUMN),
+                )?);
                 continue;
             }
             match planned.tag {
@@ -2175,29 +2490,23 @@ impl super::FixMsg {
                         carried.push((smol_str::SmolStr::new(column.name()), value.clone()));
                     }
                 }
-                // A list holding nothing beside no count stated for it is
-                // the group absent, at the root as inside an occurrence: a
-                // table may read a null list of structs back as `[]`, and
-                // the group pushed from it would state its counter as zero.
+                // A list holding no occurrence is the group absent, at the
+                // root as inside an occurrence: a group's count is its
+                // length, a table may read a null list of structs back as
+                // `[]`, and a group stated empty is the record's.
                 Some(tag) => {
-                    if !value.is_null()
-                        && !is_unstated_group(&registry, column, value, schema.fields(), held)
-                    {
-                        projected.push((
-                            planned.counter.unwrap_or(tag),
-                            column.clone(),
-                            value.clone(),
-                        ));
+                    let value = without_empty_groups(column, value.clone());
+                    if !value.is_null() {
+                        projected.push((planned.counter.unwrap_or(tag), column.clone(), value));
                     }
                 }
                 None if planned.counter.is_some() => {
-                    if !value.is_null()
-                        && !is_unstated_group(&registry, column, value, schema.fields(), held)
-                    {
+                    let value = without_empty_groups(column, value.clone());
+                    if !value.is_null() {
                         projected.push((
                             planned.counter.expect("the guarded counter"),
                             column.clone(),
-                            value.clone(),
+                            value,
                         ));
                     }
                 }
@@ -2226,13 +2535,12 @@ impl super::FixMsg {
         }
         let mut residual = residual.unwrap_or_default();
         residual.extend(unresolved);
+        let tags = TagCounts::of(&residual);
+        let mut folds = FoldIndex::default();
         if !residual.is_empty() {
-            let (fields, held) = content_from_entries(&registry, &residual)?;
+            let (fields, held) = content_from_entries(&registry, &residual, &tags)?;
             for (field, value) in fields.into_iter().zip(held) {
-                if let Some(at) = members
-                    .iter()
-                    .position(|known| crate::folds_equal(known.name(), field.name()))
-                {
+                if let Some(at) = folds.first(&members, field.name()) {
                     // A column the message lifts into a fact - `parties`,
                     // `secaltids` - may share its name with the dictionary
                     // group the fact is read from. The group is content and
@@ -2254,9 +2562,9 @@ impl super::FixMsg {
                         column.0.expect("a lifted column's tag"),
                         members[at].name()
                     );
-                    members[at].set_name(renamed);
+                    folds.rename(&mut members, at, renamed);
                 }
-                members.push(field);
+                folds.push(&mut members, field);
                 values.push(value);
             }
             // A tag several residual entries state answers its column with
@@ -2265,9 +2573,7 @@ impl super::FixMsg {
             // among them again, so the row it was read from is the row it
             // writes.
             for (tag, field, value) in &projected {
-                if field.dtype().is_nested()
-                    || residual.iter().filter(|entry| entry.tag() == *tag).count() < 2
-                {
+                if field.dtype().is_nested() || tags.count(*tag) < 2 {
                     continue;
                 }
                 let owners: SmallVec<[usize; 4]> = members
@@ -2284,7 +2590,7 @@ impl super::FixMsg {
                     super::entry::wire_text_under(&registry, &members[*at], &values[*at]) == stated
                 }) && let Some(first) = owners.first().copied()
                 {
-                    members.swap(first, at);
+                    folds.swap(&mut members, first, at);
                     values.swap(first, at);
                 }
             }
@@ -2294,26 +2600,10 @@ impl super::FixMsg {
         // its column, so rebuild it through the same child insertion rule as
         // an entry.
         for (tag, field, value) in projected {
-            if let Some(owner) = residual.iter().find(|entry| entry.tag() == tag) {
-                // A group entry owns the occurrences, while its separate
-                // scalar counter column owns an explicitly stated count (or
-                // the derived count a semantic row records). Keep that scalar
-                // beside the group so a conflicting explicit count is not
-                // silently replaced by the occurrence length.
-                if !owner.entries().is_empty() && !field.dtype().is_nested() {
-                    if let Some(index) = members.iter().position(|member| {
-                        !member.dtype().is_nested()
-                            && tag_and_counter(&registry, member).0 == Some(tag)
-                    }) {
-                        members[index] = field;
-                        values[index] = value;
-                    } else {
-                        push_child(&registry, &mut members, &mut values, field, value);
-                    }
-                }
+            if tags.first(tag).is_some() {
                 continue;
             }
-            push_child(&registry, &mut members, &mut values, field, value);
+            push_child(&mut members, &mut values, &mut folds, field, value);
         }
         // The columns are the schema's, validated when it was built, and
         // the content is the dictionary's fields, each kept only where no
@@ -2368,7 +2658,11 @@ impl super::FixMsg {
     /// column is omitted from it. Unprojected, conflicting, partially
     /// represented and unreadable content remains there whole, keyed by its
     /// `tag:name`. A key no dictionary resolved is no field: it is stated in
-    /// the `metadata` column under its own spelling, its text intact.
+    /// the `metadata` column under its own spelling, its text intact, unless
+    /// an identifier map holds it with its value (`is_captured`) -
+    /// then it rides the record under `0:<key>` as it arrived, and `metadata`
+    /// holds only what nothing resolved. A row with a `metadata` column and
+    /// no record keeps every unresolved key in `metadata`.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -2379,7 +2673,7 @@ impl super::FixMsg {
     /// # let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     /// let schema = fix_schema(&registry, "fix")?;
     /// let reader = FixCodec::new(Arc::clone(&registry));
-    /// let order = reader.parse_fix_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|")?;
+    /// let order = reader.parse_fix_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|PARENTORDERID=P-1|10=0|")?;
     ///
     /// let row = order.into_row(&schema)?;
     /// let held = row.as_sequence().expect("a row");
@@ -2387,19 +2681,23 @@ impl super::FixMsg {
     /// let at = schema.index_of("msgtype").expect("the msgtype column");
     /// assert_eq!(held[at].as_str(), Some("D"));
     /// // A key no dictionary resolved is stated in the metadata under its own
-    /// // spelling, with its value as it arrived, and never in the record.
+    /// // spelling, with its value as it arrived - unless an identifier map
+    /// // holds it: a bridge's `PARENTORDERID` is the order's `parentorderid`,
+    /// // so it rides the residual record under `0:parentorderid` instead.
     /// let at = schema.index_of("metadata").expect("the metadata column");
     /// let metadata = held[at].as_mapping().expect("a map");
     /// assert!(metadata.iter().any(|(key, value)| key.as_str() == Some("9999") && value.as_str() == Some("x")));
+    /// assert!(metadata.iter().all(|(key, _)| key.as_str() != Some("parentorderid")));
     /// let at = schema.index_of("fixentries").expect("the residual record");
     /// let record = held[at].as_mapping().expect("a map");
-    /// assert!(record.iter().all(|(key, _)| !key.as_str().unwrap().starts_with("0:")));
+    /// assert!(record.iter().any(|(key, value)| key.as_str() == Some("0:parentorderid") && value.as_str() == Some("P-1")));
+    /// assert!(record.iter().all(|(key, _)| key.as_str() != Some("0:9999")));
     /// # Ok(())
     /// # }
     /// ```
     /// A value a column will not hold is that column's null rather than a
-    /// refusal - a five-byte MIC under a four-byte column, an identifier
-    /// whose check digit does not close - and the residual keeps what the
+    /// refusal - a five-byte MIC under a four-byte column, an eleven-byte
+    /// identifier under an `isin` column - and the residual keeps what the
     /// column could not represent. A column that cannot be null keeps the
     /// refusal, which separates an unreadable value from a broken contract.
     ///
@@ -2413,6 +2711,10 @@ impl super::FixMsg {
         let has_residual_columns = columns
             .iter()
             .any(|column| column.name() == FIXENTRIES_COLUMN);
+        // The arrivals an identifier map holds ride the residual record
+        // under `0:<key>` where the row has one, and stay in `metadata`
+        // where it has not: partitioned once, whichever columns the row has.
+        let arrivals = Arrivals::of(self, has_residual_columns);
         let fitted_cell = |index: usize| -> Result<crate::Scalar> {
             let column = &columns[index];
             let planned = &plan[index];
@@ -2428,7 +2730,9 @@ impl super::FixMsg {
                 // else from a content child spelled exactly as it is.
                 // A typed fact is its holder's, whatever shape its
                 // column takes: the identifiers Map is the event's.
-                (Some(tag), _) if tag == super::METADATA_TAG_NAME.0 => self.row_metadata()?,
+                (Some(tag), _) if tag == super::METADATA_TAG_NAME.0 => {
+                    self.row_metadata(&arrivals)?
+                }
                 (Some(tag), _) if super::identity::is_typed_tag(tag) => self.column_value(tag),
                 // The one the crate tags - `sourceurl` - is carried.
                 (Some(tag), _) if super::identity::is_capture_tag(tag) => {
@@ -2440,9 +2744,12 @@ impl super::FixMsg {
                         .and_then(|index| self.as_value().get(index))
                         .map(Cow::into_owned)
                         .unwrap_or(crate::Scalar::Null);
-                    self.regrouped(counter, column, value)
+                    without_empty_groups(column, self.regrouped(counter, column, value))
                 }
-                (Some(tag), None) => self.regrouped(tag, column, self.column_value(tag)),
+                (Some(tag), None) => without_empty_groups(
+                    column,
+                    self.regrouped(tag, column, self.column_value(tag)),
+                ),
                 (None, None) => match self.carried_cell(column.name()) {
                     crate::Scalar::Null => self
                         .index_of_name(column.name())
@@ -2459,29 +2766,10 @@ impl super::FixMsg {
             return crate::Scalar::try_sequence(columns.len(), fitted_cell);
         }
         // The row is written where it is stored: every fitted cell first,
-        // then the counters and the record decided over them.
+        // then the record decided over them.
         crate::Scalar::try_build_sequence(columns.len(), |values| {
             for (index, slot) in values.iter_mut().enumerate() {
                 *slot = fitted_cell(index)?;
-            }
-            // A group occurrence none of the fixed Serie's members can represent
-            // belongs wholly to the residual record. Its scalar counter must stay
-            // there with it: projecting the count beside a null Serie would claim
-            // that the fixed group represented occurrences it cannot describe.
-            // A bare scalar counter with no group still stands as stated.
-            for (group_index, group) in plan.iter().enumerate() {
-                let Some(counter) = group.counter else {
-                    continue;
-                };
-                if !values[group_index].is_null() || self.index_of_group(counter).is_none() {
-                    continue;
-                }
-                if let Some(counter_index) = plan
-                    .iter()
-                    .position(|held| held.tag == Some(counter) && held.counter.is_none())
-                {
-                    values[counter_index] = crate::Scalar::Null;
-                }
             }
             let entries = self.entries();
             let prunes = plan.iter().any(|column| column.entries);
@@ -2531,18 +2819,10 @@ impl super::FixMsg {
                         {
                             continue;
                         }
-                        // A group holding no occurrence is stated by its
-                        // count alone: an empty list with no counter column
-                        // stating it represents no entry, so a stated zero
-                        // stays in the record.
+                        // A group stated empty is null in its column, which
+                        // represents no entry: a stated zero stays in the
+                        // record, at any depth.
                         if !source_field.dtype().is_nested()
-                            || is_unstated_group(
-                                self.registry(),
-                                column,
-                                &values[index],
-                                columns,
-                                values,
-                            )
                             || !covers_entry(self.registry(), column, &values[index], entry)
                         {
                             continue;
@@ -2560,12 +2840,17 @@ impl super::FixMsg {
                 represented.sort_unstable();
                 represented.dedup();
             }
-            // The residual record is every entry no column represents, but
-            // a key no dictionary resolved: that is no field, and the
-            // metadata states it.
-            let record = columns
+            // The residual record is every entry no column represents, and
+            // every key no dictionary resolved that an identifier map holds
+            // - a tag-zero entry under its own name, a metadata key as the
+            // tag-zero entry it would have been - under `0:<key>`; every
+            // other unresolved key is the metadata's.
+            let captured: SmallVec<[super::FixEntry; 16]> = arrivals
+                .captured_keys
                 .iter()
-                .any(|column| column.name() == FIXENTRIES_COLUMN)
+                .map(|(key, value)| super::FixEntry::new(0, (*key).clone(), Some((*value).clone())))
+                .collect();
+            let record = has_residual_columns
                 .then(|| {
                     entries_map(
                         self.registry(),
@@ -2573,9 +2858,14 @@ impl super::FixMsg {
                             .iter()
                             .enumerate()
                             .filter(|(index, entry)| {
-                                entry.tag() != 0 && represented.binary_search(index).is_err()
+                                if entry.tag() == 0 {
+                                    arrivals.is_captured_name(entry.held_name())
+                                } else {
+                                    represented.binary_search(index).is_err()
+                                }
                             })
-                            .map(|(_, entry)| entry),
+                            .map(|(_, entry)| entry)
+                            .chain(captured.iter()),
                     )
                 })
                 .transpose()?;
@@ -2588,43 +2878,54 @@ impl super::FixMsg {
         })
     }
 
-    /// The `metadata` cell a row states: the message's own map, then every
+    /// The `metadata` cell a row states: the message's own map and every
     /// key no dictionary resolved - a root entry of tag zero - under its own
     /// spelling, as [`keyed_text`] renders it with members under their own
     /// names, a key stated more than once the JSON array of its values in
-    /// arrival order. Where one spelling names both, the message's own value
-    /// stands.
-    fn row_metadata(&self) -> Result<crate::Scalar> {
-        // By name, arrival order kept among one name's occurrences: on the
-        // stack for every message a desk writes.
-        let mut unresolved: SmallVec<[&super::FixEntry; 64]> = self
-            .entries()
+    /// arrival order, less the `arrivals` captured into the residual record;
+    /// null once nothing stays. Where one spelling names both, the message's
+    /// own value stands. The two are merged in key order, so the map is built
+    /// sorted and nothing is copied to sort it.
+    fn row_metadata(&self, arrivals: &Arrivals<'_>) -> Result<crate::Scalar> {
+        let mut keys = self
+            .metadata()
             .iter()
-            .filter(|entry| entry.tag() == 0)
-            .collect();
-        // Every entry is borrowed from the one slice, so its address is its
-        // arrival: an unstable sort on the two is the stable one, with no
-        // buffer of its own.
-        unresolved.sort_unstable_by(|left, right| {
-            left.held_name()
-                .cmp(right.held_name())
-                .then_with(|| std::ptr::from_ref(*left).cmp(&std::ptr::from_ref(*right)))
-        });
-        let mut held: Option<std::collections::BTreeMap<SmolStr, SmolStr>> = None;
-        for entries in unresolved.chunk_by(|left, right| left.held_name() == right.held_name()) {
+            .filter(|(key, _)| !arrivals.is_captured_key(key))
+            .peekable();
+        let mut pairs: Vec<(crate::Scalar, crate::Scalar)> =
+            Vec::with_capacity(self.metadata().len() + arrivals.unresolved.len());
+        for entries in arrivals
+            .unresolved
+            .chunk_by(|left, right| left.held_name() == right.held_name())
+        {
+            let name = entries[0].held_name();
+            if arrivals.is_captured_name(name) {
+                continue;
+            }
+            let mut spelled = false;
+            while let Some((key, value)) = keys.next_if(|(key, _)| *key <= name) {
+                spelled |= key == name;
+                pairs.push((
+                    crate::Scalar::from(key.clone()),
+                    crate::Scalar::from(value.clone()),
+                ));
+            }
+            if spelled {
+                continue;
+            }
             let text = keyed_text(self.registry(), entries, |held| held.held_name().clone())?;
-            held.get_or_insert_with(|| self.metadata().clone())
-                .entry(entries[0].held_name().clone())
-                .or_insert(text);
+            pairs.push((crate::Scalar::from(name.clone()), crate::Scalar::from(text)));
         }
-        match held {
-            None => Ok(self.column_value(super::METADATA_TAG_NAME.0)),
-            Some(metadata) => crate::Scalar::from_mapping(
-                metadata
-                    .into_iter()
-                    .map(|(key, value)| (crate::Scalar::from(key), crate::Scalar::from(value))),
-            ),
+        for (key, value) in keys {
+            pairs.push((
+                crate::Scalar::from(key.clone()),
+                crate::Scalar::from(value.clone()),
+            ));
         }
+        if pairs.is_empty() {
+            return Ok(crate::Scalar::Null);
+        }
+        crate::Scalar::from_mapping(pairs)
     }
 
     /// One group's value, laid out the way the fixed column declares it.
@@ -2655,57 +2956,25 @@ impl super::FixMsg {
             .unwrap_or_default();
         // Where each declared member stands among the message's own, a fact
         // of the two schemas alone and so read once for every occurrence.
-        let placed: Vec<(Option<usize>, Option<usize>)> = members
+        let placed: Vec<Option<usize>> = members
             .iter()
             .map(|member| {
-                let at = spelled
+                spelled
                     .iter()
-                    .position(|field| crate::folds_equal(field.name(), member.name()));
-                // A group counter may be absent from the message's physical
-                // member row while its group is present. Resolve that
-                // relationship once for the schemas, then state the count
-                // only where no explicit non-null counter value exists.
-                let group_at = if member.dtype().is_nested() {
-                    None
-                } else {
-                    let (Some(tag), None) = tag_and_counter(self.registry(), member) else {
-                        return (at, None);
-                    };
-                    let mut groups = spelled.iter().enumerate().filter_map(|(index, field)| {
-                        (tag_and_counter(self.registry(), field).1 == Some(tag)).then_some(index)
-                    });
-                    let first = groups.next();
-                    if first.is_some() && groups.next().is_none() {
-                        first
-                    } else {
-                        None
-                    }
-                };
-                (at, group_at)
+                    .position(|field| crate::folds_equal(field.name(), member.name()))
             })
             .collect();
-        if !occurrences.is_empty()
-            && !placed
-                .iter()
-                .any(|(at, group_at)| at.is_some() || group_at.is_some())
-        {
+        if !occurrences.is_empty() && !placed.iter().any(Option::is_some) {
             return crate::Scalar::Null;
         }
         crate::Scalar::from_sequence(occurrences.iter().map(|occurrence| {
             let Some(stated) = occurrence.as_sequence() else {
                 return occurrence.into_owned();
             };
-            crate::Scalar::from_sequence(placed.iter().map(|(at, group_at)| {
-                let explicit = at.and_then(|at| stated.get(at));
-                if let Some(value) = explicit.filter(|value| !value.is_null()) {
-                    return value.clone();
-                }
-                group_at
-                    .and_then(|at| stated.get(at))
-                    .and_then(crate::Scalar::as_serie)
-                    .map(|occurrences| {
-                        crate::Scalar::from(i32::try_from(occurrences.len()).unwrap_or(i32::MAX))
-                    })
+            crate::Scalar::from_sequence(placed.iter().map(|at| {
+                at.and_then(|at| stated.get(at))
+                    .filter(|value| !value.is_null())
+                    .cloned()
                     .unwrap_or(crate::Scalar::Null)
             }))
         }))
@@ -2713,12 +2982,12 @@ impl super::FixMsg {
 
     /// One column's value, derived where the message does not carry it.
     ///
-    /// Three sources, in this order. What the message actually said, always,
-    /// because a stated value is never overridden. Then the count of a group
-    /// whose counter the message did not state. Then the facts this crate
+    /// Two sources, in this order. What the message actually said, always,
+    /// because a stated value is never overridden. Then the facts this crate
     /// computes for a message built from a schema and a value - `BeginString`
     /// and the classification `CFICode(461)` - which the
-    /// [enriching pass](super::enrich) would otherwise have stated.
+    /// [enriching pass](super::enrich) would otherwise have stated. A group's
+    /// count is no column's: the group's own column is its list.
     ///
     /// Enrichment fills and never overwrites, so a column a venue did state
     /// is that venue's answer whatever the derivation would have said.
@@ -2735,17 +3004,6 @@ impl super::FixMsg {
         // A stated value wins.
         if let Some(held) = self.get_by_tag(tag).filter(|held| !held.is_null()) {
             return held;
-        }
-        // A group is the statement its counter counts. Where no scalar
-        // counter was stated, derive the column from the occurrences; an
-        // explicit non-null counter returned above remains authoritative even
-        // when it conflicts.
-        if let Some(count) = self
-            .index_of_group(tag)
-            .and_then(|index| self.as_value().get(index))
-            .and_then(|held| held.as_serie().map(crate::Serie::len))
-        {
-            return crate::Scalar::from(i32::try_from(count).unwrap_or(i32::MAX));
         }
         // The version a message that states none is said to be read at,
         // derived here for a message built from a schema and a value exactly
@@ -2778,13 +3036,13 @@ impl super::FixMsg {
 
 /// One column's value as that column holds it, leaf by leaf, best effort.
 ///
-/// A capture is written by systems that disagree with the dictionary about
-/// what a field is: a five-byte MIC where the standard says four, an
-/// identifier whose check digit does not close, a quantity spelled as a
-/// word. A table of ten million rows must not end on one of them. A leaf the
-/// column refuses is that leaf's null, which is the honest answer for a value
-/// nothing could read as the field it landed under, and nothing is lost by
-/// it, because the arrival record beside it carries what arrived verbatim.
+/// A capture is written by systems that disagree with the dictionary about what
+/// a field is: a five-byte MIC where the standard says four, an identifier of
+/// the wrong width, a quantity spelled as a word. A table of ten million rows
+/// must not end on one of them. A leaf the column refuses is that leaf's null,
+/// which is the honest answer for a value nothing could read as the field it
+/// landed under, and nothing is lost by it, because the arrival record beside
+/// it carries what arrived verbatim.
 ///
 /// A nested column keeps everything that does read. The whole value is tried
 /// first, so an ordinary row costs one call and nothing else; only when that

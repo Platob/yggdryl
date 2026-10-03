@@ -9,13 +9,14 @@
 //! was written, because each backend folds the names it reads itself.
 
 use std::fmt;
-use std::str::FromStr;
 
 use serde::de::{MapAccess, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::boolean::{BOOLEAN_SPELLINGS, bool_from_text};
+use crate::integer::{INTEGER_SPELLINGS, integer_from_text_as};
 use crate::{Error, Result};
 
 /// An ordered bag of name/value pairs, one value per name.
@@ -104,18 +105,38 @@ impl Properties {
         self.entries.is_empty()
     }
 
-    /// Read one property as the type a knob has.
-    ///
-    /// `expected` names the spelling the knob takes, for the refusal.
+    /// Read one property as a flag, in every spelling a boolean is read
+    /// from: `true`, `yes`, `on`, `1` and their opposites, in any case.
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`] at `$.with.<name>` when the value is
-    /// set and does not parse.
-    pub fn knob<T: FromStr>(&self, name: &str, expected: &str) -> Result<Option<T>> {
+    /// set and spells no boolean.
+    pub fn knob_bool(&self, name: &str) -> Result<Option<bool>> {
+        self.knob_read(name, BOOLEAN_SPELLINGS, bool_from_text)
+    }
+
+    /// Read one property as a count, at the width `T` of the option it
+    /// shapes, in every spelling a whole number is read from.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] at `$.with.<name>` when the value is
+    /// set and is not a whole number `T` holds.
+    pub fn knob_count<T: TryFrom<i128> + TryFrom<u128>>(&self, name: &str) -> Result<Option<T>> {
+        self.knob_read(name, INTEGER_SPELLINGS, integer_from_text_as)
+    }
+
+    /// Read one property through the one reader of the type it has.
+    fn knob_read<T>(
+        &self,
+        name: &str,
+        expected: &str,
+        read: impl FnOnce(&str) -> Option<T>,
+    ) -> Result<Option<T>> {
         self.get(name)
             .map(|value| {
-                value.trim().parse().map_err(|_| Error::InvalidRecord {
+                read(value).ok_or_else(|| Error::InvalidRecord {
                     path: format_smolstr!("$.with.{name}"),
                     reason: crate::text::expected_got(expected, format_args!("{value:?}")),
                 })

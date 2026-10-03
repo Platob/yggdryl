@@ -632,6 +632,42 @@ mod columns {
     }
 
     #[test]
+    fn a_time_path_naming_a_dotted_column_is_the_quoted_path() {
+        let dotted = Field::new(
+            "event.at",
+            DataType::DateTime64 {
+                unit: UNIT,
+                timezone: Timezone::UTC,
+            },
+            false,
+        );
+        let source = batch(&[dotted.clone(), symbol_field()], vec![events(), symbols()]);
+
+        // Quoted, the path is the one column whose name holds the dot.
+        let quoted = struct_root([
+            dotted.clone(),
+            symbol_field(),
+            coupled("key", 16, "\"event.at\""),
+        ]);
+        let filled = quoted.as_digest().apply_arrow_batch(&source).unwrap();
+        let read = values(filled.column(2).as_ref(), UNIT, DigestAlgorithm::Xxh3);
+        assert_eq!(read[0].unwrap().unix(), INSTANTS[0]);
+
+        // Unquoted, `event.at` is the column `at` inside a Struct `event`,
+        // which this row does not have; it is never the dotted name.
+        let unquoted = struct_root([dotted, symbol_field(), coupled("key", 16, "event.at")]);
+        let error = unquoted
+            .as_digest()
+            .apply_arrow_batch(&source)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("DIGEST:time") && error.contains("event.at"),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn an_instant_that_does_not_fit_the_holder_unit_is_refused_by_cell() {
         let seconds = Field::new(
             "event",

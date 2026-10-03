@@ -45,6 +45,7 @@ mod iceberg;
 mod identifier;
 mod iobase;
 mod iomedia;
+mod isin_registry;
 mod join;
 mod logging;
 mod marketdatakind;
@@ -653,6 +654,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<version::PyVersion>()?;
     module.add_class::<identifier::PyIdentifier>()?;
     module.add_class::<identifier::PyIdentifiers>()?;
+    module.add_class::<isin_registry::PyIsinRegistry>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;
     module.add_class::<fix::PyFixMsgIterator>()?;

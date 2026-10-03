@@ -293,11 +293,12 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
 
 ## Sided kinds and batches
 
-`is_sided`, `is_batch` and `item` decide how the graph and a FIX parse treat what a member files. All three are Rust-only: a binding exposes the members, their codes, `description` and `from_spelling`.
+`is_sided`, `is_booked`, `is_batch` and `item` decide how the graph and a FIX parse treat what a member files. All four are Rust-only: a binding exposes the members, their codes, `description` and `from_spelling`.
 
 | Reading | Rule |
 | --- | --- |
-| `is_sided()` | `ORDR`, `QUOT` and `EXEC` alone: an order, a quote or an execution takes one side of the market, so its stored cross code states that side - `10:1:ORD-1` to buy, `10:2:ORD-1` to sell - and the two sides of one identifier are two chains. The one owner of that rule: [`Market::is_sided`](../../graph/market.md#sides-and-cross-codes) answers it for the kind an element is filed under, and every other kind - a trade, a book, a batch, a category no operation is filed under - states `0` there whatever side it takes: `21:0:T-1`, `3:0:AAPL` |
+| `is_sided()` | `ORDR` and `EXEC` alone: an order or an execution takes one side of the market, so its stored cross code states that side - `10:1:ORD-1` to buy, `10:2:ORD-1` to sell - and the two sides of one identifier are two chains. The one owner of that rule: [`Market::is_sided`](../../graph/market.md#sides-and-cross-codes) answers it for the kind an element is filed under, and every other kind - a quote, which holds its bid and its ask in one element, a trade, a book, a batch, a category no operation is filed under - states `0` there whatever side it tags: `14:0:Q-1`, `21:0:T-1`, `3:0:AAPL` |
+| `is_booked()` | `ORDR`, `QUOT` and `BOOK` alone: what a [book walk](../../graph/book.md) folds - an order, a quote, a book message's entries and snapshot controls; every other kind - an execution, a trade, a batch, a session message - is pruned before a walk routes it |
 | `is_batch()` | `ORDB`, `QUOB`, `EXEB` and `TRDB`: a message stating many orders, quotes, executions or trades at once - a list, a mass order, a cross, a mass quote, a match report - which a [FIX parse splits](../../fix/message.md#a-parse-splits-what-a-message-reports) into one message per entry; no standard message type is filed under `EXEB` |
 | `item()` | the kind one entry of a batch is - `ORDB` `ORDR`, `QUOB` `QUOT`, `EXEB` `EXEC`, `TRDB` `TRAD` - and the member itself for any other |
 
@@ -307,8 +308,11 @@ The code is the MsgCat value, the stored name its four-letter code, and the word
     use yggdryl::MarketDataKind;
 
     let sided: Vec<&str> = MarketDataKind::ALL.iter().filter(|kind| kind.is_sided()).map(|kind| kind.as_str()).collect();
-    assert_eq!(sided, ["EXEC", "ORDR", "QUOT"]);
-    assert!(!MarketDataKind::Trade.is_sided() && !MarketDataKind::Book.is_sided());
+    assert_eq!(sided, ["EXEC", "ORDR"]);
+    assert!(!MarketDataKind::Quotation.is_sided() && !MarketDataKind::Trade.is_sided());
+
+    let booked: Vec<&str> = MarketDataKind::ALL.iter().filter(|kind| kind.is_booked()).map(|kind| kind.as_str()).collect();
+    assert_eq!(booked, ["BOOK", "ORDR", "QUOT"]);
 
     let batches: Vec<&str> = MarketDataKind::ALL.iter().filter(|kind| kind.is_batch()).map(|kind| kind.as_str()).collect();
     assert_eq!(batches, ["ORDB", "QUOB", "EXEB", "TRDB"]);

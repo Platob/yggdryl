@@ -228,14 +228,22 @@ fn only_two_dated_values_order_and_only_one_variant_merges() {
 /// holds three sets where it held a 56-byte `SecurityIds` with its derived
 /// mask and two 56-byte `IdMap`s, 96 fewer, so the trade is 896, and the
 /// snapshot - whose market facts hold the one set, 32 fewer after padding -
-/// is the widest inline leaf at 912. The book, at 992, is the wider again,
-/// and the box buys the enum eighty bytes.
+/// is the widest inline leaf at 912. The book was 992, the wider again,
+/// until a side became one shared store and the deltas one list across both
+/// sides: a side holds two reference counts where it held a price map and
+/// its own deltas, so the book is 912 - the snapshot's width - and the box
+/// keeps a book's move a pointer's. The book moved to 880 when its two
+/// sides became one optional pair - none on a book stating its deltas
+/// alone - each side its two reference counts without the digest it no
+/// longer keeps, a side being digested only at a snapshot, and the walk's
+/// replaced scopes left the book, every group replacing membership being a
+/// snapshot: 40 fewer, 32 after padding.
 #[test]
 fn the_enum_is_the_size_of_its_widest_inline_leaf() {
     use std::mem::size_of;
     assert_eq!(size_of::<MarketData>(), size_of::<SnapshotEvent>());
     assert!(size_of::<TradeEvent>() < size_of::<MarketData>());
-    assert!(size_of::<BookEvent>() > size_of::<MarketData>());
+    assert_eq!(size_of::<BookEvent>(), 880);
     assert_eq!(size_of::<MarketData>(), 912);
 }
 

@@ -42,7 +42,6 @@ ORDER = Field(
         [
             SEED_REGISTRY.field_by_tag(55),
             SEED_REGISTRY.field_by_tag(38),
-            SEED_REGISTRY.field_by_name("NoPartyIDs"),
             SEED_REGISTRY.field_by_name("Parties"),
         ]
     ),
@@ -53,7 +52,6 @@ MESSAGE = FixMsg(
     {
         "symbol": "AAPL",
         "orderqty": decimal.Decimal("100"),
-        "nopartyids": 1,
         "parties": [
             {"partyid": "BROKER", "partyidsource": "D", "partyrole": 1}
         ],
@@ -232,8 +230,9 @@ def _catalog() -> FixRegistry:
     registry.insert(group)
     group = registry.field_by_name("Parties")
     group.fix.group = "Parties"
-    counter.fix.field_ref = "NoPartyIDs"
-    message = Field("NewOrderSingle", DataType.from_fields([counter, group]), nullable=False)
+    # A group is its list alone: the counter is the dictionary's field and no
+    # member of the message beside it.
+    message = Field("NewOrderSingle", DataType.from_fields([group]), nullable=False)
     message.fix.msgtype = "D"
     registry.insert(message)
     return registry
@@ -244,7 +243,7 @@ CATALOG_JSON = CATALOG.into_json()
 CATALOG_PICKLE = pickle.dumps(CATALOG)
 CODEC = FixCodec(SEED_REGISTRY)
 NUMERIC_GROUP = b"8=FIX.4.4|35=D|453=1|448=BROKER|447=D|452=1|10=0|"
-assert CODEC.parse_fix_line(NUMERIC_GROUP).by_tag(453).as_py() == 1
+assert len(CODEC.parse_fix_line(NUMERIC_GROUP).by_name("parties").as_py()) == 1
 assert CODEC.parse_fix_line(NUMERIC_GROUP).by_path("Parties[0].PartyID").as_py() == "BROKER"
 assert FixRegistry.from_json(CATALOG_JSON) == CATALOG
 assert pickle.loads(CATALOG_PICKLE) == CATALOG
@@ -267,7 +266,7 @@ assert PARSED.msgcat is MarketDataKind.ORDR
 assert SNAPSHOT_CODEC.snapshot_ns == 1_000_000_000
 # A parse fills what the line implied, so the names the message goes by are
 # on the message the parse answered rather than behind a pass of its own.
-assert [str(id) for id in PARSED.identifiers] == ["fix:clordid=ORDER-000000"]
+assert [str(id) for id in PARSED.identifiers] == ["clordid=ORDER-000000"]
 assert [field.name for field, _ in ORDER_TYPE.identifier_values(PARSED)] == ["clordid"]
 WALKED = next(iter(CODEC.lifecycle([PARSED])))
 

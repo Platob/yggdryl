@@ -4837,6 +4837,9 @@ Object.defineProperty(Uri.prototype, 'joinPath', {
 // `new RecordOptions('text/csv', { separator: ';' })`, `new TextOptions({
 // rowheader })` - each set by its own setter, as a record call's property bag
 // sets them, a name no setter owns skipped with an `UnknownPropertyWarning`.
+// The write-mode reader is the record surface's own, handed to it below and
+// never published.
+const nativeWriteMode = binding.RecordOptions._writeModeNative
 for (const [name, arity] of [
   ['RecordOptions', 1],
   ['TextOptions', 0],
@@ -4845,7 +4848,7 @@ for (const [name, arity] of [
   binding[name] = publicNativeClass(
     NativeOptions,
     name,
-    new Set(),
+    new Set(['_writeModeNative']),
     (args) => args.slice(0, arity),
     (options, args) =>
       args[arity] === undefined || args[arity] === null
@@ -4906,6 +4909,7 @@ const { intoField } = installRecords({
   SerieReader,
   TextOptions,
   Table: binding.IcebergTable,
+  nativeWriteMode,
 })
 binding.intoField = intoField
 
@@ -5640,6 +5644,32 @@ binding.FixCodec.prototype.writeArrowReader = function writeArrowReader(source, 
   return nativeWriteArrowReader.call(this, BatchReader.from(source), sink)
 }
 
+// The instrument registry reads a row as whatever `Scalar.from` reads and
+// answers a row as the plain object its struct `Scalar` reads as: the native
+// half takes and answers the core's values and nothing else. A stream is a
+// native `BatchReader`, as every `fromArrowReader` takes one.
+{
+  const NativeIsinRegistry = binding.IsinRegistry
+  for (const name of ['get', 'getByRic', 'remove']) {
+    const native = NativeIsinRegistry.prototype[name]
+    NativeIsinRegistry.prototype[name] = {
+      [name](key) {
+        const row = native.call(this, key)
+        return row === null ? null : row.asJs()
+      },
+    }[name]
+  }
+  const nativeGetByTicker = NativeIsinRegistry.prototype.getByTicker
+  NativeIsinRegistry.prototype.getByTicker = function getByTicker(ticker, market) {
+    const row = nativeGetByTicker.call(this, ticker, market)
+    return row === null ? null : row.asJs()
+  }
+  const nativeMerge = NativeIsinRegistry.prototype.merge
+  NativeIsinRegistry.prototype.merge = function merge(entry) {
+    return nativeMerge.call(this, asScalar(entry))
+  }
+}
+
 // A stage over an iterable pulls one item at a time: the iterable's own
 // protocol runs here, and the native stage asks for the next item only when
 // the stream is read that far, so nothing is collected on the way across.
@@ -5725,8 +5755,17 @@ function asLine(value) {
   }
   const nativeBookArrowReader = binding.FixCodec.prototype._bookArrowReaderNative
   delete binding.FixCodec.prototype._bookArrowReaderNative
-  binding.FixCodec.prototype.bookArrowReader = function bookArrowReader(messages, snapshotMillis = 0) {
-    return nativeBookArrowReader.call(this, pullOf(messages, asMessage, 'messages'), snapshotMillis)
+  binding.FixCodec.prototype.bookArrowReader = function bookArrowReader(
+    messages,
+    snapshotMillis = 0,
+    filter = undefined,
+  ) {
+    return nativeBookArrowReader.call(
+      this,
+      pullOf(messages, asMessage, 'messages'),
+      snapshotMillis,
+      filter,
+    )
   }
   const nativeMarketArrowReader = binding.FixCodec.prototype._marketArrowReaderNative
   delete binding.FixCodec.prototype._marketArrowReaderNative
@@ -6032,12 +6071,13 @@ const nativeBookIterator = NativeBookIterator._bookIteratorNative
 const BookIterator = publicClass(
   NativeBookIterator,
   'BookIterator',
-  (items, snapshotMillis = 0) => {
+  (items, snapshotMillis = 0, filter = undefined) => {
     const failed = {}
     const walk = nativeBookIterator.call(
       NativeBookIterator,
       carriedPullOf(items, asMarketItem, 'items', failed),
       snapshotMillis,
+      filter,
     )
     walk[FAILED] = failed
     return walk

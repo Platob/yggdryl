@@ -170,7 +170,7 @@ test('a CSV role byte is one ASCII character no other role holds, refused by nam
   ]) {
     assert.throws(() => {
       options[name] = value
-    }, new RegExp(`expected one ASCII character for ${name}, got `))
+    }, new RegExp(`\\$\\.${name}: expected one character standing for one byte, got `))
   }
   // One character that is not ASCII, a line break, or another role's byte:
   // the core's refusal, at the property's own path.

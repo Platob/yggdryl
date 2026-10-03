@@ -592,10 +592,16 @@ impl FromStr for TxHash {
                 ),
             )
         })?;
-        let unix = unix.parse::<i64>().map_err(|error| {
+        let unix = crate::integer::integer_from_text_as::<i64>(unix).ok_or_else(|| {
             parse_error(
                 0,
-                format_smolstr!("expected a signed 64-bit unix count, got {error}"),
+                crate::text::expected_got(
+                    "a signed 64-bit unix count",
+                    format_args!(
+                        "{:?}",
+                        crate::text::elide_to(unix, crate::text::ERROR_TEXT_LIMIT)
+                    ),
+                ),
             )
         })?;
         let rest_offset = normalized.len() - rest.len();

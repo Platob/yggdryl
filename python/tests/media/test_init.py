@@ -609,7 +609,9 @@ class TestCsv:
 
     def test_the_refusals_name_what_was_asked(self, tmp_path: pathlib.Path) -> None:
         options = RecordOptions("trades.csv")
-        with pytest.raises(ValueError, match="one-character str or one byte for separator"):
+        with pytest.raises(
+            ValueError, match=r"\$\.separator: expected one character standing for one byte"
+        ):
             options.separator = ";;"
         with pytest.raises(ValueError, match=r"\$\.separator.*which is the quote"):
             options.separator = '"'

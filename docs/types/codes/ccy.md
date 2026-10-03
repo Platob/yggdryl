@@ -263,14 +263,16 @@ The retired `yggdryl.currency` name is refused, including over dictionary storag
 
 ## `XXX` states no currency
 
-ISO 4217 publishes `XXX` for "no currency", so it is what a merge takes the other side over: `Ccy::none()` is that value, and [`merge_with`](index.md#the-code-family-value) folds two statements of one price's currency into the better one. Rust only.
+ISO 4217 publishes `XXX` for "no currency", so it is what a merge takes the other side over: `Ccy::none()` is that value and `is_none()` asks for it, the [rank](index.md#rank) zero any stated currency outranks, and [`merge_with`](index.md#the-code-family-value) folds two statements of one price's currency into the better one, whichever leads. The listing is no rank: a digital-asset ticker is a currency here, and `USD` never displaces `USDT`. Rust only.
 
 ```rust
 use yggdryl::{CodeValue, Ccy};
 
 assert_eq!(Ccy::none().as_str(), "XXX");
+assert!(Ccy::none().is_none() && Ccy::none().rank() == 0);
 assert_eq!(Ccy::none().merge_with(&Ccy::new("USD")?).as_str(), "USD");
-// Anything stated stands, whatever the other side says.
+assert_eq!(Ccy::new("USD")?.merge_with(&Ccy::none()).as_str(), "USD");
+// Two stated currencies are one rank: this one stands.
 assert_eq!(Ccy::new("USD")?.merge_with(&Ccy::new("EUR")?).as_str(), "USD");
 ```
 

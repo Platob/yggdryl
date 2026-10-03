@@ -1324,6 +1324,30 @@ impl Bytes {
         Self { repr }
     }
 
+    /// What every refusal of a base64 spelling names.
+    pub(crate) const BASE64_SPELLING: &str = "base64 text";
+
+    /// Read the base64 a document spells a byte payload with: RFC 4648
+    /// section 4, the standard alphabet with its canonical padding, ASCII
+    /// whitespace between the digits ignored as a line-wrapped or indented
+    /// document writes it. The one base64 reader a document layer has; a
+    /// string entering a byte column is its UTF-8 bytes, never this.
+    pub(crate) fn from_base64(text: &str) -> Option<Self> {
+        use base64::Engine as _;
+
+        let engine = &base64::engine::general_purpose::STANDARD;
+        let decoded = if text.bytes().any(|byte| byte.is_ascii_whitespace()) {
+            let compact: Vec<u8> = text
+                .bytes()
+                .filter(|byte| !byte.is_ascii_whitespace())
+                .collect();
+            engine.decode(compact).ok()?
+        } else {
+            engine.decode(text).ok()?
+        };
+        Some(Self::from(decoded))
+    }
+
     /// Borrow the payload.
     #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
@@ -1862,5 +1886,63 @@ impl TryFrom<&DataType> for BytesType {
                 kind: "bytes",
                 reason: format_smolstr!("expected a byte datatype, got {value}"),
             })
+    }
+}
+
+/// Spell a payload as the base64 [`Bytes::from_base64`] reads back - RFC 4648
+/// section 4, the standard alphabet, padded, on one line - appended to
+/// `target`: the one base64 writer the document and cell writers share, in
+/// the form a reused cell buffer takes so a row costs no text of its own. A
+/// geometry's bytes take it as a byte value's do, which is why it reads a
+/// slice rather than a [`Bytes`].
+pub(crate) fn base64_into(payload: &[u8], target: &mut Vec<u8>) {
+    use base64::Engine as _;
+
+    let start = target.len();
+    // `encoded_len` is `None` only past `usize::MAX / 4 * 3` input bytes, more
+    // than a slice can hold, and `encode_slice` fails only on a target shorter
+    // than that length; neither is reachable from a slice in memory.
+    let Some(len) = base64::encoded_len(payload.len(), true) else {
+        return;
+    };
+    target.resize(start + len, 0);
+    let written = base64::engine::general_purpose::STANDARD
+        .encode_slice(payload, &mut target[start..])
+        .unwrap_or(0);
+    target.truncate(start + written);
+}
+
+/// The base64 [`base64_into`] appends, as one string of its own.
+#[must_use]
+pub(crate) fn into_base64(payload: &[u8]) -> String {
+    use base64::Engine as _;
+
+    base64::engine::general_purpose::STANDARD.encode(payload)
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/bytes.rs` pins and a caller cannot reach: the
+    //! one base64 reader and writer the document layers share.
+    use super::Bytes;
+
+    /// What every refusal of a base64 spelling names.
+    pub const BASE64_SPELLING: &str = Bytes::BASE64_SPELLING;
+
+    /// Read a payload out of base64 text.
+    pub fn from_base64(text: &str) -> Option<Bytes> {
+        Bytes::from_base64(text)
+    }
+
+    /// Spell a payload as base64 text.
+    #[must_use]
+    pub fn into_base64(payload: &[u8]) -> String {
+        super::into_base64(payload)
+    }
+
+    /// Append a payload's base64 to a buffer.
+    pub fn base64_into(payload: &[u8], target: &mut Vec<u8>) {
+        super::base64_into(payload, target);
     }
 }

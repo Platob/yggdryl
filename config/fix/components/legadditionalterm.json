@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nolegadditionaltermbondrefs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegadditionaltermbondrefs",
-          "FIX:tag": "41316"
-        }
-      },
-      {
         "name": "legadditionaltermbondrefs",
         "dtype": {
           "type": "null"

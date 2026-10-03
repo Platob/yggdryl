@@ -31,10 +31,11 @@ fn parties() -> Field {
         .map(DataType::from)
         .unwrap()
         .required_field("Attribution");
+    // The nested group is its list alone: its counter frames it on the wire
+    // and is no member beside it.
     let item = StructType::from_fields([
         tagged("PartyID", 448, DataType::utf8()),
         attribution,
-        tagged("NoPartySubIDs", 802, DataType::Int32),
         nested,
     ])
     .map(DataType::from)
@@ -49,34 +50,50 @@ fn parties() -> Field {
 fn plans_flatten_components_preserve_serie_width_and_project_nullable_members() {
     let source = parties();
     let plan = GroupPlan::from_field(&source).unwrap();
-    assert_eq!(plan.columns_len(), 4);
+    assert_eq!(plan.columns_len(), 3);
     assert_eq!(plan.delimiter(), Some(448));
     assert_eq!(plan.tag_index(452), Some(1));
-    assert_eq!(plan.tag_index(802), Some(2));
+    // A nested group is reached by its counter alone, never as a column of
+    // its own tag.
+    assert_eq!(plan.tag_index(802), None);
     assert!(plan.column(1).is_nullable());
     let (column, nested) = plan.nested(802).unwrap();
-    assert_eq!(column, 3);
+    assert_eq!(column, 2);
     assert!(matches!(nested.field().dtype(), DataType::LargeSerie(_)));
     assert_eq!(nested.tag_index(523), Some(0));
-    let row = plan.row(vec![
-        Scalar::from("broker"),
-        Scalar::Null,
-        Scalar::from(0_i32),
-        Scalar::Null,
-    ]);
+    let row = plan.row(vec![Scalar::from("broker"), Scalar::Null, Scalar::Null]);
     assert_eq!(
         row,
-        Scalar::from_sequence([
-            Scalar::from("broker"),
-            Scalar::Null,
-            Scalar::from(0_i32),
-            Scalar::Null,
-        ])
+        Scalar::from_sequence([Scalar::from("broker"), Scalar::Null, Scalar::Null])
     );
     let DataType::Serie(item) = source.dtype() else {
         panic!("serie")
     };
     assert!(!item.fields()[0].is_nullable());
+}
+
+#[test]
+fn a_group_opening_with_a_nested_group_is_delimited_by_its_counter() {
+    // The wire opens such an occurrence with the nested group's counter, so
+    // that counter - never the nested group's own definition tag, which no
+    // wire states - is the delimiter.
+    let subparty = StructType::from_fields([tagged("PartySubID", 523, DataType::utf8())])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("SubParty");
+    let mut nested = DataType::serie(subparty).required_field("SubParties");
+    nested.as_fix_mut().set_counter(802).unwrap();
+    nested.as_fix_mut().set_tag(486_736).unwrap();
+    let item = StructType::from_fields([nested, tagged("PartyID", 448, DataType::utf8())])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("Party");
+    let mut group = DataType::serie(item).required_field("Parties");
+    group.as_fix_mut().set_counter(453).unwrap();
+    let plan = GroupPlan::from_field(&group).unwrap();
+    assert_eq!(plan.delimiter(), Some(802));
+    assert_eq!(plan.tag_index(486_736), None);
+    assert_eq!(plan.nested(802).map(|(column, _)| column), Some(0));
 }
 
 #[test]

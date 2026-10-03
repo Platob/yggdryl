@@ -21,7 +21,7 @@ use yggdryl::http::{ForwardedHeader, Server, ServerOptions};
 use yggdryl::xmla::{Service, ServiceOptions};
 use yggdryl::{Catalog, ObjectValue, Properties, Result, Url};
 
-use crate::{location, style};
+use crate::{location, style, timeout};
 
 /// What the provider was asked to do.
 #[derive(Subcommand)]
@@ -91,16 +91,17 @@ pub struct Serve {
     #[arg(long, value_name = "PREFIX")]
     path_prefix: Option<String>,
 
-    /// Seconds a connection may stay quiet, or one request head may take to
-    /// arrive whole, before it is closed, from 1 to 86400 (one day); keep it
-    /// above the proxy's own keep-alive timeout.
+    /// How long a connection may stay quiet, or one request head may take to
+    /// arrive whole, before it is closed: seconds, with a fraction and an
+    /// optional unit (`30`, `2.5`, `1500ms`), above zero and at most 86400
+    /// (one day); keep it above the proxy's own keep-alive timeout.
     #[arg(
         long,
-        default_value_t = 30,
+        default_value = "30",
         value_name = "SECONDS",
-        value_parser = clap::value_parser!(u64).range(1..=ServerOptions::MAX_TIMEOUT.as_secs())
+        value_parser = timeout::read_timeout
     )]
-    read_timeout: u64,
+    read_timeout: Duration,
 }
 
 /// Run one `xmla` verb.
@@ -125,7 +126,7 @@ impl Serve {
             .collect::<Result<Vec<_>>>()?;
         let mut options = ServerOptions::default()
             .with_max_body_size(self.max_body)
-            .with_read_timeout(Duration::from_secs(self.read_timeout))
+            .with_read_timeout(self.read_timeout)
             .with_trusted_proxies(&self.trusted_proxies)?;
         if !self.forwarded_headers.is_empty() {
             options = options.with_forwarded_headers(self.forwarded_headers.iter().copied());

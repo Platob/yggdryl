@@ -36,17 +36,6 @@
         }
       },
       {
-        "name": "noapplids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noapplids",
-          "FIX:tag": "1351"
-        }
-      },
-      {
         "name": "applidrequestgrp",
         "dtype": {
           "type": "null"
@@ -54,17 +43,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "applidrequestgrp"
-        }
-      },
-      {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
         }
       },
       {

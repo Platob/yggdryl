@@ -18,7 +18,7 @@ The header comes off where the line is made, so its captures are the line's and 
 
 ## Read
 
-A read cuts each object into records - one per line, or, under `framing`, one per chain of lines a row header opens - and answers each as a row: the event the line is, its `body`, its captures.
+A read cuts each object into records - one per line, or, under `framing`, one per chain of lines a row header opens - and answers each as a row: the event the line is, its `body`, its captures. Under `autotype` each capture's datatype is settled from the pattern before a byte is read ([Regex captures](../types/text/string.md#regex-captures)): a capture whose every literal alternative prints `true` or `false`, in any case, is a `boolean`, as a [CSV](csv.md) column is inferred, and a captured cell reads through its datatype's one text reader.
 
 `TextLine` exposes the [event identity](../graph/event.md#identity) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. The row number is the line's [place](../fix/lifecycle.md#a-place-counts-one-instant), where it stands and never what it says: `currhashcode` is the XXH3-64 of the `body` and nothing else - no capture, state, predecessor or cross code - so two lines of byte-identical bodies share it and differ by `curruuid` alone, which sorts the lines of one millisecond by row. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
 

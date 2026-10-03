@@ -47,17 +47,6 @@
         }
       },
       {
-        "name": "noasgnreqs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noasgnreqs",
-          "FIX:tag": "1499"
-        }
-      },
-      {
         "name": "strmasgnrptgrp",
         "dtype": {
           "type": "null"

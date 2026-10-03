@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
+use yggdryl::IdKey;
 use yggdryl::{
     DataType, Field, FieldScalar, Float16, Float32, Float64, IOMode, Scalar, TimeUnit, Timezone,
     Vocabulary, i256,
@@ -9,7 +10,7 @@ use yggdryl::{
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     {
         use yggdryl::graph::{Market, Order};
-        use yggdryl::{Cfi, Figi, Forex, FxSymbol, IdSource, IdType, Identifier, Isin, Ric};
+        use yggdryl::{Cfi, Figi, Forex, FxSymbol, IdType, Identifier, Isin, Ric};
         let mut codes = criterion.benchmark_group("instrument_codes");
         codes.bench_function("isin", |bench| {
             bench.iter(|| Isin::new(black_box("us0378331005")).unwrap());
@@ -33,10 +34,10 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         codes.bench_function("cfi_classification", |bench| {
             bench.iter(|| Cfi::is_classified(black_box("ESVUFR")));
         });
-        codes.bench_function("cfi_merge", |bench| {
-            bench.iter(|| Cfi::merged(black_box("ESXXXX"), black_box("ESVUFR")));
+        codes.bench_function("cfi_refine", |bench| {
+            bench.iter(|| Cfi::refined(black_box("ESXXXX"), black_box("ESVUFR")));
         });
-        let isin = Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").unwrap();
+        let isin = Identifier::new(IdKey::base(IdType::Isin), "US0378331005").unwrap();
         codes.bench_function("market_identifier_setter", |bench| {
             bench.iter(|| {
                 let mut element = Order::new();

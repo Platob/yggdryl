@@ -59,6 +59,12 @@ impl fmt::Display for DxFeedExchangeFeed {
 code_leaf!(Mic, MIC_WIDTH);
 
 impl Mic {
+    /// A code a landed `mic` column already holds, adopted as it stands:
+    /// the landing read the cell under this type's rule.
+    pub(crate) fn from_proven(text: &str) -> Self {
+        Self(SmolStr::new(text))
+    }
+
     /// ISO 10383's code for no market.
     pub(crate) const NONE: &str = "XXXX";
 
@@ -67,6 +73,20 @@ impl Mic {
     #[must_use]
     pub fn none() -> Self {
         Self(SmolStr::new_static(Self::NONE))
+    }
+
+    /// Whether this is the market stated as none, `XXXX`: rank zero, which
+    /// any stated market replaces. The listing
+    /// [`StringEnum::MICS`](crate::StringEnum::MICS) is deliberately
+    /// partial, so it is no rank.
+    #[must_use]
+    pub fn is_none(&self) -> bool {
+        self.as_str() == Self::NONE
+    }
+
+    /// [`CodeValue::rank`]: zero for `XXXX`, one for anything stated.
+    fn ranked(&self) -> u8 {
+        u8::from(!self.is_none())
     }
 
     /// Whether `text` is shaped as an ISO 10383 code: exactly four of
@@ -389,18 +409,9 @@ impl Mic {
             Self::from_reuters_exchange_code(text).ok()
         }
     }
-
-    /// The better of two markets: this one, unless it is `XXXX`.
-    fn merged(self, other: &Self) -> Self {
-        if self.as_str() == Self::NONE {
-            other.clone()
-        } else {
-            self
-        }
-    }
 }
 
-code_value!(Mic, Mic, MIC_WIDTH, merge = Mic::merged);
+code_value!(Mic, Mic, MIC_WIDTH, rank = Mic::ranked, max_rank = 1);
 
 /// The Arrow extension name of the market identifier code.
 pub(crate) const MIC_EXTENSION_NAME: &str = "yggdryl.mic";

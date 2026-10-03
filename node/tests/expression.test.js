@@ -109,7 +109,11 @@ test('the tree is built from either spelling', () => {
   assert.equal(Term.all(['a', 'b']).toString(), 'a and b')
   assert.equal(new Term('a = 1 or a = 2').simplify().toString(), 'a in (1, 2)')
   assert.ok(new Term('a = 1 or a = 2').explain().startsWith('or'))
-  assert.throws(() => price.comparison('approximately', '1'), /comparison/)
+  // A comparison is read by the grammar's own reader: every spelling it
+  // takes, in any case, and a refusal naming the vocabulary.
+  assert.equal(price.comparison('!=', '1').toString(), 'price <> 1')
+  assert.equal(price.comparison(' IS NOT DISTINCT FROM ', '1').toString(), 'price is not distinct from 1')
+  assert.throws(() => price.comparison('approximately', '1'), /expected a comparison - =, <>, !=, <, <=, >, >= or is \[not\] distinct from - got "approximately"/)
 })
 
 test('arithmetic builders stay lazy term nodes', () => {
@@ -534,8 +538,11 @@ test('a plan is built section by section', () => {
   const nested = new Plan('select a from t').withSource(new Plan('select a, b from u where b > 1'))
   assert.equal(nested.toString(), 'select a from (select a, b from u where b > 1)')
   assert.ok(nested.sourcePlan.equals('select a, b from u where b > 1'))
-  assert.throws(() => new Plan().withWrite('sideways'), /verb/)
-  assert.throws(() => new Plan().withOrdering(['price sideways']), /expression/)
+  // A verb and an ordering key are read by the grammar's own readers.
+  assert.equal(new Plan().withWrite('MERGE INTO', 't', ['id']).verb, 'upsert into')
+  assert.equal(new Plan().withOrdering(['price DESC NULLS FIRST']).toString(), 'select * order by price desc nulls first')
+  assert.throws(() => new Plan().withWrite('sideways'), /expected a write verb - insert, append, overwrite, replace, upsert, merge or delete - got "sideways"/)
+  assert.throws(() => new Plan().withOrdering(['price sideways']), /at byte 6: expected the end of the expression/)
 })
 
 test('a field is a plan and a plan is a field', () => {

@@ -213,12 +213,17 @@ text or bytes, and a container with nothing set in it. That last one is wider
 than `is_empty`, which only counts entries - a record of three nulls has three
 fields and nothing set, so it is not empty but it is falsy.
 
-Text is the one place this is wider than Python. `false`, `no`, `off`, `f`,
-`n` and `0` read as false, case-insensitively and trimmed, where Python calls
-every non-empty string true. Values arrive as text from CSV, FIX and query
-strings, and a column that spells false is not asking to be read as true.
-[`Boolean`](numeric/boolean.md)'s own text reader stays strict, because that
-one is the String-to-Boolean *cast*, not a coercion.
+Text is the one place this is wider than Python. The false set is
+[`Boolean`](numeric/boolean.md#the-one-text-reader)'s one text reader - every
+spelling it reads as false (`false`, `f`, `fa`, `fal`, `fals`, `no`, `n`,
+`off`, `of`, `0`), ASCII case-insensitive and trimmed - where Python calls
+every non-empty string true, so a text column is as false to a predicate as
+to its boolean cast. Values arrive as text from CSV, FIX and query strings,
+and a column that spells false is not asking to be read as true. It is a
+coercion of any text, so text the boolean value door refuses - `n/a` - still
+answers here, as true, and blank text is false. Only a string is a spelling:
+a registered code or an enum member is an identity, true unless its text is
+empty, so `Country("NO")` is true.
 
 `len` counts a container's direct children and answers zero for everything
 else, so it is not a text or byte length and never a truthiness test.
@@ -231,7 +236,10 @@ else, so it is not a text or byte length and never a truthiness test.
     assert!(Scalar::from(5).is_truthy());
     assert!(!Scalar::from(0).is_truthy());
     assert!(!Scalar::from("OFF").is_truthy());
+    assert!(!Scalar::from(" fals ").is_truthy());
     assert!(Scalar::from("anything else").is_truthy());
+    // A code is an identity, never a spelling: Norway is not false.
+    assert!(yggdryl::DataType::country().scalar("NO")?.is_truthy());
     ```
 
 === "Python"
@@ -242,6 +250,7 @@ else, so it is not a text or byte length and never a truthiness test.
     assert bool(Scalar.from_(5))
     assert not bool(Scalar.from_(0))
     assert not bool(Scalar.from_("off"))
+    assert not bool(Scalar.from_(" fals "))
     assert not bool(Scalar.from_({"a": None, "b": ""}))
     ```
 
@@ -254,6 +263,7 @@ else, so it is not a text or byte length and never a truthiness test.
     assert.equal(Scalar.from(5).isTruthy(), true)
     assert.equal(Scalar.from(0).isTruthy(), false)
     assert.equal(Scalar.from('off').isTruthy(), false)
+    assert.equal(Scalar.from(' fals ').isTruthy(), false)
     ```
 
 ## Variants and arithmetic

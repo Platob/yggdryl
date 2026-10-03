@@ -125,17 +125,6 @@
         }
       },
       {
-        "name": "nostreamcommoditysettldays",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreamcommoditysettldays",
-          "FIX:tag": "41283"
-        }
-      },
-      {
         "name": "streamcommoditysettldays",
         "dtype": {
           "type": "null"

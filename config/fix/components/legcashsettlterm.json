@@ -125,17 +125,6 @@
         }
       },
       {
-        "name": "nolegcashsettldealers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcashsettldealers",
-          "FIX:tag": "41342"
-        }
-      },
-      {
         "name": "legcashsettldealers",
         "dtype": {
           "type": "null"

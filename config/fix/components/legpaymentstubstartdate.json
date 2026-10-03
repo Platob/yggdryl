@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nolegpaymentstubstartdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstubstartdatebusinesscenters",
-          "FIX:tag": "42504"
-        }
-      },
-      {
         "name": "legpaymentstubstartdatebusinesscenters",
         "dtype": {
           "type": "null"

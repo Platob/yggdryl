@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nopartydetails",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartydetails",
-          "FIX:tag": "1671"
-        }
-      },
-      {
         "name": "partydetails",
         "dtype": {
           "type": "null"
@@ -33,17 +22,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "partydetails"
-        }
-      },
-      {
-        "name": "norisklimits",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norisklimits",
-          "FIX:tag": "1669"
         }
       },
       {

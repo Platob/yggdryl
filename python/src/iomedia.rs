@@ -1433,20 +1433,13 @@ fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::text::Line
 }
 
 /// Read one CSV dialect byte - a separator, a quote, an escape or a comment
-/// byte - out of a one-character `str` or one byte of `bytes`, naming the
-/// setting on refusal. Only the shape is judged here: whether the byte can
-/// play the role is the core's own refusal.
+/// byte - out of a `str` through the core's one spelling
+/// ([`yggdryl::csv::CsvOptions::byte_from_text`]) or one byte of `bytes`,
+/// naming the setting on refusal. Whether the byte can play the role is the
+/// core setter's own refusal.
 fn csv_byte_from_value(value: &Bound<'_, PyAny>, setting: &str) -> PyResult<u8> {
     if let Ok(text) = value.extract::<&str>() {
-        let mut characters = text.chars();
-        if let (Some(character), None) = (characters.next(), characters.next())
-            && let Ok(byte) = u8::try_from(u32::from(character))
-        {
-            return Ok(byte);
-        }
-        return Err(PyValueError::new_err(format!(
-            "expected a one-character str or one byte for {setting}, got {text:?}"
-        )));
+        return yggdryl::csv::CsvOptions::byte_from_text(text, setting).map_err(value_error);
     }
     if let Ok(bytes) = value.cast::<PyBytes>() {
         if let [byte] = bytes.as_bytes() {

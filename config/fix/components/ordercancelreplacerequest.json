@@ -36,17 +36,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -54,17 +43,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "notargetpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notargetpartyids",
-          "FIX:tag": "1461"
         }
       },
       {
@@ -254,17 +232,6 @@
         }
       },
       {
-        "name": "noallocs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocs",
-          "FIX:tag": "78"
-        }
-      },
-      {
         "name": "preallocgrp",
         "dtype": {
           "type": "null"
@@ -407,17 +374,6 @@
         }
       },
       {
-        "name": "novaluechecks",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "novaluechecks",
-          "FIX:tag": "1868"
-        }
-      },
-      {
         "name": "valuechecks",
         "dtype": {
           "type": "null"
@@ -425,17 +381,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "valuechecks"
-        }
-      },
-      {
-        "name": "nomatchinst",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomatchinst",
-          "FIX:tag": "1624"
         }
       },
       {
@@ -478,17 +423,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "displayinstruction"
-        }
-      },
-      {
-        "name": "nodisclosureinstructions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodisclosureinstructions",
-          "FIX:tag": "1812"
         }
       },
       {
@@ -557,17 +491,6 @@
         }
       },
       {
-        "name": "notradingsessions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradingsessions",
-          "FIX:tag": "386"
-        }
-      },
-      {
         "name": "trdgses",
         "dtype": {
           "type": "null"
@@ -616,17 +539,6 @@
         "metadata": {
           "FIX:field": "dividendpayoutratio",
           "FIX:tag": "3115"
-        }
-      },
-      {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
         }
       },
       {
@@ -681,17 +593,6 @@
         "metadata": {
           "FIX:field": "transacttime",
           "FIX:tag": "60"
-        }
-      },
-      {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
         }
       },
       {
@@ -850,17 +751,6 @@
         "metadata": {
           "FIX:field": "targetstrategy",
           "FIX:tag": "847"
-        }
-      },
-      {
-        "name": "nostrategyparameters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostrategyparameters",
-          "FIX:tag": "957"
         }
       },
       {
@@ -1060,17 +950,6 @@
         }
       },
       {
-        "name": "nocommissions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocommissions",
-          "FIX:tag": "2639"
-        }
-      },
-      {
         "name": "commissions",
         "dtype": {
           "type": "null"
@@ -1147,17 +1026,6 @@
         }
       },
       {
-        "name": "noorderattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noorderattributes",
-          "FIX:tag": "2593"
-        }
-      },
-      {
         "name": "orderattributes",
         "dtype": {
           "type": "null"
@@ -1198,17 +1066,6 @@
         "metadata": {
           "FIX:field": "settlcurrencycodesource",
           "FIX:tag": "2899"
-        }
-      },
-      {
-        "name": "noratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noratesources",
-          "FIX:tag": "1445"
         }
       },
       {
@@ -1549,17 +1406,6 @@
         "metadata": {
           "FIX:field": "orderownershipindicator",
           "FIX:tag": "2679"
-        }
-      },
-      {
-        "name": "notrdregtimestamps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdregtimestamps",
-          "FIX:tag": "768"
         }
       },
       {

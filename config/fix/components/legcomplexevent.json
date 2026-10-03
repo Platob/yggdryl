@@ -169,17 +169,6 @@
         }
       },
       {
-        "name": "nolegcomplexeventdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcomplexeventdates",
-          "FIX:tag": "2250"
-        }
-      },
-      {
         "name": "legcomplexeventdates",
         "dtype": {
           "type": "null"
@@ -333,17 +322,6 @@
         }
       },
       {
-        "name": "nolegcomplexeventratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcomplexeventratesources",
-          "FIX:tag": "41382"
-        }
-      },
-      {
         "name": "legcomplexeventratesources",
         "dtype": {
           "type": "null"
@@ -361,17 +339,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "legcomplexeventrelativedate"
-        }
-      },
-      {
-        "name": "nolegcomplexeventperiods",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcomplexeventperiods",
-          "FIX:tag": "41379"
         }
       },
       {
@@ -440,17 +407,6 @@
         }
       },
       {
-        "name": "nolegcomplexeventcrediteventsources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcomplexeventcrediteventsources",
-          "FIX:tag": "41398"
-        }
-      },
-      {
         "name": "legcomplexeventcrediteventsources",
         "dtype": {
           "type": "null"
@@ -458,17 +414,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legcomplexeventcrediteventsources"
-        }
-      },
-      {
-        "name": "nolegcomplexeventcreditevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcomplexeventcreditevents",
-          "FIX:tag": "41366"
         }
       },
       {

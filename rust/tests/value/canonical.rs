@@ -409,6 +409,24 @@ mod value {
                 .unwrap()
                 .scalar(unsorted)
                 .unwrap();
+
+            // Keys in strictly ascending order pass both checks in one pass,
+            // short or past the sixteen a scan covers; a repeat at the end of
+            // that order is still the collision it is, named where it stands.
+            for len in [3_usize, 40] {
+                let mut entries: Vec<(Scalar, Scalar)> = (0..len)
+                    .map(|index| (Scalar::from(format!("k{index:03}")), Scalar::from(1_i32)))
+                    .collect();
+                let held = Scalar::Map(Map::new(entries.clone()));
+                assert_eq!(sorted.scalar(held.clone()).unwrap(), held, "{len}");
+                entries.push(entries[len - 1].clone());
+                let refused = sorted
+                    .scalar(Scalar::Map(Map::new(entries)))
+                    .unwrap_err()
+                    .to_string();
+                assert!(refused.contains("collide"), "{len}: {refused}");
+                assert!(refused.contains(&format!("[{len}]")), "{len}: {refused}");
+            }
         }
 
         #[test]

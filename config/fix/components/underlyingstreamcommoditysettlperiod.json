@@ -125,17 +125,6 @@
         }
       },
       {
-        "name": "nounderlyingstreamcommoditysettldays",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingstreamcommoditysettldays",
-          "FIX:tag": "41996"
-        }
-      },
-      {
         "name": "underlyingstreamcommoditysettldays",
         "dtype": {
           "type": "null"

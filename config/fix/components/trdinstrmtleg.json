@@ -24,17 +24,6 @@
         }
       },
       {
-        "name": "nolegposamt",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegposamt",
-          "FIX:tag": "1586"
-        }
-      },
-      {
         "name": "legpositionamountdata",
         "dtype": {
           "type": "null"
@@ -111,17 +100,6 @@
         }
       },
       {
-        "name": "nolegstipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstipulations",
-          "FIX:tag": "683"
-        }
-      },
-      {
         "name": "legstipulations",
         "dtype": {
           "type": "null"
@@ -173,17 +151,6 @@
         "metadata": {
           "FIX:field": "legcoveredoruncovered",
           "FIX:tag": "565"
-        }
-      },
-      {
-        "name": "nonestedpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonestedpartyids",
-          "FIX:tag": "539"
         }
       },
       {
@@ -428,17 +395,6 @@
         }
       },
       {
-        "name": "nooflegunderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nooflegunderlyings",
-          "FIX:tag": "1342"
-        }
-      },
-      {
         "name": "tradecaplegunderlyings",
         "dtype": {
           "type": "null"
@@ -457,17 +413,6 @@
         "metadata": {
           "FIX:field": "legdifferentialprice",
           "FIX:tag": "2492"
-        }
-      },
-      {
-        "name": "nolegratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegratesources",
-          "FIX:tag": "3116"
         }
       },
       {

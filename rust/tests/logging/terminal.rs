@@ -13,6 +13,12 @@ fn the_color_rule_honours_the_shell_conventions() {
     assert!(colors(false, &[("CLICOLOR_FORCE", "1")]));
     assert!(!colors(false, &[("FORCE_COLOR", "0")]));
     assert!(!colors(false, &[("FORCE_COLOR", "false")]));
+    // The force reads the crate's one boolean table: a false spelling is off,
+    // any other set text on.
+    assert!(!colors(false, &[("FORCE_COLOR", "off")]));
+    assert!(!colors(false, &[("CLICOLOR_FORCE", " NO ")]));
+    assert!(colors(false, &[("FORCE_COLOR", "yes")]));
+    assert!(colors(false, &[("FORCE_COLOR", "3")]));
     assert!(colors(
         false,
         &[("FORCE_COLOR", "0"), ("CLICOLOR_FORCE", "1")]

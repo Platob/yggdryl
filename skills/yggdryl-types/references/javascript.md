@@ -150,6 +150,13 @@ assert.equal(new DataType('float64').scalar(Scalar.float(100)).kind, 'f64')
 assert.throws(() => fields.int64('id').scalar(2 ** 53 + 2))
 assert.equal(fields.int64('id').scalar(2n ** 60n).asJs(), 2n ** 60n)
 assert.equal(typeof fields.int64('id').scalar(7n).asJs(), 'number')
+
+// A boolean reads one vocabulary, case-insensitive and trimmed: true/t/yes/y/on/1, false/f/no/n/off/0.
+const flag = new DataType('boolean')
+assert.deepEqual([flag.scalar(' Yes ').asJs(), flag.scalar('off').asJs()], [true, false])
+assert.throws(() => flag.scalar('n/a'))
+// Truthiness reads text by the same false set; other text is present, so true.
+assert.deepEqual([Scalar.from('no').isTruthy(), Scalar.from('n/a').isTruthy()], [false, true])
 ```
 
 ## Build a row
@@ -227,6 +234,10 @@ assert.ok(price.equals(Scalar.decimal(105n, 1)))  // normalized equality
 const amount = fields.decimal('amount', 10, 2)
 assert.equal(amount.scalar('12.5').unscaled, 1250n)
 assert.throws(() => amount.scalar(12.5), /unscaled decimal integer, got f64/)
+// One text grammar: `_` groups digits ahead of the point; a comma, NaN and a digit past the scale are refused.
+assert.equal(amount.scalar('1_250.5').unscaled, 125050n)
+assert.equal(amount.scalar(' .5 ').unscaled, 50n)
+for (const refused of ['1,250.50', 'NaN', '12.505']) assert.throws(() => amount.scalar(refused))
 
 assert.ok(Scalar.decimal(1n).divide(Scalar.decimal(2n)).equals(Scalar.decimal(5n, 1)))
 assert.throws(() => Scalar.decimal(1n).divide(Scalar.decimal(3n)),
@@ -270,8 +281,10 @@ assert.equal(fields.timezone('tz').scalar('Asia/Calcutta').asJs(), 'Asia/Kolkata
 
 ## Strings, bytes, codes and identifiers
 
-A bound counts stored bytes; a registered code is its own datatype with its
-own validity; a UUID column reads every spelling to one value.
+A bound counts stored bytes; a registered code is its own datatype, which
+admits its shape - whether a value is real (a check digit that closes) is a
+rank the core keeps, never a refusal; a UUID column reads every spelling to one
+value.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -290,7 +303,8 @@ assert.equal(ccy.scalar('USD').kind, 'ccy')
 assert.equal(ccy.scalar('USDT').asJs(), 'USDT')               // a ticker, up to eight bytes
 assert.throws(() => ccy.scalar('BABYDOGES'), /at most 8 bytes/)
 assert.ok(!ccy.scalar('USD').equals(Scalar.from('USD')))   // not a string
-assert.throws(() => new DataType('isin').scalar('US0378331006'), /check digit/)
+assert.equal(new DataType('isin').scalar('US0378331006').asJs(), 'US0378331006') // a digit off: a lower rank
+assert.throws(() => new DataType('isin').scalar('US037833100'))   // eleven characters: not an ISIN
 // A currency pair: every spelling a feed writes, one stored `CCY/CCY`.
 assert.equal(new DataType('forex').codeWidth, 7)
 assert.equal(new DataType('forex').scalar('eurusd').asJs(), 'EUR/USD')

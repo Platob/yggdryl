@@ -1,6 +1,7 @@
 //! What kind of market data an element is: FIX's MsgCat code set as a
 //! lifecycle enum, stored as a `uint8`.
 
+use crate::Side;
 use crate::code::folded_spelling;
 use crate::enums::enum_leaf;
 use crate::typed::define_field_types;
@@ -130,20 +131,22 @@ impl MarketDataKind {
         }
     }
 
-    /// Whether an element of this kind is sided: an order, a quote or an
-    /// execution, which takes one side of the market, so its cross code is
-    /// stored under that side's code - `10:1:ORD-1` - and the two sides of
-    /// one identifier are two chains. The one owner of that rule: every
-    /// other kind - a trade, a book, a batch, a category the standard files
-    /// no operation under - stores its cross code under side `0` whatever
-    /// side it states ([`Market::stored_crosscode`](crate::graph::Market::stored_crosscode)).
+    /// Whether an element of this kind is sided: an order or an execution,
+    /// which takes one side of the market, so its cross code is stored under
+    /// that side's code - `10:1:ORD-1` - and the two sides of one identifier
+    /// are two chains. The one owner of that rule: every other kind - a
+    /// quote, which holds its bid and its ask in one element and states its
+    /// `side` only as a tag, a trade, a book, a batch, a category the
+    /// standard files no operation under - stores its cross code under side
+    /// `0` whatever side it states
+    /// ([`Market::stored_crosscode`](crate::graph::Market::stored_crosscode)).
     ///
     /// ```
     /// use yggdryl::MarketDataKind;
     ///
     /// assert!(MarketDataKind::Order.is_sided());
-    /// assert!(MarketDataKind::Quotation.is_sided());
     /// assert!(MarketDataKind::Execution.is_sided());
+    /// assert!(!MarketDataKind::Quotation.is_sided());
     /// assert!(!MarketDataKind::Trade.is_sided());
     /// assert!(!MarketDataKind::Book.is_sided());
     /// assert!(!MarketDataKind::OrderBatch.is_sided());
@@ -151,7 +154,42 @@ impl MarketDataKind {
     /// ```
     #[must_use]
     pub const fn is_sided(self) -> bool {
-        matches!(self, Self::Order | Self::Quotation | Self::Execution)
+        matches!(self, Self::Order | Self::Execution)
+    }
+
+    /// The side a cross code and a chain of this kind are keyed by: the
+    /// stated `side` of a sided kind ([`Self::is_sided`]), and
+    /// [`Side::Unknown`] for every other kind, whatever side it states. The
+    /// one owner of that reading, so the stored code, the walk's chain key
+    /// and a session's key never disagree on it.
+    #[must_use]
+    pub(crate) const fn stored_side(self, side: Side) -> Side {
+        if self.is_sided() { side } else { Side::Unknown }
+    }
+
+    /// Whether an element of this kind folds into a book: an order or a
+    /// quote, which rests on a side, and a book, whose snapshot replaces the
+    /// depth of its instant. The one owner of that rule: every other kind is
+    /// pruned before a book walk routes it - an execution, whose fill moves
+    /// the book through its order's or quote's own report, a trade, whose
+    /// fills are executions, a batch, whose items arrive as their own kinds,
+    /// and every category the standard files no resting interest under.
+    ///
+    /// ```
+    /// use yggdryl::MarketDataKind;
+    ///
+    /// assert!(MarketDataKind::Order.is_booked());
+    /// assert!(MarketDataKind::Quotation.is_booked());
+    /// assert!(MarketDataKind::Book.is_booked());
+    /// assert!(!MarketDataKind::Execution.is_booked());
+    /// assert!(!MarketDataKind::Trade.is_booked());
+    /// assert!(!MarketDataKind::OrderBatch.is_booked());
+    /// assert!(!MarketDataKind::Session.is_booked());
+    /// assert!(!MarketDataKind::Unknown.is_booked());
+    /// ```
+    #[must_use]
+    pub const fn is_booked(self) -> bool {
+        matches!(self, Self::Order | Self::Quotation | Self::Book)
     }
 
     /// Whether this kind files a batch: a message stating many orders,
@@ -226,3 +264,19 @@ impl crate::DataType {
 
 // /// A field declared as a market data element's kind.
 define_field_types!(MarketDataKindType, MarketDataKind);
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/marketdatakind.rs` pins and a caller cannot
+    //! reach: the side a cross code and a chain are keyed by, which the graph
+    //! and the FIX session keys read and no caller names.
+
+    use crate::{MarketDataKind, Side};
+
+    /// The side an element of `kind` stating `side` is keyed by.
+    #[must_use]
+    pub fn stored_side(kind: MarketDataKind, side: Side) -> Side {
+        kind.stored_side(side)
+    }
+}

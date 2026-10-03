@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nolegpaymentstreamresetdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstreamresetdatebusinesscenters",
-          "FIX:tag": "40931"
-        }
-      },
-      {
         "name": "legpaymentstreamresetdatebusinesscenters",
         "dtype": {
           "type": "null"
@@ -99,17 +88,6 @@
         "metadata": {
           "FIX:field": "legpaymentstreaminitialfixingdatebusinessdayconvention",
           "FIX:tag": "40310"
-        }
-      },
-      {
-        "name": "nolegpaymentstreaminitialfixingdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstreaminitialfixingdatebusinesscenters",
-          "FIX:tag": "40932"
         }
       },
       {
@@ -186,17 +164,6 @@
         "metadata": {
           "FIX:field": "legpaymentstreamfixingdatebusinessdayconvention",
           "FIX:tag": "40317"
-        }
-      },
-      {
-        "name": "nolegpaymentstreamfixingdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstreamfixingdatebusinesscenters",
-          "FIX:tag": "40933"
         }
       },
       {
@@ -284,17 +251,6 @@
         "metadata": {
           "FIX:field": "legpaymentstreamratecutoffdateoffsetdaytype",
           "FIX:tag": "40325"
-        }
-      },
-      {
-        "name": "nolegpaymentstreamfixingdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstreamfixingdates",
-          "FIX:tag": "42459"
         }
       },
       {

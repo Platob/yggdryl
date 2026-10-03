@@ -356,7 +356,8 @@ class TestCsvOptions:
         options = RecordOptions("trades.csv")
         for shape in (";;", "", "\u20ac"):
             with pytest.raises(
-                ValueError, match="expected a one-character str or one byte for separator"
+                ValueError,
+                match=r"\$\.separator: expected one character standing for one byte",
             ):
                 options.separator = shape
         with pytest.raises(ValueError, match="expected a one-character str or one byte for quote"):

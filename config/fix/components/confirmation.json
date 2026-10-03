@@ -124,17 +124,6 @@
         }
       },
       {
-        "name": "noregulatorytradeids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noregulatorytradeids",
-          "FIX:tag": "1907"
-        }
-      },
-      {
         "name": "regulatorytradeids",
         "dtype": {
           "type": "null"
@@ -167,17 +156,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -188,17 +166,6 @@
         }
       },
       {
-        "name": "noorders",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noorders",
-          "FIX:tag": "73"
-        }
-      },
-      {
         "name": "ordallocgrp",
         "dtype": {
           "type": "null"
@@ -206,17 +173,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "ordallocgrp"
-        }
-      },
-      {
-        "name": "noexecs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noexecs",
-          "FIX:tag": "124"
         }
       },
       {
@@ -373,17 +329,6 @@
         }
       },
       {
-        "name": "notrdregtimestamps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdregtimestamps",
-          "FIX:tag": "768"
-        }
-      },
-      {
         "name": "trdregtimestamps",
         "dtype": {
           "type": "null"
@@ -424,17 +369,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -442,17 +376,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "undinstrmtgrp"
-        }
-      },
-      {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
         }
       },
       {
@@ -542,17 +465,6 @@
         }
       },
       {
-        "name": "nocapacities",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nocapacities",
-          "FIX:tag": "862"
-        }
-      },
-      {
         "name": "capacities",
         "dtype": {
           "type": "null"
@@ -626,17 +538,6 @@
         "metadata": {
           "FIX:field": "pricetype",
           "FIX:tag": "423"
-        }
-      },
-      {
-        "name": "nopricequalifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricequalifiers",
-          "FIX:tag": "2709"
         }
       },
       {
@@ -977,17 +878,6 @@
         }
       },
       {
-        "name": "nocommissions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocommissions",
-          "FIX:tag": "2639"
-        }
-      },
-      {
         "name": "commissions",
         "dtype": {
           "type": "null"
@@ -995,17 +885,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "commissions"
-        }
-      },
-      {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
         }
       },
       {
@@ -1019,17 +898,6 @@
         }
       },
       {
-        "name": "nomiscfees",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomiscfees",
-          "FIX:tag": "136"
-        }
-      },
-      {
         "name": "miscfees",
         "dtype": {
           "type": "null"
@@ -1040,17 +908,6 @@
         }
       },
       {
-        "name": "nomatchexceptions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomatchexceptions",
-          "FIX:tag": "2772"
-        }
-      },
-      {
         "name": "matchexceptions",
         "dtype": {
           "type": "null"
@@ -1058,17 +915,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "matchexceptions"
-        }
-      },
-      {
-        "name": "nomatchingdatapoints",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomatchingdatapoints",
-          "FIX:tag": "2781"
         }
       },
       {

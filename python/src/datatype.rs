@@ -1,7 +1,6 @@
 //! Native Python view of Yggdryl datatypes.
 
 use std::collections::BTreeMap;
-use std::num::IntErrorKind;
 
 use arrow_array::ffi_stream::FFI_ArrowArrayStream;
 use arrow_array::{Array, ArrayRef, RecordBatch, ffi::FFI_ArrowArray, make_array};
@@ -16,8 +15,9 @@ use pyo3::types::{
     PyAny, PyBool, PyByteArray, PyBytes, PyCapsule, PyDict, PyList, PyString, PyTuple, PyType,
 };
 use yggdryl::{
-    DataType as CoreDataType, DataTypeId, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
-    StringEnum as CoreStringEnum, StructType, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
+    DataType as CoreDataType, DataTypeId, EdgeAlgorithm as CoreEdgeAlgorithm, Scalar,
+    Scheme as CoreScheme, StringEnum as CoreStringEnum, StructType, TimeUnit as CoreTimeUnit,
+    UnionMode as CoreUnionMode,
 };
 
 use crate::field::PyField;
@@ -599,27 +599,27 @@ fn core_fields_from_iterable(fields: &Bound<'_, PyAny>) -> PyResult<Vec<yggdryl:
         .collect()
 }
 
-fn decimal_integer(value: Borrowed<'_, '_, PyAny>, name: &str) -> PyResult<i128> {
+/// One decimal parameter - an `int`, an object with `__index__`, or text -
+/// as the integer it states. Text crosses `dtype`'s own value door, the one
+/// integer reader the core owns, so it reads at the width the parameter
+/// holds and is refused naming what that door expected.
+fn decimal_integer(
+    value: Borrowed<'_, '_, PyAny>,
+    name: &str,
+    dtype: &CoreDataType,
+) -> PyResult<i128> {
     if value.is_instance_of::<PyBool>() {
         return Err(PyTypeError::new_err(format!(
             "{name} must be an integer or numeric string, not bool"
         )));
     }
     if let Ok(text) = value.extract::<&str>() {
-        return text.trim().parse::<i128>().map_err(|error| {
-            if matches!(
-                error.kind(),
-                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow
-            ) {
-                PyOverflowError::new_err(format!(
-                    "{name} is outside the supported integer range: {text:?}"
-                ))
-            } else {
-                PyValueError::new_err(format!(
-                    "{name} must be a base-10 integer string, got {text:?}"
-                ))
-            }
-        });
+        let read = dtype
+            .scalar(Scalar::from(text))
+            .map_err(|error| PyValueError::new_err(format!("{name} {error}")))?;
+        return read
+            .as_i128()
+            .ok_or_else(|| PyValueError::new_err(format!("{name} {text:?} reads as no integer")));
     }
 
     // `i64` reads any object with `__index__`, under every ABI; the stable
@@ -655,7 +655,7 @@ impl FromPyObject<'_, '_> for DecimalPrecision {
     type Error = PyErr;
 
     fn extract(value: Borrowed<'_, '_, PyAny>) -> PyResult<Self> {
-        let value = decimal_integer(value, "precision")?;
+        let value = decimal_integer(value, "precision", &CoreDataType::UInt8)?;
         u8::try_from(value).map(Self).map_err(|_| {
             PyOverflowError::new_err(format!("precision must fit in an unsigned byte: {value}"))
         })
@@ -669,7 +669,7 @@ impl FromPyObject<'_, '_> for DecimalScale {
     type Error = PyErr;
 
     fn extract(value: Borrowed<'_, '_, PyAny>) -> PyResult<Self> {
-        let value = decimal_integer(value, "scale")?;
+        let value = decimal_integer(value, "scale", &CoreDataType::Int8)?;
         i8::try_from(value).map(Self).map_err(|_| {
             PyOverflowError::new_err(format!("scale must fit in a signed byte: {value}"))
         })

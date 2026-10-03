@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nodlvyinst",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodlvyinst",
-          "FIX:tag": "85"
-        }
-      },
-      {
         "name": "dlvyinstgrp",
         "dtype": {
           "type": "null"

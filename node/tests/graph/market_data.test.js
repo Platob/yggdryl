@@ -148,11 +148,12 @@ test('the field is the lifted marketdata struct', () => {
     assert.ok(names.includes(name), name)
   }
   // A1/A10: six identity, nine event, thirty-four market and five
-  // operation columns, the book scope, and the five nested columns closing
-  // the row.
-  assert.equal(names.length, 6 + 9 + 34 + 5 + 1 + 5)
-  assert.equal(names[54], 'bookscope')
-  assert.deepEqual(names.slice(55), NESTED)
+  // operation columns, the three book controls a book's deltas replay by,
+  // and the five nested columns closing the row: 62 in all.
+  assert.equal(names.length, 6 + 9 + 34 + 5 + 3 + 5)
+  assert.deepEqual(names.slice(54, 57), ['bookscope', 'bookaction', 'bookposition'])
+  assert.equal(field.fieldAt(56).dtype.id, 'uint32')
+  assert.deepEqual(names.slice(57), NESTED)
   // When an element last executed is a market fact, stated among the
   // market columns, and the party ids an operation names an operation one.
   assert.ok(names.indexOf('execunix') > names.indexOf('state'))
@@ -250,32 +251,26 @@ test('a lifecycle-shaped batch reads into events', () => {
   assert.equal(execution.currunix, CLOCK + 1n)
 })
 
-test('an identifier column built in Arrow JS is a map keyed src:type and lands as the leaf\'s identifiers', () => {
-  // A sorted map from each key `src:type` to its three-text row; the entries
-  // are `key` and the item, which Arrow JS names `value` whatever it is told.
-  const row = new arrow.Struct(
-    ['src', 'type', 'value'].map((name) => new arrow.Field(name, new arrow.Utf8(), false)),
-  )
+test('an identifier column built in Arrow JS is a map of keys to values and lands as the leaf\'s identifiers', () => {
+  // A sorted map from each key's text - `src:type`, the type alone for the
+  // base source - to its value.
   const identifiers = new arrow.Map_(
     new arrow.Field('entries', new arrow.Struct([
       new arrow.Field('key', new arrow.Utf8(), false),
-      new arrow.Field('identifier', row, false),
+      new arrow.Field('value', new arrow.Utf8(), false),
     ]), false),
     true,
   )
   const table = new arrow.Table({
     marketdatakind: arrow.vectorFromArray(['ORDR', 'ORDR'], new arrow.Utf8()),
     currunix: arrow.vectorFromArray([CLOCK, CLOCK + 1n], new arrow.Int64()),
-    identifiers: arrow.vectorFromArray(
-      [new Map([['fix:orderid', { src: 'fix', type: 'orderid', value: 'O-1' }]]), null],
-      identifiers,
-    ),
+    identifiers: arrow.vectorFromArray([new Map([['ullink:orderid', 'O-1']]), null], identifiers),
   })
   const [first, second] = drain(graph.MarketData.fromArrowReader(BatchReader.from(table)))
     .map((data) => data.intoLeaf())
   assert.deepEqual(kinds(first.identifiers), { orderid: 'O-1' })
-  // The map's key is its row's `src:type`, which the identifier answers.
-  assert.deepEqual(first.identifiers.toArray().map((id) => [id.key, id.value]), [['fix:orderid', 'O-1']])
+  // A named source read back fills its type's base key: the map is closed.
+  assert.deepEqual(first.identifiers.intoObject(), { orderid: 'O-1', 'ullink:orderid': 'O-1' })
   assert.equal(second.identifiers.length, 0)
 })
 
@@ -331,7 +326,7 @@ function prefixed(nested, prefix) {
 // A stream of every leaf, with an order stating an ISIN and a chain of two.
 function viewStream() {
   const identified = new graph.OrderEvent(CLOCK + 5n, {
-    crosscode: 'O-5', side: 'BUYS', price: '100', ticker: 'ACME', securityids: [new Identifier('base', 'isin', ISIN)],
+    crosscode: 'O-5', side: 'BUYS', price: '100', ticker: 'ACME', securityids: [new Identifier('isin', ISIN)],
   })
   const first = new graph.OrderEvent(CLOCK + 10n, { crosscode: 'C-1', side: 'BUYS', price: '1' })
   const second = new graph.OrderEvent(CLOCK + 20n, { crosscode: 'C-1', side: 'BUYS', price: '2' }).withPrevious(first)
@@ -355,7 +350,7 @@ test('the market views are the enumeration the core lists', () => {
 
 test('every view is one plan whose text reads back', () => {
   const nested = NESTED.join(', ')
-  const lift = "identifiers['fix:clordid'].value as clordid"
+  const lift = "identifiers['clordid'] as clordid"
   assert.equal(
     graph.MarketData.plan('orders', [lift]).toString(),
     `select * exclude (${nested}), ${lift} where marketdatakind = 'ORDR'`,
@@ -364,9 +359,11 @@ test('every view is one plan whose text reads back', () => {
     graph.MarketData.plan('trades').toString(),
     `select * exclude (${nested}), unnest(executions) as execution where marketdatakind = 'TRAD'`,
   )
+  // A book states its deltas - a complete one its alive entries beside
+  // them - where a snapshot control states neither.
   assert.equal(
     graph.MarketData.plan('BOOKS').toString(),
-    "select * exclude (executions) where marketdatakind = 'BOOK' and alive is not null",
+    "select * exclude (executions) where marketdatakind = 'BOOK' and deltas is not null",
   )
   assert.equal(
     graph.MarketData.plan('lifecycle', [], 'C-1').toString(),
@@ -416,7 +413,7 @@ test('each view keeps its own columns over a small stream', () => {
   assert.deepEqual([...trades.getChild('execution.crosscode')], ['8:1:E-1', '8:2:E-2'])
 
   // A book keeps its alive entries, deltas and levels nested; a snapshot
-  // control, which states no alive list, is no book row.
+  // control, which states no deltas, is no book row.
   const books = viewed('books')
   assert.deepEqual(names(books), rootNames().filter((name) => name !== 'executions'))
   assert.equal(books.numRows, 1)
@@ -434,17 +431,18 @@ test('each view keeps its own columns over a small stream', () => {
 })
 
 test('a lift reads one key of a root column and null where it is missing', () => {
-  // An identifier column is a map keyed `src:type`: one identifier by its key.
-  const lifts = ["securityids['base:isin'].value as isin", "securityids['base:wkn'].value as wkn"]
+  // An identifier column is a map from the key's text to its value: one
+  // value by its key, the base key spelled as its type alone.
+  const lifts = ["securityids['isin'] as isin", "securityids['wkn'] as wkn"]
   const table = viewed('orders', lifts)
   assert.deepEqual(names(table).slice(-2), ['isin', 'wkn'])
   const codes = [...table.getChild('crosscode')]
   const isins = [...table.getChild('isin')]
   codes.forEach((code, at) => assert.equal(isins[at], code === '10:1:O-5' ? ISIN : null, code))
   assert.equal(table.getChild('wkn').nullCount, table.numRows)
-  // The key is read as it is stored, a lower-case `src:type`: another case
-  // is another key.
-  assert.equal(viewed('orders', ["securityids['BASE:ISIN'].value as isin"]).getChild('isin').nullCount, 5)
+  // The key is read as it is stored, the lower-case text of a key: another
+  // spelling is another key.
+  assert.equal(viewed('orders', ["securityids['ISIN'] as isin"]).getChild('isin').nullCount, 5)
   // A lift naming a column the root does not hold is refused where the
   // plan binds.
   assert.throws(() => viewed('orders', ["nothing['ISIN'] as isin"]), /nothing/)

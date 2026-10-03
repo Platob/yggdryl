@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nolegreturnratevaluationdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegreturnratevaluationdates",
-          "FIX:tag": "42571"
-        }
-      },
-      {
         "name": "legreturnratevaluationdates",
         "dtype": {
           "type": "null"
@@ -253,17 +242,6 @@
         "metadata": {
           "FIX:field": "legreturnratevaluationdatebusinessdayconvention",
           "FIX:tag": "42529"
-        }
-      },
-      {
-        "name": "nolegreturnratevaluationdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegreturnratevaluationdatebusinesscenters",
-          "FIX:tag": "42569"
         }
       },
       {

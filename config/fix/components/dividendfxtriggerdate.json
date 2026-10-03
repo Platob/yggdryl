@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nodividendfxtriggerdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodividendfxtriggerdatebusinesscenters",
-          "FIX:tag": "42272"
-        }
-      },
-      {
         "name": "dividendfxtriggerdatebusinesscenters",
         "dtype": {
           "type": "null"

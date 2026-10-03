@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nomarketdisruptionevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomarketdisruptionevents",
-          "FIX:tag": "41092"
-        }
-      },
-      {
         "name": "marketdisruptionevents",
         "dtype": {
           "type": "null"
@@ -47,17 +36,6 @@
         }
       },
       {
-        "name": "nomarketdisruptionfallbacks",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomarketdisruptionfallbacks",
-          "FIX:tag": "41094"
-        }
-      },
-      {
         "name": "marketdisruptionfallbacks",
         "dtype": {
           "type": "null"
@@ -65,17 +43,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "marketdisruptionfallbacks"
-        }
-      },
-      {
-        "name": "nomarketdisruptionfallbackreferenceprices",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomarketdisruptionfallbackreferenceprices",
-          "FIX:tag": "41096"
         }
       },
       {

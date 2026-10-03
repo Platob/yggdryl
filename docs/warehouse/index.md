@@ -375,13 +375,15 @@ An object displays as its dotted path, quoted only where the grammar needs it; e
     ```rust
     use yggdryl::{Catalog, MediaTable, MemoryCatalog, MemoryNamespace, ObjectValue, Properties, Url, Warehouse};
 
-    // One value per name, replaced in place; a typed knob; the clause it displays as.
+    // One value per name, replaced in place; a knob read through the one reader
+    // of its type; the clause it displays as.
     let bag = Properties::new()
         .with_property("region", "eu-west-1")
         .with_property("batch_row_size", "1024")
         .with_property("region", "us-east-1");
     assert_eq!(bag.iter().collect::<Vec<_>>(), [("region", "us-east-1"), ("batch_row_size", "1024")]);
-    assert_eq!(bag.knob::<u64>("batch_row_size", "a row count")?, Some(1024));
+    assert_eq!(bag.knob_count::<u64>("batch_row_size")?, Some(1024));
+    assert_eq!(bag.knob_bool("safe")?, None);
     assert_eq!(bag.to_string(), "region = 'us-east-1', batch_row_size = '1024'");
 
     // A child inherits its parent's bag, its own values winning, the parent's order kept.

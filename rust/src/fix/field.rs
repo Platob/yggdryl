@@ -154,13 +154,13 @@ impl<'field> FixField<'field> {
     /// # Errors
     ///
     /// Returns an error naming the full `FIX:transient` key when the stored
-    /// text is not `true` or `false`.
+    /// text is no boolean the crate reads: `true`/`false`, `yes`/`no`,
+    /// `y`/`n`, `on`/`off` or `1`/`0`.
     pub fn is_transient(&self) -> Result<bool> {
         match self.get(TRANSIENT) {
             None => Ok(true),
-            Some("true") => Ok(true),
-            Some("false") => Ok(false),
-            Some(stored) => Err(self.invalid(TRANSIENT, "true or false", stored)),
+            Some(stored) => crate::boolean::bool_from_text(stored)
+                .ok_or_else(|| self.invalid(TRANSIENT, crate::boolean::BOOLEAN_SPELLINGS, stored)),
         }
     }
 
@@ -710,12 +710,7 @@ impl FixFieldMut<'_> {
     }
 
     fn set_reference(&mut self, key: &str, name: &str) -> Result<()> {
-        if name.is_empty()
-            || matches!(name, "." | "..")
-            || !name
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
-        {
+        if !super::catalog::is_catalog_name(name) {
             return Err(self.rejected(key, format_smolstr!("expected a nonempty catalog name of ASCII letters, digits, underscore, hyphen or dot, got {name:?}")));
         }
         self.store(key, name.to_ascii_lowercase())

@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nolegprovisionoptionexercisebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprovisionoptionexercisebusinesscenters",
-          "FIX:tag": "40936"
-        }
-      },
-      {
         "name": "legprovisionoptionexercisebusinesscenters",
         "dtype": {
           "type": "null"
@@ -33,17 +22,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legprovisionoptionexercisebusinesscenters"
-        }
-      },
-      {
-        "name": "nolegprovisionoptionexercisefixeddates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprovisionoptionexercisefixeddates",
-          "FIX:tag": "40495"
         }
       },
       {
