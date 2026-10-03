@@ -26,7 +26,9 @@ plan        := [create] [write] ["select" selector] ["from" source] ["where" exp
 create      := "create" ["table" | "view"] [target] "(" selector ")" ["with" properties]
 write       := verb [target] [("by" | "on") "(" selector ")"]  -- keys only after upsert
 target      := location ["with" "(" name "=" "'value'", ... ")"]
-location    := "'url'" | part ("." part)*                      -- part: ident, "quoted", `quoted`, [bracketed], number
+location    := "'url'" | raw | part ("." part)*                -- part: ident, "quoted", `quoted`, [bracketed], number
+                                                                 -- raw: an unquoted URL or path (<scheme>://, /, ./, ../, ~/, C:\) to the first whitespace , ; or ),
+                                                                 --      only after from/into/to/a write verb/create; printed back as 'url'
 source      := target | "(" plan ")"
 selector    := "*" [("exclude" | "except") "(" ident, ... ")"] ("," projection)*
              | projection ("," projection)*

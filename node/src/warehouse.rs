@@ -1316,6 +1316,13 @@ impl Default for JsWarehouse {
     }
 }
 
+impl JsWarehouse {
+    /// The core registry, what a plan resolves against.
+    pub(crate) const fn core(&self) -> &CoreWarehouse {
+        &self.inner
+    }
+}
+
 #[napi]
 impl JsWarehouse {
     /// An empty warehouse.

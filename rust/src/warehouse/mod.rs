@@ -75,6 +75,7 @@ pub use system::SystemWarehouse;
 pub use table::{Table, TableValue};
 
 pub(crate) use catalog::no_catalog;
+pub(crate) use namespace::no_table;
 pub(crate) use object::path_text;
 
 use smol_str::{SmolStr, format_smolstr};
@@ -145,26 +146,28 @@ impl Warehouse {
     pub fn replace(&mut self, object: impl Into<Object>) -> Result<Option<Object>> {
         let object = object.into();
         match object {
-            Object::Catalog(catalog) => {
-                match self
-                    .catalogs
-                    .iter()
-                    .position(|held| held.name() == catalog.name())
-                {
-                    Some(at) => Ok(Some(Object::Catalog(std::mem::replace(
-                        &mut self.catalogs[at],
-                        catalog,
-                    )))),
-                    None => {
-                        self.catalogs.push(catalog);
-                        Ok(None)
-                    }
-                }
-            }
+            Object::Catalog(catalog) => Ok(self.replace_catalog(catalog).map(Object::Catalog)),
             object => match self.parent_of(object.path(), true)? {
                 Parent::Catalog(catalog) => catalog.replace(object),
                 Parent::Namespace(namespace) => namespace.replace(object),
             },
+        }
+    }
+
+    /// Register a catalog, replacing the one of its name and answering it:
+    /// [`Self::replace`] for a catalog, which registers by its name alone
+    /// and so is never refused.
+    pub fn replace_catalog(&mut self, catalog: Catalog) -> Option<Catalog> {
+        match self
+            .catalogs
+            .iter()
+            .position(|held| held.name() == catalog.name())
+        {
+            Some(at) => Some(std::mem::replace(&mut self.catalogs[at], catalog)),
+            None => {
+                self.catalogs.push(catalog);
+                None
+            }
         }
     }
 

@@ -59,6 +59,16 @@ impl Table {
         }
     }
 
+    /// Return this table with properties stated on it, which its handle
+    /// opens with: what a target's `with (...)` clause states for the table
+    /// it names.
+    #[must_use]
+    pub fn with_properties(self, properties: Properties) -> Self {
+        match self {
+            Self::Media(table) => Self::Media(Box::new(table.with_properties(properties))),
+        }
+    }
+
     fn as_media(&self) -> &dyn IOMedia {
         match self {
             Self::Media(table) => table.as_ref(),

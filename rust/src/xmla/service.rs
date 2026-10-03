@@ -22,11 +22,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::expression::{Location, Plan, Source, Target};
-use crate::soap::{Fault, FaultCode, Fragment};
-use crate::{ArrowCastOptions, DataType, Error, Field, Result, Scalar, Serie, SerieReader, Uuid};
-
-use super::catalog::{Catalog, Table};
 use super::dbtype::DbType;
 use super::definitions::{Definition, definition_of, definitions};
 use super::request::{Command, Discover, Execute, Request, RequestMethod, Session};
@@ -35,6 +30,13 @@ use super::rowset::{Rowset, XsdType};
 use super::vocabulary::{
     Access, AuthenticationMode, AxisFormat, Content, Format, MdxSupport, Method, PropertyList,
     ProviderType, RequestType, StateSupport, property,
+};
+use crate::expression::{Location, Plan, Source, Target};
+use crate::soap::{Fault, FaultCode, Fragment};
+use crate::warehouse::{no_catalog, path_text};
+use crate::{
+    ArrowCastOptions, Catalog, CatalogValue, DataType, Error, Field, Namespace, NamespaceValue,
+    Object, ObjectValue, Result, Scalar, Serie, SerieReader, Table, TableValue, Uuid, Warehouse,
 };
 
 /// The error codes this provider's faults carry.
@@ -145,10 +147,11 @@ pub enum Execution {
     Empty,
 }
 
-/// The provider over a set of catalogs.
+/// The provider over a warehouse: the catalogs it serves, and what a
+/// statement's path resolves against.
 #[derive(Debug)]
 pub struct Service {
-    catalogs: Vec<Catalog>,
+    warehouse: Warehouse,
     options: ServiceOptions,
     sessions: AtomicU64,
 }
@@ -158,16 +161,25 @@ impl Service {
     #[must_use]
     pub const fn new(options: ServiceOptions) -> Self {
         Self {
-            catalogs: Vec::new(),
+            warehouse: Warehouse::new(),
             options,
             sessions: AtomicU64::new(0),
         }
     }
 
-    /// Return this provider serving `catalog` too.
+    /// Return this provider serving `catalog` too, in place of a served
+    /// catalog of the same name.
     #[must_use]
-    pub fn with_catalog(mut self, catalog: Catalog) -> Self {
-        self.catalogs.push(catalog);
+    pub fn with_catalog(mut self, catalog: impl Into<Catalog>) -> Self {
+        self.warehouse.replace_catalog(catalog.into());
+        self
+    }
+
+    /// Return this provider serving the catalogs of `warehouse`, in place
+    /// of whatever it served.
+    #[must_use]
+    pub fn with_warehouse(mut self, warehouse: Warehouse) -> Self {
+        self.warehouse = warehouse;
         self
     }
 
@@ -177,16 +189,22 @@ impl Service {
         &self.options
     }
 
+    /// The warehouse every statement resolves against.
+    #[must_use]
+    pub const fn warehouse(&self) -> &Warehouse {
+        &self.warehouse
+    }
+
     /// The catalogs, in the order added.
     #[must_use]
     pub fn catalogs(&self) -> &[Catalog] {
-        &self.catalogs
+        self.warehouse.catalogs()
     }
 
     /// The catalog `name` names, matched exactly.
     #[must_use]
     pub fn catalog(&self, name: &str) -> Option<&Catalog> {
-        self.catalogs.iter().find(|catalog| catalog.name() == name)
+        self.warehouse.catalog(name).ok()
     }
 
     /// Answer the bytes of one message with the bytes of its response: a
@@ -434,7 +452,7 @@ impl Service {
                 .collect(),
             RequestType::DiscoverLiterals => literal_rows(),
             RequestType::DbschemaCatalogs => self
-                .catalogs
+                .catalogs()
                 .iter()
                 .map(|catalog| {
                     record([
@@ -451,10 +469,12 @@ impl Service {
             RequestType::DbschemaSchemata => {
                 let mut rows = Vec::new();
                 for catalog in self.catalogs_named(properties.catalog()) {
-                    for schema in catalog.schemas()? {
+                    let mut namespaces = Vec::new();
+                    namespaces_under(catalog, &mut namespaces)?;
+                    for namespace in namespaces {
                         rows.push(record([
                             ("CATALOG_NAME", text(catalog.name())),
-                            ("SCHEMA_NAME", text(&schema)),
+                            ("SCHEMA_NAME", text(&path_text(&namespace.path()[1..]))),
                             ("SCHEMA_OWNER", Scalar::Null),
                         ])?);
                     }
@@ -464,14 +484,26 @@ impl Service {
             RequestType::DbschemaTables => {
                 let mut rows = Vec::new();
                 for catalog in self.catalogs_named(properties.catalog()) {
-                    for table in catalog.tables()? {
+                    let mut tables = Vec::new();
+                    tables_under(catalog, &mut tables)?;
+                    for table in tables {
                         rows.push(record([
-                            ("TABLE_CATALOG", text(table.catalog())),
-                            ("TABLE_SCHEMA", table.schema().map_or(Scalar::Null, text)),
+                            ("TABLE_CATALOG", text(catalog.name())),
+                            (
+                                "TABLE_SCHEMA",
+                                schema_of(&table).as_deref().map_or(Scalar::Null, text),
+                            ),
                             ("TABLE_NAME", text(table.name())),
-                            ("TABLE_TYPE", text(table.table_type())),
+                            ("TABLE_TYPE", text("TABLE")),
                             ("TABLE_GUID", Scalar::Null),
-                            ("DESCRIPTION", text(&table.description())),
+                            (
+                                "DESCRIPTION",
+                                text(
+                                    &table
+                                        .description()
+                                        .map_or_else(|| table.storage(), str::to_owned),
+                                ),
+                            ),
                             ("TABLE_PROPID", Scalar::Null),
                             ("DATE_CREATED", Scalar::Null),
                             ("DATE_MODIFIED", instant(table.modified())?),
@@ -484,16 +516,19 @@ impl Service {
                 let mut rows = Vec::new();
                 let wanted = discover.restrictions();
                 for catalog in self.catalogs_named(properties.catalog()) {
-                    for table in catalog.tables()? {
+                    let mut tables = Vec::new();
+                    tables_under(catalog, &mut tables)?;
+                    for table in tables {
                         // A table the restrictions exclude is never read: its
                         // schema is the one answer that costs a read.
+                        let schema = schema_of(&table);
                         if !wanted
                             .get("TABLE_NAME")
                             .is_none_or(|names| names.iter().any(|name| name == table.name()))
                             || !wanted.get("TABLE_SCHEMA").is_none_or(|schemas| {
                                 schemas
                                     .iter()
-                                    .any(|schema| Some(schema.as_str()) == table.schema())
+                                    .any(|wanted| Some(wanted.as_str()) == schema.as_deref())
                             })
                         {
                             continue;
@@ -552,7 +587,7 @@ impl Service {
     /// The catalogs a request addresses: the one its `Catalog` property
     /// names, else every one.
     fn catalogs_named<'a>(&'a self, name: Option<&'a str>) -> impl Iterator<Item = &'a Catalog> {
-        self.catalogs
+        self.catalogs()
             .iter()
             .filter(move |catalog| name.is_none_or(|name| catalog.name() == name))
     }
@@ -579,7 +614,7 @@ impl Service {
         };
         // The catalog a request that names none is read against: the first
         // one served, which is what a client with no `Initial Catalog` gets.
-        let first_catalog = self.catalogs.first().map_or("", Catalog::name);
+        let first_catalog = self.catalogs().first().map_or("", ObjectValue::name);
         let mut rows: Vec<(&str, &str, XsdType, Access, bool, Scalar)> = vec![
             (
                 property::AXIS_FORMAT,
@@ -888,7 +923,7 @@ impl Service {
             return Ok(Execution::Empty);
         }
         let batches = plan
-            .execute()
+            .execute_in(&self.warehouse)
             .map_err(|error| server_fault(code::EXECUTION_FAILED, error))?;
         let rows = SerieReader::from_arrow_reader(None, batches, ArrowCastOptions::default())
             .map_err(|error| server_fault(code::EXECUTION_FAILED, error))?;
@@ -921,13 +956,15 @@ impl Service {
         Ok(plan)
     }
 
-    /// One target resolved: a dotted path to the table it names, a URL kept
-    /// only when it lies under a catalog this provider serves.
+    /// One target resolved: a dotted path to the whole path of the table it
+    /// names, verified to be there, and a URL kept only when it lies under a
+    /// catalog this provider serves. Nothing is rewritten to a URL: the plan
+    /// resolves the path through the warehouse when it runs.
     fn resolve_target(&self, target: &Target, default: Option<&str>) -> Result<Target> {
-        let table = match target.location() {
+        match target.location() {
             Location::Url(url) => {
                 let text = url.to_string();
-                let inside = self.catalogs.iter().any(|catalog| {
+                let inside = self.catalogs().iter().any(|catalog| {
                     catalog.url().is_some_and(|root| {
                         text.starts_with(root.to_string().trim_end_matches('/'))
                     })
@@ -935,26 +972,27 @@ impl Service {
                 if !inside {
                     return Err(Error::absent("table", format_smolstr!("{url}")));
                 }
-                return Ok(target.clone());
+                Ok(target.clone())
             }
-            Location::Parts(parts) => self.table_of(parts, default)?,
-        };
-        let Some(url) = table.url() else {
-            return Err(Error::absent("table", format_smolstr!("{table}")));
-        };
-        Ok(Target::url(url.clone()).with_properties(target.properties()))
+            Location::Parts(parts) => {
+                let path = self.path_of(parts, default)?;
+                // Verified here, so an unknown table is this fault and a
+                // `Content` of `None` verifies what it does not run.
+                self.warehouse.table(path.as_slice())?;
+                Ok(Target::parts(path).with_properties(target.properties()))
+            }
+        }
     }
 
-    /// The table a dotted path names: `table` under the default catalog,
-    /// `catalog.table` or, under a default catalog, `schema.table`, and
-    /// `catalog.schema.table`.
-    fn table_of(&self, parts: &[SmolStr], default: Option<&str>) -> Result<Table> {
+    /// The whole path of the table a dotted path names: `table` under the
+    /// default catalog, `catalog.table` or, under a default catalog,
+    /// `schema.table`, and `catalog.schema.table` - a path with as many
+    /// namespace parts as the catalog allows.
+    fn path_of(&self, parts: &[SmolStr], default: Option<&str>) -> Result<Vec<SmolStr>> {
         let default_catalog = || -> Result<&Catalog> {
             match default {
-                Some(name) => self
-                    .catalog(name)
-                    .ok_or_else(|| super::catalog::no_catalog(name)),
-                None => match self.catalogs.as_slice() {
+                Some(name) => self.catalog(name).ok_or_else(|| no_catalog(name)),
+                None => match self.catalogs() {
                     [only] => Ok(only),
                     [] => Err(Error::absent("catalog", "the provider serves none")),
                     _ => Err(Error::InvalidRecord {
@@ -962,9 +1000,9 @@ impl Service {
                         reason: format_smolstr!(
                             "a table name without a catalog part needs the Catalog property; \
                              the catalogs are {}",
-                            self.catalogs
+                            self.catalogs()
                                 .iter()
-                                .map(Catalog::name)
+                                .map(ObjectValue::name)
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         ),
@@ -972,26 +1010,83 @@ impl Service {
                 },
             }
         };
-        match parts {
-            [table] => default_catalog()?.table(None, table),
-            [first, table] => match (self.catalog(first), default) {
-                (Some(catalog), _) => catalog.table(None, table),
-                (None, Some(_)) => default_catalog()?.table(Some(first), table),
-                (None, None) => Err(super::catalog::no_catalog(first)),
+        let (catalog, below): (&Catalog, &[SmolStr]) = match parts {
+            [] => {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$.from"),
+                    reason: SmolStr::new_static("expected a table's path, got no part"),
+                });
+            }
+            [_] => (default_catalog()?, parts),
+            [first, rest @ ..] => match (self.catalog(first), default) {
+                (Some(catalog), _) => (catalog, rest),
+                (None, Some(_)) if parts.len() == 2 => (default_catalog()?, parts),
+                (None, _) => return Err(no_catalog(first)),
             },
-            [catalog, schema, table] => self
-                .catalog(catalog)
-                .ok_or_else(|| super::catalog::no_catalog(catalog))?
-                .table(Some(schema), table),
-            _ => Err(Error::InvalidRecord {
+        };
+        if let Some(levels) = catalog.namespace_levels()
+            && below.len() > levels + 1
+        {
+            return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.from"),
-                reason: format_smolstr!(
-                    "expected `table`, `catalog.table` or `catalog.schema.table`, got {} parts",
-                    parts.len()
-                ),
-            }),
+                reason: if levels == 1 {
+                    format_smolstr!(
+                        "expected `table`, `catalog.table` or `catalog.schema.table`, got {} parts",
+                        parts.len()
+                    )
+                } else {
+                    format_smolstr!(
+                        "expected at most {levels} namespace parts between the catalog `{}` and \
+                         the table, got {}",
+                        catalog.name(),
+                        below.len() - 1
+                    )
+                },
+            });
+        }
+        let mut path = Vec::with_capacity(below.len() + 1);
+        path.push(SmolStr::new(catalog.name()));
+        path.extend(below.iter().cloned());
+        Ok(path)
+    }
+}
+
+/// Every namespace under `parent`, each before the namespaces under it, in
+/// the store's order.
+fn namespaces_under(parent: &dyn NamespaceValue, into: &mut Vec<Namespace>) -> Result<()> {
+    for child in parent.children() {
+        if let Object::Namespace(namespace) = child? {
+            into.push(namespace.clone());
+            namespaces_under(&namespace, into)?;
         }
     }
+    Ok(())
+}
+
+/// Every table under `parent`: the tables directly under it in the store's
+/// order, then each namespace's, in order.
+fn tables_under(parent: &dyn NamespaceValue, into: &mut Vec<Table>) -> Result<()> {
+    let mut namespaces = Vec::new();
+    for child in parent.children() {
+        match child? {
+            Object::Table(table) => into.push(table),
+            Object::Namespace(namespace) => namespaces.push(namespace),
+            Object::Catalog(_) => {}
+        }
+    }
+    for namespace in namespaces {
+        tables_under(&namespace, into)?;
+    }
+    Ok(())
+}
+
+/// The `TABLE_SCHEMA` of a table: the namespace parts between its catalog
+/// and its name, rendered as a path, and none at the catalog's root.
+fn schema_of(table: &Table) -> Option<String> {
+    let path = table.path();
+    path.get(1..path.len().saturating_sub(1))
+        .filter(|between| !between.is_empty())
+        .map(path_text)
 }
 
 /// The words the statement grammar reserves, as `DISCOVER_KEYWORDS` lists
@@ -1587,8 +1682,14 @@ fn column_row(table: &Table, position: usize, column: &Field) -> Result<Scalar> 
         _ => (Scalar::Null, Scalar::Null),
     };
     record([
-        ("TABLE_CATALOG", text(table.catalog())),
-        ("TABLE_SCHEMA", table.schema().map_or(Scalar::Null, text)),
+        (
+            "TABLE_CATALOG",
+            text(table.path().first().map_or("", SmolStr::as_str)),
+        ),
+        (
+            "TABLE_SCHEMA",
+            schema_of(table).as_deref().map_or(Scalar::Null, text),
+        ),
         ("TABLE_NAME", text(table.name())),
         ("COLUMN_NAME", text(column.name())),
         (

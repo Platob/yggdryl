@@ -204,7 +204,7 @@ A write streams each batch into the document as it arrives and hands the handle 
 
 ## Provider
 
-`yggdryl::xmla` is also the provider side of the protocol, Rust-only: a [`Service`](https://docs.rs/yggdryl/latest/yggdryl/xmla/struct.Service.html) serves catalogs - a folder of record media is a catalog, each file the folder holds a table, each folder inside it a schema of tables, a folder laid out as an Iceberg table a table wherever it sits (refused by name in a build without the `iceberg` feature), and a ZIP archive a catalog of its members - answering `Discover` with the XMLA schema rowsets (`DISCOVER_DATASOURCES`, `DISCOVER_SCHEMA_ROWSETS`, `DBSCHEMA_CATALOGS`, `DBSCHEMA_SCHEMATA`, `DBSCHEMA_TABLES`, `DBSCHEMA_COLUMNS` and the rest, restrictions applied, and one multidimensional rowset, `MDSCHEMA_CUBES`, each catalog its one cube - what MSOLAP asks for between the catalog list and the tables, and the only `MDSCHEMA_*` rowset a tabular provider answers) and `Execute` by running the statement through the [expression grammar](../expression/index.md) against the table it names, `catalog.schema.table` or the `Catalog` property, refusing a write unless the service was made writable. Every refusal is a SOAP fault carrying the XMLA `<Error>` with a code, a description and the source, answered at HTTP `200` the way the reference providers answer and XMLA clients read one; a header block that demands to be understood and is not a session block earns a `MustUnderstand` fault, and a failure once a streamed answer has begun is reported inside the rowset as `<Messages><Error/></Messages>`. [`Service::route`](https://docs.rs/yggdryl/latest/yggdryl/xmla/struct.Service.html#method.route) puts the service on the crate's [`http::Server`](../holder/index.md#serving-a-handle) at a path: a `GET` answers a short text description of the endpoint and a `HEAD` its head; a `POST` is always answered `200` under `text/xml; charset=utf-8` and `X-Transport-Caps-Negotiation-Flags: 0,0,0,0,0` - a body whose declared content type is not XML earns an immediate `Client` fault under those same headers, and any other body, empty included, is handed to `Service::handle`, its answer written as it is sent so a large `Execute` streams; any other method is the server's own `405` naming `GET, HEAD, POST`. `yggdryl xmla serve` does the same from a terminal, printing the endpoint first.
+`yggdryl::xmla` is also the provider side of the protocol, Rust-only: a [`Service`](https://docs.rs/yggdryl/latest/yggdryl/xmla/struct.Service.html) serves the catalogs of a [warehouse](../warehouse/index.md) - any `Catalog`; a `FolderCatalog` reads a folder of record media as one, each file the folder holds a table, each folder inside it a namespace (a schema, to XMLA) of tables, a folder laid out as an Iceberg table a table wherever it sits (refused by name in a build without the `iceberg` feature), and a ZIP archive a catalog of its members - answering `Discover` with the XMLA schema rowsets (`DISCOVER_DATASOURCES`, `DISCOVER_SCHEMA_ROWSETS`, `DBSCHEMA_CATALOGS`, `DBSCHEMA_SCHEMATA` - every namespace under a catalog - `DBSCHEMA_TABLES` - every table, `TABLE_SCHEMA` the namespace parts between the catalog and the table as a path and null at the root, `DESCRIPTION` the table's description else what holds its rows - `DBSCHEMA_COLUMNS` from each table's `field()` and the rest, restrictions applied, and one multidimensional rowset, `MDSCHEMA_CUBES`, each catalog its one cube - what MSOLAP asks for between the catalog list and the tables, and the only `MDSCHEMA_*` rowset a tabular provider answers) and `Execute` by running the statement through the [expression grammar](../expression/index.md) against the table it names - `table` under the `Catalog` property, `catalog.table`, `schema.table`, `catalog.schema.table`, as many namespace parts as the catalog's `namespace_levels` allow - resolved to its whole path and run with [`Plan::execute_in`](../expression/plans.md#sources) against the service's warehouse, so no target is rewritten to a URL; a URL target outside every served catalog's location is refused, and a write unless the service was made writable. `with_catalog` serves one more catalog in place of one of the same name, `with_warehouse` a whole warehouse, and `warehouse()`, `catalogs()` and `catalog(name)` read them back. Every refusal is a SOAP fault carrying the XMLA `<Error>` with a code, a description and the source, answered at HTTP `200` the way the reference providers answer and XMLA clients read one; a header block that demands to be understood and is not a session block earns a `MustUnderstand` fault, and a failure once a streamed answer has begun is reported inside the rowset as `<Messages><Error/></Messages>`. [`Service::route`](https://docs.rs/yggdryl/latest/yggdryl/xmla/struct.Service.html#method.route) puts the service on the crate's [`http::Server`](../holder/index.md#serving-a-handle) at a path: a `GET` answers a short text description of the endpoint and a `HEAD` its head; a `POST` is always answered `200` under `text/xml; charset=utf-8` and `X-Transport-Caps-Negotiation-Flags: 0,0,0,0,0` - a body whose declared content type is not XML earns an immediate `Client` fault under those same headers, and any other body, empty included, is handed to `Service::handle`, its answer written as it is sent so a large `Execute` streams; any other method is the server's own `405` naming `GET, HEAD, POST`. `yggdryl xmla serve` does the same from a terminal, printing the endpoint first.
 
 The binding speaks what the reference clients - MSOLAP, which Excel's Data Connection Wizard and PivotTables use, and ADOMD.NET, which Power Query uses - send: a `Content-Length` or a chunked request body, `Expect: 100-continue`, and MS-SSAS content negotiation. The connection side of that - framing, keep-alive, the interim `100 Continue` answered once the head has passed every check a body is refused on (so a .NET client does not wait its 350 ms), timeouts and bounds, HTTP/2 and HTTP/3, the exchange trace - is the crate's [HTTP server](../holder/index.md#serving-a-handle); what stays XMLA's is the negotiation header itself, stamped on every SOAP answer and never on the `GET` description, plain text XML both ways. A session opens the way those clients open one - an `Execute` carrying `BeginSession` and an empty `<Statement/>`, answered empty under a `Session` block that every later answer carries back, a fault included. `DISCOVER_SCHEMA_ROWSETS` states each rowset's `SchemaGuid` and `RestrictionsMask`, a restriction sent with no value restricts nothing, and `DISCOVER_PROPERTIES` answers the names those clients read before they drive a provider, each with what is true of this one: `ProviderType` 1 (a tabular data provider), `MDXSupport`, `ServerName`, `SQLSupport` 512, `DBMSVersion` `10.50.1600.1` - the SQL Server 2008 R2 RTM build, the release whose XML for Analysis is spoken here and the oldest ADOMD.NET agrees to talk to, `ProviderVersion` staying the crate's own - the `Mdprop*` MDX capability masks - all zero, the statement language being the expression grammar - and the `Dbprop*`/`Ssprop*` properties a client states about itself, echoed back as it set them, a number's own default where it set none, and no cell at all where there is no default - never an empty cell under an `int`. [`ServerOptions::with_trace`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_trace) - `yggdryl xmla serve --trace <folder>` - writes every exchange as it went over the wire, `NNNN-request.http` as read and `NNNN-response.http` as sent, the interim status and the chunked framing included, numbered from `0000` across every connection: what a client asked is read from the folder, and a request file replays through `Service::handle` with its body.
 
@@ -213,10 +213,8 @@ The binding speaks what the reference clients - MSOLAP, which Excel's Data Conne
     ```rust
     use yggdryl::holder::Holder;
     use yggdryl::media::IORecordOptions;
-    use yggdryl::xmla::{
-        Catalog, Discover, Execute, Request, RequestType, Response, Service, ServiceOptions,
-    };
-    use yggdryl::{DataType, IOBase, IOMedia, Scalar, Serie, StructType};
+    use yggdryl::xmla::{Discover, Execute, Request, RequestType, Response, Service, ServiceOptions};
+    use yggdryl::{DataType, FolderCatalog, IOBase, IOMedia, Scalar, Serie, StructType};
 
     let root = std::env::temp_dir().join(format!("yggdryl-xmla-docs-{}", std::process::id()));
     std::fs::create_dir_all(&root)?;
@@ -238,7 +236,7 @@ The binding speaks what the reference clients - MSOLAP, which Excel's Data Conne
     // A folder is a catalog; the service answers a request's bytes with a
     // response's bytes, which is what the server puts on the socket.
     let service = Service::new(ServiceOptions::new())
-        .with_catalog(Catalog::new("market", Holder::folder(&root)?));
+        .with_catalog(FolderCatalog::bound("market", Holder::folder(&root)?));
     let discover = Request::from(Discover::new(RequestType::DbschemaTables));
     let answer = service.handle(&discover.into_bytes()?, Vec::new())?;
     let tables = Response::from_bytes(&answer, None)?;
@@ -255,7 +253,7 @@ The binding speaks what the reference clients - MSOLAP, which Excel's Data Conne
     std::fs::remove_dir_all(&root)?;
     ```
 
-The server is bound the same way in Rust - `let server = http::Server::bind_with("127.0.0.1:8080", ServerOptions::default())?; Arc::new(service).route(&server, "/xmla")?` - and from the command line over any folders a holder resolves, tracing each exchange when asked:
+The server is bound the same way in Rust - `let server = http::Server::bind_with("127.0.0.1:8080", ServerOptions::default())?; Arc::new(service).route(&server, "/xmla")?` - and from the command line, where `name=location` builds the catalog `Catalog::from_url` picks for the location - a folder path or a URL a holder resolves is a folder catalog - tracing each exchange when asked:
 
 ```bash
 yggdryl xmla serve market=/data/market reference=s3://bucket/reference --bind 0.0.0.0:8080 --path /xmla
@@ -465,10 +463,9 @@ use yggdryl::holder::Holder;
 use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
 use yggdryl::local::LocalFolder;
 use yggdryl::xmla::{
-    Catalog, Discover, Execute, PropertyList, Request, RequestType, Response, Service,
-    ServiceOptions,
+    Discover, Execute, PropertyList, Request, RequestType, Response, Service, ServiceOptions,
 };
-use yggdryl::{DataType, Scalar, Serie, StructType, arrow};
+use yggdryl::{DataType, FolderCatalog, Scalar, Serie, StructType, arrow};
 
 let lake = std::env::temp_dir().join(format!("yggdryl-xmla-lake-{}", std::process::id()));
 let _ = std::fs::remove_dir_all(&lake);
@@ -507,7 +504,7 @@ std::fs::create_dir_all(lake.join("gold"))?;
 // One catalog per layer, as `yggdryl xmla serve bronze=... silver=... gold=...`.
 let mut service = Service::new(ServiceOptions::new());
 for layer in ["bronze", "silver", "gold"] {
-    service = service.with_catalog(Catalog::new(layer, Holder::folder(lake.join(layer))?));
+    service = service.with_catalog(FolderCatalog::bound(layer, Holder::folder(lake.join(layer))?));
 }
 
 // One cube per catalog, in the order they were named.

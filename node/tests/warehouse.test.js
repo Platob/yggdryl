@@ -6,7 +6,7 @@ const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 
-const { Field, IOBase, Url, iceberg, warehouse } = require('yggdryl')
+const { Field, IOBase, Plan, Url, iceberg, warehouse } = require('yggdryl')
 
 const { Catalog, Namespace, Table, Namespaces, Tables, Warehouse, SystemWarehouse } = warehouse
 
@@ -446,4 +446,41 @@ test('an object is held as the handle it is', (t) => {
   assert.equal(lake_.kind(), 'catalog')
   assert.equal(lake_.url, null)
   assert.deepEqual([...lake_.ls()].map((child) => child.kind()), ['namespace'])
+})
+
+test('a plan reads the table registered at its path, in the system warehouse or a given one', (t) => {
+  const root = lake(t)
+  const name = `warehouse_plan_${process.pid}`
+  const trades = Table.media([name, 'eu', 'trades'], path.join(root, 'eu', 'trades.csv'))
+  SystemWarehouse.register(trades)
+  t.after(() => {
+    try {
+      SystemWarehouse.unregister([name])
+    } catch {
+      // Already removed below.
+    }
+  })
+  const read = new Plan(`select symbol from ${name}.eu.trades where price > 100`)
+  assert.deepEqual([...read.execute().intoTable().getChild('symbol')], ['AAPL'])
+  // A write to a registered table lands where the table is.
+  SystemWarehouse.register(Table.media([name, 'eu', 'copy'], path.join(root, 'eu', 'copy.csv')))
+  new Plan(`insert into ${name}.eu.copy select * from ${name}.eu.trades`).execute().intoTable()
+  assert.equal(IOBase.from(SystemWarehouse.table(`${name}.eu.copy`)).rowSize(), 1)
+  SystemWarehouse.unregister([name])
+  // Unregistered, the path is nothing, and the refusal says what to do.
+  assert.throws(() => read.execute(), /register the table or name a URL/)
+
+  // A given warehouse is read instead of the process's own.
+  const registry = new Warehouse()
+  registry.register(Table.media('lake.us.quotes', path.join(root, 'us', 'quotes.csv')))
+  const quotes = new Plan('select bid from lake.us.quotes')
+  assert.deepEqual([...quotes.executeIn(registry).intoTable().getChild('bid')], [410n])
+  assert.throws(() => quotes.execute(), /expected a table at "lake.us.quotes", got nothing/)
+  assert.throws(() => new Plan('select * from lake.us').executeIn(registry), /got the namespace `lake.us`/)
+
+  // A URL may stand unquoted after `from`, printed back quoted.
+  const location = path.join(root, 'us', 'quotes.csv')
+  const unquoted = new Plan(`select symbol from ${location}`)
+  assert.equal(unquoted.toString(), `select symbol from '${Url.fromPath(location)}'`)
+  assert.deepEqual([...unquoted.execute().intoTable().getChild('symbol')], ['MSFT'])
 })

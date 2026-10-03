@@ -48,6 +48,7 @@ use crate::iomedia::{
 };
 use crate::scalar::PyScalar;
 use crate::value_error;
+use crate::warehouse::PyWarehouse;
 
 // ---------------------------------------------------------------------------
 // Reading Python values as the core's
@@ -2176,6 +2177,20 @@ impl PyPlan {
     /// stream under the schema it wrote.
     fn execute<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let reader = self.inner.execute().map_err(value_error)?;
+        batch_reader_to_pyarrow(py, reader)
+    }
+
+    /// `execute`, its locations resolved against `warehouse` instead of the
+    /// process's own `SystemWarehouse`.
+    fn execute_in<'py>(
+        &self,
+        py: Python<'py>,
+        warehouse: &PyWarehouse,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let reader = self
+            .inner
+            .execute_in(warehouse.core())
+            .map_err(value_error)?;
         batch_reader_to_pyarrow(py, reader)
     }
 

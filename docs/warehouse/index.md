@@ -859,7 +859,7 @@ An object displays as its dotted path, quoted only where the grammar needs it; e
 
 ## The system warehouse
 
-`SystemWarehouse` is the process's one `Warehouse`, which a plan's `from catalog.namespace.table` resolves against when it is given no other. It starts with the memory catalog `local`, holding the folder namespaces `temporary`, `home` and `config` over the platform's temporary directory, the user's home and its `.config` - a root that cannot be resolved is left out. Every door takes the lock for its own call and nothing re-enters it, so it is the same verbs as static functions.
+`SystemWarehouse` is the process's one `Warehouse`, which a plan's `from catalog.namespace.table` resolves against when it is given no other - `Plan::execute` reads it, `execute_in` names another ([Sources](../expression/plans.md#sources)). It starts with the memory catalog `local`, holding the folder namespaces `temporary`, `home` and `config` over the platform's temporary directory, the user's home and its `.config` - a root that cannot be resolved is left out. Every door takes the lock for its own call and nothing re-enters it, so it is the same verbs as static functions.
 
 === "Rust"
 

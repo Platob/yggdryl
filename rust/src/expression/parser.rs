@@ -221,6 +221,10 @@ enum Token {
     Number(SmolStr),
     /// A single-quoted text literal, already unescaped.
     Text(SmolStr),
+    /// An unquoted location after a word that takes one - `from`, `into`,
+    /// `to`, a write verb, `create`: raw text opening as a URL or a path,
+    /// running to the first whitespace, `,`, `;` or `)`.
+    Location(SmolStr),
     /// One punctuation token.
     Symbol(&'static str),
 }
@@ -262,6 +266,14 @@ fn tokenize(input: &str) -> Result<Vec<Spanned>> {
             continue;
         }
         let start = cursor;
+        if let Some(end) = location_end(input, cursor, tokens.last()) {
+            tokens.push(Spanned {
+                token: Token::Location(SmolStr::new(&input[cursor..end])),
+                position: start,
+            });
+            cursor = end;
+            continue;
+        }
         if byte == b'\'' {
             let (text, next) = read_delimited(input, cursor, '\'')?;
             tokens.push(Spanned {
@@ -325,6 +337,69 @@ fn tokenize(input: &str) -> Result<Vec<Spanned>> {
 /// spells.
 fn folded(text: &str) -> SmolStr {
     text.chars().map(|held| held.to_ascii_lowercase()).collect()
+}
+
+/// Whether an unquoted location may follow `previous`: the words that
+/// introduce a target, so `price / size` after a column stays a division.
+fn takes_location(previous: Option<&Spanned>) -> bool {
+    let Some(Spanned {
+        token: Token::Word(word),
+        ..
+    }) = previous
+    else {
+        return false;
+    };
+    matches!(
+        folded(word).as_str(),
+        "from"
+            | "into"
+            | "to"
+            | "insert"
+            | "append"
+            | "overwrite"
+            | "replace"
+            | "upsert"
+            | "merge"
+            | "delete"
+            | "create"
+    )
+}
+
+/// Where the unquoted location starting at `start` ends, when one starts
+/// there: after a word that takes one, raw text opening with `<scheme>://`,
+/// `/`, `./`, `../`, `~/` or a drive letter, running to the first
+/// whitespace, `,`, `;` or `)`.
+fn location_end(input: &str, start: usize, previous: Option<&Spanned>) -> Option<usize> {
+    if !takes_location(previous) {
+        return None;
+    }
+    let rest = &input[start..];
+    let length = rest
+        .find(|held: char| held.is_whitespace() || matches!(held, ',' | ';' | ')'))
+        .unwrap_or(rest.len());
+    let text = &rest[..length];
+    let bytes = text.as_bytes();
+    let drive = bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/');
+    let scheme = text.find("://").is_some_and(|at| {
+        let scheme = &text[..at];
+        scheme
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphabetic)
+            && scheme
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
+    });
+    let opens = text.starts_with('/')
+        || text.starts_with("./")
+        || text.starts_with("../")
+        || text.starts_with("~/")
+        || drive
+        || scheme;
+    opens.then_some(start + length)
 }
 
 /// Read a delimited run, treating a doubled delimiter as one literal character.
@@ -537,6 +612,7 @@ impl<'input> Parser<'input> {
             None => SmolStr::new_static("the end of the expression"),
             Some(Token::Word(word)) => format_smolstr!("{word:?}"),
             Some(Token::Quoted(name)) => format_smolstr!("the quoted name {name:?}"),
+            Some(Token::Location(text)) => format_smolstr!("the location {text}"),
             Some(Token::Number(text)) => format_smolstr!("the number {text}"),
             Some(Token::Text(text)) => format_smolstr!("the text {text:?}"),
             Some(Token::Symbol(symbol)) => format_smolstr!("{symbol:?}"),
@@ -806,7 +882,7 @@ impl<'input> Parser<'input> {
     /// name, a bracketed name, or a number.
     fn at_location(&self) -> bool {
         match self.peek() {
-            Some(Token::Text(_) | Token::Quoted(_) | Token::Number(_)) => true,
+            Some(Token::Text(_) | Token::Quoted(_) | Token::Number(_) | Token::Location(_)) => true,
             Some(Token::Symbol("[")) => true,
             Some(Token::Word(word)) => !is_section_word(word),
             _ => false,
@@ -829,6 +905,12 @@ impl<'input> Parser<'input> {
         if let Some(Token::Text(text)) = self.peek().cloned() {
             self.cursor += 1;
             return Url::from_str(&text)
+                .map(Location::Url)
+                .map_err(|error| parse_error(position, format_smolstr!("{error}")));
+        }
+        if let Some(Token::Location(text)) = self.peek().cloned() {
+            self.cursor += 1;
+            return Url::from_location(&text)
                 .map(Location::Url)
                 .map_err(|error| parse_error(position, format_smolstr!("{error}")));
         }

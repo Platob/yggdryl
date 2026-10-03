@@ -26,10 +26,17 @@
 //! `catalog.schema.table`, the spelling a catalog gives a table. A part is
 //! quoted when it carries a break character: `"my catalog".trades`,
 //! `` `my catalog`.trades `` and `[my catalog].trades` all read as one part
-//! called `my catalog`, and print back double-quoted. A parts location
-//! resolves against a base URL, so `lake.trades` under `file:///data` is
-//! `file:///data/lake/trades`; without a base it names the handle a record
-//! option is given to.
+//! called `my catalog`, and print back double-quoted. After a word that
+//! takes a target - `from`, `into`, `to`, a write verb, `create` - a URL or a
+//! path may also stand unquoted, `from /lake/trades.csv` or `into
+//! s3://bucket/trades`, read to the first whitespace, `,`, `;` or `)` and
+//! printed back quoted. A parts location resolves against a base URL, so
+//! `lake.trades` under `file:///data` is `file:///data/lake/trades`; without
+//! a base it is the table registered at that path in the warehouse the plan
+//! runs against ([`Target::holder`]), the process's
+//! [`SystemWarehouse`](crate::SystemWarehouse) unless [`Plan::execute_in`]
+//! names another, and a record option given a parts location resolves it
+//! under the handle it is given to.
 //!
 //! # Verbs
 //!
@@ -1418,24 +1425,135 @@ mod arrow {
     use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, UInt32Array};
     use arrow_ord::sort::{SortColumn, lexsort_to_indices};
 
-    use super::{Plan, Source, Target, Verb};
+    use smol_str::{SmolStr, format_smolstr};
+
+    use super::{Location, Plan, Source, Target, Verb};
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
     use crate::expression::arrow::{collected, one_batch, scattered, struct_rows};
     use crate::holder::Holder;
     use crate::media::{IORecordOptions, RecordOptions};
-    use crate::{Field, IOMedia, Result, Url};
+    use crate::warehouse::{no_table, path_text};
+    use crate::{
+        Error, Field, IOMedia, NamespaceValue, Object, ObjectValue, Result, SystemWarehouse, Table,
+        Url, Warehouse,
+    };
+
+    /// Resolve against `warehouse`, else against the process's own, its
+    /// lock taken for this one call and released before anything is read.
+    fn resolving<R>(warehouse: Option<&Warehouse>, resolve: impl FnOnce(&Warehouse) -> R) -> R {
+        match warehouse {
+            Some(warehouse) => resolve(warehouse),
+            None => SystemWarehouse::with(resolve),
+        }
+    }
 
     impl Target {
-        /// Hold the location, opened with this target's properties.
+        /// Hold the location, resolving against `warehouse`.
         ///
-        /// A path of parts resolves against `base`.
+        /// A URL opens through [`Holder::from_url`] with this target's
+        /// properties over those the warehouse states for it
+        /// ([`Warehouse::properties_for`]). Parts join `base` when there is
+        /// one, as a media resolves a path under its own location. Without
+        /// one they resolve through the warehouse to a table, held as
+        /// [`Holder::Table`] with this target's properties stated on it.
         ///
         /// # Errors
         ///
-        /// [`Holder::from_url`] carries the rule.
-        pub fn holder(&self, base: Option<&Url>) -> Result<Holder> {
-            let url = self.location.url(base)?;
-            Holder::from_url(&url, &self.properties)
+        /// [`Holder::from_url`]'s rule for a URL. For a path, a namespace or a
+        /// catalog there is refused naming its kind, and absence reads
+        /// `expected a table at "<path>", got nothing` and says to register
+        /// the table or name a URL.
+        pub fn holder(&self, warehouse: &Warehouse, base: Option<&Url>) -> Result<Holder> {
+            match (&self.location, base) {
+                (Location::Url(url), _) => {
+                    let properties = self.properties.inherit(&warehouse.properties_for(url));
+                    Holder::from_url(url, &properties)
+                }
+                (Location::Parts(_), Some(base)) => {
+                    let url = self.location.url(Some(base))?;
+                    Holder::from_url(&url, &self.properties)
+                }
+                (Location::Parts(parts), None) => self.table_in(warehouse, parts).map(Holder::from),
+            }
+        }
+
+        /// Hold the location a write goes to, resolving against `warehouse`:
+        /// [`Self::holder`], except that a path whose last part is absent is
+        /// created as a table from `root` by the namespace above it, as a
+        /// write to a URL creates its file, this target's properties stated
+        /// on it.
+        ///
+        /// # Errors
+        ///
+        /// What [`Self::holder`] refuses, the absence of the namespace above
+        /// the path, and a namespace that creates no table, which refuses by
+        /// its implementation's name.
+        pub fn write_holder(&self, warehouse: &Warehouse, root: &Field) -> Result<Holder> {
+            let Location::Parts(parts) = &self.location else {
+                return self.holder(warehouse, None);
+            };
+            match warehouse.get(parts.as_slice()) {
+                Ok(Object::Table(table)) => Ok(Holder::from(self.stated_on(table)?)),
+                Ok(other) => Err(no_table(other.as_object())),
+                Err(error) if error.is_absent() => {
+                    let Some((name, parent)) =
+                        parts.split_last().filter(|(_, parent)| !parent.is_empty())
+                    else {
+                        return Err(self.absent_table(parts));
+                    };
+                    let parent = warehouse.get(parent).map_err(|error| {
+                        if error.is_absent() {
+                            self.absent_table(parts)
+                        } else {
+                            error
+                        }
+                    })?;
+                    let created = match parent {
+                        Object::Catalog(catalog) => {
+                            catalog.create_table(name, root, &self.properties)?
+                        }
+                        Object::Namespace(namespace) => {
+                            namespace.create_table(name, root, &self.properties)?
+                        }
+                        Object::Table(table) => {
+                            return Err(Error::absent("namespace", path_text(table.path())));
+                        }
+                    };
+                    Ok(Holder::from(created))
+                }
+                Err(error) => Err(error),
+            }
+        }
+
+        /// The table `parts` name in `warehouse`, this target's properties
+        /// stated on it.
+        fn table_in(&self, warehouse: &Warehouse, parts: &[SmolStr]) -> Result<Table> {
+            match warehouse.get(parts) {
+                Ok(Object::Table(table)) => self.stated_on(table),
+                Ok(other) => Err(no_table(other.as_object())),
+                Err(error) if error.is_absent() => Err(self.absent_table(parts)),
+                Err(error) => Err(error),
+            }
+        }
+
+        /// `table` with this target's properties stated over its own.
+        fn stated_on(&self, table: Table) -> Result<Table> {
+            if self.properties.is_empty() {
+                return Ok(table);
+            }
+            let stated = self.properties.inherit(&table.properties()?);
+            Ok(table.with_properties(stated))
+        }
+
+        /// No table at `parts`: what the warehouse answers, and what to do.
+        fn absent_table(&self, parts: &[SmolStr]) -> Error {
+            Error::InvalidRecord {
+                path: format_smolstr!("$.{}", self.location),
+                reason: format_smolstr!(
+                    "{}; register the table or name a URL",
+                    Error::absent("table", path_text(parts))
+                ),
+            }
         }
 
         /// The record options a read or write through `holder` runs with,
@@ -1473,22 +1591,40 @@ mod arrow {
     }
 
     impl Plan {
-        /// Run this plan from its own source.
+        /// Run this plan from its own source, its locations resolved against
+        /// the process's warehouse, [`SystemWarehouse`].
         ///
         /// A target source is read through its holder with the read sections
         /// pushed into the read, so the media prunes and projects; a nested
         /// plan is executed first. A plan with no source starts from the empty
         /// stream, which is what `create` alone needs. The stream then goes
-        /// through [`Self::apply_arrow_reader`].
+        /// through [`Self::apply_arrow_reader`]. A path is a registered
+        /// table ([`Target::holder`]), and a write to a path whose last part
+        /// is absent creates the table where the namespace above it can
+        /// ([`Target::write_holder`]).
         ///
         /// # Errors
         ///
         /// Returns an error when the source cannot be held or read, a section
         /// does not bind, or the target cannot be written.
         pub fn execute(&self) -> Result<BatchReader> {
+            self.execute_with(None)
+        }
+
+        /// [`Self::execute`], its locations resolved against `warehouse`
+        /// instead of the process's own.
+        ///
+        /// # Errors
+        ///
+        /// As [`Self::execute`].
+        pub fn execute_in(&self, warehouse: &Warehouse) -> Result<BatchReader> {
+            self.execute_with(Some(warehouse))
+        }
+
+        fn execute_with(&self, warehouse: Option<&Warehouse>) -> Result<BatchReader> {
             match &self.from {
                 Some(Source::Target(target)) => {
-                    let holder = target.holder(None)?;
+                    let holder = resolving(warehouse, |warehouse| target.holder(warehouse, None))?;
                     // Ordering and an offset cannot be pushed down - record
                     // options hold neither - and a limit after either counts
                     // the rows they leave, so all three stay here whenever the
@@ -1519,16 +1655,24 @@ mod arrow {
                         }
                     }
                     let mut options = target.record_options(&holder)?;
+                    // A registered table's own options declare its field; a
+                    // pushed plan declaring none leaves that declaration
+                    // standing, so the table's schema survives the read.
+                    let declared = options.declared().cloned();
+                    let declares = pushed.field()?.is_some();
                     options.set_plan(pushed)?;
+                    if !declares && declared.is_some() {
+                        options.set_declared(declared);
+                    }
                     let rows = holder
                         .read_arrow_reader(&options)
                         .map_err(|error| super::unreachable(target, error))?;
                     let rows = rest.shape_arrow_reader(rows)?;
-                    self.write_arrow_reader(rows)
+                    self.write_in(warehouse, rows)
                 }
                 Some(Source::Plan(inner)) => {
-                    let rows = inner.execute()?;
-                    self.apply_arrow_reader(rows)
+                    let rows = inner.execute_with(warehouse)?;
+                    self.apply_in(warehouse, rows)
                 }
                 None => {
                     let field = self.field()?;
@@ -1537,7 +1681,7 @@ mod arrow {
                         None => Arc::new(arrow_schema::Schema::empty()),
                     };
                     let empty: [RecordBatch; 0] = [];
-                    self.apply_arrow_reader(crate::arrow::batch_reader(schema, empty))
+                    self.apply_in(warehouse, crate::arrow::batch_reader(schema, empty))
                 }
             }
         }
@@ -1555,6 +1699,16 @@ mod arrow {
         /// Returns an error when a section does not bind against the stream,
         /// or the target cannot be held or written.
         pub fn apply_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
+            self.apply_in(None, reader)
+        }
+
+        /// [`Self::apply_arrow_reader`], a write target resolved against
+        /// `warehouse`, else the process's own.
+        fn apply_in(
+            &self,
+            warehouse: Option<&Warehouse>,
+            reader: BatchReader,
+        ) -> Result<BatchReader> {
             if self
                 .write
                 .as_ref()
@@ -1562,10 +1716,10 @@ mod arrow {
             {
                 // A delete's `where` names the stored rows to remove; the
                 // stream it is given carries nothing to shape.
-                return self.write_arrow_reader(reader);
+                return self.write_in(warehouse, reader);
             }
             let shaped = self.read_sections().shape_arrow_reader(reader)?;
-            self.write_arrow_reader(shaped)
+            self.write_in(warehouse, shaped)
         }
 
         /// Run the read sections over a stream, in order: `where`, `order by`,
@@ -1754,7 +1908,7 @@ mod arrow {
             shaping.limit = None;
             shaping.offset = None;
             let shaped = collected(shaping.shape_arrow_reader(one_batch(&rows.batch))?)?;
-            let declared = collected(self.write_arrow_reader(one_batch(&shaped))?)?;
+            let declared = collected(self.write_in(None, one_batch(&shaped))?)?;
             let columns = declared
                 .columns()
                 .iter()
@@ -1794,8 +1948,13 @@ mod arrow {
             Ok(laid.slice(offset, length))
         }
 
-        /// Write a shaped stream where the plan says, or hand it back.
-        fn write_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
+        /// Write a shaped stream where the plan says, or hand it back; the
+        /// target resolves against `warehouse`, else the process's own.
+        fn write_in(
+            &self,
+            warehouse: Option<&Warehouse>,
+            reader: BatchReader,
+        ) -> Result<BatchReader> {
             let root = field_from_arrow_schema(crate::media::DEFAULT_ROOT_NAME, &reader.schema())?;
             let Some(target) = self.write_target() else {
                 if let Some(schema) = &self.schema {
@@ -1814,8 +1973,6 @@ mod arrow {
                 }
                 return Ok(reader);
             };
-            let mut holder = target.holder(None)?;
-            let mut options = target.record_options(&holder)?;
             let mut plan = Self::new();
             if let Some(schema) = &self.schema {
                 let typed = Some(&root).filter(|root| root.field_len() > 0);
@@ -1835,6 +1992,10 @@ mod arrow {
             if verb == Verb::Upsert {
                 plan.set_merge_by(self.merge_by().clone());
             }
+            let mut holder = resolving(warehouse, |warehouse| {
+                target.write_holder(warehouse, &written)
+            })?;
+            let mut options = target.record_options(&holder)?;
             options.set_plan(plan)?;
             let outcome = match verb {
                 Verb::Overwrite => holder.overwrite_arrow_reader(reader, &options),

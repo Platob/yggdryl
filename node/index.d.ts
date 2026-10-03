@@ -6811,6 +6811,11 @@ export declare class Plan {
    * stream under the schema it wrote.
    */
   execute(): JsBatchReader
+  /**
+   * `execute`, its locations resolved against `warehouse` instead of the
+   * process's own `SystemWarehouse`.
+   */
+  executeIn(warehouse: JsWarehouse): JsBatchReader
   /** The tree of this plan, one branch per section in the order they run. */
   explain(): string
   /** Write this plan as a structural JSON document. */

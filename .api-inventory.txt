@@ -2561,6 +2561,7 @@ pub struct Warehouse  (the catalogs, in registration order; Clone, Default, Eq, 
   pub const fn new() -> Self
   pub fn register(&mut self, object: impl Into<Object>) -> Result<()>  (a catalog by its name; a namespace or a table at its path, memory catalogs and namespaces created along it; conflict when the name is taken, refused by name under an object that lists its own store)
   pub fn replace(&mut self, object: impl Into<Object>) -> Result<Option<Object>>
+  pub fn replace_catalog(&mut self, catalog: Catalog) -> Option<Catalog>  (replace for a catalog, which registers by name alone and is never refused)
   pub fn unregister(&mut self, path: impl IntoObjectPath) -> Result<Object>
   pub fn catalogs(&self) -> &[Catalog]
   pub fn catalog(&self, name: &str) -> Result<&Catalog>
@@ -2652,6 +2653,7 @@ pub enum Table  (Media(Box<MediaTable>); non_exhaustive; ObjectValue and TableVa
   pub fn as_table(&self) -> &dyn TableValue
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
+  pub fn with_properties(self, properties: Properties) -> Self  (the stated properties the handle opens with: what a target's `with (...)` clause states for the table it names)
 
 ### yggdryl::warehouse::properties  [rust/src/warehouse/properties.rs]
 pub struct Properties  (the ordered name/value bag every object, target and handle door reads: one value per name, names kept as written; Clone, Default, Eq, Ord, Hash; IntoIterator<Item = (&str, &str)> for &Properties, FromIterator and Extend of any (Into<SmolStr>, Into<SmolStr>) pairs; Display the `with (...)` clause's entries; serde a JSON object in order)
@@ -4544,31 +4546,6 @@ pub const EMPTY_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:empty"
 pub const EXCEPTION_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:exception"
 pub const SQL_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-sql"
 
-### yggdryl::xmla::catalog  [rust/src/xmla/catalog.rs]
-pub struct Catalog
-  pub fn new(name: impl Into<SmolStr>, holder: Holder) -> Self
-  pub fn with_description(mut self, description: impl Into<String>) -> Self
-  pub fn name(&self) -> &str
-  pub const fn holder(&self) -> &Holder
-  pub fn description(&self) -> Option<&str>
-  pub fn url(&self) -> Option<&Url>
-  pub fn modified(&self) -> Option<i64>
-  pub fn tables(&self) -> Result<Vec<Table>>
-  pub fn schemas(&self) -> Result<Vec<SmolStr>>
-  pub fn table(&self, schema: Option<&str>, name: &str) -> Result<Table>
-pub struct Table
-  pub fn catalog(&self) -> &str
-  pub fn schema(&self) -> Option<&str>
-  pub fn name(&self) -> &str
-  pub const fn holder(&self) -> &Holder
-  pub fn url(&self) -> Option<&Url>
-  pub fn modified(&self) -> Option<i64>
-  pub const fn table_type(&self) -> &'static str
-  pub fn description(&self) -> String
-  pub fn record_options(&self) -> Result<RecordOptions>
-  pub fn field(&self) -> Result<Field>
-  pub fn path(&self) -> String
-
 ### yggdryl::xmla::dbtype  [rust/src/xmla/dbtype.rs]
 pub enum DbType
   pub const ALL: &'static [Self]
@@ -4740,7 +4717,9 @@ pub struct ServiceOptions
 pub enum Execution
 pub struct Service
   pub const fn new(options: ServiceOptions) -> Self
-  pub fn with_catalog(mut self, catalog: Catalog) -> Self
+  pub fn with_catalog(mut self, catalog: impl Into<Catalog>) -> Self
+  pub fn with_warehouse(mut self, warehouse: Warehouse) -> Self
+  pub const fn warehouse(&self) -> &Warehouse
   pub const fn options(&self) -> &ServiceOptions
   pub fn catalogs(&self) -> &[Catalog]
   pub fn catalog(&self, name: &str) -> Option<&Catalog>
@@ -7358,9 +7337,11 @@ pub enum Location
   pub fn clauses(&self) -> Vec<Expression>
   pub trait IntoPlan
   fn into_plan(self) -> Result<Plan>
-  pub fn holder(&self, base: Option<&Url>) -> Result<Holder>
+  pub fn holder(&self, warehouse: &Warehouse, base: Option<&Url>) -> Result<Holder>
+  pub fn write_holder(&self, warehouse: &Warehouse, root: &Field) -> Result<Holder>
   pub fn record_options(&self, holder: &Holder) -> Result<RecordOptions>
   pub fn execute(&self) -> Result<BatchReader>
+  pub fn execute_in(&self, warehouse: &Warehouse) -> Result<BatchReader>
   pub fn apply_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader>
 
 ### yggdryl::expression::term  [rust/src/expression/term.rs]

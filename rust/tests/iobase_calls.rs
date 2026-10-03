@@ -1273,9 +1273,9 @@ mod provider {
     use yggdryl::holder::Holder;
     use yggdryl::media::RecordOptions;
     use yggdryl::xmla::{
-        Catalog, Discover, PropertyList, Request, RequestType, Response, Service, ServiceOptions,
+        Discover, PropertyList, Request, RequestType, Response, Service, ServiceOptions,
     };
-    use yggdryl::{DataType, Field, IOBase, IOMedia, MimeType, StructType};
+    use yggdryl::{DataType, Field, FolderCatalog, IOBase, IOMedia, MimeType, StructType};
 
     use crate::counting_filesystem::{CountingFileSystem, counted_folder};
 
@@ -1314,7 +1314,7 @@ mod provider {
         )
         .expect("the table is written");
         let service =
-            Service::new(ServiceOptions::new()).with_catalog(Catalog::new("market", root));
+            Service::new(ServiceOptions::new()).with_catalog(FolderCatalog::bound("market", root));
         (filesystem, service)
     }
 
@@ -1356,20 +1356,22 @@ mod provider {
         let columns = discover(&filesystem, &service, RequestType::DbschemaColumns, 2);
         // Nothing is read for what the provider states about itself, and a
         // catalog row - or the cube row that restates it - costs nothing over
-        // this store. The tables are the one
-        // listing of the root plus three `file_info` per table - the `fs`
-        // backend answers a listed child's kind and modification time by
-        // asking the store again - and the columns add one open of the leaf,
-        // the schema read, and one more `file_info`, its size; never a read
-        // of a row.
+        // this store. The tables are the one listing of the root plus two
+        // `file_info` per table - the `fs` backend answers a listed child's
+        // kind and modification time by asking the store again, each once,
+        // since the folder catalog hands the leaf on as the listing gave it -
+        // and the columns add one open of the leaf's stream and the schema
+        // read; never a read of a row. Moving the provider onto the folder
+        // catalog took one `file_info` off a table row and two off a column
+        // read: the old catalog asked a leaf's kind three times.
         assert_eq!(
             [properties, catalogs, cubes, tables, columns],
             [
                 "none",
                 "none",
                 "none",
-                "file_info=3 list=1",
-                "file_info=4 list=1 open_input_file=1",
+                "file_info=2 list=1",
+                "file_info=2 list=1 open_input_stream=1",
             ],
             "properties, catalogs, cubes, tables, columns"
         );

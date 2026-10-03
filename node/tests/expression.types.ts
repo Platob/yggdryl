@@ -11,6 +11,7 @@ import {
   Scalar,
   Term,
   iceberg,
+  warehouse,
   type IcebergTable,
 } from '..'
 import { type ScanPlanCounts } from '../index'
@@ -159,6 +160,7 @@ const plan: Plan = new Plan("select ccy from t where ccy = 'EUR' order by ccy de
 const emptyPlan: Plan = new Plan()
 const planRestored: Plan = Plan.fromJson(plan.intoJson())
 const planFromField: Plan = Plan.fromField(schema)
+const planExecutedIn: BatchReader = plan.executeIn(new warehouse.Warehouse())
 const planBuilt: Plan = new Plan()
   .withCreate('id int64 not null', 'trades')
   .withWrite('upsert into', "'file:///lake/trades.parquet'", ['id'])
@@ -364,6 +366,7 @@ export {
   planFieldFrom,
   planFilter,
   planFromField,
+  planExecutedIn,
   planHash,
   planIsIdentity,
   planJson,

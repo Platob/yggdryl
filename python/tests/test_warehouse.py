@@ -14,7 +14,7 @@ import uuid
 import pyarrow as pa
 import pytest
 
-from yggdryl import IOBase, Url
+from yggdryl import IOBase, Plan, Url
 from yggdryl.warehouse import (
     Catalog,
     FolderCatalog,
@@ -444,6 +444,46 @@ class TestTheWarehouse:
         assert warehouse.properties_for(root / "eu" / "quotes.csv") == {"region": "eu-west-1"}
         assert warehouse.properties_for(Url.from_path(root)) == {"region": "eu-west-1"}
         assert warehouse.properties_for("file:///elsewhere/x.csv") == {}
+
+
+class TestPlansOverTheWarehouse:
+    """A plan's dotted path is a registered table; a URL may stand unquoted
+    after `from`."""
+
+    def test_a_plan_reads_the_table_registered_at_its_path(self, root: pathlib.Path) -> None:
+        catalog = _unique("lake")
+        path = f"{catalog}.eu.trades"
+        SystemWarehouse.register(MediaTable(path, root / "trades.csv"))
+        try:
+            read = Plan(f"select symbol from {path} where price > 200")
+            assert read.execute().read_all().column("symbol").to_pylist() == ["MSFT"]
+            # A write to a registered table lands where the table is.
+            SystemWarehouse.register(MediaTable(f"{catalog}.eu.copy", root / "copy.csv"))
+            Plan(f"insert into {catalog}.eu.copy select * from {path}").execute().read_all()
+            assert SystemWarehouse.table(f"{catalog}.eu.copy").row_size() == 3
+        finally:
+            SystemWarehouse.unregister([catalog])
+        # Unregistered, the path is nothing, and the refusal says what to do.
+        with pytest.raises(ValueError, match="register the table or name a URL"):
+            Plan(f"select * from {path}").execute()
+
+    def test_execute_in_resolves_against_the_warehouse_it_is_given(self, root: pathlib.Path) -> None:
+        registry = Warehouse()
+        registry.register(MediaTable("lake.eu.trades", root / "trades.csv", tier="hot"))
+        read = Plan("select symbol from lake.eu.trades order by symbol")
+        assert read.execute_in(registry).read_all().column("symbol").to_pylist() == ["AAPL", "GOOG", "MSFT"]
+        # The process's warehouse knows nothing of it.
+        with pytest.raises(ValueError, match='expected a table at "lake.eu.trades", got nothing'):
+            read.execute()
+        # A namespace in a `from` is refused naming its kind.
+        with pytest.raises(ValueError, match="got the namespace `lake.eu`"):
+            Plan("select * from lake.eu").execute_in(registry)
+
+    def test_an_unquoted_location_reads_after_from(self, root: pathlib.Path) -> None:
+        location = (root / "trades.csv").as_posix()
+        read = Plan(f"select symbol from {location} where price < 150")
+        assert str(read) == f"select symbol from '{Url.from_path(root / 'trades.csv')}' where price < 150"
+        assert read.execute().read_all().column("symbol").to_pylist() == ["GOOG"]
 
 
 class TestTheSystemWarehouse:

@@ -1433,6 +1433,11 @@ pub(crate) struct PyWarehouse {
 }
 
 impl PyWarehouse {
+    /// The core registry, what a plan resolves against.
+    pub(crate) const fn core(&self) -> &Warehouse {
+        &self.inner
+    }
+
     fn catalogs_into_py(py: Python<'_>, catalogs: &[Catalog]) -> PyResult<Vec<Py<PyAny>>> {
         catalogs
             .iter()

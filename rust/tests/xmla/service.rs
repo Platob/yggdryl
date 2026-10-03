@@ -15,10 +15,10 @@ use yggdryl::media::IORecordOptions;
 use yggdryl::media::RecordOptions;
 use yggdryl::soap::{Envelope, FaultCode, Fragment};
 use yggdryl::xmla::{
-    Answer, Catalog, Command, Content, Discover, Execute, PropertyList, Request, RequestType,
-    Response, Restrictions, Service, ServiceOptions, Session,
+    Answer, Command, Content, Discover, Execute, PropertyList, Request, RequestType, Response,
+    Restrictions, Service, ServiceOptions, Session,
 };
-use yggdryl::{DataType, Field, IOBase, IOMedia, MimeType, Scalar, StructType};
+use yggdryl::{DataType, Field, FolderCatalog, IOBase, IOMedia, MimeType, Scalar, StructType};
 
 /// A fresh catalog folder under the temporary directory, named after `label`.
 fn catalog_root(label: &str) -> PathBuf {
@@ -88,7 +88,7 @@ fn service(label: &str) -> Service {
     let root = catalog_root(label);
     seed(&root);
     Service::new(ServiceOptions::new().with_url("http://localhost:8080/xmla")).with_catalog(
-        Catalog::new("market", Holder::folder(&root).expect("the catalog holds"))
+        FolderCatalog::bound("market", Holder::folder(&root).expect("the catalog holds"))
             .with_description("the market catalog"),
     )
 }
@@ -786,7 +786,7 @@ fn excel_service(label: &str) -> Service {
             .expect("the table is written");
     }
     Service::new(ServiceOptions::new().with_url("http://127.0.0.1:8080/xmla")).with_catalog(
-        Catalog::new("market", Holder::folder(&root).expect("holds")),
+        FolderCatalog::bound("market", Holder::folder(&root).expect("holds")),
     )
 }
 
