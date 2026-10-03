@@ -33,6 +33,7 @@ use crate::field::{JsField, MetadataEntry};
 use crate::iomedia::JsBatchReader;
 use crate::napi_error;
 use crate::text::codec::JsScalar;
+use crate::warehouse::JsWarehouse;
 
 // ---------------------------------------------------------------------------
 // Reading JavaScript values as the core's
@@ -2056,6 +2057,17 @@ impl JsPlan {
     #[napi]
     pub fn execute(&self) -> Result<JsBatchReader> {
         let reader = self.inner.execute().map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(reader, self.inner.root_name()))
+    }
+
+    /// `execute`, its locations resolved against `warehouse` instead of the
+    /// process's own `SystemWarehouse`.
+    #[napi(js_name = "executeIn")]
+    pub fn execute_in(&self, warehouse: &JsWarehouse) -> Result<JsBatchReader> {
+        let reader = self
+            .inner
+            .execute_in(warehouse.core())
+            .map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, self.inner.root_name()))
     }
 

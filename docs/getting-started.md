@@ -125,6 +125,7 @@ Metadata belongs to the field and behaves like each language's mapping type; a n
 | Logical types, parsing, families | [DataType](types/datatype.md) |
 | Names, nullability, metadata, casting | [Field](types/field.md), [Cast](types/cast.md) |
 | Bytes and records on any storage | [Holder](holder/index.md) |
+| Catalogs, namespaces and tables under one dotted path | [Warehouse](warehouse/index.md) |
 | gzip, zlib, zstd | [Compression](media/compression.md) |
 | Character encodings | [Charsets](media/charsets.md) |
 | IPC, Parquet, Avro, CSV, Iceberg | [Media](media/index.md) |

@@ -41,7 +41,7 @@ function venues(root) {
     [Field.from('id: int64'), Field.from('symbol: utf8'), Field.from('venue: utf8')],
     { nullable: false },
   )
-  const table = iceberg.Table.create(path.join(root, 'trades'), declared, ['venue'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), declared, ['venue'])
   for (const [id, symbol, venue] of [
     [1n, 'AAPL', 'XNAS'],
     [2n, 'MSFT', 'XNYS'],

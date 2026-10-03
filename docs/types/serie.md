@@ -653,7 +653,7 @@ A record column's root may declare the order its rows keep, as the [`SORT:by`](p
 | `from_scalars`, `from_arrow_array`, `from_arrow_batch` under a declaring field, `cast` and `ArrowCastPlan::apply` onto a declaring target the source does not already declare, a `SerieReader` over a stream under a declaring root (each batch, and each batch's first row against the batch before), `ChunkedSerie::from_series`, `from_arrow_arrays`, `cast` and `push_chunk` (each chunk, and every chunk edge) | verified: the first row out of order is refused - `row 3 of quote is out of the order its root declares, \`venue, price desc\`` - a batch or chunk edge by its batch or chunk |
 | `from_default`, `empty`, `SerieReader::from_serie`, `from_chunked`, a `Serie` already held | not read: equal rows are in every order, and a `Serie` carrying a declaration already proved it |
 
-An Iceberg table's `SORT:by` is how its writers lay each data file out, so the root a [scan](../media/iceberg.md) lands under drops it; `Table::schema()` keeps reporting it. A `Plan` built from a declaring field moves the keys into its `order by`, as it always did.
+An Iceberg table's `SORT:by` is how its writers lay each data file out, so the root a [scan](../media/iceberg.md) lands under drops it; `IcebergTable::schema()` keeps reporting it. A `Plan` built from a declaring field moves the keys into its `order by`, as it always did.
 
 === "Rust"
 

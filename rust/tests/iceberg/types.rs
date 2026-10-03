@@ -12,7 +12,8 @@ mod iceberg {
     use std::sync::Arc;
 
     use yggdryl::iceberg::{
-        FormatVersion, PartitionSpec, PrimitiveType, Table, schema_from_json, schema_into_json,
+        FormatVersion, IcebergTable, PartitionSpec, PrimitiveType, schema_from_json,
+        schema_into_json,
     };
     use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, Scalar};
@@ -73,7 +74,7 @@ mod iceberg {
 
         // A v2 table refuses either by name.
         let v2 = root("v3-types-v2");
-        let message = Table::create(
+        let message = IcebergTable::create(
             LocalFolder::new(&v2).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -90,7 +91,7 @@ mod iceberg {
         // back: the unknown as a variant column of nulls, whatever null type
         // it was written in.
         let v3 = root("v3-types-v3");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&v3).unwrap(),
             FormatVersion::V3,
             schema.clone(),
@@ -128,12 +129,12 @@ mod iceberg {
         assert_eq!(read.column(1).logical_null_count(), 2);
         assert_eq!(read.column(2), &payload);
 
-        let reopened = Table::open(LocalFolder::new(&v3).unwrap()).unwrap();
+        let reopened = IcebergTable::open(LocalFolder::new(&v3).unwrap()).unwrap();
         let stored = reopened.schema().unwrap();
         assert!(stored.fields()[1].as_iceberg().is_unknown());
         assert_eq!(stored.fields()[1].dtype(), &DataType::Variant);
         assert!(!stored.fields()[2].as_iceberg().is_unknown());
-        reopened.metadata().validate().unwrap();
+        reopened.metadata().unwrap().validate().unwrap();
 
         let _ = std::fs::remove_dir_all(&v2);
         let _ = std::fs::remove_dir_all(&v3);
@@ -150,7 +151,7 @@ mod iceberg {
         .unwrap();
         let schema = schema_from_json("row", &document).unwrap();
         let path = root("unknown-values");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V3,
             schema.clone(),
@@ -192,6 +193,7 @@ mod iceberg {
         // and nothing is committed.
         let snapshot = table
             .current_snapshot()
+            .unwrap()
             .map(|snapshot| snapshot.snapshot_id);
         let value = variant_payload(arrow.field(1), &[Scalar::Null, Scalar::from(7_i64)]);
         let message = table
@@ -208,6 +210,7 @@ mod iceberg {
         assert_eq!(
             table
                 .current_snapshot()
+                .unwrap()
                 .map(|snapshot| snapshot.snapshot_id),
             snapshot
         );

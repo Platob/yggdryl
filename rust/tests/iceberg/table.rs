@@ -238,8 +238,8 @@ mod iceberg {
     use yggdryl::arrow::BatchReader;
 
     use yggdryl::iceberg::{
-        FormatVersion, IcebergOptions, PartitionSpec, SortField, SortOrder, Table, TableMetadata,
-        Transform, assign_field_ids,
+        FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, SortField, SortOrder,
+        TableMetadata, Transform, assign_field_ids,
     };
     use yggdryl::local::LocalFolder;
 
@@ -301,25 +301,25 @@ mod iceberg {
         use yggdryl::iceberg::SchemaUpdate;
 
         let path = root("update-schema");
-        let mut first = Table::create(
+        let mut first = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema(),
             PartitionSpec::unpartitioned(),
         )
         .unwrap();
-        let mut second = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
-        let current = first.metadata().current_schema_id();
+        let mut second = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let current = first.metadata().unwrap().current_schema_id();
 
         // Nothing recorded commits nothing and answers the current schema.
-        let empty = SchemaUpdate::from_metadata(first.metadata()).unwrap();
+        let empty = SchemaUpdate::from_metadata(first.metadata().unwrap()).unwrap();
         assert_eq!(first.update_schema(&empty).unwrap(), current);
 
         // Both handles record against the same schema; the second commits
         // first, and the first replays onto what the second made current.
-        let mut late = SchemaUpdate::from_metadata(first.metadata()).unwrap();
+        let mut late = SchemaUpdate::from_metadata(first.metadata().unwrap()).unwrap();
         late.add_column("", DataType::Int64.nullable_field("late"));
-        let mut early = SchemaUpdate::from_metadata(second.metadata()).unwrap();
+        let mut early = SchemaUpdate::from_metadata(second.metadata().unwrap()).unwrap();
         early.add_column("", DataType::Int64.nullable_field("early"));
         let early_id = second.update_schema(&early).unwrap();
         let late_id = first.update_schema(&late).unwrap();
@@ -327,6 +327,7 @@ mod iceberg {
         assert!(late_id > early_id && early_id > current);
         let names: Vec<String> = first
             .metadata()
+            .unwrap()
             .current_schema()
             .unwrap()
             .fields()
@@ -341,7 +342,7 @@ mod iceberg {
         let path = root("sorted-files");
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let table = Table::create(
+        let table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -349,8 +350,8 @@ mod iceberg {
         )
         .unwrap();
         // The default: the partition's source column, ascending, nulls first.
-        let order = table.metadata().default_sort_order().unwrap();
-        assert_eq!(table.metadata().default_sort_order_id(), 1);
+        let order = table.metadata().unwrap().default_sort_order().unwrap();
+        assert_eq!(table.metadata().unwrap().default_sort_order_id(), 1);
         assert_eq!(order.fields.len(), 1);
         assert_eq!(order.fields[0].source_id, 3);
         assert_eq!(order.fields[0].transform, Transform::Identity);
@@ -364,7 +365,7 @@ mod iceberg {
         // An explicit order sorts every file it writes; a one-byte target cuts
         // one row per file, so the bounds march with the sort.
         let by_symbol = root("sorted-by-symbol");
-        let mut sorted = Table::create_sorted(
+        let mut sorted = IcebergTable::create_sorted(
             LocalFolder::new(&by_symbol).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -401,14 +402,14 @@ mod iceberg {
         assert_eq!(lower_bounds, ["a", "b", "c"], "monotone across the files");
 
         // The order round-trips through the document and the official model.
-        let document = sorted.metadata().clone().into_json().unwrap();
+        let document = sorted.metadata().unwrap().clone().into_json().unwrap();
         let reread = TableMetadata::from_json(&document).unwrap();
         assert_eq!(reread.default_sort_order().unwrap(), order_by_symbol());
         reread.validate().unwrap();
 
         // Explicitly unsorted: rows stay as they arrived, files carry no order.
         let plain = root("unsorted");
-        let mut unsorted = Table::create_sorted(
+        let mut unsorted = IcebergTable::create_sorted(
             LocalFolder::new(&plain).unwrap(),
             FormatVersion::V2,
             schema.clone(),
@@ -416,7 +417,7 @@ mod iceberg {
             SortOrder::unsorted(),
         )
         .unwrap();
-        assert_eq!(unsorted.metadata().default_sort_order_id(), 0);
+        assert_eq!(unsorted.metadata().unwrap().default_sort_order_id(), 0);
         unsorted
             .commit_append(rows(&[3, 1, 2], &["c", "a", "b"], &["X", "X", "X"]))
             .unwrap();
@@ -463,7 +464,7 @@ mod iceberg {
             .unwrap()
         };
         let appended = |label: &str, batches: Vec<RecordBatch>| -> Vec<i64> {
-            let mut table = Table::create_sorted(
+            let mut table = IcebergTable::create_sorted(
                 LocalFolder::new(root(label)).unwrap(),
                 FormatVersion::V2,
                 schema.clone(),
@@ -534,7 +535,7 @@ mod iceberg {
         use yggdryl::{Error, IOBase, IOKind};
 
         let path = root("no-bytes");
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema(),
@@ -572,7 +573,7 @@ mod iceberg {
     fn batches_changing_layout_mid_commit_each_cast_to_the_table_schema() {
         let path = root("table_layouts");
         let schema = schema();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema.clone(),

@@ -1,6 +1,6 @@
 ---
 name: yggdryl
-description: Routes yggdryl work to the right layer and states the conventions every yggdryl API shares (install and features, naming, defaults, errors, streaming, zero copy) across the Rust crate, the Python wheel and the npm package - Arrow-native schemas (DataType, Field, Scalar), columns (Serie), storage handles (IOBase over local files, ZIP, S3/GCS/Azure, HTTP(S)), record media (Arrow IPC, Parquet, Avro, CSV, Excel, text, Iceberg), JSON/YAML/TOML/XML, URIs, expressions, xxHash/TxHash, FIX and market data. Use when installing or importing yggdryl, choosing which yggdryl API answers a task, translating yggdryl code between Rust, Python and Node.js, or before any other yggdryl-* skill.
+description: Routes yggdryl work to the right layer and states the conventions every yggdryl API shares (install and features, naming, defaults, errors, streaming, zero copy) across the Rust crate, the Python wheel and the npm package - Arrow-native schemas (DataType, Field, Scalar), columns (Serie), storage handles (IOBase over local files, ZIP, S3/GCS/Azure, HTTP(S)), warehouses (catalogs, namespaces and tables resolved by dotted path), record media (Arrow IPC, Parquet, Avro, CSV, Excel, text, Iceberg), JSON/YAML/TOML/XML, URIs, expressions, xxHash/TxHash, FIX and market data. Use when installing or importing yggdryl, choosing which yggdryl API answers a task, translating yggdryl code between Rust, Python and Node.js, or before any other yggdryl-* skill.
 ---
 
 # Yggdryl
@@ -39,6 +39,7 @@ carry all of them via `http3`.
 | `ChunkedSerie` | columns of one field kept apart: a chunked array, or a table of one batch per chunk | joined behind your back |
 | `SerieReader` | a stream: one record `Serie` per batch, under one cast plan | a `Scalar` |
 | `IOBase` | a positional byte handle on any backend (`Holder`), and the record surface (`IOMedia`) over it | a second storage API per backend |
+| `Catalog` / `Namespace` / `Table` | the objects a warehouse path (`lake.eu.trades`) reaches, each a description that is also a handle; `Warehouse` and `SystemWarehouse` the registries | a second listing API per store |
 | `Expression` / `Plan` | a grammar over the above: parse once, bind once, evaluate or push down | a second query engine |
 
 The stack a read climbs: **bytes** (`IOBase`: `read_range_bytes`) ->
@@ -53,6 +54,7 @@ answers the task.
 | declare a schema, parse a type expression, build or check a value, dataclass/record classes, metadata, codes (`ccy`, `forex`) and enums (`side`, `marketdatakind`, `state`) | `yggdryl-types` |
 | Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts, sorting, grouping and windows of equal keys (`window_by`) | `yggdryl-arrow` |
 | open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, HTTP(S) resources and requests-style sessions, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
+| a catalog of namespaces of tables - a folder read as one, a table registered at a dotted path, `SystemWarehouse`, `Properties`, the `namespaces`/`tables` views, `Catalog.from_url` | `yggdryl-warehouse` |
 | parse or build a URI, URL, URN, ARN, path; glob pattern text or a hive partition path (listing is `yggdryl-storage`) | `yggdryl-uri` |
 | read or write rows/batches in Arrow IPC, Parquet, Avro, CSV/TSV, Excel (`.xlsx`, with `Workbook`/`Sheet`/`Cell`), text, Iceberg; a file's schema or row count; pandas/polars frames to or from a file; partitions; merge/upsert | `yggdryl-records` |
 | JSON, JSON Lines, YAML, TOML, XML documents to and from values | `yggdryl-documents` |

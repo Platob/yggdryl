@@ -86,7 +86,6 @@ function installRecords({
   SerieReader,
   TextOptions,
   Table,
-  Tables,
 }) {
   const classFields = new WeakMap()
   const nextIpc = BatchReader.prototype._nextIpcNative
@@ -1166,27 +1165,11 @@ function installRecords({
     if (source === undefined || source === null || isArrowShaped(source)) {
       return batchReader(source)
     }
-    let settings = new RecordOptions(ICEBERG_DATA_MIME_TYPE)
-    const stored = table == null ? null : table.schema
-    if (stored != null) settings = settings.withField(stored)
-    const converted = recordsReader(
-      source,
-      settings,
-      preflightWriteIntent(settings, 'append'),
-    )
-    if (stored != null) return converted.reader
-    // Nothing declared a schema, so the rows named one - and the rows were
-    // encoded by Arrow JS, which dictionary-encodes a string, a datatype
-    // Iceberg does not express. The comparison is against the reader's own
-    // field rather than the declared one: a field class declares `utf8` and
-    // still arrives as `dictionary(int32, utf8)`, so comparing declarations
-    // would skip the cast that is exactly what the create needs. The cast is
-    // the stream's own: one plan, each batch reconciled as it is pulled.
-    const declared = converted.settings.field
-    if (declared === null || declared === undefined) return converted.reader
-    const widened = declared.intoSchemeCompat('iceberg')
-    if (widened.equals(converted.reader.field)) return converted.reader
-    return SerieReader.fromArrowReader(converted.reader, widened).intoArrowReader()
+    // The table's stored schema types the rows. A schema the rows would have
+    // to name is a catalog's business: `Tables.append` creates there, over
+    // the schema as Iceberg expresses it.
+    const settings = new RecordOptions(ICEBERG_DATA_MIME_TYPE).withField(table.schema)
+    return recordsReader(source, settings, preflightWriteIntent(settings, 'append')).reader
   }
 
   const explicitOptions = Table.prototype._explicitOptionsNative
@@ -1304,42 +1287,7 @@ function installRecords({
     },
   })
 
-  // The tables view's own writes take a name first and then the rows, so they
-  // widen the rows the same way the table's do and pass the options along.
-  if (Tables) {
-    for (const name of ['append', 'overwrite']) {
-      const native = Tables.prototype[name]
-      if (!native) continue
-      Object.defineProperty(Tables.prototype, name, {
-        configurable: true,
-        value(table, batches, options, properties) {
-          // An existing table declares the schema its rows are typed against;
-          // a create-on-write names none yet, and the rows declare it.
-          const stored = this.has(table) ? this.get(table) : null
-          const settings = icebergCallOptions(null, options, properties)
-          return native.call(this, table, icebergBatchReader(stored, batches), settings)
-        },
-      })
-    }
-    for (const name of ['create', 'openOrCreate']) {
-      const native = Tables.prototype[name]
-      if (!native) continue
-      Object.defineProperty(Tables.prototype, name, {
-        configurable: true,
-        value(table, schema) {
-          // An array of child Fields is a shape the native call assembles
-          // itself, under a root named `row`; only scalar spellings coerce.
-          return native.call(
-            this,
-            table,
-            Array.isArray(schema) ? schema : intoField(schema),
-          )
-        },
-      })
-    }
-  }
-
-  return Object.freeze({ icebergBatchReader, icebergCallOptions, intoField })
+  return Object.freeze({ intoField })
 }
 
 module.exports = { installRecords }

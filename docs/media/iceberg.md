@@ -8,9 +8,9 @@ Apache Iceberg tables in a folder: `metadata/` and `data/`, no catalog required,
 | --- | --- |
 | Declared by | a table folder - `metadata/` and `data/` beneath it |
 | Build | the `iceberg` feature, which implies `parquet` |
-| Rust | `yggdryl::iceberg`: `Table` (`create`, `open`, `open_or_create`, `scan`, `scan_matching`, `plan_matching`, `commit_append`, `commit_overwrite`, `commit_merge`, `update_schema`, `compact`), `PartitionSpec`, `PartitionField`, `Transform`, `SortOrder`, `SchemaUpdate`, `IcebergOptions` and the `Catalog` over folders of tables |
-| Python | `yggdryl.iceberg`: `Table` (`create`, `open`, `scan`, `scan_matching`, `plan_matching`, `append`, `overwrite`, `merge`, `update_schema`, `compact`), `PartitionSpec`, `SchemaUpdate`, `IcebergOptions`, `Catalog` |
-| JavaScript | `iceberg`: `Table` (`create`, `open`, `scan`, `scanMatching`, `planMatching`, `append`, `overwrite`, `merge`, `updateSchema`, `compact`), `PartitionSpec`, `IcebergOptions`, `Catalog` |
+| Rust | `yggdryl::iceberg`: `IcebergTable` (`create`, `open`, `open_or_create`, `scan`, `scan_matching`, `plan_matching`, `commit_append`, `commit_overwrite`, `commit_merge`, `update_schema`, `compact`), `PartitionSpec`, `PartitionField`, `Transform`, `SortOrder`, `SchemaUpdate`, `IcebergOptions`; `IcebergCatalog` and `IcebergNamespace`, the [warehouse](../warehouse/index.md) implementations over a folder of namespaces of tables, `IcebergTable` the `Table` they answer |
+| Python | `yggdryl.iceberg`: `IcebergTable` (`create`, `open_or_create`, the constructor `IcebergTable(root)` that opens one, `scan`, `scan_matching`, `plan_matching`, `append`, `overwrite`, `merge`, `update_schema`, `compact`), `PartitionSpec`, `SchemaUpdate`, `IcebergOptions`; `IcebergCatalog`, `IcebergNamespace` and `IcebergTable` the `Catalog`, `Namespace` and `Table` subclasses a warehouse folder answers |
+| JavaScript | `iceberg`: `IcebergTable` (`create`, `open`, `scan`, `scanMatching`, `planMatching`, `append`, `overwrite`, `merge`, `updateSchema`, `compact`), `PartitionSpec`, `IcebergOptions`; `IcebergCatalog` and `IcebergNamespace` over a warehouse folder, `IcebergTable.from(table)` the Iceberg table a `warehouse.Table` holds |
 | Settings | `IcebergOptions`, each resolved from the call, then the table property, then the default: `read.parallelism`, `write.parallelism`, `write.target-file-size-bytes` and the commit retries among them; a write's `RecordOptions` add `commit_batch_num` and `num_threads` |
 
 A table lives in one folder: `metadata/` and `data/`, no catalog required.
@@ -31,7 +31,7 @@ A table is opened from its folder - its newest metadata document, through the ve
     use std::sync::Arc;
 
     use arrow_array::{Array as _, Int64Array, RecordBatch, StringArray};
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, IcebergTable, assign_field_ids};
     use yggdryl::local::LocalFolder;
     use yggdryl::{arrow, DataType, StructType};
 
@@ -46,7 +46,7 @@ A table is opened from its folder - its newest metadata document, through the ve
 
     // Four commits into a venue-partitioned table: one manifest each.
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+    let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
     for (id, venue) in [(1_i64, "XNAS"), (2, "XNYS"), (3, "XLON"), (4, "XLON")] {
         let batch = RecordBatch::try_new(
             schema.clone().into_arrow_schema()?,
@@ -56,7 +56,7 @@ A table is opened from its folder - its newest metadata document, through the ve
     }
 
     // A table is opened from its folder, with no catalog in between.
-    let table = Table::open(LocalFolder::new(&path)?)?;
+    let table = IcebergTable::open(LocalFolder::new(&path)?)?;
 
     // The manifest list's partition summaries settle a predicate on the
     // partition column before a manifest is opened.
@@ -84,7 +84,7 @@ A table is opened from its folder - its newest metadata document, through the ve
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table
+    from yggdryl.iceberg import IcebergTable
 
     schema = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -93,12 +93,12 @@ A table is opened from its folder - its newest metadata document, through the ve
     root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
 
     # Four commits into a venue-partitioned table: one manifest each.
-    created = Table.create(root, schema, ["venue"])
+    created = IcebergTable.create(root, schema, ["venue"])
     for identifier, venue in ((1, "XNAS"), (2, "XNYS"), (3, "XLON"), (4, "XLON")):
         created.append(pa.record_batch({"id": [identifier], "venue": [venue]}, schema=schema))
 
     # A table is opened from its folder, with no catalog in between.
-    table = Table.open(root)
+    table = IcebergTable(root)
 
     # The manifest list's partition summaries settle a predicate on the
     # partition column before a manifest is opened.
@@ -126,7 +126,7 @@ A table is opened from its folder - its newest metadata document, through the ve
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
     // Four commits into a venue-partitioned table: one manifest each.
-    const created = iceberg.Table.create(root, schema, ['venue'])
+    const created = iceberg.IcebergTable.create(root, schema, ['venue'])
     for (const [id, venue] of [[1n, 'XNAS'], [2n, 'XNYS'], [3n, 'XLON'], [4n, 'XLON']]) {
       created.append(
         new arrow.Table({
@@ -137,7 +137,7 @@ A table is opened from its folder - its newest metadata document, through the ve
     }
 
     // A table is opened from its folder, with no catalog in between.
-    const table = iceberg.Table.open(root)
+    const table = iceberg.IcebergTable.open(root)
 
     // The manifest list's partition summaries settle a predicate on the
     // partition column before a manifest is opened.
@@ -156,14 +156,14 @@ A table is opened from its folder - its newest metadata document, through the ve
 
 A write commits a snapshot: an append keeps every row the table holds, an overwrite replaces them, and a merge updates the rows its key matches and appends the rest. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row, and cuts each partition's rows into data files of about the target file size (`write.target-file-size-bytes`) as `yggdryl::arrow::memory_size` measures them before encoding - one file for a partition under it; the target cuts files, never commits. A commit writes its partition groups on `num_threads` threads at once where the write's options state it, else on `write.parallelism`, else `read.parallelism`, else every thread the host offers, each group's file encoding its columns on its share of them. New data files are Parquet unless `data_mime_type` names another encoding, and a scan reads each file as its manifest entry records, so one table can mix them.
 
-A write through the record doors - `write_serie` and its three intents, the `*_arrow_reader` family, a folder addressing the table - commits **once**, when its source ends: every partition's rows are held as the chunks they arrived in - a batch falling whole in one partition the batch itself, a run of its rows a slice, interleaved rows one take - settled under the process [spill bound](../types/serie.md#spilling-to-disk) as they arrive, so an overwrite of any length is one atomic snapshot and its memory is the bound, not the stream. `commit_batch_num = N` commits every `N` whole batches instead, which paces a stream whose rows would outgrow the spill folder; an overwrite's first commit then replaces and the rest append, and an append or a merge keeps its intent in every commit. Where the table declares a sort order, each partition's rows are sorted as a whole by it - stable, through [`ChunkedSerie::into_sort_by`](../types/chunked-serie.md#sorting-uniqueness-and-partitions), each chunk sorted on its own and the chunks merged - unless the group is already in that order: a stream whose root [declares](../types/serie.md#a-declared-order) it, proven as it lands, or a group read once chunk by chunk and edge by edge, is written as it arrived. The Python and JavaScript `Table.append` and `Table.overwrite` hold their rows under the same bound and commit once too.
+A write through the record doors - `write_serie` and its three intents, the `*_arrow_reader` family, a folder addressing the table - commits **once**, when its source ends: every partition's rows are held as the chunks they arrived in - a batch falling whole in one partition the batch itself, a run of its rows a slice, interleaved rows one take - settled under the process [spill bound](../types/serie.md#spilling-to-disk) as they arrive, so an overwrite of any length is one atomic snapshot and its memory is the bound, not the stream. `commit_batch_num = N` commits every `N` whole batches instead, which paces a stream whose rows would outgrow the spill folder; an overwrite's first commit then replaces and the rest append, and an append or a merge keeps its intent in every commit. Where the table declares a sort order, each partition's rows are sorted as a whole by it - stable, through [`ChunkedSerie::into_sort_by`](../types/chunked-serie.md#sorting-uniqueness-and-partitions), each chunk sorted on its own and the chunks merged - unless the group is already in that order: a stream whose root [declares](../types/serie.md#a-declared-order) it, proven as it lands, or a group read once chunk by chunk and edge by edge, is written as it arrived. The Python and JavaScript `IcebergTable.append` and `IcebergTable.overwrite` hold their rows under the same bound and commit once too.
 
 A commit beaten by another writer rebases where that is safe: an append and a metadata-only commit reload the winner and re-apply their intent, with jittered backoff bounded by `commit_retries` and `commit_total_timeout_ms`. An overwrite, a merge or a compaction cannot - it planned against files the winner may have replaced, and its input is already consumed - so after the same bounded waits it fails with `CommitConflict` naming both versions, the table left as the winner made it, and the caller re-reads and retries. A failed commit changes nothing a reader sees; at worst it leaves data files no snapshot names.
 
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, IcebergTable, assign_field_ids};
     use yggdryl::local::LocalFolder;
     use yggdryl::{StructType, arrow, DataType};
 
@@ -182,10 +182,10 @@ A commit beaten by another writer rebases where that is safe: an append and a me
 
     // A table is created in a folder, and a folder is all it ever touches.
     let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+    let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
 
     // A table that has never been written to has no current snapshot.
-    assert!(table.current_snapshot().is_none());
+    assert!(table.current_snapshot()?.is_none());
     assert_eq!(table.scan(None)?.count(), 0);
 
     let batch = RecordBatch::try_new(
@@ -197,12 +197,12 @@ A commit beaten by another writer rebases where that is safe: an append and a me
     )?;
     table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
-    let snapshot = table.current_snapshot().expect("a snapshot");
+    let snapshot = table.current_snapshot()?.expect("a snapshot");
     assert_eq!(snapshot.operation(), "append");
     assert_eq!(table.data_files()?.len(), 2, "one file per venue");
 
     // Reopening finds the table again, with no catalog in between.
-    let reopened = Table::open(LocalFolder::new(&path)?)?;
+    let reopened = IcebergTable::open(LocalFolder::new(&path)?)?;
     let rows: usize = reopened.scan(None)?.map(|batch| batch.unwrap().num_rows()).sum();
     assert_eq!(rows, 2);
     ```
@@ -216,7 +216,7 @@ A commit beaten by another writer rebases where that is safe: an append and a me
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import Table
+    from yggdryl.iceberg import IcebergTable
 
     schema = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -226,7 +226,7 @@ A commit beaten by another writer rebases where that is safe: an append and a me
     root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
 
     # A table is created in a folder, and a folder is all it ever touches.
-    table = Table.create(root, schema, ["venue"])
+    table = IcebergTable.create(root, schema, ["venue"])
 
     # A table that has never been written to has no current snapshot.
     assert table.current_snapshot is None
@@ -247,7 +247,7 @@ A commit beaten by another writer rebases where that is safe: an append and a me
     assert len(table.data_files()) == 2, "one file per venue"
 
     # Reopening finds the table again, with no catalog in between.
-    reopened = Table.open(IOBase(root.url.into_path()))
+    reopened = IcebergTable(IOBase(root.url.into_path()))
     assert reopened.scan().read_all().num_rows == 2
     ```
 
@@ -268,7 +268,7 @@ A commit beaten by another writer rebases where that is safe: an append and a me
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
     // A table is created in a folder, and a folder is all it ever touches.
-    const table = iceberg.Table.create(root, schema, ['venue'])
+    const table = iceberg.IcebergTable.create(root, schema, ['venue'])
 
     // A table that has never been written to has no current snapshot.
     assert.equal(table.currentSnapshot, null)
@@ -285,7 +285,7 @@ A commit beaten by another writer rebases where that is safe: an append and a me
     assert.equal(table.dataFiles().length, 2, 'one file per venue')
 
     // Reopening finds the table again, with no catalog in between.
-    const reopened = iceberg.Table.open(root)
+    const reopened = iceberg.IcebergTable.open(root)
     assert.equal(reopened.scan().intoTable().numRows, 2)
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
@@ -317,7 +317,7 @@ A table partitioned by `minutes[15]` writes one data file per quarter hour its r
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::{FormatVersion, PartitionField, PartitionSpec, Table, Transform, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, PartitionField, PartitionSpec, IcebergTable, Transform, assign_field_ids};
     use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, Scalar, StructType, TimeUnit, Timezone, arrow};
 
@@ -345,7 +345,7 @@ A table partitioned by `minutes[15]` writes one data file per quarter hour its r
 
     let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-minutes");
     let _ = std::fs::remove_dir_all(&path);
-    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+    let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
 
     // 00:00, 00:14:59, 00:15 and 01:00 of 1970-01-01: three quarter hours.
     let batch = RecordBatch::try_new(
@@ -377,7 +377,7 @@ A table partitioned by `minutes[15]` writes one data file per quarter hour its r
     import pyarrow as pa
 
     from yggdryl import IOBase
-    from yggdryl.iceberg import PartitionSpec, Table
+    from yggdryl.iceberg import PartitionSpec, IcebergTable
 
     schema = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
@@ -391,7 +391,7 @@ A table partitioned by `minutes[15]` writes one data file per quarter hour its r
         "spec-id": 0,
         "fields": [{"name": "ts_minutes", "transform": "minutes[15]", "source-id": 2, "field-id": 1000}],
     })
-    table = Table.create(root, schema, spec)
+    table = IcebergTable.create(root, schema, spec)
 
     # 00:00, 00:14:59, 00:15 and 01:00 of 1970-01-01: three quarter hours.
     table.append(pa.record_batch(
@@ -423,7 +423,7 @@ A table partitioned by `minutes[15]` writes one data file per quarter hour its r
       'spec-id': 0,
       fields: [{ name: 'ts_minutes', transform: 'minutes[15]', 'source-id': 2, 'field-id': 1000 }],
     })
-    const table = iceberg.Table.create(root, schema, spec)
+    const table = iceberg.IcebergTable.create(root, schema, spec)
 
     // 00:00, 00:14:59, 00:15 and 01:00 of 1970-01-01, as Arrow JS's milliseconds.
     table.append(
@@ -444,12 +444,12 @@ A table partitioned by `minutes[15]` writes one data file per quarter hour its r
 
 ## Declared partitioning and sort order
 
-A table is also created from what its schema declares. `PartitionSpec::from_schema` reads the root's [`PARTITION:by`](../types/protocol.md#partition-columns) - a bare column an identity field, an epoch function over a column its transform, `truncate(col, w)` a truncation, each named by its alias or by the convention (`ts_minutes`, `name_truncate`), anything else refused by name - and `Table::create` reads the root's [`SORT:by`](../types/protocol.md#sort-order) as the default sort order, `SortOrder::for_spec` where it declares none. The declarations are written on the root rather than through `with_partition_by`, because a derived partition value lives in the manifest and not in the rows. `Table::schema()` reports both keys back, `mark_partitions` writing the spec's fields the grammar can spell (a `bucket` has no spelling and is left out) and the default order its keys, so a reopened table says how it partitions and sorts. A partition group whose rows already arrive in the table's order is written as it arrived. The root a scan's rows land under - `read_arrow_field`, `plan_matching` - drops `SORT:by`: the order is how each data file is laid out, and a scan reads the files in plan order, so the stream across them states none; on a [`Serie`](../types/serie.md#a-declared-order) a declared order is proven, and a root declaring one would have every batch edge checked and refused where two files meet.
+A table is also created from what its schema declares. `PartitionSpec::from_schema` reads the root's [`PARTITION:by`](../types/protocol.md#partition-columns) - a bare column an identity field, an epoch function over a column its transform, `truncate(col, w)` a truncation, each named by its alias or by the convention (`ts_minutes`, `name_truncate`), anything else refused by name - and `IcebergTable::create` reads the root's [`SORT:by`](../types/protocol.md#sort-order) as the default sort order, `SortOrder::for_spec` where it declares none. The declarations are written on the root rather than through `with_partition_by`, because a derived partition value lives in the manifest and not in the rows. `IcebergTable::schema()` reports both keys back, `mark_partitions` writing the spec's fields the grammar can spell (a `bucket` has no spelling and is left out) and the default order its keys, so a reopened table says how it partitions and sorts. A partition group whose rows already arrive in the table's order is written as it arrived. The root a scan's rows land under - `read_arrow_field`, `plan_matching` - drops `SORT:by`: the order is how each data file is laid out, and a scan reads the files in plan order, so the stream across them states none; on a [`Serie`](../types/serie.md#a-declared-order) a declared order is proven, and a root declaring one would have every batch edge checked and refused where two files meet.
 
 === "Rust"
 
     ```rust
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, SortOrder, Table, Transform, assign_field_ids};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, SortOrder, IcebergTable, Transform, assign_field_ids};
     use yggdryl::local::LocalFolder;
     use yggdryl::{DataType, StructType, TimeUnit, Timezone};
 
@@ -470,8 +470,8 @@ A table is also created from what its schema declares. `PartitionSpec::from_sche
 
     let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-declared");
     let _ = std::fs::remove_dir_all(&path);
-    let table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema, spec)?;
-    assert_eq!(table.metadata().default_sort_order()?.fields[0].direction, "desc");
+    let table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema, spec)?;
+    assert_eq!(table.metadata()?.default_sort_order()?.fields[0].direction, "desc");
     assert_eq!(table.schema()?.get_metadata("PARTITION:by"), Some(r#"["venue","minutes(ts, 15)"]"#));
     assert_eq!(table.schema()?.get_metadata("SORT:by"), Some(r#"["ts desc","id"]"#));
     let _ = std::fs::remove_dir_all(&path);
@@ -484,7 +484,7 @@ A table is also created from what its schema declares. `PartitionSpec::from_sche
     import tempfile
 
     from yggdryl import DataType, Field, IOBase
-    from yggdryl.iceberg import Table
+    from yggdryl.iceberg import IcebergTable
 
     schema = Field(
         "row",
@@ -500,7 +500,7 @@ A table is also created from what its schema declares. `PartitionSpec::from_sche
     root = pathlib.Path(tempfile.mkdtemp())
 
     # Omitted, the table partitions and sorts as its schema declares.
-    table = Table.create(IOBase(root / "declared"), schema)
+    table = IcebergTable.create(IOBase(root / "declared"), schema)
     assert [(field.name, field.transform) for field in table.spec.fields] == [
         ("venue", "identity"),
         ("ts_minutes", "minutes[15]"),
@@ -509,14 +509,14 @@ A table is also created from what its schema declares. `PartitionSpec::from_sche
     assert table.schema.sort.by == ["ts desc", "id"]
 
     # Stated, the entries are read by the same rule and replace the declaration.
-    stated = Table.create(IOBase(root / "stated"), schema, ["days(ts)", "truncate(venue, 4) as prefix"])
+    stated = IcebergTable.create(IOBase(root / "stated"), schema, ["days(ts)", "truncate(venue, 4) as prefix"])
     assert [(field.name, field.transform) for field in stated.spec.fields] == [
         ("ts_day", "day"),
         ("prefix", "truncate[4]"),
     ]
 
     # `None` partitions nothing, whatever the schema declares.
-    assert Table.create(IOBase(root / "flat"), schema, None).spec.is_unpartitioned()
+    assert IcebergTable.create(IOBase(root / "flat"), schema, None).spec.is_unpartitioned()
     ```
 
 === "JavaScript"
@@ -542,7 +542,7 @@ A table is also created from what its schema declares. `PartitionSpec::from_sche
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
 
     // Omitted, the table partitions and sorts as its schema declares.
-    const table = iceberg.Table.create(path.join(root, 'declared'), schema)
+    const table = iceberg.IcebergTable.create(path.join(root, 'declared'), schema)
     assert.deepEqual(
       table.spec.fields.map((field) => [field.name, field.transform]),
       [['venue', 'identity'], ['ts_minutes', 'minutes[15]']],
@@ -551,19 +551,19 @@ A table is also created from what its schema declares. `PartitionSpec::from_sche
     assert.deepEqual(table.schema.sort.by, ['ts desc', 'id'])
 
     // Stated, the entries are read by the same rule and replace the declaration.
-    const stated = iceberg.Table.create(path.join(root, 'stated'), schema, ['days(ts)', 'truncate(venue, 4) as prefix'])
+    const stated = iceberg.IcebergTable.create(path.join(root, 'stated'), schema, ['days(ts)', 'truncate(venue, 4) as prefix'])
     assert.deepEqual(
       stated.spec.fields.map((field) => [field.name, field.transform]),
       [['ts_day', 'day'], ['prefix', 'truncate[4]']],
     )
 
     // `null` partitions nothing, whatever the schema declares.
-    assert.equal(iceberg.Table.create(path.join(root, 'flat'), schema, null).spec.isUnpartitioned(), true)
+    assert.equal(iceberg.IcebergTable.create(path.join(root, 'flat'), schema, null).spec.isUnpartitioned(), true)
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-`Table.create` and `open_or_create` take the partitioning as a `PartitionSpec` or as `PARTITION:by` entries - Python's `partition_by`, JavaScript's `partitionBy`, each entry its text, in Python a `Term` or a `(term, alias)` pair too - read by `PartitionSpec::from_schema`'s rule, so a refusal names the entry. Omitted, the schema's own `PARTITION:by` is read; `None` in Python and `null` in JavaScript - or an empty list - partition nothing whatever the schema declares. The default sort order is the schema's `SORT:by` either way.
+`IcebergTable.create` and `open_or_create` take the partitioning as a `PartitionSpec` or as `PARTITION:by` entries - Python's `partition_by`, JavaScript's `partitionBy`, each entry its text, in Python a `Term` or a `(term, alias)` pair too - read by `PartitionSpec::from_schema`'s rule, so a refusal names the entry. Omitted, the schema's own `PARTITION:by` is read; `None` in Python and `null` in JavaScript - or an empty list - partition nothing whatever the schema declares. The default sort order is the schema's `SORT:by` either way.
 
 ## Schema evolution
 
@@ -575,7 +575,7 @@ A `SchemaUpdate` records column operations - add, rename, drop, promote - and on
     use std::sync::Arc;
 
     use arrow_array::{Int32Array, RecordBatch};
-    use yggdryl::iceberg::{assign_field_ids, FormatVersion, PartitionSpec, SchemaUpdate, Table};
+    use yggdryl::iceberg::{assign_field_ids, FormatVersion, PartitionSpec, SchemaUpdate, IcebergTable};
     use yggdryl::local::LocalFolder;
     use yggdryl::{arrow, DataType, StructType};
 
@@ -584,17 +584,17 @@ A `SchemaUpdate` records column operations - add, rename, drop, promote - and on
     assign_field_ids(&mut schema, 1)?;
     let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-evolve");
     let _ = std::fs::remove_dir_all(&path);
-    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), PartitionSpec::unpartitioned())?;
+    let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), PartitionSpec::unpartitioned())?;
     let batch = RecordBatch::try_new(schema.into_arrow_schema()?, vec![Arc::new(Int32Array::from(vec![1]))])?;
     table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
-    let mut update = SchemaUpdate::from_metadata(table.metadata())?;
+    let mut update = SchemaUpdate::from_metadata(table.metadata()?)?;
     update.add_column("", DataType::utf8().nullable_field("note"));
     update.update_type("id", DataType::Int64);
     assert_eq!(table.update_schema(&update)?, 1);
 
     // Nothing recorded, nothing written: the current id comes back.
-    let unchanged = SchemaUpdate::from_metadata(table.metadata())?;
+    let unchanged = SchemaUpdate::from_metadata(table.metadata()?)?;
     assert_eq!(table.update_schema(&unchanged)?, 1);
 
     let first = table.scan(None)?.next().expect("one batch")?;
@@ -612,10 +612,10 @@ A `SchemaUpdate` records column operations - add, rename, drop, promote - and on
     import pyarrow as pa
 
     from yggdryl import Field, IOBase
-    from yggdryl.iceberg import Table
+    from yggdryl.iceberg import IcebergTable
 
     root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
-    table = Table.create(root, pa.schema([pa.field("id", pa.int32(), nullable=False)]))
+    table = IcebergTable.create(root, pa.schema([pa.field("id", pa.int32(), nullable=False)]))
     table.append(pa.table({"id": pa.array([1], pa.int32())}))
 
     schema_id = table.update_schema().add_column("", Field("note", "utf8")).update_type("id", "int64").commit()
@@ -639,7 +639,7 @@ A `SchemaUpdate` records column operations - add, rename, drop, promote - and on
     const { Field, fields, iceberg } = require('yggdryl')
 
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
-    const table = iceberg.Table.create(root, fields.struct('row', [new Field('id', 'int32', false)], { nullable: false }))
+    const table = iceberg.IcebergTable.create(root, fields.struct('row', [new Field('id', 'int32', false)], { nullable: false }))
     table.append(new arrow.Table({ id: arrow.vectorFromArray([1], new arrow.Int32()) }))
 
     const schemaId = table.updateSchema().addColumn('', Field.from('note: utf8')).updateType('id', 'int64').commit()
@@ -653,6 +653,169 @@ A `SchemaUpdate` records column operations - add, rename, drop, promote - and on
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
+
+## Catalog
+
+A warehouse folder is a catalog on the [warehouse](../warehouse/index.md) abstraction, laid out the way `HadoopCatalog` lays one out: `IcebergCatalog` is the `Catalog` implementation, a folder under the warehouse an `IcebergNamespace`, a folder laid out as a table the `IcebergTable` a generic `Table` holds, so `lake.nyc.taxis` is the folder `nyc/taxis` under the warehouse registered as `lake`. The views, the dotted descent, the registry and a plan's `from lake.nyc.taxis` are the generic ones; what the implementation adds is the storage. Namespaces nest to any depth, so a catalog states no `namespace_levels`. Each level keeps its stored properties in its own document - `metadata/catalog.json` under the warehouse, `metadata/namespace.json` under a namespace - read beneath what was stated and written by `update_properties`, which refuses the reserved `ICEBERG:` prefix; a table's properties ride its metadata document, so its `update_properties` is refused in favour of `commit_metadata_changes`, and what was stated for it at creation is answered over them and written nowhere. Constructing any of the three touches nothing, and every verb runs against the folder when it is asked, so two catalogs over one folder see the same tables. `Catalog::from_url` answers one under `type = hadoop`, PyIceberg's spelling.
+
+A listing classifies each entry with one listing of its `metadata/` and no read: a folder holding a `version-hint.text` or a `*.metadata.json` is a table, every other folder a namespace, the reserved `metadata` name skipped and refused as a name. A table answered is described at its folder and reads its current document on the first verb that needs it. `create_namespace` writes the namespace document; `create_table` is `IcebergTable::create` under `PartitionSpec::from_schema`, over the schema as Iceberg expresses it (`into_scheme_compat`): a dictionary layout is stored as the string it encodes and the rows cast to it on the way in, `float16` is widened to `float`, and a type Iceberg lacks - an interval - is refused by path with nothing created. A create descends through existing namespaces only: `tables().create("sales.eu.orders", ..)` under a missing `sales` is the absence of `sales`, never a namespace made on the way, and the view's `append` and `overwrite` create the table from the rows' own schema under the same rule.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::holder::Holder;
+    use yggdryl::iceberg::IcebergCatalog;
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{
+        arrow, Catalog, DataType, IOMedia, ObjectValue, Properties, StructType, Table, TableValue, Warehouse,
+    };
+
+    let root = LocalFolder::temporary()?.path()?.join(format!("yggdryl-docs-iceberg-catalog-{}", std::process::id()));
+    let schema = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue").with_partition(true),
+    ])?)
+    .required_field("row");
+
+    // A warehouse folder is a catalog; constructing one touches nothing, and
+    // what it states reaches every object under it without being written.
+    let catalog = Catalog::from(
+        IcebergCatalog::bound("lake", Holder::folder(&root)?)
+            .with_properties(Properties::new().with_property("owner", "ops")),
+    );
+    assert!(!root.exists());
+
+    // A create descends through existing namespaces only, so the namespace
+    // is made before the table under it.
+    let nyc = catalog.namespaces().create("nyc", &Properties::new())?;
+    let mut taxis = catalog.tables().create("nyc.taxis", &schema, &Properties::new())?;
+    assert_eq!(taxis.to_string(), "lake.nyc.taxis");
+    assert_eq!(taxis.storage(), "table");
+    assert!(matches!(taxis, Table::Iceberg(_)));
+    assert_eq!(nyc.properties()?.get("owner"), Some("ops"));
+    assert_eq!(taxis.properties()?.get("owner"), Some("ops"));
+
+    // A table answers every record verb, partitioned as its schema declares.
+    let batch = RecordBatch::try_new(
+        schema.clone().into_arrow_schema()?,
+        vec![
+            Arc::new(Int64Array::from(vec![1, 2])),
+            Arc::new(StringArray::from(vec![Some("XNAS"), Some("XNYS")])),
+        ],
+    )?;
+    taxis.append_arrow_reader(arrow::batch_reader(batch.schema(), [batch]), &taxis.record_options()?)?;
+    assert_eq!(taxis.row_size()?, 2);
+
+    // The same folder resolves by dotted path, one listing per level and no
+    // read, through a registry or the catalog itself.
+    let mut warehouse = Warehouse::new();
+    warehouse.register(catalog)?;
+    assert_eq!(warehouse.table("lake.nyc.taxis")?.path(), taxis.path());
+    let names = warehouse.catalog("lake")?.namespaces().iter().collect::<yggdryl::Result<Vec<_>>>()?;
+    assert_eq!(names, ["nyc"]);
+    std::fs::remove_dir_all(&root)?;
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import Catalog, Warehouse
+    from yggdryl.iceberg import IcebergCatalog, IcebergNamespace, IcebergTable
+
+    root = pathlib.Path(tempfile.mkdtemp()) / "warehouse"
+    schema = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("venue", pa.string())])
+
+    # A warehouse folder is a catalog; constructing one touches nothing, and
+    # what it states reaches every object under it without being written.
+    catalog = IcebergCatalog("lake", root, owner="ops")
+    assert isinstance(catalog, Catalog) and not root.exists()
+
+    # A create descends through existing namespaces only, so the namespace is
+    # made before the table under it; each object is the Iceberg subclass of
+    # its kind.
+    nyc = catalog.namespaces.create("nyc")
+    taxis = nyc.tables.create("taxis", schema)
+    assert type(nyc) is IcebergNamespace and type(taxis) is IcebergTable
+    assert str(taxis) == "lake.nyc.taxis" and taxis.storage == "table"
+    assert taxis.properties == {"owner": "ops"}
+
+    # The view's append creates on first write, from the rows' own schema; a
+    # table answers every record verb.
+    catalog.tables.append("nyc.zones", pa.table({"id": [1, 2], "zone": ["a", "b"]}))
+    assert sorted(nyc.tables) == ["taxis", "zones"]
+    assert catalog.table("nyc.zones").read_arrow_reader().read_all().num_rows == 2
+
+    # The same folder resolves by dotted path through a registry.
+    warehouse = Warehouse()
+    warehouse.register(catalog)
+    assert warehouse.table("lake.nyc.taxis") == taxis
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg, warehouse } = require('yggdryl')
+
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'warehouse')
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], {
+      nullable: false,
+    })
+
+    // A warehouse folder is a catalog; constructing one touches nothing, and
+    // what it states reaches every object under it without being written.
+    const catalog = new iceberg.IcebergCatalog('lake', root, { properties: { owner: 'ops' } })
+    assert.ok(!fs.existsSync(root))
+
+    // A create descends through existing namespaces only, so the namespace is
+    // made before the table under it.
+    const nyc = catalog.namespaces().create('nyc')
+    const taxis = catalog.tables().create('nyc.taxis', schema)
+    assert.equal(String(taxis), 'lake.nyc.taxis')
+    assert.equal(taxis.implementation, 'IcebergTable')
+    assert.deepEqual(taxis.properties, { owner: 'ops' })
+
+    // The view's append creates on first write, from the rows' own schema;
+    // `IcebergTable.from` is the Iceberg table a generic one holds.
+    const zones = catalog.tables().append(
+      'nyc.zones',
+      new arrow.Table({
+        id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+        zone: arrow.vectorFromArray(['a', 'b'], new arrow.Utf8()),
+      }),
+    )
+    assert.equal(iceberg.IcebergTable.from(zones).scan().intoTable().numRows, 2)
+    assert.deepEqual([...nyc.tables().keys()], ['taxis', 'zones'])
+
+    // The same folder resolves by dotted path through a registry.
+    const registry = new warehouse.Warehouse()
+    registry.register(catalog.intoCatalog())
+    assert.ok(registry.table('lake.nyc.taxis').equals(taxis))
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+The cost is stated in store calls and pinned in `rust/tests/iceberg/catalog/mod_.rs` (`mod call_counts`) on a counted Arrow filesystem:
+
+| Operation | Calls |
+| --- | --- |
+| `tables().get("sales.orders")` | per level one presence answer, one listing of the entry's `metadata/` to tell a table from a namespace, and one read of the level's own document for what its child inherits; the table's own document is not read: `file_info=2 list=2 open_input_stream=2` |
+| the table's first `metadata()` | the version hint and the document it names, `file_info=1 open_input_stream=2`; every later one `none` |
+| a missing table | the levels above it, then one presence answer and nothing listed or read for it: `file_info=2 list=1 open_input_stream=2` |
+| `tables().create("a.b.c.orders", ..)` | three levels at that cost, the namespace's document for what the table inherits, then the create: one presence answer, one listing of `metadata/`, and the writes with the missing parent repaired once - `create_dir=1 delete_file=1 file_info=4 list=4 open_input_stream=4 open_output_stream=4`; nothing walks the ancestry twice |
+| `tables().open_or_create(..)` | absent, the get to the missing child then the create, `list=3` where the create alone lists four; present, exactly what `get` costs, because it is the same attempt |
 
 ## Performance
 

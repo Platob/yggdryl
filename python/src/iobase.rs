@@ -139,6 +139,9 @@ pub(crate) enum Role {
     Coded(Codec),
     Text,
     Media(crate::media::handles::Encoding),
+    /// A warehouse object: a catalog, a namespace or a table, the class
+    /// below its kind naming the implementation.
+    Warehouse(crate::warehouse::Implementation),
     /// A holder this build has no class for.
     Held,
 }
@@ -165,6 +168,15 @@ impl Role {
             Holder::Text(_) => Self::Text,
             Holder::Coded(coded) => Self::Coded(coded.codec()),
             Holder::Media(media) => Self::Media(crate::media::handles::Encoding::of(media)),
+            Holder::Catalog(catalog) => {
+                Self::Warehouse(crate::warehouse::Implementation::of_catalog(catalog))
+            }
+            Holder::Namespace(namespace) => {
+                Self::Warehouse(crate::warehouse::Implementation::of_namespace(namespace))
+            }
+            Holder::Table(table) => {
+                Self::Warehouse(crate::warehouse::Implementation::of_table(table))
+            }
             // `Holder` is non-exhaustive, so a variant added to the core after
             // this build arrives here. Answering the base class is the honest
             // reading - it holds the whole contract - but it also means a new
@@ -204,6 +216,7 @@ impl Role {
             Self::Media(Encoding::Xmla) => "Xmla",
             Self::Media(Encoding::Csv) => "Csv",
             Self::Media(Encoding::Excel) => "Excel",
+            Self::Warehouse(implementation) => implementation.class_name(),
             Self::Held => "IOBase",
         }
     }
@@ -242,6 +255,9 @@ pub(crate) fn describe(py: Python<'_>, holder: Holder) -> PyResult<Py<PyAny>> {
         Role::Text => encodings::describe_text(py, base)?,
         Role::Coded(codec) => codings::describe(py, base, codec)?,
         Role::Media(encoding) => encodings::describe(py, base, encoding)?,
+        Role::Warehouse(implementation) => {
+            crate::warehouse::describe_object(py, base, implementation)?
+        }
         Role::Held => Py::new(py, base)?.into_any(),
     })
 }

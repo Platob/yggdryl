@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use yggdryl::SortOptions;
 use yggdryl::expression::{Expression, Selector, Term};
 use yggdryl::expression::{IntoPlan, Location, Ordering, Plan, Source, Target, Verb, Write};
-use yggdryl::{DataType, Field, Scalar, StructType, Url};
+use yggdryl::{DataType, Field, Scalar, StructType, Url, Warehouse};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -611,7 +611,169 @@ mod streams {
     use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
     use yggdryl::holder::Holder;
     use yggdryl::media::IORecordOptions;
-    use yggdryl::{IOBase, MediaType, MimeType};
+    use yggdryl::{
+        IOBase, IOMedia, MediaTable, MediaType, MimeType, ObjectValue, Properties, SystemWarehouse,
+    };
+
+    #[test]
+    fn a_path_resolves_through_the_warehouse_it_is_given() {
+        let scratch = Scratch::new("warehouse");
+        std::fs::write(scratch.0.join("trades.csv"), b"id,name\n1,a\n2,b\n").unwrap();
+        let url: Url = scratch.url("trades.csv").parse().unwrap();
+        let mut warehouse = Warehouse::new();
+        warehouse
+            .register(
+                MediaTable::new("lake.eu.trades", url.clone())
+                    .unwrap()
+                    .with_properties(Properties::new().with_property("tier", "hot")),
+            )
+            .unwrap();
+        // A read pushes its sections into the registered table.
+        let read: Plan = "select id from lake.eu.trades where id = 2"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            ids(&collected(read.execute_in(&warehouse).unwrap()).unwrap()),
+            [2]
+        );
+        // The target's own properties are stated on the table it names,
+        // over the table's.
+        let target =
+            Target::parse("lake.eu.trades with (tier = 'cold', codec = 'identity')").unwrap();
+        let Holder::Table(table) = target.holder(&warehouse, None).unwrap() else {
+            panic!("a path holds the table");
+        };
+        let properties = table.properties().unwrap();
+        assert_eq!(properties.get("tier"), Some("cold"));
+        assert_eq!(properties.get("codec"), Some("identity"));
+        // A URL inherits what the warehouse states for it, its own winning.
+        let typed = Target::parse(&format!("'{url}' with (tier = 'warm')")).unwrap();
+        assert_eq!(
+            typed
+                .properties()
+                .inherit(&warehouse.properties_for(&url))
+                .get("tier"),
+            Some("warm")
+        );
+        assert_eq!(warehouse.properties_for(&url).get("tier"), Some("hot"));
+        // A namespace or a catalog in a `from` is refused naming its kind.
+        for (path, kind) in [("lake.eu", "namespace"), ("lake", "catalog")] {
+            let error = Target::parse(path)
+                .unwrap()
+                .holder(&warehouse, None)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(kind) && error.contains(path), "{error}");
+        }
+        // Absence names the path and says what to do.
+        let error = Target::parse("lake.eu.fills")
+            .unwrap()
+            .holder(&warehouse, None)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("expected a table at \"lake.eu.fills\", got nothing"),
+            "{error}"
+        );
+        assert!(
+            error.contains("register the table or name a URL"),
+            "{error}"
+        );
+        // A write to an absent path asks the namespace above it to create the
+        // table; a memory namespace creates none, and says so by name.
+        let write: Plan = "insert into lake.eu.fills select * from lake.eu.trades"
+            .parse()
+            .unwrap();
+        let error = write
+            .execute_in(&warehouse)
+            .err()
+            .expect("refused")
+            .to_string();
+        assert!(error.contains("creating a table"), "{error}");
+        assert!(error.contains("MemoryNamespace"), "{error}");
+        // A write to a registered table lands where the table is, creating
+        // its file as a write to a URL does.
+        let copy: Url = scratch.url("copy.csv").parse().unwrap();
+        warehouse
+            .register(MediaTable::new("lake.eu.copy", copy).unwrap())
+            .unwrap();
+        let write: Plan = "insert into lake.eu.copy select * from lake.eu.trades"
+            .parse()
+            .unwrap();
+        collected(write.execute_in(&warehouse).unwrap()).unwrap();
+        assert_eq!(
+            warehouse.table("lake.eu.copy").unwrap().row_size().unwrap(),
+            2
+        );
+        let back: Plan = "select id from lake.eu.copy order by id desc"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            ids(&collected(back.execute_in(&warehouse).unwrap()).unwrap()),
+            [2, 1]
+        );
+    }
+
+    #[test]
+    fn a_join_source_resolves_through_the_warehouse_like_a_from() {
+        let scratch = Scratch::new("joins");
+        std::fs::write(scratch.0.join("trades.csv"), b"id,name\n1,a\n2,b\n3,c\n").unwrap();
+        std::fs::write(scratch.0.join("venues.csv"), b"id,venue\n1,XNAS\n3,XLON\n").unwrap();
+        let mut warehouse = Warehouse::new();
+        for name in ["trades", "venues"] {
+            let url: Url = scratch.url(&format!("{name}.csv")).parse().unwrap();
+            warehouse
+                .register(MediaTable::new(format!("lake.eu.{name}").as_str(), url).unwrap())
+                .unwrap();
+        }
+        // The probe and the build side are both registered tables, read
+        // through the warehouse the plan runs in.
+        let joined: Plan =
+            "select id, venue from lake.eu.trades join lake.eu.venues using (id) order by id"
+                .parse()
+                .unwrap();
+        assert_eq!(
+            ids(&collected(joined.execute_in(&warehouse).unwrap()).unwrap()),
+            [1, 3]
+        );
+        // A join source with no table registered at its path is reported at
+        // that location, as a `from` is.
+        let absent: Plan = "select * from lake.eu.trades join lake.eu.nowhere using (id)"
+            .parse()
+            .unwrap();
+        let error = absent
+            .execute_in(&warehouse)
+            .err()
+            .expect("refused")
+            .to_string();
+        assert!(error.contains("$.lake.eu.nowhere"), "{error}");
+        assert!(
+            error.contains("expected a table at \"lake.eu.nowhere\", got nothing"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn execute_resolves_against_the_system_warehouse() {
+        let scratch = Scratch::new("system");
+        std::fs::write(scratch.0.join("trades.csv"), b"id,name\n1,a\n2,b\n3,c\n").unwrap();
+        let url: Url = scratch.url("trades.csv").parse().unwrap();
+        let catalog = format!("plan_test_{}", std::process::id());
+        let path = format!("{catalog}.eu.trades");
+        SystemWarehouse::register(MediaTable::new(path.as_str(), url).unwrap()).unwrap();
+        let read: Plan = format!("select id from {path} where id > 1")
+            .parse()
+            .unwrap();
+        let outcome = read.execute().and_then(collected);
+        SystemWarehouse::unregister([catalog.as_str()]).unwrap();
+        assert_eq!(ids(&outcome.unwrap()), [2, 3]);
+        // Unregistered, the path is nothing again.
+        let error = read.execute().err().expect("refused").to_string();
+        assert!(
+            error.contains("register the table or name a URL"),
+            "{error}"
+        );
+    }
 
     /// A directory of this process alone, removed when the test is done.
     struct Scratch(std::path::PathBuf);
@@ -1297,7 +1459,7 @@ mod streams {
         let plain = scratch.url("plain");
         let typed = format!("'{plain}' with (media_type = 'application/vnd.apache.arrow.stream')");
         let target = Target::parse(&typed).unwrap();
-        let holder = target.holder(None).unwrap();
+        let holder = target.holder(&Warehouse::new(), None).unwrap();
         assert_eq!(holder.media_type(), &MediaType::new(MimeType::ARROW_STREAM));
         // The property types an extensionless store for a write and a read.
         let plan: Plan = format!("insert into {typed}").parse().unwrap();
@@ -1310,12 +1472,15 @@ mod streams {
         // Parts resolve against a base; without one they cannot be held.
         let error = Target::parse("raw.trades")
             .unwrap()
-            .holder(None)
+            .holder(&Warehouse::new(), None)
             .unwrap_err()
             .to_string();
         assert!(error.contains("raw.trades"), "{error}");
         let base: Url = scratch.url("").parse().unwrap();
-        let held = Target::parse("plain").unwrap().holder(Some(&base)).unwrap();
+        let held = Target::parse("plain")
+            .unwrap()
+            .holder(&Warehouse::new(), Some(&base))
+            .unwrap();
         assert_eq!(held.url().unwrap().to_string(), plain);
         // The knobs that shape a read or write are read from the properties.
         let target = Target::parse(&format!(
@@ -1333,7 +1498,7 @@ mod streams {
         let plain = scratch.url("trades.arrows");
         let holder = Target::parse(&format!("'{plain}'"))
             .unwrap()
-            .holder(None)
+            .holder(&Warehouse::new(), None)
             .unwrap();
         // Unstated, the destination keeps its own cadence.
         let options = Target::parse(&format!("'{plain}'"))

@@ -1,4 +1,4 @@
-//! Table metadata: the JSON document that is the table.
+//! IcebergTable metadata: the JSON document that is the table.
 //!
 //! Everything else in a table - manifests, data files, the directory layout -
 //! is reachable only from this one document, which is why committing a change

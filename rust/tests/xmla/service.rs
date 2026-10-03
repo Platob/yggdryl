@@ -15,10 +15,10 @@ use yggdryl::media::IORecordOptions;
 use yggdryl::media::RecordOptions;
 use yggdryl::soap::{Envelope, FaultCode, Fragment};
 use yggdryl::xmla::{
-    Answer, Catalog, Command, Content, Discover, Execute, PropertyList, Request, RequestType,
-    Response, Restrictions, Service, ServiceOptions, Session,
+    Answer, Command, Content, Discover, Execute, PropertyList, Request, RequestType, Response,
+    Restrictions, Service, ServiceOptions, Session,
 };
-use yggdryl::{DataType, Field, IOBase, IOMedia, MimeType, Scalar, StructType};
+use yggdryl::{DataType, Field, FolderCatalog, IOBase, IOMedia, MimeType, Scalar, StructType};
 
 /// A fresh catalog folder under the temporary directory, named after `label`.
 fn catalog_root(label: &str) -> PathBuf {
@@ -88,7 +88,7 @@ fn service(label: &str) -> Service {
     let root = catalog_root(label);
     seed(&root);
     Service::new(ServiceOptions::new().with_url("http://localhost:8080/xmla")).with_catalog(
-        Catalog::new("market", Holder::folder(&root).expect("the catalog holds"))
+        FolderCatalog::bound("market", Holder::folder(&root).expect("the catalog holds"))
             .with_description("the market catalog"),
     )
 }
@@ -477,6 +477,50 @@ fn a_join_source_resolves_against_the_catalog_as_from_does() {
 }
 
 #[test]
+fn a_url_beside_a_served_catalog_is_outside_it() {
+    // A folder whose name only begins with the catalog's is a sibling, not a
+    // child: the catalog holds a URL on a path boundary or not at all.
+    let root = catalog_root("sibling");
+    seed(&root);
+    let service = Service::new(ServiceOptions::new()).with_catalog(FolderCatalog::bound(
+        "market",
+        Holder::folder(&root).expect("the catalog holds"),
+    ));
+    let mut sibling = root.clone().into_os_string();
+    sibling.push("-evil");
+    let sibling = PathBuf::from(sibling);
+    let _ = std::fs::remove_dir_all(&sibling);
+    let mut leaf = Holder::folder(&sibling)
+        .expect("the sibling holds")
+        .child_by_path("secrets.arrows")
+        .expect("a child path");
+    let batch = trades_batch();
+    leaf.overwrite_arrow_reader(
+        yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+        &RecordOptions::for_mime_type(&MimeType::ARROW_STREAM).expect("IPC options"),
+    )
+    .expect("the sibling's leaf is written");
+    let url = yggdryl::Url::from_path(sibling.join("secrets.arrows")).expect("a URL");
+    for statement in [
+        format!("select * from '{url}'"),
+        format!("select * from trades join '{url}' using (symbol)"),
+    ] {
+        let outside = fault(
+            &service,
+            Execute::statement(statement.as_str())
+                .with_properties(PropertyList::new().with("Catalog", "market")),
+        );
+        assert!(
+            outside.string().contains("-evil"),
+            "{statement}: {}",
+            outside.string()
+        );
+    }
+    let _ = std::fs::remove_dir_all(&sibling);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn execute_refuses_what_it_cannot_run_by_name() {
     let service = service("refusals");
     let unknown = fault(
@@ -832,7 +876,7 @@ fn excel_service(label: &str) -> Service {
             .expect("the table is written");
     }
     Service::new(ServiceOptions::new().with_url("http://127.0.0.1:8080/xmla")).with_catalog(
-        Catalog::new("market", Holder::folder(&root).expect("holds")),
+        FolderCatalog::bound("market", Holder::folder(&root).expect("holds")),
     )
 }
 

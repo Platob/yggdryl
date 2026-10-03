@@ -19,8 +19,8 @@ use yggdryl::IOBase;
 use yggdryl::holder::Buffer;
 use yggdryl::iceberg::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
-    ManifestContent, ManifestEntry, ManifestFile, PartitionSpec, ScanPlan, ScanTask, Snapshot,
-    SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
+    IcebergTable, ManifestContent, ManifestEntry, ManifestFile, PartitionSpec, ScanPlan, ScanTask,
+    Snapshot, SnapshotRef, SortField, SortOrder, TableMetadata, Transform, assign_field_ids,
     read_manifest, read_manifest_for_plan, read_manifest_spec, write_manifest,
 };
 use yggdryl::local::LocalFolder;
@@ -112,7 +112,7 @@ fn plan_schema() -> Field {
 /// one venue skips the manifests whose summaries exclude it outright, and in
 /// every manifest it does open, the other venue's file survives to be excluded
 /// by its partition tuple - so `files_skipped` cannot be zero.
-fn plan_table(label: &str, files: usize) -> Table<LocalFolder> {
+fn plan_table(label: &str, files: usize) -> IcebergTable<LocalFolder> {
     assert!(
         files.is_multiple_of(2),
         "expected an even file count, got {files}"
@@ -121,7 +121,7 @@ fn plan_table(label: &str, files: usize) -> Table<LocalFolder> {
     let _ = std::fs::remove_dir_all(&path);
     let schema = plan_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
@@ -674,11 +674,11 @@ fn compact_benchmarks(criterion: &mut Criterion) {
 /// One append is one commit is one file, so the merge benchmark gets a table
 /// whose per-file id bounds are as tight as bounds can be - which is exactly
 /// what lets the measured upsert carry most files unread.
-fn merge_table(label: &str, files: usize) -> Table<LocalFolder> {
+fn merge_table(label: &str, files: usize) -> IcebergTable<LocalFolder> {
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
     let schema = plan_schema();
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
@@ -764,12 +764,12 @@ fn merge_benchmarks(criterion: &mut Criterion) {
 /// One append per partition is one commit is one file, and every file holds
 /// the same id, so the id bounds cannot tell the partitions apart: only the
 /// partition isolation can keep the measured merge from reading them all.
-fn partitioned_merge_table(label: &str, partitions: usize) -> Table<LocalFolder> {
+fn partitioned_merge_table(label: &str, partitions: usize) -> IcebergTable<LocalFolder> {
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
     let schema = plan_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
@@ -915,7 +915,7 @@ fn streamed_commit_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Elements(rows as u64));
     let sorted = || {
         let _ = std::fs::remove_dir_all(&path);
-        Table::create_sorted(
+        IcebergTable::create_sorted(
             LocalFolder::new(&path).expect("the scratch directory is addressable"),
             FormatVersion::V2,
             schema.clone(),
@@ -955,7 +955,11 @@ fn streamed_commit_benchmarks(criterion: &mut Criterion) {
                             )
                             .expect("the stream appends");
                         assert_eq!(
-                            table.metadata().snapshots().len(),
+                            table
+                                .metadata()
+                                .expect("current metadata")
+                                .snapshots()
+                                .len(),
                             cadence.map_or(1, |every| 8 / every),
                             "one commit per cadence"
                         );
@@ -985,7 +989,7 @@ fn parallel_commit_benchmarks(criterion: &mut Criterion) {
                 bencher.iter_batched(
                     || {
                         let _ = std::fs::remove_dir_all(&path);
-                        let mut table = Table::create(
+                        let mut table = IcebergTable::create(
                             LocalFolder::new(&path).expect("the scratch directory is addressable"),
                             FormatVersion::V2,
                             schema.clone(),
@@ -1040,11 +1044,11 @@ fn read_schema() -> Field {
 /// Each append is one commit is one file of (int64 id, float64 price, utf8
 /// venue from the eight-value pool, timestamp-like int64), so the parallel
 /// read gets files large enough that decode dominates the open.
-fn read_table(label: &str, files: usize, rows: usize) -> Table<LocalFolder> {
+fn read_table(label: &str, files: usize, rows: usize) -> IcebergTable<LocalFolder> {
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
     let schema = read_schema();
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
@@ -1084,7 +1088,7 @@ fn read_table(label: &str, files: usize, rows: usize) -> Table<LocalFolder> {
 }
 
 /// Drain one full scan, counting the rows it yields.
-fn scan_rows(table: &Table<LocalFolder>) -> usize {
+fn scan_rows(table: &IcebergTable<LocalFolder>) -> usize {
     table
         .scan(None)
         .expect("the scan plans")
@@ -1169,7 +1173,7 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
         bencher.iter_batched(
             || {
                 let _ = std::fs::remove_dir_all(&path);
-                Table::create(
+                IcebergTable::create(
                     LocalFolder::new(&path).expect("the scratch directory is addressable"),
                     FormatVersion::V2,
                     schema.clone(),
@@ -1188,7 +1192,7 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
                             // Opened before the gate, so every handle is
                             // equally stale and every commit but the first
                             // has to rebase.
-                            let mut table = Table::open(
+                            let mut table = IcebergTable::open(
                                 LocalFolder::new(path).expect("the table folder is addressable"),
                             )
                             .expect("the contended table opens");
@@ -1238,7 +1242,7 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
         ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, MemoryFileSystem,
         OutputMetadata, RandomAccessReader,
     };
-    use yggdryl::iceberg::Catalog;
+    use yggdryl::iceberg::IcebergCatalog;
 
     /// A memory filesystem that counts every vtable call reaching it.
     #[derive(Debug, Default)]
@@ -1363,16 +1367,39 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
             None,
         )
         .expect("a valid location");
-        (filesystem, Catalog::new(warehouse))
+        (
+            filesystem,
+            yggdryl::Catalog::from(IcebergCatalog::bound(
+                "warehouse",
+                yggdryl::holder::Holder::FsFolder(warehouse),
+            )),
+        )
     };
 
     let mut group = criterion.benchmark_group("catalog_resolve");
 
+    // A create descends through existing namespaces only, so the levels a
+    // table sits under are made before it, each one opened or created.
+    let namespaces = |catalog: &yggdryl::Catalog, path: &str| {
+        let mut dotted = String::new();
+        for part in path.split('.') {
+            if !dotted.is_empty() {
+                dotted.push('.');
+            }
+            dotted.push_str(part);
+            catalog
+                .namespaces()
+                .open_or_create(&dotted, &yggdryl::Properties::new())
+                .expect("a creatable namespace");
+        }
+    };
+
     // One populated catalog for the two read legs.
     let (filesystem, catalog) = counted();
+    namespaces(&catalog, "sales.eu");
     catalog
         .tables()
-        .create("sales.eu.orders", schema())
+        .create("sales.eu.orders", &schema(), &yggdryl::Properties::new())
         .expect("a creatable table");
 
     // The backend-call counts, printed once per leg so the round trips are a
@@ -1424,25 +1451,30 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    // The create leg builds a fresh warehouse per iteration: the point is the
-    // missing three-level ancestry coming into being from the metadata write.
-    let mut ancestry_calls = None;
-    group.bench_function("create/missing-ancestry", |bencher| {
+    // The create leg builds a fresh warehouse per iteration with its three
+    // namespace levels in place before the clock starts: the point is the
+    // create's own descent through them and its writes.
+    let mut create_calls = None;
+    group.bench_function("create/under-three-levels", |bencher| {
         bencher.iter_batched(
-            counted,
+            || {
+                let (filesystem, catalog) = counted();
+                namespaces(&catalog, "a.b.c");
+                (filesystem, catalog)
+            },
             |(filesystem, catalog)| {
                 let before = filesystem.calls.load(Ordering::Relaxed);
                 catalog
                     .tables()
-                    .create("a.b.c.orders", schema())
+                    .create("a.b.c.orders", &schema(), &yggdryl::Properties::new())
                     .expect("a creatable table");
-                ancestry_calls.get_or_insert(filesystem.calls.load(Ordering::Relaxed) - before);
+                create_calls.get_or_insert(filesystem.calls.load(Ordering::Relaxed) - before);
             },
             BatchSize::SmallInput,
         );
     });
-    if let Some(calls) = ancestry_calls {
-        println!("catalog_resolve backend calls: create into missing ancestry = {calls}");
+    if let Some(calls) = create_calls {
+        println!("catalog_resolve backend calls: create under three namespace levels = {calls}");
     }
 
     group.finish();
@@ -1467,7 +1499,9 @@ mod s3 {
     use arrow_array::RecordBatch;
     use criterion::{BatchSize, Criterion, Throughput};
     use yggdryl::arrow::BatchReader;
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, Transform, assign_field_ids};
+    use yggdryl::iceberg::{
+        FormatVersion, IcebergTable, PartitionSpec, Transform, assign_field_ids,
+    };
     use yggdryl::local::LocalFolder;
     use yggdryl::media::RecordOptions;
     use yggdryl::s3::{Credentials, S3File, S3Folder, S3Options, file_with, folder_with};
@@ -1563,11 +1597,11 @@ mod s3 {
     }
 
     /// A fresh venue-partitioned table under `key`.
-    fn table(store: &FakeS3, key: &str) -> Table<S3Folder> {
+    fn table(store: &FakeS3, key: &str) -> IcebergTable<S3Folder> {
         let schema = plan_schema();
         let spec =
             PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
-        Table::create(folder(store, key), FormatVersion::V2, schema, spec)
+        IcebergTable::create(folder(store, key), FormatVersion::V2, schema, spec)
             .expect("the table creates")
     }
 
@@ -1575,7 +1609,7 @@ mod s3 {
         yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()])
     }
 
-    fn scan_rows(table: &Table<S3Folder>, filters: &[(&str, &str)]) -> usize {
+    fn scan_rows(table: &IcebergTable<S3Folder>, filters: &[(&str, &str)]) -> usize {
         table
             .scan_where(filters, None)
             .expect("the scan plans")
@@ -1771,7 +1805,7 @@ mod s3 {
         spec.fields[0].transform = Transform::Hour;
         spec.fields[0].name = "currunix_hour".into();
         let fix_table = |label: &str| {
-            Table::create(
+            IcebergTable::create(
                 folder(&store, &next(label)),
                 FormatVersion::V3,
                 schema.clone(),
@@ -1779,7 +1813,7 @@ mod s3 {
             )
             .expect("the FIX table creates")
         };
-        let fix_rows = |table: &mut Table<S3Folder>| {
+        let fix_rows = |table: &mut IcebergTable<S3Folder>| {
             let read = log.read_arrow_reader(&text()).expect("a reader");
             let parsed = codec
                 .parse_text_arrow_reader(read)

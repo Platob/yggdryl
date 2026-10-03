@@ -199,6 +199,7 @@ nav:
       - Value stream: types/value-stream.md
     - Playground: types/playground.md
   - Holder: holder/index.md
+  - Warehouse: warehouse/index.md
   - Media:
     - media/index.md
     - Arrow IPC: media/ipc.md

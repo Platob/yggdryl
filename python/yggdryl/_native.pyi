@@ -3401,6 +3401,7 @@ class Plan:
     def check_budget(self) -> None: ...
     def into_expression(self) -> Expression: ...
     def execute(self) -> pyarrow.RecordBatchReader: ...
+    def execute_in(self, warehouse: Warehouse) -> pyarrow.RecordBatchReader: ...
     def apply_arrow_batch(self, batch: pyarrow.RecordBatch) -> pyarrow.RecordBatch: ...
     def apply_arrow_reader(
         self, reader: pyarrow.RecordBatchReader | ArrowStreamReader
@@ -5542,141 +5543,438 @@ class IcebergOptions:
     def __copy__(self) -> IcebergOptions: ...
     def __deepcopy__(self, memo: Any) -> IcebergOptions: ...
 
-class IcebergNames:
+# A path into a warehouse: dotted text read through the plan's location
+# grammar - `lake."eu west".fills`, backticks or `[...]` quoting a part - or
+# the parts themselves.
+WarehousePath = str | Sequence[str]
+# A property bag as stated: a mapping or `(name, value)` pairs, each value its
+# text - a `bool` spelled `true` or `false` - and `None` clearing the name.
+WarehouseProperties = Mapping[str, object] | Iterable[tuple[str, object]]
+# Anything a table write takes: every Arrow holder the record surface reads,
+# a foreign frame, and plain row records.
+WarehouseRows = (
+    pyarrow.RecordBatchReader
+    | pyarrow.Table
+    | pyarrow.RecordBatch
+    | ArrowStreamReader
+    | Iterable[Any]
+)
+
+class WarehouseNames:
     __hash__: ClassVar[None]  # type: ignore[assignment]
 
-    """The lazy names iterator every catalog collection view walks.
+    """The lazy names iterator every warehouse collection view walks.
 
     Nothing is collected crossing the boundary; wrap it in ``list()`` when a
     sequence is wanted, and that costs the whole listing.
     """
 
-    def __iter__(self) -> IcebergNames: ...
+    def __iter__(self) -> WarehouseNames: ...
     def __next__(self) -> str: ...
 
-class Namespace:
+class WarehouseObjects:
     __hash__: ClassVar[None]  # type: ignore[assignment]
 
-    """One namespace of a catalog: identity, properties, plus its two
-    collection views."""
+    """The lazy objects iterator behind ``children()``, each object described
+    as the class its implementation names only as it is reached."""
 
+    def __iter__(self) -> WarehouseObjects: ...
+    def __next__(self) -> Catalog | Namespace | Table: ...
+
+class Catalog(IOBase):
+    """The first namespace layer: what a warehouse registers by name.
+
+    Never built as this class directly - ``type(catalog)`` is the
+    implementation, ``MemoryCatalog`` or ``FolderCatalog`` - and a handle
+    like every other: ``kind()`` answers ``"catalog"``, ``iterdir`` lists the
+    children as handles, and every byte verb is refused.
+    """
+
+    @classmethod
+    def from_url(
+        cls,
+        url: Url | str | PathLike[str],
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> Catalog: ...
     @property
     def name(self) -> str: ...
     @property
-    def tables(self) -> Tables: ...
+    def path(self) -> tuple[str, ...]: ...  # type: ignore[override]
     @property
-    def namespaces(self) -> Namespaces: ...
+    def description(self) -> str | None: ...
+    @property
+    def modified(self) -> int | None: ...
     @property
     def properties(self) -> dict[str, str]: ...
     def update_properties(
         self,
-        updates: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        updates: WarehouseProperties | None = None,
         removes: Iterable[str] | None = None,
     ) -> None: ...
+    @property
+    def namespace_levels(self) -> int | None: ...
+    @property
+    def namespaces(self) -> Namespaces: ...
+    @property
+    def tables(self) -> Tables: ...
+    def children(self) -> WarehouseObjects: ...
+    def get(self, name: str) -> Catalog | Namespace | Table: ...
+    def resolve(self, path: WarehousePath) -> Catalog | Namespace | Table: ...
+    def table(self, path: WarehousePath) -> Table: ...
+    def namespace(self, path: WarehousePath) -> Namespace: ...
+    def create_namespace(
+        self,
+        name: str,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> Namespace: ...
+    def create_table(
+        self,
+        name: str,
+        field: FieldLike,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> Table: ...
+    def __str__(self) -> str: ...
     def __repr__(self) -> str: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __hash__(self) -> int: ...  # type: ignore[override]
+
+class MemoryCatalog(Catalog):
+    """Registered objects of any implementation, in order, with no storage."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        objects: Iterable[Catalog | Namespace | Table] | None = None,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> None: ...
+
+class FolderCatalog(Catalog):
+    """A container read as a catalog: its folders namespaces while ``levels``
+    remain, its tabular leaves and table-format folders tables."""
+
+    def __init__(
+        self,
+        name: str,
+        location: IOBase | Url | str | PathLike[str],
+        *,
+        description: str | None = None,
+        levels: int = 1,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> None: ...
+
+class Namespace(IOBase):
+    """A container of namespaces and tables under a catalog.
+
+    Never built as this class directly - ``type(namespace)`` is the
+    implementation, ``MemoryNamespace`` or ``FolderNamespace``.
+    """
+
+    @property
+    def name(self) -> str: ...
+    @property
+    def path(self) -> tuple[str, ...]: ...  # type: ignore[override]
+    @property
+    def description(self) -> str | None: ...
+    @property
+    def modified(self) -> int | None: ...
+    @property
+    def properties(self) -> dict[str, str]: ...
+    def update_properties(
+        self,
+        updates: WarehouseProperties | None = None,
+        removes: Iterable[str] | None = None,
+    ) -> None: ...
+    @property
+    def namespaces(self) -> Namespaces: ...
+    @property
+    def tables(self) -> Tables: ...
+    def children(self) -> WarehouseObjects: ...
+    def get(self, name: str) -> Catalog | Namespace | Table: ...
+    def resolve(self, path: WarehousePath) -> Catalog | Namespace | Table: ...
+    def create_namespace(
+        self,
+        name: str,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> Namespace: ...
+    def create_table(
+        self,
+        name: str,
+        field: FieldLike,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> Table: ...
+    def __str__(self) -> str: ...
+    def __repr__(self) -> str: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __hash__(self) -> int: ...  # type: ignore[override]
+
+class MemoryNamespace(Namespace):
+    """Registered objects, in order, under one namespace path."""
+
+    def __init__(
+        self,
+        path: WarehousePath,
+        *,
+        description: str | None = None,
+        objects: Iterable[Catalog | Namespace | Table] | None = None,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> None: ...
+
+class FolderNamespace(Namespace):
+    """A folder read as a namespace of tables and, while ``levels`` remain
+    under it, of namespaces."""
+
+    def __init__(
+        self,
+        path: WarehousePath,
+        location: IOBase | Url | str | PathLike[str],
+        *,
+        description: str | None = None,
+        levels: int = 0,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> None: ...
+
+class Table(IOBase):
+    """A table: every record read and write of ``IOBase`` reaches its rows.
+
+    Never built as this class directly - ``type(table)`` is the
+    implementation, ``MediaTable``.
+    """
+
+    @property
+    def name(self) -> str: ...
+    @property
+    def path(self) -> tuple[str, ...]: ...  # type: ignore[override]
+    @property
+    def description(self) -> str | None: ...
+    @property
+    def modified(self) -> int | None: ...
+    @property
+    def properties(self) -> dict[str, str]: ...
+    def update_properties(
+        self,
+        updates: WarehouseProperties | None = None,
+        removes: Iterable[str] | None = None,
+    ) -> None: ...
+    def field(self) -> Field: ...
+    @property
+    def storage(self) -> str: ...
+    def __str__(self) -> str: ...
+    def __repr__(self) -> str: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __hash__(self) -> int: ...  # type: ignore[override]
+
+class MediaTable(Table):
+    """A table over any location a record medium reads: a leaf, a folder read
+    as the rows beneath it, or a folder laid out as a table format."""
+
+    def __init__(
+        self,
+        path: WarehousePath,
+        location: IOBase | Url | str | PathLike[str],
+        *,
+        field: FieldLike | None = None,
+        dtype: DataType | str | None = None,
+        description: str | None = None,
+        layout: Literal["leaf", "folder", "format"] | None = None,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> None: ...
 
 class Namespaces:
     __hash__: ClassVar[None]  # type: ignore[assignment]
 
     """The namespaces one level below a catalog or a namespace, as a lazy view.
 
-    Membership, iteration, and length consult storage when asked; indexing
-    answers a ``Namespace``, and a missing name is a ``KeyError`` naming it.
+    Membership, iteration and length ask the store when asked; indexing
+    answers the namespace as the class its implementation names, and a
+    missing name is a ``KeyError`` carrying the core's message. Names may be
+    dotted.
     """
 
     def __getitem__(self, name: str) -> Namespace: ...
     def __contains__(self, name: str) -> bool: ...
-    def __iter__(self) -> IcebergNames: ...
+    def __iter__(self) -> WarehouseNames: ...
     def __len__(self) -> int: ...
-    def keys(self) -> IcebergNames: ...
+    def keys(self) -> WarehouseNames: ...
     def values(self) -> Iterator[Namespace]: ...
     def items(self) -> Iterator[tuple[str, Namespace]]: ...
-    def create(self, name: str) -> Namespace: ...
-    def open_or_create(self, name: str) -> Namespace: ...
+    def get(self, name: str, default: _T | None = None) -> Namespace | _T | None: ...
+    def create(
+        self,
+        name: str,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> Namespace: ...
+    def open_or_create(
+        self,
+        name: str,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> Namespace: ...
     def __repr__(self) -> str: ...
 
 class Tables:
     __hash__: ClassVar[None]  # type: ignore[assignment]
 
-    """The tables of one namespace, as a lazy map-oriented view.
+    """The tables one level below a catalog or a namespace, as a lazy view.
 
-    The same shape as ``Namespaces`` one level down: indexing opens a
-    ``Table``, a missing name is a ``KeyError`` naming it, and the write
-    conveniences create the table on first write.
+    The same shape as ``Namespaces``: indexing opens the table, a missing name
+    is a ``KeyError``, and the write helpers create the table on first write
+    from the rows' own schema where the parent creates tables.
     """
 
     def __getitem__(self, name: str) -> Table: ...
     def __contains__(self, name: str) -> bool: ...
-    def __iter__(self) -> IcebergNames: ...
+    def __iter__(self) -> WarehouseNames: ...
     def __len__(self) -> int: ...
-    def keys(self) -> IcebergNames: ...
+    def keys(self) -> WarehouseNames: ...
     def values(self) -> Iterator[Table]: ...
     def items(self) -> Iterator[tuple[str, Table]]: ...
-    def create(self, name: str, schema: FieldLike | Iterable[Field]) -> Table: ...
+    def get(self, name: str, default: _T | None = None) -> Table | _T | None: ...
+    def create(
+        self,
+        name: str,
+        field: FieldLike,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
+    ) -> Table: ...
     def open_or_create(
-        self, name: str, schema: FieldLike | Iterable[Field]
+        self,
+        name: str,
+        field: FieldLike,
+        properties: WarehouseProperties | None = None,
+        **keywords: object,
     ) -> Table: ...
     def append(
         self,
         name: str,
-        data: IcebergRows,
+        data: WarehouseRows,
         *,
-        options: IcebergOptions | None = None,
-        **properties: Unpack[IcebergProperties],
+        options: RecordOptionsLike | None = None,
+        # The record properties beside `options`, as every record write takes
+        # them; `name` is the table's own and never one of them.
+        **properties: object,
     ) -> Table: ...
     def overwrite(
         self,
         name: str,
-        data: IcebergRows,
+        data: WarehouseRows,
         *,
-        options: IcebergOptions | None = None,
-        **properties: Unpack[IcebergProperties],
+        options: RecordOptionsLike | None = None,
+        # The record properties beside `options`, as every record write takes
+        # them; `name` is the table's own and never one of them.
+        **properties: object,
     ) -> Table: ...
     def __repr__(self) -> str: ...
 
-class Catalog:
+class Warehouse:
     __hash__: ClassVar[None]  # type: ignore[assignment]
 
-    """A warehouse folder of namespaces of Iceberg tables."""
+    """The registry of catalogs a path resolves against.
 
-    def __init__(self, warehouse: IOBase | Url | str | PathLike[str]) -> None: ...
+    Catalogs register by name, in order; a namespace or a table registers at
+    its path, the memory catalogs and namespaces along it created as needed.
+    """
+
+    def __init__(self) -> None: ...
+    def register(self, object: Catalog | Namespace | Table) -> None: ...
+    def replace(
+        self, object: Catalog | Namespace | Table
+    ) -> Catalog | Namespace | Table | None: ...
+    def unregister(self, path: WarehousePath) -> Catalog | Namespace | Table: ...
     @property
-    def warehouse(self) -> IOBase: ...
-    @property
-    def namespaces(self) -> Namespaces: ...
-    @property
-    def tables(self) -> Tables: ...
-    @property
-    def properties(self) -> dict[str, str]: ...
-    def update_properties(
+    def catalogs(self) -> list[Catalog]: ...
+    def catalog(self, name: str) -> Catalog: ...
+    def get(self, path: WarehousePath) -> Catalog | Namespace | Table: ...
+    def table(self, path: WarehousePath) -> Table: ...
+    def namespace(self, path: WarehousePath) -> Namespace: ...
+    def properties_for(self, url: Url | str | PathLike[str]) -> dict[str, str]: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __repr__(self) -> str: ...
+
+class SystemWarehouse:
+    """The process's one warehouse, every method static and taking its lock
+    for the call. It starts with the memory catalog ``local`` holding the
+    folder namespaces ``temporary``, ``home`` and ``config``."""
+
+    @staticmethod
+    def register(object: Catalog | Namespace | Table) -> None: ...
+    @staticmethod
+    def replace(
+        object: Catalog | Namespace | Table,
+    ) -> Catalog | Namespace | Table | None: ...
+    @staticmethod
+    def unregister(path: WarehousePath) -> Catalog | Namespace | Table: ...
+    @staticmethod
+    def catalogs() -> list[Catalog]: ...
+    @staticmethod
+    def catalog(name: str) -> Catalog: ...
+    @staticmethod
+    def get(path: WarehousePath) -> Catalog | Namespace | Table: ...
+    @staticmethod
+    def table(path: WarehousePath) -> Table: ...
+    @staticmethod
+    def namespace(path: WarehousePath) -> Namespace: ...
+    @staticmethod
+    def properties_for(url: Url | str | PathLike[str]) -> dict[str, str]: ...
+
+class IcebergCatalog(Catalog):
+    """A warehouse folder of namespaces of Iceberg tables: the ``Catalog``
+    subclass the Iceberg implementation answers.
+
+    Namespaces nest to any depth, each a folder; ``metadata/catalog.json`` and
+    ``metadata/namespace.json`` keep the stored properties; a table is a folder
+    laid out as one. Constructing one touches nothing, and every question - the
+    views, the children, a dotted path - is asked of the store when it is asked.
+    """
+
+    def __init__(
         self,
-        updates: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
-        removes: Iterable[str] | None = None,
+        name: str,
+        warehouse: IOBase | Url | str | PathLike[str],
+        *,
+        description: str | None = None,
+        properties: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        **keywords: str,
     ) -> None: ...
-    def table(self, name: str) -> Table: ...
-    def namespace(self, name: str) -> Namespace: ...
-    def append(
-        self,
-        name: str,
-        data: IcebergRows,
-        *,
-        options: IcebergOptions | None = None,
-        **properties: Unpack[IcebergProperties],
-    ) -> Table: ...
-    def overwrite(
-        self,
-        name: str,
-        data: IcebergRows,
-        *,
-        options: IcebergOptions | None = None,
-        **properties: Unpack[IcebergProperties],
-    ) -> Table: ...
-    def __repr__(self) -> str: ...
+    @classmethod
+    def create(
+        cls, name: str, warehouse: IOBase | Url | str | PathLike[str]
+    ) -> IcebergCatalog: ...
+    @classmethod
+    def open_or_create(
+        cls, name: str, warehouse: IOBase | Url | str | PathLike[str]
+    ) -> IcebergCatalog: ...
 
-class Table:
-    __hash__: ClassVar[None]  # type: ignore[assignment]
+class IcebergNamespace(Namespace):
+    """One namespace of an Iceberg catalog - a folder under the warehouse, its
+    ``metadata/namespace.json`` the stored properties - as the ``Namespace``
+    subclass the Iceberg implementation answers."""
 
-    """An Iceberg table reached entirely through one container handle."""
+    def __init__(
+        self,
+        path: WarehousePath,
+        location: IOBase | Url | str | PathLike[str],
+        *,
+        properties: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        **keywords: str,
+    ) -> None: ...
+
+class IcebergTable(Table):
+    """An Iceberg table reached entirely through one container handle: the
+    ``Table`` subclass the Iceberg implementation answers, so every member of
+    a warehouse table is here beside the table's own."""
 
     # `partition_by` is a `PartitionSpec`, or the `PARTITION:by` entries the
     # core reads into one: a bare column an identity field, `days(ts)`,
@@ -5695,9 +5993,8 @@ class Table:
         | EllipsisType = ...,
         *,
         format_version: int | None = None,
-    ) -> Table: ...
-    @classmethod
-    def open(cls, root: IOBase) -> Table: ...
+    ) -> IcebergTable: ...
+    def __init__(self, root: IOBase) -> None: ...
     @classmethod
     def open_or_create(
         cls,
@@ -5709,7 +6006,7 @@ class Table:
         | EllipsisType = ...,
         *,
         format_version: int | None = None,
-    ) -> Table: ...
+    ) -> IcebergTable: ...
     @property
     def root(self) -> IOBase: ...
     @property
@@ -5732,8 +6029,6 @@ class Table:
     def current_snapshot(self) -> Snapshot | None: ...
     @property
     def snapshots(self) -> list[Snapshot]: ...
-    @property
-    def properties(self) -> dict[str, str]: ...
     @property
     def schemas(self) -> list[Field]: ...
     def manifests(self) -> list[ManifestFile]: ...
@@ -5799,7 +6094,7 @@ class Table:
     ) -> list[int]: ...
     @property
     def target_file_size(self) -> int: ...
-    def append(
+    def append(  # type: ignore[override]  # a table appends rows, never bytes
         self,
         batches: IcebergRows,
         *,
@@ -5849,7 +6144,7 @@ class Table:
     def inspect_files(self) -> pyarrow.RecordBatchReader: ...
     def update_properties(
         self,
-        updates: Mapping[str, str] | Iterable[tuple[str, str]] | None = None,
+        updates: Mapping[str, object] | Iterable[tuple[str, object]] | None = None,
         removes: Iterable[str] | None = None,
     ) -> None: ...
     def update_schema(self) -> SchemaUpdate: ...

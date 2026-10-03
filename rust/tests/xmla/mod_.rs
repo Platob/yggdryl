@@ -13,11 +13,13 @@ use yggdryl::xml::Element;
 use yggdryl::xmla::definitions::definition_of;
 use yggdryl::xmla::service::code;
 use yggdryl::xmla::{
-    Answer, Catalog, Discover, EMPTY_NAMESPACE, EXCEPTION_NAMESPACE, Execute, MDDATASET_NAMESPACE,
-    Method, NAMESPACE, PropertyList, ROWSET_NAMESPACE, Request, RequestType, Response,
-    Restrictions, SQL_NAMESPACE, Service, ServiceOptions, Session, XmlaError, property,
+    Answer, Discover, EMPTY_NAMESPACE, EXCEPTION_NAMESPACE, Execute, MDDATASET_NAMESPACE, Method,
+    NAMESPACE, PropertyList, ROWSET_NAMESPACE, Request, RequestType, Response, Restrictions,
+    SQL_NAMESPACE, Service, ServiceOptions, Session, XmlaError, property,
 };
-use yggdryl::{DataType, IOBase, IOMedia, MediaType, MimeType, Scalar, Serie, StructType};
+use yggdryl::{
+    DataType, FolderCatalog, IOBase, IOMedia, MediaType, MimeType, Scalar, Serie, StructType,
+};
 
 /// The XML Schema namespace a rowset's `xsd:schema` is in.
 const XSD: &str = "http://www.w3.org/2001/XMLSchema";
@@ -325,7 +327,7 @@ fn a_multidimensional_format_is_refused_by_name_for_either_method() {
 #[test]
 fn an_mdx_statement_is_refused_and_never_answered() {
     let root = trades_catalog("mdx");
-    let service = empty_service().with_catalog(Catalog::new(
+    let service = empty_service().with_catalog(FolderCatalog::bound(
         "market",
         Holder::folder(&root).expect("the catalog holds"),
     ));
@@ -350,7 +352,7 @@ fn an_mdx_statement_is_refused_naming_mdx() {
     // from the fault that this provider speaks none, not where the
     // expression grammar stopped reading it.
     let root = trades_catalog("mdx-by-name");
-    let service = empty_service().with_catalog(Catalog::new(
+    let service = empty_service().with_catalog(FolderCatalog::bound(
         "market",
         Holder::folder(&root).expect("the catalog holds"),
     ));
@@ -771,17 +773,8 @@ fn the_medium_names_resolve_at_the_module_root() {
 }
 
 #[test]
-fn the_catalog_names_resolve_at_the_module_root() {
-    use yggdryl::xmla::{catalog, dbtype};
-    let root = trades_catalog("catalog-names");
-    let market: catalog::Catalog =
-        yggdryl::xmla::Catalog::new("market", Holder::folder(&root).expect("the catalog holds"));
-    let tables: Vec<catalog::Table> = market.tables().expect("the catalog lists");
-    let names: Vec<(&str, Option<&str>, &str)> = tables
-        .iter()
-        .map(|table: &yggdryl::xmla::Table| (table.catalog(), table.schema(), table.name()))
-        .collect();
-    assert_eq!(names, [("market", None, "trades")]);
+fn the_dbtype_names_resolve_at_the_module_root() {
+    use yggdryl::xmla::dbtype;
     let indicator: dbtype::DbType = yggdryl::xmla::DbType::of(&DataType::Int32);
     assert_eq!(indicator, yggdryl::xmla::DbType::I4);
     assert_eq!(indicator.code(), 3);
@@ -1002,7 +995,7 @@ fn a_data_source_named_in_unicode_and_markup_reads_back_as_named() {
 #[test]
 fn the_module_doc_statement_is_answered_as_a_rowset_of_the_catalog_table() {
     let root = trades_catalog("statement");
-    let service = empty_service().with_catalog(Catalog::new(
+    let service = empty_service().with_catalog(FolderCatalog::bound(
         "market",
         Holder::folder(&root).expect("the catalog holds"),
     ));
@@ -1028,7 +1021,7 @@ fn the_module_doc_statement_is_answered_as_a_rowset_of_the_catalog_table() {
 #[test]
 fn the_catalog_table_is_listed_as_the_tabular_provider_s_table() {
     let root = trades_catalog("tables");
-    let service = empty_service().with_catalog(Catalog::new(
+    let service = empty_service().with_catalog(FolderCatalog::bound(
         "market",
         Holder::folder(&root).expect("the catalog holds"),
     ));
@@ -1388,7 +1381,7 @@ fn a_row_in_another_namespace_is_no_row_of_the_rowset() {
 #[test]
 fn an_execute_that_answers_nothing_is_answered_in_the_empty_namespace() {
     let root = trades_catalog("content-none");
-    let service = empty_service().with_catalog(Catalog::new(
+    let service = empty_service().with_catalog(FolderCatalog::bound(
         "market",
         Holder::folder(&root).expect("the catalog holds"),
     ));
@@ -1548,7 +1541,7 @@ fn the_properties_the_provider_states_carry_the_values_the_request_set() {
 /// A catalog holding the literal trades table.
 fn trades_service(label: &str) -> Service {
     let root = trades_catalog(label);
-    empty_service().with_catalog(Catalog::new(
+    empty_service().with_catalog(FolderCatalog::bound(
         "market",
         Holder::folder(&root).expect("the catalog holds"),
     ))
@@ -1744,7 +1737,7 @@ fn a_leaf_of_another_record_medium_and_a_partitioned_tree_are_tables_too() {
         std::fs::write(partition.join("part.xmla"), symbols_document(symbols))
             .expect("the partition is written");
     }
-    let service = empty_service().with_catalog(Catalog::new(
+    let service = empty_service().with_catalog(FolderCatalog::bound(
         "market",
         Holder::folder(&root).expect("the catalog holds"),
     ));
@@ -2220,7 +2213,7 @@ fn a_table_whose_stored_document_is_broken_earns_no_rows() {
         format!("<root xmlns=\"{ROWSET_NAMESPACE}\"><row><symbol>AAPL</symbol>"),
     )
     .expect("the table is written");
-    let service = empty_service().with_catalog(Catalog::new(
+    let service = empty_service().with_catalog(FolderCatalog::bound(
         "market",
         Holder::folder(&root).expect("the catalog holds"),
     ));
@@ -2241,8 +2234,8 @@ fn a_table_whose_stored_document_is_broken_earns_no_rows() {
     );
     assert_eq!(xmla_error(&fault).code(), code::EXECUTION_FAILED);
     assert!(
-        fault.string().contains("broken.xmla"),
-        "the fault names the table: {fault}"
+        fault.string().contains("market.broken"),
+        "the fault names the table by its path: {fault}"
     );
 }
 

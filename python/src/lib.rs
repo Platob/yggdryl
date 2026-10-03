@@ -63,6 +63,7 @@ mod timeinforce;
 mod timezone;
 mod uri;
 mod version;
+mod warehouse;
 mod window_serie;
 
 /// The extension's allocator: decoded Arrow buffers are large and short
@@ -678,6 +679,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     http::register(module)?;
     coding::handles::register(module)?;
     media::handles::register(module)?;
+    warehouse::register(module)?;
     module.add_function(wrap_pyfunction!(enum_values, module)?)?;
     module.add_function(wrap_pyfunction!(iomedia::combined, module)?)?;
     module.add_class::<crate::iobase::PyIOCursor>()?;
@@ -686,15 +688,10 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<iobase::PyIOBaseIterator>()?;
     module.add_class::<iomedia::PyRecordOptions>()?;
     module.add_class::<iomedia::PyTextOptions>()?;
-    module.add_class::<iceberg::PyCatalog>()?;
-    module.add_class::<iceberg::PyNamespace>()?;
-    module.add_class::<iceberg::PyNamespaces>()?;
-    module.add_class::<iceberg::PyTables>()?;
-    module.add_class::<iceberg::PyNames>()?;
-    module.add_class::<iceberg::PyNamespaceIterator>()?;
-    module.add_class::<iceberg::PyTableIterator>()?;
+    module.add_class::<iceberg::PyIcebergCatalog>()?;
+    module.add_class::<iceberg::PyIcebergNamespace>()?;
     module.add_class::<iceberg::PyIcebergOptions>()?;
-    module.add_class::<iceberg::PyTable>()?;
+    module.add_class::<iceberg::PyIcebergTable>()?;
     module.add_class::<iceberg::PySchemaUpdate>()?;
     module.add_class::<iceberg::PyScanPlan>()?;
     module.add_class::<iceberg::PyCompaction>()?;

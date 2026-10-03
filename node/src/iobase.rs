@@ -8,8 +8,8 @@
 use std::time::Duration;
 
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either3, Either6, Either7, Env, Object, Reference,
-    Result, Uint8Array,
+    BigInt, Buffer, ClassInstance, Either, Either3, Either6, Env, Object, Reference, Result,
+    Uint8Array,
 };
 use napi_derive::napi;
 
@@ -35,6 +35,7 @@ use crate::text::codec::{
 };
 use crate::text::options::JsTextOptions;
 use crate::uri::{JsArn, JsUri, JsUrl, JsUrn, PartitionEntry, partition_entries};
+use crate::warehouse::{ObjectInput, object_from_input};
 use crate::{exact_u64, napi_error};
 
 /// Resolve the digest algorithm a handle read names, defaulting to XXH3-64.
@@ -88,17 +89,20 @@ pub(crate) type LocationInput<'a> = Either6<
     String,
 >;
 
-/// What the constructor takes first: a location, or the file system one of
-/// its locations sits on.
-pub(crate) type LocationOrFileSystemInput<'a> = Either7<
-    ClassInstance<'a, JsIOBase>,
-    ClassInstance<'a, JsUrl>,
-    ClassInstance<'a, JsUri>,
-    ClassInstance<'a, JsUrn>,
-    ClassInstance<'a, JsArn>,
-    String,
-    FileSystemInput<'a>,
->;
+/// What a handle is built from: a location, or a warehouse object - a
+/// catalog, a namespace or a table - held as the handle it is.
+///
+/// The object classes sit after the locations, so a location is read before
+/// anything is asked of an object, and the pair is nested rather than widened
+/// into one enum so every door that takes a location alone keeps its shape.
+pub(crate) type HandleInput<'a> = Either<LocationInput<'a>, ObjectInput<'a>>;
+
+/// What the constructor takes first: a handle input, or the file system one
+/// of its locations sits on.
+///
+/// The file system handler is a plain object, which matches any object at
+/// all, so it is the last thing tried.
+pub(crate) type LocationOrFileSystemInput<'a> = Either<HandleInput<'a>, FileSystemInput<'a>>;
 
 /// A mapping of partition columns to values, or the same pairs as entries.
 type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<String, String>>;
@@ -211,6 +215,27 @@ pub(crate) fn located_from_input(value: LocationInput<'_>) -> Result<Holder> {
     match location_target(value)? {
         Either::A(handle) => handle.rebuilt().map(|held| held.inner),
         Either::B(url) => local_holder(&url),
+    }
+}
+
+/// Build a handle for what `value` names: a location in its role, or a
+/// warehouse object as the handle it is - a catalog or a namespace the
+/// container of its children, a table the handle its implementation holds.
+pub(crate) fn handle_from_input(value: HandleInput<'_>) -> Result<Holder> {
+    match value {
+        Either::A(location) => located_from_input(location),
+        Either::B(object) => Ok(object_from_input(object).into_holder()),
+    }
+}
+
+/// Where an object's storage is, as one location argument names it: a handle
+/// in hand binds - a second handle on its location, the file system it stands
+/// on kept, as [`JsIOBase::from_js`] builds one - and anything else names the
+/// identifier the object opens on first use.
+pub(crate) fn site_from_input(value: LocationInput<'_>) -> Result<Either<Holder, yggdryl::Uri>> {
+    match location_target(value)? {
+        Either::A(handle) => handle.rebuilt().map(|held| Either::A(held.inner)),
+        Either::B(url) => Ok(Either::B(yggdryl::Uri::from(url))),
     }
 }
 
@@ -595,13 +620,8 @@ impl JsIOBase {
         path: Option<String>,
     ) -> Result<Self> {
         let value = match value {
-            Either7::A(handle) => Either6::A(handle),
-            Either7::B(url) => Either6::B(url),
-            Either7::C(uri) => Either6::C(uri),
-            Either7::D(urn) => Either6::D(urn),
-            Either7::E(arn) => Either6::E(arn),
-            Either7::F(value) => Either6::F(value),
-            Either7::G(filesystem) => {
+            Either::A(value) => value,
+            Either::B(filesystem) => {
                 let path = path.ok_or_else(|| {
                     napi_error(
                         "expected a path on the file system as the second argument, got none",
@@ -615,14 +635,16 @@ impl JsIOBase {
                 "expected an Arrow file system handler to resolve {path:?} against, got a location"
             )));
         }
-        located_from_input(value).map(Self::from_core)
+        handle_from_input(value).map(Self::from_core)
     }
 
     /// Infer a handle from a native handle, any identifier naming a location,
-    /// or location text.
+    /// location text, or a warehouse object - a catalog, a namespace or a
+    /// table - held as the handle it is, so `kind()` answers `catalog`,
+    /// `namespace` or `table` and `ls()` a container's children.
     #[napi(factory, js_name = "from")]
-    pub fn from_js(value: LocationInput<'_>) -> Result<Self> {
-        located_from_input(value).map(Self::from_core)
+    pub fn from_js(value: HandleInput<'_>) -> Result<Self> {
+        handle_from_input(value).map(Self::from_core)
     }
 
     /// Describe a resource on any Arrow file system a caller supplies.

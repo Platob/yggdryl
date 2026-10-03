@@ -69,6 +69,7 @@ One tab per layer in the top bar; one page per family in that layer's sidebar.
 | --- | --- | --- |
 | Types | `DataType`, `Field`, `Scalar`, casting, and the datatype families | [types](types/index.md) |
 | Holder | `IOBase` handles: bytes, values, records, and the storage backends | [holder](holder/index.md) |
+| Warehouse | Catalogs, namespaces and tables over folders and registered objects, the dotted path a plan reads, and the process's `SystemWarehouse` | [warehouse](warehouse/index.md) |
 | Coding | gzip, zlib/deflate, and Zstandard over any handle | [compression](media/compression.md) |
 | Charset | UTF-8, UTF-16, US-ASCII, and the ISO 8859, Windows, DOS and Mac code pages over any handle | [charsets](media/charsets.md) |
 | Media | Arrow IPC, Parquet, Avro, CSV, plain-text records, XML for Analysis rowsets and their provider, and Iceberg tables | [media](media/index.md) |

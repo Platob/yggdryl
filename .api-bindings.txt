@@ -26,7 +26,7 @@
   Term: add, all, always_false, always_true, any, as_column, as_literal, at, between, bind, call, case, cast, check_budget, child, column, columns, compare, conjuncts, depth, divide, eq, explain, field, from_json, ge, glob, gt, ilike, into_json, is_always_false, is_always_true, is_in, is_literal, is_not_null, is_null, le, like, literal, lt, multiply, ne, negate, node_count, parameter, parameters, parse, path, remainder, simplify, slice, stable_hash, subtract, try_cast, typed_literal
   Filter: all, always_false, always_true, any, apply_arrow, apply_arrow_array, apply_arrow_batch, apply_arrow_reader, apply_arrow_table, apply_field, apply_records, bind, check_budget, columns, conjuncts, explain, from_json, into_json, is_always_false, is_always_true, parameters, parse, simplify, stable_hash, term
   Selector: __len__, all, all_except, apply_arrow, apply_arrow_array, apply_arrow_batch, apply_arrow_reader, apply_arrow_table, apply_field, apply_records, bind, check_budget, columns, excluded, explain, from_columns, from_field, from_json, has_star, into_field, into_json, is_all, is_columns, names, parameters, parse, projections, select, simplify, stable_hash, with_projection, without_columns
-  Plan: apply_arrow, apply_arrow_batch, apply_arrow_reader, apply_arrow_table, apply_records, check_budget, columns, create_target, execute, explain, field, field_from, filter, from_field, from_json, into_expression, into_json, is_empty, is_identity, limit, merge_by, offset, ordering, parameters, parse, read_columns, read_sections, root_metadata, root_name, schema, selector, simplify, source, source_plan, stable_hash, verb, with_create, with_filter, with_limit, with_merge_by, with_offset, with_ordering, with_select, with_source, with_write, write_target
+  Plan: apply_arrow, apply_arrow_batch, apply_arrow_reader, apply_arrow_table, apply_records, check_budget, columns, create_target, execute, execute_in(warehouse) (the locations resolved against that Warehouse rather than the SystemWarehouse execute reads), explain, field, field_from, filter, from_field, from_json, into_expression, into_json, is_empty, is_identity, limit, merge_by, offset, ordering, parameters, parse, read_columns, read_sections, root_metadata, root_name, schema, selector, simplify, source, source_plan, stable_hash, verb, with_create, with_filter, with_limit, with_merge_by, with_offset, with_ordering, with_select, with_source, with_write, write_target
   Expression: apply_arrow, apply_arrow_array, apply_arrow_batch, apply_arrow_reader, apply_arrow_table, apply_field, apply_records, as_filter, as_plan, as_selector, check_budget, columns, explain, filter, from_json, into_json, is_filter, is_identity, is_plan, is_selector, is_sequence, kind, parameters, parse, plan, select, sequence, simplify, stable_hash, steps
   Records: __iter__, __next__, collect, field, from_arrow_reader, into_arrow_reader
   Field: __arrow_c_schema__, __contains__, __iter__, __len__, accept, accept_encoding, accept_language, accept_ranges, alias, apply_arrow_batch, apply_arrow_reader, apply_arrow_schema, arrow, arrow_scalar, assign_parquet_field_ids, az, cache_control, canonicalize_value, clear_properties, comment, content_disposition, content_encoding, content_language, content_length, content_location, content_range, content_type, default_pyhint, default_scalar, description, dictionary_id, dictionary_is_ordered, digest, digest_field_len, digest_field_names, digest_fields, display, dtype, equals, etag, expires, explode_fields, field, field_at, field_by_parquet_field_id, field_by_path, field_properties, file, fix, from_arrow, from_arrow_schema, from_dict, from_json, from_natural_value, from_pyhint, from_str, from_toml, from_value, from_yaml, get_field, get_field_at, get_field_by_path, get_property, glue, gs, has_partition_fields, has_property, http, http_location, iceberg, identity, index_of, into_arrow, into_arrow_schema, into_dataclass, into_dict, into_json, into_json_bytes, into_scheme_compat, into_toml, into_yaml, is_init, is_partition, is_struct, last_modified, layout_eq, location, max_parquet_field_id, media_type, merge_with, metadata, mime_type, mysql, name, nullable, only_digest_fields, only_partition_fields, pandas, parquet_field_id, partition, partition_by, partition_field_len, partition_field_names, partition_fields, polars, postgres, postgresql, pretty, property_iter, protocol, python, range, remove_accept, remove_accept_encoding, remove_accept_language, remove_accept_ranges, remove_alias, remove_cache_control, remove_comment, remove_content_disposition, remove_content_encoding, remove_content_language, remove_content_length, remove_content_location, remove_content_range, remove_content_type, remove_description, remove_display, remove_etag, remove_expires, remove_field, remove_field_at, remove_field_by_path, remove_http_location, remove_last_modified, remove_location, remove_media_type, remove_mime_type, remove_parquet_field_id, remove_property, remove_range, remove_string_enum, remove_vary, require_struct, s3, scalar, set_accept, set_accept_encoding, set_accept_language, set_accept_ranges, set_alias, set_cache_control, set_comment, set_content_disposition, set_content_encoding, set_content_language, set_content_length, set_content_location, set_content_range, set_content_type, set_description, set_dictionary_options, set_display, set_dtype, set_etag, set_expires, set_field, set_field_at, set_field_by_path, set_http_location, set_init, set_last_modified, set_location, set_media_type, set_metadata, set_mime_type, set_name, set_nullable, set_parquet_field_id, set_partition, set_property, set_range, set_string_enum, set_vary, show_diff, show_diffs, sort, spark, sql, stable_hash, stable_layout_hash, string_enum, transform, unnest_fields, urn, validate, validate_struct_root, validate_value, vary, with_partition_by, with_partition_fields, without_fields, without_partition_fields
@@ -286,8 +286,42 @@
     protocol: Iterator[Candle], unhashable
   graph.candles
     candles(books: Iterable[BookEvent | MarketData], interval: CandleOptions | int | str, timezone: Timezone | str | Any | None = None) -> list[Candle]: list(CandleIterator(books, CandleOptions(interval, timezone)))
-  iceberg: Catalog, Compaction, DataFile, IcebergOptions, ManifestFile, Namespace, Namespaces, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table, Tables, assign_field_ids, can_promote, schema_from_json, schema_into_json
+  iceberg: Compaction, DataFile, IcebergCatalog, IcebergNamespace, IcebergOptions, IcebergTable, ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, assign_field_ids, can_promote, schema_from_json, schema_into_json
   scalar: decorator installing cached static into_field()
+  warehouse: Catalog, FolderCatalog, FolderNamespace, MediaTable, MemoryCatalog, MemoryNamespace, Namespace, Namespaces, SystemWarehouse, Table, Tables, Warehouse; every name re-exported at the package root
+    the catalog abstraction over yggdryl::warehouse: Catalog, Namespace and Table are IOBase subclasses over Holder::Catalog, Holder::Namespace and Holder::Table, type(object) the implementation doing the work; a path is a WarehousePath - a dotted text the plan grammar reads (`lake."eu west".trades`), or a sequence of parts taken as spelled; properties are WarehouseProperties - a mapping of str to str, int, float or bool - and every constructor and creator taking properties=None takes **keywords too, each one more entry of that bag
+  warehouse.Catalog
+    statics: from_url(url, properties=None, **keywords) - the `type` property (`memory`, `folder`) and the `name` property, else the URL's last segment; an s3tables URL names a catalog this build has not got
+    instance: name, path, description, modified, properties, update_properties(properties=None, **keywords), namespace_levels, namespaces, tables, children, get(name), resolve(path), table(path), namespace(path), create_namespace(name, properties=None, **keywords), create_table(name, field, properties=None, **keywords)
+    protocol: str is the dotted path; equality and hash over the description, the implementation and the path; kind() is "catalog", iterdir() the children as handles, every byte verb a refusal
+  warehouse.MemoryCatalog
+    constructor: MemoryCatalog(name, *, description=None, objects=None, properties=None, **keywords) - objects registered in order, a second object at one path a conflict
+  warehouse.FolderCatalog
+    constructor: FolderCatalog(name, location, *, description=None, levels=1, properties=None, **keywords) - location an IOBase, a Url, a str or a path; a folder a namespace while levels remain, a tabular leaf or a table-format folder a table
+  warehouse.Namespace
+    instance: name, path, description, modified, properties, update_properties(properties=None, **keywords), namespaces, tables, children, get(name), resolve(path), create_namespace(name, properties=None, **keywords), create_table(name, field, properties=None, **keywords)
+    protocol: as Catalog; kind() is "namespace"
+  warehouse.MemoryNamespace
+    constructor: MemoryNamespace(path, *, description=None, objects=None, properties=None, **keywords) - path at least two parts, the catalog's name first
+  warehouse.FolderNamespace
+    constructor: FolderNamespace(path, location, *, description=None, levels=0, properties=None, **keywords)
+  warehouse.Table
+    instance: name, path, description, modified, properties, update_properties(properties=None, **keywords), field() (the declared row schema, else the one its rows carry), storage ("table", "directory", or the leaf's media type); every IOBase record verb reads and writes its rows
+    protocol: as Catalog; kind() is "table" for a table-format folder, else the location's own
+  warehouse.MediaTable
+    constructor: MediaTable(path, location, *, field=None, dtype=None, description=None, layout=None, properties=None, **keywords) - field renamed after the table, dtype a required field of that name, layout "leaf", "folder" or "format", else what the location is
+  warehouse.Namespaces
+    instance: __getitem__ (a KeyError names the path), __contains__, __iter__ (the names), __len__, keys, values, items, get(name, default=None), create(name, properties=None, **keywords), open_or_create(name, properties=None, **keywords)
+    protocol: a lazy mapping view over one level; unhashable; keys() lists once per call and values() opens each named object
+  warehouse.Tables
+    instance: __getitem__, __contains__, __iter__, __len__, keys, values, items, get(name, default=None), create(name, field, properties=None, **keywords), open_or_create(name, field, properties=None, **keywords), append(name, data, *, options=None, **properties), overwrite(name, data, *, options=None, **properties) - data anything SerieReader.from_ reads, the properties set on a copy of options by their own RecordOptions setters, else of the table's own
+    protocol: as Namespaces
+  warehouse.Warehouse
+    constructor: Warehouse() - no catalogs
+    instance: register(object) (a catalog, or a namespace or table under memory levels it builds), replace(object), unregister(path), catalogs, catalog(name), get(path), table(path), namespace(path), properties_for(url) - the properties of the innermost registered object whose location holds the URL
+    protocol: equality over the registered catalogs; unhashable
+  warehouse.SystemWarehouse
+    statics: register, replace, unregister, catalogs, catalog, get, table, namespace, properties_for - the process's one Warehouse, under one lock, opened with the `local` memory catalog holding the temporary, home and config folders as namespaces; what a plan's `from catalog.namespace.table` resolves against
   avro
     exports: Block, BlockIterator, Container, Schema, blocks, dumps, dumps_single, loads, loads_single
     decode limits: max_depth, max_input_bytes, max_nodes; blocks is a fused lazy iterator
@@ -331,9 +365,23 @@
     protocol: mutable, unhashable; every sheet parsed on first access and held; a missing sheet is a KeyError
   iceberg.IcebergOptions
     constructor: IcebergOptions(**properties) - each field by name, in canonical order; a name that is no field is skipped with an UnknownPropertyWarning naming the closest
-    per call: every Catalog, Tables and Table method taking options=None takes **properties too, set on a copy of the given options - else of the table's own override, else of nothing set - for that call alone
+    per call: every IcebergTable method taking options=None takes **properties too, set on a copy of the given options - else of the table's own override, else of nothing set - for that call alone
     instance: commit_max_backoff_ms, commit_min_backoff_ms, commit_retries, compact_after_commits, data_mime_type, read_parallel_min_file_size, read_parallel_min_files, read_parallelism, stable_hash, target_file_size, write_parallelism, write_staging
     protocol: native equality/order; hashing freezes all setters; copy/pickle unlock
+  iceberg.IcebergCatalog
+    constructor: IcebergCatalog(name, warehouse, *, description=None, properties=None, **keywords) - warehouse an IOBase, a Url, a str or a path; touches nothing; the keywords more stated properties, which reach every object under the catalog and are written nowhere
+    statics: create(name, warehouse) - writes metadata/catalog.json, a folder already there a conflict; open_or_create(name, warehouse) - the conflict absorbed
+    instance: as warehouse.Catalog - namespace_levels is None, namespaces nest to any depth; namespaces.create and open_or_create write metadata/namespace.json; tables.create, open_or_create, append and overwrite create through existing namespaces only, over the schema as Iceberg expresses it (a dictionary layout stored as the string it encodes, float16 widened, an interval refused by path); update_properties writes metadata/catalog.json, the ICEBERG: prefix refused; properties the stated over the stored
+    protocol: a Catalog subclass - isinstance(catalog, Catalog) and type(catalog) is IcebergCatalog; equality and hash over the description
+  iceberg.IcebergNamespace
+    constructor: IcebergNamespace(path, location, *, properties=None, **keywords) - path at least two parts, the catalog's name first
+    instance: as warehouse.Namespace; children classified by one listing of each entry's metadata/ and no read; properties metadata/namespace.json beneath the parent's; update_properties writes it
+    protocol: a Namespace subclass; the object every Iceberg catalog answers for a namespace
+  iceberg.IcebergTable
+    constructor: IcebergTable(root) - the table the container handle addresses, opened: its current metadata document is read, since open() is the scope every handle has
+    statics: create(root, schema, partition_by=..., *, format_version=None), open_or_create(root, schema, partition_by=..., *, format_version=None) - partition_by a PartitionSpec or the PARTITION:by entries PartitionSpec::from_schema reads, omitted the schema's own declaration, None unpartitioned; unnumbered columns numbered
+    instance: as warehouse.Table (field(), storage "table", properties the stated over the metadata's, update_properties refused - a table's properties commit through its metadata), then root, location, format_version, table_uuid, version, metadata_file_name, metadata_location, schema, spec, current_snapshot, snapshots, schemas, manifests, manifests_at, data_files, scan, scan_where, scan_ref, scan_matching, plan_matching, scan_at, plan, plan_at, snapshot_by_ref, create_branch, create_tag, remove_ref, fast_forward, expire_snapshots, target_file_size, append, overwrite, overwrite_where, merge, merge_where, set_options, options, evolve_schema, compact, inspect_history, inspect_snapshots, inspect_files, update_schema
+    protocol: a Table subclass; str is the dotted path, a table on its own named after its folder; the object every Iceberg catalog answers for a table
   iceberg.Compaction
     instance: bytes_rewritten, files_after, files_before, stable_hash
   iceberg.PartitionField
@@ -454,7 +502,7 @@
     instance: applyArrow, applyArrowBatch, applyArrowReader, applyArrowTable, applyRecords, applyRow, explain, isAll, isIdentity, output, projections, schema, toJSON, toString
   Plan
     statics: fromField, fromJson, parse
-    instance: applyArrow, applyArrowBatch, applyArrowReader, applyArrowTable, applyRecords, checkBudget, clone, columns, compare, createTarget, equals, execute, explain, field, fieldFrom, filter, intoExpression, intoJson, isEmpty, isIdentity, limit, mergeBy, offset, ordering, parameters, readColumns, readSections, rootMetadata, rootName, schema, selector, simplify, source, sourcePlan, stableHash, toJSON, toString, verb, withCreate, withFilter, withLimit, withMergeBy, withOffset, withOrdering, withSelect, withSource, withWrite, writeTarget
+    instance: applyArrow, applyArrowBatch, applyArrowReader, applyArrowTable, applyRecords, checkBudget, clone, columns, compare, createTarget, equals, execute, executeIn(warehouse) (the locations resolved against that Warehouse rather than the SystemWarehouse execute reads), explain, field, fieldFrom, filter, intoExpression, intoJson, isEmpty, isIdentity, limit, mergeBy, offset, ordering, parameters, readColumns, readSections, rootMetadata, rootName, schema, selector, simplify, source, sourcePlan, stableHash, toJSON, toString, verb, withCreate, withFilter, withLimit, withMergeBy, withOffset, withOrdering, withSelect, withSource, withWrite, writeTarget
   Expression
     statics: filter, fromJson, parse, plan, select, sequence
     instance: applyArrow, applyArrowBatch, applyArrowReader, applyArrowTable, applyField, applyRecords, asFilter, asPlan, asSelector, checkBudget, clone, columns, compare, equals, explain, intoJson, isFilter, isIdentity, isPlan, isSelector, isSequence, kind, parameters, simplify, stableHash, steps, toJSON, toString
@@ -809,20 +857,20 @@
     types: ServeTable (string | { name?: string | null, location: string }), ServeArgumentsOptions (tables, capture and args each one item, a list or null; bind; path), ServeOptions (those, then bin, env: NodeJS.ProcessEnv, signal: AbortSignal), Serving, ServeExit
     book/: the ES modules the served page runs, each importable under Node with no document - theme.js (THEMES, STORAGE_KEY, resolveTheme, applyTheme, toggleTheme, readTheme, writeTheme, systemPrefersDark, nextTheme, themeLabel), api.js (AUDIT_SUFFIXES, ApiError, queryString, normalizeBase, apiUrl, candleParams, bookParams, eventParams, auditParams, fetchJson, fetchTables, fetchTimezones, fetchTickers, fetchCandles, fetchBook, fetchEvents, auditUrl), chart.js (DEFAULT_PADDING, SPREAD_SHARE, PANE_GAP, MAX_BODY_WIDTH, scaleLinear, tickStep, niceTicks, parseNumber, parseInstant, padDomain, layoutCandles, nearestCandle, formatTick, timeTicks, describeCandle, readColors, drawCandles), audit.js (EVENT_COLUMNS, AUDIT_TYPES, instantParts, instantNanos, instantText, formatInstant, formatDecimal, compareCells, sortRows, downloadLink, renderSummary, renderEvents), app.js (INTERVALS, EVENT_LIMIT, HASH_KEYS, REFRESH_DELAY, readHash, writeHash, timezoneChoices, apiBase, debounce, start)
   iceberg
-    statics: Table, Catalog, Compaction, IcebergOptions, ManifestFile, PartitionField, PartitionSpec, DataFile, ScanPlan, Snapshot, SnapshotRef, assignFieldIds, canPromote, schemaFromJson, schemaIntoJson
+    statics: IcebergCatalog, IcebergNamespace, IcebergTable, Compaction, IcebergOptions, ManifestFile, PartitionField, PartitionSpec, DataFile, ScanPlan, Snapshot, SnapshotRef, assignFieldIds, canPromote, schemaFromJson, schemaIntoJson
   iceberg.IcebergOptions
     instance: clone, compactAfterCommits, commitMaxBackoffMs, commitMinBackoffMs, commitRetries, compare, dataMimeType, equals, readParallelism, readParallelMinFileSize, readParallelMinFiles, stableHash, targetFileSize, writeParallelism, writeStaging
-  iceberg.Catalog
-    instance: append, namespace, namespaces, overwrite, properties, table, tables, updateProperties
-  iceberg.Namespace
-    instance: name, namespaces, properties, tables, updateProperties
-  iceberg.Namespaces
-    instance: create, entries, get, has, keys, names, openOrCreate, size, values
-  iceberg.Tables
-    instance: append, create, entries, get, has, keys, names, openOrCreate, overwrite, size, values
-  iceberg.Table
-    statics: create, open, openOrCreate
-    instance: append, compact, createBranch, createTag, currentSnapshot, dataFiles, evolveSchema, expireSnapshots, fastForward, formatVersion, inspectFiles, inspectHistory, inspectSnapshots, location, manifests, manifestsAt, merge, mergeWhere, metadataFileName, metadataLocation, options, overwrite, overwriteWhere, plan, planAt, planMatching, properties, removeRef, root, scan, scanAt, scanMatching, scanRef, scanWhere, schema, schemas, setOptions, snapshotByRef, snapshots, spec, tableUuid, targetFileSize, toString, updateProperties, updateSchema, version
+  iceberg.IcebergCatalog
+    constructor: new IcebergCatalog(name, location, { description, properties }?) - location an IOBase, a Url, a string or a path; touches nothing; the properties stated, reaching every object under the catalog and written nowhere
+    statics: create(name, location) - writes metadata/catalog.json, a folder already there a conflict; openOrCreate(name, location); from(catalog) - the Iceberg catalog a warehouse.Catalog holds, refused by implementation name otherwise
+    instance: intoCatalog (the warehouse.Catalog, what a Warehouse registers), name, path, description, url, properties (effective), updateProperties(properties?, removes?) - a plain object or a Map, the ICEBERG: prefix refused - namespaceLevels (null: namespaces nest to any depth), namespaces(), tables(), children(), get(name), resolve(path), table(path), namespace(path), createNamespace(name, properties?), createTable(name, field, properties?) - the generic views and objects, creating through existing namespaces only over the schema as Iceberg expresses it - equals, toString (the dotted path)
+  iceberg.IcebergNamespace
+    constructor: new IcebergNamespace(path, location, { properties }?) - path at least two parts, the catalog's name first
+    statics: from(namespace)
+    instance: intoNamespace, name, path, url, properties, updateProperties - metadata/namespace.json - namespaces(), tables(), children(), get, resolve, table, namespace, createNamespace, createTable, equals, toString
+  iceberg.IcebergTable
+    statics: create, open, openOrCreate, from(table) - the Iceberg table a warehouse.Table holds
+    instance: intoTable, name, path, equals, append, compact, createBranch, createTag, currentSnapshot, dataFiles, evolveSchema, expireSnapshots, fastForward, formatVersion, inspectFiles, inspectHistory, inspectSnapshots, location, manifests, manifestsAt, merge, mergeWhere, metadataFileName, metadataLocation, options, overwrite, overwriteWhere, plan, planAt, planMatching, properties, removeRef, root, scan, scanAt, scanMatching, scanRef, scanWhere, schema, schemas, setOptions, snapshotByRef, snapshots, spec, tableUuid, targetFileSize, toString (the dotted path; a table on its own is named after its folder), updateProperties, updateSchema, version; properties the stated over the metadata's
     create/openOrCreate(root, schema, partitionBy?, version?): partitionBy is a PartitionSpec, or the PARTITION:by entries the core's PartitionSpec::from_schema reads (a bare column identity; days(ts), hours(ts), minutes(ts, 15), weeks(ts), quarters(ts), truncate(name, 4) derived, as alias naming one), refused naming the entry; omitted reads the schema's own declaration (none declared is unpartitioned); null is unpartitioned
   iceberg.SchemaUpdate (via table.updateSchema())
     instance: addColumn, commit, dropColumn, makeNullable, renameColumn, updateDoc, updateType
@@ -846,6 +894,32 @@
   http
     statics: Headers, Pages, Request, Response, Server, Session, delete, get, head, patch, post, put, request, session
     yggdryl::http as a namespace: every exchange is synchronous, as every handle read is, and new IOBase('https://...') holds the resource a URL names
+  warehouse
+    statics: Catalog, Namespace, Table, Namespaces, Tables, Warehouse, SystemWarehouse, MemoryCatalog, FolderCatalog, MemoryNamespace, FolderNamespace, MediaTable - the five implementation names constructors over the kinds' static constructors (`new warehouse.FolderCatalog(name, location, options)` is `Catalog.folder(...)`), callable with or without `new`; the module is frozen and the warehouse values are reached through it alone
+    types: ObjectPathInput (a dotted text the plan grammar reads, or an array of parts taken as spelled), ObjectInput (a Catalog, Namespace or Table), ObjectOptions ({ description, properties, levels, field, dtype, layout, objects }, each read by the implementation that has it and refused by name elsewhere), LocationInput (an IOBase, a Url, a URL, a string or a path), PropertiesInput (a plain object of string, number or boolean values)
+  warehouse.Catalog
+    statics: memory(name, options?), folder(name, location, options?), fromUrl(url, properties?) - the `type` property (`memory`, `folder`) and the `name` property, else the URL's last segment
+    instance: name, path, kind, implementation, description, url, modified, properties, updateProperties(properties), namespaceLevels, namespaces(), tables(), children(), get(name), resolve(path), table(path), namespace(path), createNamespace(name, properties?), createTable(name, field, properties?), equals, toString
+    protocol: toString is the dotted path; equals over the description, the implementation and the path; IOBase.from(catalog) is the handle - kind "catalog", children as its listing, every byte verb a refusal
+  warehouse.Namespace
+    statics: memory(path, options?), folder(path, location, options?)
+    instance: name, path, kind, implementation, description, url, modified, properties, updateProperties(properties), namespaces(), tables(), children(), get(name), resolve(path), table(path), namespace(path), createNamespace(name, properties?), createTable(name, field, properties?), equals, toString
+  warehouse.Table
+    statics: media(path, location, options?)
+    instance: name, path, kind, implementation, description, url, modified, properties, updateProperties(properties), storage, layout, declaredField, field(), equals, toString; IOBase.from(table) reads and writes its rows
+  warehouse.Namespaces
+    instance: get(name), has(name), keys() (a lazy ObjectNames iterator), size, create(name, properties?), openOrCreate(name, properties?), values(), entries(), [Symbol.iterator] (the names); values and entries open each named object through get, one at a time
+  warehouse.Tables
+    instance: get(name), has(name), keys(), size, create(name, field, properties?), openOrCreate(name, field, properties?), append(name, data, options?, properties?), overwrite(name, data, options?, properties?), values(), entries(), [Symbol.iterator] - data anything BatchReader.from reads, options a RecordOptions or a property bag set on a copy of the table's own
+  warehouse.ObjectIterator
+    instance: next, [Symbol.iterator] - what children() answers, one object per step, nothing prefetched
+  warehouse.ObjectNames
+    instance: next, [Symbol.iterator] - what keys() answers, one name per step, nothing prefetched
+  warehouse.Warehouse
+    constructor: new Warehouse() - no catalogs
+    instance: register(object), replace(object), unregister(path), catalogs, catalog(name), get(path), table(path), namespace(path), propertiesFor(url)
+  warehouse.SystemWarehouse
+    statics: register, replace, unregister, catalogs, catalog, get, table, namespace, propertiesFor - the process's one Warehouse, opened with the `local` memory catalog holding the temporary, home and config folders as namespaces
   http.Session
     constructor: new Session(baseUrl?, { headers, auth, timeout, httpVersion, options }?) - httpVersion 'auto', '1.1', 2 or 3; options are HttpOptions properties by name
     instance: baseUrl, close, cookies, delete, get, head, headers, intoIOBase, options, pages, patch, post, put, request, sendAll, setCookie, stats, stream, timeout, toString

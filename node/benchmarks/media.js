@@ -287,7 +287,7 @@ benchmark('records/overwrite_serie_arrow_table', () => stored().overwriteSerie(t
 // document, so an Iceberg append is measured separately from a plain write.
 const iced = iceberg.assignFieldIds(schema)
 const lake = path.join(root, 'lake')
-const iceTable = iceberg.Table.create(lake, iced)
+const iceTable = iceberg.IcebergTable.create(lake, iced)
 iceTable.append(ipc)
 const iceFile = iceTable.dataFiles()[0]
 const icePlan = iceTable.plan()
@@ -317,7 +317,7 @@ const iceRows = Array.from({ length: 64 }, (_, index) => ({
 }))
 let iceBenchIndex = 0
 const freshIceTable = () =>
-  iceberg.Table.create(path.join(root, 'bench', `t${iceBenchIndex++}`), iced)
+  iceberg.IcebergTable.create(path.join(root, 'bench', `t${iceBenchIndex++}`), iced)
 benchmark('iceberg/append_arrow_ipc', () => freshIceTable().append(ipc))
 benchmark('iceberg/append_rows', () => freshIceTable().append(iceRows))
 
@@ -358,20 +358,22 @@ benchmark('iceberg/options_equals', () => iceOptions.equals(iceOptions))
 benchmark('iceberg/options_compare', () => iceOptions.compare(iceOptions))
 benchmark('iceberg/options_stable_hash', () => iceOptions.stableHash())
 benchmark('iceberg/options_clone', () => iceOptions.clone())
-benchmark('iceberg/open', () => iceberg.Table.open(lake))
+benchmark('iceberg/open', () => iceberg.IcebergTable.open(lake))
 
 // A catalog append crosses the whole boundary a caller with only rows and a
 // name uses: resolve the dotted name against the warehouse, locate the table
 // there, and commit one snapshot. The rows stay small so the number reports
-// that path rather than Parquet encoding.
-const catalog = new iceberg.Catalog(path.join(root, 'warehouse'))
+// that path rather than Parquet encoding. A create descends through existing
+// namespaces only, so the namespace is made first.
+const catalog = new iceberg.IcebergCatalog('lake', path.join(root, 'warehouse'))
+catalog.namespaces().create('bench')
 const catalogRows = arrow.tableToIPC(
   new arrow.Table({
     id: arrow.vectorFromArray([1n, 2n, 3n, 4n], new arrow.Int64()),
   }),
 )
-catalog.append('bench.trades', catalogRows)
-benchmark('iceberg/catalog_append', () => catalog.append('bench.trades', catalogRows))
+catalog.tables().append('bench.trades', catalogRows)
+benchmark('iceberg/catalog_append', () => catalog.tables().append('bench.trades', catalogRows))
 
 async function benchmarkAsync(name, operation) {
   if (!selected(name)) return

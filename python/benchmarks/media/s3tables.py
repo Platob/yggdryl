@@ -47,7 +47,7 @@ import pyarrow as pa
 
 from yggdryl import Arn
 from yggdryl.holder import S3Folder
-from yggdryl.iceberg import Table
+from yggdryl.iceberg import IcebergTable
 
 ARN_VARIABLE = "YGGDRYL_S3TABLES_ARN"
 NAMESPACE = "yggdryl_bench"
@@ -182,14 +182,14 @@ def _open_pyiceberg(catalog: Any, name: str) -> Callable[[], object]:
 
 
 def _open_yggdryl(root: S3Folder) -> Callable[[], object]:
-    return lambda: Table.open(root).metadata_location
+    return lambda: IcebergTable(root).metadata_location
 
 
 def _scan_pyiceberg(table: Any) -> Callable[[], object]:
     return lambda: table.scan().to_arrow().num_rows
 
 
-def _scan_yggdryl(table: Table) -> Callable[[], object]:
+def _scan_yggdryl(table: IcebergTable) -> Callable[[], object]:
     return lambda: table.scan().read_all().num_rows
 
 
@@ -198,7 +198,7 @@ def _pruned_pyiceberg(table: Any) -> Callable[[], object]:
     return lambda: table.scan(row_filter=predicate).to_arrow().num_rows
 
 
-def _pruned_yggdryl(table: Table) -> Callable[[], object]:
+def _pruned_yggdryl(table: IcebergTable) -> Callable[[], object]:
     return lambda: table.scan_where({"symbol": PRUNED_SYMBOL}).read_all().num_rows
 
 
@@ -207,7 +207,7 @@ def _document(location: str) -> str:
     return location.rsplit("/", 1)[-1]
 
 
-def _verify(theirs: Any, ours: Table) -> None:
+def _verify(theirs: Any, ours: IcebergTable) -> None:
     """Prove both sides read the same table before timing either."""
     if _document(ours.metadata_location) != _document(theirs.metadata_location):
         raise AssertionError(
@@ -305,7 +305,7 @@ def main() -> int:
         print(f"pyiceberg appended {ROW_COUNT:,} rows through the catalog in {appended:.3f} s")
         root, signing = _root(theirs, bucket)
         print(f"yggdryl reads {theirs.location()} with {signing}")
-        ours = Table.open(root)
+        ours = IcebergTable(root)
         _verify(theirs, ours)
 
         print()

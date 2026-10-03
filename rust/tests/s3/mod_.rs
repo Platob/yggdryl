@@ -224,8 +224,8 @@ mod accounting {
         use crate::mod_::BUCKET;
         use crate::server::FakeS3;
         use yggdryl::iceberg::{
-            FormatVersion, IcebergOptions, PartitionSpec, Table, WriteStaging, assign_field_ids,
-            read_manifest, write_manifest,
+            FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, WriteStaging,
+            assign_field_ids, read_manifest, write_manifest,
         };
         use yggdryl::s3::S3Folder;
         use yggdryl::{DataType, Field, IOBase};
@@ -326,7 +326,7 @@ mod accounting {
             // The claim, the document and the hint, the one listing that
             // detects a competing claim, and the claim's removal.
             let (mut table, create) = cost(&store, || {
-                Table::create(root.clone(), FormatVersion::V2, schema.clone(), spec)
+                IcebergTable::create(root.clone(), FormatVersion::V2, schema.clone(), spec)
                     .expect("creates")
             });
             pin(
@@ -407,7 +407,7 @@ mod accounting {
             );
 
             // The hint and the document, and no listing of the directory.
-            let (opened, open) = cost(&store, || Table::open(root.clone()).expect("opens"));
+            let (opened, open) = cost(&store, || IcebergTable::open(root.clone()).expect("opens"));
             pin(
                 "open",
                 &open,
@@ -481,9 +481,9 @@ mod accounting {
             let root: S3Folder = crate::mod_::folder(&store, "lake/trades/");
             let schema = schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
-            let mut table =
-                Table::create(root.clone(), FormatVersion::V2, schema, spec).expect("creates");
-            let version = table.metadata_version();
+            let mut table = IcebergTable::create(root.clone(), FormatVersion::V2, schema, spec)
+                .expect("creates");
+            let version = table.metadata_version().unwrap();
             let stage = yggdryl::local::LocalFolder::temporary()
                 .expect("the temporary folder")
                 .path()
@@ -510,8 +510,8 @@ mod accounting {
                 .commit_append(rows(&[1, 2, 3], &["XLON", "XNAS", "XNYS"]))
                 .expect_err("a refused upload fails the commit");
             assert!(error.to_string().contains("AccessDenied"), "{error}");
-            assert_eq!(table.metadata_version(), version);
-            assert!(table.current_snapshot().is_none());
+            assert_eq!(table.metadata_version().unwrap(), version);
+            assert!(table.current_snapshot().unwrap().is_none());
             assert_eq!(
                 store.keys(BUCKET),
                 before,
@@ -541,8 +541,8 @@ mod accounting {
                 .commit_append(rows(&[1, 2, 3], &["XLON", "XNAS", "XNYS"]))
                 .expect_err("a refused upload fails the commit");
             assert!(error.to_string().contains("AccessDenied"), "{error}");
-            assert_eq!(table.metadata_version(), version);
-            assert!(table.current_snapshot().is_none());
+            assert_eq!(table.metadata_version().unwrap(), version);
+            assert!(table.current_snapshot().unwrap().is_none());
             assert_eq!(
                 store.keys(BUCKET),
                 before,
@@ -580,7 +580,7 @@ mod accounting {
             table
                 .commit_append(rows(&[1, 2, 3], &["XLON", "XNAS", "XNYS"]))
                 .expect("the next commit succeeds");
-            assert_eq!(table.metadata_version(), version + 1);
+            assert_eq!(table.metadata_version().unwrap(), version + 1);
             assert_eq!(
                 store
                     .keys(BUCKET)
@@ -610,7 +610,7 @@ mod accounting {
             let root: S3Folder = crate::mod_::folder(&store, "lake/trades/");
             let schema = schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
-            let mut table = Table::create(
+            let mut table = IcebergTable::create(
                 root.clone(),
                 FormatVersion::V2,
                 schema.clone(),
@@ -640,7 +640,7 @@ mod accounting {
             write_manifest(&mut manifest, FormatVersion::V2, &schema, &spec, &entries)
                 .expect("the manifest rewrites");
 
-            let opened = Table::open(root.clone()).expect("opens");
+            let opened = IcebergTable::open(root.clone()).expect("opens");
             let files = opened.data_files().expect("the files list");
             assert_eq!(files.len(), 1);
             assert_eq!(

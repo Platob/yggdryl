@@ -26,7 +26,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import MimeType
-from yggdryl.iceberg import Catalog, IcebergOptions, Table
+from yggdryl.iceberg import IcebergCatalog, IcebergOptions, IcebergTable
 
 pytestmark = pytest.mark.spark_interop
 
@@ -114,9 +114,9 @@ def spark(warehouse: pathlib.Path) -> Iterator[Any]:
 
 
 @pytest.fixture(scope="module")
-def catalog(warehouse: pathlib.Path) -> Catalog:
+def catalog(warehouse: pathlib.Path) -> IcebergCatalog:
     """The yggdryl catalog over the same warehouse folder."""
-    return Catalog(warehouse)
+    return IcebergCatalog(CATALOG, warehouse)
 
 
 def spark_rows(spark: Any, query: str) -> list[tuple[Any, ...]]:
@@ -124,7 +124,18 @@ def spark_rows(spark: Any, query: str) -> list[tuple[Any, ...]]:
     return sorted(tuple(row) for row in spark.sql(query).collect())
 
 
-def scan_rows(table: Table, *columns: str) -> list[tuple[Any, ...]]:
+def _append(catalog: IcebergCatalog, name: str, rows: pa.Table) -> IcebergTable:
+    """Append through the catalog, the namespace opened or created first: a
+    create descends through existing namespaces only."""
+    namespace, _, _ = name.rpartition(".")
+    if namespace:
+        catalog.namespaces.open_or_create(namespace)
+    table = catalog.tables.append(name, rows)
+    assert isinstance(table, IcebergTable)
+    return table
+
+
+def scan_rows(table: IcebergTable, *columns: str) -> list[tuple[Any, ...]]:
     """Scan a yggdryl table and return the named columns as sorted tuples."""
     batches = table.scan().read_all()
     names = list(columns) if columns else batches.column_names
@@ -136,7 +147,7 @@ class TestTableCreationAndFieldIds:
     """Created tables carry the field ids the other side resolves by."""
 
     def test_spark_creates_yggdryl_opens_with_matching_ids(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         spark.sql(
             f"CREATE TABLE {CATALOG}.ids.spark_made "
@@ -148,7 +159,7 @@ class TestTableCreationAndFieldIds:
         assert table.schema.dtype["venue"].nullable
 
     def test_yggdryl_creates_spark_describes_the_same_shape(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         schema = pa.schema(
             [
@@ -173,7 +184,7 @@ class TestFormatVersion3:
     """Alternate Apache and native commits under v3 row-lineage metadata."""
 
     def test_spark_created_v3_table_accepts_alternating_writers(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         name = f"{CATALOG}.v3.external_writer"
         spark.sql(
@@ -224,7 +235,7 @@ class TestPrimitiveTypes:
     """Every primitive both implementations can express, with nulls."""
 
     def test_spark_writes_the_sql_primitives_yggdryl_reads_them(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         spark.sql(
             f"CREATE TABLE {CATALOG}.types.primitives ("
@@ -274,7 +285,7 @@ class TestPrimitiveTypes:
         assert rows.column("bin").to_pylist() == [b"\xde\xad\xbe\xef", None]
 
     def test_yggdryl_writes_the_same_primitives_spark_reads_them(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         rows = pa.table(
             {
@@ -300,7 +311,7 @@ class TestPrimitiveTypes:
                 "bin": pa.array([b"\x01\x02", None], pa.binary()),
             }
         )
-        catalog.append("types.from_ygg", rows)
+        _append(catalog, "types.from_ygg", rows)
 
         got = spark_rows(
             spark,
@@ -327,7 +338,7 @@ class TestPrimitiveTypes:
         assert tstz == datetime.datetime(2001, 2, 3, 4, 5, 6, 7)
 
     def test_fixed_width_binary_written_by_yggdryl_reads_in_spark(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         # Spark SQL cannot declare a fixed column, so the table comes from
         # this side; Spark reads the fixed(16) values as their exact bytes.
@@ -338,7 +349,7 @@ class TestPrimitiveTypes:
                 "fixed16": pa.array([value], pa.binary(16)),
             }
         )
-        catalog.append("types.fixed_from_ygg", rows)
+        _append(catalog, "types.fixed_from_ygg", rows)
         got = spark_rows(spark, f"SELECT id, fixed16 FROM {CATALOG}.types.fixed_from_ygg")
         assert got == [(1, value)]
 
@@ -347,7 +358,7 @@ class TestNestedTypes:
     """Struct, list, and map round-trip in both directions, nulls included."""
 
     def test_spark_writes_nested_yggdryl_reads(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         spark.sql(
             f"CREATE TABLE {CATALOG}.nested.spark_made ("
@@ -375,7 +386,7 @@ class TestNestedTypes:
         assert maps[1] is None
 
     def test_yggdryl_writes_nested_spark_reads(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         rows = pa.table(
             {
@@ -390,7 +401,7 @@ class TestNestedTypes:
                 ),
             }
         )
-        catalog.append("nested.from_ygg", rows)
+        _append(catalog, "nested.from_ygg", rows)
 
         got = spark_rows(
             spark,
@@ -407,7 +418,7 @@ class TestSparkInteropPartitioning:
     """Identity and transform partitioning, in both directions."""
 
     def test_spark_transform_partitions_scan_in_yggdryl(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         spark.sql(
             f"CREATE TABLE {CATALOG}.parts.transformed "
@@ -442,7 +453,7 @@ class TestSparkInteropPartitioning:
         assert venues == ["XNAS", "XNYS", None]
 
     def test_yggdryl_identity_partitions_prune_in_spark(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         marked = pa.schema(
             [
@@ -457,7 +468,7 @@ class TestSparkInteropPartitioning:
         rows = pa.table(
             {"id": [1, 2, 3], "venue": ["XNAS", "XNYS", None]}, schema=marked
         )
-        catalog.append("parts.from_ygg", rows)
+        _append(catalog, "parts.from_ygg", rows)
 
         assert spark_rows(
             spark, f"SELECT id FROM {CATALOG}.parts.from_ygg WHERE venue = 'XNAS'"
@@ -478,9 +489,9 @@ class TestSnapshotsAndTimeTravel:
     """Appends, overwrites, snapshot history, time travel, and refs."""
 
     def test_yggdryl_history_time_travels_in_spark(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
-        table = catalog.append(
+        table = _append(catalog, 
             "history.from_ygg", pa.table({"id": pa.array([1], pa.int64())})
         )
         first = table.current_snapshot.snapshot_id
@@ -503,7 +514,7 @@ class TestSnapshotsAndTimeTravel:
         assert sorted(operations) == ["append", "append", "overwrite"]
 
     def test_spark_history_time_travels_in_yggdryl(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         spark.sql(
             f"CREATE TABLE {CATALOG}.history.from_spark (id BIGINT) USING iceberg"
@@ -523,9 +534,9 @@ class TestSnapshotsAndTimeTravel:
         assert at_first.column("id").to_pylist() == [1]
 
     def test_refs_written_by_either_side_resolve_in_the_other(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
-        table = catalog.append(
+        table = _append(catalog, 
             "history.refs", pa.table({"id": pa.array([1], pa.int64())})
         )
         tagged = table.current_snapshot.snapshot_id
@@ -552,9 +563,9 @@ class TestSchemaEvolution:
     """Add, drop, rename, promote, and doc, read back across implementations."""
 
     def test_yggdryl_evolution_reads_back_in_spark(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
-        table = catalog.append(
+        table = _append(catalog, 
             "evolve.from_ygg",
             pa.table(
                 {
@@ -596,7 +607,7 @@ class TestSchemaEvolution:
         assert comments["new_name"] == "renamed by yggdryl"
 
     def test_spark_evolution_reads_back_in_yggdryl(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         spark.sql(
             f"CREATE TABLE {CATALOG}.evolve.from_spark "
@@ -628,9 +639,9 @@ class TestPropertiesAndFormats:
     """Table properties, the data format key, and mixed-format tables."""
 
     def test_yggdryl_properties_show_in_spark_and_back(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
-        table = catalog.append(
+        table = _append(catalog, 
             "props.shared", pa.table({"id": pa.array([1], pa.int64())})
         )
         # `owner` would be a poor probe: Spark's SparkCatalog reserves it as
@@ -660,9 +671,9 @@ class TestPropertiesAndFormats:
         ) == [(1,), (2,)]
 
     def test_spark_reads_a_mixed_format_table_yggdryl_wrote(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
-        table = catalog.append(
+        table = _append(catalog, 
             "props.mixed", pa.table({"id": pa.array([1], pa.int64())})
         )
         table.append(
@@ -683,7 +694,7 @@ class TestPropertiesAndFormats:
         assert sorted(row[0] for row in by_format) == ["AVRO", "PARQUET"]
 
     def test_yggdryl_reads_avro_files_spark_wrote(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         spark.sql(
             f"CREATE TABLE {CATALOG}.props.spark_avro (id BIGINT, s STRING) "
@@ -701,9 +712,9 @@ class TestSparkInteropCompaction:
     """A compacted table keeps its rows and stays readable by Spark."""
 
     def test_a_yggdryl_compaction_reads_back_in_spark(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
-        table = catalog.append(
+        table = _append(catalog, 
             "compact.t", pa.table({"id": pa.array([1], pa.int64())})
         )
         for start in (2, 3, 4):
@@ -729,7 +740,7 @@ class TestManifestsAndStatistics:
     """Spark's metadata tables decode yggdryl's manifests and statistics."""
 
     def test_the_files_metadata_table_reads_yggdryl_statistics(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
         rows = pa.table(
             {
@@ -737,7 +748,7 @@ class TestManifestsAndStatistics:
                 "s": pa.array(["m", "a", "z", None], pa.string()),
             }
         )
-        catalog.append("stats.t", rows)
+        _append(catalog, "stats.t", rows)
 
         [(count, nulls, lower, upper)] = spark_rows(
             spark,
@@ -759,9 +770,9 @@ class TestManifestsAndStatistics:
         assert file.null_value_counts[field_id] == 1
 
     def test_the_manifests_and_snapshots_tables_decode(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
-        table = catalog.append(
+        table = _append(catalog, 
             "stats.manifests", pa.table({"id": pa.array([1], pa.int64())})
         )
         table.append(pa.table({"id": pa.array([2], pa.int64())}))
@@ -782,9 +793,9 @@ class TestSparkKeepsWriting:
     """A yggdryl table is not a dead end: Spark appends, then yggdryl does."""
 
     def test_the_two_implementations_alternate_writes(
-        self, spark: Any, catalog: Catalog
+        self, spark: Any, catalog: IcebergCatalog
     ) -> None:
-        catalog.append(
+        _append(catalog, 
             "alternate.t", pa.table({"id": pa.array([1], pa.int64())})
         )
         spark.sql(f"INSERT INTO {CATALOG}.alternate.t VALUES (2)")

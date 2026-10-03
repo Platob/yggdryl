@@ -86,6 +86,7 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | `S3Folder`, `S3Path`, `S3File` | a prefix or container, an undecided location, one object on an [object store](#object-stores) | `holder.S3Folder`, `holder.S3Path`, `holder.S3File` |
 | `HttpSession`, `HttpRequest`, `HttpResponse`, `HttpStream` | a session over a base URL, the resource a URL names, one answer's body, a body left on the wire, over [HTTP](#http) | `http.Session`, `http.Request`, `http.Response`, `http.Stream` |
 | `ZipNode`, `ZipPath`, `ZipLeaf` | the archive root or a member prefix, an undecided member location, one member of a [ZIP archive](#zip) | Rust only |
+| `Catalog`, `Namespace`, `Table` | a [warehouse](../warehouse/index.md) object held as the handle it is - a catalog or a namespace a container whose `ls` yields its children as handles and whose byte verbs are refused, a table the rows its own handle holds | `warehouse.Catalog`, `warehouse.Namespace`, `warehouse.Table`; JavaScript `IOBase.from(object)` |
 | `Buffered` | any of the others behind the [page cache](#buffered) | `holder.Buffered` |
 | `Coded` | any of the others, presenting the decoded bytes of a content coding | `coding.Identity`, `Gzip`, `Zlib`, `Zstd` |
 | `Text` | any handle retained as plain-text records | `media.Text` |

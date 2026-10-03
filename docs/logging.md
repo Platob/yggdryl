@@ -1304,7 +1304,7 @@ import tempfile
 import pyarrow as pa
 
 from yggdryl import IOBase
-from yggdryl.iceberg import Table, assign_field_ids
+from yggdryl.iceberg import IcebergTable, assign_field_ids
 from yggdryl.logging import deduplicate, is_deduplicating
 
 said: list[str] = []
@@ -1321,7 +1321,7 @@ package.setLevel(logging.INFO)
 
 schema = assign_field_ids(pa.schema([pa.field("id", pa.int64(), nullable=False)]))
 folder = pathlib.Path(tempfile.mkdtemp())
-table = Table.create(IOBase(folder / "trades"), schema)
+table = IcebergTable.create(IOBase(folder / "trades"), schema)
 
 # The core's records are counted where it logs them, a logger below the named one included.
 assert not is_deduplicating("yggdryl.iceberg.table")
@@ -1522,7 +1522,7 @@ import tempfile
 import pyarrow as pa
 
 from yggdryl import IOBase
-from yggdryl.iceberg import Table, assign_field_ids
+from yggdryl.iceberg import IcebergTable, assign_field_ids
 
 records: list[logging.LogRecord] = []
 
@@ -1539,7 +1539,7 @@ package.setLevel(logging.INFO)
 
 schema = assign_field_ids(pa.schema([pa.field("id", pa.int64(), nullable=False)]))
 folder = pathlib.Path(tempfile.mkdtemp())
-Table.create(IOBase(folder / "trades"), schema)
+IcebergTable.create(IOBase(folder / "trades"), schema)
 
 [made] = [record for record in records if record.name == "yggdryl.iceberg.table"]
 assert made.levelno == logging.INFO
@@ -1550,7 +1550,7 @@ assert made.funcName == "(unknown function)"
 # A nearer logger's level wins from the next record on.
 logging.getLogger("yggdryl.iceberg").setLevel(logging.WARNING)
 records.clear()
-Table.create(IOBase(folder / "quiet"), schema)
+IcebergTable.create(IOBase(folder / "quiet"), schema)
 assert [record for record in records if record.name.startswith("yggdryl.iceberg")] == []
 shutil.rmtree(folder)
 ```

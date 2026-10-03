@@ -136,6 +136,17 @@ pub enum Holder {
     /// resolved through [`Self::from_url`] on the first operation that needs
     /// one: building it touches nothing, and even the backend is chosen late.
     Uri(Uri),
+    /// A catalog of a warehouse: a container of namespaces and tables, its
+    /// children the handles they are.
+    ///
+    /// Boxed, as every object variant is: an object carries its description
+    /// and its resolved handle, which is a `Holder` of its own.
+    Catalog(Box<crate::Catalog>),
+    /// A namespace of a warehouse: a container of namespaces and tables.
+    Namespace(Box<crate::Namespace>),
+    /// A table of a warehouse: every byte and record verb its
+    /// implementation's.
+    Table(Box<crate::Table>),
 }
 
 impl Holder {
@@ -180,6 +191,9 @@ impl Holder {
             Self::Text(inner) => inner.handle().exists(),
             Self::Media(inner) => inner.handle().exists(),
             Self::Uri(inner) => inner.held().is_ok_and(Self::exists),
+            // An object is a description, and a description is there.
+            Self::Catalog(_) | Self::Namespace(_) => true,
+            Self::Table(inner) => inner.exists(),
         }
     }
 
@@ -586,7 +600,8 @@ impl Holder {
     /// Return whether this holder already retains a media implementation.
     fn has_media_surface(&self) -> bool {
         match self {
-            Self::Media(_) | Self::Text(_) => true,
+            // A table answers records through its implementation already.
+            Self::Media(_) | Self::Text(_) | Self::Table(_) => true,
             Self::Buffered(buffered) => buffered.handle().has_media_surface(),
             _ => false,
         }
@@ -707,6 +722,9 @@ impl Holder {
             Self::Text(inner) => inner.as_ref(),
             Self::Media(inner) => inner.as_ref(),
             Self::Uri(inner) => inner,
+            Self::Catalog(inner) => inner.as_ref(),
+            Self::Namespace(inner) => inner.as_ref(),
+            Self::Table(inner) => inner.as_ref(),
         }
     }
 
@@ -742,6 +760,9 @@ impl Holder {
             Self::Text(inner) => inner.as_mut(),
             Self::Media(inner) => inner.as_mut(),
             Self::Uri(inner) => inner,
+            Self::Catalog(inner) => inner.as_mut(),
+            Self::Namespace(inner) => inner.as_mut(),
+            Self::Table(inner) => inner.as_mut(),
         }
     }
 
@@ -777,6 +798,9 @@ impl Holder {
             Self::Text(inner) => inner.as_ref(),
             Self::Media(inner) => inner.as_ref(),
             Self::Uri(inner) => inner,
+            Self::Catalog(inner) => inner.as_ref(),
+            Self::Namespace(inner) => inner.as_ref(),
+            Self::Table(inner) => inner.as_ref(),
         }
     }
 
@@ -812,6 +836,9 @@ impl Holder {
             Self::Text(inner) => inner.as_mut(),
             Self::Media(inner) => inner.as_mut(),
             Self::Uri(inner) => inner,
+            Self::Catalog(inner) => inner.as_mut(),
+            Self::Namespace(inner) => inner.as_mut(),
+            Self::Table(inner) => inner.as_mut(),
         }
     }
 }
@@ -1113,6 +1140,34 @@ impl From<crate::Arn> for Holder {
     /// Hold the resource an ARN names, resolved on first use.
     fn from(value: crate::Arn) -> Self {
         Self::Uri(value.into_uri())
+    }
+}
+
+impl From<crate::Catalog> for Holder {
+    /// Hold a catalog as the container of handles it is.
+    fn from(value: crate::Catalog) -> Self {
+        Self::Catalog(Box::new(value))
+    }
+}
+
+impl From<crate::Namespace> for Holder {
+    /// Hold a namespace as the container of handles it is.
+    fn from(value: crate::Namespace) -> Self {
+        Self::Namespace(Box::new(value))
+    }
+}
+
+impl From<crate::Table> for Holder {
+    /// Hold a table as the handle its implementation is.
+    fn from(value: crate::Table) -> Self {
+        Self::Table(Box::new(value))
+    }
+}
+
+impl From<crate::Object> for Holder {
+    /// Hold an object as the handle its kind is.
+    fn from(value: crate::Object) -> Self {
+        value.into_holder()
     }
 }
 

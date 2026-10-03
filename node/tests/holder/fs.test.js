@@ -1096,7 +1096,7 @@ test('an Iceberg table lives on a file system a caller wrote', () => {
     ),
   )
 
-  const table = iceberg.Table.create(warehouse, schema)
+  const table = iceberg.IcebergTable.create(warehouse, schema)
   table.append(trades())
 
   const rows = table.scan().intoTable()
@@ -1182,7 +1182,7 @@ test('a table hands back a root on its own file system', () => {
     ),
   )
 
-  const table = iceberg.Table.create(warehouse, schema)
+  const table = iceberg.IcebergTable.create(warehouse, schema)
   table.append(trades())
 
   // The root is the folder the table actually lives in, not the local path

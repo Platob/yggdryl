@@ -25,6 +25,7 @@ from . import (
     toml as toml,
     txhash as txhash,
     uri as uri,
+    warehouse as warehouse,
     xml as xml,
     xxhash as xxhash,
     yaml as yaml,
@@ -101,6 +102,20 @@ from .uri import (
     Uri as Uri,
     Url as Url,
     Urn as Urn,
+)
+from .warehouse import (
+    Catalog as Catalog,
+    FolderCatalog as FolderCatalog,
+    FolderNamespace as FolderNamespace,
+    MediaTable as MediaTable,
+    MemoryCatalog as MemoryCatalog,
+    MemoryNamespace as MemoryNamespace,
+    Namespace as Namespace,
+    Namespaces as Namespaces,
+    SystemWarehouse as SystemWarehouse,
+    Table as Table,
+    Tables as Tables,
+    Warehouse as Warehouse,
 )
 from ._classes import (
     field as field,

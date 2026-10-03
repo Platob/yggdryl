@@ -15,7 +15,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import IOBase, Url
-from yggdryl.iceberg import Table, assign_field_ids
+from yggdryl.iceberg import IcebergTable, assign_field_ids
 from yggdryl.logging import (
     Deduplicate,
     FileHandler,
@@ -35,7 +35,7 @@ SCHEMA = pa.schema(
 
 def _round_trip(root: pathlib.Path, rows: int) -> int:
     """Create a table, append `rows` rows, and read them all back."""
-    table = Table.create(IOBase(root), assign_field_ids(SCHEMA), ["venue"])
+    table = IcebergTable.create(IOBase(root), assign_field_ids(SCHEMA), ["venue"])
     table.append(
         pa.record_batch(
             {"id": list(range(rows)), "venue": ["XNAS"] * rows},
@@ -163,7 +163,7 @@ def test_a_data_warning_reaches_logging_once_and_then_is_counted() -> None:
 
 
 def _created(root: pathlib.Path) -> None:
-    Table.create(IOBase(root), assign_field_ids(SCHEMA))
+    IcebergTable.create(IOBase(root), assign_field_ids(SCHEMA))
 
 
 class _Collect(logging.Handler):
@@ -343,7 +343,7 @@ def test_the_core_drops_its_own_repeats_before_they_reach_logging(
     try:
         assert is_deduplicating("yggdryl.iceberg.table")
         assert not is_deduplicating("yggdryl.iceberg")
-        table = Table.create(IOBase(tmp_path / "repeated"), assign_field_ids(SCHEMA))
+        table = IcebergTable.create(IOBase(tmp_path / "repeated"), assign_field_ids(SCHEMA))
         package.messages()
         for _ in range(10):
             assert sum(batch.num_rows for batch in table.scan()) == 0

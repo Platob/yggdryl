@@ -8,7 +8,7 @@
 //! object store the moment a backend for one exists.
 //!
 //! ```no_run
-//! use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+//! use yggdryl::iceberg::{FormatVersion, PartitionSpec, IcebergTable, assign_field_ids};
 //! use yggdryl::local::LocalFolder;
 //! use yggdryl::{DataType, Field, StructType};
 //!
@@ -22,10 +22,10 @@
 //!
 //! let folder = LocalFolder::new(LocalFolder::temporary()?.path()?.join("trades"))?;
 //! let spec = PartitionSpec::identity(0, &schema, &["venue"])?;
-//! let table = Table::create(folder, FormatVersion::V2, schema, spec)?;
+//! let table = IcebergTable::create(folder, FormatVersion::V2, schema, spec)?;
 //!
 //! // A table with no snapshot yet reads as no rows, never as a failure.
-//! assert!(table.current_snapshot().is_none());
+//! assert!(table.current_snapshot()?.is_none());
 //! assert_eq!(table.scan(None)?.count(), 0);
 //! # Ok(())
 //! # }
@@ -35,13 +35,13 @@
 //!
 //! Committing means writing a new metadata document, so an append writes at
 //! least one Parquet file per partition - more when a partition's rows exceed
-//! [`Table::target_file_size_bytes`] - one manifest, one manifest list, and one
+//! [`IcebergTable::target_file_size_bytes`] - one manifest, one manifest list, and one
 //! metadata JSON. Nothing is mutated in place, which is what makes the previous
 //! snapshot still readable afterwards.
 //!
 //! Every data file holds one partition, with its rows in the table's default
 //! sort order - the partition's source columns unless the creator declared
-//! another with [`Table::create_sorted`] - so the bounds a file records on
+//! another with [`IcebergTable::create_sorted`] - so the bounds a file records on
 //! those columns are tight and a filter on them prunes files rather than
 //! reading them. Partition groups are written on up to
 //! [`IcebergOptions::write_parallelism`] threads, and the manifest lists
@@ -59,15 +59,15 @@
 //! # Concurrent writers
 //!
 //! Commits are optimistic. Before publishing version N+1 a commit re-checks
-//! the current version with the same lookup [`Table::open`] uses; a commit
+//! the current version with the same lookup [`IcebergTable::open`] uses; a commit
 //! that finds itself beaten *rebases* when that is safe - it reloads the
 //! winner's document and re-applies its own intent on top, with exponential
 //! jittered backoff between attempts, bounded by
 //! [`IcebergOptions::commit_retries`] and
 //! [`IcebergOptions::commit_total_timeout_ms`] - and otherwise reports a
 //! [`CommitConflict`] naming both versions. An append and a metadata-only
-//! change rebase; [`Table::commit_overwrite_where`], [`Table::commit_merge_where`], and
-//! [`Table::compact`] cannot, because they planned against files a concurrent
+//! change rebase; [`IcebergTable::commit_overwrite_where`], [`IcebergTable::commit_merge_where`], and
+//! [`IcebergTable::compact`] cannot, because they planned against files a concurrent
 //! commit may have replaced and their input readers are already consumed, so
 //! they conflict instead. Readers are never blocked, and a failed commit
 //! leaves no visible change - at worst it orphans data files no snapshot
@@ -81,17 +81,17 @@
 //!
 //! # Branches and tags
 //!
-//! [`Table::create_branch`], [`Table::create_tag`], [`Table::remove_snapshot_ref`],
-//! [`Table::fast_forward_branch`], and [`Table::expire_snapshots`] are thin wrappers
+//! [`IcebergTable::create_branch`], [`IcebergTable::create_tag`], [`IcebergTable::remove_snapshot_ref`],
+//! [`IcebergTable::fast_forward_branch`], and [`IcebergTable::expire_snapshots`] are thin wrappers
 //! over [`TableMetadata`]'s ref vocabulary, each committed through the same
-//! retrying [`Table::commit_metadata_changes`]. Writing *to* a branch other than
+//! retrying [`IcebergTable::commit_metadata_changes`]. Writing *to* a branch other than
 //! `main` remains future work, because a commit's parent is currently always
 //! the table's current snapshot.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::hash::{BuildHasherDefault, Hasher};
-use std::sync::Mutex;
+use std::hash::{BuildHasherDefault, Hash, Hasher};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, UInt32Array};
 use arrow_row::{Row, RowConverter, SortField};
@@ -117,6 +117,7 @@ use crate::{ChunkedSerie, IOBase, IOMedia, Serie, SpillOptions};
 use crate::{
     DataType, Error, Field, Filter, IOKind, MimeType, Result, Scalar, Selector, StructType, Term,
 };
+use crate::{Handle, IntoObjectPath, ObjectValue, Properties, TableValue};
 
 /// The directory a table keeps its metadata documents and manifests in.
 const METADATA_DIR: &str = "metadata";
@@ -131,24 +132,145 @@ const VERSION_HINT: &str = "version-hint.text";
 ///
 /// The handle is whatever [`IOBase`] implementation addresses the table's
 /// folder. Everything below - metadata documents, manifest lists, manifests,
-/// data files - is a child of it. The relationship runs both ways: a `Table`
+/// data files - is a child of it. The relationship runs both ways: a `IcebergTable`
 /// is itself an [`IOBase`], so the generic record surface works on the value
 /// directly - see the trait implementation for what each method answers.
 #[derive(Debug)]
-pub struct Table<H: IOBase> {
+pub struct IcebergTable<H: IOBase> {
     /// The folder the table lives in.
     root: H,
+    /// Its warehouse path: the catalog's name down to its own, or its
+    /// folder's name alone for a table opened by its location.
+    path: Vec<SmolStr>,
+    /// What was stated for it at construction or registration.
+    stated: Properties,
+    /// Its parent's effective properties.
+    inherited: Properties,
+    /// What its store says it is, when it says anything.
+    description: Option<String>,
+    /// The current metadata document, read once on first use.
+    opened: OnceLock<Opened>,
+    /// An explicit options override the resolvers consult before properties.
+    options: Option<IcebergOptions>,
+}
+
+/// The current metadata document of a table, as read: what every reader
+/// and every commit works from.
+#[derive(Clone, Debug)]
+struct Opened {
     /// The parsed current metadata document.
     metadata: TableMetadata,
     /// The version number of the metadata document that was last written.
     version: u32,
     /// The exact discovered metadata filename, including UUID and compression.
     metadata_file_name: SmolStr,
-    /// An explicit options override the resolvers consult before properties.
-    options: Option<IcebergOptions>,
 }
 
-impl<H: IOBase> Table<H> {
+impl IcebergTable<Handle> {
+    /// Return this table with stated properties, which its storage opens
+    /// with and [`ObjectValue::properties`] answers over the stored ones.
+    ///
+    /// Only a table a warehouse holds states properties: one opened over a
+    /// handle in hand was opened by whoever handed the handle over, and its
+    /// settings are its [`options`](Self::options).
+    #[must_use]
+    pub fn with_properties(mut self, properties: Properties) -> Self {
+        self.stated = properties;
+        self.root
+            .set_properties(self.stated.inherit(&self.inherited));
+        self
+    }
+
+    /// The table with its parent's effective properties pushed into it.
+    pub(crate) fn inheriting(mut self, parent: &Properties) -> Self {
+        self.inherited = parent.clone();
+        self.root
+            .set_properties(self.stated.inherit(&self.inherited));
+        self
+    }
+
+    /// Whether anything is at the table's location now.
+    pub(crate) fn exists(&self) -> bool {
+        self.root.exists()
+    }
+}
+
+impl<H: IOBase + Clone> Clone for IcebergTable<H> {
+    /// A clone starts with nothing read: the root's own clone, and the
+    /// current metadata document read again on its first use.
+    fn clone(&self) -> Self {
+        Self {
+            root: self.root.clone(),
+            path: self.path.clone(),
+            stated: self.stated.clone(),
+            inherited: self.inherited.clone(),
+            description: self.description.clone(),
+            opened: OnceLock::new(),
+            options: self.options.clone(),
+        }
+    }
+}
+
+impl<H: IOBase> PartialEq for IcebergTable<H> {
+    /// Equal by description - the path, the root's location, what was stated
+    /// and inherited, the description and the options - never by what was
+    /// read.
+    fn eq(&self, other: &Self) -> bool {
+        self.path == other.path
+            && self.root.url() == other.root.url()
+            && self.stated == other.stated
+            && self.inherited == other.inherited
+            && self.description == other.description
+            && self.options == other.options
+    }
+}
+
+impl<H: IOBase> Eq for IcebergTable<H> {}
+
+impl<H: IOBase> Hash for IcebergTable<H> {
+    fn hash<S: Hasher>(&self, state: &mut S) {
+        self.path.hash(state);
+        self.root.url().hash(state);
+        self.stated.hash(state);
+        self.inherited.hash(state);
+        self.description.hash(state);
+        self.options.hash(state);
+    }
+}
+
+/// The path a table opened by its location alone stands under: its folder's
+/// name, `table` for an unlocated folder.
+fn path_of<H: IOBase>(root: &H) -> Vec<SmolStr> {
+    vec![SmolStr::new(
+        root.url()
+            .and_then(crate::Url::file_name)
+            .filter(|name| !name.is_empty())
+            .unwrap_or("table"),
+    )]
+}
+
+/// Read the current metadata document under `root`, when there is one:
+/// the one `metadata/version-hint.text` names, else the highest-numbered
+/// `*.metadata.json`.
+fn read_current<H: IOBase>(root: &H) -> Result<Option<Opened>> {
+    let metadata_dir = container(root.child_by_path(METADATA_DIR)?)?;
+    let Some((version, metadata_file_name, document)) = find_metadata_document(&metadata_dir)?
+    else {
+        return Ok(None);
+    };
+    let metadata = TableMetadata::from_json(&document)?;
+    log::debug!(
+        "opened iceberg table {} at metadata version {version}",
+        metadata.location(),
+    );
+    Ok(Some(Opened {
+        metadata,
+        version,
+        metadata_file_name,
+    }))
+}
+
+impl<H: IOBase> IcebergTable<H> {
     /// Create a table, writing its first metadata document.
     ///
     /// The table has a schema and a partition spec but no snapshot, which is
@@ -214,21 +336,106 @@ impl<H: IOBase> Table<H> {
             ))
         })?;
         let metadata = TableMetadata::new_sorted(format_version, location, schema, spec, order)?;
-        let mut table = Self {
-            root,
+        let mut table = Self::at(path_of(&root), root);
+        table.adopt(Opened {
             metadata,
             version: 0,
             metadata_file_name: SmolStr::new_static(""),
-            options: None,
-        };
+        });
         table.create_metadata()?;
         log::info!(
             "created iceberg table at {} (format v{}, {} columns)",
-            table.metadata.location(),
+            table.opened()?.metadata.location(),
             format_version as u8,
             table.schema().map_or(0, |schema| schema.fields().len()),
         );
         Ok(table)
+    }
+
+    /// Describe the table `root` holds under `path`, touching nothing: the
+    /// current metadata document is read on the first verb that needs it.
+    ///
+    /// This is the table a catalog lists, and the one [`Self::open`] answers
+    /// once it has read the document; a folder that holds no table says so
+    /// on that first use, naming its `metadata/` folder.
+    pub fn at(path: impl IntoObjectPath, root: H) -> Self {
+        let path = match path.into_object_path() {
+            Ok(path) if !path.is_empty() => path,
+            _ => path_of(&root),
+        };
+        Self {
+            root,
+            path,
+            stated: Properties::new(),
+            inherited: Properties::new(),
+            description: None,
+            opened: OnceLock::new(),
+            options: None,
+        }
+    }
+
+    /// Return this table with a description.
+    #[must_use]
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    /// The table under `path`: what a catalog that created it names it.
+    pub(crate) fn placed(mut self, path: Vec<SmolStr>) -> Self {
+        self.path = path;
+        self
+    }
+
+    /// The table over `f` of its root, everything else kept - the document
+    /// it has read included: how a table created over a handle in hand is
+    /// re-rooted on the handle a catalog keeps.
+    pub(crate) fn map_root<G: IOBase>(self, f: impl FnOnce(H) -> G) -> IcebergTable<G> {
+        IcebergTable {
+            root: f(self.root),
+            path: self.path,
+            stated: self.stated,
+            inherited: self.inherited,
+            description: self.description,
+            opened: self.opened,
+            options: self.options,
+        }
+    }
+
+    /// The current metadata document, read on the first call.
+    fn opened(&self) -> Result<&Opened> {
+        if let Some(opened) = self.opened.get() {
+            return Ok(opened);
+        }
+        let opened = match read_current(&self.root)? {
+            Some(opened) => opened,
+            None => {
+                return Err(missing_metadata(&container(
+                    self.root.child_by_path(METADATA_DIR)?,
+                )?));
+            }
+        };
+        Ok(self.opened.get_or_init(|| opened))
+    }
+
+    /// The current metadata document, mutably, read on the first call.
+    fn opened_mut(&mut self) -> Result<&mut Opened> {
+        self.opened()?;
+        self.opened.get_mut().ok_or_else(|| {
+            invalid(SmolStr::new_static(
+                "expected the table's metadata document to be held once read",
+            ))
+        })
+    }
+
+    /// Hold `opened` as the current document, read or committed.
+    fn adopt(&mut self, opened: Opened) {
+        match self.opened.get_mut() {
+            Some(held) => *held = opened,
+            None => {
+                let _ = self.opened.set(opened);
+            }
+        }
     }
 
     /// Open the table a container handle addresses.
@@ -273,23 +480,12 @@ impl<H: IOBase> Table<H> {
     /// to do it. `Ok(Err(root))` is that answer: no table, and here is the
     /// handle you gave, untouched.
     pub(crate) fn locate_keeping(root: H) -> Result<std::result::Result<Self, H>> {
-        let metadata_dir = container(root.child_by_path(METADATA_DIR)?)?;
-        let Some((version, metadata_file_name, document)) = find_metadata_document(&metadata_dir)?
-        else {
+        let Some(opened) = read_current(&root)? else {
             return Ok(Err(root));
         };
-        let metadata = TableMetadata::from_json(&document)?;
-        log::debug!(
-            "opened iceberg table {} at metadata version {version}",
-            metadata.location(),
-        );
-        Ok(Ok(Self {
-            root,
-            metadata,
-            version,
-            metadata_file_name,
-            options: None,
-        }))
+        let mut table = Self::at(path_of(&root), root);
+        table.adopt(opened);
+        Ok(Ok(table))
     }
 
     /// Open the table if it exists, creating it otherwise.
@@ -318,31 +514,45 @@ impl<H: IOBase> Table<H> {
         &self.root
     }
 
-    /// Borrow the current table metadata.
-    pub const fn metadata(&self) -> &TableMetadata {
-        &self.metadata
+    /// Borrow the current table metadata, read on the first call.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the folder holds no metadata document, or when
+    /// the document is not table metadata.
+    pub fn metadata(&self) -> Result<&TableMetadata> {
+        Ok(&self.opened()?.metadata)
     }
 
     /// Return the version number of the current metadata document.
-    pub const fn metadata_version(&self) -> u32 {
-        self.version
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::metadata`].
+    pub fn metadata_version(&self) -> Result<u32> {
+        Ok(self.opened()?.version)
     }
 
     /// Return the name of the current metadata document.
-    pub fn metadata_file_name(&self) -> String {
-        self.metadata_file_name.to_string()
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::metadata`].
+    pub fn metadata_file_name(&self) -> Result<String> {
+        Ok(self.opened()?.metadata_file_name.to_string())
     }
 
     /// Return the location of the current metadata document, as a URI.
     ///
     /// # Errors
     ///
-    /// Returns an error when the metadata child has no URL.
+    /// As [`Self::metadata`].
     pub fn metadata_location(&self) -> Result<String> {
+        let opened = self.opened()?;
         Ok(format!(
             "{}/{METADATA_DIR}/{}",
-            self.metadata.location.trim_end_matches('/'),
-            self.metadata_file_name()
+            opened.metadata.location.trim_end_matches('/'),
+            opened.metadata_file_name
         ))
     }
 
@@ -352,12 +562,16 @@ impl<H: IOBase> Table<H> {
     ///
     /// Returns an error when no schema carries the current schema identifier.
     pub fn schema(&self) -> Result<&Field> {
-        self.metadata.current_schema()
+        self.opened()?.metadata.current_schema()
     }
 
     /// Borrow the snapshot a reader sees, when the table has one.
-    pub fn current_snapshot(&self) -> Option<&Snapshot> {
-        self.metadata.current_snapshot()
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::metadata`].
+    pub fn current_snapshot(&self) -> Result<Option<&Snapshot>> {
+        Ok(self.opened()?.metadata.current_snapshot())
     }
 
     /// Return the size a data file aims for, in bytes.
@@ -385,7 +599,7 @@ impl<H: IOBase> Table<H> {
     /// is present but does not spell a positive byte count; a configured
     /// target is never silently replaced by the default.
     pub fn target_file_size_bytes(&self) -> Result<u64> {
-        IcebergOptions::target_size(self.options.as_ref(), &self.metadata)
+        IcebergOptions::target_size(self.options.as_ref(), &self.opened()?.metadata)
     }
 
     /// Store an explicit options override the resolvers consult first.
@@ -426,7 +640,7 @@ impl<H: IOBase> Table<H> {
     /// Returns a typed error naming the key and the value when a property no
     /// explicit option shadows is present but does not parse.
     pub fn options(&self) -> Result<IcebergOptions> {
-        IcebergOptions::resolved(self.options.as_ref(), &self.metadata)
+        IcebergOptions::resolved(self.options.as_ref(), &self.opened()?.metadata)
     }
 
     /// Resolve where this table's commits stage their files.
@@ -442,7 +656,8 @@ impl<H: IOBase> Table<H> {
     /// Returns a typed error naming the key when the property is present but
     /// does not spell `off` or a local folder.
     pub fn write_staging(&self) -> Result<WriteStaging> {
-        let settings = IcebergOptions::write_settings(self.options.as_ref(), &self.metadata)?;
+        let settings =
+            IcebergOptions::write_settings(self.options.as_ref(), &self.opened()?.metadata)?;
         Ok(match settings.staging {
             Some(staging) => staging,
             None if self.is_remote() => {
@@ -466,7 +681,7 @@ impl<H: IOBase> Table<H> {
     ///
     /// Returns an error when the manifest list cannot be reached or decoded.
     pub fn manifests(&self) -> Result<Vec<ManifestFile>> {
-        match self.current_snapshot() {
+        match self.current_snapshot()? {
             Some(snapshot) => self.manifests_at(snapshot),
             None => Ok(Vec::new()),
         }
@@ -501,14 +716,13 @@ impl<H: IOBase> Table<H> {
     /// Returns an error naming the refs the table does have when `name` is not
     /// one of them, or when the ref points at a snapshot that is not retained.
     pub fn snapshot_by_ref(&self, name: &str) -> Result<&Snapshot> {
-        let reference = self
-            .metadata
+        let metadata = &self.opened()?.metadata;
+        let reference = metadata
             .refs
             .iter()
             .find_map(|(candidate, reference)| (candidate == name).then_some(reference))
             .ok_or_else(|| {
-                let known: Vec<&str> = self
-                    .metadata
+                let known: Vec<&str> = metadata
                     .refs
                     .iter()
                     .map(|(name, _)| name.as_str())
@@ -518,7 +732,7 @@ impl<H: IOBase> Table<H> {
                     known.join(", ")
                 ))
             })?;
-        self.metadata
+        metadata
             .snapshot_by_id(reference.snapshot_id)
             .ok_or_else(|| {
                 invalid(format_smolstr!(
@@ -629,9 +843,9 @@ impl<H: IOBase> Table<H> {
 
     /// Return one retained snapshot, or say which ids are retained.
     fn require_snapshot(&self, snapshot_id: i64) -> Result<&Snapshot> {
-        self.metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
-            let retained: Vec<String> = self
-                .metadata
+        let metadata = &self.opened()?.metadata;
+        metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
+            let retained: Vec<String> = metadata
                 .snapshots
                 .iter()
                 .map(|snapshot| snapshot.snapshot_id.to_string())
@@ -646,7 +860,7 @@ impl<H: IOBase> Table<H> {
     /// Return the schema one snapshot was written under, or the current one.
     fn schema_of(&self, snapshot: &Snapshot) -> Result<&Field> {
         match snapshot.schema_id {
-            Some(schema_id) => self.metadata.schema_by_id(schema_id).ok_or_else(|| {
+            Some(schema_id) => self.opened()?.metadata.schema_by_id(schema_id).ok_or_else(|| {
                 invalid(format_smolstr!(
                     "expected the snapshot's schema {schema_id} among the table's schemas, got none"
                 ))
@@ -680,7 +894,7 @@ impl<H: IOBase> Table<H> {
         schema: &Field,
         for_read: bool,
     ) -> Result<ScanPlan> {
-        let location = self.metadata.location();
+        let location = self.opened()?.metadata.location();
         log::debug!(
             "planning iceberg scan of {location} over {} manifests",
             manifests.len()
@@ -688,7 +902,7 @@ impl<H: IOBase> Table<H> {
         let plan = super::scan::plan(
             manifests,
             &|spec_id| {
-                self.metadata
+                self.opened()?.metadata
                     .spec_by_id(spec_id)
                     .cloned()
                     .ok_or_else(|| {
@@ -754,7 +968,7 @@ impl<H: IOBase> Table<H> {
     /// ```no_run
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # let folder = yggdryl::local::LocalFolder::new(yggdryl::local::LocalFolder::temporary()?.path()?.join("t"))?;
-    /// # let mut table = yggdryl::iceberg::Table::open(folder)?;
+    /// # let mut table = yggdryl::iceberg::IcebergTable::open(folder)?;
     /// table.commit_metadata_changes(|metadata| {
     ///     metadata.set_property("commit.retry.num-retries", "4")?;
     ///     Ok(())
@@ -776,7 +990,7 @@ impl<H: IOBase> Table<H> {
             OnConflict::Rebase,
             move |table| {
                 // The change runs on a copy, so a rejected change costs nothing.
-                let mut updated = table.metadata.clone();
+                let mut updated = table.opened()?.metadata.clone();
                 change(&mut updated)?;
                 Ok(updated)
             },
@@ -811,10 +1025,10 @@ impl<H: IOBase> Table<H> {
         mut apply: impl FnMut(&Self) -> Result<TableMetadata>,
         staging: Option<&Staging>,
     ) -> Result<()> {
-        let settings = IcebergOptions::commit_settings(self.options.as_ref(), &self.metadata)?;
-        let saved_metadata = self.metadata.clone();
-        let saved_version = self.version;
-        let saved_metadata_file_name = self.metadata_file_name.clone();
+        let settings =
+            IcebergOptions::commit_settings(self.options.as_ref(), &self.opened()?.metadata)?;
+        let saved = self.opened()?.clone();
+        let saved_version = saved.version;
         let expected_version = saved_version.checked_add(1).ok_or_else(|| {
             invalid(format_smolstr!(
                 "cannot commit metadata after version {saved_version}: the version overflows u32"
@@ -822,9 +1036,7 @@ impl<H: IOBase> Table<H> {
         })?;
         let metadata_dir = container(self.root.child_by_path(METADATA_DIR)?)?;
         let restore = |table: &mut Self, error: Error| {
-            table.metadata = saved_metadata.clone();
-            table.version = saved_version;
-            table.metadata_file_name = saved_metadata_file_name.clone();
+            table.adopt(saved.clone());
             Err(error)
         };
         let reconcile_visible = |table: &mut Self, error: Error| {
@@ -843,15 +1055,13 @@ impl<H: IOBase> Table<H> {
                     .transpose()
             }) {
                 Ok(Some((version, metadata_file_name, metadata))) => {
-                    table.metadata = metadata;
-                    table.version = version;
-                    table.metadata_file_name = metadata_file_name;
+                    table.adopt(Opened {
+                        metadata,
+                        version,
+                        metadata_file_name,
+                    });
                 }
-                Ok(None) | Err(_) => {
-                    table.metadata = saved_metadata.clone();
-                    table.version = saved_version;
-                    table.metadata_file_name = saved_metadata_file_name.clone();
-                }
+                Ok(None) | Err(_) => table.adopt(saved.clone()),
             }
             Err(error)
         };
@@ -862,8 +1072,9 @@ impl<H: IOBase> Table<H> {
             // The version this handle holds is the version it re-checks, so
             // a hint naming it settles the check without reading the
             // document again: the document is read only when it is newer.
-            match find_metadata(&metadata_dir, Some(self.version)) {
-                Ok(Some((version, metadata_file_name, document))) if version > self.version => {
+            let held_version = self.opened()?.version;
+            match find_metadata(&metadata_dir, Some(held_version)) {
+                Ok(Some((version, metadata_file_name, document))) if version > held_version => {
                     let wait = match retry_wait_ms(
                         &settings,
                         &mut beaten,
@@ -883,18 +1094,18 @@ impl<H: IOBase> Table<H> {
                             })
                             .and_then(|document| TableMetadata::from_json(&document));
                         match fresh {
-                            Ok(fresh) => {
-                                self.metadata = fresh;
-                                self.version = version;
-                                self.metadata_file_name = metadata_file_name;
-                            }
+                            Ok(fresh) => self.adopt(Opened {
+                                metadata: fresh,
+                                version,
+                                metadata_file_name,
+                            }),
                             Err(error) => return restore(self, error),
                         }
                     }
                     log::debug!(
                         "iceberg commit of {} found version {version} already published; \
                          retry {beaten}, waiting {wait} ms",
-                        self.metadata.location(),
+                        self.opened()?.metadata.location(),
                     );
                     if wait > 0 {
                         std::thread::sleep(std::time::Duration::from_millis(wait));
@@ -909,7 +1120,7 @@ impl<H: IOBase> Table<H> {
                 Ok(updated) => updated,
                 Err(error) => return restore(self, error),
             };
-            self.metadata = updated;
+            self.opened_mut()?.metadata = updated;
             if let Err(error) = self.commit_metadata(staging) {
                 if !error.is_conflict() {
                     return reconcile_visible(self, error);
@@ -925,7 +1136,7 @@ impl<H: IOBase> Table<H> {
                 let Ok(Some((version, metadata_file_name, metadata))) = winner else {
                     return reconcile_visible(self, error);
                 };
-                if version <= self.version {
+                if version <= self.opened()?.version {
                     return reconcile_visible(self, error);
                 }
                 let wait = match retry_wait_ms(
@@ -939,25 +1150,28 @@ impl<H: IOBase> Table<H> {
                     Err(error) => return restore(self, error),
                 };
                 if on_conflict == OnConflict::Rebase {
-                    self.metadata = metadata;
-                    self.version = version;
-                    self.metadata_file_name = metadata_file_name;
+                    self.adopt(Opened {
+                        metadata,
+                        version,
+                        metadata_file_name,
+                    });
                 }
                 log::debug!(
                     "iceberg commit of {} was beaten to version {version} on write; \
                      retry {beaten}, waiting {wait} ms",
-                    self.metadata.location(),
+                    self.opened()?.metadata.location(),
                 );
                 if wait > 0 {
                     std::thread::sleep(std::time::Duration::from_millis(wait));
                 }
                 continue;
             }
+            let committed = self.opened()?;
             log::info!(
                 "committed iceberg metadata version {} of {}{}",
-                self.version,
-                self.metadata.location(),
-                match self.metadata.current_snapshot() {
+                committed.version,
+                committed.metadata.location(),
+                match committed.metadata.current_snapshot() {
                     Some(snapshot) => format!(", snapshot {}", snapshot.snapshot_id),
                     None => String::new(),
                 },
@@ -975,7 +1189,7 @@ impl<H: IOBase> Table<H> {
     ///
     /// Returns an error only when the batch cannot be assembled.
     pub fn inspect_history(&self) -> Result<BatchReader> {
-        super::inspect::history(&self.metadata)
+        super::inspect::history(&self.opened()?.metadata)
     }
 
     /// Render every retained snapshot with its operation and summary.
@@ -987,7 +1201,7 @@ impl<H: IOBase> Table<H> {
     ///
     /// Returns an error only when the batch cannot be assembled.
     pub fn inspect_snapshots(&self) -> Result<BatchReader> {
-        super::inspect::snapshots(&self.metadata)
+        super::inspect::snapshots(&self.opened()?.metadata)
     }
 
     /// Render the live data files of the current snapshot.
@@ -1056,11 +1270,11 @@ impl<H: IOBase> Table<H> {
     /// holds.
     ///
     /// ```no_run
-    /// use yggdryl::iceberg::Table;
+    /// use yggdryl::iceberg::IcebergTable;
     /// use yggdryl::local::LocalFolder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let table = Table::open(LocalFolder::new("/lake/trades")?)?;
+    /// let table = IcebergTable::open(LocalFolder::new("/lake/trades")?)?;
     /// let reader = table.scan_matching(
     ///     "ccy = 'EUR' and price > 100 and year = 2024",
     ///     None,
@@ -1105,7 +1319,8 @@ impl<H: IOBase> Table<H> {
         // predicate's own columns even when the caller projected them away.
         let predicates = super::scan::conjuncts(&read_root, filter)?;
         let parts = self.scan_parts(tasks, stored, &read_root)?;
-        let mut parallel = IcebergOptions::read_settings(self.options.as_ref(), &self.metadata)?;
+        let mut parallel =
+            IcebergOptions::read_settings(self.options.as_ref(), &self.opened()?.metadata)?;
         if lazy {
             // A limited read decodes one file at a time, on one thread, so it
             // stops where its limit does rather than decoding ahead of it.
@@ -1118,7 +1333,7 @@ impl<H: IOBase> Table<H> {
             field.cloned(),
             predicates,
             &parallel,
-            columns_renamed(&self.metadata),
+            columns_renamed(&self.opened()?.metadata),
         )
     }
 
@@ -1406,7 +1621,7 @@ impl<H: IOBase> Table<H> {
     ) -> Result<()> {
         self.require_row_id_preserving_rewrite("merge")?;
         let schema = self.schema()?.clone();
-        let spec = self.metadata.default_spec()?.clone();
+        let spec = self.opened()?.metadata.default_spec()?.clone();
         let (keys, row_keys) = merge_keys(&schema, &spec, merge_by);
         if keys.is_empty() {
             return Err(Error::InvalidRecord {
@@ -1529,7 +1744,7 @@ impl<H: IOBase> Table<H> {
     /// Group an incoming reader by partition tuple, each group a write.
     fn partition_writes(&self, batches: BatchReader, safe: bool) -> Result<Vec<PartitionWrite>> {
         let schema = self.schema()?;
-        let spec = self.metadata.default_spec()?;
+        let spec = self.opened()?.metadata.default_spec()?;
         let partition = spec.partition_field(schema)?;
         Ok(grouped_holds(batches, schema, spec, &partition, safe)?
             .into_iter()
@@ -1600,7 +1815,7 @@ impl<H: IOBase> Table<H> {
         if selected.is_empty() {
             log::info!(
                 "compaction of {} found nothing to rewrite; no snapshot committed",
-                self.metadata.location(),
+                self.opened()?.metadata.location(),
             );
             return Ok(Compaction::default());
         }
@@ -1619,7 +1834,7 @@ impl<H: IOBase> Table<H> {
 
         log::debug!(
             "compacting {}: rewriting {files_before} files of {bytes_rewritten} bytes",
-            self.metadata.location(),
+            self.opened()?.metadata.location(),
         );
         let schema = self.schema()?.clone();
         let rows = self.reader(
@@ -1642,7 +1857,7 @@ impl<H: IOBase> Table<H> {
         )?;
         log::info!(
             "compacted {}: {files_before} files of {bytes_rewritten} bytes rewritten as {files_after}",
-            self.metadata.location(),
+            self.opened()?.metadata.location(),
         );
         Ok(Compaction {
             files_before,
@@ -1673,7 +1888,7 @@ impl<H: IOBase> Table<H> {
         })?;
         log::info!(
             "evolved iceberg schema of {} to id {schema_id}",
-            self.metadata.location(),
+            self.opened()?.metadata.location(),
         );
         Ok(schema_id)
     }
@@ -1693,7 +1908,7 @@ impl<H: IOBase> Table<H> {
     /// commit failure.
     pub fn update_schema(&mut self, update: &crate::iceberg::SchemaUpdate) -> Result<i32> {
         if update.is_empty() {
-            return Ok(self.metadata.current_schema_id());
+            return Ok(self.opened()?.metadata.current_schema_id());
         }
         let mut schema_id = 0;
         self.commit_metadata_changes(|metadata| {
@@ -1703,7 +1918,7 @@ impl<H: IOBase> Table<H> {
         })?;
         log::info!(
             "evolved iceberg schema of {} to id {schema_id}",
-            self.metadata.location(),
+            self.opened()?.metadata.location(),
         );
         Ok(schema_id)
     }
@@ -1809,9 +2024,9 @@ impl<H: IOBase> Table<H> {
         retain_last: Option<usize>,
         snapshot_ids: &[i64],
     ) -> Result<Vec<i64>> {
-        let mut probe = self.metadata.clone();
+        let mut probe = self.opened()?.metadata.clone();
         probe.expire_snapshots(older_than_ms, retain_last, snapshot_ids)?;
-        if probe == self.metadata {
+        if probe == self.opened()?.metadata {
             return Ok(Vec::new());
         }
         let mut expired = Vec::new();
@@ -1822,7 +2037,7 @@ impl<H: IOBase> Table<H> {
         log::info!(
             "expired {} iceberg snapshots of {}",
             expired.len(),
-            self.metadata.location(),
+            self.opened()?.metadata.location(),
         );
         Ok(expired)
     }
@@ -1852,7 +2067,7 @@ impl<H: IOBase> Table<H> {
     /// child is, and a table written on one storage system moves to another by
     /// rewriting its locations rather than its code.
     pub(super) fn child_at(&self, location: &str) -> Result<Holder> {
-        let relative = relative_location(&self.metadata.location, location)?;
+        let relative = relative_location(&self.opened()?.metadata.location, location)?;
         leaf(self.root.child_by_path(&relative)?)
     }
 
@@ -1867,7 +2082,8 @@ impl<H: IOBase> Table<H> {
     /// commit retry budget. A creator that finds a document there - published
     /// or still in flight - was beaten and reports the typed conflict.
     fn create_metadata(&mut self) -> Result<()> {
-        let settings = IcebergOptions::commit_settings(self.options.as_ref(), &self.metadata)?;
+        let settings =
+            IcebergOptions::commit_settings(self.options.as_ref(), &self.opened()?.metadata)?;
         let metadata_dir = container(self.root.child_by_path(METADATA_DIR)?)?;
         let mut beaten = 0_u32;
         let mut backoff_spent_ms = 0_u64;
@@ -1885,7 +2101,7 @@ impl<H: IOBase> Table<H> {
             };
             log::debug!(
                 "iceberg create of {} yielded to a racing creator; retry {beaten}, waiting {wait} ms",
-                self.metadata.location(),
+                self.opened()?.metadata.location(),
             );
             if wait > 0 {
                 std::thread::sleep(std::time::Duration::from_millis(wait));
@@ -1897,17 +2113,18 @@ impl<H: IOBase> Table<H> {
     fn commit_metadata(&mut self, staging: Option<&Staging>) -> Result<()> {
         // A bad in-memory state is refused before a document exists, so a
         // broken table can only be read, never written.
-        self.metadata.validate()?;
-        let previous = (self.version > 0)
+        let held = self.opened()?;
+        held.metadata.validate()?;
+        let previous = (held.version > 0)
             .then(|| self.metadata_location())
             .transpose()?;
-        let next_version = self.version.checked_add(1).ok_or_else(|| {
+        let next_version = held.version.checked_add(1).ok_or_else(|| {
             invalid(format_smolstr!(
                 "cannot commit metadata after version {}: the version overflows u32",
-                self.version
+                held.version
             ))
         })?;
-        let mut metadata = self.metadata.clone();
+        let mut metadata = held.metadata.clone();
         metadata.finalize_official(previous)?;
         let compression = metadata.metadata_compression_codec()?;
         let document = metadata.clone().into_json()?;
@@ -1992,9 +2209,11 @@ impl<H: IOBase> Table<H> {
         // are already durable, so a backend that refuses leaves an unreferenced
         // duplicate rather than an unfinished commit.
         drop(handle.remove(false));
-        self.metadata = metadata;
-        self.version = next_version;
-        self.metadata_file_name = name;
+        self.adopt(Opened {
+            metadata,
+            version: next_version,
+            metadata_file_name: name,
+        });
         Ok(())
     }
 
@@ -2025,23 +2244,32 @@ impl<H: IOBase> Table<H> {
         threads: Option<usize>,
     ) -> Result<usize> {
         let schema = self.schema()?.clone();
-        let spec = self.metadata.default_spec()?.clone();
+        let spec = self.opened()?.metadata.default_spec()?.clone();
         spec.require_writable()?;
         // The format is resolved and checked against the build before a row
         // is written, so a format this build cannot encode fails up front
         // rather than after data files were written.
-        let mut settings = IcebergOptions::write_settings(self.options.as_ref(), &self.metadata)?;
+        let mut settings =
+            IcebergOptions::write_settings(self.options.as_ref(), &self.opened()?.metadata)?;
         if let Some(threads) = threads {
             // The thread count the write's options state is the explicit
             // layer over the table's `write.parallelism` property.
             settings.parallelism = threads.max(1);
         }
         require_encodable(&settings.mime_type)?;
-        let (sort, sort_order_id) =
-            sort_orderings(self.metadata.default_sort_order()?, &spec, &schema)?;
-        let initial_sequence = next_sequence_number(&self.metadata)?;
+        let (sort, sort_order_id) = sort_orderings(
+            self.opened()?.metadata.default_sort_order()?,
+            &spec,
+            &schema,
+        )?;
+        let initial_sequence = next_sequence_number(&self.opened()?.metadata)?;
         let snapshot_id = snapshot_id();
-        let location = self.metadata.location().trim_end_matches('/').to_owned();
+        let location = self
+            .opened()?
+            .metadata
+            .location()
+            .trim_end_matches('/')
+            .to_owned();
         // Every file below goes through the one staging, so a failure
         // anywhere before the document is published rolls all of them back.
         let staging = Staging::begin(settings.staging.as_ref(), self.is_remote(), snapshot_id)?;
@@ -2060,7 +2288,7 @@ impl<H: IOBase> Table<H> {
         };
         log::debug!(
             "writing an iceberg {operation} snapshot {snapshot_id} to {} in {} partition groups",
-            self.metadata.location(),
+            self.opened()?.metadata.location(),
             writes.len(),
         );
         let mut jobs = Vec::with_capacity(writes.len());
@@ -2085,7 +2313,7 @@ impl<H: IOBase> Table<H> {
         log::info!(
             "wrote {added_records} rows as {files_written} iceberg data files \
              ({added_size} bytes) for the {operation} snapshot {snapshot_id} of {}",
-            self.metadata.location(),
+            self.opened()?.metadata.location(),
         );
         let added_files = i32::try_from(written.len()).map_err(|_| {
             invalid(format_smolstr!(
@@ -2141,11 +2369,11 @@ impl<H: IOBase> Table<H> {
         let mut previous_list: Option<String> = None;
         let staged = &staging;
         let apply = move |table: &Self| {
-            let sequence_number = next_sequence_number(&table.metadata)?;
+            let sequence_number = next_sequence_number(&table.opened()?.metadata)?;
             let mut manifests = match &kept {
                 Some(kept) => kept.clone(),
                 None => {
-                    let current = table.metadata.current_snapshot_id;
+                    let current = table.opened()?.metadata.current_snapshot_id;
                     match &listed {
                         Some((snapshot, manifests)) if *snapshot == current => manifests.clone(),
                         _ => {
@@ -2165,21 +2393,19 @@ impl<H: IOBase> Table<H> {
             }
 
             let list_name = format!("snap-{snapshot_id}-1-{}.avro", uuid());
-            let first_row_id = if table.metadata.format_version >= FormatVersion::V3 {
-                Some(
-                    table
-                        .metadata
-                        .next_row_id
-                        .ok_or_else(|| Error::InvalidRecord {
+            let first_row_id =
+                if table.opened()?.metadata.format_version >= FormatVersion::V3 {
+                    Some(table.opened()?.metadata.next_row_id.ok_or_else(|| {
+                        Error::InvalidRecord {
                             path: "$.iceberg.next-row-id".into(),
                             reason: SmolStr::new_static("expected a v3 next-row-id, got none"),
-                        })?,
-                )
-            } else {
-                None
-            };
-            let format_version = table.metadata.format_version;
-            let parent_snapshot_id = table.metadata.current_snapshot_id;
+                        }
+                    })?)
+                } else {
+                    None
+                };
+            let format_version = table.opened()?.metadata.format_version;
+            let parent_snapshot_id = table.opened()?.metadata.current_snapshot_id;
             if let Some(previous) = previous_list.take() {
                 // The attempt this one replaces lost: its list goes now, one
                 // removal, rather than staying as the orphan a successful
@@ -2260,20 +2486,20 @@ impl<H: IOBase> Table<H> {
             };
             let snapshot = Snapshot {
                 snapshot_id,
-                parent_snapshot_id: table.metadata.current_snapshot_id,
-                sequence_number: (table.metadata.format_version >= FormatVersion::V2)
+                parent_snapshot_id: table.opened()?.metadata.current_snapshot_id,
+                sequence_number: (table.opened()?.metadata.format_version >= FormatVersion::V2)
                     .then_some(sequence_number),
                 timestamp_ms: now_ms(),
-                manifest_list: SmolStr::new(table.location_of(METADATA_DIR, &list_name)),
+                manifest_list: SmolStr::new(table.location_of(METADATA_DIR, &list_name)?),
                 manifests: None,
                 summary,
-                schema_id: Some(table.metadata.current_schema_id),
+                schema_id: Some(table.opened()?.metadata.current_schema_id),
                 encryption_key_id: None,
                 first_row_id,
                 added_rows: assigned_rows,
             };
 
-            let mut updated = table.metadata.clone();
+            let mut updated = table.opened()?.metadata.clone();
             updated.set_current_snapshot(snapshot)?;
             previous_list = Some(list_path);
             Ok(updated)
@@ -2299,16 +2525,17 @@ impl<H: IOBase> Table<H> {
         // Automatic compaction is optional. Skipping it on v3 keeps a
         // successful data commit successful without rewriting retained rows
         // under fresh row IDs.
-        if compacting || self.metadata.format_version >= FormatVersion::V3 {
+        if compacting || self.opened()?.metadata.format_version >= FormatVersion::V3 {
             return Ok(());
         }
-        let Some(cadence) = IcebergOptions::resolved(self.options.as_ref(), &self.metadata)?
-            .compact_after_commits()
+        let Some(cadence) =
+            IcebergOptions::resolved(self.options.as_ref(), &self.opened()?.metadata)?
+                .compact_after_commits()
         else {
             return Ok(());
         };
         let mut since_replace: u32 = 0;
-        for snapshot in self.metadata.snapshots.iter().rev() {
+        for snapshot in self.opened()?.metadata.snapshots.iter().rev() {
             if snapshot.operation() == "replace" {
                 break;
             }
@@ -2329,7 +2556,7 @@ impl<H: IOBase> Table<H> {
 
     /// Reject rewrites that would assign fresh row IDs to retained v3 rows.
     fn require_row_id_preserving_rewrite(&self, operation: &'static str) -> Result<()> {
-        if self.metadata.format_version >= FormatVersion::V3 {
+        if self.opened()?.metadata.format_version >= FormatVersion::V3 {
             return Err(Error::iceberg(format_smolstr!(
                 "{operation} is not supported for Iceberg format v3: rewritten rows cannot yet preserve their existing row IDs"
             )));
@@ -2353,7 +2580,7 @@ impl<H: IOBase> Table<H> {
         let schema = write.schema;
         let snapshot_id = write.snapshot_id;
         let staging = write.staging;
-        let version = self.metadata.format_version;
+        let version = self.opened()?.metadata.format_version;
         let ((), length) = staging.publish(
             &self.root,
             &format!("{METADATA_DIR}/{name}"),
@@ -2361,7 +2588,7 @@ impl<H: IOBase> Table<H> {
             |handle| write_manifest(handle, version, schema, spec, entries),
         )?;
         Ok(ManifestFile {
-            manifest_path: SmolStr::new(self.location_of(METADATA_DIR, name)),
+            manifest_path: SmolStr::new(self.location_of(METADATA_DIR, name)?),
             manifest_length: i64::try_from(length).map_err(|_| {
                 invalid(format_smolstr!(
                     "expected a manifest size fitting i64, got {length}"
@@ -2450,11 +2677,11 @@ impl<H: IOBase> Table<H> {
     }
 
     /// Build the URI of one child of a table directory.
-    fn location_of(&self, directory: &str, name: &str) -> String {
-        format!(
+    fn location_of(&self, directory: &str, name: &str) -> Result<String> {
+        Ok(format!(
             "{}/{directory}/{name}",
-            self.metadata.location.trim_end_matches('/')
-        )
+            self.opened()?.metadata.location.trim_end_matches('/')
+        ))
     }
 }
 
@@ -2465,23 +2692,23 @@ impl<H: IOBase> Table<H> {
 /// A plain container handle addressing the table's folder answers the same
 /// contract - the three record methods, a commit per cadence of a write -
 /// by probing the location for a table on every call. Holding the
-/// [`Table`] skips the probe: no metadata document is re-read,
+/// [`IcebergTable`] skips the probe: no metadata document is re-read,
 /// [`crate::IOMedia::read_arrow_field`] is
-/// [`Table::schema`] with its field identifiers and protocol metadata rather
+/// [`IcebergTable::schema`] with its field identifiers and protocol metadata rather
 /// than a shape lifted off decoded batches, and a
 /// [`partition_pairs`](IORecordOptions::partition_pairs) pair prunes data
-/// files through [`Table::plan`] instead of filtering rows after they were
+/// files through [`IcebergTable::plan`] instead of filtering rows after they were
 /// decoded. The in-memory metadata stays current across commits, so
-/// [`Table::current_snapshot`] and [`Table::metadata_version`] reflect a write made
+/// [`IcebergTable::current_snapshot`] and [`IcebergTable::metadata_version`] reflect a write made
 /// through this surface without reopening anything.
 ///
 /// One deliberate difference from the folder route: a filter naming a column
 /// the schema does not declare is an error here, exactly as
-/// [`Table::scan_where`] reports it, where a folder of leaves ignores a column
+/// [`IcebergTable::scan_where`] reports it, where a folder of leaves ignores a column
 /// its batches do not carry. A table's schema is authoritative, so a filter it
 /// cannot answer is a mistake worth naming rather than a row set worth
 /// guessing.
-impl<H: IOBase> IOBase for Table<H> {
+impl<H: IOBase> IOBase for IcebergTable<H> {
     // `kind` is answered below: storage sees a folder, and this handle is
     // the table that folder holds.
     crate::delegate_iobase!(root: pread, pwrite, size, capacity, reserve,
@@ -2543,7 +2770,7 @@ impl<H: IOBase> IOBase for Table<H> {
     /// [`CommitConflict`](crate::Error) when concurrent writers exhaust the
     /// retries - an overwrite never rebases.
     fn clear(&mut self) -> Result<()> {
-        if self.current_snapshot().is_none() {
+        if self.current_snapshot()?.is_none() {
             // Nothing has ever been written, so there is nothing to replace.
             return Ok(());
         }
@@ -2564,7 +2791,7 @@ impl<H: IOBase> IOBase for Table<H> {
     /// root that still holds a `metadata/` tree is refused naming the location,
     /// because a populated container is never silently recursed into.
     ///
-    /// The in-memory [`Table`] value describes a table that no longer exists
+    /// The in-memory [`IcebergTable`] value describes a table that no longer exists
     /// once this returns, so it must not be committed to afterwards; reopen the
     /// location instead. The handle itself stays usable and lazy, per the
     /// contract.
@@ -2578,7 +2805,64 @@ impl<H: IOBase> IOBase for Table<H> {
     }
 }
 
-impl<H: IOBase> crate::IOMedia for Table<H> {
+impl<H: IOBase + Sync + std::fmt::Debug> ObjectValue for IcebergTable<H> {
+    fn name(&self) -> &str {
+        self.path.last().map_or("", SmolStr::as_str)
+    }
+
+    fn path(&self) -> &[SmolStr] {
+        &self.path
+    }
+
+    fn kind(&self) -> IOKind {
+        IOKind::Table
+    }
+
+    fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    fn url(&self) -> Option<&crate::Url> {
+        self.root.url()
+    }
+
+    fn modified(&self) -> Option<i64> {
+        self.root.mtime()
+    }
+
+    /// The parent's effective properties, then the table properties the
+    /// current metadata document keeps, then what was stated for it.
+    fn properties(&self) -> Result<Properties> {
+        let mut stored = Properties::new();
+        for (key, value) in &self.opened()?.metadata.properties {
+            stored.set(key.clone(), value.clone());
+        }
+        Ok(self.stated.inherit(&stored.inherit(&self.inherited)))
+    }
+
+    /// A table's stored properties live in its metadata document, and
+    /// writing one is a commit, which needs the table held mutably:
+    /// [`IcebergTable::commit_metadata_changes`] is that door.
+    fn update_properties(&self, _updates: &Properties, _removes: &[SmolStr]) -> Result<()> {
+        Err(Error::unsupported(
+            "updating the properties it keeps through a shared table; commit them \
+             through IcebergTable::commit_metadata_changes",
+            "IcebergTable",
+        ))
+    }
+}
+
+impl<H: IOBase + Sync + std::fmt::Debug> TableValue for IcebergTable<H> {
+    fn field(&self) -> Result<Field> {
+        self.schema().cloned()
+    }
+
+    fn storage(&self) -> String {
+        IOKind::Table.as_str().to_owned()
+    }
+}
+
+impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
     fn as_io_base(&self) -> &dyn IOBase {
         self
     }
@@ -2594,7 +2878,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
     /// snapshots that omit the optional summary fall back to manifest record
     /// counts; rows are still never decoded.
     fn row_size(&self) -> Result<u64> {
-        let Some(snapshot) = self.current_snapshot() else {
+        let Some(snapshot) = self.current_snapshot()? else {
             return Ok(0);
         };
         if let Some(total) = snapshot.summary_value("total-records") {
@@ -2630,7 +2914,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
     /// The stored schema as the metadata declares it, no data file opened.
     ///
     /// A declared schema is returned as it stands, as on every handle.
-    /// Otherwise the answer is [`Table::schema`] renamed to the options' root
+    /// Otherwise the answer is [`IcebergTable::schema`] renamed to the options' root
     /// name - field identifiers and protocol metadata included - where the
     /// base implementation would build a reader and take the shape off its
     /// batches.
@@ -2643,7 +2927,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
 
     /// Scan the current snapshot, the whole `where` clause answered by the plan.
     ///
-    /// The clause is pushed into the scan as [`Table::scan_matching`] takes
+    /// The clause is pushed into the scan as [`IcebergTable::scan_matching`] takes
     /// it, so every spelling the expression language has prunes: `venue in
     /// ('XNAS', 'XLON')` and `ts between ... and ...` skip the same manifests
     /// and files an equality does. The read decodes only the columns the
@@ -2679,7 +2963,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
     /// [`IOMode::Merge`](crate::IOMode::Merge). The partition columns lead
     /// the match key, so an empty [`merge_by`](IORecordOptions::merge_by)
     /// on a partitioned table replaces the partitions the rows fall in; see
-    /// [`Table::commit_merge_where`].
+    /// [`IcebergTable::commit_merge_where`].
     fn merge_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
         let filters: Vec<(String, String)> = options.partition_pairs();
         let pairs: Vec<(&str, &str)> = filters
@@ -2690,7 +2974,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
     }
 }
 
-impl<H: IOBase> Table<H> {
+impl<H: IOBase> IcebergTable<H> {
     /// One streamed write under `mode`, over the partitions `pairs` address.
     ///
     /// The rows are shaped onto the stored schema once and cut into
@@ -2735,7 +3019,7 @@ impl<H: IOBase> Table<H> {
                 // The generic rule - a merge names a key - is met by the
                 // partition columns of a partitioned table, so only an
                 // unpartitioned one has to be told what to match on.
-                if self.metadata.default_spec()?.is_unpartitioned()
+                if self.opened()?.metadata.default_spec()?.is_unpartitioned()
                     || !options.merge_by().is_empty()
                 {
                     options.require_write_mode(mode)?;
@@ -2813,7 +3097,7 @@ impl<H: IOBase> Table<H> {
     }
 }
 
-/// What one [`Table::compact`] call did, in numbers a caller can assert on.
+/// What one [`IcebergTable::compact`] call did, in numbers a caller can assert on.
 ///
 /// A compaction with nothing to do reports zeros, because it commits nothing.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -2962,9 +3246,9 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
 /// A merge keyed by the partition columns alone replaces the partitions its
 /// rows fall in. Cut into several commits by its cadence, it would replace
 /// each partition once per commit and keep only the last commit's rows, so
-/// [`Table::commit_merge_cadence`] replaces a partition on the first commit
+/// [`IcebergTable::commit_merge_cadence`] replaces a partition on the first commit
 /// of a write that reaches it and appends to it on every later one. One
-/// value per write - a [`Table`] or [`super::Located`] stream, or a write
+/// value per write - a [`IcebergTable`] or [`super::Located`] stream, or a write
 /// session - and nothing a keyed merge records.
 ///
 /// Bounded by the partitions the write's rows fall in: one tuple each,
@@ -4847,7 +5131,7 @@ pub mod internals {
     /// A caller reads rows, not files; a suite that has to open the file a
     /// manifest named resolves it the way the table itself does.
     pub fn child_at<H: crate::IOBase>(
-        table: &crate::iceberg::Table<H>,
+        table: &crate::iceberg::IcebergTable<H>,
         location: &str,
     ) -> Result<crate::holder::Holder> {
         table.child_at(location)

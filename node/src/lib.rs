@@ -64,6 +64,7 @@ mod timeinforce;
 mod uri;
 mod value;
 mod version;
+mod warehouse;
 
 use std::cmp::Ordering;
 use std::sync::{Arc, Mutex};
@@ -106,10 +107,9 @@ pub use http::{
 };
 pub use iceberg::{
     FieldBound, FieldCount, FieldSummaryView, IcebergOptionsInput, JsCatalog, JsCompaction,
-    JsDataFile, JsIcebergOptions, JsManifestFile, JsNamespace, JsNamespaces, JsPartitionField,
-    JsPartitionSpec, JsScanPlan, JsSchemaUpdate, JsSnapshot, JsSnapshotRef, JsTable, JsTables,
-    iceberg_assign_field_ids, iceberg_can_promote, iceberg_schema_from_json,
-    iceberg_schema_into_json,
+    JsDataFile, JsIcebergOptions, JsManifestFile, JsNamespace, JsPartitionField, JsPartitionSpec,
+    JsScanPlan, JsSchemaUpdate, JsSnapshot, JsSnapshotRef, JsTable, iceberg_assign_field_ids,
+    iceberg_can_promote, iceberg_schema_from_json, iceberg_schema_into_json,
 };
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};
 pub use iomedia::JsBatchReader;
@@ -130,6 +130,10 @@ pub use text::options::JsTextOptions;
 pub use timezone::{JsTimezone, TimezoneAlias};
 pub use uri::{JsArn, JsUri, JsUrl, JsUrn, PartitionEntry};
 pub use version::JsVersion;
+pub use warehouse::{
+    JsSystemWarehouse, JsWarehouse, JsWarehouseCatalog, JsWarehouseNamespace,
+    JsWarehouseNamespaces, JsWarehouseTable, JsWarehouseTables, ObjectOptions,
+};
 pub use window_serie::JsWindowSerie;
 
 /// Read a structural JSON document from the object or the text a caller holds.

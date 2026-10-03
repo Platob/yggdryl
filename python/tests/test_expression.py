@@ -23,7 +23,7 @@ from yggdryl.expression import (
     user_function_signature,
     user_functions,
 )
-from yggdryl.iceberg import ScanPlan, Table
+from yggdryl.iceberg import ScanPlan, IcebergTable
 
 def trades_schema() -> Field:
     return Field(
@@ -857,7 +857,7 @@ def test_a_lake_selects_the_leaves_carrying_a_partition(tmp_path) -> None:
     assert str(pairs[0].url).endswith("year=2024/part-0.parquet")
 
 
-def trades_table(root) -> Table:
+def trades_table(root) -> IcebergTable:
     """A venue-partitioned table whose XLON partition holds two rows.
 
     One commit is one manifest, so three commits give the manifest list rows to
@@ -871,7 +871,7 @@ def trades_table(root) -> Table:
             pa.field("venue", pa.string()),
         ]
     )
-    table = Table.create(yggdryl.IOBase(root / "trades"), schema, ["venue"])
+    table = IcebergTable.create(yggdryl.IOBase(root / "trades"), schema, ["venue"])
     for identifier, venue in ((1, "XNAS"), (2, "XNYS"), (3, "XLON"), (4, "XLON")):
         batch = pa.record_batch({"id": [identifier], "venue": [venue]}, schema=schema)
         table.append(batch)

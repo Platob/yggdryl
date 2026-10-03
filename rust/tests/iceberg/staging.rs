@@ -13,7 +13,7 @@ mod iceberg {
     use yggdryl::arrow::BatchReader;
 
     use yggdryl::iceberg::{
-        FormatVersion, IcebergOptions, PartitionSpec, Table, WriteStaging, assign_field_ids,
+        FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, WriteStaging, assign_field_ids,
     };
     use yggdryl::local::LocalFolder;
 
@@ -91,7 +91,7 @@ mod iceberg {
         out
     }
 
-    fn file_paths(table: &Table<impl IOBase>) -> Vec<String> {
+    fn file_paths(table: &IcebergTable<impl IOBase>) -> Vec<String> {
         let mut paths: Vec<String> = table
             .data_files()
             .unwrap()
@@ -107,7 +107,7 @@ mod iceberg {
         let path = root("write-parallelism");
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -128,7 +128,7 @@ mod iceberg {
             .unwrap();
         assert_eq!(table.options().unwrap().write_parallelism(), 3);
         assert_eq!(
-            IcebergOptions::from_metadata(table.metadata())
+            IcebergOptions::from_metadata(table.metadata().unwrap())
                 .unwrap()
                 .write_parallelism_option(),
             Some(3)
@@ -162,7 +162,7 @@ mod iceberg {
         let stage = root("write-staging-folder");
         let schema = schema();
         let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
-        let mut table = Table::create(
+        let mut table = IcebergTable::create(
             LocalFolder::new(&path).unwrap(),
             FormatVersion::V2,
             schema,
@@ -199,7 +199,7 @@ mod iceberg {
             .unwrap();
         assert_eq!(table.write_staging().unwrap(), folder);
         assert_eq!(
-            IcebergOptions::from_metadata(table.metadata())
+            IcebergOptions::from_metadata(table.metadata().unwrap())
                 .unwrap()
                 .write_staging(),
             Some(&folder)
