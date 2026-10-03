@@ -90,6 +90,7 @@ mod iomode;
 mod iopath;
 pub mod ipc;
 pub mod isin;
+mod join;
 pub mod json;
 pub mod limit;
 mod listing;
@@ -124,6 +125,7 @@ pub mod serie;
 pub mod side;
 pub mod soap;
 mod sort_options;
+mod spill;
 pub mod state;
 pub mod string;
 pub mod structure;
@@ -211,6 +213,9 @@ pub use iokind::IOKind;
 pub use iomedia::IOMedia;
 pub use iomode::IOMode;
 pub use iopath::IOPath;
+pub use join::{
+    DEFAULT_JOIN_SUFFIX, DEFAULT_PUSHDOWN_KEYS, JoinKind, JoinOptions, JoinSide, JoinSource,
+};
 pub use listing::Listing;
 pub use media_type::MediaType;
 pub use metadata::{Metadata, MetadataIntoIter, MetadataIter, PropertyIter, ProtocolMetadata};
@@ -228,6 +233,7 @@ pub use protocol::{
 };
 pub use scheme::Scheme;
 pub use sort_options::SortOptions;
+pub use spill::{DEFAULT_SPILL_BYTE_SIZE, SpillOptions};
 pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
 pub use union_mode::UnionMode;
@@ -477,6 +483,7 @@ pub mod internals {
     pub use crate::securityid::internals as securityid;
     pub use crate::serie::arrow::internals as serie_arrow;
     pub use crate::serie::layout::internals as serie_layout;
+    pub use crate::spill::internals as spill;
     pub use crate::temporal::internals as temporal;
     pub use crate::text::display::internals as text_display;
     pub use crate::text::line::internals as text_line;

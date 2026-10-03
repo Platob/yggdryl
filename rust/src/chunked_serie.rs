@@ -58,22 +58,24 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef};
 use arrow_data::ArrayData;
+use arrow_row::{RowConverter, SortField};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use crate::arrow::{BatchReader, batch_reader};
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
 use crate::diff::one_datatype;
-use crate::expression::IntoSelector;
+use crate::expression::{self, BoundSelector, IntoOrderings, IntoSelector, Projection, Selector};
+use crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE;
 use crate::serie::arrow::{
     batch_schema, batch_under, item_field, land_planned, lands_exactly, storage_holds,
 };
 use crate::serie::{
     Proof, Resolved, Rows, compare_rows, compare_values, hash_rows, land, proven_row,
-    require_window,
+    require_window, stored_order_is_value_order,
 };
 use crate::value::Children;
 use crate::window_serie::window_end;
-use crate::{DataType, Field, FieldPath, Scalar, Serie, SerieReader, SortOptions};
+use crate::{DataType, Field, FieldPath, Scalar, Serie, SerieReader, SortOptions, SpillOptions};
 
 /// The invariant every chunk carries: it is a column, and its field is the
 /// collection's, so its buffers and its field are always there to lend.
@@ -112,6 +114,17 @@ impl ChunkedSerie {
             field,
             chunks,
             ends,
+        }
+    }
+
+    /// No chunk yet under `field`, with room for `capacity` chunks and
+    /// their ends: what a verb that pushes its chunks one by one starts
+    /// from, so neither vector grows on the way.
+    fn with_chunk_capacity(field: Arc<Field>, capacity: usize) -> Self {
+        Self {
+            field,
+            chunks: Vec::with_capacity(capacity),
+            ends: Vec::with_capacity(capacity),
         }
     }
 
@@ -211,7 +224,7 @@ impl ChunkedSerie {
             landed.push(current.1.apply(&chunk)?);
             plan = Some(current);
         }
-        Ok(Self::from_landed(field, landed))
+        Ok(Self::from_landed(field, landed).verified_edges()?)
     }
 
     /// Hold Arrow arrays as chunks: of their own field, or cast into
@@ -269,7 +282,7 @@ impl ChunkedSerie {
                     }
                 };
                 if let Ok(chunk) = land_planned(resolved, Arc::clone(&array), &Proof::Unproven) {
-                    chunks.push(chunk);
+                    chunks.push(chunk.verified_order()?);
                     continue;
                 }
             }
@@ -298,11 +311,11 @@ impl ChunkedSerie {
                     (source, compiled)
                 }
             };
-            chunks.push(current.1.cast_array(array)?);
+            chunks.push(current.1.cast_array(array)?.verified_order()?);
             plan = Some(current);
         }
         let field = Self::field_of(&chunks, || field);
-        Ok(Self::from_landed(field, chunks))
+        Ok(Self::from_landed(field, chunks).verified_edges()?)
     }
 
     /// Drain a [`SerieReader`] into its chunks: one record column per batch,
@@ -314,9 +327,14 @@ impl ChunkedSerie {
     /// fused.
     pub fn from_serie_reader(reader: SerieReader) -> crate::arrow::Result<Self> {
         let root = reader.field().clone();
-        let chunks = reader.collect::<crate::arrow::Result<Vec<Serie>>>()?;
+        let mut chunks = Vec::new();
+        for chunk in reader {
+            chunks.push(chunk?.settled()?);
+        }
         let field = Self::field_of(&chunks, || Arc::new(root));
-        Ok(Self::from_landed(field, chunks))
+        let mut chunked = Self::from_landed(field, chunks);
+        chunked.settle()?;
+        Ok(chunked)
     }
 
     /// Drain an Arrow batch stream into its chunks: of its own schema, or
@@ -590,10 +608,99 @@ impl ChunkedSerie {
         } else {
             chunk.cast(&self.field, options)?
         };
+        if let Some(by) = self.declared_order()?
+            && let Some(last) = self.chunks.last()
+            && !last.edge_in_order(&landed, &by)?
+        {
+            return Err(self.edge_refusal(self.chunks.len(), &by).into());
+        }
+        self.push_landed(landed)?;
+        Ok(())
+    }
+
+    /// The `order by` keys this chunked record's field declares its rows
+    /// keep across every chunk: [`Serie::declared_order`] over the field.
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::declared_order`]'s.
+    pub fn declared_order(&self) -> crate::Result<Option<Vec<expression::Ordering>>> {
+        if self.field.dtype().as_fields().is_none() || !self.field.as_sort().declares_order() {
+            return Ok(None);
+        }
+        self.field.as_sort().by()
+    }
+
+    /// This chunked serie checked at every chunk edge against the order its
+    /// field declares - the last row of each chunk against the first of the
+    /// next - refusing the first edge out of order by its chunk; a field
+    /// declaring none as it is. Each chunk's own rows are checked where it
+    /// lands.
+    pub(crate) fn verified_edges(self) -> crate::Result<Self> {
+        let Some(by) = self.declared_order()? else {
+            return Ok(self);
+        };
+        for (index, pair) in self.chunks.windows(2).enumerate() {
+            if !pair[0].edge_in_order(&pair[1], &by)? {
+                return Err(self.edge_refusal(index + 1, &by));
+            }
+        }
+        Ok(self)
+    }
+
+    /// The refusal of chunk `index` opening out of the declared order.
+    fn edge_refusal(&self, index: usize, by: &[expression::Ordering]) -> crate::Error {
+        crate::Error::InvalidRecord {
+            path: smol_str::SmolStr::new(self.field.name()),
+            reason: smol_str::format_smolstr!(
+                "chunk {index} of {} opens out of the order its field declares, `{}`",
+                self.field.name(),
+                crate::serie::spelled(by)
+            ),
+        }
+    }
+
+    /// This chunked record under its field declaring `by` as the order its
+    /// rows keep, every chunk declaring it too; anything but a record, or an
+    /// empty `by`, as it is.
+    fn declaring_order(self, by: &[expression::Ordering]) -> crate::Result<Self> {
+        if by.is_empty() || self.field.dtype().as_fields().is_none() {
+            return Ok(self);
+        }
+        let mut root = (*self.field).clone();
+        if root.as_sort_mut().set_by(by.iter().cloned()).is_err() {
+            return Ok(self);
+        }
+        let chunks = self
+            .chunks
+            .iter()
+            .map(|chunk| chunk.clone().declaring_order(by))
+            .collect::<crate::Result<Vec<_>>>()?;
+        Ok(Self::from_landed(Arc::new(root), chunks))
+    }
+
+    /// The keys a whole-row sort of this record under `options` is: every
+    /// child in declaration order, each under `options`; `None` for
+    /// anything but a record.
+    fn whole_row_order(&self, options: SortOptions) -> Option<Vec<expression::Ordering>> {
+        let fields = self.field.dtype().as_fields()?;
+        Some(
+            fields
+                .iter()
+                .map(|child| {
+                    expression::Ordering::new(expression::Term::column(child.name()), options)
+                })
+                .collect(),
+        )
+    }
+
+    /// Append one chunk already landed under the field, then settle: the
+    /// heaviest chunks spilled once the chunks pass the process bound.
+    fn push_landed(&mut self, landed: Serie) -> crate::Result<()> {
         let end = self.len() + landed.len();
         self.chunks.push(landed);
         self.ends.push(end);
-        Ok(())
+        self.settle()
     }
 
     /// Every row as one column: the one join.
@@ -609,6 +716,17 @@ impl ChunkedSerie {
     /// vocabulary no key of its width reaches, naming its path - or
     /// [`Serie::empty`]'s refusal.
     pub fn into_serie(&self) -> crate::arrow::Result<Serie> {
+        match self.chunks.as_slice() {
+            // Nothing laid out: the empty column, or the one chunk itself.
+            [] | [_] => self.joined(),
+            _ => Ok(self.joined()?.settled()?),
+        }
+    }
+
+    /// [`Self::into_serie`] before it settles: the one join, resident
+    /// whatever the process default, for a caller that settles the column
+    /// under a bound of its own.
+    pub(crate) fn joined(&self) -> crate::arrow::Result<Serie> {
         match self.chunks.as_slice() {
             [] => Ok(Serie::empty(Arc::clone(&self.field))?),
             [one] => Ok(one.clone()),
@@ -643,18 +761,21 @@ impl ChunkedSerie {
             chunks.push(plan.apply(chunk)?);
         }
         let field = Self::field_of(&chunks, || Arc::new(target.clone()));
-        Ok(Self::from_landed(field, chunks))
+        Ok(Self::from_landed(field, chunks).verified_edges()?)
     }
 
     // --------------------------------------------------------------------
     // Ordering, uniqueness and grouping: what a `Serie` answers, across
-    // the chunks - per chunk where a chunk alone can answer, and through
-    // the one join where the rows must be seen together.
+    // the chunks - per chunk where a chunk alone can answer, by merging the
+    // chunks sorted on their own where the rows come out in order, and
+    // through the one join where an answer is one column over every row.
     // --------------------------------------------------------------------
 
     /// The row positions in sorted order under `options`, over every
     /// chunk, as a `uint32` column named `index`: the one join, then
-    /// [`Serie::sort_indices`].
+    /// [`Serie::sort_indices`]. The positions are one column addressing
+    /// every row, so they stay the join; the rows themselves in order are
+    /// [`Self::into_sorted`]'s merge, which joins nothing.
     ///
     /// ```
     /// use std::sync::Arc;
@@ -678,6 +799,39 @@ impl ChunkedSerie {
     /// [`Self::into_serie`]'s refusal and [`Serie::sort_indices`]'s.
     pub fn sort_indices(&self, options: SortOptions) -> crate::Result<Serie> {
         self.into_serie()?.sort_indices(options)
+    }
+
+    /// The row positions in the order the `order by` keys of `by` state,
+    /// over every chunk, as a `uint32` column named `index`: the keys
+    /// resolved, then the one join, then [`Serie::sort_indices_by`] - its
+    /// rung, its stability. The positions are one column addressing every
+    /// row, so they stay the join; the rows themselves in order are
+    /// [`Self::into_sort_by`]'s merge, which joins nothing.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![3, 1]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![2]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// let order = prices.sort_indices_by("price desc")?;
+    /// assert_eq!(order.rows().to_vec(), vec![Scalar::from(0_u32), Scalar::from(2_u32), Scalar::from(1_u32)]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The keys' parse error before the join, then [`Self::into_serie`]'s
+    /// refusal and [`Serie::sort_indices_by`]'s.
+    pub fn sort_indices_by(&self, by: impl IntoOrderings) -> crate::Result<Serie> {
+        let by = by.into_orderings()?;
+        self.into_serie()?.sort_indices_by(by)
     }
 
     /// Whether the rows are in sorted order under `options` across the
@@ -786,8 +940,38 @@ impl ChunkedSerie {
         }
     }
 
-    /// The rows in sorted order under `options`, as a chunked serie of one
-    /// chunk: the one join, then the sort.
+    /// The rows in sorted order under `options`, this serie untouched, with
+    /// no join: each chunk sorted on its own by [`Serie::into_sorted`], then
+    /// the sorted chunks merged into chunks of at most
+    /// [`DEFAULT_RECORD_BATCH_ROW_SIZE`] rows. The rows and their order are
+    /// the joined column's [`Serie::into_sorted`] - stable, rows of one
+    /// value in chunk order, then in row order - and no `uint32` index
+    /// column bounds them, only each chunk.
+    ///
+    /// The merge keeps one cursor per chunk in a binary heap, the least key
+    /// on top and a tie going to the earlier chunk. A cursor reads its
+    /// sorted chunk a block at a time - [`DEFAULT_RECORD_BATCH_ROW_SIZE`]
+    /// rows shared among the chunks, never fewer than 1,024 a chunk - and
+    /// every comparison is on one rung for the whole merge: where the key's
+    /// stored order is its value order, no float lies beneath it and Arrow's
+    /// row format has a layout for it, each block's keys are encoded once by
+    /// one converter under `options` and compared as bytes, nothing built
+    /// per row; otherwise - a version, a windows-1252 text, a registered
+    /// code, a URL, a union, a float, whose foreign NaN the format would
+    /// order by its bits - each cursor builds its current key as it advances
+    /// and compares it as the values order. Each output batch is the
+    /// positions the merge yielded, gathered by one `interleave` over the
+    /// sorted chunks, landed as rows the chunks already proved, and settled.
+    /// One chunk holding rows merges nothing: its sorted self is cut into
+    /// zero-copy slices.
+    ///
+    /// At any time the sort holds the sorted chunks, settled as one chunked
+    /// serie as each lands - the heaviest spilled first past the process
+    /// bound ([`SpillOptions::from_env`]) - and dropped when the merge ends;
+    /// one cursor per chunk and its block's key rows; the current output
+    /// batch's positions and its gathered arrays; and the output so far,
+    /// settled the same way. The rows are copied twice - sorted, then
+    /// gathered - and never a third time.
     ///
     /// ```
     /// use std::sync::Arc;
@@ -810,14 +994,104 @@ impl ChunkedSerie {
     ///
     /// # Errors
     ///
-    /// [`Self::into_serie`]'s refusal and [`Serie::into_sorted`]'s.
+    /// [`Serie::into_sorted`]'s refusal for a chunk, and, where two chunks
+    /// or more hold rows, [`Self::into_serie`]'s refusal of a dictionary
+    /// whose gathered vocabulary outgrows its key.
     pub fn into_sorted(&self, options: SortOptions) -> crate::Result<Self> {
-        let sorted = self.into_serie()?.into_sorted(options)?;
-        Ok(Self::from_landed(Arc::clone(&self.field), vec![sorted]))
+        if let Some(whole) = self.whole_row_order(options)
+            && self
+                .declared_order()?
+                .is_some_and(|declared| declared.starts_with(&whole))
+        {
+            // The field proves the order across every chunk edge: a clone.
+            return Ok(self.clone());
+        }
+        let sorted = self.sorted_chunks(|chunk| chunk.into_sorted(options))?;
+        let merged = sorted.merged(&[options], |chunk, start, len| {
+            Ok(vec![chunk.slice(start, len)?])
+        })?;
+        match self.whole_row_order(options) {
+            Some(by) => merged.declaring_order(&by),
+            None => Ok(merged),
+        }
     }
 
-    /// The first occurrence of every value across the chunks, as a chunked
-    /// serie of one chunk: the one join, then [`Serie::into_unique`].
+    /// The rows in the order the `order by` keys of `by` state, this serie
+    /// untouched, with no join: the keys bound once against the field, each
+    /// chunk sorted on its own by [`Serie::into_sort_by`], then the sorted
+    /// chunks merged as [`Self::into_sorted`] merges them - its rung, its
+    /// blocks, its batches, what it holds - over the key cells the bound
+    /// keys compute for each cursor's block, each under its own key's
+    /// options. The rows and their order are the joined column's
+    /// [`Serie::into_sort_by`]: stable, rows whose every key is equal in
+    /// chunk order, then in row order; a row the record leaves absent is
+    /// absent in every key.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array};
+    /// use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let field = Field::new("price", DataType::Int64, false);
+    /// let first: ArrayRef = Arc::new(Int64Array::from(vec![3, 1]));
+    /// let second: ArrayRef = Arc::new(Int64Array::from(vec![2]));
+    /// let prices = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
+    /// let sorted = prices.into_sort_by("price")?;
+    /// assert_eq!(sorted.num_chunks(), 1);
+    /// assert_eq!(sorted.rows(), vec![Scalar::from(1_i64), Scalar::from(2_i64), Scalar::from(3_i64)]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::sort_indices_by`]'s refusals of the keys - their parse,
+    /// none at all, an `unnest`, a term reaching no column or two, two keys
+    /// publishing one name - raised before any chunk is read, with no chunk
+    /// as with many; then [`Self::into_sorted`]'s.
+    pub fn into_sort_by(&self, by: impl IntoOrderings) -> crate::Result<Self> {
+        let by = by.into_orderings()?;
+        let key = self.sort_key(&by)?;
+        if self
+            .declared_order()?
+            .is_some_and(|declared| declared.starts_with(&by))
+        {
+            // The field proves the order across every chunk edge: a clone.
+            return Ok(self.clone());
+        }
+        let sorted = self.sorted_chunks(|chunk| chunk.into_sort_by(by.as_slice()))?;
+        let options: Vec<SortOptions> = by.iter().map(expression::Ordering::options).collect();
+        sorted
+            .merged(&options, |chunk, start, len| {
+                let keys = key.apply_serie_window(chunk, start, len)?;
+                Ok(keys
+                    .as_struct()
+                    .expect("a key is a record column")
+                    .children()
+                    .to_vec())
+            })?
+            .declaring_order(&by)
+    }
+
+    /// The first occurrence of every value across the chunks, in order of
+    /// first occurrence - the joined column's [`Serie::into_unique`] - with
+    /// no join: each chunk's sorted order computed once, as
+    /// [`Serie::sort_indices`] computes it, ascending with absent values
+    /// last; the chunks merged in that order as [`Self::into_sorted`] merges
+    /// them, its rung over the whole row; and the first row of every run of
+    /// equal values marked in its chunk's mask - the first in chunk order,
+    /// then in row order, because a tie keeps that order. Each chunk is then
+    /// filtered by its own mask and kept apart, and a chunk left with no row
+    /// is dropped. An absent row is one value. One chunk holding rows is its
+    /// own [`Serie::into_unique`].
+    ///
+    /// The cost is the sort's merge, its cursors reading each chunk in
+    /// sorted order a block at a time, taken out of the chunk rather than
+    /// held sorted beside it, plus every chunk's order (four bytes a row)
+    /// and mask (one byte a row), held until the filters run - and no
+    /// output batch is gathered.
     ///
     /// ```
     /// use std::sync::Arc;
@@ -828,19 +1102,156 @@ impl ChunkedSerie {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let field = Field::new("venue", DataType::utf8(), false);
     /// let first: ArrayRef = Arc::new(StringArray::from(vec!["XNYS", "XNAS"]));
-    /// let second: ArrayRef = Arc::new(StringArray::from(vec!["XNYS"]));
+    /// let second: ArrayRef = Arc::new(StringArray::from(vec!["XNYS", "XPAR"]));
     /// let venues = ChunkedSerie::from_arrow_arrays(Some(&field), [first, second], ArrowCastOptions::new())?;
-    /// assert_eq!(venues.into_unique()?.rows(), vec![Scalar::from("XNYS"), Scalar::from("XNAS")]);
+    /// let unique = venues.into_unique()?;
+    /// assert_eq!(unique.rows(), vec![Scalar::from("XNYS"), Scalar::from("XNAS"), Scalar::from("XPAR")]);
+    /// // Kept apart: each chunk keeps its own first occurrences.
+    /// assert_eq!(unique.num_chunks(), 2);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
     ///
-    /// [`Self::into_serie`]'s refusal and [`Serie::into_unique`]'s.
+    /// [`Serie::sort_indices`]'s refusal for a chunk, and the filter
+    /// kernel's refusal of a layout, naming the chunk's field.
     pub fn into_unique(&self) -> crate::Result<Self> {
-        let unique = self.into_serie()?.into_unique()?;
-        Ok(Self::from_landed(Arc::clone(&self.field), vec![unique]))
+        let mut live: Vec<&Serie> = Vec::with_capacity(self.chunks.len());
+        live.extend(self.chunks.iter().filter(|chunk| !chunk.is_empty()));
+        if let [one] = live.as_slice() {
+            return Ok(Self::from_landed(
+                Arc::clone(&self.field),
+                vec![one.into_unique()?],
+            ));
+        }
+        let options = SortOptions::default();
+        let mut orders: Vec<Vec<u32>> = Vec::with_capacity(live.len());
+        for chunk in &live {
+            orders.push(chunk.sorted_order(options)?);
+        }
+        let mut masks: Vec<Vec<bool>> = live.iter().map(|chunk| vec![false; chunk.len()]).collect();
+        let lens: Vec<usize> = live.iter().map(|chunk| chunk.len()).collect();
+        let mut merge = Merge::new(&lens, vec![options], true, |source, start, len| {
+            Ok(vec![
+                live[source].taken(&orders[source][start..start + len])?,
+            ])
+        })?;
+        while let Some((source, at, opens)) = merge.next()? {
+            if opens {
+                masks[source][orders[source][at] as usize] = true;
+            }
+        }
+        drop(merge);
+        let mut unique = Self::with_chunk_capacity(Arc::clone(&self.field), live.len());
+        for (chunk, mask) in live.into_iter().zip(&masks) {
+            let kept = chunk.filtered(mask)?;
+            if !kept.is_empty() {
+                unique.push_landed(kept)?;
+            }
+        }
+        Ok(unique)
+    }
+
+    /// Every chunk holding a row, sorted on its own by `sort`, held as one
+    /// chunked serie under this field and settled as each lands: the
+    /// heaviest spilled first once the sorted chunks pass the process
+    /// bound.
+    fn sorted_chunks(&self, sort: impl Fn(&Serie) -> crate::Result<Serie>) -> crate::Result<Self> {
+        let mut sorted = Self::with_chunk_capacity(Arc::clone(&self.field), self.chunks.len());
+        for chunk in self.chunks.iter().filter(|chunk| !chunk.is_empty()) {
+            sorted.push_landed(sort(chunk)?)?;
+        }
+        Ok(sorted)
+    }
+
+    /// The `order by` keys of `by` bound once against this field, refused
+    /// exactly as [`Serie::sort_indices_by`] refuses them, before any chunk
+    /// is read.
+    fn sort_key(&self, by: &[expression::Ordering]) -> crate::Result<BoundSelector> {
+        if by.is_empty() {
+            // The column's own refusal of no key, word for word.
+            Serie::empty(Arc::clone(&self.field))?.sorted_order_by(by)?;
+        }
+        Selector::new(by.iter().map(|key| Projection::new(key.term().clone()))).bind_key(
+            &SerieReader::root_of(&self.field)?,
+            self.field.name(),
+            "sort by",
+        )
+    }
+
+    /// These chunks, each already sorted under `options`, merged into one
+    /// sorted chunked serie of chunks of at most
+    /// [`DEFAULT_RECORD_BATCH_ROW_SIZE`] rows: `keys` answers the key cells
+    /// of rows `start..start + len` of a chunk, one per option. One chunk
+    /// holding rows is cut into zero-copy slices of itself, merging
+    /// nothing; several are merged by [`Merge`], each output batch's rows
+    /// gathered by one `interleave` over the chunks and landed as rows the
+    /// chunks already proved, then settled.
+    fn merged(
+        &self,
+        options: &[SortOptions],
+        mut keys: impl FnMut(&Serie, usize, usize) -> crate::Result<Vec<Serie>>,
+    ) -> crate::Result<Self> {
+        let batch = DEFAULT_RECORD_BATCH_ROW_SIZE;
+        let mut merged =
+            Self::with_chunk_capacity(Arc::clone(&self.field), self.len().div_ceil(batch));
+        if let [one] = self.chunks.as_slice() {
+            let len = one.len();
+            if len <= batch {
+                merged.push_landed(one.clone())?;
+            } else {
+                for start in (0..len).step_by(batch) {
+                    merged.push_landed(one.slice(start, batch.min(len - start))?)?;
+                }
+            }
+            return Ok(merged);
+        }
+        if self.chunks.is_empty() {
+            return Ok(merged);
+        }
+        let arrays = self.into_arrow_arrays();
+        require_joinable(&self.field, &arrays)?;
+        let arrays: Vec<&dyn Array> = arrays.iter().map(AsRef::as_ref).collect();
+        let lens: Vec<usize> = self.chunks.iter().map(Serie::len).collect();
+        let mut merge = Merge::new(&lens, options.to_vec(), false, |source, start, len| {
+            keys(&self.chunks[source], start, len)
+        })?;
+        let mut positions: Vec<(usize, usize)> = Vec::with_capacity(batch.min(self.len()));
+        while let Some((source, at, _)) = merge.next()? {
+            positions.push((source, at));
+            if positions.len() == batch {
+                merged.push_landed(self.gathered(&arrays, &positions)?)?;
+                positions.clear();
+            }
+        }
+        if !positions.is_empty() {
+            merged.push_landed(self.gathered(&arrays, &positions)?)?;
+        }
+        Ok(merged)
+    }
+
+    /// The rows `positions` names - a chunk and a row of it each - gathered
+    /// out of `arrays`, the chunks' own, by one `interleave`, and landed
+    /// under the field as rows the chunks already proved, then settled.
+    fn gathered(
+        &self,
+        arrays: &[&dyn Array],
+        positions: &[(usize, usize)],
+    ) -> crate::Result<Serie> {
+        let array = arrow_select::interleave::interleave(arrays, positions)?;
+        if array.len() != positions.len() {
+            // Arrow answers a zero-width fixed-size serie by its child,
+            // which has no rows to count: the rows are read, as a take
+            // reads them.
+            return Serie::from_scalars(
+                Arc::clone(&self.field),
+                positions
+                    .iter()
+                    .map(|(chunk, row)| proven_row(&self.chunks[*chunk], *row)),
+            );
+        }
+        land(Arc::clone(&self.field), array, &Proof::Proven)?.settled()
     }
 
     /// The rows in reverse order: the chunks reversed, each reversed, kept
@@ -864,8 +1275,19 @@ impl ChunkedSerie {
     /// # }
     /// ```
     pub fn into_reversed(&self) -> Self {
-        let chunks = self.chunks.iter().rev().map(Serie::into_reversed).collect();
-        Self::from_landed(Arc::clone(&self.field), chunks)
+        let chunks: Vec<Serie> = self.chunks.iter().rev().map(Serie::into_reversed).collect();
+        let field = Self::field_of(&chunks, || self.reversed_field());
+        Self::from_landed(field, chunks)
+    }
+
+    /// This field with the order it declares turned around, as every
+    /// reversed chunk states it: the empty column of the field reversed is
+    /// the one door that writes the flipped declaration.
+    fn reversed_field(&self) -> Arc<Field> {
+        Serie::empty(Arc::clone(&self.field))
+            .ok()
+            .and_then(|empty| empty.into_reversed().field_ref().cloned())
+            .unwrap_or_else(|| Arc::clone(&self.field))
     }
 
     /// The rows `indices` names, in that order, as a chunked serie of one
@@ -895,7 +1317,9 @@ impl ChunkedSerie {
     /// [`Self::into_serie`]'s refusal and [`Serie::into_taken`]'s.
     pub fn into_taken(&self, indices: &Serie) -> crate::Result<Self> {
         let taken = self.into_serie()?.into_taken(indices)?;
-        Ok(Self::from_landed(Arc::clone(&self.field), vec![taken]))
+        // The take keeps or clears the declared order; the field follows it.
+        let field = Self::field_of(std::slice::from_ref(&taken), || Arc::clone(&self.field));
+        Ok(Self::from_landed(field, vec![taken]))
     }
 
     /// The rows `mask` keeps, chunk by chunk and kept apart: `mask` is a
@@ -1257,8 +1681,85 @@ impl ChunkedSerie {
         self.chunks.iter().map(Serie::memory_size).sum()
     }
 
+    /// The bytes the rows occupy in memory: every chunk's
+    /// [`Serie::resident_size`], summed.
+    pub fn resident_size(&self) -> usize {
+        self.chunks.iter().map(Serie::resident_size).sum()
+    }
+
+    /// Whether every chunk's rows lie in a spill file: no byte resident, and
+    /// some bytes - read in that order, so a resident chunk answers off its
+    /// flags. A chunked serie of no chunk is never spilled.
+    pub fn is_spilled(&self) -> bool {
+        self.resident_size() == 0 && self.memory_size() > 0
+    }
+
+    /// Move chunks to disk until the resident bytes are under `options`'
+    /// bound: the heaviest chunks spill whole first, each through
+    /// [`Serie::spill`], and the sum is read again after each, so a chunked
+    /// serie under the bound is untouched and one over it keeps its lightest
+    /// chunks resident.
+    ///
+    /// ```
+    /// use yggdryl::{ChunkedSerie, DataType, Scalar, Serie, SpillOptions};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let field = DataType::Int64.required_field("price");
+    /// let heavy = Serie::from_scalars(field.clone(), (0..1_024_i64).map(Scalar::from))?;
+    /// let light = Serie::from_scalars(field.clone(), (0..8_i64).map(Scalar::from))?;
+    /// let mut prices = ChunkedSerie::from_series(Some(&field), [heavy, light], Default::default())?;
+    /// prices.spill(&SpillOptions::new().with_byte_size(1_024))?;
+    /// assert!(prices.chunk(0).expect("the heavy chunk").is_spilled());
+    /// assert!(!prices.chunk(1).expect("the light chunk").is_spilled());
+    /// assert_eq!(prices.resident_size(), 64);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::spill`]'s refusal of its folder, leaving the chunks spilled
+    /// so far mapped and the rest as they were.
+    pub fn spill(&mut self, options: &SpillOptions) -> crate::Result<()> {
+        if options.is_never() {
+            return Ok(());
+        }
+        let bound = options.byte_size();
+        let resident = |chunks: &[Serie]| {
+            chunks
+                .iter()
+                .map(|chunk| u64::try_from(chunk.resident_size()).unwrap_or(u64::MAX))
+                .fold(0_u64, u64::saturating_add)
+        };
+        if resident(&self.chunks) <= bound {
+            return Ok(());
+        }
+        let mut order: Vec<(usize, usize)> = self
+            .chunks
+            .iter()
+            .enumerate()
+            .map(|(index, chunk)| (index, chunk.resident_size()))
+            .collect();
+        order.sort_by_key(|(_, bytes)| std::cmp::Reverse(*bytes));
+        let whole = options.clone().with_byte_size(0);
+        for (index, _) in order {
+            if resident(&self.chunks) <= bound {
+                break;
+            }
+            self.chunks[index].spill(&whole)?;
+        }
+        Ok(())
+    }
+
+    /// [`Self::spill`] under the process default: what every door that
+    /// builds chunks answers through.
+    pub(crate) fn settle(&mut self) -> crate::Result<()> {
+        self.spill(SpillOptions::from_env()?)
+    }
+
     /// Sort the rows in place under `options`, answering this serie so
-    /// calls chain: [`Self::into_sorted`], one chunk, replacing the chunks.
+    /// calls chain: [`Self::into_sorted`]'s merged chunks replacing the
+    /// chunks.
     ///
     /// ```
     /// use std::sync::Arc;
@@ -1285,8 +1786,20 @@ impl ChunkedSerie {
         Ok(self)
     }
 
+    /// Sort the rows in place in the order the `order by` keys of `by`
+    /// state, answering this serie so calls chain: [`Self::into_sort_by`]'s
+    /// merged chunks replacing the chunks.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::into_sort_by`]'s refusals, which leave this serie as it was.
+    pub fn as_sort_by(&mut self, by: impl IntoOrderings) -> crate::Result<&mut Self> {
+        *self = self.into_sort_by(by)?;
+        Ok(self)
+    }
+
     /// Keep the first occurrence of every value, in place, answering this
-    /// serie: [`Self::into_unique`], one chunk, replacing the chunks.
+    /// serie: [`Self::into_unique`]'s filtered chunks replacing the chunks.
     ///
     /// ```
     /// use std::sync::Arc;
@@ -1342,7 +1855,8 @@ impl ChunkedSerie {
         for chunk in &mut self.chunks {
             chunk.as_reversed()?;
         }
-        *self = Self::from_landed(Arc::clone(&self.field), std::mem::take(&mut self.chunks));
+        let field = Self::field_of(&self.chunks, || self.reversed_field());
+        *self = Self::from_landed(field, std::mem::take(&mut self.chunks));
         Ok(self)
     }
 
@@ -1556,6 +2070,318 @@ fn no_field(what: &str) -> crate::arrow::Error {
     crate::arrow::Error::IncompatibleSchema(format!(
         "a chunked serie of {what} names no field; pass one"
     ))
+}
+
+/// The fewest rows a merge cursor reads of its chunk at once, however many
+/// chunks share one output batch's worth: a block amortizes its key's
+/// computation and its conversion over this many rows at least.
+const MERGE_BLOCK_ROWS: usize = 1_024;
+
+/// How a [`Merge`] orders two cursors' keys: one rung for the whole merge.
+enum Rung {
+    /// Arrow's row format: each block's key cells encoded once by the one
+    /// converter, under each key's options, and compared as bytes.
+    Rows(RowConverter),
+    /// The values' own order: each cursor's current key cells built as it
+    /// advances, compared cell by cell under each key's options.
+    Values,
+}
+
+impl Rung {
+    /// The row format where every key cell's stored order is its value
+    /// order, no float lies beneath it - a float may hold a NaN other than
+    /// the one its values read, which the format orders by its bits - and
+    /// the format has a layout for it; the values' order otherwise.
+    fn of(cells: &[Serie], options: &[SortOptions]) -> crate::Result<Self> {
+        let float = |node: &ArrowDataType| {
+            matches!(
+                node,
+                ArrowDataType::Float16 | ArrowDataType::Float32 | ArrowDataType::Float64
+            )
+        };
+        let mut fields = Vec::with_capacity(cells.len());
+        for (cell, options) in cells.iter().zip(options) {
+            let (Some(field), Some(array)) = (cell.field(), cell.into_arrow_array()) else {
+                return Ok(Self::Values);
+            };
+            if !stored_order_is_value_order(field.dtype())
+                || storage_holds(array.data_type(), &float)
+            {
+                return Ok(Self::Values);
+            }
+            fields.push(SortField::new_with_options(
+                array.data_type().clone(),
+                options.into_arrow(),
+            ));
+        }
+        if !RowConverter::supports_fields(&fields) {
+            return Ok(Self::Values);
+        }
+        Ok(Self::Rows(RowConverter::new(fields)?))
+    }
+}
+
+/// One sorted chunk's place in a [`Merge`]: the row it stands on and the
+/// block of key cells that row lies in.
+struct Cursor {
+    /// The chunk, by its place among the merged chunks.
+    source: usize,
+    /// The chunk's row count.
+    len: usize,
+    /// The row the cursor stands on.
+    at: usize,
+    /// The rows `start..end` the loaded block covers.
+    start: usize,
+    end: usize,
+    /// The block's key cells, one column per key.
+    cells: Vec<Serie>,
+    /// On the row-format rung, the block's key rows, the buffer reused
+    /// block after block.
+    rows: Option<arrow_row::Rows>,
+    /// On the values rung, the current row's key cells, the vector reused
+    /// from the first row on.
+    key: Vec<Scalar>,
+}
+
+impl Cursor {
+    /// Read the loaded block on `rung`: its key rows encoded, or the
+    /// current row's key built.
+    fn read(&mut self, rung: &Rung) -> crate::Result<()> {
+        match rung {
+            Rung::Rows(converter) => {
+                let arrays: Vec<ArrayRef> = self
+                    .cells
+                    .iter()
+                    .map(|cell| cell.into_arrow_array().expect(CHUNK))
+                    .collect();
+                let capacity = self.end - self.start;
+                let rows = self
+                    .rows
+                    .get_or_insert_with(|| converter.empty_rows(capacity, 0));
+                rows.clear();
+                converter.append(rows, &arrays)?;
+            }
+            Rung::Values => self.build_key(),
+        }
+        Ok(())
+    }
+
+    /// The current row's key cells, built into the reused vector.
+    fn build_key(&mut self) {
+        let row = self.at - self.start;
+        self.key.clear();
+        self.key
+            .extend(self.cells.iter().map(|cell| proven_row(cell, row)));
+    }
+
+    /// The current row's key bytes, on the row-format rung.
+    fn row(&self) -> arrow_row::Row<'_> {
+        self.rows
+            .as_ref()
+            .expect("a row-format cursor holds its block's rows")
+            .row(self.at - self.start)
+    }
+}
+
+/// A k-way merge of sorted chunks: one [`Cursor`] per chunk holding a row,
+/// in a binary heap of their places with the least key on top and a tie
+/// going to the earlier chunk, so equal keys come out in chunk order, then
+/// in each chunk's own - stable, as one sort of the joined rows is.
+///
+/// `load` answers the key cells of rows `start..start + len` of a chunk in
+/// its sorted order, one column per option; a cursor loads a block of
+/// [`DEFAULT_RECORD_BATCH_ROW_SIZE`] rows shared among the chunks, never
+/// fewer than [`MERGE_BLOCK_ROWS`], so the key rows held at once are one
+/// output batch's worth until the chunks outnumber what that allows. The
+/// rung is read off the first block and holds for the merge. The row-format
+/// rung allocates per block, never per row; the values rung builds each
+/// key once as its cursor reaches it.
+struct Merge<L> {
+    load: L,
+    options: Vec<SortOptions>,
+    /// The rows a cursor loads at once.
+    span: usize,
+    rung: Rung,
+    cursors: Vec<Cursor>,
+    /// The places of the cursors still standing on a row, as a binary heap.
+    heap: Vec<usize>,
+    /// Whether [`Self::next`] says where a run of equal keys opens.
+    distinct: bool,
+    /// The key last yielded, where `distinct`: its bytes on the row-format
+    /// rung, its cells on the values rung, each buffer reused.
+    last_row: Vec<u8>,
+    last_key: Vec<Scalar>,
+    /// Whether a row was yielded yet.
+    yielded: bool,
+}
+
+impl<L: FnMut(usize, usize, usize) -> crate::Result<Vec<Serie>>> Merge<L> {
+    /// The merge of chunks of `lens` rows each, ordered under `options`;
+    /// `distinct` asks every yielded row whether it opens a run of equal
+    /// keys. Each chunk holding a row loads its first block here.
+    fn new(
+        lens: &[usize],
+        options: Vec<SortOptions>,
+        distinct: bool,
+        mut load: L,
+    ) -> crate::Result<Self> {
+        let live = lens.iter().filter(|len| **len > 0).count();
+        let span = (DEFAULT_RECORD_BATCH_ROW_SIZE / live.max(1)).max(MERGE_BLOCK_ROWS);
+        let mut cursors = Vec::with_capacity(live);
+        for (source, &len) in lens.iter().enumerate().filter(|(_, len)| **len > 0) {
+            let end = span.min(len);
+            cursors.push(Cursor {
+                source,
+                len,
+                at: 0,
+                start: 0,
+                end,
+                cells: load(source, 0, end)?,
+                rows: None,
+                key: Vec::new(),
+            });
+        }
+        let rung = match cursors.first() {
+            Some(first) => Rung::of(&first.cells, &options)?,
+            None => Rung::Values,
+        };
+        for cursor in &mut cursors {
+            cursor.read(&rung)?;
+        }
+        let mut merge = Self {
+            load,
+            options,
+            span,
+            rung,
+            heap: (0..cursors.len()).collect(),
+            cursors,
+            distinct,
+            last_row: Vec::new(),
+            last_key: Vec::new(),
+            yielded: false,
+        };
+        for place in (0..merge.heap.len() / 2).rev() {
+            merge.sift_down(place);
+        }
+        Ok(merge)
+    }
+
+    /// The next row in merged order - its chunk, its row there, and, where
+    /// `distinct`, whether its key differs from the row yielded before it -
+    /// or `None` once every chunk is read.
+    fn next(&mut self) -> crate::Result<Option<(usize, usize, bool)>> {
+        let Some(&top) = self.heap.first() else {
+            return Ok(None);
+        };
+        let (source, at) = (self.cursors[top].source, self.cursors[top].at);
+        let opens = self.distinct && self.opens(top);
+        if self.advance(top)? {
+            self.sift_down(0);
+        } else {
+            self.heap.swap_remove(0);
+            if !self.heap.is_empty() {
+                self.sift_down(0);
+            }
+        }
+        Ok(Some((source, at, opens)))
+    }
+
+    /// Whether cursor `place`'s key differs from the key last yielded,
+    /// keeping it as the last where it does.
+    fn opens(&mut self, place: usize) -> bool {
+        let cursor = &self.cursors[place];
+        let opens = match self.rung {
+            Rung::Rows(_) => {
+                let row = cursor.row().data();
+                let opens = !self.yielded || row != self.last_row.as_slice();
+                if opens {
+                    self.last_row.clear();
+                    self.last_row.extend_from_slice(row);
+                }
+                opens
+            }
+            Rung::Values => {
+                let opens = !self.yielded
+                    || cursor
+                        .key
+                        .iter()
+                        .zip(&self.last_key)
+                        .zip(&self.options)
+                        .any(|((key, last), options)| {
+                            compare_values(key, last, *options) != Ordering::Equal
+                        });
+                if opens {
+                    self.last_key.clone_from(&cursor.key);
+                }
+                opens
+            }
+        };
+        self.yielded = true;
+        opens
+    }
+
+    /// Move cursor `place` to its next row, loading the next block where it
+    /// leaves its own; `false` once its chunk is read.
+    fn advance(&mut self, place: usize) -> crate::Result<bool> {
+        let cursor = &mut self.cursors[place];
+        cursor.at += 1;
+        if cursor.at == cursor.len {
+            cursor.cells.clear();
+            cursor.rows = None;
+            return Ok(false);
+        }
+        if cursor.at == cursor.end {
+            cursor.start = cursor.at;
+            cursor.end = cursor.len.min(cursor.at + self.span);
+            cursor.cells = (self.load)(cursor.source, cursor.start, cursor.end - cursor.start)?;
+            cursor.read(&self.rung)?;
+        } else if matches!(self.rung, Rung::Values) {
+            cursor.build_key();
+        }
+        Ok(true)
+    }
+
+    /// Cursor `left`'s key against cursor `right`'s, a tie going to the
+    /// earlier chunk.
+    fn compare(&self, left: usize, right: usize) -> Ordering {
+        let (left, right) = (&self.cursors[left], &self.cursors[right]);
+        let step = match self.rung {
+            Rung::Rows(_) => left.row().cmp(&right.row()),
+            Rung::Values => left
+                .key
+                .iter()
+                .zip(&right.key)
+                .zip(&self.options)
+                .map(|((left, right), options)| compare_values(left, right, *options))
+                .find(|step| *step != Ordering::Equal)
+                .unwrap_or(Ordering::Equal),
+        };
+        step.then(left.source.cmp(&right.source))
+    }
+
+    /// Restore the heap below `place`, whose cursor may have moved.
+    fn sift_down(&mut self, mut place: usize) {
+        let len = self.heap.len();
+        loop {
+            let left = 2 * place + 1;
+            if left >= len {
+                return;
+            }
+            let right = left + 1;
+            let least = if right < len
+                && self.compare(self.heap[right], self.heap[left]) == Ordering::Less
+            {
+                right
+            } else {
+                left
+            };
+            if self.compare(self.heap[least], self.heap[place]) != Ordering::Less {
+                return;
+            }
+            self.heap.swap(place, least);
+            place = least;
+        }
+    }
 }
 
 impl Rows for ChunkedSerie {

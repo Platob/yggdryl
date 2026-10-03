@@ -569,6 +569,12 @@ then `nulls first` or `nulls last`, stored as the grammar spells them. `Plan::fr
 the keys into its `order by` section and writes them back from it, and an Iceberg table created
 from the schema takes them as its default sort order.
 
+On a [`Serie`](serie.md#a-declared-order) the declaration is a proven fact about the rows: the
+sorts write it, the verbs that keep the order keep it, a write that breaks it clears it, and a
+door landing foreign rows under a declaring root reads them once and refuses the first row out
+of order by name. A table's `SORT:by` is how its writers lay each data file out, so an Iceberg
+scan's root drops it while `Table::schema()` keeps reporting it.
+
 === "Rust"
 
     ```rust

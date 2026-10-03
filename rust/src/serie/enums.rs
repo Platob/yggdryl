@@ -28,6 +28,7 @@ use arrow_buffer::{ArrowNativeType, NullBuffer};
 use arrow_schema::DataType as ArrowDataType;
 
 use super::{Serie, require_range, require_row};
+use crate::spill::Backing;
 use crate::value::SerieValue;
 use crate::{DataType, Field, Result, Scalar};
 
@@ -52,6 +53,9 @@ pub struct DictionarySerie {
     field: Arc<Field>,
     keys: Serie,
     values: Serie,
+    /// Where the unit lives; the keys and the values answer for their own
+    /// buffers, this column holding none.
+    backing: Backing,
 }
 
 /// What a write interns: the key each row reads through, and the values
@@ -85,6 +89,7 @@ impl DictionarySerie {
             field,
             keys,
             values,
+            backing: Backing::Heap,
         }
     }
 
@@ -100,12 +105,48 @@ impl DictionarySerie {
         &self.values
     }
 
+    /// Borrow the key column mutably.
+    ///
+    /// The caller keeps its field and its length - it writes nothing that
+    /// changes either - so every key still points into the values.
+    pub(crate) const fn keys_mut(&mut self) -> &mut Serie {
+        &mut self.keys
+    }
+
+    /// Borrow the values column mutably.
+    ///
+    /// The caller keeps its field and its length - it writes nothing that
+    /// changes either - so every key still points into the values.
+    pub(crate) const fn values_mut(&mut self) -> &mut Serie {
+        &mut self.values
+    }
+
+    /// Where the unit was last stated to live; the keys and the values
+    /// answer for their own buffers.
+    pub(crate) const fn backing(&self) -> &Backing {
+        &self.backing
+    }
+
+    /// State where the whole unit lives: the key column and the values
+    /// column.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.keys.set_backing(backing);
+        self.values.set_backing(backing);
+        self.backing = backing;
+    }
+
+    /// The bytes this column's own buffers span: none, the keys and the
+    /// values being columns of their own.
+    pub(crate) const fn own_size(&self) -> usize {
+        0
+    }
+
     /// Build the Arrow dictionary array from the two columns.
     pub fn array(&self) -> ArrayRef {
         let values = self.values.into_arrow_array().expect(ALIGNED);
         macro_rules! dictionary {
             ($column:expr) => {
-                Arc::new(DictionaryArray::try_new($column.array().clone(), values).expect(ALIGNED))
+                Arc::new(DictionaryArray::try_new($column.array(), values).expect(ALIGNED))
                     as ArrayRef
             };
         }
@@ -305,11 +346,12 @@ impl SerieValue for DictionarySerie {
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
-        Ok(Self::new(
-            Arc::clone(&self.field),
-            self.keys.slice(offset, length)?,
-            self.values.clone(),
-        ))
+        Ok(Self {
+            field: Arc::clone(&self.field),
+            keys: self.keys.slice(offset, length)?,
+            values: self.values.clone(),
+            backing: self.backing,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
@@ -322,6 +364,15 @@ impl SerieValue for DictionarySerie {
         self.require_fit(&interned)?;
         self.apply(range, interned);
         Ok(())
+    }
+
+    fn resident_size(&self) -> usize {
+        let own = if self.backing().is_mapped() {
+            0
+        } else {
+            self.own_size()
+        };
+        own + self.keys.resident_size() + self.values.resident_size()
     }
 
     fn into_arrow_array(&self) -> ArrayRef {

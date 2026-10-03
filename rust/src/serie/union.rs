@@ -29,6 +29,7 @@ use arrow_schema::{ArrowError, DataType as ArrowDataType};
 use super::layout::splice_scalars;
 use super::{Serie, require_range, require_row, require_window};
 use crate::budget::MaterializationBudget;
+use crate::spill::Backing;
 use crate::value::SerieValue;
 use crate::{DataType, Field, Result, Scalar, UnionFields, UnionMode};
 
@@ -58,6 +59,9 @@ pub struct UnionSerie {
     type_ids: ScalarBuffer<i8>,
     offsets: Option<ScalarBuffer<i32>>,
     children: Vec<Serie>,
+    /// Where the type ids and the dense offsets live; every member answers
+    /// for its own buffers.
+    backing: Backing,
 }
 
 /// Read a canonical union row as the member it names and its payload.
@@ -86,6 +90,7 @@ impl UnionSerie {
             type_ids,
             offsets,
             children,
+            backing: Backing::Heap,
         }
     }
 
@@ -102,6 +107,40 @@ impl UnionSerie {
     /// Borrow every member's column, in the field's declared order.
     pub fn children(&self) -> &[Serie] {
         &self.children
+    }
+
+    /// Borrow every member's column mutably, in the field's declared order.
+    ///
+    /// The caller keeps each member's field and length - it writes nothing
+    /// that changes either - so the type ids and offsets still reach the
+    /// rows they name.
+    pub(crate) fn children_mut(&mut self) -> &mut [Serie] {
+        &mut self.children
+    }
+
+    /// Where this column's own type ids and dense offsets live; each member
+    /// answers for its own buffers.
+    pub(crate) const fn backing(&self) -> &Backing {
+        &self.backing
+    }
+
+    /// State where the whole unit lives: this column's type ids and dense
+    /// offsets, and every member below them.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        for child in &mut self.children {
+            child.set_backing(backing);
+        }
+        self.backing = backing;
+    }
+
+    /// The bytes this column's own type ids and dense offsets span as its
+    /// slice counts them, and nothing of its members'.
+    pub(crate) fn own_size(&self) -> usize {
+        self.type_ids.len()
+            + self
+                .offsets
+                .as_ref()
+                .map_or(0, |offsets| offsets.len() * std::mem::size_of::<i32>())
     }
 
     /// Borrow the column of the member `type_id` names.
@@ -253,8 +292,10 @@ impl UnionSerie {
     }
 
     /// Write canonical `rows` over a checked `range`: in place for a sparse
-    /// union and a dense append, a rebuild for any other dense write.
+    /// union and a dense append, a rebuild for any other dense write. Every
+    /// one replaces the type ids, so the column's own buffers are the heap's.
     pub(crate) fn write(&mut self, range: Range<usize>, rows: Vec<Scalar>) {
+        self.backing = Backing::Heap;
         let ids: Vec<i8> = rows.iter().map(|row| branch(row).0).collect();
         if self.offsets.is_none() {
             for position in 0..self.children.len() {
@@ -398,12 +439,13 @@ impl SerieValue for UnionSerie {
                     .collect::<Result<Vec<Serie>>>()?,
             ),
         };
-        Ok(Self::new(
-            Arc::clone(&self.field),
-            self.type_ids.slice(offset, length),
+        Ok(Self {
+            field: Arc::clone(&self.field),
+            type_ids: self.type_ids.slice(offset, length),
             offsets,
             children,
-        ))
+            backing: self.backing,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
@@ -415,6 +457,19 @@ impl SerieValue for UnionSerie {
         self.check(&range, &canonical)?;
         self.write(range, canonical);
         Ok(())
+    }
+
+    fn resident_size(&self) -> usize {
+        let own = if self.backing().is_mapped() {
+            0
+        } else {
+            self.own_size()
+        };
+        own + self
+            .children
+            .iter()
+            .map(Serie::resident_size)
+            .sum::<usize>()
     }
 
     fn into_arrow_array(&self) -> ArrayRef {

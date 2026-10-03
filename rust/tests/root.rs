@@ -109,6 +109,8 @@ mod iomedia;
 mod iomode;
 #[path = "root/isin.rs"]
 mod isin;
+#[path = "root/join.rs"]
+mod join;
 #[path = "root/lib.rs"]
 mod lib;
 #[path = "root/limit.rs"]
@@ -159,6 +161,8 @@ mod serie;
 mod side;
 #[path = "root/sort_options.rs"]
 mod sort_options;
+#[path = "root/spill.rs"]
+mod spill;
 #[path = "root/state.rs"]
 mod state;
 #[path = "root/string.rs"]

@@ -14,10 +14,15 @@ import {
   SerieSerie,
   SerieViewSerie,
   WindowSerie,
+  SpillOptions,
   StructSerie,
   Term,
   fields,
   type ArrowCastOptions,
+  type JoinKeys,
+  type JoinOptionsInput,
+  type OrderingKey,
+  type OrderingKeys,
   type SortOptions,
 } from '..'
 import type {
@@ -287,3 +292,70 @@ walk._nextNative
 
 void [windows, sortedWindows, clearedWindows, termWindows, windowRecord, walkField,
   walkStaticField, step, self, readerRecord]
+
+// Spill: where the rows live; `spill` takes options or the process default.
+const resident: number = wide.residentSize()
+const spilled: boolean = wide.isSpilled()
+const spilledNothing: void = wide.spill()
+wide.spill(null)
+wide.spill(new SpillOptions({ byteSize: 0 }))
+const readerResident: number = held.residentSize()
+const readerSpilled: boolean = held.isSpilled()
+held.spill(new SpillOptions({ byteSize: 0n }))
+// @ts-expect-error spill takes a SpillOptions, not its init object
+wide.spill({ byteSize: 0 })
+
+void [resident, spilled, spilledNothing, readerResident, readerSpilled]
+
+// Orderings by key: the clause's text, key texts, records or a Selector.
+const declared: string[] | null = records.declaredOrder()
+const key: OrderingKey = { term: 'id', descending: true, nulls_first: false }
+const keys: OrderingKeys = ['id desc', key]
+const orderBy: Serie = records.sortIndicesBy('id desc nulls first')
+const orderByKeys: Serie = records.sortIndicesBy(keys)
+const orderBySelector: Serie = records.sortIndicesBy(new Selector('id'))
+const sortedBy: Serie = records.intoSortBy(key)
+const sortedInPlace: StructSerie = (records.child('row') as StructSerie).asSortBy('id')
+const streamSorted: SerieReader = SerieReader.fromSerie(records).intoSorted({ descending: true })
+const streamSortedBy: SerieReader = SerieReader.fromSerie(records).intoSortBy(['id'])
+const camelFlag: Serie = records.sortIndicesBy([{ term: 'id', nullsFirst: true }])
+const snakeFlag: Serie = records.sortIndicesBy([{ term: 'id', nulls_first: true }])
+// @ts-expect-error a key is text, a record or a Selector
+records.intoSortBy(7)
+// @ts-expect-error the private ordering bridges are hidden
+records._intoSortByNative
+
+void [declared, orderBy, orderByKeys, orderBySelector, sortedBy, sortedInPlace, streamSorted,
+  streamSortedBy]
+
+// Joins: keys as text, pairs or a mapping; the kind a word; options an object.
+const byPair: JoinKeys = [['id', 'trade_id']]
+const joinOptions: JoinOptionsInput = {
+  coalesce: false,
+  suffix: '_r',
+  build: 'left',
+  prune: null,
+  spill: new SpillOptions(),
+  pushdownKeys: 100,
+}
+const joined: Serie = records.joinWith(records, 'id')
+const joinedLeft: Serie = records.joinWith(window, byPair, 'left', joinOptions)
+const joinedMap: Serie = records.joinWith(records, new Map([['id', 'id']]), null, null)
+const joinedObject: Serie = records.joinWith(records, { id: 'id' }, 'left outer join')
+const streamJoined: SerieReader = SerieReader.fromSerie(records).joinWith(
+  SerieReader.fromSerie(records),
+  'id',
+  'semi',
+)
+const streamJoinedHeld: SerieReader = SerieReader.fromSerie(records).joinWith(
+  ChunkedSerie.fromSerie(records),
+  ['id'],
+)
+// @ts-expect-error the build side is `left` or `right`
+records.joinWith(records, 'id', 'inner', { build: 'both' })
+// @ts-expect-error a held serie joins a Serie or a window
+records.joinWith(ChunkedSerie.fromSerie(records), 'id')
+// @ts-expect-error the private join bridge is hidden
+records._joinWithNative
+
+void [joined, joinedLeft, joinedMap, joinedObject, streamJoined, streamJoinedHeld]

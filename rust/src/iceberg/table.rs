@@ -566,8 +566,18 @@ impl<H: IOBase> Table<H> {
     pub fn plan_matching(&self, filter: impl crate::expression::IntoFilter) -> Result<ScanPlan> {
         let filter = filter.into_filter()?;
         let conjuncts = super::scan::conjuncts(self.schema()?, &filter)?;
-        let schema = self.schema()?.clone();
+        let schema = self.read_root()?;
         self.planned(&conjuncts, &schema, false)
+    }
+
+    /// The root a scan's rows land under: the schema without its `SORT:by`.
+    /// A table's sort order is how its writers lay each data file out, and
+    /// a scan reads the files in plan order, so the stream across them
+    /// states no order - a root declaring one would have every batch and
+    /// every batch edge checked, and refused where two files meet.
+    /// [`Self::schema`] keeps reporting the order the table declares.
+    fn read_root(&self) -> Result<Field> {
+        Ok(self.schema()?.clone().with_metadata_removed("SORT:by"))
     }
 
     /// Plan a scan of one retained snapshot rather than the current one.
@@ -2605,7 +2615,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         if let Some(field) = options.field() {
             return Ok(field);
         }
-        Ok(self.schema()?.clone().with_name(options.name()))
+        Ok(self.read_root()?.with_name(options.name()))
     }
 
     /// Scan the current snapshot, the whole `where` clause answered by the plan.

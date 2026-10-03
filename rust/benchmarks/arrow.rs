@@ -1122,6 +1122,184 @@ fn window_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// The record either side of a join carries: an instrument id, its code as
+/// windows-1252 text, its symbol, and a count - a trade's size, an
+/// instrument's lot.
+fn join_root(name: &str, count: &str) -> Field {
+    StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::cp1252().required_field("code"),
+        DataType::utf8().required_field("symbol"),
+        DataType::Int64.required_field(count),
+    ])
+    .map(DataType::from)
+    .expect("the join root is valid")
+    .required_field(name)
+}
+
+/// One row per id under `root`: the code and symbol the id names, the row
+/// index as the count.
+///
+/// The code opens with one of four windows-1252 characters whose bytes
+/// order otherwise than the characters they decode to - `€` is byte `0x80`
+/// and `U+20AC`, `ÿ` byte `0xFF` and `U+00FF` - so the stored order of a
+/// code column is not its value order, and a join on it hashes the values.
+fn join_side(root: &Field, ids: impl IntoIterator<Item = i64>) -> Serie {
+    const LEADS: [&str; 4] = ["\u{20ac}", "\u{ff}", "\u{160}", "A"];
+    let rows = ids.into_iter().enumerate().map(|(index, id)| {
+        let at = usize::try_from(id).expect("an id is not negative");
+        Scalar::from_sequence([
+            Scalar::from(id),
+            Scalar::from(format!("{}{id:06}", LEADS[at % LEADS.len()])),
+            Scalar::from(SYMBOLS[at % SYMBOLS.len()]),
+            Scalar::from(i64::try_from(index).expect("the row index fits an i64")),
+        ])
+    });
+    Serie::from_scalars(root.clone(), rows).expect("the join rows lay out")
+}
+
+/// `serie` as [`BATCHES`] chunks of equal rows, sharing its buffers.
+fn join_chunks(serie: &Serie) -> ChunkedSerie {
+    let size = serie.len().div_ceil(BATCHES);
+    ChunkedSerie::from_series(
+        None,
+        (0..serie.len()).step_by(size).map(|offset| {
+            serie
+                .slice(offset, size.min(serie.len() - offset))
+                .expect("a chunk")
+        }),
+        ArrowCastOptions::new(),
+    )
+    .expect("the chunks share one field")
+}
+
+/// Hash joins: `count` trades against the instruments they name, the
+/// instruments - a quarter as many, every eighth id missing - pinned as the
+/// build side.
+///
+/// `inner` and `left` key one int64 column on Arrow's row format; `two_keys`
+/// adds the symbol to the row; `values_rung` keys the windows-1252 code,
+/// whose stored order is not its value order, so every key row is built as
+/// a value and hashed through its own equality. `streamed` probes with the
+/// trades as a stream of [`BATCHES`] batches, one output batch per probe
+/// batch, nothing of the probe collected. `prune_on` and `prune_off` join a
+/// probe whose ids rise row by row against instruments covering the first
+/// batch's alone, so seven batches of eight fall outside the build keys'
+/// range: pruned, each stands alone as a slice of its own rows; hashed,
+/// each row is probed, misses and is gathered. `grace` is `inner` under a
+/// one-byte spill bound: the build and the probe scattered over partitions
+/// written to disk, joined partition by partition, every output batch
+/// spilled too.
+fn join_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::expression::{IntoJoinKeys as _, JoinKeys};
+    use yggdryl::{JoinKind, JoinOptions, JoinSide, SpillOptions};
+
+    let trade_root = join_root("trade", "size");
+    let instrument_root = join_root("instrument", "lot");
+    let built = JoinOptions::new().with_build(Some(JoinSide::Right));
+    let grace = built
+        .clone()
+        .with_spill(SpillOptions::new().with_byte_size(1));
+    let by_id: JoinKeys = "id".parse().expect("one key");
+    let by_id_and_symbol: JoinKeys = ["id", "symbol"].into_join_keys().expect("two keys");
+    let by_code: JoinKeys = "code".parse().expect("one key");
+
+    let mut group = criterion.benchmark_group("join");
+    for count in ROWS {
+        let rows = i64::try_from(count).expect("the row count fits an i64");
+        let keys = (rows / 4).max(16);
+        let trades = join_side(&trade_root, (0..rows).map(|row| row % keys));
+        let instruments = join_side(&instrument_root, (0..keys).filter(|id| id % 8 != 7));
+        let trade_chunks = join_chunks(&trades);
+        let rising = join_chunks(&join_side(&trade_root, 0..rows));
+        let first_batch = join_side(
+            &instrument_root,
+            0..i64::try_from(rising.chunks()[0].len()).expect("a batch's rows fit an i64"),
+        );
+        let first_batch = ChunkedSerie::from_serie(first_batch).expect("one chunk");
+        // Every trade whose instrument is listed matches once; the keyed
+        // shapes and the partitioned join answer those rows alike, the last
+        // from disk.
+        let matched = (0..rows).filter(|row| row % keys % 8 != 7).count();
+        for (by, options) in [
+            (&by_id, &built),
+            (&by_id_and_symbol, &built),
+            (&by_code, &built),
+            (&by_id, &grace),
+        ] {
+            let joined = trades
+                .join_with(&instruments, by, JoinKind::Inner, options)
+                .expect("the join answers");
+            assert_eq!(joined.len(), matched, "{by} under {options:?}");
+            assert_eq!(joined.is_spilled(), options.spill().is_some(), "{by}");
+        }
+        let pruned = rising
+            .join_with(&first_batch, &by_id, JoinKind::Left, &built)
+            .expect("the join answers");
+        assert_eq!(pruned.len(), count, "a left join keeps every trade");
+        assert_eq!(
+            pruned.num_chunks(),
+            BATCHES,
+            "one output batch per probe batch"
+        );
+
+        group.throughput(Throughput::Elements(count as u64));
+        for (name, by, how) in [
+            ("inner", &by_id, JoinKind::Inner),
+            ("left", &by_id, JoinKind::Left),
+            ("two_keys", &by_id_and_symbol, JoinKind::Inner),
+            ("values_rung", &by_code, JoinKind::Inner),
+        ] {
+            group.bench_function(format!("{name}/{count}"), |bencher| {
+                bencher.iter(|| {
+                    black_box(&trades)
+                        .join_with(black_box(&instruments), by, how, &built)
+                        .expect("the join answers")
+                });
+            });
+        }
+        group.bench_function(format!("streamed/{count}"), |bencher| {
+            bencher.iter_batched(
+                || {
+                    (
+                        SerieReader::from_chunked(trade_chunks.clone()).expect("the chunks stream"),
+                        instruments.clone(),
+                    )
+                },
+                |(probe, build)| {
+                    let joined = probe
+                        .join_with(build, &by_id, JoinKind::Inner, &built)
+                        .expect("the join resolves");
+                    let mut rows = 0;
+                    for batch in joined {
+                        rows += batch.expect("an output batch").len();
+                    }
+                    rows
+                },
+                BatchSize::SmallInput,
+            );
+        });
+        for (name, prune) in [("prune_on", true), ("prune_off", false)] {
+            let options = built.clone().with_prune(prune);
+            group.bench_function(format!("{name}/{count}"), |bencher| {
+                bencher.iter(|| {
+                    black_box(&rising)
+                        .join_with(black_box(&first_batch), &by_id, JoinKind::Left, &options)
+                        .expect("the join answers")
+                });
+            });
+        }
+        group.bench_function(format!("grace/{count}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&trades)
+                    .join_with(black_box(&instruments), &by_id, JoinKind::Inner, &grace)
+                    .expect("the partitioned join answers")
+            });
+        });
+    }
+    group.finish();
+}
+
 /// A nested column and its JSON text, both ways: the tape as one struct
 /// column and a basket of four sizes per row, written as text and read back.
 ///
@@ -1278,5 +1456,6 @@ criterion_group!(
     null_visibility_benchmarks,
     memory_size_benchmarks,
     window_benchmarks,
+    join_benchmarks,
 );
 criterion_main!(arrow_values);

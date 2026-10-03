@@ -487,3 +487,14 @@ fn a_nested_cp1252_refusal_does_not_mutate_a_preceding_sibling() {
         &[1]
     );
 }
+
+#[test]
+fn a_fresh_text_column_is_resident_whole_and_not_spilled() {
+    let column = names();
+    let leaf = column.as_utf8().expect("a utf8 column");
+
+    let memory = SerieValue::memory_size(leaf);
+    assert!(memory > 0, "a column of rows occupies bytes");
+    assert_eq!(SerieValue::resident_size(leaf), memory);
+    assert!(!SerieValue::is_spilled(leaf));
+}

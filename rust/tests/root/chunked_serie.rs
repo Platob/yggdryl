@@ -14,6 +14,7 @@ use arrow_array::{
 use arrow_buffer::{Buffer, NullBuffer, OffsetBuffer};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::arrow::{BatchReader, batch_reader};
+use yggdryl::expression::IntoOrderings;
 use yggdryl::{
     ArrowCastOptions, ChunkedSerie, DataType, Field, FieldPath, Scalar, Serie, SerieReader,
     SortOptions, StructType, UnionFields, UnionMode,
@@ -1582,7 +1583,7 @@ fn is_sorted_reads_each_chunk_and_every_chunk_edge() {
 }
 
 #[test]
-fn sorting_and_uniqueness_join_once_and_answer_one_chunk_under_the_field() {
+fn sorting_merges_the_chunks_and_uniqueness_filters_each_apart() {
     let prices = chunked(&[Some(3), None, Some(1), Some(3), Some(2)], 2);
     assert!(!prices.is_unique());
     assert_eq!(prices.unique_count(), 4);
@@ -1610,9 +1611,19 @@ fn sorting_and_uniqueness_join_once_and_answer_one_chunk_under_the_field() {
             .chain([Scalar::Null])
             .collect::<Vec<_>>()
     );
+    // Each chunk keeps its own first occurrences: `[3, -]`, `[1]`, `[2]`.
     let unique = prices.into_unique().expect("unique");
-    assert_eq!((unique.num_chunks(), unique.len()), (1, 4));
+    assert_eq!((unique.num_chunks(), unique.len()), (3, 4));
     assert!(unique.is_unique());
+    assert_eq!(
+        unique.rows(),
+        vec![
+            Scalar::from(3_i64),
+            Scalar::Null,
+            Scalar::from(1_i64),
+            Scalar::from(2_i64)
+        ]
+    );
     // The serie is as it was.
     assert_eq!(prices.num_chunks(), 3);
     let taken = prices
@@ -2167,4 +2178,900 @@ fn window_by_compares_chunk_edges_in_place() {
         "the key is the NaN its first row holds"
     );
     assert_eq!(keyed_rows(windows), joined_windows(&prices, "px", true));
+}
+
+#[test]
+fn sorting_by_keys_merges_and_answers_what_the_joined_column_answers() {
+    let table = ChunkedSerie::from_series(
+        None,
+        [
+            quotes(&[(3, "MSFT"), (1, "AAPL"), (2, "MSFT")]),
+            quotes(&[(1, "MSFT"), (2, "AAPL")]),
+        ],
+        ArrowCastOptions::new(),
+    )
+    .expect("two batches under one root");
+    let joined = table.into_serie().expect("joined");
+    for by in ["symbol, id desc", "id, symbol desc", "id * -1, symbol"] {
+        let order = table.sort_indices_by(by).expect("an order");
+        assert_eq!(
+            order.rows(),
+            joined.sort_indices_by(by).expect("an order").rows(),
+            "{by}"
+        );
+        let sorted = table.into_sort_by(by).expect("sorted");
+        assert_eq!((sorted.num_chunks(), sorted.len()), (1, 5), "{by}");
+        assert_eq!(
+            without_order(sorted.field()),
+            without_order(table.field()),
+            "{by}"
+        );
+        assert_eq!(
+            sorted.rows(),
+            joined.into_sort_by(by).expect("sorted").rows().into_owned(),
+            "{by}"
+        );
+        let mut held = table.clone();
+        held.as_sort_by(by)
+            .expect("sorted")
+            .as_reversed()
+            .expect("reversed");
+        assert_eq!(held.num_chunks(), 1, "{by}");
+        assert_eq!(held.rows(), sorted.into_reversed().rows(), "{by}");
+    }
+    assert_eq!(
+        table
+            .sort_indices_by("symbol, id desc")
+            .expect("an order")
+            .rows()
+            .to_vec(),
+        [4_u32, 1, 0, 2, 3].map(Scalar::from).to_vec()
+    );
+    // The serie is as it was, and a refusal leaves it so.
+    assert_eq!(table.num_chunks(), 2);
+    let mut held = table.clone();
+    for refused in ["symbol,", "tier", "id, id desc"] {
+        assert!(held.as_sort_by(refused).is_err(), "{refused}");
+        assert_eq!(
+            (held.num_chunks(), held.rows()),
+            (2, table.rows()),
+            "{refused}"
+        );
+    }
+}
+
+/// The trades root: an identifier every row holds once, then a nullable
+/// integer price with repeats, a venue, a nullable decimal quantity, a
+/// nullable float rate - NaN, both zeroes - a version and a nested serie of
+/// legs, so a key on any of them carries the rest of the row along.
+fn trades_root() -> Field {
+    Field::new(
+        "trade",
+        DataType::from(
+            StructType::from_fields([
+                Field::new("id", DataType::Int64, false),
+                Field::new("px", DataType::Int64, true),
+                Field::new("venue", DataType::utf8(), false),
+                Field::new("qty", DataType::decimal128(10, 2).expect("a decimal"), true),
+                Field::new("rate", DataType::Float64, true),
+                Field::new("release", DataType::Version, false),
+                legs_field(),
+            ])
+            .expect("seven named children"),
+        ),
+        false,
+    )
+}
+
+/// Trade `id`: every field a short cycle of `id`, so values repeat across
+/// chunks and the identifier tells equal keys apart.
+fn trade(id: i64) -> Scalar {
+    let at = |cycle: &[i64]| cycle[usize::try_from(id).expect("an id") % cycle.len()];
+    let px = [3, -1, 1, 3, 2, -1, 1][usize::try_from(id).expect("an id") % 7];
+    let rate =
+        [0.5, f64::NAN, -0.0, 0.0, f64::NEG_INFINITY, 0.5][usize::try_from(id).expect("an id") % 6];
+    Scalar::from_sequence([
+        Scalar::from(id),
+        if px < 0 {
+            Scalar::Null
+        } else {
+            Scalar::from(px)
+        },
+        Scalar::from(["XNYS", "XNAS", "XPAR", "XNAS"][usize::try_from(id).expect("an id") % 4]),
+        match at(&[125, 0, 125, 990, -1]) {
+            -1 => Scalar::Null,
+            unscaled => Scalar::decimal128(i128::from(unscaled), 2),
+        },
+        if id % 5 == 4 {
+            Scalar::Null
+        } else {
+            Scalar::from(rate)
+        },
+        DataType::Version
+            .scalar(["1.10.0", "1.9.0", "2.0.0"][usize::try_from(id).expect("an id") % 3])
+            .expect("a version"),
+        Scalar::from_sequence((0..at(&[2, 0, 1])).map(|leg| Scalar::from(id * 10 + leg))),
+    ])
+}
+
+/// Trades `0..` cut into chunks of `cuts` rows each, an empty chunk and a
+/// chunk of one row among them.
+fn trade_chunks(cuts: &[usize]) -> ChunkedSerie {
+    let mut id = 0_i64;
+    ChunkedSerie::from_series(
+        Some(&trades_root()),
+        cuts.iter().map(|&rows| {
+            Serie::from_scalars(
+                trades_root(),
+                (0..rows).map(|_| {
+                    id += 1;
+                    trade(id - 1)
+                }),
+            )
+            .expect("trade rows")
+        }),
+        ArrowCastOptions::new(),
+    )
+    .expect("trade chunks")
+}
+
+/// Assert the merge answers what the one join answers: `into_sorted` under
+/// every ordering and `into_unique` over the rows, and `into_sort_by` each
+/// key list of `by`, field and rows alike, and every output chunk at most
+/// one batch.
+fn assert_merges_as_joined(chunked: &ChunkedSerie, by: &[&str]) {
+    let joined = chunked.into_serie().expect("one join");
+    let batch = yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE;
+    let shaped = |merged: &ChunkedSerie, what: &str| {
+        assert_eq!(
+            without_order(merged.field()),
+            without_order(chunked.field()),
+            "{what}"
+        );
+        assert_eq!(
+            merged.len(),
+            merged.chunks().iter().map(Serie::len).sum::<usize>(),
+            "{what}"
+        );
+        assert!(
+            merged
+                .chunks()
+                .iter()
+                .all(|chunk| chunk.len() <= batch && !chunk.is_empty()),
+            "{what}: every chunk holds a row and at most a batch"
+        );
+    };
+    for options in ORDERINGS {
+        let merged = chunked.into_sorted(options).expect("merged");
+        shaped(&merged, &format!("{options:?}"));
+        assert_eq!(
+            merged.rows(),
+            joined
+                .into_sorted(options)
+                .expect("sorted")
+                .rows()
+                .into_owned(),
+            "into_sorted {options:?} of {}",
+            chunked.field().name()
+        );
+    }
+    let unique = chunked.into_unique().expect("unique");
+    shaped(&unique, "into_unique");
+    assert_eq!(
+        unique.rows(),
+        joined.into_unique().expect("unique").rows().into_owned(),
+        "into_unique of {}",
+        chunked.field().name()
+    );
+    for by in by {
+        let merged = chunked.into_sort_by(*by).expect("merged");
+        shaped(&merged, by);
+        assert_eq!(
+            merged.rows(),
+            joined
+                .into_sort_by(*by)
+                .expect("sorted")
+                .rows()
+                .into_owned(),
+            "into_sort_by {by}"
+        );
+    }
+}
+
+#[test]
+fn a_merged_sort_answers_what_the_one_join_answers_on_every_rung() {
+    // Repeats across chunks, absent values, an empty chunk and a chunk of
+    // one row; the identifier keeps every row distinct, so a tie broken
+    // out of chunk order or row order shows in the rows.
+    let trades = trade_chunks(&[5, 0, 7, 1, 9, 3]);
+    assert_eq!((trades.len(), trades.num_chunks()), (25, 6));
+    assert_merges_as_joined(
+        &trades,
+        &[
+            "px desc, venue",
+            "venue, px nulls first",
+            "px desc nulls first, qty",
+            "qty desc, id",
+            "rate, id",
+            "release desc, venue",
+            "legs desc",
+            "px * -1, venue desc",
+        ],
+    );
+    // Each column alone: an integer, a text, a decimal and a nested serie
+    // on the row format; a float and a version on the values' order.
+    for name in ["px", "venue", "qty", "legs", "rate", "release"] {
+        let column = trades.child(name).expect("a child");
+        assert_merges_as_joined(&column, &[&format!("{name} desc"), name]);
+    }
+}
+
+#[test]
+fn a_merged_sort_keeps_equal_keys_in_chunk_order_then_row_order() {
+    let trades = trade_chunks(&[4, 4, 4]);
+    let sorted = trades.into_sort_by("venue").expect("merged");
+    let ids: Vec<Scalar> = sorted.child("id").expect("ids").rows();
+    // XNAS rows 1, 3, 5, 7, 9, 11 come first and in arrival order, then
+    // XNYS 0, 4, 8, then XPAR 2, 6, 10.
+    assert_eq!(
+        ids,
+        [1_i64, 3, 5, 7, 9, 11, 0, 4, 8, 2, 6, 10]
+            .map(Scalar::from)
+            .to_vec()
+    );
+}
+
+#[test]
+fn a_merged_sort_cuts_its_output_into_batches_and_one_chunk_into_slices() {
+    let batch = yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE;
+    let rows = batch * 5 / 2;
+    let values: Vec<Option<i64>> = (0..rows)
+        .map(|index| {
+            let index = i64::try_from(index).expect("a row");
+            (index % 11 != 3).then_some((index * 7_919) % 100_003)
+        })
+        .collect();
+    let field = Field::new("price", DataType::Int64, true);
+    let cuts = [70_000, 1, 50_000, rows - 70_001 - 50_000];
+    let mut start = 0;
+    let arrays: Vec<ArrayRef> = cuts
+        .iter()
+        .map(|&len| {
+            let array = Arc::new(Int64Array::from(values[start..start + len].to_vec())) as ArrayRef;
+            start += len;
+            array
+        })
+        .collect();
+    let prices = ChunkedSerie::from_arrow_arrays(Some(&field), arrays, ArrowCastOptions::new())
+        .expect("four unequal chunks");
+    let joined = prices.into_serie().expect("one join");
+    for options in [
+        SortOptions::ascending(),
+        SortOptions::descending().with_nulls_first(true),
+    ] {
+        let sorted = prices.into_sorted(options).expect("merged");
+        assert_eq!(
+            sorted.chunks().iter().map(Serie::len).collect::<Vec<_>>(),
+            vec![batch, batch, batch / 2],
+            "{options:?}"
+        );
+        assert!(sorted.is_sorted(options));
+        assert!(
+            sorted == joined.into_sorted(options).expect("sorted"),
+            "{options:?}"
+        );
+    }
+    let by = prices.into_sort_by("price desc").expect("merged");
+    assert!(by.is_sorted(SortOptions::descending()));
+    assert_eq!(by.num_chunks(), 3);
+    // One chunk merges nothing: its sorted self, cut into slices.
+    let whole = ChunkedSerie::from_serie(joined.clone()).expect("one chunk");
+    let sorted = whole.into_sorted(SortOptions::default()).expect("sliced");
+    assert_eq!(
+        sorted.chunks().iter().map(Serie::len).collect::<Vec<_>>(),
+        vec![batch, batch, batch / 2]
+    );
+    assert!(sorted == joined.into_sorted(SortOptions::default()).expect("sorted"));
+    // Uniqueness keeps the chunks apart and their first occurrences.
+    let unique = prices.into_unique().expect("unique");
+    assert!(unique == joined.into_unique().expect("unique"));
+    assert!(unique.num_chunks() <= 4);
+}
+
+#[test]
+fn a_merged_sort_over_one_or_no_chunk_and_empty_chunks_answers_the_join() {
+    let none = ChunkedSerie::empty(price()).expect("no chunk");
+    assert_eq!(
+        none.into_sorted(SortOptions::default())
+            .expect("merged")
+            .num_chunks(),
+        0
+    );
+    assert_eq!(none.into_unique().expect("unique").num_chunks(), 0);
+    assert_eq!(
+        none.into_sort_by("price desc")
+            .expect("merged")
+            .num_chunks(),
+        0
+    );
+    let empties = ChunkedSerie::from_series(
+        Some(&price()),
+        [
+            int64_column(&price(), vec![]),
+            int64_column(&price(), vec![]),
+        ],
+        ArrowCastOptions::new(),
+    )
+    .expect("two empty chunks");
+    assert_merges_as_joined(&empties, &["price"]);
+    assert_eq!(
+        empties
+            .into_sorted(SortOptions::default())
+            .expect("merged")
+            .num_chunks(),
+        0
+    );
+    // One row per chunk: every pair of neighbours an edge.
+    let ones = cut(&[&[3], &[1], &[3], &[2], &[1]]);
+    assert_merges_as_joined(&ones, &["price desc", "price"]);
+    let unique = ones.into_unique().expect("unique");
+    assert_eq!(
+        (unique.num_chunks(), unique.rows()),
+        (3, price_rows(&[3, 1, 2]))
+    );
+    // One chunk holding rows, beside empty ones, is that chunk sorted.
+    let one = cut(&[&[], &[3, 1, 2, 1], &[]]);
+    assert_merges_as_joined(&one, &["price desc"]);
+    assert_eq!(
+        one.into_sorted(SortOptions::default())
+            .expect("merged")
+            .num_chunks(),
+        1
+    );
+    // Duplicates and absent values across the chunks.
+    assert_merges_as_joined(
+        &chunked(
+            &[
+                Some(3),
+                None,
+                Some(1),
+                Some(3),
+                Some(2),
+                None,
+                Some(1),
+                Some(3),
+            ],
+            3,
+        ),
+        &["price nulls first", "price desc"],
+    );
+}
+
+#[test]
+fn a_merged_sort_by_keys_places_an_absent_record_as_absent_in_every_key() {
+    let quotes = absent_quote_chunks();
+    assert_merges_as_joined(
+        &quotes,
+        &["symbol", "id desc", "symbol desc nulls first, id"],
+    );
+}
+
+#[test]
+fn a_merged_sort_refuses_its_keys_before_any_chunk_with_no_chunk_as_with_many() {
+    for table in [
+        quote_table(),
+        ChunkedSerie::empty(quotes_root()).expect("no chunk"),
+    ] {
+        for refused in ["symbol,", "tier", "id, id desc", "unnest(symbol)"] {
+            assert!(table.into_sort_by(refused).is_err(), "{refused}");
+        }
+        let none: Vec<yggdryl::expression::Ordering> = Vec::new();
+        let refused = table.into_sort_by(none).unwrap_err().to_string();
+        assert!(
+            refused.contains("expected at least one `order by` key to sort row by, got none"),
+            "{refused}"
+        );
+    }
+}
+
+#[test]
+fn a_merged_sort_reads_spilled_chunks_where_they_lie_and_leaves_them_spilled() {
+    let mut trades = trade_chunks(&[6, 5, 7]);
+    let before = trades.rows();
+    trades
+        .spill(&yggdryl::SpillOptions::new().with_byte_size(0))
+        .expect("spilled");
+    assert!(trades.chunks().iter().all(Serie::is_spilled));
+    assert_eq!(trades.rows(), before);
+    assert_merges_as_joined(&trades, &["px desc, id", "release, id"]);
+    // The inputs stay where they lie.
+    assert!(trades.chunks().iter().all(Serie::is_spilled));
+    assert!(trades.is_spilled());
+}
+
+#[test]
+fn a_merged_sort_refuses_the_gather_arrow_would_panic_on_and_uniqueness_needs_none() {
+    // Two view-text vocabularies of a hundred values each: the int8 key
+    // reaches neither gathered whole, so the sort's gather is refused by
+    // name, as the join is. Uniqueness filters each chunk by its own mask
+    // and gathers nothing, so it answers.
+    let venues = |from: usize| -> ArrayRef {
+        let names: Vec<String> = (from..from + 100).map(|at| format!("v{at}")).collect();
+        let keys: Vec<i8> = (0..100).rev().collect();
+        Arc::new(
+            DictionaryArray::<Int8Type>::try_new(
+                Int8Array::from(keys),
+                Arc::new(StringViewArray::from_iter_values(names)),
+            )
+            .expect("keys into the values"),
+        )
+    };
+    let chunked =
+        ChunkedSerie::from_arrow_arrays(None, [venues(0), venues(100)], ArrowCastOptions::new())
+            .expect("two dictionary arrays");
+    for refused in [
+        chunked.into_sorted(SortOptions::default()),
+        chunked.into_sort_by("item desc"),
+    ] {
+        let shown = refused
+            .expect_err("no int8 key reaches 200 values")
+            .to_string();
+        assert!(
+            shown.contains("gathers 200 dictionary values at $,"),
+            "{shown}"
+        );
+    }
+    let unique = chunked.into_unique().expect("no gather");
+    assert_eq!((unique.num_chunks(), unique.len()), (2, 200));
+    assert_eq!(unique.rows(), chunked.rows());
+    // A chunk alone sorts with no gather at all.
+    let one = chunked.slice(0, 100).expect("the first chunk");
+    let sorted = one.into_sorted(SortOptions::default()).expect("sorted");
+    assert!(sorted.is_sorted(SortOptions::default()));
+}
+
+/// `field` without the order its root declares: what a sort leaves equal
+/// to the field it sorted, the `SORT:by` it wrote aside.
+fn without_order(field: &Field) -> Field {
+    field.clone().with_metadata_removed("SORT:by")
+}
+
+// ---------------------------------------------------------------------------
+// The declared order across chunks: a field declaring `SORT:by` proves its
+// rows at every door a chunk enters - each chunk's rows and every chunk
+// edge - and a sort declares on the field and on every chunk.
+// ---------------------------------------------------------------------------
+
+/// The quotes root declaring its rows keep `by`.
+fn declaring_root(by: &[&str]) -> Field {
+    let mut root = quotes_root();
+    root.as_sort_mut().set_by_texts(by).expect("the keys");
+    root
+}
+
+/// A refusal's path and reason.
+fn order_refusal(error: yggdryl::arrow::Error) -> (String, String) {
+    match error {
+        yggdryl::arrow::Error::Core(yggdryl::Error::InvalidRecord { path, reason }) => {
+            (path.to_string(), reason.to_string())
+        }
+        other => panic!("expected an invalid record, got {other}"),
+    }
+}
+
+/// The refusal of chunk `index` opening out of `row`'s declared `id`.
+fn edge_refused(index: usize) -> (String, String) {
+    (
+        "row".to_owned(),
+        format!("chunk {index} of row opens out of the order its field declares, `id`"),
+    )
+}
+
+/// The refusal of a chunk's row `index` out of `row`'s declared `id`.
+fn row_refused(index: usize) -> (String, String) {
+    (
+        "row".to_owned(),
+        format!("row {index} of row is out of the order its root declares, `id`"),
+    )
+}
+
+/// The record arrays of `rows` under the quotes root's layout.
+fn quote_array(rows: &[(i64, &str)]) -> ArrayRef {
+    Arc::new(StructArray::new(
+        vec![
+            ArrowField::new("id", ArrowDataType::Int64, false),
+            ArrowField::new("symbol", ArrowDataType::Utf8, false),
+        ]
+        .into(),
+        vec![
+            Arc::new(Int64Array::from(
+                rows.iter().map(|row| row.0).collect::<Vec<_>>(),
+            )) as ArrayRef,
+            Arc::new(StringArray::from(
+                rows.iter().map(|row| row.1).collect::<Vec<_>>(),
+            )),
+        ],
+        None,
+    ))
+}
+
+/// The same rows with an `int32` id, which the plan casts.
+fn narrow_quote_array(rows: &[(i64, &str)]) -> ArrayRef {
+    Arc::new(StructArray::new(
+        vec![
+            ArrowField::new("id", ArrowDataType::Int32, false),
+            ArrowField::new("symbol", ArrowDataType::Utf8, false),
+        ]
+        .into(),
+        vec![
+            Arc::new(Int32Array::from(
+                rows.iter()
+                    .map(|row| i32::try_from(row.0).expect("a small id"))
+                    .collect::<Vec<_>>(),
+            )) as ArrayRef,
+            Arc::new(StringArray::from(
+                rows.iter().map(|row| row.1).collect::<Vec<_>>(),
+            )),
+        ],
+        None,
+    ))
+}
+
+#[test]
+fn chunks_held_under_a_declaring_field_are_proven_at_every_chunk_edge() {
+    let root = declaring_root(&["id"]);
+    // Chunks of the plain root, cast in: each proven, then every edge.
+    let refused = ChunkedSerie::from_series(
+        Some(&root),
+        [quotes(&[(1, "A"), (2, "B")]), quotes(&[(0, "C")])],
+        ArrowCastOptions::new(),
+    )
+    .unwrap_err();
+    assert_eq!(order_refusal(refused), edge_refused(1));
+    let refused = ChunkedSerie::from_series(
+        Some(&root),
+        [quotes(&[(1, "A")]), quotes(&[(3, "B"), (2, "C")])],
+        ArrowCastOptions::new(),
+    )
+    .unwrap_err();
+    assert_eq!(order_refusal(refused), row_refused(1));
+    // Chunks in order across every edge, an empty one among them, are held
+    // and declare the order on the field and on every chunk.
+    let held = ChunkedSerie::from_series(
+        Some(&root),
+        [
+            quotes(&[(1, "A"), (2, "B")]),
+            quotes(&[]),
+            quotes(&[(2, "C"), (5, "D")]),
+        ],
+        ArrowCastOptions::new(),
+    )
+    .expect("in order");
+    assert_eq!(held.field().get_metadata("SORT:by"), Some(r#"["id"]"#));
+    assert!(
+        held.chunks()
+            .iter()
+            .all(|chunk| chunk.field() == Some(&root))
+    );
+    let keys = held
+        .declared_order()
+        .expect("well formed")
+        .expect("declared");
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].to_string(), "id");
+    // With no field, the first chunk's declaration is the field's, and the
+    // chunks under it are proven at their edges.
+    let declared = |rows: &[(i64, &str)]| quotes(rows).into_sort_by("id").expect("sorted");
+    let refused = ChunkedSerie::from_series(
+        None,
+        [declared(&[(1, "A"), (4, "B")]), declared(&[(3, "C")])],
+        ArrowCastOptions::new(),
+    )
+    .unwrap_err();
+    assert_eq!(order_refusal(refused), edge_refused(1));
+    // A field declaring nothing proves nothing, and a non-record column
+    // declares nothing at all.
+    assert!(
+        ChunkedSerie::from_series(
+            Some(&quotes_root()),
+            [quotes(&[(1, "A")]), quotes(&[(0, "C")])],
+            ArrowCastOptions::new(),
+        )
+        .expect("no order declared")
+        .declared_order()
+        .expect("none")
+        .is_none()
+    );
+    assert!(prices().declared_order().expect("none").is_none());
+}
+
+#[test]
+fn arrow_arrays_under_a_declaring_field_are_proven_at_every_chunk_edge() {
+    let root = declaring_root(&["id"]);
+    for (what, arrays) in [
+        (
+            "exact",
+            [quote_array(&[(1, "A"), (2, "B")]), quote_array(&[(0, "C")])],
+        ),
+        (
+            "cast",
+            [
+                narrow_quote_array(&[(1, "A"), (2, "B")]),
+                narrow_quote_array(&[(0, "C")]),
+            ],
+        ),
+    ] {
+        let refused = ChunkedSerie::from_arrow_arrays(Some(&root), arrays, ArrowCastOptions::new())
+            .unwrap_err();
+        assert_eq!(order_refusal(refused), edge_refused(1), "{what}");
+    }
+    let held = ChunkedSerie::from_arrow_arrays(
+        Some(&root),
+        [
+            quote_array(&[(1, "A")]),
+            narrow_quote_array(&[(1, "B"), (7, "C")]),
+        ],
+        ArrowCastOptions::new(),
+    )
+    .expect("in order");
+    assert_eq!(held.len(), 3);
+    assert!(held.declared_order().expect("well formed").is_some());
+}
+
+#[test]
+fn an_arrow_array_under_a_declaring_field_is_proven_row_by_row() {
+    // One array whose own rows are out of the order the field declares is
+    // refused by its row, on the exact landing as on the plan's - as
+    // `Serie::from_arrow_array` refuses it.
+    let root = declaring_root(&["id"]);
+    for (what, array) in [
+        ("exact", quote_array(&[(3, "A"), (2, "B")])),
+        ("cast", narrow_quote_array(&[(3, "A"), (2, "B")])),
+    ] {
+        let refused = ChunkedSerie::from_arrow_arrays(
+            Some(&root),
+            [quote_array(&[(1, "Z")]), array],
+            ArrowCastOptions::new(),
+        )
+        .map(|held| held.rows());
+        assert_eq!(
+            refused.map_err(order_refusal),
+            Err(row_refused(1)),
+            "{what}"
+        );
+    }
+}
+
+#[test]
+fn a_cast_onto_a_declaring_field_proves_each_chunk_and_every_edge() {
+    let root = declaring_root(&["id"]);
+    let plain = ChunkedSerie::from_series(
+        None,
+        [quotes(&[(1, "A"), (2, "B")]), quotes(&[(0, "C")])],
+        ArrowCastOptions::new(),
+    )
+    .expect("two chunks");
+    assert_eq!(
+        order_refusal(plain.cast(&root, ArrowCastOptions::new()).unwrap_err()),
+        edge_refused(1)
+    );
+    let disordered = ChunkedSerie::from_series(
+        None,
+        [quotes(&[(1, "A")]), quotes(&[(3, "B"), (2, "C")])],
+        ArrowCastOptions::new(),
+    )
+    .expect("two chunks");
+    assert_eq!(
+        order_refusal(disordered.cast(&root, ArrowCastOptions::new()).unwrap_err()),
+        row_refused(1)
+    );
+    let ordered = ChunkedSerie::from_series(
+        None,
+        [quotes(&[(1, "A")]), quotes(&[(2, "B"), (3, "C")])],
+        ArrowCastOptions::new(),
+    )
+    .expect("two chunks");
+    let cast = ordered
+        .cast(&root, ArrowCastOptions::new())
+        .expect("in order");
+    assert_eq!(cast.field(), &root);
+    assert!(
+        cast.chunks()
+            .iter()
+            .all(|chunk| chunk.field() == Some(&root))
+    );
+    // A cast onto a field declaring nothing lands declaring nothing.
+    let back = cast
+        .cast(&quotes_root(), ArrowCastOptions::new())
+        .expect("plain");
+    assert!(back.declared_order().expect("none").is_none());
+    assert!(
+        back.chunks()
+            .iter()
+            .all(|chunk| chunk.field() == Some(&quotes_root()))
+    );
+}
+
+#[test]
+fn a_pushed_chunk_is_proven_against_the_last_chunk_and_a_refused_one_changes_nothing() {
+    let root = declaring_root(&["id"]);
+    let mut held = ChunkedSerie::from_series(
+        Some(&root),
+        [quotes(&[(1, "A"), (2, "B")])],
+        ArrowCastOptions::new(),
+    )
+    .expect("one chunk");
+    let before = held.rows();
+    // Out of order at the edge, cast in or already under the field.
+    for chunk in [
+        quotes(&[(0, "C")]),
+        quotes(&[(0, "C")])
+            .cast(&root, ArrowCastOptions::new())
+            .expect("in order alone"),
+    ] {
+        let refused = held.push_chunk(chunk, ArrowCastOptions::new()).unwrap_err();
+        assert_eq!(order_refusal(refused), edge_refused(1));
+        assert_eq!((held.num_chunks(), held.rows()), (1, before.clone()));
+    }
+    // Out of order within itself.
+    let refused = held
+        .push_chunk(quotes(&[(4, "C"), (3, "D")]), ArrowCastOptions::new())
+        .unwrap_err();
+    assert_eq!(order_refusal(refused), row_refused(1));
+    assert_eq!(held.num_chunks(), 1);
+    // In order: held, an equal key at the edge included.
+    held.push_chunk(quotes(&[(2, "C"), (3, "D")]), ArrowCastOptions::new())
+        .expect("in order");
+    held.push_chunk(quotes(&[]), ArrowCastOptions::new())
+        .expect("an empty chunk");
+    held.push_chunk(quotes(&[(4, "E")]), ArrowCastOptions::new())
+        .expect("in order past an empty chunk");
+    assert_eq!(held.num_chunks(), 4);
+    assert!(
+        held.chunks()
+            .iter()
+            .all(|chunk| chunk.field() == Some(&root))
+    );
+    // The edge past an empty chunk is the last row held.
+    let refused = held
+        .push_chunk(quotes(&[(3, "F")]), ArrowCastOptions::new())
+        .unwrap_err();
+    assert_eq!(order_refusal(refused), edge_refused(4));
+}
+
+#[test]
+fn a_merged_sort_declares_on_the_field_and_on_every_chunk() {
+    let table = ChunkedSerie::from_series(
+        None,
+        [quotes(&[(3, "C"), (1, "A")]), quotes(&[(2, "B"), (0, "D")])],
+        ArrowCastOptions::new(),
+    )
+    .expect("two chunks");
+    for (sorted, text) in [
+        (
+            table.into_sorted(SortOptions::default()).expect("sorted"),
+            r#"["id","symbol"]"#,
+        ),
+        (
+            table
+                .into_sorted(SortOptions::descending())
+                .expect("sorted"),
+            r#"["id desc","symbol desc"]"#,
+        ),
+        (
+            table.into_sort_by("symbol desc").expect("sorted"),
+            r#"["symbol desc"]"#,
+        ),
+    ] {
+        assert_eq!(sorted.field().get_metadata("SORT:by"), Some(text));
+        assert!(
+            sorted
+                .chunks()
+                .iter()
+                .all(|chunk| chunk.field() == Some(sorted.field())),
+            "{text}"
+        );
+        // What the merge declared, its rows land under.
+        assert!(
+            ChunkedSerie::from_series(
+                Some(sorted.field()),
+                sorted.chunks().iter().cloned(),
+                ArrowCastOptions::new()
+            )
+            .is_ok(),
+            "{text}"
+        );
+    }
+    let keys = table
+        .into_sort_by("symbol desc, id")
+        .expect("sorted")
+        .declared_order()
+        .expect("well formed")
+        .expect("declared");
+    assert_eq!(
+        keys.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        ["symbol desc", "id"]
+    );
+    // A column that is not a record declares nothing.
+    let sorted = prices()
+        .into_sorted(SortOptions::default())
+        .expect("sorted");
+    assert!(sorted.declared_order().expect("none").is_none());
+    assert_eq!(sorted.field(), &price());
+}
+
+#[test]
+fn a_merged_sort_over_chunks_already_declaring_it_answers_the_same_rows() {
+    let root = declaring_root(&["id", "symbol desc"]);
+    let held = ChunkedSerie::from_series(
+        Some(&root),
+        [
+            quotes(&[(1, "B"), (1, "A"), (2, "C")]),
+            quotes(&[(2, "A"), (4, "D")]),
+        ],
+        ArrowCastOptions::new(),
+    )
+    .expect("in order");
+    for by in ["id, symbol desc", "id"] {
+        let sorted = held.into_sort_by(by).expect("sorted");
+        assert_eq!(sorted.rows(), held.rows(), "{by}");
+        // What it declares begins with what was asked.
+        let asked = by.into_orderings().expect("keys");
+        let declared = sorted
+            .declared_order()
+            .expect("well formed")
+            .expect("declared");
+        assert!(declared.starts_with(&asked), "{by}: {declared:?}");
+    }
+    let whole = ChunkedSerie::from_series(
+        Some(&declaring_root(&["id", "symbol"])),
+        [quotes(&[(1, "A"), (1, "B")]), quotes(&[(2, "A")])],
+        ArrowCastOptions::new(),
+    )
+    .expect("in order");
+    assert_eq!(
+        whole
+            .into_sorted(SortOptions::default())
+            .expect("sorted")
+            .rows(),
+        whole.rows()
+    );
+    assert!(whole.is_sorted(SortOptions::default()));
+}
+
+#[test]
+fn a_chunked_reversal_flips_and_a_disordered_take_clears_the_fields_declaration() {
+    // The field is what `declared_order` reads and what a pushed chunk is
+    // proven against, so it states exactly what its chunks state.
+    let root = declaring_root(&["id"]);
+    let held = ChunkedSerie::from_series(
+        Some(&root),
+        [quotes(&[(1, "A"), (2, "B")]), quotes(&[(3, "C")])],
+        ArrowCastOptions::new(),
+    )
+    .expect("in order");
+    let flipped = r#"["id desc nulls first"]"#;
+    let mut in_place = held.clone();
+    in_place.as_reversed().expect("reversed");
+    for reversed in [held.into_reversed(), in_place] {
+        assert!(reversed.chunks().iter().all(|chunk| {
+            chunk
+                .field()
+                .and_then(|field| field.get_metadata("SORT:by"))
+                == Some(flipped)
+        }));
+        assert_eq!(reversed.field().get_metadata("SORT:by"), Some(flipped));
+    }
+    let picks = Serie::new(vec![Scalar::from(2_u32), Scalar::from(0_u32)]);
+    let mut in_place = held.clone();
+    in_place.as_taken(&picks).expect("taken");
+    for taken in [held.into_taken(&picks).expect("taken"), in_place] {
+        assert!(taken.chunks()[0].declared_order().expect("none").is_none());
+        assert!(taken.declared_order().expect("none").is_none());
+    }
+    // Picked in increasing position, the order stays declared.
+    let kept = held
+        .into_taken(&Serie::new(vec![Scalar::from(0_u32), Scalar::from(2_u32)]))
+        .expect("taken");
+    assert_eq!(kept.field(), &root);
 }

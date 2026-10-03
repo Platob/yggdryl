@@ -39,10 +39,11 @@ use pyo3::types::{
     PySlice, PyString,
 };
 use yggdryl::arrow::BatchReader;
+use yggdryl::expression::{IntoOrderings, Ordering as CoreOrdering};
 use yggdryl::media::RecordOptions;
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, MimeType, Scalar, Serie,
-    SerieReader, SerieReaderWindows, SortOptions,
+    ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, JoinSource, MimeType, Scalar,
+    Serie, SerieReader, SerieReaderWindows, SortOptions,
 };
 
 use crate::chunked_serie::{PyChunkedSerie, chunked_from_arrays};
@@ -50,17 +51,20 @@ use crate::datatype::{
     ArrayIntake, BatchIntake, PyDataType, array_capsule, arrow_array_to_pyarrow, pyarrow,
     schema_capsule,
 };
-use crate::expression::selector_from_value;
+use crate::expression::{PySelector, selector_from_value};
 use crate::field::{PyField, core_field_from_value};
+use crate::graph::ellipsis;
 use crate::iomedia::{
     Frames, batch_reader_from_any, batch_reader_from_record_sequence, batch_reader_from_value,
     columnar_reader, core_root_field_from_value, declared_by, frame_from_reader,
     record_batch_intake, rooted_batch_to_pyarrow, rooted_reader_to_pyarrow, type_name,
 };
+use crate::join::{JoinKeywords, PyJoinOptions, join_keys_of, join_kind_of};
 use crate::scalar::{
     PyScalar, PyScalarIterator, as_py, as_py_with_field, from_py, from_py_under,
     pyarrow_scalar_as_array,
 };
+use crate::spill::{PySpillOptions, spill_options_of};
 use crate::text::line::{PyFieldPath, core_path_from_value};
 use crate::window_serie::{LentWindows, PyWindowSerie};
 use crate::{cast_options, compare, normalize_index, value_error};
@@ -187,6 +191,27 @@ pub(crate) const fn sort_options(descending: bool, nulls_first: bool) -> SortOpt
         SortOptions::ascending()
     };
     direction.with_nulls_first(nulls_first)
+}
+
+/// Resolve the `order by` keys a sort verb takes, once: a `Selector` - every
+/// projection ascending with nulls last - or any value `Scalar` holds, read
+/// as the core reads one: the clause's text (`"venue, price desc nulls
+/// first"`), a list of key texts, or a list of `{"term": ..., "descending":
+/// ..., "nulls_first": ...}` records.
+pub(crate) fn orderings_of(by: &Bound<'_, PyAny>) -> PyResult<Vec<CoreOrdering>> {
+    if let Ok(selector) = by.extract::<PyRef<'_, PySelector>>() {
+        return selector.inner.clone().into_orderings().map_err(value_error);
+    }
+    from_py(by)?.into_orderings().map_err(value_error)
+}
+
+/// The keys a root declares its rows keep, each as `SORT:by` spells it.
+pub(crate) fn declared_texts(
+    keys: yggdryl::Result<Option<Vec<CoreOrdering>>>,
+) -> PyResult<Option<Vec<String>>> {
+    Ok(keys
+        .map_err(value_error)?
+        .map(|keys| keys.iter().map(ToString::to_string).collect()))
 }
 
 /// Read the serie a verb takes beside its own - indices, a mask, keys - once.
@@ -1301,6 +1326,114 @@ impl PySerie {
         self.inner.memory_size()
     }
 
+    /// The bytes the rows occupy in memory: `memory_size` less what lies in
+    /// a spill file's mapping.
+    fn resident_size(&self) -> usize {
+        self.inner.resident_size()
+    }
+
+    /// Whether the rows lie in a spill file: some bytes, none of them
+    /// resident. A run and an empty column are never spilled.
+    fn is_spilled(&self) -> bool {
+        self.inner.is_spilled()
+    }
+
+    /// Move the rows to disk until the resident bytes are under the bound,
+    /// in place: `options` - the process default, `SpillOptions.from_env()`,
+    /// for `None` - with `byte_size` and `folder` set on a copy where given.
+    /// The heaviest leaves spill first, each buffer written once to a
+    /// private file and mapped back read-only; a write brings the buffer it
+    /// touches back to the heap. A run spills nothing, and a refused folder
+    /// leaves the serie as it was.
+    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
+    fn spill(
+        slf: &Bound<'_, Self>,
+        options: Option<PyRef<'_, PySpillOptions>>,
+        byte_size: Py<PyAny>,
+        folder: Py<PyAny>,
+    ) -> PyResult<()> {
+        let py = slf.py();
+        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
+        slf.borrow_mut().inner.spill(&options).map_err(value_error)
+    }
+
+    /// The `order by` keys a record's root declares its rows keep
+    /// (`SORT:by`), each as that declaration spells it, or `None`.
+    fn declared_order(&self) -> PyResult<Option<Vec<String>>> {
+        declared_texts(self.inner.declared_order())
+    }
+
+    /// The row positions in the order the `order by` keys of `by` state, as
+    /// a `uint32` column named `index`: stable, a plain column keying as
+    /// itself under its own name.
+    fn sort_indices_by(slf: &Bound<'_, Self>, by: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let by = orderings_of(by)?;
+        let order = Self::detached(slf, move |serie| serie.sort_indices_by(by))?;
+        described(slf.py(), order)
+    }
+
+    /// The rows in the order the `order by` keys of `by` state, as a new
+    /// serie whose root declares that order.
+    fn into_sort_by(slf: &Bound<'_, Self>, by: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let by = orderings_of(by)?;
+        let sorted = Self::detached(slf, move |serie| serie.into_sort_by(by))?;
+        described(slf.py(), sorted)
+    }
+
+    /// This serie joined with `other` on `by`, under `how`: one record
+    /// column of the left columns, then the right, a key stated as one bare
+    /// column on both sides once under the left name when `coalesce`, a
+    /// colliding right name suffixed. `other` is a `Serie` or anything
+    /// `Serie.from_` reads; `options` - `JoinOptions()` for `None` - takes
+    /// each keyword given on a copy.
+    #[pyo3(signature = (
+        other,
+        by,
+        how = "inner",
+        options = None,
+        *,
+        coalesce = ellipsis(),
+        suffix = ellipsis(),
+        build = ellipsis(),
+        prune = ellipsis(),
+        spill = ellipsis(),
+        pushdown_keys = ellipsis(),
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
+    fn join_with(
+        slf: &Bound<'_, Self>,
+        other: &Bound<'_, PyAny>,
+        by: &Bound<'_, PyAny>,
+        how: &str,
+        options: Option<PyRef<'_, PyJoinOptions>>,
+        coalesce: Py<PyAny>,
+        suffix: Py<PyAny>,
+        build: Py<PyAny>,
+        prune: Py<PyAny>,
+        spill: Py<PyAny>,
+        pushdown_keys: Py<PyAny>,
+    ) -> PyResult<Py<PyAny>> {
+        let py = slf.py();
+        let keys = join_keys_of(by)?;
+        let how = join_kind_of(how)?;
+        let options = JoinKeywords {
+            coalesce,
+            suffix,
+            build,
+            prune,
+            spill,
+            pushdown_keys,
+        }
+        .resolve(py, options.as_deref())?;
+        let other = serie_from_py(other, None, ArrowCastOptions::new())?;
+        let joined = Self::detached(slf, move |serie| {
+            serie.join_with(&other, keys, how, &options)
+        })?;
+        described(py, joined)
+    }
+
     /// Sort the rows in place, answering this serie.
     #[pyo3(signature = (*, descending = false, nulls_first = false))]
     fn as_sorted<'py>(
@@ -1351,6 +1484,17 @@ impl PySerie {
             .inner
             .as_filtered(&mask)
             .map_err(value_error)?;
+        Ok(slf.clone())
+    }
+
+    /// Sort the rows in place in the order the `order by` keys of `by`
+    /// state, answering this serie; a refusal leaves it as it was.
+    fn as_sort_by<'py>(
+        slf: &Bound<'py, Self>,
+        by: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, Self>> {
+        let by = orderings_of(by)?;
+        slf.borrow_mut().inner.as_sort_by(by).map_err(value_error)?;
         Ok(slf.clone())
     }
 
@@ -1604,10 +1748,51 @@ impl PySerieReader {
 
     /// Take the reader, which is what handing a stream over means.
     pub(crate) fn take(&mut self) -> PyResult<SerieReader> {
-        self.held().take().ok_or_else(|| {
-            PyValueError::new_err("SerieReader was already handed over by into_arrow_reader")
-        })
+        self.held().take().ok_or_else(handed_over)
     }
+
+    /// Refuse a reader already handed over, before a consuming verb resolves
+    /// an argument it cannot give back.
+    fn require_held(&mut self) -> PyResult<()> {
+        if self.held().is_some() {
+            Ok(())
+        } else {
+            Err(handed_over())
+        }
+    }
+
+    /// The reader's answer about the records it holds; a reader handed
+    /// over holds none.
+    fn holding<T: Default>(&self, read: impl FnOnce(&SerieReader) -> T) -> T {
+        self.reader
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map_or_else(T::default, read)
+    }
+}
+
+/// The refusal of a reader whose records were already handed over.
+fn handed_over() -> PyErr {
+    PyValueError::new_err("SerieReader was already handed over by into_arrow_reader")
+}
+
+/// Read the other side of a stream's join, once: a held column, held chunks
+/// and a stream keep their shape - a held side is the one built and hashed
+/// - and any other value is what `SerieReader.from_` reads it as.
+fn join_source_of(value: &Bound<'_, PyAny>) -> PyResult<JoinSource> {
+    let Some(columnar) = columnar(value)? else {
+        return serie_reader_from_py(value, None, ArrowCastOptions::new()).map(JoinSource::from);
+    };
+    Ok(match columnar {
+        Columnar::Held(serie) | Columnar::Pinned(serie) => JoinSource::from(serie),
+        Columnar::Chunked(chunked) => JoinSource::from(chunked),
+        Columnar::Reader(reader) => JoinSource::from(*reader),
+        Columnar::Stream(stream) => JoinSource::from(
+            SerieReader::from_arrow_reader(None, stream, ArrowCastOptions::new())
+                .map_err(value_error)?,
+        ),
+    })
 }
 
 impl From<SerieReader> for PySerieReader {
@@ -1700,6 +1885,126 @@ impl PySerieReader {
         let reader = self.take()?;
         reader
             .cast(&target, options)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// The bytes the records this reader holds occupy in memory: the held
+    /// records still to yield; a stream holds no batch between pulls, and a
+    /// reader handed over none, so both answer zero.
+    fn resident_size(&self) -> usize {
+        self.holding(SerieReader::resident_size)
+    }
+
+    /// Whether every record this reader holds lies in a spill file: held
+    /// records only, never a stream.
+    fn is_spilled(&self) -> bool {
+        self.holding(SerieReader::is_spilled)
+    }
+
+    /// Move the records this reader holds to disk under the bound, as
+    /// `Serie.spill` moves each: `options` - the process default for `None`
+    /// - with `byte_size` and `folder` set on a copy where given. A stream
+    /// holds none and is untouched; a reader handed over is refused, as
+    /// every verb that writes it is.
+    #[pyo3(signature = (options = None, *, byte_size = ellipsis(), folder = ellipsis()))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
+    fn spill(
+        &mut self,
+        py: Python<'_>,
+        options: Option<PyRef<'_, PySpillOptions>>,
+        byte_size: Py<PyAny>,
+        folder: Py<PyAny>,
+    ) -> PyResult<()> {
+        let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
+        match self.held() {
+            Some(reader) => reader.spill(&options).map_err(value_error),
+            None => Err(handed_over()),
+        }
+    }
+
+    /// Every record not yet pulled, in sorted order, as a new reader; this
+    /// one is spent. The stream is drained before the first sorted batch,
+    /// because the last row pulled may be the first in order; the root and
+    /// the static values are kept.
+    #[pyo3(signature = (*, descending = false, nulls_first = false))]
+    fn into_sorted(
+        &mut self,
+        py: Python<'_>,
+        descending: bool,
+        nulls_first: bool,
+    ) -> PyResult<Self> {
+        let options = sort_options(descending, nulls_first);
+        let reader = self.take()?;
+        py.detach(move || reader.into_sorted(options))
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Every record not yet pulled, in the order the `order by` keys of
+    /// `by` state, as a new reader; this one is spent. The keys are parsed
+    /// before the reader is taken, so a text that does not parse leaves it
+    /// usable; a key the root refuses spends it with no batch pulled.
+    fn into_sort_by(&mut self, py: Python<'_>, by: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let by = orderings_of(by)?;
+        let reader = self.take()?;
+        py.detach(move || reader.into_sort_by(by))
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// This stream joined with `other` on `by`, under `how`, as a stream of
+    /// the output, one probe batch joined at a time; this reader is spent.
+    /// `other` is a `Serie`, a `ChunkedSerie` or a `SerieReader` - a held
+    /// side is the one built and hashed, so the stream probes and nothing of
+    /// it is collected - or anything `SerieReader.from_` reads. The keys,
+    /// `how` and the options are resolved before either side is taken, so a
+    /// refused one leaves both usable; the join's own refusals are raised
+    /// before the first batch is pulled.
+    #[pyo3(signature = (
+        other,
+        by,
+        how = "inner",
+        options = None,
+        *,
+        coalesce = ellipsis(),
+        suffix = ellipsis(),
+        build = ellipsis(),
+        prune = ellipsis(),
+        spill = ellipsis(),
+        pushdown_keys = ellipsis(),
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands a borrowed class over as `PyRef`.
+    fn join_with(
+        &mut self,
+        py: Python<'_>,
+        other: &Bound<'_, PyAny>,
+        by: &Bound<'_, PyAny>,
+        how: &str,
+        options: Option<PyRef<'_, PyJoinOptions>>,
+        coalesce: Py<PyAny>,
+        suffix: Py<PyAny>,
+        build: Py<PyAny>,
+        prune: Py<PyAny>,
+        spill: Py<PyAny>,
+        pushdown_keys: Py<PyAny>,
+    ) -> PyResult<Self> {
+        let keys = join_keys_of(by)?;
+        let how = join_kind_of(how)?;
+        let options = JoinKeywords {
+            coalesce,
+            suffix,
+            build,
+            prune,
+            spill,
+            pushdown_keys,
+        }
+        .resolve(py, options.as_deref())?;
+        self.require_held()?;
+        let other = join_source_of(other)?;
+        let reader = self.take()?;
+        py.detach(move || reader.join_with(other, keys, how, &options))
             .map(Self::from_inner)
             .map_err(value_error)
     }

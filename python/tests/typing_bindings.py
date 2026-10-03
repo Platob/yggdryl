@@ -2455,6 +2455,96 @@ assert window_record is not None and window_chunked is not None
 assert window_walk_field is not None and window_walk_static is not None
 assert window_readers and window_reader_record is not None
 
+# Spill, `order by` keys and joins: a bound and a folder as `SpillOptions`
+# or its keywords, keys as one text, a list or a `Selector`, `how` a word.
+spill_default: yggdryl.SpillOptions = yggdryl.SpillOptions()
+spill_stated: yggdryl.SpillOptions = yggdryl.SpillOptions(0, folder="/tmp")
+spill_env: yggdryl.SpillOptions = yggdryl.SpillOptions.from_env()
+spill_bound: int = spill_stated.byte_size + yggdryl.DEFAULT_SPILL_BYTE_SIZE
+spill_folder: yggdryl.holder.LocalFolder | None = spill_stated.folder
+spill_never: bool = yggdryl.SpillOptions(yggdryl.SpillOptions.NEVER).is_never()
+spill_column: yggdryl.Serie = yggdryl.Serie.from_scalars(Field("price", "int64"), [3, 1, 2])
+spill_column.spill()
+spill_column.spill(spill_stated, byte_size=yggdryl.SpillOptions.NEVER, folder=None)
+spill_resident: int = spill_column.resident_size()
+spill_spilled: bool = spill_column.is_spilled()
+spill_chunked: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_serie(spill_column)
+spill_chunked.spill(byte_size=0)
+spill_chunked_resident: int = spill_chunked.resident_size()
+spill_chunked_spilled: bool = spill_chunked.is_spilled()
+spill_window: yggdryl.WindowSerie = spill_column.window(0, 2)
+spill_window_resident: int = spill_window.resident_size()
+spill_window_spilled: bool = spill_window.is_spilled()
+spill_reader: SerieReader = SerieReader.from_serie(spill_column)
+spill_reader.spill(None, folder="/tmp")
+spill_reader_resident: int = spill_reader.resident_size()
+spill_reader_spilled: bool = spill_reader.is_spilled()
+spill_column.spill(byte_size="0")  # type: ignore[arg-type]
+assert spill_default == spill_env and spill_bound and spill_folder is not None and spill_never
+assert spill_resident >= 0 and spill_spilled in (True, False)
+assert spill_chunked_resident == 0 and spill_chunked_spilled
+assert spill_window_resident >= 0 and spill_window_spilled in (True, False)
+assert spill_reader_resident >= 0 and spill_reader_spilled in (True, False)
+
+order_by_record: yggdryl.Serie = window_quotes.into_sort_by("venue, price desc nulls first")
+order_by_declared: list[str] | None = order_by_record.declared_order()
+order_by_indices: yggdryl.Serie = window_quotes.sort_indices_by(["venue", "price desc"])
+order_by_records: yggdryl.Serie = window_quotes.sort_indices_by(
+    [{"term": "price", "descending": True}]
+)
+order_by_selector: yggdryl.Serie = window_quotes.into_sort_by(yggdryl.Selector("venue"))
+order_by_chained: yggdryl.Serie = order_prices.as_sort_by("price desc").as_reversed()
+order_by_chunked: yggdryl.ChunkedSerie = chunked_prices.into_sort_by("price")
+order_by_chunked_indices: yggdryl.Serie = chunked_prices.sort_indices_by("price desc")
+order_by_chunked_declared: list[str] | None = chunked_prices.declared_order()
+order_by_chunked_chained: yggdryl.ChunkedSerie = chunked_prices.as_sort_by("price")
+order_by_window: yggdryl.Serie = order_into.window(0, 2).into_sort_by("price")
+order_by_window_indices: yggdryl.Serie = order_into.window(0, 2).sort_indices_by("price")
+order_by_window_written: yggdryl.WindowSerie = order_into.window(0, 2).as_sort_by("price")
+order_by_reader: SerieReader = SerieReader.from_serie(window_quotes).into_sort_by("venue")
+order_by_reader_sorted: SerieReader = SerieReader.from_serie(window_quotes).into_sorted(
+    descending=True, nulls_first=True
+)
+window_quotes.sort_indices_by(1)  # type: ignore[arg-type]
+assert order_by_record and order_by_declared and order_by_indices and order_by_records
+assert order_by_selector and order_by_chained is order_prices
+assert order_by_chunked is not None and order_by_chunked_indices is not None
+assert order_by_chunked_declared is None and order_by_chunked_chained is chunked_prices
+assert order_by_window and order_by_window_indices and order_by_window_written is not None
+assert order_by_reader is not None and order_by_reader_sorted is not None
+
+join_options: yggdryl.JoinOptions = yggdryl.JoinOptions(
+    coalesce=False, suffix="_r", build="right", prune=False, spill=spill_stated, pushdown_keys=8
+)
+join_options_facts: tuple[bool, str, str | None, bool, yggdryl.SpillOptions | None, int] = (
+    join_options.coalesce,
+    join_options.suffix,
+    join_options.build,
+    join_options.prune,
+    join_options.spill,
+    join_options.pushdown_keys,
+)
+join_venues: yggdryl.Serie = yggdryl.Serie.from_scalars(
+    Field("venue", "struct<venue: utf8, city: utf8>", nullable=False),
+    [["XNAS", "New York"]],
+)
+join_held: yggdryl.Serie = window_quotes.join_with(join_venues, "venue")
+join_left: yggdryl.Serie = window_quotes.join_with(
+    join_venues, ["venue"], "left", join_options, suffix="_v", build=None, spill=None
+)
+join_pairs: yggdryl.Serie = window_quotes.join_with(join_venues, [["venue", "venue"]], "semi")
+join_mapping: yggdryl.Serie = window_quotes.join_with(join_venues, {"venue": "venue"}, "anti")
+join_chunked: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_serie(window_quotes).join_with(
+    yggdryl.ChunkedSerie.from_serie(join_venues), "venue", "full", coalesce=True
+)
+join_reader: SerieReader = SerieReader.from_serie(window_quotes).join_with(
+    join_venues, "venue", "right", prune=True, pushdown_keys=4
+)
+window_quotes.join_with(join_venues, "venue", coalesce="yes")  # type: ignore[arg-type]
+assert join_options_facts and join_held is not None and join_left is not None
+assert join_pairs is not None and join_mapping is not None
+assert join_chunked is not None and join_reader is not None
+
 # HTTP: the requests-shaped client, the four storage roles, and the server.
 # Nothing below the functions touches the network; the functions are checked,
 # never called.

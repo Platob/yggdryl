@@ -13,6 +13,8 @@
 //! [insert into | insert overwrite | upsert into ... by (<keys>) | delete from [<target>]]
 //! [select <projections>]
 //! [from <target> | from (<plan>)]
+//! [[inner | left [outer] | right [outer] | full [outer] | semi | anti] join <target> | (<plan>)
+//!     on <left> = <right> [and <left> = <right>]... | using (<name>, ...)]...
 //! [where <term>]
 //! [order by <term> [asc|desc] [nulls first|last], ...]
 //! [limit <n>] [offset <n>]
@@ -45,10 +47,28 @@
 //! [`Plan::execute`] reads the `from` source - a target through its holder,
 //! pushing `where`, `select` and `limit` into the read, or a nested plan
 //! run first - and hands the stream to [`Plan::apply_arrow_reader`], which
-//! is what a plan does to any stream: keep, shape, order, bound, then write.
-//! Ordering is the one section that cannot stream, because the last row can
-//! sort first; every other section is one batch at a time.
+//! is what a plan does to any stream: join, keep, shape, order, bound, then
+//! write. Ordering is the one section that cannot stream, because the last
+//! row can sort first; every other section is one batch at a time.
+//!
+//! # Joins
+//!
+//! `from a join b using (id) left join (<plan>) on venue = mic` reads left
+//! to right: each [`Join`]'s left side is the plan's rows so far, its right
+//! side the source it names, read whole and held while the left streams
+//! through it - the engine and its semantics are
+//! [`SerieReader::join_with`](crate::SerieReader::join_with)'s. A bare
+//! `join` is `inner`. `on` is equalities joined by `and`, each a left term
+//! against a right term, the left bound against the rows so far and the
+//! right against the joined source; `using (a, b)` is the same column on
+//! both sides, coalesced into one. The clause states no
+//! [`JoinOptions`](crate::JoinOptions) of its own, so a join runs under
+//! [`JoinOptions::new`](crate::JoinOptions::new): a colliding right name
+//! takes the `_right` suffix and a `using` key is one column. Every other
+//! read section - `where`, `select`, `order by`, `offset`, `limit` - runs
+//! over the joined rows, so it may name a right column.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::str::FromStr;
 
@@ -56,9 +76,10 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::Expression;
 use super::filter::{Filter, IntoFilter};
+use super::join::{IntoJoinKeys, JoinKeys};
 use super::selector::{IntoSelector, Selector};
 use super::term::Term;
-use crate::{Error, Field, Result, SortOptions, Url};
+use crate::{Error, Field, JoinKind, JoinOptions, Result, SortOptions, Url};
 
 /// Where a target is: a URL, or the parts of a catalog path.
 #[derive(
@@ -311,6 +332,32 @@ impl fmt::Display for Source {
     }
 }
 
+impl Source {
+    /// The same source over simplified terms.
+    fn simplify(&self) -> Self {
+        match self {
+            Self::Target(target) => Self::Target(target.clone()),
+            Self::Plan(plan) => Self::Plan(Box::new(plan.simplify())),
+        }
+    }
+
+    /// The root this source's rows are typed by, when the plan states it
+    /// without reading anything: a nested plan's, from what it declares or
+    /// from its own source's root. A target states its root only where it
+    /// is read, so it answers `None`, as a nested plan reading one does.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a nested plan's sections do not bind against
+    /// the root its source states.
+    pub(crate) fn static_root(&self) -> Result<Option<Field>> {
+        match self {
+            Self::Target(_) => Ok(None),
+            Self::Plan(plan) => plan.static_root(),
+        }
+    }
+}
+
 impl From<Target> for Source {
     fn from(target: Target) -> Self {
         Self::Target(target)
@@ -448,6 +495,94 @@ impl fmt::Display for Write {
     }
 }
 
+/// One join section: which rows it keeps, the source it joins, and the keys
+/// it matches on.
+///
+/// A plan holds its joins in the order they are written, each joining the
+/// rows so far - the `from` source's, then each join's output - with its own
+/// source. [`Plan::join`] adds one; `Display` writes the clause, `using
+/// (...)` where every key is one bare column on both sides and `on l = r and
+/// ...` otherwise.
+///
+/// ```
+/// use yggdryl::JoinKind;
+/// use yggdryl::expression::{Plan, Target};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let plan = Plan::new()
+///     .read_from(Target::parse("trades")?)
+///     .join(JoinKind::Left, Target::parse("venues")?, "venue = mic")?;
+/// let [join] = plan.joins() else { unreachable!() };
+/// assert_eq!(join.how(), JoinKind::Left);
+/// assert_eq!(join.source().to_string(), "venues");
+/// assert_eq!(join.keys().to_string(), "venue = mic");
+/// assert_eq!(join.to_string(), "left join venues on venue = mic");
+/// assert_eq!(plan.to_string(), "select * from trades left join venues on venue = mic");
+/// # Ok(())
+/// # }
+/// ```
+#[derive(
+    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, ::serde::Serialize, ::serde::Deserialize,
+)]
+pub struct Join {
+    how: JoinKind,
+    source: Source,
+    keys: JoinKeys,
+}
+
+impl Join {
+    /// Which rows the join keeps.
+    #[must_use]
+    pub const fn how(&self) -> JoinKind {
+        self.how
+    }
+
+    /// The source joined: the right side.
+    #[must_use]
+    pub const fn source(&self) -> &Source {
+        &self.source
+    }
+
+    /// The keys matched on, most significant first.
+    #[must_use]
+    pub const fn keys(&self) -> &JoinKeys {
+        &self.keys
+    }
+
+    /// Whether every key is one bare column on both sides: what `using`
+    /// spells.
+    fn is_using(&self) -> bool {
+        self.keys.iter().all(|key| key.using_column().is_some())
+    }
+}
+
+impl fmt::Display for Join {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{} join {}", self.how, self.source)?;
+        if self.is_using() {
+            formatter.write_str(" using (")?;
+            for (index, key) in self.keys.iter().enumerate() {
+                if index != 0 {
+                    formatter.write_str(", ")?;
+                }
+                super::display::write_identifier(
+                    formatter,
+                    key.using_column().unwrap_or_default(),
+                )?;
+            }
+            return formatter.write_str(")");
+        }
+        formatter.write_str(" on ")?;
+        for (index, key) in self.keys.iter().enumerate() {
+            if index != 0 {
+                formatter.write_str(" and ")?;
+            }
+            write!(formatter, "{}", key.equality())?;
+        }
+        Ok(())
+    }
+}
+
 /// One `order by` key: a term and the [`SortOptions`] it sorts under.
 ///
 /// `Display` writes the key as the grammar spells it - `price desc nulls
@@ -559,6 +694,82 @@ impl Ordering {
     }
 }
 
+impl Ordering {
+    /// Read one key from the scalar that spells it: text in the `order by`
+    /// key grammar, or a record of `term` - text, or the literal it is, as
+    /// [`Term::from_scalar`] reads - beside the optional booleans
+    /// `descending` and `nulls_first`. This is the reading every binding's
+    /// keys cross through, so `{"term": "price", "descending": true}` and
+    /// `"price desc"` are one key.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error for text that is not a key, and an error naming
+    /// the shape for a record without a `term`, with a key it does not know,
+    /// or with a flag that is not a boolean.
+    pub fn from_scalar(value: &crate::Scalar) -> Result<Self> {
+        if let Some(text) = value.as_str() {
+            return text.parse();
+        }
+        let shape = || Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: crate::text::expected_got(
+                "the text of an `order by` key, or a record of `term`, `descending` and `nulls_first` (`nullsFirst` too)",
+                format_args!("{value:?}"),
+            ),
+        };
+        let entries: Vec<(&str, &crate::Scalar)> = if let Some(entries) = value.as_struct() {
+            entries
+                .iter()
+                .map(|(key, held)| (key.as_str(), held))
+                .collect()
+        } else if let Some(entries) = value.as_mapping() {
+            entries
+                .iter()
+                .map(|(key, held)| key.as_str().map(|key| (key, held)).ok_or_else(shape))
+                .collect::<Result<Vec<_>>>()?
+        } else {
+            return Err(shape());
+        };
+        let mut term = None;
+        let mut options = SortOptions::default();
+        for (key, held) in entries {
+            let flag = || {
+                held.as_bool().ok_or_else(|| Error::InvalidRecord {
+                    path: format_smolstr!("$.{key}"),
+                    reason: crate::text::expected_got("a boolean", format_args!("{held:?}")),
+                })
+            };
+            match key {
+                "term" => term = Some(Term::from_scalar(held)?),
+                "descending" => {
+                    options = if flag()? {
+                        SortOptions::descending().with_nulls_first(options.is_nulls_first())
+                    } else {
+                        SortOptions::ascending().with_nulls_first(options.is_nulls_first())
+                    };
+                }
+                // Both spellings of the one key: what a JavaScript record
+                // arrives as, and what the grammar writes.
+                "nulls_first" | "nullsFirst" => options = options.with_nulls_first(flag()?),
+                other => {
+                    return Err(Error::InvalidRecord {
+                        path: format_smolstr!("$.{other}"),
+                        reason: SmolStr::new_static(
+                            "an `order by` key has `term`, `descending` and `nulls_first`",
+                        ),
+                    });
+                }
+            }
+        }
+        let term = term.ok_or_else(|| Error::InvalidRecord {
+            path: SmolStr::new_static("$.term"),
+            reason: SmolStr::new_static("an `order by` key names the term it orders by"),
+        })?;
+        Ok(Self::new(term, options))
+    }
+}
+
 impl fmt::Display for Ordering {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}{}", self.term, self.options())
@@ -570,6 +781,170 @@ impl FromStr for Ordering {
 
     fn from_str(input: &str) -> Result<Self> {
         super::parser::parse_ordering(input)
+    }
+}
+
+/// Any value that stands for the keys of an `order by`: what every sort
+/// verb takes as its `by`.
+///
+/// The spellings, each resolved once into the keys it names: the clause's
+/// text without its keywords (`"venue, price desc nulls first"`); one
+/// [`Ordering`], a vector, a slice or an array of them; a list of key texts;
+/// a [`Selector`], every projection ascending with nulls last; and a
+/// [`Scalar`](crate::Scalar) - a text, a list of texts, or a list of
+/// `{term, descending, nulls_first}` records - which is how a binding's keys
+/// cross ([`Ordering::from_scalar`]).
+///
+/// ```
+/// use yggdryl::SortOptions;
+/// use yggdryl::expression::{IntoOrderings, Ordering};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let keys = "venue, price desc nulls first".into_orderings()?;
+/// assert_eq!(keys.len(), 2);
+/// assert_eq!(keys[1].options(), SortOptions::descending().with_nulls_first(true));
+/// assert_eq!(["venue", "price desc nulls first"].into_orderings()?, keys);
+/// assert_eq!(keys.clone().into_orderings()?, keys);
+/// assert_eq!("price".parse::<Ordering>()?.into_orderings()?.len(), 1);
+/// # Ok(())
+/// # }
+/// ```
+pub trait IntoOrderings {
+    /// Produce the keys this value stands for, most significant first.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when the value is text that is not a list of
+    /// keys, and an error naming the shape for a scalar that is none of the
+    /// shapes above.
+    fn into_orderings(self) -> Result<Vec<Ordering>>;
+}
+
+impl IntoOrderings for Ordering {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        Ok(vec![self])
+    }
+}
+
+impl IntoOrderings for &Ordering {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        Ok(vec![self.clone()])
+    }
+}
+
+impl IntoOrderings for Vec<Ordering> {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        Ok(self)
+    }
+}
+
+impl IntoOrderings for &[Ordering] {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        Ok(self.to_vec())
+    }
+}
+
+impl<const N: usize> IntoOrderings for [Ordering; N] {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        Ok(self.into())
+    }
+}
+
+impl IntoOrderings for &str {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        super::parser::parse_orderings(self)
+    }
+}
+
+impl IntoOrderings for String {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        super::parser::parse_orderings(&self)
+    }
+}
+
+impl IntoOrderings for &String {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        super::parser::parse_orderings(self)
+    }
+}
+
+/// One key per text, each read through the key grammar.
+fn orderings_of<'a>(texts: impl IntoIterator<Item = &'a str>) -> Result<Vec<Ordering>> {
+    texts.into_iter().map(str::parse).collect()
+}
+
+impl IntoOrderings for Vec<&str> {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        orderings_of(self)
+    }
+}
+
+impl IntoOrderings for &[&str] {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        orderings_of(self.iter().copied())
+    }
+}
+
+impl<const N: usize> IntoOrderings for [&str; N] {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        orderings_of(self)
+    }
+}
+
+impl IntoOrderings for Vec<String> {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        orderings_of(self.iter().map(String::as_str))
+    }
+}
+
+impl IntoOrderings for &[String] {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        orderings_of(self.iter().map(String::as_str))
+    }
+}
+
+impl<const N: usize> IntoOrderings for [String; N] {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        orderings_of(self.iter().map(String::as_str))
+    }
+}
+
+impl IntoOrderings for &Selector {
+    /// Every projection, ascending with nulls last; an `unnest` is refused,
+    /// because a key is one value per row.
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        self.refuse_unnest("in an `order by` key")?;
+        Ok(self
+            .projections()
+            .iter()
+            .map(|projection| Ordering::asc(projection.term().clone()))
+            .collect())
+    }
+}
+
+impl IntoOrderings for Selector {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        (&self).into_orderings()
+    }
+}
+
+impl IntoOrderings for &crate::Scalar {
+    /// A text is the clause, a list is one key per item, anything else is
+    /// one key, each as [`Ordering::from_scalar`] reads it.
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        if let Some(text) = self.as_str() {
+            return super::parser::parse_orderings(text);
+        }
+        if let Some(items) = self.sequence_rows() {
+            return items.iter().map(Ordering::from_scalar).collect();
+        }
+        Ok(vec![Ordering::from_scalar(self)?])
+    }
+}
+
+impl IntoOrderings for crate::Scalar {
+    fn into_orderings(self) -> Result<Vec<Ordering>> {
+        (&self).into_orderings()
     }
 }
 
@@ -628,6 +1003,8 @@ pub struct Plan {
     selector: Selector,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     from: Option<Source>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    joins: Vec<Join>,
     #[serde(default, skip_serializing_if = "Filter::is_always_true")]
     filter: Filter,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -734,6 +1111,66 @@ impl Plan {
         self
     }
 
+    /// Return this plan joining the rows so far with `source` on `keys`,
+    /// keeping the rows `how` keeps: one more [`Join`], after the ones the
+    /// plan already holds.
+    ///
+    /// `keys` is any [`IntoJoinKeys`]: `"id"` - the same column on both
+    /// sides - `"venue = mic"`, a list of either, a pair of selectors. The
+    /// left term of a key is bound against the rows so far, the right term
+    /// against `source`'s.
+    ///
+    /// ```
+    /// use yggdryl::JoinKind;
+    /// use yggdryl::expression::{Plan, Target};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let plan = Plan::new()
+    ///     .read_from(Target::parse("trades")?)
+    ///     .join(JoinKind::Inner, Target::parse("venues")?, ["venue", "desk"])?
+    ///     .join(JoinKind::Anti, "select id from halted".parse::<Plan>()?, "id")?;
+    /// assert_eq!(
+    ///     plan.to_string(),
+    ///     "select * from trades inner join venues using (venue, desk) \
+    ///      anti join (select id from halted) using (id)"
+    /// );
+    /// assert_eq!(plan.to_string().parse::<Plan>()?, plan);
+    /// assert!(Plan::new().join(JoinKind::Inner, Target::parse("venues")?, Vec::<&str>::new()).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error for key text that is not a key list, and an
+    /// error for an empty key list or a key past the depth or node budget.
+    pub fn join(
+        mut self,
+        how: JoinKind,
+        source: impl Into<Source>,
+        keys: impl IntoJoinKeys,
+    ) -> Result<Self> {
+        let keys = keys.into_join_keys()?;
+        if keys.is_empty() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.join"),
+                reason: SmolStr::new_static(
+                    "expected at least one key to join on, got an empty key list",
+                ),
+            });
+        }
+        for key in &keys {
+            key.left().check_budget()?;
+            key.right().check_budget()?;
+        }
+        self.joins.push(Join {
+            how,
+            source: source.into(),
+            keys,
+        });
+        Ok(self)
+    }
+
     /// Return this plan with a `where` section.
     ///
     /// # Errors
@@ -825,6 +1262,40 @@ impl Plan {
     #[must_use]
     pub const fn source(&self) -> Option<&Source> {
         self.from.as_ref()
+    }
+
+    /// The joins, in the order they run.
+    #[must_use]
+    pub fn joins(&self) -> &[Join] {
+        &self.joins
+    }
+
+    /// This plan with every source it reads - its `from`, then each join's,
+    /// in the order they run - replaced by what `map` answers for it. A
+    /// nested plan is handed over whole, so `map` decides whether to reach
+    /// into it. This is the one door that rewrites where a plan reads, which
+    /// is how a catalog resolves the tables a plan names.
+    ///
+    /// # Errors
+    ///
+    /// The first error `map` answers, the plan dropped with it.
+    pub(crate) fn map_sources(
+        mut self,
+        mut map: impl FnMut(Source) -> Result<Source>,
+    ) -> Result<Self> {
+        if let Some(from) = self.from.take() {
+            self.from = Some(map(from)?);
+        }
+        self.joins = std::mem::take(&mut self.joins)
+            .into_iter()
+            .map(|join| {
+                Ok(Join {
+                    source: map(join.source)?,
+                    ..join
+                })
+            })
+            .collect::<Result<_>>()?;
+        Ok(self)
     }
 
     /// The `where` section; always true when there is none.
@@ -928,6 +1399,7 @@ impl Plan {
             && self.write.is_none()
             && self.selector.is_all()
             && self.from.is_none()
+            && self.joins.is_empty()
             && self.filter.is_always_true()
             && self.order_by.is_empty()
             && self.limit.is_none()
@@ -939,6 +1411,7 @@ impl Plan {
     pub fn is_identity(&self) -> bool {
         self.write.is_none()
             && self.create.is_none()
+            && self.joins.is_empty()
             && self.selector.is_all()
             && self.filter.is_always_true()
             && self.order_by.is_empty()
@@ -946,14 +1419,17 @@ impl Plan {
             && self.offset.is_none()
     }
 
-    /// The sections that shape a read: `select`, `where`, `order by`,
-    /// `limit` and `offset`, without any target.
+    /// The sections that shape a read: the joins, `select`, `where`,
+    /// `order by`, `limit` and `offset`, without any target.
     ///
-    /// This is what a source is read with, so a media pushes the same
-    /// projection and predicate down that the plan would apply.
+    /// This is what a stream is shaped with, so a media pushes the same
+    /// projection and predicate down that the plan would apply. A join is a
+    /// read section that no media answers: [`Self::execute`] runs it over the
+    /// rows the media reads, and pushes only its key filter down.
     #[must_use]
     pub fn read_sections(&self) -> Self {
         Self {
+            joins: self.joins.clone(),
             selector: self.selector.clone(),
             filter: self.filter.clone(),
             order_by: self.order_by.clone(),
@@ -966,6 +1442,7 @@ impl Plan {
     /// Drop the sections that shape a read, keeping the schema, the write and
     /// the source.
     pub fn clear_read_sections(&mut self) {
+        self.joins.clear();
         self.selector = Selector::all();
         self.filter = Filter::always_true();
         self.order_by.clear();
@@ -1018,39 +1495,89 @@ impl Plan {
 
     /// The struct root this plan leaves a stream at, from `root`.
     ///
-    /// The `create` section types its computed columns against the root;
-    /// otherwise `where` keeps the root and `select` publishes from it.
+    /// The joins run first, `root` their left side: the output of each is
+    /// the record the join engine lays out - the left columns, then the right
+    /// ones, a `using` key once, a colliding right name suffixed `_right`, a
+    /// side the kind makes optional nullable - typed against the root its
+    /// source states. Then the `create` section types its computed columns
+    /// against the joined root; otherwise `where` keeps it and `select`
+    /// publishes from it.
+    ///
+    /// The `from` source is never read here: `root` is its rows. A join's
+    /// source is not read either, so its root is known only when the plan
+    /// states it - a nested plan that declares its columns, or whose own
+    /// source is a nested plan that does. A target's root is known only once
+    /// it is read, and a join over one is refused here naming it;
+    /// [`Self::execute`] reads it and types the rows as they join.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Field, StructType};
+    /// use yggdryl::expression::Plan;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let trades = DataType::from(StructType::from_fields([
+    ///     DataType::Int64.required_field("id"),
+    ///     DataType::utf8().required_field("venue"),
+    /// ])?)
+    /// .required_field("trades");
+    /// let plan: Plan = "select id, city from trades \
+    ///                   left join (create (venue utf8 not null, city utf8 not null)) using (venue)"
+    ///     .parse()?;
+    /// let out = plan.field_from(&trades)?;
+    /// let names: Vec<&str> = out.fields().iter().map(Field::name).collect();
+    /// assert_eq!(names, ["id", "city"]);
+    /// // A left join makes the right side optional.
+    /// assert!(out.fields()[1].is_nullable());
+    /// // A target's columns are known only once it is read.
+    /// let read: Plan = "select * from trades join venues using (venue)".parse()?;
+    /// assert!(read.field_from(&trades).unwrap_err().to_string().contains("venues"));
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns an error when a section does not bind against the root.
+    /// Returns an error when a section does not bind against the root, a
+    /// join's source states no root without being read, or a join's keys do
+    /// not bind against their sides.
     pub fn field_from(&self, root: &Field) -> Result<Field> {
+        let root = self.joined_root(root)?;
         if let Some(schema) = &self.schema {
-            return self.rooted(schema.declared_field(Some(root), self.root_name())?);
+            return self.rooted(schema.declared_field(Some(&root), self.root_name())?);
         }
-        root.clone()
-            .try_with_dtype(self.apply_datatype(root.dtype())?)
+        let dtype = self.shaped_datatype(&root)?;
+        root.into_owned().try_with_dtype(dtype)
     }
 
     /// The struct datatype this plan leaves a stream at, from the struct
     /// `dtype`.
     ///
-    /// The `create` section types its computed columns against the datatype;
+    /// The joins run first, typed as [`Self::field_from`] types them. Then
+    /// the `create` section types its computed columns against the datatype;
     /// otherwise `where` keeps it and `select` publishes from it - a `where`
     /// that names what only the `select` publishes typed after it, where it
     /// runs.
     ///
     /// # Errors
     ///
-    /// Returns an error when a section does not bind against the datatype.
+    /// Returns an error when a section does not bind against the datatype,
+    /// or a join's source states no root without being read.
     pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType> {
         let root = Field::new(crate::media::DEFAULT_ROOT_NAME, dtype.clone(), false);
+        let root = self.joined_root(&root)?;
         if let Some(schema) = &self.schema {
             return Ok(schema
                 .declared_field(Some(&root), self.root_name())?
                 .dtype()
                 .clone());
         }
+        self.shaped_datatype(&root)
+    }
+
+    /// The datatype the `where` and `select` sections leave a joined root
+    /// at.
+    fn shaped_datatype(&self, root: &Field) -> Result<crate::DataType> {
+        let dtype = root.dtype();
         let input = root.fields().iter().map(Field::name);
         if super::filter_after_select(&self.filter, &self.selector, input) {
             return self
@@ -1059,6 +1586,66 @@ impl Plan {
         }
         self.selector
             .apply_datatype(&self.filter.apply_datatype(dtype)?)
+    }
+
+    /// The root the joins leave `root` at, left to right; `root` itself for
+    /// a plan with none.
+    fn joined_root<'a>(&self, root: &'a Field) -> Result<Cow<'a, Field>> {
+        if self.joins.is_empty() {
+            return Ok(Cow::Borrowed(root));
+        }
+        let mut left = root.clone();
+        for join in &self.joins {
+            let Some(right) = join.source.static_root()? else {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$.join"),
+                    reason: format_smolstr!(
+                        "expected a join source whose columns the plan states, got `{join}`, \
+                         whose columns are known only once it is read: run the plan, or join \
+                         a plan that declares them"
+                    ),
+                });
+            };
+            left = Field::clone(
+                crate::join::JoinPlan::compile(
+                    left,
+                    right,
+                    &join.keys,
+                    join.how,
+                    &JoinOptions::new(),
+                    None,
+                    None,
+                )?
+                .output(),
+            );
+        }
+        Ok(Cow::Owned(left))
+    }
+
+    /// The root this plan leaves its own rows at, when it states one without
+    /// reading anything: its source's static root shaped by the plan, or -
+    /// with no source - the empty stream under what its `create` section
+    /// declares, which is what [`Self::execute`] starts from. A plan reading
+    /// a target states the root its `create` section declares, when every
+    /// column of it carries a datatype, and none otherwise.
+    pub(crate) fn static_root(&self) -> Result<Option<Field>> {
+        let input = match &self.from {
+            Some(source) => source.static_root()?,
+            None => Some(match self.field()? {
+                Some(field) => field,
+                None => Field::new(
+                    crate::media::DEFAULT_ROOT_NAME,
+                    crate::DataType::from(crate::StructType::from_fields(Vec::<Field>::new())?),
+                    false,
+                ),
+            }),
+        };
+        match input {
+            Some(root) => self.field_from(&root).map(Some),
+            // A column computed from rows cannot be typed without them: the
+            // root is unknown, not wrong.
+            None => Ok(self.field().ok().flatten()),
+        }
     }
 
     /// Every top-level column this plan reads, in first-seen order.
@@ -1081,6 +1668,16 @@ impl Plan {
         for column in self.merge_by().columns() {
             push(column);
         }
+        for join in &self.joins {
+            for key in &join.keys {
+                for column in key.left().columns() {
+                    push(column);
+                }
+                for column in key.right().columns() {
+                    push(column);
+                }
+            }
+        }
         names
     }
 
@@ -1102,7 +1699,17 @@ impl Plan {
     #[must_use]
     pub fn parameters(&self) -> Vec<String> {
         let mut parameters = self.filter.parameters();
-        for parameter in self.selector.parameters() {
+        let keys = self
+            .joins
+            .iter()
+            .flat_map(|join| join.keys.iter())
+            .flat_map(|key| [key.left(), key.right()]);
+        for parameter in self
+            .selector
+            .parameters()
+            .into_iter()
+            .chain(keys.flat_map(Term::parameters))
+        {
             if !parameters.contains(&parameter) {
                 parameters.push(parameter);
             }
@@ -1123,10 +1730,18 @@ impl Plan {
                 merge_by: write.merge_by.simplify(),
             }),
             selector: self.selector.simplify(),
-            from: self.from.as_ref().map(|from| match from {
-                Source::Target(target) => Source::Target(target.clone()),
-                Source::Plan(plan) => Source::Plan(Box::new(plan.simplify())),
-            }),
+            from: self.from.as_ref().map(Source::simplify),
+            joins: self
+                .joins
+                .iter()
+                .map(|join| Join {
+                    how: join.how,
+                    source: join.source.simplify(),
+                    keys: JoinKeys::new(join.keys.iter().map(|key| {
+                        super::JoinKey::new(key.left().simplify(), key.right().simplify())
+                    })),
+                })
+                .collect(),
             filter: self.filter.simplify(),
             order_by: self
                 .order_by
@@ -1156,6 +1771,15 @@ impl Plan {
         if let Some(Source::Plan(plan)) = &self.from {
             plan.check_budget()?;
         }
+        for join in &self.joins {
+            for key in &join.keys {
+                key.left().check_budget()?;
+                key.right().check_budget()?;
+            }
+            if let Source::Plan(plan) = &join.source {
+                plan.check_budget()?;
+            }
+        }
         Ok(())
     }
 
@@ -1167,6 +1791,7 @@ impl Plan {
             && self.schema.is_none()
             && self.write.is_none()
             && self.from.is_none()
+            && self.joins.is_empty()
             && self.filter.is_always_true()
             && self.order_by.is_empty()
             && self.limit.is_none()
@@ -1178,6 +1803,7 @@ impl Plan {
             && self.schema.is_none()
             && self.write.is_none()
             && self.from.is_none()
+            && self.joins.is_empty()
             && self.selector.is_all()
             && self.order_by.is_empty()
             && self.limit.is_none()
@@ -1251,6 +1877,10 @@ impl fmt::Display for Plan {
         if let Some(from) = &self.from {
             space(formatter)?;
             write!(formatter, "from {from}")?;
+        }
+        for join in &self.joins {
+            space(formatter)?;
+            write!(formatter, "{join}")?;
         }
         if !self.filter.is_always_true() {
             space(formatter)?;
@@ -1437,12 +2067,16 @@ mod arrow {
     use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, UInt32Array};
     use arrow_ord::sort::{SortColumn, lexsort_to_indices};
 
-    use super::{Plan, Source, Target, Verb};
+    use super::{Join, Plan, Source, Target, Verb};
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
+    use crate::expression::Filter;
     use crate::expression::arrow::{collected, one_batch, scattered, struct_rows};
     use crate::holder::Holder;
     use crate::media::{IORecordOptions, RecordOptions};
-    use crate::{Field, IOMedia, Result, Url};
+    use crate::{
+        ArrowCastOptions, ChunkedSerie, Field, IOMedia, JoinOptions, JoinSide, JoinSource, Result,
+        SerieReader, Url,
+    };
 
     impl Target {
         /// Hold the location, opened with this target's properties.
@@ -1491,6 +2125,29 @@ mod arrow {
         }
     }
 
+    impl Join {
+        /// Read this join's source whole and hold it, one chunk per batch it
+        /// reads as: a target through its holder under its own record
+        /// options, a nested plan executed first. This is the build side.
+        fn held(&self) -> Result<ChunkedSerie> {
+            let rows = match &self.source {
+                Source::Target(target) => {
+                    let holder = target.holder(None)?;
+                    let options = target.record_options(&holder)?;
+                    holder
+                        .read_arrow_reader(&options)
+                        .map_err(|error| super::unreachable(target, error))?
+                }
+                Source::Plan(plan) => plan.execute()?,
+            };
+            Ok(ChunkedSerie::from_arrow_reader(
+                None,
+                rows,
+                ArrowCastOptions::new(),
+            )?)
+        }
+    }
+
     impl Plan {
         /// Run this plan from its own source.
         ///
@@ -1500,12 +2157,65 @@ mod arrow {
         /// stream, which is what `create` alone needs. The stream then goes
         /// through [`Self::apply_arrow_reader`].
         ///
+        /// A plan with joins reads each join's source whole and holds it,
+        /// first to last, and streams the rows so far through it under
+        /// [`JoinOptions::new`]: the left source probes and is never held.
+        /// The `where`, `select`, `order by`, `offset` and `limit` sections
+        /// all run over the joined rows, so none of them is pushed into the
+        /// left read as it stands. What is pushed is pruning that loses no
+        /// joined row, and only into a target `from`:
+        ///
+        /// - the first join's key filter: for one key and a kind that emits
+        ///   no unmatched left row (`inner`, `right`, `semi`), the left key
+        ///   `in` the distinct keys its held source states, up to
+        ///   [`DEFAULT_PUSHDOWN_KEYS`](crate::DEFAULT_PUSHDOWN_KEYS) of them -
+        ///   past that, or for any other join, the left is read whole. A
+        ///   later join probes the rows already in hand and pushes nothing.
+        /// - the `where` conjuncts that name only columns the left source
+        ///   stores, when no join of the plan emits an unmatched right row
+        ///   (`right`, `full`), so every left column keeps the left's value;
+        ///   the whole `where` still runs after the joins.
+        ///
         /// # Errors
         ///
         /// Returns an error when the source cannot be held or read, a section
-        /// does not bind, or the target cannot be written.
+        /// does not bind, a join's keys do not bind against their sides, or
+        /// the target cannot be written.
         pub fn execute(&self) -> Result<BatchReader> {
             match &self.from {
+                Some(Source::Target(target)) if !self.joins.is_empty() => {
+                    let holder = target.holder(None)?;
+                    let mut options = target.record_options(&holder)?;
+                    let first = &self.joins[0];
+                    // The build side is read before the probe, so its keys
+                    // can prune the probe's read.
+                    let held = first.held()?;
+                    let left_root = holder
+                        .read_arrow_field(&options)
+                        .map_err(|error| super::unreachable(target, error))?;
+                    let right_root = SerieReader::root_of(held.field())?;
+                    let mut pushed = Self::new();
+                    pushed.filter = self.left_pruning(&left_root);
+                    if let Some(term) = crate::join::pushdown_term(
+                        &left_root,
+                        &right_root,
+                        &first.keys,
+                        first.how,
+                        JoinSide::Right,
+                        &JoinOptions::new(),
+                        &held,
+                    )? {
+                        pushed.filter = pushed.filter.and(Filter::new(term));
+                    }
+                    options.set_plan(pushed)?;
+                    let rows = holder
+                        .read_arrow_reader(&options)
+                        .map_err(|error| super::unreachable(target, error))?;
+                    let rest = self.read_sections();
+                    let rows = rest.joined_arrow_reader(rows, Some(held))?;
+                    let rows = rest.shaped_arrow_reader(rows)?;
+                    self.write_arrow_reader(rows)
+                }
                 Some(Source::Target(target)) => {
                     let holder = target.holder(None)?;
                     // Ordering and an offset cannot be pushed down - record
@@ -1587,13 +2297,69 @@ mod arrow {
             self.write_arrow_reader(shaped)
         }
 
-        /// Run the read sections over a stream, in order: `where`, `order by`,
-        /// `select`, `offset`, `limit`.
+        /// Run the read sections over a stream, in order: the joins, `where`,
+        /// `order by`, `select`, `offset`, `limit`.
         ///
         /// The keys order the rows `where` keeps, so a key can name a column
         /// the projection drops; a key that names what the projection
         /// publishes - an alias - orders after it instead.
         pub(crate) fn shape_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
+            let reader = self.joined_arrow_reader(reader, None)?;
+            self.shaped_arrow_reader(reader)
+        }
+
+        /// The stream joined with every join's source, left to right: each
+        /// source read whole and held - `first`, when the caller already
+        /// holds the first one - and the stream probing it one batch at a
+        /// time. A plan with no join hands the stream back untouched.
+        fn joined_arrow_reader(
+            &self,
+            reader: BatchReader,
+            mut first: Option<ChunkedSerie>,
+        ) -> Result<BatchReader> {
+            if self.joins.is_empty() {
+                return Ok(reader);
+            }
+            let mut rows = SerieReader::from_arrow_reader(None, reader, ArrowCastOptions::new())?;
+            for join in &self.joins {
+                let held = match first.take() {
+                    Some(held) => held,
+                    None => join.held()?,
+                };
+                rows = rows.join_with(
+                    JoinSource::Chunked(held),
+                    &join.keys,
+                    join.how,
+                    &JoinOptions::new(),
+                )?;
+            }
+            Ok(rows.into_arrow_reader())
+        }
+
+        /// The `where` conjuncts a target `from` can be filtered by before
+        /// the joins run without losing a joined row: those naming only
+        /// columns `left_root` stores, when no join emits an unmatched right
+        /// row - which is what nulls a left column the source stated.
+        fn left_pruning(&self, left_root: &Field) -> Filter {
+            if self
+                .joins
+                .iter()
+                .any(|join| join.how.keeps_unmatched_right())
+            {
+                return Filter::always_true();
+            }
+            Filter::all(self.filter.conjuncts().into_iter().filter(|conjunct| {
+                let columns = conjunct.columns();
+                !columns.is_empty()
+                    && columns
+                        .iter()
+                        .all(|column| left_root.index_of(column).is_some())
+            }))
+        }
+
+        /// Run the sections after the joins over a stream, in order: `where`,
+        /// `order by`, `select`, `offset`, `limit`.
+        fn shaped_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
             let reader = self.narrowed_arrow_reader(reader)?;
             // A `where` over an alias runs after the projection that
             // publishes it; every other `where` runs first, where it prunes.
@@ -1741,14 +2507,15 @@ mod arrow {
                 .write
                 .as_ref()
                 .is_some_and(|write| write.verb == Verb::Delete);
-            // A `where` drops a null row, an unnest lays out none for it, and
-            // a delete reads no row of the stream: the plan answers the
-            // struct's other rows alone.
-            let Some(scatter) = rows
-                .scatter
-                .as_ref()
-                .filter(|_| self.filter.is_always_true() && !self.selector.unnests() && !deletes)
-            else {
+            // A `where` drops a null row, an unnest lays out none for it, a
+            // join matches none, and a delete reads no row of the stream: the
+            // plan answers the struct's other rows alone.
+            let Some(scatter) = rows.scatter.as_ref().filter(|_| {
+                self.joins.is_empty()
+                    && self.filter.is_always_true()
+                    && !self.selector.unnests()
+                    && !deletes
+            }) else {
                 let applied = collected(self.apply_arrow_reader(one_batch(&rows.batch))?)?;
                 return Ok(Arc::new(StructArray::from(applied)));
             };

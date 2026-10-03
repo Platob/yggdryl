@@ -36,11 +36,13 @@ from yggdryl import (
     LargeSerieViewSerie,
     MapSerie,
     Scalar,
+    Selector,
     Serie,
     SerieReader,
     SerieReaderWindows,
     SerieSerie,
     SerieViewSerie,
+    SpillOptions,
     StructSerie,
     WindowSerie,
 )
@@ -1797,7 +1799,13 @@ class TestOrder:
         assert len(column.sort_indices()) == 4
         ordered = column.into_sorted()
         assert ordered.is_sorted()
-        assert ordered.field == column.field
+        assert ordered.field is not None and column.field is not None
+        assert ordered.field.dtype == column.field.dtype
+        assert ordered.field.name == column.field.name
+        # A record's whole-row sort declares every column as the order its
+        # rows keep; no other leaf states one.
+        declared = ["venue", "price"] if type(column) is StructSerie else None
+        assert ordered.declared_order() == declared
         # Each answer is handed out as its leaf's class.
         assert type(ordered) is type(column)
         # The sort agrees with the values' own order, absences last.
@@ -1818,10 +1826,13 @@ class TestOrder:
         written = copy.copy(column)
         written.as_sorted().as_unique().as_reversed()
         assert len(written) == 3
-        assert written.field == column.field
+        assert written.field is not None
+        assert written.field.dtype == column.field.dtype
         # Ascending with absences last, reversed, is descending with
-        # absences first.
+        # absences first - which a record's root then declares.
         assert written.is_sorted(descending=True, nulls_first=True)
+        reversed_ = ["venue desc nulls first", "price desc nulls first"]
+        assert written.declared_order() == (reversed_ if declared else None)
         assert column.memory_size() > 0
 
 
@@ -2093,3 +2104,427 @@ class TestReaderWindowBy:
         assert cast.static_values == record
         assert batches.schema.names == ["venue", "count", "ts"]
         assert batches.read_all().num_rows == 2
+
+
+# ---------------------------------------------------------------------------
+# Spill, `order by` keys and joins - mirrors rust/tests/serie/spill.rs,
+# the `*_by` cases of rust/tests/serie/order.rs, rust/tests/root/join.rs and
+# rust/tests/serie/join.rs through the binding's spellings: a `SpillOptions`
+# or its keywords, `by` as one `Scalar` or a `Selector`, `how` as a word.
+# ---------------------------------------------------------------------------
+
+
+def spill_prices(rows: int) -> Serie:
+    return Serie.from_scalars(Field("price", "int64", nullable=False), list(range(rows)))
+
+
+def keyed_quotes() -> Serie:
+    """`quote{venue, price}`, a price absent - the `sort_indices_by` example."""
+    return Serie.from_scalars(
+        Field("quote", "struct<venue: utf8 not null, price: int64>", nullable=False),
+        [["XNYS", 1], ["XNAS", 2], ["XNAS", None], ["XNYS", 3]],
+    )
+
+
+class TestSpill:
+    def test_a_column_built_on_the_heap_is_resident_whole_and_not_spilled(self) -> None:
+        run = Serie([1, 2])
+        assert run.resident_size() == run.memory_size()
+        assert not run.is_spilled()
+        column = spill_prices(1_024)
+        assert column.resident_size() == column.memory_size() > 0
+        assert not column.is_spilled()
+        assert not Serie.empty(price()).is_spilled()
+
+    def test_a_bound_of_zero_spills_whole_and_a_write_brings_the_rows_back(self) -> None:
+        column = spill_prices(1_024)
+        before = copy.copy(column)
+        column.spill(byte_size=0)
+        assert column.is_spilled()
+        assert column.resident_size() == 0
+        assert column.memory_size() == before.memory_size()
+        assert column == before
+        assert column.scalar(7).as_py() == 7
+        # The copy taken before keeps its heap bytes.
+        assert not before.is_spilled()
+        # Every read reaches the mapping: an export, a cast, a sort.
+        assert column.into_arrow_array().equals(before.into_arrow_array())
+        assert column.cast(DataType("float64")).as_py()[:2] == [0.0, 1.0]
+        assert column.into_sorted(descending=True).scalar(0).as_py() == 1_023
+        # A write brings the rows it touches back to the heap, once.
+        column.push(1_024)
+        assert not column.is_spilled()
+        assert column[-1].as_py() == 1_024
+
+    def test_never_spills_nothing_and_a_run_is_never_spilled(self) -> None:
+        column = spill_prices(1_024)
+        column.spill(SpillOptions(SpillOptions.NEVER))
+        assert not column.is_spilled()
+        column.spill(byte_size=column.resident_size())
+        assert not column.is_spilled()
+        column.spill(byte_size=column.resident_size() - 1)
+        assert column.is_spilled()
+        run = Serie([1, 2, 3])
+        run.spill(byte_size=0)
+        assert not run.is_spilled()
+        assert run.resident_size() == run.memory_size()
+
+    def test_a_record_spills_its_heaviest_child_first_and_keeps_its_class(self) -> None:
+        records = Serie.from_scalars(
+            Field("row", "struct<big: utf8 not null, small: int8 not null>", nullable=False),
+            [["x" * 64, index % 100] for index in range(256)],
+        )
+        small = records.child("small")
+        assert small is not None
+        records.spill(byte_size=small.memory_size())
+        assert type(records) is StructSerie
+        big, kept = records.child("big"), records.child("small")
+        assert big is not None and kept is not None
+        assert big.is_spilled() and not kept.is_spilled()
+        assert not records.is_spilled()
+        assert records.resident_size() == kept.memory_size()
+        assert records.as_py()[3] == {"big": "x" * 64, "small": 3}
+
+
+class TestSortBy:
+    def test_sort_indices_by_keys_a_record_by_its_terms_and_a_column_by_itself(self) -> None:
+        quotes = keyed_quotes()
+        order = quotes.sort_indices_by("venue, price desc nulls first")
+        assert order.field == Field("index", "uint32", nullable=False)
+        assert order.as_py() == [2, 1, 3, 0]
+        prices = Serie.from_scalars(price(), [3, 1, 2])
+        assert prices.sort_indices_by("price desc").as_py() == [0, 2, 1]
+
+    def test_every_spelling_of_the_keys_is_one_order(self) -> None:
+        quotes = keyed_quotes()
+        expected = quotes.sort_indices_by("venue, price desc nulls first").as_py()
+        for by in (
+            ["venue", "price desc nulls first"],
+            ("venue", "price desc nulls first"),
+            [
+                {"term": "venue"},
+                {"term": "price", "descending": True, "nulls_first": True},
+            ],
+            ["venue", {"term": "price", "descending": True, "nulls_first": True}],
+        ):
+            assert quotes.sort_indices_by(by).as_py() == expected, by
+        # A selector is every projection, ascending with nulls last.
+        assert quotes.sort_indices_by(Selector("venue, price")).as_py() == (
+            quotes.sort_indices_by("venue, price").as_py()
+        )
+        assert quotes.sort_indices_by({"term": "price", "descending": True}).as_py() == [
+            3,
+            1,
+            0,
+            2,
+        ]
+
+    def test_into_sort_by_answers_a_new_serie_declaring_its_order(self) -> None:
+        quotes = quote_rows([("XNYS", 1), ("XNAS", 2), ("XNYS", 3)])
+        assert quotes.declared_order() is None
+        sorted_ = quotes.into_sort_by("venue desc, price desc")
+        assert type(sorted_) is StructSerie
+        assert sorted_.as_py() == [
+            {"venue": "XNYS", "price": 3},
+            {"venue": "XNYS", "price": 1},
+            {"venue": "XNAS", "price": 2},
+        ]
+        assert sorted_.declared_order() == ["venue desc", "price desc"]
+        # The serie is as it was.
+        assert quotes.as_py()[0] == {"venue": "XNYS", "price": 1}
+
+    def test_the_declared_order_is_what_sort_by_states_and_a_write_keeps_or_clears(
+        self,
+    ) -> None:
+        quotes = quote_rows([("XNYS", 2), ("XNAS", 1)])
+        sorted_ = quotes.into_sort_by("venue, price desc")
+        assert sorted_.declared_order() == ["venue", "price desc"]
+        field = sorted_.field
+        assert field is not None
+        assert field.metadata["SORT:by"] == '["venue","price desc"]'
+        # What the declaration states is answered without a pass.
+        assert sorted_.sort_indices_by("venue").as_py() == [0, 1]
+        held = copy.copy(sorted_)
+        held.push(["XNYS", 1])
+        assert held.declared_order() == ["venue", "price desc"]
+        held.push(["AAAA", 0])
+        assert held.declared_order() is None
+        # A whole-row sort declares every column.
+        whole = quotes.into_sorted()
+        assert whole.declared_order() == ["venue", "price"]
+        assert Serie([1, 2]).declared_order() is None
+        assert spill_prices(3).declared_order() is None
+
+    def test_as_sort_by_sorts_in_place_and_a_refusal_leaves_the_serie(self) -> None:
+        prices = Serie.from_scalars(price(), [2, 3, 1])
+        assert prices.as_sort_by("price desc").as_reversed() is prices
+        assert prices.as_py() == [1, 2, 3]
+        with pytest.raises(ValueError, match="tier"):
+            prices.as_sort_by("tier")
+        assert prices.as_py() == [1, 2, 3]
+
+    def test_refusals_come_before_any_row_and_name_what_failed(self) -> None:
+        quotes = keyed_quotes()
+        with pytest.raises(ValueError, match="tier"):
+            quotes.sort_indices_by("tier")
+        with pytest.raises(ValueError):
+            quotes.into_sort_by("venue desc desc")
+        with pytest.raises(ValueError, match="sorts by no term"):
+            Serie([3, 1]).sort_indices_by("price")
+        with pytest.raises(ValueError):
+            quotes.sort_indices_by([])
+        with pytest.raises(ValueError, match="term"):
+            quotes.sort_indices_by([{"descending": True}])
+
+
+def join_trades() -> Serie:
+    """`(id, name)`: a key repeated twice, a null key, a key the right lacks."""
+    return Serie.from_scalars(
+        Field("trade", "struct<id: int64, name: utf8 not null>", nullable=False),
+        [[1, "a"], [2, "b"], [2, "b2"], [None, "n"], [4, "d"]],
+    )
+
+
+def join_values() -> Serie:
+    """`(id, value)`: a key repeated twice, a null key, a key the left lacks,
+    the matched key last."""
+    return Serie.from_scalars(
+        Field("value", "struct<id: int64, value: int64 not null>", nullable=False),
+        [[2, 20], [2, 21], [3, 30], [None, 99], [1, 10]],
+    )
+
+
+def nullables(serie: Serie) -> list[bool]:
+    return [child.field.nullable for child in serie.children() if child.field is not None]
+
+
+def pairs(name: str, rows: int, keys: int) -> Serie:
+    """`(id, value)` rows: `id` cycles through `0..keys`, `value` counts up."""
+    value = "left_value" if name == "l" else "right_value"
+    return Serie.from_scalars(
+        Field(name, f"struct<id: int64 not null, {value}: int64 not null>", nullable=False),
+        [[index % keys, index] for index in range(rows)],
+    )
+
+
+def counted_pairs(name: str, batches: int, rows: int, pulled: list[int]) -> SerieReader:
+    """A stream of `batches` batches of `pairs` rows, counting its pulls."""
+    value = "left_value" if name == "l" else "right_value"
+    schema = pa.schema(
+        [pa.field("id", pa.int64(), nullable=False), pa.field(value, pa.int64(), nullable=False)]
+    )
+
+    def produce() -> Iterator[pa.RecordBatch]:
+        for batch in range(batches):
+            pulled.append(batch)
+            start = batch * rows
+            yield pa.record_batch(
+                [
+                    pa.array([index % 3 for index in range(start, start + rows)], pa.int64()),
+                    pa.array(list(range(start, start + rows)), pa.int64()),
+                ],
+                schema=schema,
+            )
+
+    root = Field(name, f"struct<id: int64 not null, {value}: int64 not null>", nullable=False)
+    return SerieReader.from_arrow_reader(pa.RecordBatchReader.from_batches(schema, produce()), root)
+
+
+class TestJoin:
+    def test_the_rustdoc_example_joins_trades_with_their_venues(self) -> None:
+        trades = Serie.from_scalars(
+            Field("trade", "struct<id: int64 not null, venue: utf8 not null>", nullable=False),
+            [[1, "XNAS"], [2, "XNYS"]],
+        )
+        venues = Serie.from_scalars(
+            Field("venue", "struct<venue: utf8 not null, city: utf8 not null>", nullable=False),
+            [["XNAS", "New York"]],
+        )
+        joined = trades.join_with(venues, "venue", "left")
+        assert isinstance(joined, StructSerie)
+        assert joined.names == ["id", "venue", "city"]
+        assert len(joined) == 2
+        assert joined.as_py()[1] == {"id": 2, "venue": "XNYS", "city": None}
+        # The other side is anything `Serie.from_` reads.
+        batch = pa.record_batch({"venue": ["XNAS"], "city": ["New York"]})
+        assert trades.join_with(batch, "venue", "left").as_py() == joined.as_py()
+
+    def test_an_inner_join_multiplies_duplicates_and_skips_null_keys(self) -> None:
+        joined = join_trades().join_with(join_values(), "id", build="right")
+        assert isinstance(joined, StructSerie)
+        assert joined.names == ["id", "name", "value"]
+        assert joined.field is not None and joined.field.name == "trade"
+        assert [tuple(row.values()) for row in joined.as_py()] == [
+            (1, "a", 10),
+            (2, "b", 20),
+            (2, "b", 21),
+            (2, "b2", 20),
+            (2, "b2", 21),
+        ]
+
+    def test_each_kind_keeps_the_rows_and_the_nullability_it_states(self) -> None:
+        matched = [(1, "a", 10), (2, "b", 20), (2, "b", 21), (2, "b2", 20), (2, "b2", 21)]
+        left = join_trades().join_with(join_values(), "id", "left", build="right")
+        assert nullables(left) == [True, False, True]
+        assert [tuple(row.values()) for row in left.as_py()] == [
+            *matched,
+            (None, "n", None),
+            (4, "d", None),
+        ]
+        right = join_trades().join_with(join_values(), "id", "right", build="right")
+        assert nullables(right) == [True, True, False]
+        assert [tuple(row.values()) for row in right.as_py()] == [
+            *matched,
+            (3, None, 30),
+            (None, None, 99),
+        ]
+        full = join_trades().join_with(join_values(), "id", "full", build="right")
+        assert nullables(full) == [True, True, True]
+        assert len(full) == 9
+        semi = join_trades().join_with(join_values(), "id", "semi", build="right")
+        assert semi.field == join_trades().field
+        assert [tuple(row.values()) for row in semi.as_py()] == [(1, "a"), (2, "b"), (2, "b2")]
+        anti = join_trades().join_with(join_values(), "id", "anti", build="right")
+        assert [tuple(row.values()) for row in anti.as_py()] == [(None, "n"), (4, "d")]
+
+    def test_a_plain_column_joins_as_the_one_child_of_a_row_record(self) -> None:
+        ids = Serie.from_scalars(Field("id", "int64", nullable=False), [2, 1, 9])
+        joined = ids.join_with(join_values(), "id", build="right")
+        assert isinstance(joined, StructSerie)
+        assert joined.field is not None and joined.field.name == "row"
+        assert joined.names == ["id", "value"]
+        assert [tuple(row.values()) for row in joined.as_py()] == [(2, 20), (2, 21), (1, 10)]
+
+    def test_refusals_come_before_any_row_and_name_what_failed(self) -> None:
+        with pytest.raises(ValueError, match="run"):
+            Serie([1]).join_with(join_values(), "id")
+        with pytest.raises(ValueError, match="venue"):
+            join_trades().join_with(join_values(), "venue")
+        with pytest.raises(ValueError, match="share no datatype"):
+            join_trades().join_with(join_values(), "name = value")
+
+    def test_the_three_verbs_agree_on_the_rows(self) -> None:
+        left, right = pairs("l", 7, 3), pairs("r", 5, 2)
+        held = left.join_with(right, "id", "full")
+        chunked = ChunkedSerie.from_serie(left).join_with(
+            ChunkedSerie.from_serie(right), "id", "full"
+        )
+        streamed = SerieReader.from_serie(left).join_with(right, "id", "full")
+        assert type(streamed) is SerieReader
+        assert held.rows() == chunked.rows()
+        assert held.rows() == [row for batch in streamed for row in batch.rows()]
+
+
+class TestReaderOrderSpillAndJoin:
+    def test_into_sorted_drains_the_stream_and_keeps_its_root(self) -> None:
+        quotes = quote_rows([("XNYS", 2), ("XNAS", 1), ("XNYS", 1)])
+        sorted_ = SerieReader.from_serie(quotes).into_sorted(descending=True)
+        assert sorted_.field.name == "quote"
+        assert [row for batch in sorted_ for row in batch.as_py()] == [
+            {"venue": "XNYS", "price": 2},
+            {"venue": "XNYS", "price": 1},
+            {"venue": "XNAS", "price": 1},
+        ]
+
+    def test_into_sort_by_reads_the_keys_before_the_stream(self) -> None:
+        quotes = quote_rows([("XNYS", 2), ("XNAS", 1), ("XNYS", 1)])
+        sorted_ = SerieReader.from_serie(quotes).into_sort_by("venue, price desc")
+        assert [row for batch in sorted_ for row in batch.as_py()] == [
+            {"venue": "XNAS", "price": 1},
+            {"venue": "XNYS", "price": 2},
+            {"venue": "XNYS", "price": 1},
+        ]
+        pulled: list[int] = []
+        stream = counted_pairs("l", 2, 3, pulled)
+        # Text that does not parse leaves the reader usable; a key the root
+        # refuses spends it, with no batch pulled.
+        with pytest.raises(ValueError):
+            stream.into_sort_by("id desc desc")
+        with pytest.raises(ValueError, match="tier"):
+            stream.into_sort_by("tier")
+        assert pulled == []
+        with pytest.raises(ValueError, match="handed over"):
+            stream.into_sort_by("id")
+        # Every batch is pulled before the first sorted one is answered.
+        pulled.clear()
+        ordered = counted_pairs("l", 2, 3, pulled).into_sort_by("left_value desc")
+        assert pulled == [0, 1]
+        assert [row["left_value"] for batch in ordered for row in batch.as_py()] == [
+            5,
+            4,
+            3,
+            2,
+            1,
+            0,
+        ]
+
+    def test_a_held_reader_spills_the_records_it_holds_and_a_stream_holds_none(self) -> None:
+        column = quote_rows([("XNYS", index) for index in range(512)])
+        reader = SerieReader.from_serie(column)
+        assert reader.resident_size() == column.resident_size()
+        assert not reader.is_spilled()
+        reader.spill(byte_size=0)
+        assert reader.is_spilled()
+        assert reader.resident_size() == 0
+        record = next(reader)
+        assert record.is_spilled()
+        assert record == column
+        # Drained, it holds nothing and is not spilled.
+        assert list(reader) == []
+        assert reader.resident_size() == 0
+        assert not reader.is_spilled()
+        pulled: list[int] = []
+        stream = counted_pairs("l", 1, 3, pulled)
+        stream.spill(byte_size=0)
+        assert stream.resident_size() == 0
+        assert not stream.is_spilled()
+        assert not next(stream).is_spilled()
+        # A reader handed over holds nothing, and refuses a write.
+        stream.into_arrow_reader()
+        assert stream.resident_size() == 0
+        assert not stream.is_spilled()
+        with pytest.raises(ValueError, match="handed over"):
+            stream.spill(byte_size=0)
+
+    def test_a_stream_probes_one_batch_at_a_time_and_collects_nothing(self) -> None:
+        pulled: list[int] = []
+        joined = counted_pairs("l", 3, 2, pulled).join_with(pairs("r", 4, 2), "id")
+        # The held side is built; the stream is not pulled until asked.
+        assert pulled == []
+        assert joined.field.name == "l"
+        first = next(joined)
+        assert pulled == [0]
+        rest = list(joined)
+        assert pulled == [0, 1, 2]
+        assert len(first) + sum(len(batch) for batch in rest) == 8
+
+    def test_a_stream_against_a_stream_holds_the_right_one(self) -> None:
+        left_pulls: list[int] = []
+        right_pulls: list[int] = []
+        joined = counted_pairs("l", 2, 3, left_pulls).join_with(
+            counted_pairs("r", 2, 3, right_pulls), "id", "left"
+        )
+        # The right stream is the build side: drained before the left is pulled.
+        assert right_pulls == [0, 1]
+        assert left_pulls == []
+        assert sum(len(batch) for batch in joined) == 12
+        assert left_pulls == [0, 1]
+
+    def test_a_refused_argument_leaves_both_sides_and_a_spent_reader_takes_neither(
+        self,
+    ) -> None:
+        stream = SerieReader.from_serie(pairs("l", 4, 2))
+        other = SerieReader.from_serie(pairs("r", 4, 2))
+        with pytest.raises(ValueError, match="cross"):
+            stream.join_with(other, "id", "cross")
+        with pytest.raises(ValueError, match="build"):
+            stream.join_with(other, "id", build="middle")
+        joined = stream.join_with(other, "id")
+        assert sum(len(batch) for batch in joined) == 8
+        with pytest.raises(ValueError, match="handed over"):
+            stream.join_with(SerieReader.from_serie(pairs("r", 4, 2)), "id")
+        spare = SerieReader.from_serie(pairs("r", 4, 2))
+        with pytest.raises(ValueError, match="handed over"):
+            stream.join_with(spare, "id")
+        # The other reader was not taken by the refused join.
+        assert sum(len(batch) for batch in spare) == 4

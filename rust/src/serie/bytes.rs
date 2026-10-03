@@ -9,6 +9,13 @@
 //! offsets and [`Utf8StringSerie::payload`](crate::Utf8StringSerie::payload)
 //! the characters, both where they lie.
 //!
+//! A leaf holds Arrow's buffers - the offsets or the views, the payload, the
+//! validity - and never an Arrow array: a row is read off them by the leaf
+//! itself, one bounds check and one slice, and `array()` hands the same
+//! buffers back as the array they are, pointer bumps and no scan. Beside
+//! them a leaf keeps where they live (`Backing`): the heap, or a spill
+//! file's read-only mapping, which a write leaves for the heap.
+//!
 //! A leaf says how the bytes are laid out; the field says what they *are* -
 //! which of the crate's eighteen string leaves, which of its codes, a UUID,
 //! a geospatial reading. That split is why one layout can be a string leaf
@@ -24,7 +31,32 @@
 //! hands back when nothing else holds its buffers and is rebuilt once from
 //! prefix, replacement and suffix otherwise; a fixed width writes its
 //! payload in place under the same rule; views are rewritten, because no
-//! builder hands views back.
+//! builder hands views back. A shared, sliced or mapped buffer is copied
+//! once, because Arrow hands back only a buffer it holds alone and a
+//! mapping is never written.
+//!
+//! # Unsafe
+//!
+//! Three uses, each named where it stands, and each trusting bytes no caller
+//! hands in: the buffers are private fields, they enter only through a
+//! leaf's constructor - from an array the landing door proved against the
+//! field, or one the leaf's own writer laid out through `array_of_rows` or
+//! an Arrow builder - and a slice only narrows them.
+//!
+//! * `str::from_utf8_unchecked`, behind `RunNative::from_run`, in every
+//!   `value`: a run read as its native - `str` or `[u8]` - with no scan, the
+//!   read Arrow's own `value` makes over the same buffers. A checked read
+//!   would re-scan every run it lends;
+//! * `GenericByteArray::new_unchecked`, behind `runs_unchecked`, the one
+//!   door an offsets run - this module's and the variant leaf's - becomes
+//!   an array again through, in `array()` and in every write. A checked
+//!   rebuild of a UTF-8 run scans every byte of it;
+//! * `GenericByteViewArray::new_unchecked`, in the view leaf's `array()`,
+//!   for the same reason over every view.
+//!
+//! A fixed-width leaf needs none: its rebuild checks one length.
+
+#![allow(unsafe_code)]
 
 use std::fmt::{self, Write as _};
 use std::marker::PhantomData;
@@ -36,12 +68,18 @@ use arrow_array::types::{
     BinaryType, BinaryViewType, ByteArrayType, ByteViewType, LargeBinaryType, LargeUtf8Type,
     StringViewType, Utf8Type,
 };
-use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, GenericByteArray, GenericByteViewArray};
-use arrow_buffer::{ArrowNativeType, Buffer, MutableBuffer, NullBuffer, OffsetBuffer};
+use arrow_array::{
+    Array, ArrayRef, FixedSizeBinaryArray, GenericByteArray, GenericByteViewArray, OffsetSizeTrait,
+};
+use arrow_buffer::{
+    ArrowNativeType, Buffer, MutableBuffer, NullBuffer, OffsetBuffer, ScalarBuffer,
+};
+use arrow_data::{ByteView, MAX_INLINE_VIEW_LEN};
 use arrow_schema::DataType as ArrowDataType;
 
 use super::{Serie, layout, require_range, require_row, require_window};
 use crate::serie::value::RunReading;
+use crate::spill::Backing;
 use crate::value::SerieValue;
 use crate::{DataType, DataTypeKind, Field, Result, Scalar};
 
@@ -77,8 +115,39 @@ pub struct Octets;
 impl ByteKind for Chars {}
 impl ByteKind for Octets {}
 
+/// What a run reads as: the native an Arrow byte layout lends - `str` for
+/// text, `[u8]` for bytes - built from a run already proven to be one.
+///
+/// Arrow's own conversion is sealed inside arrow-array, so the two natives
+/// its byte layouts have are named here, once.
+pub trait RunNative {
+    /// Read `run` as this native, with no scan.
+    ///
+    /// # Safety
+    ///
+    /// `run` must be one whole value of a proven layout: valid UTF-8 where
+    /// the native is `str`.
+    unsafe fn from_run(run: &[u8]) -> &Self;
+}
+
+impl RunNative for str {
+    unsafe fn from_run(run: &[u8]) -> &Self {
+        // SAFETY: the caller's contract: `run` is one whole string of a
+        // proven text layout, so valid UTF-8.
+        unsafe { std::str::from_utf8_unchecked(run) }
+    }
+}
+
+impl RunNative for [u8] {
+    unsafe fn from_run(run: &[u8]) -> &Self {
+        run
+    }
+}
+
 /// Which leaf of the root one byte layout under one marker widens to.
-pub trait ByteLeaf<K: ByteKind>: ByteArrayType + Sized + Send + Sync + 'static {
+pub trait ByteLeaf<K: ByteKind>:
+    ByteArrayType<Native: RunNative> + Sized + Send + Sync + 'static
+{
     /// The leaf's name, as its debug rendering spells it.
     const NAME: &'static str;
 
@@ -90,7 +159,9 @@ pub trait ByteLeaf<K: ByteKind>: ByteArrayType + Sized + Send + Sync + 'static {
 }
 
 /// Which leaf of the root one view layout under one marker widens to.
-pub trait ViewLeaf<K: ByteKind>: ByteViewType + Sized + Send + Sync + 'static {
+pub trait ViewLeaf<K: ByteKind>:
+    ByteViewType<Native: RunNative> + Sized + Send + Sync + 'static
+{
     /// The leaf's name, as its debug rendering spells it.
     const NAME: &'static str;
 
@@ -157,32 +228,53 @@ fn lay_out<A: Array + Clone + 'static>(field: &Field, rows: &[Scalar]) -> Result
 // share, so the run is written in one place.
 // ------------------------------------------------------------------------
 
-/// The bytes `run` reaches between its first and last offset.
+/// The bytes the run `offsets` delimit reaches between its first and last
+/// offset.
 ///
 /// A sliced run's offsets start past zero and its payload buffer runs past
 /// its end, so neither the buffer's length nor the last offset alone says
 /// how many bytes the rows hold.
-pub(crate) fn run_bytes<T: ByteArrayType>(run: &GenericByteArray<T>) -> usize {
-    let offsets = run.offsets();
-    (offsets[run.len()] - offsets[0]).as_usize()
+pub(crate) fn run_bytes<O: OffsetSizeTrait>(offsets: &OffsetBuffer<O>) -> usize {
+    (offsets[offsets.len() - 1] - offsets[0]).as_usize()
 }
 
-/// Refuse a write of `replacement` bytes over rows `range` of `run` whose
-/// offsets total would pass the offset type, naming the column.
+/// Refuse a write of `replacement` bytes over rows `range` of the run
+/// `offsets` delimit whose offsets total would pass the offset type, naming
+/// the column.
 ///
 /// # Errors
 ///
 /// [`layout::require_offset`] carries the rule.
-pub(crate) fn require_run_fits<T: ByteArrayType>(
+pub(crate) fn require_run_fits<O: OffsetSizeTrait>(
     name: &str,
-    run: &GenericByteArray<T>,
+    offsets: &OffsetBuffer<O>,
     range: &Range<usize>,
     replacement: usize,
 ) -> Result<()> {
-    let offsets = run.offsets();
     let replaced = (offsets[range.end] - offsets[range.start]).as_usize();
-    let total = (run_bytes(run) - replaced).saturating_add(replacement);
-    layout::require_offset::<T::Offset>(name, total)
+    let total = (run_bytes(offsets) - replaced).saturating_add(replacement);
+    layout::require_offset::<O>(name, total)
+}
+
+/// The Arrow array an offsets run's parts are, rebuilt with no scan.
+///
+/// The one door an offsets run of this module or of the variant leaf
+/// becomes an array again through, so the trust it takes is stated once.
+///
+/// # Safety
+///
+/// The parts must be ones [`GenericByteArray::try_new`] accepts: every
+/// consecutive pair of offsets a slice of `data` - over valid UTF-8, on
+/// character boundaries, for text - and `nulls` one bit per row. The parts
+/// of an array the landing door proved or a builder laid out are, and so
+/// are those parts sliced alike.
+pub(crate) unsafe fn runs_unchecked<T: ByteArrayType>(
+    offsets: OffsetBuffer<T::Offset>,
+    data: Buffer,
+    nulls: Option<NullBuffer>,
+) -> GenericByteArray<T> {
+    // SAFETY: the caller's contract is `new_unchecked`'s own, stated above.
+    unsafe { GenericByteArray::new_unchecked(offsets, data, nulls) }
 }
 
 /// The bytes one canonical row stores in an offsets layout.
@@ -259,8 +351,10 @@ fn run_builder<T: ByteArrayType>(
     } else {
         run
     };
-    let mut builder =
-        GenericByteBuilder::<T>::with_capacity(shared.len() + rows, run_bytes(&shared) + bytes);
+    let mut builder = GenericByteBuilder::<T>::with_capacity(
+        shared.len() + rows,
+        run_bytes(shared.offsets()) + bytes,
+    );
     // The same offsets the run already holds cannot overflow.
     builder.append_array(&shared).expect(CHECKED);
     builder
@@ -279,7 +373,7 @@ pub(crate) fn splice_run<T: ByteArrayType>(
 ) -> GenericByteArray<T> {
     let len = run.len();
     if range.start == len {
-        let mut builder = run_builder(run, replacement.len(), run_bytes(replacement));
+        let mut builder = run_builder(run, replacement.len(), run_bytes(replacement.offsets()));
         builder.append_array(replacement).expect(CHECKED);
         return builder.finish();
     }
@@ -287,7 +381,9 @@ pub(crate) fn splice_run<T: ByteArrayType>(
     let suffix = run.slice(range.end, len - range.end);
     let mut builder = GenericByteBuilder::<T>::with_capacity(
         prefix.len() + replacement.len() + suffix.len(),
-        run_bytes(&prefix) + run_bytes(replacement) + run_bytes(&suffix),
+        run_bytes(prefix.offsets())
+            + run_bytes(replacement.offsets())
+            + run_bytes(suffix.offsets()),
     );
     for piece in [&prefix, replacement, &suffix] {
         builder.append_array(piece).expect(CHECKED);
@@ -300,28 +396,47 @@ pub(crate) fn splice_run<T: ByteArrayType>(
 // ------------------------------------------------------------------------
 
 /// One column of variable-length runs: offsets into one payload buffer.
+///
+/// The leaf holds the buffers themselves, never an Arrow array: a read is
+/// one slice of the payload and [`Self::array`] hands the same buffers back
+/// as the array they are.
 pub struct ByteSerie<T: ByteArrayType, K: ByteKind> {
     field: Arc<Field>,
-    values: GenericByteArray<T>,
+    /// One more offset than rows: row `i` occupies the payload between
+    /// `offsets[i]` and `offsets[i + 1]`.
+    offsets: OffsetBuffer<T::Offset>,
+    /// The payload every run lies in.
+    data: Buffer,
+    nulls: Option<NullBuffer>,
     /// How a run reads as the field's value, resolved from the field once
     /// where the column landed.
     reading: RunReading<T::Native>,
     kind: PhantomData<K>,
+    /// Where the buffers live: carried by a slice and a clone, the heap's
+    /// again after a write.
+    backing: Backing,
 }
 
-impl<T: ByteArrayType, K: ByteKind> ByteSerie<T, K> {
+impl<T: ByteArrayType, K: ByteKind> ByteSerie<T, K>
+where
+    T::Native: RunNative,
+{
     /// Pair a field with the buffers that hold its rows and the reading its
-    /// datatype resolved to.
-    pub(crate) const fn new(
+    /// datatype resolved to, taking the array apart.
+    pub(crate) fn new(
         field: Arc<Field>,
         values: GenericByteArray<T>,
         reading: RunReading<T::Native>,
     ) -> Self {
+        let (offsets, data, nulls) = values.into_parts();
         Self {
             field,
-            values,
+            offsets,
+            data,
+            nulls,
             reading,
             kind: PhantomData,
+            backing: Backing::Heap,
         }
     }
 
@@ -330,28 +445,63 @@ impl<T: ByteArrayType, K: ByteKind> ByteSerie<T, K> {
     /// Row `i` occupies the payload between `offsets[i]` and `offsets[i + 1]`,
     /// which is what a reader walking runs without building one needs.
     pub fn offsets(&self) -> &OffsetBuffer<T::Offset> {
-        self.values.offsets()
+        &self.offsets
     }
 
     /// Borrow the payload buffer every run lies in, without copying it.
     pub fn payload(&self) -> &Buffer {
-        self.values.values()
+        &self.data
     }
 
     /// Borrow the validity bitmap, or `None` where no row is absent.
     pub fn nulls(&self) -> Option<&NullBuffer> {
-        self.values.nulls()
+        self.nulls.as_ref()
     }
 
-    /// Borrow the Arrow array these buffers are.
-    pub const fn array(&self) -> &GenericByteArray<T> {
-        &self.values
+    /// Return the Arrow array these buffers are, sharing them: pointer bumps,
+    /// no copy and no scan.
+    pub fn array(&self) -> GenericByteArray<T> {
+        // SAFETY: the buffers entered through `new` from an array the landing
+        // door proved or a builder laid out, and were since only sliced
+        // (`slice`) or replaced whole by a write's spliced array; the fields
+        // are private, so no other path reaches them.
+        unsafe { runs_unchecked(self.offsets.clone(), self.data.clone(), self.nulls.clone()) }
     }
 
     /// Borrow row `index` where it lies in the payload: `None` when the row
     /// is absent or past the end.
+    ///
+    /// One bounds check and one slice of the payload: no array is built and
+    /// the run is not scanned.
     pub fn value(&self, index: usize) -> Option<&T::Native> {
-        (index < self.values.len() && self.values.is_valid(index)).then(|| self.values.value(index))
+        if index >= self.row_count() || self.is_absent(index) {
+            return None;
+        }
+        let run = &self.data[self.offsets[index].as_usize()..self.offsets[index + 1].as_usize()];
+        // SAFETY: the run between two consecutive offsets of this leaf is one
+        // whole value of the layout - a whole UTF-8 string for text - because
+        // the buffers came from an array the landing door proved or a builder
+        // laid out, and a slice keeps every pair of offsets it keeps; this is
+        // the read Arrow's own `value` makes over the same buffers.
+        Some(unsafe { T::Native::from_run(run) })
+    }
+
+    /// State where the buffers live: what a spill sets over the buffers it
+    /// mapped.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.backing = backing;
+    }
+
+    /// The rows the offsets delimit.
+    fn row_count(&self) -> usize {
+        self.offsets.len() - 1
+    }
+
+    /// Whether row `index`, which is in range, is absent.
+    fn is_absent(&self, index: usize) -> bool {
+        self.nulls
+            .as_ref()
+            .is_some_and(|nulls| nulls.is_null(index))
     }
 
     /// Refuse what a write could not do: an offsets total past the offset
@@ -365,7 +515,7 @@ impl<T: ByteArrayType, K: ByteKind> ByteSerie<T, K> {
         let replacement = rows.iter().fold(0_usize, |total, row| {
             total.saturating_add(stored_bytes(row))
         });
-        require_run_fits(self.field.name(), &self.values, range, replacement)
+        require_run_fits(self.field.name(), &self.offsets, range, replacement)
     }
 
     /// Write canonical `rows` over a checked `range`.
@@ -379,24 +529,36 @@ impl<T: ByteArrayType, K: ByteKind> ByteSerie<T, K> {
     /// column as it was, and the root then reads the rows and refuses by
     /// name.
     pub(crate) fn append(&mut self, other: &Self) -> bool {
-        let len = self.values.len();
+        let len = self.row_count();
         let fits = require_run_fits(
             self.field.name(),
-            &self.values,
+            &self.offsets,
             &(len..len),
-            run_bytes(&other.values),
+            run_bytes(&other.offsets),
         )
         .is_ok();
         if fits {
-            self.write_array(len..len, &other.values);
+            self.write_array(len..len, &other.array());
         }
         fits
     }
 
     /// Replace rows `range` by `replacement`, which lays out as this column.
+    ///
+    /// The buffers are taken out of the leaf first, so the run the splice
+    /// takes apart is their one holder and Arrow hands them back as a
+    /// builder where nothing else holds them; what comes back is the heap's.
     fn write_array(&mut self, range: Range<usize>, replacement: &GenericByteArray<T>) {
-        let taken = std::mem::replace(&mut self.values, GenericByteArray::<T>::new_null(0));
-        self.values = splice_run(taken, range, replacement);
+        let offsets = std::mem::replace(&mut self.offsets, OffsetBuffer::new_empty());
+        let data = std::mem::take(&mut self.data);
+        // SAFETY: the leaf's own buffers, moved out whole, under the argument
+        // `array` makes for them.
+        let taken = unsafe { runs_unchecked(offsets, data, self.nulls.take()) };
+        let (offsets, data, nulls) = splice_run(taken, range, replacement).into_parts();
+        self.offsets = offsets;
+        self.data = data;
+        self.nulls = nulls;
+        self.backing = Backing::Heap;
     }
 }
 
@@ -410,20 +572,20 @@ impl<T: ByteLeaf<K>, K: ByteKind> SerieValue for ByteSerie<T, K> {
     }
 
     fn len(&self) -> usize {
-        self.values.len()
+        self.row_count()
     }
 
     fn null_count(&self) -> usize {
-        self.values.null_count()
+        self.nulls.as_ref().map_or(0, NullBuffer::null_count)
     }
 
     fn is_null(&self, index: usize) -> Result<bool> {
-        require_row(self.field.name(), index, self.values.len())?;
-        Ok(self.values.is_null(index))
+        require_row(self.field.name(), index, self.row_count())?;
+        Ok(self.is_absent(index))
     }
 
     fn scalar(&self, index: usize) -> Result<Scalar> {
-        require_row(self.field.name(), index, self.values.len())?;
+        require_row(self.field.name(), index, self.row_count())?;
         match self.value(index) {
             Some(cell) => Ok((self.reading)(self.field.dtype(), cell)?),
             None => Ok(Scalar::Null),
@@ -431,16 +593,20 @@ impl<T: ByteLeaf<K>, K: ByteKind> SerieValue for ByteSerie<T, K> {
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
-        require_window(self.field.name(), offset, length, self.values.len())?;
-        Ok(Self::new(
-            Arc::clone(&self.field),
-            self.values.slice(offset, length),
-            self.reading,
-        ))
+        require_window(self.field.name(), offset, length, self.row_count())?;
+        Ok(Self {
+            field: Arc::clone(&self.field),
+            offsets: self.offsets.slice(offset, length),
+            data: self.data.clone(),
+            nulls: self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
+            reading: self.reading,
+            kind: PhantomData,
+            backing: self.backing,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
-        require_range(self.field.name(), &range, self.values.len())?;
+        require_range(self.field.name(), &range, self.row_count())?;
         let canonical = rows
             .into_iter()
             .map(|row| self.field.scalar(row))
@@ -451,7 +617,20 @@ impl<T: ByteLeaf<K>, K: ByteKind> SerieValue for ByteSerie<T, K> {
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
-        Arc::new(self.values.clone())
+        Arc::new(self.array())
+    }
+
+    fn memory_size(&self) -> usize {
+        // The typed array is pointer bumps, so nothing is boxed to count it.
+        crate::arrow::sliced_size(&self.array())
+    }
+
+    fn resident_size(&self) -> usize {
+        if self.backing.is_mapped() {
+            0
+        } else {
+            self.memory_size()
+        }
     }
 
     fn into_serie(self) -> Serie {
@@ -465,7 +644,15 @@ impl<T: ByteLeaf<K>, K: ByteKind> SerieValue for ByteSerie<T, K> {
 
 impl<T: ByteArrayType, K: ByteKind> Clone for ByteSerie<T, K> {
     fn clone(&self) -> Self {
-        Self::new(Arc::clone(&self.field), self.values.clone(), self.reading)
+        Self {
+            field: Arc::clone(&self.field),
+            offsets: self.offsets.clone(),
+            data: self.data.clone(),
+            nulls: self.nulls.clone(),
+            reading: self.reading,
+            kind: PhantomData,
+            backing: self.backing,
+        }
     }
 }
 
@@ -514,56 +701,126 @@ byte_leaf!(
 // Views: runs that name where they lie rather than lying in one buffer.
 // ------------------------------------------------------------------------
 
+/// The bytes one view occupies in the views buffer.
+const VIEW_BYTES: usize = std::mem::size_of::<u128>();
+
+/// Where a short run starts inside its view: past the four-byte length.
+const INLINE_AT: usize = std::mem::size_of::<u32>();
+
 /// One column of runs held as views into several payload buffers.
+///
+/// The leaf holds the buffers themselves, never an Arrow array: a read
+/// decodes the row's view and slices where it points, and [`Self::array`]
+/// hands the same buffers back as the array they are.
 pub struct ByteViewSerie<T: ByteViewType, K: ByteKind> {
     field: Arc<Field>,
-    values: GenericByteViewArray<T>,
+    /// One view per row: its length, then the run itself where it is twelve
+    /// bytes or fewer, else its prefix, a payload index and an offset.
+    views: ScalarBuffer<u128>,
+    /// The payloads the views of the longer runs name.
+    buffers: Arc<[Buffer]>,
+    nulls: Option<NullBuffer>,
     /// How a run reads as the field's value, resolved from the field once
     /// where the column landed.
     reading: RunReading<T::Native>,
     kind: PhantomData<K>,
+    /// Where the buffers live: carried by a slice and a clone, the heap's
+    /// again after a write.
+    backing: Backing,
 }
 
-impl<T: ByteViewType, K: ByteKind> ByteViewSerie<T, K> {
+impl<T: ByteViewType, K: ByteKind> ByteViewSerie<T, K>
+where
+    T::Native: RunNative,
+{
     /// Pair a field with the buffers that hold its rows and the reading its
-    /// datatype resolved to.
-    pub(crate) const fn new(
+    /// datatype resolved to, taking the array apart.
+    pub(crate) fn new(
         field: Arc<Field>,
         values: GenericByteViewArray<T>,
         reading: RunReading<T::Native>,
     ) -> Self {
+        let (views, buffers, nulls) = values.into_parts();
         Self {
             field,
-            values,
+            views,
+            buffers,
+            nulls,
             reading,
             kind: PhantomData,
+            backing: Backing::Heap,
         }
     }
 
     /// Borrow the views buffer, one 128-bit view per row.
     pub fn views(&self) -> &[u128] {
-        self.values.views()
+        &self.views
     }
 
     /// Borrow the payload buffers the views name.
     pub fn payloads(&self) -> &[Buffer] {
-        self.values.data_buffers()
+        &self.buffers
     }
 
     /// Borrow the validity bitmap, or `None` where no row is absent.
     pub fn nulls(&self) -> Option<&NullBuffer> {
-        self.values.nulls()
+        self.nulls.as_ref()
     }
 
-    /// Borrow the Arrow array these buffers are.
-    pub const fn array(&self) -> &GenericByteViewArray<T> {
-        &self.values
+    /// Return the Arrow array these buffers are, sharing them: pointer bumps,
+    /// no copy and no scan.
+    pub fn array(&self) -> GenericByteViewArray<T> {
+        // SAFETY: the views and payloads entered through `new` from an array
+        // the landing door proved or a builder laid out, and were since only
+        // sliced (`slice`) or replaced whole by a builder's (`rewrite`); the
+        // fields are private, so no other path reaches them.
+        unsafe {
+            GenericByteViewArray::new_unchecked(
+                self.views.clone(),
+                Arc::clone(&self.buffers),
+                self.nulls.clone(),
+            )
+        }
     }
 
     /// Borrow row `index` where its view names it: `None` when the row is
     /// absent or past the end.
+    ///
+    /// One bounds check, one view decoded and one slice: a run of twelve
+    /// bytes or fewer lies in the view itself, a longer one in the payload
+    /// the view names. No array is built and the run is not scanned.
     pub fn value(&self, index: usize) -> Option<&T::Native> {
-        (index < self.values.len() && self.values.is_valid(index)).then(|| self.values.value(index))
+        if index >= self.views.len() || self.is_absent(index) {
+            return None;
+        }
+        let view = ByteView::from(self.views[index]);
+        let length = view.length as usize;
+        let run = if view.length <= MAX_INLINE_VIEW_LEN {
+            let at = index * VIEW_BYTES + INLINE_AT;
+            &self.views.inner()[at..at + length]
+        } else {
+            let offset = view.offset as usize;
+            &self.buffers[view.buffer_index as usize][offset..offset + length]
+        };
+        // SAFETY: the run a view of this leaf names is one whole value of the
+        // layout - a whole UTF-8 string for text - because the views came from
+        // an array the landing door proved or a builder laid out, and a slice
+        // keeps the views it keeps whole; this is the read Arrow's own
+        // `value` makes over the same buffers.
+        Some(unsafe { T::Native::from_run(run) })
+    }
+
+    /// State where the buffers live: what a spill sets over the buffers it
+    /// mapped.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.backing = backing;
+    }
+
+    /// Whether row `index`, which is in range, is absent.
+    fn is_absent(&self, index: usize) -> bool {
+        self.nulls
+            .as_ref()
+            .is_some_and(|nulls| nulls.is_null(index))
     }
 
     /// Refuse recovered text whose charset cannot encode it.
@@ -580,31 +837,36 @@ impl<T: ByteViewType, K: ByteKind> ByteViewSerie<T, K> {
     /// Append `other`'s buffers, whose field agrees with this one's; views
     /// name their blocks, so no total is out of reach.
     pub(crate) fn append(&mut self, other: &Self) -> bool {
-        let len = self.values.len();
-        self.rewrite(len..len, &other.values);
+        let len = self.views.len();
+        self.rewrite(len..len, &other.array());
         true
     }
 
     /// Replace rows `range` by `replacement`: every run packed again into
-    /// fresh blocks.
+    /// fresh blocks on the heap.
     ///
     /// No builder hands views back, and a view names the buffer its run
     /// lies in, so an edit is one pass over every row. Packing the runs
     /// again rather than carrying the old buffers along is what keeps a
     /// column edited many times from holding every byte it ever held.
     fn rewrite(&mut self, range: Range<usize>, replacement: &GenericByteViewArray<T>) {
-        let len = self.values.len();
+        let len = self.views.len();
         let mut builder =
             GenericByteViewBuilder::<T>::with_capacity(len - range.len() + replacement.len());
-        let mut pack = |array: &GenericByteViewArray<T>, rows: Range<usize>| {
-            for row in rows {
-                builder.append_option(array.is_valid(row).then(|| array.value(row)));
-            }
-        };
-        pack(&self.values, 0..range.start);
-        pack(replacement, 0..replacement.len());
-        pack(&self.values, range.end..len);
-        self.values = builder.finish();
+        for row in 0..range.start {
+            builder.append_option(self.value(row));
+        }
+        for row in 0..replacement.len() {
+            builder.append_option(replacement.is_valid(row).then(|| replacement.value(row)));
+        }
+        for row in range.end..len {
+            builder.append_option(self.value(row));
+        }
+        let (views, buffers, nulls) = builder.finish().into_parts();
+        self.views = views;
+        self.buffers = buffers;
+        self.nulls = nulls;
+        self.backing = Backing::Heap;
     }
 }
 
@@ -618,20 +880,20 @@ impl<T: ViewLeaf<K>, K: ByteKind> SerieValue for ByteViewSerie<T, K> {
     }
 
     fn len(&self) -> usize {
-        self.values.len()
+        self.views.len()
     }
 
     fn null_count(&self) -> usize {
-        self.values.null_count()
+        self.nulls.as_ref().map_or(0, NullBuffer::null_count)
     }
 
     fn is_null(&self, index: usize) -> Result<bool> {
-        require_row(self.field.name(), index, self.values.len())?;
-        Ok(self.values.is_null(index))
+        require_row(self.field.name(), index, self.views.len())?;
+        Ok(self.is_absent(index))
     }
 
     fn scalar(&self, index: usize) -> Result<Scalar> {
-        require_row(self.field.name(), index, self.values.len())?;
+        require_row(self.field.name(), index, self.views.len())?;
         match self.value(index) {
             Some(cell) => Ok((self.reading)(self.field.dtype(), cell)?),
             None => Ok(Scalar::Null),
@@ -639,16 +901,20 @@ impl<T: ViewLeaf<K>, K: ByteKind> SerieValue for ByteViewSerie<T, K> {
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
-        require_window(self.field.name(), offset, length, self.values.len())?;
-        Ok(Self::new(
-            Arc::clone(&self.field),
-            self.values.slice(offset, length),
-            self.reading,
-        ))
+        require_window(self.field.name(), offset, length, self.views.len())?;
+        Ok(Self {
+            field: Arc::clone(&self.field),
+            views: self.views.slice(offset, length),
+            buffers: Arc::clone(&self.buffers),
+            nulls: self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
+            reading: self.reading,
+            kind: PhantomData,
+            backing: self.backing,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
-        require_range(self.field.name(), &range, self.values.len())?;
+        require_range(self.field.name(), &range, self.views.len())?;
         let canonical = rows
             .into_iter()
             .map(|row| self.field.scalar(row))
@@ -659,7 +925,20 @@ impl<T: ViewLeaf<K>, K: ByteKind> SerieValue for ByteViewSerie<T, K> {
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
-        Arc::new(self.values.clone())
+        Arc::new(self.array())
+    }
+
+    fn memory_size(&self) -> usize {
+        // The typed array is pointer bumps, so nothing is boxed to count it.
+        crate::arrow::sliced_size(&self.array())
+    }
+
+    fn resident_size(&self) -> usize {
+        if self.backing.is_mapped() {
+            0
+        } else {
+            self.memory_size()
+        }
     }
 
     fn into_serie(self) -> Serie {
@@ -673,7 +952,15 @@ impl<T: ViewLeaf<K>, K: ByteKind> SerieValue for ByteViewSerie<T, K> {
 
 impl<T: ByteViewType, K: ByteKind> Clone for ByteViewSerie<T, K> {
     fn clone(&self) -> Self {
-        Self::new(Arc::clone(&self.field), self.values.clone(), self.reading)
+        Self {
+            field: Arc::clone(&self.field),
+            views: self.views.clone(),
+            buffers: Arc::clone(&self.buffers),
+            nulls: self.nulls.clone(),
+            reading: self.reading,
+            kind: PhantomData,
+            backing: self.backing,
+        }
     }
 }
 
@@ -721,62 +1008,107 @@ view_leaf!(
 // ------------------------------------------------------------------------
 
 /// One column of fixed-width byte runs: one payload buffer and no offsets.
+///
+/// The leaf holds the buffer itself, never an Arrow array: row `i` is the
+/// `width` bytes at `i * width`, and [`Self::array`] hands the same buffer
+/// back as the array it is.
 pub struct FixedSerie<K: ByteKind> {
     field: Arc<Field>,
-    values: FixedSizeBinaryArray,
+    /// The bytes every row occupies, an absent one included.
+    width: i32,
+    /// `width` bytes per row, from row zero.
+    data: Buffer,
+    nulls: Option<NullBuffer>,
+    /// The row count, held because a width of zero leaves no byte to divide
+    /// it out of.
+    len: usize,
     /// How a slot reads as the field's value, resolved from the field once
     /// where the column landed.
     reading: RunReading<[u8]>,
     kind: PhantomData<K>,
+    /// Where the buffer lives: carried by a slice and a clone, the heap's
+    /// again after a write.
+    backing: Backing,
 }
 
 impl<K: ByteKind> FixedSerie<K> {
     /// Pair a field with the buffer that holds its rows and the reading its
-    /// datatype resolved to.
-    pub(crate) const fn new(
+    /// datatype resolved to, taking the array apart.
+    pub(crate) fn new(
         field: Arc<Field>,
         values: FixedSizeBinaryArray,
         reading: RunReading<[u8]>,
     ) -> Self {
+        let len = values.len();
+        let (width, data, nulls) = values.into_parts();
         Self {
             field,
-            values,
+            width,
+            data,
+            nulls,
+            len,
             reading,
             kind: PhantomData,
+            backing: Backing::Heap,
         }
     }
 
     /// Return the width every row occupies.
     pub fn width(&self) -> i32 {
-        self.values.value_length()
+        self.width
     }
 
     /// Borrow the payload buffer every run lies in, without copying it.
     pub fn payload(&self) -> &Buffer {
-        self.values.values()
+        &self.data
     }
 
     /// Borrow the validity bitmap, or `None` where no row is absent.
     pub fn nulls(&self) -> Option<&NullBuffer> {
-        self.values.nulls()
+        self.nulls.as_ref()
     }
 
-    /// Borrow the Arrow array this buffer is.
-    pub const fn array(&self) -> &FixedSizeBinaryArray {
-        &self.values
+    /// Return the Arrow array this buffer is, sharing it: pointer bumps and
+    /// one length checked.
+    pub fn array(&self) -> FixedSizeBinaryArray {
+        FixedSizeBinaryArray::try_new_with_len(
+            self.width,
+            self.data.clone(),
+            self.nulls.clone(),
+            self.len,
+        )
+        .expect(ALIGNED)
     }
 
     /// Borrow row `index` where it lies in the payload: `None` when the row
     /// is absent or past the end.
+    ///
+    /// One bounds check and one slice of the payload: no array is built.
     pub fn value(&self, index: usize) -> Option<&[u8]> {
-        (index < self.values.len() && self.values.is_valid(index)).then(|| self.values.value(index))
+        if index >= self.len || self.is_absent(index) {
+            return None;
+        }
+        let width = self.width.as_usize();
+        Some(&self.data[index * width..(index + 1) * width])
+    }
+
+    /// State where the buffer lives: what a spill sets over the buffer it
+    /// mapped.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.backing = backing;
+    }
+
+    /// Whether row `index`, which is in range, is absent.
+    fn is_absent(&self, index: usize) -> bool {
+        self.nulls
+            .as_ref()
+            .is_some_and(|nulls| nulls.is_null(index))
     }
 
     /// Refuse what a write could not do: a fixed-width total past `i32`.
     pub(crate) fn check(&self, range: &Range<usize>, rows: &[Scalar]) -> Result<()> {
         require_encodable(&self.field, range.start, rows)?;
-        let total =
-            (self.values.len() - range.len() + rows.len()).saturating_mul(self.values.value_size());
+        let total = (self.len - range.len() + rows.len()).saturating_mul(self.width.as_usize());
         layout::require_offset::<i32>(self.field.name(), total)
     }
 
@@ -790,11 +1122,10 @@ impl<K: ByteKind> FixedSerie<K> {
     /// answering whether the payload total stays within `i32`; `false`
     /// leaves this column as it was.
     pub(crate) fn append(&mut self, other: &Self) -> bool {
-        let len = self.values.len();
-        let total = (len + other.values.len()).saturating_mul(self.values.value_size());
+        let total = (self.len + other.len).saturating_mul(self.width.as_usize());
         let fits = layout::require_offset::<i32>(self.field.name(), total).is_ok();
         if fits {
-            self.write_array(len..len, &other.values);
+            self.write_array(self.len..self.len, &other.array());
         }
         fits
     }
@@ -804,19 +1135,20 @@ impl<K: ByteKind> FixedSerie<K> {
     /// Every row occupies `width` bytes at `index * width`, an absent one
     /// included, so an append and a same-count overwrite - `set` among them,
     /// one `memcpy` - write the payload the column holds when nothing else
-    /// holds it and its pointer was never advanced; a foreign, shared or
-    /// sliced payload, or a count that changes, is copied once from prefix,
-    /// replacement and suffix, and every later edit is in place.
+    /// holds it and its pointer was never advanced; a foreign, shared,
+    /// sliced or mapped payload, or a count that changes, is copied once
+    /// from prefix, replacement and suffix, and every later edit is in
+    /// place. What comes back is the heap's.
     fn write_array(&mut self, range: Range<usize>, replacement: &FixedSizeBinaryArray) {
-        let len = self.values.len();
-        let width = self.values.value_size();
+        let len = self.len;
+        let width = self.width.as_usize();
         let present: Vec<bool> = (0..replacement.len())
             .map(|row| replacement.is_valid(row))
             .collect();
-        let taken = std::mem::replace(&mut self.values, FixedSizeBinaryArray::new_null(0, 0));
-        let (width_declared, payload, nulls) = taken.into_parts();
         let in_place = range.start == len || range.len() == replacement.len();
-        let payload = match payload.into_mutable() {
+        // Taken out whole, so the leaf is the payload's one holder when
+        // nothing else holds it.
+        let payload = match std::mem::take(&mut self.data).into_mutable() {
             Ok(mut owned) if in_place => {
                 if range.start == len {
                     owned.extend_from_slice(replacement.value_data());
@@ -829,14 +1161,10 @@ impl<K: ByteKind> FixedSerie<K> {
             Ok(owned) => rebuilt_payload(&Buffer::from(owned), width, range.clone(), replacement),
             Err(shared) => rebuilt_payload(&shared, width, range.clone(), replacement),
         };
-        let nulls = layout::splice_nulls(nulls, len, range.clone(), &present);
-        self.values = FixedSizeBinaryArray::try_new_with_len(
-            width_declared,
-            payload,
-            nulls,
-            len - range.len() + replacement.len(),
-        )
-        .expect(ALIGNED);
+        self.nulls = layout::splice_nulls(self.nulls.take(), len, range.clone(), &present);
+        self.data = payload;
+        self.len = len - range.len() + replacement.len();
+        self.backing = Backing::Heap;
     }
 }
 
@@ -871,20 +1199,20 @@ where
     }
 
     fn len(&self) -> usize {
-        self.values.len()
+        self.len
     }
 
     fn null_count(&self) -> usize {
-        self.values.null_count()
+        self.nulls.as_ref().map_or(0, NullBuffer::null_count)
     }
 
     fn is_null(&self, index: usize) -> Result<bool> {
-        require_row(self.field.name(), index, self.values.len())?;
-        Ok(self.values.is_null(index))
+        require_row(self.field.name(), index, self.len)?;
+        Ok(self.is_absent(index))
     }
 
     fn scalar(&self, index: usize) -> Result<Scalar> {
-        require_row(self.field.name(), index, self.values.len())?;
+        require_row(self.field.name(), index, self.len)?;
         match self.value(index) {
             Some(cell) => Ok((self.reading)(self.field.dtype(), cell)?),
             None => Ok(Scalar::Null),
@@ -892,16 +1220,22 @@ where
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
-        require_window(self.field.name(), offset, length, self.values.len())?;
-        Ok(Self::new(
-            Arc::clone(&self.field),
-            self.values.slice(offset, length),
-            self.reading,
-        ))
+        require_window(self.field.name(), offset, length, self.len)?;
+        let width = self.width.as_usize();
+        Ok(Self {
+            field: Arc::clone(&self.field),
+            width: self.width,
+            data: self.data.slice_with_length(offset * width, length * width),
+            nulls: self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
+            len: length,
+            reading: self.reading,
+            kind: PhantomData,
+            backing: self.backing,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
-        require_range(self.field.name(), &range, self.values.len())?;
+        require_range(self.field.name(), &range, self.len)?;
         let canonical = rows
             .into_iter()
             .map(|row| self.field.scalar(row))
@@ -912,7 +1246,20 @@ where
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
-        Arc::new(self.values.clone())
+        Arc::new(self.array())
+    }
+
+    fn memory_size(&self) -> usize {
+        // The typed array is pointer bumps, so nothing is boxed to count it.
+        crate::arrow::sliced_size(&self.array())
+    }
+
+    fn resident_size(&self) -> usize {
+        if self.backing.is_mapped() {
+            0
+        } else {
+            self.memory_size()
+        }
     }
 
     fn into_serie(self) -> Serie {
@@ -926,7 +1273,16 @@ where
 
 impl<K: ByteKind> Clone for FixedSerie<K> {
     fn clone(&self) -> Self {
-        Self::new(Arc::clone(&self.field), self.values.clone(), self.reading)
+        Self {
+            field: Arc::clone(&self.field),
+            width: self.width,
+            data: self.data.clone(),
+            nulls: self.nulls.clone(),
+            len: self.len,
+            reading: self.reading,
+            kind: PhantomData,
+            backing: self.backing,
+        }
     }
 }
 

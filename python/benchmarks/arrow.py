@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import copy
 import gc
 import importlib
 import json
@@ -131,6 +132,11 @@ MAP_BATCH = pa.RecordBatch.from_arrays(
 )
 HELD_MAP_BATCH = Serie.from_(MAP_BATCH)
 HELD_WIDE_BATCH = Serie.from_(WIDE_BATCH)
+# One dimension row per symbol, so every quote matches exactly once and the
+# join answers as many rows as the batch holds, on either side of the pair.
+DIMENSION = pa.record_batch({"symbol": ["AAPL"], "venue": ["XNAS"]})
+DIMENSION_TABLE = pa.Table.from_batches([DIMENSION])
+HELD_DIMENSION = Serie.from_(DIMENSION)
 
 STORE = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-arrow-bench-"))
 # The store is made at import, before any argument is read, so its removal is
@@ -462,6 +468,39 @@ def _cases(
             small,
         ),
         ("ChunkedSerie into_serie (yggdryl)", lambda: HELD_CHUNKED.into_serie(), bulk),
+        # The `order by` keys resolved once from their text, then one stable
+        # sort and one take of every column, beside PyArrow's sort of the same
+        # batch.
+        (
+            "Serie.into_sort_by, one key (yggdryl)",
+            lambda: HELD_BATCH.into_sort_by("size desc"),
+            bulk,
+        ),
+        (
+            "Serie.into_sort_by, one key (pyarrow)",
+            lambda: BATCH.sort_by([("size", "descending")]),
+            bulk,
+        ),
+        # The smaller side built and hashed, the batch probing it, beside
+        # Acero's hash join of the same two tables.
+        (
+            "Serie.join_with, inner on one key (yggdryl)",
+            lambda: HELD_BATCH.join_with(HELD_DIMENSION, "symbol"),
+            bulk,
+        ),
+        (
+            "Serie.join_with, inner on one key (pyarrow)",
+            lambda: TABLE.join(DIMENSION_TABLE, "symbol"),
+            bulk,
+        ),
+        # Every buffer written once to a private file and mapped back; a copy
+        # shares the buffers, so each call spills its own. No PyArrow
+        # counterpart stands beside it.
+        (
+            "Serie.spill, bound zero",
+            lambda: copy.copy(HELD_COLUMN).spill(byte_size=0),
+            io,
+        ),
         ("ChunkedSerie into_serie (pyarrow)", lambda: CHUNKED.combine_chunks(), bulk),
         ("into_arrow_scalar (yggdryl)", lambda: HELD_SCALAR.into_arrow_scalar(), small),
         ("into_arrow_scalar (pyarrow)", lambda: ONE_ROW[0], small),
@@ -545,6 +584,12 @@ def main() -> None:
             assert list(SerieReader.from_(value)) == list(
                 SerieReader.from_serie(Serie.from_(value))
             )
+        assert HELD_BATCH.join_with(HELD_DIMENSION, "symbol").into_arrow_batch().num_rows == (
+            TABLE.join(DIMENSION_TABLE, "symbol").num_rows
+        )
+        assert HELD_BATCH.into_sort_by("size desc").child("size").into_arrow_array().equals(
+            BATCH.sort_by([("size", "descending")]).column("size")
+        )
         for exported in (
             HELD_MAP_BATCH.into_arrow_batch(),
             HELD_MAP_BATCH.into_arrow_reader().read_next_batch(),

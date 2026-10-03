@@ -68,3 +68,22 @@ fn the_typed_writers_move_the_count_and_refuse_a_range_past_the_end() {
     leaf.push(Scalar::Null).expect("an absent row");
     assert_eq!(leaf.null_count(), 2);
 }
+
+#[test]
+fn a_null_column_holds_no_byte_and_is_never_spilled() {
+    let column = Serie::from_arrow_array(
+        Some(&Field::new("nothing", DataType::Null, true)),
+        Arc::new(NullArray::new(3)),
+        ArrowCastOptions::new(),
+    )
+    .expect("a null column");
+    let leaf = column.as_null().expect("a null column");
+    assert_eq!(SerieValue::resident_size(leaf), 0);
+    assert_eq!(
+        SerieValue::resident_size(leaf),
+        SerieValue::memory_size(leaf)
+    );
+    assert!(!SerieValue::is_spilled(leaf));
+    assert_eq!(column.resident_size(), column.memory_size());
+    assert!(!column.is_spilled());
+}

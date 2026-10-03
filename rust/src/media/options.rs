@@ -383,15 +383,23 @@ pub trait IORecordOptions: Sized {
     ///
     /// Returns an error when the `create` section declares a column that
     /// cannot be typed without rows, the merge key names a column twice, or
-    /// the plan carries a section these options have no property for - an
-    /// `order by` - which is refused by name rather than dropped: a plan that
-    /// orders rows is applied to the rows themselves, through the expression
-    /// layer.
+    /// the plan carries a section these options have no property for - a
+    /// join or an `order by` - which is refused by name rather than dropped:
+    /// a plan that joins or orders rows is run, or applied to the rows
+    /// themselves, through the expression layer.
     fn set_plan(&mut self, plan: Plan) -> Result<()> {
         // Everything that can refuse does so before the first write, so a
         // refused plan leaves every section as it was.
         let declared = plan.field()?;
         distinct_merge_key(plan.merge_by())?;
+        if !plan.joins().is_empty() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.join"),
+                reason: SmolStr::new_static(
+                    "record options hold no join section; run the plan or apply it to the rows",
+                ),
+            });
+        }
         if !plan.ordering().is_empty() {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.order_by"),

@@ -436,6 +436,28 @@ fn an_unnest_is_refused_as_a_match_key_at_every_door_that_takes_one() {
 }
 
 #[test]
+fn a_plan_that_joins_rows_is_refused_and_leaves_the_options_unchanged() {
+    let mut options = IpcOptions::new().with_filter("id > 1").unwrap();
+    let before = options.clone();
+    let plan = "select id from trades join venues using (venue) where id > 2"
+        .parse()
+        .unwrap();
+    let message = options.set_plan(plan).unwrap_err().to_string();
+    assert!(message.contains("$.join"), "{message}");
+    assert!(
+        message.contains("record options hold no join section"),
+        "{message}"
+    );
+    assert_eq!(options, before);
+    // The text door refuses it the same way.
+    let message = IpcOptions::new()
+        .with_plan("select * from t left join v on id = vid")
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("$.join"), "{message}");
+}
+
+#[test]
 fn a_limit_with_a_match_key_is_refused_naming_both_settings() {
     let options = IpcOptions::new()
         .with_max_row_size(10)

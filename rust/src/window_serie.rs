@@ -74,7 +74,7 @@ use arrow_buffer::bit_iterator::BitIndexIterator;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::arrow::scalar_memory_size;
-use crate::expression::{IntoSelector, Selector};
+use crate::expression::{IntoOrderings, IntoSelector, Selector};
 use crate::serie::{
     Rows, StructSerie, compare_rows, hash_rows, proven_row, require_indexable, require_range,
     require_row, require_window,
@@ -570,6 +570,24 @@ impl<'a> WindowSerie<'a> {
         }
     }
 
+    /// The bytes the window's rows occupy in memory, read through the serie
+    /// it views: a window is never spilled on its own - spill the serie.
+    pub fn resident_size(&self) -> usize {
+        match self.serie {
+            Serie::Run(_) => self.memory_size(),
+            _ => self.into_serie().resident_size(),
+        }
+    }
+
+    /// Whether the window's rows lie in a spill file: the serie's own answer
+    /// over the rows it views.
+    pub fn is_spilled(&self) -> bool {
+        match self.serie {
+            Serie::Run(_) => false,
+            _ => self.into_serie().is_spilled(),
+        }
+    }
+
     /// A narrower window, `offset..offset + length` of this one: a window
     /// of the rows alone, stating no [record](Self::static_values).
     ///
@@ -710,6 +728,39 @@ impl<'a> WindowSerie<'a> {
     /// [`Serie::into_sorted`]'s refusal.
     pub fn into_sorted(&self, options: SortOptions) -> Result<Serie> {
         self.into_serie().into_sorted(options)
+    }
+
+    /// The window-relative row positions in the order the `order by` keys
+    /// of `by` state, as [`Serie::sort_indices_by`] answers them: the keys
+    /// computed over the window's rows alone, so a row outside it is never
+    /// read.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let prices = Serie::from_scalars(DataType::Int64.required_field("price"), [9_i64, 1, 3, 2].map(Scalar::from))?;
+    /// let order = prices.window(1, 3)?.sort_indices_by("price desc")?;
+    /// assert_eq!(order.rows().to_vec(), [1_u32, 2, 0].map(Scalar::from));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::sort_indices_by`]'s refusals.
+    pub fn sort_indices_by(&self, by: impl IntoOrderings) -> Result<Serie> {
+        self.into_serie().sort_indices_by(by)
+    }
+
+    /// The window's rows in the order the `order by` keys of `by` state, as
+    /// a serie of their own: [`Serie::into_sort_by`] over the window.
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::into_sort_by`]'s refusals.
+    pub fn into_sort_by(&self, by: impl IntoOrderings) -> Result<Serie> {
+        self.into_serie().into_sort_by(by)
     }
 
     /// The first occurrence of every value in the window.
@@ -910,6 +961,16 @@ impl<'a> WindowSerieMut<'a> {
         self.as_window().memory_size()
     }
 
+    /// The bytes the window's rows occupy in memory, read through the serie.
+    pub fn resident_size(&self) -> usize {
+        self.as_window().resident_size()
+    }
+
+    /// Whether the window's rows lie in a spill file.
+    pub fn is_spilled(&self) -> bool {
+        self.as_window().is_spilled()
+    }
+
     /// A narrower read-only window, `offset..offset + length` of this one.
     ///
     /// # Errors
@@ -1025,6 +1086,26 @@ impl<'a> WindowSerieMut<'a> {
         self.as_window().into_sorted(options)
     }
 
+    /// The window-relative row positions in the order the `order by` keys
+    /// of `by` state.
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::sort_indices_by`]'s refusals.
+    pub fn sort_indices_by(&self, by: impl IntoOrderings) -> Result<Serie> {
+        self.as_window().sort_indices_by(by)
+    }
+
+    /// The window's rows in the order the `order by` keys of `by` state, as
+    /// a serie of their own.
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::into_sort_by`]'s refusals.
+    pub fn into_sort_by(&self, by: impl IntoOrderings) -> Result<Serie> {
+        self.as_window().into_sort_by(by)
+    }
+
     /// The first occurrence of every value in the window.
     ///
     /// # Errors
@@ -1109,7 +1190,8 @@ impl<'a> WindowSerieMut<'a> {
         let rows = vec![canonical; self.len];
         let range = self.range();
         self.serie.check(&range, &rows)?;
-        self.serie.write(range, rows);
+        self.serie.write(range.clone(), rows);
+        self.serie.keep_or_clear_order(range)?;
         Ok(())
     }
 
@@ -1201,6 +1283,34 @@ impl<'a> WindowSerieMut<'a> {
             return Ok(self);
         }
         let rows = self.into_serie().into_sorted(options)?.rows().into_owned();
+        self.serie.splice(range, rows)?;
+        Ok(self)
+    }
+
+    /// Sort the window's rows in place in the order the `order by` keys of
+    /// `by` state, answering this window so calls chain: the keys computed
+    /// over the window's rows alone, the sorted rows written back through
+    /// [`Serie::splice`] on the rebased range, every row outside the window
+    /// untouched and the window never grown or shrunk.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, Serie};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut prices = Serie::from_scalars(DataType::Int64.required_field("price"), [9_i64, 1, 3, 2].map(Scalar::from))?;
+    /// prices.window_mut(1, 3)?.as_sort_by("price desc")?;
+    /// assert_eq!(prices.rows().to_vec(), [9_i64, 3, 2, 1].map(Scalar::from));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Serie::sort_indices_by`]'s refusals, which leave the serie as it
+    /// was.
+    pub fn as_sort_by(&mut self, by: impl IntoOrderings) -> Result<&mut Self> {
+        let rows = self.into_serie().into_sort_by(by)?.rows().into_owned();
+        let range = self.range();
         self.serie.splice(range, rows)?;
         Ok(self)
     }
@@ -1450,8 +1560,15 @@ impl<'a> SerieWindows<'a> {
                 *position += shift;
             }
         }
+        // The gather leaves the rows in key order, ascending with absent
+        // keys last, which the copy's root then states.
+        let ascending: Vec<crate::expression::Ordering> = by
+            .projections()
+            .iter()
+            .map(|projection| crate::expression::Ordering::asc(projection.term().clone()))
+            .collect();
         Ok(Self {
-            holder: Cow::Owned(holder.taken(&order)?),
+            holder: Cow::Owned(holder.taken(&order)?.declaring_order(&ascending)?),
             offset: 0,
             keys,
             cuts: Cuts::Gathered(regrouped.windows),

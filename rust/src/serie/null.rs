@@ -12,6 +12,7 @@ use arrow_array::{Array, ArrayRef, NullArray};
 use arrow_buffer::NullBuffer;
 
 use super::{Serie, require_range, require_row, require_window};
+use crate::spill::Backing;
 use crate::value::SerieValue;
 use crate::{Field, Result, Scalar};
 
@@ -20,12 +21,30 @@ use crate::{Field, Result, Scalar};
 pub struct NullSerie {
     field: Arc<Field>,
     rows: usize,
+    /// Where the unit was last stated to live; a length is never on disk.
+    backing: Backing,
 }
 
 impl NullSerie {
     /// Pair a field with the count of rows it holds.
     pub(crate) const fn new(field: Arc<Field>, rows: usize) -> Self {
-        Self { field, rows }
+        Self {
+            field,
+            rows,
+            backing: Backing::Heap,
+        }
+    }
+
+    /// State where the unit lives; a null column has no child to carry it
+    /// to.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.backing = backing;
+    }
+
+    /// The bytes this column's own buffers span: none, a null column being
+    /// a length.
+    pub(crate) const fn own_size(&self) -> usize {
+        0
     }
 
     /// Build the Arrow array this column is: a null column is a length, so
@@ -103,6 +122,7 @@ impl SerieValue for NullSerie {
         Ok(Self {
             field: Arc::clone(&self.field),
             rows: length,
+            backing: self.backing,
         })
     }
 
@@ -115,6 +135,16 @@ impl SerieValue for NullSerie {
         self.check(&range, &canonical)?;
         self.write(range, canonical);
         Ok(())
+    }
+
+    /// Nothing: a null column is a length and holds no byte anywhere.
+    fn resident_size(&self) -> usize {
+        self.own_size()
+    }
+
+    /// Never: a length is never on disk.
+    fn is_spilled(&self) -> bool {
+        false
     }
 
     fn into_arrow_array(&self) -> ArrayRef {

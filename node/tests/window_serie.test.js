@@ -7,7 +7,15 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { Field, Scalar, Serie, SerieReader, WindowSerie, StructSerie } = require('yggdryl')
+const {
+  Field,
+  Scalar,
+  Serie,
+  SerieReader,
+  SpillOptions,
+  WindowSerie,
+  StructSerie,
+} = require('yggdryl')
 
 // Prices as an int64 column, `null` an absent row.
 const column = (values) =>
@@ -231,6 +239,9 @@ test('the window natives stay outside the public surface', () => {
     '_asSortedNative',
     '_asReversedNative',
     '_asTakenNative',
+    '_sortIndicesByNative',
+    '_intoSortByNative',
+    '_asSortByNative',
   ]) {
     assert.equal(name in WindowSerie.prototype, false, name)
   }
@@ -238,6 +249,59 @@ test('the window natives stay outside the public surface', () => {
   // would.
   assert.equal('asUnique' in WindowSerie.prototype, false)
   assert.equal('asFiltered' in WindowSerie.prototype, false)
+})
+
+test('a window sorts by key over its own rows alone', () => {
+  const prices = column([9, 1, 3, 2])
+  const window = prices.window(1, 3)
+  assert.deepEqual(window.sortIndicesBy('price desc').asJs(), [1, 2, 0])
+  assert.deepEqual(window.sortIndicesBy([{ term: 'price', descending: true }]).asJs(), [1, 2, 0])
+  const sorted = window.intoSortBy('price desc')
+  assert.ok(sorted instanceof Serie)
+  assert.deepEqual(sorted.asJs(), [3, 2, 1])
+  assert.deepEqual(prices.asJs(), [9, 1, 3, 2])
+  // In place, written back over the window's range; every row outside it
+  // untouched, and a refusal leaves the serie as it was.
+  assert.strictEqual(window.asSortBy('price desc'), window)
+  assert.deepEqual(prices.asJs(), [9, 3, 2, 1])
+  assert.throws(() => window.asSortBy('tier'))
+  assert.deepEqual(prices.asJs(), [9, 3, 2, 1])
+  // A record window keys by its root's columns.
+  const quotes = Serie.fromScalars(
+    Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null'),
+    [
+      { venue: 'XNYS', price: 2 },
+      { venue: 'XNAS', price: 1 },
+      { venue: 'XNYS', price: 1 },
+      { venue: 'AAAA', price: 0 },
+    ],
+  )
+  const records = quotes.window(0, 3).intoSortBy('venue, price')
+  assert.ok(records instanceof StructSerie)
+  assert.deepEqual(records.asJs(), [
+    { venue: 'XNAS', price: 1 },
+    { venue: 'XNYS', price: 1 },
+    { venue: 'XNYS', price: 2 },
+  ])
+  assert.deepEqual(records.declaredOrder(), ['venue', 'price'])
+})
+
+test('a window answers where its rows live through the serie it views', () => {
+  const prices = Serie.fromScalars(
+    new Field('price', 'int64', false),
+    Array.from({ length: 1_024 }, (_, index) => index),
+  )
+  const window = prices.window(8, 64)
+  assert.equal(window.isSpilled(), false)
+  assert.equal(window.residentSize(), window.memorySize())
+  prices.spill(new SpillOptions({ byteSize: 0 }))
+  assert.equal(window.isSpilled(), true)
+  assert.equal(window.residentSize(), 0)
+  assert.equal(window.scalar(0).asJs(), 8)
+  // A window over a run is resident.
+  const values = run([1, 2, 3]).window(0, 2)
+  assert.equal(values.isSpilled(), false)
+  assert.equal(values.residentSize(), values.memorySize())
 })
 
 // ---------------------------------------------------------------------------

@@ -27,21 +27,24 @@ use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions};
 use arrow_ipc::reader::StreamReader;
 use arrow_schema::{Schema, SchemaRef};
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Either, Env, Generator, Reference, Result, Uint8Array,
+    Buffer, ClassInstance, Either, Either3, Env, Generator, Reference, Result, Uint8Array,
 };
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
+use yggdryl::expression::{IntoOrderings as _, Ordering};
 use yggdryl::{
-    ArrowCastOptions, Field as CoreField, FieldPath, FieldScalar, Scalar, Serie, SerieReader,
-    SerieReaderWindows, SerieValue, SortOptions,
+    ArrowCastOptions, Field as CoreField, FieldPath, FieldScalar, JoinSource, Scalar, Serie,
+    SerieReader, SerieReaderWindows, SerieValue, SortOptions,
 };
 
 use crate::chunked_serie::JsChunkedSerie;
 use crate::datatype::JsDataType;
-use crate::expression::{SelectorInput, selector_from_input};
+use crate::expression::{JsSelector, SelectorInput, selector_from_input};
 use crate::field::JsField;
 use crate::iomedia::{JsBatchReader, encoded};
+use crate::join::{JoinOptionsInput, join_kind, join_options};
 use crate::napi_error;
+use crate::spill::{JsSpillOptions, spill_bound};
 use crate::text::codec::{
     JsScalar, checked_depth, value_to_transport, value_to_transport_with_field,
 };
@@ -119,6 +122,30 @@ pub(crate) const fn sort_options(
         _ => SortOptions::ascending(),
     };
     options.with_nulls_first(matches!(nulls_first, Some(true)))
+}
+
+/// The `order by` keys a sort verb reads: a `Selector`, every projection
+/// ascending with nulls last, or the one `Scalar` the loader converted the
+/// caller's keys into - the clause's text, a list of key texts, or a list of
+/// `{ term, descending, nulls_first }` records.
+pub(crate) type OrderingsInput<'a> =
+    Either<ClassInstance<'a, JsSelector>, ClassInstance<'a, JsScalar>>;
+
+/// The keys `by` stands for, read once by the core's own rule
+/// ([`yggdryl::expression::IntoOrderings`]) before any row is.
+pub(crate) fn orderings_of(by: &OrderingsInput<'_>) -> Result<Vec<Ordering>> {
+    match by {
+        Either::A(selector) => (&selector.inner).into_orderings(),
+        Either::B(keys) => (&keys.inner).into_orderings(),
+    }
+    .map_err(napi_error)
+}
+
+/// The keys a record declares its rows keep, each as the `order by` key
+/// grammar spells it - `venue`, `price desc nulls first` - or `None` where
+/// it declares none.
+pub(crate) fn spelled_orderings(keys: Option<Vec<Ordering>>) -> Option<Vec<String>> {
+    keys.map(|keys| keys.iter().map(ToString::to_string).collect())
 }
 
 /// A row or item count as the number JavaScript reads.
@@ -791,6 +818,46 @@ impl JsSerie {
         count(self.inner.memory_size())
     }
 
+    /// The bytes the rows occupy in memory: `memorySize` less what lies in a
+    /// spill file's mapping, read off the buffers.
+    #[napi]
+    pub fn resident_size(&self) -> f64 {
+        count(self.inner.resident_size())
+    }
+
+    /// Whether the rows lie in a spill file: some bytes, none of them
+    /// resident. A run and an empty column are never spilled.
+    #[napi]
+    pub fn is_spilled(&self) -> bool {
+        self.inner.is_spilled()
+    }
+
+    /// Move the rows to disk until the resident bytes are under the bound
+    /// `options` states - the process default (`SpillOptions.fromEnv()`)
+    /// where it is `undefined` or `null` - the heaviest leaves first, each
+    /// written once to a private file and mapped back read-only, so every
+    /// later read reaches the mapping and a write copies the buffer it
+    /// touches back once. A run spills nothing; a refused folder is named
+    /// and leaves the serie as it was.
+    #[napi]
+    pub fn spill(&mut self, options: Option<ClassInstance<'_, JsSpillOptions>>) -> Result<()> {
+        let bound = spill_bound(options.as_deref())?;
+        self.inner.spill(bound).map_err(napi_error)
+    }
+
+    /// The `order by` keys this record's root declares its rows keep, most
+    /// significant first, each as the key grammar spells it (`price desc`):
+    /// `SORT:by` on the root, a proven order the sorts write and the writes
+    /// that break it clear. `null` for a run, a column that is no record,
+    /// and a root declaring none.
+    #[napi]
+    pub fn declared_order(&self) -> Result<Option<Vec<String>>> {
+        self.inner
+            .declared_order()
+            .map(spelled_orderings)
+            .map_err(napi_error)
+    }
+
     /// The rows in sorted order, this serie untouched.
     #[napi(js_name = "_intoSortedNative", skip_typescript)]
     pub fn into_sorted_native(
@@ -800,6 +867,46 @@ impl JsSerie {
     ) -> Result<Self> {
         self.inner
             .into_sorted(sort_options(descending, nulls_first))
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The row positions in the order the `order by` keys of `by` state, as
+    /// a `uint32` column named `index`: stable, a record's terms bound once
+    /// against its root and a plain column keyed as itself.
+    #[napi(js_name = "_sortIndicesByNative", skip_typescript)]
+    pub fn sort_indices_by_native(&self, by: OrderingsInput<'_>) -> Result<Self> {
+        self.inner
+            .sort_indices_by(orderings_of(&by)?)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The rows in the order the `order by` keys of `by` state, this serie
+    /// untouched; the root declares the keys it was sorted by.
+    #[napi(js_name = "_intoSortByNative", skip_typescript)]
+    pub fn into_sort_by_native(&self, by: OrderingsInput<'_>) -> Result<Self> {
+        self.inner
+            .into_sort_by(orderings_of(&by)?)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// This serie joined with `other` on the keys `by` holds, under the kind
+    /// `how` names - `inner` where it names none - and `options`: one record
+    /// column of the left columns, then the right.
+    #[napi(js_name = "_joinWithNative", skip_typescript)]
+    pub fn join_with_native(
+        &self,
+        other: &JsSerie,
+        by: &JsScalar,
+        how: Option<String>,
+        options: Option<JoinOptionsInput<'_>>,
+    ) -> Result<Self> {
+        let how = join_kind(how)?;
+        let options = join_options(options)?;
+        self.inner
+            .join_with(&other.inner, &by.inner, how, &options)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -914,6 +1021,14 @@ impl JsSerie {
     #[napi(js_name = "_asReversedNative", skip_typescript)]
     pub fn as_reversed_native(&mut self) -> Result<()> {
         self.inner.as_reversed().map(|_| ()).map_err(napi_error)
+    }
+
+    /// Sort the rows in place in the order the `order by` keys of `by`
+    /// state; a refusal leaves the serie as it was.
+    #[napi(js_name = "_asSortByNative", skip_typescript)]
+    pub fn as_sort_by_native(&mut self, by: OrderingsInput<'_>) -> Result<()> {
+        let by = orderings_of(&by)?;
+        self.inner.as_sort_by(by).map(|_| ()).map_err(napi_error)
     }
 
     /// Keep the rows an integer serie of positions names, in place.
@@ -1301,6 +1416,111 @@ impl JsSerieReader {
             .window_by(by, sorted.unwrap_or(false))
             .map(|inner| JsSerieReaderWindows { inner })
             .map_err(napi_error)
+    }
+
+    /// The bytes the records this reader holds occupy in memory: the held
+    /// records still to yield, or the batch a window's walk stands in; a
+    /// stream holds no landed batch between pulls, and a consumed reader
+    /// nothing, and both answer zero.
+    #[napi]
+    pub fn resident_size(&self) -> f64 {
+        count(self.inner.as_ref().map_or(0, SerieReader::resident_size))
+    }
+
+    /// Whether every record this reader holds lies in a spill file: held
+    /// records only, never a stream, which holds none.
+    #[napi]
+    pub fn is_spilled(&self) -> bool {
+        self.inner.as_ref().is_some_and(SerieReader::is_spilled)
+    }
+
+    /// Move the records this reader holds to disk under the bound `options`
+    /// states - the process default where it is `undefined` or `null` -
+    /// each held record as `Serie.spill` moves it; a stream holds none and
+    /// is untouched. Refused once the reader was taken.
+    #[napi]
+    pub fn spill(&mut self, options: Option<ClassInstance<'_, JsSpillOptions>>) -> Result<()> {
+        if self.taken {
+            return Err(serie_reader_consumed());
+        }
+        let bound = spill_bound(options.as_deref())?;
+        match self.inner.as_mut() {
+            Some(reader) => reader.spill(bound).map_err(napi_error),
+            None => Ok(()),
+        }
+    }
+
+    /// Every record this reader yields in sorted order under the options:
+    /// the stream drained into its chunks, each settled as it lands, merged,
+    /// and read back as the held stream of the merged chunks. The root and
+    /// the record a window states are kept; the reader is consumed.
+    #[napi(js_name = "_intoSortedNative", skip_typescript)]
+    pub fn into_sorted_native(
+        &mut self,
+        descending: Option<bool>,
+        nulls_first: Option<bool>,
+    ) -> Result<Self> {
+        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        self.taken = true;
+        reader
+            .into_sorted(sort_options(descending, nulls_first))
+            .map_err(napi_error)
+            .and_then(Self::from_core)
+    }
+
+    /// Every record this reader yields in the order the `order by` keys of
+    /// `by` state, bound against the root before any batch is pulled, then
+    /// drained and merged as `intoSorted` is. The reader is consumed, a
+    /// refused key included.
+    #[napi(js_name = "_intoSortByNative", skip_typescript)]
+    pub fn into_sort_by_native(&mut self, by: OrderingsInput<'_>) -> Result<Self> {
+        let by = orderings_of(&by)?;
+        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        self.taken = true;
+        reader
+            .into_sort_by(by)
+            .map_err(napi_error)
+            .and_then(Self::from_core)
+    }
+
+    /// This stream joined with `other` - a held serie, a chunked one, or
+    /// another stream, consumed too - on the keys `by` holds, under the kind
+    /// `how` names and `options`: a stream of the output, one probe batch
+    /// joined at a time, the held side built first. The kind and the options
+    /// are read before anything is consumed; this reader is consumed, a
+    /// refused key included.
+    #[napi(js_name = "_joinWithNative", skip_typescript)]
+    pub fn join_with_native(
+        &mut self,
+        other: Either3<
+            ClassInstance<'_, JsSerie>,
+            ClassInstance<'_, JsChunkedSerie>,
+            ClassInstance<'_, JsSerieReader>,
+        >,
+        by: &JsScalar,
+        how: Option<String>,
+        options: Option<JoinOptionsInput<'_>>,
+    ) -> Result<Self> {
+        let how = join_kind(how)?;
+        let options = join_options(options)?;
+        if self.taken || self.inner.is_none() {
+            return Err(serie_reader_consumed());
+        }
+        let other = match other {
+            Either3::A(serie) => JoinSource::from(serie.inner.clone()),
+            Either3::B(chunked) => JoinSource::from(chunked.inner.clone()),
+            Either3::C(mut reader) => {
+                let taken = reader.inner.take().ok_or_else(serie_reader_consumed)?;
+                reader.taken = true;
+                JoinSource::from(taken)
+            }
+        };
+        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        self.taken = true;
+        reader
+            .join_with(other, &by.inner, how, &options)
+            .map_err(napi_error)
+            .and_then(Self::from_core)
     }
 
     /// The stream's batches reconciled to the root as a native

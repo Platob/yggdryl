@@ -210,14 +210,16 @@ mod boolean;
 mod bytes;
 mod datatype;
 mod enums;
+mod join;
 pub(crate) mod layout;
 mod mapping;
 mod null;
 mod order;
-pub(crate) use order::{compare_values, require_indexable};
+pub(crate) use order::{compare_values, require_indexable, spelled, stored_order_is_value_order};
 mod primitive;
 mod runend;
 mod sequence;
+mod spill;
 mod string;
 mod structure;
 mod union;
@@ -1050,6 +1052,9 @@ macro_rules! column_mut {
         }
     };
 }
+
+// A child module declared above these definitions reaches them by path.
+pub(crate) use {column, column_mut};
 
 /// Where one column type sits in the root: rooting a leaf and narrowing the
 /// root back to it read the one table this is generated from, so a leaf
@@ -2748,15 +2753,30 @@ impl Serie {
     /// Returns an error naming the serie when `range` is reversed or reaches
     /// past the end, or [`SerieValue::splice`]'s refusal for a column.
     pub fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
+        let written = range.start..range.start + rows.len();
+        // A removal takes rows out of an order it cannot break, so only a
+        // write of rows is read against the declaration.
+        let declares = !rows.is_empty() && self.declares_order();
         column_mut!(
             self,
             run => {
                 require_range(RUN_PATH, &range, run.as_slice().len())?;
                 splice_run(run, range, rows);
-                Ok(())
             },
-            column => SerieValue::splice(column, range, rows)
-        )
+            column => SerieValue::splice(column, range, rows)?
+        );
+        if declares {
+            self.keep_or_clear_order(written)?;
+        }
+        Ok(())
+    }
+
+    /// Whether the root declares an order a write has to keep true: one
+    /// map lookup, read before every write so a record declaring none pays
+    /// nothing more.
+    fn declares_order(&self) -> bool {
+        self.field()
+            .is_some_and(|field| field.as_sort().declares_order())
     }
 
     /// Overwrite row `index`, through the field's contract where there is
@@ -2873,10 +2893,21 @@ impl Serie {
             }
             _ => false,
         };
+        let held = self.len();
         if agreed && self.append(other) {
-            return Ok(());
+            if self.declares_order() {
+                // Rows `other` proves in this order need the one edge read;
+                // any other rows are read through, as a row write reads them.
+                let written = match (self.declared_order()?, other.declared_order()?) {
+                    (Some(mine), Some(theirs)) if theirs.starts_with(&mine) => held..held,
+                    _ => held..self.len(),
+                };
+                self.keep_or_clear_order(written)?;
+            }
+            return self.settle();
         }
-        self.extend(other.rows().into_owned())
+        self.extend(other.rows().into_owned())?;
+        self.settle()
     }
 
     /// Append `other`'s buffers where the two hold one layout and the
@@ -3067,6 +3098,9 @@ impl Serie {
         let rows = vec![canonical; len - held];
         self.check(&(held..held), &rows)?;
         self.write(held..held, rows);
+        if self.declares_order() {
+            self.keep_or_clear_order(held..len)?;
+        }
         Ok(())
     }
 
@@ -3079,9 +3113,15 @@ impl Serie {
     /// exactly `len` rows.
     pub fn set_child(&mut self, child: Self) -> Result<()> {
         match self {
-            Self::Struct(held) => Arc::make_mut(held).set_child(child),
-            other => Err(other.not_a_record("holds no child")),
+            Self::Struct(held) => Arc::make_mut(held).set_child(child)?,
+            other => return Err(other.not_a_record("holds no child")),
         }
+        if self.declares_order() {
+            // A whole column changed: every row is read against its neighbour.
+            let len = self.len();
+            self.keep_or_clear_order(0..len)?;
+        }
+        Ok(())
     }
 
     /// Write one cell of one row, `path` deep, in place.
@@ -3096,9 +3136,13 @@ impl Serie {
     /// way is absent, or when `value` is not one the leaf's field accepts.
     pub fn set_cell(&mut self, path: &FieldPath, index: usize, value: Scalar) -> Result<()> {
         match self {
-            Self::Struct(held) => Arc::make_mut(held).set_cell(path, index, value),
-            other => Err(other.not_a_record("holds no cell")),
+            Self::Struct(held) => Arc::make_mut(held).set_cell(path, index, value)?,
+            other => return Err(other.not_a_record("holds no cell")),
         }
+        if self.declares_order() {
+            self.keep_or_clear_order(index..index + 1)?;
+        }
+        Ok(())
     }
 
     /// The refusal a record-only write answers elsewhere.

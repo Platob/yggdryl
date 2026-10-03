@@ -18,6 +18,7 @@ const {
   Serie,
   SerieReader,
   SerieReaderWindows,
+  SpillOptions,
   StructSerie,
   Term,
   WindowSerie,
@@ -1000,7 +1001,10 @@ test('every layout answers every verb through the ladder', () => {
     assert.equal(column.sortIndices().length, 4, what)
     const sorted = column.intoSorted()
     assert.equal(sorted.isSorted(), true, what)
-    assert.ok(sorted.field.equals(column.field), what)
+    // A whole-row sort of a record declares every column on the root
+    // (`SORT:by`); the datatype is the column's.
+    assert.ok(sorted.field.dtype.equals(column.field.dtype), what)
+    assert.equal(sorted.declaredOrder() !== null, column instanceof StructSerie, what)
     assert.equal(sorted.constructor, column.constructor, what)
     // The sort agrees with the values' own order, absences last.
     const byValue = column.rows().sort((left, right) => {
@@ -1023,7 +1027,7 @@ test('every layout answers every verb through the ladder', () => {
     const written = column.clone()
     written.asSorted().asUnique().asReversed()
     assert.equal(written.length, 3, what)
-    assert.ok(written.field.equals(column.field), what)
+    assert.ok(written.field.dtype.equals(column.field.dtype), what)
     // Ascending with absences last, reversed, is descending with absences
     // first.
     assert.equal(written.isSorted({ descending: true, nullsFirst: true }), true, what)
@@ -1063,10 +1067,17 @@ test('the ordering natives stay outside the public surface', () => {
     '_asReversedNative',
     '_asTakenNative',
     '_asFilteredNative',
+    '_sortIndicesByNative',
+    '_intoSortByNative',
+    '_asSortByNative',
+    '_joinWithNative',
     '_windowNative',
     '_windowByNative',
   ]) {
     assert.equal(name in Serie.prototype, false, name)
+  }
+  for (const name of ['_intoSortedNative', '_intoSortByNative', '_joinWithNative']) {
+    assert.equal(name in SerieReader.prototype, false, name)
   }
   // A nested answer is handed out as its leaf's class.
   const records = quotes([['XNAS', 1]])
@@ -1418,4 +1429,287 @@ test('reader static values survive cast and hand over and never reach a batch', 
     ['venue', 'count', 'ts'],
   )
   assert.equal(table.numRows, 2)
+})
+
+// ---------------------------------------------------------------------------
+// Spill: where the rows live, and the one verb that moves them to disk.
+// ---------------------------------------------------------------------------
+
+test('spill moves a column to disk and every read reaches the mapping', () => {
+  const prices = Serie.fromScalars(
+    new Field('price', 'int64', false),
+    Array.from({ length: 1_024 }, (_, index) => index),
+  )
+  assert.equal(prices.residentSize(), prices.memorySize())
+  assert.equal(prices.isSpilled(), false)
+  const before = prices.clone()
+  assert.equal(prices.spill(new SpillOptions({ byteSize: 0 })), undefined)
+  assert.equal(prices.isSpilled(), true)
+  assert.equal(prices.residentSize(), 0)
+  assert.ok(prices.memorySize() > 0)
+  assert.ok(prices.equals(before))
+  assert.equal(prices.scalar(7).asJs(), 7)
+  // The clone taken before keeps its heap bytes.
+  assert.equal(before.isSpilled(), false)
+  // A write brings the rows it touches back to the heap, once.
+  prices.push(1_024)
+  assert.equal(prices.isSpilled(), false)
+  assert.equal(prices.length, 1_025)
+})
+
+test('spill leaves a run, a never bound and a column under the default alone', () => {
+  const run = new Serie([1, 2, 3])
+  run.spill(new SpillOptions({ byteSize: 0 }))
+  assert.equal(run.isSpilled(), false)
+  assert.equal(run.residentSize(), run.memorySize())
+  const prices = int64Column([3, 1, 2])
+  prices.spill(new SpillOptions({ byteSize: SpillOptions.NEVER }))
+  assert.equal(prices.isSpilled(), false)
+  // Absent and null are the process default, 64 MiB unless the environment
+  // says otherwise: three rows stay resident.
+  prices.spill()
+  prices.spill(null)
+  assert.equal(prices.isSpilled(), false)
+  assert.equal(prices.residentSize(), prices.memorySize())
+})
+
+test('a record spills child by child, heaviest first, and reads back whole', () => {
+  const root = Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null')
+  const rows = Array.from({ length: 512 }, (_, index) => ({
+    venue: ['XNAS', 'XNYS'][index % 2],
+    price: index,
+  }))
+  const quotes = Serie.fromScalars(root, rows)
+  const before = quotes.clone()
+  quotes.spill(new SpillOptions({ byteSize: 0 }))
+  assert.equal(quotes.residentSize(), 0)
+  assert.ok(quotes.equals(before))
+  assert.deepEqual(quotes.asJs()[3], { venue: 'XNYS', price: 3 })
+})
+
+// ---------------------------------------------------------------------------
+// Orderings by key: `by` read once by the core's own `order by` key rule.
+// ---------------------------------------------------------------------------
+
+const keyedQuotes = () =>
+  Serie.fromScalars(
+    Field.from('quote: struct<venue: utf8 not null, price: int64> not null'),
+    [
+      { venue: 'XNYS', price: 1 },
+      { venue: 'XNAS', price: 2 },
+      { venue: 'XNAS', price: null },
+      { venue: 'XNYS', price: 3 },
+    ],
+  )
+
+test('sortIndicesBy reads every spelling of the keys as one', () => {
+  const quotes = keyedQuotes()
+  for (const by of [
+    'venue, price desc nulls first',
+    ['venue', 'price desc nulls first'],
+    [{ term: 'venue' }, { term: 'price', descending: true, nulls_first: true }],
+  ]) {
+    const order = quotes.sortIndicesBy(by)
+    assert.equal(order.field.name, 'index')
+    assert.equal(order.field.dtype.toString(), 'uint32')
+    assert.deepEqual(order.asJs(), [2, 1, 3, 0], JSON.stringify(by))
+  }
+  // One record is one key; a Selector is every projection ascending.
+  assert.deepEqual(quotes.sortIndicesBy({ term: 'price', descending: true }).asJs(), [3, 1, 0, 2])
+  assert.deepEqual(quotes.sortIndicesBy(new Selector('venue')).asJs(), [1, 2, 0, 3])
+  // A plain column keys as itself, under its own name.
+  assert.deepEqual(int64Column([3, 1, 2]).sortIndicesBy('price desc').asJs(), [0, 2, 1])
+})
+
+test('sortIndicesBy refuses what names no key, before any row is read', () => {
+  const quotes = keyedQuotes()
+  // The record's flag is read under either spelling: a boolean it must be.
+  assert.deepEqual(
+    quotes.sortIndicesBy([{ term: 'price', nullsFirst: true }]).asJs(),
+    quotes.sortIndicesBy([{ term: 'price', nulls_first: true }]).asJs(),
+  )
+  assert.throws(() => quotes.sortIndicesBy([{ term: 'price', nullsFirst: 'yes' }]), /\$\.nullsFirst/)
+  assert.throws(() => quotes.sortIndicesBy([{ descending: true }]), /names the term it orders by/)
+  assert.throws(() => quotes.sortIndicesBy('tier'))
+  assert.throws(() => quotes.sortIndicesBy([]), /at least one `order by` key/)
+  assert.throws(() => new Serie([1, 2]).sortIndicesBy('price'), /sorts by no term/)
+})
+
+test('intoSortBy declares the keys it sorted by and leaves the serie alone', () => {
+  const quotes = keyedQuotes()
+  assert.equal(quotes.declaredOrder(), null)
+  const sorted = quotes.intoSortBy('venue desc, price desc')
+  assert.ok(sorted instanceof StructSerie)
+  assert.deepEqual(sorted.asJs(), [
+    { venue: 'XNYS', price: 3 },
+    { venue: 'XNYS', price: 1 },
+    { venue: 'XNAS', price: 2 },
+    { venue: 'XNAS', price: null },
+  ])
+  assert.deepEqual(sorted.declaredOrder(), ['venue desc', 'price desc'])
+  assert.equal(sorted.field.get('SORT:by'), '["venue desc","price desc"]')
+  assert.deepEqual(quotes.asJs()[0], { venue: 'XNYS', price: 1 })
+  // What the declaration states is answered without a pass.
+  assert.deepEqual(sorted.sortIndicesBy('venue desc').asJs(), [0, 1, 2, 3])
+  // A whole-row sort declares every column; a column that is no record
+  // declares nothing.
+  assert.deepEqual(quotes.intoSorted().declaredOrder(), ['venue', 'price'])
+  assert.equal(int64Column([2, 1]).intoSortBy('price').declaredOrder(), null)
+})
+
+test('asSortBy sorts in place, chains, and a refusal leaves the serie', () => {
+  const prices = int64Column([2, 3, 1])
+  assert.strictEqual(prices.asSortBy('price desc').asReversed(), prices)
+  assert.deepEqual(prices.asJs(), [1, 2, 3])
+  assert.throws(() => prices.asSortBy('tier'))
+  assert.deepEqual(prices.asJs(), [1, 2, 3])
+})
+
+// ---------------------------------------------------------------------------
+// Joins: two held columns matched on key terms.
+// ---------------------------------------------------------------------------
+
+const tradeRows = () =>
+  Serie.fromScalars(
+    Field.from('trade: struct<id: int64 not null, venue: utf8 not null> not null'),
+    [
+      { id: 1, venue: 'XNAS' },
+      { id: 2, venue: 'XNYS' },
+    ],
+  )
+const venueRows = () =>
+  Serie.fromScalars(
+    Field.from('venue: struct<venue: utf8 not null, city: utf8 not null> not null'),
+    [{ venue: 'XNAS', city: 'New York' }],
+  )
+
+test('joinWith answers the left columns then the right, a shared key once', () => {
+  const joined = tradeRows().joinWith(venueRows(), 'venue', 'left')
+  assert.ok(joined instanceof StructSerie)
+  assert.equal(joined.field.name, 'trade')
+  assert.deepEqual(joined.names, ['id', 'venue', 'city'])
+  assert.deepEqual(joined.asJs(), [
+    { id: 1, venue: 'XNAS', city: 'New York' },
+    { id: 2, venue: 'XNYS', city: null },
+  ])
+  // The kind is `inner` when absent or null.
+  for (const how of [undefined, null, 'inner', 'INNER JOIN']) {
+    assert.deepEqual(tradeRows().joinWith(venueRows(), 'venue', how).asJs(), [
+      { id: 1, venue: 'XNAS', city: 'New York' },
+    ])
+  }
+  // The filtering kinds answer the left columns alone.
+  assert.deepEqual(tradeRows().joinWith(venueRows(), 'venue', 'semi').asJs(), [
+    { id: 1, venue: 'XNAS' },
+  ])
+  assert.deepEqual(tradeRows().joinWith(venueRows(), 'venue', 'anti').asJs(), [
+    { id: 2, venue: 'XNYS' },
+  ])
+  // A window joins as the serie of its rows.
+  const trades = tradeRows()
+  assert.equal(trades.window(1, 1).joinWith, undefined)
+  assert.deepEqual(venueRows().joinWith(trades.window(0, 1), 'venue').asJs(), [
+    { venue: 'XNAS', city: 'New York', id: 1 },
+  ])
+})
+
+test('joinWith refuses a run, a key naming no column and anything but a serie', () => {
+  assert.throws(() => tradeRows().joinWith(new Serie([1]), 'venue'))
+  assert.throws(() => tradeRows().joinWith(venueRows(), 'tier'))
+  assert.throws(() => tradeRows().joinWith(venueRows(), 'venue', 'cross'), /one of `inner`/)
+  assert.throws(
+    () => tradeRows().joinWith([{ venue: 'XNAS' }], 'venue'),
+    /Serie\.joinWith takes a Serie or a WindowSerie/,
+  )
+  assert.throws(() => tradeRows().joinWith(venueRows(), 'venue', 7), /how must be a join kind/)
+})
+
+// ---------------------------------------------------------------------------
+// The stream: held records spill, a stream sorts by draining and merging,
+// and joins one probe batch at a time.
+// ---------------------------------------------------------------------------
+
+test('a reader spills the records it holds and a stream holds none', () => {
+  const prices = Serie.fromScalars(
+    new Field('price', 'int64', false),
+    Array.from({ length: 256 }, (_, index) => index),
+  )
+  const held = SerieReader.fromSerie(prices)
+  assert.ok(held.residentSize() > 0)
+  assert.equal(held.isSpilled(), false)
+  held.spill(new SpillOptions({ byteSize: 0 }))
+  assert.equal(held.isSpilled(), true)
+  assert.equal(held.residentSize(), 0)
+  const [record] = [...held]
+  assert.deepEqual(record.child('price').asJs().slice(0, 3), [0, 1, 2])
+  // A stream holds no landed batch between pulls.
+  const stream = SerieReader.fromArrowReader(BatchReader.from(narrow([1], ['AAPL'])), trades())
+  assert.equal(stream.residentSize(), 0)
+  assert.equal(stream.isSpilled(), false)
+  stream.spill(new SpillOptions({ byteSize: 0 }))
+  assert.equal([...stream].length, 1)
+  const taken = SerieReader.fromSerie(prices)
+  taken.intoArrowReader()
+  assert.throws(() => taken.spill(), /already been consumed/)
+})
+
+const readRows = (reader) => [...reader].flatMap((serie) => serie.asJs())
+
+test('a reader sorts by draining and merging, its root kept and the reader consumed', () => {
+  const held = () => quotes([['XNYS', 2], ['XNAS', 1], ['XNYS', 1]])
+  const reader = SerieReader.fromSerie(held())
+  const sorted = reader.intoSorted({ descending: true })
+  assert.ok(sorted instanceof SerieReader)
+  assert.equal(sorted.field.name, 'quote')
+  assert.deepEqual(readRows(sorted), [
+    { venue: 'XNYS', price: 2 },
+    { venue: 'XNYS', price: 1 },
+    { venue: 'XNAS', price: 1 },
+  ])
+  assert.throws(() => [...reader], /already been consumed/)
+  assert.deepEqual(readRows(SerieReader.fromSerie(held()).intoSortBy('venue, price desc')), [
+    { venue: 'XNAS', price: 1 },
+    { venue: 'XNYS', price: 2 },
+    { venue: 'XNYS', price: 1 },
+  ])
+  // A key no column answers is refused with no batch pulled, the reader
+  // consumed; options are refused before anything is.
+  const refused = SerieReader.fromSerie(held())
+  assert.throws(() => refused.intoSortBy('tier'))
+  assert.throws(() => refused.intoSortBy('venue'), /already been consumed/)
+  const untouched = SerieReader.fromSerie(held())
+  assert.throws(() => untouched.intoSorted({ order: 'desc' }), /descending and nullsFirst/)
+  assert.equal(readRows(untouched).length, 3)
+})
+
+test('a reader joins a held column, a chunked one or another stream, consuming both', () => {
+  const expected = [
+    { id: 1, venue: 'XNAS', city: 'New York' },
+    { id: 2, venue: 'XNYS', city: null },
+  ]
+  for (const other of [
+    venueRows(),
+    ChunkedSerie.fromSerie(venueRows()),
+    SerieReader.fromSerie(venueRows()),
+  ]) {
+    const stream = SerieReader.fromSerie(tradeRows())
+    const joined = stream.joinWith(other, 'venue', 'left')
+    assert.ok(joined instanceof SerieReader)
+    assert.equal(joined.field.name, 'trade')
+    assert.deepEqual(readRows(joined), expected)
+    assert.throws(() => [...stream], /already been consumed/)
+    if (other instanceof SerieReader) {
+      assert.throws(() => [...other], /already been consumed/)
+    }
+  }
+  // The kind and the options are read before anything is consumed.
+  const kept = SerieReader.fromSerie(tradeRows())
+  assert.throws(() => kept.joinWith(venueRows(), 'venue', 'cross'), /one of `inner`/)
+  assert.throws(() => kept.joinWith(venueRows(), 'venue', 'left', { how: 'left' }), /got "how"/)
+  assert.throws(() => kept.joinWith(kept, 'venue'), /cannot join a stream with itself/)
+  assert.throws(
+    () => kept.joinWith([{ venue: 'XNAS' }], 'venue'),
+    /takes a Serie, a ChunkedSerie or a SerieReader/,
+  )
+  assert.equal(readRows(kept).length, 2)
 })

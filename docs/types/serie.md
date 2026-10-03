@@ -18,6 +18,9 @@ Many values: a schema-free run, or the Arrow buffers of one [`Field`](field.md).
 | Writes | One mutation, `splice`; every other write is spelled over it. A column proves once, checks once, then writes without failing, so a refusal leaves it exactly as it was. A write is in place when the column holds its buffers alone and copies them once when it does not |
 | Identity | The rows, and nothing else: a run and a column of equal rows are one value and hash alike, and so are an int32 column and an int64 column of equal numbers, exactly as their `Scalar`s are. Not the leaf, not the field |
 | Datatype | For a column, `serie(<the field named item>)` - read off the field, so an empty column still names it. For a run, agreed back out of its rows |
+| Where the buffers lie | On the heap, or in a private file [spilled](#spilling-to-disk) and mapped back: `memory_size` counts the bytes, `resident_size` those still on the heap, `is_spilled` says none of them is. Every door that lays a column out settles it under the process default bound; a mapped leaf reads as a heap one |
+| Order | A record's root may [declare](#a-declared-order) the order its rows keep as `SORT:by`, and on a `Serie` that is a proven fact: written by the sorts, kept, flipped or cleared by the verbs, verified where foreign rows land |
+| Joins | [`join_with`](#joins) joins two record columns on keys - a bare shared column coalesced, or equalities - under a `JoinKind`; a `ChunkedSerie` keeps the output batches apart and a `SerieReader` probes a stream against a held side |
 | Registration | `Scalar::Serie(Serie)`, and its four sibling leaves `SerieView`, `LargeSerie`, `LargeSerieView`, `FixedSizeSerie` - the value of the five [serie layouts](nested/sequence.md), `DataTypeId` `0x91`-`0x95`. It adds no `DataTypeId`, no `DataType` variant and no `Field` variant beside theirs, and `kind()` answers that leaf's own name - `serie`, `serie_view`, `large_serie`, `large_serie_view`, `fixed_size_serie` - for either a run or a column |
 | Leaf contract | `SerieValue`, implemented by every column leaf: its field, and the `id` and `kind` that field's datatype answers - never the variant's, because one layout holds several datatypes. `Serie` itself does not implement it, because a run has no field to answer with; the root answers the same verbs inherently, with `field()` an `Option` |
 | Wire | A `Scalar` holding a serie writes one tag per layout, the layout's own name - `serie`, `serie_view`, `fixed_size_serie`, `large_serie`, `large_serie_view` - over a run's rows or a column's `{"field": .., "rows": [..]}`, the payload's shape saying which; the tags written before the rename (`list`, `list_view`, `fixed_size_list`, `large_list`, `large_list_view`, and the column tags `list_view_serie`, `fixed_size_list_serie`, `large_list_serie`, `large_list_view_serie`) are still read. `Serie`'s own serde reads back only the column wire; JSON, YAML and TOML write the rows alone, because a codec document carries no schema envelope |
@@ -173,6 +176,13 @@ Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, r
 | `memory_size` | a walk of the column's buffers, no row read; a run walks its values |
 | `window`, `window_mut` | an offset and a length beside a reference, nothing moved; a read through it is one bounds check more than the serie's own, a write exactly the serie's own on the rebased row |
 | `window_by` | one plan, one key column, one comparator and one bit per row, then each window its key and nothing else; with `sorted`, one gather only where the keys descend - [Windows by key](#windows-by-key) has the terms |
+| `sort_indices_by`, `into_sort_by`, `as_sort_by` | the keys bound once as a selector against the record root and evaluated once into a key record, lent zero copy where a key is a bare column; one key over no absent row on its own column's rung, several through Arrow's row format where every key's buffers order as its values, else key by key over the values' order; stable; `into_sort_by` adds one take of every column and the [declaration](#a-declared-order) the result's root states - its keys rendered, parsed back and canonicalized by the metadata validator, a constant per call |
+| `declared_order` | one metadata lookup, then the declaration's text parsed once per call: twenty-eight allocations for two keys, never a row |
+| `is_sorted`, `sort_indices`, `into_sorted` and their `_by` forms on a record declaring at least what they ask | the declaration read, then `true`, the identity positions, or a clone sharing the buffers - no row compared |
+| a row write on a record declaring an order | the declaration read, then the written rows compared against their neighbours under each key with the comparator a sort would use - two rows for a `push`, the appended rows for an `extend`, one edge for `extend_from_serie` of a serie declaring the same order; a key that is not a bare column clears the declaration instead of being evaluated |
+| `resident_size`, `is_spilled` | a walk of the leaves' flags and buffer lengths, no row read and nothing allocated; a run counts its values |
+| `spill` | one private file written and mapped per leaf spilled whole - a constant number of allocations per flat column whatever its rows: one per buffer mapped, the file, the mapping, the rebuilt array and the leaf - the heaviest child first for a nested column; reading a mapped leaf costs exactly what reading a heap one does |
+| `join_with` | every key bound once per side and cast to the common datatype; the build side hashed - Arrow's row format where every key's buffers order as its values, one node per build row chained under the key's hash, nothing per distinct key beyond the two vectors' growth; else the values, one `Scalar` per build and probe row - then one take of the probe, one gather of the build and one record per output batch of at most `DEFAULT_RECORD_BATCH_ROW_SIZE` rows, the pairs vector doubling up to the rows; a probe batch wholly outside the build keys' range is pruned without a hash, emitted as a slice of itself where the kind keeps it; a build past the spill bound is grace-partitioned - [Joins](#joins) has the terms |
 
 ## Use
 
@@ -536,6 +546,306 @@ Every leaf answers every verb in one order - `Scalar`'s total order, with every 
 
 A `SortOptions` crosses as keywords in Python - `descending` and `nulls_first`, on `sort_indices`, `is_sorted`, `into_sorted` and `as_sorted` - and as a plain `{ descending, nullsFirst }` object in JavaScript, omitted or `null` the default. `indices`, `mask` and `keys` are a `Serie` or an iterable of values read through `Scalar`, and in Python any columnar object too. `window(offset, length)` answers a [`WindowSerie`](window-serie.md) in all three.
 
+### Sort by keys
+
+`sort_indices_by(by)`, `into_sort_by(by)` and `as_sort_by(by)` sort a record column by `order by` keys rather than by the whole row: `by` is one text (`"venue, price desc nulls first"`), a list of key texts, a `Selector` whose projections are the keys ascending, `Ordering` values, or in the bindings any of those shapes crossing as one `Scalar`. Each key is a term bound once against the record root - a bare column, a path, or a computed term such as `minutes(ts, 15)` - with its own direction and absence placement; the rows are compared key by key, on the rung the key's cells answer, and the sort is stable. A plain column keys as itself under its own name. The result of `into_sort_by` is a new serie under the same field, which now [declares](#a-declared-order) the order it proved.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Scalar, Serie, StructType};
+
+    let root = DataType::from(StructType::from_fields([
+        DataType::utf8().required_field("venue"),
+        DataType::Int64.required_field("price"),
+    ])?)
+    .required_field("quote");
+    let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    let quotes = Serie::from_scalars(root, [quote("XNYS", 1), quote("XNAS", 2), quote("XNYS", 3)])?;
+
+    // The positions, then the rows: one text, or one text per key.
+    let order = quotes.sort_indices_by("venue, price desc")?;
+    assert_eq!(order.rows().to_vec(), [1_u32, 2, 0].map(Scalar::from));
+    let sorted = quotes.into_sort_by(["venue", "price desc"])?;
+    assert_eq!(sorted.rows().to_vec(), vec![quote("XNAS", 2), quote("XNYS", 3), quote("XNYS", 1)]);
+    assert_eq!(quotes.scalar(0)?, quote("XNYS", 1));
+
+    // A plain column keys as itself.
+    let prices = Serie::from_scalars(DataType::Int64.required_field("price"), [3_i64, 1, 2].map(Scalar::from))?;
+    assert_eq!(prices.into_sort_by("price desc")?.rows().to_vec(), [3_i64, 2, 1].map(Scalar::from));
+
+    // In place, chaining.
+    let mut held = quotes.clone();
+    held.as_sort_by("price desc")?.as_reversed()?;
+    assert_eq!(held.child("price").expect("price").rows().to_vec(), [1_i64, 2, 3].map(Scalar::from));
+    ```
+
+=== "Python"
+
+    ```python
+    import copy
+
+    from yggdryl import Field, Serie
+
+    root = Field("quote", "struct<venue: utf8 not null, price: int64 not null>", nullable=False)
+    quotes = Serie.from_scalars(root, [["XNYS", 1], ["XNAS", 2], ["XNYS", 3]])
+
+    # The positions, then the rows: one text, or one text per key.
+    assert quotes.sort_indices_by("venue, price desc").as_py() == [1, 2, 0]
+    sorted_quotes = quotes.into_sort_by(["venue", "price desc"])
+    assert sorted_quotes.child("price").as_py() == [2, 3, 1]
+    assert quotes.child("price").as_py() == [1, 2, 3]
+
+    # A plain column keys as itself.
+    prices = Serie.from_scalars(Field("price", "int64", nullable=False), [3, 1, 2])
+    assert prices.into_sort_by("price desc").as_py() == [3, 2, 1]
+
+    # In place, chaining.
+    held = copy.copy(quotes)
+    assert held.as_sort_by("price desc").as_reversed() is held
+    assert held.child("price").as_py() == [1, 2, 3]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, Serie } = require('yggdryl')
+
+    const root = Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null')
+    const quotes = Serie.fromScalars(root, [['XNYS', 1], ['XNAS', 2], ['XNYS', 3]])
+
+    // The positions, then the rows: one text, or one text per key.
+    assert.deepEqual(quotes.sortIndicesBy('venue, price desc').asJs(), [1, 2, 0])
+    const sorted = quotes.intoSortBy(['venue', 'price desc'])
+    assert.deepEqual(sorted.child('price').asJs(), [2, 3, 1])
+    assert.deepEqual(quotes.child('price').asJs(), [1, 2, 3])
+
+    // A plain column keys as itself.
+    const prices = Serie.fromScalars(Field.from('price: int64 not null'), [3, 1, 2])
+    assert.deepEqual(prices.intoSortBy('price desc').asJs(), [3, 2, 1])
+
+    // In place, chaining.
+    const held = quotes.clone()
+    assert.equal(held.asSortBy('price desc').asReversed(), held)
+    assert.deepEqual(held.child('price').asJs(), [1, 2, 3])
+    ```
+
+### A declared order
+
+A record column's root may declare the order its rows keep, as the [`SORT:by`](protocol.md#sort-order) property - a JSON list of `order by` key texts. On a `Serie` that declaration is a **proven fact**, never a hint: the sorts write it, every verb that keeps the order keeps it, a write that could break it reads the rows it touched and clears it where the order no longer holds, and a door landing rows no verb of the crate laid out in that order reads them once and refuses the first row out of it by name. `declared_order()` answers the keys, `None` for a run, a column that is not a record, and a root declaring none.
+
+| Verb | The declaration |
+| --- | --- |
+| `into_sorted(options)`, `as_sorted` on a record | written: every column, in order, each under `options` - `["venue","price"]`, `["venue desc nulls first","price desc nulls first"]` |
+| `into_sort_by(by)`, `as_sort_by` | written: the keys of `by` as the grammar spells them |
+| `window_by(by, sorted = true)` where the rows were gathered | written on the gathered copy: the key terms ascending |
+| `slice`, `window`, `into_filtered`, `as_filtered`, `into_unique`, `as_unique`, `clone`, `spill`, `into_taken` and `as_taken` with strictly increasing indices | kept |
+| `into_reversed`, `as_reversed` | flipped: every key's direction and absence placement turned around, `["venue desc nulls first","price nulls first"]` for `["venue","price desc"]` |
+| `into_taken`, `as_taken` with any other indices | cleared |
+| `set`, `push`, `insert`, `splice`, `extend`, `extend_from_serie`, `resize`, `set_cell`, `set_child`, and the writes of a `WindowSerieMut` | kept where the written rows and their neighbours are still in order - each key a bare column compared with the comparator a sort uses - cleared otherwise, and cleared by any write where a key is a computed term; `extend_from_serie` of a serie declaring at least the same order compares the one edge |
+| `remove`, `pop`, `truncate`, `clear` | kept |
+| `is_sorted(options)` on a record declaring at least every column under `options` | `true` with no pass |
+| `sort_indices`, `sort_indices_by`, `into_sorted`, `into_sort_by` asking what the declaration begins with (a prefix counts) | the identity positions, or a clone sharing the buffers |
+| `from_scalars`, `from_arrow_array`, `from_arrow_batch` under a declaring field, `cast` and `ArrowCastPlan::apply` onto a declaring target the source does not already declare, a `SerieReader` over a stream under a declaring root (each batch, and each batch's first row against the batch before), `ChunkedSerie::from_series`, `from_arrow_arrays`, `cast` and `push_chunk` (each chunk, and every chunk edge) | verified: the first row out of order is refused - `row 3 of quote is out of the order its root declares, \`venue, price desc\`` - a batch or chunk edge by its batch or chunk |
+| `from_default`, `empty`, `SerieReader::from_serie`, `from_chunked`, a `Serie` already held | not read: equal rows are in every order, and a `Serie` carrying a declaration already proved it |
+
+An Iceberg table's `SORT:by` is how its writers lay each data file out, so the root a [scan](../media/iceberg.md) lands under drops it; `Table::schema()` keeps reporting it. A `Plan` built from a declaring field moves the keys into its `order by`, as it always did.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Scalar, Serie, SortOptions, StructType};
+
+    let root = DataType::from(StructType::from_fields([
+        DataType::utf8().required_field("venue"),
+        DataType::Int64.required_field("price"),
+    ])?)
+    .required_field("quote");
+    let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    let quotes = Serie::from_scalars(root.clone(), [quote("XNYS", 2), quote("XNAS", 1)])?;
+    assert!(quotes.declared_order()?.is_none());
+
+    // The sort declares what it proved.
+    let sorted = quotes.into_sort_by("venue, price desc")?;
+    assert_eq!(sorted.field().expect("a record").get_metadata("SORT:by"), Some(r#"["venue","price desc"]"#));
+    let keys = sorted.declared_order()?.expect("declared");
+    assert_eq!((keys.len(), keys[0].term().to_string(), keys[1].is_descending()), (2, "venue".to_owned(), true));
+    let whole = quotes.into_sorted(SortOptions::default())?;
+    assert_eq!(whole.field().expect("a record").get_metadata("SORT:by"), Some(r#"["venue","price"]"#));
+
+    // What it states is answered without a pass, a prefix included.
+    assert!(whole.is_sorted(SortOptions::default()));
+    assert_eq!(sorted.sort_indices_by("venue")?.rows().to_vec(), [0_u32, 1].map(Scalar::from));
+
+    // Kept, flipped, cleared.
+    assert!(sorted.slice(0, 1)?.declared_order()?.is_some());
+    assert_eq!(
+        sorted.into_reversed().field().expect("a record").get_metadata("SORT:by"),
+        Some(r#"["venue desc nulls first","price nulls first"]"#)
+    );
+    assert!(sorted.into_taken(&Serie::new(vec![Scalar::from(1_u32), Scalar::from(0_u32)]))?.declared_order()?.is_none());
+    let mut held = sorted.clone();
+    held.push(quote("XNYS", 0))?;
+    assert!(held.declared_order()?.is_some());
+    held.push(quote("AAAA", 9))?;
+    assert!(held.declared_order()?.is_none());
+
+    // A landing under a declaring root is read once, and refused by row.
+    let mut declared = root;
+    declared.as_sort_mut().set_by_texts(["price"])?;
+    let refused = Serie::from_scalars(declared, [quote("XNYS", 2), quote("XNAS", 1)]).unwrap_err();
+    assert!(refused.to_string().contains("row 1 of quote is out of the order its root declares, `price`"));
+    ```
+
+=== "Python"
+
+    ```python
+    import copy
+
+    from yggdryl import Field, Serie
+
+    root = Field("quote", "struct<venue: utf8 not null, price: int64 not null>", nullable=False)
+    quotes = Serie.from_scalars(root, [["XNYS", 2], ["XNAS", 1]])
+    assert quotes.declared_order() is None
+
+    # The sort declares what it proved, as the `order by` key texts.
+    sorted_quotes = quotes.into_sort_by("venue, price desc")
+    assert sorted_quotes.declared_order() == ["venue", "price desc"]
+    assert quotes.into_sorted().declared_order() == ["venue", "price"]
+
+    # What it states is answered without a pass, a prefix included.
+    assert sorted_quotes.sort_indices_by("venue").as_py() == [0, 1]
+
+    # Kept, flipped, cleared.
+    assert sorted_quotes.slice(0, 1).declared_order() == ["venue", "price desc"]
+    assert sorted_quotes.into_reversed().declared_order() == ["venue desc nulls first", "price nulls first"]
+    assert sorted_quotes.into_taken([1, 0]).declared_order() is None
+    held = copy.copy(sorted_quotes)
+    held.push(["XNYS", 0])
+    assert held.declared_order() == ["venue", "price desc"]
+    held.push(["AAAA", 9])
+    assert held.declared_order() is None
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, Serie } = require('yggdryl')
+
+    const root = Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null')
+    const quotes = Serie.fromScalars(root, [['XNYS', 2], ['XNAS', 1]])
+    assert.equal(quotes.declaredOrder(), null)
+
+    // The sort declares what it proved, as the `order by` key texts.
+    const sorted = quotes.intoSortBy('venue, price desc')
+    assert.deepEqual(sorted.declaredOrder(), ['venue', 'price desc'])
+    assert.deepEqual(quotes.intoSorted().declaredOrder(), ['venue', 'price'])
+
+    // What it states is answered without a pass, a prefix included.
+    assert.deepEqual(sorted.sortIndicesBy('venue').asJs(), [0, 1])
+
+    // Kept, flipped, cleared.
+    assert.deepEqual(sorted.slice(0, 1).declaredOrder(), ['venue', 'price desc'])
+    assert.deepEqual(sorted.intoReversed().declaredOrder(), ['venue desc nulls first', 'price nulls first'])
+    assert.equal(sorted.intoTaken([1, 0]).declaredOrder(), null)
+    const held = sorted.clone()
+    held.push(['XNYS', 0])
+    assert.deepEqual(held.declaredOrder(), ['venue', 'price desc'])
+    held.push(['AAAA', 9])
+    assert.equal(held.declaredOrder(), null)
+    ```
+
+## Spilling to disk
+
+A column's buffers can leave the heap: `spill(options)` writes every buffer of the leaves it chooses to one private file - 64-byte aligned, unlinked as soon as it is created, under the folder the options name or the platform temporary folder - and lands the same column over the mapping, in place. Nothing about reading changes: a mapped leaf reads a cell exactly as a heap one does, `memory_size` still counts the bytes, and `resident_size` counts the bytes still on the heap, so `is_spilled` is "some bytes, none of them resident". The bound is `SpillOptions::byte_size`: a column under it is untouched; a flat column over it, or a nested one whose own buffers alone pass it, spills whole; any other nested column spills child by child, heaviest first, each under what the bound leaves once everything else stays resident. `SpillOptions::NEVER` spills nothing.
+
+Every door at which the crate lays a column out itself - `from_scalars`, `from_default`, a `from_arrow_array` or `from_arrow_batch` that casts, `cast`, the sorts, `into_unique`, `into_taken`, `into_filtered`, `extend_from_serie`, `ChunkedSerie::into_serie` over several chunks, `push_chunk`, the chunked merge and a join - settles its result under the **process default**, `SpillOptions::from_env()`: `YGGDRYL_SPILL_BYTE_SIZE` (bytes, default 64 MiB) and `YGGDRYL_SPILL_FOLDER`, read once; `SpillOptions::install_env(options)` states the default before anything reads it, and is refused afterwards. A door that only shares a caller's buffers - an exact `from_arrow_array`, `slice`, `window`, a `SerieReader` batch in flight - never settles, and neither does a row write. A write through a mapped leaf brings that leaf back to the heap; a clone or a slice of a spilled column shares the mapping. A [`ChunkedSerie`](chunked-serie.md) spills its heaviest chunks whole first, a [`WindowSerie`](window-serie.md) reports through the serie it views, and a [`SerieReader`](#arrow-an-array-a-batch-a-reader) spills the records it holds and nothing of a stream.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DEFAULT_SPILL_BYTE_SIZE, DataType, Scalar, Serie, SpillOptions};
+
+    assert_eq!(SpillOptions::new().byte_size(), DEFAULT_SPILL_BYTE_SIZE);
+    let prices = Serie::from_scalars(DataType::Int64.required_field("price"), (0..1_024_i64).map(Scalar::from))?;
+    assert_eq!(prices.resident_size(), prices.memory_size());
+    assert!(!prices.is_spilled());
+
+    // Under a bound of zero everything spills; the rows read as before.
+    let mut spilled = prices.clone();
+    spilled.spill(&SpillOptions::new().with_byte_size(0))?;
+    assert!(spilled.is_spilled());
+    assert_eq!((spilled.resident_size(), spilled.memory_size()), (0, prices.memory_size()));
+    assert_eq!(spilled.scalar(7)?, Scalar::from(7_i64));
+    assert_eq!(spilled, prices);
+
+    // A write brings the written leaf back to the heap; `NEVER` spills nothing.
+    spilled.push(Scalar::from(1_024_i64))?;
+    assert!(!spilled.is_spilled());
+    let mut kept = prices.clone();
+    kept.spill(&SpillOptions::new().with_byte_size(SpillOptions::NEVER))?;
+    assert!(!kept.is_spilled());
+    ```
+
+=== "Python"
+
+    ```python
+    import copy
+
+    from yggdryl import DEFAULT_SPILL_BYTE_SIZE, Field, Serie, SpillOptions
+
+    assert SpillOptions().byte_size == DEFAULT_SPILL_BYTE_SIZE
+    prices = Serie.from_scalars(Field("price", "int64", nullable=False), range(1_024))
+    assert prices.resident_size() == prices.memory_size()
+    assert not prices.is_spilled()
+
+    # Under a bound of zero everything spills; the rows read as before.
+    spilled = copy.copy(prices)
+    spilled.spill(SpillOptions(byte_size=0))
+    assert spilled.is_spilled()
+    assert (spilled.resident_size(), spilled.memory_size()) == (0, prices.memory_size())
+    assert spilled[7].as_py() == 7
+    assert spilled == prices
+
+    # A write brings the written leaf back to the heap; `NEVER` spills nothing.
+    spilled.push(1_024)
+    assert not spilled.is_spilled()
+    kept = copy.copy(prices)
+    kept.spill(byte_size=SpillOptions.NEVER)
+    assert not kept.is_spilled()
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DEFAULT_SPILL_BYTE_SIZE, Field, Serie, SpillOptions } = require('yggdryl')
+
+    assert.equal(new SpillOptions().byteSize, DEFAULT_SPILL_BYTE_SIZE)
+    const prices = Serie.fromScalars(Field.from('price: int64 not null'), Array.from({ length: 1024 }, (_, i) => i))
+    assert.equal(prices.residentSize(), prices.memorySize())
+    assert.equal(prices.isSpilled(), false)
+
+    // Under a bound of zero everything spills; the rows read as before.
+    const spilled = prices.clone()
+    spilled.spill(new SpillOptions({ byteSize: 0 }))
+    assert.equal(spilled.isSpilled(), true)
+    assert.deepEqual([spilled.residentSize(), spilled.memorySize()], [0, prices.memorySize()])
+    assert.equal(spilled.scalar(7).asJs(), 7)
+    assert.equal(spilled.equals(prices), true)
+
+    // A write brings the written leaf back to the heap; `NEVER` spills nothing.
+    spilled.push(1024)
+    assert.equal(spilled.isSpilled(), false)
+    const kept = prices.clone()
+    kept.spill(new SpillOptions({ byteSize: SpillOptions.NEVER }))
+    assert.equal(kept.isSpilled(), false)
+    ```
+
+A sliced list or map keeps its items mapped but rebuilds its offsets on the heap, so it is no longer `is_spilled` as a whole; a sliced primitive, text or byte column stays spilled. A relabelling cast onto an equal layout under another name lands the mapped buffers again and counts them resident until the next spill. The `SpillOptions` folder must be writable: a folder that cannot hold the file is refused by name, and the column is left as it was.
+
 ## Windows by key
 
 `window_by(by, sorted)` cuts the rows into windows of equal keys, the key `by` computes from each row, and answers `SerieWindows`: the owner of the windows, which lends each one as a `(key, window)` pair, the window a [`WindowSerie`](window-serie.md) - a view, moving nothing. The windows are never empty, never overlap and cover every row. The same verb windows a [window's rows](window-serie.md#windows-by-key), a [chunked serie](chunked-serie.md#windows-by-key) and a [stream](../arrow/readers.md#windows-of-a-stream).
@@ -658,7 +968,7 @@ A `SortOptions` crosses as keywords in Python - `descending` and `nulls_first`, 
 
     const quotes = Serie.fromScalars(
       Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null'),
-      [['XNYS', 1n], ['XNAS', 2n], ['XNAS', 3n], ['XNYS', 4n]],
+      [['XNYS', 1], ['XNAS', 2], ['XNAS', 3], ['XNYS', 4]],
     )
 
     // Unsorted: each run of equal adjacent keys is one window, in row order,
@@ -707,6 +1017,130 @@ One plan per call and one key per window: the key column computed once, one comp
 
 With `sorted`, the descent is read in the same pass: keys already in order cost exactly what `sorted = false` costs and copy nothing. Only a descent gathers: one stable sort of the runs, the order the rows are taken in, and one take of every column - the only rows this verb copies.
 
+## Joins
+
+`join_with(other, by, how, options)` joins a record column with another on one or more keys and answers one record column; a [`ChunkedSerie`](chunked-serie.md) answers its output batches kept apart, and a [`SerieReader`](#arrow-an-array-a-batch-a-reader) probes a stream one batch at a time against a held side. `by` is a bare column shared by both sides (`"id"`, a `using` key: coalesced, once, under the left name, the left value else the right), an equality of two terms (`"trade.id = venue.id"`: each side's term bound against its own root - a path names a column and its children, never a table alias), several joined by `and`, a list of either, `(Term, Term)` pairs or a `JoinKeys`; in the bindings any of those shapes crosses as one `Scalar`. A key pair is cast to the datatype the two sides share, and a pair sharing none is refused naming both. `how` is `inner`, `left`, `right`, `full`, `semi` or `anti`; `semi` and `anti` answer the left columns alone. The output root is the left columns then the right ones, a right name colliding with a left one suffixed `_right` (`JoinOptions::with_suffix`), named after the left root, metadata cleared.
+
+| Option | Default | Means |
+| --- | --- | --- |
+| `coalesce` | `true` | a `using` key appears once |
+| `suffix` | `"_right"` | what a colliding right column is suffixed by |
+| `build` | `None` | the side held and hashed: a held side over a stream, else the smaller by `memory_size`, else the right; the probe side's rows come out in their own order, so pin it with `JoinSide::Right` where the order matters |
+| `prune` | `true` | a probe batch whose every present key lies outside the build keys' range is answered without a hash, and a [plan](../expression/plans.md#joins) pushes the build's distinct keys into the probe's read as `key in (...)`; the rows and their order are the same either way |
+| `spill` | the process default | the bound the output and the held side [settle](#spilling-to-disk) under; a build side past it is grace-partitioned on the row-format rung - both sides scattered by key hash into `ceil(build_bytes / bound)` partitions (at most 64), spooled to disk, joined partition by partition - the same rows in partition order; the values rung hashes the build whole |
+| `pushdown_keys` | 10,000 | the most distinct build keys a plan pushes into the probe's read |
+
+The build side is hashed on Arrow's row format where every key's buffers order as its values, one node per build row chained under its key's hash, and on the values' own equality otherwise - a windows-1252 text, a version, a code. Where both roots [declare](#a-declared-order) the key order ascending - two sides sorted by `into_sort_by` on their keys, a declaring stream included - every key the same datatype on both sides and on the row-format rung, nothing is hashed: the probe rows walk the build rows with one cursor that never moves back, a merge join, the same rows in key order. Absent keys never match: a row whose key is null is unmatched on either side.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, JoinKind, JoinOptions, JoinSide, Scalar, Serie, StructType};
+
+    let trades = Serie::from_scalars(
+        DataType::from(StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Int64.required_field("size"),
+        ])?)
+        .required_field("trade"),
+        [(1_i64, 10_i64), (2, 20), (3, 30)].map(|(id, size)| Scalar::from_sequence([Scalar::from(id), Scalar::from(size)])),
+    )?;
+    let venues = Serie::from_scalars(
+        DataType::from(StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().required_field("venue"),
+        ])?)
+        .required_field("venue"),
+        [(1_i64, "XNAS"), (2, "XNYS")].map(|(id, venue)| Scalar::from_sequence([Scalar::from(id), Scalar::from(venue)])),
+    )?;
+    let built = JoinOptions::new().with_build(Some(JoinSide::Right));
+
+    // A bare key shared by both sides is coalesced; the probe's rows keep their order.
+    let joined = trades.join_with(&venues, "id", JoinKind::Inner, &built)?;
+    let names = |serie: &Serie| serie.field().expect("a record").fields().iter().map(|field| field.name().to_owned()).collect::<Vec<_>>();
+    assert_eq!(names(&joined), ["id", "size", "venue"]);
+    assert_eq!(joined.len(), 2);
+    assert_eq!(joined.child("venue").expect("venue").rows().to_vec(), vec![Scalar::from("XNAS"), Scalar::from("XNYS")]);
+
+    // Kinds: a left join keeps the unmatched left rows, the right columns absent there;
+    // semi and anti keep the left columns alone.
+    let left = trades.join_with(&venues, "id", JoinKind::Left, &built)?;
+    assert_eq!((left.len(), left.child("venue").expect("venue").scalar(2)?), (3, Scalar::Null));
+    assert_eq!(trades.join_with(&venues, "id", JoinKind::Anti, &built)?.len(), 1);
+    assert_eq!(names(&trades.join_with(&venues, "id", JoinKind::Semi, &built)?), ["id", "size"]);
+
+    // An equality of two terms keeps both columns, the right one suffixed.
+    let both = trades.join_with(&venues, "id = id + 0", JoinKind::Inner, &built)?;
+    assert_eq!(names(&both), ["id", "size", "id_right", "venue"]);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Field, Serie
+
+    trades = Serie.from_scalars(
+        Field("trade", "struct<id: int64 not null, size: int64 not null>", nullable=False),
+        [[1, 10], [2, 20], [3, 30]],
+    )
+    venues = Serie.from_scalars(
+        Field("venue", "struct<id: int64 not null, venue: utf8 not null>", nullable=False),
+        [[1, "XNAS"], [2, "XNYS"]],
+    )
+
+    # A bare key shared by both sides is coalesced; the probe's rows keep their order.
+    joined = trades.join_with(venues, "id", "inner", build="right")
+    assert [field.name for field in joined.field] == ["id", "size", "venue"]
+    assert joined.child("venue").as_py() == ["XNAS", "XNYS"]
+
+    # Kinds: a left join keeps the unmatched left rows, the right columns absent there;
+    # semi and anti keep the left columns alone.
+    left = trades.join_with(venues, "id", "left", build="right")
+    assert (len(left), left.child("venue").as_py()) == (3, ["XNAS", "XNYS", None])
+    assert len(trades.join_with(venues, "id", "anti", build="right")) == 1
+    assert [field.name for field in trades.join_with(venues, "id", "semi", build="right").field] == ["id", "size"]
+
+    # An equality of two terms keeps both columns, the right one suffixed.
+    both = trades.join_with(venues, "id = id + 0", "inner", build="right")
+    assert [field.name for field in both.field] == ["id", "size", "id_right", "venue"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, Serie } = require('yggdryl')
+
+    const trades = Serie.fromScalars(
+      Field.from('trade: struct<id: int64 not null, size: int64 not null> not null'),
+      [[1, 10], [2, 20], [3, 30]],
+    )
+    const venues = Serie.fromScalars(
+      Field.from('venue: struct<id: int64 not null, venue: utf8 not null> not null'),
+      [[1, 'XNAS'], [2, 'XNYS']],
+    )
+    const names = (serie) => Array.from({ length: serie.field.fieldLen }, (_, i) => serie.field.fieldAt(i).name)
+
+    // A bare key shared by both sides is coalesced; the probe's rows keep their order.
+    const joined = trades.joinWith(venues, 'id', 'inner', { build: 'right' })
+    assert.deepEqual(names(joined), ['id', 'size', 'venue'])
+    assert.deepEqual(joined.child('venue').asJs(), ['XNAS', 'XNYS'])
+
+    // Kinds: a left join keeps the unmatched left rows, the right columns absent there;
+    // semi and anti keep the left columns alone.
+    const left = trades.joinWith(venues, 'id', 'left', { build: 'right' })
+    assert.deepEqual([left.length, left.child('venue').asJs()], [3, ['XNAS', 'XNYS', null]])
+    assert.equal(trades.joinWith(venues, 'id', 'anti', { build: 'right' }).length, 1)
+    assert.deepEqual(names(trades.joinWith(venues, 'id', 'semi', { build: 'right' })), ['id', 'size'])
+
+    // An equality of two terms keeps both columns, the right one suffixed.
+    const both = trades.joinWith(venues, 'id = id + 0', 'inner', { build: 'right' })
+    assert.deepEqual(names(both), ['id', 'size', 'id_right', 'venue'])
+    ```
+
+A stream is joined without being collected: `SerieReader::join_with(other, by, how, options)` builds the held side - or, of two streams, drains the right one - before a batch is pulled, then each probe batch answers its own output batches as it is pulled. In Python `SerieReader.join_with` takes a `Serie`, a `ChunkedSerie`, another `SerieReader` or any columnar object `Serie.from_` reads; in JavaScript `reader.joinWith(other, by, how?, options?)` takes the three classes. The [plan's `join` clause](../expression/plans.md#joins) runs the same engine over two targets, pushing the build keys into the probe's read.
+
+## Children
 ## Children
 
 A record column is made of child columns, and Arrow already holds each one separately. Reaching one is a borrow, replacing or dropping one moves pointers and never a row, and writing one cell descends the record levels by name to the leaf that proves the value. No child is handed out mutably: that is what keeps every child at exactly `len` rows, and what lets the Arrow array assemble without a refusal clause.
@@ -1976,6 +2410,9 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 - `Field::scalar` on a `serie(...)` field accepts a column and leaves it untouched when its field's datatype is the item's and its nullability fits; otherwise it walks the rows and answers a run. A row is always a run: row canonicalization reads a column through `sequence_rows` and never stores one.
 - `Serie: Deserialize` accepts only the column wire, its field beside its rows; bare rows are refused naming the wire. A run is never spelled through `Serie`'s own serde: it is the rows under the tag of the `Scalar` variant that holds it, `serie` for what `Scalar::from_sequence` builds.
 - A clone shares the buffers. Writing one of two clones copies the rows once and the two go their own way, which is what makes a column a value rather than a handle; every later write to the owner is in place.
+- `spill` refuses a folder it cannot create its file under by name, leaving the column as it was; `SpillOptions::from_env` refuses a `YGGDRYL_SPILL_BYTE_SIZE` that is not a byte count or a `YGGDRYL_SPILL_FOLDER` that is not a folder path naming the variable, and `install_env` is refused once the default has been read. A one-chunk `into_serie` shares the chunk and never settles; a join settles under its own options, so `with_spill(NEVER)` keeps the output resident whatever the process default.
+- A row landed under a root declaring an order it is not in is refused naming the row and the keys, `row 1 of quote is out of the order its root declares, \`price\``; a stream is refused at the batch, and fused; a chunked serie at the chunk edge, `chunk 2 of quote opens out of the order its field declares`. A write never refuses on the declaration: it clears it.
+- `join_with` refuses, before any row is read, a run on either side, no key, a key term reaching no column of its side, an `unnest` or an aggregate in a key, and a key pair whose two terms share no datatype, naming both; a key whose two terms are one equality is spelled `(a = b) = (a = b)` rather than bare, which would read back as two keys. Rows whose key is absent match nothing on either side. A join on the values rung is never grace-partitioned, whatever the bound.
 
 ## Commands
 
@@ -1986,6 +2423,11 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
     cargo test --features "internals parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test serie
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test allocations -- sequence column leaf ordering
     cargo test --manifest-path rust/Cargo.toml -p yggdryl --test allocations -- window_by window_record
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test serie -- spill join order
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test root -- spill join
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test spill_doors
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test allocations -- spill join declared sort_by
+    cargo bench --manifest-path rust/Cargo.toml --bench arrow -- join
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test media -- structured::
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^serie/'
     ```

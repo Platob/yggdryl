@@ -45,6 +45,7 @@ mod iceberg;
 mod identifier;
 mod iobase;
 mod iomedia;
+mod join;
 mod marketdatakind;
 mod marketdatatype;
 mod media;
@@ -54,6 +55,7 @@ mod protocol;
 mod scalar;
 mod serie;
 mod side;
+mod spill;
 mod state;
 mod text;
 mod timeinforce;
@@ -563,6 +565,9 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
         yggdryl::DEFAULT_STREAM_BATCH_SIZE,
     )?;
     module.add("DEFAULT_FETCH_BYTE_SIZE", yggdryl::DEFAULT_FETCH_BYTE_SIZE)?;
+    // The bound one column stays resident under before it spills to disk,
+    // unless the process environment states another.
+    module.add("DEFAULT_SPILL_BYTE_SIZE", yggdryl::DEFAULT_SPILL_BYTE_SIZE)?;
     // The row header a ULBridge log writes, so a caller reads a bridge
     // capture without spelling the expression a second time.
     module.add("ULBRIDGE_ROWHEADER", yggdryl::ULBRIDGE_ROWHEADER)?;
@@ -661,6 +666,8 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<serie::PySerieReaderWindows>()?;
     module.add_class::<window_serie::PyWindowSerie>()?;
     module.add_class::<chunked_serie::PyChunkedSerie>()?;
+    module.add_class::<spill::PySpillOptions>()?;
+    module.add_class::<join::PyJoinOptions>()?;
     module.add_class::<scalar::PyScalarIterator>()?;
     module.add_class::<scalar::PyScalarEntryIterator>()?;
     module.add_class::<avro::PyAvroSchema>()?;

@@ -344,7 +344,8 @@ deduplicate and group alike. `into*` answers a new serie under the same field;
 keep the original). `indices`, `mask` and `keys` are a `Serie` or an iterable
 of values; the options are a plain `{ descending, nullsFirst }` object. A
 `ChunkedSerie` answers the same: `isSorted`, `intoReversed`, `intoFiltered` and
-`partitionBy` chunk by chunk, the rest through one join.
+`partitionBy` chunk by chunk, the sorts and `intoUnique` by merging the chunks
+each sorted on its own, the rest through one join.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -388,6 +389,66 @@ const chunked = ChunkedSerie.fromArrowArray(int64([3n, 1n]).concat(int64([2n, 3n
 assert.equal(chunked.isSorted(), false)
 assert.equal(chunked.intoSorted().numChunks, 1)
 assert.equal(chunked.intoReversed().numChunks, 2)
+```
+
+## Sort by keys, read the declared order
+
+```javascript
+const assert = require('node:assert/strict')
+const { Field, Serie } = require('yggdryl')
+
+const root = Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null')
+const quotes = Serie.fromScalars(root, [['XNYS', 1], ['XNAS', 2], ['XNYS', 3]])
+
+const sorted = quotes.intoSortBy('venue, price desc')
+assert.deepEqual(sorted.child('price').asJs(), [2, 3, 1])
+assert.deepEqual(sorted.declaredOrder(), ['venue', 'price desc'])
+// Answered off the declaration: the identity. Kept by a slice, cleared by a breaking write.
+assert.deepEqual(sorted.sortIndicesBy('venue').asJs(), [0, 1, 2])
+assert.deepEqual(sorted.slice(1, 2).declaredOrder(), ['venue', 'price desc'])
+const held = sorted.clone()
+held.push(['AAAA', 0])
+assert.equal(held.declaredOrder(), null)
+```
+
+## Spill a column to disk
+
+```javascript
+const assert = require('node:assert/strict')
+const { Field, Serie, SpillOptions } = require('yggdryl')
+
+const prices = Serie.fromScalars(Field.from('price: int64 not null'), Array.from({ length: 1024 }, (_, i) => i))
+const spilled = prices.clone()
+spilled.spill(new SpillOptions({ byteSize: 0 }))
+assert.equal(spilled.isSpilled() && spilled.residentSize() === 0, true)
+assert.equal(spilled.scalar(7).asJs(), 7) // read exactly as resident
+spilled.push(1024) // a write brings the leaf back
+assert.equal(spilled.isSpilled(), false)
+```
+
+## Join two record columns
+
+```javascript
+const assert = require('node:assert/strict')
+const { Field, Serie, SerieReader } = require('yggdryl')
+
+const trades = Serie.fromScalars(
+  Field.from('trade: struct<id: int64 not null, size: int64 not null> not null'),
+  [[1, 10], [2, 20], [3, 30]],
+)
+const venues = Serie.fromScalars(
+  Field.from('venue: struct<id: int64 not null, venue: utf8 not null> not null'),
+  [[1, 'XNAS'], [2, 'XNYS']],
+)
+const inner = trades.joinWith(venues, 'id', 'inner', { build: 'right' }) // `using`: id once
+assert.deepEqual(inner.child('venue').asJs(), ['XNAS', 'XNYS'])
+const left = trades.joinWith(venues, 'id', 'left', { build: 'right' })
+assert.deepEqual(left.child('venue').asJs(), ['XNAS', 'XNYS', null])
+assert.equal(trades.joinWith(venues, 'id', 'anti', { build: 'right' }).length, 1)
+// A stream probes lazily against the held side.
+let rows = 0
+for (const batch of SerieReader.fromSerie(trades).joinWith(venues, 'id', 'inner', { build: 'right' })) rows += batch.length
+assert.equal(rows, 2)
 ```
 
 ## Cut rows into windows by key

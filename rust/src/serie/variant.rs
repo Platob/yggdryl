@@ -5,6 +5,12 @@
 //! lays out as Arrow's `Struct("metadata": Binary, "value": Binary)`, the
 //! shape Parquet, Avro, Arrow and Iceberg all state for the type.
 //!
+//! The leaf holds Arrow's buffers - each run's offsets and payload, and the
+//! column's validity - never an Arrow array, and beside them where they live
+//! (`Backing`): the heap, or a spill file's read-only mapping. A run states
+//! no validity of its own: the pair's two children are non-nullable, so
+//! the column's bitmap is the one that says a row is absent.
+//!
 //! The pair is lent where it lies: [`VariantSerie::metadata`] and
 //! [`VariantSerie::value`] borrow one row's two runs without reading either,
 //! and [`crate::SerieValue::scalar`] answers `Scalar::Variant` - the pair,
@@ -16,19 +22,32 @@
 //! A write lays its rows out once as the pair array and splices each run
 //! the way a byte column splices its one: into the builder Arrow hands back
 //! where nothing else holds the run, rebuilt once from prefix, replacement
-//! and suffix where it does. An absent row occupies one empty slot in each
-//! run, and the validity bitmap beside them is what says it is not there.
+//! and suffix where it does - a mapped run among them. An absent row
+//! occupies one empty slot in each run, and the validity bitmap beside them
+//! is what says it is not there.
+//!
+//! # Unsafe
+//!
+//! One use: `GenericByteArray::new_unchecked`, through the byte leaves'
+//! `runs_unchecked`, wherever a run becomes a `BinaryArray` again - its
+//! `array` and its splice. A run's parts are private and enter only by
+//! taking apart a child of a pair array the landing door proved or
+//! `array_of_rows` laid out, so the rebuild has nothing to check, and a
+//! checked one would walk every offset.
+
+#![allow(unsafe_code)]
 
 use std::fmt;
 use std::ops::Range;
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, BinaryArray, StructArray};
-use arrow_buffer::NullBuffer;
+use arrow_buffer::{ArrowNativeType, Buffer, NullBuffer, OffsetBuffer};
 use arrow_schema::DataType as ArrowDataType;
 
-use super::bytes::{require_run_fits, run_bytes, splice_run};
+use super::bytes::{require_run_fits, run_bytes, runs_unchecked, splice_run};
 use super::{Serie, layout, require_range, require_row, require_window};
+use crate::spill::Backing;
 use crate::value::SerieValue;
 use crate::{DataType, Field, Result, Scalar, Variant};
 
@@ -41,18 +60,84 @@ const ALIGNED: &str = "a variant column's two runs hold its rows: no public path
 /// already measured it.
 const LAID_OUT: &str = "a canonical variant row lays out as the pair array: the contract encoded it and `check` measured it";
 
+/// One of the pair's two byte runs: row `i`'s bytes lie in `data` between
+/// `offsets[i]` and `offsets[i + 1]`.
+#[derive(Clone)]
+struct ByteRun {
+    offsets: OffsetBuffer<i32>,
+    data: Buffer,
+}
+
+impl ByteRun {
+    /// Take one child of a pair array apart; its own validity, which the
+    /// column's masks, is not kept.
+    fn of(run: BinaryArray) -> Self {
+        let (offsets, data, _) = run.into_parts();
+        Self { offsets, data }
+    }
+
+    /// The rows the offsets delimit.
+    fn len(&self) -> usize {
+        self.offsets.len() - 1
+    }
+
+    /// Borrow the bytes of row `index`, which is in range, where they lie.
+    fn get(&self, index: usize) -> &[u8] {
+        &self.data[self.offsets[index].as_usize()..self.offsets[index + 1].as_usize()]
+    }
+
+    /// The Arrow array this run is, sharing its buffers: pointer bumps, no
+    /// copy and no check.
+    fn array(&self) -> BinaryArray {
+        // SAFETY: the parts entered through `of` from a child of a pair array
+        // the landing door proved or `array_of_rows` laid out, and were since
+        // only sliced (`slice`) or replaced whole by a builder's (`splice`);
+        // the fields are private, so no other path reaches them.
+        unsafe { runs_unchecked(self.offsets.clone(), self.data.clone(), None) }
+    }
+
+    /// The run of rows `offset..offset + length`, sharing the payload.
+    fn slice(&self, offset: usize, length: usize) -> Self {
+        Self {
+            offsets: self.offsets.slice(offset, length),
+            data: self.data.clone(),
+        }
+    }
+
+    /// Replace rows `range` by `replacement`'s runs, whose offsets total
+    /// was checked.
+    ///
+    /// The parts are taken out first, so the run the splice takes apart is
+    /// their one holder and Arrow hands them back as a builder where nothing
+    /// else holds them.
+    fn splice(&mut self, range: Range<usize>, replacement: &BinaryArray) {
+        let offsets = std::mem::replace(&mut self.offsets, OffsetBuffer::new_empty());
+        let data = std::mem::take(&mut self.data);
+        // SAFETY: this run's own parts, moved out whole, under the argument
+        // `array` makes for them.
+        let taken = unsafe { runs_unchecked(offsets, data, None) };
+        let (offsets, data, _) = splice_run(taken, range, replacement).into_parts();
+        self.offsets = offsets;
+        self.data = data;
+    }
+}
+
 /// One column of self-describing values, each row one encoded pair.
 #[derive(Clone)]
 pub struct VariantSerie {
     field: Arc<Field>,
-    metadata: BinaryArray,
-    value: BinaryArray,
+    metadata: ByteRun,
+    value: ByteRun,
     nulls: Option<NullBuffer>,
+    /// Where the buffers live: carried by a slice and a clone, the heap's
+    /// again after a write.
+    backing: Backing,
 }
 
 impl VariantSerie {
-    /// Pair a variant field with the two runs that hold its rows.
-    pub(crate) const fn new(
+    /// Pair a variant field with the two runs that hold its rows, taking
+    /// them apart.
+    pub(crate) fn new(
         field: Arc<Field>,
         metadata: BinaryArray,
         value: BinaryArray,
@@ -60,37 +145,46 @@ impl VariantSerie {
     ) -> Self {
         Self {
             field,
-            metadata,
-            value,
+            metadata: ByteRun::of(metadata),
+            value: ByteRun::of(value),
             nulls,
+            backing: Backing::Heap,
         }
     }
 
     /// Borrow row `index`'s metadata dictionary where it lies: `None` when
     /// the row is absent or past the end.
     pub fn metadata(&self, index: usize) -> Option<&[u8]> {
-        (!self.is_absent(index)).then(|| self.metadata.value(index))
+        (!self.is_absent(index)).then(|| self.metadata.get(index))
     }
 
     /// Borrow row `index`'s value payload where it lies: `None` when the
     /// row is absent or past the end.
     pub fn value(&self, index: usize) -> Option<&[u8]> {
-        (!self.is_absent(index)).then(|| self.value.value(index))
+        (!self.is_absent(index)).then(|| self.value.get(index))
     }
 
-    /// Borrow the Arrow array the metadata dictionaries are.
-    pub const fn metadata_array(&self) -> &BinaryArray {
-        &self.metadata
+    /// Return the Arrow array the metadata dictionaries are, sharing their
+    /// buffers.
+    pub fn metadata_array(&self) -> BinaryArray {
+        self.metadata.array()
     }
 
-    /// Borrow the Arrow array the value payloads are.
-    pub const fn value_array(&self) -> &BinaryArray {
-        &self.value
+    /// Return the Arrow array the value payloads are, sharing their
+    /// buffers.
+    pub fn value_array(&self) -> BinaryArray {
+        self.value.array()
     }
 
     /// Borrow the validity bitmap, or `None` where no row is absent.
     pub const fn nulls(&self) -> Option<&NullBuffer> {
         self.nulls.as_ref()
+    }
+
+    /// State where the buffers live: what a spill sets over the buffers it
+    /// mapped.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.backing = backing;
     }
 
     /// Whether row `index` is past the end or absent.
@@ -115,8 +209,13 @@ impl VariantSerie {
                 value_bytes = value_bytes.saturating_add(held.value().len());
             }
         }
-        require_run_fits(self.field.name(), &self.metadata, range, metadata_bytes)?;
-        require_run_fits(self.field.name(), &self.value, range, value_bytes)
+        require_run_fits(
+            self.field.name(),
+            &self.metadata.offsets,
+            range,
+            metadata_bytes,
+        )?;
+        require_run_fits(self.field.name(), &self.value.offsets, range, value_bytes)
     }
 
     /// Write canonical `rows` over a checked `range`.
@@ -143,23 +242,35 @@ impl VariantSerie {
         let name = self.field.name();
         let fits = require_run_fits(
             name,
-            &self.metadata,
+            &self.metadata.offsets,
             &(len..len),
-            run_bytes(&other.metadata),
+            run_bytes(&other.metadata.offsets),
         )
-        .and_then(|()| require_run_fits(name, &self.value, &(len..len), run_bytes(&other.value)))
+        .and_then(|()| {
+            require_run_fits(
+                name,
+                &self.value.offsets,
+                &(len..len),
+                run_bytes(&other.value.offsets),
+            )
+        })
         .is_ok();
         if fits {
             let present: Vec<bool> = (0..other.metadata.len())
                 .map(|row| !other.is_absent(row))
                 .collect();
-            self.write_runs(len..len, &other.metadata, &other.value, &present);
+            self.write_runs(
+                len..len,
+                &other.metadata.array(),
+                &other.value.array(),
+                &present,
+            );
         }
         fits
     }
 
     /// Replace rows `range` by the pairs `metadata` and `value` hold, of
-    /// which `present` says which are there.
+    /// which `present` says which are there; what comes back is the heap's.
     fn write_runs(
         &mut self,
         range: Range<usize>,
@@ -168,11 +279,10 @@ impl VariantSerie {
         present: &[bool],
     ) {
         let len = self.metadata.len();
-        let taken = std::mem::replace(&mut self.metadata, BinaryArray::new_null(0));
-        self.metadata = splice_run(taken, range.clone(), metadata);
-        let taken = std::mem::replace(&mut self.value, BinaryArray::new_null(0));
-        self.value = splice_run(taken, range.clone(), value);
+        self.metadata.splice(range.clone(), metadata);
+        self.value.splice(range.clone(), value);
         self.nulls = layout::splice_nulls(self.nulls.take(), len, range, present);
+        self.backing = Backing::Heap;
     }
 }
 
@@ -219,12 +329,13 @@ impl SerieValue for VariantSerie {
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
         require_window(self.field.name(), offset, length, self.metadata.len())?;
-        Ok(Self::new(
-            Arc::clone(&self.field),
-            self.metadata.slice(offset, length),
-            self.value.slice(offset, length),
-            self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
-        ))
+        Ok(Self {
+            field: Arc::clone(&self.field),
+            metadata: self.metadata.slice(offset, length),
+            value: self.value.slice(offset, length),
+            nulls: self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
+            backing: self.backing,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
@@ -240,13 +351,31 @@ impl SerieValue for VariantSerie {
 
     fn into_arrow_array(&self) -> ArrayRef {
         let children: Vec<ArrayRef> = vec![
-            Arc::new(self.metadata.clone()),
-            Arc::new(self.value.clone()),
+            Arc::new(self.metadata.array()),
+            Arc::new(self.value.array()),
         ];
         Arc::new(
             StructArray::try_new(crate::variant_fields(), children, self.nulls.clone())
                 .expect(ALIGNED),
         )
+    }
+
+    fn memory_size(&self) -> usize {
+        // The pair array is never boxed to count it: the validity beside the
+        // two runs, each read as its own array of pointer bumps.
+        self.nulls
+            .as_ref()
+            .map_or(0, |nulls| nulls.len().div_ceil(8))
+            + crate::arrow::sliced_size(&self.metadata_array())
+            + crate::arrow::sliced_size(&self.value_array())
+    }
+
+    fn resident_size(&self) -> usize {
+        if self.backing.is_mapped() {
+            0
+        } else {
+            self.memory_size()
+        }
     }
 
     fn into_serie(self) -> Serie {

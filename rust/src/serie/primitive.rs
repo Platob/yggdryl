@@ -31,10 +31,14 @@ use arrow_array::types::{
     UInt32Type, UInt64Type,
 };
 use arrow_array::{Array, ArrayRef, ArrowNativeTypeOp, ArrowPrimitiveType, PrimitiveArray};
-use arrow_buffer::{IntervalDayTime, IntervalMonthDayNano, NullBuffer, bit_util, i256};
+use arrow_buffer::{
+    IntervalDayTime, IntervalMonthDayNano, NullBuffer, ScalarBuffer, bit_util, i256,
+};
+use arrow_schema::DataType as ArrowDataType;
 
 use super::{Serie, require_range, require_row, require_window};
 use crate::serie::value::Reading;
+use crate::spill::Backing;
 use crate::value::SerieValue;
 use crate::{Field, Result, Scalar, SortOptions};
 
@@ -119,30 +123,42 @@ float_order!(half::f16, f32, f64);
 /// One column of fixed-width rows: the field that types them, and the Arrow
 /// buffers that hold them.
 ///
-/// The values buffer and the validity bitmap are Arrow's own, shared rather
-/// than copied, so a clone costs two pointer bumps and
+/// The values buffer and the validity bitmap are Arrow's own, held apart
+/// and shared rather than copied, so a clone costs pointer bumps,
 /// [`values`](Self::values) lends the native slice straight out of the
-/// buffer.
+/// buffer, and a row read builds no array.
 pub struct PrimitiveSerie<T: PrimitiveLeaf> {
     field: Arc<Field>,
-    values: PrimitiveArray<T>,
+    values: ScalarBuffer<T::Native>,
+    nulls: Option<NullBuffer>,
+    /// The storage type the landing matched, kept beside `reading` for the
+    /// same reason: resolved once where the column landed. A rebuild is
+    /// `PrimitiveArray::new(values.clone(), nulls.clone()).with_data_type(dtype.clone())`:
+    /// pointer bumps, no allocation.
+    dtype: ArrowDataType,
     /// How a slot reads as the field's value, resolved from the field once
     /// where the column landed.
     reading: Reading<T::Native>,
+    /// Where `values` and `nulls` live; a write puts them back on the heap.
+    backing: Backing,
 }
 
 impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
     /// Pair a field with the buffers that hold its rows and the reading its
-    /// datatype resolved to.
-    pub(crate) const fn new(
+    /// datatype resolved to, the array taken apart into them.
+    pub(crate) fn new(
         field: Arc<Field>,
         values: PrimitiveArray<T>,
         reading: Reading<T::Native>,
     ) -> Self {
+        let (dtype, values, nulls) = values.into_parts();
         Self {
             field,
             values,
+            nulls,
+            dtype,
             reading,
+            backing: Backing::Heap,
         }
     }
 
@@ -152,7 +168,7 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
     /// holds is not a value, and [`Self::nulls`] is what says which slots
     /// those are.
     pub fn values(&self) -> &[T::Native] {
-        self.values.values()
+        &self.values
     }
 
     /// Read row `index` off the values buffer: `None` when the row is
@@ -160,39 +176,74 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
     ///
     /// One bounds check and one buffer read; no value is built.
     pub fn value(&self, index: usize) -> Option<T::Native> {
-        (index < self.values.len() && self.values.is_valid(index)).then(|| self.values.value(index))
+        (index < self.values.len() && self.is_valid(index)).then(|| self.values[index])
     }
 
     /// Borrow the validity bitmap, or `None` where no row is absent.
     pub fn nulls(&self) -> Option<&NullBuffer> {
-        self.values.nulls()
+        self.nulls.as_ref()
     }
 
-    /// Borrow the Arrow array these buffers are.
-    pub const fn array(&self) -> &PrimitiveArray<T> {
-        &self.values
+    /// The Arrow array these buffers are, rebuilt around them: pointer
+    /// bumps, no allocation and no copy.
+    pub fn array(&self) -> PrimitiveArray<T> {
+        PrimitiveArray::new(self.values.clone(), self.nulls.clone())
+            .with_data_type(self.dtype.clone())
+    }
+
+    /// Where the buffers live.
+    pub(crate) const fn backing(&self) -> &Backing {
+        &self.backing
+    }
+
+    /// State where the buffers live: a spill names the mapping it laid them
+    /// in, a write the heap.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.backing = backing;
+    }
+
+    /// Whether row `index`, inside the column, holds a value: read off the
+    /// validity bitmap.
+    fn is_valid(&self, index: usize) -> bool {
+        self.nulls
+            .as_ref()
+            .is_none_or(|nulls| nulls.is_valid(index))
     }
 
     /// Take this column's rows as a builder to write into.
     ///
-    /// Arrow hands the buffers back as a builder when nothing else holds
-    /// them and their pointer was never advanced, which is what makes an
-    /// append or a slot write in place; a foreign, shared or sliced buffer
-    /// is copied once, and every later edit is in place. The builder carries
-    /// the field's Arrow datatype, because `into_builder` erases it to the
-    /// width's own and a `decimal(10,2)` would come back `Decimal128(38,10)`.
+    /// The buffers move out of the column into one temporary array, so it
+    /// is their one holder: Arrow hands them back as a builder when nothing
+    /// else holds them and their pointer was never advanced, which is what
+    /// makes an append or a slot write in place; a foreign, shared, sliced
+    /// or mapped buffer is copied once, and every later edit is in place.
+    /// The builder carries the field's Arrow datatype, because
+    /// `into_builder` erases it to the width's own and a `decimal(10,2)`
+    /// would come back `Decimal128(38,10)`.
     fn take_builder(&mut self) -> PrimitiveBuilder<T> {
-        let dtype = self.values.data_type().clone();
-        let taken = std::mem::replace(&mut self.values, PrimitiveArray::<T>::new_null(0));
+        let dtype = self.dtype.clone();
+        let taken = PrimitiveArray::<T>::new(std::mem::take(&mut self.values), self.nulls.take());
         match taken.into_builder() {
             Ok(builder) => builder.with_data_type(dtype),
+            // Arrow hands a buffer it would not release back under the
+            // width's own datatype, so the copy is restated under the
+            // column's before it is appended.
             Err(shared) => {
-                let mut builder =
-                    PrimitiveBuilder::<T>::with_capacity(shared.len() + 1).with_data_type(dtype);
-                builder.append_array(&shared);
+                let mut builder = PrimitiveBuilder::<T>::with_capacity(shared.len() + 1)
+                    .with_data_type(dtype.clone());
+                builder.append_array(&shared.with_data_type(dtype));
                 builder
             }
         }
+    }
+
+    /// Hold the buffers a write finished as this column's rows, on the heap
+    /// whatever the buffers they replace lay in.
+    fn put(&mut self, written: PrimitiveArray<T>) {
+        let (_, values, nulls) = written.into_parts();
+        self.values = values;
+        self.nulls = nulls;
+        self.set_backing(Backing::Heap);
     }
 
     /// Replace rows `range` by `replacement`, which lays out as this column.
@@ -205,28 +256,29 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
         if range.start == len {
             let mut builder = self.take_builder();
             builder.append_array(&replacement);
-            self.values = builder.finish();
+            self.put(builder.finish());
             return;
         }
         if range.len() == 1
             && replacement.len() == 1
             && replacement.is_valid(0)
-            && self.values.is_valid(range.start)
+            && self.is_valid(range.start)
         {
             let mut builder = self.take_builder();
             builder.values_slice_mut()[range.start] = replacement.value(0);
-            self.values = builder.finish();
+            self.put(builder.finish());
             return;
         }
-        let prefix = self.values.slice(0, range.start);
-        let suffix = self.values.slice(range.end, len - range.end);
+        let held = self.array();
+        let prefix = held.slice(0, range.start);
+        let suffix = held.slice(range.end, len - range.end);
         let mut builder =
             PrimitiveBuilder::<T>::with_capacity(prefix.len() + replacement.len() + suffix.len())
-                .with_data_type(self.values.data_type().clone());
+                .with_data_type(self.dtype.clone());
         builder.append_array(&prefix);
         builder.append_array(&replacement);
         builder.append_array(&suffix);
-        self.values = builder.finish();
+        self.put(builder.finish());
     }
 
     /// Lay canonical `rows` out as this column's array, once.
@@ -260,8 +312,8 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
     /// values buffer reaches any total.
     pub(crate) fn append(&mut self, other: &Self) -> bool {
         let mut builder = self.take_builder();
-        builder.append_array(other.array());
-        self.values = builder.finish();
+        builder.append_array(&other.array());
+        self.put(builder.finish());
         true
     }
 
@@ -274,9 +326,9 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
     where
         T::Native: NativeOrder,
     {
-        let values = self.values.values();
-        let present = |index: usize| self.values.is_valid(index);
-        let absent = self.values.null_count();
+        let values: &[T::Native] = &self.values;
+        let present = |index: usize| self.is_valid(index);
+        let absent = SerieValue::null_count(self);
         let mut order: Vec<u32> = Vec::with_capacity(range.len());
         if options.is_nulls_first() {
             order.extend(
@@ -320,8 +372,8 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
     ///
     /// No row is built and nothing is copied when the column holds its
     /// buffers alone: the validity is read off the builder's own bits, so no
-    /// second holder makes Arrow copy them. A shared or foreign buffer is
-    /// copied once by the builder, as every write copies it.
+    /// second holder makes Arrow copy them. A shared, foreign or mapped
+    /// buffer is copied once by the builder, as every write copies it.
     pub(crate) fn sort_in_place(&mut self, range: Range<usize>, options: SortOptions)
     where
         T::Native: NativeOrder,
@@ -374,7 +426,7 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
                 }
             }
         }
-        self.values = builder.finish();
+        self.put(builder.finish());
     }
 
     /// Reverse rows `range` in place: the native slice reversed where it
@@ -400,7 +452,7 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
                 low += 1;
             }
         }
-        self.values = builder.finish();
+        self.put(builder.finish());
     }
 }
 
@@ -471,8 +523,8 @@ impl<T: NativeLeaf> PrimitiveSerie<T> {
                 (self.reading)(self.field.dtype(), *value)?;
             }
         }
-        let mut replacement = PrimitiveBuilder::<T>::with_capacity(values.len())
-            .with_data_type(self.values.data_type().clone());
+        let mut replacement =
+            PrimitiveBuilder::<T>::with_capacity(values.len()).with_data_type(self.dtype.clone());
         for value in values {
             replacement.append_option(value);
         }
@@ -505,23 +557,20 @@ impl<T: PrimitiveLeaf> SerieValue for PrimitiveSerie<T> {
     }
 
     fn null_count(&self) -> usize {
-        self.values.null_count()
+        self.nulls.as_ref().map_or(0, NullBuffer::null_count)
     }
 
     fn is_null(&self, index: usize) -> Result<bool> {
         require_row(self.field.name(), index, self.values.len())?;
-        Ok(self.values.is_null(index))
+        Ok(!self.is_valid(index))
     }
 
     fn scalar(&self, index: usize) -> Result<Scalar> {
         require_row(self.field.name(), index, self.values.len())?;
-        if self.values.is_null(index) {
+        if !self.is_valid(index) {
             return Ok(Scalar::Null);
         }
-        Ok((self.reading)(
-            self.field.dtype(),
-            self.values.value(index),
-        )?)
+        Ok((self.reading)(self.field.dtype(), self.values[index])?)
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
@@ -529,7 +578,10 @@ impl<T: PrimitiveLeaf> SerieValue for PrimitiveSerie<T> {
         Ok(Self {
             field: Arc::clone(&self.field),
             values: self.values.slice(offset, length),
+            nulls: self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
+            dtype: self.dtype.clone(),
             reading: self.reading,
+            backing: self.backing,
         })
     }
 
@@ -545,7 +597,20 @@ impl<T: PrimitiveLeaf> SerieValue for PrimitiveSerie<T> {
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
-        Arc::new(self.values.clone())
+        Arc::new(self.array())
+    }
+
+    fn memory_size(&self) -> usize {
+        // The typed array is pointer bumps, so nothing is boxed to count it.
+        crate::arrow::sliced_size(&self.array())
+    }
+
+    fn resident_size(&self) -> usize {
+        if self.backing().is_mapped() {
+            0
+        } else {
+            self.memory_size()
+        }
     }
 
     fn into_serie(self) -> Serie {
@@ -562,7 +627,10 @@ impl<T: PrimitiveLeaf> Clone for PrimitiveSerie<T> {
         Self {
             field: Arc::clone(&self.field),
             values: self.values.clone(),
+            nulls: self.nulls.clone(),
+            dtype: self.dtype.clone(),
             reading: self.reading,
+            backing: self.backing,
         }
     }
 }
@@ -588,7 +656,7 @@ pub(crate) fn column_of(
     _budget: &mut crate::budget::MaterializationBudget,
     _resolved: Option<&super::arrow::Resolved>,
 ) -> crate::arrow::Result<Option<Serie>> {
-    use arrow_schema::{DataType as ArrowDataType, IntervalUnit, TimeUnit as ArrowTimeUnit};
+    use arrow_schema::{IntervalUnit, TimeUnit as ArrowTimeUnit};
 
     use crate::serie::value::{
         duration_reading, read_date32, read_date64, read_datetime, read_day_time, read_decimal32,

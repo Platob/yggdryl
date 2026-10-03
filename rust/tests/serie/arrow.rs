@@ -9,6 +9,7 @@ use arrow_array::{
     RecordBatchReader, StringArray, StructArray,
 };
 use arrow_buffer::{NullBuffer, OffsetBuffer};
+use arrow_data::ArrayData;
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::{
@@ -2903,6 +2904,364 @@ fn a_pull_that_panics_poisons_the_walk_into_one_internal_error() {
     assert!(xnas.next().is_none());
 }
 
+/// Every buffer `data` reaches, as `(address, length)`: its validity words
+/// where it has them, then its own buffers in order, then each child's the
+/// same way, depth first.
+fn buffer_pointers(data: &ArrayData) -> Vec<(usize, usize)> {
+    let mut pointers: Vec<(usize, usize)> = data
+        .nulls()
+        .map(NullBuffer::buffer)
+        .into_iter()
+        .chain(data.buffers())
+        .map(|buffer| (buffer.as_ptr() as usize, buffer.len()))
+        .collect();
+    for child in data.child_data() {
+        pointers.extend(buffer_pointers(child));
+    }
+    pointers
+}
+
+/// Land `array` under `field` - whose projection it already lays out as -
+/// and cross it back out: the array handed back reaches every buffer the
+/// one handed in reached, at the address it arrived at, under the same
+/// length, offset and null count.
+fn assert_crosses_as_it_stands(field: &Field, array: &ArrayRef) -> Serie {
+    let name = field.dtype().to_string();
+    assert_eq!(
+        field
+            .as_arrow_field_ref()
+            .expect("an Arrow projection")
+            .data_type(),
+        array.data_type(),
+        "{name}: the input lays out as the field projects"
+    );
+    let column = Serie::from_arrow_array(Some(field), Arc::clone(array), ArrowCastOptions::new())
+        .unwrap_or_else(|error| panic!("{name}: {error}"));
+    let back = column.into_arrow_array().expect("a column");
+    assert_eq!(back.data_type(), array.data_type(), "{name}");
+    assert_eq!(back.len(), array.len(), "{name}: the length moved");
+    assert_eq!(back.offset(), array.offset(), "{name}: the offset moved");
+    assert_eq!(
+        back.null_count(),
+        array.null_count(),
+        "{name}: the null count moved"
+    );
+    assert_eq!(
+        buffer_pointers(&back.to_data()),
+        buffer_pointers(&array.to_data()),
+        "{name}: a buffer was copied"
+    );
+    column
+}
+
+#[test]
+fn an_exact_flat_leaf_crosses_back_out_in_the_buffers_it_arrived_in() {
+    use arrow_array::{
+        BinaryArray, BinaryViewArray, BooleanArray, Date32Array, Decimal128Array, LargeStringArray,
+        TimestampMicrosecondArray,
+    };
+
+    let cases: Vec<(Field, ArrayRef)> = vec![
+        (
+            Field::new("price", DataType::Int64, true),
+            Arc::new(Int64Array::from(vec![Some(125_i64), None, Some(127)])),
+        ),
+        (
+            Field::new("alive", DataType::Boolean, true),
+            Arc::new(BooleanArray::from(vec![Some(true), None, Some(false)])),
+        ),
+        (
+            Field::new("notional", DataType::decimal128(12, 4).unwrap(), false),
+            Arc::new(
+                Decimal128Array::from(vec![12_345_678_i128, -1, 0])
+                    .with_precision_and_scale(12, 4)
+                    .unwrap(),
+            ),
+        ),
+        (
+            Field::new("symbol", DataType::utf8(), true),
+            Arc::new(StringArray::from(vec![Some("AAPL"), None, Some("MSFT")])),
+        ),
+        (
+            Field::new("venue", DataType::large_utf8(), false),
+            Arc::new(LargeStringArray::from(vec!["XNAS", "XNYS", "XLON"])),
+        ),
+        (
+            Field::new("payload", DataType::binary(), false),
+            Arc::new(BinaryArray::from(vec![
+                b"ab".as_slice(),
+                b"".as_slice(),
+                b"cde".as_slice(),
+            ])),
+        ),
+        (
+            Field::new("blob", DataType::binary_view(), true),
+            Arc::new(BinaryViewArray::from(vec![
+                Some(b"short".as_slice()),
+                None,
+                Some(b"a payload past twelve bytes".as_slice()),
+            ])),
+        ),
+        (
+            Field::new("day", DataType::date32(), false),
+            Arc::new(Date32Array::from(vec![19_000, 19_001, 19_002])),
+        ),
+        (
+            Field::new(
+                "ts",
+                DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+                false,
+            ),
+            Arc::new(TimestampMicrosecondArray::from(vec![1_i64, 2, 3]).with_timezone("UTC")),
+        ),
+    ];
+    for (field, array) in cases {
+        assert_crosses_as_it_stands(&field, &array);
+    }
+}
+
+#[test]
+fn a_boolean_sliced_at_a_bit_offset_keeps_its_bitmap_and_its_offset() {
+    use arrow_array::BooleanArray;
+    use arrow_array::cast::AsArray;
+
+    // Bit `i` is null every fifth bit and otherwise whether `i` is even.
+    let whole = BooleanArray::from(
+        (0..16)
+            .map(|bit| (bit % 5 != 0).then_some(bit % 2 == 0))
+            .collect::<Vec<_>>(),
+    );
+    let sliced: ArrayRef = Arc::new(whole.slice(3, 9));
+    assert_eq!(
+        sliced.offset(),
+        3,
+        "Arrow slices a bitmap by its bit offset"
+    );
+    let column =
+        assert_crosses_as_it_stands(&Field::new("alive", DataType::Boolean, true), &sliced);
+    assert_eq!(
+        [0, 1, 2].map(|row| column.scalar(row).unwrap()),
+        [Scalar::from(false), Scalar::from(true), Scalar::Null]
+    );
+
+    let back = column.into_arrow_array().expect("a column");
+    let back = back.as_boolean();
+    assert_eq!(back.values().offset(), 3);
+    assert_eq!(
+        back.values().inner().as_ptr(),
+        whole.values().inner().as_ptr()
+    );
+    let nulls = back.nulls().expect("the validity words");
+    assert_eq!(nulls.offset(), 3);
+    assert_eq!(
+        nulls.buffer().as_ptr(),
+        whole.nulls().expect("a bitmap").buffer().as_ptr()
+    );
+}
+
+#[test]
+fn a_viewed_string_keeps_its_views_and_every_data_buffer_they_point_into() {
+    use arrow_array::StringViewArray;
+
+    let long = "a symbol well past twelve bytes";
+    let array = StringViewArray::from(vec![Some("AAPL"), None, Some(long)]);
+    assert!(
+        !array.data_buffers().is_empty(),
+        "a run past twelve bytes lies in a data buffer"
+    );
+    let array: ArrayRef = Arc::new(array);
+    let column =
+        assert_crosses_as_it_stands(&Field::new("symbol", DataType::utf8_view(), true), &array);
+    assert_eq!(column.scalar(2).unwrap(), Scalar::from(long));
+}
+
+#[test]
+fn sixteen_fixed_bytes_cross_as_they_stand_under_a_uuid_and_a_fixed_binary_field() {
+    use arrow_array::FixedSizeBinaryArray;
+
+    let array: ArrayRef = Arc::new(
+        FixedSizeBinaryArray::try_from_sparse_iter_with_size(
+            vec![Some([0x01_u8; 16]), None, Some([0xAB_u8; 16])].into_iter(),
+            16,
+        )
+        .unwrap(),
+    );
+    for field in [
+        Field::new("id", DataType::uuid(), true),
+        Field::new("digest", DataType::fixed_binary(16).unwrap(), true),
+    ] {
+        assert_crosses_as_it_stands(&field, &array);
+    }
+}
+
+#[test]
+fn an_exact_record_over_a_serie_and_a_map_crosses_back_out_in_every_buffer() {
+    use arrow_array::MapArray;
+
+    let field = Field::new(
+        "quote",
+        DataType::from(
+            StructType::from_fields([
+                Field::new(
+                    "a",
+                    DataType::serie(Field::new("item", DataType::utf8(), true)),
+                    true,
+                ),
+                Field::new(
+                    "b",
+                    DataType::map_of(DataType::utf8(), DataType::Int64, false).unwrap(),
+                    true,
+                ),
+            ])
+            .unwrap(),
+        ),
+        true,
+    );
+    let projected = field.as_arrow_field_ref().expect("an Arrow projection");
+    let ArrowDataType::Struct(children) = projected.data_type() else {
+        panic!("a record projects as a struct");
+    };
+    let ArrowDataType::List(item) = children[0].data_type() else {
+        panic!("a serie projects as a list");
+    };
+    let ArrowDataType::Map(entries, _) = children[1].data_type() else {
+        panic!("a map projects as a map");
+    };
+    let ArrowDataType::Struct(entry_fields) = entries.data_type() else {
+        panic!("map entries project as a struct");
+    };
+    // Row 1 is absent from the serie and from the map, each of its spans
+    // empty; the record states every row, so no ancestor masks the map.
+    let absent = || Some(NullBuffer::from(vec![true, false, true]));
+    let list = ListArray::new(
+        Arc::clone(item),
+        OffsetBuffer::new(vec![0_i32, 2, 2, 3].into()),
+        Arc::new(StringArray::from(vec![Some("bid"), None, Some("ask")])),
+        absent(),
+    );
+    let map = MapArray::new(
+        Arc::clone(entries),
+        OffsetBuffer::new(vec![0_i32, 1, 1, 3].into()),
+        StructArray::new(
+            entry_fields.clone(),
+            vec![
+                Arc::new(StringArray::from(vec!["qty", "px", "qty"])),
+                Arc::new(Int64Array::from(vec![Some(10_i64), None, Some(30)])),
+            ],
+            None,
+        ),
+        absent(),
+        false,
+    );
+    let record: ArrayRef = Arc::new(StructArray::new(
+        children.clone(),
+        vec![Arc::new(list), Arc::new(map)],
+        None,
+    ));
+    record
+        .to_data()
+        .validate_full()
+        .expect("legal Arrow buffers");
+    assert_crosses_as_it_stands(&field, &record);
+}
+
+#[test]
+fn an_exact_dense_union_crosses_back_out_in_every_buffer() {
+    use arrow_array::UnionArray;
+    use arrow_buffer::ScalarBuffer;
+
+    let field = Field::new(
+        "value",
+        DataType::dense_union([
+            Field::new("number", DataType::Int32, true),
+            Field::new("text", DataType::utf8(), true),
+        ])
+        .unwrap(),
+        true,
+    );
+    let projected = field.as_arrow_field_ref().expect("an Arrow projection");
+    let ArrowDataType::Union(members, _) = projected.data_type() else {
+        panic!("a union projects as a union");
+    };
+    let union: ArrayRef = Arc::new(
+        UnionArray::try_new(
+            members.clone(),
+            ScalarBuffer::from(vec![0_i8, 1, 0, 1]),
+            Some(ScalarBuffer::from(vec![0_i32, 0, 1, 1])),
+            vec![
+                Arc::new(Int32Array::from(vec![7, 8])),
+                Arc::new(StringArray::from(vec!["AAPL", "MSFT"])),
+            ],
+        )
+        .unwrap(),
+    );
+    assert_crosses_as_it_stands(&field, &union);
+}
+
+#[test]
+fn an_exact_dictionary_crosses_back_out_in_its_keys_and_its_values() {
+    use arrow_array::DictionaryArray;
+    use arrow_array::types::Int32Type;
+
+    let field = Field::new(
+        "venue",
+        DataType::dictionary(DataType::Int32, DataType::utf8()).unwrap(),
+        true,
+    );
+    // Every value is reachable from a key.
+    let dictionary: ArrayRef = Arc::new(
+        DictionaryArray::<Int32Type>::try_new(
+            Int32Array::from(vec![Some(0), None, Some(1), Some(0)]),
+            Arc::new(StringArray::from(vec!["XNAS", "XNYS"])),
+        )
+        .unwrap(),
+    );
+    assert_crosses_as_it_stands(&field, &dictionary);
+}
+
+#[test]
+fn an_exact_run_end_encoded_column_crosses_back_out_in_its_runs_and_its_values() {
+    use arrow_array::RunArray;
+    use arrow_array::types::Int32Type;
+
+    let field = Field::new(
+        "price",
+        DataType::run_end_encoded(
+            DataType::Int32.required_field("run_ends"),
+            Field::new("values", DataType::Int64, true),
+        )
+        .unwrap(),
+        true,
+    );
+    // Every run is reachable, the middle one absent.
+    let runs: ArrayRef = Arc::new(
+        RunArray::<Int32Type>::try_new(
+            &Int32Array::from(vec![2, 3, 5]),
+            &Int64Array::from(vec![Some(125_i64), None, Some(127)]),
+        )
+        .unwrap(),
+    );
+    assert_crosses_as_it_stands(&field, &runs);
+}
+
+#[test]
+fn an_exact_column_is_resident_whole_and_never_spilled() {
+    let cases: [(Field, ArrayRef); 2] = [
+        (
+            Field::new("price", DataType::Int64, true),
+            Arc::new(Int64Array::from(vec![Some(125_i64), None, Some(127)])),
+        ),
+        (quotes_root(), Arc::new(StructArray::from(quote_batch()))),
+    ];
+    for (field, array) in cases {
+        let column = Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::new())
+            .expect("an exact column");
+        assert!(column.memory_size() > 0);
+        assert_eq!(column.resident_size(), column.memory_size());
+        assert!(!column.is_spilled());
+    }
+}
+
 #[cfg(feature = "internals")]
 mod internal {
     //! The walk's checked `rownum` arithmetic, which no caller reaches: a
@@ -2955,5 +3314,640 @@ mod internal {
             assert!(windows.next().is_none());
             assert!(probe.dropped(), "the walk dropped its stream");
         }
+    }
+}
+
+/// The `l` root a counted stream lays out: an `id` cycling 0, 1, 2 and a
+/// `left_value` every row holds once.
+fn counted_root() -> Field {
+    Field::new(
+        "l",
+        DataType::from(
+            StructType::from_fields([
+                DataType::Int64.required_field("id"),
+                DataType::Int64.required_field("left_value"),
+            ])
+            .expect("two named children"),
+        ),
+        false,
+    )
+}
+
+/// `batches` batches of `rows` rows under `root`, counting each batch the
+/// stream hands out in `pulls`.
+fn counted_stream(
+    root: &Field,
+    batches: usize,
+    rows: usize,
+    pulls: Arc<AtomicUsize>,
+) -> BatchReader {
+    let schema = root.clone().into_arrow_schema().expect("a schema");
+    let parts: Vec<RecordBatch> = (0..batches)
+        .map(|batch| {
+            let ids = Int64Array::from_iter_values((0..rows).map(|index| (index % 3) as i64));
+            let values =
+                Int64Array::from_iter_values((0..rows).map(|index| (batch * rows + index) as i64));
+            RecordBatch::try_new(Arc::clone(&schema), vec![Arc::new(ids), Arc::new(values)])
+                .expect("a batch")
+        })
+        .collect();
+    Box::new(RecordBatchIterator::new(
+        parts.into_iter().map(move |batch| {
+            pulls.fetch_add(1, Ordering::SeqCst);
+            Ok(batch)
+        }),
+        schema,
+    ))
+}
+
+/// Every row a reader yields, batch after batch.
+fn drained(reader: SerieReader) -> Vec<Scalar> {
+    reader
+        .flat_map(|batch| batch.expect("a batch").rows().into_owned())
+        .collect()
+}
+
+#[test]
+fn a_sorted_stream_pulls_every_batch_before_its_first_and_answers_the_chunked_merge() {
+    let root = counted_root();
+    let held = ChunkedSerie::from_arrow_reader(
+        Some(&root),
+        counted_stream(&root, 4, 3, Arc::new(AtomicUsize::new(0))),
+        ArrowCastOptions::new(),
+    )
+    .expect("four chunks");
+    for options in [
+        yggdryl::SortOptions::default(),
+        yggdryl::SortOptions::descending(),
+    ] {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let stream = SerieReader::from_arrow_reader(
+            Some(&root),
+            counted_stream(&root, 4, 3, Arc::clone(&pulls)),
+            ArrowCastOptions::new(),
+        )
+        .expect("a stream");
+        assert_eq!(pulls.load(Ordering::SeqCst), 0);
+        let mut sorted = stream.into_sorted(options).expect("sorted");
+        // Every batch was pulled before the first sorted one is asked for.
+        assert_eq!(pulls.load(Ordering::SeqCst), 4);
+        assert_eq!(without_order(sorted.field()), root);
+        let first = sorted.next().expect("a batch").expect("sorted rows");
+        assert_eq!(pulls.load(Ordering::SeqCst), 4);
+        let mut rows = first.rows().into_owned();
+        rows.extend(drained(sorted));
+        assert_eq!(
+            rows,
+            held.into_sorted(options).expect("merged").rows(),
+            "{options:?}"
+        );
+    }
+    for by in ["id, left_value desc", "left_value desc", "id * -1"] {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let sorted = SerieReader::from_arrow_reader(
+            Some(&root),
+            counted_stream(&root, 4, 3, Arc::clone(&pulls)),
+            ArrowCastOptions::new(),
+        )
+        .expect("a stream")
+        .into_sort_by(by)
+        .expect("sorted");
+        assert_eq!(pulls.load(Ordering::SeqCst), 4, "{by}");
+        assert_eq!(
+            drained(sorted),
+            held.into_sort_by(by).expect("merged").rows(),
+            "{by}"
+        );
+    }
+}
+
+#[test]
+fn a_sorted_stream_refuses_its_keys_before_a_batch_is_pulled() {
+    let root = counted_root();
+    for refused in ["tier", "id,", "id, id desc", "unnest(id)"] {
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let stream = SerieReader::from_arrow_reader(
+            Some(&root),
+            counted_stream(&root, 4, 3, Arc::clone(&pulls)),
+            ArrowCastOptions::new(),
+        )
+        .expect("a stream");
+        assert!(stream.into_sort_by(refused).is_err(), "{refused}");
+        assert_eq!(pulls.load(Ordering::SeqCst), 0, "{refused}");
+    }
+}
+
+#[test]
+fn a_sorted_window_keeps_its_root_and_its_static_values() {
+    let root = counted_root();
+    let mut windows = SerieReader::from_arrow_reader(
+        Some(&root),
+        counted_stream(&root, 2, 3, Arc::new(AtomicUsize::new(0))),
+        ArrowCastOptions::new(),
+    )
+    .expect("a stream")
+    .window_by("left_value < 4", false)
+    .expect("windows");
+    // The first window is the rows valued 0 to 3, across both batches.
+    let window = windows.next().expect("a window").expect("the first window");
+    let cells = static_cells(&window);
+    let sorted = window.into_sort_by("left_value desc").expect("sorted");
+    assert_eq!(without_order(sorted.field()), root);
+    assert_eq!(static_cells(&sorted), cells);
+    let rows = drained(sorted);
+    let values: Vec<Scalar> = rows
+        .iter()
+        .map(|row| row.get(1).expect("a value").into_owned())
+        .collect();
+    assert_eq!(values, [3_i64, 2, 1, 0].map(Scalar::from).to_vec());
+}
+
+/// `field` without the order its root declares: what a sort leaves equal
+/// to the field it sorted, the `SORT:by` it wrote aside.
+fn without_order(field: &Field) -> Field {
+    field.clone().with_metadata_removed("SORT:by")
+}
+
+// ---------------------------------------------------------------------------
+// The declared order at the doors: a root declaring `SORT:by` is a proven
+// order, so every door foreign rows enter under one reads them against it
+// once - each row, and each batch edge of a stream - and refuses the first
+// out of order by its row; a door holding rows already proven reads none.
+// ---------------------------------------------------------------------------
+
+/// The record `book{venue: utf8, price: int64}`, its root declaring `by`.
+fn book_root(by: &[&str]) -> Field {
+    let mut root = StructType::from_fields([
+        DataType::utf8().required_field("venue"),
+        DataType::Int64.required_field("price"),
+    ])
+    .map(DataType::from)
+    .expect("two children")
+    .required_field("book");
+    if !by.is_empty() {
+        root.as_sort_mut().set_by_texts(by).expect("the keys");
+    }
+    root
+}
+
+fn book_row(venue: &str, price: i64) -> Scalar {
+    Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)])
+}
+
+fn book_rows(rows: &[(&str, i64)]) -> Vec<Scalar> {
+    rows.iter()
+        .map(|(venue, price)| book_row(venue, *price))
+        .collect()
+}
+
+/// The venues and prices of `rows` as Arrow columns, the prices as int32
+/// where `narrow` - a layout the root's int64 takes through the plan.
+fn book_columns(rows: &[(&str, i64)], narrow: bool) -> (Vec<ArrowField>, Vec<ArrayRef>) {
+    let venues: ArrayRef = Arc::new(StringArray::from(
+        rows.iter().map(|row| row.0).collect::<Vec<_>>(),
+    ));
+    let (price, prices): (ArrowDataType, ArrayRef) = if narrow {
+        (
+            ArrowDataType::Int32,
+            Arc::new(Int32Array::from(
+                rows.iter()
+                    .map(|row| i32::try_from(row.1).expect("a small price"))
+                    .collect::<Vec<_>>(),
+            )),
+        )
+    } else {
+        (
+            ArrowDataType::Int64,
+            Arc::new(Int64Array::from(
+                rows.iter().map(|row| row.1).collect::<Vec<_>>(),
+            )),
+        )
+    };
+    (
+        vec![
+            ArrowField::new("venue", ArrowDataType::Utf8, false),
+            ArrowField::new("price", price, false),
+        ],
+        vec![venues, prices],
+    )
+}
+
+/// `rows` as one record array.
+fn book_array(rows: &[(&str, i64)], narrow: bool) -> ArrayRef {
+    let (fields, columns) = book_columns(rows, narrow);
+    Arc::new(StructArray::new(fields.into(), columns, None))
+}
+
+/// `rows` as one batch, its schema carrying `metadata`.
+fn book_batch(
+    rows: &[(&str, i64)],
+    narrow: bool,
+    metadata: std::collections::HashMap<String, String>,
+) -> RecordBatch {
+    let (fields, columns) = book_columns(rows, narrow);
+    RecordBatch::try_new(
+        Arc::new(Schema::new_with_metadata(fields, metadata)),
+        columns,
+    )
+    .expect("a batch")
+}
+
+/// The refusal of `name`'s row `row` out of the order `keys` spell.
+fn out_of_order(name: &str, row: usize, keys: &str) -> (String, String) {
+    (
+        name.to_owned(),
+        format!("row {row} of {name} is out of the order its root declares, `{keys}`"),
+    )
+}
+
+/// A core refusal's path and reason.
+fn core_refusal(error: yggdryl::Error) -> (String, String) {
+    match error {
+        yggdryl::Error::InvalidRecord { path, reason } => (path.to_string(), reason.to_string()),
+        other => panic!("expected an invalid record, got {other}"),
+    }
+}
+
+/// The `SORT:by` text a serie's root carries.
+fn declared(serie: &Serie) -> Option<&str> {
+    serie
+        .field()
+        .and_then(|field| field.get_metadata("SORT:by"))
+}
+
+#[test]
+fn every_door_foreign_rows_enter_proves_the_order_the_root_declares() {
+    let root = book_root(&["venue", "price desc"]);
+    let text = r#"["venue","price desc"]"#;
+    // Row 1 prices 3 after 1 within XNAS: out of `price desc`.
+    let disordered = [("XNAS", 1), ("XNAS", 3), ("XNYS", 2)];
+    let ordered = [("XNAS", 3), ("XNAS", 1), ("XNYS", 2)];
+    let refused = out_of_order("book", 1, "venue, price desc");
+    let sort_metadata = std::collections::HashMap::from([("SORT:by".to_owned(), text.to_owned())]);
+    let plain = |rows: &[(&str, i64)]| {
+        Serie::from_scalars(book_root(&[]), book_rows(rows)).expect("plain rows")
+    };
+    type Door<'a> = Box<dyn Fn(&[(&str, i64)]) -> Result<Serie, (String, String)> + 'a>;
+    let doors: Vec<(&str, Door<'_>)> = vec![
+        (
+            "from_scalars",
+            Box::new(|rows| {
+                Serie::from_scalars(root.clone(), book_rows(rows)).map_err(core_refusal)
+            }),
+        ),
+        (
+            "from_arrow_array, exact",
+            Box::new(|rows| {
+                Serie::from_arrow_array(Some(&root), book_array(rows, false), strict())
+                    .map_err(refusal)
+            }),
+        ),
+        (
+            "from_arrow_array, cast",
+            Box::new(|rows| {
+                Serie::from_arrow_array(Some(&root), book_array(rows, true), strict())
+                    .map_err(refusal)
+            }),
+        ),
+        (
+            "from_arrow_batch, exact",
+            Box::new(|rows| {
+                Serie::from_arrow_batch(
+                    Some(&root),
+                    &book_batch(rows, false, Default::default()),
+                    strict(),
+                )
+                .map_err(refusal)
+            }),
+        ),
+        (
+            "from_arrow_batch, cast",
+            Box::new(|rows| {
+                Serie::from_arrow_batch(
+                    Some(&root),
+                    &book_batch(rows, true, Default::default()),
+                    strict(),
+                )
+                .map_err(refusal)
+            }),
+        ),
+        (
+            "Serie::cast from a plain record",
+            Box::new(|rows| plain(rows).cast(&root, strict()).map_err(refusal)),
+        ),
+    ];
+    for (what, door) in &doors {
+        assert_eq!(door(&disordered).unwrap_err(), refused, "{what}");
+        let landed = door(&ordered).unwrap_or_else(|error| panic!("{what}: {error:?}"));
+        assert_eq!(declared(&landed), Some(text), "{what}");
+        assert_eq!(landed.rows().to_vec(), book_rows(&ordered), "{what}");
+    }
+    // With no root, a batch's schema metadata is the root's, its order
+    // read the same way under the default root name.
+    let refused = Serie::from_arrow_batch(
+        None,
+        &book_batch(&disordered, false, sort_metadata.clone()),
+        strict(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        refusal(refused),
+        out_of_order(yggdryl::media::DEFAULT_ROOT_NAME, 1, "venue, price desc")
+    );
+    let landed =
+        Serie::from_arrow_batch(None, &book_batch(&ordered, false, sort_metadata), strict())
+            .expect("in order");
+    assert_eq!(declared(&landed), Some(text));
+    // An Arrow array carries no root metadata: with no field it declares
+    // nothing, and nothing is read.
+    let landed = Serie::from_arrow_array(None, book_array(&disordered, false), strict())
+        .expect("no order declared");
+    assert!(landed.declared_order().expect("none").is_none());
+}
+
+#[test]
+fn a_cast_from_a_record_already_declaring_the_order_lands_it_as_declared() {
+    let root = book_root(&["venue", "price desc"]);
+    let sorted = Serie::from_scalars(
+        book_root(&[]),
+        book_rows(&[("XNYS", 2), ("XNAS", 1), ("XNAS", 3)]),
+    )
+    .expect("plain rows")
+    .into_sort_by("venue, price desc")
+    .expect("sorted");
+    // Under its own field the cast is the serie itself; under the same
+    // declaration named otherwise it is cast and keeps it.
+    let renamed = root.clone().with_name("again");
+    let cast = sorted.cast(&renamed, strict()).expect("the same order");
+    assert_eq!(cast.field(), Some(&renamed));
+    assert_eq!(cast.rows(), sorted.rows());
+    // A target declaring nothing lands declaring nothing; one declaring
+    // a prefix of the order lands declaring it.
+    let plain = sorted.cast(&book_root(&[]), strict()).expect("plain");
+    assert!(plain.declared_order().expect("none").is_none());
+    let prefix = sorted
+        .cast(&book_root(&["venue"]), strict())
+        .expect("a prefix");
+    assert_eq!(declared(&prefix), Some(r#"["venue"]"#));
+    // A target declaring another order reads the rows against it.
+    assert_eq!(
+        refusal(sorted.cast(&book_root(&["price"]), strict()).unwrap_err()),
+        out_of_order("book", 1, "price")
+    );
+}
+
+#[test]
+fn the_doors_holding_proven_rows_read_no_order() {
+    let root = book_root(&["venue", "price desc"]);
+    // Rows a door lays out itself are in the order already: none, or all
+    // one value.
+    for (what, held) in [
+        (
+            "from_default",
+            Serie::from_default(root.clone(), 3).expect("defaults"),
+        ),
+        ("empty", Serie::empty(root.clone()).expect("empty")),
+        (
+            "with_capacity",
+            Serie::with_capacity(root.clone(), 8).expect("empty"),
+        ),
+    ] {
+        assert_eq!(held.field(), Some(&root), "{what}");
+        assert!(
+            held.declared_order().expect("well formed").is_some(),
+            "{what}"
+        );
+    }
+    // A held serie's declaration is proven, so the reader over it yields
+    // the very buffers it holds - and the same of a chunked serie's chunks.
+    let sorted = Serie::from_scalars(
+        root.clone(),
+        book_rows(&[("XNAS", 3), ("XNAS", 1), ("XNYS", 2)]),
+    )
+    .expect("in order");
+    let mut reader = SerieReader::from_serie(sorted.clone()).expect("a reader");
+    let yielded = reader.next().expect("one item").expect("the serie");
+    assert_eq!(yielded.field(), Some(&root));
+    let pointers =
+        |serie: &Serie| buffer_pointers(&serie.into_arrow_array().expect("a column").to_data());
+    assert_eq!(pointers(&yielded), pointers(&sorted));
+    assert!(reader.next().is_none());
+    let chunked = ChunkedSerie::from_series(
+        Some(&root),
+        [
+            sorted.slice(0, 2).expect("a slice"),
+            sorted.slice(2, 1).expect("a slice"),
+        ],
+        ArrowCastOptions::new(),
+    )
+    .expect("in order");
+    let yielded = SerieReader::from_chunked(chunked.clone())
+        .expect("a reader")
+        .map(|chunk| chunk.expect("a chunk"))
+        .collect::<Vec<_>>();
+    assert_eq!(yielded.len(), 2);
+    for (yielded, chunk) in yielded.iter().zip(chunked.chunks()) {
+        assert_eq!(yielded.field(), Some(&root));
+        assert_eq!(pointers(yielded), pointers(chunk));
+    }
+}
+
+/// A stream's batches, each its `(venue, price)` rows.
+type BookBatches<'a> = &'a [&'a [(&'a str, i64)]];
+
+/// `batches` of `(venue, price)` rows as one stream under `root`'s schema,
+/// which carries the order the root declares.
+fn book_stream(root: &Field, batches: BookBatches<'_>) -> BatchReader {
+    let schema = root.clone().into_arrow_schema().expect("a schema");
+    let parts: Vec<RecordBatch> = batches
+        .iter()
+        .map(|rows| {
+            let (_, columns) = book_columns(rows, false);
+            RecordBatch::try_new(Arc::clone(&schema), columns).expect("a batch")
+        })
+        .collect();
+    Box::new(RecordBatchIterator::new(parts.into_iter().map(Ok), schema))
+}
+
+/// The refusal of a stream's batch opening out of `book`'s `keys`.
+fn opens_out_of_order(keys: &str) -> (String, String) {
+    (
+        "book".to_owned(),
+        format!(
+            "a batch of book opens out of the order its root declares, `{keys}`, after the batch before"
+        ),
+    )
+}
+
+#[test]
+fn a_stream_proves_each_batch_and_each_batch_edge_and_fuses_after_a_refusal() {
+    let root = book_root(&["price"]);
+    let cases: [(&str, BookBatches<'_>, usize, (String, String)); 3] = [
+        (
+            "a batch out of order within itself",
+            &[&[("A", 1), ("A", 2)], &[("B", 4), ("B", 3)]],
+            1,
+            out_of_order("book", 1, "price"),
+        ),
+        (
+            "a batch opening below the last row before it",
+            &[&[("A", 1), ("A", 5)], &[("B", 4), ("B", 6)]],
+            1,
+            opens_out_of_order("price"),
+        ),
+        (
+            "an empty batch between keeps the edge",
+            &[&[("A", 1), ("A", 5)], &[], &[("B", 4)]],
+            2,
+            opens_out_of_order("price"),
+        ),
+    ];
+    for (what, batches, at, refused) in cases {
+        let mut reader = SerieReader::from_arrow_reader(
+            Some(&root),
+            book_stream(&root, batches),
+            ArrowCastOptions::new(),
+        )
+        .expect("a stream");
+        for index in 0..at {
+            let batch = reader.next().expect("a batch").expect("in order");
+            assert_eq!(
+                declared(&batch),
+                Some(r#"["price"]"#),
+                "{what}: batch {index}"
+            );
+        }
+        assert_eq!(
+            refusal(reader.next().expect("the refusal").unwrap_err()),
+            refused,
+            "{what}"
+        );
+        assert!(reader.next().is_none(), "{what}: fused");
+        // The same refusal through the doors that drain a stream, and
+        // with the root read off the stream's own schema.
+        let drained = ChunkedSerie::from_arrow_reader(
+            Some(&root),
+            book_stream(&root, batches),
+            ArrowCastOptions::new(),
+        )
+        .unwrap_err();
+        assert_eq!(refusal(drained), refused, "{what}: chunked");
+        let joined = Serie::from_arrow_reader(
+            Some(&root),
+            book_stream(&root, batches),
+            ArrowCastOptions::new(),
+        )
+        .unwrap_err();
+        assert_eq!(refusal(joined), refused, "{what}: joined");
+        let mut own = SerieReader::from_arrow_reader(
+            None,
+            book_stream(&root, batches),
+            ArrowCastOptions::new(),
+        )
+        .expect("a stream");
+        assert_eq!(own.field().get_metadata("SORT:by"), Some(r#"["price"]"#));
+        let failed = own.find_map(Result::err).expect("the refusal");
+        let (_, reason) = refusal(failed);
+        assert!(
+            reason.contains("its root declares, `price`"),
+            "{what}: {reason}"
+        );
+    }
+    // A stream in order across every edge - equal keys at an edge, an
+    // empty batch among them - is yielded whole, every batch declaring it.
+    let batches: &[&[(&str, i64)]] = &[
+        &[("A", 1), ("A", 2)],
+        &[],
+        &[("B", 2), ("B", 3)],
+        &[("C", 9)],
+    ];
+    let yielded: Vec<Serie> = SerieReader::from_arrow_reader(
+        Some(&root),
+        book_stream(&root, batches),
+        ArrowCastOptions::new(),
+    )
+    .expect("a stream")
+    .collect::<Result<_, _>>()
+    .expect("in order");
+    assert_eq!(yielded.len(), 4);
+    assert!(
+        yielded
+            .iter()
+            .all(|batch| declared(batch) == Some(r#"["price"]"#))
+    );
+    assert_eq!(
+        yielded
+            .iter()
+            .flat_map(|batch| batch.rows().into_owned())
+            .collect::<Vec<_>>(),
+        book_rows(&[("A", 1), ("A", 2), ("B", 2), ("B", 3), ("C", 9)])
+    );
+}
+
+#[test]
+fn a_stream_cast_onto_a_declaring_root_proves_its_batches_against_it() {
+    let plain = book_root(&[]);
+    let root = book_root(&["price desc"]);
+    let batches: &[&[(&str, i64)]] = &[&[("A", 9), ("A", 7)], &[("B", 8)]];
+    let mut reader = SerieReader::from_arrow_reader(
+        Some(&plain),
+        book_stream(&plain, batches),
+        ArrowCastOptions::new(),
+    )
+    .expect("a stream")
+    .cast(&root, ArrowCastOptions::new())
+    .expect("cast");
+    assert_eq!(reader.field(), &root);
+    assert_eq!(
+        declared(&reader.next().expect("a batch").expect("in order")),
+        Some(r#"["price desc"]"#)
+    );
+    assert_eq!(
+        refusal(reader.next().expect("the refusal").unwrap_err()),
+        opens_out_of_order("price desc")
+    );
+    assert!(reader.next().is_none());
+}
+
+#[test]
+fn a_sorted_stream_yields_a_root_declaring_its_order() {
+    let root = book_root(&[]);
+    let batches: &[&[(&str, i64)]] = &[&[("B", 2), ("A", 9)], &[("A", 1)]];
+    let stream = || {
+        SerieReader::from_arrow_reader(
+            Some(&root),
+            book_stream(&root, batches),
+            ArrowCastOptions::new(),
+        )
+        .expect("a stream")
+    };
+    for (sorted, text) in [
+        (
+            stream()
+                .into_sorted(yggdryl::SortOptions::default())
+                .expect("sorted"),
+            r#"["venue","price"]"#,
+        ),
+        (
+            stream().into_sort_by("venue, price desc").expect("sorted"),
+            r#"["venue","price desc"]"#,
+        ),
+    ] {
+        assert_eq!(sorted.field().get_metadata("SORT:by"), Some(text));
+        let yielded: Vec<Serie> = sorted.collect::<Result<_, _>>().expect("sorted rows");
+        assert!(
+            yielded.iter().all(|batch| declared(batch) == Some(text)),
+            "{text}"
+        );
+        // What the root declares, the rows it yields land under.
+        let rows: Vec<Scalar> = yielded
+            .iter()
+            .flat_map(|batch| batch.rows().into_owned())
+            .collect();
+        let mut declaring = book_root(&[]);
+        declaring
+            .set_metadata([("SORT:by", text)])
+            .expect("the declaration");
+        assert!(Serie::from_scalars(declaring, rows).is_ok(), "{text}");
     }
 }

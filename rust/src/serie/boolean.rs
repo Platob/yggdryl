@@ -16,41 +16,83 @@ use arrow_array::{Array, ArrayRef, BooleanArray};
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer};
 
 use super::{Serie, layout, require_range, require_row, require_window};
+use crate::spill::Backing;
 use crate::value::SerieValue;
 use crate::{Field, Result, Scalar, SortOptions};
 
 /// One column of booleans: a bitmap of values beside a bitmap of validity.
+///
+/// The two bitmaps are Arrow's own, held apart and shared rather than
+/// copied, so a clone costs pointer bumps and a row read builds no array.
 #[derive(Clone)]
 pub struct BooleanSerie {
     field: Arc<Field>,
-    values: BooleanArray,
+    values: BooleanBuffer,
+    nulls: Option<NullBuffer>,
+    /// Where `values` and `nulls` live; a write puts them back on the heap.
+    backing: Backing,
 }
 
 impl BooleanSerie {
-    /// Pair a field with the bitmaps that hold its rows.
-    pub(crate) const fn new(field: Arc<Field>, values: BooleanArray) -> Self {
-        Self { field, values }
+    /// Pair a field with the bitmaps that hold its rows, the array taken
+    /// apart into them.
+    pub(crate) fn new(field: Arc<Field>, values: BooleanArray) -> Self {
+        let (values, nulls) = values.into_parts();
+        Self {
+            field,
+            values,
+            nulls,
+            backing: Backing::Heap,
+        }
     }
 
     /// Borrow the values bitmap, without copying it.
     pub fn values(&self) -> &BooleanBuffer {
-        self.values.values()
+        &self.values
     }
 
     /// Read row `index` off the values bitmap: `None` when the row is absent
     /// or past the end.
     pub fn value(&self, index: usize) -> Option<bool> {
-        (index < self.values.len() && self.values.is_valid(index)).then(|| self.values.value(index))
+        (index < self.values.len() && self.is_valid(index)).then(|| self.values.value(index))
     }
 
     /// Borrow the validity bitmap, or `None` where no row is absent.
     pub fn nulls(&self) -> Option<&NullBuffer> {
-        self.values.nulls()
+        self.nulls.as_ref()
     }
 
-    /// Borrow the Arrow array these bitmaps are.
-    pub const fn array(&self) -> &BooleanArray {
-        &self.values
+    /// The Arrow array these bitmaps are, rebuilt around them: pointer
+    /// bumps, no allocation and no copy.
+    pub fn array(&self) -> BooleanArray {
+        BooleanArray::new(self.values.clone(), self.nulls.clone())
+    }
+
+    /// Where the bitmaps live.
+    pub(crate) const fn backing(&self) -> &Backing {
+        &self.backing
+    }
+
+    /// State where the bitmaps live: a spill names the mapping it laid them
+    /// in, a write the heap.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.backing = backing;
+    }
+
+    /// Whether row `index`, inside the column, holds a value: read off the
+    /// validity bitmap.
+    fn is_valid(&self, index: usize) -> bool {
+        self.nulls
+            .as_ref()
+            .is_none_or(|nulls| nulls.is_valid(index))
+    }
+
+    /// Hold the bitmaps a write finished as this column's rows, on the heap
+    /// whatever the bitmaps they replace lay in.
+    fn put(&mut self, values: BooleanBuffer, nulls: Option<NullBuffer>) {
+        self.values = values;
+        self.nulls = nulls;
+        self.set_backing(Backing::Heap);
     }
 
     /// Refuse an absent native row under a field that admits none, naming
@@ -111,18 +153,18 @@ impl BooleanSerie {
         Ok(())
     }
 
-    /// Replace rows `range` by `replacement`: the two bitmaps spliced, each
-    /// in place where this column holds it alone.
+    /// Replace rows `range` by `replacement`: the two bitmaps moved out of
+    /// the column and spliced, each in place where this column held it
+    /// alone, copied once where it was shared or mapped.
     fn write_array(&mut self, range: Range<usize>, replacement: BooleanArray) {
         let len = self.values.len();
         let present: Vec<bool> = (0..replacement.len())
             .map(|row| replacement.is_valid(row))
             .collect();
-        let (bits, nulls) =
-            std::mem::replace(&mut self.values, BooleanArray::new_null(0)).into_parts();
+        let bits = std::mem::replace(&mut self.values, BooleanBuffer::new_unset(0));
         let bits = layout::splice_bits(bits, len, range.clone(), replacement.values());
-        let nulls = layout::splice_nulls(nulls, len, range, &present);
-        self.values = BooleanArray::new(bits, nulls);
+        let nulls = layout::splice_nulls(self.nulls.take(), len, range, &present);
+        self.put(bits, nulls);
     }
 
     /// Refuse what a write could not do: nothing, for a bitmap.
@@ -144,18 +186,20 @@ impl BooleanSerie {
     /// bitmap reaches any total.
     pub(crate) fn append(&mut self, other: &Self) -> bool {
         let len = self.values.len();
-        self.write_array(len..len, other.values.clone());
+        self.write_array(len..len, other.array());
         true
     }
 
-    /// Take both bitmaps as builders over their own bytes, copied once
-    /// where this column does not hold them alone.
+    /// Take both bitmaps out of the column as builders over their own
+    /// bytes, copied once where this column does not hold them alone or
+    /// they lie in a mapping.
     fn take_bits(&mut self) -> (BooleanBufferBuilder, Option<BooleanBufferBuilder>) {
-        let (bits, nulls) =
-            std::mem::replace(&mut self.values, BooleanArray::new_null(0)).into_parts();
+        let bits = std::mem::replace(&mut self.values, BooleanBuffer::new_unset(0));
         (
             layout::owned_bits(bits),
-            nulls.map(|nulls| layout::owned_bits(nulls.into_inner())),
+            self.nulls
+                .take()
+                .map(|nulls| layout::owned_bits(nulls.into_inner())),
         )
     }
 
@@ -166,7 +210,7 @@ impl BooleanSerie {
         validity: Option<BooleanBufferBuilder>,
     ) {
         let nulls = validity.map(|mut validity| NullBuffer::new(validity.finish()));
-        self.values = BooleanArray::new(values.finish(), nulls);
+        self.put(values.finish(), nulls);
     }
 
     /// Sort rows `range` in place under `options`: the present falses and
@@ -237,12 +281,12 @@ impl SerieValue for BooleanSerie {
     }
 
     fn null_count(&self) -> usize {
-        self.values.null_count()
+        self.nulls.as_ref().map_or(0, NullBuffer::null_count)
     }
 
     fn is_null(&self, index: usize) -> Result<bool> {
         require_row(self.field.name(), index, self.values.len())?;
-        Ok(self.values.is_null(index))
+        Ok(!self.is_valid(index))
     }
 
     fn scalar(&self, index: usize) -> Result<Scalar> {
@@ -258,6 +302,8 @@ impl SerieValue for BooleanSerie {
         Ok(Self {
             field: Arc::clone(&self.field),
             values: self.values.slice(offset, length),
+            nulls: self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
+            backing: self.backing,
         })
     }
 
@@ -273,7 +319,20 @@ impl SerieValue for BooleanSerie {
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
-        Arc::new(self.values.clone())
+        Arc::new(self.array())
+    }
+
+    fn memory_size(&self) -> usize {
+        // The typed array is pointer bumps, so nothing is boxed to count it.
+        crate::arrow::sliced_size(&self.array())
+    }
+
+    fn resident_size(&self) -> usize {
+        if self.backing().is_mapped() {
+            0
+        } else {
+            self.memory_size()
+        }
     }
 
     fn into_serie(self) -> Serie {

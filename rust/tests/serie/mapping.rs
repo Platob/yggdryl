@@ -616,3 +616,25 @@ fn a_null_struct_ancestor_compacts_its_hidden_narrow_map_span() {
         .validate_full()
         .unwrap();
 }
+
+#[test]
+fn a_freshly_built_mapping_column_is_resident_whole_and_not_spilled() {
+    let laid_out = Serie::from_scalars(tags_field(), tag_rows()).expect("a mapping column");
+    let crossed = Serie::from_arrow_array(
+        Some(&tags_field()),
+        Arc::new(tags()),
+        ArrowCastOptions::new(),
+    )
+    .expect("a mapping column");
+    for column in [laid_out, crossed] {
+        let leaf = column.as_map().expect("a mapping column");
+        assert_eq!(
+            SerieValue::resident_size(leaf),
+            SerieValue::memory_size(leaf)
+        );
+        assert!(!SerieValue::is_spilled(leaf));
+        assert!(column.memory_size() > 0);
+        assert_eq!(column.resident_size(), column.memory_size());
+        assert!(!column.is_spilled());
+    }
+}

@@ -623,7 +623,7 @@ class TestOrder:
         assert gapped.is_sorted()
         assert ChunkedSerie.empty(price()).is_sorted()
 
-    def test_sorting_and_uniqueness_join_once_and_answer_one_chunk_under_the_field(
+    def test_sorting_merges_the_chunks_and_uniqueness_keeps_each_chunk_apart_under_the_field(
         self,
     ) -> None:
         prices = chunked([3, None, 1, 3, 2], 2)
@@ -639,13 +639,18 @@ class TestOrder:
             4,
             2,
         ]
+        # Each chunk sorted on its own, then merged into one output chunk of
+        # at most `DEFAULT_RECORD_BATCH_ROW_SIZE` rows.
         ordered = prices.into_sorted()
         assert (ordered.num_chunks, len(ordered)) == (1, 5)
         assert ordered.field == prices.field
         assert ordered.is_sorted()
         assert [row.as_py() for row in ordered.rows()] == [1, 2, 3, 3, None]
+        # Each chunk keeps its own first occurrences, kept apart: [3, None],
+        # [1] and [2], the repeated 3 of the second chunk dropped.
         unique = prices.into_unique()
-        assert (unique.num_chunks, len(unique)) == (1, 4)
+        assert (unique.num_chunks, len(unique)) == (3, 4)
+        assert [row.as_py() for row in unique.rows()] == [3, None, 1, 2]
         assert unique.is_unique()
         # The chunked serie is as it was.
         assert prices.num_chunks == 3
@@ -788,3 +793,105 @@ class TestOrder:
         assert [(key.as_py(), len(rows)) for key, rows in windows] == [([1], 2), ([2], 1)]
         with pytest.raises(ValueError, match="collides with the static value"):
             prices.into_serie().window_by("price as windownum")
+
+
+class TestSortByUniqueSpillAndJoin:
+    """The `order by` keys, the merged uniqueness, the spill and the join
+    across the chunks - mirrors the `*_by`, `into_unique` and spill cases of
+    ``rust/tests/root/chunked_serie.rs`` and ``rust/tests/serie/spill.rs``,
+    and ``rust/tests/serie/join.rs``."""
+
+    def test_sort_indices_by_joins_once_and_into_sort_by_merges_with_no_join(self) -> None:
+        prices = chunked([3, 1, 2], 2)
+        order = prices.sort_indices_by("price desc")
+        assert order.field == Field("index", "uint32", nullable=False)
+        assert order.as_py() == [0, 2, 1]
+        sorted_ = prices.into_sort_by("price")
+        assert sorted_.num_chunks == 1
+        assert [row.as_py() for row in sorted_.rows()] == [1, 2, 3]
+        # Only a record's root states the order its rows keep.
+        assert sorted_.declared_order() is None
+        # The chunked serie is as it was, and states no order.
+        assert prices.num_chunks == 2
+        assert prices.declared_order() is None
+        assert prices.as_sort_by("price desc") is prices
+        assert [row.as_py() for row in prices.rows()] == [3, 2, 1]
+        with pytest.raises(ValueError, match="tier"):
+            prices.as_sort_by("tier")
+        assert [row.as_py() for row in prices.rows()] == [3, 2, 1]
+        # A key is refused before any chunk is read, with no chunk too.
+        with pytest.raises(ValueError, match="tier"):
+            ChunkedSerie.empty(price()).into_sort_by("tier")
+
+    def test_a_record_sorts_by_its_terms_across_the_chunks(self) -> None:
+        records = ChunkedSerie.from_(table())
+        sorted_ = records.into_sort_by(["symbol desc"])
+        assert [row["symbol"] for row in sorted_.as_py()] == ["MSFT", "AMD", "AAPL"]
+        assert sorted_.declared_order() == ["symbol desc"]
+        assert records.sort_indices_by({"term": "id", "descending": True}).as_py() == [2, 1, 0]
+
+    def test_into_unique_keeps_each_chunk_s_first_occurrences_apart(self) -> None:
+        venues = ChunkedSerie.from_arrow_chunked_array(
+            pa.chunked_array([["XNYS", "XNAS"], ["XNYS", "XPAR"]]),
+            Field("venue", "utf8", nullable=False),
+        )
+        unique = venues.into_unique()
+        assert [row.as_py() for row in unique.rows()] == ["XNYS", "XNAS", "XPAR"]
+        assert unique.num_chunks == 2
+        written = chunked([2, 1, 2], 2)
+        written.as_unique()
+        assert (written.num_chunks, [row.as_py() for row in written.rows()]) == (1, [2, 1])
+
+    def test_the_heaviest_chunks_spill_whole_first(self) -> None:
+        def column(rows: int) -> Serie:
+            return Serie.from_scalars(Field("price", "int64", nullable=True), list(range(rows)))
+
+        chunks = [column(1_024), column(256), column(8)]
+        sizes = [chunk.memory_size() for chunk in chunks]
+        whole = ChunkedSerie.from_series(chunks)
+        assert whole.resident_size() == sum(sizes)
+        assert not whole.is_spilled()
+
+        def state(held: ChunkedSerie) -> list[bool]:
+            return [chunk.is_spilled() for chunk in held.chunks]
+
+        held = copy.copy(whole)
+        held.spill(byte_size=sizes[1] + sizes[2])
+        assert state(held) == [True, False, False]
+        assert held.resident_size() == sizes[1] + sizes[2]
+        assert not held.is_spilled()
+        assert held == whole
+        held = copy.copy(whole)
+        held.spill(yggdryl.SpillOptions(0))
+        assert state(held) == [True, True, True]
+        assert held.is_spilled() and held.resident_size() == 0
+        assert held.memory_size() == whole.memory_size()
+        assert held.into_serie() == whole.into_serie()
+        held = copy.copy(whole)
+        held.spill(byte_size=yggdryl.SpillOptions.NEVER)
+        assert state(held) == [False, False, False]
+        assert state(whole) == [False, False, False]
+        assert not ChunkedSerie.empty(price()).is_spilled()
+
+    def test_a_join_keeps_its_output_batches_apart(self) -> None:
+        def pairs(name: str, rows: int, keys: int) -> Serie:
+            value = "left_value" if name == "l" else "right_value"
+            return Serie.from_scalars(
+                Field(name, f"struct<id: int64 not null, {value}: int64 not null>", nullable=False),
+                [[index % keys, index] for index in range(rows)],
+            )
+
+        left = pairs("l", 6, 3)
+        apart = ChunkedSerie.from_series([left.slice(0, 2), left.slice(2, 2), left.slice(4, 2)])
+        right = pairs("r", 4, 2)
+        joined = apart.join_with(ChunkedSerie.from_serie(right), "id")
+        # The right side is smaller and is built; every left chunk probes and
+        # answers its own output batch.
+        assert isinstance(joined, ChunkedSerie)
+        assert (len(joined), joined.num_chunks, joined.field.name) == (8, 3, "l")
+        assert joined.rows() == left.join_with(right, "id").rows()
+        # The other side is anything `ChunkedSerie.from_` reads.
+        assert apart.join_with(right, "id").rows() == joined.rows()
+        assert apart.join_with(right.into_arrow_batch(), "id", "left").num_chunks == 3
+        with pytest.raises(ValueError, match="cross"):
+            apart.join_with(right, "id", "cross")
