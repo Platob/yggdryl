@@ -189,7 +189,7 @@ medium does the work before a byte is decoded.
     authoritative; with none on disk, the schema's partition-marked fields
     decide where rows go (`with_partition_fields`, or `with_partition_by` for
     derived entries such as `years(ts)`, whose column the caller fills first
-    through the transform view: a write only casts and refuses a required
+    through the transform view - a write to a leaf or a folder only casts, where an Iceberg table computes the columns its own schema derives - and refuses a required
     column the rows lack, by path). The first batch to reach a
     leaf performs the write's operation; later ones append.
 

@@ -157,8 +157,6 @@ pub struct IcebergOptions {
     write_parallelism: Option<usize>,
     /// Where a commit stages its files before they reach the table, when set.
     write_staging: Option<WriteStaging>,
-    /// After how many data commits an automatic compaction runs, when set.
-    compact_after_commits: Option<u32>,
     /// The MIME type new data files are written with, when set.
     data_mime_type: Option<MimeType>,
 }
@@ -182,8 +180,6 @@ impl IcebergOptions {
     pub const COMMIT_TOTAL_TIMEOUT_MS_KEY: &'static str =
         OfficialTableProperties::PROPERTY_COMMIT_TOTAL_RETRY_TIME_MS;
 
-    /// The table property naming the automatic compaction cadence.
-    pub const COMPACT_AFTER_COMMITS_KEY: &'static str = "write.auto-compact.commit-interval";
     /// The property naming the size a data file aims for, in bytes.
     pub const TARGET_FILE_SIZE_KEY: &'static str =
         OfficialTableProperties::PROPERTY_WRITE_TARGET_FILE_SIZE_BYTES;
@@ -291,23 +287,6 @@ impl IcebergOptions {
     /// Return the explicitly configured total retry-delay budget.
     pub const fn commit_total_timeout_ms_option(&self) -> Option<u64> {
         self.commit_total_timeout_ms
-    }
-
-    /// Return the automatic compaction cadence, when one is set.
-    ///
-    /// `Some(n)` compacts after every `n` data commits, so small appends fold
-    /// into files near the target size without any commit paying for a full
-    /// rewrite: a well-paced cadence keeps commits neither so frequent that
-    /// every write rewrites files nor so rare that a scan reads hundreds of
-    /// undersized ones. `None` - the default - never compacts on its own, and
-    /// `Some(0)` reads as off rather than as after-every-commit.
-    pub fn compact_after_commits(&self) -> Option<u32> {
-        self.compact_after_commits.filter(|cadence| *cadence > 0)
-    }
-
-    /// Return the explicit compaction cadence, preserving `Some(0)`.
-    pub const fn compact_after_commits_option(&self) -> Option<u32> {
-        self.compact_after_commits
     }
 
     /// Return the size a data file aims for, in bytes. Default: 512 MiB.
@@ -490,18 +469,6 @@ impl IcebergOptions {
     /// Set the largest retry wait in milliseconds.
     pub fn set_commit_max_backoff_ms(&mut self, wait_ms: u64) {
         self.commit_max_backoff_ms = Some(wait_ms);
-    }
-
-    /// Set the automatic compaction cadence; zero turns it off.
-    pub fn set_compact_after_commits(&mut self, commits: u32) {
-        self.compact_after_commits = Some(commits);
-    }
-
-    /// Return these options compacting after every `commits` data commits.
-    #[must_use]
-    pub fn with_compact_after_commits(mut self, commits: u32) -> Self {
-        self.set_compact_after_commits(commits);
-        self
     }
 
     /// Set the largest retry wait in milliseconds, persistently.
@@ -687,7 +654,6 @@ impl IcebergOptions {
             )?,
             write_parallelism: write_parallelism_layer(explicit, metadata)?,
             write_staging: write_staging_layer(explicit, metadata)?,
-            compact_after_commits: compact_after_commits_layer(explicit, metadata)?,
             data_mime_type: data_mime_type_layer(explicit, metadata)?,
         })
     }
@@ -810,21 +776,6 @@ fn data_mime_type_layer(
         "a data MIME type of parquet, avro, orc, or puffin",
         |text| text.parse().ok(),
         is_iceberg_mime_type,
-    )
-}
-
-/// The one resolver for [`IcebergOptions::COMPACT_AFTER_COMMITS_KEY`].
-fn compact_after_commits_layer(
-    explicit: Option<&IcebergOptions>,
-    metadata: &TableMetadata,
-) -> Result<Option<u32>> {
-    layered(
-        explicit.and_then(|options| options.compact_after_commits),
-        metadata,
-        IcebergOptions::COMPACT_AFTER_COMMITS_KEY,
-        "a whole number of commits",
-        integer_from_text_as,
-        |_| true,
     )
 }
 

@@ -40,6 +40,62 @@ use super::{Transform, schema_from_json, schema_into_json};
 use crate::expression::{Function, Literal, Ordering, Term};
 use crate::{DataType, Error, Field, Result, Scalar, Serie, SortOptions};
 
+impl TableMetadata {
+    /// The prefix of the table property holding one derived column's term:
+    /// `yggdryl.transform.<column>` is the `TRANSFORM:expression` of the
+    /// top-level column it names. An Iceberg schema states a column's
+    /// identifier, name, type and nullability and nothing else, so this is
+    /// where a table keeps how one of its columns is computed.
+    pub const TRANSFORM_PROPERTY_PREFIX: &'static str = "yggdryl.transform.";
+}
+
+/// The properties stating the terms `schema`'s top-level columns derive
+/// with, in key order.
+fn transform_properties(schema: &Field) -> Result<Vec<(SmolStr, SmolStr)>> {
+    let mut properties = Vec::new();
+    for child in schema.fields() {
+        if let Some(term) = child.as_transform().term()? {
+            properties.push((
+                format_smolstr!(
+                    "{}{}",
+                    TableMetadata::TRANSFORM_PROPERTY_PREFIX,
+                    child.name()
+                ),
+                format_smolstr!("{term}"),
+            ));
+        }
+    }
+    properties.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(properties)
+}
+
+/// Declare on every schema the terms the table's properties state.
+///
+/// A property naming a column a schema does not have declares nothing on
+/// it - the column was dropped, or not yet added, under that schema - and a
+/// term that does not parse is refused naming its property.
+fn mark_transforms(schemas: &mut [Field], properties: &[(SmolStr, SmolStr)]) -> Result<()> {
+    for (key, text) in properties {
+        let Some(column) = key.strip_prefix(TableMetadata::TRANSFORM_PROPERTY_PREFIX) else {
+            continue;
+        };
+        let term: Term = text.parse().map_err(|error| {
+            invalid(format_smolstr!(
+                "expected a term in the table property {key:?}, got {text:?}: {error}"
+            ))
+        })?;
+        for schema in schemas.iter_mut() {
+            let Some(index) = schema.index_of(column) else {
+                continue;
+            };
+            let mut child = schema.fields()[index].clone();
+            child.as_transform_mut().set_term(&term)?;
+            schema.set_field_at(index, child)?;
+        }
+    }
+    Ok(())
+}
+
 /// Which revision of the Iceberg table specification a table is written to.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
@@ -871,6 +927,10 @@ impl TableMetadata {
         // partitions on are marked on it rather than only named beside it,
         // and the order its files keep is declared on it the same way.
         let schema = order.mark_order(&spec.mark_partitions(&schema)?)?;
+        // An Iceberg schema has nowhere to state how a column is computed,
+        // so a derived column's term rides the table's properties and is
+        // declared back on the column wherever the document is read.
+        let properties = transform_properties(&schema)?;
         let last_partition_id = spec.last_field_id();
         let current_schema_id = schema
             .as_iceberg()
@@ -892,7 +952,7 @@ impl TableMetadata {
             last_partition_id,
             sort_orders: vec![SortOrder::unsorted()],
             default_sort_order_id: 0,
-            properties: Vec::new(),
+            properties,
             current_snapshot_id: None,
             snapshots: Vec::new(),
             snapshot_log: Vec::new(),
@@ -1240,6 +1300,7 @@ impl TableMetadata {
             })
             .unwrap_or_default();
         properties.sort_by(|left, right| left.0.cmp(&right.0));
+        mark_transforms(&mut schemas, &properties)?;
 
         let mut statistics = sequence(document, "statistics");
         statistics.sort();

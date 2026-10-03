@@ -815,8 +815,6 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(untouched.readParallelMinFiles, 2)
   assert.equal(untouched.readParallelMinFileSize, 64 * 1024)
   assert.ok(untouched.dataMimeType.equals(MimeType.PARQUET))
-  // Nothing compacts on its own until a cadence says so.
-  assert.equal(untouched.compactAfterCommits, null)
   // Read parallelism defaults to what the host offers, kept inside 1..=8,
   // and the write parallelism defaults to it.
   assert.ok(untouched.readParallelism >= 1 && untouched.readParallelism <= 8)
@@ -835,7 +833,6 @@ test('an options value answers the fields it was given and defaults the rest', (
     readParallelMinFileSize: 1024,
     writeParallelism: 5,
     writeStaging: 'off',
-    compactAfterCommits: 7,
     dataMimeType: MimeType.AVRO,
   })
   assert.equal(given.writeStaging, 'off')
@@ -848,7 +845,6 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(given.readParallelMinFiles, 3)
   assert.equal(given.readParallelMinFileSize, 1024)
   assert.equal(given.writeParallelism, 5)
-  assert.equal(given.compactAfterCommits, 7)
   assert.ok(given.dataMimeType.equals(MimeType.AVRO))
   const cloned = given.clone()
   assert.notEqual(cloned, given)
@@ -866,9 +862,7 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(partial.commitRetries, 1)
   assert.equal(partial.targetFileSize, 512 * 1024 * 1024)
   partial.targetFileSize = 8192
-  partial.compactAfterCommits = 2
   assert.equal(partial.targetFileSize, 8192)
-  assert.equal(partial.compactAfterCommits, 2)
   assert.equal(partial.commitMinBackoffMs, 100)
 
   for (const invalid of [-1, 1.5, 2 ** 54]) {

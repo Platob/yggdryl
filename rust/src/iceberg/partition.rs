@@ -988,6 +988,13 @@ impl PartitionSpec {
     /// `values` is one value per partition field, in spec order. A null value
     /// writes the literal `null`, which is what Iceberg's own writers spell and
     /// why the manifest, not the path, is the authority on a partition value.
+    /// For the same reason a name or a value is written with only the
+    /// characters every store's path holds - ASCII letters and digits, `.`,
+    /// `_`, `+` and `-` - and any other as `_`: an instant spells `:`, which
+    /// no Windows path can, and `2024-01-01T00_15_00Z` names its directory
+    /// on every store alike. Two values one directory name stands for share
+    /// the directory and nothing else; their files are told apart by the
+    /// manifest.
     ///
     /// # Errors
     ///
@@ -1006,9 +1013,9 @@ impl PartitionSpec {
             if !path.is_empty() {
                 path.push('/');
             }
-            path.push_str(&field.name);
+            path.extend(field.name.chars().map(path_character));
             path.push('=');
-            path.push_str(&super::value::scalar_text(value));
+            path.extend(super::value::scalar_text(value).chars().map(path_character));
         }
         Ok(path)
     }
@@ -1403,9 +1410,23 @@ fn scalar_from_official(value: &OfficialDatum, dtype: &DataType) -> Result<Scala
     })
 }
 
+/// One character of a partition directory name: itself where every store's
+/// path holds it, `_` otherwise.
+const fn path_character(character: char) -> char {
+    if character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '+' | '-') {
+        character
+    } else {
+        '_'
+    }
+}
+
 /// Read one `PARTITION:by` entry as the column it reads and the transform it
 /// spells: an identity, an epoch function the grammar maps to a transform,
-/// or `truncate(col, w)`; anything else is refused by name.
+/// or `truncate(col, w)`. Any other derivation is a column of its own:
+/// [`Field::with_partition_by`] materialized it under the entry's name, the
+/// table computes it for every row written, and the spec partitions on that
+/// column as it is - an identity any engine reads. An entry that is neither,
+/// and a transform spelled wrongly, are refused by name.
 fn partition_entry<'schema>(
     schema: &'schema Field,
     entry: &Projection,
@@ -1413,37 +1434,61 @@ fn partition_entry<'schema>(
     let refuse = |reason: &str| {
         invalid(format_smolstr!(
             "expected an Iceberg partition transform - a column, an epoch function over one, or \
-             truncate(column, width) - got `{entry}`: {reason}"
+             truncate(column, width) - or a derivation materialized as a column, got `{entry}`: \
+             {reason}"
         ))
     };
+    let reason = match transform_entry(schema, entry, &refuse)? {
+        Ok(read) => return Ok(read),
+        Err(reason) => reason,
+    };
+    let name = partition_column_name(entry)?;
+    match schema.dtype().get_field_by_name(&name) {
+        Some(column) if column.as_transform().term()?.as_ref() == Some(entry.term()) => {
+            Ok((column, Transform::Identity))
+        }
+        _ => Err(refuse(reason)),
+    }
+}
+
+/// [`partition_entry`] for an entry an Iceberg transform spells: the inner
+/// `Err` is why no transform spells it, which leaves the entry to the column
+/// it may have materialized; the outer one is a transform spelled wrongly.
+fn transform_entry<'schema>(
+    schema: &'schema Field,
+    entry: &Projection,
+    refuse: &dyn Fn(&str) -> Error,
+) -> Result<std::result::Result<(&'schema Field, Transform), &'static str>> {
     let term = entry.term();
     if let Some(path) = term.as_path() {
-        return Ok((source_of(schema, path, &refuse)?, Transform::Identity));
+        return Ok(Ok((source_of(schema, path, refuse)?, Transform::Identity)));
     }
     let Term::Function(function, arguments) = term else {
-        return Err(refuse("not a function over a column"));
+        return Ok(Err("not a function over a column"));
     };
     let Some(source) = arguments.first().and_then(Term::as_path) else {
-        return Err(refuse("the first argument is not a column"));
+        return Ok(Err("the first argument is not a column"));
     };
-    let source = source_of(schema, source, &refuse)?;
+    let source = source_of(schema, source, refuse)?;
     if let Some(transform) = Transform::from_term(term) {
-        return Ok((source, transform));
+        return Ok(Ok((source, transform)));
     }
     if *function == Function::Truncate {
-        let width = arguments
+        // A whole-number width is the Iceberg truncation; a unit - `'hour'` -
+        // is a temporal floor no spec field holds.
+        let stated = arguments
             .get(1)
             .and_then(Term::as_literal)
             .map(Literal::value)
-            .and_then(Scalar::as_i64)
-            .and_then(|width| u32::try_from(width).ok())
-            .filter(|width| *width > 0);
-        return match width {
-            Some(width) => Ok((source, Transform::Truncate(width))),
-            None => Err(refuse("truncate takes a positive whole-number width")),
-        };
+            .and_then(Scalar::as_i64);
+        if let Some(stated) = stated {
+            return match u32::try_from(stated).ok().filter(|width| *width > 0) {
+                Some(width) => Ok(Ok((source, Transform::Truncate(width)))),
+                None => Err(refuse("truncate takes a positive whole-number width")),
+            };
+        }
     }
-    Err(refuse("not a transform a spec can hold"))
+    Ok(Err("not a transform a spec can hold"))
 }
 
 /// The schema column a path of struct children names, top level first.

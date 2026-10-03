@@ -798,6 +798,51 @@ mod internal {
     }
 
     #[test]
+    fn a_partition_path_spells_only_what_every_store_holds() {
+        // An instant spells `:`, which no Windows path can: the directory
+        // name keeps letters, digits and `._+-` and writes `_` for the rest,
+        // the manifest staying the authority on the value.
+        let mut schema = DataType::from(
+            StructType::from_fields([DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            }
+            .required_field("part")])
+            .unwrap(),
+        )
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let spec = PartitionSpec::identity(1, &schema, &["part"]).unwrap();
+        let value =
+            Scalar::datetime64(900_000_000_000, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+        let path = spec.partition_path(&[value]).unwrap();
+        assert!(path.starts_with("part=1970-01-01T00_15_00"), "{path}");
+        assert!(
+            path.chars()
+                .all(|character| character.is_ascii_alphanumeric()
+                    || matches!(character, '.' | '_' | '+' | '-' | '=')),
+            "{path}"
+        );
+        let venue = PartitionSpec::identity(
+            1,
+            &{
+                let mut schema = DataType::from(
+                    StructType::from_fields([DataType::utf8().required_field("venue")]).unwrap(),
+                )
+                .required_field("row");
+                assign_field_ids(&mut schema, 1).unwrap();
+                schema
+            },
+            &["venue"],
+        )
+        .unwrap();
+        assert_eq!(
+            venue.partition_path(&[Scalar::from("a/b c:d")]).unwrap(),
+            "venue=a_b_c_d"
+        );
+    }
+
+    #[test]
     fn a_partition_path_renders_the_period_number() {
         let (spec, plan) = plan(
             Transform::Minutes(15),
@@ -922,11 +967,49 @@ mod declared {
     }
 
     #[test]
-    fn an_entry_no_spec_can_hold_is_refused_by_name() {
-        for entry in ["lower(name)", "truncate(name, 0)", "years(ts) + 1 as k"] {
-            let declared = schema()
+    fn a_derivation_no_transform_spells_partitions_on_the_column_it_materialized() {
+        // `with_partition_by` makes each a `TRANSFORM:` column of the schema;
+        // the spec partitions on that column by identity, which every engine
+        // reads, and the table computes it for the rows it is written.
+        for (entry, column) in [("lower(name)", "name_lower"), ("years(ts) + 1 as k", "k")] {
+            let mut declared = schema()
                 .with_partition_by([entry.parse().unwrap()])
                 .unwrap();
+            // The materialized column is numbered above the ones the schema has.
+            assign_field_ids(&mut declared, 100).unwrap();
+            let spec = PartitionSpec::from_schema(1, &declared).unwrap();
+            assert_eq!(spec.fields.len(), 1, "{entry}");
+            assert_eq!(spec.fields[0].transform, Transform::Identity, "{entry}");
+            assert_eq!(spec.fields[0].name, column, "{entry}");
+            let source = declared
+                .fields()
+                .iter()
+                .find(|child| child.name() == column)
+                .unwrap();
+            assert_eq!(
+                Some(spec.fields[0].source_id),
+                source.parquet_field_id().unwrap(),
+                "{entry}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_entry_no_spec_can_hold_is_refused_by_name() {
+        // A transform spelled wrongly is refused whatever the schema holds.
+        let declared = schema()
+            .with_partition_by(["truncate(name, 0)".parse().unwrap()])
+            .unwrap();
+        let error = PartitionSpec::from_schema(1, &declared)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Iceberg partition transform"), "{error}");
+        assert!(error.contains("truncate(name, 0)"), "{error}");
+        // A derivation declared on the root alone has no column to partition
+        // on, and no spec field holds its term.
+        for entry in ["lower(name)", "years(ts) + 1 as k"] {
+            let mut declared = schema();
+            declared.as_partition_mut().set_by_texts([entry]).unwrap();
             let error = PartitionSpec::from_schema(1, &declared)
                 .unwrap_err()
                 .to_string();

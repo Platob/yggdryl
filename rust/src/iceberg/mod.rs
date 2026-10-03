@@ -153,10 +153,15 @@ impl Located {
     /// Publish one already-shaped overwrite cadence.
     ///
     /// The rows were cast when they were shaped, so nothing here is safe or
-    /// unsafe: the addressed partitions are replaced by what arrives.
+    /// unsafe. `replaced` is the one write's accumulator of what its earlier
+    /// cadences replaced: an addressed partition is replaced by the first
+    /// cadence and appended to after, and a table addressed whole has each
+    /// partition its rows reach replaced once; see
+    /// [`IcebergTable::commit_overwrite_cadence`].
     pub(crate) fn overwrite_prepared(
         &mut self,
         batches: crate::arrow::BatchReader,
+        replaced: &mut ReplacedPartitions,
         threads: Option<usize>,
     ) -> Result<()> {
         let filters = self.filters.clone();
@@ -165,7 +170,7 @@ impl Located {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         self.table
-            .commit_overwrite_where_on(&pairs, batches, threads)
+            .commit_overwrite_cadence(&pairs, batches, replaced, threads)
     }
 
     /// Publish one already-shaped append cadence.
@@ -269,9 +274,9 @@ impl Located {
         self.table.read_scoped(scope, options)
     }
 
-    /// Replace the addressed table partition: `IcebergTable::write_cadenced`
-    /// under [`IOMode::Overwrite`](crate::IOMode::Overwrite), the first
-    /// commit replacing it and every later one appending.
+    /// Replace the addressed table partition - or, addressing the table
+    /// whole, the partitions the rows fall in: `IcebergTable::write_cadenced`
+    /// under [`IOMode::Overwrite`](crate::IOMode::Overwrite).
     ///
     /// # Errors
     ///
@@ -320,7 +325,20 @@ impl Located {
         mode: crate::IOMode,
         options: &RecordOptions,
     ) -> Result<()> {
-        let filters = self.filters.clone();
+        use crate::media::IORecordOptions as _;
+
+        // The directories this location was reached through and the
+        // equalities the options' `where` spells name the scope together,
+        // as the table's own doors read the `where` alone: a column the
+        // path already pins is not pinned twice.
+        let mut filters = self.filters.clone();
+        if mode != crate::IOMode::Append {
+            for (column, value) in options.partition_pairs() {
+                if !filters.iter().any(|(held, _)| *held == column) {
+                    filters.push((column, value));
+                }
+            }
+        }
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))

@@ -261,7 +261,7 @@ pub(crate) fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Hol
 }
 
 /// The keyword fields accepted by the `IcebergOptions` constructor.
-const ICEBERG_OPTION_FIELDS: [&str; 12] = [
+const ICEBERG_OPTION_FIELDS: [&str; 11] = [
     "commit_retries",
     "commit_min_backoff_ms",
     "commit_max_backoff_ms",
@@ -272,7 +272,6 @@ const ICEBERG_OPTION_FIELDS: [&str; 12] = [
     "read_parallel_min_file_size",
     "write_parallelism",
     "write_staging",
-    "compact_after_commits",
     "data_mime_type",
 ];
 
@@ -326,7 +325,6 @@ fn set_iceberg_option(
         "write_staging" => options
             .set_write_staging(write_staging_from_value(value)?)
             .map_err(value_error)?,
-        "compact_after_commits" => options.set_compact_after_commits(value.extract::<u32>()?),
         "data_mime_type" => options
             .set_data_mime_type(core_mime_type_from_value(value)?)
             .map_err(value_error)?,
@@ -534,9 +532,6 @@ impl PyIcebergOptions {
         if let Some(value) = self.inner.write_staging() {
             state.set_item("write_staging", value.to_string())?;
         }
-        if let Some(value) = self.inner.compact_after_commits_option() {
-            state.set_item("compact_after_commits", value)?;
-        }
         if let Some(value) = self.inner.data_mime_type_option() {
             state.set_item("data_mime_type", value.as_str())?;
         }
@@ -716,20 +711,6 @@ impl PyIcebergOptions {
         self.inner
             .set_write_staging(write_staging_from_value(staging)?)
             .map_err(value_error)
-    }
-
-    /// After how many data commits an automatic compaction runs; `None` - the
-    /// default - never compacts on its own, and 0 reads as off.
-    #[getter]
-    fn compact_after_commits(&self) -> Option<u32> {
-        self.inner.compact_after_commits()
-    }
-
-    #[setter]
-    fn set_compact_after_commits(&mut self, commits: u32) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_compact_after_commits(commits);
-        Ok(())
     }
 
     /// The MIME type used for new data files. Default: `MimeType.PARQUET`.

@@ -5453,7 +5453,6 @@ class IcebergProperties(TypedDict, total=False):
     read_parallel_min_file_size: int | EllipsisType
     write_parallelism: int | EllipsisType
     write_staging: str | PathLike[str] | EllipsisType
-    compact_after_commits: int | EllipsisType
     data_mime_type: MimeType | str | EllipsisType
 
 class IcebergOptions:
@@ -5477,7 +5476,6 @@ class IcebergOptions:
         read_parallel_min_file_size: int | None = None,
         write_parallelism: int | None = None,
         write_staging: str | PathLike[str] | None = None,
-        compact_after_commits: int | None = None,
         data_mime_type: MimeType | str | None = None,
     ) -> None: ...
     @staticmethod
@@ -5522,10 +5520,6 @@ class IcebergOptions:
     def write_staging(self) -> str | None: ...
     @write_staging.setter
     def write_staging(self, staging: str | PathLike[str]) -> None: ...
-    @property
-    def compact_after_commits(self) -> int | None: ...
-    @compact_after_commits.setter
-    def compact_after_commits(self, commits: int) -> None: ...
     @property
     def data_mime_type(self) -> MimeType: ...
     @data_mime_type.setter

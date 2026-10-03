@@ -792,19 +792,32 @@ fn fixed_uuid_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
 ///
 /// Only the header's `schema` and `partition-spec` texts change - the
 /// placeholder goes in where `unknown` or `variant` was, the reserved bucket
-/// where `minutes[15]` was - and a manifest with neither is answered `None`
-/// without being re-encoded.
+/// where `minutes[15]` was, `long` where a nanosecond timestamp the spec
+/// partitions on by identity was - and a manifest with none of them is
+/// answered `None` without being re-encoded. The partition tuple is read
+/// back under the header as written ([`manifest_metadata`]), so a value keeps
+/// its logical identity whatever the parser was shown.
 fn bridged_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
     let source = crate::holder::Buffer::from(bytes);
     let container = crate::avro::read_container(&source)?;
     let mut metadata = container.metadata;
+    let header = |name: &str| {
+        metadata
+            .iter()
+            .find(|(key, _)| key.as_str() == name)
+            .and_then(|(_, value)| crate::json::from_utf8(value).ok())
+    };
+    let nanoseconds = match (header("schema"), header("partition-spec")) {
+        (Some(schema), Some(spec)) => super::official::partitions_on_nanoseconds(&schema, &spec),
+        _ => false,
+    };
     let mut changed = false;
     for (name, value) in &mut metadata {
         let Ok(document) = crate::json::from_utf8(value) else {
             continue;
         };
         let bridged = match name.as_str() {
-            "schema" => super::official::bridged_schema(&document)?,
+            "schema" => super::official::parser_view_schema(&document, nanoseconds)?,
             "partition-spec" => super::official::bridged_partition_spec(&document)?,
             _ => None,
         };
@@ -817,7 +830,72 @@ fn bridged_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
         return Ok(None);
     }
     let schema = container.schema.into_json();
-    official_reader_view(&schema, &metadata, &container.rows, "bridged-header").map(Some)
+    if !nanoseconds {
+        return official_reader_view(&schema, &metadata, &container.rows, "bridged-header")
+            .map(Some);
+    }
+    // The partition field is the long the parser was told it is: the wire
+    // schema loses the logical type that would have it decode an instant
+    // where its reader schema says a count, and each row states the count.
+    let schema = without_nanosecond_logical_types(&schema)?;
+    let rows = container
+        .rows
+        .iter()
+        .map(nanosecond_partition_as_count)
+        .collect::<Result<Vec<_>>>()?;
+    official_reader_view(&schema, &metadata, &rows, "bridged-header").map(Some)
+}
+
+/// One manifest row with every nanosecond instant of its partition tuple as
+/// the count it is, which is what the long beneath it holds.
+fn nanosecond_partition_as_count(row: &Scalar) -> Result<Scalar> {
+    let Some(file) = row.get_key_str("data_file") else {
+        return Ok(row.clone());
+    };
+    let Some(partition) = file.get_key_str("partition") else {
+        return Ok(row.clone());
+    };
+    let mut rewritten = partition.clone();
+    for key in partition.keys() {
+        let Some(value) = partition.get_key_str(key) else {
+            continue;
+        };
+        if value.id() == crate::DataTypeId::DateTime64
+            && value.temporal_unit() == Some(TimeUnit::Nanosecond)
+            && let Some(count) = value.temporal_count()
+        {
+            rewritten = object_with(&rewritten, key, Scalar::from(count))?;
+        }
+    }
+    object_with(row, "data_file", object_with(file, "partition", rewritten)?)
+}
+
+/// The Avro schema with every `timestamp-nanos` and `local-timestamp-nanos`
+/// annotation removed, the long beneath each left as it is.
+fn without_nanosecond_logical_types(value: &Scalar) -> Result<Scalar> {
+    if let Some(values) = value.as_sequence() {
+        return values
+            .iter()
+            .map(without_nanosecond_logical_types)
+            .collect::<Result<Vec<_>>>()
+            .map(Scalar::from_sequence);
+    }
+    if value.as_struct().is_none() && value.as_mapping().is_none() {
+        return Ok(value.clone());
+    }
+    let nanoseconds = matches!(
+        value.get_key_str("logicalType").and_then(Scalar::as_str),
+        Some("timestamp-nanos" | "local-timestamp-nanos")
+    );
+    let mut output = value.clone();
+    for key in value.keys() {
+        if nanoseconds && key == "logicalType" {
+            output = object_without(&output, key)?;
+        } else if let Some(child) = value.get_key_str(key) {
+            output = object_with(&output, key, without_nanosecond_logical_types(child)?)?;
+        }
+    }
+    Ok(output)
 }
 
 /// Re-encode one manifest with rewritten header metadata, bounded as a read.

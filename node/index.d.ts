@@ -4495,13 +4495,6 @@ export declare class IcebergOptions {
    */
   set readParallelMinFileSize(bytes: number)
   /**
-   * After how many data commits an automatic compaction runs; `null` - the
-   * default - never compacts on its own, and 0 reads as off.
-   */
-  get compactAfterCommits(): number | null
-  /** Set after how many data commits an automatic compaction runs. */
-  set compactAfterCommits(commits: number)
-  /**
    * The MIME type for new data files. Default: `MimeType.PARQUET`.
    *
    * Only what a write produces is decided here: a scan decodes each data
@@ -12437,8 +12430,6 @@ export interface IcebergOptionsInput {
   writeParallelism?: number
   /** Where a commit stages its files: `off`, or a local folder URL or path. */
   writeStaging?: string
-  /** After how many data commits an automatic compaction runs. */
-  compactAfterCommits?: number
   /** The MIME type for new data files. Table writes encode Parquet and Avro. */
   dataMimeType?: MimeTypeInput
 }

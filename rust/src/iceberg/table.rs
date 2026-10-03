@@ -1447,7 +1447,21 @@ impl<H: IOBase> IcebergTable<H> {
     /// batch cannot be cast to the table schema, when any write fails, or a
     /// [`CommitConflict`] when concurrent writers exhausted the retries.
     pub fn commit_append(&mut self, batches: BatchReader) -> Result<()> {
+        let batches = self.derived(batches)?;
         self.commit_append_on(batches, None)
+    }
+
+    /// The rows of `batches` with every column the schema derives computed.
+    ///
+    /// A stored column declaring `TRANSFORM:expression` that the rows do not
+    /// carry, or carry unwritten, is computed from the columns they do carry
+    /// before anything is cast or grouped - a table partitioned by a column
+    /// it derives fills that column for every writer, as it computes every
+    /// other partition value. A schema deriving nothing hands the reader
+    /// back. The public commit doors and the record doors derive; the
+    /// crate's `_on` and cadence forms take rows already derived.
+    fn derived(&self, batches: BatchReader) -> Result<BatchReader> {
+        self.schema()?.as_transform().apply_arrow_reader(batches)
     }
 
     /// [`Self::commit_append`] with its partition groups written on
@@ -1463,7 +1477,18 @@ impl<H: IOBase> IcebergTable<H> {
         Ok(())
     }
 
-    /// Replace every row with `batches` as a new snapshot.
+    /// Replace the partitions `batches` falls in as a new snapshot.
+    ///
+    /// The incoming rows are grouped by partition tuple - the grouping an
+    /// append lays files out by - and every live file of a partition they
+    /// reach is dropped from the new snapshot, while every other file is
+    /// carried exactly as it is: same location, same statistics, same row
+    /// lineage. The partition is the unit: no stored row is read, joined or
+    /// rewritten, so this holds on every format version, and a source with
+    /// no row reaches no partition and commits nothing. An unpartitioned
+    /// table is one partition, replaced whole - and emptied by a source with
+    /// no row. [`Self::commit_overwrite_where`] replaces a stated scope
+    /// instead, every row when it states none.
     ///
     /// The previous snapshot is retained and still readable; only the current
     /// pointer moves, which is what makes an overwrite reversible.
@@ -1471,12 +1496,53 @@ impl<H: IOBase> IcebergTable<H> {
     /// # Errors
     ///
     /// Returns an error when the partition spec cannot place a row, when a
-    /// batch cannot be cast to the table schema, or when any write fails.
+    /// batch cannot be cast to the table schema, when a live file written
+    /// under another partition spec could hold rows of a partition the
+    /// source reaches - rewrite it into the current spec first - when any
+    /// write fails, or a [`CommitConflict`] when a concurrent commit won.
     pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()> {
-        self.commit_overwrite_where(&[], batches)
+        let batches = self.derived(batches)?;
+        self.commit_overwrite_cadence(&[], batches, &mut ReplacedPartitions::default(), None)
+    }
+
+    /// One commit of a streamed overwrite.
+    ///
+    /// With no `filters` on a partitioned table the partitions the rows fall
+    /// in are replaced, and `replaced` carries the ones this write's earlier
+    /// commits replaced: the first commit that reaches a partition replaces
+    /// it, every later one appends beside what the write put there. With
+    /// `filters`, or on an unpartitioned table, the write's first commit
+    /// replaces the rows the filters select - every row with none - and
+    /// every later one appends.
+    pub(crate) fn commit_overwrite_cadence(
+        &mut self,
+        filters: &[(&str, &str)],
+        batches: BatchReader,
+        replaced: &mut ReplacedPartitions,
+        threads: Option<usize>,
+    ) -> Result<()> {
+        if filters.is_empty() && !self.opened()?.metadata.default_spec()?.is_unpartitioned() {
+            return self.commit_partitions(
+                filters,
+                batches,
+                Selector::new(Vec::new()),
+                false,
+                replaced,
+                threads,
+            );
+        }
+        if replaced.scope {
+            return self.commit_append_on(batches, threads);
+        }
+        self.commit_overwrite_where_on(filters, batches, threads)?;
+        replaced.scope = true;
+        Ok(())
     }
 
     /// Replace only the rows `filters` selects, keeping every other file.
+    ///
+    /// No filter selects every row, which is the whole table replaced in
+    /// one snapshot whatever its partitions.
     ///
     /// A file the filters exclude is carried into the new snapshot exactly as
     /// it is - the same location, the same statistics, the commit order it was
@@ -1503,6 +1569,7 @@ impl<H: IOBase> IcebergTable<H> {
         filters: &[(&str, &str)],
         batches: BatchReader,
     ) -> Result<()> {
+        let batches = self.derived(batches)?;
         self.commit_overwrite_where_on(filters, batches, None)
     }
 
@@ -1576,8 +1643,8 @@ impl<H: IOBase> IcebergTable<H> {
     ///
     /// # Errors
     ///
-    /// Returns an error for a merge on format v3, whose existing row IDs this
-    /// writer cannot yet preserve, when `merge_by` names a column the schema
+    /// Returns an error for a keyed merge on format v3, whose existing row IDs
+    /// this writer cannot yet preserve, when `merge_by` names a column the schema
     /// does not declare, when the table has neither a partition nor a key,
     /// when a live file written under another partition spec could hold an
     /// incoming key - it belongs to no partition of the current spec, so
@@ -1590,6 +1657,7 @@ impl<H: IOBase> IcebergTable<H> {
         merge_by: &crate::Selector,
         safe: bool,
     ) -> Result<()> {
+        let batches = self.derived(batches)?;
         self.commit_merge_cadence(
             filters,
             batches,
@@ -1619,10 +1687,14 @@ impl<H: IOBase> IcebergTable<H> {
         replaced: &mut ReplacedPartitions,
         threads: Option<usize>,
     ) -> Result<()> {
-        self.require_row_id_preserving_rewrite("merge")?;
         let schema = self.schema()?.clone();
         let spec = self.opened()?.metadata.default_spec()?.clone();
         let (keys, row_keys) = merge_keys(&schema, &spec, merge_by);
+        if !row_keys.is_empty() {
+            // A keyed merge rewrites the stored rows it keeps, under fresh
+            // row IDs; a partition replaced whole retains none of them.
+            self.require_row_id_preserving_rewrite("merge")?;
+        }
         if keys.is_empty() {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.merge_by"),
@@ -1635,6 +1707,29 @@ impl<H: IOBase> IcebergTable<H> {
         // Every key column is checked against the schema before a file is
         // read, computed keys included, so a bad key costs nothing.
         keys.bind(&schema)?;
+        self.commit_partitions(filters, batches, row_keys, safe, replaced, threads)
+    }
+
+    /// One commit over the partitions `batches` falls in: each joined with
+    /// its stored rows by `row_keys`, or - with no key beyond the partition -
+    /// replaced.
+    ///
+    /// What [`Self::commit_merge_cadence`] and
+    /// [`Self::commit_overwrite_cadence`] share: the incoming rows grouped
+    /// by partition tuple, the plan opened over those partitions alone, and
+    /// every file of every other partition carried untouched. A source with
+    /// no row commits nothing.
+    fn commit_partitions(
+        &mut self,
+        filters: &[(&str, &str)],
+        batches: BatchReader,
+        row_keys: Selector,
+        safe: bool,
+        replaced: &mut ReplacedPartitions,
+        threads: Option<usize>,
+    ) -> Result<()> {
+        let schema = self.schema()?.clone();
+        let spec = self.opened()?.metadata.default_spec()?.clone();
 
         // The incoming side is held, grouped by partition, and this is why:
         // the files a merge has to read are the ones of the partitions the
@@ -1687,8 +1782,8 @@ impl<H: IOBase> IcebergTable<H> {
                     continue;
                 }
                 return Err(invalid(format_smolstr!(
-                    "expected every live file a merge could change to belong to partition spec \
-                     {}, got {:?} under spec {}; rewrite it into the current spec first",
+                    "expected every live file this write could replace to belong to partition \
+                     spec {}, got {:?} under spec {}; rewrite it into the current spec first",
                     spec.spec_id,
                     task.entry.data_file.file_path,
                     task.spec.spec_id
@@ -2359,7 +2454,6 @@ impl<H: IOBase> IcebergTable<H> {
         };
 
         let operation = SmolStr::new(operation);
-        let compacting = operation == "replace";
         // The live manifests of one snapshot never change, so an attempt
         // beaten on write rather than on the version check re-uses the list
         // it already read; only a rebase onto a newer snapshot reads again.
@@ -2507,51 +2601,7 @@ impl<H: IOBase> IcebergTable<H> {
         // The staging is committed inside, the moment the versioned document
         // is durable; what is left of it when it drops is the directory.
         self.commit_document(on_conflict, apply, Some(&staging))?;
-        self.maybe_auto_compact(compacting)?;
         Ok(files_written)
-    }
-
-    /// Run the configured compaction cadence after a data commit.
-    ///
-    /// [`IcebergOptions::compact_after_commits`] paces this: after every `n`
-    /// data commits the undersized files fold together, so no single commit
-    /// pays for a full rewrite and no scan pays for hundreds of small files.
-    /// A compaction itself commits `replace`, which is what the count runs
-    /// from, so the cadence cannot recurse. A beaten compaction is ignored -
-    /// a concurrent writer's success is not this commit's failure, and the
-    /// next cadence point retries what this one left - while any other
-    /// failure surfaces, because the data commit already stands either way.
-    fn maybe_auto_compact(&mut self, compacting: bool) -> Result<()> {
-        // Automatic compaction is optional. Skipping it on v3 keeps a
-        // successful data commit successful without rewriting retained rows
-        // under fresh row IDs.
-        if compacting || self.opened()?.metadata.format_version >= FormatVersion::V3 {
-            return Ok(());
-        }
-        let Some(cadence) =
-            IcebergOptions::resolved(self.options.as_ref(), &self.opened()?.metadata)?
-                .compact_after_commits()
-        else {
-            return Ok(());
-        };
-        let mut since_replace: u32 = 0;
-        for snapshot in self.opened()?.metadata.snapshots.iter().rev() {
-            if snapshot.operation() == "replace" {
-                break;
-            }
-            since_replace = since_replace.saturating_add(1);
-        }
-        if since_replace < cadence {
-            return Ok(());
-        }
-        match self.compact() {
-            Ok(_) => Ok(()),
-            // A CommitConflict reaches `Error` through exactly one From impl,
-            // so its display is the marker; a beaten compaction retries at
-            // the next cadence point rather than failing the data commit.
-            Err(error) if error.to_string().contains("got beaten") => Ok(()),
-            Err(error) => Err(error),
-        }
     }
 
     /// Reject rewrites that would assign fresh row IDs to retained v3 rows.
@@ -2775,7 +2825,7 @@ impl<H: IOBase> IOBase for IcebergTable<H> {
             return Ok(());
         }
         let schema = crate::arrow::arrow_schema_from_field(self.schema()?)?;
-        self.commit_overwrite(crate::arrow::batch_reader(schema, []))
+        self.commit_overwrite_where(&[], crate::arrow::batch_reader(schema, []))
     }
 
     /// Delete the table completely: metadata, manifests, and data files.
@@ -2936,9 +2986,11 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
         self.read_scoped(Filter::always_true(), options)
     }
 
-    /// Replace the selected partitions: `write_cadenced` under
-    /// [`IOMode::Overwrite`](crate::IOMode::Overwrite), the first commit
-    /// replacing the addressed partitions and every later one appending.
+    /// Replace the partitions the rows fall in - the partitions the
+    /// options' `where` addresses where it states any, an unpartitioned
+    /// table whole: `write_cadenced` under
+    /// [`IOMode::Overwrite`](crate::IOMode::Overwrite). No other partition
+    /// is touched, and a source with no row replaces none.
     fn overwrite_arrow_reader(
         &mut self,
         batches: BatchReader,
@@ -2977,7 +3029,9 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
 impl<H: IOBase> IcebergTable<H> {
     /// One streamed write under `mode`, over the partitions `pairs` address.
     ///
-    /// The rows are shaped onto the stored schema once and cut into
+    /// The rows are shaped onto the stored schema once - the columns it
+    /// derives computed between the options' declared field and their
+    /// clauses - and cut into
     /// cadences: every [`commit_batch_num`](IORecordOptions::commit_batch_num)
     /// batches where one is stated, else one commit when the source ends -
     /// the rows of every partition held under the process spill bound until
@@ -2987,11 +3041,14 @@ impl<H: IOBase> IcebergTable<H> {
     /// [`num_threads`](IORecordOptions::num_threads) threads at once where
     /// stated, else the table's `write.parallelism`, each group's rows in
     /// the table's sort order and cut into files at
-    /// [`Self::target_file_size_bytes`]. An overwrite's first commit
-    /// replaces and every later one appends, an append appends, and every
-    /// commit of a merge merges by its key - a merge keyed by the partition
-    /// alone replacing a partition on the first commit that reaches it and
-    /// appending to it on every later one. The commits before a failure stay
+    /// [`Self::target_file_size_bytes`]. An overwrite of a partitioned
+    /// table addressed whole replaces each partition its rows fall in on the
+    /// first commit that reaches it and appends to it on every later one,
+    /// touching no other partition; an overwrite of stated `pairs`, or of
+    /// an unpartitioned table, replaces that scope on its first commit and
+    /// appends after. An append appends, and every commit of a merge merges
+    /// by its key - a merge keyed by the partition alone replacing
+    /// partitions as an overwrite does. The commits before a failure stay
     /// published.
     ///
     /// # Errors
@@ -3047,8 +3104,7 @@ impl<H: IOBase> IcebergTable<H> {
         let Some(batches) = batches else {
             return Ok(());
         };
-        let (batches, _, _) =
-            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
+        let batches = crate::iobase::prepare_arrow_write_deriving(batches, options, &stored)?;
         let batches = if overwrite {
             Some(batches)
         } else {
@@ -3061,16 +3117,18 @@ impl<H: IOBase> IcebergTable<H> {
         let mut commits = options.commit_arrow_readers(batches, cadence)?;
         match mode {
             crate::IOMode::Overwrite => {
+                let mut replaced = ReplacedPartitions::default();
                 let Some(first) = commits.next() else {
-                    return self.commit_overwrite_where_on(
+                    return self.commit_overwrite_cadence(
                         pairs,
                         crate::arrow::batch_reader(schema, []),
+                        &mut replaced,
                         threads,
                     );
                 };
-                self.commit_overwrite_where_on(pairs, first?, threads)?;
+                self.commit_overwrite_cadence(pairs, first?, &mut replaced, threads)?;
                 for commit in commits {
-                    self.commit_append_on(commit?, threads)?;
+                    self.commit_overwrite_cadence(pairs, commit?, &mut replaced, threads)?;
                 }
             }
             crate::IOMode::Append => {
@@ -3240,16 +3298,19 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
         .map_or_else(|| hasher.finish(), |width| hasher.finish() % width)
 }
 
-/// The partitions one streamed merge has replaced, carried across its
-/// commits.
+/// What one streamed write has replaced, carried across its commits.
 ///
-/// A merge keyed by the partition columns alone replaces the partitions its
-/// rows fall in. Cut into several commits by its cadence, it would replace
-/// each partition once per commit and keep only the last commit's rows, so
-/// [`IcebergTable::commit_merge_cadence`] replaces a partition on the first commit
-/// of a write that reaches it and appends to it on every later one. One
-/// value per write - a [`IcebergTable`] or [`super::Located`] stream, or a write
-/// session - and nothing a keyed merge records.
+/// An overwrite of a partitioned table, and a merge keyed by the partition
+/// columns alone, replace the partitions their rows fall in. Cut into
+/// several commits by its cadence, such a write would replace each partition
+/// once per commit and keep only the last commit's rows, so
+/// [`IcebergTable::commit_overwrite_cadence`] and
+/// [`IcebergTable::commit_merge_cadence`] replace a partition on the first
+/// commit of a write that reaches it and append to it on every later one.
+/// An overwrite of a stated scope, or of an unpartitioned table, replaces
+/// on its first commit alone, which `scope` records. One value per write -
+/// a [`IcebergTable`] or [`super::Located`] stream, or a write session - and
+/// nothing a keyed merge records.
 ///
 /// Bounded by the partitions the write's rows fall in: one tuple each,
 /// held until the write ends, because a later commit may reach any of them.
@@ -3257,6 +3318,9 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
 pub(crate) struct ReplacedPartitions {
     /// The partition tuples replaced so far, in spec order.
     tuples: HashSet<Vec<Scalar>>,
+    /// Whether an overwrite of a stated scope, or of an unpartitioned
+    /// table, has replaced it: every later commit of the write appends.
+    scope: bool,
 }
 
 impl ReplacedPartitions {

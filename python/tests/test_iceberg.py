@@ -1511,7 +1511,6 @@ class TestIcebergOptions:
             ("read_parallel_min_file_size", 1),
             ("write_parallelism", 1),
             ("write_staging", "off"),
-            ("compact_after_commits", 1),
             ("data_mime_type", "avro"),
         ]:
             with pytest.raises(TypeError, match="hashed IcebergOptions"):

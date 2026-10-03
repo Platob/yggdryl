@@ -90,7 +90,7 @@ pub use records::Records;
 pub use selector::{BoundSelector, IntoSelector, Projection, Selector};
 pub use term::{Term, col, lit};
 pub(crate) use transform::{
-    TRANSFORM_BY_KEY, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_KEYS,
+    Derivation, TRANSFORM_BY_KEY, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_KEYS,
     canonicalize_transform_expression, canonicalize_transform_function,
 };
 pub(crate) use typing::common_type;

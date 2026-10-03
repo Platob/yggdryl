@@ -652,3 +652,263 @@ mod iceberg {
         let _ = std::fs::remove_dir_all(&path);
     }
 }
+
+mod derived_columns {
+    //! A table computes the columns its schema derives, for every row
+    //! written to it, and says so again when it is reopened.
+
+    use std::sync::Arc;
+
+    use arrow_array::{Array, Int64Array, RecordBatch, TimestampNanosecondArray};
+    use yggdryl::arrow::BatchReader;
+    use yggdryl::iceberg::{
+        FormatVersion, IcebergTable, PartitionSpec, TableMetadata, Transform, assign_field_ids,
+    };
+    use yggdryl::local::LocalFolder;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, Field, IOMedia, StructType, TimeUnit, Timezone};
+
+    const QUARTER: i64 = 900_000_000_000;
+
+    fn root(label: &str) -> std::path::PathBuf {
+        let mut path = LocalFolder::temporary().unwrap().path().unwrap();
+        path.push(format!(
+            "yggdryl-iceberg-derived-{label}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&path);
+        path
+    }
+
+    /// The rows as a caller holds them: an instant and an id, no partition.
+    fn row() -> Field {
+        StructType::from_fields([
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            }
+            .required_field("ts"),
+            DataType::Int64.required_field("id"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    }
+
+    /// The table's schema: the rows, partitioned by the quarter-hour each
+    /// instant falls in and sorted by it, the instant and the id.
+    fn declared() -> Field {
+        let mut schema = row()
+            .with_partition_by(["time_bucket('15 minutes', ts) as part".parse().unwrap()])
+            .unwrap();
+        schema
+            .as_sort_mut()
+            .set_by_texts(["part", "ts", "id"])
+            .unwrap();
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema
+    }
+
+    /// Instants laid out as `field` types them, its zone included.
+    fn instants(values: &[i64], field: &arrow_schema::Field) -> Arc<dyn Array> {
+        Arc::new(
+            TimestampNanosecondArray::from(values.to_vec())
+                .with_data_type(field.data_type().clone()),
+        )
+    }
+
+    fn rows(stamps: &[i64], ids: &[i64]) -> BatchReader {
+        let schema = row().into_arrow_schema().unwrap();
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                instants(stamps, schema.field(0)),
+                Arc::new(Int64Array::from(ids.to_vec())),
+            ],
+        )
+        .unwrap();
+        yggdryl::arrow::batch_reader(batch.schema(), [batch])
+    }
+
+    /// `(part, ts, id)` of every stored row, sorted.
+    fn read(table: &IcebergTable<LocalFolder>) -> Vec<(i64, i64, i64)> {
+        let mut read = Vec::new();
+        for batch in table.scan(None).unwrap() {
+            let batch = batch.unwrap();
+            let stamped = |name: &str| {
+                batch
+                    .column_by_name(name)
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<TimestampNanosecondArray>()
+                    .unwrap()
+                    .clone()
+            };
+            let (parts, stamps) = (stamped("part"), stamped("ts"));
+            let ids = batch
+                .column_by_name("id")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap()
+                .clone();
+            for index in 0..batch.num_rows() {
+                read.push((parts.value(index), stamps.value(index), ids.value(index)));
+            }
+        }
+        read.sort_unstable();
+        read
+    }
+
+    #[test]
+    fn a_derived_partition_column_is_computed_by_every_write_door() {
+        let path = root("doors");
+        let schema = declared();
+        let spec = PartitionSpec::from_schema(1, &schema).unwrap();
+        assert_eq!(spec.fields.len(), 1);
+        assert_eq!(spec.fields[0].transform, Transform::Identity);
+        assert_eq!(spec.fields[0].name, "part");
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V3,
+            schema,
+            spec,
+        )
+        .unwrap();
+
+        // The rows carry no `part`: the commit door computes it, and the
+        // table lays its files out by it.
+        table
+            .commit_append(rows(
+                &[1, QUARTER - 1, QUARTER, 2 * QUARTER + 7],
+                &[1, 2, 3, 4],
+            ))
+            .unwrap();
+        assert_eq!(
+            read(&table),
+            [
+                (0, 1, 1),
+                (0, QUARTER - 1, 2),
+                (QUARTER, QUARTER, 3),
+                (2 * QUARTER, 2 * QUARTER + 7, 4),
+            ]
+        );
+        assert_eq!(table.data_files().unwrap().len(), 3, "one file a quarter");
+
+        // The record door computes it too, before its `where` reads the rows
+        // - which may therefore name the derived column - and an overwrite
+        // replaces the quarter the rows fall in and no other.
+        let options = table.record_options().unwrap();
+        table
+            .overwrite_arrow_reader(rows(&[QUARTER + 5], &[30]), &options)
+            .unwrap();
+        assert_eq!(
+            read(&table),
+            [
+                (0, 1, 1),
+                (0, QUARTER - 1, 2),
+                (QUARTER, QUARTER + 5, 30),
+                (2 * QUARTER, 2 * QUARTER + 7, 4),
+            ]
+        );
+        let late = options
+            .clone()
+            .with_filter("part >= '1970-01-01T00:45:00Z'")
+            .unwrap();
+        table
+            .append_arrow_reader(rows(&[3, 3 * QUARTER + 1], &[50, 51]), &late)
+            .unwrap();
+        assert_eq!(
+            read(&table).len(),
+            5,
+            "the `where` kept one of the two rows"
+        );
+        assert!(read(&table).contains(&(3 * QUARTER, 3 * QUARTER + 1, 51)));
+
+        // A push session shapes each batch the same way.
+        let mut folder = LocalFolder::new(&path).unwrap();
+        let mut session = yggdryl::ArrowWriteSession::append(&options).unwrap();
+        session
+            .push(&mut folder, rows(&[4 * QUARTER + 2], &[60]))
+            .unwrap();
+        session.finish(&mut folder).unwrap();
+        let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        assert!(read(&table).contains(&(4 * QUARTER, 4 * QUARTER + 2, 60)));
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_reopened_table_declares_the_term_its_properties_keep() {
+        let path = root("reopened");
+        let schema = declared();
+        let spec = PartitionSpec::from_schema(1, &schema).unwrap();
+        IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V3,
+            schema,
+            spec,
+        )
+        .unwrap();
+
+        let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let key = format!("{}part", TableMetadata::TRANSFORM_PROPERTY_PREFIX);
+        assert_eq!(
+            table.metadata().unwrap().property(&key),
+            Some("time_bucket('15 minutes', ts)")
+        );
+        let part = table
+            .schema()
+            .unwrap()
+            .fields()
+            .iter()
+            .find(|child| child.name() == "part")
+            .unwrap()
+            .clone();
+        assert_eq!(
+            part.as_transform().term().unwrap().unwrap().to_string(),
+            "time_bucket('15 minutes', ts)"
+        );
+        assert_eq!(
+            table.schema().unwrap().get_metadata("PARTITION:by"),
+            Some(r#"["part"]"#)
+        );
+
+        // And a write through the reopened table still computes it.
+        let mut table = table;
+        table.commit_append(rows(&[QUARTER + 9], &[1])).unwrap();
+        assert_eq!(read(&table), [(QUARTER, QUARTER + 9, 1)]);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn rows_that_carry_a_written_value_keep_it() {
+        let path = root("written");
+        let schema = declared();
+        let spec = PartitionSpec::from_schema(1, &schema).unwrap();
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V3,
+            schema,
+            spec,
+        )
+        .unwrap();
+        // The stored layout, `part` included and stating another quarter
+        // than the term would: a written value is never recomputed.
+        let stored = table.schema().unwrap().clone().into_arrow_schema().unwrap();
+        let columns: Vec<Arc<dyn Array>> = stored
+            .fields()
+            .iter()
+            .map(|field| match field.name().as_str() {
+                "ts" => instants(&[QUARTER + 1], field),
+                "part" => instants(&[5 * QUARTER], field),
+                _ => Arc::new(Int64Array::from(vec![1_i64])),
+            })
+            .collect();
+        let batch = RecordBatch::try_new(stored, columns).unwrap();
+        table
+            .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+        assert_eq!(read(&table), [(5 * QUARTER, QUARTER + 1, 1)]);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+}

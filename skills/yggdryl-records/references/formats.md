@@ -37,7 +37,7 @@ A setting of another encoding reads as `None`/`null`; setting it is an error.
 | Plain text | `TextOptions`: `rowheader`, `autotype` (on), `framing`, `lstrip`/`rstrip`, `linesep`, `start_rownum`, `parse_mtime` (on), `leading_fragment`, `max_record_byte_size`, `rename_columns`, `timezone` | 35,840 rows or 64 MiB per batch | named regex captures become columns |
 | CSV, TSV | `separator`, `quote`, `escape`, `comment`, `header`, `null_values`, `trim`, `infer_row_size`; Rust also `linesep` | `,` (`\t` under a `.tsv` name), `"`, none, none, on, `[""]`, off, 1,024, `\n` | one ASCII byte per role, never a line break, no two roles one byte; Python and JavaScript spell a byte role as a one-character text and clear `quote`/`escape`/`comment` with `None`/`null` |
 | every encoding | `level` | 6 | outer `.gz`/`.zz`/`.zst` level |
-| Iceberg | `IcebergOptions`: `read_parallelism`, `write_parallelism`, `read_parallel_min_files`, `read_parallel_min_file_size`, `target_file_size`, `commit_retries`, `compact_after_commits`, `data_mime_type` | explicit -> table property (`read.parallelism`, ...) -> default | per call (`options=`) or `set_options` per table |
+| Iceberg | `IcebergOptions`: `read_parallelism`, `write_parallelism`, `read_parallel_min_files`, `read_parallel_min_file_size`, `target_file_size`, `commit_retries`, `data_mime_type` | explicit -> table property (`read.parallelism`, ...) -> default | per call (`options=`) or `set_options` per table |
 
 ## Pushdown
 

@@ -334,6 +334,10 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64, filter: Optio
     assert.equal(codec.marketDataArrowReader(fixed).intoTable().numRows, 4)
     ```
 
+## Serie faces
+
+Every Arrow door has a serie face, Rust and Python: `parse_text_serie`, `lifecycle_serie`, `market_data_serie` and `messages_serie` take any `SerieSource` - a `Serie`, a `ChunkedSerie`, the `SerieReader` a handle's `read_serie` answers - and `serie_reader`, `book_serie` and `market_serie` take messages. All answer a `SerieReader` under the root their Arrow door writes. Each is a redirect: the source crosses as the batches it already is and the answer's one plan is the identity, so handed to another face, or to a table's `append_serie` or `overwrite_serie`, it is the door's own reader again and no row is cast, copied or landed. Python answers the native `SerieReader`, so a capture read with `read_serie` reaches a table off the GIL. `lifecycle_arrow_reader` and `lifecycle_serie` drop a `SORT:by` their source declares: the walk answers in its own order and may date a message again, so the rows no longer prove it.
+
 ## The source's columns follow the shared ones
 
 Where a line was read from is what a monitor orders and joins on, so the source's own columns stand right after the element, event, market and operation columns every generated schema opens with, and the message's own columns follow, exactly as they do for a [capture read line by line](capture.md#a-captures-own-columns-follow-the-shared-ones). Each emitted message receives the source row's carried values. A line carrying two frames therefore repeats the same URL, row number and timestamp. Which source columns survive a FIX column's claim on a name is decided once from the schema.

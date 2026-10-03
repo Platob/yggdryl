@@ -4835,7 +4835,6 @@ export type IcebergProperties = {
   readonly readParallelMinFileSize?: number
   readonly writeParallelism?: number
   readonly writeStaging?: string
-  readonly compactAfterCommits?: number
   readonly dataMimeType?: MimeTypeInput
 }
 /**

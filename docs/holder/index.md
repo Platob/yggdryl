@@ -2147,7 +2147,7 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
 
 ### Append and merge
 
-Overwrite replaces, append keeps the stored rows, merge updates matching `merge_by` keys and adds the rest. Keys use Arrow's row format: null matches null and the last arrival wins. Merge holds only the stored side in memory.
+Overwrite replaces - a leaf whole, a partitioned folder or table only the partitions its rows reach and the ones its `where` pins, every other partition's leaves kept, so an overwrite with no row touches nothing outside that scope - append keeps the stored rows, merge updates matching `merge_by` keys and adds the rest. A folder holds each commit's rows split by partition under the process spill bound and writes every leaf it reaches once. Keys use Arrow's row format: null matches null and the last arrival wins. Merge holds only the stored side in memory.
 
 === "Rust"
 
@@ -2288,7 +2288,7 @@ Overwrite replaces, append keeps the stored rows, merge updates matching `merge_
 | `N > 0` | every `N` batches, then the remainder |
 | `0` | rejected before any input is pulled |
 
-Whatever the cadence, an overwrite's first commit replaces and every later one appends, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a paced stream keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement. Whatever holds a cadence between publications - a leaf's, a write session's, an Iceberg table's partition holds - is held under the process [spill bound](../types/serie.md#spilling-to-disk), the heaviest batches spilled first, so a cadence of any size costs that bound in memory; `commit_batch_num` paces a stream whose rows would outgrow the spill folder.
+Whatever the cadence, an overwrite's first commit replaces and every later one appends - per partition where the destination is partitioned: the first commit reaching a partition replaces it, and a partition no row reaches is not touched, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a paced stream keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement. Whatever holds a cadence between publications - a leaf's, a write session's, an Iceberg table's partition holds - is held under the process [spill bound](../types/serie.md#spilling-to-disk), the heaviest batches spilled first, so a cadence of any size costs that bound in memory; `commit_batch_num` paces a stream whose rows would outgrow the spill folder.
 
 A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/iceberg.md). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
 
