@@ -413,10 +413,12 @@ cost or an exchange rather than as a file - `allocations.rs`,
 `iobase_calls.rs`, `benchmark_mode.rs`, `docs_index.rs`, `interop/` - is its
 own target, and so is what must own its process: `spill_doors.rs`, which
 installs the process spill bound before anything reads it, and
-`scale_ulbridge.rs`, the streamed capture path from a `.log.zst` to an Iceberg
-table under a bounded `RssAnon` - three copies of the capture in the ordinary
-loop, and the scale run `#[ignore]`d and a no-op printing `SKIPPED` unless
-`YGGDRYL_SCALE_BYTES` names the size to generate.
+`scale_ulbridge.rs`, the capture pipeline on series - `.log.zst` files to a
+text table, that table read in order into a FIX table, that one into the
+books' snapshot and delta tables, each partitioned by the quarter of an hour
+it computes - under a bounded `RssAnon`: three copies of the capture in the
+ordinary loop, and the scale run `#[ignore]`d and a no-op printing `SKIPPED`
+unless `YGGDRYL_SCALE_BYTES` names the size to generate.
 
 A test file opens with a `//!` line naming the source file it pins, and holds
 no module named after itself: `avro::schema::schema::x` says the name twice, so

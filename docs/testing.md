@@ -92,7 +92,7 @@ everything it declares.
     cargo test -p yggdryl --all-features --test docs_index      # the landing-page example
     cargo test -p yggdryl --all-features --test interop         # the exchanges with an outside implementation
     cargo test -p yggdryl --all-features --test spill_doors     # the doors that settle under the process spill bound, in a process of their own
-    cargo test -p yggdryl --all-features --test scale_ulbridge  # the streamed capture path into Iceberg, three copies of the capture
+    cargo test -p yggdryl --all-features --test scale_ulbridge  # the capture pipeline on series, table to table, three copies of the capture
     ```
 
 === "Python"
@@ -118,7 +118,7 @@ YGGDRYL_SCALE_BYTES=21474836480 cargo test --release -p yggdryl \
     --test scale_ulbridge --features iceberg -- --ignored --nocapture
 ```
 
-`rust/tests/scale_ulbridge.rs` streams a ULBridge capture of any size - the 144 lines of `rust/tests/fix/ulbridge.log` repeated, every clock and identifier stepped per copy, written through the crate's own Zstandard encoder - off disk, through the FIX parse, the lifecycle and the `marketdata` rows, into an Iceberg table, and asserts that the process's `RssAnon` stays where it stood a quarter of the way in. The ordinary pass runs three copies; the scale run is `#[ignore]`d and a no-op printing `SKIPPED` unless `YGGDRYL_SCALE_BYTES` names the uncompressed size to generate, so no CI job runs it. `YGGDRYL_SCALE_STAGE` (`lines`, `parse`, `lifecycle`, `market`, `write`) ends the path early to put a growth on the stage that owns it, and `YGGDRYL_SCALE_FOLDER` is where the input and the table are written.
+`rust/tests/scale_ulbridge.rs` runs the capture pipeline end to end on series, over a ULBridge capture of any size - the 144 lines of `rust/tests/fix/ulbridge.log` repeated, every clock and identifier stepped per copy, written through the crate's own Zstandard encoder into several `.log.zst` files. The folder of files is read as one stream of text rows (`read_serie`) and appended into an Iceberg table (`append_serie`); that table is read back in its order, parsed and walked (`parse_text_serie`, `lifecycle_serie`) and written over a second table (`overwrite_serie`); and that one is read back in its order into books, the complete book of every quarter of an hour written over a third table and the deltas between them, flattened to `marketdata` rows, over a fourth. Every table is created from the schema of the stream written to it, partitioned by `partunix` - `time_bucket('15 minutes', currunix)`, a column the table computes - and sorted by `partunix, currunix, seqnum, currhashcode`. The ordinary pass runs three copies and checks every table row by row: each row in the quarter its instant falls in, a read in the table's order, the identity columns typed `uuid`, a second run of the FIX stage leaving the table as it was, and a run over one window of the text rewriting the partitions that window's rows reach and no other. The scale run asserts that the process's `RssAnon` stays where it stood a quarter of the way in, where the platform states one; it is `#[ignore]`d and a no-op printing `SKIPPED` unless `YGGDRYL_SCALE_BYTES` names the uncompressed size to generate, so no CI job runs it. `YGGDRYL_SCALE_STAGE` (`lines`, `text`, `parse`, `lifecycle`, `fix`, `books`) ends the path early to put a growth on the stage that owns it, and `YGGDRYL_SCALE_FOLDER` is where the input and the tables are written.
 
 ## The documentation is tested too
 
