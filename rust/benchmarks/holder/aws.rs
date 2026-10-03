@@ -7,7 +7,11 @@
 //! set nearing its end causes - reads the files from disk when they moved,
 //! and passes over a set a store refused: each is measured on files a
 //! benchmark writes, so a regression in any shows beside the request counts
-//! the accounting tests hold.
+//! the accounting tests hold. Signing is the one cost every attempt of a
+//! request signed through `Request::with_sigv4` pays: the cached signer, the
+//! SHA-256 of the body and the canonical request, measured on a 1 KiB JSON
+//! `POST` to a catalog path (built with `internals`, which reaches one
+//! attempt's signing at a stated instant).
 
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
@@ -206,6 +210,43 @@ pub(crate) fn identity_benchmarks(criterion: &mut Criterion) {
             black_box(partition.service_host("sts", partition.global_region(), false, true))
         });
     });
+    // What signing one attempt costs: a 1 KiB JSON `POST` whose path carries
+    // an encoded bucket ARN, so the canonical URI is made by the rule every
+    // service outside the S3 family signs by.
+    #[cfg(feature = "internals")]
+    {
+        let signing = Session::new()
+            .with_environment(false)
+            .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"));
+        let url = yggdryl::Url::from_str(
+            "https://s3tables.eu-west-3.amazonaws.com/iceberg/v1/\
+             arn%3Aaws%3As3tables%3Aeu-west-3%3A123456789012%3Abucket%2Flake/namespaces/a%1Fb/tables",
+        )
+        .expect("a URL");
+        let mut headers = yggdryl::http::Headers::new();
+        headers
+            .insert("content-type", "application/json")
+            .expect("a header");
+        let body = format!(r#"{{"name":"trades","padding":"{}"}}"#, "x".repeat(990));
+        group.throughput(Throughput::Bytes(body.len() as u64));
+        group.bench_function("sign_post_1kib", |bencher| {
+            bencher.iter(|| {
+                black_box(
+                    yggdryl::internals::aws_request::signed_headers(
+                        &signing,
+                        "s3tables",
+                        "eu-west-3",
+                        yggdryl::http::Method::Post,
+                        &url,
+                        &headers,
+                        Some(black_box(body.as_bytes())),
+                        now,
+                    )
+                    .expect("signed headers"),
+                )
+            });
+        });
+    }
     group.finish();
     for scratch in [dumped, refused, signed_in] {
         let _ = std::fs::remove_dir_all(scratch);

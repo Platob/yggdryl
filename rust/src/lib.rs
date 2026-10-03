@@ -385,6 +385,8 @@ pub mod internals {
     #[cfg(feature = "aws")]
     pub use crate::aws::profile::internals as aws_profile;
     #[cfg(feature = "aws")]
+    pub use crate::aws::request::internals as aws_request;
+    #[cfg(feature = "aws")]
     pub use crate::aws::session::internals as aws_session;
     #[cfg(feature = "aws")]
     pub use crate::aws::sigv4::internals as aws_sigv4;

@@ -60,6 +60,16 @@ pub(crate) fn is_s3_family(service: &str) -> bool {
     S3_FAMILY.contains(&service)
 }
 
+/// The access key id a Signature Version 4 `authorization` header names:
+/// what follows `Credential=` up to the scope's first `/`.
+///
+/// A client told its key was refused reads the key off the attempt it sent
+/// rather than off a signer, which another request may since have replaced.
+pub(crate) fn signed_access_key(authorization: &str) -> Option<&str> {
+    let credential = &authorization[authorization.find("Credential=")? + "Credential=".len()..];
+    credential.split('/').next().filter(|key| !key.is_empty())
+}
+
 /// Lowercase hex SHA-256 of `bytes`.
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
@@ -124,24 +134,8 @@ pub(crate) struct Signer {
 }
 
 impl Signer {
-    /// Bind credentials to `region`; no key is derived until the first [`Signer::sign`].
-    #[cfg(feature = "s3")]
-    pub(crate) fn new(
-        access_key_id: impl Into<String>,
-        secret_access_key: impl Into<String>,
-        session_token: Option<String>,
-        region: impl Into<String>,
-    ) -> Self {
-        Self::for_service(
-            "s3",
-            access_key_id,
-            secret_access_key,
-            session_token,
-            region,
-        )
-    }
-
-    /// Bind credentials to `region` for `service`, the SigV4 signing name.
+    /// Bind credentials to `region` for `service`, the SigV4 signing name;
+    /// no key is derived until the first [`Signer::sign`].
     ///
     /// The service is part of the credential scope and of the signing key, so
     /// a request to STS signed as `s3` is refused; and it decides how the
@@ -185,7 +179,7 @@ impl Signer {
     /// The header the signer builds is where it otherwise appears; this reads
     /// it back for the client's own door, which holds a signer rather than a
     /// request to read the header off.
-    #[cfg(feature = "internals")]
+    #[cfg(all(feature = "internals", feature = "s3"))]
     pub(crate) fn access_key_id(&self) -> &str {
         &self.access_key_id
     }
@@ -442,6 +436,11 @@ pub mod internals {
     /// Whether `service` signs by the S3 rules.
     pub fn is_s3_family(service: &str) -> bool {
         super::is_s3_family(service)
+    }
+
+    /// The access key id an `authorization` header names.
+    pub fn signed_access_key(authorization: &str) -> Option<&str> {
+        super::signed_access_key(authorization)
     }
 
     /// Lowercase hex SHA-256 of `bytes`.

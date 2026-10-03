@@ -122,9 +122,10 @@ pub(crate) enum Refusal {
     Lapsed,
     /// The key or its token is not one the store knows - S3's
     /// `InvalidAccessKeyId` and `InvalidToken`, the query services'
-    /// `InvalidClientTokenId`. IAM answers this for the few seconds a new
-    /// key takes to propagate, so the key is passed over for a pause and
-    /// read again after it, or as soon as the shared files move.
+    /// `InvalidClientTokenId`, the JSON services'
+    /// `UnrecognizedClientException`. IAM answers this for the few seconds
+    /// a new key takes to propagate, so the key is passed over for a pause
+    /// and read again after it, or as soon as the shared files move.
     Unrecognized,
 }
 
@@ -134,9 +135,10 @@ impl Refusal {
     pub(crate) fn from_code(code: &str) -> Option<Self> {
         match code {
             "ExpiredToken" | "ExpiredTokenException" | "TokenRefreshRequired" => Some(Self::Lapsed),
-            "InvalidAccessKeyId" | "InvalidToken" | "InvalidClientTokenId" => {
-                Some(Self::Unrecognized)
-            }
+            "InvalidAccessKeyId"
+            | "InvalidToken"
+            | "InvalidClientTokenId"
+            | "UnrecognizedClientException" => Some(Self::Unrecognized),
             _ => None,
         }
     }

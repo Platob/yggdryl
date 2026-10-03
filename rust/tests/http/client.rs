@@ -436,7 +436,7 @@ fn an_attempt_headers_error_is_the_requests_error_and_never_retried() {
     let refused = session
         .get(&server.url("/proof"))
         .unwrap()
-        .with_attempt_headers(|_, _, _| Err(Error::unsupported("a signing key", "dpop")))
+        .with_attempt_headers(|_| Err(Error::unsupported("a signing key", "dpop")))
         .send()
         .expect_err("the hook refused");
     assert!(refused.is_unsupported(), "{refused:?}");
@@ -447,8 +447,8 @@ fn an_attempt_headers_error_is_the_requests_error_and_never_retried() {
     let refused = session
         .get(&server.url("/proof"))
         .unwrap()
-        .with_attempt_headers(|attempt, _, _| {
-            if attempt == 1 {
+        .with_attempt_headers(|attempt| {
+            if attempt.number() == 1 {
                 Ok(Headers::new())
             } else {
                 Err(Error::unsupported("a second proof", "dpop"))
@@ -479,13 +479,20 @@ fn attempt_headers_are_made_for_each_attempt_over_the_requests_own() {
         .unwrap()
         .with_header("X-Kept", "kept")
         .unwrap()
-        .with_attempt_headers(move |attempt, method, url| {
-            hook_seen
-                .lock()
-                .unwrap()
-                .push((attempt, method, url.to_string()));
+        .with_attempt_headers(move |attempt| {
+            // The attempt shows what goes out before the hook's own: the
+            // request's headers, and no body for a `GET`.
+            assert_eq!(attempt.headers().get("dpop"), Some("stale"));
+            assert_eq!(attempt.headers().get("x-kept"), Some("kept"));
+            assert_eq!(attempt.body(), None);
+            assert!(!attempt.is_streamed());
+            hook_seen.lock().unwrap().push((
+                attempt.number(),
+                attempt.method(),
+                attempt.url().to_string(),
+            ));
             let mut headers = Headers::new();
-            headers.insert("dpop", &format!("proof-{attempt}"))?;
+            headers.insert("dpop", &format!("proof-{}", attempt.number()))?;
             Ok(headers)
         })
         .send()

@@ -485,12 +485,12 @@ fn exchange(
         .with_timeout(TIMEOUT)
         .with_max_attempts(ATTEMPTS)
         .with_idempotent(true)
-        .with_attempt_headers(move |_, _, url| {
+        .with_attempt_headers(move |attempt| {
             let proof = jti()
                 .and_then(|jti| {
                     proof(
                         &pair,
-                        &url.to_string(),
+                        &attempt.url().to_string(),
                         unix_seconds(SystemTime::now()),
                         &jti,
                     )

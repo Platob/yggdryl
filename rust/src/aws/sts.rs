@@ -503,8 +503,9 @@ fn parse(body: &[u8], action: &str, now: SystemTime) -> Option<Credentials> {
     Some(credentials)
 }
 
-/// Read `<ErrorResponse><Error><Code>..</Code><Message>..</Message>`.
-fn parse_error(body: &[u8]) -> Option<(String, String)> {
+/// Read `<ErrorResponse><Error><Code>..</Code><Message>..</Message>`, or
+/// the bare `<Error>` S3 answers with.
+pub(crate) fn parse_error(body: &[u8]) -> Option<(String, String)> {
     let root = parse_document(body).ok()?;
     let error = match root.name() {
         "ErrorResponse" => root.child("Error")?,

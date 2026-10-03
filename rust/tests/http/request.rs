@@ -159,7 +159,7 @@ fn the_attempt_knobs_are_read_back_and_cost_nothing() {
         .with_connect_timeout(Duration::from_millis(250))
         .with_deadline(Duration::from_secs(2))
         .with_direct(true)
-        .with_attempt_headers(|_, _, _| Ok(yggdryl::http::Headers::new()))
+        .with_attempt_headers(|_| Ok(yggdryl::http::Headers::new()))
         .with_retry_on(|status, _, _| status.code() == 400);
     assert_eq!(request.idempotent(), Some(true));
     assert_eq!(request.max_attempts(), Some(1), "zero attempts is one");
@@ -191,9 +191,13 @@ fn a_streamed_body_is_never_retried_however_the_request_is_declared() {
         .post(&server.url("/upload"), Body::Empty)
         .unwrap()
         .with_idempotent(true)
-        .with_attempt_headers(|attempt, _, _| {
+        .with_attempt_headers(|attempt| {
+            // A body read from the caller's reader cannot be shown: the
+            // attempt says it is streamed, and shows none.
             let mut headers = yggdryl::http::Headers::new();
-            headers.insert("x-attempt", &attempt.to_string())?;
+            headers.insert("x-attempt", &attempt.number().to_string())?;
+            headers.insert("x-streamed", &attempt.is_streamed().to_string())?;
+            headers.insert("x-body", &format!("{:?}", attempt.body()))?;
             Ok(headers)
         });
     let mut reader = std::io::Cursor::new(b"payload".to_vec());
@@ -204,7 +208,44 @@ fn a_streamed_body_is_never_retried_however_the_request_is_declared() {
     let recorded = server.requests();
     assert_eq!(recorded.len(), 1);
     assert_eq!(header(&recorded[0], "x-attempt"), Some("1"));
+    assert_eq!(header(&recorded[0], "x-streamed"), Some("true"));
+    assert_eq!(header(&recorded[0], "x-body"), Some("None"));
     assert_eq!(session.stats().retries, 0);
+}
+
+#[test]
+fn an_attempt_shows_its_hook_the_body_that_goes_out_and_its_debug_no_header_value() {
+    let server = HttpServer::start();
+    server.echo("/sign");
+    let session = Session::new();
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let rendered = std::sync::Arc::clone(&seen);
+    let response = session
+        .post(&server.url("/sign"), "payload")
+        .unwrap()
+        .with_header("Authorization", "Bearer never-rendered")
+        .unwrap()
+        .with_attempt_headers(move |attempt| {
+            *rendered.lock().unwrap() = format!("{attempt:?}");
+            let mut headers = yggdryl::http::Headers::new();
+            // What a signature covers: the bytes that go out.
+            let body = attempt.body().expect("the body in hand");
+            headers.insert("x-body-len", &body.len().to_string())?;
+            headers.insert("x-streamed", &attempt.is_streamed().to_string())?;
+            Ok(headers)
+        })
+        .send()
+        .unwrap();
+    assert_eq!(response.status().code(), 200);
+    let recorded = server.requests();
+    assert_eq!(header(&recorded[0], "x-body-len"), Some("7"));
+    assert_eq!(header(&recorded[0], "x-streamed"), Some("false"));
+    let debug = seen.lock().unwrap().clone();
+    assert!(
+        debug.contains("Attempt") && debug.contains("body_len: Some(7)"),
+        "{debug}"
+    );
+    assert!(!debug.contains("never-rendered"), "{debug}");
 }
 
 #[test]

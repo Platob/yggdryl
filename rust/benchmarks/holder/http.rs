@@ -234,9 +234,10 @@ pub(crate) fn http_benchmarks(criterion: &mut Criterion) {
             let response = session
                 .get(black_box(&small))
                 .expect("a request")
-                .with_attempt_headers(|attempt, _method, _url| {
+                .with_attempt_headers(|attempt| {
                     let mut headers = Headers::new();
-                    headers.insert("x-attempt", if attempt == 1 { "1" } else { "again" })?;
+                    let said = if attempt.number() == 1 { "1" } else { "again" };
+                    headers.insert("x-attempt", said)?;
                     Ok(headers)
                 })
                 .with_retry_on(|status, _headers, body| {

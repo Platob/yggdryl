@@ -148,9 +148,107 @@ struct Meta {
     mtime: Option<i64>,
 }
 
-/// The headers one attempt of a request adds over its own: called with the
-/// attempt's number from 1, and the method and URL of the hop it goes to.
-pub(crate) type AttemptHeaders = dyn Fn(u32, Method, &Url) -> Result<Headers> + Send + Sync;
+/// One attempt of a request: what a request's own hooks are shown of it.
+///
+/// [`Request::with_attempt_headers`] is shown the attempt as it is about to
+/// go out, so what it makes - a proof, a signature - covers what is really
+/// sent: the hop's method and URL, the headers already on it, and the body.
+#[derive(Clone, Copy)]
+pub struct Attempt<'a> {
+    number: u32,
+    method: Method,
+    url: &'a Url,
+    headers: &'a Headers,
+    body: Option<&'a [u8]>,
+    streamed: bool,
+}
+
+impl<'a> Attempt<'a> {
+    /// The view of attempt `number` of `method` at `url`.
+    pub(crate) const fn new(
+        number: u32,
+        method: Method,
+        url: &'a Url,
+        headers: &'a Headers,
+        body: Option<&'a [u8]>,
+        streamed: bool,
+    ) -> Self {
+        Self {
+            number,
+            method,
+            url,
+            headers,
+            body,
+            streamed,
+        }
+    }
+
+    /// The attempt's number within one hop, from 1: a redirect hop starts
+    /// again at 1.
+    #[must_use]
+    pub const fn number(&self) -> u32 {
+        self.number
+    }
+
+    /// The method of the hop: a redirect may have rewritten the request's.
+    #[must_use]
+    pub const fn method(&self) -> Method {
+        self.method
+    }
+
+    /// The URL of the hop, query included.
+    #[must_use]
+    pub const fn url(&self) -> &'a Url {
+        self.url
+    }
+
+    /// The headers the attempt carries: the request's own over the
+    /// session's defaults, the credential, the cookies, and whatever a hook
+    /// already added.
+    #[must_use]
+    pub const fn headers(&self) -> &'a Headers {
+        self.headers
+    }
+
+    /// The body, when its bytes are in hand: `None` for a request with no
+    /// body, and for one [streamed](Self::is_streamed) from a reader.
+    #[must_use]
+    pub const fn body(&self) -> Option<&'a [u8]> {
+        self.body
+    }
+
+    /// Whether the body is read from the caller's reader as it is sent
+    /// ([`Request::send_reader`]), so nothing can read it beforehand.
+    #[must_use]
+    pub const fn is_streamed(&self) -> bool {
+        self.streamed
+    }
+}
+
+impl std::fmt::Debug for Attempt<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Header values may be credentials: the names are what is rendered.
+        formatter
+            .debug_struct("Attempt")
+            .field("number", &self.number)
+            .field("method", &self.method)
+            .field("url", &self.url)
+            .field("headers", &self.headers.len())
+            .field("body_len", &self.body.map(<[u8]>::len))
+            .field("streamed", &self.streamed)
+            .finish()
+    }
+}
+
+/// The headers one attempt of a request adds over its own, computed from the
+/// attempt as it is about to go out.
+pub(crate) type AttemptHeaders = dyn Fn(&Attempt<'_>) -> Result<Headers> + Send + Sync;
+
+/// Whether a refused attempt goes out once more: the attempt as it was sent,
+/// and the status, the headers and the first bytes of the body it was
+/// answered with.
+pub(crate) type ResendOn =
+    dyn Fn(&Attempt<'_>, Status, &Headers, &[u8]) -> Result<bool> + Send + Sync;
 
 /// Whether an answer the client would not retry by its status alone is
 /// asked for again: its status, its headers and the first bytes of its body.
@@ -214,6 +312,7 @@ pub struct Request {
     direct: bool,
     attempt_headers: Option<Arc<AttemptHeaders>>,
     retry_on: Option<Arc<RetryOn>>,
+    resend_on: Option<Arc<ResendOn>>,
     pagination: Option<Pagination>,
     records: Option<FieldPath>,
     /// An explicit media type overrides what a response taught and what the
@@ -246,6 +345,7 @@ impl Clone for Request {
             direct: self.direct,
             attempt_headers: self.attempt_headers.clone(),
             retry_on: self.retry_on.clone(),
+            resend_on: self.resend_on.clone(),
             pagination: self.pagination.clone(),
             records: self.records.clone(),
             declared: self.declared.clone(),
@@ -270,6 +370,9 @@ impl std::fmt::Debug for Request {
         }
         if self.retry_on.is_some() {
             debug.field("retry_on", &format_args!("<retry rule>"));
+        }
+        if self.resend_on.is_some() {
+            debug.field("resend_on", &format_args!("<resend rule>"));
         }
         debug.finish_non_exhaustive()
     }
@@ -296,6 +399,7 @@ impl Request {
             direct: false,
             attempt_headers: None,
             retry_on: None,
+            resend_on: None,
             pagination: None,
             records: None,
             declared: None,
@@ -580,11 +684,15 @@ impl Request {
     /// attempt carries - the request's own headers, the session's, the
     /// credential - a name both state taking the hook's value.
     ///
-    /// `headers` is called at the top of every attempt with its number from
-    /// 1 and the method and URL of the hop it goes to, so a value that must
-    /// be fresh per attempt - a DPoP proof with its own `jti` and `iat`, a
-    /// signature over the instant - is made for each one. An error it
-    /// returns is the request's error, and is never retried.
+    /// `headers` is called at the top of every attempt with the [`Attempt`]
+    /// as it is about to go out - its number from 1, the method and URL of
+    /// the hop it goes to, the headers already on it and the body - so a
+    /// value that must be fresh per attempt, or must cover what is sent - a
+    /// DPoP proof with its own `jti` and `iat`, a signature over the instant
+    /// and the payload - is made for each one. A body streamed by
+    /// [`Self::send_reader`] cannot be read beforehand: the attempt says so
+    /// ([`Attempt::is_streamed`]) and shows none. An error the hook returns
+    /// is the request's error, and is never retried.
     ///
     /// What it makes is a credential for the origin the request names: a
     /// redirect followed inside that origin calls it for the hop, and one
@@ -595,13 +703,19 @@ impl Request {
     /// use yggdryl::http::{Headers, Request};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let request = Request::get("https://api.example.com/v1/orders")?.with_attempt_headers(
-    ///     |attempt, method, url| {
+    /// let request =
+    ///     Request::get("https://api.example.com/v1/orders")?.with_attempt_headers(|attempt| {
     ///         let mut headers = Headers::new();
-    ///         headers.insert("x-attempt", &format!("{attempt} {method} {url}"))?;
+    ///         let sent = format!(
+    ///             "{} {} {} {}",
+    ///             attempt.number(),
+    ///             attempt.method(),
+    ///             attempt.url(),
+    ///             attempt.body().map_or(0, <[u8]>::len),
+    ///         );
+    ///         headers.insert("x-attempt", &sent)?;
     ///         Ok(headers)
-    ///     },
-    /// );
+    ///     });
     /// assert!(format!("{request:?}").contains("<attempt headers>"));
     /// # Ok(())
     /// # }
@@ -609,9 +723,32 @@ impl Request {
     #[must_use]
     pub fn with_attempt_headers(
         mut self,
-        headers: impl Fn(u32, Method, &Url) -> Result<Headers> + Send + Sync + 'static,
+        headers: impl Fn(&Attempt<'_>) -> Result<Headers> + Send + Sync + 'static,
     ) -> Self {
         self.attempt_headers = Some(Arc::new(headers));
+        self
+    }
+
+    /// Whether an attempt the server refused goes out once more, whatever
+    /// its method.
+    ///
+    /// A `4xx` answer hands `rule` the attempt as it was sent - the headers
+    /// its hook made included - and the status, the headers and at most
+    /// 64 KiB of the body it was answered with. `true` says the refusal
+    /// proves the server did nothing and another attempt would go out
+    /// differently - signed by another key, say - so the request is sent
+    /// again at once: no pause, nothing drawn from the retry budget, and at
+    /// most once per hop. That is what separates it from
+    /// [`Self::with_retry_on`], which asks the same request again later and
+    /// only when it is idempotent. An error the rule returns is the
+    /// request's; an answer not sent again is handed back whole. A body
+    /// streamed by [`Self::send_reader`] is never sent again.
+    #[must_use]
+    pub(crate) fn with_resend_on(
+        mut self,
+        rule: impl Fn(&Attempt<'_>, Status, &Headers, &[u8]) -> Result<bool> + Send + Sync + 'static,
+    ) -> Self {
+        self.resend_on = Some(Arc::new(rule));
         self
     }
 
@@ -821,6 +958,7 @@ impl Request {
             direct: self.direct,
             attempt_headers: self.attempt_headers.as_deref(),
             retry_on: self.retry_on.as_deref(),
+            resend_on: self.resend_on.as_deref(),
         }
     }
 
@@ -1689,7 +1827,7 @@ fn rows_at(body: &Scalar, path: &FieldPath) -> Option<usize> {
 
 /// The `Host` header a URL asks for: the host, with the port when it is
 /// not the scheme's default.
-fn host_header(url: &Url) -> String {
+pub(crate) fn host_header(url: &Url) -> String {
     let host = url.hostname().unwrap_or_default();
     match url.authority().port() {
         Some(port) if Some(port) != url.default_port() => format!("{host}:{port}"),

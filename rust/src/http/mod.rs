@@ -89,7 +89,7 @@ pub use method::Method;
 pub use options::HttpOptions;
 pub use pages::Pages;
 pub use pagination::{NextPage, Pagination};
-pub use request::{Body, Request};
+pub use request::{Attempt, Body, Request};
 pub use response::Response;
 pub use server::{Fault, ForwardedHeader, Handler, IpNetwork, Recorded, Server, ServerOptions};
 pub use session::Session;

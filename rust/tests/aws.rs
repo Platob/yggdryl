@@ -2,7 +2,8 @@
 //! [`session`] drives the chain whole over the identity fake, and the rest
 //! pin what each source reads and writes - [`credentials`], [`profile`],
 //! [`sts`], [`sso`], [`login`], [`process`], [`container`], [`metadata`],
-//! [`sigv4`], [`environment`] - with [`mod_`] for the module's own door.
+//! [`sigv4`], [`request`], [`properties`], [`environment`] - with [`mod_`] for
+//! the module's own door.
 //!
 //! The whole module is behind the `aws` feature, so every module here carries
 //! that cfg; the ones that pin something a caller cannot reach - the signing,
@@ -48,6 +49,12 @@ mod process;
 #[cfg(all(feature = "aws", feature = "internals"))]
 #[path = "aws/profile.rs"]
 mod profile;
+#[cfg(feature = "aws")]
+#[path = "aws/properties.rs"]
+mod properties;
+#[cfg(all(feature = "aws", feature = "internals"))]
+#[path = "aws/request.rs"]
+mod request;
 #[cfg(feature = "aws")]
 #[path = "aws/session.rs"]
 mod session;

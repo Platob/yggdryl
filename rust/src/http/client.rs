@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use super::request::{AttemptHeaders, RetryOn};
+use super::request::{Attempt, AttemptHeaders, ResendOn, RetryOn};
 use super::retry::{self, RETRY_COST, RETRY_REFUND, RetryBudget, fresh_jitter};
 use super::{Headers, HttpOptions, HttpVersion, Method, Session, Status};
 use crate::holder::Holder;
@@ -160,6 +160,8 @@ pub(crate) struct Wire<'a> {
     pub(crate) attempt_headers: Option<&'a AttemptHeaders>,
     /// Whether an answer the status alone does not retry is retried.
     pub(crate) retry_on: Option<&'a RetryOn>,
+    /// Whether a refused attempt goes out once more.
+    pub(crate) resend_on: Option<&'a ResendOn>,
 }
 
 /// The most of an answer's body a [`RetryOn`] rule is handed.
@@ -531,7 +533,10 @@ impl Client {
     /// retries with that answer; a `3xx` is not followed here. The request's
     /// own attempt count stands in for the client's, and every retry is paid
     /// for out of the client's one budget. Each attempt carries the headers
-    /// the request's hook computes for it. Every attempt is counted, so a
+    /// the request's hook computes for it. A `4xx` the request's own rule
+    /// reads as a refusal that did nothing is sent again once, whatever the
+    /// method, with no pause and nothing drawn from the budget
+    /// ([`super::Request::with_resend_on`]). Every attempt is counted, so a
     /// test reads the true number of round trips rather than the intended
     /// one. A body is read only to drain an answer that is retried, or as
     /// far as a rule reads it; the one handed back is the caller's, whole.
@@ -541,12 +546,13 @@ impl Client {
     /// [`Error::Io`] naming the method and the URL for a transport failure
     /// that was not, or could no longer be, retried; [`Error::Parse`] for a
     /// response header that will not validate; what the request's attempt
-    /// headers hook returned, at once.
+    /// headers hook or its resend rule returned, at once.
     pub(crate) fn execute(&self, wire: &Wire<'_>) -> Result<Answer> {
         let mut attempt = 0;
+        let mut resent = false;
         loop {
             attempt += 1;
-            let headers = attempt_headers(wire, attempt)?;
+            let headers = attempt_headers(wire, attempt, false)?;
             if attempt > 1 {
                 self.inner.stats.retries.fetch_add(1, Ordering::Relaxed);
             }
@@ -569,6 +575,10 @@ impl Client {
                 }
                 Err(Failure::Refused(error)) => return Err(error),
             };
+            if !resent && is_resent(&sent, attempt, &mut answer)? {
+                resent = true;
+                continue;
+            }
             if wire.idempotent && self.asks_again(wire, attempt, &mut answer) {
                 continue;
             }
@@ -592,20 +602,9 @@ impl Client {
             if answer.status.is_success() || attempt >= self.attempts_of(wire) {
                 return false;
             }
-            let mut peeked = Vec::new();
-            let read = (&mut answer.body)
-                .take(RETRY_ON_PEEK)
-                .read_to_end(&mut peeked);
-            let rest = std::mem::replace(&mut answer.body, Box::new(std::io::empty()));
-            if let Err(error) = read {
-                // A body that failed while the rule was to read it is no
-                // verdict: it is handed back failing where it failed.
-                answer.body = Box::new(std::io::Cursor::new(peeked).chain(Severed {
-                    error: Some(error),
-                    rest,
-                }));
+            let Some((peeked, rest)) = peek(answer) else {
                 return false;
-            }
+            };
             let retried = rule(answer.status, &answer.headers, &peeked);
             answer.body = Box::new(std::io::Cursor::new(peeked).chain(rest));
             if !retried {
@@ -638,7 +637,7 @@ impl Client {
         body: &mut dyn Read,
         length: u64,
     ) -> Result<Answer> {
-        let headers = attempt_headers(wire, 1)?;
+        let headers = attempt_headers(wire, 1, true)?;
         let sent = Wire {
             headers: headers.as_ref().unwrap_or(wire.headers),
             ..*wire
@@ -833,14 +832,78 @@ type Outcome = std::result::Result<Answer, Failure>;
 
 /// The headers one attempt of `wire` goes out with, when its request
 /// computes some: the hook's, over the wire's own; `None` when it has no
-/// hook and the wire's stand.
-fn attempt_headers(wire: &Wire<'_>, attempt: u32) -> Result<Option<Headers>> {
+/// hook and the wire's stand. `streamed` says the body is the caller's
+/// reader rather than the wire's bytes.
+fn attempt_headers(wire: &Wire<'_>, number: u32, streamed: bool) -> Result<Option<Headers>> {
     let Some(hook) = wire.attempt_headers else {
         return Ok(None);
     };
-    hook(attempt, wire.method, wire.url)?
-        .merge_with(wire.headers)
-        .map(Some)
+    let attempt = Attempt::new(
+        number,
+        wire.method,
+        wire.url,
+        wire.headers,
+        wire.body,
+        streamed,
+    );
+    hook(&attempt)?.merge_with(wire.headers).map(Some)
+}
+
+/// Whether the attempt `sent` - its headers the ones that went out - was
+/// refused in a way its request's rule says a second attempt would mend: a
+/// `4xx` whose first [`RETRY_ON_PEEK`] bytes the rule reads beside the
+/// attempt. An answer sent again is drained; one that is not keeps its body
+/// whole, the bytes the rule read in front.
+fn is_resent(sent: &Wire<'_>, number: u32, answer: &mut Answer) -> Result<bool> {
+    let Some(rule) = sent.resend_on else {
+        return Ok(false);
+    };
+    if !answer.status.is_client_error() {
+        return Ok(false);
+    }
+    let Some((peeked, rest)) = peek(answer) else {
+        return Ok(false);
+    };
+    let attempt = Attempt::new(
+        number,
+        sent.method,
+        sent.url,
+        sent.headers,
+        sent.body,
+        false,
+    );
+    let resent = rule(&attempt, answer.status, &answer.headers, &peeked);
+    answer.body = Box::new(std::io::Cursor::new(peeked).chain(rest));
+    if !resent? {
+        return Ok(false);
+    }
+    let _ = std::io::copy(
+        &mut (&mut answer.body).take(FAILURE_BODY_LIMIT),
+        &mut std::io::sink(),
+    );
+    Ok(true)
+}
+
+/// Take the first [`RETRY_ON_PEEK`] bytes off `answer`'s body for a rule to
+/// read, with the rest of the body: the caller puts both back, the bytes in
+/// front. `None` when the read failed, which is no verdict: the body is left
+/// failing where it failed.
+fn peek(answer: &mut Answer) -> Option<(Vec<u8>, Box<dyn Read + Send>)> {
+    let mut peeked = Vec::new();
+    let read = (&mut answer.body)
+        .take(RETRY_ON_PEEK)
+        .read_to_end(&mut peeked);
+    let rest = std::mem::replace(&mut answer.body, Box::new(std::io::empty()));
+    match read {
+        Ok(_) => Some((peeked, rest)),
+        Err(error) => {
+            answer.body = Box::new(std::io::Cursor::new(peeked).chain(Severed {
+                error: Some(error),
+                rest,
+            }));
+            None
+        }
+    }
 }
 
 /// A body whose read failed while a [`RetryOn`] rule was to read it: the

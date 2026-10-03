@@ -11,8 +11,11 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+// The object key encoder is the S3 client's, and built with it.
+#[cfg(feature = "s3")]
+use yggdryl::internals::aws_sigv4::encode_key;
 use yggdryl::internals::aws_sigv4::{
-    EMPTY_PAYLOAD_SHA256, Signer, amz_date, canonical_query, canonical_request, encode_key,
+    EMPTY_PAYLOAD_SHA256, Signer, amz_date, canonical_query, canonical_request,
     encode_query_component, is_s3_family, sha256_hex, string_to_sign,
 };
 
@@ -121,6 +124,7 @@ fn get_object_with_a_range_matches_the_aws_example() {
     );
 }
 
+#[cfg(feature = "s3")]
 #[test]
 fn put_object_matches_the_aws_example() {
     let payload_hash = sha256_hex(b"Welcome to Amazon S3.");
@@ -246,6 +250,7 @@ fn the_empty_payload_constant_is_the_sha256_of_nothing() {
     assert_eq!(sha256_hex(b""), EMPTY_PAYLOAD_SHA256);
 }
 
+#[cfg(feature = "s3")]
 #[test]
 fn encode_key_keeps_separators_and_unreserved_bytes_and_escapes_the_rest() {
     assert_eq!(encode_key("a/b c.txt"), "a/b%20c.txt");

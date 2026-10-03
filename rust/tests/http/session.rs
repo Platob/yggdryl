@@ -4,7 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use yggdryl::holder::Holder;
-use yggdryl::http::{Authorization, Client, Cookie, Headers, HttpOptions, Method, Session};
+use yggdryl::http::{Attempt, Authorization, Client, Cookie, Headers, HttpOptions, Session};
 use yggdryl::{Error, IOBase, IOKind, Url};
 
 use crate::http_server::RecordedExt as _;
@@ -404,10 +404,13 @@ fn headers_made_per_attempt_are_withheld_from_another_origin() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let proved = |seen: &Arc<Mutex<Vec<String>>>| {
         let seen = Arc::clone(seen);
-        move |attempt: u32, method: Method, url: &Url| {
-            seen.lock()
-                .unwrap()
-                .push(format!("{attempt} {method} {url}"));
+        move |attempt: &Attempt<'_>| {
+            seen.lock().unwrap().push(format!(
+                "{} {} {}",
+                attempt.number(),
+                attempt.method(),
+                attempt.url()
+            ));
             let mut headers = Headers::new();
             headers.insert("dpop", "proof")?;
             Ok::<_, Error>(headers)

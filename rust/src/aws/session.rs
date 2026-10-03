@@ -21,12 +21,14 @@ use super::login;
 use super::metadata::{self, Imds};
 use super::process;
 use super::profile::{self, Files, Profile};
+use super::sigv4::Signer;
 use super::sso::{self, Sso, SsoLogin};
 use super::sts::{self, AssumedRole, CredentialSource};
 use crate::auth::{Environment, Expiring, Lease, Report, instant, iso8601};
 use crate::duration::duration_from_text;
 use crate::integer::integer_from_text_as;
 use crate::{Arn, ArnPartition, Charset, Error, Result};
+use smol_str::SmolStr;
 
 /// The profile read when nothing names another.
 const DEFAULT_PROFILE: &str = "default";
@@ -54,6 +56,10 @@ const MAX_PROFILE_DEPTH: usize = 8;
 /// temporary set's key id is issued once, so a refused one never signs
 /// again; the bound keeps a process refused over and over from growing.
 const REFUSED_KEYS: usize = 8;
+/// How many signers a session keeps: one per region and service the set in
+/// hand signs for, each holding its day's derived key. A process signs for a
+/// handful; the bound keeps one that names regions without end from growing.
+const SIGNERS: usize = 8;
 /// The regions the global `sts.amazonaws.com` still serves under the legacy
 /// endpoint mode; every other region is regional in both modes.
 const LEGACY_STS_REGIONS: [&str; 15] = [
@@ -177,6 +183,18 @@ struct Inner {
     /// The access key ids a store refused, oldest first, at most
     /// `REFUSED_KEYS`: a source answering one is passed over.
     refused: Mutex<VecDeque<Refused>>,
+    /// The signers of the set in hand, oldest first, at most `SIGNERS`.
+    signers: Mutex<Vec<Held>>,
+}
+
+/// One signer, and what it was made for: the whole set rather than its key
+/// alone, because a refreshed session can keep its access key id and change
+/// its secret or its token.
+struct Held {
+    credentials: Credentials,
+    region: String,
+    service: SmolStr,
+    signer: Arc<Signer>,
 }
 
 /// A key a store refused, and until when: for good when its set lapsed,
@@ -279,6 +297,7 @@ impl Session {
                 ),
                 skip_caches: AtomicBool::new(false),
                 refused: Mutex::new(VecDeque::new()),
+                signers: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -929,17 +948,15 @@ impl Session {
     }
 
     /// The STS endpoint an exchange for `region` goes to, and the region it
-    /// is signed for: the global endpoint the legacy mode keeps is signed for
-    /// `us-east-1`, whatever region the caller is in.
+    /// is signed for: [`Self::service_endpoint`], under the one rule that is
+    /// STS's own - the global endpoint the legacy mode keeps for the older
+    /// regions, signed for `us-east-1` whatever region the caller is in.
     pub(crate) fn sts_target(&self, region: &str) -> (String, String) {
-        if let Some(url) = self.endpoint_url("sts") {
-            return (url, region.to_owned());
-        }
-        let fips = self.use_fips_endpoint();
-        let dualstack = self.use_dualstack_endpoint();
-        if !self.sts_regional_endpoints()
-            && !fips
-            && !dualstack
+        let configured = self.endpoint_url("sts");
+        if configured.is_none()
+            && !self.sts_regional_endpoints()
+            && !self.use_fips_endpoint()
+            && !self.use_dualstack_endpoint()
             && LEGACY_STS_REGIONS.contains(&region)
         {
             return (
@@ -947,8 +964,54 @@ impl Session {
                 DEFAULT_REGION.to_owned(),
             );
         }
-        let host = ArnPartition::from_region(region).service_host("sts", region, fips, dualstack);
-        (format!("https://{host}"), region.to_owned())
+        let endpoint = configured.unwrap_or_else(|| self.published_endpoint("sts", region));
+        (endpoint, region.to_owned())
+    }
+
+    /// The endpoint `service` is reached at in `region`: the one configured
+    /// for it ([`Self::endpoint_url`]), else the host the partition
+    /// publishes - `https://{service}[-fips].{region}.{suffix}`, the suffix
+    /// the region's partition's, the dual-stack one under
+    /// [`Self::use_dualstack_endpoint`], `-fips` under
+    /// [`Self::use_fips_endpoint`].
+    ///
+    /// `service` is the service's endpoint id - `s3tables`, `glue`, `sts` -
+    /// which is not always its SigV4 signing name. A service whose hosts
+    /// follow another shape - S3, the Sign-In service - builds its own.
+    ///
+    /// ```
+    /// use yggdryl::aws::Session;
+    ///
+    /// let session = Session::new().with_environment(false);
+    /// assert_eq!(
+    ///     session.service_endpoint("s3tables", "eu-west-3"),
+    ///     "https://s3tables.eu-west-3.amazonaws.com"
+    /// );
+    /// assert_eq!(
+    ///     session.with_use_fips_endpoint(true).service_endpoint("s3tables", "us-gov-west-1"),
+    ///     "https://s3tables-fips.us-gov-west-1.amazonaws.com"
+    /// );
+    /// assert_eq!(
+    ///     session
+    ///         .with_service_endpoint_url("s3tables", "http://localhost:4566/")
+    ///         .service_endpoint("s3tables", "eu-west-3"),
+    ///     "http://localhost:4566"
+    /// );
+    /// ```
+    pub fn service_endpoint(&self, service: &str, region: &str) -> String {
+        self.endpoint_url(service)
+            .unwrap_or_else(|| self.published_endpoint(service, region))
+    }
+
+    /// The host the region's partition publishes for `service`, as a URL.
+    fn published_endpoint(&self, service: &str, region: &str) -> String {
+        let host = ArnPartition::from_region(region).service_host(
+            service,
+            region,
+            self.use_fips_endpoint(),
+            self.use_dualstack_endpoint(),
+        );
+        format!("https://{host}")
     }
 
     /// The attempts per request the environment or the profile name, as
@@ -976,6 +1039,7 @@ impl Session {
     ///
     /// A bundle that cannot be read, or holds no certificate: trust is never
     /// widened to the platform's roots by a bundle nobody could read.
+    #[cfg(feature = "s3")]
     pub(crate) fn tls_config(&self) -> Result<Option<ureq::tls::TlsConfig>> {
         let Some(path) = self.ca_bundle() else {
             return Ok(None);
@@ -1207,6 +1271,89 @@ impl Session {
         self.refuse(access_key_id, until);
         self.forget_if(access_key_id, true);
         true
+    }
+
+    /// Whether a request `signed` by this access key and refused goes out
+    /// once more: the session is told what the refusal says of the key, and
+    /// answers whether it now signs with another one - the same set would be
+    /// refused the same way.
+    ///
+    /// `code` is the error code the answer named: one that refuses the
+    /// request rather than its key answers `false` and changes nothing.
+    /// `None` is a refusal that could name none - a `HEAD` answered with no
+    /// body while it carried a session token - for which the sources are
+    /// read again with nothing held against the key, which may be fine.
+    /// `Ok(true)` with no set left is a session that now signs nothing.
+    ///
+    /// # Errors
+    ///
+    /// The session's own refusal - every source and why - when nothing
+    /// answers any more: that, rather than the store's verdict, is what the
+    /// caller can act on.
+    pub(crate) fn answers_another(
+        &self,
+        signed: &str,
+        code: Option<&str>,
+        now: SystemTime,
+    ) -> Result<bool> {
+        match code {
+            Some(code) => {
+                if !self.refused_by_store(signed, code, now) {
+                    return Ok(false);
+                }
+            }
+            None => {
+                self.forget_if(signed, false);
+            }
+        }
+        let fresh = self.credentials(now)?;
+        Ok(fresh.is_none_or(|fresh| fresh.access_key_id() != signed))
+    }
+
+    /// The signer of the set in hand at `now` for `service`, the SigV4
+    /// signing name, in `region`; `None` for unsigned requests.
+    ///
+    /// One signer is kept per credential set, region and service, so the
+    /// day's signing key is derived once for all the requests that share
+    /// them; a set that was replaced takes its signers with it.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::credentials`].
+    pub(crate) fn signer(
+        &self,
+        service: &str,
+        region: &str,
+        now: SystemTime,
+    ) -> Result<Option<Arc<Signer>>> {
+        let Some(credentials) = self.credentials(now)? else {
+            return Ok(None);
+        };
+        let mut signers = lock(&self.inner.signers);
+        if let Some(held) = signers.iter().find(|held| {
+            held.region == region && held.service == service && held.credentials == credentials
+        }) {
+            return Ok(Some(Arc::clone(&held.signer)));
+        }
+        // Only the set in hand signs: one it replaced leaves nothing behind.
+        signers.retain(|held| held.credentials == credentials);
+        if signers.len() >= SIGNERS {
+            signers.remove(0);
+        }
+        let signer = Arc::new(Signer::for_service(
+            service,
+            credentials.access_key_id(),
+            credentials.secret_access_key(),
+            credentials.session_token().map(str::to_owned),
+            region,
+        ));
+        signers.push(Held {
+            credentials,
+            region: region.to_owned(),
+            service: service.into(),
+            signer: Arc::clone(&signer),
+        });
+        Ok(Some(signer))
     }
 
     /// Forget the set in hand and the files as read when the set in hand

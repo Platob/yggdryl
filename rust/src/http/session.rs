@@ -548,8 +548,10 @@ impl Session {
             );
             if elsewhere {
                 // A proof or a signature made per attempt is the caller's
-                // credential for the origin the request named.
+                // credential for the origin the request named, and with
+                // none sent there is no refusal of one to mend.
                 wire.attempt_headers = None;
+                wire.resend_on = None;
             }
             let answer = self.inner.client.execute(&wire)?;
             if options.cookies() {

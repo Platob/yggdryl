@@ -4409,6 +4409,80 @@ logger.set_propagating(true);
 file.close()?;
 ```
 
+#### Signing other services
+
+A request the [HTTP client](#http) sends to any AWS service is signed by the same `Session`: `Request::with_sigv4(&session, service, region)` signs every attempt with Signature Version 4, `Session::service_endpoint(service, region)` says where the service is, and `Session::with_properties` reads who signs out of a property map. A catalog client - an Iceberg REST endpoint, Amazon S3 Tables - needs nothing else of AWS.
+
+!!! note "Rust only"
+    Python and Node sign S3 requests through their handles; neither exposes `with_sigv4`, `service_endpoint` or `Session::with_properties`.
+
+| Door | Contract |
+| --- | --- |
+| `Request::with_sigv4(&session, service, region)` | `service` is the SigV4 signing name (`s3tables`, `execute-api`, `glue`). Each attempt asks the session for its set, so a refreshed one signs the next attempt, and signs what is sent: the hop's method, the `Host` with the port the URL names, the path as it is on the wire, the query, the `content-type`, `content-md5` and `x-amz-*` headers, and the SHA-256 of the body. Adds `x-amz-date`, `x-amz-content-sha256`, `x-amz-security-token` for a temporary set, and `authorization` |
+| `Session::service_endpoint(service, region)` | the endpoint configured for the service (`with_service_endpoint_url`, `AWS_ENDPOINT_URL_<SERVICE>`, the profile's `[services]` entry), else `https://{service}[-fips].{region}.{suffix}` from the region's [partition](../uri/arn.md), FIPS and dual-stack as the session says. `service` is the endpoint id, which is not always the signing name |
+| `Session::with_properties(pairs)`, `Session::from_properties(pairs)` | the one reader of AWS identity properties: `region`; `access_key_id`, `secret_access_key`, `session_token`; `anonymous`; `profile`; a role (`role_arn`, `role_session_name`, `external_id`, `role_duration`, `sts_region`, `sts_endpoint`, `mfa_serial`, `source_profile`, `credential_source`, `web_identity_token_file`); a sign-in (`sso_start_url`, `sso_region`, `sso_account_id`, `sso_role_name`, `sso_session`); `config_file`, `shared_credentials_file`, `credential_process`, `ca_bundle`; `use_fips_endpoint`, `use_dualstack_endpoint`, `sts_regional_endpoints`; the `ec2_metadata_*` and `metadata_service_*` knobs. Case, `-`, `_` and `.` are alike, and a leading `aws_` or `client.` is dropped, so `AWS_REGION` and PyIceberg's `client.region` are `region` |
+
+- **The canonical URI follows the service.** S3's family (`s3`, `s3express`, `s3-object-lambda`, `s3-outposts`) signs the path as sent. Every other service signs it with empty and dot segments removed and every segment percent-encoded once more, as botocore does: a path carrying `%1F` or an encoded ARN signs as `%251F` and `%253A`. The signer is pinned against vectors botocore computed.
+- **`x-amz-content-sha256` is always sent and signed**, which S3 requires and every other service accepts as one more signed header.
+- **No credential source answering is a refusal**, ``SigV4 for `<service>` asked, no credential source answered``, never an unsigned request; a session whose sources failed refuses naming each.
+- **A streamed body** (`send_reader`) cannot be hashed: it is refused for a service outside the S3 family, and declared `UNSIGNED-PAYLOAD` inside it.
+- **A refused key is mended once.** A `400` or `403` naming `ExpiredToken`, `ExpiredTokenException`, `TokenRefreshRequired`, `InvalidAccessKeyId`, `InvalidToken`, `InvalidClientTokenId` or `UnrecognizedClientException` - in `x-amzn-ErrorType`, a JSON `__type` or `code`, or an XML `<Code>` - is told to the session, and the request goes out once more, whatever its method, when the session then answers another key: the same set would be refused the same way. A redirect to another origin is neither signed nor sent again.
+- **Never read here:** a bare `token`, which is a catalog's own bearer token, and `s3.*`, which is the object store's reader's (`S3Options::with_properties` hands its identity names to this reader).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::aws::Session;
+    use yggdryl::http::{Method, Response, Server, Status};
+
+    // A catalog's properties, in PyIceberg's names; most are nobody's identity.
+    let session = Session::new().with_environment(false).with_properties([
+        ("warehouse", "arn:aws:s3tables:eu-west-3:123456789012:bucket/lake"),
+        ("client.region", "eu-west-3"),
+        ("client.access-key-id", "AKIDEXAMPLE"),
+        ("client.secret-access-key", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"),
+    ])?;
+    let region = session.region().expect("the stated region");
+    assert_eq!(
+        session.service_endpoint("s3tables", &region),
+        "https://s3tables.eu-west-3.amazonaws.com"
+    );
+
+    // Stand in for the service on loopback and send it a signed request.
+    let server = Server::bind("127.0.0.1:0")?;
+    server.respond(
+        Some(Method::Get),
+        "/iceberg/v1/config",
+        Response::new(Status::OK).with_body("{}"),
+    );
+    let url = server.url_of("/iceberg/v1/config")?.to_string();
+    let response = yggdryl::http::Session::new()
+        .get(&url)?
+        .with_sigv4(&session, "s3tables", &region)
+        .send()?;
+    assert_eq!(response.status(), Status::OK);
+
+    let sent = &server.requests()[0];
+    let authorization = sent.headers.get("authorization").expect("a signature");
+    assert!(authorization.starts_with("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/"));
+    assert!(authorization.contains(
+        "/eu-west-3/s3tables/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, "
+    ));
+    server.shutdown()?;
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only: no binding reaches Request.with_sigv4 or aws.Session.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only: no binding reaches Request.withSigv4 or aws.Session.
+    ```
+
 #### Google and Azure
 
 Google's shape is the same idea on `GoogleOptions`: whatever the credential chain answers signs one call to `iamcredentials`, and the token that call returns is what reaches the store; Azure's is an Entra ID application on `AzureOptions`. Container creation and deletion can be forbidden, refused without a request.
@@ -5390,7 +5464,7 @@ A request states what the client cannot know of it, each on the `Request` and ea
 | `Request` | Says | Default |
 | --- | --- | --- |
 | `with_idempotent(bool)` | whether a second send does no harm: a `POST` its service documents idempotent - an OAuth refresh within its validity, a poll - is retried as a `GET` is; `false` keeps a `GET` from going twice | the method's |
-| `with_attempt_headers(f)` | headers made at the top of every attempt from its number, method and URL - a proof or a signature that must be fresh each time; an error it returns is the request's, never retried; a redirect hop to another origin does not call it, so nothing it makes is sent there | none |
+| `with_attempt_headers(f)` | headers made at the top of every attempt from the `Attempt` as it is about to go out - its number, the hop's method and URL, the headers already on it, the body's bytes (none for a body streamed by `send_reader`) - a proof or a signature that must be fresh each time and cover what is sent; an error it returns is the request's, never retried; a redirect hop to another origin does not call it, so nothing it makes is sent there. [`with_sigv4`](#signing-other-services) is built on it | none |
 | `with_max_attempts(n)` | this request's attempts; every retry still draws on the client's one budget | the client's `max_attempts` |
 | `with_connect_timeout(d)` | the bound on opening this request's connection | the pool's |
 | `with_deadline(d)` | one bound on a whole attempt - connect, send, head and body together | none; `with_timeout` bounds each phase |
