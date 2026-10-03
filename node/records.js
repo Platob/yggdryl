@@ -1287,7 +1287,7 @@ function installRecords({
     },
   })
 
-  return Object.freeze({ icebergBatchReader, icebergCallOptions, intoField })
+  return Object.freeze({ intoField })
 }
 
 module.exports = { installRecords }

@@ -4895,7 +4895,7 @@ delete binding.ArrowWriteSession
 // `BatchReader` and a write consumes one. This installs the Apache Arrow JS
 // translation and the argument coercion around it.
 const { installRecords } = require('./records.js')
-const { icebergBatchReader, icebergCallOptions, intoField } = installRecords({
+const { intoField } = installRecords({
   BatchReader,
   ChunkedSerie,
   Field,
@@ -5228,8 +5228,6 @@ Object.defineProperty(binding.IcebergTable.prototype, 'updateSchema', {
     return builder
   },
 })
-
-}
 
 // `yggdryl::iceberg` is a module in the core, so it is one here too: a table
 // format sits on top of the record encodings rather than beside them. The
