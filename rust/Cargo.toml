@@ -293,6 +293,11 @@ name = "holder"
 path = "benchmarks/holder.rs"
 harness = false
 
+[[bench]]
+name = "logging"
+path = "benchmarks/logging.rs"
+harness = false
+
 [[test]]
 name = "arrow"
 

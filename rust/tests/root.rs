@@ -193,9 +193,6 @@ mod variant;
 mod version;
 #[path = "root/vocabulary.rs"]
 mod vocabulary;
-#[cfg(feature = "internals")]
-#[path = "root/warning.rs"]
-mod warning;
 #[path = "root/window_serie.rs"]
 mod window_serie;
 #[path = "root/wkb.rs"]

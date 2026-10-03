@@ -1,7 +1,7 @@
 //! Thin native Python views over Yggdryl core values.
 
 use std::cmp::Ordering;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::PyValueError;
@@ -45,6 +45,7 @@ mod iceberg;
 mod identifier;
 mod iobase;
 mod iomedia;
+mod logging;
 mod marketdatakind;
 mod marketdatatype;
 mod media;
@@ -497,50 +498,11 @@ fn graph_enum_listings(listing: &Bound<'_, pyo3::types::PyDict>) -> PyResult<()>
     Ok(())
 }
 
-/// The bridge that carries the core's `log` records into Python `logging`.
-///
-/// Held because `pyo3-log` caches each Python logger's effective level, and a
-/// caller that changes a level after import needs that cache dropped.
-static LOGGING: OnceLock<pyo3_log::ResetHandle> = OnceLock::new();
-
-/// Drop the cached Python log levels, so a level changed after import applies.
-///
-/// `logging.getLogger("yggdryl").setLevel(...)` before the first record needs
-/// nothing; changing a level once records have flowed needs this.
-#[pyfunction]
-fn refresh_logging() {
-    if let Some(handle) = LOGGING.get() {
-        handle.reset();
-    }
-}
-
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    // Records travel under the Rust module path, so a core record from
-    // `yggdryl::iceberg::table` reaches `logging` as
-    // `yggdryl.iceberg.table` and the package's own logger is its root.
-    //
-    // The bridge is global, so every crate in the build would otherwise reach
-    // Python: the Avro reader alone narrates a schema parse per manifest, and
-    // that is the flood a caller enabling debug does not want. Only this
-    // project's own targets pass below `warn`, so a dependency still surfaces
-    // what went wrong and never what it did. `install` rather than `init`
-    // because an embedder may have installed a logger already, and an
-    // extension has no business replacing it.
-    //
-    // The project's own targets pass at `debug`, not `trace`: the highest
-    // level any target admits is the process-wide ceiling every `log` call
-    // checks first, and the HTTP transport traces each body chunk as 16-byte
-    // hex rows - at a `trace` ceiling each row was formatted and handed to
-    // the bridge only to be refused by target, which made a download four
-    // times slower. The core logs nothing at `trace`.
-    let bridge = pyo3_log::Logger::default()
-        .filter(log::LevelFilter::Warn)
-        .filter_target("yggdryl".to_owned(), log::LevelFilter::Debug)
-        .install();
-    if let Ok(handle) = bridge {
-        let _ = LOGGING.set(handle);
-    }
+    // The core's logging tree, hosted by `logging`: records reach the
+    // Python logger of their Rust module path at the levels it states.
+    logging::install(module.py())?;
     register_classes(module)?;
     register_functions(module)?;
     module.add(
@@ -648,6 +610,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<parameters::PyStringParameters>()?;
     module.add_class::<parameters::PyBytesParameters>()?;
     module.add_class::<PyField>()?;
+    logging::register(module)?;
     module.add_class::<PyScalar>()?;
     module.add_class::<serie::PySerie>()?;
     module.add_class::<serie::PySerieSerie>()?;
@@ -740,7 +703,6 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
 
 /// Register the native free functions.
 fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(refresh_logging, module)?)?;
     module.add_function(wrap_pyfunction!(charset::charset_decode, module)?)?;
     module.add_function(wrap_pyfunction!(charset::charset_decode_lossy, module)?)?;
     module.add_function(wrap_pyfunction!(charset::charset_encode, module)?)?;

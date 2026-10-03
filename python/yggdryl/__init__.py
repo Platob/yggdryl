@@ -13,8 +13,8 @@ paths the work happens in, so `logging.getLogger("yggdryl")` is the one switch.
 Debug is an operation starting, info is one done and carries the counts a
 monitor watches - a table opened, a scan planned and what its filters pruned,
 a snapshot's rows and files, a commit and the version it landed. Nothing is
-reported per row, per batch, or per file. A level changed after import reaches
-the bridge through `refresh_logging`.
+reported per row, per batch, or per file. A level changed at any time applies
+to the next record; `yggdryl.logging` says how.
 """
 
 from . import (
@@ -36,6 +36,7 @@ from . import (
     iceberg,
     integer,
     json,
+    logging,
     media,
     nested,
     temporal,
@@ -70,7 +71,6 @@ from ._native import (
     UnknownPropertyWarning,
     __version__,
     combined,
-    refresh_logging,
 )
 from .expression import (
     Bound,
@@ -483,6 +483,7 @@ __all__ = [
     "interval",
     "isin",
     "json",
+    "logging",
     "large_ascii",
     "large_ascii_view",
     "large_binary",
@@ -501,7 +502,6 @@ __all__ = [
     "mimetype",
     "nested",
     "null",
-    "refresh_logging",
     "ric",
     "run_end_encoded",
     "scalar",

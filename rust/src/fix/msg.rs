@@ -2542,7 +2542,7 @@ impl FixMsg {
             || format_smolstr!("{tag}"),
             |field| format_smolstr!("{}({tag})", field.name()),
         );
-        crate::warning::warned!(
+        crate::logging::warning::warned!(
             what,
             &field,
             "{stated:?} on a {} message",
@@ -3674,7 +3674,7 @@ impl FixMsg {
             match self.staged(&key, value, &|_, _| Ok(())) {
                 Ok(Staged::Typed(tag, value)) => typed.push((tag, value)),
                 Ok(Staged::Row(write)) => stage(&mut writes, write),
-                Err(error) => crate::warning::warned!(
+                Err(error) => crate::logging::warning::warned!(
                     "FIX value dropped: the field its key reaches refuses it",
                     &match key {
                         FixKey::Tag(tag) => format_smolstr!("{tag}"),

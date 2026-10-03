@@ -133,6 +133,7 @@ Metadata belongs to the field and behaves like each language's mapping type; a n
 | Scalars, schemas, and batch readers at the Arrow boundary | [Arrow](arrow/index.md) |
 | Predicates and pushdown | [Expression](expression/index.md) |
 | Digests and time-keyed digests | [Hashing](hashing.md) |
+| Loggers, levels, handlers, and log files on any storage | [Logging](logging.md) |
 | Orders, quotes, executions, books, candles, and the book display | [Graph](graph/index.md) |
 | FIX messages, registries, and captures | [FIX](fix/index.md) |
 

@@ -39,6 +39,7 @@ mod iceberg;
 mod identifier;
 mod iobase;
 mod iomedia;
+mod logging;
 mod media;
 mod text;
 mod timezone;
@@ -440,26 +441,6 @@ impl JsDifferenceIterator {
     }
 }
 
-/// The core's warnings - a value a FIX parse, a market read or a lifecycle
-/// walk passed over, said once and then counted - written to standard
-/// error: an addon brings no logger of its own, so nothing else would say
-/// them.
-struct Warnings;
-
-impl log::Log for Warnings {
-    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
-        metadata.level() <= log::Level::Warn
-    }
-
-    fn log(&self, record: &log::Record<'_>) {
-        if self.enabled(record.metadata()) {
-            eprintln!("yggdryl: {}", record.args());
-        }
-    }
-
-    fn flush(&self) {}
-}
-
 /// The machine this process runs on, read once by the core: the host an
 /// in-process location and a buffer's identity name. `HOSTNAME` is where a
 /// caller reads it; this is the half that carries the text across.
@@ -468,14 +449,11 @@ pub fn hostname_native() -> &'static str {
     yggdryl::HOSTNAME.as_str()
 }
 
-/// Installs [`Warnings`] as the process's logger when the addon loads,
-/// unless something in the process already installed one.
+/// Installs the core's logging tree as the process's logger when the addon
+/// loads, unless something in the process already installed one.
 #[napi_derive::module_init]
-fn install_warnings() {
-    static WARNINGS: Warnings = Warnings;
-    if log::set_logger(&WARNINGS).is_ok() {
-        log::set_max_level(log::LevelFilter::Warn);
-    }
+fn install_logging() {
+    logging::install();
 }
 
 impl Generator for JsDifferenceIterator {

@@ -2662,6 +2662,39 @@ export declare class FieldPath {
 }
 export type JsFieldPath = FieldPath
 
+/**
+ * Writes each record as one line through a location's handle, one append
+ * per publish.
+ */
+export declare class FileHandler {
+  /** A handler writing to `location` - a path, a `Url` or an `IOBase`. */
+  constructor(location: LocationInput, options?: FileHandlerOptions | undefined | null)
+  /** The location written to, `null` for one with no URL. */
+  get url(): string | null
+  /** `append` or `overwrite`. */
+  get mode(): string
+  /** The bytes held back before a publish. */
+  get capacity(): number
+  /** The level that publishes what is held at once. */
+  get flushLevel(): number
+  /** The level the handler emits from. */
+  get level(): number
+  /** Emits records at `level` and above. */
+  setLevel(level: LoggingLevelInput): void
+  /** The formatter records are spelled with. */
+  get formatter(): Formatter
+  /** Spells records with `formatter`. */
+  setFormatter(formatter: Formatter): void
+  /** Publishes what is held. */
+  flush(): void
+  /**
+   * Publishes what is held and lets go of the handle; a later record
+   * reopens it.
+   */
+  close(): void
+}
+export type JsFileHandler = FileHandler
+
 /** A `where` clause: one predicate over rows. */
 export declare class Filter {
   /**
@@ -3999,6 +4032,26 @@ export declare class FixRegistry {
 }
 export type JsFixRegistry = FixRegistry
 
+/** A `%`-style format and the date format `asctime` takes. */
+export declare class Formatter {
+  /** A formatter over `format` - `%(message)s` when absent. */
+  constructor(format?: string | undefined | null, options?: FormatterOptions | undefined | null)
+  /**
+   * The prebuilt terminal formatter: the timestamp, the level's glyph and
+   * name in its colour, the thread, the logger, the call site and the
+   * message - the default of `basicConfig` and of the last resort.
+   */
+  static terminal(): Formatter
+  /** The format, as it was spelled. */
+  get format(): string
+  /** The date format, `null` for the default. */
+  get datefmt(): string | null
+  /** The zone instants are rendered in. */
+  get timezone(): string
+  toString(): string
+}
+export type JsFormatter = Formatter
+
 /**
  * An immutable, case-insensitive HTTP header map.
  *
@@ -4843,6 +4896,65 @@ export declare class Listing {
 }
 export type JsListing = Listing
 
+/** A named logger of the process's tree; `logging.getLogger` answers one. */
+export declare class Logger {
+  /** The logger's dotted name; `root` for the root. */
+  get name(): string
+  /** The logger this one hangs from; `null` for the root. */
+  get parent(): Logger | null
+  /** The logger named `suffix` below this one. */
+  getChild(suffix: string): Logger
+  /** The level stated on this logger; `0` when it takes its ancestors'. */
+  get level(): number
+  /** States `level` on this logger; `NOTSET` takes the ancestors' again. */
+  setLevel(level: LoggingLevelInput): void
+  /** The level this logger handles from. */
+  getEffectiveLevel(): number
+  /** Whether a record at `level` would be handled. */
+  isEnabledFor(level: LoggingLevelInput): boolean
+  /** Whether records go on to the ancestors' handlers. */
+  get propagate(): boolean
+  set propagate(propagate: boolean)
+  /** Whether the logger drops every record logged on it. */
+  get disabled(): boolean
+  set disabled(disabled: boolean)
+  /**
+   * Whether this logger states its own deduplication: `true` drops
+   * repeated records, `false` passes every record, `null` takes the
+   * nearest ancestor's.
+   */
+  get deduplicating(): boolean | null
+  set deduplicating(deduplicating: boolean | undefined | null)
+  /**
+   * Whether records logged here are deduplicated, as stated here or by
+   * the nearest ancestor: the first occurrence is said, the 10th, 100th,
+   * 1000th as `message (seen N times)`, every other reaches no handler.
+   */
+  isDeduplicating(): boolean
+  /** Attaches `handler`, once. */
+  addHandler(handler: LoggingHandlerInput): void
+  /** Detaches `handler`; answers whether it was attached. */
+  removeHandler(handler: LoggingHandlerInput): boolean
+  /** Whether this logger or an ancestor its records reach has a handler. */
+  hasHandlers(): boolean
+  /** Logs `message` at `level` when the level is enabled. */
+  log(level: LoggingLevelInput, message: string): void
+  /** Logs `message` at `DEBUG`. */
+  debug(message: string): void
+  /** Logs `message` at `INFO`. */
+  info(message: string): void
+  /** Logs `message` at `WARNING`. */
+  warning(message: string): void
+  /** Logs `message` at `ERROR`. */
+  error(message: string): void
+  /** Logs `message` at `CRITICAL`. */
+  critical(message: string): void
+  /** Whether `other` is this very logger. */
+  equals(other: Logger): boolean
+  toString(): string
+}
+export type JsLogger = Logger
+
 /** One manifest of the current snapshot. */
 export declare class ManifestFile {
   /** The manifest's location, as a URI. */
@@ -5462,6 +5574,16 @@ export declare class Namespaces {
   openOrCreate(name: string): Namespace
 }
 export type JsNamespaces = Namespaces
+
+/** Takes every record and writes none. */
+export declare class NullHandler {
+  constructor()
+  /** The level the handler takes records from. */
+  get level(): number
+  /** Takes records at `level` and above. */
+  setLevel(level: LoggingLevelInput): void
+}
+export type JsNullHandler = NullHandler
 
 /**
  * An undated order: the element, market and operation facts of one order
@@ -8446,6 +8568,32 @@ export declare class SnapshotRef {
 }
 export type JsSnapshotRef = SnapshotRef
 
+/** Writes each record as one line to standard error or standard output. */
+export declare class StreamHandler {
+  /** A handler on `stream`: `stderr`, the default, or `stdout`. */
+  constructor(stream?: string | undefined | null)
+  /** The level the handler emits from. */
+  get level(): number
+  /** Emits records at `level` and above. */
+  setLevel(level: LoggingLevelInput): void
+  /** The formatter records are spelled with. */
+  get formatter(): Formatter
+  /** Spells records with `formatter`. */
+  setFormatter(formatter: Formatter): void
+  /**
+   * Whether the formatter's styles are spelled: decided from the stream
+   * when the handler was built - a colour terminal, `NO_COLOR`,
+   * `FORCE_COLOR`, `CLICOLOR_FORCE`, `TERM=dumb` - until set.
+   */
+  get colored(): boolean
+  set colored(colored: boolean)
+  /** Flushes the stream. */
+  flush(): void
+  /** Flushes the stream; a stream is never closed. */
+  close(): void
+}
+export type JsStreamHandler = StreamHandler
+
 /**
  * The enum a string field's values name: one value per member name.
  *
@@ -10760,6 +10908,21 @@ export interface FieldSummaryView {
   upperBound?: Buffer
 }
 
+/** What a `FileHandler` takes beside its location. */
+export interface FileHandlerOptions {
+  /** `append`, the default, or `overwrite`. */
+  mode?: string
+  /**
+   * The bytes held back before a publish; `0`, the default, publishes
+   * each record as it arrives.
+   */
+  capacity?: number
+  /** The level that publishes what is held at once; `ERROR` by default. */
+  flushLevel?: LoggingLevelInput
+  /** The level the handler emits from; `NOTSET` by default. */
+  level?: LoggingLevelInput
+}
+
 /** Options for one filesystem listing. */
 export interface FileSelector {
   /** Opaque directory path supplied to the filesystem. */
@@ -11192,6 +11355,14 @@ export interface FixTimeInForce {
   wire: string
   /** The `timeinforce` member's stored name. */
   timeinforce: string
+}
+
+/** What a `Formatter` takes beside its format. */
+export interface FormatterOptions {
+  /** The `strftime` date format `asctime` is spelled in. */
+  datefmt?: string
+  /** The zone instants are rendered in, UTC when absent. */
+  timezone?: string
 }
 
 /**

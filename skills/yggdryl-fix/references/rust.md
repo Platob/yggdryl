@@ -698,7 +698,9 @@ std::fs::remove_dir_all(&path)?;
 - Every stream door yields `Result` items, and only a source failure is an
   `Err`: what a line states that cannot be read is defaulted or left out with
   a `log` warning, so `collect::<yggdryl::Result<Vec<_>>>()` stops at a failing
-  source alone. Install a `log` backend (`env_logger`, say) to see the warnings.
+  source alone. Install a `log` backend (`env_logger`, say, or the core's own
+  `yggdryl::logging::basic_config(BasicConfig::new())`, the terminal line on
+  standard error) to see the warnings.
 - The graph getters (`get_crosscode`, `get_side`, `get_currunix`) are trait
   methods: import `yggdryl::graph::{Element, Event, Market}`.
 - `with_exclude_msgtypes([])` needs its types spelled:
