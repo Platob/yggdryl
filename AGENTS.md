@@ -1151,7 +1151,11 @@ tests in `rust/tests/http/` assert exactly:
   one private runtime in `http/runtime.rs`; a blocking call polls its own
   future on its own thread, parked between wakes, so nothing crosses a thread
   per chunk and no caller brings a runtime. Nothing else in the crate starts
-  a runtime or blocks one of its workers.
+  a runtime or blocks one of its workers. A QUIC stream's receive window is
+  1 MiB on both ends (`h3::STREAM_WINDOW`), because the window is what bounds
+  the gaps a lossy path leaves in a stream and quinn closes a connection
+  whose stream lies in more than 1024 pieces; a constant assertion holds the
+  two together.
 - `Server` answers HTTP/2 wherever a connection opens with the preface, and
   with `http3` on, HTTP/3 on the UDP twin and TLS offering `h2` on the TCP
   port under a certificate it signs itself; every framed request reaches the

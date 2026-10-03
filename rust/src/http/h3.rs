@@ -34,10 +34,26 @@ use super::tls::ClientConfigs;
 
 /// How long an origin whose QUIC connection failed is reached another way.
 const BROKEN_FOR: Duration = Duration::from_secs(300);
-/// The receive window of one stream.
-const STREAM_WINDOW: u32 = 4 << 20;
+/// The receive window of one stream, the client's and the server's alike.
+///
+/// The window is what bounds the gaps a lossy path can leave in a stream:
+/// quinn reassembles one out of at most [`QUIC_STREAM_CHUNKS`] pieces that
+/// do not touch and closes the whole connection past that ("too many gaps
+/// in stream buffer"), and a window in which every other datagram was lost
+/// holds one piece per two datagrams. 4 MiB held some 1900 of them, so a
+/// starved receiver dropping datagrams of a large body lost the connection;
+/// 1 MiB, close to quinn's own default, holds under 500.
+pub(crate) const STREAM_WINDOW: u32 = 1 << 20;
 /// The receive window of the whole connection.
-const CONNECTION_WINDOW: u32 = 16 << 20;
+pub(crate) const CONNECTION_WINDOW: u32 = 16 << 20;
+/// The pieces that do not touch quinn reassembles one stream from
+/// (`quinn-proto`'s `MAX_CHUNKS`) before it closes the connection.
+const QUIC_STREAM_CHUNKS: u32 = 1024;
+/// The least stream data a full datagram carries: QUIC's 1200-byte minimum,
+/// less its packet and frame headers.
+const QUIC_DATAGRAM_DATA: u32 = 1100;
+// Twice over: a path whose datagrams run smaller still stays under the bound.
+const _: () = assert!(STREAM_WINDOW / (2 * QUIC_DATAGRAM_DATA) < QUIC_STREAM_CHUNKS / 2);
 /// How often an idle connection is kept alive.
 const KEEP_ALIVE: Duration = Duration::from_secs(10);
 /// How long a connection lives with nothing on it.

@@ -30,15 +30,12 @@ use super::framed::{
 };
 use super::trace::Exchange;
 use super::{Incoming, Inner, Outcome};
+use crate::http::h3::{CONNECTION_WINDOW, STREAM_WINDOW};
 use crate::http::runtime;
 use crate::http::tls::ring;
 use crate::http::{HttpVersion, Method, Status};
 use crate::{Error, Result};
 
-/// The receive window of one stream.
-const STREAM_WINDOW: u32 = 4 << 20;
-/// The receive window of the whole connection.
-const CONNECTION_WINDOW: u32 = 16 << 20;
 /// The most one write carries.
 const SEND_CHUNK: usize = 64 << 10;
 
